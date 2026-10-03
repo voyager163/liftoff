@@ -5,7 +5,8 @@ import path from 'node:path';
 import { parse } from 'yaml';
 import {
   checkIssueForm, checkPromotion, checkRepositoryPolicy, checkWorkflow,
-  communityFiles, workflowFiles
+  communityFiles, workflowFiles, checkIsolatedHclReport, checkIsolatedHclRuntime,
+  isolatedHclQualificationJob, isolatedHclTestCommand, checkPluginPathReport, pluginPathTestCommand
 } from '../scripts/check-repository-policy.mjs';
 
 const root = process.cwd();
@@ -24,6 +25,125 @@ function pullRequest(base: string, head: string, owner = 'voyager163/liftoff') {
 }
 
 describe('source repository setup policy', () => {
+  it.each([
+    'missing-platform', 'conditional-job', 'filtered-command', 'conditional-command',
+    'missing-verifier', 'conditional-verifier', 'missing-upload', 'success-only-upload', 'ignored-report'
+  ])('rejects incomplete native plugin qualification: %s', async fault => {
+    const workflow = await readWorkflow('ci.yml'), job = workflow.jobs.test;
+    const run = job.steps.find((step: { run?: string }) => step.run === pluginPathTestCommand);
+    const verify = job.steps.find((step: { run?: string }) => step.run?.includes('--plugin-path-report'));
+    const upload = job.steps.find((step: { with?: { path?: string } }) => step.with?.path === 'qualification/plugin-paths.json');
+    if (fault === 'missing-platform') job.strategy.matrix.os.pop();
+    if (fault === 'conditional-job') job.if = 'false';
+    if (fault === 'filtered-command') run.run += ' -t skipped';
+    if (fault === 'conditional-command') run.if = 'false';
+    if (fault === 'missing-verifier') job.steps.splice(job.steps.indexOf(verify), 1);
+    if (fault === 'conditional-verifier') verify.if = 'false';
+    if (fault === 'missing-upload') job.steps.splice(job.steps.indexOf(upload), 1);
+    if (fault === 'success-only-upload') upload.if = '${{ success() }}';
+    if (fault === 'ignored-report') upload.with['if-no-files-found'] = 'ignore';
+    expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
+  });
+  function pluginReport(platform: string) {
+    const suites = [
+      ['plugin-native-paths.test.ts', 8], ['plugin-packaged-lookup-native.test.ts', 6],
+      ['plugin-generation-parity.test.ts', 166], ['plugin-composition.test.ts', 25]
+    ] as const;
+    const testResults = suites.map(([name, count]) => ({
+      name: `fixture/${name}`,
+      assertionResults: Array.from({ length: count }, (_, index) => ({
+        title: `case ${index}`, fullName: `suite case ${index}`, status: 'passed'
+      }))
+    }));
+    if (platform !== 'win32') testResults[1].assertionResults[0] = {
+      title: `reads a case-variant spelling of the package root (native Windows only; unrun on ${platform})`,
+      fullName: `suite Windows-only case`, status: 'skipped'
+    };
+    return { success: true, numFailedTests: 0, numPendingTests: platform === 'win32' ? 0 : 1,
+      numPassedTests: platform === 'win32' ? 205 : 204, numTotalTests: 205, testResults };
+  }
+  it.each(['win32', 'darwin', 'linux'])('validates native plugin report shape without claiming execution on %s', platform => {
+    expect(() => checkPluginPathReport(pluginReport(platform), platform)).not.toThrow();
+  });
+  it.each([
+    'empty', 'missing-suite', 'duplicate-suite', 'filtered', 'duplicate-case', 'failed',
+    'link-unavailable', 'windows-skipped', 'wrong-host-skip', 'wrong-count', 'unknown-host'
+  ])('rejects incomplete native plugin reports: %s', fault => {
+    const report = pluginReport('win32');
+    if (fault === 'empty') report.testResults = [];
+    if (fault === 'missing-suite') report.testResults.pop();
+    if (fault === 'duplicate-suite') report.testResults[1] = report.testResults[0];
+    if (fault === 'filtered') report.testResults[0].assertionResults.pop();
+    if (fault === 'duplicate-case') report.testResults[0].assertionResults[1] = report.testResults[0].assertionResults[0];
+    if (fault === 'failed') report.testResults[0].assertionResults[0].status = 'failed';
+    if (fault === 'link-unavailable') report.testResults[0].assertionResults[0].status = 'skipped';
+    if (fault === 'windows-skipped') Object.assign(report, pluginReport('darwin'));
+    if (fault === 'wrong-host-skip') Object.assign(report, pluginReport('linux'));
+    if (fault === 'wrong-count') report.numPassedTests--;
+    expect(() => checkPluginPathReport(report, fault === 'unknown-host' ? 'freebsd' :
+      fault === 'wrong-host-skip' ? 'darwin' : 'win32')).toThrow();
+  });
+  it.each(['ci.yml', 'release.yml'])('pins complete native parser qualification in %s', async name => {
+    const workflow = await readWorkflow(name);
+    expect(workflow.jobs['qualify-isolated-hcl']).toEqual(isolatedHclQualificationJob(name));
+    expect(() => checkWorkflow(name, workflow)).not.toThrow();
+    if (name === 'release.yml') {
+      expect(Object.keys(workflow.jobs).sort()).toEqual(['publish', 'qualify', 'qualify-isolated-hcl']);
+      expect(workflow.jobs.qualify.needs).toBe('qualify-isolated-hcl');
+      expect(workflow.jobs.publish.needs).toBe('qualify');
+    }
+  });
+  it.each(['ci.yml', 'release.yml'].flatMap(filename => [
+    'missing', 'conditional', 'runner', 'node', 'architecture', 'mode', 'no-mode', 'case-command',
+    'filtered-cases', 'suppressed-job', 'suppressed-step', 'missing-report', 'conditional-report',
+    'upload-success-only', 'ignore-missing-evidence', 'changed-install', 'checkout-credentials'
+  ].map(fault => ({ filename, fault }))))('rejects $fault in $filename parser qualification', async ({ filename, fault }) => {
+    const workflow = await readWorkflow(filename), job = workflow.jobs['qualify-isolated-hcl'];
+    if (fault === 'missing') delete workflow.jobs['qualify-isolated-hcl'];
+    if (fault === 'conditional') job.if = 'false';
+    if (fault === 'runner') job['runs-on'] = 'macos-latest';
+    if (fault === 'node') job.steps[1].with['node-version'] = '24.20.0';
+    if (fault === 'architecture') job.steps[1].with.architecture = 'x64';
+    if (fault === 'mode') job.env.LIFTOFF_HCL_TEST_LANE = 'portable';
+    if (fault === 'no-mode') delete job.env;
+    if (fault === 'case-command') job.steps[5].run = 'npx vitest run tests/modern-local-check-plans.test.ts';
+    if (fault === 'filtered-cases') job.steps[5].run = isolatedHclTestCommand + ' -t inert';
+    if (fault === 'suppressed-job') job['continue-on-error'] = true;
+    if (fault === 'suppressed-step') job.steps[5].run += ' || true';
+    if (fault === 'missing-report') job.steps.splice(6, 1);
+    if (fault === 'conditional-report') job.steps[6].if = 'false';
+    if (fault === 'upload-success-only') job.steps[7].if = '${{ success() }}';
+    if (fault === 'ignore-missing-evidence') job.steps[7].with['if-no-files-found'] = 'ignore';
+    if (fault === 'changed-install') job.steps[3].run = 'npm install';
+    if (fault === 'checkout-credentials') job.steps[0].with['persist-credentials'] = true;
+    expect(() => checkWorkflow(filename, workflow)).toThrow();
+  });
+  it.each(['remove-edge', 'wrong-edge', 'extra-job', 'runner-elsewhere'])('rejects release parser bypass %s', async fault => {
+    const workflow = await readWorkflow('release.yml');
+    if (fault === 'remove-edge') delete workflow.jobs.qualify.needs;
+    if (fault === 'wrong-edge') workflow.jobs.qualify.needs = 'unrelated';
+    if (fault === 'extra-job') workflow.jobs.extra = structuredClone(workflow.jobs.qualify);
+    if (fault === 'runner-elsewhere') workflow.jobs.qualify['runs-on'] = 'macos-15';
+    expect(() => checkWorkflow('release.yml', workflow)).toThrow();
+  });
+  it('rejects native-required mismatch and non-native test modes without claiming another host run', () => {
+    const qualified = { platform: 'darwin', arch: 'arm64', versions: { node: '24.21.0' } } as const;
+    expect(() => checkIsolatedHclRuntime(qualified, 'native')).not.toThrow();
+    for (const runtime of [
+      { ...qualified, platform: 'linux' }, { ...qualified, platform: 'win32' },
+      { ...qualified, arch: 'x64' }, { ...qualified, versions: { node: '24.20.0' } }
+    ] as const) expect(() => checkIsolatedHclRuntime(runtime, 'native')).toThrow();
+    for (const lane of ['portable', 'auto', 'invalid']) expect(() => checkIsolatedHclRuntime(qualified, lane)).toThrow();
+  });
+  it('rejects empty, skipped, filtered or incomplete report-shaped qualification', () => {
+    for (const report of [
+      {}, { success: true, numFailedTests: 0, numPendingTests: 0, testResults: [] },
+      { success: true, numFailedTests: 0, numPendingTests: 1, testResults: [] },
+      { success: false, numFailedTests: 1, numPendingTests: 0, testResults: [] },
+      { success: true, numFailedTests: 0, numPendingTests: 0,
+        testResults: Array.from({ length: 3 }, () => ({ name: 'tests/modern-local-inputs.test.ts', assertionResults: [] })) }
+    ]) expect(() => checkIsolatedHclReport(report)).toThrow();
+  });
   it('validates the explicitly named repository setup without inspecting application source', async () => {
     await expect(checkRepositoryPolicy(root)).resolves.toBeUndefined();
   });

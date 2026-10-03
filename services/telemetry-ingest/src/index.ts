@@ -21,7 +21,11 @@ const shutdown = () => {
     return;
   }
   shuttingDown = true;
-  const forceClose = setTimeout(() => server.closeAllConnections(), 25_000);
+  const forceClose = setTimeout(() => {
+    // Forcing connections closed abandons in-flight requests, so it is not a clean exit.
+    process.exitCode = 1;
+    server.closeAllConnections();
+  }, 25_000);
   forceClose.unref();
   void closeTelemetryServer(server)
     .catch(() => {

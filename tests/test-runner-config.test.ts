@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { defaultExclude } from 'vitest/config';
-import config, { createRootTestConfig } from '../vitest.config.js';
+import config, { createRootConfig, createRootTestConfig } from '../vitest.config.js';
 
 describe('root test runner configuration', () => {
   it('bounds Windows workers without serializing files or changing other platforms', () => {
@@ -63,14 +63,48 @@ describe('root test runner configuration', () => {
     }
   });
 
-  it.each(['darwin', 'linux'] as const)('leaves the %s runner configuration unchanged', (platform) => {
-    expect(createRootTestConfig(platform).test).toEqual({
+  it.each(['darwin', 'linux'] as const)('leaves the %s runner scheduling and discovery unchanged', (platform) => {
+    const { execArgv, ...test } = createRootTestConfig(platform).test;
+    expect(test).toEqual({
       environment: 'node',
       include: ['tests/**/*.test.ts'],
       restoreMocks: true,
       maxWorkers: undefined,
       testTimeout: 30_000
     });
+    expect(execArgv).toEqual(
+      platform === 'darwin' && process.arch === 'arm64' && process.versions.node.startsWith('24.')
+        ? ['--no-sparkplug']
+        : undefined
+    );
+  });
+
+  it.each([
+    { platform: 'darwin', architecture: 'arm64', version: '24.20.0', affected: true },
+    { platform: 'darwin', architecture: 'arm64', version: '24.21.0', affected: true },
+    { platform: 'darwin', architecture: 'x64', version: '24.21.0', affected: false },
+    { platform: 'linux', architecture: 'arm64', version: '24.21.0', affected: false },
+    { platform: 'win32', architecture: 'arm64', version: '24.21.0', affected: false },
+    { platform: 'darwin', architecture: 'arm64', version: '22.0.0', affected: false },
+    { platform: 'darwin', architecture: 'arm64', version: '25.0.0', affected: false },
+    { platform: 'darwin', architecture: 'arm64', version: '26.0.0', affected: false }
+  ] as const)('scopes the worker workaround to $platform/$architecture Node $version', ({
+    platform, architecture, version, affected
+  }) => {
+    for (const current of [
+      createRootTestConfig(platform, version, architecture),
+      createRootConfig(platform, version, architecture)
+    ]) {
+      if (affected) expect(current.test.execArgv).toEqual(['--no-sparkplug']);
+      else expect(current.test).not.toHaveProperty('execArgv');
+    }
+  });
+
+  it('passes the workaround directly to affected test workers, not through NODE_OPTIONS', () => {
+    const affected = process.platform === 'darwin' && process.arch === 'arm64'
+      && process.versions.node.startsWith('24.');
+    expect(process.execArgv.includes('--no-sparkplug')).toBe(affected);
+    expect(process.env.NODE_OPTIONS ?? '').not.toContain('--no-sparkplug');
   });
 
   it('keeps migration fixture construction inside its original 90-second cases', async () => {

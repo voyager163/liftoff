@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { builtinAssets } from '../../plugins/builtin/assets.js';
+import type { ContributionOwner } from '../../plugins/contracts.js';
 import { resolvePackageFile } from './package-root.js';
 
 export type PackagedNpmTemplateId = 'node-backend' | 'frontend';
@@ -24,56 +26,62 @@ export interface PackagedTemplateAssetContext {
   };
 }
 
+const core: ContributionOwner = { kind: 'core' };
+const nodeFastify: ContributionOwner = { kind: 'plugin', category: 'stack', id: 'node-fastify' };
+const goHuma: ContributionOwner = { kind: 'plugin', category: 'stack', id: 'go-huma' };
+const pythonFastapi: ContributionOwner = { kind: 'plugin', category: 'stack', id: 'python-fastapi' };
+const azure: ContributionOwner = { kind: 'plugin', category: 'cloud', id: 'azure' };
+
 function readPackagedText(...pathParts: string[]): string {
   return readFileSync(resolvePackageFile(...pathParts), 'utf8');
 }
 
+function ownerKey(owner: ContributionOwner): string {
+  return owner.kind === 'core' ? 'core' : `${owner.category}:${owner.id}`;
+}
+
+// Resolves an explicit (owner, asset id) identity to its declared location; nothing is discovered.
+function declaredPathParts(owner: ContributionOwner, id: string): readonly string[] {
+  const declaration = builtinAssets.find(
+    (asset) => asset.id === id && ownerKey(asset.owner) === ownerKey(owner)
+  );
+  if (!declaration) {
+    throw new Error(`Packaged template asset ${ownerKey(owner)}/${id} is not declared.`);
+  }
+  return declaration.pathParts;
+}
+
 export function loadPackagedTemplateAssetContext(): PackagedTemplateAssetContext {
-  const npm = (template: PackagedNpmTemplateId) => ({
-    packageJson: readPackagedText('assets', 'locks', template, 'package.json'),
-    packageLock: readPackagedText('assets', 'locks', template, 'package-lock.json')
-  });
-  const python = (template: PackagedPythonTemplateId) => ({
-    pyproject: readPackagedText(
-      'assets',
-      'locks',
-      `python-${template}`,
-      'pyproject.toml'
-    ),
-    lock: readPackagedText('assets', 'locks', `python-${template}`, 'uv.lock')
-  });
+  const text = (owner: ContributionOwner, id: string) => readPackagedText(...declaredPathParts(owner, id));
   return {
     npm: {
-      'node-backend': npm('node-backend'),
-      frontend: npm('frontend')
+      'node-backend': {
+        packageJson: text(nodeFastify, 'node-backend-package-manifest'),
+        packageLock: text(nodeFastify, 'node-backend-package-lock')
+      },
+      frontend: {
+        packageJson: text(core, 'frontend-package-manifest'),
+        packageLock: text(core, 'frontend-package-lock')
+      }
     },
     python: {
-      genai: python('genai'),
-      standard: python('standard')
+      genai: {
+        pyproject: text(pythonFastapi, 'python-genai-project'),
+        lock: text(pythonFastapi, 'python-genai-lock')
+      },
+      standard: {
+        pyproject: text(pythonFastapi, 'python-standard-project'),
+        lock: text(pythonFastapi, 'python-standard-lock')
+      }
     },
-    functionRequirements: readPackagedText(
-      'assets',
-      'locks',
-      'python-genai',
-      'function-requirements.txt'
-    ),
+    functionRequirements: text(pythonFastapi, 'python-genai-function-requirements'),
     go: {
-      module: readPackagedText('assets', 'locks', 'go-backend', 'go.mod'),
-      checksum: readPackagedText('assets', 'locks', 'go-backend', 'go.sum')
+      module: text(goHuma, 'go-backend-module'),
+      checksum: text(goHuma, 'go-backend-checksums')
     },
     opentofu: {
-      versions: readPackagedText(
-        'assets',
-        'locks',
-        'opentofu-azure',
-        'versions.tf'
-      ),
-      providerLock: readPackagedText(
-        'assets',
-        'locks',
-        'opentofu-azure',
-        '.terraform.lock.hcl'
-      )
+      versions: text(azure, 'opentofu-azure-versions'),
+      providerLock: text(azure, 'opentofu-azure-provider-lock')
     }
   };
 }

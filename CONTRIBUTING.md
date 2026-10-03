@@ -44,6 +44,14 @@ npx vitest run tests/<focused-file>.test.ts
 npm run check
 ```
 
+For plugin or module-loading changes, run `tests/import-boundaries.test.ts` and
+`tests/plugin-execution-isolation.test.ts`. New runtime consumers of plugin
+modules need an explicitly reviewed entry in the boundary test's
+`pluginRuntimeConsumers` map, not a directory-wide exception. Keep data leaves
+inert, packaged reads exact, and plugin code independent of host state and I/O.
+These checks cover authored source and selected source-command behavior; they
+do not qualify dependency internals, Node preloading or external toolchains.
+
 The root Vitest configuration limits Windows to two concurrent file workers.
 Within the same test invocation, ordered projects run the other root files first,
 then the intact `tests/migration-inspection.test.ts` file without competing
@@ -56,12 +64,33 @@ timeouts are unchanged, including the migration inspection suite's 90-second
 limit. Use these defaults for CI qualification rather than increasing timeouts
 or excluding slow cases.
 
+Every root Vitest run, whether `npm test`, a targeted `npx vitest run`, or the
+coverage gate, uses a fresh temporary user profile. The main process creates it
+while the configuration is evaluated, before Vitest writes its own user-data token,
+and the global setup removes it afterward; a failed cleanup fails the run. `HOME`,
+`USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, the XDG directories (POSIX),
+`AZURE_CONFIG_DIR`, `GH_CONFIG_DIR`, the npm user config, global config, and cache,
+and `GOPATH`, `GOMODCACHE`, `GOCACHE`, and `GOENV` all point inside it. Azure CLI
+telemetry and npm update checks are off, and ambient gh, az, and npm credential
+variables are cleared whatever their letter case. A test that needs such a value
+injects its own fixture. Tool caches start empty, so tests that build generated
+projects download their dependencies. This keeps test-generated Liftoff and client
+state out of your real profile; it is not a sandbox or network boundary, and `PATH`
+and native host settings are unchanged.
+
 Windows CI explicitly places its selected npm installation ahead of the Node
 distribution's bundled npm on PATH and uses the runner-owned temporary directory
 for short fixture roots. Windows process creation still limits the working
 directory to `MAX_PATH`, even when filesystem operations accept longer paths;
 native fixtures leave room for both full workspace identities without changing
 the application's storage layout or truncating identifiers.
+Each CI platform also runs the complete plugin composition, native-path and
+packaged-lookup suites and uploads `qualification/plugin-paths.json`. The
+repository-policy report check requires every applicable case to pass; unavailable
+links or junctions cannot silently qualify a host. Only the explicitly named
+Windows case is skipped on macOS/Linux. A report from one host never qualifies
+another, and this source-level run does not replace installed-native-artifact
+qualification.
 Controller protocol fixtures use native
 PowerShell launchers on Windows and POSIX launchers on macOS/Linux; passing a
 mock protocol case is not evidence of native Job Object settlement. The separate
@@ -131,6 +160,210 @@ and complete-screen snapshots under `tests/__snapshots__/`, review every
 changed screen intentionally, and keep raw installer or dependency output
 outside Liftoff-owned borders.
 
+### Coverage gates
+
+The CLI and the telemetry gateway each have an independent, source-complete
+coverage gate. Statements, branches, functions, and lines must each be strictly
+greater than 80% (configured floor 80.01%) for each package separately. The
+packages are never aggregated, files are never excluded to raise a result, and
+thresholds are not lowered to pass. Both packages pin the Vitest-compatible V8
+provider, `@vitest/coverage-v8` `5.0.0`, to the exact Vitest version.
+
+```bash
+npm ci
+npm ci --prefix services/telemetry-ingest
+npm run coverage:cli
+npm run coverage:gateway
+node scripts/coverage-gate.mjs verify cli
+node scripts/coverage-gate.mjs verify gateway
+```
+
+The CLI inventory is every `.ts` file matched by the root `tsconfig.json`
+include, `src/**/*.ts`, whether or not a test imports it. The gateway inventory
+is its build input: `services/telemetry-ingest/src/**/*.ts` plus the whole
+shared `src/telemetry/contract.ts` module compiled into the gateway image. The
+gate fails if a report omits any inventoried file, lists a path outside it, is
+missing or empty, if any test fails or is filtered out, or if any metric is at
+or below 80%.
+
+Each run writes `coverage/cli/` or `coverage/gateway/`: `coverage-summary.json`,
+`coverage-final.json`, `coverage.txt`, `test-results.json`, and
+`coverage-evidence.json`. The evidence records the commit and uncommitted change
+set, SHA-256 digests of the source, test, and configuration inventories, the
+pinned tool versions, the portable invocation and exit status, and every
+skipped or host-gated test as unrun. The gate runs Vitest with `CI=true`,
+`LIFTOFF_TELEMETRY=0`, `DO_NOT_TRACK=1`, two workers, and `--allowOnly=false`,
+and it accepts no test filters. `verify` re-judges a saved report against the
+current checkout; a different revision, change set, or inventory makes it stale,
+so rerun the gate instead of reusing an older or copied report.
+
+On macOS ARM64 with Node 24, the root Vitest configuration passes
+`--no-sparkplug` directly to test workers for ordinary and coverage runs. A
+native coverage worker crashed in V8 garbage collection with the signature
+reported in [nodejs/node#62393](https://github.com/nodejs/node/issues/62393).
+This is a test-worker mitigation, not a fix to the installed Node runtime or
+Liftoff CLI; it does not change source inventories, thresholds, test selection,
+or timeouts. Do not put this flag in `NODE_OPTIONS`. Other platforms,
+architectures, and Node majors keep their existing worker flags. Remove the
+mitigation only after qualifying a corrected runtime without it.
+
+For a quick local measurement while writing tests, the diagnostic `inspect`
+mode runs selected tests against selected sources with thresholds disabled and
+writes only `coverage/targeted/`; it is never qualifying evidence:
+
+```bash
+node scripts/coverage-gate.mjs inspect cli --source src/package-identity.ts -- tests/package-identity.test.ts
+```
+
+Coverage measures in-process execution only. Child processes, the packaged
+`assets/repair/windows-job-controller.ps1` helper, the installed package,
+generated applications and containers, pinned framework smoke tests, native
+OpenTofu, and live Azure or GitHub providers need their own evidence: the
+Windows native CI lanes, `npm run smoke:package`,
+`npm run verify:generated-containers`, `npm run verify:standard-node-templates`,
+the host-gated CI steps, and separately approved live qualification. A passing
+coverage gate does not claim any of them.
+
+CI runs the `CLI coverage gate` and `Telemetry gateway coverage gate` jobs on
+Linux and uploads each evidence directory. Release qualification runs both gates
+before packing the release tarball; the gateway gate runs even when the CLI gate
+fails, and either failure blocks packing and publication. The repository policy
+rejects removing, conditioning, or reordering these gates.
+
+#### Isolated HCL qualification
+
+The private modern local verifier currently admits parser computation only on
+darwin/arm64/Node24.21.0. This does not change the public Node engine floor or
+advertise modern migration support. Both workflows have a separate
+`Isolated HCL parser (macOS ARM64)` job, `qualify-isolated-hcl`, on `macos-15`
+with Node `24.21.0` and `architecture: arm64`. The existing Node24.20.0 matrix
+and Ubuntu coverage gates are unchanged. Release `qualify` waits for
+`qualify-isolated-hcl`; `publish` still waits for `qualify`.
+
+Only tests read `LIFTOFF_HCL_TEST_LANE`: absent/`auto` runs native parser cases on the
+qualified tuple, `portable` explicitly leaves parser-dependent cases unrun,
+and `native` fails on a runtime mismatch instead of skipping everything.
+Independent observation, TypeScript, Compose, framework and value checks still
+run; unavailable HCL cannot stand in for their assertions. The required native
+job checks the actual tuple, complete nonempty three-suite JSON report and
+critical real parser/resource/shutdown cases, rejects skipped cases, and uploads
+`qualification/isolated-hcl.json` even after failure unless cancelled.
+
+For local Unix shells:
+
+```bash
+LIFTOFF_HCL_TEST_LANE=native npx vitest run tests/modern-local-inputs.test.ts tests/modern-local-check-plans.test.ts tests/isolated-hcl-parser.test.ts --maxWorkers=1 --no-file-parallelism
+LIFTOFF_HCL_TEST_LANE=portable npm run coverage:cli
+```
+
+On an already qualified host, forced-portable tests use a scoped, rejection-only
+runtime value and assert no parser spawn. This is synthetic rejection/routing
+evidence, not Linux, Windows or Node24.20 qualification. Actual unsupported
+hosts retain their real runtime. Recorded helper specimens are pure validator
+unit data only; native cases freshly reproduce them, never inject successful
+ASTs into a planner. Keep native and portable reports and their command
+environments separately: each coverage invocation replaces `coverage/cli/`.
+Both must retain the same source-complete inventory and independent thresholds;
+native coverage cannot mask a failing portable gate. Hosted CI and compiled/
+installed helper behavior still require their own actual runs.
+
+#### OpenSpec identity qualification
+
+The OpenSpec distribution/authority tests share the test-only lane selector but
+require an additional explicit metadata allowance. Ordinary `npm test`,
+absent/`auto` mode and forced `portable` mode run the format and filesystem
+contracts while leaving exactly two installed-metadata cases unrun. Supplying
+budgets alone never enables them.
+
+On darwin/arm64 with exact Node 24.21.0, use an independently installed OpenSpec
+1.11.0 distribution and the supported Node/npm, OpenTofu and Docker/Compose
+executables on `PATH`. The current native fixture pins the qualified package tree
+(2590 files, 299 directories, two internal links and 11862860 bytes); a different
+installation must be qualified, not silently blessed by changing that expectation.
+The Docker daemon is not used. In a Unix shell:
+
+```bash
+LIFTOFF_HCL_TEST_LANE=native OB1_VERSION_REMAINING=2 OB1_SUPPORT_REMAINING=10 npx vitest run tests/installed-tool-distribution.test.ts tests/modern-openspec-tool-identity.test.ts --maxWorkers=1 --no-file-parallelism
+```
+
+Both budgets are explicit safe integers: OpenSpec 2..16 and support 10..112.
+Missing, malformed or insufficient native budgets fail during collection before
+native fixtures or tool lookup. The two cases together perform two OpenSpec
+`--version` calls and ten supporting metadata probes, not project checks,
+initialization, synchronization or archive. Keep the same explicit allowance
+when including this file in a full native suite or native coverage run.
+These limits apply per invocation; a retry is a new set of actual observations.
+Do not count the two skipped cases as qualified, infer hosted qualification from
+the separate three-file HCL job, or modify a real global installation for tests.
+
+#### OpenSpec execution qualification
+
+`tests/modern-openspec-execution.test.ts` adds a separate explicit
+`LIFTOFF_OPENSPEC_B_TESTS=1` opt-in. Default runs leave its six native cases unrun;
+forced `portable` also leaves them unrun even when this flag is set. Its format
+contracts still run, including primitive-string rejection. Explicit opt-in
+rejects a runtime other than darwin/arm64/Node24.21.0 rather than silently skipping.
+
+Use the independently qualified OpenSpec 1.11.0 distribution and supported
+Node/npm, Docker/Compose and OpenTofu executables from the identity lane.
+OpenTofu must be on the supported 1.12 line, at least 1.12.6; a newer unsupported
+line is not equivalent. Use an isolated supported installation on `PATH` rather
+than replacing a real global tool. In a Unix shell:
+
+```bash
+LIFTOFF_HCL_TEST_LANE=native LIFTOFF_OPENSPEC_B_TESTS=1 npx vitest run tests/modern-openspec-execution.test.ts --maxWorkers=1 --no-file-parallelism
+LIFTOFF_HCL_TEST_LANE=portable npx vitest run tests/modern-openspec-execution.test.ts --maxWorkers=1 --no-file-parallelism
+```
+
+These native cases execute actual OpenSpec JSON observations and the applicable
+project checks inside owned preinitialized fixtures, not metadata alone. They
+cover all three governance profiles and an invalid unrelated validation subject.
+They do not initialize, check off tasks, synchronize, archive or publish.
+Portable specimens are format/routing evidence, not native execution.
+
+When including both OpenSpec test files in native coverage, set
+`LIFTOFF_OPENSPEC_B_TESTS=1` and the separate
+`OB1_VERSION_REMAINING=2 OB1_SUPPORT_REMAINING=10` identity allowance. That
+allowance bounds the two identity cases, not the execution suite's additional
+observations. Keep native and portable reports separate and do not count skipped
+cases as qualified. Serialize tool-intensive runs; preserve interrupted-run
+output and owned roots when settlement is unknown rather than inferring cleanup.
+
+#### OpenSpec initialization qualification
+
+`tests/modern-openspec-initialization.test.ts` requires the separate explicit
+`LIFTOFF_OI_TESTS=1` opt-in. Default runs leave six native cases unrun; forced
+`portable` leaves them unrun even if that flag is set. Portable obligation,
+receipt-boundary and owned-cache rejection contracts still run. Synthetic
+receipt controls are not initializer or native-output provenance.
+
+Use the same qualified darwin/arm64/Node24.21.0 runtime, installed OpenSpec 1.11.0,
+supported OpenTofu 1.12.6 or later on the 1.12 line, Node/npm and Docker/Compose
+tools described above. Explicit opt-in on a different runtime fails rather than
+silently skipping. No Docker daemon, provider download or Azure access is used.
+
+```bash
+LIFTOFF_HCL_TEST_LANE=native LIFTOFF_OI_TESTS=1 npx vitest run tests/modern-openspec-obligations.test.ts tests/modern-openspec-initialization.test.ts --maxWorkers=1 --no-file-parallelism
+LIFTOFF_HCL_TEST_LANE=portable npx vitest run tests/modern-openspec-obligations.test.ts tests/modern-openspec-initialization.test.ts --maxWorkers=1 --no-file-parallelism
+```
+
+Native cases exercise the official
+`init --tools github-copilot --profile custom --no-copilot-cloud` command in owned
+staging and actual provider-free OpenTofu init before application/environment
+validate across all three governance profiles. They also check consent/source
+rejection, changed output and a labeled unknown-settlement control. The latter
+uses an actually settled command; it is not proof of a real interrupted native
+process. Original tasks stay unchanged and `3.1` remains pending. These fixtures
+do not qualify full generated Azure infrastructure or historical user
+initialization, and they do not authorize archive or public migration.
+
+For full native coverage, retain `LIFTOFF_OPENSPEC_B_TESTS=1` and
+`OB1_VERSION_REMAINING=2 OB1_SUPPORT_REMAINING=10`, and additionally set
+`LIFTOFF_OI_TESTS=1`. The identity allowance does not include initialization
+fixture observations. Serialize these tool-intensive runs; keep each native and
+portable result tied to its exact source bytes, and retain failed or interrupted
+evidence. A prior native run is not fresh qualification of a later correction.
+
 ## Documentation
 
 Public user guides are plain Markdown under `docs/`; the root README remains a
@@ -145,7 +378,7 @@ When editing documentation:
 
 ```bash
 npm run check:repository
-npx vitest run tests/documentation.test.ts
+npx vitest run tests/documentation.test.ts tests/quality-gate-documentation.test.ts
 npm pack --dry-run --json
 ```
 
@@ -159,9 +392,17 @@ activation identity and graph-hash expectations from current source.
 
 ## Audit packaged template dependencies
 
-Liftoff ships npm lockfiles for the standard Node.js backend and standard frontend.
-Run their live canonical-registry audit
-separately from the root package audit:
+Liftoff packages six template dependency sets: the Node.js backend, shared
+frontend, standard Python backend, GenAI Python backend and Function export,
+Go backend, and OpenTofu Azure providers. Before any npm request, the audit
+validates all six sets against `src/plugins/builtin/assets.ts`: every declared
+member must exist as a regular file and have an exact `package.json` `files`
+entry. Structural failures are policy failures and send no audit requests.
+
+The advisory scan covers the two npm template sets, plus the root CLI and
+telemetry-ingest npm graphs. The four non-npm sets are reported as **not audited**
+with a reason; structural validation is not a security claim. Run the live
+canonical-registry audit explicitly:
 
 ```bash
 npm run audit:template-dependencies
@@ -238,6 +479,55 @@ lint, test, container, OpenTofu, security, and cross-platform check passes.
 Python lock refreshes use `uv lock` and Function requirements are exported from
 the same GenAI lock. Do not hand-edit generated lockfiles.
 
+Template dependency sets have one canonical declaration in
+`src/plugins/builtin/assets.ts`. Keep each manifest, lock and optional export
+together under `assets/plugins/<plugin-id>/<set>/`, or
+`assets/templates/common/frontend/` for the shared frontend set. Identify files
+by explicit owner/id pairs, never directory ownership or runtime discovery.
+Update the explicit template entries in `package.json` and the relevant
+baseline, audit and Dependabot path mirrors in the same reviewed change.
+The `templateDependencySets` metadata in `scripts/template-dependency-security.mjs`
+maps C1 sets to their ecosystems, audit coverage and baseline views without
+duplicating member paths or release hashes. Keep the baseline/content checks in
+`tests/dependency-set-inventory.test.ts` aligned, including the exported Python
+requirements, Go tool pin and provider subset.
+Asset entries in `files` must be exact files, not directory or glob entries.
+`scripts/package-smoke-contract.mjs` independently requires all 13 template
+assets and nine core ancillary assets, rejects omitted or aliased entries, and
+checks installed bytes without decoding the PowerShell helper. The repository-only
+egg-info files under `assets/locks/` remain unchanged and are not packaged.
+The ancillary inventory includes the two modern profile policies and their
+canonical source-contract table. They support private source interpretation,
+not public Manual/team generation or a current manifest/activation version switch.
+Path-only relocations must preserve file bytes and generated project output;
+the asset-inventory test also checks LF checkout attributes on the new paths.
+
+Bundled contributions are statically registered in
+`src/plugins/builtin/index.ts`; core-owned identities live in
+`src/plugins/builtin/core.ts`. Keep renderer bindings in
+`src/application/project/plugin-renderers.ts`, not in the descriptors or registry.
+The application composition root selects and verifies contributions before
+generated artifacts may be returned. These are trusted first-party modules, not
+an extension-discovery API or sandbox.
+
+`src/plugins/builtin/release.ts` holds independently reviewed literal descriptor
+digests and owned-asset hashes. When changing a declared contribution or asset,
+review its bytes, identities, support conditions and `contentVersion`, then
+update the affected release expectations in the same change. Content digests do
+not hash renderer implementation: a renderer behavior change also requires a
+reviewed `contentVersion` advance. Existing refresh commands do not update or
+approve these literals; do not add a startup or test helper that automatically
+blesses current bytes.
+
+Run the registry, built-ins, composition, lazy-asset and generation-parity suites,
+plus import-boundary and execution-isolation tests, for contribution changes.
+Preserve generated bytes and logical-name/lifecycle identities for a structural
+refactor; review any intentional snapshot change against the prior output.
+The byte reader belongs in `src/adapters/packaged-assets/plugin-assets.ts`:
+validate bounds before reading, preserve structured read/close failures, and
+keep template reads out of CLI startup/help/version. Native filesystem and
+installed-package qualification remain separate from these source tests.
+
 When the newest stable candidate is incompatible, record the selected version,
 the exact reviewed candidate, and the technical reason in the baseline rather
 than silently pinning an older release. Retired Power Apps fixtures are
@@ -268,11 +558,12 @@ validate every affected graph before closing the superseded bot pull requests.
 
 The complete supplied standard is stored at
 `assets/governance/single-maintainer-gitflow/policy.md`. Generated policy
-metadata and the activation protocol are rendered by
-`src/repository-governance.ts`; canonical identity and pure activation rules live
-under `src/domain/governance/`. Current activation uses contract/state/header/
-approval v2 and compatibility metadata v3, while policy remains 6 and manifest
-remains 7. Keep policy schema/version, required invariant
+metadata and the activation protocol are assembled in
+`src/generators/governance/`, with policy and workload-context rules under
+`src/domain/governance/policy/`. `src/repository-governance.ts` remains a
+compatibility facade. Canonical identity and pure activation rules live under
+`src/domain/governance/`; read the independently versioned constants from
+`src/domain/governance/policy/identity.ts`. Keep policy schema/version, required invariant
 fragments, workload context adapters, exact artifact paths, logical names,
 manifest v7 activation identity, compatibility metadata, and Copilot/Claude
 `/liftoff-setup` integrations synchronized. Retired generated setup aliases are
@@ -318,6 +609,11 @@ policy, validation, and release changes need deliberate maintainer review;
 do not blindly auto-merge a green check or an automated suggestion.
 
 - Keep changes focused and include tests for changed behavior.
+- Keep both coverage gates passing with new tests; do not lower thresholds,
+  exclude sources, or skip failing tests to pass them.
+- Record any intentional change to a frozen public contract in
+  `tests/fixtures/contract-baseline-changes.json`; never regenerate the baseline.
+  See [the contract baseline](DEVELOPER.md#contract-baseline-and-coverage-gates).
 - Update user and contributor documentation when commands, generated output,
   or workflows change.
 - Confirm generated projects contain no real credentials or unreviewed live
@@ -331,9 +627,11 @@ do not blindly auto-merge a green check or an automated suggestion.
 ## Release verification
 
 The public release authority is `https://registry.npmjs.org`. The `Release
-Liftoff` workflow runs package checks, package smoke, a pack inspection, and
-release-identity validation before publishing. It uses npm trusted publishing
-with provenance and verifies the published dist-tag from canonical npm
+Liftoff` workflow runs package checks, both source-complete coverage gates,
+package smoke, a pack inspection, and release-identity validation before
+publishing. It stores the coverage evidence as a separate workflow artifact; the
+release tarball and its recorded digest are unchanged by it. It uses npm trusted
+publishing with provenance and verifies the published dist-tag from canonical npm
 afterward.
 
 Manual dispatch is verification-only and has no publish switch. For an actual

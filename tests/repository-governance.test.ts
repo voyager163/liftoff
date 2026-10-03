@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildProjectPlan } from '../src/planner.js';
+import { expectBoundedCapabilitySkill } from './fixtures/reviewed-rendering.js';
 import {
   assertGovernanceContentSafe,
   buildRepositoryGovernanceArtifacts,
@@ -416,9 +417,11 @@ describe('repository governance artifacts', () => {
     expect(new Set(assessment.map((artifact) => artifact.content)).size).toBe(1);
     for (const artifact of assessment) {
       expect(artifact.lifecycle).toBe('managed-core');
-      expect(artifact.content.length).toBeLessThan(2_500);
+      expectBoundedCapabilitySkill(artifact.content, 'assessment');
       expect([...artifact.content.matchAll(/`(liftoff [^`]+)`/g)].map((match) => match[1]))
         .toEqual([
+          'liftoff capabilities --json',
+          'liftoff --help',
           'liftoff governance assess --json',
           'liftoff governance assess --live --json'
         ]);
@@ -504,7 +507,7 @@ describe('repository governance artifacts', () => {
     expect(setup).toHaveLength(2);
     expect(new Set(setup.map((artifact) => artifact.content)).size).toBe(1);
     for (const launcher of setup) {
-      expect(launcher.content.length).toBeLessThan(3_000);
+      expectBoundedCapabilitySkill(launcher.content, 'setup');
       expect(launcher.content).toContain('liftoff governance status --scope local --json');
       expect(launcher.content).toContain('liftoff governance plan --scope local --json');
       expect(launcher.content).toContain('liftoff governance apply-next --scope local --json');
@@ -514,11 +517,14 @@ describe('repository governance artifacts', () => {
       expect(launcher.content).toContain('liftoff governance verify --scope activation --json');
       expect(launcher.content).toContain('Never automatically approve a plan');
       expect(launcher.content).toContain('nextActions');
-      expect(launcher.content).toContain('private operator channel');
+      expect(launcher.content).toMatch(
+        /Credential enrollment is currently unavailable pending independently verified\s+provider wiring; approve\/apply-next refuse unavailable capabilities\./
+      );
+      expect(launcher.content).not.toContain('private operator channel');
       expect(launcher.content).toContain('Plan saves a disclosed external preview, not approval');
       expect(launcher.content).toContain('Apply-next without `--execute` is strictly read-only');
       expect(launcher.content).toContain('--inputs <public-json-file>');
-      expect(launcher.content).toContain('--protected-stdin');
+      expect(launcher.content).not.toContain('--protected-stdin');
       expect(launcher.content).not.toContain('Status, plan, and resume are read-only');
       expect(launcher.content).toContain('post-operation readiness');
       expect(launcher.content).toContain('consistent but\n   incomplete');
@@ -551,7 +557,7 @@ describe('repository governance artifacts', () => {
     expect(guide).toContain('tofu validate -json');
     expect(integrations).toHaveLength(3);
     for (const { content } of integrations) {
-      expect(content.length).toBeLessThan(3_000);
+      expectBoundedCapabilitySkill(content, 'setup');
       const check = content.indexOf('liftoff repair --check --json');
       const live = content.indexOf('liftoff repair --check --live --subscription <UUID> --json');
       const interactive = content.indexOf('Normally use `liftoff repair`');
@@ -575,16 +581,18 @@ describe('repository governance artifacts', () => {
     }
   });
 
-  it('describes Spec Kit local finalization and separately approved protected enrollment', () => {
+  it('describes Spec Kit local finalization and currently unavailable credential enrollment', () => {
     const artifacts = buildRepositoryGovernanceArtifacts(plan({
       specWorkflow: 'spec-kit', defaultAgent: 'copilot'
     }));
     const guide = artifacts.find(artifact => artifact.logicalName === 'repository-governance-guide')!.content;
     expect(guide).toContain('specs/000-liftoff-bootstrap/');
     expect(guide).toContain('without an OpenSpec archive or new Git branch');
-    expect(guide).toContain('liftoff governance credential-enroll --plan <fingerprint>');
-    expect(guide).toContain('private operator channel');
-    expect(guide).toContain('--protected-stdin');
+    expect(guide).toContain('Approve and apply-next refuse blocked or unavailable capabilities.');
+    expect(guide).toMatch(/Public credential readiness and enrollment are currently unavailable pending\s+independently verified provider wiring: approve refuses the credential-ready plan/);
+    expect(guide).toMatch(/`liftoff governance credential-enroll --plan <fingerprint>` refuses before\s+reading any input or writing a secret, policy, or evidence/);
+    expect(guide).not.toContain('private operator channel');
+    expect(guide).not.toContain('--protected-stdin');
     expect(guide).toContain('not the end of a requested full journey');
     expect(guide).not.toContain('No masked credential-input channel');
     expect(guide).toContain('adoption; update, force, and assessment never create it');

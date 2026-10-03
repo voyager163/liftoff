@@ -108,7 +108,7 @@ async function fixture() {
 }
 
 async function interrupted(
-  kind: ReviewedTransactionKind,
+  kind: (typeof kinds)[number],
   phase: ReviewedUpdateTransactionCheckpoint['phase'],
   index?: number
 ) {
@@ -384,7 +384,7 @@ describe('update and repair isolation', () => {
     const otherKind = kind === 'repair' ? 'update' : 'repair';
     await rename(context.journal, path.join(context.root, ...partsFor(otherKind)));
     const before = await tree(context.parent);
-    const options = { transactionKind: otherKind, approvalStore: context.stores[kind] };
+    const options = { transactionKind: otherKind, approvalStore: context.stores[kind] } as const;
     expect(await inspectReviewedUpdateTransaction(context.root, options))
       .toMatchObject({ status: 'blocked', reason: expect.stringContaining('does not match its registered path') });
     expect(await recoverReviewedUpdateTransaction(context.root, options)).toMatchObject({ status: 'blocked' });

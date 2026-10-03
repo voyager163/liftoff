@@ -128,13 +128,17 @@ describe('published package verifier', () => {
       '--version',
       'plan'
     ]);
+    if (!state.tempRoot) throw new Error('Expected the verifier to allocate an isolated root.');
     for (const options of state.npmOptions) {
-      expect(options.cwd).toContain('outside');
+      expect(options.cwd).toBe(path.join(state.tempRoot, 'outside'));
       expect(options.env).toMatchObject({
+        HOME: path.join(state.tempRoot, 'home'),
+        USERPROFILE: path.join(state.tempRoot, 'home'),
+        npm_config_cache: path.join(state.tempRoot, 'npm-cache'),
+        npm_config_userconfig: path.join(state.tempRoot, 'user.npmrc'),
+        npm_config_globalconfig: path.join(state.tempRoot, 'global.npmrc'),
         npm_config_registry: CANONICAL_NPM_REGISTRY
       });
-      expect(options.env.npm_config_userconfig).not.toContain('/private/');
-      expect(options.env.npm_config_globalconfig).not.toContain('/private/');
     }
     expect(state.removed).toBe(true);
     expect(state.tempRoot && existsSync(state.tempRoot)).toBe(false);

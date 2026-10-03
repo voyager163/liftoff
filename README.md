@@ -69,6 +69,11 @@ For maintenance, `liftoff upgrade --check` previews a CLI upgrade;
 An upgrade replaces the CLI only; generated projects use `liftoff update` separately
 for reviewed project maintenance. Application files remain project-owned.
 
+On builds that provide it, `liftoff capabilities --json` lists installed public
+interfaces, schemas and limitations without project discovery or telemetry.
+Use it before following a skill that requires newer commands; internal or
+planned capabilities are not advertised as available.
+
 [Existing repositories](docs/existing-repositories.md) ·
 [Safety and consent](docs/safety-and-consent.md) ·
 [Repair modes](docs/cli-reference.md#repair-modes) ·

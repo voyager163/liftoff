@@ -1,6 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runCli, type CliTelemetryHooks } from '../src/cli.js';
 import { CaptureStream } from './helpers.js';
+import * as telemetryConfig from '../src/telemetry/config.js';
+
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 function telemetryHooks(): CliTelemetryHooks & {
   beforeCommand: ReturnType<typeof vi.fn<CliTelemetryHooks['beforeCommand']>>;
@@ -13,6 +16,111 @@ function telemetryHooks(): CliTelemetryHooks & {
 }
 
 describe('CLI telemetry integration', () => {
+  it('bounds a nonsettling legacy hook and never starts a later semantic observer after expiry', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const stdout = new CaptureStream(), stderr = new CaptureStream(), hooks = telemetryHooks();
+    hooks.afterCommand.mockImplementation(() => new Promise<void>(() => {}));
+    const semantic = vi.fn<NonNullable<CliTelemetryHooks['afterSemanticCommand']>>().mockResolvedValue(undefined);
+    let settled = false;
+    const result = runCli({
+      argv: ['update', '--check', '--json'], env: {}, stdout, stderr,
+      telemetry: { ...hooks, afterSemanticCommand: semantic },
+      execute: async (_parsed, context) => { context.stdout.write('{"status":"update-available"}\n'); return 2; }
+    }).then(code => { settled = true; return code; });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(settled).toBe(false); expect(hooks.afterCommand).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ command: 'update' }), 2, {}
+    );
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await result).toBe(2); expect(semantic).not.toHaveBeenCalled();
+    expect(stdout.text()).toBe('{"status":"update-available"}\n'); expect(stderr.text()).toBe('');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('shares the same absolute deadline across legacy and semantic observers', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const hooks = telemetryHooks();
+    hooks.afterCommand.mockImplementation(() => new Promise<void>(resolve => { setTimeout(resolve, 700); }));
+    const semantic = vi.fn<NonNullable<CliTelemetryHooks['afterSemanticCommand']>>(() => new Promise<void>(() => {}));
+    let settled = false;
+    const result = runCli({
+      argv: ['--version'], env: {}, stdout: new CaptureStream(), stderr: new CaptureStream(),
+      telemetry: { ...hooks, afterSemanticCommand: semantic }, execute: async () => 0
+    }).then(code => { settled = true; return code; });
+    await vi.advanceTimersByTimeAsync(700);
+    expect(semantic).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(299); expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await result).toBe(0); expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('starts the delivery deadline after ordinary execution, not at invocation startup', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const hooks = telemetryHooks();
+    hooks.afterCommand.mockImplementation(() => new Promise<void>(() => {}));
+    const result = runCli({
+      argv: ['plan'], env: {}, stdout: new CaptureStream(), stderr: new CaptureStream(), telemetry: hooks,
+      execute: async () => { await new Promise<void>(resolve => { setTimeout(resolve, 5_000); }); return 0; }
+    });
+    await vi.advanceTimersByTimeAsync(4_999); expect(hooks.afterCommand).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1); expect(hooks.afterCommand).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await result).toBe(0); expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps the default sender schema1-only and failure-isolated under the shared deadline', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const notice = vi.spyOn(telemetryConfig, 'readTelemetryNoticeVersion').mockResolvedValue(1);
+    const record = vi.spyOn(telemetryConfig, 'recordTelemetryNotice').mockResolvedValue(false);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
+    const stdout = new CaptureStream(), stderr = new CaptureStream();
+    const result = runCli({
+      argv: ['update', '--check', '--json'], env: {}, stdout, stderr,
+      execute: async (_parsed, context) => {
+        context.outcome?.record('attention-required'); context.stdout.write('{"status":"update-available"}\n'); return 2;
+      }
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await result).toBe(2); expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual({
+      schemaVersion: 1, event: 'command_executed', command: 'update', cliVersion: '0.12.3', outcome: 'failure'
+    });
+    expect(notice).toHaveBeenCalledTimes(1); expect(record).not.toHaveBeenCalled();
+    expect(stdout.text()).toBe('{"status":"update-available"}\n'); expect(stderr.text()).toBe('');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([['help'], ['upgrade', '--check']].map(argv => ({ argv })))('keeps default $argv delivery command-only', async ({ argv }) => {
+    vi.spyOn(telemetryConfig, 'readTelemetryNoticeVersion').mockResolvedValue(1);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    expect(await runCli({ argv, env: {}, stdout: new CaptureStream(), stderr: new CaptureStream(), execute: async () => 0 })).toBe(0);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(String(fetch.mock.calls[0][0])).toMatch(/\/api\/events$/);
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ schemaVersion: 1, command: argv[0] });
+  });
+
+  it.each([
+    { env: { LIFTOFF_TELEMETRY: '0' } }, { env: { DO_NOT_TRACK: '1' } },
+    { env: { CI: 'true' } }, { env: { CI: 'true', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0' } }
+  ])('performs no default disclosure/config/transport work for $env', async ({ env }) => {
+    const notice = vi.spyOn(telemetryConfig, 'readTelemetryNoticeVersion').mockResolvedValue(1);
+    const record = vi.spyOn(telemetryConfig, 'recordTelemetryNotice').mockResolvedValue(false);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected transport'));
+    expect(await runCli({ argv: ['--version'], env, stdout: new CaptureStream(), stderr: new CaptureStream(), execute: async () => 0 })).toBe(0);
+    expect(notice).not.toHaveBeenCalled(); expect(record).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['governance', 'assess', '--live', '--help'], ['repair', '--capabilities', '--help'],
+    ['repair', '--inspect-layout', '--help']
+  ].map(argv => ({ argv })))('preserves default telemetry-free discovery/help $argv', async ({ argv }) => {
+    const notice = vi.spyOn(telemetryConfig, 'readTelemetryNoticeVersion').mockResolvedValue(1);
+    const record = vi.spyOn(telemetryConfig, 'recordTelemetryNotice').mockResolvedValue(false);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected transport'));
+    expect(await runCli({ argv, env: {}, stdout: new CaptureStream(), stderr: new CaptureStream(), execute: async () => 0 })).toBe(0);
+    expect(notice).not.toHaveBeenCalled(); expect(record).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+
   it.each(['--capabilities', '--inspect-layout'])('keeps repair %s free of telemetry and disclosure effects', async (flag) => {
     const hooks = telemetryHooks();
     const code = await runCli({

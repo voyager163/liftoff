@@ -1,15 +1,24 @@
+import { approvalScopeExpansionReasons, plannedApprovalMutations, plannedApprovalDestinations, plannedApprovalResources } from './source-values.js';
+import { normalizeApprovalScopeValues, canonicalApprovalEnvelopeValues, authorityOperationValues, transitionAuthorityValues, approvalOperationDigests, approvalBundleDigest } from './source-values.js';
 import { canonicalJson, canonicalSha256 } from './canonical-json.js';
 import { canonicalPhaseGraph, currentActivationIdentity } from './graph.js';
 import { githubRepositoryFromPushUrl, remoteRepository } from './inputs.js';
+import {
+  cleanString, sortedUnique, resourceKey, destinationKey,
+  normalizeApprovalCostCeiling, normalizeApprovalResources, normalizeApprovalDestinations,
+  normalizeApprovalPermissions, normalizeApprovalPolicyExceptions, normalizeApprovalDestructiveScope
+} from './approval-values.js';
+export {
+  normalizeApprovalCostCeiling, normalizeApprovalResources, normalizeApprovalDestinations,
+  normalizeApprovalPermissions, normalizeApprovalPolicyExceptions, normalizeApprovalDestructiveScope
+} from './approval-values.js';
 import type {
   ActivationConfiguration,
   ActivationIdentity,
-  ApprovalCostCeiling,
   ApprovalDestinationScope,
   ApprovalEnvelope,
   ApprovalEvaluation,
   ApprovalGateKind,
-  ApprovalResourceScope,
   EvidenceTransitionIdentity,
   HumanAuthorityQuestionKind,
   PhaseGraphNode,
@@ -24,17 +33,6 @@ import { phaseIds, phaseScope } from './types.js';
 
 type ApprovalScope = ApprovalEnvelope | RequestedTransitionPlan;
 
-const destinationTypes = new Set<ApprovalDestinationScope['type']>([
-  'repository',
-  'subscription',
-  'environment',
-  'tenant',
-  'local',
-  'external'
-]);
-const currencyPattern = /^[A-Z]{3}$/u;
-const hex64Pattern = /^[a-f0-9]{64}$/u;
-const isoLikePattern = /^\d{4}-\d{2}-\d{2}T/u;
 
 const activationIdentityProperties = {
   liftoffVersion: { const: currentActivationIdentity.liftoffVersion },
@@ -141,74 +139,6 @@ export const approvalEnvelopeV2Schema = approvalEnvelopeV3Schema;
 /** @deprecated Use the immutable historical contracts to read v1 artifacts. */
 export const approvalEnvelopeV1Schema = approvalEnvelopeV3Schema;
 
-function cleanString(value: string, path: string): string {
-  if (typeof value !== 'string') {
-    throw new Error(`${path} must be a string.`);
-  }
-  const cleaned = value.trim();
-  if (cleaned.length === 0) {
-    throw new Error(`${path} must be a non-empty string.`);
-  }
-  return cleaned;
-}
-
-function sortedUnique<T>(
-  values: readonly T[],
-  path: string,
-  normalize: (value: T, index: number) => T,
-  keyFor: (value: T) => string
-): T[] {
-  const normalized = values.map((value, index) => normalize(value, index));
-  const seen = new Set<string>();
-  for (const value of normalized) {
-    const key = keyFor(value);
-    if (seen.has(key)) {
-      throw new Error(`${path} must not contain duplicate ${key}.`);
-    }
-    seen.add(key);
-  }
-  return [...normalized].sort((left, right) => keyFor(left).localeCompare(keyFor(right), 'en'));
-}
-
-function normalizeResource(resource: ApprovalResourceScope, index: number): ApprovalResourceScope {
-  return {
-    type: cleanString(resource.type, `approvalEnvelope.resources[${index}].type`).toLowerCase(),
-    identity: cleanString(resource.identity, `approvalEnvelope.resources[${index}].identity`)
-  };
-}
-
-function resourceKey(resource: ApprovalResourceScope): string {
-  return canonicalJson(resource);
-}
-
-function normalizeDestination(destination: ApprovalDestinationScope, index: number): ApprovalDestinationScope {
-  if (!destinationTypes.has(destination.type)) {
-    throw new Error(`approvalEnvelope.destinations[${index}].type contains unsupported value ${JSON.stringify(destination.type)}.`);
-  }
-  return {
-    type: destination.type,
-    identity: cleanString(destination.identity, `approvalEnvelope.destinations[${index}].identity`),
-    repository: destination.repository === null
-      ? null
-      : cleanString(destination.repository, `approvalEnvelope.destinations[${index}].repository`),
-    subscriptionId: destination.subscriptionId === null
-      ? null
-      : cleanString(destination.subscriptionId, `approvalEnvelope.destinations[${index}].subscriptionId`)
-  };
-}
-
-function destinationKey(destination: ApprovalDestinationScope): string {
-  return canonicalJson(destination);
-}
-
-function normalizePermission(permission: string, index: number): string {
-  return cleanString(permission, `approvalEnvelope.permissions[${index}]`).toLowerCase();
-}
-
-function normalizePlainScope(scope: string, index: number, field: 'policyExceptions' | 'destructiveScope'): string {
-  return cleanString(scope, `approvalEnvelope.${field}[${index}]`);
-}
-
 function identityDigest(identity: ActivationIdentity): string {
   return canonicalSha256(identity);
 }
@@ -217,102 +147,8 @@ function sameIdentity(left: ActivationIdentity, right: ActivationIdentity): bool
   return identityDigest(left) === identityDigest(right);
 }
 
-function digest(value: string, path: string): string {
-  if (!hex64Pattern.test(value)) {
-    throw new Error(`${path} must be a SHA-256 hex digest.`);
-  }
-  return value;
-}
-
-function timestamp(value: string, path: string): string {
-  if (!isoLikePattern.test(value) || Number.isNaN(Date.parse(value))) {
-    throw new Error(`${path} must be a valid ISO timestamp.`);
-  }
-  return value;
-}
-
-export function normalizeApprovalCostCeiling(cost: ApprovalCostCeiling): ApprovalCostCeiling {
-  const currency = cleanString(cost.currency, 'approvalEnvelope.costCeiling.currency');
-  if (!currencyPattern.test(currency)) {
-    throw new Error('approvalEnvelope.costCeiling.currency must be a three-letter uppercase ISO currency code.');
-  }
-  for (const key of ['fixedMonthlyCents', 'usageMonthlyCents'] as const) {
-    if (!Number.isSafeInteger(cost[key]) || cost[key] < 0) {
-      throw new Error(`approvalEnvelope.costCeiling.${key} must be a non-negative safe integer number of cents.`);
-    }
-  }
-  return {
-    currency,
-    fixedMonthlyCents: cost.fixedMonthlyCents,
-    usageMonthlyCents: cost.usageMonthlyCents
-  };
-}
-
-export function normalizeApprovalResources(resources: readonly ApprovalResourceScope[]): ApprovalResourceScope[] {
-  return sortedUnique(resources, 'approvalEnvelope.resources', normalizeResource, resourceKey);
-}
-
-export function normalizeApprovalDestinations(destinations: readonly ApprovalDestinationScope[]): ApprovalDestinationScope[] {
-  return sortedUnique(destinations, 'approvalEnvelope.destinations', normalizeDestination, destinationKey);
-}
-
-export function normalizeApprovalPermissions(permissions: readonly string[]): string[] {
-  return sortedUnique(permissions, 'approvalEnvelope.permissions', normalizePermission, (value) => value);
-}
-
-export function normalizeApprovalPolicyExceptions(exceptions: readonly string[]): string[] {
-  return sortedUnique(
-    exceptions,
-    'approvalEnvelope.policyExceptions',
-    (value, index) => normalizePlainScope(value, index, 'policyExceptions'),
-    (value) => value
-  );
-}
-
-export function normalizeApprovalDestructiveScope(scope: readonly string[]): string[] {
-  return sortedUnique(
-    scope,
-    'approvalEnvelope.destructiveScope',
-    (value, index) => normalizePlainScope(value, index, 'destructiveScope'),
-    (value) => value
-  );
-}
-
 export function normalizeApprovalScope(scope: ApprovalScope): RequestedTransitionPlan {
-  const coveredPhases = scope.coveredPhases === undefined ? undefined : sortedUnique(
-    scope.coveredPhases, 'approvalEnvelope.coveredPhases', (value) => {
-      if (!phaseIds.includes(value)) throw new Error(`Unsupported covered phase ${value}.`);
-      return value;
-    }, (value) => value
-  );
-  const operationDigests = scope.operationDigests === undefined ? undefined : sortedUnique(
-    scope.operationDigests, 'approvalEnvelope.operationDigests',
-    (value) => digest(value, 'approvalEnvelope.operationDigests'), (value) => value
-  );
-  const phasePlanDigests: Partial<Record<PhaseId, string>> = {};
-  if (scope.phasePlanDigests) {
-    for (const id of Object.keys(scope.phasePlanDigests)) {
-      if (!(phaseIds as readonly string[]).includes(id)) throw new Error('An approval bundle contains an unknown phase.');
-      phasePlanDigests[id as PhaseId] = digest(scope.phasePlanDigests[id as PhaseId]!, `approvalEnvelope.phasePlanDigests.${id}`);
-    }
-  }
-  return {
-    phaseId: scope.phaseId,
-    gateKind: scope.gateKind,
-    identity: scope.identity,
-    baselineSha: digest(scope.baselineSha, 'approvalEnvelope.baselineSha'),
-    planDigest: digest(scope.planDigest, 'approvalEnvelope.planDigest'),
-    resources: normalizeApprovalResources(scope.resources),
-    destinations: normalizeApprovalDestinations(scope.destinations),
-    permissions: normalizeApprovalPermissions(scope.permissions),
-    costCeiling: normalizeApprovalCostCeiling(scope.costCeiling),
-    policyExceptions: normalizeApprovalPolicyExceptions(scope.policyExceptions),
-    destructiveScope: normalizeApprovalDestructiveScope(scope.destructiveScope),
-    ...(scope.scope === undefined ? {} : { scope: scope.scope }),
-    ...(coveredPhases ? { coveredPhases } : {}),
-    ...(operationDigests ? { operationDigests } : {}),
-    ...(scope.phasePlanDigests ? { phasePlanDigests } : {})
-  };
+  return normalizeApprovalScopeValues(scope, phaseIds);
 }
 
 /**
@@ -320,27 +156,7 @@ export function normalizeApprovalScope(scope: ApprovalScope): RequestedTransitio
  */
 export function canonicalApprovalEnvelopeScope(envelope: ApprovalEnvelope): Record<string, unknown> {
   const normalized = normalizeApprovalScope(envelope);
-  return {
-    schemaVersion: envelope.schemaVersion,
-    phaseId: normalized.phaseId,
-    gateKind: normalized.gateKind,
-    identity: normalized.identity,
-    baselineSha: normalized.baselineSha,
-    planDigest: normalized.planDigest,
-    resources: normalized.resources,
-    destinations: normalized.destinations,
-    permissions: normalized.permissions,
-    costCeiling: normalized.costCeiling,
-    policyExceptions: normalized.policyExceptions,
-    destructiveScope: normalized.destructiveScope,
-    ...(normalized.scope === undefined ? {} : { scope: normalized.scope }),
-    ...(normalized.coveredPhases === undefined ? {} : { coveredPhases: normalized.coveredPhases }),
-    ...(normalized.operationDigests === undefined ? {} : { operationDigests: normalized.operationDigests }),
-    ...(normalized.phasePlanDigests === undefined ? {} : { phasePlanDigests: normalized.phasePlanDigests }),
-    expiresAt: timestamp(envelope.expiresAt, 'approvalEnvelope.expiresAt'),
-    approvedAt: timestamp(envelope.approvedAt, 'approvalEnvelope.approvedAt'),
-    approver: cleanString(envelope.approver, 'approvalEnvelope.approver')
-  };
+  return canonicalApprovalEnvelopeValues(envelope, normalized);
 }
 
 export function canonicalApprovalEnvelopeHash(envelope: ApprovalEnvelope): string {
@@ -398,38 +214,8 @@ export function determineHumanAuthorityQuestion(plan: RequestedTransitionPlan): 
   return questionKind;
 }
 
-function containsAll<T>(approved: readonly T[], requested: readonly T[], keyFor: (value: T) => string): string[] {
-  const approvedKeys = new Set(approved.map((value) => keyFor(value)));
-  return requested.map((value) => keyFor(value)).filter((key) => !approvedKeys.has(key));
-}
-
 function expansionReasons(approved: RequestedTransitionPlan, requested: RequestedTransitionPlan): string[] {
-  const reasons: string[] = [];
-  const resourceMisses = containsAll(approved.resources, requested.resources, resourceKey);
-  reasons.push(...resourceMisses.map((key) => `resource scope expanded: ${key.trim()}`));
-  const destinationMisses = containsAll(approved.destinations, requested.destinations, destinationKey);
-  reasons.push(...destinationMisses.map((key) => `destination scope expanded: ${key.trim()}`));
-  const permissionMisses = containsAll(approved.permissions, requested.permissions, (value) => value);
-  reasons.push(...permissionMisses.map((permission) => `permission scope expanded: ${permission}`));
-  if (approved.costCeiling.currency !== requested.costCeiling.currency) {
-    reasons.push(`cost currency changed from ${approved.costCeiling.currency} to ${requested.costCeiling.currency}`);
-  } else {
-    if (requested.costCeiling.fixedMonthlyCents > approved.costCeiling.fixedMonthlyCents) {
-      reasons.push(`fixed monthly cost ceiling increased from ${approved.costCeiling.fixedMonthlyCents} to ${requested.costCeiling.fixedMonthlyCents} ${approved.costCeiling.currency} cents`);
-    }
-    if (requested.costCeiling.usageMonthlyCents > approved.costCeiling.usageMonthlyCents) {
-      reasons.push(`usage monthly cost ceiling increased from ${approved.costCeiling.usageMonthlyCents} to ${requested.costCeiling.usageMonthlyCents} ${approved.costCeiling.currency} cents`);
-    }
-  }
-  const exceptionMisses = containsAll(approved.policyExceptions, requested.policyExceptions, (value) => value);
-  reasons.push(...exceptionMisses.map((exception) => `policy exception added: ${exception}`));
-  const destructiveMisses = containsAll(approved.destructiveScope, requested.destructiveScope, (value) => value);
-  reasons.push(...destructiveMisses.map((scope) => `destructive scope expanded: ${scope}`));
-  const phaseMisses = containsAll(approved.coveredPhases ?? [approved.phaseId], requested.coveredPhases ?? [requested.phaseId], (value) => value);
-  reasons.push(...phaseMisses.map((phase) => `phase scope expanded: ${phase}`));
-  const operationMisses = containsAll(approved.operationDigests ?? [], requested.operationDigests ?? [], (value) => value);
-  reasons.push(...operationMisses.map((operation) => `operation scope expanded: ${operation}`));
-  return reasons;
+  return approvalScopeExpansionReasons(approved, requested);
 }
 
 function invalidationReasons(approved: RequestedTransitionPlan, requested: RequestedTransitionPlan): string[] {
@@ -619,9 +405,7 @@ function destinationsForPhase(
 }
 
 export function authorityOperations(operations: readonly TransitionOperation[]): readonly TransitionOperation[] {
-  return operations.filter((operation) =>
-    operation.actionId !== 'governance.evidence.write' && operation.actionId !== 'governance.activation-state.write'
-  );
+  return authorityOperationValues(operations);
 }
 
 export function transitionAuthorityDigest(input: {
@@ -632,17 +416,7 @@ export function transitionAuthorityDigest(input: {
   fileChanges?: readonly PlannedFileChange[];
   recovery?: boolean;
 }): string {
-  return canonicalSha256({
-    scope: phaseScope(input.phase.id),
-    phaseId: input.phase.id,
-    gateKind: input.phase.approvalGate.kind,
-    transitionDigest: input.transitionDigest,
-    allowedMutations: input.phase.allowedMutations,
-    operations: input.operations === undefined ? null : authorityOperations(input.operations),
-    configuration: input.configuration ?? null,
-    fileChanges: input.fileChanges ?? [],
-    recovery: input.recovery ?? false
-  });
+  return transitionAuthorityValues(input, phaseScope(input.phase.id));
 }
 
 export function transitionPlanForPhase(
@@ -660,23 +434,17 @@ export function transitionPlanForPhase(
 ): RequestedTransitionPlan {
   const operations = planned === undefined ? undefined : authorityOperations(planned.operations);
   const effects = operations?.flatMap((operation) => [operation, ...(operation.effects ?? [])]);
-  const mutations = effects ? [...new Set(effects.map((effect) => effect.mutationClass))] :
+  const mutations = effects ? plannedApprovalMutations(effects) :
     [...phase.allowedMutations.local, ...phase.allowedMutations.remote].filter((mutation) => mutation !== 'none');
   const destinations = effects === undefined ? destinationsForPhase(phase, state, publicationDestination) :
-    [...new Map(effects.map(({ destination }) => {
-      const scope: ApprovalDestinationScope = {
-        type: destination.type, identity: destination.identity,
-        repository: destination.repository ?? null, subscriptionId: destination.subscriptionId ?? null
-      };
-      return [canonicalJson(scope), scope];
-    })).values()];
+    plannedApprovalDestinations(effects);
   const budget = (phase.approvalGate.kind === 'activation-plan' || phase.approvalGate.kind === 'infrastructure-cost')
     ? planned?.configuration?.budget ?? state.activationInputs?.budget : undefined;
   return normalizeApprovalScope({
     scope: phaseScope(phase.id),
     phaseId: phase.id,
     coveredPhases: [phase.id],
-    ...(operations ? { operationDigests: [...new Set(operations.map((operation) => canonicalSha256(operation)))] } : {}),
+    ...(operations ? { operationDigests: approvalOperationDigests(operations) } : {}),
     gateKind: phase.approvalGate.kind,
     identity: state.identity,
     baselineSha: transition.baselineSha,
@@ -684,10 +452,7 @@ export function transitionPlanForPhase(
       phase, transitionDigest: transition.transitionDigest,
       operations, configuration: planned?.configuration, fileChanges: planned?.fileChanges, recovery: planned?.recovery
     }),
-    resources: effects ? [...new Map(effects.map((effect) => {
-      const resource = { type: effect.mutationClass, identity: effect.destination.identity };
-      return [canonicalJson(resource), resource];
-    })).values()] : mutations.map((mutation) => ({
+    resources: effects ? plannedApprovalResources(effects) : mutations.map((mutation) => ({
       type: mutation,
       identity: `${phase.id}:${mutation}`
     })),
@@ -735,7 +500,7 @@ export function savedPlanAuthorityDigest(plan: SavedTransitionPlan, phase: Phase
       operations: entry.operations, fileChanges: entry.fileChanges, configuration: plan.configuration
     })])
   ]);
-  return canonicalSha256({ scope: phaseScope(phase.id), phasePlanDigests });
+  return approvalBundleDigest(phaseScope(phase.id), phasePlanDigests);
 }
 
 function canonicalPhaseForApproval(id: PhaseId): PhaseGraphNode {
@@ -759,7 +524,7 @@ export function combineApprovalRequests(plans: readonly RequestedTransitionPlan[
   const phasePlanDigests = Object.fromEntries(requests.map((request) => [request.phaseId, request.planDigest]));
   return normalizeApprovalScope({
     ...first,
-    planDigest: canonicalSha256({ scope: first.scope ?? phaseScope(first.phaseId), phasePlanDigests }),
+    planDigest: approvalBundleDigest(first.scope ?? phaseScope(first.phaseId), phasePlanDigests),
     coveredPhases: requests.map((request) => request.phaseId),
     operationDigests: distinct(requests.flatMap((request) => request.operationDigests ?? [])),
     phasePlanDigests,

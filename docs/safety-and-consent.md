@@ -9,7 +9,7 @@ dependencies. No one permission implies another.
 | Flag | Authorizes | Does not authorize |
 | --- | --- | --- |
 | `--yes` | Project defaults and plan confirmation | File replacement, machine installs, global OpenSpec changes, Copilot cloud opt-in, or project dependencies |
-| `--force` | During init, listed regular-file replacements; during update, exact reported conflicts | Manifest guards, symlinks, structural collisions, tools, global profile changes, dependencies, or non-empty migration targets |
+| `--force` | During init, listed regular-file replacements; during update, exact reported conflicts | Manifest guards, symlinks, destination aliases, structural collisions, tools, global profile changes, dependencies, or non-empty migration targets |
 | `--install-tools` | Allowlisted workstation installation commands | Project decisions, overwrites, global profile changes, or project dependencies |
 | `--configure-openspec-profile` | The displayed global OpenSpec workflow, delivery, and profile changes | Tools, project files, dependencies, or Copilot cloud opt-in |
 | `--copilot-cloud` / `--no-copilot-cloud` | Enable or disable OpenSpec's project-local hosted Copilot agent files | Global profile changes, tools, dependencies, or unrelated project writes |
@@ -87,10 +87,26 @@ Structural collisions are not overridable:
 - A generated file collides with a directory or another non-file entry.
 - An ancestor is not a directory.
 - A path is a symlink or escapes the project root through one.
+- During init or migrate, another destination spelling matches after NFC
+  normalization and lowercasing, even beside the exact spelling.
 - The destination already contains `liftoff.manifest.json`.
 - A migration target is non-empty.
 
 `--force` cannot weaken these guards.
+
+Init and migrate also refuse a destination entry that lookup finds but its
+directory listing did not contain. This can be a host-specific alias or an entry
+created between the listing and lookup; neither is assumed safe. Existing
+destination ancestors must be listable: a denied listing stops with
+`Unable to inspect destination`, rather than falling back to an unchecked merge.
+Review and resolve the spelling conflict or directory-access problem before
+retrying.
+
+These checks run before applying generated destination files, not before all
+side effects: readiness, separately approved profile changes, locking and staging
+are unchanged. Apply rechecks destination entries at the existing checkpoints.
+The checks do not provide atomic race protection or universal Unicode-alias
+detection.
 
 ## Atomic writes and rollback
 

@@ -138,6 +138,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
         return 1;
       }
       const outcome = await recoverReviewedUpdateTransaction(projectRoot, { approvalStore });
+      context.outcome?.record(outcome.status === 'blocked' || outcome.rollbackFailures.length || outcome.cleanupFailures.length ? 'failure' : 'attention-required');
       emit(context, jsonMode, {
         mode: 'apply', status: outcome.status === 'blocked' ? 'failed' : 'partial',
         reasonCode: 'transaction-recovery', projectRoot, committed: outcome.committed,
@@ -198,6 +199,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
         ...(agentRepairPending && !hasWork ? { message: 'Managed-core metadata is current; agent installation and framework default changes are not implemented by the public repair coordinator.' } : {}),
         receipt: stored ? { status: 'issued', path: stored.location.receiptPath } : { status: 'not-required' }
       }, inspection, selected);
+      context.outcome?.record(hasWork || agentRepairPending ? 'attention-required' : 'success');
       return hasWork || agentRepairPending ? 2 : 0;
     }
     if (!selected.requiresApproval) {
@@ -215,6 +217,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
           ? 'No safe update writes are required; listed conflicts remain protected.'
           : 'Liftoff core is current; project files were not changed.'
       }, inspection, selected);
+      context.outcome?.record(selected.writePlan.skipped.length || agentRepairPending ? 'attention-required' : 'success');
       return agentRepairPending ? 2 : 0;
     }
 
@@ -231,6 +234,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       fingerprint: selected.descriptor.fingerprint, approvePlan: request.approvePlan
     }, context);
     if (approval.status !== 'approved') {
+      context.outcome?.record(approval.status === 'declined' ? 'cancelled' : 'failure');
       emit(context, jsonMode, {
         ...base, status: 'blocked', reasonCode: `approval-${approval.status}`,
         receipt: { status: 'matched', path: location.receiptPath }, approval,
@@ -280,6 +284,8 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
         planFingerprint: approvedFingerprint,
         approvalStore: createUpdateTransactionApprovalStore(projectRoot, options),
         preconditions: selected.preconditions,
+        ...(selected.candidateAdmission.status === 'complete'
+          ? { expectedCandidateBinding: selected.candidateAdmission.candidate.binding } : {}),
         validatePlan: validateReview,
         onBeforeMutation: async (mutation, index) => {
           maybeInjectUpdateFailure(context.env, `before-mutation:${index}`);
@@ -305,6 +311,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
     const revalidationBlocked = revalidation.status === 'blocked';
     const partial = revalidationBlocked || agentRepairPending || selected.writePlan.skipped.length > 0 ||
       inspection.provisioningPlans.some((group) => group.blocked);
+    context.outcome?.record(cleanupFailures.length || revalidationBlocked ? 'failure' : partial ? 'attention-required' : 'success');
     emit(context, jsonMode, {
       ...base, migration, revalidation,
       status: cleanupFailures.length ? 'failed' : partial ? 'partial' : 'applied',
@@ -346,6 +353,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
     }
     return cleanupFailures.length ? 1 : revalidationBlocked || agentRepairPending ? 2 : 0;
   } catch (error) {
+    context.outcome?.record('failure');
     const reasonCode = error instanceof UpdatePlanError ? error.reasonCode :
       error instanceof UpdatePreviewError ? error.code : 'update-failed';
     const detail = error instanceof UpdatePreviewError ? error.detail :

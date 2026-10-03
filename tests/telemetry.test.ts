@@ -4,6 +4,7 @@ import path from 'node:path';
 import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CaptureStream } from './helpers.js';
+import { createTelemetryDelivery } from '../src/telemetry/delivery.js';
 import {
   isTelemetryEnabled,
   maybeShowTelemetryNotice,
@@ -22,11 +23,39 @@ async function configPath(): Promise<string> {
 }
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
 describe('telemetry client', () => {
+  it('keeps the legacy void API within the maximum even when fetch ignores abort', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const fetch = vi.fn<TelemetryFetch>(() => new Promise<Response>(() => {}));
+    let done = false;
+    const result = trackCommand('help', '0.12.3', 0, {
+      env: {}, endpoint: 'https://telemetry.example.test/api/events', fetch, timeoutMs: 5_000
+    }).then(value => { done = true; return value; });
+    await vi.advanceTimersByTimeAsync(999); expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(result).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenCalledTimes(1); expect(fetch.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not allocate a second command request when a shared invocation has claimed that slot', async () => {
+    const fetch = vi.fn<TelemetryFetch>().mockResolvedValue(new Response(null, { status: 204 }));
+    const delivery = createTelemetryDelivery({ env: {}, fetch });
+    try {
+      await trackCommand('help', '0.12.3', 0, { env: {}, delivery });
+      await trackCommand('update', '0.12.3', 2, { env: {}, delivery });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ schemaVersion: 1, command: 'help' });
+    } finally {
+      delivery.close();
+    }
+  });
+
   it('uses only the verified production HTTPS endpoint', () => {
     expect(productionTelemetryEndpoint).toBe(
       'https://ca-liftoff-telemetry-f5be1618.politetree-7a65ae27.koreacentral.azurecontainerapps.io/api/events'

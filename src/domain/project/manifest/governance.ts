@@ -2,7 +2,8 @@ import type { LiftoffManifest } from '../contracts.js';
 import { FileSystemError } from '../errors.js';
 import {
   isRetiredManagedCoreArtifactIdentity, isRetiredManagedCoreLogicalName,
-  managedCoreArtifactPaths, repairManagedCoreLogicalNames
+  managedCoreArtifactPaths, repairManagedCoreLogicalNames,
+  retiredManagedCoreIdentities, retiredManagedCoreIdentityFor
 } from '../artifact-lifecycle.js';
 import { governanceAgentIntegrations } from '../catalog.js';
 import type { ManifestContractContext } from './context.js';
@@ -15,9 +16,19 @@ export const assessmentLogicalNames = [
 ] as const;
 export { preAssessmentManagedCoreLogicalNames } from '../artifact-lifecycle.js';
 
+// Historical policy acceptance must not advance with the installed release.
+const historicalActivationPolicyVersion = '6';
+const preActivationPolicyVersions: readonly string[] = ['1', '2', '3', '4', '5'];
+const historicalCommonLogicalNames = [
+  'repository-governance-policy',
+  'repository-governance-context',
+  'repository-governance-guide'
+];
+
 export function createManifestGovernanceReader(context: ManifestContractContext) {
   const { getGovernanceProfile } = context.catalog;
-  const { validateActivationIdentity, policyVersion: governancePolicyVersion } = context;
+  const { validateActivationIdentity } = context;
+  const governancePolicyVersion = historicalActivationPolicyVersion;
   const governanceLogicalPaths = new Map([...context.governanceArtifactPaths, ...managedCoreArtifactPaths]);
 
   function normalizeManifestGovernance(
@@ -66,7 +77,7 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
     }
     const supportedPolicyVersions = artifactVersion === 7
       ? [governancePolicyVersion]
-      : ['1', '2', '3', '4', '5', governancePolicyVersion];
+      : [...preActivationPolicyVersions, governancePolicyVersion];
     if (!supportedPolicyVersions.includes(policyVersion)) {
       throw new FileSystemError(
         `Manifest governance policyVersion cannot be newer than ${governancePolicyVersion}. ` +
@@ -180,16 +191,29 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
       }
       return;
     }
+    // Released v5/v6 handoffs predate the graph and current setup integrations.
+    // A mixed inventory still follows the existing activation-era validation.
+    const historicalHandoff =
+      (manifest.artifactVersion === 5 || manifest.artifactVersion === 6) &&
+      preActivationPolicyVersions.includes(manifest.governance.policyVersion) &&
+      manifest.governance.state === 'handoff-generated' &&
+      governanceArtifacts.every((artifact) => historicalCommonLogicalNames.includes(artifact.logicalName));
+    const setupLogicalNames = manifest.project.agents.map((agent) =>
+      governanceAgentIntegrations[agent].setup.logicalName
+    );
     const required = [
-      'repository-governance-policy',
-      'repository-governance-context',
-      'repository-governance-guide',
-      'repository-governance-phase-graph',
-      'repository-governance-compatibility',
-      'repository-governance-credential-policy-schema',
-      ...manifest.project.agents.map((agent) =>
-        governanceAgentIntegrations[agent].setup.logicalName
-      )
+      ...historicalCommonLogicalNames,
+      ...(historicalHandoff
+        ? setupLogicalNames.map((logicalName) =>
+            retiredManagedCoreIdentities.find((identity) =>
+              identity.replacementLogicalName === logicalName
+            )?.logicalName ?? logicalName)
+        : [
+            'repository-governance-phase-graph',
+            'repository-governance-compatibility',
+            'repository-governance-credential-policy-schema',
+            ...setupLogicalNames
+          ])
     ];
     const applicable = [...required, ...applicableAssessment, ...applicableRepair];
     const hasAssessmentInventory = governanceArtifacts.some((artifact) =>
@@ -201,7 +225,8 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
       const artifact = manifest.managedArtifacts.find((entry) =>
         entry.logicalName === logicalName
       );
-      const expectedPath = governanceLogicalPaths.get(logicalName);
+      const expectedPath = governanceLogicalPaths.get(logicalName) ??
+        (historicalHandoff ? retiredManagedCoreIdentityFor(logicalName)?.pathParts : undefined);
       if (!artifact) {
         missing.push(logicalName);
         continue;
@@ -239,9 +264,12 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
         'Manifest governance state handoff-partial requires at least one applicable artifact to remain outside Liftoff ownership or one protected retired alias to remain tracked.'
       );
     }
-    for (const artifact of governanceArtifacts) {
+    for (const artifact of historicalHandoff
+      ? [...governanceArtifacts, ...retiredGovernanceArtifacts]
+      : governanceArtifacts) {
       if (!applicable.includes(artifact.logicalName)) {
-        const integration = isRepair(artifact.logicalName) ? 'repair' :
+        const integration = isRetiredManagedCoreLogicalName(artifact.logicalName) ? 'historical launcher' :
+          isRepair(artifact.logicalName) ? 'repair' :
           assessmentLogicalNames.some((logicalName) => artifact.logicalName === logicalName)
             ? 'assessment'
             : 'setup';

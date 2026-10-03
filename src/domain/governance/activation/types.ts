@@ -1,3 +1,8 @@
+import type * as Records from './record-contracts.js';
+import type {
+  ApprovalResourceValueV1, ApprovalDestinationValueV1, ApprovalCostValueV1
+} from './approval-values.js';
+
 export const phaseIds = [
   'seed-valid',
   'seed-verified',
@@ -147,137 +152,35 @@ export type InvalidationInputKind = typeof invalidationInputKinds[number];
 export const rollbackKinds = ['none', 'retain', 'reverse-to', 'dispose'] as const;
 export type RollbackKind = typeof rollbackKinds[number];
 
-export interface ActivationIdentity {
-  liftoffVersion: string;
-  manifestArtifactVersion: number;
-  policyVersion: string;
-  activationContractVersion: number;
-  phaseGraphSchemaVersion: number;
-  phaseGraphHash: string;
-  activationStateSchemaVersion: number;
-  evidenceHeaderSchemaVersion: number;
-  approvalEnvelopeSchemaVersion: number;
-  supersessionSchemaVersion: number;
-  credentialPolicySchemaVersion: number;
-}
+export interface ActivationIdentity extends Records.ActivationIdentityFieldsV1 {}
 
-export interface GraphVersionIdentity {
-  liftoffVersion: string;
-  policyVersion: string;
-  activationContractVersion: number;
-  phaseGraphSchemaVersion: number;
-}
+export interface GraphVersionIdentity extends Records.GraphVersionIdentityFieldsV2 {}
 
-export interface PhaseDependency {
-  anyOf: readonly PhaseId[];
-  accepts: readonly TerminalPhaseState[];
-  description: string;
-}
+export interface PhaseDependency extends Records.PhaseDependencyFieldsV2<PhaseId> {}
 
-export type PhaseApplicability =
-  | { kind: 'always' }
-  | {
-      kind: 'conditional';
-      discriminator: 'state-path' | 'private-staging-dast' | 'credential-required' | 'cloud-state-required' | 'private-runner-required';
-      when: string;
-      inapplicableWhen: string;
-      exclusiveWith: readonly PhaseId[];
-    };
+export type PhaseApplicability = Records.PhaseApplicabilityFieldsV2<PhaseId>;
 
-export interface ApprovalGate {
-  kind: ApprovalGateKind;
-  required: boolean;
-  envelopeSchemaVersion: number;
-}
+export interface ApprovalGate extends Records.ApprovalGateFieldsV3 {}
 
-export interface AllowedMutations {
-  local: readonly MutationClass[];
-  remote: readonly MutationClass[];
-}
+export interface AllowedMutations extends Records.AllowedMutationsFieldsV3 {}
 
 export type LiveReadbackProvider = 'github' | 'azure';
 
-export interface EvidenceRequirement {
-  schema: string;
-  required: boolean;
-  headerSchemaVersion: number;
-  liveReadbackProviders: readonly LiveReadbackProvider[];
-}
+export interface EvidenceRequirement extends Records.EvidenceRequirementFieldsV3 {}
 
-export interface RollbackBehavior {
-  kind: RollbackKind;
-  target: PhaseId | null;
-  description: string;
-}
+export interface RollbackBehavior extends Records.RollbackBehaviorFieldsV2<PhaseId> {}
 
-export interface PhaseGraphNode {
-  id: PhaseId;
-  label: string;
-  dependencies: readonly PhaseDependency[];
-  applicability: PhaseApplicability;
-  allowedMutations: AllowedMutations;
-  evidence: EvidenceRequirement;
-  approvalGate: ApprovalGate;
-  invalidationInputs: readonly InvalidationInputKind[];
-  rollback: RollbackBehavior;
-  terminalStates: readonly TerminalPhaseState[];
-}
+export interface PhaseGraphNode extends Records.PhaseGraphNodeFieldsV2<PhaseId> {}
 
-export interface ManagedPhaseGraph {
-  schemaVersion: number;
-  versions: GraphVersionIdentity;
-  phases: readonly PhaseGraphNode[];
-  completionGroups: {
-    local: readonly PhaseId[];
-    activation: readonly PhaseId[];
-    lifecycle: readonly PhaseId[];
-  };
-}
+export interface ManagedPhaseGraph extends Records.ManagedPhaseGraphFieldsV2<PhaseId> {}
 
-export interface ActivationConfiguration {
-  schemaVersion: 1;
-  repository?: {
-    name: string;
-    defaultBranch?: string;
-    visibility?: 'private' | 'public';
-    create?: boolean;
-  };
-  azure?: {
-    subscriptionId: string;
-    tenantId: string;
-    region: string;
-  };
-  budget?: ApprovalCostCeiling;
-  phases: Partial<Record<PhaseId, Readonly<Record<string, unknown>>>>;
-}
+export interface ActivationConfiguration extends Records.ActivationConfigurationFieldsV1<PhaseId> {}
 
-export interface ExternalOperationState {
-  provider: LiveReadbackProvider;
-  actionId: string;
-  operationId: string;
-  resourceId: string;
-  startedAt: string;
-  observedAt: string;
-  status: 'running' | 'completed' | 'failed';
-  pollUrl?: string;
-  planDigest?: string;
-}
+export interface ExternalOperationState extends Records.ExternalOperationStateFieldsV1 {}
 
-export interface PlannedFileChange {
-  pathParts: readonly string[];
-  beforeHash: string | null;
-  afterHash: string | null;
-}
+export interface PlannedFileChange extends Records.PlannedFileChangeFieldsV1 {}
 
-export interface InputTransitionBinding {
-  beforeDigest: string;
-  afterDigest: string;
-  files: readonly PlannedFileChange[];
-  git?: {
-    before: { head: string | null; branch: string | null; pushUrls: readonly string[] };
-    after: { head: string | null; branch: string | null; pushUrls: readonly string[] };
-  };
-}
+export interface InputTransitionBinding extends Records.InputTransitionBindingFieldsV1 {}
 
 export type GovernanceTaskProjectionContract = {
   schemaVersion: 1;
@@ -293,145 +196,25 @@ export type GovernanceTaskProjectionContract = {
   | { source: 'create'; template: string; metadataText: string }
 );
 
-export interface GovernanceTaskProjectionRecord {
-  schemaVersion: 1;
-  purpose: 'projection-audit-only';
-  phaseId: PhaseId;
-  planDigest: string;
-  contractDigest: string;
-  taskPathParts: readonly string[];
-  metadataHash: string;
-  layoutHash: string;
-  status: 'complete' | 'blocked';
-  observedAt: string;
-  beforeHash: string | null;
-  afterHash: string | null;
-  states: Readonly<Record<PhaseId, PhaseState | 'identity-incompatible'>> | null;
-  blockers: readonly string[];
-}
+export interface GovernanceTaskProjectionRecord extends Records.GovernanceTaskProjectionRecordFieldsV1<PhaseId> {}
 
-export interface PhaseOutputBindings {
-  values: Readonly<Record<string, string | number | boolean | null>>;
-  resources: readonly {
-    provider: LiveReadbackProvider;
-    resourceType: string;
-    resourceId: string;
-  }[];
-}
+export interface PhaseOutputBindings extends Records.PhaseOutputBindingsFieldsV1 {}
 
-export interface EvidenceReference {
-  phaseId: PhaseId;
-  evidenceId: string;
-  headerDigest: string;
-  result: Extract<TerminalPhaseState, 'verified' | 'failed' | 'inapplicable' | 'retained' | 'disposed'>;
-}
+export interface EvidenceReference extends Records.EvidenceReferenceFieldsV3<PhaseId> {}
 
-export interface EvidenceTransitionIdentity {
-  phaseId: PhaseId;
-  baselineSha: string;
-  inputDigest: string;
-  transitionDigest: string;
-}
+export interface EvidenceTransitionIdentity extends Records.EvidenceTransitionIdentityFieldsV3<PhaseId> {}
 
-export interface PhaseExecutionState {
-  state: PhaseState;
-  updatedAt: string;
-  evidence: readonly EvidenceReference[];
-  approvals: readonly string[];
-  blockers: readonly string[];
-  operation?: ExternalOperationState;
-  executionPlanDigest?: string;
-}
+export interface PhaseExecutionState extends Records.PhaseExecutionStateFieldsV3<PhaseId> {}
 
-export interface ActivationSuccessorHistory {
-  schemaVersion: 1;
-  snapshotId: string;
-  journalPathParts: readonly ['governance', 'migration-state.json'];
-  historyIndexPathParts: readonly string[];
-  historyIndexDigest: string;
-  sourceActiveChange: { id: string; kind: 'openspec' | 'spec-kit' } | null;
-}
+export interface ActivationSuccessorHistory extends Records.ActivationSuccessorHistoryFieldsV1 {}
 
-export interface UserActivationState {
-  schemaVersion: number;
-  identity: ActivationIdentity;
-  repository: {
-    id: string;
-    name: string;
-    defaultBranch: string;
-  };
-  remoteBinding?: {
-    id: string;
-    name: string;
-    defaultBranch: string;
-    pushUrl: string;
-    verifiedAt: string;
-  };
-  activeChange: {
-    id: string;
-    kind: 'openspec' | 'spec-kit';
-  } | null;
-  applicability: {
-    statePath: 'existing-private' | 'bootstrap-local' | 'none';
-    privateStagingDast: boolean | 'unknown';
-    credentialRequired: boolean | 'unknown';
-    cloudStateRequired?: boolean | 'unknown';
-    privateRunnerRequired?: boolean | 'unknown';
-  };
-  baselineAnchor?: string;
-  successorHistory?: ActivationSuccessorHistory;
-  taskProjection?: GovernanceTaskProjectionRecord;
-  activationInputs?: ActivationConfiguration;
-  phaseOutputs?: Partial<Record<PhaseId, PhaseOutputBindings>>;
-  bootstrapState?: BootstrapStateRetention;
-  phases: Record<PhaseId, PhaseExecutionState>;
-  createdAt: string;
-  updatedAt: string;
-}
+export interface UserActivationState extends Records.UserActivationStateFieldsV3<ActivationIdentity, PhaseId> {}
 
-export interface EvidenceHeader {
-  schemaVersion: number;
-  repositoryId: string;
-  identity: ActivationIdentity;
-  phaseGraphHash: string;
-  phaseId: PhaseId;
-  phaseContractDigest: string;
-  inputDigest: string;
-  baselineSha: string;
-  transition: EvidenceTransitionIdentity;
-  producedAt: string;
-  producer: string;
-  bodyDigest: string;
-  remoteBindingDigest?: string;
-  scope?: GovernanceScope;
-  inputBindings?: InputTransitionBinding;
-  result: Extract<TerminalPhaseState, 'verified' | 'failed' | 'inapplicable' | 'retained' | 'disposed'>;
-}
+export interface EvidenceHeader extends Records.EvidenceHeaderFieldsV3<ActivationIdentity, PhaseId> {}
 
-export interface LiveReadbackProof {
-  schemaVersion: number;
-  repositoryId: string;
-  identity: ActivationIdentity;
-  phaseGraphHash: string;
-  phaseId: PhaseId;
-  baselineSha: string;
-  inputDigest: string;
-  transition: EvidenceTransitionIdentity;
-  observedAt: string;
-  provider: LiveReadbackProvider;
-  resourceType: string;
-  resourceId: string;
-  sourceDigest: string;
-  readbackDigest: string;
-  matches: boolean;
-}
+export interface LiveReadbackProof extends Records.LiveReadbackProofFieldsV3<ActivationIdentity, PhaseId> {}
 
-export interface PhaseEvidenceRecord {
-  evidenceId: string;
-  header: EvidenceHeader;
-  liveReadback?: readonly LiveReadbackProof[];
-  payload?: unknown;
-}
+export interface PhaseEvidenceRecord extends Records.PhaseEvidenceRecordFieldsV3<ActivationIdentity, PhaseId> {}
 
 export type TransitionAdapterId =
   | 'local-evidence'
@@ -441,159 +224,29 @@ export type TransitionAdapterId =
   | 'azure-opentofu'
   | 'local-state';
 
-export interface TransitionOperationDestination {
-  type: 'local' | 'repository' | 'subscription' | 'environment' | 'tenant' | 'external';
-  identity: string;
-  pathParts?: readonly string[];
-  repository?: string;
-  subscriptionId?: string;
-  ref?: string;
-}
+export interface TransitionOperationDestination extends Records.TransitionOperationDestinationFieldsV1 {}
 
-export interface TransitionOperation {
-  adapter: TransitionAdapterId;
-  actionId: string;
-  mutationClass: MutationClass;
-  phaseId: PhaseId;
-  inputs: Record<string, unknown>;
-  destination: TransitionOperationDestination;
-  remote: boolean;
-  destructive: boolean;
-  effects?: readonly {
-    mutationClass: MutationClass;
-    destination: TransitionOperationDestination;
-    remote: boolean;
-    destructive: boolean;
-  }[];
-}
+export interface TransitionOperation extends Records.TransitionOperationFieldsV2<PhaseId> {}
 
-export interface RollbackOperation {
-  adapter: TransitionAdapterId;
-  actionId: string;
-  mutationClass: MutationClass;
-  phaseId: PhaseId;
-  inputs: Record<string, unknown>;
-  destination: TransitionOperationDestination;
-  remote: boolean;
-  destructive: boolean;
-}
+export interface RollbackOperation extends Records.RollbackOperationFieldsV2<PhaseId> {}
 
-export interface TransitionRollbackPlan {
-  phaseId: PhaseId;
-  strategy: RollbackKind;
-  target: PhaseId | null;
-  operations: readonly RollbackOperation[];
-  retained: readonly string[];
-  cleanupWarnings: readonly string[];
-}
+export interface TransitionRollbackPlan extends Records.TransitionRollbackPlanFieldsV2<PhaseId> {}
 
-export interface SavedTransitionPlan {
-  schemaVersion: 2;
-  scope: GovernanceScope;
-  phaseId: PhaseId;
-  createdAt: string;
-  expiresAt: string;
-  identity: ActivationIdentity;
-  graphHash: string;
-  stateHash: string | null;
-  baselineDigest: string;
-  inputDigest: string;
-  transitionDigest: string;
-  planDigest: string;
-  mutationClasses: AllowedMutations;
-  operations: readonly TransitionOperation[];
-  approval: {
-    gateKind: ApprovalGateKind;
-    required: boolean;
-    evaluation: ApprovalEvaluation;
-    envelopeId: string | null;
-    envelopeHash: string | null;
-  };
-  rollbackPlan: TransitionRollbackPlan;
-  noSecrets: true;
-  configuration?: ActivationConfiguration;
-  fileChanges?: readonly PlannedFileChange[];
-  recovery?: boolean;
-  approvalBundle?: readonly {
-    phaseId: PhaseId;
-    inputDigest: string;
-    transitionDigest: string;
-    operations: readonly TransitionOperation[];
-    fileChanges: readonly PlannedFileChange[];
-  }[];
-}
+export interface SavedTransitionPlan extends Records.SavedTransitionPlanFieldsV2<ActivationIdentity, PhaseId> {}
 
-export interface BootstrapStateRetention {
-  status: 'retained' | 'disposed';
-  remoteImportEvidenceId: string;
-  remoteImportEvidenceDigest: string;
-  retainedAt: string;
-  disposeAfter: string;
-  encryptedStatePathParts: readonly (readonly string[])[];
-  encryptionKeyPathParts: readonly (readonly string[])[];
-  disposedAt?: string;
-  deletionEvidenceId?: string;
-  incompleteCleanup?: readonly string[];
-}
+export interface BootstrapStateRetention extends Records.BootstrapStateRetentionFieldsV1 {}
 
-export interface GraphReconciliationPhaseMapping {
-  phaseId: PhaseId;
-  fromContractDigest: string;
-  toContractDigest: string;
-  preserveEvidence: boolean;
-}
+export interface GraphReconciliationPhaseMapping extends Records.GraphReconciliationPhaseMappingFieldsV3<PhaseId> {}
 
-export interface GraphReconciliationRecord {
-  schemaVersion: number;
-  fromGraphHash: string;
-  toGraphHash: string;
-  fromIdentity: ActivationIdentity;
-  toIdentity: ActivationIdentity;
-  phaseMappings: readonly GraphReconciliationPhaseMapping[];
-  reconciledAt: string;
-  producer: string;
-}
+export interface GraphReconciliationRecord extends Records.GraphReconciliationRecordFieldsV3<ActivationIdentity, PhaseId> {}
 
-export interface ApprovalResourceScope {
-  type: string;
-  identity: string;
-}
+export interface ApprovalResourceScope extends ApprovalResourceValueV1 {}
 
-export interface ApprovalDestinationScope {
-  type: 'repository' | 'subscription' | 'environment' | 'tenant' | 'local' | 'external';
-  identity: string;
-  repository: string | null;
-  subscriptionId: string | null;
-}
+export interface ApprovalDestinationScope extends ApprovalDestinationValueV1 {}
 
-export interface ApprovalCostCeiling {
-  currency: string;
-  fixedMonthlyCents: number;
-  usageMonthlyCents: number;
-}
+export interface ApprovalCostCeiling extends ApprovalCostValueV1 {}
 
-export interface ApprovalEnvelope {
-  schemaVersion: number;
-  id: string;
-  phaseId: PhaseId;
-  gateKind: ApprovalGateKind;
-  identity: ActivationIdentity;
-  baselineSha: string;
-  planDigest: string;
-  resources: readonly ApprovalResourceScope[];
-  destinations: readonly ApprovalDestinationScope[];
-  permissions: readonly string[];
-  costCeiling: ApprovalCostCeiling;
-  policyExceptions: readonly string[];
-  destructiveScope: readonly string[];
-  expiresAt: string;
-  approvedAt: string;
-  approver: string;
-  scope?: GovernanceScope;
-  coveredPhases?: readonly PhaseId[];
-  operationDigests?: readonly string[];
-  phasePlanDigests?: Readonly<Partial<Record<PhaseId, string>>>;
-}
+export interface ApprovalEnvelope extends Records.ApprovalEnvelopeFieldsV3<ActivationIdentity, PhaseId> {}
 
 export interface RequestedTransitionPlan {
   phaseId: PhaseId;
@@ -613,27 +266,9 @@ export interface RequestedTransitionPlan {
   phasePlanDigests?: Readonly<Partial<Record<PhaseId, string>>>;
 }
 
-export interface ApprovalEvaluation {
-  phaseId: PhaseId;
-  gateKind: ApprovalGateKind;
-  questionKind: HumanAuthorityQuestionKind | null;
-  approvalRequired: boolean;
-  status: 'not-required' | 'approval-required' | 'reused' | 'expired' | 'invalidated';
-  envelopeId: string | null;
-  envelopeHash: string | null;
-  reasons: readonly string[];
-  expansionReasons: readonly string[];
-}
+export interface ApprovalEvaluation extends Records.ApprovalEvaluationFieldsV1<PhaseId> {}
 
-export interface SupersessionRecord {
-  schemaVersion: number;
-  identity: ActivationIdentity;
-  supersededChangeId: string;
-  supersedingChangeId: string;
-  reason: string;
-  approvedAt: string;
-  approver: string;
-}
+export interface SupersessionRecord extends Records.SupersessionRecordFieldsV1<ActivationIdentity> {}
 
 export const runnerPreflightDisplayNameTemplate = '<repo>-runner-preflight-read' as const;
 export const runnerPreflightSecretName = 'RUNNER_CONFIGURATION_READ_TOKEN' as const;
@@ -648,67 +283,16 @@ export const runnerPreflightOrganizationPermissions = [
 export type CredentialAuthKind = 'github-app' | 'fine-grained-pat';
 export type CredentialStatus = 'active' | 'expiring' | 'expired' | 'compromised';
 
-export interface CredentialRepositoryIdentity {
-  id: string;
-  owner: string;
-  name: string;
-  fullName: string;
-}
+export interface CredentialRepositoryIdentity extends Records.CredentialRepositoryIdentityFieldsV1 {}
 
-export interface CredentialPermissionSet {
-  repository: readonly string[];
-  organization: readonly string[];
-}
+export interface CredentialPermissionSet extends Records.CredentialPermissionSetFieldsV1 {}
 
-export interface CredentialWorkflowAllowlistEntry {
-  path: string;
-  jobs: readonly string[];
-}
+export interface CredentialWorkflowAllowlistEntry extends Records.CredentialWorkflowAllowlistEntryFieldsV1 {}
 
-export interface GitHubAppCredentialMetadata {
-  installationId: number;
-  appSlug: string;
-  selection: 'selected-repository';
-  repositoryFullName: string;
-  permissionsVerifiedAt: string;
-  token: {
-    strategy: 'installation-token';
-    ttlSeconds: number;
-    generatedBy: 'github-app';
-  };
-}
+export interface GitHubAppCredentialMetadata extends Records.GitHubAppCredentialMetadataFieldsV1 {}
 
-export interface FineGrainedPatCredentialMetadata {
-  lifetimeDays: typeof runnerPreflightPatLifetimeDays;
-  selectedRepositoryOnly: true;
-  createdBy: 'manual-masked-entry';
-}
+export interface FineGrainedPatCredentialMetadata extends Records.FineGrainedPatCredentialMetadataFieldsV1 {}
 
-export interface CredentialPolicyProofMetadata {
-  verifiedAt: string;
-  readbackDigest: string;
-  readbackProvider: 'github-api' | 'adapter-fixture';
-  payloadFree: true;
-}
+export interface CredentialPolicyProofMetadata extends Records.CredentialPolicyProofMetadataFieldsV1 {}
 
-export interface CredentialPolicy {
-  schemaVersion: number;
-  identity: ActivationIdentity;
-  repository: CredentialRepositoryIdentity;
-  owner: string;
-  authKind: CredentialAuthKind;
-  displayNameTemplate: typeof runnerPreflightDisplayNameTemplate;
-  displayName: string;
-  secretName: typeof runnerPreflightSecretName;
-  createdAt: string;
-  expiresAt: string;
-  rotationLeadDays: typeof runnerPreflightRotationLeadDays;
-  rotationDueAt: string;
-  permissions: CredentialPermissionSet;
-  allowedWorkflows: readonly CredentialWorkflowAllowlistEntry[];
-  nonForwarding: true;
-  status: CredentialStatus;
-  proof: CredentialPolicyProofMetadata;
-  app: GitHubAppCredentialMetadata | null;
-  pat: FineGrainedPatCredentialMetadata | null;
-}
+export interface CredentialPolicy extends Records.CredentialPolicyFieldsV1<ActivationIdentity> {}

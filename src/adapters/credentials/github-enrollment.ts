@@ -114,6 +114,18 @@ export interface CredentialEnrollmentResult {
     permissionsDigest: string;
     secretUpdatedAt: string;
   };
+  /** Sanitized notes about best-effort cleanup that could not be confirmed; never provider output or credential data. */
+  cleanupWarnings: readonly string[];
+}
+
+const mintedTokenRevocationUnconfirmed = 'Revocation of the ephemeral installation token minted for this attempt could not be confirmed; ' +
+  'do not assume its remaining lifetime. Provider diagnostics were withheld.';
+
+function withRevocationFailure(error: unknown): Error {
+  if (error instanceof GitHubActivationError) {
+    return new GitHubActivationError(error.code, `${error.message} ${mintedTokenRevocationUnconfirmed}`, error.status);
+  }
+  return new Error(`Credential enrollment failed with an unexpected error; its diagnostics were withheld. ${mintedTokenRevocationUnconfirmed}`);
 }
 
 export async function enrollGitHubCredential(input: {
@@ -138,10 +150,13 @@ export async function enrollGitHubCredential(input: {
   let jwt: Buffer | undefined;
   let token: Buffer | undefined;
   let tokenClient: GitHubActivationClient | undefined;
+  let mintedTokenClient: GitHubActivationClient | undefined;
   let installation: Record<string, unknown> | undefined;
   let pat: Record<string, unknown> | undefined;
   let principal = '';
   let tokenExpiresAt = '';
+  let enrolled: CredentialEnrollmentResult | undefined;
+  let failure: { error: unknown } | undefined;
   try {
     if (!secret.length || secret.length > 32_768) {
       throw new GitHubActivationError('invalid-credential', 'The protected credential is empty or exceeds the size bound.');
@@ -159,14 +174,16 @@ export async function enrollGitHubCredential(input: {
       const issued = object(await appClient.write('POST', `/app/installations/${config.installationId}/access_tokens`, {
         repository_ids: [input.repositoryId], permissions: credentialApiPermissions
       }));
-      if (!samePermissions(issued.permissions)) throw new GitHubActivationError('credential-scope', 'GitHub minted a token with permissions different from the exact reviewed preflight scope.');
       token = Buffer.from(text(issued.token, 'Installation credential'));
+      // Cleanup is bound to the credential we minted before any returned metadata is trusted.
+      mintedTokenClient = new GitHubActivationClient(makeTransport(token));
+      if (!samePermissions(issued.permissions)) throw new GitHubActivationError('credential-scope', 'GitHub minted a token with permissions different from the exact reviewed preflight scope.');
       tokenExpiresAt = text(issued.expires_at, 'Installation expiry');
-      if (Date.parse(tokenExpiresAt) <= input.now.getTime() ||
-        Date.parse(tokenExpiresAt) > input.now.getTime() + 3_600_000) {
+      const expiry = Date.parse(tokenExpiresAt);
+      if (!Number.isFinite(expiry) || expiry <= input.now.getTime() || expiry > input.now.getTime() + 3_600_000) {
         throw new GitHubActivationError('credential-expiry', 'Installation tokens must be current and expire within one hour.');
       }
-      tokenClient = new GitHubActivationClient(makeTransport(token));
+      tokenClient = mintedTokenClient;
       const selected = await tokenClient.list('/installation/repositories', 'repositories');
       if (selected.length !== 1 || selected[0]!.id !== input.repositoryId || selected[0]!.full_name !== repository) {
         throw new GitHubActivationError('credential-scope', 'The installation credential is not restricted to the exact selected repository.');
@@ -249,15 +266,21 @@ export async function enrollGitHubCredential(input: {
       repository: repoIdentity, identity: input.identity, createdAt: new Date(String(pat!.created_at)), allowedWorkflows,
       proof: { verifiedAt: input.now.toISOString(), readbackDigest: canonicalSha256(usage), readbackProvider: 'github-api', payloadFree: true }
     });
-    return { policy, usage };
-  } finally {
-    // Revoke only the ephemeral token minted here; never revoke the operator's pre-existing credential.
-    if (config.kind === 'github-app' && tokenClient) {
-      try { await tokenClient.write('DELETE', '/installation/token'); }
-      catch { /* The token is bounded to one hour; no diagnostics may expose it. */ }
+    enrolled = { policy, usage, cleanupWarnings: [] };
+  } catch (error) {
+    failure = { error };
+  }
+  let revocationFailed = false;
+  try {
+    // Revoke only the ephemeral token minted here; never the operator's App key, PAT, or any pre-existing token.
+    if (mintedTokenClient) {
+      await mintedTokenClient.write('DELETE', '/installation/token').catch(() => { revocationFailed = true; });
     }
+  } finally {
     secret.fill(0);
     jwt?.fill(0);
     token?.fill(0);
   }
+  if (failure) throw revocationFailed ? withRevocationFailure(failure.error) : failure.error;
+  return revocationFailed ? { ...enrolled!, cleanupWarnings: [mintedTokenRevocationUnconfirmed] } : enrolled!;
 }

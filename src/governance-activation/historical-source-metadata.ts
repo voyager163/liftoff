@@ -1,4 +1,6 @@
-import type { HistoricalActivationIdentity } from '../domain/governance/policy/identity.js';
+import { isReleasedV3ActivationIdentity, type HistoricalActivationIdentity, type ReleasedV3ActivationIdentity } from '../domain/governance/policy/identity.js';
+import type { ActivationIdentityFieldsV1, ReleasedV3PhaseId } from '../domain/governance/activation/record-contracts.js';
+import { historicalV3PhaseGraph } from './historical-v3.js';
 import { historicalPhaseIds, type HistoricalPhaseId } from './historical-v1-phase-contracts.js';
 import {
   historicalIdentity, historyArray, historyDigest, historyEnum, historyExact, historyFail, historyLiteral,
@@ -6,16 +8,19 @@ import {
 } from './history-contracts.js';
 import { assertSafeHistoricalRecord } from './historical-safety.js';
 
-export interface HistoricalGovernanceChangeMetadata {
+export interface HistoricalGovernanceChangeMetadata<
+  I extends ActivationIdentityFieldsV1 = HistoricalActivationIdentity,
+  P extends string = HistoricalPhaseId
+> {
   schemaVersion: 1;
   marker: 'liftoff-governance-source-of-truth';
   changeId: string;
   workflowKind: 'openspec' | 'spec-kit';
-  activationIdentity: HistoricalActivationIdentity;
+  activationIdentity: I;
   phaseGraphHash: string;
   baselineSha: string;
   phaseTaskMapping: readonly {
-    phaseId: HistoricalPhaseId; taskId: string; marker: string; policy: 'evidence-projection-v1';
+    phaseId: P; taskId: string; marker: string; policy: 'evidence-projection-v1';
   }[];
   currentPolicy: {
     phaseAuthority: 'managed-phase-graph';
@@ -29,19 +34,36 @@ export interface HistoricalGovernanceChangeMetadata {
 
 /** The published schema-1 metadata used the same 26-phase mapping in both historical families. */
 export function validateHistoricalGovernanceChangeMetadata(value: unknown): HistoricalGovernanceChangeMetadata {
+  return readMetadata(value, historicalIdentity, historicalPhaseIds);
+}
+
+export function validateHistoricalV3GovernanceChangeMetadata(
+  value: unknown
+): HistoricalGovernanceChangeMetadata<ReleasedV3ActivationIdentity, ReleasedV3PhaseId> {
+  return readMetadata(value, (identity, label) => {
+    if (!isReleasedV3ActivationIdentity(identity)) historyFail(label, 'is not the exact released v3 identity.', 'unsupported-historical-identity');
+    return { ...identity };
+  }, historicalV3PhaseGraph().phases.map(phase => phase.id));
+}
+
+function readMetadata<I extends ActivationIdentityFieldsV1, P extends string>(
+  value: unknown,
+  identityReader: (value: unknown, label: string) => I,
+  publishedPhaseIds: readonly P[]
+): HistoricalGovernanceChangeMetadata<I, P> {
   const label = 'historicalGovernanceChange';
   assertSafeHistoricalRecord(value, label);
   const item = historyExact(value, [
     'schemaVersion', 'marker', 'changeId', 'workflowKind', 'activationIdentity', 'phaseGraphHash',
     'baselineSha', 'phaseTaskMapping', 'currentPolicy', 'createdFrom', 'acknowledgedAt', 'owner'
   ], label);
-  const identity = historicalIdentity(item.activationIdentity, `${label}.activationIdentity`);
+  const identity = identityReader(item.activationIdentity, `${label}.activationIdentity`);
   historyLiteral(item.phaseGraphHash, identity.phaseGraphHash, `${label}.phaseGraphHash`);
   const phases = new Set<string>();
   const tasks = new Set<string>();
   const mappings = historyArray(item.phaseTaskMapping, `${label}.phaseTaskMapping`).map((entry) => {
     const mapping = historyExact(entry, ['phaseId', 'taskId', 'marker', 'policy'], `${label}.phaseTaskMapping`);
-    const phaseId = historyEnum(mapping.phaseId, historicalPhaseIds, `${label}.phaseId`);
+    const phaseId = historyEnum(mapping.phaseId, publishedPhaseIds, `${label}.phaseId`);
     const taskId = historyString(mapping.taskId, `${label}.taskId`);
     if (phases.has(phaseId) || tasks.has(taskId)) historyFail(label, 'contains duplicate phase or task mappings.');
     phases.add(phaseId);
@@ -52,7 +74,7 @@ export function validateHistoricalGovernanceChangeMetadata(value: unknown): Hist
       policy: historyLiteral(mapping.policy, 'evidence-projection-v1', `${label}.policy`)
     };
   });
-  if (phases.size !== historicalPhaseIds.length) historyFail(label, 'requires every published historical phase mapping.');
+  if (phases.size !== publishedPhaseIds.length) historyFail(label, 'requires every published historical phase mapping.');
   const policy = historyExact(item.currentPolicy, ['phaseAuthority', 'taskCompletion', 'approvalPolicy'], `${label}.currentPolicy`);
   const created = historyExact(item.createdFrom, ['kind', 'approvedFactDigest', 'evidenceIds'], `${label}.createdFrom`);
   return {

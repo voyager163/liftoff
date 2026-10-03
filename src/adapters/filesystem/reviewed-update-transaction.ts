@@ -1,17 +1,19 @@
 import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
-import { chmod, lstat, mkdir, open, readdir, realpath, rename, rmdir, unlink } from 'node:fs/promises';
+import { chmod, lstat, mkdir, open, realpath, rename, rmdir, unlink } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import path from 'node:path';
+import { types } from 'node:util';
 import { canonicalJson, canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
 import { FileSystemError } from '../../domain/project/errors.js';
-import { validateArtifactPathParts } from '../../domain/project/paths.js';
 import {
-  reviewedRepairTransactionPathParts, reviewedUpdateTransactionPathParts
+  reviewedRepairTransactionPathParts, reviewedUpdateTransactionPathParts,
+  localVerificationTransactionPathParts, localVerificationTransactionSchemaVersion
 } from '../../domain/project/reviewed-update-artifacts.js';
 import type { ReviewedTransactionKind } from '../../domain/project/reviewed-update-artifacts.js';
+import type { LocalVerificationTransactionAuthorityStore } from '../../application/update/transaction-approval.js';
 import {
-  repairSchemaVersions, validateRepairExecutionIdentity, type RepairExecutionIdentity
+  repairSchemaVersions, type RepairExecutionIdentity
 } from '../../domain/repair/identity.js';
 import { commandShellForPlatform, formatShellCommand } from '../process/shell-command.js';
 import { errorCode, errorMessage } from './errors.js';
@@ -19,9 +21,22 @@ import { withProjectMutationLock } from './project-lock.js';
 import type { ProjectMutationLease } from './project-lock.js';
 import { ProjectFileTransactionError } from './project-transaction.js';
 import type { ProjectFileMutation, ProjectFileSnapshot } from './project-transaction.js';
+import { assertBoundProjectPath, readBoundProjectFileSnapshot } from './bound-project-files.js';
+import {
+  reviewedJournalLimits, exactJournalKeys as exactKeys,
+  assertJournalDigest as assertDigest, journalTargetMode, storeJournalSnapshot as storeSnapshot,
+  captureJournalMutations, captureJournalPreconditions, captureJournalRepairIdentity,
+  validateJournalPaths as validatePaths, validateJournalInventory as validateInventory,
+  parseReviewedJournalHeader, measureReviewedJournal, encodeReviewedJournalHeader, encodeReviewedJournalFrame
+} from './reviewed-update-journal.js';
+import type {
+  StoredSnapshot, StoredMutation, JournalPayload, JournalHeader, JournalFrame, JournalSize,
+  CapturedJournalMutation, CapturedJournalPrecondition
+} from './reviewed-update-journal.js';
 
 export {
-  reviewedRepairTransactionPathParts, reviewedUpdateTransactionPathParts, reviewedUpdateTransactionSchemaVersion
+  reviewedRepairTransactionPathParts, reviewedUpdateTransactionPathParts, reviewedUpdateTransactionSchemaVersion,
+  localVerificationTransactionPathParts, localVerificationTransactionSchemaVersion
 } from '../../domain/project/reviewed-update-artifacts.js';
 export type { ReviewedTransactionKind } from '../../domain/project/reviewed-update-artifacts.js';
 
@@ -43,14 +58,33 @@ export interface ReviewedUpdateTransactionOptions {
   planFingerprint: string;
   approvalStore: ReviewedUpdateApprovalStore;
   preconditions?: readonly ProjectFileSnapshot[];
+  expectedCandidateBinding?: string;
   validatePlan?: () => Promise<void>;
   onBeforeMutation?: (mutation: ProjectFileMutation, index: number) => Promise<void>;
+  onCheckpoint?: (checkpoint: ReviewedUpdateTransactionCheckpoint) => Promise<void>;
+}
+
+export type LocalVerificationInputStage = 'before-admission' | 'before-publication' | 'before-commit';
+
+export interface LocalVerificationTransactionOptions {
+  planFingerprint: string;
+  authorityStore: LocalVerificationTransactionAuthorityStore;
+  preconditions: readonly ProjectFileSnapshot[];
+  expectedCandidateBinding: string;
+  /** Compare the protected baseline and exact original/target controls; never produce new effects. */
+  validateCurrentInputs: (stage: LocalVerificationInputStage) => Promise<void>;
   onCheckpoint?: (checkpoint: ReviewedUpdateTransactionCheckpoint) => Promise<void>;
 }
 
 export interface ReviewedUpdateRecoveryOptions {
   transactionKind?: ReviewedTransactionKind;
   approvalStore?: ReviewedUpdateApprovalStore;
+  expectedTransaction?: ReviewedRecoveryExpectation;
+}
+
+export interface ReviewedRecoveryExpectation {
+  readonly planFingerprint: string;
+  readonly transactionDigest: string;
 }
 
 export interface ReviewedUpdateTransactionDestination {
@@ -80,6 +114,13 @@ export interface ReviewedUpdateTransactionOutcome {
   cleanupFailures: string[];
 }
 
+export interface ReviewedUpdateCandidate {
+  readonly payload: JournalPayload;
+  readonly suppliedPreconditions: readonly CapturedJournalPrecondition[];
+  readonly size: JournalSize;
+  readonly binding: string;
+}
+
 export class ReviewedUpdateTransactionError extends ProjectFileTransactionError {
   readonly committed = false;
 
@@ -89,37 +130,6 @@ export class ReviewedUpdateTransactionError extends ProjectFileTransactionError 
   }
 }
 
-type StoredSnapshot =
-  | { kind: 'missing' }
-  | { kind: 'file'; bytes: string; sha256: string; mode: number };
-
-interface StoredMutation {
-  type: 'write' | 'delete';
-  pathParts: string[];
-  original: StoredSnapshot;
-  target: StoredSnapshot;
-  mode?: number;
-}
-
-interface JournalBody {
-  schemaVersion: 1 | 2;
-  transactionKind?: ReviewedTransactionKind;
-  repairIdentity?: RepairExecutionIdentity;
-  projectRoot: string;
-  planFingerprint: string;
-  nonce: string;
-  mutations: StoredMutation[];
-  missingDirectories: string[][];
-}
-
-interface JournalHeader extends JournalBody {
-  transactionDigest: string;
-}
-
-type JournalFrame =
-  | { phase: 'mutation'; index: number }
-  | { phase: 'committed' };
-
 interface LoadedJournal {
   header: JournalHeader;
   snapshot: ProjectFileSnapshot;
@@ -128,33 +138,93 @@ interface LoadedJournal {
   rollbackComplete?: boolean;
 }
 
-const MAX_MUTATIONS = 1024;
-const MAX_FILE_BYTES = 8 * 1024 * 1024;
-const MAX_SNAPSHOT_BYTES = 16 * 1024 * 1024;
-const MAX_JOURNAL_BYTES = 32 * 1024 * 1024;
-const DIGEST = /^[a-f0-9]{64}$/;
-const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
+const MAX_FILE_BYTES = reviewedJournalLimits.fileBytes;
+const MAX_JOURNAL_BYTES = reviewedJournalLimits.journalBytes;
 const privateFileMode = process.platform === 'win32' ? 0o666 : 0o600;
-const transactionKinds = ['update', 'repair'] as const;
+const transactionKinds = ['update', 'repair', 'local-verification'] as const;
 
 function fail(message: string): never {
   throw new FileSystemError(`Reviewed update transaction: ${message}`);
 }
 
+const boundPathDiagnostics = { pathLabel: 'Reviewed update path', invalid: fail };
+
 function journalParts(kind: ReviewedTransactionKind = 'update'): readonly string[] {
   if (kind === 'update') return reviewedUpdateTransactionPathParts;
   if (kind === 'repair') return reviewedRepairTransactionPathParts;
+  if (kind === 'local-verification') return localVerificationTransactionPathParts;
   return fail('unregistered transaction kind.');
 }
 
-async function assertNoPendingTransactions(root: string, kind: ReviewedTransactionKind): Promise<void> {
+function captureTransactionKind(options: ReviewedUpdateRecoveryOptions): ReviewedTransactionKind {
+  const field = Object.getOwnPropertyDescriptor(options, 'transactionKind');
+  if (!field) {
+    if ('transactionKind' in options) fail('transaction kind must be an own data field.');
+    return 'update';
+  }
+  if (!Object.hasOwn(field, 'value')) fail('transaction kind cannot be an accessor.');
+  const kind = field.value ?? 'update';
+  if (!transactionKinds.includes(kind)) fail('unregistered transaction kind.');
+  return kind;
+}
+
+function captureAuthorityStore(store: ReviewedUpdateApprovalStore | undefined, kind: ReviewedTransactionKind) {
+  const attribution = store && Object.getOwnPropertyDescriptor(store, 'transactionKind');
+  if (store && 'transactionKind' in store &&
+      (!attribution || !Object.hasOwn(attribution, 'value'))) fail('authority kind must be an own data field.');
+  let projectRoot: string | undefined;
+  if (kind === 'local-verification') {
+    const root = store && Object.getOwnPropertyDescriptor(store, 'projectRoot');
+    if (attribution?.value !== 'local-verification' || !root || !Object.hasOwn(root, 'value') ||
+        typeof root.value !== 'string' || !path.isAbsolute(root.value) || path.resolve(root.value) !== root.value) {
+      fail('local-verification requires dedicated authority attributed to its canonical project root.');
+    }
+    projectRoot = root.value;
+  } else if (attribution) {
+    fail('local-verification authority cannot authorize update or repair.');
+  }
+  if (!store) return { store: undefined, projectRoot };
+  const { write, verify, remove } = store;
+  if (typeof write !== 'function' || typeof verify !== 'function' || typeof remove !== 'function') {
+    fail('transaction authority requires write, verify and remove methods.');
+  }
+  return { store: { write: write.bind(store), verify: verify.bind(store), remove: remove.bind(store) }, projectRoot };
+}
+
+function assertAuthorityRoot(root: string, authority: ReturnType<typeof captureAuthorityStore>): void {
+  if (authority.projectRoot !== undefined && authority.projectRoot !== root) {
+    fail('local-verification authority belongs to a different canonical project root.');
+  }
+}
+
+function captureRecoveryExpectation(options: { expectedTransaction?: ReviewedRecoveryExpectation }): ReviewedRecoveryExpectation | undefined {
+  if (!options || typeof options !== 'object' || types.isProxy(options)) fail('recovery options must be own data.');
+  const field = Object.getOwnPropertyDescriptor(options, 'expectedTransaction');
+  if (!field) {
+    if ('expectedTransaction' in options) fail('recovery expectation must be an own data field.');
+    return undefined;
+  }
+  if (!Object.hasOwn(field, 'value')) fail('recovery expectation cannot be an accessor.');
+  const value: unknown = field.value;
+  if (value === undefined) return undefined;
+  if (types.isProxy(value)) fail('recovery expectation cannot be a proxy.');
+  exactKeys(value, ['planFingerprint', 'transactionDigest']);
+  const { planFingerprint, transactionDigest } = value;
+  assertDigest(planFingerprint);
+  assertDigest(transactionDigest);
+  return Object.freeze({ planFingerprint, transactionDigest });
+}
+
+async function assertNoPendingTransactions(root: string, kind: ReviewedTransactionKind, propagateReadErrors = false): Promise<void> {
   for (const pendingKind of transactionKinds) {
     const parts = journalParts(pendingKind);
-    const recovery = formatShellCommand({
+    const recovery = pendingKind === 'local-verification'
+      ? 'the dedicated local-verification recovery entrypoint (no public recovery command is enabled)'
+      : formatShellCommand({
       executable: 'liftoff',
       args: pendingKind === 'repair' ? ['repair', root, '--recover'] : ['update', '--project', root]
     }, commandShellForPlatform(process.platform));
-    const check = formatShellCommand({
+    const check = kind === 'local-verification' ? 'a fresh local-verification publication review' : formatShellCommand({
       executable: 'liftoff',
       args: kind === 'repair' ? ['repair', root, '--check'] : ['update', '--check', '--project', root]
     }, commandShellForPlatform(process.platform));
@@ -162,6 +232,7 @@ async function assertNoPendingTransactions(root: string, kind: ReviewedTransacti
     try {
       snapshot = await readSnapshot(root, parts, MAX_JOURNAL_BYTES);
     } catch (error) {
+      if (propagateReadErrors) throw error;
       fail(`${key(parts)} blocks new work: ${errorMessage(error)} Review ${recovery}, then run ${check}.`);
     }
     if (snapshot.content !== undefined) {
@@ -182,37 +253,12 @@ function folded(value: string): string {
   return value.normalize('NFC').toLowerCase();
 }
 
-function validParts(value: unknown): string[] {
-  const parts = validateArtifactPathParts(value, 'Reviewed update path');
-  if (parts.length > 64 || key(parts).length > 2048 ||
-      parts.some((part) => part.length > 255 || /[<>:"|?*\u0000-\u001f\u007f]/u.test(part))) {
-    fail('a path is too long or contains non-portable characters.');
-  }
-  return parts;
-}
-
-function exactKeys(value: unknown, keys: readonly string[]): asserts value is Record<string, unknown> {
-  if (!isRecord(value) || Object.keys(value).length !== keys.length ||
-      keys.some((entry) => !Object.hasOwn(value, entry))) fail('malformed recovery journal fields.');
-}
-
-function assertDigest(value: unknown): asserts value is string {
-  if (typeof value !== 'string' || !DIGEST.test(value)) fail('expected a full lowercase SHA-256 digest.');
-}
-
-function assertMode(value: unknown): asserts value is number {
-  if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 0o7777) {
-    fail('invalid snapshot mode.');
-  }
-}
-
 function targetMode(mode: number | undefined, original: StoredSnapshot): number {
   return reviewedUpdateTargetMode(mode, original.kind === 'file' ? original.mode : undefined);
 }
 
 export function reviewedUpdateTargetMode(mode: number | undefined, originalMode?: number): number {
-  if (mode === undefined) return originalMode ?? privateFileMode;
-  return process.platform === 'win32' ? (mode & 0o200 ? 0o666 : 0o444) : mode;
+  return journalTargetMode(mode, originalMode, process.platform);
 }
 
 async function canonicalRoot(projectRoot: string): Promise<string> {
@@ -223,82 +269,16 @@ async function canonicalRoot(projectRoot: string): Promise<string> {
 }
 
 async function safePath(root: string, parts: readonly string[]): Promise<string> {
-  validParts(parts);
-  let current = root;
-  for (let index = 0; index < parts.length; index += 1) {
-    const part = parts[index];
-    let names: string[];
-    try {
-      names = await readdir(current);
-    } catch (error) {
-      if (errorCode(error) === 'ENOENT') return path.join(root, ...parts);
-      throw error;
-    }
-    const aliases = names.filter((name) => folded(name) === folded(part));
-    if (aliases.length > 1 || aliases.length === 1 && aliases[0] !== part) {
-      fail(`case or Unicode collision at ${key(parts.slice(0, index + 1))}.`);
-    }
-    current = path.join(current, part);
-    try {
-      const details = await lstat(current);
-      if (details.isSymbolicLink()) fail(`symlink or junction at ${key(parts.slice(0, index + 1))}.`);
-      if (index < parts.length - 1 && !details.isDirectory()) {
-        fail(`path parent is not a directory: ${key(parts.slice(0, index + 1))}.`);
-      }
-    } catch (error) {
-      if (errorCode(error) === 'ENOENT') return path.join(root, ...parts);
-      throw error;
-    }
-  }
-  return current;
+  await assertBoundProjectPath(root, parts, boundPathDiagnostics);
+  return path.join(root, ...parts);
 }
 
 async function readSnapshot(
   root: string, parts: readonly string[], maximum = MAX_FILE_BYTES
 ): Promise<ProjectFileSnapshot> {
-  const target = await safePath(root, parts);
-  let handle: FileHandle | undefined;
-  try {
-    const before = await lstat(target);
-    if (!before.isFile() || before.isSymbolicLink()) fail(`not a regular file: ${key(parts)}.`);
-    if (before.size > maximum) fail(`snapshot exceeds the bounded size limit: ${key(parts)}.`);
-    handle = await open(target, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
-    const details = await handle.stat();
-    if (!details.isFile() || details.dev !== before.dev || details.ino !== before.ino || details.size > maximum) {
-      fail(`file changed while reading: ${key(parts)}.`);
-    }
-    const buffer = Buffer.alloc(details.size + 1);
-    let length = 0;
-    while (length < buffer.length) {
-      const { bytesRead } = await handle.read(buffer, length, buffer.length - length, length);
-      if (bytesRead === 0) break;
-      length += bytesRead;
-    }
-    const content = buffer.subarray(0, length);
-    const after = await lstat(target);
-    if (content.length > maximum || content.length !== details.size ||
-        after.dev !== details.dev || after.ino !== details.ino ||
-        after.size !== content.length || after.mtimeMs !== details.mtimeMs ||
-        after.mode !== details.mode) fail(`file changed while reading: ${key(parts)}.`);
-    return { pathParts: [...parts], content, mode: details.mode & 0o7777 };
-  } catch (error) {
-    if (!handle && errorCode(error) === 'ENOENT') return { pathParts: [...parts] };
-    throw error;
-  } finally {
-    await handle?.close();
-  }
-}
-
-function storeSnapshot(snapshot: ProjectFileSnapshot): StoredSnapshot {
-  if (snapshot.content === undefined) {
-    if (snapshot.mode !== undefined) fail('a missing snapshot cannot have a mode.');
-    return { kind: 'missing' };
-  }
-  if (!Buffer.isBuffer(snapshot.content) || snapshot.content.length > MAX_FILE_BYTES) {
-    fail('invalid or oversized snapshot bytes.');
-  }
-  assertMode(snapshot.mode);
-  return { kind: 'file', bytes: snapshot.content.toString('base64'), sha256: hash(snapshot.content), mode: snapshot.mode };
+  return readBoundProjectFileSnapshot(root, parts, {
+    maximumBytes: maximum, linkPolicy: 'transaction-compatible', diagnostics: boundPathDiagnostics
+  });
 }
 
 function matches(snapshot: ProjectFileSnapshot, stored: StoredSnapshot): boolean {
@@ -311,121 +291,159 @@ async function assertSnapshot(root: string, parts: readonly string[], stored: St
   if (!matches(await readSnapshot(root, parts), stored)) fail(`target changed after review: ${key(parts)}.`);
 }
 
-function parseSnapshot(value: unknown): StoredSnapshot {
-  if (isRecord(value) && value.kind === 'missing') {
-    exactKeys(value, ['kind']);
-    return { kind: 'missing' };
-  }
-  exactKeys(value, ['kind', 'bytes', 'sha256', 'mode']);
-  assertMode(value.mode);
-  assertDigest(value.sha256);
-  if (value.kind !== 'file' || typeof value.bytes !== 'string' ||
-      value.bytes.length > Math.ceil(MAX_FILE_BYTES / 3) * 4) fail('invalid stored file snapshot.');
-  const bytes = Buffer.from(value.bytes, 'base64');
-  if (bytes.length > MAX_FILE_BYTES || bytes.toString('base64') !== value.bytes || hash(bytes) !== value.sha256) {
-    fail('stored snapshot digest or encoding does not match its exact bytes.');
-  }
-  return { kind: 'file', bytes: value.bytes, sha256: value.sha256, mode: value.mode };
+interface CandidateDirectoryIdentity {
+  dev: string;
+  ino: string;
+  mode: string;
 }
 
-function validatePaths(paths: readonly string[][]): void {
-  const files = new Set<string>();
-  const spelling = new Map<string, string>();
-  for (const parts of [...paths, ...transactionKinds.map((kind) => journalParts(kind))]) {
-    for (let count = 1; count <= parts.length; count += 1) {
-      const prefix = key(parts.slice(0, count));
-      const identity = folded(prefix);
-      const prior = spelling.get(identity);
-      if (prior !== undefined && prior !== prefix) fail(`case-colliding inventory path: ${prefix}.`);
-      if (count < parts.length && files.has(identity)) fail(`file/directory inventory collision: ${prefix}.`);
-      spelling.set(identity, prefix);
+interface CandidateParent {
+  pathParts: string[];
+  identity: CandidateDirectoryIdentity | null;
+}
+
+async function candidateDirectoryIdentity(native: string): Promise<CandidateDirectoryIdentity> {
+  const details = await lstat(native, { bigint: true });
+  if (!details.isDirectory() || details.isSymbolicLink()) fail('project root or transaction parent must be a directory, not a symlink or junction.');
+  if (typeof details.dev !== 'bigint' || details.dev < 0n || typeof details.ino !== 'bigint' || details.ino <= 0n ||
+    typeof details.mode !== 'bigint' || details.mode < 0n) fail('transaction directory identity is unavailable.');
+  return { dev: details.dev.toString(), ino: details.ino.toString(), mode: details.mode.toString() };
+}
+
+async function candidateRootIdentity(root: string): Promise<CandidateDirectoryIdentity> {
+  if (typeof root !== 'string' || !path.isAbsolute(root) || path.normalize(root) !== root || path.resolve(root) !== root ||
+    /[\u0000-\u001f\u007f]/u.test(root) || root.startsWith('\\\\?\\') || root.startsWith('\\\\.\\')) {
+    fail('candidate project root must be an absolute canonical native path.');
+  }
+  const before = await candidateDirectoryIdentity(root);
+  if (await realpath(root) !== root) fail('candidate project root changed or is not its canonical physical path.');
+  const after = await candidateDirectoryIdentity(root);
+  if (canonicalSha256(before) !== canonicalSha256(after)) fail('candidate project root changed during capture.');
+  return after;
+}
+
+async function captureCandidateParent(root: string, parts: string[]): Promise<CandidateParent> {
+  const native = await safePath(root, parts);
+  let details;
+  try {
+    details = await lstat(native, { bigint: true });
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return { pathParts: [...parts], identity: null };
+    throw error;
+  }
+  if (!details.isDirectory() || details.isSymbolicLink()) fail(`not a directory: ${key(parts)}.`);
+  if (typeof details.dev !== 'bigint' || details.dev < 0n || typeof details.ino !== 'bigint' || details.ino <= 0n ||
+    typeof details.mode !== 'bigint' || details.mode < 0n) fail(`transaction parent identity is unavailable: ${key(parts)}.`);
+  return { pathParts: [...parts], identity: {
+    dev: details.dev.toString(), ino: details.ino.toString(), mode: details.mode.toString()
+  } };
+}
+
+async function captureTransactionCandidate(
+  root: string,
+  selected: readonly CapturedJournalMutation[],
+  suppliedPreconditions: readonly CapturedJournalPrecondition[],
+  kind: ReviewedTransactionKind,
+  repairIdentity?: RepairExecutionIdentity
+) {
+  const rootIdentity = await candidateRootIdentity(root);
+  const conditions = new Map<string, CapturedJournalPrecondition>();
+  for (const snapshot of suppliedPreconditions) conditions.set(folded(key(snapshot.pathParts)), snapshot);
+  const stored: StoredMutation[] = [];
+  for (const mutation of selected) {
+    const expected = conditions.get(folded(key(mutation.pathParts)));
+    if (expected && key(expected.pathParts) !== key(mutation.pathParts)) fail('case-colliding source and destination.');
+    const original = expected?.stored ?? storeSnapshot(await readSnapshot(root, mutation.pathParts));
+    if (mutation.type === 'write' && mutation.content.length > MAX_FILE_BYTES) fail(`oversized target: ${key(mutation.pathParts)}.`);
+    const target: StoredSnapshot = mutation.type === 'delete' ? { kind: 'missing' }
+      : storeSnapshot({ pathParts: mutation.pathParts, content: mutation.content, mode: targetMode(mutation.mode, original) });
+    stored.push({
+      type: mutation.type, pathParts: mutation.pathParts, original, target,
+      ...(mutation.type === 'write' && mutation.mode !== undefined ? { mode: mutation.mode } : {})
+    });
+    conditions.set(folded(key(mutation.pathParts)), { pathParts: mutation.pathParts, stored: original });
+  }
+  validateInventory(stored);
+  validatePaths([...conditions.values()].map((entry) => entry.pathParts));
+  const assertConditions = async () => {
+    for (const condition of conditions.values()) await assertSnapshot(root, condition.pathParts, condition.stored);
+  };
+  await assertConditions();
+  const parents = new Map<string, CandidateParent>();
+  if (stored.length) {
+    for (const parts of [...stored.filter((entry) => entry.type === 'write').map((entry) => entry.pathParts), journalParts(kind)]) {
+      for (let count = 1; count < parts.length; count++) {
+        const parent = parts.slice(0, count);
+        if (!parents.has(key(parent))) parents.set(key(parent), await captureCandidateParent(root, parent));
+      }
     }
-    const identity = folded(key(parts));
-    if (files.has(identity) || [...spelling.keys()].some((name) => name.startsWith(`${identity}/`))) {
-      fail(`duplicate or overlapping mutation: ${key(parts)}.`);
-    }
-    files.add(identity);
   }
+  const assertParents = async () => {
+    if (canonicalSha256(rootIdentity) !== canonicalSha256(await candidateRootIdentity(root))) {
+      fail('candidate project root changed during capture.');
+    }
+    for (const parent of parents.values()) {
+      if (canonicalSha256(parent) !== canonicalSha256(await captureCandidateParent(root, parent.pathParts))) {
+        fail(`transaction parent changed after review: ${key(parent.pathParts)}.`);
+      }
+    }
+    if (canonicalSha256(rootIdentity) !== canonicalSha256(await candidateRootIdentity(root))) {
+      fail('candidate project root changed during capture.');
+    }
+  };
+  await assertConditions();
+  await assertParents();
+  const payload: JournalPayload = {
+    schemaVersion: kind === 'local-verification' ? localVerificationTransactionSchemaVersion
+      : repairIdentity ? repairSchemaVersions.journal : 1,
+    transactionKind: kind, ...(repairIdentity ? { repairIdentity } : {}),
+    projectRoot: root, mutations: stored,
+    missingDirectories: [...parents.values()].filter((entry) => entry.identity === null).map((entry) => [...entry.pathParts])
+  };
+  const size = measureReviewedJournal(payload, suppliedPreconditions, process.platform);
+  const candidate: ReviewedUpdateCandidate = {
+    payload, suppliedPreconditions, size,
+    binding: canonicalSha256({
+      kind: kind === 'local-verification' ? 'local-verification-candidate' : 'reviewed-update-candidate',
+      payload, suppliedPreconditions, rootIdentity, parents: [...parents.values()]
+    })
+  };
+  return { candidate, conditions, assertConditions, assertParents };
 }
 
-function validateInventory(mutations: readonly StoredMutation[]): void {
-  validatePaths(mutations.map((entry) => entry.pathParts));
-  const size = mutations.reduce((sum, mutation) => sum +
-    (mutation.original.kind === 'file' ? Buffer.byteLength(mutation.original.bytes, 'base64') : 0) +
-    (mutation.target.kind === 'file' ? Buffer.byteLength(mutation.target.bytes, 'base64') : 0), 0);
-  if (size > MAX_SNAPSHOT_BYTES) fail('transaction snapshots exceed the bounded size limit.');
+// Read-only observations and a full-byte binding are not approval. Apply must
+// rebuild the same candidate under its existing cooperating mutation lock.
+export async function inspectReviewedUpdateCandidate(
+  canonicalProjectRoot: string,
+  mutations: readonly ProjectFileMutation[],
+  preconditions: readonly ProjectFileSnapshot[]
+): Promise<ReviewedUpdateCandidate> {
+  const selected = captureJournalMutations(mutations);
+  const suppliedPreconditions = captureJournalPreconditions(preconditions);
+  await candidateRootIdentity(canonicalProjectRoot);
+  await assertNoPendingTransactions(canonicalProjectRoot, 'update', true);
+  const captured = await captureTransactionCandidate(canonicalProjectRoot, selected, suppliedPreconditions, 'update');
+  await assertNoPendingTransactions(canonicalProjectRoot, 'update', true);
+  return captured.candidate;
 }
 
-function bodyOf(header: JournalHeader): JournalBody {
-  const { transactionDigest: _digest, ...body } = header;
-  return body;
+export async function inspectLocalVerificationCandidate(
+  canonicalProjectRoot: string,
+  mutations: readonly ProjectFileMutation[],
+  preconditions: readonly ProjectFileSnapshot[]
+): Promise<ReviewedUpdateCandidate> {
+  if (!Array.isArray(preconditions)) fail('local-verification requires explicit physical preconditions.');
+  const selected = captureJournalMutations(mutations);
+  const supplied = captureJournalPreconditions(preconditions);
+  await candidateRootIdentity(canonicalProjectRoot);
+  await assertNoPendingTransactions(canonicalProjectRoot, 'local-verification', true);
+  const captured = await captureTransactionCandidate(canonicalProjectRoot, selected, supplied, 'local-verification');
+  await assertNoPendingTransactions(canonicalProjectRoot, 'local-verification', true);
+  return captured.candidate;
 }
 
 function parseHeader(value: unknown, root: string, kind: ReviewedTransactionKind): JournalHeader {
-  const hasKind = isRecord(value) && Object.hasOwn(value, 'transactionKind');
-  const hasRepairIdentity = isRecord(value) && Object.hasOwn(value, 'repairIdentity');
-  exactKeys(value, [
-    'schemaVersion', 'projectRoot', 'planFingerprint', 'nonce', 'mutations', 'missingDirectories', 'transactionDigest',
-    ...(hasKind ? ['transactionKind'] : []), ...(hasRepairIdentity ? ['repairIdentity'] : [])
-  ]);
-  // Schema-1 journals without a lane belong only to the original update journal path.
-  if ((hasKind ? value.transactionKind : 'update') !== kind) fail('recovery journal transaction kind does not match its registered path.');
-  assertDigest(value.planFingerprint);
-  assertDigest(value.transactionDigest);
-  let repairIdentity: RepairExecutionIdentity | undefined;
-  if (kind === 'repair' && value.schemaVersion === repairSchemaVersions.journal) {
-    repairIdentity = validateRepairExecutionIdentity(value.repairIdentity);
-  } else if (value.schemaVersion !== 1 || hasRepairIdentity) {
-    fail(`unsupported ${kind} journal schema/identity; supported ${kind === 'repair' ? 'sealed legacy schema 1 or repair schema 2 with contract 1 and a registered recipe' : 'update schema 1 without repair identity'}. Use a CLI supporting the original record; do not rewrite it.`);
-  }
-  if (value.projectRoot !== root ||
-      typeof value.nonce !== 'string' || !UUID.test(value.nonce) ||
-      !Array.isArray(value.mutations) || value.mutations.length === 0 || value.mutations.length > MAX_MUTATIONS ||
-      !Array.isArray(value.missingDirectories) || value.missingDirectories.length > MAX_MUTATIONS * 64 + 1) {
-    fail('unsupported, wrong-project, or oversized recovery journal.');
-  }
-  const mutations: StoredMutation[] = value.mutations.map((entry) => {
-    const hasMode = isRecord(entry) && Object.hasOwn(entry, 'mode');
-    exactKeys(entry, ['type', 'pathParts', 'original', 'target', ...(hasMode ? ['mode'] : [])]);
-    if (hasMode) assertMode(entry.mode);
-    const original = parseSnapshot(entry.original);
-    const target = parseSnapshot(entry.target);
-    if (entry.type !== 'write' && entry.type !== 'delete' ||
-        entry.type === 'write' && target.kind !== 'file' ||
-        entry.type === 'delete' && target.kind !== 'missing') fail('invalid serialized mutation type or target.');
-    if (entry.type === 'delete' && hasMode ||
-        target.kind === 'file' && target.mode !== targetMode(entry.mode as number | undefined, original)) {
-      fail('stored target mode does not match its approved mutation.');
-    }
-    return {
-      type: entry.type, pathParts: validParts(entry.pathParts), original, target,
-      ...(hasMode ? { mode: entry.mode as number } : {})
-    };
-  });
-  validateInventory(mutations);
-  const missingDirectories: string[][] = value.missingDirectories.map(validParts);
-  const seen = new Set<string>();
-  for (const parts of missingDirectories) {
-    const name = key(parts);
-    if (seen.has(folded(name)) ||
-        name !== '.liftoff' && !mutations.some((entry) =>
-          entry.type === 'write' && key(entry.pathParts).startsWith(`${name}/`))) {
-      fail('invalid or duplicate directory cleanup inventory.');
-    }
-    if (mutations.some((entry) => entry.original.kind === 'file' && key(entry.pathParts).startsWith(`${name}/`))) {
-      fail('an original file cannot have an originally missing parent.');
-    }
-    seen.add(folded(name));
-  }
-  const header: JournalHeader = {
-    schemaVersion: repairIdentity ? repairSchemaVersions.journal : 1,
-    projectRoot: root, planFingerprint: value.planFingerprint, nonce: value.nonce,
-    ...(hasKind ? { transactionKind: kind } : {}),
-    ...(repairIdentity ? { repairIdentity } : {}),
-    mutations, missingDirectories, transactionDigest: value.transactionDigest
-  };
-  if (canonicalSha256(bodyOf(header)) !== header.transactionDigest) fail('transaction digest does not match the journal.');
-  return header;
+  return parseReviewedJournalHeader(value, root, kind, process.platform);
 }
 
 function frameDigest(header: JournalHeader, frame: JournalFrame): string {
@@ -547,7 +565,7 @@ async function assertJournalCurrent(root: string, snapshot: ProjectFileSnapshot)
   }
 }
 
-async function createJournal(root: string, header: JournalHeader, lease: ProjectMutationLease): Promise<ProjectFileSnapshot> {
+async function createJournal(root: string, header: JournalHeader, bytes: Buffer, lease: ProjectMutationLease): Promise<ProjectFileSnapshot> {
   const parts = journalParts(header.transactionKind);
   await ensureParents(root, parts, header.missingDirectories);
   const native = await safePath(root, parts);
@@ -555,7 +573,6 @@ async function createJournal(root: string, header: JournalHeader, lease: Project
   const handle = await open(native, 'wx', 0o600);
   let identity: { dev: number; ino: number } | undefined;
   let closed = false;
-  const bytes = Buffer.from(canonicalJson(header));
   try {
     identity = await handle.stat();
     await handle.chmod(0o600);
@@ -598,7 +615,7 @@ async function appendFrame(
   const native = await safePath(root, snapshot.pathParts);
   const handle = await open(native, constants.O_WRONLY | constants.O_APPEND | (constants.O_NOFOLLOW ?? 0));
   try {
-    await handle.writeFile(canonicalJson(frame));
+    await handle.writeFile(encodeReviewedJournalFrame(frame));
     await handle.sync();
   } finally {
     await handle.close();
@@ -794,11 +811,13 @@ async function withReviewedMutationLock(
 export async function inspectReviewedUpdateTransaction(
   projectRoot: string, options: ReviewedUpdateRecoveryOptions = {}
 ): Promise<ReviewedUpdateTransactionInspection> {
-  const kind = options.transactionKind ?? 'update';
+  const kind = captureTransactionKind(options);
   const journalPath = path.join(path.resolve(projectRoot), ...journalParts(kind));
   try {
+    const authority = captureAuthorityStore(options.approvalStore, kind);
     const root = await canonicalRoot(projectRoot);
-    const loaded = await loadJournal(root, kind, options.approvalStore);
+    assertAuthorityRoot(root, authority);
+    const loaded = await loadJournal(root, kind, authority.store);
     if (!loaded) return { status: 'absent', committed: false, journalPath, destinations: [] };
     return {
       status: loaded.committed ? 'committed' : 'interrupted', committed: loaded.committed, journalPath,
@@ -815,12 +834,28 @@ export async function inspectReviewedUpdateTransaction(
 export async function recoverReviewedUpdateTransaction(
   projectRoot: string, options: ReviewedUpdateRecoveryOptions = {}
 ): Promise<ReviewedUpdateTransactionOutcome> {
+  let kind: ReviewedTransactionKind;
+  let authority: ReturnType<typeof captureAuthorityStore>;
+  let expectedTransaction: ReviewedRecoveryExpectation | undefined;
+  try {
+    kind = captureTransactionKind(options);
+    authority = captureAuthorityStore(options.approvalStore, kind);
+    expectedTransaction = captureRecoveryExpectation(options);
+    if (authority.projectRoot !== undefined) assertAuthorityRoot(await canonicalRoot(projectRoot), authority);
+  } catch (error) {
+    return { ...outcome('blocked'), rollbackFailures: [errorMessage(error)] };
+  }
   return withReviewedMutationLock(projectRoot, async (lease) => {
     try {
       const root = await canonicalRoot(projectRoot);
-      const loaded = await loadJournal(root, options.transactionKind ?? 'update', options.approvalStore);
+      assertAuthorityRoot(root, authority);
+      const loaded = await loadJournal(root, kind, authority.store);
+      if (expectedTransaction && (!loaded || loaded.header.planFingerprint !== expectedTransaction.planFingerprint ||
+          loaded.header.transactionDigest !== expectedTransaction.transactionDigest)) {
+        fail('the recovery journal is absent or differs from the exact observed fingerprint and transaction digest.');
+      }
       if (!loaded) return outcome('absent');
-      return await recoverLocked(root, loaded, options.approvalStore!, lease);
+      return await recoverLocked(root, loaded, authority.store!, lease);
     } catch (error) {
       return { ...outcome('blocked'), rollbackFailures: [errorMessage(error)] };
     }
@@ -830,84 +865,80 @@ export async function recoverReviewedUpdateTransaction(
 export async function applyReviewedUpdateTransaction(
   projectRoot: string, mutations: readonly ProjectFileMutation[], options: ReviewedUpdateTransactionOptions
 ): Promise<ReviewedUpdateTransactionOutcome> {
-  const kind = options.transactionKind ?? 'update';
+  if (captureTransactionKind(options) === 'local-verification') {
+    fail('local-verification requires its dedicated publication entrypoint and current-input checks.');
+  }
+  return applyTransaction(projectRoot, mutations, options);
+}
+
+export async function applyLocalVerificationTransaction(
+  projectRoot: string, mutations: readonly ProjectFileMutation[], options: LocalVerificationTransactionOptions
+): Promise<ReviewedUpdateTransactionOutcome> {
+  const { planFingerprint, authorityStore, preconditions, expectedCandidateBinding, validateCurrentInputs, onCheckpoint } = options;
+  assertDigest(expectedCandidateBinding);
+  if (!Array.isArray(preconditions) || typeof validateCurrentInputs !== 'function') {
+    fail('local-verification requires physical preconditions and locked current-input checks.');
+  }
+  return applyTransaction(projectRoot, mutations, {
+    transactionKind: 'local-verification', planFingerprint, approvalStore: authorityStore, preconditions,
+    expectedCandidateBinding, onCheckpoint
+  }, validateCurrentInputs);
+}
+
+export function inspectLocalVerificationTransaction(
+  projectRoot: string, options: { authorityStore: LocalVerificationTransactionAuthorityStore }
+): Promise<ReviewedUpdateTransactionInspection> {
+  return inspectReviewedUpdateTransaction(projectRoot, { transactionKind: 'local-verification', approvalStore: options.authorityStore });
+}
+
+export function recoverLocalVerificationTransaction(
+  projectRoot: string, options: { authorityStore: LocalVerificationTransactionAuthorityStore; expectedTransaction?: ReviewedRecoveryExpectation }
+): Promise<ReviewedUpdateTransactionOutcome> {
+  let expectedTransaction: ReviewedRecoveryExpectation | undefined;
+  try { expectedTransaction = captureRecoveryExpectation(options); }
+  catch (error) { return Promise.resolve({ ...outcome('blocked'), rollbackFailures: [errorMessage(error)] }); }
+  return recoverReviewedUpdateTransaction(projectRoot, { transactionKind: 'local-verification', approvalStore: options.authorityStore, expectedTransaction });
+}
+
+async function applyTransaction(
+  projectRoot: string, mutations: readonly ProjectFileMutation[], options: ReviewedUpdateTransactionOptions,
+  validateCurrentInputs?: LocalVerificationTransactionOptions['validateCurrentInputs']
+): Promise<ReviewedUpdateTransactionOutcome> {
+  const kind = captureTransactionKind(options);
+  if (kind === 'local-verification' && !validateCurrentInputs) {
+    fail('local-verification requires its dedicated publication entrypoint and current-input checks.');
+  }
   const journalPathParts = journalParts(kind);
-  const repairIdentity = kind === 'repair' ? validateRepairExecutionIdentity(options.repairIdentity) : undefined;
+  const repairIdentity = kind === 'repair' ? captureJournalRepairIdentity(options.repairIdentity) : undefined;
   if (kind === 'update' && options.repairIdentity !== undefined) fail('update cannot acquire repair identity or authority.');
   assertDigest(options.planFingerprint);
   const planFingerprint = options.planFingerprint;
-  if (!options.approvalStore) fail('a user-local transaction approval store is required.');
-  if (!Array.isArray(mutations) || mutations.length > MAX_MUTATIONS) fail('invalid or oversized mutation inventory.');
-  const selected: ProjectFileMutation[] = mutations.map((mutation) => {
-    exactKeys(mutation, mutation.type === 'write'
-      ? ['type', 'pathParts', 'content', ...(Object.hasOwn(mutation, 'mode') ? ['mode'] : [])]
-      : ['type', 'pathParts']);
-    const pathParts = validParts(mutation.pathParts);
-    if (mutation.type === 'delete') return { type: 'delete', pathParts };
-    if (mutation.type !== 'write' || typeof mutation.content !== 'string' && !Buffer.isBuffer(mutation.content)) {
-      fail('invalid mutation type or bytes.');
-    }
-    if (mutation.mode !== undefined) assertMode(mutation.mode);
-    return { type: 'write', pathParts, content: typeof mutation.content === 'string'
-      ? Buffer.from(mutation.content, 'utf8') : Buffer.from(mutation.content),
-    ...(mutation.mode === undefined ? {} : { mode: mutation.mode }) };
-  });
-  const conditions = new Map<string, { pathParts: string[]; stored: StoredSnapshot }>();
-  if ((options.preconditions?.length ?? 0) > MAX_MUTATIONS * 4) fail('too many preconditions.');
-  for (const snapshot of options.preconditions ?? []) {
-    const parts = validParts(snapshot.pathParts);
-    const identity = folded(key(parts));
-    if (conditions.has(identity)) fail(`duplicate or case-colliding preconditions: ${key(parts)}.`);
-    conditions.set(identity, { pathParts: parts, stored: storeSnapshot(snapshot) });
-  }
+  const expectedCandidateBinding = options.expectedCandidateBinding;
+  if (expectedCandidateBinding !== undefined) assertDigest(expectedCandidateBinding);
+  const authority = captureAuthorityStore(options.approvalStore, kind);
+  const approvalStore = authority.store;
+  if (!approvalStore) fail('a user-local transaction approval store is required.');
+  const selected = captureJournalMutations(mutations);
+  const suppliedPreconditions = captureJournalPreconditions(options.preconditions);
+  if (authority.projectRoot !== undefined) assertAuthorityRoot(await canonicalRoot(projectRoot), authority);
   return withReviewedMutationLock(projectRoot, async (lease) => {
     const root = await canonicalRoot(projectRoot);
+    assertAuthorityRoot(root, authority);
     await assertNoPendingTransactions(root, kind);
     await options.validatePlan?.();
+    await validateCurrentInputs?.('before-admission');
     await lease.assertHeld();
-    const stored: StoredMutation[] = [];
-    const missing = new Map<string, string[]>();
-    for (const mutation of selected) {
-      const expected = conditions.get(folded(key(mutation.pathParts)));
-      if (expected && key(expected.pathParts) !== key(mutation.pathParts)) fail('case-colliding source and destination.');
-      const original = expected?.stored ?? storeSnapshot(await readSnapshot(root, mutation.pathParts));
-      const target: StoredSnapshot = mutation.type === 'delete' ? { kind: 'missing' }
-        : { kind: 'file', bytes: (mutation.content as Buffer).toString('base64'),
-          sha256: hash(mutation.content as Buffer),
-          mode: targetMode(mutation.mode, original) };
-      if (mutation.type === 'write' && (mutation.content as Buffer).length > MAX_FILE_BYTES) fail(`oversized target: ${key(mutation.pathParts)}.`);
-      stored.push({
-        type: mutation.type, pathParts: mutation.pathParts, original, target,
-        ...(mutation.type === 'write' && mutation.mode !== undefined ? { mode: mutation.mode } : {})
-      });
-      conditions.set(folded(key(mutation.pathParts)), { pathParts: mutation.pathParts, stored: original });
+    const { candidate, conditions, assertConditions, assertParents } =
+      await captureTransactionCandidate(root, selected, suppliedPreconditions, kind, repairIdentity);
+    if (expectedCandidateBinding !== undefined && candidate.binding !== expectedCandidateBinding) {
+      fail('the captured transaction candidate changed after review; obtain a fresh preview.');
     }
-    validateInventory(stored);
-    validatePaths([...conditions.values()].map((entry) => entry.pathParts));
-    const assertConditions = async () => {
-      for (const condition of conditions.values()) await assertSnapshot(root, condition.pathParts, condition.stored);
-    };
-    await assertConditions();
+    const { payload } = candidate;
+    const stored = payload.mutations;
     if (!stored.length) return outcome('absent');
-    for (const parts of [...stored.filter((entry) => entry.type === 'write').map((entry) => entry.pathParts),
-      journalPathParts]) {
-      for (let count = 1; count < parts.length; count += 1) {
-        const parent = parts.slice(0, count);
-        try {
-          if (!(await lstat(await safePath(root, parent))).isDirectory()) fail(`not a directory: ${key(parent)}.`);
-        } catch (error) {
-          if (errorCode(error) !== 'ENOENT') throw error;
-          missing.set(key(parent), parent);
-        }
-      }
-    }
-    const body: JournalBody = {
-      schemaVersion: repairIdentity ? repairSchemaVersions.journal : 1,
-      transactionKind: kind, ...(repairIdentity ? { repairIdentity } : {}),
-      projectRoot: root, planFingerprint, nonce: randomUUID(),
-      mutations: stored, missingDirectories: [...missing.values()]
-    };
-    const header: JournalHeader = { ...body, transactionDigest: canonicalSha256(body) };
+    const { header, content: headerBytes } = encodeReviewedJournalHeader({
+      ...payload, planFingerprint, nonce: randomUUID()
+    }, process.platform);
     for (const [index] of stored.entries()) {
       for (const restore of [false, true]) {
         if ((await readSnapshot(root, temporaryParts(header, index, restore))).content !== undefined) {
@@ -915,32 +946,39 @@ export async function applyReviewedUpdateTransaction(
         }
       }
     }
+    await assertConditions();
+    await assertParents();
     let loaded: LoadedJournal | undefined;
     let committed = false;
     let operation = 'persist user-local transaction approval';
     try {
-      await options.approvalStore.write(header.planFingerprint, header.transactionDigest);
-      await options.approvalStore.write(header.planFingerprint, rollbackCleanupDigest(header));
-      if (await options.approvalStore.verify(header.planFingerprint, header.transactionDigest) !== true ||
-          await options.approvalStore.verify(header.planFingerprint, rollbackCleanupDigest(header)) !== true) {
+      await approvalStore.write(header.planFingerprint, header.transactionDigest);
+      await approvalStore.write(header.planFingerprint, rollbackCleanupDigest(header));
+      if (await approvalStore.verify(header.planFingerprint, header.transactionDigest) !== true ||
+          await approvalStore.verify(header.planFingerprint, rollbackCleanupDigest(header)) !== true) {
         fail('the user-local approval store did not persist its transaction seal.');
       }
       await lease.assertHeld();
+      if (validateCurrentInputs) {
+        await validateCurrentInputs('before-publication');
+        await lease.assertHeld();
+      }
       await assertConditions();
       await assertNoPendingTransactions(root, kind);
+      await assertParents();
       operation = `create ${key(journalPathParts)}`;
-      loaded = { header, snapshot: await createJournal(root, header, lease), pendingIndex: -1, committed: false };
+      loaded = { header, snapshot: await createJournal(root, header, headerBytes, lease), pendingIndex: -1, committed: false };
       await options.onCheckpoint?.({ phase: 'prepared' });
       for (const [index, mutation] of selected.entries()) {
         operation = `${mutation.type} ${key(mutation.pathParts)}`;
         const callbackMutation: ProjectFileMutation = mutation.type === 'write'
-          ? { ...mutation, pathParts: [...mutation.pathParts], content: Buffer.from(mutation.content as Buffer) }
+          ? { ...mutation, pathParts: [...mutation.pathParts], content: Buffer.from(mutation.content) }
           : { ...mutation, pathParts: [...mutation.pathParts] };
         await options.onBeforeMutation?.(callbackMutation, index);
         await lease.assertHeld();
         await assertConditions();
         const frame: JournalFrame = { phase: 'mutation', index };
-        await options.approvalStore.write(header.planFingerprint, frameDigest(header, frame));
+        await approvalStore.write(header.planFingerprint, frameDigest(header, frame));
         loaded.snapshot = await appendFrame(root, loaded.snapshot, frame, lease);
         loaded.pendingIndex = index;
         await options.onCheckpoint?.({ phase: 'before-mutation', index });
@@ -953,14 +991,18 @@ export async function applyReviewedUpdateTransaction(
       operation = `commit reviewed ${kind}`;
       await options.onCheckpoint?.({ phase: 'before-commit' });
       await lease.assertHeld();
+      if (validateCurrentInputs) {
+        await validateCurrentInputs('before-commit');
+        await lease.assertHeld();
+      }
       await assertConditions();
       await assertJournalCurrent(root, loaded.snapshot);
-      await options.approvalStore.write(header.planFingerprint, frameDigest(header, { phase: 'committed' }));
+      await approvalStore.write(header.planFingerprint, frameDigest(header, { phase: 'committed' }));
       committed = true;
       loaded.committed = true;
       loaded.snapshot = await appendFrame(root, loaded.snapshot, { phase: 'committed' }, lease);
       await options.onCheckpoint?.({ phase: 'committed' });
-      return { ...outcome('committed', loaded), cleanupFailures: await cleanupJournal(root, loaded, options.approvalStore, lease) };
+      return { ...outcome('committed', loaded), cleanupFailures: await cleanupJournal(root, loaded, approvalStore, lease) };
     } catch (error) {
       if (committed) {
         return {
@@ -970,16 +1012,16 @@ export async function applyReviewedUpdateTransaction(
       }
       let recovered: ReviewedUpdateTransactionOutcome | undefined;
       try {
-        const current = await loadJournal(root, kind, options.approvalStore);
+        const current = await loadJournal(root, kind, approvalStore);
         if (current) {
-          recovered = await recoverLocked(root, current, options.approvalStore, lease);
+          recovered = await recoverLocked(root, current, approvalStore, lease);
           if (recovered.committed) {
             recovered.cleanupFailures.unshift(`Committed transaction finalization: ${errorMessage(error)}`);
             return recovered;
           }
         } else {
-          await options.approvalStore.remove(header.planFingerprint, header.transactionDigest);
-          await options.approvalStore.remove(header.planFingerprint, rollbackCleanupDigest(header));
+          await approvalStore.remove(header.planFingerprint, header.transactionDigest);
+          await approvalStore.remove(header.planFingerprint, rollbackCleanupDigest(header));
           if (header.missingDirectories.some((parts) => key(parts) === '.liftoff')) {
             try {
               await lease.assertHeld();

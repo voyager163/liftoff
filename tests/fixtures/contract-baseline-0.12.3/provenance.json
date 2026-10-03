@@ -1,0 +1,269 @@
+{
+  "schemaVersion": 1,
+  "kind": "liftoff-contract-baseline",
+  "purpose": "Frozen pre-modernization public contracts; later behavior changes must be recorded in tests/fixtures/contract-baseline-changes.json, never by regenerating this directory.",
+  "checkout": {
+    "revision": "8281c46ab99a83b7226a6520a1a9e444e4a04ab8",
+    "tree": "d9f0c3cd0d6bc2c293b7054a26533ae93b7ec091",
+    "describe": "v0.12.3-2-g8281c46a",
+    "packageVersion": "0.12.3",
+    "build": "git archive of package.json, tsconfig.json, src and assets at the revision, compiled with the checkout TypeScript into an isolated directory",
+    "sourceNote": "Two repository-setup commits after the published gitHead (governance/community files, workflows, README, scripts, a Windows job-runner change); captured CLI surfaces were compared with the published package below."
+  },
+  "published": {
+    "name": "@msn-control/liftoff",
+    "version": "0.12.3",
+    "integrity": "sha512-3bqqnkMq20pR0igkr33ESkfxZ4iB11DfgHo8VTHoke5hkSKi06/ZLjkh3+k4mBvBdi0CCjWSHCQHSkDnbZGRpg==",
+    "shasum": "eaec1c17678441628a00d7c50a0b4dc9f1873bf1",
+    "gitHead": "70d10881b46d873118d825735696f39b6d35ebe0",
+    "tarballSha256": "b32ec008b41005de841df940280d60777d5e797ea4da33d5ed3c228e38af8700",
+    "retrieval": "npm pack <name>@<version> (read-only), sha512 integrity verified before extraction"
+  },
+  "historicalWriters": [
+    {
+      "version": "0.3.4",
+      "integrity": "sha512-CVSI1kSfVmXJ9xtnUjpmBaxEufZuiV+b2cLZxjDIcSYTOy8OEkfJyHNDgGYAz/ojTZSuzIbKHI5oryzfhEVkDg==",
+      "manifestVersion": 2,
+      "tarballSha256": "05793480c44632b3fc01ac98a4f76a73313d8b273afcb30bde5c22de989d69c0",
+      "manifests": [
+        "standard-go",
+        "genai-rag"
+      ],
+      "governance": "none"
+    },
+    {
+      "version": "0.4.1",
+      "integrity": "sha512-BJHzEyweGDdwo/FLMX/5VrsG6s5MNLNpbuBffkbBKrCepHM3jho5RHSRiTOzt5yL/5amw7XUhD9omf2H+QBOrA==",
+      "manifestVersion": 3,
+      "tarballSha256": "1b0040959aada2563cd14c1316d300528bbe3a0741e8d1f89462750efc3c3401",
+      "manifests": [
+        "standard-go",
+        "genai-rag"
+      ],
+      "governance": "none"
+    },
+    {
+      "version": "0.7.0",
+      "integrity": "sha512-2/qu8cWe0uBPizXeJe9YTQ8uEWfwv8XIQzia7Gns3olimzQeDPBpXONxofZnQrcP6ece74ayz4jd1EUZitslOw==",
+      "manifestVersion": 4,
+      "tarballSha256": "1b0980462bc25a27cebc85ecde9d2b91c43551072769b16b14ecfe7ef1c2037f",
+      "manifests": [
+        "standard-go",
+        "genai-rag"
+      ],
+      "governance": "none"
+    },
+    {
+      "version": "0.8.0",
+      "integrity": "sha512-TFWGemLL0umBzzH7hRpD9dtF1MqrsR4c7dWJq9ZFASETvLsI6Yw3DF/Aes0xVpF5K5V7YVaWz/YkAjkjh09sdg==",
+      "manifestVersion": 5,
+      "tarballSha256": "a5374840e9968b2588d4873de605d043f570d46c72e21eff4d2b0bd918def142",
+      "manifests": [
+        "standard-go",
+        "genai-rag"
+      ],
+      "governance": "rendered"
+    },
+    {
+      "version": "0.9.9",
+      "integrity": "sha512-/lsELk9+r0MmeyM1pxktJgcxBrXnyavhKS6SkWAPXde9ZuUXlfuHxaeW+QzGFz57WT6oCpbpikFFcQb8Y9IbBQ==",
+      "manifestVersion": 6,
+      "tarballSha256": "6b725347ebe2b7f05b53346bfc12bd81af60c0ca14cc386f1759cb10f798ac4a",
+      "manifests": [
+        "standard-go",
+        "genai-rag"
+      ],
+      "governance": "rendered"
+    },
+    {
+      "version": "0.10.0",
+      "integrity": "sha512-bVQEusAptLd/GV8iutsvaTvjPCuPONVbN/ct9f2HfrWujk8s3CsLl0Z+SBVj0thfcln4tUO2MxhIqryJXKRGcA==",
+      "manifestVersion": 7,
+      "activationContractVersion": 1,
+      "tarballSha256": "a97b1606a45f9b0eeb2c43f2dbebf5e45da1bb073768e5bbc27ab7a1b7143be7",
+      "manifests": [
+        "standard-go",
+        "genai-rag"
+      ],
+      "governance": "rendered"
+    },
+    {
+      "version": "0.11.3",
+      "integrity": "sha512-1DWo3lVRojFBK0wCNsbi+Tx7DB5CzZ/18cJUI5DdzmM3TkOt4qKqIGqZst5tdxMFX5B0D1Ohjmx1blVoLqqrhA==",
+      "manifestVersion": 7,
+      "activationContractVersion": 2,
+      "tarballSha256": "c1846292d07d4ffcf243e392c3ba3457c43601b738792f0d9113f415e694dedd",
+      "manifests": [
+        "standard-go",
+        "genai-rag"
+      ],
+      "governance": "rendered"
+    },
+    {
+      "version": "0.12.3",
+      "integrity": "sha512-3bqqnkMq20pR0igkr33ESkfxZ4iB11DfgHo8VTHoke5hkSKi06/ZLjkh3+k4mBvBdi0CCjWSHCQHSkDnbZGRpg==",
+      "manifestVersion": 7,
+      "activationContractVersion": 3,
+      "tarballSha256": "b32ec008b41005de841df940280d60777d5e797ea4da33d5ed3c228e38af8700",
+      "manifests": [
+        "standard-go",
+        "genai-rag"
+      ],
+      "governance": "rendered"
+    }
+  ],
+  "comparison": {
+    "surfaces": "identical",
+    "differences": [],
+    "manifestReaders": "identical",
+    "manifestReaderDifferences": []
+  },
+  "capture": {
+    "command": "node scripts/contract-baseline.mjs capture",
+    "node": "v24.21.0",
+    "platform": "darwin/arm64",
+    "observedPlatforms": [
+      "darwin/arm64"
+    ],
+    "comparisonPlatforms": [
+      "darwin",
+      "linux"
+    ],
+    "unrunPlatforms": [
+      "linux (comparison enabled; native execution unrun until CI)",
+      "win32 (help/JSON comparison disabled; host paths, modes and shell renderings not captured)"
+    ],
+    "environment": {
+      "LIFTOFF_TELEMETRY": "0",
+      "DO_NOT_TRACK": "1",
+      "CI": "true",
+      "isolation": "temporary HOME/XDG/APPDATA/LOCALAPPDATA; no credentials, accounts or network except read-only package retrieval"
+    },
+    "volatileJsonValues": "Values that differed between two isolated captures are stored as <volatile> with their JSON pointers."
+  },
+  "metadataCorrections": [
+    {
+      "id": "2026-09-25-observed-platforms-and-writer-governance",
+      "scope": "provenance metadata only, before acceptance of the baseline",
+      "previousProvenanceSha256": "fc51a9a14122c3b60ba04a2aa0ff42daedb3948cb0b0d3ee0d7c7a4db1515cac",
+      "observationBytesChanged": false,
+      "changes": [
+        "capture.verifiedPlatforms claimed darwin and linux although only darwin/arm64 was observed; replaced by capture.observedPlatforms, capture.comparisonPlatforms and capture.unrunPlatforms (was capture.unverifiedPlatforms).",
+        "historicalWriters[].governance records each published writer's explicit governance observation (rendered or none) instead of leaving absence implicit."
+      ],
+      "evidence": "node scripts/contract-baseline.mjs observe-writers re-read every published writer read-only (sha512 integrity verified); tarball digests, manifest bytes and rendered governance matched the frozen files, and no writer failed."
+    }
+  ],
+  "files": [
+    {
+      "path": "activation-identities.json",
+      "sha256": "6300d7f36a634d8c4dc6275bf13b228ea6fdc25100873d5bdf60393c903dc459",
+      "bytes": 7888
+    },
+    {
+      "path": "cli-json.json",
+      "sha256": "813194ee35f23f67d699c624e78e005aa1816878b49daeb8bea3305bc00862e1",
+      "bytes": 234958
+    },
+    {
+      "path": "cli-text.json",
+      "sha256": "c899540728184ecfae1ea965a3f3dcc3679efc9249cd770b99da6b6e20f116d7",
+      "bytes": 72621
+    },
+    {
+      "path": "history.json",
+      "sha256": "92a75af3222494900ac9e68ced1d837a67b48f5ea12681d6dd8bf68546b7fe9a",
+      "bytes": 9577
+    },
+    {
+      "path": "manifest-readers.json",
+      "sha256": "8a97d0532ef904f8217b816616de87ba24a17cb8d5ec8522f822f99017d99d6c",
+      "bytes": 9436
+    },
+    {
+      "path": "manifests/0.10.0-genai-rag.json",
+      "sha256": "d63731bdde18e5b3723b270bc6ec31fd07d4bcf1f2d97a7254073353ca2b5416",
+      "bytes": 28787
+    },
+    {
+      "path": "manifests/0.10.0-standard-go.json",
+      "sha256": "b73d54c0c8534a05624c4ad96343d59e37339090302b981cd919bccdbd4fcc74",
+      "bytes": 12660
+    },
+    {
+      "path": "manifests/0.11.3-genai-rag.json",
+      "sha256": "c76a5df3e34b397d741a42aa46c4488e4ea9db21e26f5c6ee4b56c63c0f1f2cd",
+      "bytes": 35019
+    },
+    {
+      "path": "manifests/0.11.3-standard-go.json",
+      "sha256": "b082f99e0e496942a4b26da1db8a262c14f1667122cf9909746e9fc70bbdc193",
+      "bytes": 15778
+    },
+    {
+      "path": "manifests/0.12.3-genai-rag.json",
+      "sha256": "82e0fcde51d30983b7bcae37bd581eca82f095eb108e728600606de0dc19769c",
+      "bytes": 35309
+    },
+    {
+      "path": "manifests/0.12.3-standard-go.json",
+      "sha256": "4ca36c89c2f9c47d2bd52fb686f2a8f25c436d576a206637acddcf8fa1bd1069",
+      "bytes": 16068
+    },
+    {
+      "path": "manifests/0.3.4-genai-rag.json",
+      "sha256": "55a35d87361e430fcb4160e23e84cf41ebf6b602d28c4140177bd5a97f340a87",
+      "bytes": 20419
+    },
+    {
+      "path": "manifests/0.3.4-standard-go.json",
+      "sha256": "8aa7725db3d030d8823ff36c68475f06de6542d045ea8453eadd960af0487382",
+      "bytes": 8055
+    },
+    {
+      "path": "manifests/0.4.1-genai-rag.json",
+      "sha256": "fb08f1add96ad7de72e121399dad3ba336fd3b7964e87e5038e851fabfc874f6",
+      "bytes": 20299
+    },
+    {
+      "path": "manifests/0.4.1-standard-go.json",
+      "sha256": "676532ac44404f8bc252e4356886f154f0007f82bfab4c1f07e8f75138763858",
+      "bytes": 7681
+    },
+    {
+      "path": "manifests/0.7.0-genai-rag.json",
+      "sha256": "a760ca598bc7a291fa93db6c2810d34fb145639e38ae8c7868ce3fd00dd88306",
+      "bytes": 20336
+    },
+    {
+      "path": "manifests/0.7.0-standard-go.json",
+      "sha256": "8540b04e6bbf31988d87fec7854682cb45fe1594656d980b4528dd93e3ab1bcf",
+      "bytes": 7714
+    },
+    {
+      "path": "manifests/0.8.0-genai-rag.json",
+      "sha256": "c3b75523cb93749e1d452f8262f584d2e93f170bef191c8fa657fcbd779030a6",
+      "bytes": 22200
+    },
+    {
+      "path": "manifests/0.8.0-standard-go.json",
+      "sha256": "fe21bf9833fce14d74a1cfd83affb3aac9ff693933f4072ef0aafe2abf1a3d3c",
+      "bytes": 9334
+    },
+    {
+      "path": "manifests/0.9.9-genai-rag.json",
+      "sha256": "1d80a15c516608afc30b5f8891939593e0d72e53abef448e3403484c14402317",
+      "bytes": 27004
+    },
+    {
+      "path": "manifests/0.9.9-standard-go.json",
+      "sha256": "8ad07fd1693d726cce549dc6bac8e9daadd73fabccb41457e3515590054f9523",
+      "bytes": 10923
+    },
+    {
+      "path": "rendered-artifacts.json",
+      "sha256": "af79d9310be2baa9de165bb8c513900e2e21c72e9d98249dade3d4063124d379",
+      "bytes": 469385
+    }
+  ]
+}

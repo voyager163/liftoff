@@ -1,13 +1,24 @@
 import { ManagedIdentityCredential } from '@azure/identity';
 import { LogsIngestionClient } from '@azure/monitor-ingestion';
 import {
+  createProjectTelemetryStorageRecord,
   createTelemetryStorageRecord,
+  isProjectTelemetryDigest,
+  isProjectTelemetryId,
   isTelemetryCommand,
   isTelemetryCliVersion,
+  isTelemetrySemanticOutcome,
+  parseProjectTelemetryPolicy,
+  projectTelemetryClientFields,
+  projectTelemetryEventName,
+  projectTelemetrySchemaVersion,
   telemetryClientFields,
   telemetryEventName,
   telemetrySchemaVersion,
-  type TelemetryEvent,
+  telemetrySemanticSchemaVersion,
+  type ProjectTelemetryEvent,
+  type ProjectTelemetryStorageRecord,
+  type TelemetryCommandEvent,
   type TelemetryStorageRecord
 } from '../../../src/telemetry/contract.js';
 
@@ -26,12 +37,14 @@ export interface TelemetryHttpResponse {
 export interface TelemetryIngestionDependencies {
   now(): Date;
   upload(record: TelemetryStorageRecord): Promise<void>;
+  uploadProject?(record: ProjectTelemetryStorageRecord): Promise<void>;
 }
 
 export interface AzureTelemetryIngestionConfig {
   endpoint: string;
   dcrImmutableId: string;
   streamName: string;
+  projectStreamName?: string;
   managedIdentityClientId: string;
 }
 
@@ -41,7 +54,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function parseTelemetryEvent(value: unknown): TelemetryEvent | undefined {
+export function parseTelemetryEvent(value: unknown): TelemetryCommandEvent | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
@@ -53,20 +66,56 @@ export function parseTelemetryEvent(value: unknown): TelemetryEvent | undefined 
     return undefined;
   }
   if (
-    value.schemaVersion !== telemetrySchemaVersion ||
     value.event !== telemetryEventName ||
     !isTelemetryCommand(value.command) ||
-    !isTelemetryCliVersion(value.cliVersion) ||
-    (value.outcome !== 'success' && value.outcome !== 'failure')
+    !isTelemetryCliVersion(value.cliVersion)
   ) {
     return undefined;
   }
+  if (
+    value.schemaVersion === telemetrySchemaVersion &&
+    (value.outcome === 'success' || value.outcome === 'failure')
+  ) {
+    return {
+      schemaVersion: value.schemaVersion, event: value.event,
+      command: value.command, cliVersion: value.cliVersion, outcome: value.outcome
+    };
+  }
+  if (
+    value.schemaVersion === telemetrySemanticSchemaVersion &&
+    isTelemetrySemanticOutcome(value.outcome)
+  ) {
+    return {
+      schemaVersion: value.schemaVersion, event: value.event,
+      command: value.command, cliVersion: value.cliVersion, outcome: value.outcome
+    };
+  }
+  return undefined;
+}
+
+export function parseProjectTelemetryEvent(value: unknown): ProjectTelemetryEvent | undefined {
+  if (!isRecord(value)) return undefined;
+  const fields: readonly string[] = projectTelemetryClientFields;
+  const keys = Object.keys(value);
+  if (keys.length !== fields.length || !keys.every((key) => fields.includes(key))) return undefined;
+  const policy = parseProjectTelemetryPolicy(value.policyProfile, value.policyVersion);
+  if (
+    !policy ||
+    value.schemaVersion !== projectTelemetrySchemaVersion ||
+    value.event !== projectTelemetryEventName ||
+    !isProjectTelemetryId(value.projectId) ||
+    !isTelemetryCliVersion(value.cliVersion) ||
+    !isProjectTelemetryDigest(value.templateSetDigest) ||
+    (value.source !== 'cli' && value.source !== 'ci-heartbeat')
+  ) return undefined;
   return {
     schemaVersion: value.schemaVersion,
     event: value.event,
-    command: value.command,
+    projectId: value.projectId,
     cliVersion: value.cliVersion,
-    outcome: value.outcome
+    ...policy,
+    templateSetDigest: value.templateSetDigest,
+    source: value.source
   };
 }
 
@@ -117,9 +166,10 @@ async function readBoundedBody(request: TelemetryHttpRequest): Promise<BodyReadR
   }
 }
 
-export async function handleTelemetryRequest(
+async function handleEventRequest<Event>(
   request: TelemetryHttpRequest,
-  dependencies: TelemetryIngestionDependencies
+  parseEvent: (value: unknown) => Event | undefined,
+  upload: (event: Event) => Promise<void>
 ): Promise<TelemetryHttpResponse> {
   if (request.method.toUpperCase() !== 'POST') {
     return { status: 405 };
@@ -150,17 +200,35 @@ export async function handleTelemetryRequest(
   } catch {
     return { status: 400 };
   }
-  const event = parseTelemetryEvent(parsed);
+  const event = parseEvent(parsed);
   if (!event) {
     return { status: 400 };
   }
 
   try {
-    await dependencies.upload(createTelemetryStorageRecord(event, dependencies.now()));
+    await upload(event);
   } catch {
     return { status: 503 };
   }
   return { status: 204 };
+}
+
+export function handleTelemetryRequest(
+  request: TelemetryHttpRequest,
+  dependencies: TelemetryIngestionDependencies
+): Promise<TelemetryHttpResponse> {
+  return handleEventRequest(request, parseTelemetryEvent, (event) =>
+    dependencies.upload(createTelemetryStorageRecord(event, dependencies.now())));
+}
+
+export function handleProjectTelemetryRequest(
+  request: TelemetryHttpRequest,
+  dependencies: TelemetryIngestionDependencies
+): Promise<TelemetryHttpResponse> {
+  return handleEventRequest(request, parseProjectTelemetryEvent, async (event) => {
+    if (!dependencies.uploadProject) throw new Error('Project telemetry ingestion is disabled.');
+    await dependencies.uploadProject(createProjectTelemetryStorageRecord(event, dependencies.now()));
+  });
 }
 
 function requiredEnvironmentValue(
@@ -182,10 +250,19 @@ export function readAzureTelemetryIngestionConfig(
   if (url.protocol !== 'https:') {
     throw new Error('TELEMETRY_DCE_ENDPOINT must use HTTPS.');
   }
+  const streamName = requiredEnvironmentValue(env, 'TELEMETRY_STREAM_NAME');
+  if (streamName !== 'Custom-LiftoffCommandEvents') {
+    throw new Error('TELEMETRY_STREAM_NAME must name the approved command event stream.');
+  }
+  const projectStreamName = env.TELEMETRY_PROJECT_STREAM_NAME;
+  if (projectStreamName !== undefined && projectStreamName.trim() !== 'Custom-LiftoffProjectEvents') {
+    throw new Error('TELEMETRY_PROJECT_STREAM_NAME must name the approved project event stream.');
+  }
   return {
     endpoint: url.toString().replace(/\/$/, ''),
     dcrImmutableId: requiredEnvironmentValue(env, 'TELEMETRY_DCR_IMMUTABLE_ID'),
-    streamName: requiredEnvironmentValue(env, 'TELEMETRY_STREAM_NAME'),
+    streamName,
+    ...(projectStreamName === undefined ? {} : { projectStreamName: projectStreamName.trim() }),
     managedIdentityClientId: requiredEnvironmentValue(env, 'AZURE_CLIENT_ID')
   };
 }
@@ -193,6 +270,13 @@ export function readAzureTelemetryIngestionConfig(
 export function createAzureTelemetryIngestionDependencies(
   config: AzureTelemetryIngestionConfig
 ): TelemetryIngestionDependencies & { warmUp(): Promise<void> } {
+  if (config.streamName !== 'Custom-LiftoffCommandEvents') {
+    throw new Error('Command telemetry ingestion requires the approved command event stream.');
+  }
+  const projectStreamName = config.projectStreamName;
+  if (projectStreamName !== undefined && projectStreamName !== 'Custom-LiftoffProjectEvents') {
+    throw new Error('Project telemetry ingestion requires the approved project event stream.');
+  }
   const credential = new ManagedIdentityCredential({ clientId: config.managedIdentityClientId });
   const client = new LogsIngestionClient(config.endpoint, credential);
   return {
@@ -213,6 +297,22 @@ export function createAzureTelemetryIngestionDependencies(
         Outcome: record.Outcome
       };
       await client.upload(config.dcrImmutableId, config.streamName, [azureRecord]);
-    }
+    },
+    ...(projectStreamName === undefined ? {} : {
+      uploadProject: async (record: ProjectTelemetryStorageRecord) => {
+        const azureRecord: Record<string, unknown> = {
+          TimeGenerated: record.TimeGenerated,
+          EventName: record.EventName,
+          SchemaVersion: record.SchemaVersion,
+          ProjectId: record.ProjectId,
+          CliVersion: record.CliVersion,
+          PolicyProfile: record.PolicyProfile,
+          PolicyVersion: record.PolicyVersion,
+          TemplateSetDigest: record.TemplateSetDigest,
+          Source: record.Source
+        };
+        await client.upload(config.dcrImmutableId, projectStreamName, [azureRecord]);
+      }
+    })
   };
 }

@@ -98,12 +98,14 @@ doctor    Check local and project readiness
 
 Reference
 ─────────
-Command    Description
-─────────  ─────────────────────────────────────
-help       Show general or command-specific help
-patterns   List GenAI patterns
-providers  List cloud providers
-regions    List or search provider regions
+Command       Description
+────────────  ──────────────────────────────────────────────────────────────────
+help          Show general or command-specific help
+patterns      List GenAI patterns
+capabilities  Inspect installed public capabilities without project or readiness
+              probes
+providers     List cloud providers
+regions       List or search provider regions
 
 Operations
 ──────────
@@ -214,8 +216,8 @@ Consent options
 Option                Description
 ────────────────────  ──────────────────────────────────────────────────────────
 --plan <fingerprint>  Exact project-bound fingerprint from governance plan
---protected-stdin     Read credential enrollment material from explicitly
-                      protected stdin instead of a private TTY
+--protected-stdin     Credential enrollment is currently unavailable; this flag
+                      reads no secret
 --execute             Execute the reviewed governance apply-next plan; required
                       for any mutation
 --live                Assess only: request bounded read-only GitHub/Azure
@@ -589,6 +591,7 @@ Command: doctor | Description: Check local and project readiness
 Reference
 Command: help | Description: Show general or command-specific help
 Command: patterns | Description: List GenAI patterns
+Command: capabilities | Description: Inspect installed public capabilities without project or readiness probes
 Command: providers | Description: List cloud providers
 Command: regions | Description: List or search provider regions
 
@@ -655,7 +658,7 @@ Option: --recover-phase <phase> | Description: Plan explicit recovery of one fai
 
 Consent options
 Option: --plan <fingerprint> | Description: Exact project-bound fingerprint from governance plan
-Option: --protected-stdin | Description: Read credential enrollment material from explicitly protected stdin instead of a private TTY
+Option: --protected-stdin | Description: Credential enrollment is currently unavailable; this flag reads no secret
 Option: --execute | Description: Execute the reviewed governance apply-next plan; required for any mutation
 Option: --live | Description: Assess only: request bounded read-only GitHub/Azure metadata with existing permissions
 
@@ -912,12 +915,13 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ doctor    Check local and project readiness                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Reference ──────────────────────────────────────────────────────────────────────────────────┐
-│ Command    Description                                                                       │
-│ ─────────  ─────────────────────────────────────                                             │
-│ help       Show general or command-specific help                                             │
-│ patterns   List GenAI patterns                                                               │
-│ providers  List cloud providers                                                              │
-│ regions    List or search provider regions                                                   │
+│ Command       Description                                                                    │
+│ ────────────  ─────────────────────────────────────────────────────────────────────────      │
+│ help          Show general or command-specific help                                          │
+│ patterns      List GenAI patterns                                                            │
+│ capabilities  Inspect installed public capabilities without project or readiness probes      │
+│ providers     List cloud providers                                                           │
+│ regions       List or search provider regions                                                │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Operations ─────────────────────────────────────────────────────────────────────────────────┐
 │ Command     Description                                                                      │
@@ -1014,8 +1018,8 @@ exports[`complete help screens > snapshots rich governance command help 1`] = `
 │ Option                Description                                                            │
 │ ────────────────────  ────────────────────────────────────────────────────────────────────── │
 │ --plan <fingerprint>  Exact project-bound fingerprint from governance plan                   │
-│ --protected-stdin     Read credential enrollment material from explicitly protected stdin    │
-│                       instead of a private TTY                                               │
+│ --protected-stdin     Credential enrollment is currently unavailable; this flag reads no     │
+│                       secret                                                                 │
 │ --execute             Execute the reviewed governance apply-next plan; required for any      │
 │                       mutation                                                               │
 │ --live                Assess only: request bounded read-only GitHub/Azure metadata with      │

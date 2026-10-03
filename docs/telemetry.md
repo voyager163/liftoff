@@ -35,6 +35,10 @@ modes also bypass telemetry and disclosure, including their help/JSON forms.
 Capability negotiation and application inventory therefore introduce no
 telemetry network request or disclosure-state write.
 
+`liftoff capabilities` is also telemetry/disclosure-free in text, JSON and help
+forms, including `liftoff help capabilities`. It reads only installed capability
+metadata and bundled assets, never a project or enrollment record.
+
 `upgrade` is recorded only as the aggregate command value. Check/apply mode,
 target or configured-registry details, installation origin, paths, npm output,
 reason codes, and errors are not added. The replacement binary's verification
@@ -54,6 +58,100 @@ Liftoff does **not** send:
 Liftoff creates no telemetry queue and stores no event locally. Its only local
 telemetry state is a numeric disclosure version in the platform configuration
 directory.
+
+## Versioned ingestion rollout
+
+The candidate gateway accepts command schemas 1 and 2 independently. Schema 1
+retains its original zero/nonzero meaning; schema 2 accepts `success`,
+`attention-required`, `cancelled`, and `failure` from the command's semantic
+result. Expected exit-2 drift is attention-required, while an actual partial
+execution failure is failure. A schema-1 event is never reinterpreted as schema
+2. The currently wired client still sends schema 1; semantic client delivery and
+project enrollment are not enabled by this gateway change.
+
+Command producers also record an invocation-local semantic outcome. Expected
+update drift or an available CLI upgrade is `attention-required`; an explicit
+decline or interactive cancellation is `cancelled`. Failed verification,
+partial execution, recovery or cleanup remains `failure`, even if its public
+exit is 2 or a later prompt is cancelled. An unclassified nonzero exit stays
+`failure`; numeric exit codes and command output are unchanged.
+
+Explicit local integrations may observe a schema-2 event through the optional
+`CliTelemetryHooks.afterSemanticCommand` hook. It uses the same command
+allowlist, disclosure readiness, global opt-outs and assessment/capability
+exclusions. Existing `afterCommand(parsed, exitCode, env)` hooks still receive
+their original arguments. The default client has no semantic hook and still
+emits only its existing schema-1 request and notice. This observation contract
+does not roll out schema-2 transport, enroll projects or create identifiers.
+
+The candidate configuration is **not yet deployed**. Its separate
+`/api/projects` endpoint accepts only project schema 2:
+
+```json
+{
+  "schemaVersion": 2,
+  "event": "project_observed",
+  "projectId": "550e8400-e29b-41d4-a716-446655440000",
+  "cliVersion": "0.12.3",
+  "policyProfile": "single-maintainer-gitflow",
+  "policyVersion": 6,
+  "templateSetDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source": "cli"
+}
+```
+
+This is a synthetic contract example, not an enrolled project or a request to
+send an event. IDs must be canonical random UUIDv4 values; sources are only
+`cli` or `ci-heartbeat`. The policy pairs currently admitted are
+single-maintainer versions 6/7, team version 1, and `none` with version `"none"`.
+CLI versions use the bounded release-version grammar, and template/plugin-set
+identities use canonical lowercase SHA-256 digests. Those syntactic checks do
+not authenticate a claimed release, project, consent, or digest.
+
+The private v8 metadata reader selects the validated installed modern registry's
+`registryDigest` for `templateSetDigest`. This identifies the complete supported
+release bundle, including plugin identities, shared core declarations/assets,
+selection space and operation declarations. It is not the plugin-only
+`pluginSetDigest`, nor the per-project `resolutionDigest`, which encodes project
+choices. Different names, layouts, stacks, agents, regions and environments in
+the same supported bundle therefore do not produce different template-set
+digests. The registry does not hash renderer implementation code; released
+renderer changes still require the existing reviewed content-version discipline.
+
+The reader validates the complete v8 source against actual packaged declarations
+before returning only the policy pair and bundle digest. Historical, unsupported
+or mismatched source metadata is rejected, never upgraded or assigned a guessed
+bundle. This describes the installed bundle that understands the source, not a
+claim that application files match it, that it originally generated the project,
+or that an update ran. It does not identify a filesystem root, create an ID,
+establish consent, construct an event, or enable reporting. Those remain separate
+enrollment/reporting prerequisites; the default CLI does not call this reader.
+
+Project records contain exactly `TimeGenerated`, `EventName`, `SchemaVersion`,
+`ProjectId`, `CliVersion`, `PolicyProfile`, `PolicyVersion`, `TemplateSetDigest`,
+and `Source` in the separate `LiftoffProjectEvents_CL` table. Time is generated
+by the gateway; policy versions are stored as strings, including `"none"`.
+Neither endpoint accepts extra fields, client timestamps, project paths,
+repository URLs, request metadata, or a synthetic-event flag. Both enforce the
+same 1-KiB streamed-byte limit before parsing.
+
+`project_ingestion_enabled=false` is the infrastructure default. A valid project
+request then returns unavailable rather than falling back to anonymous command
+storage. Enabling the endpoint is a separate operator deployment decision and
+does not enroll clients or enable a CI heartbeat. Client enrollment must obtain
+independent explicit consent before generating a project ID; merely possessing
+a copied record, installing Liftoff, or accepting an unrelated prompt does not
+grant that consent.
+
+Project IDs are pseudonymous and linkable, not anonymous. Clones/worktrees can
+share one enrolled project identity, while separate monorepo project roots have
+distinct identities. A heartbeat records reporting, not developer activity,
+deployment health or compliance. Both tables retain only 180 days of analytics
+and total retention; observations cannot establish lifetime adoption or a
+census. A public project ID is not authentication and cannot authorize deletion.
+An operator-reviewed deletion request needs independently verified authority;
+disabling delivery only stops future observations and does not claim historical
+deletion. The public endpoint can receive forged observations.
 
 ## Disable telemetry
 
@@ -80,6 +178,40 @@ The CLI makes one HTTPS request after command completion with a maximum
 one-second delivery budget. It does not retry, buffer, read a response body, or
 report telemetry failures. Offline use, command output, JSON stdout, and the
 original exit status remain unchanged when the service is unavailable.
+
+The private delivery foundation uses one invocation-local absolute deadline
+for postcommand delivery and observer awaits. Waiting for one observer does
+not give a later observer or request another second. Shorter budgets can be
+used by injected callers; larger values cannot raise the one-second maximum.
+Waiting is bounded even when injected transport ignores its abort signal.
+Late completion cannot change a timeout result or authorize another request.
+This does not bound precommand disclosure/configuration I/O, guarantee
+real-time scheduling while the process is suspended or its event loop is
+blocked, or control arbitrary third-party code that ignores cancellation.
+
+The internal `deliverPreparedTelemetry` seam accepts at most one fixed command
+slot and one fixed project slot. Ready independent requests share the deadline
+and start concurrently. A command slot accepts schema 1 **or** schema 2, never
+both in one invocation. The default CLI still supplies only the existing
+schema-1 command slot; no project discovery, enrollment or explicit report
+command is wired by this foundation.
+
+Requested slots return a closed local result: `delivered`, `disabled`, or
+`failed`, plus whether transport was attempted and a fixed reason where
+applicable. Delivery means a successful endpoint response before the deadline,
+not independent proof of durable storage. A timeout cannot establish whether
+the remote endpoint accepted the request; it is never retried to resolve that
+uncertainty. Ordinary commands discard delivery results and preserve their
+own output/exit. Unrequested slots are omitted, and a project-only private
+call cannot recursively emit a command aggregate.
+
+The seam validates exact payload shapes, HTTPS and the 1-KiB body limit, but
+syntactically valid project input is **not** consent or release-ownership
+evidence. A future project caller must independently validate those contracts
+before supplying an observation. Global opt-outs still win and ordinary
+`CI=true` disables both slots, even for a supplied `ci-heartbeat` payload.
+There is no CI exception, project ID creation, public report result/exit
+contract, production schema-2 switch, or task-16 enrollment in this foundation.
 
 ## Azure processing and retention
 

@@ -1,0 +1,2207 @@
+{
+  "provenance": {
+    "purpose": "Task 2.1 governance extraction: behavior captured before any source move; compare only, never regenerate.",
+    "baseRevision": "8281c46ab99a83b7226a6520a1a9e444e4a04ab8",
+    "sourceInventory": {
+      "fileCount": 318,
+      "digest": "sha256:0efdacfad22b708511c6f599847403cbb3cc7fef1df4f40f4457c80569d40d6f"
+    },
+    "sources": {
+      "src/repository-governance.ts": "51faf485e58482b098a9a0117a74fcc4ad4e186fba0b6c9cf66b2174e2b90138",
+      "src/governance-activation/commands.ts": "c19b97619e838e5b60fd87cfff17992c91cdb253a745776f74cae98bdc1cb298"
+    },
+    "harness": {
+      "file": "tests/fixtures/governance-extraction/harness.ts",
+      "sha256": "0c5c5a0ae558c7442f44d2c676b426ab931cfbeb90646a372d7a9122dd6eca1f"
+    },
+    "platform": "darwin",
+    "node": "v24.21.0"
+  },
+  "rendering": {
+    "constants": {
+      "governancePolicySchemaVersion": 1,
+      "governancePolicyVersion": "6",
+      "governanceContextSchemaVersion": 1,
+      "governanceArtifactPaths": "109774fd4d08d02a99743372f4fea1236882ca16ec9ec1c53e57612404f77019",
+      "governanceAgentIntegrations": "b7e805626a17c378f4203e64c1ad2ed96341d45e8d998ab1dbb873834e813aca"
+    },
+    "artifacts": {
+      "standard-python/openspec-copilot": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6456,
+          "sha256": "7321db4e1a2ae07ff64ce8a01963fad977cfa6e2edb84bdffe9d7574cc6ce192"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18141,
+          "sha256": "daa0361a972897e61a5b74673726d845996b15f08f6ab780bc1c0eedaf233e93"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 6984,
+          "sha256": "2626c6e5e7deefa0e58eb323d9b08bdae160e360fe4ad22507969971df9d3ae4"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        }
+      ],
+      "standard-python/spec-kit-claude-dev": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 4537,
+          "sha256": "b4011fe89bc061105378ccc98aee368f5042a0cda5ef15c56c8ccbd20675b174"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18196,
+          "sha256": "db3f58e97d26976d76022ddd39f2aa20998779d6b2008f86a0712f9dbcd7839a"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 6945,
+          "sha256": "3edd9d318d5d1b5850b18ba9e510ef24cdcfcaf6ad5c1fa3bf87822f62a151e7"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-setup.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-governance-assess.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-repair-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-repair.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        }
+      ],
+      "standard-python/openspec-all-agents": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6483,
+          "sha256": "e321f6f67b15e813252e130a08967f9c7c5844bd888fb05c12e15e91e41da9e8"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18585,
+          "sha256": "aed15b0181bb74e55d904f74af22a0e18311f37d36ac70ad38e241e664bb15ef"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 8535,
+          "sha256": "93eca1a216b495c402f38d615d09ed0acc24d20fdf4e9d89af2ea670ce051c4c"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-setup.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-setup/SKILL.md",
+          "bytes": 2974,
+          "sha256": "0ef1abbf4e3825d37a994a216495ca12d5f2a4c4de762436928864af3846dd12"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-governance-assess.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-governance-assess/SKILL.md",
+          "bytes": 2301,
+          "sha256": "923f1965b4e42b08efc20206750e4379a647585b45a2a5afc9f82f2c7921a665"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-repair.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "standard-python/spec-kit-copilot-codex": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6496,
+          "sha256": "25129e0fb4d6ac88dffe237a77aa7e5baafcc5e67296e5ec3a6bc7c35959e621"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18484,
+          "sha256": "ed40e50d2f858e033321ad151aa58d518da94bd0e5d4eed3bff6a12952bf3995"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 7776,
+          "sha256": "df2fb302f8f0317f6b028c4394a299cd6c7e9f161dd7ee3ff54e09e3851588f4"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-setup/SKILL.md",
+          "bytes": 2974,
+          "sha256": "0ef1abbf4e3825d37a994a216495ca12d5f2a4c4de762436928864af3846dd12"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-governance-assess/SKILL.md",
+          "bytes": 2301,
+          "sha256": "923f1965b4e42b08efc20206750e4379a647585b45a2a5afc9f82f2c7921a665"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "standard-python/governance-none-codex": [
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "standard-node-frontend/openspec-copilot": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6914,
+          "sha256": "1a3c62b713ecd42ec2a01043bc04b74c7e8578f2afe7030a3e9125a91f4a1f0a"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18141,
+          "sha256": "daa0361a972897e61a5b74673726d845996b15f08f6ab780bc1c0eedaf233e93"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 6984,
+          "sha256": "2626c6e5e7deefa0e58eb323d9b08bdae160e360fe4ad22507969971df9d3ae4"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        }
+      ],
+      "standard-node-frontend/spec-kit-claude-dev": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 4995,
+          "sha256": "f92509b4d4f6b275114f1591d233ebe58cc8177bb1b0a309a77baa285a4d4053"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18196,
+          "sha256": "db3f58e97d26976d76022ddd39f2aa20998779d6b2008f86a0712f9dbcd7839a"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 6945,
+          "sha256": "3edd9d318d5d1b5850b18ba9e510ef24cdcfcaf6ad5c1fa3bf87822f62a151e7"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-setup.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-governance-assess.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-repair-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-repair.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        }
+      ],
+      "standard-node-frontend/openspec-all-agents": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6941,
+          "sha256": "aa9c8fd03ee35949c99ed07eb17a57f2abcb3fe4440ef7f6e85c91062d01375a"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18585,
+          "sha256": "aed15b0181bb74e55d904f74af22a0e18311f37d36ac70ad38e241e664bb15ef"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 8535,
+          "sha256": "93eca1a216b495c402f38d615d09ed0acc24d20fdf4e9d89af2ea670ce051c4c"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-setup.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-setup/SKILL.md",
+          "bytes": 2974,
+          "sha256": "0ef1abbf4e3825d37a994a216495ca12d5f2a4c4de762436928864af3846dd12"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-governance-assess.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-governance-assess/SKILL.md",
+          "bytes": 2301,
+          "sha256": "923f1965b4e42b08efc20206750e4379a647585b45a2a5afc9f82f2c7921a665"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-repair.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "standard-node-frontend/spec-kit-copilot-codex": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6954,
+          "sha256": "29beaa2cf5a51a4951a9cbfe46e9971aba5aa32efed0ec771c1a79951e89dda8"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18484,
+          "sha256": "ed40e50d2f858e033321ad151aa58d518da94bd0e5d4eed3bff6a12952bf3995"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 7776,
+          "sha256": "df2fb302f8f0317f6b028c4394a299cd6c7e9f161dd7ee3ff54e09e3851588f4"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-setup/SKILL.md",
+          "bytes": 2974,
+          "sha256": "0ef1abbf4e3825d37a994a216495ca12d5f2a4c4de762436928864af3846dd12"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-governance-assess/SKILL.md",
+          "bytes": 2301,
+          "sha256": "923f1965b4e42b08efc20206750e4379a647585b45a2a5afc9f82f2c7921a665"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "standard-node-frontend/governance-none-codex": [
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "standard-go/openspec-copilot": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6367,
+          "sha256": "25fea55e69468332e558228308a506413a70878f92232763f69944d1f099ade5"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18141,
+          "sha256": "daa0361a972897e61a5b74673726d845996b15f08f6ab780bc1c0eedaf233e93"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 6984,
+          "sha256": "2626c6e5e7deefa0e58eb323d9b08bdae160e360fe4ad22507969971df9d3ae4"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        }
+      ],
+      "standard-go/spec-kit-claude-dev": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 4448,
+          "sha256": "dbfce05e2cac4fd24c552a466688a5e27dc624f8fc497c5f78753e4cc550326e"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18196,
+          "sha256": "db3f58e97d26976d76022ddd39f2aa20998779d6b2008f86a0712f9dbcd7839a"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 6945,
+          "sha256": "3edd9d318d5d1b5850b18ba9e510ef24cdcfcaf6ad5c1fa3bf87822f62a151e7"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-setup.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-governance-assess.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-repair-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-repair.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        }
+      ],
+      "standard-go/openspec-all-agents": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6394,
+          "sha256": "5ae22110eca1b795ed5f1e271a308a4b30b9bb2f6403058a589c9747cf44ae7f"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18585,
+          "sha256": "aed15b0181bb74e55d904f74af22a0e18311f37d36ac70ad38e241e664bb15ef"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 8535,
+          "sha256": "93eca1a216b495c402f38d615d09ed0acc24d20fdf4e9d89af2ea670ce051c4c"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-setup.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-setup/SKILL.md",
+          "bytes": 2974,
+          "sha256": "0ef1abbf4e3825d37a994a216495ca12d5f2a4c4de762436928864af3846dd12"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-governance-assess.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-governance-assess/SKILL.md",
+          "bytes": 2301,
+          "sha256": "923f1965b4e42b08efc20206750e4379a647585b45a2a5afc9f82f2c7921a665"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-repair.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "standard-go/spec-kit-copilot-codex": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6407,
+          "sha256": "4260ef0c623a4eac47f4b3dfcb57c74c2a1830377711fed2e75a1824b4984888"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18484,
+          "sha256": "ed40e50d2f858e033321ad151aa58d518da94bd0e5d4eed3bff6a12952bf3995"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 7776,
+          "sha256": "df2fb302f8f0317f6b028c4394a299cd6c7e9f161dd7ee3ff54e09e3851588f4"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-setup/SKILL.md",
+          "bytes": 2974,
+          "sha256": "0ef1abbf4e3825d37a994a216495ca12d5f2a4c4de762436928864af3846dd12"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-governance-assess/SKILL.md",
+          "bytes": 2301,
+          "sha256": "923f1965b4e42b08efc20206750e4379a647585b45a2a5afc9f82f2c7921a665"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "standard-go/governance-none-codex": [
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "genai-rag/openspec-copilot": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6918,
+          "sha256": "819d057be6be27ea5c5d4241e22deccffe9bccb358402dfd2e2cb094a1552ab3"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18141,
+          "sha256": "daa0361a972897e61a5b74673726d845996b15f08f6ab780bc1c0eedaf233e93"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 6984,
+          "sha256": "2626c6e5e7deefa0e58eb323d9b08bdae160e360fe4ad22507969971df9d3ae4"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        }
+      ],
+      "genai-rag/spec-kit-claude-dev": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 4999,
+          "sha256": "15aa99c1f2af2e9f9924854d058f592677447e524b8249ad03613910d05719ba"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18196,
+          "sha256": "db3f58e97d26976d76022ddd39f2aa20998779d6b2008f86a0712f9dbcd7839a"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 6945,
+          "sha256": "3edd9d318d5d1b5850b18ba9e510ef24cdcfcaf6ad5c1fa3bf87822f62a151e7"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-setup.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-governance-assess.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-repair-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-repair.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        }
+      ],
+      "genai-rag/openspec-all-agents": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6945,
+          "sha256": "5d5dc3ff3b1301924b53377c218efc0a239dd25031d856649aeee92d9c3683b1"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18585,
+          "sha256": "aed15b0181bb74e55d904f74af22a0e18311f37d36ac70ad38e241e664bb15ef"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 8535,
+          "sha256": "93eca1a216b495c402f38d615d09ed0acc24d20fdf4e9d89af2ea670ce051c4c"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-setup.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-setup/SKILL.md",
+          "bytes": 2974,
+          "sha256": "0ef1abbf4e3825d37a994a216495ca12d5f2a4c4de762436928864af3846dd12"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-governance-assess.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-governance-assess/SKILL.md",
+          "bytes": 2301,
+          "sha256": "923f1965b4e42b08efc20206750e4379a647585b45a2a5afc9f82f2c7921a665"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-repair.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "genai-rag/spec-kit-copilot-codex": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6958,
+          "sha256": "841b497923556d157c55f7b66866d27c1a9a53bbf79e1f724b40bb60eeb747da"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18484,
+          "sha256": "ed40e50d2f858e033321ad151aa58d518da94bd0e5d4eed3bff6a12952bf3995"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 7776,
+          "sha256": "df2fb302f8f0317f6b028c4394a299cd6c7e9f161dd7ee3ff54e09e3851588f4"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-setup/SKILL.md",
+          "bytes": 2974,
+          "sha256": "0ef1abbf4e3825d37a994a216495ca12d5f2a4c4de762436928864af3846dd12"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-governance-assess/SKILL.md",
+          "bytes": 2301,
+          "sha256": "923f1965b4e42b08efc20206750e4379a647585b45a2a5afc9f82f2c7921a665"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "genai-rag/governance-none-codex": [
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "genai-streaming/openspec-copilot": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6481,
+          "sha256": "3c81e35ccead3a3e1722b6fca030fae31f17aa770f209ea0733042392ef7ada2"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18141,
+          "sha256": "daa0361a972897e61a5b74673726d845996b15f08f6ab780bc1c0eedaf233e93"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 6984,
+          "sha256": "2626c6e5e7deefa0e58eb323d9b08bdae160e360fe4ad22507969971df9d3ae4"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        }
+      ],
+      "genai-streaming/spec-kit-claude-dev": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 4562,
+          "sha256": "868ea75ca863a0b1aa8f6e0a752cccad0bfcb345d13bf66b1e0c4ab253eb2089"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18196,
+          "sha256": "db3f58e97d26976d76022ddd39f2aa20998779d6b2008f86a0712f9dbcd7839a"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 6945,
+          "sha256": "3edd9d318d5d1b5850b18ba9e510ef24cdcfcaf6ad5c1fa3bf87822f62a151e7"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-setup.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-governance-assess.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-repair-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-repair.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        }
+      ],
+      "genai-streaming/openspec-all-agents": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6508,
+          "sha256": "2241bbaac1df014047df8a1fffd5eeaa6cade4d986f07966000530f4656629eb"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18585,
+          "sha256": "aed15b0181bb74e55d904f74af22a0e18311f37d36ac70ad38e241e664bb15ef"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 8535,
+          "sha256": "93eca1a216b495c402f38d615d09ed0acc24d20fdf4e9d89af2ea670ce051c4c"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-setup.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-setup/SKILL.md",
+          "bytes": 2974,
+          "sha256": "0ef1abbf4e3825d37a994a216495ca12d5f2a4c4de762436928864af3846dd12"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-governance-assess.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-governance-assess/SKILL.md",
+          "bytes": 2301,
+          "sha256": "923f1965b4e42b08efc20206750e4379a647585b45a2a5afc9f82f2c7921a665"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-claude",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".claude/commands/liftoff-repair.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "genai-streaming/spec-kit-copilot-codex": [
+        {
+          "logicalName": "repository-governance-policy",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/policy.md",
+          "bytes": 67656,
+          "sha256": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+        },
+        {
+          "logicalName": "repository-governance-context",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/context.json",
+          "bytes": 6521,
+          "sha256": "34d6ce30ce3cf67f4f3b63403b5a39938e1e0de62e2c8d11afe1d08829a07689"
+        },
+        {
+          "logicalName": "repository-governance-guide",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/README.md",
+          "bytes": 18484,
+          "sha256": "ed40e50d2f858e033321ad151aa58d518da94bd0e5d4eed3bff6a12952bf3995"
+        },
+        {
+          "logicalName": "repository-governance-phase-graph",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/phase-graph.json",
+          "bytes": 28024,
+          "sha256": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+        },
+        {
+          "logicalName": "repository-governance-compatibility",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/compatibility.json",
+          "bytes": 7776,
+          "sha256": "df2fb302f8f0317f6b028c4394a299cd6c7e9f161dd7ee3ff54e09e3851588f4"
+        },
+        {
+          "logicalName": "repository-governance-credential-policy-schema",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".liftoff/governance/credential-policy.schema.json",
+          "bytes": 4437,
+          "sha256": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+        },
+        {
+          "logicalName": "liftoff-setup-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-setup.prompt.md",
+          "bytes": 2850,
+          "sha256": "5f0abf44ac96a84f47fe9782181701b73fd13dd94966b572bf3ae159ce333858"
+        },
+        {
+          "logicalName": "liftoff-setup-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-setup/SKILL.md",
+          "bytes": 2974,
+          "sha256": "0ef1abbf4e3825d37a994a216495ca12d5f2a4c4de762436928864af3846dd12"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-governance-assess.prompt.md",
+          "bytes": 2144,
+          "sha256": "b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+        },
+        {
+          "logicalName": "liftoff-governance-assess-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-governance-assess/SKILL.md",
+          "bytes": 2301,
+          "sha256": "923f1965b4e42b08efc20206750e4379a647585b45a2a5afc9f82f2c7921a665"
+        },
+        {
+          "logicalName": "liftoff-repair-copilot",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".github/prompts/liftoff-repair.prompt.md",
+          "bytes": 7824,
+          "sha256": "af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+        },
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ],
+      "genai-streaming/governance-none-codex": [
+        {
+          "logicalName": "liftoff-repair-codex",
+          "category": "governance",
+          "lifecycle": "managed-core",
+          "path": ".agents/skills/liftoff-repair/SKILL.md",
+          "bytes": 7962,
+          "sha256": "29125f1c52933582fcd0238a518cae24bed8405230320512f9364a96c9fce5b9"
+        }
+      ]
+    },
+    "contexts": {
+      "standard-python/default": "7321db4e1a2ae07ff64ce8a01963fad977cfa6e2edb84bdffe9d7574cc6ce192",
+      "standard-python/independent": "cfbb8d23396a4e019d49b34c7970f6c3365ddebcdc8be3034b6898495d39f02b",
+      "standard-python/legacy-shared": "758f84e634b60a1cc2fe79d6bfe6e7d59185be609600deeeeb855e465b114e03",
+      "standard-python/unknown": "277e74d6c11fc950464f4076448782d44c742f48d91eccae3ade045990868f64",
+      "standard-node-frontend/default": "1a3c62b713ecd42ec2a01043bc04b74c7e8578f2afe7030a3e9125a91f4a1f0a",
+      "standard-node-frontend/independent": "f9822ff73d7e675c122c2c49ed46fc232c23168caab5d7b28caf455b880ec800",
+      "standard-node-frontend/legacy-shared": "5b563df92c3ec19431e7b5441c3c9ce8d7b10a77683c494b352de0253494fe65",
+      "standard-node-frontend/unknown": "7816c46582e9bb8d7ecd36b109dd96767c9288f59c06d96dfa262cfc8e94fd4b",
+      "genai-rag/default": "819d057be6be27ea5c5d4241e22deccffe9bccb358402dfd2e2cb094a1552ab3",
+      "genai-rag/independent": "316abe6d1e597824fc6bae3d6949e261da1cab02702f40373b52c9fe2817424c",
+      "genai-rag/legacy-shared": "a432075f0f9493707ac83c9c5f9bd9b046debbaaee204213ad78c138aa660dad",
+      "genai-rag/unknown": "5c34f4bd9ffec98480805f642a2fd77ec395c6aa67c9394470821b4ab2fda1be",
+      "unsupportedLayout": "Error: Unsupported governance infrastructure layout: \"shared\"."
+    },
+    "invocations": {
+      "none/setup": "No native `liftoff-setup` integration is recorded.",
+      "none/assessment": "No native `liftoff-governance-assess` integration is recorded.",
+      "none/repair": "No native `liftoff-repair` integration is recorded.",
+      "single/setup": "GitHub Copilot: `/liftoff-setup`",
+      "single/assessment": "GitHub Copilot: `/liftoff-governance-assess`",
+      "single/repair": "GitHub Copilot: `/liftoff-repair`",
+      "all/setup": "GitHub Copilot: `/liftoff-setup`; Claude Code: `/liftoff-setup`; OpenAI Codex: `$liftoff-setup`",
+      "all/assessment": "GitHub Copilot: `/liftoff-governance-assess`; Claude Code: `/liftoff-governance-assess`; OpenAI Codex: `$liftoff-governance-assess`",
+      "all/repair": "GitHub Copilot: `/liftoff-repair`; Claude Code: `/liftoff-repair`; OpenAI Codex: `$liftoff-repair`",
+      "single/default": "GitHub Copilot: `/liftoff-setup`"
+    },
+    "assessmentGuides": {
+      "default": "333cd5d67da2384334303ff1f47aa384b194a61d3ff5c961ea63dc48dc184e62",
+      "single": "3bf21c13a9716dd71aaacadbc1eef84a94fea443f6600580715d01a38ae6c617",
+      "all": "67ab1f3aaab6c67ad2b5eb4734e98616f3b31a439245554951946dd33e5decbb"
+    },
+    "policy": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149",
+    "credentialPolicySchema": "cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce",
+    "validation": {
+      "policyValid": "accepted",
+      "policyEmpty": "Error: Governance policy is missing required contract fragment: schemaVersion: 1",
+      "policyForbidden": "Error: Governance policy contains forbidden legacy contract fragment: register all Azure providers",
+      "policyInvariant": "Error: Governance policy does not preserve fail-closed single-maintainer invariants.",
+      "contentSafe": "accepted",
+      "contentUnsafe": "Error: Governance artifact contains a credential-shaped value.",
+      "contextValid": "accepted",
+      "contextNull": "Error: Governance context must use schemaVersion 1.",
+      "contextSchema": "Error: Governance context must use schemaVersion 1.",
+      "contextPolicyMissing": "Error: Governance context policy identity is missing.",
+      "contextLiveClaim": "Error: Governance context cannot claim live enforcement.",
+      "contextDiscoveryMissing": "Error: Governance context discovery state is missing.",
+      "contextFabricatedDiscovery": "Error: Governance context contains a fabricated live discovery fact.",
+      "contextCommandsEmpty": "Error: Governance context must contain real generated commands.",
+      "contextBoundariesMissing": "Error: Governance context generated boundaries are missing."
+    }
+  },
+  "cli": {
+    "previewCreated": true,
+    "results": {
+      "missing-subcommand": {
+        "exitCode": 1,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        },
+        "stderr": {
+          "bytes": 867,
+          "sha256": "ad6c4febd14aba55552eeb2a14a5a122dae07898b68bc763e38d8314bfade6ee",
+          "text": "┌─ Error ──────────────────────────────────────────────────────────────────────────────────────┐\n│ Missing governance subcommand.                                                               │\n│ Remedy: Run `liftoff governance --help` to choose a supported planning, approval, execution, │\n│ or inspection command.                                                                       │\n└──────────────────────────────────────────────────────────────────────────────────────────────┘\n"
+        }
+      },
+      "status-json": {
+        "exitCode": 0,
+        "stdout": {
+          "bytes": 63306,
+          "sha256": "789f8ca23102cf4fcfeb37fe4d06bc4f2d85aba1b027cc5f600ab4e835285d26"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        }
+      },
+      "status-human": {
+        "exitCode": 0,
+        "stdout": {
+          "bytes": 3774,
+          "sha256": "3bb737410bddd6a008094a2a813ab5448796faafbefd93089dc7464ff6bcda6d",
+          "text": "┌─ LIFTOFF / GOVERNANCE STATUS ────────────────────────────────────────────────────────────────┐\n│ Deterministic activation status                                                              │\n└──────────────────────────────────────────────────────────────────────────────────────────────┘\n┌─ Activation identity ────────────────────────────────────────────────────────────────────────┐\n│ Project        <project>                                                                     │\n│ Scope          activation                                                                    │\n│ State          not-started                                                                   │\n│ Policy         6                                                                             │\n│ Contract       3                                                                             │\n│ Graph hash     2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703              │\n│ Active change  none                                                                          │\n│ Active source  seed-blocked                                                                  │\n└──────────────────────────────────────────────────────────────────────────────────────────────┘\n× Seed blocker: Generated OpenSpec seed bootstrap-governance-cli-parity is still active; archive it before governance creation.\n… Credential policy: Credential applicability is unknown; independent discovery and a supported enrollment/readback capability are required.\ni Next ready phase: none\n┌─ Current blockers ───────────────────────────────────────────────────────────────────────────┐\n│ Phase                State    Reason                                                         │\n│ ───────────────────  ───────  ───────────────────────────────────────────────────────        │\n│ seed-verified        blocked  Seed strict validation must pass first.                        │\n│ seed-archived        blocked  Only a verified seed may be archived.                          │\n│ committed            blocked  Generated seed must be complete before commit guidance.        │\n│ pushed               blocked  Commit evidence precedes initial push.                         │\n│ phase-0-complete     blocked  Remote repository identity must be resolvable.                 │\n│ activation-approved  blocked  Approval reviews Phase 0 evidence.                             │\n└──────────────────────────────────────────────────────────────────────────────────────────────┘\n"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        }
+      },
+      "status-local-json": {
+        "exitCode": 0,
+        "stdout": {
+          "bytes": 59913,
+          "sha256": "09b77790d6a1692c21ba1b69cd4833115c9f8667a365d74aa1d0690f4b005a44"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        }
+      },
+      "status-invalid-scope": {
+        "exitCode": "thrown: Flag --scope expects local, activation, or lifecycle.",
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        }
+      },
+      "status-duplicate-project": {
+        "exitCode": "thrown: Provide a project path either positionally or with --project, not both.",
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        }
+      },
+      "status-outside-project": {
+        "exitCode": 1,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        },
+        "stderr": {
+          "bytes": 153,
+          "sha256": "709f3258b16beb4a690b86f4188a366d0edf45772c575f435ab753d424a6b8a6",
+          "text": "No liftoff.manifest.json found in <temporary> or any parent directory.\nRemedy: Run this command inside a Liftoff project or provide its path explicitly.\n"
+        }
+      },
+      "verify-json": {
+        "exitCode": 0,
+        "stdout": {
+          "bytes": 3793,
+          "sha256": "f29f1866c62aaafe7af42518dc5da0f94bf978e93096cc733f2193a1163f52ba",
+          "text": "{\n  \"schemaVersion\": 2,\n  \"scope\": \"activation\",\n  \"command\": \"governance verify\",\n  \"projectRoot\": \"<project>\",\n  \"readOnly\": true,\n  \"ok\": true,\n  \"consistent\": true,\n  \"verificationStatus\": \"consistent\",\n  \"complete\": false,\n  \"setupStatus\": \"not-started\",\n  \"stateSource\": \"not-started\",\n  \"summary\": \"Verification is consistent, but setup has not started. Next ready phase: none.\",\n  \"activationIdentity\": {\n    \"liftoffVersion\": \"0.12.0\",\n    \"manifestArtifactVersion\": 7,\n    \"policyVersion\": \"6\",\n    \"activationContractVersion\": 3,\n    \"phaseGraphSchemaVersion\": 2,\n    \"phaseGraphHash\": \"2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703\",\n    \"activationStateSchemaVersion\": 3,\n    \"evidenceHeaderSchemaVersion\": 3,\n    \"approvalEnvelopeSchemaVersion\": 3,\n    \"supersessionSchemaVersion\": 1,\n    \"credentialPolicySchemaVersion\": 1\n  },\n  \"migration\": null,\n  \"migrationSummary\": null,\n  \"graphHash\": \"2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703\",\n  \"activeChange\": null,\n  \"activeSourceOfTruth\": {\n    \"status\": \"seed-blocked\",\n    \"seedChangeId\": \"bootstrap-governance-cli-parity\",\n    \"blockers\": [\n      \"Generated OpenSpec seed bootstrap-governance-cli-parity is still active; archive it before governance creation.\"\n    ],\n    \"selected\": null,\n    \"candidates\": []\n  },\n  \"nextReadyPhase\": null,\n  \"progress\": {\n    \"local\": false,\n    \"activation\": false,\n    \"lifecycle\": false\n  },\n  \"nextActions\": [\n    {\n      \"id\": \"governance-plan-local\",\n      \"label\": \"plan local governance\",\n      \"command\": {\n        \"executable\": \"liftoff\",\n        \"args\": [\n          \"governance\",\n          \"plan\",\n          \"--project\",\n          \"<project>\",\n          \"--scope\",\n          \"local\",\n          \"--json\"\n        ]\n      },\n      \"cwd\": \"<project>\",\n      \"scope\": \"local\",\n      \"approvalRequired\": false\n    }\n  ],\n  \"checks\": [\n    {\n      \"id\": \"phase-graph\",\n      \"status\": \"passed\",\n      \"issues\": []\n    },\n    {\n      \"id\": \"graph-identity\",\n      \"status\": \"passed\",\n      \"issues\": []\n    },\n    {\n      \"id\": \"managed-graph-source\",\n      \"status\": \"passed\",\n      \"issues\": []\n    },\n    {\n      \"id\": \"manifest-policy-identity\",\n      \"status\": \"passed\",\n      \"issues\": []\n    },\n    {\n      \"id\": \"managed-policy\",\n      \"status\": \"passed\",\n      \"issues\": []\n    },\n    {\n      \"id\": \"activation-state\",\n      \"status\": \"skipped\",\n      \"issues\": [\n        \"No user activation state exists; reporting deterministic not-started view.\"\n      ]\n    },\n    {\n      \"id\": \"active-change-identity\",\n      \"status\": \"skipped\",\n      \"issues\": []\n    },\n    {\n      \"id\": \"active-source-of-truth\",\n      \"status\": \"skipped\",\n      \"issues\": [\n        \"The generated bootstrap seed is still active; governance creation remains gated until its baseline and archive phases finish.\"\n      ]\n    },\n    {\n      \"id\": \"archived-seed-integrity\",\n      \"status\": \"skipped\",\n      \"issues\": []\n    },\n    {\n      \"id\": \"evidence-freshness\",\n      \"status\": \"passed\",\n      \"issues\": []\n    },\n    {\n      \"id\": \"state-evidence\",\n      \"status\": \"passed\",\n      \"issues\": []\n    },\n    {\n      \"id\": \"phase-terminal-state\",\n      \"status\": \"passed\",\n      \"issues\": []\n    },\n    {\n      \"id\": \"credential-policy\",\n      \"status\": \"skipped\",\n      \"issues\": [\n        \"Credential applicability is unknown; independent discovery and a supported enrollment/readback capability are required.\"\n      ]\n    },\n    {\n      \"id\": \"live-readback\",\n      \"status\": \"passed\",\n      \"issues\": []\n    },\n    {\n      \"id\": \"task-projection\",\n      \"status\": \"skipped\",\n      \"issues\": []\n    },\n    {\n      \"id\": \"readiness\",\n      \"status\": \"passed\",\n      \"issues\": []\n    }\n  ],\n  \"historicalLifecycleObligations\": [],\n  \"taskProjectionAudit\": null\n}\n"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        }
+      },
+      "verify-human": {
+        "exitCode": 0,
+        "stdout": {
+          "bytes": 1386,
+          "sha256": "26ba80a5ae16b0127828100f8868b9c827ee1cf6e771f6428087a58553719981",
+          "text": "┌─ LIFTOFF / GOVERNANCE VERIFY ────────────────────────────────────────────────────────────────┐\n│ Read-only activation verification                                                            │\n└──────────────────────────────────────────────────────────────────────────────────────────────┘\n… setup-completion: Verification is consistent, but setup has not started. Next ready phase: none.\n✓ phase-graph\n✓ graph-identity\n✓ managed-graph-source\n✓ manifest-policy-identity\n✓ managed-policy\ni activation-state: No user activation state exists; reporting deterministic not-started view.\ni active-change-identity\ni active-source-of-truth: The generated bootstrap seed is still active; governance creation remains gated until its baseline and archive phases finish.\ni archived-seed-integrity\n✓ evidence-freshness\n✓ state-evidence\n✓ phase-terminal-state\ni credential-policy: Credential applicability is unknown; independent discovery and a supported enrollment/readback capability are required.\n✓ live-readback\ni task-projection\n✓ readiness\n"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        }
+      },
+      "resume-json": {
+        "exitCode": 0,
+        "stdout": {
+          "bytes": 60099,
+          "sha256": "fa38e564a3b89370a6e6a53a0d26634553af6d2389ef1e678fc5b4fd8dfb970b"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        }
+      },
+      "apply-next-preview-json": {
+        "exitCode": 0,
+        "stdout": {
+          "bytes": 3285,
+          "sha256": "9f7139aa3ebfd4031cce21e99e3674cd591ada7c5f3097e935e8b01d7d03141f",
+          "text": "{\n  \"schemaVersion\": 2,\n  \"scope\": \"local\",\n  \"command\": \"governance apply-next\",\n  \"projectRoot\": \"<project>\",\n  \"execute\": false,\n  \"applied\": false,\n  \"authorized\": true,\n  \"reason\": \"execute-required\",\n  \"message\": \"Preview only. Rerun with --execute to save this plan and execute at most one phase.\",\n  \"selectedPhase\": \"seed-valid\",\n  \"nextReadyPhase\": \"seed-valid\",\n  \"approval\": {\n    \"gateKind\": \"none\",\n    \"required\": false,\n    \"evaluation\": {\n      \"phaseId\": \"seed-valid\",\n      \"gateKind\": \"none\",\n      \"questionKind\": null,\n      \"approvalRequired\": false,\n      \"status\": \"not-required\",\n      \"envelopeId\": null,\n      \"envelopeHash\": null,\n      \"reasons\": [\n        \"approval gate is none\"\n      ],\n      \"expansionReasons\": []\n    },\n    \"envelopeId\": null,\n    \"envelopeHash\": null\n  },\n  \"proposedMutations\": {\n    \"local\": [\n      \"read-worktree\",\n      \"write-evidence\",\n      \"write-activation-state\"\n    ],\n    \"remote\": [\n      \"none\"\n    ],\n    \"operations\": [\n      {\n        \"adapter\": \"selected-spec-workflow\",\n        \"actionId\": \"openspec.seed.validate\",\n        \"mutationClass\": \"read-worktree\",\n        \"phaseId\": \"seed-valid\",\n        \"inputs\": {\n          \"changeName\": \"bootstrap-governance-cli-parity\"\n        },\n        \"destination\": {\n          \"type\": \"local\",\n          \"identity\": \"<project>\"\n        },\n        \"remote\": false,\n        \"destructive\": false\n      },\n      {\n        \"adapter\": \"local-evidence\",\n        \"actionId\": \"governance.evidence.write\",\n        \"mutationClass\": \"write-evidence\",\n        \"phaseId\": \"seed-valid\",\n        \"inputs\": {\n          \"pathParts\": [\n            \"governance\",\n            \"evidence\",\n            \"seed-valid-20260904T000000000Z.json\"\n          ]\n        },\n        \"destination\": {\n          \"type\": \"local\",\n          \"identity\": \"governance/evidence/seed-valid-20260904T000000000Z.json\",\n          \"pathParts\": [\n            \"governance\",\n            \"evidence\",\n            \"seed-valid-20260904T000000000Z.json\"\n          ]\n        },\n        \"remote\": false,\n        \"destructive\": false\n      },\n      {\n        \"adapter\": \"local-evidence\",\n        \"actionId\": \"governance.activation-state.write\",\n        \"mutationClass\": \"write-activation-state\",\n        \"phaseId\": \"seed-valid\",\n        \"inputs\": {\n          \"pathParts\": [\n            \"governance\",\n            \"activation-state.json\"\n          ]\n        },\n        \"destination\": {\n          \"type\": \"local\",\n          \"identity\": \"governance/activation-state.json\",\n          \"pathParts\": [\n            \"governance\",\n            \"activation-state.json\"\n          ]\n        },\n        \"remote\": false,\n        \"destructive\": false\n      }\n    ]\n  },\n  \"savedPlan\": null,\n  \"noWrites\": true,\n  \"blockers\": [],\n  \"progress\": {\n    \"local\": false,\n    \"activation\": false,\n    \"lifecycle\": false\n  },\n  \"nextActions\": [\n    {\n      \"id\": \"governance-plan-local\",\n      \"label\": \"plan local governance\",\n      \"command\": {\n        \"executable\": \"liftoff\",\n        \"args\": [\n          \"governance\",\n          \"plan\",\n          \"--project\",\n          \"<project>\",\n          \"--scope\",\n          \"local\",\n          \"--json\"\n        ]\n      },\n      \"cwd\": \"<project>\",\n      \"scope\": \"local\",\n      \"approvalRequired\": false\n    }\n  ]\n}\n"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        }
+      },
+      "apply-next-local-preview-human": {
+        "exitCode": 0,
+        "stdout": {
+          "bytes": 2246,
+          "sha256": "5251e1962da3fe7fb69cf8af3aa4d19bc77ff30dcb0ad95a601a11d1ac5c718f",
+          "text": "┌─ LIFTOFF / GOVERNANCE APPLY-NEXT ────────────────────────────────────────────────────────────┐\n│ Controlled activation transition                                                             │\n└──────────────────────────────────────────────────────────────────────────────────────────────┘\n… execute-required: Preview only. Rerun with --execute to save this plan and execute at most one phase.\ni Selected phase: seed-valid\n┌─ Proposed operations ────────────────────────────────────────────────────────────────────────┐\n│ Adapter                 Action                   Mutation                Remote  Destructive │\n│ ──────────────────────  ───────────────────────  ──────────────────────  ──────  ─────────── │\n│ selected-spec-workflow  openspec.seed.validate   read-worktree           false   false       │\n│ local-evidence          governance.evidence.wri  write-evidence          false   false       │\n│                         te                                                                   │\n│ local-evidence          governance.activation-s  write-activation-state  false   false       │\n│                         tate.write                                                           │\n└──────────────────────────────────────────────────────────────────────────────────────────────┘\ni Preview only: No writes occurred; rerun with --execute to execute at most one phase.\n"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        }
+      },
+      "plan-json": {
+        "exitCode": 0,
+        "stdout": {
+          "bytes": 10183,
+          "sha256": "28405a7bc4040f875377453e9c5e0cf13b04932958e46434615e6ebb83c0cdfd"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        }
+      },
+      "plan-human": {
+        "exitCode": 0,
+        "stdout": {
+          "bytes": 3194,
+          "sha256": "14384b82bcbeaf1dd87a6c303edd6c6f08548fdaf42c8c1ad2bb4736797a98f5",
+          "text": "┌─ LIFTOFF / GOVERNANCE PLAN ──────────────────────────────────────────────────────────────────┐\n│ Project-read-only local transition plan                                                      │\n└──────────────────────────────────────────────────────────────────────────────────────────────┘\ni Project-read-only: No project or provider data is changed; any external preview receipt is disclosed separately.\n┌─ Ready phases ───────────────────────────────────────────────────────────────────────────────┐\n│ Phase       Evidence       Question  Approval  Mutations                                     │\n│ ──────────  ─────────────  ────────  ────────  ───────────────────────────────────────────── │\n│ seed-valid  seed-valid.v1  none      none      local=read-worktree,write-evidence,write-acti │\n│                                                vation-state remote=none                      │\n└──────────────────────────────────────────────────────────────────────────────────────────────┘\n┌─ Blocked phases ─────────────────────────────────────────────────────────────────────────────┐\n│ Phase          Reason                                                                        │\n│ ─────────────  ───────────────────────────────────────                                       │\n│ seed-verified  Seed strict validation must pass first.                                       │\n│ seed-archived  Only a verified seed may be archived.                                         │\n└──────────────────────────────────────────────────────────────────────────────────────────────┘\ni External preview: <user-state>/h/Library/Application Support/liftoff/update-previews/governance-preview-<project-key>-<fingerprint>.json; fingerprint <fingerprint>. This is not approval.\nRemedy: liftoff governance apply-next --project <project> --scope local --execute --json\n"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        }
+      },
+      "credential-enroll-wrong-preview": {
+        "exitCode": 1,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        },
+        "stderr": {
+          "bytes": 98,
+          "sha256": "91f88efd73837cd3f8393cdc9535d1f7bd5812779b17a81c95ae0980449eed2d",
+          "text": "Credential enrollment requires a credential-ready preview, not another activation or repair plan.\n"
+        }
+      },
+      "recover-non-recovery-preview": {
+        "exitCode": 1,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        },
+        "stderr": {
+          "bytes": 85,
+          "sha256": "4c3967c40bc4f7a833a7f0d3600be6cd76139550069e334b6c05f91591ecea77",
+          "text": "Recovery requires a preview explicitly created with governance plan --recover-phase.\n"
+        }
+      },
+      "approve-missing-preview": {
+        "exitCode": 1,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        },
+        "stderr": {
+          "bytes": 92,
+          "sha256": "24bd8033fd41461cc541c78fb318e226724a10d292561ab7acfe5d760de2c60c",
+          "text": "No matching external governance preview exists for this project; run governance plan first.\n"
+        }
+      },
+      "credential-enroll-missing-preview": {
+        "exitCode": 1,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "text": ""
+        },
+        "stderr": {
+          "bytes": 665,
+          "sha256": "4a6fd0b49bddb2a5689a402e5003ee0a812173c6f643dd5be68a8ce37a1dddbf",
+          "text": "┌─ Error ──────────────────────────────────────────────────────────────────────────────────────┐\n│ No matching external governance preview exists for this project; run governance plan first.  │\n└──────────────────────────────────────────────────────────────────────────────────────────────┘\n"
+        }
+      }
+    }
+  }
+}

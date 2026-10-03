@@ -85,6 +85,13 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     flags: helpFlag,
     defaultMaxPositionals: 0
   },
+  capabilities: {
+    description: 'Inspect installed public capabilities without project or readiness probes',
+    usage: '',
+    group: 'Reference',
+    flags: { json: booleanFlag('Emit the schema-1 installed capability catalog', 'Output'), ...helpFlag },
+    defaultMaxPositionals: 0
+  },
   providers: {
     description: 'List cloud providers',
     usage: '',
@@ -216,7 +223,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
       inputs: valueFlag('Public activation configuration JSON; never credentials or state', 'Project', 'file'),
       plan: valueFlag('Exact project-bound fingerprint from governance plan', 'Consent', 'fingerprint'),
       'recover-phase': valueFlag('Plan explicit recovery of one failed or interrupted phase without executing it', 'Command', 'phase'),
-      'protected-stdin': booleanFlag('Read credential enrollment material from explicitly protected stdin instead of a private TTY', 'Consent'),
+      'protected-stdin': booleanFlag('Credential enrollment is currently unavailable; this flag reads no secret', 'Consent'),
       execute: booleanFlag('Execute the reviewed governance apply-next plan; required for any mutation', 'Consent'),
       live: booleanFlag('Assess only: request bounded read-only GitHub/Azure metadata with existing permissions', 'Consent'),
       json: booleanFlag('Emit machine-readable JSON', 'Output'),

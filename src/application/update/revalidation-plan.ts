@@ -7,7 +7,7 @@ import {
   readActivationInputSnapshot,
   type ActivationInputSnapshot
 } from '../../governance-activation/inputs.js';
-import { inspectGovernanceTransition } from '../../governance-activation/commands.js';
+import { inspectGovernanceTransition } from '../governance/inspection.js';
 import type { CommandRunner } from '../../process-runner.js';
 import type { ExternalCommand } from '../../domain/project/contracts.js';
 import type { RunCommandOptions } from '../../process-runner.js';

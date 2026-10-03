@@ -12,7 +12,8 @@ import {
   resolveTemplateDependencyAuditRegistry,
   TemplateDependencyPolicyError,
   templateDependencyInventory,
-  templateDependencyPolicyPathParts
+  templateDependencyPolicyPathParts,
+  templateDependencyStructure
 } from './template-dependency-security.mjs';
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -87,9 +88,14 @@ try {
   const auditResults = await auditTemplateDependencyInventory({
     repositoryRoot,
     inventory: templateDependencyInventory,
+    structure: templateDependencyStructure,
     runAudit: runNpmAudit
   });
-  const result = evaluateTemplateDependencyAudits({ auditResults, policy });
+  const result = evaluateTemplateDependencyAudits({
+    auditResults,
+    policy,
+    sets: templateDependencyStructure.sets
+  });
   const output = formatTemplateDependencyAudit(result);
   process.stdout.write(`Template dependency audit registry: ${auditRegistry}\n`);
   process.stdout.write(output);

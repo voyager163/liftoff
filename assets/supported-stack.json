@@ -92,6 +92,7 @@
         "devDependencies": {
           "@types/cross-spawn": "^6.0.6",
           "@types/node": "^24.6.0",
+          "@vitest/coverage-v8": "5.0.0",
           "typescript": "^7.0.2",
           "vite": "8.2.2",
           "vitest": "5.0.0"
@@ -109,6 +110,7 @@
         "devDependencies": {
           "@types/cross-spawn": "6.0.6",
           "@types/node": "24.13.4",
+          "@vitest/coverage-v8": "5.0.0",
           "typescript": "7.0.2",
           "vite": "8.2.2",
           "vitest": "5.0.0"
@@ -134,6 +136,7 @@
         },
         "devDependencies": {
           "@types/node": "^24.6.0",
+          "@vitest/coverage-v8": "5.0.0",
           "typescript": "^7.0.2",
           "vite": "8.2.2",
           "vitest": "5.0.0"
@@ -146,6 +149,7 @@
         },
         "devDependencies": {
           "@types/node": "24.13.3",
+          "@vitest/coverage-v8": "5.0.0",
           "typescript": "7.0.2",
           "vite": "8.2.2",
           "vitest": "5.0.0"
@@ -155,13 +159,15 @@
     "node-backend": {
       "manifestPathParts": [
         "assets",
-        "locks",
+        "plugins",
+        "node-fastify",
         "node-backend",
         "package.json"
       ],
       "lockPathParts": [
         "assets",
-        "locks",
+        "plugins",
+        "node-fastify",
         "node-backend",
         "package-lock.json"
       ],
@@ -206,13 +212,15 @@
     "frontend": {
       "manifestPathParts": [
         "assets",
-        "locks",
+        "templates",
+        "common",
         "frontend",
         "package.json"
       ],
       "lockPathParts": [
         "assets",
-        "locks",
+        "templates",
+        "common",
         "frontend",
         "package-lock.json"
       ],
@@ -243,7 +251,8 @@
     "genai-backend": {
       "lockTemplatePathParts": [
         "assets",
-        "locks",
+        "plugins",
+        "python-fastapi",
         "python-genai",
         "uv.lock"
       ],
@@ -279,7 +288,8 @@
     "standard-backend": {
       "lockTemplatePathParts": [
         "assets",
-        "locks",
+        "plugins",
+        "python-fastapi",
         "python-standard",
         "uv.lock"
       ],
@@ -309,7 +319,8 @@
     "function-worker": {
       "lockTemplatePathParts": [
         "assets",
-        "locks",
+        "plugins",
+        "python-fastapi",
         "python-genai",
         "uv.lock"
       ],
@@ -328,7 +339,8 @@
     "go-backend": {
       "moduleTemplatePathParts": [
         "assets",
-        "locks",
+        "plugins",
+        "go-huma",
         "go-backend",
         "go.mod"
       ],

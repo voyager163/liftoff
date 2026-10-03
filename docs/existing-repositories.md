@@ -52,8 +52,10 @@ Liftoff never blindly replaces a target tree. It:
    failures.
 
 Unrelated existing files are preserved. Structural collisions, symlinks,
-unsafe ancestors, and an existing `liftoff.manifest.json` are blockers that
-`--force` cannot bypass.
+case or NFC-normalization aliases in destination paths, unsafe ancestors, and an
+existing `liftoff.manifest.json` are blockers that `--force` cannot bypass.
+Existing destination ancestors must be listable; an inspection failure stops
+initialization instead of permitting an unchecked merge.
 
 See [safety and consent](safety-and-consent.md) for the complete permission
 model.

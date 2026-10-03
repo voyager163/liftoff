@@ -5,14 +5,20 @@ import {
   type Server,
   type ServerResponse
 } from 'node:http';
+import type { Duplex } from 'node:stream';
 import {
+  handleProjectTelemetryRequest,
   handleTelemetryRequest,
   type TelemetryHttpRequest,
   type TelemetryIngestionDependencies
 } from './handler.js';
 
 export const telemetryRoute = '/api/events';
+export const projectTelemetryRoute = '/api/projects';
 export const telemetryPort = 8080;
+
+const badRequestResponse =
+  'HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n';
 
 type DependencyResolver = () => TelemetryIngestionDependencies;
 
@@ -69,7 +75,12 @@ function sendStatus(response: ServerResponse, status: number): void {
 function lazyDependencies(resolve: DependencyResolver): TelemetryIngestionDependencies {
   return {
     now: () => resolve().now(),
-    upload: (record) => resolve().upload(record)
+    upload: (record) => resolve().upload(record),
+    uploadProject: async (record) => {
+      const dependencies = resolve();
+      if (!dependencies.uploadProject) throw new Error('Project telemetry ingestion is disabled.');
+      await dependencies.uploadProject(record);
+    }
   };
 }
 
@@ -78,14 +89,16 @@ async function respond(
   response: ServerResponse,
   resolveDependencies: DependencyResolver
 ): Promise<void> {
-  if (requestPath(request) !== telemetryRoute) {
+  const route = requestPath(request);
+  if (route !== telemetryRoute && route !== projectTelemetryRoute) {
     request.resume();
     sendStatus(response, 404);
     return;
   }
 
   try {
-    const result = await handleTelemetryRequest(
+    const handler = route === projectTelemetryRoute ? handleProjectTelemetryRequest : handleTelemetryRequest;
+    const result = await handler(
       telemetryRequest(request),
       lazyDependencies(resolveDependencies)
     );
@@ -97,15 +110,25 @@ async function respond(
   }
 }
 
+function settleClientError(error: NodeJS.ErrnoException, socket: Duplex): void {
+  if (socket.writable) {
+    // Destroy only after the 400 has flushed so the client receives the whole response.
+    socket.end(badRequestResponse, () => socket.destroy());
+    return;
+  }
+  // A repeated parse error must not discard a 400 that is still flushing, while the
+  // request timeout still settles a flush that never completes.
+  const responseFlushing = socket.writableEnded && !socket.writableFinished;
+  if (!responseFlushing || error.code === 'ERR_HTTP_REQUEST_TIMEOUT') {
+    socket.destroy();
+  }
+}
+
 export function createTelemetryServer(resolveDependencies: DependencyResolver): Server {
   const server = createServer((request, response) => {
     void respond(request, response, resolveDependencies);
   });
-  server.on('clientError', (_error, socket) => {
-    if (socket.writable) {
-      socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
-    }
-  });
+  server.on('clientError', settleClientError);
   return server;
 }
 

@@ -7,7 +7,7 @@ import { phaseById } from '../../domain/governance/activation/operations.js';
 import { validateManifestActivationForExecution } from '../../domain/governance/activation/validators.js';
 import { localSetupPhaseIds, type ActivationIdentity, type PhaseId, type SavedTransitionPlan } from '../../domain/governance/activation/types.js';
 import type { LiftoffManifest } from '../../domain/project/contracts.js';
-import { inspectGovernanceTransition } from '../../governance-activation/commands.js';
+import { inspectGovernanceTransition } from '../governance/inspection.js';
 import {
   previewLocalSeedPhase,
   type LocalSeedCommand,

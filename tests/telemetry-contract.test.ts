@@ -2,9 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { commandDefinitions } from '../src/args.js';
 import {
   canonicalTelemetryCommand,
+  createProjectTelemetryStorageRecord,
+  createSemanticTelemetryEvent,
   createTelemetryEvent,
   createTelemetryStorageRecord,
   isTelemetryCliVersion,
+  isProjectTelemetryDigest,
+  isProjectTelemetryId,
+  isTelemetrySemanticOutcome,
+  parseProjectTelemetryPolicy,
+  projectTelemetryClientFields,
+  projectTelemetryStorageFields,
   telemetryClientFields,
   telemetryCommands,
   telemetryExcludedCommands,
@@ -12,6 +20,16 @@ import {
 } from '../src/telemetry/contract.js';
 
 describe('telemetry contract', () => {
+  it.each([
+    ['update', '0.12.3', 'partial'], ['update', '0.12.3', 'failure: private detail'],
+    ['update', '0.12.3', 2], ['update', '0.12.3', null], ['update', '0.12.3', ['success']],
+    ['update', '0.12.3', {outcome:'success',projectId:'private'}],
+    [undefined, '0.12.3', 'success'], ['governance:assess', '0.12.3', 'success'],
+    ['update', '0.12.3+private', 'success'], [['update'], '0.12.3', 'success'],
+    ['update', ['0.12.3'], 'success']
+  ])('rejects malformed schema2 constructor inputs %j %j %j', (command, version, outcome) => {
+    expect(() => Reflect.apply(createSemanticTelemetryEvent, undefined, [command, version, outcome])).toThrow(TypeError);
+  });
   it('covers explicit CLI commands except the exact read-only telemetry exclusions', () => {
     const expected = new Set<string>(['version']);
     for (const [command, definition] of Object.entries(commandDefinitions)) {
@@ -21,7 +39,7 @@ describe('telemetry contract', () => {
       }
     }
     expect([...telemetryCommands, ...telemetryExcludedCommands].sort()).toEqual([...expected].sort());
-    expect(telemetryExcludedCommands).toEqual(['governance:assess']);
+    expect(telemetryExcludedCommands).toEqual(['governance:assess', 'capabilities']);
     expect(telemetryCommands.some((command) => telemetryExcludedCommands.some((excluded) => excluded === String(command)))).toBe(false);
   });
 
@@ -104,5 +122,56 @@ describe('telemetry contract', () => {
     expect(isTelemetryCliVersion('01.2.3')).toBe(false);
     expect(isTelemetryCliVersion('v1.2.3')).toBe(false);
     expect(isTelemetryCliVersion('/private/project')).toBe(false);
+    expect(isTelemetryCliVersion('0.12.3\n')).toBe(false);
+    expect(isTelemetryCliVersion(`${'1'.repeat(65)}.0.0`)).toBe(false);
+  });
+
+  it('keeps explicit semantic attention, cancellation and partial failure separate from legacy exit codes', () => {
+    for (const outcome of ['success', 'attention-required', 'cancelled', 'failure'] as const) {
+      const event = createSemanticTelemetryEvent('update', '0.12.3', outcome);
+      expect(event).toEqual({
+        schemaVersion: 2, event: 'command_executed', command: 'update', cliVersion: '0.12.3', outcome
+      });
+      expect(isTelemetrySemanticOutcome(outcome)).toBe(true);
+      expect(createTelemetryStorageRecord(event, new Date('2026-09-30T00:00:00Z')))
+        .toMatchObject({ SchemaVersion: 2, Outcome: outcome });
+    }
+    for (const value of [2, undefined, 'partial', 'failure: private detail']) {
+      expect(isTelemetrySemanticOutcome(value)).toBe(false);
+    }
+    expect(createTelemetryEvent('update', '0.12.3', 2)).toMatchObject({ schemaVersion: 1, outcome: 'failure' });
+  });
+
+  it('uses strict pseudonymous dimensions, not raw project or user data', () => {
+    const projectId = '550e8400-e29b-41d4-a716-446655440000';
+    const templateSetDigest = `sha256:${'a'.repeat(64)}`;
+    expect(isProjectTelemetryId(projectId)).toBe(true);
+    expect(isProjectTelemetryDigest(templateSetDigest)).toBe(true);
+    for (const value of [undefined, '/private/project', `${projectId}\n`]) {
+      expect(isProjectTelemetryId(value)).toBe(false);
+    }
+    for (const value of [null, 'private-project', `${templateSetDigest}\n`]) {
+      expect(isProjectTelemetryDigest(value)).toBe(false);
+    }
+    for (const [profile, version] of [
+      ['none', 'none'], ['single-maintainer-gitflow', 6], ['single-maintainer-gitflow', 7], ['team-gitflow', 1]
+    ]) {
+      expect(parseProjectTelemetryPolicy(profile, version)).toEqual({ policyProfile: profile, policyVersion: version });
+    }
+    for (const [profile, version] of [['none', 1], ['team-gitflow', 7], ['single-maintainer-gitflow', '7'], ['custom', 1]]) {
+      expect(parseProjectTelemetryPolicy(profile, version)).toBeUndefined();
+    }
+    const event = {
+      schemaVersion: 2, event: 'project_observed', projectId, cliVersion: '0.12.3',
+      policyProfile: 'none', policyVersion: 'none', templateSetDigest, source: 'ci-heartbeat'
+    } as const;
+    expect(Object.keys(event)).toEqual([...projectTelemetryClientFields]);
+    const record = createProjectTelemetryStorageRecord(event, new Date('2026-09-30T00:00:00Z'));
+    expect(Object.keys(record)).toEqual([...projectTelemetryStorageFields]);
+    expect(record).toEqual({
+      TimeGenerated: '2026-09-30T00:00:00.000Z', EventName: 'project_observed', SchemaVersion: 2,
+      ProjectId: projectId, CliVersion: '0.12.3', PolicyProfile: 'none', PolicyVersion: 'none',
+      TemplateSetDigest: templateSetDigest, Source: 'ci-heartbeat'
+    });
   });
 });

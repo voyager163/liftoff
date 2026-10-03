@@ -29,6 +29,8 @@ import { buildProjectPlan } from '../src/planner.js';
 import { openSpecIntegrationPaths } from '../src/openspec-profile.js';
 import { buildRepositoryGovernanceArtifacts } from '../src/repository-governance.js';
 import { buildArtifacts } from '../src/templates.js';
+import { nativeIntegrationHeader } from '../src/generators/governance/integrations.js';
+import { expectBoundedCapabilitySkill } from './fixtures/reviewed-rendering.js';
 import { liftoffVersion } from '../src/version.js';
 import { CaptureStream } from './helpers.js';
 import { writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
@@ -124,7 +126,8 @@ describe('selected native repair contracts', () => {
       expect(new Set(entries.map((entry) => nativeBody(entry.content))).size).toBe(1);
       for (const [index, entry] of entries.entries()) {
         expect(entry.content).toContain(`# ${governanceAgentIntegrations[agentIds[index]!][operation].invocation}\n`);
-        expect(entry.content.length, entry.logicalName).toBeLessThan(operation === 'repair' ? 8_000 : operation === 'setup' ? 3_000 : 2_500);
+        if (operation === 'repair') expect(entry.content.length, entry.logicalName).toBeLessThan(8_000);
+        else expectBoundedCapabilitySkill(entry.content, operation);
       }
     }
     const repair = artifacts.find((entry) => entry.logicalName === 'liftoff-repair-copilot')!.content;
@@ -180,6 +183,7 @@ describe('selected native repair contracts', () => {
     const assessment = artifacts.find((entry) => entry.logicalName === 'liftoff-governance-assess-copilot')!.content;
     expect(assessment).toContain('Do not invoke it, inventory source or stage a patch here');
     expect([...assessment.matchAll(/`(liftoff [^`]+)`/gu)].map((match) => match[1])).toEqual([
+      'liftoff capabilities --json', 'liftoff --help',
       'liftoff governance assess --json', 'liftoff governance assess --live --json'
     ]);
   });
@@ -397,6 +401,81 @@ async function protectedFiles(root: string, governance: boolean) {
     for (const file of files) expect(await readFile(path.join(root, ...file.pathParts), 'utf8')).toBe(file.content);
   };
 }
+
+async function preNegotiationGuidanceFixture() {
+  const root = await fixture();
+  const original: { rendering: { artifacts: Record<string, Array<{ logicalName: string; sha256: string }>> } } =
+    JSON.parse(await readFile('tests/fixtures/governance-extraction/pre-extraction.json', 'utf8'));
+  const manifest: { managedArtifacts: Array<{ logicalName: string; contentHash: string }> } =
+    JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
+  const historical: { bodies: Record<string, { sha256: string; text: string }> } =
+    JSON.parse(await readFile('tests/fixtures/pre-negotiation-skills.json', 'utf8'));
+  const names: string[] = [];
+  for (const agent of agentIds) {
+    for (const operation of ['setup', 'assessment'] as const) {
+      const integration = governanceAgentIntegrations[agent][operation];
+      const body = historical.bodies[operation === 'setup' ? 'setup' : 'governance-assessment'];
+      expect(sha(body.text)).toBe(`sha256:${body.sha256}`);
+      const previous = `${nativeIntegrationHeader(agent, operation)}\n${body.text}`;
+      const frozen = original.rendering.artifacts['standard-python/openspec-all-agents']
+        .find(row => row.logicalName === integration.logicalName);
+      expect(frozen).toBeDefined();
+      expect(sha(previous)).toBe(`sha256:${frozen!.sha256}`);
+      const managed = manifest.managedArtifacts.find(row => row.logicalName === integration.logicalName);
+      expect(managed).toBeDefined();
+      managed!.contentHash = sha(previous);
+      await writeProjectFile(root, integration.pathParts, previous);
+      names.push(integration.logicalName);
+    }
+  }
+  await writeProjectFile(root, ['liftoff.manifest.json'], `${JSON.stringify(manifest, null, 2)}\n`);
+  return { root, names };
+}
+
+describe('reviewed capability-guidance upgrades', () => {
+  it('previews the exact old six skill bodies and changes them only after normal update approval', async () => {
+    const { root, names } = await preNegotiationGuidanceFixture();
+    const assertPreserved = await protectedFiles(root, true);
+    const source = await loadManifest(root);
+    const before = await fingerprintUpdateTestProject(root);
+    const preview = await update(root, ['--check']);
+    expect(preview.code).toBe(2);
+    const changed = preview.report.entries.filter((entry: { logicalName: string }) => names.includes(entry.logicalName));
+    expect(changed).toHaveLength(names.length);
+    expect(changed).toEqual(expect.arrayContaining(
+      names.map(logicalName => expect.objectContaining({ logicalName, status: 'upgrade' }))
+    ));
+    expect(await fingerprintUpdateTestProject(root)).toEqual(before);
+    expect((await update(root, [])).code).toBe(1);
+    expect(await fingerprintUpdateTestProject(root)).toEqual(before);
+    const applied = await approveUpdate(root);
+    expect(applied.code, JSON.stringify(applied.report)).toBe(0);
+    const next = await loadManifest(root);
+    expect(next.projectArtifacts).toEqual(source.projectArtifacts);
+    expect(next.framework).toEqual(source.framework);
+    expect(next.governance).toEqual(source.governance);
+    for (const row of next.managedArtifacts.filter(entry => names.includes(entry.logicalName))) {
+      const content = await readFile(path.join(root, ...row.pathParts), 'utf8');
+      expect(content).toContain('Before project access, run `liftoff capabilities --json`');
+      expect(row.contentHash).toBe(sha(content));
+    }
+    await assertPreserved();
+    expect((await update(root, ['--check'])).code).toBe(0);
+  });
+
+  it('refuses stale skill approval without overwriting a developer edit or other project files', async () => {
+    const { root } = await preNegotiationGuidanceFixture();
+    const preview = await update(root, ['--check']);
+    expect(preview.code).toBe(2);
+    const normal = preview.report.plans.find((entry: { mode: string }) => entry.mode === 'normal');
+    expect(normal).toBeDefined();
+    await writeProjectFile(root, governanceAgentIntegrations.claude.setup.pathParts, '# Developer changed this command\n');
+    const edited = await fingerprintUpdateTestProject(root);
+    const refused = await update(root, ['--approve-plan', normal.fingerprint]);
+    expect(refused.code).toBe(1);
+    expect(await fingerprintUpdateTestProject(root)).toEqual(edited);
+  });
+});
 
 describe('reviewed additive native repair installation', () => {
   it.each(['single-maintainer-gitflow', 'none'] as const)(

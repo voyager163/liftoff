@@ -31,6 +31,36 @@ import { readActivationEvidence, readReviewedTransitionPlans } from './proof-rec
 import { assertSafeHistoricalRecord } from './historical-safety.js';
 import { assertGovernanceApprovalIssued } from './authority-records.js';
 import type { HistoricalGovernanceChangeMetadata } from './historical-source-metadata.js';
+import {
+  createSourceHistoryCapture, copyHistoryBuffer, copySourceHistoryData, copySourceHistoryPath,
+  copySourceInventoryOptions, copySourceHistoryObservations, sourceObservationIdentities
+} from './source-history-capture.js';
+import {
+  createReleasedSourceHistoryIndex, validateFrozenActivationHistoryIndex, validateFrozenV3SourceIndex,
+  historicalMetadataPathParts, historicalSourceChangePathParts, type FrozenV3SourceIndexV1
+} from './history-contracts.js';
+import {
+  validateCapturedReleasedSource, validatePlannedReleasedSourceSnapshot, validateCapturedHistoricalSnapshot,
+  assertCapturedHistoricalAncestor, assertCapturedV3SourceAncestor, assertCapturedV3MetadataAncestry,
+  type ReleasedSourceInventory, type FrozenV3SourceInventory
+} from './historical-state.js';
+import { isReleasedV3ActivationIdentity, type ReleasedActivationIdentity } from '../domain/governance/policy/identity.js';
+import { validateHistoricalV3ActivationState } from './historical-v3.js';
+import { createModernHistoryContract, validateSuccessorPreparation, isProtectedSourceAnchor,
+  type ModernMigrationJournalV2, type ModernSemanticTransitionInput, type SuccessorPreparationV1 } from './modern-history-contracts.js';
+import { assertModernRecordData } from '../domain/governance/activation/source-values.js';
+import { buildModernManagedCore, type ModernManagedCoreInput } from '../application/project/modern-managed-core.js';
+import { createManifestV8Candidate, type ManagedManifestDecision, type ManifestV8Candidate } from '../application/project/manifest-writer.js';
+import { createManifestV8Reader } from '../domain/project/manifest/v8.js';
+import { resolveModernManifestV8SourceContract } from '../application/project/manifest.js';
+import { projectCatalog } from '../application/project/catalog.js';
+import { createManifestV8ProjectReader } from '../domain/project/manifest/v8-project.js';
+import { manifestActiveLayoutDigest } from '../domain/project/manifest/layout.js';
+import { createModernCompatibilityContract } from './modern-compatibility.js';
+import { createModernActivationRecordContract } from '../domain/governance/activation/modern-records.js';
+import type { ModernActivationSourceInput, ModernActivationState } from '../domain/governance/activation/modern-record-contracts.js';
+import { historyExact, historyRecord, historyPathParts } from './history-contracts.js';
+import type { ManifestSourceHistoryReference } from '../domain/project/manifest/history.js';
 
 export interface HistoricalRetirement {
   pathParts: string[];
@@ -696,4 +726,439 @@ export function finalizeActivationHistoryMigration(
     }
   );
   return { successor, journal, mutations, preconditions: plan.preconditions, requiredRetirements: plan.requiredRetirements };
+}
+
+export interface ModernSourceAncestor {
+  readonly indexContent: Buffer;
+  readonly indexPathParts: readonly string[];
+  readonly copies: readonly ProjectFileSnapshot[];
+}
+export interface ModernSuccessorSource {
+  readonly projectRoot: string;
+  readonly captures: readonly ProjectFileSnapshot[];
+  readonly originalPaths: readonly (readonly string[])[];
+  readonly indexContent: Buffer;
+  readonly historyDisposition: 'create' | 'reuse';
+  readonly ancestors: readonly ModernSourceAncestor[];
+  readonly sourceBinding: string;
+}
+export type ModernSuccessorTarget = ModernManagedCoreInput & { readonly managed: readonly ManagedManifestDecision[] };
+export interface ModernActivationSuccessorPlan {
+  readonly source: ModernSuccessorSource;
+  readonly target: ModernSuccessorTarget;
+  readonly manifest: ManifestV8Candidate;
+  readonly semanticInput: ModernSemanticTransitionInput;
+  readonly semanticTransitionDigest: string;
+  readonly preparationSourceBinding: string;
+  readonly planBinding: string;
+}
+export interface ReleasedSourceLifecycleObligation {
+  readonly snapshotId: string;
+  readonly sourceIdentity: ReleasedActivationIdentity;
+  readonly repositoryId: string;
+  readonly retention: BootstrapStateRetention;
+  readonly authority: 'historical-protection-only';
+}
+export interface PreparedModernActivationSuccessor {
+  readonly semanticTransitionDigest: string;
+  readonly preparation: SuccessorPreparationV1;
+  readonly successor: ModernActivationState;
+  readonly journal: ModernMigrationJournalV2;
+  readonly manifestBytes: Buffer;
+  readonly manifestDigest: string;
+  readonly mutations: readonly ActivationHistoryMutation[];
+  readonly preconditions: readonly ProjectFileSnapshot[];
+  readonly requiredRetirements: readonly HistoricalRetirement[];
+  readonly lifecycleObligations: readonly ReleasedSourceLifecycleObligation[];
+}
+const sourceCollections = ['evidence', 'plans', 'approvals', 'supersessions', 'reconciliation'] as const;
+const originalStatePath = ['governance', 'activation-state.json'];
+const originalJournalPath = ['governance', 'migration-state.json'];
+const originalManifestPath = ['liftoff.manifest.json'];
+const modernManifestReader = createManifestV8Reader({ catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract });
+
+function sourceIndex(value: unknown): ActivationHistoryIndex | FrozenV3SourceIndexV1 {
+  assertModernRecordData(value, 'source index');
+  const item = historyRecord(value, 'source index');
+  return isReleasedV3ActivationIdentity(item.sourceIdentity) ? validateFrozenV3SourceIndex(value) : validateFrozenActivationHistoryIndex(value);
+}
+function releasedState(content: Buffer) {
+  const raw = parseHistoryJson(content, 'source state'), item = historyRecord(raw, 'source state');
+  return isReleasedV3ActivationIdentity(item.identity) ? validateHistoricalV3ActivationState(raw) : validateReadableHistoricalActivationState(raw);
+}
+function originalObservation(captures: readonly ProjectFileSnapshot[], parts: readonly string[]): ProjectFileSnapshot {
+  const found = captures.find(file => historyPathKey(file.pathParts) === historyPathKey(parts));
+  if (!found) historyFail(historyPathKey(parts), 'independent physical observation is missing.', 'missing-historical-record');
+  return found;
+}
+function v3Inventory(inventory: ReleasedSourceInventory): inventory is FrozenV3SourceInventory {
+  return inventory.state.schemaVersion === 3;
+}
+function sourceOnlyBinding(source: Omit<ModernSuccessorSource, 'sourceBinding'>): string {
+  return canonicalSha256({
+    projectRoot: source.projectRoot, captures: sourceObservationIdentities(source.captures), originalPaths: source.originalPaths,
+    indexDigest: rawHistoryDigest(source.indexContent), historyDisposition: source.historyDisposition,
+    ancestors: source.ancestors.map(ancestor => ({
+      indexPathParts: ancestor.indexPathParts, indexDigest: rawHistoryDigest(ancestor.indexContent),
+      copies: sourceObservationIdentities(ancestor.copies)
+    }))
+  });
+}
+
+/** Captures source data and destinations only; no target renderer, clock, UUID or effect authority. */
+export async function readModernActivationSuccessorSource(
+  projectRoot: string, options: HistoricalInventoryOptions = {}
+): Promise<ModernSuccessorSource> {
+  options = copySourceInventoryOptions(options);
+  const reader = await createSourceHistoryCapture(projectRoot);
+  const originalState = await reader.capture(originalStatePath), state = releasedState(originalState.content);
+  const paths: string[][] = [originalStatePath, originalJournalPath, ...historicalMetadataPathParts.map(parts => [...parts]),
+    ['governance', 'credentials', 'preflight-policy.json'], ['governance', 'activation-baseline.json']];
+  if (state.activeChange) {
+    const base = historicalSourceChangePathParts(state.activeChange);
+    paths.push([...base, 'liftoff-governance.json'], [...base, 'tasks.md']);
+  }
+  const collections = new Map<string, string[][]>();
+  for (const directory of sourceCollections) {
+    const listed = await reader.recordPaths(directory);
+    collections.set(directory, listed); paths.push(...listed);
+  }
+  for (const parts of paths.slice(1)) await reader.capture(parts, true);
+  const ancestors: ModernSourceAncestor[] = [];
+  let journalBytes = originalObservation(reader.observations(), originalJournalPath).content;
+  let expectedState = state;
+  // A nonempty manifest remains unread until after optional empty files and ancestor capture.
+  while (journalBytes) {
+    if (ancestors.length >= 2) historyFail('source ancestry', 'exceeds the exact three-source contract.', 'invalid-historical-reference');
+    const raw = historyRecord(parseHistoryJson(journalBytes, 'source migration'), 'source migration');
+    const indexParts = historyPathParts(raw.historyIndexPathParts, 'source index');
+    const snapshotId = historyDigest(raw.snapshotId, 'source snapshot');
+    if (indexParts.join('/') !== `governance/history/${snapshotId}/index.json`) historyFail('source index', 'is outside its exact history location.');
+    if (ancestors.some(ancestor => historyPathKey(ancestor.indexPathParts) === historyPathKey(indexParts))) historyFail('source ancestry', 'contains a cycle.');
+    const capture = await reader.capture(indexParts);
+    if (rawHistoryDigest(capture.content) !== historyDigest(raw.historyIndexDigest, 'source index digest')) historyFail('source index', 'differs from its original journal.', 'history-digest-mismatch');
+    const index = validateFrozenActivationHistoryIndex(parseHistoryJson(capture.content, 'ancestor index'));
+    if (index.snapshotId !== snapshotId) historyFail('ancestor index', 'names a different snapshot.');
+    const copies: ProjectFileSnapshot[] = [];
+    for (const file of [...index.files.filter(file => file.kind !== 'state'), ...index.files.filter(file => file.kind === 'state')]) copies.push(await reader.capture(file.copyPathParts));
+    const inventory = await validateCapturedHistoricalSnapshot(index, copies);
+    if (expectedState.schemaVersion === 1) historyFail('source ancestry', 'v1 cannot contain a successor journal.');
+    ancestors.push({ indexContent: Buffer.from(capture.content), indexPathParts: [...indexParts], copies });
+    expectedState = inventory.state;
+    journalBytes = inventory.files.find(file => file.kind === 'migration')?.content;
+  }
+  await reader.capture(originalManifestPath);
+  const inventory = await validateCapturedReleasedSource(reader.observations(), options);
+  if (inventory.unreviewedRecords.length) historyFail('source records', 'recognized unreferenced records require explicit selection.', 'unreviewed-historical-records');
+  const index = createReleasedSourceHistoryIndex(inventory.state.identity, inventory.files.map(file => ({
+    kind: file.kind, originalPathParts: file.pathParts, digest: file.digest, mode: file.mode
+  })));
+  const indexPath = activationHistoryIndexPathParts(index.snapshotId);
+  // Destination absence/read observations are still actual physical preconditions.
+  const stored = await reader.capture(indexPath, true);
+  let indexContent = Buffer.from(canonicalJson(index)), historyDisposition: 'create' | 'reuse' = 'create';
+  if (stored.content !== undefined) {
+    const existing = sourceIndex(parseHistoryJson(stored.content, 'existing source index'));
+    if (existing.snapshotId !== index.snapshotId || canonicalSha256(existing.sourceIdentity) !== canonicalSha256(index.sourceIdentity)) {
+      historyFail('existing source index', 'cannot replace an immutable source inventory.', 'historical-destination-conflict');
+    }
+    indexContent = Buffer.from(stored.content); historyDisposition = 'reuse';
+    for (const entry of [...index.files.filter(file => file.kind !== 'state'), ...index.files.filter(file => file.kind === 'state')]) {
+      const copy = await reader.capture(entry.copyPathParts);
+      if (rawHistoryDigest(copy.content) !== entry.digest) historyFail('existing source copy', 'bytes differ from the original source.', 'history-digest-mismatch');
+    }
+  } else {
+    await reader.assertAbsentDirectory(indexPath.slice(0, -1));
+    for (const entry of index.files) {
+      const copy = await reader.capture(entry.copyPathParts, true);
+      if (copy.content !== undefined) historyFail('source destination', 'unindexed copy already exists.', 'historical-destination-conflict');
+    }
+  }
+  for (const artifact of inventory.manifest.managedArtifacts) await reader.capture(artifact.pathParts, true);
+  for (const directory of sourceCollections) {
+    if (canonicalSha256(await reader.recordPaths(directory)) !== canonicalSha256(collections.get(directory))) {
+      historyFail(directory, 'source collection changed during capture.', 'historical-source-changed');
+    }
+  }
+  await reader.assertRoot();
+  const partial = {
+    projectRoot: reader.root, captures: reader.observations(), originalPaths: inventory.files.map(file => [...file.pathParts]),
+    indexContent, historyDisposition, ancestors
+  };
+  const result = { ...partial, sourceBinding: sourceOnlyBinding(partial) };
+  await validateModernSuccessorSource(result);
+  return result;
+}
+
+async function validateModernSuccessorSource(value: ModernSuccessorSource) {
+  // Buffers are separately validated/copied; all structural fields are hook-free JSON.
+  if (typeof value !== 'object' || value === null || Object.getPrototypeOf(value) !== Object.prototype) historyFail('source plan', 'requires original data.');
+  for (const key of Reflect.ownKeys(value)) {
+    const property = Object.getOwnPropertyDescriptor(value, key);
+    if (typeof key !== 'string' || !['projectRoot', 'captures', 'originalPaths', 'indexContent', 'historyDisposition', 'ancestors', 'sourceBinding'].includes(key) ||
+      !property?.enumerable || !Object.hasOwn(property, 'value')) historyFail('source plan', 'contains unsupported fields or hooks.');
+  }
+  assertModernRecordData({ projectRoot: value.projectRoot, originalPaths: value.originalPaths, historyDisposition: value.historyDisposition,
+    sourceBinding: value.sourceBinding }, 'source plan metadata');
+  const captures = copySourceHistoryObservations(value.captures);
+  const originalIndexContent = copyHistoryBuffer(value.indexContent, 'planned index');
+  const index = sourceIndex(parseHistoryJson(originalIndexContent, 'planned index'));
+  if (value.historyDisposition !== 'create' && value.historyDisposition !== 'reuse') historyFail('source disposition', 'must be create or reuse.');
+  const originals = value.originalPaths.map(parts => originalObservation(captures, parts));
+  const inventory = await validatePlannedReleasedSourceSnapshot(index, originals);
+  const indexCapture = originalObservation(captures, activationHistoryIndexPathParts(index.snapshotId));
+  if (value.historyDisposition === 'create' ? indexCapture.content !== undefined :
+    indexCapture.content === undefined || !indexCapture.content.equals(value.indexContent)) historyFail('source disposition', 'contradicts actual index observation.');
+  for (const entry of index.files) {
+    const copy = originalObservation(captures, entry.copyPathParts);
+    if (value.historyDisposition === 'create' ? copy.content !== undefined :
+      copy.content === undefined || rawHistoryDigest(copy.content) !== entry.digest) historyFail('source copy disposition', 'contradicts observed destination.');
+  }
+  if (!Array.isArray(value.ancestors) || Object.getPrototypeOf(value.ancestors) !== Array.prototype ||
+    Reflect.ownKeys(value.ancestors).length !== value.ancestors.length + 1 || value.ancestors.length > 2) historyFail('source ancestry', 'requires a closed finite chain.');
+  const inventories: ReleasedSourceInventory[] = [inventory], indexes: (ActivationHistoryIndex | FrozenV3SourceIndexV1)[] = [index];
+  let previous = inventory;
+  const seen = new Set([index.snapshotId]), plannedCopies: ProjectFileSnapshot[] = [
+    { pathParts: activationHistoryIndexPathParts(index.snapshotId), content: Buffer.from(value.indexContent), mode: 0o600 },
+    ...index.files.map(entry => ({ pathParts: entry.copyPathParts, content: Buffer.from(originalObservation(originals, entry.originalPathParts).content!), mode: 0o600 }))
+  ];
+  for (let i = 0; i < value.ancestors.length; i++) {
+    const slot = Object.getOwnPropertyDescriptor(value.ancestors, String(i));
+    if (!slot?.enumerable || !Object.hasOwn(slot, 'value')) historyFail('ancestor', 'cannot contain hooks.');
+    const ancestor: ModernSourceAncestor = slot.value;
+    if (typeof ancestor !== 'object' || ancestor === null || Object.getPrototypeOf(ancestor) !== Object.prototype ||
+      Reflect.ownKeys(ancestor).length !== 3 || ['indexContent', 'indexPathParts', 'copies'].some(key => {
+        const field = Object.getOwnPropertyDescriptor(ancestor, key); return !field?.enumerable || !Object.hasOwn(field, 'value');
+      })) historyFail('ancestor', 'requires exactly captured index/path/copies.');
+    assertModernRecordData(ancestor.indexPathParts, 'ancestor path');
+    copyHistoryBuffer(ancestor.indexContent, 'ancestor index');
+    const loaded = originalObservation(captures, ancestor.indexPathParts), journal = previous.sourceMigration;
+    if (!journal || !loaded.content?.equals(ancestor.indexContent) ||
+      rawHistoryDigest(ancestor.indexContent) !== journal.historyIndexDigest ||
+      historyPathKey(ancestor.indexPathParts) !== historyPathKey(journal.historyIndexPathParts)) historyFail('ancestor', 'original journal/index link is missing or changed.');
+    const ancestorIndex = validateFrozenActivationHistoryIndex(parseHistoryJson(ancestor.indexContent, 'ancestor index'));
+    if (seen.has(ancestorIndex.snapshotId)) historyFail('ancestor', 'contains a repeated source.');
+    seen.add(ancestorIndex.snapshotId);
+    const copies = copySourceHistoryObservations(ancestor.copies);
+    for (const copy of copies) {
+      const original = originalObservation(captures, copy.pathParts);
+      if (original.mode !== copy.mode || !original.content?.equals(copy.content!)) historyFail('ancestor copy', 'is not an actual captured observation.');
+    }
+    const source = await validateCapturedHistoricalSnapshot(ancestorIndex, copies);
+    if (v3Inventory(previous)) assertCapturedV3SourceAncestor(previous, ancestorIndex, source);
+    else assertCapturedHistoricalAncestor(previous, ancestorIndex, source);
+    inventories.push(source); indexes.push(ancestorIndex); previous = source;
+    plannedCopies.push(loaded, ...copies);
+  }
+  if (previous.sourceMigration) historyFail('source ancestry', 'declared original predecessor is missing.');
+  if (inventory.state.schemaVersion === 3) assertCapturedV3MetadataAncestry(inventories);
+  copySourceHistoryObservations(plannedCopies); // Independent admission includes the genuinely generated source index.
+  if (sourceOnlyBinding(value) !== value.sourceBinding) historyFail('source binding', 'source bytes or observations changed after capture.', 'historical-source-changed');
+  return { inventory, index, captures, inventories, indexes };
+}
+
+function candidateContext(candidate: ManifestV8Candidate): ModernActivationSourceInput {
+  const manifest = modernManifestReader.parseManifestV8(parseHistoryJson(Buffer.from(candidate.content), 'target manifest'));
+  if (manifest.governance.profile !== 'single-maintainer-gitflow' || manifest.project.specWorkflow === 'manual') {
+    historyFail('target manifest', 'requires same-intent external single-maintainer governance.', 'unsupported-migration-target');
+  }
+  const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({ project: manifest.project, framework: manifest.framework });
+  const source = resolveModernManifestV8SourceContract({ selection: { ...leaf, profile: manifest.governance.profile }, recordedPlugins: manifest.plugins });
+  return { recordedIdentity: manifest.governance.activationIdentity, profile: manifest.governance.profile,
+    policyVersion: manifest.governance.policyVersion, selection: { ...leaf, profile: manifest.governance.profile },
+    pluginResolutionDigest: manifest.plugins.resolutionDigest,
+    activeLayoutDigest: manifestActiveLayoutDigest(manifest.activeLayout, source.layoutDescriptor) };
+}
+function checkedPreparedPlan(value: ModernActivationSuccessorPlan): void {
+  if (typeof value !== 'object' || value === null || Object.getPrototypeOf(value) !== Object.prototype) historyFail('prepared plan', 'requires own data.');
+  const keys = ['source', 'target', 'manifest', 'semanticInput', 'semanticTransitionDigest', 'preparationSourceBinding', 'planBinding'];
+  if (Reflect.ownKeys(value).length !== keys.length || keys.some(key => {
+    const property = Object.getOwnPropertyDescriptor(value, key);
+    return !property?.enumerable || !Object.hasOwn(property, 'value');
+  })) historyFail('prepared plan', 'contains unknown fields or hooks.');
+  assertModernRecordData({ target: value.target, manifest: value.manifest, semanticInput: value.semanticInput,
+    semanticTransitionDigest: value.semanticTransitionDigest, preparationSourceBinding: value.preparationSourceBinding,
+    planBinding: value.planBinding }, 'prepared plan data');
+}
+function copyModernSource(source: ModernSuccessorSource): ModernSuccessorSource {
+  const keys = ['projectRoot', 'captures', 'originalPaths', 'indexContent', 'historyDisposition', 'ancestors', 'sourceBinding'];
+  if (typeof source !== 'object' || source === null || Object.getPrototypeOf(source) !== Object.prototype ||
+    Reflect.ownKeys(source).length !== keys.length || keys.some(key => {
+      const property = Object.getOwnPropertyDescriptor(source, key);
+      return !property?.enumerable || !Object.hasOwn(property, 'value');
+    })) historyFail('source plan', 'requires exactly original own-data fields without hooks.');
+  const metadata = copySourceHistoryData({
+    projectRoot: source.projectRoot, originalPaths: source.originalPaths,
+    historyDisposition: source.historyDisposition, sourceBinding: source.sourceBinding
+  }, 'source plan metadata');
+  if (!Array.isArray(metadata.originalPaths) || metadata.originalPaths.length > 1024) {
+    historyFail('source originals', 'requires at most 1024 original paths.', 'history-inspection-limit');
+  }
+  if (!Array.isArray(source.ancestors) || Object.getPrototypeOf(source.ancestors) !== Array.prototype ||
+    Reflect.ownKeys(source.ancestors).length !== source.ancestors.length + 1 || source.ancestors.length > 2) {
+    historyFail('source ancestry', 'requires a dense two-predecessor collection.');
+  }
+  const ancestors: ModernSourceAncestor[] = [];
+  for (let i = 0; i < source.ancestors.length; i++) {
+    const slot = Object.getOwnPropertyDescriptor(source.ancestors, String(i));
+    if (!slot?.enumerable || !Object.hasOwn(slot, 'value')) historyFail('source ancestor', 'must not contain accessors or holes.');
+    const ancestor: ModernSourceAncestor = slot.value;
+    if (typeof ancestor !== 'object' || ancestor === null || Object.getPrototypeOf(ancestor) !== Object.prototype ||
+      Reflect.ownKeys(ancestor).length !== 3 || ['indexContent', 'indexPathParts', 'copies'].some(key => {
+        const property = Object.getOwnPropertyDescriptor(ancestor, key);
+        return !property?.enumerable || !Object.hasOwn(property, 'value');
+      })) historyFail('source ancestor', 'requires exactly captured own-data index, path and copies.');
+    ancestors.push({
+      indexContent: copyHistoryBuffer(ancestor.indexContent, 'source ancestor index'),
+      indexPathParts: copySourceHistoryPath(ancestor.indexPathParts, 'source ancestor path'),
+      copies: copySourceHistoryObservations(ancestor.copies)
+    });
+  }
+  return {
+    ...metadata, captures: copySourceHistoryObservations(source.captures),
+    originalPaths: metadata.originalPaths.map(parts => copySourceHistoryPath(parts, 'source original path')),
+    indexContent: copyHistoryBuffer(source.indexContent, 'source index'), ancestors
+  };
+}
+function copyPreparedPlan(plan: ModernActivationSuccessorPlan): ModernActivationSuccessorPlan {
+  checkedPreparedPlan(plan);
+  const data = copySourceHistoryData({
+    target: plan.target, manifest: plan.manifest, semanticInput: plan.semanticInput,
+    semanticTransitionDigest: plan.semanticTransitionDigest, preparationSourceBinding: plan.preparationSourceBinding,
+    planBinding: plan.planBinding
+  }, 'prepared successor plan');
+  return { ...data, source: copyModernSource(plan.source) };
+}
+/** Render only before admission/consent; returned literal bodies must thereafter be published unchanged. */
+export async function planModernActivationSuccessor(
+  source: ModernSuccessorSource, target: ModernSuccessorTarget
+): Promise<ModernActivationSuccessorPlan> {
+  source = copyModernSource(source);
+  target = copySourceHistoryData(target, 'modern target');
+  const validated = await validateModernSuccessorSource(source);
+  assertModernRecordData(target, 'modern target');
+  historyExact(target, ['selection', 'plugins', 'activeLayout', 'managed'], 'modern target');
+  const { inventory, index, captures } = validated;
+  const originalManifestBytes = requireContent(originalObservation(captures, originalManifestPath), 'original manifest is missing');
+  const rawSourceManifest = parseHistoryJson(originalManifestBytes, 'original manifest');
+  const sourceProfile = inventory.manifest.governance.profile;
+  if (sourceProfile !== 'single-maintainer-gitflow' || target.selection.profile !== sourceProfile ||
+    canonicalSha256(target.selection.project) !== canonicalSha256(inventory.manifest.project) ||
+    canonicalSha256(target.selection.framework) !== canonicalSha256(inventory.manifest.framework)) {
+    historyFail('modern target', 'ordinary successor cannot switch source profile/workflow/project/framework intent.');
+  }
+  const managed = buildModernManagedCore({ selection: target.selection, plugins: target.plugins, activeLayout: target.activeLayout });
+  const decisions = target.managed;
+  if (!Array.isArray(decisions)) historyFail('managed decisions', 'requires an explicit finite inventory.');
+  for (const artifact of managed) {
+    originalObservation(captures, artifact.pathParts);
+    const decision = decisions.find(entry => entry.logicalName === artifact.logicalName);
+    if (!decision) historyFail(artifact.logicalName, 'complete applicable managed prerequisite is missing.', 'missing-modern-managed-prerequisite');
+    if (decision.kind === 'bytes') {
+      if (decision.content !== artifact.content || decision.category !== artifact.category ||
+        historyPathKey(decision.pathParts) !== historyPathKey(artifact.pathParts)) historyFail(artifact.logicalName, 'target body differs from actual G1 output.');
+    } else if (decision.kind === 'retain') {
+      const original = inventory.manifest.managedArtifacts.find(entry => entry.logicalName === artifact.logicalName);
+      if (!original || original.pathParts.join('/') !== artifact.pathParts.join('/')) historyFail(artifact.logicalName, 'has no exact retained source artifact.');
+      const captured = originalObservation(captures, original.pathParts);
+      if (!captured.content || !captured.content.equals(Buffer.from(artifact.content)) ||
+        original.contentHash !== `sha256:${rawHistoryDigest(captured.content)}`) historyFail(artifact.logicalName, 'retained hash is not independently captured matching bytes.');
+    } else historyFail(artifact.logicalName, 'an applicable modern prerequisite cannot be retired.');
+  }
+  const reference: ManifestSourceHistoryReference = { schemaVersion: 1, kind: 'activation-history',
+    snapshotId: index.snapshotId, indexDigest: rawHistoryDigest(source.indexContent) };
+  const candidate = createManifestV8Candidate({ origin: 'historical-successor', source: rawSourceManifest,
+    profile: target.selection.profile, activeLayout: target.activeLayout, sourceManifestHistory: reference, managed: decisions });
+  const context = candidateContext(candidate), contract = createModernHistoryContract(projectCatalog, context);
+  const compatibility = createModernCompatibilityContract({ catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract })
+    .buildModernCompatibilityMetadata(candidate.manifest);
+  if (!compatibility.activation.successorLanes.some(lane => canonicalSha256(lane.sourceIdentity) === canonicalSha256(index.sourceIdentity) &&
+    lane.sourceWorkflow === inventory.manifest.project.specWorkflow)) historyFail('modern successor lane', 'is not explicitly declared for the exact source/target intent.');
+  if (candidate.manifest.governance.state !== 'handoff-generated' ||
+    candidate.manifest.managedArtifacts.length !== managed.length) historyFail('modern successor', 'a readable partial handoff is not a complete publication candidate.');
+  for (const artifact of managed) {
+    const entry = candidate.manifest.managedArtifacts.find(entry => entry.logicalName === artifact.logicalName);
+    if (entry?.contentHash !== `sha256:${rawHistoryDigest(Buffer.from(artifact.content))}`) historyFail(artifact.logicalName, 'manifest hash does not bind its actual target body.');
+  }
+  const semanticInput = contract.semanticInput(index.sourceIdentity, reference, candidate.digest);
+  const fields = {
+    source: copyModernSource(source), target: structuredClone(target), manifest: candidate, semanticInput,
+    semanticTransitionDigest: canonicalSha256(semanticInput), preparationSourceBinding: source.sourceBinding
+  };
+  return { ...fields, planBinding: canonicalSha256({ sourceBinding: fields.source.sourceBinding, target: fields.target,
+    manifest: fields.manifest, semanticInput, semanticTransitionDigest: fields.semanticTransitionDigest }) };
+}
+
+/** Deterministic pre-admission reconstruction. No time/random generation and no writes or publication claim. */
+export async function prepareActivationHistorySuccessor(
+  plan: ModernActivationSuccessorPlan, completeTargetManifestBytes: Uint8Array,
+  preparationInput: SuccessorPreparationV1, observedAt: string
+): Promise<PreparedModernActivationSuccessor> {
+  plan = copyPreparedPlan(plan);
+  const preparation = validateSuccessorPreparation(preparationInput, observedAt);
+  if (!(completeTargetManifestBytes instanceof Uint8Array) ||
+    ![Uint8Array.prototype, Buffer.prototype].includes(Object.getPrototypeOf(completeTargetManifestBytes)) ||
+    ['length', 'byteLength', 'byteOffset', 'buffer', 'valueOf', 'toString', 'toJSON'].some(key => Object.hasOwn(completeTargetManifestBytes, key)) ||
+    Object.getOwnPropertySymbols(completeTargetManifestBytes).length) {
+    historyFail('target manifest bytes', 'requires actual UTF8 bytes.');
+  }
+  if (completeTargetManifestBytes.byteLength > 8 * 1024 * 1024) {
+    historyFail('target manifest bytes', 'exceeds the 8MiB file bound.', 'history-inspection-limit');
+  }
+  completeTargetManifestBytes = Buffer.from(completeTargetManifestBytes);
+  const replay = await planModernActivationSuccessor(plan.source, plan.target);
+  assertModernRecordData({ manifest: plan.manifest, semanticInput: plan.semanticInput, semanticTransitionDigest: plan.semanticTransitionDigest,
+    preparationSourceBinding: plan.preparationSourceBinding, planBinding: plan.planBinding }, 'prepared plan');
+  if (replay.planBinding !== plan.planBinding || replay.preparationSourceBinding !== plan.preparationSourceBinding ||
+    canonicalSha256(replay.manifest) !== canonicalSha256(plan.manifest) ||
+    canonicalSha256(replay.semanticInput) !== canonicalSha256(plan.semanticInput) ||
+    replay.semanticTransitionDigest !== plan.semanticTransitionDigest ||
+    !Buffer.from(completeTargetManifestBytes).equals(Buffer.from(replay.manifest.content))) {
+    historyFail('prepared successor', 'source, target or literal candidate bytes differ from the reviewed construction.', 'historical-plan-changed');
+  }
+  const checked = await validateModernSuccessorSource(plan.source), context = candidateContext(replay.manifest);
+  if (isProtectedSourceAnchor(checked.inventory.state.repository.id) && checked.inventory.state.repository.id !== preparation.localRepositoryId) {
+    historyFail('successor anchor', 'must preserve the original protected local anchor.');
+  }
+  const recordContract = createModernActivationRecordContract(projectCatalog, context);
+  const initial = recordContract.createInitialState({
+    repository: { id: preparation.localRepositoryId, name: checked.inventory.manifest.project.name, defaultBranch: 'develop' },
+    applicability: { statePath: 'none', privateStagingDast: 'unknown', credentialRequired: 'unknown' }, createdAt: preparation.preparedAt
+  });
+  const successor = recordContract.readState({ ...initial, successorHistory: {
+    schemaVersion: 1, snapshotId: checked.index.snapshotId, journalPathParts: ['governance', 'migration-state.json'],
+    historyIndexPathParts: activationHistoryIndexPathParts(checked.index.snapshotId), historyIndexDigest: rawHistoryDigest(plan.source.indexContent),
+    sourceActiveChange: checked.inventory.state.activeChange
+  } });
+  const history = createModernHistoryContract(projectCatalog, context);
+  const journal = history.readJournal({
+    schemaVersion: 2, semanticInput: replay.semanticInput, semanticTransitionDigest: replay.semanticTransitionDigest, preparation,
+    successor: { repositoryId: successor.repository.id, createdAt: preparation.preparedAt },
+    revalidation: { status: 'pending', updatedAt: preparation.preparedAt,
+      phases: history.policy.revalidation.map(phaseId => ({
+        phaseId, status: 'pending', evidenceIds: [], blockers: []
+      })), nextAction: 'Publish the exact separately admitted candidate; local revalidation requires its own reviewed operation.' }
+  }, replay.semanticInput, observedAt);
+  const retirements = checked.index.files.filter(file =>
+    ['evidence', 'plan', 'approval', 'supersession', 'reconciliation', 'credential-policy'].includes(file.kind)).map(file => ({
+    pathParts: [...file.originalPathParts], copyPathParts: [...file.copyPathParts], digest: file.digest
+  }));
+  const mutations: ActivationHistoryMutation[] = [];
+  if (plan.source.historyDisposition === 'create') {
+    for (const entry of checked.index.files) mutations.push({ type: 'write', pathParts: [...entry.copyPathParts],
+      content: Buffer.from(requireContent(originalObservation(checked.captures, entry.originalPathParts), 'source missing')), mode: 0o600 });
+    mutations.push({ type: 'write', pathParts: activationHistoryIndexPathParts(checked.index.snapshotId), content: Buffer.from(plan.source.indexContent), mode: 0o600 });
+  }
+  mutations.push(...retirements.map(entry => ({ type: 'delete' as const, pathParts: [...entry.pathParts] })),
+    { type: 'write', pathParts: [...originalStatePath], content: canonicalJson(successor), mode: 0o600 },
+    { type: 'write', pathParts: [...originalJournalPath], content: canonicalJson(journal), mode: 0o600 });
+  const obligations: ReleasedSourceLifecycleObligation[] = checked.inventories.flatMap((inventory, i) => inventory.state.bootstrapState ? [{
+    snapshotId: checked.indexes[i].snapshotId, sourceIdentity: checked.indexes[i].sourceIdentity,
+    repositoryId: inventory.state.repository.id, retention: structuredClone(inventory.state.bootstrapState), authority: 'historical-protection-only'
+  }] : []);
+  return {
+    semanticTransitionDigest: replay.semanticTransitionDigest, preparation, successor, journal,
+    manifestBytes: Buffer.from(replay.manifest.content), manifestDigest: replay.manifest.digest,
+    mutations, preconditions: copySourceHistoryObservations(checked.captures), requiredRetirements: retirements, lifecycleObligations: obligations
+  };
 }

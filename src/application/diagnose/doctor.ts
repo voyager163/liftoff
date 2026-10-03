@@ -31,11 +31,11 @@ import {
 import {
   checkConfiguredRegistryTarget,
   type ConfiguredRegistryTargetLookup
-} from '../../self-upgrade.js';
+} from '../upgrade/self-upgrade.js';
 import {
   canonicalManualInstallCommand,
   canonicalNpmRegistry
-} from '../../package-identity.js';
+} from '../../domain/distribution/liftoff-package.js';
 import {
   lookupStableRelease,
   type StableRelease
@@ -794,5 +794,6 @@ export async function diagnoseProject(request: DoctorRequest, context: Execution
     );
   }
 
+  context.outcome?.record(failures > 0 ? 'failure' : warnings > 0 ? 'attention-required' : 'success');
   return doctorExitCode(layers);
 }

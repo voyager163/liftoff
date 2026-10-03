@@ -1,3 +1,4 @@
+import { isSpecKitIntegrationRecord, appendSpecKitDefaultIssues, isSpecKitInstalledList, appendSpecKitSelectedIssues, isOpenSpecCodexTarget } from './domain/governance/activation/local-check-values.js';
 import { lstat, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { getCodingAgent, getFrameworkDefinition } from './application/project/catalog.js';
@@ -113,32 +114,21 @@ async function validateSpecKitState(
   } catch (error) {
     return [`Unable to read .specify/integration.json: ${error instanceof Error ? error.message : String(error)}`];
   }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+  if (!isSpecKitIntegrationRecord(parsed)) {
     return ['Spec Kit integration state must be a JSON object.'];
   }
   const state = parsed as Record<string, unknown>;
   const expectedDefault = selection.defaultAgent
     ? getCodingAgent(selection.defaultAgent)?.integrationIds['spec-kit']
     : undefined;
-  const defaultIntegration = state.default_integration ?? state.integration;
-  if (state.default_integration !== undefined && state.integration !== undefined &&
-      state.default_integration !== state.integration) {
-    issues.push('Spec Kit integration and default_integration disagree.');
-  }
-  if (defaultIntegration !== expectedDefault) {
-    issues.push(`Spec Kit default integration is ${JSON.stringify(defaultIntegration)}; expected ${JSON.stringify(expectedDefault)}.`);
-  }
+  appendSpecKitDefaultIssues(state, expectedDefault, issues);
   const installed = state.installed_integrations;
-  if (!Array.isArray(installed) || installed.some((value) => typeof value !== 'string')) {
+  if (!isSpecKitInstalledList(installed)) {
     issues.push('Spec Kit installed_integrations must be a string array.');
     return issues;
   }
   const expected = selection.agents.map((agent) => getCodingAgent(agent)!.integrationIds['spec-kit']);
-  for (const integration of expected) {
-    if (!installed.includes(integration)) {
-      issues.push(`Spec Kit integration state does not include selected integration ${integration}.`);
-    }
-  }
+  appendSpecKitSelectedIssues(installed, expected, issues);
   return issues;
 }
 
@@ -168,7 +158,7 @@ export async function validateFrameworkInstallation(
     const targetIssue = await frameworkMarkerIssue(root, OPEN_SPEC_CODEX_TARGET_PATH);
     if (!targetIssue) {
       const target = await readFile(path.join(root, ...OPEN_SPEC_CODEX_TARGET_PATH), 'utf8');
-      if (target.trim() !== 'codex') {
+      if (!isOpenSpecCodexTarget(target)) {
         issues.push('OpenSpec shared skills target does not identify the selected Codex integration.');
       }
     } else if (!targetIssue.startsWith('Missing framework marker:')) {

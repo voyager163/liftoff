@@ -78,4 +78,11 @@ variable "daily_quota_gb" {
     condition     = var.daily_quota_gb > 0 && var.daily_quota_gb <= 1
     error_message = "daily_quota_gb must be greater than 0 and no more than 1."
   }
+
+}
+
+variable "project_ingestion_enabled" {
+  description = "Enables the separately validated project endpoint only after approved schema deployment and synthetic verification. Does not enroll clients."
+  type        = bool
+  default     = false
 }

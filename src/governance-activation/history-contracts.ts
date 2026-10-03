@@ -2,15 +2,18 @@ import { createHash } from 'node:crypto';
 import { stripVTControlCharacters } from 'node:util';
 import { canonicalSha256, isRecord } from '../domain/governance/activation/canonical-json.js';
 import { currentActivationIdentity } from '../domain/governance/activation/graph.js';
-import type { ActivationIdentity, PhaseId } from '../domain/governance/activation/types.js';
+import type { ActivationIdentity } from '../domain/governance/activation/types.js';
 import {
   historicalActivationIdentities,
   isHistoricalActivationIdentity, isHistoricalV1ActivationIdentity, isHistoricalV2ActivationIdentity,
-  type HistoricalActivationIdentity, type HistoricalV1ActivationIdentity, type HistoricalV2ActivationIdentity
+  isReleasedV3ActivationIdentity,
+  type HistoricalActivationIdentity, type HistoricalV1ActivationIdentity, type HistoricalV2ActivationIdentity,
+  type ReleasedV3ActivationIdentity
 } from '../domain/governance/policy/identity.js';
 import type { ActivationSuccessorMigrationId } from './compatibility.js';
 import { assertSafeHistoricalRecord } from './historical-safety.js';
-import { governanceArtifactPaths } from '../domain/project/catalog.js';
+import { assertModernRecordData } from '../domain/governance/activation/source-values.js';
+import { releasedHistoricalMetadataPathParts } from './released-managed-metadata.js';
 export {
   reviewedUpdateTransactionPathParts, reviewedUpdateTransactionSchemaVersion
 } from '../domain/project/reviewed-update-artifacts.js';
@@ -30,24 +33,7 @@ export const migrationStateFilePathParts = ['governance', 'migration-state.json'
 export const historicalManifestPathParts = ['liftoff.manifest.json'] as const;
 export const historicalActivationStatePathParts = ['governance', 'activation-state.json'] as const;
 export const historicalActivationIdentity = historicalActivationIdentities[0];
-export const historicalMetadataPathParts = [
-  ['liftoff.config.json'],
-  ['.liftoff', 'governance', 'phase-graph.json'],
-  ['.liftoff', 'governance', 'compatibility.json'],
-  ['.liftoff', 'governance', 'context.json'],
-  ['.liftoff', 'governance', 'policy.md'],
-  ['.liftoff', 'governance', 'README.md'],
-  ['.liftoff', 'governance', 'credential-policy.schema.json'],
-  ['.github', 'prompts', 'liftoff-setup.prompt.md'],
-  ['.github', 'prompts', 'liftoff-governance-assess.prompt.md'],
-  ['.claude', 'commands', 'liftoff-setup.md'],
-  ['.claude', 'commands', 'liftoff-governance-assess.md'],
-  ['.agents', 'skills', 'liftoff-setup', 'SKILL.md'],
-  ['.agents', 'skills', 'liftoff-governance-assess', 'SKILL.md'],
-  governanceArtifactPaths.repair['github-copilot'],
-  governanceArtifactPaths.repair.claude,
-  governanceArtifactPaths.repair.codex
-] as const;
+export const historicalMetadataPathParts = releasedHistoricalMetadataPathParts;
 
 export { ActivationHistoryError, historyFail } from './historical-safety.js';
 import { historyFail } from './historical-safety.js';
@@ -248,6 +234,14 @@ export interface ActivationHistoryIndex {
   files: ActivationHistoryFile[];
 }
 
+/** New preservation pairing; no released v3 snapshot writer is implied. */
+export interface FrozenV3SourceIndexV1 {
+  schemaVersion: 1;
+  snapshotId: string;
+  sourceIdentity: ReleasedV3ActivationIdentity;
+  files: ActivationHistoryFile[];
+}
+
 export function activationHistoryIndexPathParts(snapshotId: string): string[] {
   return [...activationHistoryRootPathParts, historyDigest(snapshotId, 'snapshotId'), 'index.json'];
 }
@@ -261,20 +255,69 @@ export function activationHistorySnapshotId(
   sourceIdentity: HistoricalActivationIdentity,
   files: readonly Omit<ActivationHistoryFile, 'copyPathParts'>[]
 ): string {
+  return snapshotIdFor(sourceIdentity, files, activationHistoryIndexSchemaVersion);
+}
+
+function snapshotIdFor(
+  sourceIdentity: HistoricalActivationIdentity | ReleasedV3ActivationIdentity,
+  files: readonly Omit<ActivationHistoryFile, 'copyPathParts'>[],
+  schemaVersion: number
+): string {
   const inventory = files.map(({ kind, originalPathParts, digest, mode }) =>
     ({ kind, originalPathParts, digest, mode })).sort((a, b) =>
     historyPathKey(a.originalPathParts) < historyPathKey(b.originalPathParts) ? -1 :
       historyPathKey(a.originalPathParts) > historyPathKey(b.originalPathParts) ? 1 : 0);
-  return canonicalSha256({ schemaVersion: activationHistoryIndexSchemaVersion, sourceIdentity, files: inventory });
+  return canonicalSha256({ schemaVersion, sourceIdentity, files: inventory });
 }
 
 export function validateActivationHistoryIndex(value: unknown): ActivationHistoryIndex {
+  return readActivationHistoryIndex(value, 'legacy');
+}
+
+export function validateFrozenActivationHistoryIndex(value: unknown): ActivationHistoryIndex {
+  return readActivationHistoryIndex(value, 'frozen-v1-v2');
+}
+
+export function validateFrozenV3SourceIndex(value: unknown): FrozenV3SourceIndexV1 {
+  return readActivationHistoryIndex(value, 'frozen-v3');
+}
+
+/** Source-only preservation, never a target/current identity allocator. */
+export function createReleasedSourceHistoryIndex(
+  identity: unknown, entries: readonly Omit<ActivationHistoryFile, 'copyPathParts'>[]
+): ActivationHistoryIndex | FrozenV3SourceIndexV1 {
+  assertModernRecordData({ identity, entries }, 'source index input');
+  const sourceIdentity = isReleasedV3ActivationIdentity(identity) ? { ...identity } : historicalIdentity(identity, 'source index identity');
+  const snapshotId = snapshotIdFor(sourceIdentity, entries, 1);
+  const value = { schemaVersion: 1, snapshotId, sourceIdentity, files: entries.map(entry => ({
+    ...entry, copyPathParts: ['governance', 'history', snapshotId, 'files', ...entry.originalPathParts]
+  })) };
+  return isReleasedV3ActivationIdentity(sourceIdentity) ? validateFrozenV3SourceIndex(value) : validateFrozenActivationHistoryIndex(value);
+}
+
+const frozenIndexRoles = [
+  'manifest', 'state', 'metadata', 'evidence', 'plan', 'approval',
+  'migration', 'supersession', 'reconciliation', 'credential-policy', 'source-metadata', 'source-tasks'
+] as const;
+
+function readActivationHistoryIndex(value: unknown, contract: 'legacy' | 'frozen-v1-v2'): ActivationHistoryIndex;
+function readActivationHistoryIndex(value: unknown, contract: 'frozen-v3'): FrozenV3SourceIndexV1;
+function readActivationHistoryIndex(
+  value: unknown, contract: 'legacy' | 'frozen-v1-v2' | 'frozen-v3'
+): Omit<ActivationHistoryIndex, 'sourceIdentity'> & { sourceIdentity: HistoricalActivationIdentity | ReleasedV3ActivationIdentity } {
   const label = 'activationHistoryIndex';
   assertSafeHistoricalRecord(value, label);
   const index = historyExact(value, ['schemaVersion', 'snapshotId', 'sourceIdentity', 'files'], label);
-  historyLiteral(index.schemaVersion, activationHistoryIndexSchemaVersion, `${label}.schemaVersion`);
+  const schemaVersion = contract === 'legacy' ? activationHistoryIndexSchemaVersion : 1;
+  historyLiteral(index.schemaVersion, schemaVersion, `${label}.schemaVersion`);
   const snapshotId = historyDigest(index.snapshotId, `${label}.snapshotId`);
-  const sourceIdentity = historicalIdentity(index.sourceIdentity, `${label}.sourceIdentity`);
+  const sourceIdentity = contract === 'frozen-v3'
+    ? isReleasedV3ActivationIdentity(index.sourceIdentity) ? { ...index.sourceIdentity } :
+      historyFail(`${label}.sourceIdentity`, 'requires the exact frozen v3 source identity.', 'unsupported-historical-identity')
+    : contract === 'legacy' ? historicalIdentity(index.sourceIdentity, `${label}.sourceIdentity`) :
+    isHistoricalV1ActivationIdentity(index.sourceIdentity) || isHistoricalV2ActivationIdentity(index.sourceIdentity)
+      ? { ...index.sourceIdentity }
+      : historyFail(`${label}.sourceIdentity`, 'requires an exact frozen v1 or v2 source identity.', 'unsupported-historical-identity');
   const seen = new Set<string>();
   const files = historyArray(index.files, `${label}.files`).map((entry, position): ActivationHistoryFile => {
     const at = `${label}.files[${position}]`;
@@ -284,18 +327,24 @@ export function validateActivationHistoryIndex(value: unknown): ActivationHistor
     const key = historyCaseKey(originalPathParts);
     if (seen.has(key)) historyFail(at, 'contains duplicate or case-colliding original paths.', 'history-path-collision');
     seen.add(key);
-    if (historyPathKey(copyPathParts) !== historyPathKey(activationHistoryCopyPathParts(snapshotId, originalPathParts))) {
+    const expectedCopy = contract === 'legacy' ? activationHistoryCopyPathParts(snapshotId, originalPathParts) :
+      ['governance', 'history', snapshotId, 'files', ...originalPathParts];
+    if (historyPathKey(copyPathParts) !== historyPathKey(expectedCopy)) {
       historyFail(`${at}.copyPathParts`, 'does not name the registered exact snapshot copy.', 'unsafe-history-path');
     }
     if (typeof file.mode !== 'number' || !Number.isInteger(file.mode) || file.mode < 0 || file.mode > 0o7777) {
       historyFail(`${at}.mode`, 'must be the recorded file permission mode.');
     }
-    const kind = historyEnum(file.kind, historicalFileKinds, `${at}.kind`);
+    const kind = historyEnum(file.kind, contract === 'legacy' ? historicalFileKinds : frozenIndexRoles, `${at}.kind`);
     const path = historyPathKey(originalPathParts);
-    if (kind === 'manifest' && path !== historyPathKey(historicalManifestPathParts) ||
-      kind === 'state' && path !== historyPathKey(historicalActivationStatePathParts) ||
-      kind === 'metadata' && !historicalMetadataPathParts.some((parts) => historyPathKey(parts) === path) ||
-      kind === 'migration' && path !== historyPathKey(migrationStateFilePathParts) ||
+    const manifestPath = contract === 'legacy' ? historyPathKey(historicalManifestPathParts) : 'liftoff.manifest.json';
+    const statePath = contract === 'legacy' ? historyPathKey(historicalActivationStatePathParts) : 'governance/activation-state.json';
+    const migrationPath = contract === 'legacy' ? historyPathKey(migrationStateFilePathParts) : 'governance/migration-state.json';
+    const metadataPaths = contract === 'legacy' ? historicalMetadataPathParts : releasedHistoricalMetadataPathParts;
+    if (kind === 'manifest' && path !== manifestPath ||
+      kind === 'state' && path !== statePath ||
+      kind === 'metadata' && !metadataPaths.some((parts) => historyPathKey(parts) === path) ||
+      kind === 'migration' && path !== migrationPath ||
       kind === 'credential-policy' && path !== 'governance/credentials/preflight-policy.json' ||
       ['source-metadata', 'source-tasks'].includes(kind) &&
         (!(originalPathParts.length === 4 && originalPathParts[0] === 'openspec' && originalPathParts[1] === 'changes' && originalPathParts[2] !== 'archive' ||
@@ -318,7 +367,7 @@ export function validateActivationHistoryIndex(value: unknown): ActivationHistor
   for (const kind of ['manifest', 'state']) {
     if (files.filter((file) => file.kind === kind).length !== 1) historyFail(label, `requires exactly one ${kind} source.`);
   }
-  if (activationHistorySnapshotId(sourceIdentity, files) !== snapshotId) {
+  if (snapshotIdFor(sourceIdentity, files, schemaVersion) !== snapshotId) {
     historyFail(`${label}.snapshotId`, 'does not match its complete source inventory.', 'history-digest-mismatch');
   }
   return { schemaVersion: 1, snapshotId, sourceIdentity, files };
@@ -353,23 +402,64 @@ export interface MigrationJournal {
   };
 }
 
-export type HistoricalV2SourceMigrationJournal = Omit<MigrationJournal, 'laneId' | 'sourceIdentity' | 'targetIdentity'> & {
+const publishedMigrationJournalV1 = Object.freeze({
+  schemaVersion: 1,
+  phaseIds: Object.freeze(['seed-valid', 'seed-verified', 'seed-archived'] as const),
+  statuses: Object.freeze(['pending', 'running', 'blocked', 'complete'] as const),
+  historyRootPathParts: Object.freeze(['governance', 'history'] as const)
+} as const);
+
+interface PublishedMigrationJournalFields {
+  schemaVersion: 1;
+  snapshotId: string;
+  historyIndexPathParts: string[];
+  historyIndexDigest: string;
+  approvedPlanFingerprint: string;
+  successor: { repositoryId: string; createdAt: string };
+  transaction: { status: 'committed'; committedAt: string };
+  revalidation: {
+    status: typeof publishedMigrationJournalV1.statuses[number];
+    updatedAt: string;
+    phases: {
+      phaseId: typeof publishedMigrationJournalV1.phaseIds[number];
+      status: typeof publishedMigrationJournalV1.statuses[number];
+      evidenceIds: string[];
+      blockers: string[];
+    }[];
+    nextAction: string | null;
+  };
+}
+
+export type HistoricalV2SourceMigrationJournal = PublishedMigrationJournalFields & {
   laneId: 'activation-v1-to-v2';
   sourceIdentity: HistoricalV1ActivationIdentity;
   targetIdentity: HistoricalV2ActivationIdentity;
 };
 
-function readMigrationJournalFields(value: unknown) {
+export type HistoricalV3SourceMigrationJournal = PublishedMigrationJournalFields & {
+  targetIdentity: ReleasedV3ActivationIdentity;
+} & (
+  | { laneId: 'activation-v1-to-v3'; sourceIdentity: HistoricalV1ActivationIdentity }
+  | { laneId: 'activation-v2-to-v3'; sourceIdentity: HistoricalV2ActivationIdentity }
+);
+
+function readMigrationJournalFields(value: unknown, contractKind: 'current' | 'published-v1') {
+  const contract = contractKind === 'published-v1' ? publishedMigrationJournalV1 : {
+    schemaVersion: migrationJournalSchemaVersion,
+    phaseIds: migrationRevalidationPhaseIds,
+    statuses: migrationRevalidationStatuses,
+    historyRootPathParts: activationHistoryRootPathParts
+  };
   const label = 'migrationJournal';
   assertSafeHistoricalRecord(value, label);
   const journal = historyExact(value, [
     'schemaVersion', 'laneId', 'snapshotId', 'historyIndexPathParts', 'historyIndexDigest',
     'sourceIdentity', 'targetIdentity', 'approvedPlanFingerprint', 'successor', 'transaction', 'revalidation'
   ], label);
-  historyLiteral(journal.schemaVersion, migrationJournalSchemaVersion, `${label}.schemaVersion`);
+  historyLiteral(journal.schemaVersion, contract.schemaVersion, `${label}.schemaVersion`);
   const snapshotId = historyDigest(journal.snapshotId, `${label}.snapshotId`);
   const historyIndexPath = historyPathParts(journal.historyIndexPathParts, `${label}.historyIndexPathParts`);
-  if (historyPathKey(historyIndexPath) !== historyPathKey(activationHistoryIndexPathParts(snapshotId))) {
+  if (historyPathKey(historyIndexPath) !== historyPathKey([...contract.historyRootPathParts, snapshotId, 'index.json'])) {
     historyFail(`${label}.historyIndexPathParts`, 'does not name its exact registered index.', 'unsafe-history-path');
   }
   const successor = historyExact(journal.successor, ['repositoryId', 'createdAt'], `${label}.successor`);
@@ -383,17 +473,17 @@ function readMigrationJournalFields(value: unknown) {
   const committedAt = historyTimestamp(transaction.committedAt, `${label}.transaction.committedAt`);
   if (Date.parse(committedAt) < Date.parse(createdAt)) historyFail(label, 'commit cannot precede successor creation.');
   const progress = historyExact(journal.revalidation, ['status', 'updatedAt', 'phases', 'nextAction'], `${label}.revalidation`);
-  const status = historyEnum(progress.status, migrationRevalidationStatuses, `${label}.revalidation.status`);
+  const status = historyEnum(progress.status, contract.statuses, `${label}.revalidation.status`);
   const updatedAt = historyTimestamp(progress.updatedAt, `${label}.revalidation.updatedAt`);
   if (Date.parse(updatedAt) < Date.parse(committedAt)) historyFail(label, 'revalidation cannot precede local commit.');
-  const seen = new Set<PhaseId>();
-  const phases = historyArray(progress.phases, `${label}.revalidation.phases`).map((entry, position): MigrationPhaseProgress => {
+  const seen = new Set<string>();
+  const phases = historyArray(progress.phases, `${label}.revalidation.phases`).map((entry, position) => {
     const at = `${label}.revalidation.phases[${position}]`;
     const phase = historyExact(entry, ['phaseId', 'status', 'evidenceIds', 'blockers'], at);
-    const phaseId = historyEnum(phase.phaseId, migrationRevalidationPhaseIds, `${at}.phaseId`);
+    const phaseId = historyEnum(phase.phaseId, contract.phaseIds, `${at}.phaseId`);
     if (seen.has(phaseId)) historyFail(at, 'duplicates a phase result.');
     seen.add(phaseId);
-    const phaseStatus = historyEnum(phase.status, migrationRevalidationStatuses, `${at}.status`);
+    const phaseStatus = historyEnum(phase.status, contract.statuses, `${at}.status`);
     const evidenceIds = historyArray(phase.evidenceIds, `${at}.evidenceIds`).map((id) => historyRecordId(id, `${at}.evidenceIds`));
     const blockers = historyStrings(phase.blockers, `${at}.blockers`);
     if (new Set(evidenceIds).size !== evidenceIds.length) historyFail(at, 'contains duplicate evidence IDs.');
@@ -402,7 +492,7 @@ function readMigrationJournalFields(value: unknown) {
     if (phaseStatus === 'pending' && (evidenceIds.length > 0 || blockers.length > 0)) historyFail(at, 'pending work cannot claim evidence or completed results.');
     return { phaseId, status: phaseStatus, evidenceIds, blockers };
   });
-  if (phases.length !== migrationRevalidationPhaseIds.length) {
+  if (phases.length !== contract.phaseIds.length) {
     historyFail(label, 'requires exactly seed-valid, seed-verified and seed-archived local revalidation; publication is separate governance work.');
   }
   if (status === 'complete' && phases.some((phase) => phase.status !== 'complete') ||
@@ -414,7 +504,7 @@ function readMigrationJournalFields(value: unknown) {
   const nextAction = progress.nextAction === null ? null : historyString(progress.nextAction, `${label}.revalidation.nextAction`);
   if (status === 'complete' ? nextAction !== null : nextAction === null) historyFail(label, 'nextAction must distinguish complete and incomplete revalidation.');
   return {
-    schemaVersion: migrationJournalSchemaVersion, snapshotId, historyIndexPathParts: historyIndexPath,
+    schemaVersion: contract.schemaVersion, snapshotId, historyIndexPathParts: historyIndexPath,
     historyIndexDigest: historyDigest(journal.historyIndexDigest, `${label}.historyIndexDigest`),
     approvedPlanFingerprint: historyDigest(journal.approvedPlanFingerprint, `${label}.approvedPlanFingerprint`),
     successor: { repositoryId, createdAt }, transaction: { status: 'committed' as const, committedAt },
@@ -423,7 +513,7 @@ function readMigrationJournalFields(value: unknown) {
 }
 
 export function validateMigrationJournal(value: unknown): MigrationJournal {
-  const fields = readMigrationJournalFields(value);
+  const fields = readMigrationJournalFields(value, 'current');
   const journal = historyRecord(value, 'migrationJournal');
   const sourceIdentity = historicalIdentity(journal.sourceIdentity, 'migrationJournal.sourceIdentity');
   const laneId = sourceIdentity.activationContractVersion === 1 ? 'activation-v1-to-v3' : 'activation-v2-to-v3';
@@ -436,7 +526,7 @@ export function validateMigrationJournal(value: unknown): MigrationJournal {
 
 /** The completed 0.11.x journal is source data, never a current migration commit. */
 export function validateHistoricalV2SourceMigrationJournal(value: unknown): HistoricalV2SourceMigrationJournal {
-  const fields = readMigrationJournalFields(value);
+  const fields = readMigrationJournalFields(value, 'published-v1');
   const journal = historyRecord(value, 'historicalMigrationJournal');
   historyLiteral(journal.laneId, 'activation-v1-to-v2', 'historicalMigrationJournal.laneId');
   return {
@@ -444,4 +534,24 @@ export function validateHistoricalV2SourceMigrationJournal(value: unknown): Hist
     sourceIdentity: historicalV1Identity(journal.sourceIdentity, 'historicalMigrationJournal.sourceIdentity'),
     targetIdentity: historicalV2Identity(journal.targetIdentity, 'historicalMigrationJournal.targetIdentity')
   };
+}
+
+/** A released v3 commit is readable source data, not successor write authority. */
+export function validateHistoricalV3SourceMigrationJournal(value: unknown): HistoricalV3SourceMigrationJournal {
+  const fields = readMigrationJournalFields(value, 'published-v1');
+  const journal = historyRecord(value, 'historicalV3MigrationJournal');
+  const sourceIdentity = journal.sourceIdentity;
+  if (!isHistoricalV1ActivationIdentity(sourceIdentity) && !isHistoricalV2ActivationIdentity(sourceIdentity)) {
+    historyFail('historicalV3MigrationJournal.sourceIdentity',
+      'is not an exact registered historical activation v1/v2 identity.', 'unsupported-historical-identity');
+  }
+  const laneId = isHistoricalV1ActivationIdentity(sourceIdentity) ? 'activation-v1-to-v3' : 'activation-v2-to-v3';
+  historyLiteral(journal.laneId, laneId, 'historicalV3MigrationJournal.laneId');
+  if (!isReleasedV3ActivationIdentity(journal.targetIdentity)) {
+    historyFail('historicalV3MigrationJournal.targetIdentity', 'is not the exact released v3 target.', 'unsupported-migration-target');
+  }
+  const targetIdentity = { ...journal.targetIdentity };
+  return isHistoricalV1ActivationIdentity(sourceIdentity)
+    ? { ...fields, laneId: 'activation-v1-to-v3', sourceIdentity: { ...sourceIdentity }, targetIdentity }
+    : { ...fields, laneId: 'activation-v2-to-v3', sourceIdentity: { ...sourceIdentity }, targetIdentity };
 }

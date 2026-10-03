@@ -10,7 +10,7 @@ import type {
 } from './application-preparation-types.js';
 import type { ApplicationPatchCandidate } from './application-types.js';
 
-function compatibleRange(version: string, value: string): boolean {
+export function compatibleRange(version: string, value: string): boolean {
   const trimmed = value.trim();
   const caret = trimmed.match(/^\^(\d+)\.(\d+)\.(\d+)$/u);
   if (caret && Number(caret[1]) > 0) {

@@ -7,6 +7,47 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+export function exactRecord(value: unknown, fields: readonly string[], scope: string): Record<string, unknown> {
+  if (!isRecord(value) || ![Object.prototype, null].includes(Object.getPrototypeOf(value))) {
+    throw new FileSystemError(`${scope} must be a plain JSON object.`);
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== fields.length || keys.some((key) => typeof key !== 'string' || !fields.includes(key))) {
+    throw new FileSystemError(`${scope} must contain exactly the required fields: ${fields.join(', ')}.`);
+  }
+  const result: Record<string, unknown> = {};
+  for (const field of fields) {
+    const property = Object.getOwnPropertyDescriptor(value, field);
+    if (!property || !property.enumerable || !Object.hasOwn(property, 'value')) {
+      throw new FileSystemError(`${scope}.${field} must be an own enumerable data field.`);
+    }
+    result[field] = property.value;
+  }
+  return result;
+}
+
+export function denseArray(value: unknown, maximum: number, scope: string): unknown[] {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) {
+    throw new FileSystemError(`${scope} must be a dense plain array.`);
+  }
+  const length: unknown = Object.getOwnPropertyDescriptor(value, 'length')?.value;
+  if (typeof length !== 'number' || !Number.isSafeInteger(length) || length < 0 || length > maximum) {
+    throw new FileSystemError(`${scope} exceeds its finite entry limit of ${maximum}.`);
+  }
+  if (Reflect.ownKeys(value).length !== length + 1) {
+    throw new FileSystemError(`${scope} must contain only dense array entries.`);
+  }
+  const entries: unknown[] = [];
+  for (let index = 0; index < length; index += 1) {
+    const property = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!property || !property.enumerable || !Object.hasOwn(property, 'value')) {
+      throw new FileSystemError(`${scope}[${index}] must be an own enumerable data entry.`);
+    }
+    entries.push(property.value);
+  }
+  return entries;
+}
+
 export function requiredString(record: Record<string, unknown>, key: string, scope: string): string {
   const value = record[key];
   if (typeof value !== 'string' || value.trim().length === 0) {

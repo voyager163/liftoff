@@ -1,10 +1,11 @@
 import type { PhaseAdapterExecutionInput, PhaseAdapterOutcome, PhasePlanBuild, PhasePlanningInput } from './transition-ports.js';
 import type { TransitionOperation } from '../domain/governance/activation/types.js';
 import { operation, transitionDestination } from '../domain/governance/activation/operations.js';
-import { readbackProof, cloneState } from './transition-records.js';
+import { readbackProof } from './transition-records.js';
 import { executeBootstrapStateDisposal, remoteImportRetention } from './phase-bootstrap-state.js';
 import { runCommand, commandSucceeded } from './transition-process.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
+import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
 
 function azureSubscriptionId(input: PhasePlanningInput | PhaseAdapterExecutionInput): string | null {
   return input.inspection.activationInputs?.azure?.subscriptionId ??
@@ -173,41 +174,14 @@ export async function executeAzurePhase(input: PhaseAdapterExecutionInput): Prom
         completedOperations: input.plan.operations.filter((op) => op.actionId === 'azure.phase0.discover')
       };
     }
-    case 'provider-ready': {
-      if (!subscriptionId) return null;
-      const resourceId = `/subscriptions/${subscriptionId}/providers/Microsoft.Resources`;
+    case 'provider-ready':
+    case 'state-path-selected':
+      // No production executor exists yet; never synthesize provider registration or state-path readback.
       return {
-        status: 'completed',
-        resultState: 'verified',
-        evidencePayload: {
-          kind: 'provider-ready.v1',
-          subscriptionId,
-          registeredProviders: ['Microsoft.Resources', 'Microsoft.Storage', 'Microsoft.Network']
-        },
-        liveReadback: [readbackProof(input, 'azure', 'provider', resourceId, { registered: true })],
-        completedOperations: input.plan.operations.filter((op) => op.actionId === 'azure.provider.ensure-ready')
+        status: 'blocked',
+        blocker: phaseCapabilities[input.phase.id].blocker ?? 'No production executor is available.',
+        completedOperations: []
       };
-    }
-    case 'state-path-selected': {
-      const state = cloneState(input.inspection.state);
-      const configuredPath = input.inspection.activationInputs?.phases['state-path-selected']?.statePath ??
-        input.inspection.state.applicability.statePath;
-      const statePath = configuredPath === 'existing-private' ? 'existing-private' : 'bootstrap-local';
-      state.applicability.statePath = statePath;
-      const subId = subscriptionId ?? '00000000-0000-0000-0000-000000000000';
-      const resourceId = `/subscriptions/${subId}`;
-      return {
-        status: 'completed',
-        resultState: 'verified',
-        stateOverride: state,
-        evidencePayload: {
-          kind: 'state-path-selected.v1',
-          statePath
-        },
-        liveReadback: [readbackProof(input, 'azure', 'subscription', resourceId, { statePath })],
-        completedOperations: input.plan.operations.filter((op) => op.actionId === 'azure.state-path.select')
-      };
-    }
     case 'remote-ready':
       return remoteImportRetention(input);
     case 'bootstrap-state-disposed':

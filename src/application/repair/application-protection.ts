@@ -10,22 +10,29 @@ import {
 import { applicationCandidateDirectories, applicationCandidateFiles } from './application-candidate.js';
 import { applicationPreparationBounds } from './application-preparation-policy.js';
 import type { ApplicationPrivateOutputRole, ApplicationResolvedPreparation } from './application-preparation-types.js';
-import type { ApplicationPatchCandidate } from './application-types.js';
+import type { ApplicationPatchCandidate, ApplicationDirectoryObservation } from './application-types.js';
 
 function sameParts(left: readonly string[], right: readonly string[]): boolean {
   return applicationPathKey(left) === applicationPathKey(right);
 }
 
-export class ApplicationCandidateProtection {
+export interface CapturedApplicationProtectionInput {
+  readonly files: ProjectFileSnapshot[];
+  readonly directories: readonly ApplicationDirectoryObservation[];
+  readonly outputRoles: readonly ApplicationPrivateOutputRole[];
+  readonly toolchain: readonly { executablePath: string; files: readonly { path: string }[] }[];
+}
+
+export class CapturedApplicationProtection {
   private readonly files: ProjectFileSnapshot[];
   private readonly directories;
   private readonly controlFiles: ProjectFileSnapshot[] = [];
   private readonly frozen = new Map<string, { role: ApplicationPrivateOutputRole; digest: string }>();
   private readonly fileHashes = new Map<string, { stamp: string; digest: string }>();
 
-  constructor(private readonly candidate: ApplicationPatchCandidate, private readonly workspace: string) {
-    this.files = applicationCandidateFiles(candidate);
-    this.directories = applicationCandidateDirectories(candidate);
+  constructor(private readonly captured: CapturedApplicationProtectionInput, private readonly workspace: string) {
+    this.files = captured.files;
+    this.directories = captured.directories;
   }
 
   async captureControls(): Promise<void> {
@@ -40,7 +47,7 @@ export class ApplicationCandidateProtection {
 
   private allowedOutput(parts: readonly string[]): boolean {
     const full = ['project', ...parts];
-    return this.candidate.verificationPolicy.outputRoles.some((role) => {
+    return this.captured.outputRoles.some((role) => {
       const key = applicationPathKey(full), allowed = applicationPathKey(role.pathParts);
       return key === allowed || allowed.startsWith(`${key}/`);
     });
@@ -115,9 +122,9 @@ export class ApplicationCandidateProtection {
     if (!rootDetails.isDirectory() || rootDetails.isSymbolicLink() || await realpath(root) !== root) {
       throw new ApplicationInspectionError('[missing-prepared-dependencies] The registered private dependency root is absent, linked, or changed.');
     }
-    const mutable = this.candidate.verificationPolicy.outputRoles.filter((item) => !item.protectedAfterPreparation)
+    const mutable = this.captured.outputRoles.filter((item) => !item.protectedAfterPreparation)
       .map((item) => path.join(this.workspace, ...item.pathParts));
-    const approvedTools = new Set(this.candidate.verificationPolicy.toolchain.flatMap((item) =>
+    const approvedTools = new Set(this.captured.toolchain.flatMap((item) =>
       [item.executablePath, ...item.files.map((file) => file.path)]));
     const entries: { path: string; kind: string; mode: number; digest?: string; target?: string }[] = [];
     let files = 0, directories = 0, totalBytes = 0;
@@ -188,5 +195,15 @@ export class ApplicationCandidateProtection {
     };
     await visit(root, []);
     return canonicalSha256(entries);
+  }
+}
+
+export class ApplicationCandidateProtection extends CapturedApplicationProtection {
+  constructor(candidate: ApplicationPatchCandidate, workspace: string) {
+    super({
+      files: applicationCandidateFiles(candidate), directories: applicationCandidateDirectories(candidate),
+      get outputRoles() { return candidate.verificationPolicy.outputRoles; },
+      get toolchain() { return candidate.verificationPolicy.toolchain; }
+    }, workspace);
   }
 }

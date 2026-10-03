@@ -603,7 +603,7 @@ describe('portable paths and strict committed history links', () => {
     expect(reviewedUpdateTransactionPathParts.join('/')).not.toBe(migrationStateFilePathParts.join('/'));
   });
 
-  it.each([['..'], ['C:'], ['\\\\server'], ['dir/file'], ['dir\\file'], ['alternate:stream'], ['CON'], ['name.'], ['name ']])(
+  it.each([['..'], ['C:'], ['\\\\server'], ['dir/file'], ['dir\\file'], ['alternate:stream'], ['CON'], ['name.'], ['name ']].map((parts) => [parts]))(
     'rejects unsafe portable path %j', (parts) => {
       expect(() => historyPathParts(parts, 'test path')).toThrow();
       expect(() => activationHistoryCopyPathParts('a'.repeat(64), parts)).toThrow();

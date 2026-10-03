@@ -23,6 +23,7 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 
 | Command | Behavior |
 | --- | --- |
+| `liftoff capabilities --json` | Returns the schema-1 installed command, schema, plugin, profile, recipe and limitation catalog without project discovery, tool probes, telemetry or state writes |
 | `liftoff plan` | Resolves decisions and previews artifacts and requirements without side effects |
 | `liftoff init [project-name]` | Initializes a named child or the exact current Git root through staged readiness and framework setup |
 | `liftoff migrate <source>` | Creates a new sibling scaffold and filtered source copy without changing the source |
@@ -30,9 +31,9 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 | `liftoff doctor [project]` | Runs read-only workload-derived project and workstation diagnostics |
 | `liftoff governance status [project]` | Reports deterministic setup state, activation identity, phase states, blockers, approvals, and evidence freshness |
 | `liftoff governance plan [project]` | Previews dependency-ready work before approval and saves a disclosed project-bound receipt outside the repository; no project/provider mutations |
-| `liftoff governance approve [project] --plan <fingerprint>` | Approves only the exact unexpired preview; does not execute its operations |
-| `liftoff governance apply-next [project]` | Previews the next graph-ready transition; add `--execute` to execute at most one approved mutation |
-| `liftoff governance credential-enroll [project] --plan <fingerprint>` | Uses the approved credential plan and a private input channel; never accepts a token argument |
+| `liftoff governance approve [project] --plan <fingerprint>` | Approves only the exact unexpired preview; does not execute its operations; refuses blocked or unavailable capabilities such as credential-ready |
+| `liftoff governance apply-next [project]` | Previews the next graph-ready transition; add `--execute` to execute at most one approved mutation; refuses blocked or unavailable capabilities before saving a plan |
+| `liftoff governance credential-enroll [project] --plan <fingerprint>` | Currently refuses: public credential readiness and enrollment are unavailable pending independently verified provider wiring; reads no input, writes nothing, and never accepts a token argument |
 | `liftoff governance recover [project] --plan <fingerprint>` | Previews an explicitly planned recovery; `--execute` runs only its approved scope |
 | `liftoff governance resume [project]` | Rechecks external blockers and readiness descendants without rerunning verified operations |
 | `liftoff governance verify [project]` | Read-only validation of graph, state, evidence, task projection, policy identity, active-change identity, and live readback; reports consistency separately from setup completion and reports completion as indeterminate when inspection fails |
@@ -72,6 +73,24 @@ Generation, validation, doctor, governance, and update consume the packaged
 Node.js 24 LTS, Python 3.14, Go 1.27, OpenTofu 1.12, OpenSpec 1.11, and Spec Kit
 1.0 release lines; these commands never resolve mutable latest versions.
 
+## Capability discovery
+
+For skill and automation negotiation, `liftoff capabilities --json` is a
+project-independent catalog, not a readiness check or execution permission.
+Without `--json`, it prints a concise human-readable summary. Both help forms
+(`liftoff capabilities --help` and `liftoff help capabilities`) also skip telemetry
+and disclosure. Existing `liftoff repair --capabilities --json` remains unchanged.
+
+The catalog validates installed bundled plugin assets but does not inspect the
+current directory or load project plugins. Registered syntax is distinguished
+from governance executor availability: `unavailable`, `injected-only`, and
+explicit blockers are not usable production execution. Plugin host declarations
+do not prove local tool readiness or native-package qualification. The current
+public catalog lists OpenSpec/Spec Kit, single-maintainer/none, and manifest
+readers 2-7; internal Manual/team/v8 APIs are deliberately not promoted. An older
+installed release may not have this command; use its documented help rather
+than assuming a missing interface or inventing receipts.
+
 ## Planning and initialization options
 
 Common noninteractive inputs include:
@@ -102,6 +121,10 @@ false/negated plugin flags. Existing retired manifests are not reinterpreted as
 supported workloads or ordinary Git repositories.
 
 Consent options are documented in [safety and consent](safety-and-consent.md).
+For `init` and `migrate`, case or NFC-normalization aliases in staged destination
+paths are blocking conflicts, not forceable replacements. Existing destination
+ancestors must be listable; see [overwrite boundaries](safety-and-consent.md#overwrite-boundaries).
+
 Repository governance defaults to `single-maintainer-gitflow`. It generates a
 local deterministic setup integrations; initialization does not run activation.
 The setup integration coordinates local readiness and separately approved
@@ -132,7 +155,10 @@ project discovery or mutation. Direct governance commands default to
 provider data, but discloses its external preview receipt.
 `apply-next` previews by default; `--execute` is the explicit request to save the
 reviewed plan and execute at most one phase whose dependencies, evidence, and
-approval envelope are satisfied. `resume` rechecks blockers and downstream
+approval envelope are satisfied. `approve` and `apply-next --execute` refuse a
+phase whose production capability is blocked or unavailable in the installed
+release, before writing a plan, approval, authority record, or state; an earlier
+approval does not override that refusal. `resume` rechecks blockers and downstream
 readiness without repeating verified operations.
 
 Apply-next JSON names the attempted phase in `selectedPhase` and reports
@@ -168,9 +194,29 @@ inconsistent or uninspectable selected-scope evidence exits 1.
 
 `--inputs` selects public configuration, including exact repository, Azure
 tenant/subscription/region, bounded budget, and validated per-phase inputs.
+Relative paths are resolved from the invocation directory, not the project root.
+Supply a singly linked regular JSON file no larger than 64 KiB; named pipes and
+devices are not supported inputs. The reader reads at most 65,537 bytes and
+refuses inputs when that read observes more than 64 KiB, including growth during
+the read. This does not guarantee a stable snapshot or detect growth after EOF.
 Never put credentials, raw state, or private plans in that file.
-Credential enrollment uses a private TTY by default; `--protected-stdin`
-explicitly selects a protected automation channel. A fingerprint is not a
+
+Without atomic no-follow support, the reader compares pre-open and opened
+bigint file identities before reading, rejecting unavailable or mismatched
+identities. This depends on usable, stable file-system identities; it is not
+atomic no-follow protection and does not detect every racing path swap. Native
+Windows qualification is pending.
+
+New public inputs are screened for known credential patterns in phase field
+names, nested phase values, and other public strings. This is not comprehensive
+secret detection: benign text such as `basic setup` or `acme/ghs_tools` can also
+be refused. Persisted configuration acceptance is unchanged. Input-validation
+diagnostics use trusted schema labels rather than supplied keys or values, and
+malformed approval-JSON diagnostics omit parser payload snippets.
+
+`credential-enroll` currently refuses before selecting a private TTY or
+`--protected-stdin` channel: public credential readiness and enrollment are
+unavailable pending independently verified provider wiring. A fingerprint is not a
 token, and approval alone neither enrolls a credential nor provisions resources.
 Interrupted writes require a fresh `plan --recover-phase` before `recover`;
 unsupported or ambiguous external outcomes remain visible blockers.

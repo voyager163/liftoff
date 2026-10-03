@@ -21,7 +21,7 @@ import type {
 const cachedIdentities = new Map<string, ApplicationToolFileIdentity>();
 const nativeHeaders = new Set(['7f454c46', 'feedface', 'feedfacf', 'cefaedfe', 'cffaedfe', 'cafebabe', 'bebafeca', 'cafebabf', 'bfbafeca']);
 
-async function toolFile(
+export async function toolFile(
   supplied: string, projectRoot: string, stagingRoot: string, binary: boolean
 ): Promise<ApplicationToolFileIdentity> {
   const target = await realpath(supplied);
@@ -77,7 +77,7 @@ async function toolFile(
   }
 }
 
-async function readNpmIdentity(file: string): Promise<{ name: string; version: string }> {
+export async function readNpmIdentity(file: string): Promise<{ name: string; version: string }> {
   const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   try {
     const details = await handle.stat();
@@ -100,11 +100,27 @@ export async function resolveApplicationPreparationTools(
   options: ApplicationInspectionOptions = {}, additionalTools: readonly ApplicationToolId[] = []
 ): Promise<ApplicationToolIdentity[]> {
   if (!preparation.length) return [];
+  return resolveApplicationToolValues(projectRoot, stagingRoot,
+    () => new Set([...preparation.flatMap((item) => item.tools), ...additionalTools]), options, false);
+}
+
+export async function resolveApplicationToolsForLocalChecks(
+  projectRoot: string, stagingRoot: string, toolIds: readonly ApplicationToolId[], options: ApplicationInspectionOptions = {},
+  requireSettlement = false
+): Promise<ApplicationToolIdentity[]> {
+  const captured = [...toolIds];
+  return resolveApplicationToolValues(projectRoot, stagingRoot, () => new Set(captured), options, requireSettlement);
+}
+
+async function resolveApplicationToolValues(
+  projectRoot: string, stagingRoot: string, requestedTools: () => Set<ApplicationToolId>,
+  options: ApplicationInspectionOptions, requireSettlement: boolean
+): Promise<ApplicationToolIdentity[]> {
   const platform = process.platform;
   if (platform !== 'darwin' && platform !== 'linux' && platform !== 'win32') {
     throw new ApplicationInspectionError('[unsupported-tool-platform] Preparation tool identities cannot be observed on this platform.');
   }
-  const requested = new Set([...preparation.flatMap((item) => item.tools), ...additionalTools]);
+  const requested = requestedTools();
   const order: ApplicationToolId[] = ['node', 'npm', 'python', 'uv', 'go'];
   const probeRoot = path.join(path.dirname(stagingRoot), `.liftoff-preparation-probe-${randomUUID()}`);
   if (applicationWithin(projectRoot, probeRoot) || applicationWithin(stagingRoot, probeRoot)) {
@@ -167,10 +183,17 @@ export async function resolveApplicationPreparationTools(
         executable: executablePath,
         args: [...prefixArgs, ...(id === 'go' ? ['version'] : id === 'python' ? ['-I', '-S', '--version'] : ['--version'])]
       };
+      if (requireSettlement) unsafeCleanup = true;
       const actual = await runner.run(probe, {
         cwd: probeRoot, env, timeoutMs: applicationPreparationBounds.probeTimeoutMs,
-        maxOutputBytes: applicationPreparationBounds.probeOutputBytes, stream: false
+        maxOutputBytes: applicationPreparationBounds.probeOutputBytes, stream: false,
+        ...(requireSettlement ? { ensureProcessTreeSettled: true } : {})
       });
+      if (requireSettlement && (actual.processTreeSettled === true || actual.processSpawned === false)) unsafeCleanup = false;
+      if (requireSettlement && actual.processTreeSettled !== true) {
+        unsafeCleanup = actual.processSpawned !== false;
+        throw new ApplicationInspectionError('[tool-probe-cleanup] Local execution requires actual metadata process-tree settlement.');
+      }
       const diagnostic = applicationCommandFailure({
         executable: id, args: probe.args, cwdPathParts: [], network: false,
         timeoutMs: applicationPreparationBounds.probeTimeoutMs, maxOutputBytes: applicationPreparationBounds.probeOutputBytes

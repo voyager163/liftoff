@@ -21,6 +21,7 @@ import {
   safeTimestamp, evidenceHeaderFor, evidencePathParts, nextStateForOutcome, evidenceWriteOperation, stateWriteOperation
 } from './transition-records.js';
 import { canonicalJson, canonicalSha256, isRecord } from '../domain/governance/activation/canonical-json.js';
+import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
 import { buildSavedTransitionPlan, previewApplyNext, comparePlanFreshness } from './transition-planning.js';
 import { readActivationInputSnapshot, phaseInputDigest, remoteBindingDigest } from './inputs.js';
 import { activationStateContentHash } from './activation-state.js';
@@ -89,6 +90,34 @@ async function executeBuiltInPhase(input: PhaseAdapterExecutionInput, localReval
     status: 'blocked',
     blocker: `No production adapter is configured for ${input.phase.id}; refusing success-shaped fallback.`,
     completedOperations: []
+  };
+}
+
+/**
+ * Phases without an unblocked built-in production executor run only through a trusted injected seam; public
+ * execution stops before any plan, intent, or producer effect. Previously issued approvals do not change this.
+ */
+function executionCapabilityBlocker(phaseId: PhaseId, adapters: GovernanceTransitionAdapters): string | null {
+  const capability = phaseCapabilities[phaseId];
+  if (adapters.phases?.[phaseId]) return null;
+  if (capability.executor === 'injected-only' && adapters.githubRulesets &&
+    (phaseId === 'rulesets-applied' || phaseId === 'live-readback')) return null;
+  if (capability.executor === 'built-in' && !capability.blocker) return null;
+  return capability.blocker ?? `No production executor is available for ${phaseId}.`;
+}
+
+function capabilityBlockedResult(
+  inspection: GovernanceTransitionInspection,
+  plan: SavedTransitionPlan,
+  blocker: string
+): ApplyNextExecutionResult {
+  return {
+    schemaVersion: 2, scope: inspection.scope, command: 'governance apply-next', projectRoot: inspection.projectRoot,
+    execute: true, applied: false, authorized: false, reason: 'blocked', message: blocker,
+    selectedPhase: plan.phaseId, executedPhase: null, nextReadyPhase: inspection.readiness.nextReadyPhase, approval: plan.approval,
+    proposedMutations: { local: plan.mutationClasses.local, remote: plan.mutationClasses.remote, operations: plan.operations },
+    savedPlan: null, noWrites: false, blockers: [blocker], executedOperations: [], evidence: null, stateHash: null,
+    rollbackPlan: plan.rollbackPlan, cleanupWarnings: []
   };
 }
 
@@ -220,6 +249,8 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   }
   const phase = phaseById(input.inspection.graph, initialPlan.phaseId);
   assertPlanOperationsAllowed(initialPlan, phase);
+  const capabilityBlocker = executionCapabilityBlocker(phase.id, adapters);
+  if (capabilityBlocker) return capabilityBlockedResult(input.inspection, initialPlan, capabilityBlocker);
   if (input.reviewedPlan && (input.reviewedPlan.planDigest !== initialPlan.planDigest ||
     input.reviewedPlan.stateHash !== initialPlan.stateHash ||
     Date.parse(input.reviewedPlan.expiresAt) <= now.getTime())) {

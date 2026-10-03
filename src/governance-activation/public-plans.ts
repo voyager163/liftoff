@@ -10,6 +10,7 @@ import {
   approvalRequestForSavedPlan, canonicalApprovalEnvelopeHash, evaluateApprovalForTransitionPlan
 } from '../domain/governance/activation/approvals.js';
 import { validateApprovalEnvelope, validateSavedTransitionPlan } from '../domain/governance/activation/validators.js';
+import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
 import { phaseById } from '../domain/governance/activation/operations.js';
 import type { ApprovalEnvelope, SavedTransitionPlan } from '../domain/governance/activation/types.js';
 import type { CommandRunner } from '../process-runner.js';
@@ -90,6 +91,10 @@ export async function approveGovernancePreview(input: {
       throw new Error('Governance plan inputs or exact operations changed after preview; no approval was written.');
     }
     const phase = phaseById(inspection.graph, fresh.phaseId);
+    const capabilityBlocker = phaseCapabilities[phase.id].blocker;
+    if (capabilityBlocker) {
+      throw new Error(`${capabilityBlocker} Public approval is refused for an unavailable capability; no approval, authority record, or plan was written.`);
+    }
     if (!phase.approvalGate.required) throw new Error('This phase needs explicit execution, not an approval envelope.');
     const request = approvalRequestForSavedPlan(fresh, phase, inspection.state);
     const existing = evaluateApprovalForTransitionPlan(request, inspection.approvals, { now });

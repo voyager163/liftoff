@@ -255,10 +255,13 @@ describe('project dependency setup', () => {
       cwd: 'C:\\workspace\\app\\frontend'
     }, 'win32')).toBe("Set-Location -LiteralPath 'C:\\workspace\\app\\frontend'; if ($?) { & 'npm.cmd' 'ci' }");
 
-    for (const directory of ['node-backend', 'frontend']) {
+    for (const directory of [
+      ['assets', 'plugins', 'node-fastify', 'node-backend'],
+      ['assets', 'templates', 'common', 'frontend']
+    ]) {
       expect(await verifyDependencyLockPair(
-        path.resolve('assets', 'locks', directory, 'package.json'),
-        path.resolve('assets', 'locks', directory, 'package-lock.json')
+        path.resolve(...directory, 'package.json'),
+        path.resolve(...directory, 'package-lock.json')
       )).toBe(true);
     }
   });

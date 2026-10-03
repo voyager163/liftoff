@@ -193,7 +193,10 @@ export async function repairApplicationProject(input: {
         message: 'Review this exact externally staged application patch. No verification command or application file transaction has run.',
         historyPath: path.join(root, ...repairHistoryRoot, preview.fingerprint), nextActions: actions()
       });
-      if (request.check || request.json) return 2;
+      if (request.check || request.json) {
+        context.outcome?.record('attention-required');
+        return 2;
+      }
     }
     verificationReceipt = await readRepairVerification(preview, now(), storage);
     if (verificationReceipt && candidate.verificationPolicy.effects.network && !verificationReceipt.networkAuthorized) {
@@ -217,6 +220,7 @@ export async function repairApplicationProject(input: {
           approval = await requestRepairApproval(request, preview.fingerprint,
             'Restore locked dependencies in an isolated copy, understanding that private packages and build tools can affect the host?', context);
           if (approval.status !== 'approved') {
+            context.outcome?.record(approval.status === 'declined' ? 'cancelled' : approval.status === 'required' ? 'attention-required' : 'failure');
             if (approval.status !== 'required') emit({
               ...base(), ...detail(), message: 'Dependency preparation consent was declined or cancelled. No preparation, project command or application file transaction ran.',
               nextActions: actions()
@@ -229,6 +233,7 @@ export async function repairApplicationProject(input: {
         approval = await requestRepairApproval(request, preview.fingerprint,
           'Run the displayed exact project verification commands in staging, understanding that trusted code can affect the host and is not sandboxed?', context);
         if (approval.status !== 'approved') {
+          context.outcome?.record(approval.status === 'declined' ? 'cancelled' : approval.status === 'required' ? 'attention-required' : 'failure');
           if (approval.status !== 'required') emit({
             ...base(), ...detail(), message: 'Verification consent was declined or cancelled. No project command or application file transaction ran.',
             nextActions: actions()
@@ -240,6 +245,7 @@ export async function repairApplicationProject(input: {
           approval = await requestRepairApproval(request, preview.fingerprint,
             'Additionally allow the displayed declared network effects for these exact verification commands?', context);
           if (approval.status !== 'approved') {
+            context.outcome?.record(approval.status === 'declined' ? 'cancelled' : approval.status === 'required' ? 'attention-required' : 'failure');
             emit({ ...base(), ...detail(), message: 'Network consent was not granted. No verification command or application file transaction ran.', nextActions: actions() });
             return 2;
           }
@@ -272,6 +278,7 @@ export async function repairApplicationProject(input: {
           verificationResult.commands.length !== candidate.verificationPolicy.commands.length ||
           !verificationResult.commands.every((command) => command.passed) ||
           (verificationResult.preparation && !verificationResult.preparation.every((prep) => prep.status === 'passed'))) {
+        context.outcome?.record('failure');
         emit({
           ...base(), ...detail(), status: effects.attempted ? 'partial' : 'blocked',
           message: 'Staged verification did not establish the approved checks. No planned application file transaction was applied; earlier authorized verifier effects are retained.',
@@ -298,6 +305,7 @@ export async function repairApplicationProject(input: {
       approval = await requestRepairApproval(request, preview.fingerprint,
         'Apply the displayed exact application file changes, private original-byte backup and immutable repair history?', context);
       if (approval.status !== 'approved') {
+        context.outcome?.record(approval.status === 'declined' ? 'cancelled' : approval.status === 'required' ? 'attention-required' : 'failure');
         emit({
           ...base(), ...detail(),
           message: 'File consent was not granted. No planned application file transaction was applied; earlier separately authorized verifier effects are not rolled back.',
@@ -337,6 +345,7 @@ export async function repairApplicationProject(input: {
     });
     committed = outcome.committed;
     if (!committed) {
+      context.outcome?.record('failure');
       emit({
         ...base(), ...detail(), status: 'partial', message: 'The application file transaction did not commit; approved verification effects and private originals remain recorded.',
         blockers: [...outcome.rollbackFailures, ...outcome.cleanupFailures], nextActions: [recoverAction()]
@@ -358,8 +367,10 @@ export async function repairApplicationProject(input: {
       nextActions: outcome.cleanupFailures.length ? [recoverAction()] :
         [inventoryAction(), ...repairResumeActions(root, manifest), ...repairAgentActions(root, manifest)]
     });
+    context.outcome?.record(outcome.cleanupFailures.length ? 'failure' : 'success');
     return outcome.cleanupFailures.length ? 2 : 0;
   } catch (error) {
+    context.outcome?.record('failure');
     emit({
       ...base(), status: committed || effects.attempted ? 'partial' : 'failed',
       verification: committed || effects.attempted ? 'incomplete' : 'not-run',

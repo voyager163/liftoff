@@ -1,4 +1,8 @@
 import type { ActivationIdentity } from '../activation/types.js';
+import type { ActivationIdentityFieldsV1 } from '../activation/record-contracts.js';
+import { buildModernPhaseGraph, freezeModernValue } from '../activation/modern-graph.js';
+import { canonicalSha256 } from '../activation/canonical-json.js';
+import type { ModernActivationSourceContract, ModernStaticVersions, ModernWorkflow } from '../activation/modern-record-contracts.js';
 
 export const liftoffActivationPackageVersion = '0.12.0' as const;
 export const liftoffManifestArtifactVersion = 7 as const;
@@ -78,7 +82,7 @@ export const historicalActivationIdentities = [{
   approvalEnvelopeSchemaVersion: 2,
   supersessionSchemaVersion: 1,
   credentialPolicySchemaVersion: 1
-}] as const satisfies readonly ActivationIdentity[];
+}] as const satisfies readonly ActivationIdentityFieldsV1[];
 
 export const historicalV1ActivationIdentity = historicalActivationIdentities[0];
 export const historicalV2ActivationIdentity = historicalActivationIdentities[1];
@@ -88,20 +92,47 @@ export type HistoricalV2ActivationIdentity = typeof historicalV2ActivationIdenti
 export type HistoricalActivationIdentity = typeof historicalActivationIdentities[number];
 export type ReadableActivationIdentity = CurrentActivationIdentity | HistoricalActivationIdentity;
 
-export function isHistoricalActivationIdentity(value: unknown): value is HistoricalActivationIdentity {
+// Frozen released contract; it remains the current executable family until an
+// explicitly allocated successor replaces it. This is not a diagnostic selector.
+export const releasedV3ActivationIdentity = Object.freeze({
+  liftoffVersion: '0.12.0',
+  manifestArtifactVersion: 7,
+  policyVersion: '6',
+  activationContractVersion: 3,
+  phaseGraphSchemaVersion: 2,
+  phaseGraphHash: '2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703',
+  activationStateSchemaVersion: 3,
+  evidenceHeaderSchemaVersion: 3,
+  approvalEnvelopeSchemaVersion: 3,
+  supersessionSchemaVersion: 1,
+  credentialPolicySchemaVersion: 1
+} as const satisfies ActivationIdentityFieldsV1);
+
+export type ReleasedV3ActivationIdentity = typeof releasedV3ActivationIdentity;
+export type ReleasedActivationIdentity = HistoricalActivationIdentity | ReleasedV3ActivationIdentity;
+
+function matchesReleasedIdentity<I extends ReleasedActivationIdentity>(value: unknown, expected: I): value is I {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const identity = value as Record<string, unknown>;
-  return Object.keys(identity).length === tupleFields.length &&
-    historicalActivationIdentities.some((historical) => tupleFields.every((field) =>
-      Object.hasOwn(identity, field) && identity[field] === historical[field]));
+  const fields = Object.entries(expected);
+  return Object.keys(identity).length === fields.length &&
+    fields.every(([field, entry]) => Object.hasOwn(identity, field) && identity[field] === entry);
+}
+
+export function isReleasedV3ActivationIdentity(value: unknown): value is ReleasedV3ActivationIdentity {
+  return matchesReleasedIdentity(value, releasedV3ActivationIdentity);
+}
+
+export function isHistoricalActivationIdentity(value: unknown): value is HistoricalActivationIdentity {
+  return historicalActivationIdentities.some((historical) => matchesReleasedIdentity(value, historical));
 }
 
 export function isHistoricalV1ActivationIdentity(value: unknown): value is HistoricalV1ActivationIdentity {
-  return isHistoricalActivationIdentity(value) && value.activationContractVersion === 1;
+  return matchesReleasedIdentity(value, historicalV1ActivationIdentity);
 }
 
 export function isHistoricalV2ActivationIdentity(value: unknown): value is HistoricalV2ActivationIdentity {
-  return isHistoricalActivationIdentity(value) && value.activationContractVersion === 2;
+  return matchesReleasedIdentity(value, historicalV2ActivationIdentity);
 }
 
 export function createActivationIdentity(phaseGraphHash: string): CurrentActivationIdentity {
@@ -173,4 +204,51 @@ export function resolveActivationCompatibility(
     };
   }
   return { compatible: true, identity: found };
+}
+
+// Unpublished source allocation only. Current execution and released selectors above do not change.
+const modernSourceVersions: ModernStaticVersions = Object.freeze({
+  liftoffVersion: '0.13.0-dev.0',
+  manifestArtifactVersion: 8,
+  activationContractVersion: 4,
+  phaseGraphSchemaVersion: 3,
+  activationStateSchemaVersion: 4,
+  evidenceHeaderSchemaVersion: 4,
+  approvalEnvelopeSchemaVersion: 4,
+  supersessionSchemaVersion: 2,
+  credentialPolicySchemaVersion: 2
+} as const);
+
+const modernPolicySources = [
+  {
+    identity: {
+      profile: 'single-maintainer-gitflow', policyVersion: '7',
+      policyDigest: 'sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706'
+    },
+    pathParts: ['assets', 'governance', 'single-maintainer-gitflow', 'policy-v7.md']
+  },
+  {
+    identity: {
+      profile: 'team-gitflow', policyVersion: '1',
+      policyDigest: 'sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646'
+    },
+    pathParts: ['assets', 'governance', 'team-gitflow', 'policy-v1.md']
+  }
+] as const;
+const modernWorkflows: readonly ModernWorkflow[] = ['openspec', 'spec-kit', 'manual'];
+let modernSources: readonly ModernActivationSourceContract[] | undefined;
+
+/** Static source data only: excludes all per-project, registry-resolution and approval digests. */
+export function modernActivationSourceContracts(): readonly ModernActivationSourceContract[] {
+  modernSources ??= modernPolicySources.flatMap(policy => modernWorkflows.map((workflow): ModernActivationSourceContract => {
+    const graph = buildModernPhaseGraph(modernSourceVersions, policy.identity, workflow);
+    return {
+      identity: {
+        ...modernSourceVersions, ...policy.identity, workflow, phaseGraphHash: canonicalSha256(graph)
+      },
+      savedPlanSchemaVersion: 3, compatibilityMetadataSchemaVersion: 5,
+      policyPathParts: [...policy.pathParts], graph
+    };
+  }));
+  return freezeModernValue(structuredClone(modernSources));
 }

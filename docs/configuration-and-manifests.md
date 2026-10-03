@@ -158,7 +158,7 @@ The manifest also records:
   authorize update writes.
 - OS-neutral path-part arrays.
 - Repository governance profile, policy version 6, activation-contract version
-  2, state/evidence-header/approval schema versions 2,
+  3, state/evidence-header/approval schema versions 3,
   graph/supersession/credential schema versions 1, the
   exact phase-graph hash, and local `handoff-generated`, `handoff-partial`, or
   disabled state.
@@ -185,7 +185,7 @@ Readers support artifact versions v2, v3, v4, v5, v6, and v7 for API/GenAI proje
 - V6 separates managed-core update authority from project generation
   provenance.
 - V7 adds deterministic setup identity. Current output uses
-  manifest artifact version 7, policy version 6, activation-contract version 2, and the canonical
+  manifest artifact version 7, policy version 6, activation-contract version 3, and the canonical
   phase-graph hash. Governance-disabled v7 manifests use the
   disabled variant and do not fabricate activation identity.
 
@@ -230,19 +230,79 @@ trusted or treated as compatible. The mandatory preview/approval workflow and
 schema-3 update reports remain unchanged.
 
 Known activation-v1 history remains **diagnostic-only**, not executable proof.
-Compatibility metadata v3 separately declares the exact history-preserving
+Current compatibility metadata v4 separately declares the exact history-preserving
 successor lane available through `liftoff update --check` and explicitly
 approved update. Schema-2 metadata remains readable input, not authority to
 invent a migration. Future/mixed tuples, ad hoc state, and unknown graphs remain
 blocked.
 
 Migration preserves the original manifest, historical state and evidence, creates
-strict v2 state, and links it through `governance/migration-state.json` to its
+the declared current state, and links it through `governance/migration-state.json` to its
 immutable `governance/history` snapshot. No required field is added to manifest
-v7 or the v2 proof schemas. Original generation provenance remains intact.
+v7 or historical proof schemas. Original generation provenance remains intact.
 A readable historical record never authorizes current provider scope; old
 approvals and checked tasks do not become fresh evidence. Revalidation failure
-after local commit leaves the linked v2 activation blocked and resumable.
+after local commit leaves the linked current activation blocked and resumable.
+
+## Private modernization contracts
+
+The `modernize-liftoff-platform` implementation has independent v8 source readers,
+origin-aware candidate writers and exact historical-successor contracts.
+**Public generation still writes v7; public v8 migration remains gated.**
+Do not manually change an artifact version or call a private writer as an
+upgrade. There is no public target selector or environment bypass. A candidate
+containing correct bytes is not an approved or committed transaction.
+
+The reserved, unpublished source version is `0.13.0-dev.0`, not the running
+package version or a released installation target. Its authoritative source
+table is `assets/governance/modern/source-contracts.json`, validated through
+`modernActivationSourceContracts`. It binds six contexts: two enabled profiles
+times OpenSpec, Spec Kit and Manual, with six actual computed graph hashes.
+
+| Private contract | Version |
+| --- | --- |
+| Manifest | 8 |
+| Activation contract / state / evidence header / approval envelope | 4 |
+| Phase graph / saved transition plan | 3 |
+| Compatibility metadata | 5 |
+| Supersession / credential policy / migration journal | 2 |
+| Single-maintainer policy / team policy | 7 / 1 |
+
+`createManifestV8Reader` validates the complete source contract independently of
+the public historical-reader dispatch. Plugin API/content identity, finite
+active-layout bindings, workflow/framework state, selected agents, profile and
+managed inventory must agree. Manual records framework `not-required` and may
+select no agents; this source representation does not yet enable Manual in
+public initialization. Governance `none` has no invented activation identity.
+
+Active paths establish interpretation, never directory ownership. Original
+`projectArtifacts` retain their generation paths/hashes; separate
+`adoptionObservations` record actual observed hashes without claiming generation.
+Neither custom layout nor matching source bytes grants managed-core authority.
+Random project-reporting IDs are absent from deterministic manifests and
+candidate rendering.
+
+`createManifestV8Candidate` distinguishes fresh generation, a historical
+successor and same-contract maintenance. Historical successors require the
+actual source-manifest history reference; a caller cannot turn preserved
+history into fresh origin. Supported activation-v1/v2/v3 source lanes preserve
+workflow/profile/layout intent, original bytes, modes, line endings, nested
+history and retention due times. Unknown or mixed identities, broken links and
+changed inputs block preparation rather than filling in missing history.
+Historical approval and evidence never authorize current effects.
+
+Private managed-context schema 2 is not the deferred activation
+source-metadata2/task-projection producer. MR1 independently observes captured
+inputs and constructs read-only check plans with `execution: "not-authorized"`;
+it does not execute checks or finalize a framework. Modern installed-history
+preflight, actual execution/finalization, dedicated publication/recovery and
+fresh proof must be complete before public migration opens. A committed
+successor and successful revalidation are separate outcomes; failed follow-up
+must preserve the committed successor and source history, not downgrade them.
+
+The [protected state API](../src/application/state-migration/README.md) is a
+different private boundary. A local control-record successor does not read,
+import, move or rewrite deployed OpenTofu state.
 
 ## Artifact ownership
 

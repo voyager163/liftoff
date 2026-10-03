@@ -1,3 +1,4 @@
+import { extractDeclaredCapabilities, mainSpecPurpose, liftoffValidationCommand, pythonBackendCommand, nodeBackendCommand, goBackendCommand, workerTestCommand, frontendBuildCommand, composeConfigurationCommand, tofuFormatCommand, tofuInitCommand, tofuValidateCommand } from '../domain/governance/activation/local-check-values.js';
 import { lstat, readdir, readFile } from 'node:fs/promises';
 import { stripVTControlCharacters } from 'node:util';
 import { containsSensitiveText } from '../domain/governance/assessment/sanitize.js';
@@ -220,7 +221,7 @@ export function selectSeedBaselineChecks(
       label: 'Run Liftoff manifest validation',
       applicability: {
         applicable: true,
-        command: { executable: 'liftoff', args: ['validate'] },
+        command: liftoffValidationCommand(),
         cwdPathParts: []
       }
     }
@@ -233,7 +234,7 @@ export function selectSeedBaselineChecks(
       label: 'Run backend tests',
       applicability: {
         applicable: true,
-        command: { executable: 'uv', args: ['run', '--project', 'backend', 'python', '-m', 'pytest', '-q', 'backend/tests'] },
+        command: pythonBackendCommand(),
         cwdPathParts: []
       }
     });
@@ -244,7 +245,7 @@ export function selectSeedBaselineChecks(
       label: 'Run backend tests',
       applicability: {
         applicable: true,
-        command: { executable: 'npm', args: ['test'] },
+        command: nodeBackendCommand(),
         cwdPathParts: ['backend']
       }
     });
@@ -255,7 +256,7 @@ export function selectSeedBaselineChecks(
       label: 'Run backend tests',
       applicability: {
         applicable: true,
-        command: { executable: 'go', args: ['test', './...'] },
+        command: goBackendCommand(),
         cwdPathParts: ['backend']
       }
     });
@@ -268,7 +269,7 @@ export function selectSeedBaselineChecks(
       label: 'Run generated worker tests',
       applicability: {
         applicable: true,
-        command: { executable: 'uv', args: ['run', '--project', '../../backend', '--directory', '.', 'python', '-m', 'pytest', '-q'] },
+        command: workerTestCommand(),
         cwdPathParts: ['functions', `${workload.pattern}-worker`]
       }
     });
@@ -291,7 +292,7 @@ export function selectSeedBaselineChecks(
       label: 'Run frontend build',
       applicability: {
         applicable: true,
-        command: { executable: 'npm', args: ['run', 'build'] },
+        command: frontendBuildCommand(),
         cwdPathParts: ['frontend']
       }
     });
@@ -315,7 +316,7 @@ export function selectSeedBaselineChecks(
         label: 'Validate Docker Compose configuration without startup',
         applicability: {
           applicable: true,
-          command: { executable: 'docker', args: ['compose', 'config', '-q'] },
+          command: composeConfigurationCommand(),
           cwdPathParts: []
         }
       },
@@ -325,7 +326,7 @@ export function selectSeedBaselineChecks(
         label: 'Check OpenTofu formatting',
         applicability: {
           applicable: true,
-          command: { executable: 'tofu', args: ['fmt', '-check', '-recursive'] },
+          command: tofuFormatCommand(),
           cwdPathParts: ['infrastructure', 'opentofu', 'azure']
         }
       },
@@ -335,7 +336,7 @@ export function selectSeedBaselineChecks(
         label: 'Initialize OpenTofu without a remote backend',
         applicability: {
           applicable: true,
-          command: { executable: 'tofu', args: ['init', '-backend=false'] },
+          command: tofuInitCommand(),
           cwdPathParts: ['infrastructure', 'opentofu', 'azure']
         }
       },
@@ -345,7 +346,7 @@ export function selectSeedBaselineChecks(
         label: 'Validate OpenTofu configuration without plan or apply',
         applicability: {
           applicable: true,
-          command: { executable: 'tofu', args: ['validate'] },
+          command: tofuValidateCommand(),
           cwdPathParts: ['infrastructure', 'opentofu', 'azure']
         }
       }
@@ -375,10 +376,10 @@ export function selectSeedBaselineChecks(
     const cwdPathParts = ['infrastructure', 'opentofu', 'azure', 'environments', environment];
     return [
       { id: 'tofu-init', taskId: `2.7.${index + 1}`, label: `Initialize ${environment} OpenTofu without a backend`, applicability: {
-        applicable: true, command: { executable: 'tofu', args: ['init', '-backend=false'] }, cwdPathParts
+        applicable: true, command: tofuInitCommand(), cwdPathParts
       } },
       { id: 'tofu-validate', taskId: `2.8.${index + 1}`, label: `Validate ${environment} OpenTofu without plan or apply`, applicability: {
-        applicable: true, command: { executable: 'tofu', args: ['validate'] }, cwdPathParts
+        applicable: true, command: tofuValidateCommand(), cwdPathParts
       } }
     ];
   });
@@ -535,28 +536,6 @@ export async function previewLocalSeedPhase(
   }
 }
 
-function extractDeclaredCapabilities(proposal: string): string[] {
-  const capabilities: string[] = [];
-  const lines = proposal.split(/\r?\n/);
-  let inNewCapabilities = false;
-  for (const line of lines) {
-    if (/^###\s+New Capabilities\s*$/i.test(line.trim())) {
-      inNewCapabilities = true;
-      continue;
-    }
-    if (inNewCapabilities && /^###\s+/.test(line.trim())) {
-      break;
-    }
-    if (!inNewCapabilities) {
-      continue;
-    }
-    const match = line.match(/^\s*-\s+`([^`]+)`:/);
-    if (match) {
-      capabilities.push(match[1]!);
-    }
-  }
-  return capabilities;
-}
 
 async function readRequiredProjectText(projectRoot: string, pathParts: readonly string[]): Promise<string> {
   const filePath = await resolveProjectPath(projectRoot, [...pathParts]);
@@ -601,10 +580,6 @@ async function archivedBootstrapChangeExists(projectRoot: string, changeName: st
   return entries.some((entry) => entry.isDirectory() && entry.name.endsWith(changeName));
 }
 
-function mainSpecPurpose(markdown: string): string | null {
-  const match = markdown.match(/^## Purpose\s*\r?\n+([\s\S]*?)(?=\r?\n##\s+)/mu);
-  return match?.[1]?.trim() || null;
-}
 
 export async function inspectArchivedSeedIntegrity(
   projectRoot: string,

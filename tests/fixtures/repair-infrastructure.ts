@@ -10,8 +10,8 @@ export const repairRoot = ['infrastructure', 'opentofu', 'azure'];
 // The pre-57eba97 generator had comment-only local/default backend configuration
 // and environments/<id>.tfvars (not environments/<id>/<id>.tfvars).
 export const legacyInfrastructureSources: Record<string, string> = {
-  'versions.tf': readFileSync(new URL('../../assets/locks/opentofu-azure/versions.tf', import.meta.url), 'utf8'),
-  '.terraform.lock.hcl': readFileSync(new URL('../../assets/locks/opentofu-azure/.terraform.lock.hcl', import.meta.url), 'utf8'),
+  'versions.tf': readFileSync(new URL('../../assets/plugins/azure/opentofu-azure/versions.tf', import.meta.url), 'utf8'),
+  '.terraform.lock.hcl': readFileSync(new URL('../../assets/plugins/azure/opentofu-azure/.terraform.lock.hcl', import.meta.url), 'utf8'),
   'providers.tf': `provider "azurerm" {
   features {}
 }

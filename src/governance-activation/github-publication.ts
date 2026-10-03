@@ -160,7 +160,8 @@ export async function executeGitHubPublication(input: PhaseAdapterExecutionInput
       id: String(current.id), name: config.name, defaultBranch: config.defaultBranch,
       pushUrl: reviewedPushUrl(git), verifiedAt: input.now.toISOString()
     };
-    const resourceId = `/repos/${config.name}`;
+    // Canonical repository identity shared by outputs and readback, matching reviewed plan destinations and Phase 0.
+    const resourceId = config.name;
     return {
       status: 'completed', resultState: 'verified', stateOverride: state, completedOperations: completed,
       evidencePayload: { kind: 'pushed.v1', head, pushUrl: reviewedPushUrl(git), repositoryId: current.id },

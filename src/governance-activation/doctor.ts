@@ -167,7 +167,7 @@ async function credentialExpiringCheck(
     severity: 'warn',
     state: 'credential-expiring',
     detail: `credential policy status ${policy.status}; rotation due ${policy.rotationDueAt}; expires ${policy.expiresAt}`,
-    remedy: 'Preview the credential-ready phase and use governance credential-enroll with its approved fingerprint and private input; no public credential enrollment/readback workflow is exposed without approved plan fingerprint. Expired cloud credentials do not invalidate unrelated local readiness.'
+    remedy: 'Public credential readiness and enrollment are currently unavailable pending independently verified provider wiring; no public credential enrollment/readback workflow is exposed, and approve/apply-next refuse the blocked credential-ready capability. Expired cloud credentials do not invalidate unrelated local readiness.'
   };
 }
 

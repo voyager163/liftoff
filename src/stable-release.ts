@@ -2,7 +2,7 @@ import {
   canonicalNpmRegistry,
   liftoffPackageName,
   stableNpmTag
-} from './package-identity.js';
+} from './domain/distribution/liftoff-package.js';
 
 export const stableReleaseLookupTimeoutMs = 2_000;
 
