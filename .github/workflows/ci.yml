@@ -175,7 +175,7 @@ jobs:
         run: npx vitest run tests/windows-job-runner.test.ts tests/repair-preparation.test.ts -t "settles a real native Node command|detects unref descendant"
 
       - name: Run Windows project and packaging boundary coverage
-        if: runner.os == 'Windows' && matrix.shard == 1
+        if: runner.os == 'Windows' && matrix.shard == 2
         run: >-
           npx vitest run
           tests/init-filesystem.test.ts tests/project-discovery.test.ts

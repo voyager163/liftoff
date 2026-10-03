@@ -74,7 +74,10 @@ or excluding slow cases.
 
 Hosted CI partitions the complete root suite into two shards per platform while
 retaining the 45-minute job limit. Both shards run the package's supported-stack
-check and build; native integration and packaging checks run on shard 1.
+check and build; native integration and packaging checks run on shard 1, except
+the intact Windows project/packaging boundary suite runs on shard 2. This keeps
+that extra suite off the longer first Windows shard without dropping selectors
+or increasing the job deadline.
 Each shard uploads its complete test report, including failures. The existing
 required `Test (...)` checks are fail-closed aggregators: all six platform shards
 must succeed, so a failed, cancelled or skipped shard cannot produce a green
@@ -288,6 +291,16 @@ environments separately: each coverage invocation replaces `coverage/cli/`.
 Both must retain the same source-complete inventory and independent thresholds;
 native coverage cannot mask a failing portable gate. Hosted CI and compiled/
 installed helper behavior still require their own actual runs.
+
+`modern-revalidation-coordination.test.ts` exercises private-store loading and
+publication/refusal/recovery coordination on every platform. Its synthetic wire
+records and explicitly mocked construction/transaction observations establish
+unit behavior, not native execution, rollback, commit or current readback.
+`modern-activation-runtime-records.test.ts` separately checks the shared local
+evidence-plan constructor with format-only records. Keep the actual native
+construction/publication cases in `modern-revalidation-records.test.ts` and
+`modern-local-publication.test.ts`; portable coverage must not relabel their
+host-gated cases as passed.
 
 #### OpenSpec identity qualification
 
