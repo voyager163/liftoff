@@ -8,6 +8,7 @@ import { NodeCommandRunner } from '../src/process-runner.js';
 
 const roots: string[] = [];
 const migrationFile = 'tests/migration-inspection.test.ts';
+const distributionFile = 'tests/installed-tool-distribution.test.ts';
 const repairFile = 'tests/repair-command.test.ts';
 const vitestCli = fileURLToPath(new URL('../node_modules/vitest/vitest.mjs', import.meta.url));
 
@@ -114,7 +115,7 @@ async function ciCommand(name: string): Promise<string> {
 describe('Windows test-project execution and filters', () => {
   it('runs every file and case exactly once across the two CI shards', async () => {
     const current = await fixture([
-      'tests/ordinary-a.test.ts', 'tests/ordinary-b.test.ts', repairFile, migrationFile
+      'tests/ordinary-a.test.ts', 'tests/ordinary-b.test.ts', repairFile, distributionFile, migrationFile
     ]);
     const reports = [];
     for (const shard of [1, 2]) reports.push(await runTests(current.root, [`--shard=${shard}/2`]));
@@ -136,15 +137,15 @@ describe('Windows test-project execution and filters', () => {
       }
     }
     expect(files.sort()).toEqual(current.files.sort());
-    expect(cases).toHaveLength(6);
-    expect(new Set(cases).size).toBe(6);
+    expect(cases).toHaveLength(7);
+    expect(new Set(cases).size).toBe(7);
   });
 
   it('runs the intact migration file after all ordinary hooks in the same invocation', async () => {
     const current = await fixture([
-      'tests/ordinary-a.test.ts', 'tests/ordinary-b.test.ts', repairFile, migrationFile
+      'tests/ordinary-a.test.ts', 'tests/ordinary-b.test.ts', repairFile, distributionFile, migrationFile
     ], true);
-    expectRun(await runTests(current.root), current.root, current.files, 6);
+    expectRun(await runTests(current.root), current.root, current.files, 7);
     expect(await readFile(path.join(current.root, 'selected-migration-ran'), 'utf8')).toBe('done');
   });
 
@@ -155,6 +156,12 @@ describe('Windows test-project execution and filters', () => {
     const current = await fixture(['tests/ordinary.test.ts', migrationFile]);
     expectRun(await runTests(current.root, filters), current.root, [migrationFile], passed, skipped);
     expect(await readFile(path.join(current.root, 'selected-migration-ran'), 'utf8')).toBe('done');
+  });
+
+  it('preserves direct distribution file and name filters in its separate Windows group', async () => {
+    const current = await fixture(['tests/ordinary.test.ts', distributionFile, migrationFile]);
+    expectRun(await runTests(current.root, [distributionFile, '-t', 'ordinary test']),
+      current.root, [distributionFile], 1);
   });
 
   it('preserves every existing Windows boundary CLI file selector exactly once', async () => {

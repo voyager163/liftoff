@@ -60,12 +60,13 @@ function successor(version: 2 | 3, ancestor: ReturnType<typeof snapshot>) {
 async function setup(files: SourceFile[], ancestors: ReturnType<typeof snapshot>[] = []) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'c2b-original-')); roots.push(root);
   for (const file of files) await writeFixtureBytes(root, file.pathParts, file.content, file.mode);
-  for (const source of ancestors) {
-    await writeFixtureBytes(root, ['governance', 'history', source.index.snapshotId, 'index.json'], source.content);
-    for (const entry of source.index.files) await writeFixtureBytes(root, entry.copyPathParts,
-      source.files.find(file => file.pathParts.join('/') === entry.originalPathParts.join('/'))!.content);
-  }
+  for (const source of ancestors) await storeSnapshot(root, source);
   return root;
+}
+async function storeSnapshot(root: string, source: ReturnType<typeof snapshot>) {
+  await writeFixtureBytes(root, ['governance', 'history', source.index.snapshotId, 'index.json'], source.content);
+  for (const entry of source.index.files) await writeFixtureBytes(root, entry.copyPathParts,
+    source.files.find(file => file.pathParts.join('/') === entry.originalPathParts.join('/'))!.content);
 }
 
 describe('independent planned-original and stored-ancestor closure', () => {
@@ -170,13 +171,18 @@ describe('independent planned-original and stored-ancestor closure', () => {
   });
 
   it('reuses exact noncanonical stored index bytes without normalizing history or original copy permissions', async () => {
-    const source = snapshot(3, minimal(3));
+    const files = minimal(3), root = await setup(files);
+    const observed = await Promise.all(files.map(async file => ({
+      ...file, mode: (await fs.lstat(path.join(root, ...file.pathParts))).mode & 0o7777
+    })));
+    if (process.platform !== 'win32') expect(observed[0].mode).toBe(0o640);
+    const source = snapshot(3, observed);
     source.content = Buffer.from(JSON.stringify(source.index, null, '\t') + '\r\n');
-    const root = await setup(source.files, [source]);
+    await storeSnapshot(root, source);
     const result = await readModernActivationSuccessorSource(root);
     expect(result.historyDisposition).toBe('reuse'); expect(result.indexContent).toEqual(source.content);
     const reference = { schemaVersion: 1, kind: 'activation-history', snapshotId: source.index.snapshotId, indexDigest: rawHistoryDigest(source.content) };
-    expect((await readFrozenV3ActivationManifestHistory(root, reference)).source.mode).toBe(0o640);
+    expect((await readFrozenV3ActivationManifestHistory(root, reference)).source.mode).toBe(observed[0].mode);
     await expect(readFrozenActivationManifestHistory(root, reference)).rejects.toThrow(/v1 or v2/);
     await fs.appendFile(path.join(root, ...source.index.files[0].copyPathParts), 'changed');
     await expect(readModernActivationSuccessorSource(root)).rejects.toThrow(/differ/);

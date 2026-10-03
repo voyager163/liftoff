@@ -1192,11 +1192,20 @@ not sufficient. Hardlinks, escaping links, unsafe ancestor/bin traversal and
 unsupported dependency layouts fail closed. Node and launcher association remain
 separately bound. This is not publisher authentication, a complete loaded-runtime
 or OS-library inventory, a sandbox, or an atomic filesystem lease.
+Relative link text is retained byte-for-byte; Windows separators are interpreted
+only on Windows and targets must still resolve wholly inside the captured tree.
+Absolute, drive-relative and UNC targets remain inadmissible.
 
 The OpenSpec-only distribution policy admits at most 8192 files, 4096 directories,
 1024 symlinks and 128 MiB total, with an 8-MiB per-file bound and 30-second scan
 deadline. Full inventories remain transient; compact commitments fit the existing
 64-KiB preview limit without increasing other workflows' limits.
+
+These read-only contracts do not qualify private workspace execution on Windows.
+The POSIX owner/mode requirements in modern local workspaces and OpenSpec
+initialization controls still fail closed there. Their POSIX-only positive tests
+are explicitly unrun on Windows; native Windows negative tests assert the actual
+refusal and absence of published workspace authority instead.
 
 `prepareModernLocalExecution` still issues OpenSpec previews using private schema2 and
 `openspec-workflow-inputs-unqualified`. They can be saved and inspected, but

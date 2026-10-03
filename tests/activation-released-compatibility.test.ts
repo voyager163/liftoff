@@ -364,12 +364,15 @@ describe('actual frozen managed source-metadata routing', () => {
     }
     const bytes = Buffer.from(JSON.stringify(value, null, '\t').replace(/\n/g, '\r\n') + '\r\n');
     await write(root, metadataParts.compatibility, bytes, 0o640);
+    const originalMode = (await fs.lstat(path.join(root, ...metadataParts.compatibility))).mode & 0o7777;
+    if (process.platform !== 'win32') expect(originalMode).toBe(0o640);
     const beforeState = await fs.readFile(path.join(root, 'governance', 'activation-state.json'));
     const inventory = await readHistoricalActivationInventory(root);
     expect(inventory.state.identity).toEqual(historicalV1ActivationIdentity);
     const retained = inventory.files.find(file => file.pathParts.join('/') === metadataParts.compatibility.join('/'))!;
     expect(retained.content).toEqual(bytes);
-    expect(retained.mode).toBe(0o640);
+    expect(retained.mode).toBe(originalMode);
+    expect((await fs.lstat(path.join(root, ...metadataParts.compatibility))).mode & 0o7777).toBe(originalMode);
     expect(await fs.readFile(path.join(root, 'governance', 'activation-state.json'))).toEqual(beforeState);
     expect(await fs.readFile(path.join(root, ...metadataParts.compatibility))).toEqual(bytes);
   });

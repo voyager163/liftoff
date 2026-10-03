@@ -10,6 +10,7 @@ import { getTelemetryConfigPath } from '../src/telemetry/config.js';
 import {
   isCredentialVariable,
   isolateUserState,
+  isolatedGoConfigurationDirectory,
   isolatedUserStateEnvironment,
   removeRunOwnedDirectory,
   suppressedCredentialVariables,
@@ -50,8 +51,8 @@ function syntheticHost(env: NodeJS.ProcessEnv, platform: NodeJS.Platform, failur
     temporaryDirectory: platform === 'win32' ? 'D:\\synthetic\\temp' : '/synthetic/tmp',
     makeTemporaryDirectory: (prefix) => { calls.push(`mkdtemp ${prefix}`); return `${prefix}fixed`; },
     makeDirectory: (directory) => { calls.push(`mkdir ${directory}`); },
-    writeEmptyFile: (file) => {
-      calls.push(`touch ${file}`);
+    writeFile: (file, content) => {
+      calls.push(content === '' ? `touch ${file}` : `write ${file} ${JSON.stringify(content)}`);
       if (failures.write) throw new Error('synthetic write failure');
     },
     removeDirectory: (directory) => {
@@ -81,6 +82,7 @@ describe('run-owned test user state', () => {
     expect(readFileSync(process.env.npm_config_userconfig!, 'utf8')).toBe('');
     expect(readFileSync(process.env.npm_config_globalconfig!, 'utf8')).toBe('');
     expect(readFileSync(process.env.GOENV!, 'utf8')).toBe('');
+    expect(readFileSync(path.join(isolatedGoConfigurationDirectory(expected.HOME!), 'telemetry', 'mode'), 'utf8')).toBe('off\n');
     for (const name of ['GOPATH', 'GOMODCACHE', 'GOCACHE']) {
       expect(inside(root, process.env[name]!), name).toBe(true);
       expect(statSync(process.env[name]!).isDirectory(), name).toBe(true);
@@ -129,6 +131,18 @@ describe('run-owned test user state', () => {
         XDG_CACHE_HOME: paths.join(home, '.cache'), XDG_DATA_HOME: paths.join(home, '.local', 'share')
       });
     }
+  });
+
+  it.each(['linux', 'darwin', 'win32'] as const)('disables Go counters in only the run-owned %s profile before dispatch', platform => {
+    const env: NodeJS.ProcessEnv = { HOME: '/unchanged' };
+    const { host, calls } = syntheticHost(env, platform);
+    const teardown = isolateUserState(host);
+    const paths = platform === 'win32' ? path.win32 : path.posix;
+    const file = paths.join(isolatedGoConfigurationDirectory(env.HOME!, platform), 'telemetry', 'mode');
+    expect(calls).toContain(`write ${file} "off\\n"`);
+    expect(env.GOTELEMETRY).toBeUndefined();
+    teardown();
+    expect(env).toEqual({ HOME: '/unchanged' });
   });
 
   it('suppresses gh, az and npm credential inputs but keeps registry, path and host settings', () => {
@@ -237,6 +251,11 @@ describe('sentinel profiles stay untouched by root test runs', () => {
     await writeFile(exported.goenv, 'GOFLAGS=-sentinel-must-not-be-read\n');
     await writeFile(exported.npmrc, '# sentinel user config\n');
     await writeFile(exported.globalconfig, '# sentinel global config\n');
+    const telemetry = path.join(isolatedGoConfigurationDirectory(exported.home), 'telemetry');
+    await mkdir(telemetry, { recursive: true });
+    const modeFile = path.join(telemetry, 'mode');
+    await writeFile(modeFile, 'off\n');
+    const sentinelFiles = files(sentinel);
     const relative = (target: string) => path.relative(path.join(root, 'tests'), target).split(path.sep).join('/');
     const configImport = path.relative(root, path.join(repository, 'vitest.config.ts')).split(path.sep).join('/');
     const setupImport = path.relative(root, path.join(repository, 'tests', 'setup', 'user-state-isolation.ts')).split(path.sep).join('/');
@@ -276,7 +295,7 @@ it('writes Liftoff and client records through their default user-local locations
   const userconfig = run('npm', ['config', 'get', 'userconfig']);
   const globalconfig = run('npm', ['config', 'get', 'globalconfig']);
   const az = run('az', ['version', '--output', 'none', '--only-show-errors']);
-  const go = run('go', ['env', '-json', 'GOPATH', 'GOMODCACHE', 'GOCACHE', 'GOENV', 'GOFLAGS']);
+  const go = run('go', ['env', '-json', 'GOPATH', 'GOMODCACHE', 'GOCACHE', 'GOENV', 'GOFLAGS', 'GOTELEMETRY']);
   writeFileSync(path.join(process.env.FIXTURE_ROOT, 'report.json'), JSON.stringify({
     root: process.env.LIFTOFF_TEST_USER_STATE_ROOT ?? null, home: os.homedir(),
     previews: location.directory, telemetry: getTelemetryConfigPath(),
@@ -311,11 +330,11 @@ it('writes Liftoff and client records through their default user-local locations
     const reportPath = path.join(root, 'report.json');
     const report = existsSync(reportPath) ? JSON.parse(await readFile(reportPath, 'utf8')) : undefined;
     if (report?.root) cleanups.push(report.root);
-    return { result, report, sentinel, exported };
+    return { result, report, sentinel, exported, sentinelFiles, modeFile };
   }
 
   it('isolates Vitest runner state, Liftoff records, exported client overrides and credentials in a real root-config run', async () => {
-    const { result, report, sentinel, exported } = await fixture('isolated');
+    const { result, report, sentinel, exported, sentinelFiles, modeFile } = await fixture('isolated');
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(report.root).toEqual(expect.any(String));
     expect(inside(sentinel, report.root)).toBe(false);
@@ -335,10 +354,12 @@ it('writes Liftoff and client records through their default user-local locations
     if (report.goEnv !== null) {
       for (const name of ['GOPATH', 'GOMODCACHE', 'GOCACHE', 'GOENV']) expect(inside(report.root, report.goEnv[name]), name).toBe(true);
       expect(report.goEnv.GOFLAGS).toBe('');
+      expect(report.goEnv.GOTELEMETRY).toBe('off');
     }
     expect(report.credentials).toEqual([]);
     expect(existsSync(report.root), 'the run-owned root is removed at teardown').toBe(false);
-    expect(files(sentinel)).toEqual(['global-npmrc', 'goenv', 'npmrc']);
+    expect(files(sentinel)).toEqual(sentinelFiles);
+    expect(await readFile(modeFile, 'utf8')).toBe('off\n');
     expect(await readFile(exported.goenv, 'utf8')).toBe('GOFLAGS=-sentinel-must-not-be-read\n');
     expect(await readFile(exported.npmrc, 'utf8')).toBe('# sentinel user config\n');
     expect(await readFile(exported.globalconfig, 'utf8')).toBe('# sentinel global config\n');

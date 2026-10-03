@@ -247,6 +247,19 @@ async function planned(options: Parameters<typeof fixture>[0] = {}) {
 }
 
 describe('installed current runtime bridge without MR1 bypass', () => {
+  it('preserves native-path descendant identity fields instead of treating them as ancestors', async () => {
+    const f = await fixture(), inspection = await inspectModernLocalVerification(f.root);
+    expect(inspection.status, canonicalJson(inspection)).toBe('modern-observed');
+    if (inspection.status !== 'modern-observed') throw new Error('Expected actual source capture.');
+    const target = path.join(f.root, 'liftoff.manifest.json'), details = await lstat(target, { bigint: true });
+    expect(inspection.snapshot.physical.find(entry => entry.path === target)?.identity).toBe([
+      details.dev, details.ino, details.mode, details.nlink, details.size,
+      details.mtimeNs, details.ctimeNs, details.birthtimeNs
+    ].join(':'));
+    const ancestor = inspection.snapshot.physical.find(entry => entry.path === path.dirname(f.root));
+    expect(ancestor?.identity?.split(':').slice(3, 7)).toEqual(['0', '0', '0', '0']);
+  });
+
   async function installedFixture(profile: 'single-maintainer-gitflow' | 'team-gitflow', workflow: 'manual' | 'openspec' | 'spec-kit') {
     const f = await fixture({ profile, workflow });
     if (f.manifest.governance.profile === 'none') throw new Error('Expected governed fixture.');

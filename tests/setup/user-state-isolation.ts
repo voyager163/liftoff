@@ -36,6 +36,13 @@ export function isCredentialVariable(name: string): boolean {
   return suppressedCredentialVariables.includes(name.toUpperCase()) || npmCredentialVariable.test(name);
 }
 
+export function isolatedGoConfigurationDirectory(home: string, platform: NodeJS.Platform = process.platform): string {
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  const config = platform === 'win32' ? paths.join(home, 'AppData', 'Roaming')
+    : platform === 'darwin' ? paths.join(home, 'Library', 'Application Support') : paths.join(home, '.config');
+  return paths.join(config, 'go');
+}
+
 // Paths are each client's platform default relative to the isolated home, so
 // resolution keeps its normal meaning; only the root moves. Short names keep
 // Windows profile paths no longer than a runner's real profile (MAX_PATH).
@@ -71,8 +78,7 @@ export function isolatedUserStateEnvironment(root: string, platform: NodeJS.Plat
   values.GOMODCACHE = paths.join(home, 'go', 'pkg', 'mod');
   values.GOCACHE = platform === 'win32' ? paths.join(localAppData, 'go-build')
     : platform === 'darwin' ? paths.join(home, 'Library', 'Caches', 'go-build') : paths.join(home, '.cache', 'go-build');
-  values.GOENV = platform === 'win32' ? paths.join(appData, 'go', 'env')
-    : platform === 'darwin' ? paths.join(home, 'Library', 'Application Support', 'go', 'env') : paths.join(home, '.config', 'go', 'env');
+  values.GOENV = paths.join(isolatedGoConfigurationDirectory(home, platform), 'env');
   for (const name of xdgVariables) values[name] = undefined;
   if (platform !== 'win32') {
     values.XDG_CONFIG_HOME = paths.join(home, '.config');
@@ -89,7 +95,7 @@ export interface UserStateIsolationHost {
   temporaryDirectory: string;
   makeTemporaryDirectory(prefix: string): string;
   makeDirectory(directory: string): void;
-  writeEmptyFile(file: string): void;
+  writeFile(file: string, content: string): void;
   removeDirectory(directory: string): void;
 }
 
@@ -118,7 +124,7 @@ export const nodeUserStateIsolationHost = (): UserStateIsolationHost => ({
   temporaryDirectory: os.tmpdir(),
   makeTemporaryDirectory: (prefix) => mkdtempSync(prefix),
   makeDirectory: (directory) => mkdirSync(directory, { recursive: true }),
-  writeEmptyFile: (file) => writeFileSync(file, '', { flag: 'wx' }),
+  writeFile: (file, content) => writeFileSync(file, content, { flag: 'wx' }),
   removeDirectory: removeRunOwnedDirectory
 });
 
@@ -144,9 +150,14 @@ export function isolateUserState(host: UserStateIsolationHost = nodeUserStateIso
       if (value !== undefined) host.makeDirectory(value);
     }
     host.makeDirectory(paths.dirname(values.GOENV!));
-    host.writeEmptyFile(values.npm_config_userconfig!);
-    host.writeEmptyFile(values.npm_config_globalconfig!);
-    host.writeEmptyFile(values.GOENV!);
+    host.writeFile(values.npm_config_userconfig!, '');
+    host.writeFile(values.npm_config_globalconfig!, '');
+    host.writeFile(values.GOENV!, '');
+    // Go's telemetry mode is a file, not an environment override. Disable it
+    // before the first tool invocation can start a counter process holding locks.
+    const telemetry = paths.join(isolatedGoConfigurationDirectory(values.HOME!, host.platform), 'telemetry');
+    host.makeDirectory(telemetry);
+    host.writeFile(paths.join(telemetry, 'mode'), 'off\n');
   } catch (error) {
     host.removeDirectory(root);
     throw error;

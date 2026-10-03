@@ -95,6 +95,7 @@ async function fixture(options: {
   const name = `migration-revalidation-${++sequence}`;
   const root = path.join(process.cwd(), '.cache', `${name}-${process.pid}`);
   roots.push(root);
+  await mkdir(path.dirname(root), { recursive: true });
   const plan = buildProjectPlan({
     projectName: name,
     ...(options.pattern ? { projectType: 'genai', pattern: options.pattern } : { projectType: 'standard', apiStack: options.api ?? 'node' }),

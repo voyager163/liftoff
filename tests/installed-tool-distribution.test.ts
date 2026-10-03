@@ -1,10 +1,10 @@
-import {mkdtemp,mkdir,writeFile,lstat,rm,symlink,link,rename,chmod,open,readFile,realpath} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,lstat,rm,symlink,readlink,link,rename,chmod,open,readFile,realpath} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {createRequire} from 'node:module';
 import {afterEach,describe,it,expect,vi} from 'vitest';
 import {captureOpenSpecDistribution,assertOpenSpecDistributionCurrent} from '../src/adapters/filesystem/installed-tool-distribution.js';
-import {openSpecDistributionPolicy,distributionOrder,distributionPath,validateInstalledToolDistribution} from '../src/domain/governance/activation/installed-tool-distribution.js';
+import {openSpecDistributionPolicy,distributionOrder,distributionPath,distributionLinkTarget,validateInstalledToolDistribution} from '../src/domain/governance/activation/installed-tool-distribution.js';
 import {canonicalSha256,canonicalJson} from '../src/domain/governance/activation/canonical-json.js';
 const roots:{path:string;ino:number;dev:number}[]=[];
 const nofollow=vi.hoisted(()=>({component:'',calls:[] as {operation:string;path:string}[],violations:[] as string[],swapAtRoot:'',swapParent:'',swapTarget:'',swapped:false}));
@@ -48,6 +48,14 @@ async function fixture(){
   return {root,pkg,locator};
 }
 describe('bounded complete installed distribution identity',()=>{
+  it.each(['win32','darwin','linux'] as const)('interprets relative link separators for %s without changing their raw bytes',platform=>{
+    expect(distributionLinkTarget('resources/policy',platform)).toEqual(['resources','policy']);
+    if(platform==='win32')expect(distributionLinkTarget('resources\\policy',platform)).toEqual(['resources','policy']);
+    else expect(()=>distributionLinkTarget('resources\\policy',platform)).toThrow(/malformed/);
+    for(const value of ['/absolute','C:\\absolute','C:relative','\\\\server\\share','\0','\ud800','']){
+      expect(()=>distributionLinkTarget(value,platform)).toThrow(/malformed/);
+    }
+  });
   it('uses canonical fixture paths when the temporary directory is an owned alias',async()=>{
     const parent=await fixture(),temporary=path.join(parent.root,'temporary'),alias=path.join(parent.root,'temporary-alias');
     await mkdir(temporary);await symlink('temporary',alias);
@@ -114,6 +122,7 @@ describe('bounded complete installed distribution identity',()=>{
     const first=await captureOpenSpecDistribution(f.locator),second=await assertOpenSpecDistributionCurrent(f.locator,first.commitment);
     expect(second.commitment).toEqual(first.commitment);expect(first.inventory.files.some(f=>f.bytes===0)).toBe(true);
     expect(first.inventory.links.find(l=>l.pathParts[0]==='via')?.canonicalTargetParts).toEqual(['resources','policy']);
+    expect(first.inventory.links.find(l=>l.pathParts[0]==='via')?.linkText).toBe(await readlink(path.join(f.pkg,'via')));
     expect(Buffer.byteLength(canonicalJson(first.commitment))).toBeLessThan(8192);
     await writeFile(path.join(f.pkg,'resources/policy'),'changed\r\n');
     await expect(assertOpenSpecDistributionCurrent(f.locator,first.commitment)).rejects.toThrow(/identity changed/);
@@ -122,11 +131,17 @@ describe('bounded complete installed distribution identity',()=>{
     const f=await fixture();await writeFile(path.join(f.pkg,'resource'),'same bytes');const first=await captureOpenSpecDistribution(f.locator);
     if(fault==='added')await writeFile(path.join(f.pkg,'new-empty'),'');
     if(fault==='deleted')await rm(path.join(f.pkg,'resource'));
-    if(fault==='mode')await chmod(path.join(f.pkg,'resource'),0o640);
+    if(fault==='mode')await chmod(path.join(f.pkg,'resource'),0o444);
     if(fault==='replacement'){await rename(path.join(f.pkg,'resource'),path.join(f.root,'retained'));await writeFile(path.join(f.pkg,'resource'),'same bytes');}
     if(fault==='directory')await mkdir(path.join(f.pkg,'new-empty-directory'));
     if(fault==='link')await symlink('resource',path.join(f.pkg,'new-link'));
-    await expect(assertOpenSpecDistributionCurrent(f.locator,first.commitment)).rejects.toThrow(/changed/);
+    try{
+      if(fault==='mode')expect((await lstat(path.join(f.pkg,'resource'))).mode&0o7777)
+        .not.toBe(first.inventory.files.find(file=>file.pathParts[0]==='resource')!.mode);
+      await expect(assertOpenSpecDistributionCurrent(f.locator,first.commitment)).rejects.toThrow(/changed/);
+    }finally{
+      if(fault==='mode')await chmod(path.join(f.pkg,'resource'),first.inventory.files.find(file=>file.pathParts[0]==='resource')!.mode);
+    }
   });
   it.each(['escape','absolute','dangling','cycle','intermediate-escape','hardlink'] as const)('rejects owned %s without following an external target',async fault=>{
     const f=await fixture(),sentinel=path.join(f.root,'sentinel');await writeFile(sentinel,'owned do not follow');
@@ -144,8 +159,9 @@ describe('bounded complete installed distribution identity',()=>{
     const f=await fixture(),invalid=Buffer.concat([Buffer.from(f.pkg+'/'),Buffer.from([0xff])]);
     try{await writeFile(invalid,'owned');}
     catch(error){
-      expect((error as NodeJS.ErrnoException).code).toBe('EILSEQ');
-      console.info('OB1_RAW_NAME_HOST_REJECTION '+JSON.stringify({code:'EILSEQ',claim:'Filesystem rejected invalid UTF8; replacement-character rejection exercised separately.'}));
+      const code=(error as NodeJS.ErrnoException).code;
+      expect(code).toBe(process.platform==='win32'?'ENOENT':'EILSEQ');
+      console.info('OB1_RAW_NAME_HOST_REJECTION '+JSON.stringify({code,claim:'Host rejected the invalid UTF8 byte pathname; replacement-character rejection exercised separately.'}));
       await writeFile(path.join(f.pkg,'\ufffd'),'owned replacement-name fixture');
     }
     await expect(captureOpenSpecDistribution(f.locator)).rejects.toThrow(/UTF8/);

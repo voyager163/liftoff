@@ -3,6 +3,7 @@ import { defaultExclude, defineConfig, type ViteUserConfig } from 'vitest/config
 import { isolateProcessUserState } from './tests/setup/user-state-isolation.js';
 
 const migrationInspectionFile = 'tests/migration-inspection.test.ts';
+const distributionInspectionFile = 'tests/installed-tool-distribution.test.ts';
 
 // Every root Vitest invocation (npm test, targeted runs and the coverage gate)
 // uses a temporary HOME/XDG/profile root. The main process isolates while this
@@ -65,8 +66,18 @@ export function createRootTestConfig(
               ...test,
               name: 'root-tests',
               include: [...test.include],
-              exclude: [...defaultExclude, migrationInspectionFile],
+              exclude: [...defaultExclude, migrationInspectionFile, distributionInspectionFile],
               sequence: { groupOrder: 0 }
+            }
+          },
+          {
+            extends: false,
+            test: {
+              ...test,
+              name: 'installed-tool-distribution',
+              include: [distributionInspectionFile],
+              // Exercise the full 8192-file scan inside its unchanged 30s deadline.
+              sequence: { groupOrder: 1 }
             }
           },
           {
@@ -76,7 +87,7 @@ export function createRootTestConfig(
               name: 'migration-inspection',
               include: [migrationInspectionFile],
               // Keep real revalidation inside its timed cases, without competing native builds.
-              sequence: { groupOrder: 1 }
+              sequence: { groupOrder: 2 }
             }
           }
         ]

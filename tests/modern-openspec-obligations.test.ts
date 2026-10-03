@@ -53,7 +53,7 @@ describe('initialized-baseline portable contracts',()=>{
   it('accepts only explicit true attestation without producing historical provenance',()=>{
     expect(validateBootstrapScopeAttestation(attestation)).toEqual(attestation);
   });
-  it.each(['empty','populated','replaced'] as const)('requires the actual %s data-root boundary before an init dispatch',async fault=>{
+  it.skipIf(process.platform==='win32').each(['empty','populated','replaced'] as const)('requires the actual %s data-root boundary before an init dispatch',async fault=>{
     const root=await realpath(await mkdtemp(path.join(os.tmpdir(),'oi-data-contract-'))),owner=await lstat(root);
     console.info('OI_OWNED_ROOT '+JSON.stringify({root,ino:owner.ino,dev:owner.dev,kind:'portable-no-process'}));
     try{
@@ -67,6 +67,14 @@ describe('initialized-baseline portable contracts',()=>{
       const current=await lstat(root);expect(current.ino).toBe(owner.ino);expect(current.dev).toBe(owner.dev);
       await rm(root,{recursive:true});
     }
+  });
+  it.runIf(process.platform==='win32')('refuses unavailable private configuration modes on Windows before an init dispatch',async()=>{
+    const root=await realpath(await mkdtemp(path.join(os.tmpdir(),'oi-data-contract-')));
+    try{
+      await mkdir(path.join(root,'cache'));
+      const value=contract(),environment=await createOpenSpecInitializationEnvironment(root,value);
+      await expect(environment.assertFresh(value.roots[0].component)).rejects.toThrow('Initialization CLI configuration changed.');
+    }finally{await rm(root,{recursive:true});}
   });
 });
 

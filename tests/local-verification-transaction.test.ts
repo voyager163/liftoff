@@ -17,7 +17,7 @@ import {
 import type { LocalVerificationTransactionAuthorityStore } from '../src/application/update/transaction-approval.js';
 import {
   captureJournalPreconditions, encodeReviewedJournalHeader, encodeReviewedJournalFrame,
-  measureReviewedJournal, parseReviewedJournalHeader, reviewedJournalLimits, storeJournalSnapshot,
+  measureReviewedJournal, parseReviewedJournalHeader, reviewedJournalLimits, storeJournalSnapshot, journalTargetMode,
   type JournalBody, type JournalPayload, type StoredMutation
 } from '../src/adapters/filesystem/reviewed-update-journal.js';
 import type { ProjectFileMutation, ProjectFileSnapshot } from '../src/adapters/filesystem/project-transaction.js';
@@ -96,7 +96,7 @@ async function fixture() {
 }
 function localPayload(mutations: StoredMutation[] = [{
   type: 'write', pathParts: ['proof'], original: { kind: 'missing' },
-  target: storeJournalSnapshot({ pathParts: ['proof'], content: Buffer.from('result'), mode: 0o600 })
+  target: storeJournalSnapshot({ pathParts: ['proof'], content: Buffer.from('result'), mode: journalTargetMode(undefined, undefined, process.platform) })
 }]): JournalPayload {
   return { schemaVersion: 3, transactionKind: 'local-verification', projectRoot: '/project', mutations, missingDirectories: [] };
 }
@@ -211,13 +211,13 @@ describe('dedicated local-verification wire and exact admission', () => {
 
   it('keeps exact/+1 local file, combined snapshot and mutation/precondition limits', () => {
     const maximum = reviewedJournalLimits.fileBytes;
-    const snap = storeJournalSnapshot({ pathParts: ['proof'], content: Buffer.alloc(maximum), mode: 0o600 });
+    const snap = storeJournalSnapshot({ pathParts: ['proof'], content: Buffer.alloc(maximum), mode: journalTargetMode(undefined, undefined, process.platform) });
     expect(() => storeJournalSnapshot({ pathParts: ['proof'], content: Buffer.alloc(maximum + 1), mode: 0o600 })).toThrow(/oversized/);
     const payload = localPayload([{ type: 'write', pathParts: ['proof'], original: snap, target: snap }]);
     expect(measureReviewedJournal(payload, [], process.platform).snapshotBytes).toBe(16 * 1024 * 1024);
     payload.mutations.push(localPayload().mutations[0]);
     payload.mutations[1].pathParts = ['extra'];
-    payload.mutations[1].target = storeJournalSnapshot({ pathParts: ['extra'], content: Buffer.from('x'), mode: 0o600 });
+    payload.mutations[1].target = storeJournalSnapshot({ pathParts: ['extra'], content: Buffer.from('x'), mode: journalTargetMode(undefined, undefined, process.platform) });
     expect(() => measureReviewedJournal(payload, [], process.platform)).toThrow(/snapshots/);
     const count = localPayload(Array.from({ length: 1024 }, (_, index) => ({
       type: 'delete', pathParts: [`file-${index}`], original: { kind: 'missing' }, target: { kind: 'missing' }

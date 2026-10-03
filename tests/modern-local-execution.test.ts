@@ -30,6 +30,7 @@ if(!['auto','portable','native'].includes(mode))throw new Error('Invalid local e
 const qualified=process.platform==='darwin'&&process.arch==='arm64'&&process.versions.node==='24.21.0';
 if(mode==='native'&&!qualified)throw new Error('Local execution native tests require actual qualified runtime.');
 const native=mode!=='portable'&&qualified,nativeIt=it.skipIf(!native);
+const posixWorkspaceIt=it.skipIf(process.platform==='win32');
 const executed:string[]=[];beforeEach(({task})=>{executed.push(task.name);});
 afterAll(()=>{if(mode==='native')expect(executed.some(name=>name.startsWith('executes the real full none'))).toBe(true);
   console.info('MR2_B_TEST_INVENTORY '+JSON.stringify({mode,qualified,native,executed,
@@ -314,6 +315,12 @@ describe('actual local execution prerequisites and bounded effects',()=>{
   });
 });
 describe('independently owned local workspace semantics',()=>{
+  it.runIf(process.platform==='win32')('refuses unavailable POSIX workspace ownership on Windows without publishing authority',async()=>{
+    const {project}=await fixture(),preview=operation(project),store=createLocalExecutionRecordStore(project);
+    await expect(createModernLocalWorkspace(project,preview,store)).rejects.toThrow('Local workspace private parent is unsafe.');
+    expect((await store.readState(preview.fingerprint))?.value).toMatchObject({phase:'claimed',workspace:null});
+    expect(await store.read('workspace-authority',preview.fingerprint)).toBeNull();
+  });
   it('refuses denied initial CAS without allocating an execution owner',async()=>{
     const {project}=await fixture(),preview=operation(project),store=createLocalExecutionRecordStore(project);
     const denied={...store,compareExchangeState:async()=>{throw new Error('Explicit denied CAS fixture');}};
@@ -321,7 +328,7 @@ describe('independently owned local workspace semantics',()=>{
     expect(await store.readState(preview.fingerprint)).toBeNull();
     expect(await store.read('workspace-authority',preview.fingerprint)).toBeNull();
   });
-  it('retains claimed progress and the actual allocated workspace when authority storage fails',async()=>{
+  posixWorkspaceIt('retains claimed progress and the actual allocated workspace when authority storage fails',async()=>{
     const {project}=await fixture(),preview=operation(project),store=createLocalExecutionRecordStore(project);
     let allocated:string|undefined;
     const denied={...store,write:async(kind:Parameters<typeof store.write>[0],key:string,value:unknown)=>{
@@ -337,7 +344,7 @@ describe('independently owned local workspace semantics',()=>{
     expect((await lstat(allocated)).isDirectory()).toBe(true);roots.push(allocated);
     await expect(createModernLocalWorkspace(project,preview,store)).rejects.toThrow();
   });
-  it('refuses cleanup when attributed authority cannot be read and leaves owned bytes intact',async()=>{
+  posixWorkspaceIt('refuses cleanup when attributed authority cannot be read and leaves owned bytes intact',async()=>{
     const {project}=await fixture(),preview=operation(project),store=createLocalExecutionRecordStore(project);
     let denied=false;
     const port={...store,read:async(kind:Parameters<typeof store.read>[0],key:string)=>{
@@ -349,7 +356,7 @@ describe('independently owned local workspace semantics',()=>{
     expect((await lstat(workspace.directory)).isDirectory()).toBe(true);
     denied=false;await workspace.cleanup();await workspace.finish('b'.repeat(64));
   });
-  it('creates attributed roles, copies captured bytes and cleans only owned entries after settlement',async()=>{
+  posixWorkspaceIt('creates attributed roles, copies captured bytes and cleans only owned entries after settlement',async()=>{
     const {project,put}=await completeFixture(),preview=operation(project),store=createLocalExecutionRecordStore(project);
     const bytes=Buffer.from('retained source\r\n');await put(['Source Space','backend','source.txt'],bytes.toString());
     const observed=await inspectModernLocalRuntime(project);
@@ -363,7 +370,7 @@ describe('independently owned local workspace semantics',()=>{
     await expect(lstat(workspace.directory)).rejects.toMatchObject({code:'ENOENT'});
     await expect(createModernLocalWorkspace(project,preview,store)).rejects.toThrow();
   });
-  it('retains uncertain owner state rather than inferring process settlement from a stored flag',async()=>{
+  posixWorkspaceIt('retains uncertain owner state rather than inferring process settlement from a stored flag',async()=>{
     const {project}=await fixture(),preview=operation(project),store=createLocalExecutionRecordStore(project);
     const workspace=await createModernLocalWorkspace(project,preview,store);
     await workspace.begin({kind:'check',id:'never-dispatched-fault-fixture',commandDigest:'a'.repeat(64)});

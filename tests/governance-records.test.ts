@@ -223,7 +223,10 @@ describe('public activation inputs', () => {
 
     await expect(readPublicActivationInputs(atLimit)).resolves.toEqual(publicInputs);
     expect((await rejection(readPublicActivationInputs(overLimit))).message).toBe(refusal);
-    expect(fsHooks.handles).toEqual([{ stats: 1, readBytes: inputLimitBytes, closes: 1 }, { stats: 1, readBytes: 0, closes: 1 }]);
+    expect(fsHooks.handles).toEqual([
+      { stats: 1, readBytes: inputLimitBytes, closes: 1 },
+      ...(host.noFollowOpen ? [{ stats: 1, readBytes: 0, closes: 1 }] : [])
+    ]);
   });
 
   it('refuses malformed JSON with fixed text that never echoes the payload', async () => {
@@ -280,7 +283,9 @@ describe('public activation inputs', () => {
     await link(original, alias);
 
     for (const file of [original, alias]) expect((await rejection(readPublicActivationInputs(file))).message).toBe(refusal);
-    expect(fsHooks.handles).toEqual([{ stats: 1, readBytes: 0, closes: 1 }, { stats: 1, readBytes: 0, closes: 1 }]);
+    expect(fsHooks.handles).toEqual(host.noFollowOpen
+      ? [{ stats: 1, readBytes: 0, closes: 1 }, { stats: 1, readBytes: 0, closes: 1 }]
+      : []);
   });
 
   it.skipIf(!host.symlinks || !host.noFollowOpen)('refuses a symlinked input at open without following it (requires symlinks and O_NOFOLLOW)', async () => {
@@ -504,6 +509,8 @@ describe('path existence', () => {
     const root = await ownedRoot();
     await symlink(path.join(root, 'missing-target.json'), path.join(root, 'dangling.json'));
     expect(await pathExists(path.join(root, 'dangling.json'))).toBe(false);
+    await writeFile(path.join(root, 'missing-target.json'), '{}');
+    expect(await pathExists(path.join(root, 'dangling.json'))).toBe(true);
   });
 
   it.skipIf(!host.posix)('rethrows access failures other than a missing path (POSIX ENOTDIR)', async () => {

@@ -54,8 +54,11 @@ do not qualify dependency internals, Node preloading or external toolchains.
 
 The root Vitest configuration limits Windows to two concurrent file workers.
 Within the same test invocation, ordered projects run the other root files first,
-then the intact `tests/migration-inspection.test.ts` file without competing
-filesystem-heavy suites or native builds. Each file belongs to exactly one
+then `tests/installed-tool-distribution.test.ts`, then the intact
+`tests/migration-inspection.test.ts` file without competing filesystem-heavy
+suites or native builds. The full distribution-limit fixtures retain their
+30-second production scan deadline rather than competing with other file workers.
+Each file belongs to exactly one
 group; targeted file selectors still run the selected file. Real revalidation
 and fixture construction remain inside the original timed test bodies.
 Other platforms retain their existing single-project configuration and Vitest's
@@ -83,7 +86,11 @@ and the global setup removes it afterward; a failed cleanup fails the run. `HOME
 and `GOPATH`, `GOMODCACHE`, `GOCACHE`, and `GOENV` all point inside it. Azure CLI
 telemetry and npm update checks are off, and ambient gh, az, and npm credential
 variables are cleared whatever their letter case. A test that needs such a value
-injects its own fixture. Tool caches start empty, so tests that build generated
+injects its own fixture. Go telemetry is disabled through a mode file in this
+run-owned profile before any Go command starts; `GOTELEMETRY` is not an environment
+override. This prevents counter processes from retaining Windows profile locks
+after their parent command exits without changing the developer's Go settings.
+Tool caches start empty, so tests that build generated
 projects download their dependencies. This keeps test-generated Liftoff and client
 state out of your real profile; it is not a sandbox or network boundary, and `PATH`
 and native host settings are unchanged.

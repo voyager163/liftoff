@@ -110,7 +110,10 @@ describe('new stored v3 preservation combination, not a released snapshot writer
     expectTypeOf(result.sourceIdentity).toEqualTypeOf<typeof releasedV3ActivationIdentity>();
     expect(result.captures.filter(file => file.pathParts.at(-1) === 'index.json')).toHaveLength(sources.length);
     expect(result.source).toEqual({ artifactVersion: 7, digest: rawHistoryDigest(top.files[0].content), bytes: top.files[0].content.length, mode: 0o640 });
-    expect(result.captures.every(file => file.mode === 0o600)).toBe(true);
+    for (const file of result.captures) {
+      expect(file.mode).toBe((await fs.lstat(path.join(root, ...file.pathParts))).mode & 0o7777);
+      if (process.platform !== 'win32') expect(file.mode).toBe(0o600);
+    }
     for (const source of sources) for (const file of source.index.files) {
       expect(result.captures.find(copy => copy.pathParts.join('/') === file.copyPathParts.join('/'))?.content)
         .toEqual(source.files.find(original => original.parts.join('/') === file.originalPathParts.join('/'))!.content);
@@ -185,7 +188,8 @@ describe('new stored v3 preservation combination, not a released snapshot writer
     const opened: string[] = [], effect = vi.fn(() => { throw new Error('unexpected effect'); });
     vi.doMock('node:fs/promises', () => ({ ...actual,
       open: vi.fn(async (...args: Parameters<typeof actual.open>) => {
-        opened.push(String(args[0])); expect(String(args[0])).toContain('/governance/history/');
+        opened.push(String(args[0]));
+        expect(String(args[0])).toContain(`${path.sep}${path.join('governance', 'history')}${path.sep}`);
         return actual.open(...args);
       }), writeFile: effect, mkdir: effect, unlink: effect, rm: effect, chmod: effect
     }));

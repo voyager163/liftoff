@@ -132,7 +132,7 @@ describe('permanent original activation manifest references', () => {
     vi.doMock('node:fs/promises', () => ({
       ...actual, open: vi.fn(async (...args: Parameters<typeof actual.open>) => {
         const name = String(args[0]); opened.push(name);
-        expect(name).toContain(`/governance/history/${project.index.snapshotId}/`);
+        expect(name).toContain(`${path.sep}${path.join('governance', 'history', project.index.snapshotId)}${path.sep}`);
         return actual.open(...args);
       }), writeFile: forbidden, mkdir: forbidden, chmod: forbidden, unlink: forbidden, rm: forbidden
     }));

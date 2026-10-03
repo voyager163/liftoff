@@ -30,6 +30,14 @@ export function distributionPhysical(stat:BigIntStats):DistributionPhysical{
     mtimeNs:String(stat.mtimeNs),ctimeNs:String(stat.ctimeNs),birthtimeNs:String(stat.birthtimeNs)};
 }
 export function distributionOrder(a:string,b:string):number{return a<b?-1:a>b?1:0;}
+export function distributionLinkTarget(linkText:string,platform:NodeJS.Platform=process.platform):string[]{
+  if(typeof linkText!=='string'||!linkText||Buffer.from(linkText).toString('utf8')!==linkText||
+    path.posix.isAbsolute(linkText)||path.win32.isAbsolute(linkText)||/^[A-Za-z]:/u.test(linkText)||
+    platform!=='win32'&&linkText.includes('\\')||/[\u0000-\u001f\u007f]/u.test(linkText)){
+    localInputFailure('Unsupported absolute or malformed distribution link.');
+  }
+  return linkText.split(platform==='win32'?/[\\/]/u:/\//u);
+}
 export function distributionPath(parts:readonly string[],allowRoot=false):void{
   if(!Array.isArray(parts)||parts.length>openSpecDistributionPolicy.depth||!allowRoot&&!parts.length||
     parts.some(p=>typeof p!=='string'||!p||p==='.'||p==='..'||/[\\/:*?"<>|\u0000-\u001f\u007f]/u.test(p)||

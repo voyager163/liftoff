@@ -22,30 +22,39 @@ describe('root test runner configuration', () => {
   it('partitions Windows discovery into disjoint ordered groups without dropping the migration file', () => {
     const windows = createRootTestConfig('win32');
     const projects = windows.test.projects;
-    expect(projects).toHaveLength(2);
-    if (!projects) throw new Error('Expected both Windows test projects.');
+    expect(projects).toHaveLength(3);
+    if (!projects) throw new Error('Expected all Windows test projects.');
 
     expect(projects[0]).toMatchObject({
       extends: false,
       test: {
         name: 'root-tests',
         include: ['tests/**/*.test.ts'],
-        exclude: [...defaultExclude, 'tests/migration-inspection.test.ts'],
+        exclude: [...defaultExclude, 'tests/migration-inspection.test.ts', 'tests/installed-tool-distribution.test.ts'],
         sequence: { groupOrder: 0 }
       }
     });
     expect(projects[1]).toMatchObject({
       extends: false,
       test: {
-        name: 'migration-inspection',
-        include: ['tests/migration-inspection.test.ts'],
+        name: 'installed-tool-distribution',
+        include: ['tests/installed-tool-distribution.test.ts'],
         sequence: { groupOrder: 1 }
       }
     });
+    expect(projects[2]).toMatchObject({
+      extends: false,
+      test: {
+        name: 'migration-inspection',
+        include: ['tests/migration-inspection.test.ts'],
+        sequence: { groupOrder: 2 }
+      }
+    });
     expect(projects[1].test).not.toHaveProperty('exclude');
+    expect(projects[2].test).not.toHaveProperty('exclude');
   });
 
-  it('retains the worker cap and test semantics in both Windows groups', () => {
+  it('retains the worker cap and test semantics in all Windows groups', () => {
     const windows = createRootTestConfig('win32');
     expect(windows.test.maxWorkers).toBe(2);
     for (const project of windows.test.projects ?? []) {

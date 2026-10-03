@@ -6,7 +6,7 @@ import { assertBoundProjectPath, readBoundProjectFileSnapshot } from '../../adap
 import { inspectReviewedUpdateTransaction } from '../../adapters/filesystem/reviewed-update-transaction.js';
 import { parseIsolatedHcl, hclComputationPolicy, IsolatedHclError, type HclExpression, type IsolatedHclResult } from '../../adapters/hcl/isolated-parser.js';
 import { errorCode } from '../../adapters/filesystem/errors.js';
-import { ApplicationFiles, ApplicationInspectionError, canonicalApplicationRoot } from '../repair/application-files.js';
+import { ApplicationFiles, ApplicationInspectionError, applicationWithin, canonicalApplicationRoot } from '../repair/application-files.js';
 import { projectCatalog } from '../project/catalog.js';
 import { parseManifest, resolveModernManifestV8SourceContract } from '../project/manifest.js';
 import { buildModernManagedCore } from '../project/modern-managed-core.js';
@@ -271,7 +271,7 @@ async function inspectLocalInputs(
     }
     await files.assertUnchanged();
     for (const before of physicalInputs.values()) {
-      if (canonicalJson(before) !== canonicalJson(await physical(before.path, !under(canonical, before.path)))) localInputFailure('Local root, parent or input identity changed during inspection.');
+      if (canonicalJson(before) !== canonicalJson(await physical(before.path, !applicationWithin(canonical, before.path)))) localInputFailure('Local root, parent or input identity changed during inspection.');
     }
     if (await realpath(canonical) !== canonical) localInputFailure('Local root changed during inspection.');
     const snapshot: ModernLocalSnapshot = {

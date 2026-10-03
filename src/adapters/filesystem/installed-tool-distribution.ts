@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 import {canonicalJson,canonicalSha256} from '../../domain/governance/activation/canonical-json.js';
 import {copyModernLocalData,localInputFailure} from '../../domain/governance/activation/modern-local-inputs.js';
 import {exactRecord} from '../../domain/project/manifest/fields.js';
-import {openSpecDistributionPolicy as limits,distributionPath,distributionOrder,distributionPhysical,distributionCommitment,validateInstalledToolDistribution,
+import {openSpecDistributionPolicy as limits,distributionPath,distributionOrder,distributionPhysical,distributionCommitment,distributionLinkTarget,validateInstalledToolDistribution,
   type DistributionInventory,type DistributionPhysical,type InstalledToolDistribution,type OpenSpecDistributionLocator,type DistributionLauncher} from '../../domain/governance/activation/installed-tool-distribution.js';
 
 const key=(parts:readonly string[])=>parts.join('/');
@@ -106,7 +106,8 @@ export async function captureOpenSpecDistribution(input:OpenSpecDistributionLoca
           if(inventory.links.length>=limits.symlinks)localInputFailure('Distribution symlink bound exceeded.');
           if(stat.size>BigInt(limits.pathBytes))localInputFailure('Distribution link text bound exceeded.');
           const raw=await readlink(child,{encoding:'buffer'}),linkText=raw.toString('utf8');
-          if(!Buffer.from(linkText).equals(raw)||!linkText||path.posix.isAbsolute(linkText)||path.win32.isAbsolute(linkText)||linkText.includes('\\')||/[\u0000-\u001f\u007f]/u.test(linkText))localInputFailure('Unsupported absolute or malformed distribution link.');
+          if(!Buffer.from(linkText).equals(raw))localInputFailure('Unsupported absolute or malformed distribution link.');
+          distributionLinkTarget(linkText);
           const link={pathParts:childParts,linkText,canonicalTargetParts:[] as string[],physical};
           inventory.links.push(link);nodes.set(key(childParts),'link');addMetadata(link);
         }else{
@@ -146,7 +147,7 @@ export async function captureOpenSpecDistribution(input:OpenSpecDistributionLoca
         if(kind==='link'){
           if(visited.has(name)||visited.size>=limits.symlinks)localInputFailure('Cyclic distribution link.');
           const next=new Set(visited).add(name),link=links.get(name)!;
-          return resolve([...resolved.slice(0,-1),...link.linkText.split('/'),...parts.slice(i+1)],next);
+          return resolve([...resolved.slice(0,-1),...distributionLinkTarget(link.linkText),...parts.slice(i+1)],next);
         }
         if(i<parts.length-1&&kind!=='directory')localInputFailure('Distribution link traverses a non-directory.');
       }

@@ -1,6 +1,6 @@
 import { constants } from 'node:fs';
 import type { BigIntStats } from 'node:fs';
-import { access, lstat, open, readdir } from 'node:fs/promises';
+import { lstat, open, readdir, stat } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import type { ActivationConfiguration } from '../../domain/governance/activation/types.js';
 import { validatePublicActivationInputs } from '../../domain/governance/activation/validators.js';
@@ -62,7 +62,8 @@ export async function readProjectJsonDirectory(projectRoot: string, directoryPat
 
 export async function pathExists(filePath: string): Promise<boolean> {
   try {
-    await access(filePath);
+    // Windows access() can succeed for a dangling link; stat follows its target.
+    await stat(filePath);
     return true;
   } catch (error) {
     if (errorCode(error) === 'ENOENT') {
