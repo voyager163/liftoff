@@ -27,7 +27,10 @@ import {
   formatUpdateCommand, formatUpdateValidationCommands, type UpdateCommandMode, type UpdateGuidanceContext
 } from './command-guidance.js';
 import { resolveUpdateGuidanceContext } from './guidance-context.js';
-import { inspectModernSuccessorUpdate, inspectProjectUpdate, UpdatePlanError, type UpdateInspection } from './inspection.js';
+import {
+  assertManifestOnlyActivationCollectionsEmpty, inspectModernSuccessorUpdate, inspectProjectUpdate,
+  UpdatePlanError, type UpdateInspection
+} from './inspection.js';
 import {
   buildUpdateReport, renderDeferredAgentRepair, renderInfrastructureRepair, renderUpdateApprovalScope, renderUpdatePreview, renderUpdateSkipped,
   type UpdateMigrationSummary, type UpdateRevalidationSummary, type UpdateReportInput
@@ -50,6 +53,9 @@ import {
 } from './migration-runtime.js';
 import { formatRepairCommand, infrastructureRepairGuidance } from '../repair/guidance.js';
 import { localSeedPhaseLabel } from '../../governance-activation/seed-lifecycle.js';
+import { prepareStandaloneManifestHistory } from './manifest-history.js';
+import { collectStandaloneManifestHistoryInput } from './manifest-history-capture.js';
+import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
 
 export interface UpdateRequest {
   check: boolean;
@@ -100,7 +106,9 @@ export async function previewModernSuccessorUpdate(
   }, storage);
   return {
     ...stored, plans: reviews.map(review => review.summary),
-    scope: 'history-core-state-manifest-publication-only' as const,
+    scope: inspection.kind === 'activation-successor'
+      ? 'history-core-state-manifest-publication-only' as const
+      : 'history-core-manifest-publication-only' as const,
     revalidation: 'separate-reviewed-operation-required' as const
   };
 }
@@ -157,11 +165,24 @@ export async function applyModernSuccessorUpdate(
     projectRoot, publication: review.publication, planFingerprint: review.descriptor.fingerprint,
     candidateBinding: review.candidate.binding, approvalMethod: approval.method, approvedAt: previewObservedAt(storage)
   }), storage);
-  const source = await validateCapturedReleasedSource(inspection.source.captures);
-  const index = createReleasedSourceHistoryIndex(source.state.identity, source.files.map(file => ({
-    kind: file.kind, originalPathParts: file.pathParts, digest: file.digest, mode: file.mode
-  })));
-  const preserved = { index, indexDigest: rawHistoryDigest(inspection.source.indexContent) };
+  const verifyPreservation = inspection.kind === 'activation-successor' ? await (async () => {
+    const source = await validateCapturedReleasedSource(inspection.source.captures);
+    const index = createReleasedSourceHistoryIndex(source.state.identity, source.files.map(file => ({
+      kind: file.kind, originalPathParts: file.pathParts, digest: file.digest, mode: file.mode
+    })));
+    const preserved = { index, indexDigest: rawHistoryDigest(inspection.source.indexContent) };
+    return (mutation: { pathParts: readonly string[] }) =>
+      verifyActivationHistoryBeforeReplacement(projectRoot, preserved, mutation);
+  })() : async (mutation: { pathParts: readonly string[] }) => {
+    if (mutation.pathParts.join('/') !== 'liftoff.manifest.json') return;
+    await assertManifestOnlyActivationCollectionsEmpty(projectRoot);
+    const expected = prepareStandaloneManifestHistory(inspection.historyInput);
+    const current = prepareStandaloneManifestHistory(await collectStandaloneManifestHistoryInput(projectRoot));
+    if (current.disposition !== 'reuse-standalone' ||
+      canonicalSha256(current.reference) !== canonicalSha256(expected.reference)) {
+      throw new FileSystemError('The exact original manifest and completed history index must be preserved before replacement.');
+    }
+  };
   const outcome = await applyReviewedUpdateTransaction(projectRoot, review.mutations, {
     planFingerprint: review.descriptor.fingerprint, approvalStore,
     expectedCandidateBinding: review.candidate.binding, preconditions: review.preconditions,
@@ -172,7 +193,7 @@ export async function applyModernSuccessorUpdate(
         throw new UpdatePreviewError('preview-mismatch', 'The exact successor candidate changed after approval.');
       }
     },
-    onBeforeMutation: mutation => verifyActivationHistoryBeforeReplacement(projectRoot, preserved, mutation),
+    onBeforeMutation: verifyPreservation,
     ...(onCheckpoint ? { onCheckpoint } : {})
   });
   if (!outcome.committed) return { status: 'publication-failed' as const, outcome, audit };

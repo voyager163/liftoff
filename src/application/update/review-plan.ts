@@ -4,7 +4,7 @@ import { createUpdatePreviewDescriptor } from './preview.js';
 import { uniqueUpdateSnapshots, UpdatePlanError, type ModernSuccessorUpdateInspection, type UpdateInspection } from './inspection.js';
 import { planManagedCoreWrites, planUpdateWrites } from './write-plan.js';
 import { prepareActivationHistorySuccessor } from '../../governance-activation/migration-history.js';
-import type { SuccessorPreparationV1 } from '../../governance-activation/modern-history-contracts.js';
+import { validateSuccessorPreparation, type SuccessorPreparationV1 } from '../../governance-activation/modern-history-contracts.js';
 import type { ProjectFileMutation } from '../../adapters/filesystem/project-transaction.js';
 import type { UpdatePlanSummary } from './output.js';
 import { prepareUpdateRevalidation } from './revalidation-plan.js';
@@ -14,6 +14,7 @@ import {
 } from '../../adapters/filesystem/reviewed-update-transaction.js';
 import { FileSystemError } from '../../domain/project/errors.js';
 import { copySourceHistoryData, copySourceHistoryObservations } from '../../governance-activation/source-history-capture.js';
+import { prepareManifestSchemaSuccessor } from './manifest-history.js';
 
 export type UpdateCandidateAdmission =
   | { status: 'complete'; candidate: ReviewedUpdateCandidate }
@@ -33,15 +34,17 @@ export async function prepareModernSuccessorReview(
   const projectRoot = inspection.projectRoot;
   const sourceBinding = inspection.source.sourceBinding;
   const snapshots = copySourceHistoryObservations(inspection.snapshots);
-  const historyRoot = ['governance', 'history', inspection.successorPlan.semanticInput.history.snapshotId].join('\0') + '\0';
+  const historyRoot = inspection.historyPathParts.join('\0') + '\0';
   const core = copySourceHistoryData(planManagedCoreWrites(inspection.entries, inspection.oldByName, force), 'successor core writes');
   if (core.skipped.length) {
     throw new UpdatePlanError(`Required successor managed-core conflicts remain: ${core.skipped.map(entry => entry.pathParts.join('/')).join(', ')}.`,
       'successor-core-conflict', 'Review an eligible force variant or resolve unowned destinations; no partial successor can be published.');
   }
-  const prepared = await prepareActivationHistorySuccessor(
-    inspection.successorPlan, Buffer.from(inspection.successorPlan.manifest.content), preparation, observedAt
-  );
+  const prepared = inspection.kind === 'activation-successor'
+    ? await prepareActivationHistorySuccessor(
+      inspection.successorPlan, Buffer.from(inspection.successorPlan.manifest.content), preparation, observedAt
+    )
+    : prepareManifestSuccessor(inspection, preparation, observedAt);
   const history = prepared.mutations.filter(mutation => mutation.pathParts.join('\0').startsWith(historyRoot));
   const successor = prepared.mutations.filter(mutation => !mutation.pathParts.join('\0').startsWith(historyRoot));
   const mutations: ProjectFileMutation[] = [
@@ -83,6 +86,23 @@ export async function prepareModernSuccessorReview(
       mode: descriptor.mode, fingerprint: descriptor.fingerprint, eligible: true,
       writeCount: mutations.length, blockers: []
     } satisfies UpdatePlanSummary
+  };
+}
+
+function prepareManifestSuccessor(
+  inspection: Extract<ModernSuccessorUpdateInspection, { kind: 'manifest-successor' }>,
+  preparation: SuccessorPreparationV1, observedAt: string
+) {
+  const { history, manifest: candidate, semanticTransitionDigest } =
+    prepareManifestSchemaSuccessor(inspection.historyInput, inspection.target, inspection.managed);
+  if (candidate.content !== inspection.successorPlan.manifest.content ||
+    semanticTransitionDigest !== inspection.successorPlan.semanticTransitionDigest) {
+    throw new FileSystemError('Manifest-only source or target changed after its captured construction.');
+  }
+  return {
+    semanticTransitionDigest, preparation: validateSuccessorPreparation(preparation, observedAt),
+    mutations: history.preservationWrites, preconditions: history.filePreconditions,
+    manifestBytes: Buffer.from(candidate.content)
   };
 }
 

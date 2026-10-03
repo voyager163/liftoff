@@ -648,7 +648,7 @@ export async function issueUpdatePreviewReceipt(
 
 export async function issuePreparedUpdatePreviewReceipt(
   projectRoot: string,
-  sourceRepositoryId: string,
+  sourceRepositoryId: string | null,
   prepare: (preparation: SuccessorPreparationV1) => Promise<{
     semanticTransitionDigest: string;
     sourceBinding: string;
@@ -656,8 +656,8 @@ export async function issuePreparedUpdatePreviewReceipt(
   }>,
   options: UpdatePreviewOptions = {}
 ): Promise<StoredPreparedUpdatePreview> {
-  if (typeof sourceRepositoryId !== 'string' || !sourceRepositoryId.length) {
-    throw new UpdatePreviewError('preview-invalid', 'Prepared publication requires the validated source repository identity.');
+  if (sourceRepositoryId !== null && (typeof sourceRepositoryId !== 'string' || !sourceRepositoryId.length)) {
+    throw new UpdatePreviewError('preview-invalid', 'Prepared publication requires a validated source repository identity or explicit no-activation null.');
   }
   const storage = await storageFor(projectRoot, options);
   const now = storage.now();
@@ -665,7 +665,8 @@ export async function issuePreparedUpdatePreviewReceipt(
   const issuedAt = now.toISOString();
   const preparation = validateSuccessorPreparation({
     schemaVersion: 1, preparationId: randomUUID(), preparedAt: issuedAt,
-    localRepositoryId: isProtectedSourceAnchor(sourceRepositoryId) ? sourceRepositoryId : `local:${randomUUID()}`
+    localRepositoryId: sourceRepositoryId !== null && isProtectedSourceAnchor(sourceRepositoryId)
+      ? sourceRepositoryId : `local:${randomUUID()}`
   }, issuedAt);
   const candidate = await prepare(preparation);
   const receipt = validatePreparedUpdatePreviewReceipt(createPreparedUpdatePreviewReceipt(candidate.descriptors, {

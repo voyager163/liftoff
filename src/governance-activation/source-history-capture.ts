@@ -1,5 +1,5 @@
-import { lstat, readdir, realpath } from 'node:fs/promises';
-import type { Dirent } from 'node:fs';
+import { lstat, opendir, realpath } from 'node:fs/promises';
+import type { Dir } from 'node:fs';
 import path from 'node:path';
 import { assertBoundProjectPath, readBoundProjectFileSnapshot } from '../adapters/filesystem/bound-project-files.js';
 import { errorCode } from '../adapters/filesystem/errors.js';
@@ -144,12 +144,18 @@ export async function createSourceHistoryCapture(projectRoot: string) {
     await assertBoundProjectPath(root, parts, {
       pathLabel: 'Source collection', invalid(detail): never { return historyFail(parts.join('/'), detail, 'unsafe-history-path'); }
     });
-    let entries: Dirent[];
-    try { entries = await readdir(path.join(root, ...parts), { withFileTypes: true }); }
-    catch (error) { if (errorCode(error) !== 'ENOENT') throw error; entries = []; }
+    let handle: Dir | undefined;
+    try { handle = await opendir(path.join(root, ...parts)); }
+    catch (error) { if (errorCode(error) !== 'ENOENT') throw error; }
+    const records: string[][] = [];
+    let count = 0;
+    if (handle) for await (const entry of handle) {
+      if (++count > maximumFiles) {
+        historyFail(parts.join('/'), 'exceeds the 1024 entry source collection limit.', 'history-inspection-limit');
+      }
+      if (/\.json$/iu.test(entry.name)) records.push([...parts, entry.name]);
+    }
     await assertRoot();
-    const records = entries.filter(entry => /\.json$/iu.test(entry.name)).map(entry => [...parts, entry.name]);
-    if (records.length > maximumFiles) historyFail(parts.join('/'), 'exceeds the 1024 file source limit.', 'history-inspection-limit');
     return records.sort((a, b) => historyPathKey(a) < historyPathKey(b) ? -1 : 1);
   }
   async function assertAbsentDirectory(parts: readonly string[]): Promise<void> {
@@ -167,11 +173,30 @@ export async function createSourceHistoryCapture(projectRoot: string) {
     }
     historyFail(parts.join('/'), 'unindexed snapshot destination already exists.', 'incomplete-history-snapshot');
   }
+  async function captureAbsent(parts: readonly string[]): Promise<ProjectFileSnapshot> {
+    parts = copySourceHistoryPath(parts, 'absent source path');
+    await assertRoot();
+    await assertBoundProjectPath(root, parts, {
+      pathLabel: 'Absent source', invalid(detail): never { return historyFail(parts.join('/'), detail, 'unsafe-history-path'); }
+    });
+    try {
+      await lstat(path.join(root, ...parts));
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT') throw error;
+      await assertRoot();
+      const key = historyCaseKey(parts);
+      if (captures.has(key)) historyFail(parts.join('/'), 'previously captured source disappeared.', 'historical-source-changed');
+      const missing = { pathParts: [...parts] };
+      absent.set(key, missing);
+      return missing;
+    }
+    historyFail(parts.join('/'), 'must be absent for a manifest-only update; its contents were not read.', 'missing-historical-record');
+  }
   function observations(): ProjectFileSnapshot[] {
     return [...captures.values(), ...[...absent.entries()].filter(([key]) => !captures.has(key)).map(([, value]) => value)]
       .map(value => ({ pathParts: [...value.pathParts], ...(value.content === undefined ? {} : { content: Buffer.from(value.content), mode: value.mode }) }));
   }
-  return { root, assertRoot, capture, captures, recordPaths, assertAbsentDirectory, observations };
+  return { root, assertRoot, capture, captureAbsent, captures, recordPaths, assertAbsentDirectory, observations };
 }
 
 /** Validate and copy observations without running getters or treating embedded digests as storage proof. */

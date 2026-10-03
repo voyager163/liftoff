@@ -293,7 +293,8 @@ changed inputs block preparation rather than filling in missing history.
 Historical approval and evidence never authorize current effects.
 
 Private `previewModernSuccessorUpdate` / `applyModernSuccessorUpdate` compose
-guarded publication for same-workflow single-maintainer activation sources.
+guarded publication for same-workflow single-maintainer activation sources
+and supported v2-v7 manifest-only sources with no activation.
 The saved schema-2 preview contains genuine construction parameters so apply
 reconstructs the exact already-reviewed bytes, without generating replacement
 timestamps or local anchors. No new preparation expiry is inferred.
@@ -301,7 +302,14 @@ A separate user-local approval-only audit is not a transaction seal or proof
 of commit. The actual sealed transaction preserves history before replacing
 control records. Publication leaves local revalidation pending; interrupted
 recovery and postcommit failures must preserve that distinction.
-These APIs do not enable public routing or manifest-only/no-activation upgrades.
+Manifest-only publication preserves the original manifest in its standalone
+history namespace without inventing state, migration journals or execution
+proof. Orphaned active records block this path, including malformed records;
+missing activation state alone is not sufficient. Original project provenance,
+framework uncertainty and application bytes are preserved. Existing history
+must match exactly before reuse and before final manifest replacement.
+These APIs do not enable public routing, current-v8 maintenance or finite
+modern revalidation.
 
 Private managed-context schema 2 is not the deferred activation
 source-metadata2/task-projection producer. MR1 independently observes captured
