@@ -151,7 +151,9 @@ describe('pinned source-complete coverage configuration', () => {
     for (const id of ['cli', 'gateway']) {
       const { failures, tools } = toolVersions(coveragePackage(id));
       expect(failures).toEqual([]);
-      expect(tools.packages['@vitest/coverage-v8']).toEqual({ declared: '5.0.0', locked: '5.0.0', installed: '5.0.0' });
+      expect(Object.entries(tools.packages)).toContainEqual([
+        '@vitest/coverage-v8', { declared: '5.0.0', locked: '5.0.0', installed: '5.0.0' }
+      ]);
     }
   });
 
@@ -305,7 +307,9 @@ describe('fail-closed coverage evaluation', () => {
   it('passes only a complete report above the floor for every metric', () => {
     const result = evaluate(passing);
     expect(result.failures).toEqual([]);
-    expect(result.metrics.statements).toEqual({ covered: 99, total: 110, percent: '90.0000', passed: true });
+    expect(Object.entries(result.metrics)).toContainEqual([
+      'statements', { covered: 99, total: 110, percent: '90.0000', passed: true }
+    ]);
   });
 
   it('fails a missing report', () => {
@@ -328,7 +332,7 @@ describe('fail-closed coverage evaluation', () => {
 
   it('fails when an unimported entrypoint is omitted even if the rest exceeds the floor', () => {
     const result = evaluate({ 'src/a.ts': metrics(100, 100) });
-    expect(result.metrics.lines.passed).toBe(true);
+    expect(result.metrics).toMatchObject({ lines: { passed: true } });
     expect(result.failures).toEqual([expect.stringContaining('including unimported entrypoints: src/entry.ts')]);
   });
 
@@ -349,8 +353,7 @@ describe('fail-closed coverage evaluation', () => {
       'src/entry.ts': { ...metrics(10, 10), branches: { covered: 0, total: 0 } }
     };
     const result = evaluate(files);
-    expect(result.metrics.statements.passed).toBe(true);
-    expect(result.metrics.branches.passed).toBe(false);
+    expect(result.metrics).toMatchObject({ statements: { passed: true }, branches: { passed: false } });
     expect(result.failures).toEqual([expect.stringMatching(/^Coverage metric branches is .* it must exceed 80%/)]);
   });
 
@@ -425,7 +428,7 @@ describe('fail-closed test results', () => {
       results: results([file('tests/a.test.ts', ['passed', 'skipped']), file('tests/b.test.ts', ['passed'])]), tests, root
     });
     expect(verdict.failures).toEqual([]);
-    expect(verdict.summary.unrun).toEqual([{ file: 'tests/a.test.ts', test: 'tests/a.test.ts case 1', status: 'skipped' }]);
+    expect(verdict.summary?.unrun).toEqual([{ file: 'tests/a.test.ts', test: 'tests/a.test.ts case 1', status: 'skipped' }]);
   });
 
   it.each([
@@ -599,7 +602,7 @@ describe('independent CI and release coverage gates', () => {
       uses: step.uses, with: step.with && Object.fromEntries(Object.entries(step.with).filter(([key]) => /version/.test(key))), run: step.run
     }));
     expect(pins(ci.jobs['coverage-cli']))
-      .toEqual(pins(ci.jobs.test).filter((step) => step.uses || /npm@12\.0\.2|uv==0\.12\.7/.test(step.run ?? ''))
+      .toEqual(pins(ci.jobs['test-shards']).filter((step) => step.uses || /npm@12\.0\.2|uv==0\.12\.7/.test(step.run ?? ''))
         .filter((step) => step.run === undefined || !step.run.includes('RUNNER_TEMP')));
     expect(runs(ci.jobs['coverage-cli'])).toEqual(expect.arrayContaining([
       'npm ci', 'npm ci --prefix services/telemetry-ingest'

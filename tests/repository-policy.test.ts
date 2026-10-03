@@ -29,7 +29,7 @@ describe('source repository setup policy', () => {
     'missing-platform', 'conditional-job', 'filtered-command', 'conditional-command',
     'missing-verifier', 'conditional-verifier', 'missing-upload', 'success-only-upload', 'ignored-report'
   ])('rejects incomplete native plugin qualification: %s', async fault => {
-    const workflow = await readWorkflow('ci.yml'), job = workflow.jobs.test;
+    const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['test-shards'];
     const run = job.steps.find((step: { run?: string }) => step.run === pluginPathTestCommand);
     const verify = job.steps.find((step: { run?: string }) => step.run?.includes('--plugin-path-report'));
     const upload = job.steps.find((step: { with?: { path?: string } }) => step.with?.path === 'qualification/plugin-paths.json');
@@ -42,6 +42,25 @@ describe('source repository setup policy', () => {
     if (fault === 'missing-upload') job.steps.splice(job.steps.indexOf(upload), 1);
     if (fault === 'success-only-upload') upload.if = '${{ success() }}';
     if (fault === 'ignored-report') upload.with['if-no-files-found'] = 'ignore';
+    expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
+  });
+  it.each([
+    'missing-shard', 'excluded-shard', 'fail-fast', 'conditional-suite', 'filtered-suite',
+    'success-only-aggregate', 'missing-dependency', 'ignored-result', 'missing-test-report', 'success-only-test-report'
+  ])('rejects incomplete full-suite sharding: %s', async fault => {
+    const workflow = await readWorkflow('ci.yml'), shards = workflow.jobs['test-shards'];
+    const run = shards.steps.find((step: { name?: string }) => step.name === 'Run package check');
+    const upload = shards.steps.find((step: { with?: { path?: string } }) => step.with?.path === 'qualification/platform-tests.json');
+    if (fault === 'missing-shard') shards.strategy.matrix.shard.pop();
+    if (fault === 'excluded-shard') shards.strategy.matrix.exclude = [{ os: 'windows-latest', shard: 2 }];
+    if (fault === 'fail-fast') shards.strategy['fail-fast'] = true;
+    if (fault === 'conditional-suite') run.if = 'false';
+    if (fault === 'filtered-suite') run.run += ' tests/only-one.test.ts';
+    if (fault === 'success-only-aggregate') workflow.jobs.test.if = '${{ success() }}';
+    if (fault === 'missing-dependency') delete workflow.jobs.test.needs;
+    if (fault === 'ignored-result') workflow.jobs.test.steps[0].run = 'true';
+    if (fault === 'missing-test-report') shards.steps.splice(shards.steps.indexOf(upload), 1);
+    if (fault === 'success-only-test-report') upload.if = '${{ success() }}';
     expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
   });
   function pluginReport(platform: string) {
@@ -62,7 +81,7 @@ describe('source repository setup policy', () => {
     return { success: true, numFailedTests: 0, numPendingTests: platform === 'win32' ? 0 : 1,
       numPassedTests: platform === 'win32' ? 205 : 204, numTotalTests: 205, testResults };
   }
-  it.each(['win32', 'darwin', 'linux'])('validates native plugin report shape without claiming execution on %s', platform => {
+  it.each(['win32', 'darwin', 'linux'] as const)('validates native plugin report shape without claiming execution on %s', platform => {
     expect(() => checkPluginPathReport(pluginReport(platform), platform)).not.toThrow();
   });
   it.each([

@@ -22,6 +22,9 @@ export const coverageGateJobs = {
 };
 export const gatewayInstallCommand = 'npm ci --prefix services/telemetry-ingest';
 export const independentStepCondition = '${{ !cancelled() }}';
+export const platformShardCheckCommand = 'npm run check:supported-stack && npm run build && ' +
+  'npm test -- --shard=${{ matrix.shard }}/2 --allowOnly=false ' +
+  '--reporter=default --reporter=json --outputFile.json=qualification/platform-tests.json';
 export const pluginPathTestCommand = 'npx vitest run tests/plugin-native-paths.test.ts tests/plugin-packaged-lookup-native.test.ts ' +
   'tests/plugin-generation-parity.test.ts tests/plugin-composition.test.ts ' +
   '--maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false ' +
@@ -176,15 +179,33 @@ export function checkWorkflow(filename, workflow) {
     }
   }
   if (filename === 'ci.yml') {
-    const job = workflow.jobs.test;
-    assert.deepEqual(job?.strategy?.matrix?.os, ['ubuntu-latest', 'macos-latest', 'windows-latest'],
-      'Native plugin paths require all three hosted platforms.');
+    const platforms = ['ubuntu-latest', 'macos-latest', 'windows-latest'];
+    const required = workflow.jobs.test;
+    assert.deepEqual(required, {
+      name: 'Test (${{ matrix.os }})', 'runs-on': 'ubuntu-latest', 'timeout-minutes': 5,
+      if: '${{ always() }}', needs: 'test-shards',
+      strategy: { 'fail-fast': false, matrix: { os: platforms } },
+      steps: [{
+        name: 'Require every platform shard',
+        env: { SHARD_RESULT: '${{ needs.test-shards.result }}' },
+        run: 'test "$SHARD_RESULT" = success'
+      }]
+    }, 'Required platform checks must fail unless every shard succeeds, including cancelled or skipped shards.');
+    const job = workflow.jobs['test-shards'];
+    assert.deepEqual(job?.strategy?.matrix, { os: platforms, shard: [1, 2] },
+      'Full-suite sharding requires both shards on all three hosted platforms.');
+    assert.equal(job.strategy['fail-fast'], false, 'Retain diagnostics from every shard.');
+    assert.equal(job['runs-on'], '${{ matrix.os }}');
+    assert.equal(job.needs, undefined);
     assert.equal(job.if, undefined, 'Native plugin qualification cannot skip a platform.');
     const steps = job.steps, position = command => steps.findIndex(step => step.run === command);
     const run = position(pluginPathTestCommand);
     const verify = position('node scripts/check-repository-policy.mjs --plugin-path-report qualification/plugin-paths.json');
-    assert.ok(run > position('npm ci') && verify > run && position('npm run check') > verify,
+    const packageCheck = position(platformShardCheckCommand);
+    assert.ok(run > position('npm ci') && verify > run && packageCheck > verify,
       'Run and verify complete native plugin qualification after dependency installation and before the package check.');
+    assert.equal(steps.filter(step => step.run === platformShardCheckCommand).length, 1);
+    assert.equal(steps[packageCheck].if, undefined, 'Every shard must run its complete unfiltered test selection.');
     assert.equal(steps.filter(step => step.run === pluginPathTestCommand).length, 1);
     assert.equal(steps[run].if, undefined);
     assert.equal(steps[verify].if, undefined);
@@ -192,7 +213,12 @@ export function checkWorkflow(filename, workflow) {
     assert.ok(upload?.uses.startsWith('actions/upload-artifact@'), 'Native plugin qualification needs its report artifact.');
     assert.equal(upload.if, independentStepCondition);
     assert.equal(upload.with['if-no-files-found'], 'error');
-    assert.equal(upload.with.name, 'liftoff-plugin-paths-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}');
+    assert.equal(upload.with.name, 'liftoff-plugin-paths-${{ runner.os }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}');
+    const testUpload = steps.find(step => step.with?.path === 'qualification/platform-tests.json');
+    assert.ok(testUpload?.uses.startsWith('actions/upload-artifact@'));
+    assert.equal(testUpload.if, independentStepCondition);
+    assert.equal(testUpload.with['if-no-files-found'], 'error');
+    assert.equal(testUpload.with.name, 'liftoff-platform-tests-${{ runner.os }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}');
     for (const [id, command] of Object.entries(coverageGateJobs)) {
       const job = workflow.jobs[id];
       assert.ok(job && job.if === undefined && job['runs-on'] === 'ubuntu-latest', `ci.yml/${id}: the independent coverage gate must run on every CI event.`);

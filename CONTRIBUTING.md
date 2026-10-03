@@ -64,6 +64,16 @@ timeouts are unchanged, including the migration inspection suite's 90-second
 limit. Use these defaults for CI qualification rather than increasing timeouts
 or excluding slow cases.
 
+Hosted CI partitions the complete root suite into two shards per platform while
+retaining the 45-minute job limit. Both shards run the package's supported-stack
+check and build; native integration and packaging checks run on shard 1.
+Each shard uploads its complete test report, including failures. The existing
+required `Test (...)` checks are fail-closed aggregators: all six platform shards
+must succeed, so a failed, cancelled or skipped shard cannot produce a green
+required check. The independent source-complete coverage jobs remain unsharded.
+Repository text checks out with LF endings on every host; explicitly frozen CRLF
+evidence keeps its original bytes through `.gitattributes`.
+
 Every root Vitest run, whether `npm test`, a targeted `npx vitest run`, or the
 coverage gate, uses a fresh temporary user profile. The main process creates it
 while the configuration is evaluated, before Vitest writes its own user-data token,

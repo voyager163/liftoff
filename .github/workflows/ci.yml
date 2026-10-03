@@ -54,12 +54,29 @@ jobs:
 
   test:
     name: Test (${{ matrix.os }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ always() }}
+    needs: test-shards
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Require every platform shard
+        env:
+          SHARD_RESULT: ${{ needs.test-shards.result }}
+        run: test "$SHARD_RESULT" = success
+
+  test-shards:
+    name: Platform tests (${{ matrix.os }}, shard ${{ matrix.shard }}/2)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -128,7 +145,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: liftoff-plugin-paths-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: liftoff-plugin-paths-${{ runner.os }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: qualification/plugin-paths.json
           if-no-files-found: error
           retention-days: 14
@@ -137,7 +154,7 @@ jobs:
         run: npm ci --prefix services/telemetry-ingest
 
       - name: Install isolated pinned framework smoke tools
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.shard == 1
         env:
           UV_TOOL_DIR: ${{ runner.temp }}/liftoff-framework-tools
           UV_TOOL_BIN_DIR: ${{ runner.temp }}/liftoff-framework-bin
@@ -148,17 +165,17 @@ jobs:
           echo "$UV_TOOL_BIN_DIR" >> "$GITHUB_PATH"
 
       - name: Run pinned framework integration smoke
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.shard == 1
         env:
           LIFTOFF_FRAMEWORK_SMOKE: "1"
         run: npx vitest run tests/framework-smoke.test.ts
 
       - name: Verify native Windows controller admission
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.shard == 1
         run: npx vitest run tests/windows-job-runner.test.ts tests/repair-preparation.test.ts -t "settles a real native Node command|detects unref descendant"
 
       - name: Run Windows project and packaging boundary coverage
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.shard == 1
         run: >-
           npx vitest run
           tests/init-filesystem.test.ts tests/project-discovery.test.ts
@@ -181,6 +198,7 @@ jobs:
           tests/cli-telemetry.test.ts tests/telemetry-infrastructure.test.ts
 
       - name: Validate local repair with native OpenTofu
+        if: matrix.shard == 1
         env:
           LIFTOFF_REPAIR_NATIVE: "1"
         run: npx vitest run tests/repair-command.test.ts -t "native backend-disabled"
@@ -192,22 +210,36 @@ jobs:
           chmod -R o-w "$RUNNER_TEMP" 2>/dev/null || true
 
       - name: Validate locked preparation and framework qualification with native toolchains
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && matrix.shard == 1
         env:
           LIFTOFF_REPAIR_PREPARATION_NATIVE: "1"
         run: npx vitest run tests/repair-preparation-native.test.ts tests/repair-framework.test.ts
 
       - name: Run package check
-        run: npm run check
+        run: >-
+          npm run check:supported-stack && npm run build &&
+          npm test -- --shard=${{ matrix.shard }}/2 --allowOnly=false
+          --reporter=default --reporter=json --outputFile.json=qualification/platform-tests.json
+
+      - name: Store platform test evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: liftoff-platform-tests-${{ runner.os }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification/platform-tests.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Run telemetry gateway check
+        if: matrix.shard == 1
         run: npm run check --prefix services/telemetry-ingest
 
       - name: Run package smoke test
+        if: matrix.shard == 1
         run: npm run smoke:package
 
       - name: Verify generated containers
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.shard == 1
         run: npm run verify:generated-containers
 
   coverage-cli:

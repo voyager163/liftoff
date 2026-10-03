@@ -1,3 +1,5 @@
+# Keep source, documentation and byte-pinned test inputs stable on every host.
+* text=auto eol=lf
 # Preserve release-owned asset bytes on every host.
 /assets/governance/** text eol=lf
 /assets/locks/** text eol=lf
