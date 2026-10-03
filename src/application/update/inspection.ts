@@ -14,14 +14,19 @@ import {
   type ModernSuccessorTarget
 } from '../../governance-activation/migration-history.js';
 import { validateCapturedReleasedSource } from '../../governance-activation/historical-state.js';
-import { copySourceHistoryData, createSourceHistoryCapture } from '../../governance-activation/source-history-capture.js';
+import { copySourceHistoryData, createSourceHistoryCapture, sourceObservationIdentities } from '../../governance-activation/source-history-capture.js';
 import { buildModernManagedCore, type ModernManagedCoreInput } from '../project/modern-managed-core.js';
 import type { ManagedManifestDecision } from '../project/manifest-writer.js';
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
-import { rawHistoryDigest, parseHistoryJson } from '../../governance-activation/history-contracts.js';
+import { rawHistoryDigest, parseHistoryJson, historyRecord, migrationStateFilePathParts } from '../../governance-activation/history-contracts.js';
+import { manifestHistoryPaths } from '../../domain/project/manifest/history.js';
+import { createManifestV8Reader } from '../../domain/project/manifest/v8.js';
 import { prepareManifestSchemaSuccessor, prepareStandaloneManifestHistory } from './manifest-history.js';
 import { collectStandaloneManifestHistoryInput } from './manifest-history-capture.js';
-import { migrationStateFilePathParts } from '../../governance-activation/history-contracts.js';
+import {
+  manifestOnlyAbsentControlPaths, prepareCurrentManifestMaintenance, readCurrentManifestMaintenanceSource
+} from './manifest-maintenance.js';
+import { projectCatalog } from '../project/catalog.js';
 import {
   activationSensitivePathExclusions, isSensitiveActivationPath, normalizeSensitivePathExclusions, readActivationInputSnapshot
 } from '../../governance-activation/inputs.js';
@@ -30,11 +35,11 @@ import { assertNoPendingReviewedUpdate, inspectReviewedUpdateTransaction } from 
 import type { CommandRunner } from '../../process-runner.js';
 import { captureMigrationRetainedProjectInputs, migrationSensitivePathExclusions } from '../../governance-activation/historical-inputs.js';
 import { formatUpdateGuidanceText, type UpdateGuidanceContext, type UpdateGuidanceText } from './command-guidance.js';
-import { hasDrift, reconcileProject } from '../../reconcile.js';
+import { hasDrift, reconcileProject, type ManagedArtifactInventory } from '../../reconcile.js';
 import { compareSemver } from '../../semver.js';
 import { buildManifest } from '../../templates.js';
 import { liftoffVersion } from '../../version.js';
-import { loadManifest, parseManifest } from '../project/manifest.js';
+import { loadManifest, parseManifest, resolveModernManifestV8SourceContract } from '../project/manifest.js';
 import { buildProjectPlan, loadConfigOptions } from '../project/planning.js';
 import {
   buildUpdateArtifacts,
@@ -79,7 +84,13 @@ export async function inspectModernSuccessorUpdate(projectRoot: string, selected
   await assertNoPendingReviewedUpdate(projectRoot);
   const boundary = await createSourceHistoryCapture(projectRoot);
   const state = await boundary.capture(activationStateFilePathParts, true);
-  if (state.content === undefined) return inspectManifestSuccessorUpdate(boundary.root, targetInput);
+  if (state.content === undefined) {
+    const original = await boundary.capture(['liftoff.manifest.json']);
+    if (historyRecord(parseHistoryJson(original.content, 'source manifest'), 'source manifest').artifactVersion === 8) {
+      return inspectCurrentManifestMaintenance(boundary.root, targetInput);
+    }
+    return inspectManifestSuccessorUpdate(boundary.root, targetInput);
+  }
   const source = await readModernActivationSuccessorSource(projectRoot);
   const inventory = await validateCapturedReleasedSource(source.captures);
   const manifest = inventory.manifest;
@@ -95,7 +106,7 @@ export async function inspectModernSuccessorUpdate(projectRoot: string, selected
 }
 
 async function inspectModernManagedCore(
-  projectRoot: string, manifest: LiftoffManifest, selected: ModernManagedCoreInput,
+  projectRoot: string, manifest: ManagedArtifactInventory, selected: ModernManagedCoreInput,
   captures: readonly ProjectFileSnapshot[]
 ) {
   const render: GeneratedArtifact[] = buildModernManagedCore(selected).map(artifact => ({
@@ -133,7 +144,9 @@ async function inspectModernManagedCore(
   await reader.assertRoot();
   return {
     managed, render, entries, snapshots,
-    oldByName: new Map(manifest.managedArtifacts.map(artifact => [artifact.logicalName, artifact]))
+    oldByName: new Map(manifest.managedArtifacts.map(artifact => [artifact.logicalName, {
+      ...artifact, pathParts: [...artifact.pathParts]
+    }]))
   };
 }
 
@@ -149,11 +162,7 @@ export async function assertManifestOnlyActivationCollectionsEmpty(projectRoot: 
 
 async function inspectManifestSuccessorUpdate(projectRoot: string, selected: ModernManagedCoreInput) {
   const reader = await createSourceHistoryCapture(projectRoot);
-  const emptyPaths = [
-    [...activationStateFilePathParts], [...migrationStateFilePathParts],
-    ['governance', 'credentials', 'preflight-policy.json'], ['governance', 'activation-baseline.json']
-  ];
-  for (const parts of emptyPaths) await reader.captureAbsent(parts);
+  for (const parts of manifestOnlyAbsentControlPaths) await reader.captureAbsent(parts);
   await assertManifestOnlyActivationCollectionsEmpty(reader.root);
   const historyInput = await collectStandaloneManifestHistoryInput(reader.root);
   const history = prepareStandaloneManifestHistory(historyInput);
@@ -185,6 +194,39 @@ async function inspectManifestSuccessorUpdate(projectRoot: string, selected: Mod
     successorPlan: { manifest: prepared.manifest, semanticTransitionDigest: prepared.semanticTransitionDigest },
     historyPathParts: [...history.directoryObservation.pathParts],
     sourceRepositoryId: null
+  };
+}
+
+async function inspectCurrentManifestMaintenance(projectRoot: string, selected: ModernManagedCoreInput) {
+  const reader = await createSourceHistoryCapture(projectRoot);
+  for (const parts of manifestOnlyAbsentControlPaths) await reader.captureAbsent(parts);
+  await assertManifestOnlyActivationCollectionsEmpty(reader.root);
+  const original = await reader.capture(['liftoff.manifest.json']);
+  const manifest = createManifestV8Reader({ catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract })
+    .parseManifestV8(parseHistoryJson(original.content, 'current source manifest'));
+  if (manifest.sourceManifestHistory?.kind === 'activation-history') {
+    throw new FileSystemError('Current manifest maintenance cannot reinterpret missing activation state or its history.');
+  }
+  if (manifest.sourceManifestHistory) {
+    const paths = manifestHistoryPaths(manifest.sourceManifestHistory);
+    await reader.capture(paths.indexPathParts);
+    await reader.capture(paths.manifestPathParts);
+  }
+  const source = readCurrentManifestMaintenanceSource(reader.observations());
+  const core = await inspectModernManagedCore(reader.root, source.manifest, selected, source.snapshots);
+  const successorPlan = prepareCurrentManifestMaintenance(core.snapshots, selected, core.managed);
+  await assertManifestOnlyActivationCollectionsEmpty(reader.root);
+  await reader.assertRoot();
+  return {
+    kind: 'manifest-maintenance' as const, projectRoot: reader.root, manifest: source.manifest,
+    source: {
+      projectRoot: reader.root, captures: core.snapshots,
+      sourceBinding: canonicalSha256({
+        kind: 'liftoff-current-manifest-source', projectRoot: reader.root, files: sourceObservationIdentities(core.snapshots)
+      })
+    },
+    target: { ...selected, managed: core.managed }, ...core, successorPlan,
+    historyPathParts: null, sourceRepositoryId: null
   };
 }
 

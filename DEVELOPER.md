@@ -855,8 +855,8 @@ or orphaned records cannot be reclassified as an unstarted activation.
 Complete collection enumeration is bounded to 1024 entries, including non-JSON
 members, rather than silently omitting an unread suffix. Active collections are
 checked again after capture and immediately before the final manifest write.
-The existing standalone
-history collector and `prepareManifestSchemaSuccessor` preserve original
+The existing standalone history collector and
+`prepareManifestSchemaSuccessor` preserve original
 manifest bytes and recorded mode, retain legacy framework uncertainty and
 project provenance, and reject a workflow/profile/agent/project switch.
 The shared prepared-preview and sealed-transaction path publishes the history
@@ -893,7 +893,29 @@ does not automatically reap locks.
 Postcommit cleanup failure reports the committed successor rather than
 downgrading it. Successful publication returns `committed-incomplete`: local
 revalidation remains separately reviewed work, not inherited historical proof.
-Public routing, current-v8 maintenance and modern finite local revalidation
+
+The same private APIs support current-v8 metadata with observed absence of
+activation under `core-manifest-maintenance-only`. The shared managed-core
+input resolver normalizes valid project/plugin/layout values before comparison;
+reordered compatible bindings are not a layout change. Preserved standalone
+history is independently read using the same reader as installed preflight.
+Maintenance preserves project provenance, adoption observations, plugin
+identity and layout; it creates no new history snapshot or activation records.
+Only required core writes and semantically changed manifest metadata enter
+the transaction. A current manifest's original formatting is not rewritten.
+
+No-op apply reports `current` without a prompt, audit or project write.
+Approved maintenance reports `committed`, with the usual distinct committed
+cleanup-failure outcome. `not-required-no-activation` describes the lack of
+activation revalidation for this scoped operation, not application readiness
+or successful deployment. Active record collections are rechecked before each
+maintenance mutation and before commit; fixed source/history preconditions retain the existing
+transaction checks. Active-state maintenance is still blocked, including
+successors whose immutable journal2 transition binds the initially published
+manifest digest. Ordinary maintenance cannot rewrite that transition or use an
+approval audit to infer historical target bytes.
+
+Public routing, stateful current-v8 maintenance and modern finite local revalidation
 remain unwired for this modern lane.
 
 Public catalog, v2-v7 readers, v7 writer, activation-v3 and policy-6 behavior

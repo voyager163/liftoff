@@ -6,7 +6,13 @@ import {
   isRetiredManagedCoreArtifactIdentity,
   retiredManagedCoreIdentityFor
 } from './domain/project/artifact-lifecycle.js';
-import type { GeneratedArtifact, LiftoffManifest } from './domain/project/contracts.js';
+import type { GeneratedArtifact, ManifestManagedArtifact } from './domain/project/contracts.js';
+
+export interface ManagedArtifactInventory {
+  readonly managedArtifacts: readonly (Omit<ManifestManagedArtifact, 'pathParts'> & {
+    readonly pathParts: readonly string[];
+  })[];
+}
 
 export type ReconcileStatus =
   | 'unchanged'
@@ -40,14 +46,14 @@ async function readDisk(projectRoot: string, pathParts: string[]): Promise<Buffe
 }
 
 export async function reconcileProject(
-  manifest: LiftoffManifest,
+  manifest: ManagedArtifactInventory,
   render: GeneratedArtifact[],
   projectRoot: string,
   options: { readFile?: typeof readDisk } = {}
 ): Promise<ReconcileEntry[]> {
   const readFile = options.readFile ?? readDisk;
   const recordedByName = new Map(
-    manifest.managedArtifacts.map((artifact) => [artifact.logicalName, artifact])
+    manifest.managedArtifacts.map((artifact) => [artifact.logicalName, { ...artifact, pathParts: [...artifact.pathParts] }])
   );
   const entries: ReconcileEntry[] = [];
 

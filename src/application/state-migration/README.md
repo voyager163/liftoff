@@ -18,8 +18,10 @@ cannot authorize any state operation below. Public v8 migration itself remains
 gated on the real modern runtime. Private reviewed publication can write a linked
 v8/state4 control-record successor; it neither completes local revalidation nor
 grants deployment-state permission. Its manifest-only path can preserve and
-upgrade v2-v7 metadata without inventing activation records; observed absence
-of activation does not authorize deployed-state inspection or mutation. See
+upgrade v2-v7 metadata without inventing activation records. Current-v8
+no-activation maintenance preserves existing history and project provenance;
+observed absence of activation does not authorize deployed-state inspection or
+mutation. Active-state maintenance remains separate. See
 [configuration and manifests](../../../docs/configuration-and-manifests.md#private-modernization-contracts)
 for the separate source contracts and unchanged public defaults.
 

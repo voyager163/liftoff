@@ -15,6 +15,7 @@ import {
 import { FileSystemError } from '../../domain/project/errors.js';
 import { copySourceHistoryData, copySourceHistoryObservations } from '../../governance-activation/source-history-capture.js';
 import { prepareManifestSchemaSuccessor } from './manifest-history.js';
+import { prepareCurrentManifestMaintenance } from './manifest-maintenance.js';
 
 export type UpdateCandidateAdmission =
   | { status: 'complete'; candidate: ReviewedUpdateCandidate }
@@ -34,7 +35,9 @@ export async function prepareModernSuccessorReview(
   const projectRoot = inspection.projectRoot;
   const sourceBinding = inspection.source.sourceBinding;
   const snapshots = copySourceHistoryObservations(inspection.snapshots);
-  const historyRoot = inspection.historyPathParts.join('\0') + '\0';
+  const historyRoot = inspection.historyPathParts === null ? null : inspection.historyPathParts.join('\0') + '\0';
+  const revalidation = inspection.kind === 'manifest-maintenance'
+    ? 'not-required-no-activation' as const : 'separate-reviewed-operation-required' as const;
   const core = copySourceHistoryData(planManagedCoreWrites(inspection.entries, inspection.oldByName, force), 'successor core writes');
   if (core.skipped.length) {
     throw new UpdatePlanError(`Required successor managed-core conflicts remain: ${core.skipped.map(entry => entry.pathParts.join('/')).join(', ')}.`,
@@ -44,15 +47,19 @@ export async function prepareModernSuccessorReview(
     ? await prepareActivationHistorySuccessor(
       inspection.successorPlan, Buffer.from(inspection.successorPlan.manifest.content), preparation, observedAt
     )
-    : prepareManifestSuccessor(inspection, preparation, observedAt);
-  const history = prepared.mutations.filter(mutation => mutation.pathParts.join('\0').startsWith(historyRoot));
-  const successor = prepared.mutations.filter(mutation => !mutation.pathParts.join('\0').startsWith(historyRoot));
+    : inspection.kind === 'manifest-successor'
+      ? prepareManifestSuccessor(inspection, preparation, observedAt)
+      : prepareManifestMaintenance(inspection, preparation, observedAt);
+  const history = prepared.mutations.filter(mutation => historyRoot !== null && mutation.pathParts.join('\0').startsWith(historyRoot));
+  const successor = prepared.mutations.filter(mutation => historyRoot === null || !mutation.pathParts.join('\0').startsWith(historyRoot));
   const mutations: ProjectFileMutation[] = [
     ...history.map(mutation => ({ ...mutation, pathParts: [...mutation.pathParts] })),
     ...core.mutations,
-    ...successor.map(mutation => ({ ...mutation, pathParts: [...mutation.pathParts] })),
-    { type: 'write', pathParts: ['liftoff.manifest.json'], content: prepared.manifestBytes }
+    ...successor.map(mutation => ({ ...mutation, pathParts: [...mutation.pathParts] }))
   ];
+  if (!('manifestChanged' in prepared) || prepared.manifestChanged) {
+    mutations.push({ type: 'write', pathParts: ['liftoff.manifest.json'], content: prepared.manifestBytes });
+  }
   const preconditions = uniqueUpdateSnapshots([
     ...snapshots, ...prepared.preconditions
   ], projectRoot).sort((left, right) => left.pathParts.join('\0').localeCompare(right.pathParts.join('\0'), 'en'));
@@ -77,11 +84,11 @@ export async function prepareModernSuccessorReview(
     })),
     operations: {
       publication, candidateAdmission: { binding: candidate.binding, size: candidate.size },
-      revalidation: 'separate-reviewed-operation-required'
+      revalidation
     }
   });
   return {
-    descriptor, publication, candidate, mutations, preconditions, prepared, core,
+    descriptor, publication, candidate, mutations, preconditions, prepared, core, revalidation,
     summary: {
       mode: descriptor.mode, fingerprint: descriptor.fingerprint, eligible: true,
       writeCount: mutations.length, blockers: []
@@ -103,6 +110,27 @@ function prepareManifestSuccessor(
     semanticTransitionDigest, preparation: validateSuccessorPreparation(preparation, observedAt),
     mutations: history.preservationWrites, preconditions: history.filePreconditions,
     manifestBytes: Buffer.from(candidate.content)
+  };
+}
+
+function prepareManifestMaintenance(
+  inspection: Extract<ModernSuccessorUpdateInspection, { kind: 'manifest-maintenance' }>,
+  preparation: SuccessorPreparationV1, observedAt: string
+) {
+  const prepared = prepareCurrentManifestMaintenance(inspection.snapshots, {
+    selection: inspection.target.selection, plugins: inspection.target.plugins, activeLayout: inspection.target.activeLayout
+  }, inspection.managed);
+  if (prepared.manifest.content !== inspection.successorPlan.manifest.content ||
+    prepared.semanticTransitionDigest !== inspection.successorPlan.semanticTransitionDigest ||
+    prepared.manifestChanged !== inspection.successorPlan.manifestChanged) {
+    throw new FileSystemError('Current manifest source or target changed after its captured construction.');
+  }
+  return {
+    semanticTransitionDigest: prepared.semanticTransitionDigest,
+    preparation: validateSuccessorPreparation(preparation, observedAt),
+    manifestChanged: prepared.manifestChanged,
+    mutations: [] as ProjectFileMutation[], preconditions: prepared.preconditions,
+    manifestBytes: Buffer.from(prepared.manifest.content)
   };
 }
 

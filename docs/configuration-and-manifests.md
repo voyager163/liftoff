@@ -308,8 +308,15 @@ proof. Orphaned active records block this path, including malformed records;
 missing activation state alone is not sufficient. Original project provenance,
 framework uncertainty and application bytes are preserved. Existing history
 must match exactly before reuse and before final manifest replacement.
-These APIs do not enable public routing, current-v8 maintenance or finite
-modern revalidation.
+The same private APIs can maintain current v8 metadata when activation controls
+are absent and active record collections are empty. Existing standalone history,
+project provenance, compatible bindings and plugin identity remain unchanged.
+No-op apply preserves original formatting and reports `current` without approval
+or an audit; approved core/metadata changes report scoped `committed` without
+inventing activation or duplicate history. This does not establish application
+readiness. These APIs do not enable public routing, active-state maintenance or
+finite modern revalidation; a prior activation transition cannot be rewritten
+merely to accept a later manifest digest.
 
 Private managed-context schema 2 is not the deferred activation
 source-metadata2/task-projection producer. MR1 independently observes captured
