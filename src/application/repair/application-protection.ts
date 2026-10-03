@@ -9,6 +9,7 @@ import {
 } from './application-files.js';
 import { applicationCandidateDirectories, applicationCandidateFiles } from './application-candidate.js';
 import { applicationPreparationBounds } from './application-preparation-policy.js';
+import { applicationConfigurationFiles } from './application-environment.js';
 import type { ApplicationPrivateOutputRole, ApplicationResolvedPreparation } from './application-preparation-types.js';
 import type { ApplicationPatchCandidate, ApplicationDirectoryObservation } from './application-types.js';
 
@@ -37,9 +38,11 @@ export class CapturedApplicationProtection {
 
   async captureControls(): Promise<void> {
     const reader = new ApplicationFiles(this.workspace);
-    for (const name of ['npm-user.rc', 'npm-global.rc', 'pip.conf', 'gitconfig']) {
-      const snapshot = await reader.read(['home', name]);
-      if (snapshot.content === undefined) throw new ApplicationInspectionError('[candidate-control] Private environment configuration was not initialized.');
+    for (const configuration of applicationConfigurationFiles()) {
+      const snapshot = await reader.read(['home', ...configuration.pathParts]);
+      if (!snapshot.content?.equals(Buffer.from(configuration.content))) {
+        throw new ApplicationInspectionError('[candidate-control] Private environment configuration was not initialized.');
+      }
       this.controlFiles.push(snapshot);
     }
     await reader.assertUnchanged();

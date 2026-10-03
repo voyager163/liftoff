@@ -5,6 +5,7 @@ import { inspectApplicationPatch, verifyApplicationPatch } from '../src/applicat
 import { inspectRepairVerificationWorkspaces } from '../src/application/repair/workspaces.js';
 import type { ApplicationPatchCandidate } from '../src/application/repair/application-types.js';
 import type { ApplicationVerificationOptions } from '../src/application/repair/application-preparation-types.js';
+import { applicationConfigurationFiles } from '../src/application/repair/application-environment.js';
 import { applicationVerificationFixtureContext, putApplicationFixtureFile } from './fixtures/repair-application.js';
 import { createPreparationFixture, type PreparationFixture } from './fixtures/repair-preparation.js';
 import {
@@ -92,6 +93,10 @@ describe('frozen npm preparation effects stay inside their registered private ro
     }, 'undeclared-private-output'],
     ['a rewritten private tool configuration', async (call: RecordedCall) => {
       await writeFile(call.options!.env!.npm_config_userconfig!, 'registry=https://CANARY_REGISTRY.invalid/\n');
+    }, 'changed-private-configuration'],
+    ['re-enabled private Go telemetry', async (call: RecordedCall) => {
+      const configuration = applicationConfigurationFiles().find(file => file.content === 'off\n')!;
+      await writeFile(path.join(call.options!.env!.HOME!, ...configuration.pathParts), 'local\n');
     }, 'changed-private-configuration'],
     ['a multiply linked dependency file', async (call: RecordedCall) => {
       const directory = path.join(call.options!.cwd!, 'node_modules', 'registry-package');

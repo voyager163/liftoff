@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { lstat, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as applicationFiles from '../src/application/repair/application-files.js';
 import { inspectApplicationLayout, inspectApplicationPatch, verifyApplicationPatch } from '../src/application/repair/application-patch.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
 import { applicationVerificationFixtureContext } from './fixtures/repair-application.js';
@@ -14,6 +15,7 @@ async function fixture(options: Parameters<typeof createPreparationFixture>[1]) 
   return createPreparationFixture(directory, options);
 }
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 2 })));
 });
 const native = process.env.LIFTOFF_REPAIR_PREPARATION_NATIVE === '1';
@@ -74,10 +76,20 @@ describe('native locked application preparation qualification', () => {
   }, 480_000);
 
   it.skipIf(!native)('prepares actual Go module/checksum inputs with the local toolchain and runs generated tests from private caches', async () => {
+    const failureKinds: string[] = [];
+    const failure = applicationFiles.applicationFailure;
+    vi.spyOn(applicationFiles, 'applicationFailure').mockImplementation(error => {
+      const code = error !== null && typeof error === 'object' && 'code' in error ? error.code : undefined;
+      failureKinds.push(typeof code === 'string' &&
+        ['ENOENT', 'ENOTEMPTY', 'EACCES', 'EPERM', 'EBUSY', 'EMFILE', 'ENFILE', 'ENOMEM', 'ENOSPC', 'EIO', 'ERR_DIR_CLOSED'].includes(code)
+        ? code : error instanceof TypeError ? 'TypeError' : error instanceof RangeError ? 'RangeError' : 'unclassified');
+      return failure(error);
+    });
     const f = await fixture({ stack: 'go-huma' });
     const before = await inspectApplicationLayout(f.root, f.manifest);
+    expect(before.report.complete, `Native Go inspection failure kinds: ${failureKinds.join(', ')}`).toBe(true);
     const candidate = await inspectApplicationPatch(f.root, f.manifest, f.patchPath);
-    expect(candidate.blockers).toEqual([]);
+    expect(candidate.blockers, `Native Go inspection failure kinds: ${failureKinds.join(', ')}`).toEqual([]);
     const result = await verifyApplicationPatch(f.root, candidate, new NodeCommandRunner(),
       await applicationVerificationFixtureContext(f.root, candidate, { projectCode: true, dependencyPreparation: true, network: true }));
     expect(result.status, result.blockers.join('\n')).toBe('passed');
