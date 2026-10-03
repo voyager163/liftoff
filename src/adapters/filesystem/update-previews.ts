@@ -917,7 +917,9 @@ export function createScopedUserLocalRecordStore(
     'repair-workspace-authority' | 'local-execution-preview' | 'local-execution-consent' |
     'local-execution-result' | 'local-execution-workspace-authority' |
     'local-finalization-preview' | 'local-finalization-consent' | 'local-finalization-result' |
-    'local-finalization-artifact' | 'local-publication-consent' | 'update-successor-approval',
+    'local-finalization-artifact' | 'local-publication-consent' | 'update-successor-approval' |
+    'local-revalidation-preview' | 'local-revalidation-consent' | 'local-revalidation-result' |
+    'local-revalidation-artifact' | 'local-revalidation-publication-consent',
   options: UpdatePreviewOptions = {}
 ): {
   read(key: string): Promise<ScopedUserLocalRecord | null>;
@@ -974,7 +976,8 @@ export function createRepairWorkspaceRegistryStore(
 }
 
 function createPrivateRegistryStore(
-  projectRoot: string, options: UpdatePreviewOptions, namespace: 'repair-workspace-registry' | 'local-execution-state' | 'local-finalization-state'
+  projectRoot: string, options: UpdatePreviewOptions,
+  namespace: 'repair-workspace-registry' | 'local-execution-state' | 'local-finalization-state' | 'local-revalidation-state'
 ): {
   read(key: string): Promise<RepairWorkspaceRegistryValue | null>;
   compareExchange(key: string, expectedDigest: string | null, value: unknown): Promise<RepairWorkspaceRegistryValue>;
@@ -1087,46 +1090,59 @@ export function createLocalExecutionRecordStore(projectRoot: string, options: Up
 }
 
 export type LocalFinalizationRecordKind='preview'|'consent'|'result'|'artifact'|'publication-consent';
-export interface LocalFinalizationRecordStore {
-  readonly operationKind:'local-finalization';
+interface LocalPublicationRecordStore<K extends 'local-finalization'|'local-revalidation'> {
+  readonly operationKind:K;
   readonly projectRoot:string;
   read(kind:LocalFinalizationRecordKind,key:string):Promise<ScopedUserLocalRecord|null>;
   write(kind:LocalFinalizationRecordKind,key:string,value:unknown):Promise<ScopedUserLocalRecord>;
   readState(key:string):Promise<RepairWorkspaceRegistryValue|null>;
   compareExchangeState(key:string,expectedDigest:string|null,value:unknown):Promise<RepairWorkspaceRegistryValue>;
 }
+export type LocalFinalizationRecordStore=LocalPublicationRecordStore<'local-finalization'>;
+export type LocalRevalidationRecordStore=LocalPublicationRecordStore<'local-revalidation'>;
 export function createLocalFinalizationRecordStore(projectRoot:string,options:UpdatePreviewOptions={}):LocalFinalizationRecordStore{
+  return createLocalPublicationRecordStore(projectRoot,options,'local-finalization');
+}
+export function createLocalRevalidationRecordStore(projectRoot:string,options:UpdatePreviewOptions={}):LocalRevalidationRecordStore{
+  return createLocalPublicationRecordStore(projectRoot,options,'local-revalidation');
+}
+function createLocalPublicationRecordStore<K extends 'local-finalization'|'local-revalidation'>(
+  projectRoot:string,options:UpdatePreviewOptions,operationKind:K
+):LocalPublicationRecordStore<K>{
   const root=normalizeUpdatePreviewProjectRoot(projectRoot);
+  const finalization=operationKind==='local-finalization',label=finalization?'Local finalization':'Local revalidation';
   const captured:UpdatePreviewOptions={...options,env:{XDG_STATE_HOME:(options.env??process.env).XDG_STATE_HOME,LOCALAPPDATA:(options.env??process.env).LOCALAPPDATA},
     homedir:options.homedir??os.homedir(),platform:options.platform??process.platform};
-  const names={preview:'local-finalization-preview',consent:'local-finalization-consent',result:'local-finalization-result',
-    artifact:'local-finalization-artifact','publication-consent':'local-publication-consent'} as const;
+  const names=finalization?{preview:'local-finalization-preview',consent:'local-finalization-consent',result:'local-finalization-result',
+    artifact:'local-finalization-artifact','publication-consent':'local-publication-consent'} as const:
+    {preview:'local-revalidation-preview',consent:'local-revalidation-consent',result:'local-revalidation-result',
+      artifact:'local-revalidation-artifact','publication-consent':'local-revalidation-publication-consent'} as const;
   const stores={
     preview:createScopedUserLocalRecordStore(root,names.preview,captured),consent:createScopedUserLocalRecordStore(root,names.consent,captured),
     result:createScopedUserLocalRecordStore(root,names.result,captured),artifact:createScopedUserLocalRecordStore(root,names.artifact,captured),
     'publication-consent':createScopedUserLocalRecordStore(root,names['publication-consent'],captured)
   };
-  const registry=createPrivateRegistryStore(root,captured,'local-finalization-state');
+  const registry=createPrivateRegistryStore(root,captured,finalization?'local-finalization-state':'local-revalidation-state');
   const assertRoot=async()=>{
-    if((await resolveUpdatePreviewLocation(root,captured)).projectRoot!==root)throw storageError('Local finalization requires its exact canonical project root.');
+    if((await resolveUpdatePreviewLocation(root,captured)).projectRoot!==root)throw storageError(`${label} requires its exact canonical project root.`);
   };
   const capture=(value:unknown,kind:string)=>{
     const snapshot=copyModernLocalData(value),content=canonicalJson(snapshot);
-    if(Buffer.byteLength(content)>maximumReceiptBytes)throw storageError('Local finalization record exceeds64KiB.');
+    if(Buffer.byteLength(content)>maximumReceiptBytes)throw storageError(`${label} record exceeds64KiB.`);
     if(!snapshot||typeof snapshot!=='object'||Array.isArray(snapshot)||!('kind'in snapshot)||snapshot.kind!==kind||
-      !('projectRoot'in snapshot)||snapshot.projectRoot!==root)throw storageError('Local finalization wire kind/root mismatch.');
+      !('projectRoot'in snapshot)||snapshot.projectRoot!==root)throw storageError(`${label} wire kind/root mismatch.`);
     return snapshot;
   };
   return Object.freeze({
-    operationKind:'local-finalization',projectRoot:root,
-    async read(kind,key){if(!Object.hasOwn(stores,kind))throw storageError('Unknown local finalization record kind.');await assertRoot();return stores[kind].read(key);},
+    operationKind,projectRoot:root,
+    async read(kind,key){if(!Object.hasOwn(stores,kind))throw storageError(`Unknown ${label.toLowerCase()} record kind.`);await assertRoot();return stores[kind].read(key);},
     async write(kind,key,value){
-      if(!Object.hasOwn(stores,kind))throw storageError('Unknown local finalization record kind.');
+      if(!Object.hasOwn(stores,kind))throw storageError(`Unknown ${label.toLowerCase()} record kind.`);
       const snapshot=capture(value,`liftoff-${names[kind]}`);await assertRoot();return stores[kind].write(key,snapshot);
     },
     async readState(key){await assertRoot();return registry.read(key);},
     async compareExchangeState(key,expectedDigest,value){
-      const snapshot=capture(value,'liftoff-local-finalization-state');await assertRoot();return registry.compareExchange(key,expectedDigest,snapshot);
+      const snapshot=capture(value,`liftoff-${operationKind}-state`);await assertRoot();return registry.compareExchange(key,expectedDigest,snapshot);
     }
-  } satisfies LocalFinalizationRecordStore);
+  } satisfies LocalPublicationRecordStore<K>);
 }

@@ -1,6 +1,6 @@
 import type { ManifestContractContext } from '../domain/project/manifest/context.js';
 import type { ManifestSourceHistoryReference } from '../domain/project/manifest/history.js';
-import type { ModernActivationSourceInput, ModernActivationState, ModernPhaseId, ReadableModernActivationIdentity } from '../domain/governance/activation/modern-record-contracts.js';
+import { modernLocalRevalidationPhases, type ModernActivationSourceInput, type ModernActivationState, type ModernPhaseId, type ReadableModernActivationIdentity } from '../domain/governance/activation/modern-record-contracts.js';
 import { createModernActivationRecordContract, type ModernRelatedRecords } from '../domain/governance/activation/modern-records.js';
 import { createModernActivationIdentityReader } from '../domain/governance/activation/modern-identity.js';
 import { freezeModernValue, modernPhaseContractDigests } from '../domain/governance/activation/modern-graph.js';
@@ -17,7 +17,7 @@ import { historicalV1PhaseContractDigests } from './historical-v1-phase-contract
 import { historicalV2PhaseContractDigest } from './historical-v2.js';
 import { historicalV3PhaseContractDigest, historicalV3PhaseGraph } from './historical-v3.js';
 
-export const modernLocalRevalidationPhases = ['local-inputs-valid', 'local-baseline-verified', 'local-complete'] as const;
+export { modernLocalRevalidationPhases };
 export type ModernSuccessorLane = 'activation-v1-to-v4' | 'activation-v2-to-v4' | 'activation-v3-to-v4';
 export interface SuccessorPreparationV1 {
   readonly schemaVersion: 1;

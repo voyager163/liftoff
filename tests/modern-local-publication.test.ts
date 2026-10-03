@@ -1,4 +1,4 @@
-import {mkdtemp,mkdir,writeFile,readFile,rm,realpath,lstat,unlink,readdir} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,rm,realpath,lstat,unlink} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -24,6 +24,7 @@ import {createModernGovernanceContextContract} from '../src/domain/governance/po
 import {modernActivationSourceContracts} from '../src/domain/governance/policy/identity.js';
 import {rawLocalDigest} from '../src/domain/governance/activation/modern-local-inputs.js';
 import {NodeCommandRunner} from '../src/process-runner.js';
+import {localVerificationTransactionAuthorityKey} from '../src/application/update/transaction-approval.js';
 const lane=process.env.LIFTOFF_HCL_TEST_LANE??'auto',qualified=process.platform==='darwin'&&process.arch==='arm64'&&process.versions.node==='24.21.0';
 if(!['native','portable','auto'].includes(lane)||lane==='native'&&!qualified)throw new Error('Invalid C1 qualification host/lane.');
 const nativeIt=it.skipIf(lane==='portable'||!qualified),executed:string[]=[];
@@ -76,11 +77,11 @@ async function reviewed(profile:'none'|'single-maintainer-gitflow'|'team-gitflow
 async function consent(f:Awaited<ReturnType<typeof reviewed>>){
   const r=f.finalization;return approveModernLocalPublication(f.root,r.publicationFingerprint,{publishExactLocalBytes:true,finalizationFingerprint:f.preview.fingerprint,candidateBinding:r.candidateBinding,targetSetDigest:r.targetSetDigest});
 }
-async function retainedPublicationBytes(root:string){
+async function retainedPublicationBytes(root:string,bindings:readonly {planFingerprint:string;transactionDigest:string}[]){
   const location=await storage.resolveUpdatePreviewLocation(root);
-  const names=await readdir(location.directory);expect(names.length).toBeLessThanOrEqual(1024);
   const files=[path.join(root,...transactions.localVerificationTransactionPathParts),path.join(root,'.liftoff/local-completion.json'),
-    ...names.filter(name=>name.startsWith('local-verification-authority-')).sort().map(name=>path.join(location.directory,name))];
+    ...bindings.map(binding=>path.join(location.directory,
+      `local-verification-authority-${localVerificationTransactionAuthorityKey({projectRoot:location.projectRoot,...binding})}.json`)).sort()];
   const entries=[];
   for(const file of files){
     try{
@@ -93,6 +94,19 @@ async function retainedPublicationBytes(root:string){
   return entries;
 }
 describe('actual native completion publication',()=>{
+  it('scopes retained-byte snapshots to the selected transactions despite unrelated shared-store writes',async()=>{
+    const f=await fixture(),other=path.join(f.directory,'Other Project');await mkdir(other);
+    const own=storage.createLocalVerificationTransactionAuthorityStore(f.root),foreign=storage.createLocalVerificationTransactionAuthorityStore(other);
+    const fingerprint='a'.repeat(64),transactionDigest='b'.repeat(64);
+    const bindings=[{planFingerprint:fingerprint,transactionDigest}];
+    await own.write(fingerprint,transactionDigest);
+    const before=await retainedPublicationBytes(f.root,bindings);
+    await foreign.write(fingerprint,transactionDigest);
+    expect(await retainedPublicationBytes(f.root,bindings)).toEqual(before);
+    await own.remove(fingerprint,transactionDigest);
+    expect(await retainedPublicationBytes(f.root,bindings)).not.toEqual(before);
+    expect(await foreign.verify(fingerprint,transactionDigest)).toBe(true);
+  });
   nativeIt.each(['wrong-F','same-F-wrong-T'] as const)('leaves actual replacement transaction during recovery untouched: %s',async mismatch=>{
     const f=await reviewed();await consent(f);
     const originalStore=storage.createLocalFinalizationRecordStore;
@@ -111,6 +125,7 @@ describe('actual native completion publication',()=>{
     denyCommit=false;
     const authorityStore=storage.createLocalVerificationTransactionAuthorityStore(f.root);
     const original=await inspectLocalVerificationTransaction(f.root,{authorityStore});expect(original.status).toBe('committed');
+    const retainedBindings=[{planFingerprint:original.planFingerprint!,transactionDigest:original.transactionDigest!}];
     const replacementFingerprint=mismatch==='wrong-F'?completionDigest({kind:'actual-independent-recovery-race'}):original.planFingerprint!;
     let replacement:Awaited<ReturnType<typeof inspectLocalVerificationTransaction>>|undefined;
     let before:Awaited<ReturnType<typeof retainedPublicationBytes>>|undefined;
@@ -127,10 +142,11 @@ describe('actual native completion publication',()=>{
       expect(applied.committed).toBe(true);expect(applied.cleanupFailures).toHaveLength(1);
       replacement=await inspectLocalVerificationTransaction(f.root,{authorityStore});expect(replacement.status).toBe('committed');
       expect(replacement.planFingerprint).toBe(replacementFingerprint);expect(replacement.transactionDigest).not.toBe(original.transactionDigest);
-      before=await retainedPublicationBytes(f.root);
+      retainedBindings.push({planFingerprint:replacement.planFingerprint!,transactionDigest:replacement.transactionDigest!});
+      before=await retainedPublicationBytes(f.root,retainedBindings);
     };
     const recovered=await recoverModernLocalCompletion(f.root,{publicationFingerprint:f.finalization.publicationFingerprint});
-    const after=await retainedPublicationBytes(f.root),afterInspection=await inspectLocalVerificationTransaction(f.root,{authorityStore});
+    const after=await retainedPublicationBytes(f.root,retainedBindings),afterInspection=await inspectLocalVerificationTransaction(f.root,{authorityStore});
     const progress=await originalStore(f.root).readState(f.preview.fingerprint);
     console.info('MR2_C1_R1_ACTUAL_RECOVERY_SWAP '+JSON.stringify({mismatch,original,replacement,before,after,afterInspection,recovered,progress:progress?.value,
       actualCompetingTransactions:true,forgedJournalOrSuccess:false}));

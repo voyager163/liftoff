@@ -327,7 +327,19 @@ Readers use the actual copy to check the unchanged original transition and
 preparation, not a digest asserted by an audit. Missing, altered or contradictory
 copies block interpretation. No-op/core-only maintenance and fresh active projects
 create no such copy. Active maintenance returns `committed-incomplete`, not
-revalidated success. Public routing and finite modern revalidation remain gated.
+revalidated success. Public routing remains gated.
+
+A separate private successor revalidation coordinator now constructs fresh local
+proof from an actual completed native operation and independently rechecks its
+current source. Its exact-byte publication has a distinct approval and durable
+commit/cleanup/readback states. It preserves original transition/preparation
+identities, historical due times and immutable earlier proof; it never replaces
+framework tasks or a native completion receipt. A changed local baseline requires
+new native proof and no prior nonlocal progression. Incomplete Spec Kit source
+remains blocked without task edits, and failed native checks cannot be relabeled
+as verified. Archived OpenSpec native execution is still separately gated; the
+existing active-change protocol is not replayed against archived work. These
+private capabilities do not enable public v8 migration.
 
 Private managed-context schema 2 is not the deferred activation
 source-metadata2/task-projection producer. MR1 independently observes captured

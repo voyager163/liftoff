@@ -32,6 +32,37 @@ strict `activationTargetHistory` reference identifies that copy under the reserv
 and unchanged intent against the original transition; it cannot reconstruct
 missing originals from an audit, retag proof, authorize state access or complete
 local revalidation.
+The private `validateCapturedModernSuccessorSource` reader exposes the same
+independently reconstructed original journal, preparation and current records to
+the revalidation coordinator. It requires strict installed core, not the looser
+maintenance source, and preserves historical retention metadata without reading
+protected state/key payloads. Its source binding grants neither execution nor
+publication; recorded journal progress is not fresh native verification.
+`inspectModernSuccessorRevalidation` binds finite local work to those original
+identities and actual workload/framework inputs. Already archived/synchronized
+OpenSpec or finalized Spec Kit source is reported separately from required
+current proof; this read-only plan never edits framework tasks, replays archives,
+executes project code or publishes records. Changed inputs require a fresh plan.
+This is a bounded source plan, not a native OpenSpec read-set admission: the
+existing active-change executor still rejects archived histories.
+The separate private `prepareModernSuccessorRevalidation` producer requires an
+actual completed, still-current native operation. It creates fresh local
+plan/evidence/state/journal candidates without replacing the original transition,
+preparation, history, existing proof or native completion receipt. A fresh local
+baseline can replace the current anchor only before nonlocal progression; old
+proof remains historical. Failed or unsettled execution cannot supply verified
+progress. Incomplete Spec Kit tasks remain unchanged and leave local completion
+blocked, even when the two prerequisite phases have new successful proof.
+
+Publication requires a second exact-byte approval through the separate
+revalidation store. Admission independently reconstructs every candidate record
+from current source and native provenance. The authenticated local-verification
+transaction records actual commit before cleanup; inspection/recovery never
+infer commit or successful seal cleanup from matching target bytes or an absent
+journal. Committed-but-incomplete revalidation retains the active successor.
+This private Spec Kit path does not enable public v8 routing or archived-OpenSpec
+execution: a separately qualified, already-archived read-only native protocol
+is still required, with no task mutation or archive replay.
 See
 [configuration and manifests](../../../docs/configuration-and-manifests.md#private-modernization-contracts)
 for the separate source contracts and unchanged public defaults.

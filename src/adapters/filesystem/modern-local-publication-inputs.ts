@@ -13,6 +13,7 @@ import {reviewedUpdateTransactionPathParts,reviewedRepairTransactionPathParts} f
 
 const key=(parts:readonly string[])=>parts.join('/');
 const sort=(a:string,b:string)=>a<b?-1:a>b?1:0;
+type FileTarget=Pick<CompletionTarget,'pathParts'|'original'|'target'>;
 export function completionSnapshot(file:ProjectFileSnapshot):CompletionSnapshot{
   return {exists:file.content!==undefined,rawDigest:file.content===undefined?null:rawLocalDigest(file.content),bytes:file.content?.length??0,mode:file.mode??null};
 }
@@ -100,7 +101,7 @@ export async function captureCompletionInputs(installed:InstalledLocalSnapshot,l
     physical:[...observedPhysical].map(([path,identity])=>({path,identity})).sort((a,b)=>sort(a.path,b.path))});
   await compareCompletionInputs(index,[],'original');return index;
 }
-export async function compareCompletionInputs(input:CompletionProtectedIndex,selected:readonly CompletionTarget[],stage:'original'|'target-pending'|'target'):Promise<void>{
+export async function compareCompletionInputs(input:CompletionProtectedIndex,selected:readonly FileTarget[],stage:'original'|'target-pending'|'target'):Promise<void>{
   const index=validateCompletionIndex(input),targets=copyModernLocalData(selected),root=index.projectRoot,after=stage!=='original';
   if(!['original','target-pending','target'].includes(stage))localInputFailure('Unknown completion comparison stage.');
   const targetMap=new Map(targets.map(t=>[key(t.pathParts),t]));
@@ -144,7 +145,7 @@ export async function compareCompletionInputs(input:CompletionProtectedIndex,sel
     }else if(actual!==observed.identity)localInputFailure('Untouched protected physical input changed.');
   }
 }
-export async function completionPreconditions(index:CompletionProtectedIndex,targets:readonly CompletionTarget[]):Promise<ProjectFileSnapshot[]>{
+export async function completionPreconditions(index:CompletionProtectedIndex,targets:readonly FileTarget[]):Promise<ProjectFileSnapshot[]>{
   await compareCompletionInputs(index,targets,'original');
   const parts=new Map([...index.files.map(f=>[key(f.pathParts),f.pathParts] as const),...targets.map(t=>[key(t.pathParts),t.pathParts] as const)]);
   const result:ProjectFileSnapshot[]=[];
