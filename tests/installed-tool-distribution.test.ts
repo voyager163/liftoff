@@ -7,6 +7,7 @@ import {captureOpenSpecDistribution,assertOpenSpecDistributionCurrent} from '../
 import {openSpecDistributionPolicy,distributionOrder,distributionPath,distributionLinkTarget,validateInstalledToolDistribution} from '../src/domain/governance/activation/installed-tool-distribution.js';
 import {canonicalSha256,canonicalJson} from '../src/domain/governance/activation/canonical-json.js';
 const roots:{path:string;ino:number;dev:number}[]=[];
+const packageMetadata={name:'@fission-ai/openspec',version:'1.11.0',type:'module',bin:{openspec:'./bin/openspec.js'}};
 const nofollow=vi.hoisted(()=>({component:'',calls:[] as {operation:string;path:string}[],violations:[] as string[],swapAtRoot:'',swapParent:'',swapTarget:'',swapped:false}));
 const faults=vi.hoisted(()=>({directory:'',calls:0}));
 vi.mock('node:fs/promises',async original=>{
@@ -38,11 +39,11 @@ vi.mock('node:fs/promises',async original=>{
 });
 afterEach(async()=>{faults.directory='';faults.calls=0;nofollow.component='';nofollow.calls=[];nofollow.violations=[];nofollow.swapAtRoot='';nofollow.swapParent='';nofollow.swapTarget='';nofollow.swapped=false;
   vi.restoreAllMocks();for(const root of roots.splice(0).reverse()){const s=await lstat(root.path);expect(s.ino).toBe(root.ino);expect(s.dev).toBe(root.dev);expect(s.isSymbolicLink()).toBe(false);await rm(root.path,{recursive:true});}});
-async function fixture(){
+async function fixture(metadata:unknown=packageMetadata){
   const root=await realpath(await mkdtemp(path.join(os.tmpdir(),'distribution-owned-'))),s=await lstat(root);roots.push({path:root,ino:s.ino,dev:s.dev});
   const pkg=path.join(root,'package'),project=path.join(root,'project'),staging=path.join(root,'staging');
   for(const p of [path.join(pkg,'bin'),project,staging])await mkdir(p,{recursive:true,mode:0o700});
-  await writeFile(path.join(pkg,'package.json'),'{"name":"@fission-ai/openspec","version":"1.11.0","type":"module","bin":{"openspec":"./bin/openspec.js"}}\n');
+  await writeFile(path.join(pkg,'package.json'),`${JSON.stringify(metadata)}\n`);
   await writeFile(path.join(pkg,'bin/openspec.js'),'// Owned format fixture, never executed.\n');
   const locator={launcherPath:path.join(pkg,'bin/openspec.js'),canonicalLauncherPath:path.join(pkg,'bin/openspec.js'),projectRoot:project,stagingRoot:staging};
   return {root,pkg,locator};
@@ -243,6 +244,94 @@ describe('bounded complete installed distribution identity',()=>{
       expect(()=>validateInstalledToolDistribution({...v,counts:{...v.counts,[field]:limit+1}})).toThrow(/bound/);
     }
     expect(()=>validateInstalledToolDistribution({...v,root:{...v.root,path:'/'+ 'a'.repeat(4097)}})).toThrow(/root/);
+  });
+});
+
+describe('closed installed package metadata',()=>{
+  it.each([
+    ['null',null,/Malformed installed package metadata/],
+    ['scalar',17,/Malformed installed package metadata/],
+    ['array',[],/Malformed installed package metadata/],
+    ['another package',{...packageMetadata,name:'another-package'},/package\/bin loader association/],
+    ['another module type',{...packageMetadata,type:'commonjs'},/package\/bin loader association/],
+    ['missing bin',{...packageMetadata,bin:null},/package\/bin loader association/],
+    ['scalar bin',{...packageMetadata,bin:'./bin/openspec.js'},/package\/bin loader association/],
+    ['different launcher',{...packageMetadata,bin:{openspec:'./other.js'}},/package\/bin loader association/],
+    ['non-string version',{...packageMetadata,version:17},/package\/bin loader association/]
+  ] as const)('rejects %s root metadata without treating it as the installed tool',async(_label,metadata,error)=>{
+    const f=await fixture(metadata),file=path.join(f.pkg,'package.json'),before=await readFile(file);
+    await expect(captureOpenSpecDistribution(f.locator)).rejects.toThrow(error);
+    expect(await readFile(file)).toEqual(before);
+  });
+
+  describe.each(['dependencies','optionalDependencies'] as const)('%s',field=>{
+    it.each([
+      ['null',null,/Unsupported dependency metadata/],
+      ['scalar','not-an-object',/Unsupported dependency metadata/],
+      ['array',[],/Unsupported dependency metadata/],
+      ['escaping name',{'../outside':'1.0.0'},/Unsupported distribution dependency source/],
+      ['non-string range',{owned:17},/Unsupported distribution dependency source/],
+      ['file source',{owned:'file:../outside'},/Unsupported distribution dependency source/],
+      ['link source',{owned:'link:../outside'},/Unsupported distribution dependency source/],
+      ['Git source',{owned:'git+https://example.invalid/repo.git'},/Unsupported distribution dependency source/],
+      ['HTTP source',{owned:'https://example.invalid/package.tgz'},/Unsupported distribution dependency source/]
+    ] as const)('rejects %s rather than resolving outside the captured tree',async(_label,value,error)=>{
+      const f=await fixture({...packageMetadata,[field]:value});
+      await expect(captureOpenSpecDistribution(f.locator)).rejects.toThrow(error);
+    });
+  });
+
+  it.each([
+    ['scalar main',{main:true},/Unsupported package loader declaration/],
+    ['scalar conditional export',{exports:{default:17}},/Unsupported package loader declaration/],
+    ['POSIX absolute main',{main:'/outside.js'},/escapes its root/],
+    ['Windows absolute main',{main:'C:\\outside.js'},/escapes its root/],
+    ['backslash main',{main:'.\\bin\\openspec.js'},/escapes its root/],
+    ['parent main',{main:'../outside.js'},/escapes its package/],
+    ['parent-only main',{main:'..'},/escapes its package/],
+    ['missing main',{main:'./missing.js'},/missing installed package loader target/],
+    ['external export',{exports:'outside-package'},/external package export\/import target/],
+    ['external import',{imports:{'#outside':'outside-package'}},/external package export\/import target/],
+    ['escaping export',{exports:'./../outside.js'},/escapes its package/],
+    ['invalid later fallback',{exports:['./bin/openspec.js',true]},/Unsupported package loader declaration/]
+  ] as const)('rejects %s even when the canonical bin itself is valid',async(_label,fields,error)=>{
+    const f=await fixture({...packageMetadata,...fields});
+    await expect(captureOpenSpecDistribution(f.locator)).rejects.toThrow(error);
+  });
+
+  it.each([
+    [null,'Malformed installed package metadata.'],
+    [17,'Malformed installed package metadata.'],
+    [{name:'another-package'},'Nested dependency identity mismatch.']
+  ] as const)('rejects invalid present dependency metadata: %j',async(metadata,error)=>{
+    const f=await fixture({...packageMetadata,dependencies:{owned:'1.0.0'}});
+    const directory=path.join(f.pkg,'node_modules','owned');await mkdir(directory,{recursive:true});
+    await writeFile(path.join(directory,'package.json'),JSON.stringify(metadata));
+    await expect(captureOpenSpecDistribution(f.locator)).rejects.toThrow(error);
+  });
+
+  it('allows an absent optional dependency without inventing a captured package',async()=>{
+    const f=await fixture({...packageMetadata,optionalDependencies:{absent:'1.0.0'}});
+    const observed=await captureOpenSpecDistribution(f.locator);
+    expect(observed.inventory.files.map(file=>file.pathParts.join('/')).sort()).toEqual(['bin/openspec.js','package.json']);
+  });
+
+  it('binds supported extension fallback, null, arrays, conditional maps and literal patterns',async()=>{
+    const f=await fixture({...packageMetadata,main:'./bin/openspec',
+      exports:{'.':{node:['./bin/openspec.js',null],default:'./bin/*.js'}},imports:{'#cli':'./bin/openspec.js'}});
+    const before=await readFile(path.join(f.pkg,'package.json')),observed=await captureOpenSpecDistribution(f.locator);
+    expect(observed.inventory.files.find(file=>file.pathParts.join('/')==='package.json')?.bytes).toBe(before.length);
+    expect((await assertOpenSpecDistributionCurrent(f.locator,observed.commitment)).commitment).toEqual(observed.commitment);
+    expect(await readFile(path.join(f.pkg,'package.json'))).toEqual(before);
+  });
+
+  it.each([
+    ['oversized',Buffer.alloc(65537,0x20),/metadata exceeds supported64KiB/],
+    ['non-UTF8',Buffer.from([0xff]),/Invalid package metadata encoding/]
+  ] as const)('rejects actual %s metadata bytes without rewriting them',async(_label,bytes,error)=>{
+    const f=await fixture(),file=path.join(f.pkg,'package.json');await writeFile(file,bytes);
+    await expect(captureOpenSpecDistribution(f.locator)).rejects.toThrow(error);
+    expect(await readFile(file)).toEqual(bytes);
   });
 });
 
