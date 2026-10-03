@@ -17,6 +17,10 @@ import { validateCapturedReleasedSource } from '../../governance-activation/hist
 import { copySourceHistoryData, createSourceHistoryCapture } from '../../governance-activation/source-history-capture.js';
 import { buildModernManagedCore, type ModernManagedCoreInput } from '../project/modern-managed-core.js';
 import type { ManagedManifestDecision } from '../project/manifest-writer.js';
+import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
+import { rawHistoryDigest, parseHistoryJson } from '../../governance-activation/history-contracts.js';
+import { prepareManifestSchemaSuccessor, prepareStandaloneManifestHistory } from './manifest-history.js';
+import { collectStandaloneManifestHistoryInput } from './manifest-history-capture.js';
 import { migrationStateFilePathParts } from '../../governance-activation/history-contracts.js';
 import {
   activationSensitivePathExclusions, isSensitiveActivationPath, normalizeSensitivePathExclusions, readActivationInputSnapshot
@@ -30,7 +34,7 @@ import { hasDrift, reconcileProject } from '../../reconcile.js';
 import { compareSemver } from '../../semver.js';
 import { buildManifest } from '../../templates.js';
 import { liftoffVersion } from '../../version.js';
-import { loadManifest } from '../project/manifest.js';
+import { loadManifest, parseManifest } from '../project/manifest.js';
 import { buildProjectPlan, loadConfigOptions } from '../project/planning.js';
 import {
   buildUpdateArtifacts,
@@ -73,13 +77,31 @@ export class UpdatePlanError extends Error {
 export async function inspectModernSuccessorUpdate(projectRoot: string, selected: ModernManagedCoreInput) {
   const targetInput = copySourceHistoryData(selected, 'modern successor update selection');
   await assertNoPendingReviewedUpdate(projectRoot);
+  const boundary = await createSourceHistoryCapture(projectRoot);
+  const state = await boundary.capture(activationStateFilePathParts, true);
+  if (state.content === undefined) return inspectManifestSuccessorUpdate(boundary.root, targetInput);
   const source = await readModernActivationSuccessorSource(projectRoot);
   const inventory = await validateCapturedReleasedSource(source.captures);
   const manifest = inventory.manifest;
-  const render: GeneratedArtifact[] = buildModernManagedCore(targetInput).map(artifact => ({
+  const core = await inspectModernManagedCore(source.projectRoot, manifest, targetInput, source.captures);
+  const target: ModernSuccessorTarget = { ...targetInput, managed: core.managed };
+  const successorPlan = await planModernActivationSuccessor(source, target);
+  return {
+    kind: 'activation-successor' as const,
+    projectRoot: source.projectRoot, source, manifest, target, successorPlan, ...core,
+    historyPathParts: ['governance', 'history', successorPlan.semanticInput.history.snapshotId],
+    sourceRepositoryId: inventory.state.repository.id
+  };
+}
+
+async function inspectModernManagedCore(
+  projectRoot: string, manifest: LiftoffManifest, selected: ModernManagedCoreInput,
+  captures: readonly ProjectFileSnapshot[]
+) {
+  const render: GeneratedArtifact[] = buildModernManagedCore(selected).map(artifact => ({
     ...artifact, pathParts: [...artifact.pathParts]
   }));
-  const reader = await createSourceHistoryCapture(source.projectRoot);
+  const reader = await createSourceHistoryCapture(projectRoot);
   const names = new Set(render.map(artifact => artifact.logicalName));
   for (const artifact of render) await reader.capture(artifact.pathParts, true);
   for (const previous of manifest.managedArtifacts) {
@@ -88,9 +110,9 @@ export async function inspectModernSuccessorUpdate(projectRoot: string, selected
       await reader.capture(previous.pathParts, true);
     }
   }
-  const snapshots = uniqueUpdateSnapshots([...source.captures, ...reader.observations()], source.projectRoot);
+  const snapshots = uniqueUpdateSnapshots([...captures, ...reader.observations()], projectRoot);
   const byPath = new Map(snapshots.map(snapshot => [snapshot.pathParts.join('\0'), snapshot]));
-  const entries = await reconcileProject(manifest, render, source.projectRoot, {
+  const entries = await reconcileProject(manifest, render, projectRoot, {
     readFile: async (_root, parts) => {
       const snapshot = byPath.get(parts.join('\0'));
       if (!snapshot) throw new FileSystemError('Modern successor reconciliation requires an actual captured file or absence.');
@@ -108,13 +130,61 @@ export async function inspectModernSuccessorUpdate(projectRoot: string, selected
       logicalName: previous.logicalName
     });
   }
-  const target: ModernSuccessorTarget = { ...targetInput, managed };
-  const successorPlan = await planModernActivationSuccessor(source, target);
   await reader.assertRoot();
   return {
-    projectRoot: source.projectRoot, source, manifest, target, successorPlan, render, entries, snapshots,
-    oldByName: new Map(manifest.managedArtifacts.map(artifact => [artifact.logicalName, artifact])),
-    sourceRepositoryId: inventory.state.repository.id
+    managed, render, entries, snapshots,
+    oldByName: new Map(manifest.managedArtifacts.map(artifact => [artifact.logicalName, artifact]))
+  };
+}
+
+export async function assertManifestOnlyActivationCollectionsEmpty(projectRoot: string): Promise<void> {
+  const reader = await createSourceHistoryCapture(projectRoot);
+  const collections = ['plans', 'evidence', 'approvals', 'supersessions', 'reconciliation'] as const;
+  for (const directory of collections) {
+    if ((await reader.recordPaths(directory)).length) {
+      throw new FileSystemError(`Manifest-only update cannot interpret orphaned governance/${directory} records as an unstarted activation.`);
+    }
+  }
+}
+
+async function inspectManifestSuccessorUpdate(projectRoot: string, selected: ModernManagedCoreInput) {
+  const reader = await createSourceHistoryCapture(projectRoot);
+  const emptyPaths = [
+    [...activationStateFilePathParts], [...migrationStateFilePathParts],
+    ['governance', 'credentials', 'preflight-policy.json'], ['governance', 'activation-baseline.json']
+  ];
+  for (const parts of emptyPaths) await reader.captureAbsent(parts);
+  await assertManifestOnlyActivationCollectionsEmpty(reader.root);
+  const historyInput = await collectStandaloneManifestHistoryInput(reader.root);
+  const history = prepareStandaloneManifestHistory(historyInput);
+  const original = parseHistoryJson(historyInput.sourceManifest.content, 'original source manifest');
+  const manifest = parseManifest(original);
+  if (canonicalSha256(manifest.project) !== canonicalSha256(selected.selection.project) ||
+    canonicalSha256(manifest.framework) !== canonicalSha256(selected.selection.framework) ||
+    selected.selection.profile === 'team-gitflow' ||
+    manifest.governance.profile !== 'unspecified' && manifest.governance.profile !== selected.selection.profile) {
+    throw new FileSystemError('Manifest-only update cannot change the recorded project, framework, workflow, agents or profile.');
+  }
+  const captures = uniqueUpdateSnapshots([...reader.observations(), ...history.filePreconditions], reader.root);
+  const core = await inspectModernManagedCore(reader.root, manifest, selected, captures);
+  const prepared = prepareManifestSchemaSuccessor(historyInput, selected, core.managed);
+  const sourceBinding = canonicalSha256({
+    kind: 'liftoff-manifest-only-source', projectRoot: reader.root,
+    directory: history.directoryObservation,
+    files: captures.map(file => ({
+      pathParts: file.pathParts, digest: file.content === undefined ? null : rawHistoryDigest(file.content),
+      mode: file.mode ?? null
+    }))
+  });
+  await assertManifestOnlyActivationCollectionsEmpty(reader.root);
+  await reader.assertRoot();
+  return {
+    kind: 'manifest-successor' as const,
+    projectRoot: reader.root, source: { projectRoot: reader.root, captures, sourceBinding },
+    manifest, target: { ...selected, managed: core.managed }, ...core, historyInput,
+    successorPlan: { manifest: prepared.manifest, semanticTransitionDigest: prepared.semanticTransitionDigest },
+    historyPathParts: [...history.directoryObservation.pathParts],
+    sourceRepositoryId: null
   };
 }
 

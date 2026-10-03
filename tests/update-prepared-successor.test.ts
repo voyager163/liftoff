@@ -570,6 +570,7 @@ describe('actual guarded prepared successor publication', () => {
     const fixture = await historicalProject(3);
     const preview = await previewModernSuccessorUpdate(fixture.root, fixture.selection, fixture.options);
     const inspection = await inspectModernSuccessorUpdate(fixture.root, fixture.selection);
+    if (inspection.kind !== 'activation-successor') throw new Error('Expected the actual activation source fixture.');
     const caller = { ...inspection, source: { ...inspection.source } };
     const pending = prepareModernSuccessorReview(caller, false, preview.receipt.publication.preparation, preparedAt);
     caller.projectRoot = path.join(path.dirname(fixture.root), 'not-the-reviewed-root');

@@ -841,12 +841,29 @@ budget; captures and semantic digests are not approval or current storage
 proof.
 
 `previewModernSuccessorUpdate` and `applyModernSuccessorUpdate` now compose those
-private APIs for same-workflow, single-maintainer activation-v1/v2/v3 sources.
-They do not enable a public CLI target or cover manifest-only/no-activation
-successors. Safe transaction-presence checks precede source interpretation.
+private APIs for same-workflow, single-maintainer activation-v1/v2/v3 sources
+and manifest-only v2-v7 sources with no activation. They do not enable a public
+CLI target. Safe transaction-presence checks precede source interpretation.
 Reconciliation consumes the captured file/absence observations rather than
 classifying one filesystem read and approving another. Normal and force remain
 distinct; force never grants ownership of an unowned destination.
+
+The manifest-only path requires observed absence of state, migration journal,
+credential-policy and baseline records and empty active record collections.
+Presence is checked without reading rejected control-file contents; malformed
+or orphaned records cannot be reclassified as an unstarted activation.
+Complete collection enumeration is bounded to 1024 entries, including non-JSON
+members, rather than silently omitting an unread suffix. Active collections are
+checked again after capture and immediately before the final manifest write.
+The existing standalone
+history collector and `prepareManifestSchemaSuccessor` preserve original
+manifest bytes and recorded mode, retain legacy framework uncertainty and
+project provenance, and reject a workflow/profile/agent/project switch.
+The shared prepared-preview and sealed-transaction path publishes the history
+copy and index before core and manifest changes. It creates no activation state,
+migration journal, execution evidence or telemetry identifier. An explicit
+no-activation source has no repository anchor to inherit; its new preparation
+anchor remains user-local and is not written into the manifest.
 
 The ordering is actual source/manifest, semantic transition **T**, once-issued
 preparation **P**, complete target bytes, physical candidate **C**, then full
@@ -866,8 +883,9 @@ unavailable audit. Preview consumption never removes that retained record.
 
 Publication uses the existing sealed update transaction, with exact candidate
 and source revalidation under its lock. All history copies and their index
-precede managed-core replacement, proof retirement, pending state4/journal2
-and the final manifest write; original bytes are checked before replacement.
+precede managed-core replacement and the final manifest write; original bytes
+are checked before replacement. Activation successors additionally retire exact
+old proof and publish pending state4/journal2; manifest-only successors do not.
 Recovery binds the observed fingerprint and transaction digest under lock, uses
 existing transaction seals and does not start another successor. A stopped
 process's stale lock still requires explicit ownership review; the publisher
@@ -875,8 +893,8 @@ does not automatically reap locks.
 Postcommit cleanup failure reports the committed successor rather than
 downgrading it. Successful publication returns `committed-incomplete`: local
 revalidation remains separately reviewed work, not inherited historical proof.
-Public routing, manifest-only successor publication and modern finite
-local revalidation remain unwired for this modern lane.
+Public routing, current-v8 maintenance and modern finite local revalidation
+remain unwired for this modern lane.
 
 Public catalog, v2-v7 readers, v7 writer, activation-v3 and policy-6 behavior
 remain unchanged, including original graph/policy bytes and generation output.

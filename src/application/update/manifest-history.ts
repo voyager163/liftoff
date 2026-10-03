@@ -10,6 +10,10 @@ import { FileSystemError } from '../../domain/project/errors.js';
 import { parseHistoryJson, rawHistoryDigest } from '../../governance-activation/history-contracts.js';
 import { assertSafeHistoricalBytes } from '../../governance-activation/historical-safety.js';
 import type { ProjectFileMutation, ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
+import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
+import { copySourceHistoryData } from '../../governance-activation/source-history-capture.js';
+import { createManifestV8Candidate, type ManagedManifestDecision } from '../project/manifest-writer.js';
+import type { ModernManagedCoreInput } from '../project/modern-managed-core.js';
 
 export interface CapturedPresentFile {
   readonly pathParts: readonly string[];
@@ -190,5 +194,35 @@ export function prepareStandaloneManifestHistory(
     preservationWrites: writes,
     filePreconditions: [snapshot(original), snapshot(copyFile), snapshot(indexFile)],
     directoryObservation: { pathParts: directoryPath, kind: directory.kind }
+  };
+}
+
+export function prepareManifestSchemaSuccessor(
+  input: StandaloneManifestHistoryInput, selected: ModernManagedCoreInput, managed: readonly ManagedManifestDecision[]
+) {
+  const history = prepareStandaloneManifestHistory(input);
+  const originalBytes = history.filePreconditions[0]?.content;
+  if (!originalBytes) invalid('the captured original manifest is required for a successor.');
+  const original = parseHistoryJson(originalBytes, 'original source manifest');
+  const source = parseManifest(original);
+  const target = copySourceHistoryData(selected, 'manifest successor selection');
+  if (canonicalSha256(source.project) !== canonicalSha256(target.selection.project) ||
+    canonicalSha256(source.framework) !== canonicalSha256(target.selection.framework)) {
+    invalid('a schema successor cannot change the source project or framework selection.');
+  }
+  const manifest = createManifestV8Candidate({
+    origin: 'historical-successor', source: original, profile: target.selection.profile,
+    activeLayout: target.activeLayout, sourceManifestHistory: history.reference,
+    managed: copySourceHistoryData(managed, 'manifest successor managed decisions')
+  });
+  if (canonicalSha256(manifest.manifest.plugins) !== canonicalSha256(target.plugins)) {
+    invalid('target plugins differ from the actual selected source.');
+  }
+  return {
+    history, manifest,
+    semanticTransitionDigest: canonicalSha256({
+      schemaVersion: 1, kind: 'liftoff-manifest-only-successor',
+      source: history.source, history: history.reference, targetManifestDigest: manifest.digest
+    })
   };
 }

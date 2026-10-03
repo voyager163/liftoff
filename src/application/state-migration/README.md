@@ -17,7 +17,9 @@ preserve original source/history and retention obligations; their approval
 cannot authorize any state operation below. Public v8 migration itself remains
 gated on the real modern runtime. Private reviewed publication can write a linked
 v8/state4 control-record successor; it neither completes local revalidation nor
-grants deployment-state permission. See
+grants deployment-state permission. Its manifest-only path can preserve and
+upgrade v2-v7 metadata without inventing activation records; observed absence
+of activation does not authorize deployed-state inspection or mutation. See
 [configuration and manifests](../../../docs/configuration-and-manifests.md#private-modernization-contracts)
 for the separate source contracts and unchanged public defaults.
 
