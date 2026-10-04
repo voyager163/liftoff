@@ -22,6 +22,7 @@ import type { CommandRunner } from '../../process-runner.js';
 import type { PresentationSession } from '../../terminal.js';
 import { readBooleanFlag, readStringFlag } from '../args/readers.js';
 import type { CommandOutcome } from '../../application/command-outcome.js';
+import { loadProjectManifest, type SupportedProjectManifest } from '../../application/project/manifest.js';
 import {
   type GovernanceSubcommand,
   attachPresentation,
@@ -113,6 +114,57 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
     const failure = projectRootError(path.resolve(context.cwd, start));
     presentation.error(failure.message, failure.remedy);
     return 1;
+  }
+
+  let manifest: SupportedProjectManifest;
+  try {
+    manifest = await loadProjectManifest(projectRoot);
+  } catch (error) {
+    if (subcommand === 'verify') {
+      return renderInspectionFailure(subcommand, projectRoot, error, presentation, jsonMode, scope);
+    }
+    throw error;
+  }
+  const revalidationPublication = readStringFlag(parsed.flags, 'revalidation-publication');
+  if (manifest.artifactVersion === 8) {
+    const { inspectModernGovernance, modernGovernanceReportSchemaVersion } =
+      await import('../../application/governance/modern-inspection.js');
+    try {
+      if (subcommand !== 'status' && subcommand !== 'resume' && subcommand !== 'verify') {
+        throw new Error('Modern governance currently exposes status, resume and verify inspection only; historical plans and approvals cannot execute v8 work.');
+      }
+      if (['inputs', 'plan', 'recover-phase', 'execute', 'protected-stdin'].some(flag => Object.hasOwn(parsed.flags, flag))) {
+        throw new Error('Modern inspection accepts no activation inputs, execution or approval flags.');
+      }
+      const report = await inspectModernGovernance({ projectRoot, manifest, command: subcommand, scope, revalidationPublication });
+      if (jsonMode) json(presentation, report);
+      else {
+        presentation.status(!report.consistent ? 'error' : report.complete ? 'success' : 'pending',
+          'Modern governance', `${report.scope}: ${report.outcome}. Recorded phases are not current proof.`);
+        presentation.definitions('Read-only inspection', [
+          { label: 'Source', value: report.source.classification ?? 'blocked' },
+          { label: 'Local verification', value: report.localVerification },
+          { label: 'Publication', value: report.publication?.status ?? 'not observed' },
+          { label: 'Transaction', value: `${report.transaction.status}; committed: ${report.transaction.committed}` }
+        ]);
+        for (const blocker of report.blockers) presentation.status('warning', 'Boundary', blocker);
+      }
+      const code = !report.consistent ? 1 : subcommand === 'verify' && !report.complete ? 2 : 0;
+      context.outcome?.record(code === 1 ? 'failure' : code === 2 ? 'attention-required' : 'success');
+      return code;
+    } catch (error) {
+      if (jsonMode) json(presentation, {
+        schemaVersion: modernGovernanceReportSchemaVersion, command: `governance ${subcommand}`,
+        projectRoot, readOnly: true, consistent: false, complete: null, outcome: 'invalid',
+        diagnostics: [errorMessage(error)]
+      });
+      else presentation.error(errorMessage(error), 'Resolve the named boundary before requesting a fresh inspection.');
+      context.outcome?.record('failure');
+      return 1;
+    }
+  }
+  if (revalidationPublication !== undefined) {
+    throw new Error('--revalidation-publication is supported only by modern v8 governance inspection.');
   }
 
   const inputsFile = readStringFlag(parsed.flags, 'inputs');

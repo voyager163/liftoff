@@ -746,6 +746,21 @@ core/control/history consistency through the guarded installed inspector, then
 checks recorded initialized framework markers. Manual's `not-required` framework
 does not trigger a framework check. These are read-only source checks, not local
 execution, approval, current workload verification or permission to write.
+`governance status`, `resume`, and `verify` dispatch modern records before
+historical activation-input or preview reads. Their schema-3 report separates
+bounded installed-source consistency, stored phases and independently
+reconstructed local completion. Successor proof requires an explicit
+`--revalidation-publication` fingerprint; the observer never discovers one from
+matching installed bytes. Exact original execution, publication consent,
+committed progress, source preservation and tool identity are checked by the
+existing native/publication inspectors, without executing or recovering work.
+An interrupted local transaction remains visible with its actual commit bit and
+identifiers. Inspection failure leaves completion indeterminate rather than
+inventing a successful or absent receipt. Historical schema-2 output and
+execution remain separate; the capability catalog advertises only the specific
+modern read-only routes. Manifest-selection failures retain the historical
+verification failure envelope without falling through to historical execution.
+
 Historical provenance is not reused as an active filesystem layout. Public v8
 writers/update routing remain gated until the remaining consumers are integrated.
 The v8 `dev` / `infra` helpers print commands from explicit active bindings only,

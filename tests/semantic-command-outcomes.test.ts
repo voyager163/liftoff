@@ -13,9 +13,11 @@ import {createSemanticTelemetryEvent,telemetryClientFields,type SemanticTelemetr
 import type {SelfUpgradeResult} from '../src/self-upgrade.js';
 import type {CommandRunner} from '../src/process-runner.js';
 import {liftoffPackageName} from '../src/domain/distribution/liftoff-package.js';
+import {buildProjectPlan} from '../src/application/project/planning.js';
+import {buildArtifacts} from '../src/templates.js';
 const prompt=vi.hoisted(()=>({answer:'decline' as 'decline'|'cancel'|'accept',profile:'decline' as 'decline'|'cancel',profileCalls:0}));
-const boundary=vi.hoisted(()=>({project:false,applied:false,reason:'execute-required',cleanup:false,failedRemediation:false,profileRemediationOnly:false,installations:0}));
-vi.mock('../src/adapters/filesystem/project-discovery.js',()=>({findProjectRoot:vi.fn(async()=>boundary.project?'/injected/governance':undefined)}));
+const boundary=vi.hoisted(()=>({projectRoot:undefined as string|undefined,applied:false,reason:'execute-required',cleanup:false,failedRemediation:false,profileRemediationOnly:false,installations:0}));
+vi.mock('../src/adapters/filesystem/project-discovery.js',()=>({findProjectRoot:vi.fn(async()=>boundary.projectRoot)}));
 vi.mock('../src/workstation.js',async original=>({
   ...await original<typeof import('../src/workstation.js')>(),
   probeWorkstation:vi.fn(async()=>boundary.failedRemediation?(boundary.profileRemediationOnly?['first']:['first','second']).map(id=>({
@@ -51,7 +53,7 @@ vi.mock('../src/interactive.js',async original=>{
 });
 const roots:{root:string;ino:number;dev:number}[]=[];
 beforeEach(()=>{
-  Object.assign(boundary,{project:false,applied:false,reason:'execute-required',cleanup:false,failedRemediation:false,profileRemediationOnly:false,installations:0});
+  Object.assign(boundary,{projectRoot:undefined,applied:false,reason:'execute-required',cleanup:false,failedRemediation:false,profileRemediationOnly:false,installations:0});
   Object.assign(prompt,{profile:'decline',profileCalls:0});
 });
 afterEach(async()=>{vi.restoreAllMocks();vi.unstubAllEnvs();prompt.answer='decline';for(const r of roots.splice(0)){
@@ -131,9 +133,16 @@ describe('invocation-scoped semantic completion',()=>{
     {applied:true,reason:'applied',cleanup:true,expected:'failure',code:0},
     {applied:false,reason:'blocked',cleanup:false,expected:'failure',code:1}
   ])('observes governance result $reason / cleanup $cleanup without changing numeric result',async result=>{
-    Object.assign(boundary,result,{project:true});const h=hooks(),stdout=new CaptureStream();
-    expect(await runCli({argv:['governance','apply-next','--execute','--json'],env:{},stdout,stderr:new CaptureStream(),telemetry:h.telemetry})).toBe(result.code);
+    const root=await ownedRoot(),plan=buildProjectPlan({...initOptions,governanceProfile:'single-maintainer-gitflow'},{requireProjectName:true});
+    const artifact=buildArtifacts(plan).find(value=>value.logicalName==='manifest');
+    if(!artifact)throw new Error('Generated governance fixture requires its manifest.');
+    const manifest=artifact.content;
+    await writeFile(path.join(root,'liftoff.manifest.json'),manifest);
+    Object.assign(boundary,result,{projectRoot:root});const h=hooks(),stdout=new CaptureStream(),stderr=new CaptureStream();
+    const code=await runCli({argv:['governance','apply-next','--execute','--json'],cwd:root,env:{},stdout,stderr,telemetry:h.telemetry});
+    expect(code,stderr.text()).toBe(result.code);expect(stderr.text()).toBe('');
     expect(h.events[0].outcome).toBe(result.expected);expect(JSON.parse(stdout.text())).toMatchObject({applied:result.applied,reason:result.reason});
+    expect(await readFile(path.join(root,'liftoff.manifest.json'),'utf8')).toBe(manifest);
   });
   it.each(['0.12.3','99.0.0'])('uses actual doctor readiness aggregation for published version %s',async version=>{
     const h=hooks(),stdout=new CaptureStream();

@@ -687,6 +687,36 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
     });
   });
 
+  it.each([
+    { name: 'malformed JSON', content: '{bad', issue: 'Unable to read liftoff.manifest.json' },
+    { name: 'unsupported schema', content: '{"artifactVersion":99}', issue: 'Unsupported manifest artifactVersion 99' },
+    { name: 'invalid historical metadata', content: JSON.stringify({
+      ...JSON.parse(manifest('invalid-manifest')), framework: { state: 'invented' }
+    }), issue: 'framework' }
+  ])('preserves the verification failure envelope for $name during manifest selection', async ({ content, issue }) => {
+    const root = await writeProject('invalid-manifest');
+    await writeFile(path.join(root, 'liftoff.manifest.json'), content, 'utf8');
+    const before = await fingerprint(root);
+    const result = await run(['governance', 'verify', '--scope', 'local', '--json'], root);
+    expect(result.code).toBe(1);
+    expect(result.err).toBe('');
+    expect(JSON.parse(result.out)).toMatchObject({
+      schemaVersion: 2, command: 'governance verify', scope: 'local', projectRoot: root,
+      readOnly: true, ok: false, consistent: false, complete: false,
+      verificationStatus: 'inconsistent', setupStatus: 'indeterminate', stateSource: 'unavailable',
+      nextActions: [], checks: [{ id: 'inspection', status: 'failed', issues: [expect.stringContaining(issue)] }]
+    });
+    const human = await run(['governance', 'verify', '--scope', 'local'], root);
+    expect(human.code).toBe(1);
+    expect(human.err).toContain(issue);
+    expect(human.err).toContain('Fix the malformed governance file');
+    const status = await run(['governance', 'status', '--json'], root);
+    expect(status.code).toBe(1);
+    expect(status.out).toBe('');
+    expect(status.err).toContain(issue);
+    expect(await fingerprint(root)).toBe(before);
+  });
+
   it('loads managed graph fixtures strictly and rejects malformed state and evidence', async () => {
     const root = await writeProject('malformed');
     await writeFile(

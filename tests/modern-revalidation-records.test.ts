@@ -26,6 +26,9 @@ import { fixture, inventory, write } from './fixtures/manifest-update.js';
 import { selected, writeModernHistoricalSource, writeModernSuccessor } from './fixtures/modern-installed-project.js';
 import { writeModernLocalFixtureInputs } from './fixtures/modern-local-project.js';
 import {spec,originalFiles} from './modern-openspec-fixtures.js';
+import { parseArgs } from '../src/args.js';
+import { runCommand } from '../src/commands.js';
+import { CaptureStream } from './helpers.js';
 
 const lane = process.env.LIFTOFF_HCL_TEST_LANE ?? 'auto';
 const qualified = process.platform === 'darwin' && process.arch === 'arm64' && process.versions.node === '24.21.0';
@@ -84,6 +87,15 @@ const approval = (result: Awaited<ReturnType<typeof prepareModernSuccessorRevali
   publishExactLocalBytes: true as const, intentFingerprint: result.fingerprint, candidateBinding: result.candidateBinding, targetSetDigest: result.targetSetDigest
 });
 
+async function publicInspection(root: string, fingerprint: string) {
+  const stdout = new CaptureStream(), stderr = new CaptureStream();
+  const code = await runCommand(parseArgs([
+    'governance', 'verify', '--scope', 'local', '--revalidation-publication', fingerprint, '--json'
+  ]), { cwd: root, stdout, stderr });
+  expect(stderr.text()).toBe('');
+  return { code, report: JSON.parse(stdout.text()) };
+}
+
 describe('successor native record construction', () => {
   archivedNativeIt.each([1,2,3] as const)('publishes fresh archived OpenSpec validation for history v%s without rewriting original identities or source',async version=>{
     const f=await project(true,version,version===2,'openspec'),before=await inventory(f.root),
@@ -111,6 +123,11 @@ describe('successor native record construction', () => {
     const installed=await inspectModernInstalledActivation(f.root);
     expect(installed.status).toBe('observed');
     expect((await inspectModernSuccessorRevalidationPublication(f.root,result.publicationFingerprint)).status).toBe('revalidation-complete-current');
+    const cli=await publicInspection(f.root,result.publicationFingerprint);
+    expect(cli.code).toBe(0);
+    expect(cli.report).toMatchObject({schemaVersion:3,complete:true,localComplete:true,workloadExecution:false,
+      publication:{status:published.status,committed:true,readbackDigest:published.readbackDigest}});
+    expect(await inventory(f.root)).toEqual(after);
   },300000);
 
   it('requires actual completed native provenance, not a supplied success or guessed receipt', async () => {
@@ -240,6 +257,9 @@ describe('actual successor revalidation publication', () => {
   nativeIt.each([false, true])('publishes and independently reads back completed=%s without replay or workflow writes', async completed => {
     const f = await reviewed(completed), before = await inventory(f.root), run = vi.spyOn(NodeCommandRunner.prototype, 'run');
     expect((await inspectModernSuccessorRevalidationPublication(f.root, f.result.publicationFingerprint)).status).toBe('awaiting-consent');
+    const pending = await publicInspection(f.root, f.result.publicationFingerprint);
+    expect(pending.code).toBe(2);
+    expect(pending.report).toMatchObject({ schemaVersion: 3, complete: false, publication: { status: 'awaiting-consent', committed: false } });
     await expect(publishModernSuccessorRevalidation(f.root, f.result.publicationFingerprint)).rejects.toThrow(/consent is missing/);
     expect(await inventory(f.root)).toEqual(before);
     const consent = await approveModernSuccessorRevalidationPublication(f.root, f.result.publicationFingerprint, approval(f.result));
@@ -258,6 +278,10 @@ describe('actual successor revalidation publication', () => {
     expect(await inspectModernSuccessorRevalidationPublication(f.root, f.result.publicationFingerprint)).toMatchObject({
       status: published.status, committed: true, readbackDigest: published.readbackDigest
     });
+    const cli = await publicInspection(f.root, f.result.publicationFingerprint);
+    expect(cli.code).toBe(completed ? 0 : 2);
+    expect(cli.report).toMatchObject({ schemaVersion: 3, consistent: true, complete: completed, localComplete: completed,
+      workloadExecution: false, publication: { status: published.status, committed: true, readbackDigest: published.readbackDigest } });
     expect(await recoverModernSuccessorRevalidation(f.root, { publicationFingerprint: f.result.publicationFingerprint }))
       .toMatchObject({ status: published.status, committed: true, readbackDigest: published.readbackDigest });
     await expect(publishModernSuccessorRevalidation(f.root, f.result.publicationFingerprint)).rejects.toThrow(/already claimed/);

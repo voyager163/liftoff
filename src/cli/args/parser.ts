@@ -194,6 +194,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
   }
 
   if (command === 'governance') {
+    if (Object.hasOwn(flags, 'revalidation-publication') &&
+      (!isUpdatePlanFingerprint(flags['revalidation-publication']) || !['status', 'resume', 'verify'].includes(subcommand ?? ''))) {
+      throw new UsageError('Flag --revalidation-publication requires governance status, resume, or verify and an exact 64-character lowercase SHA-256 publication fingerprint.');
+    }
     if (Object.hasOwn(flags, 'scope') && !['local', 'activation', 'lifecycle'].includes(String(flags.scope))) {
       throw new UsageError('Flag --scope expects local, activation, or lifecycle.');
     }

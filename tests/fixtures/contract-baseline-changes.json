@@ -98,10 +98,10 @@
     {
       "surface": "cli-text",
       "key": "governance --help",
-      "task": "1.5",
-      "reason": "Reviewed credential-capability safety correction: the --protected-stdin description now states that credential enrollment is unavailable and that the flag reads no secret. Command, subcommand and flag shapes are unchanged.",
+      "task": "3.7",
+      "reason": "Preserve the credential-capability safety correction; document historical schema-2 versus modern schema-3 inspection, its exact revalidation-publication selector and 0/1/2 outcomes. Modern execution remains unavailable and the frozen capture is unchanged.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "3882ccc10dbb500dcb01d2c9f979c9721692e0288f6015e7d2157bdb931db6fd",
+      "currentSha256": "82c7ed1153177b7877fde088e86364cd2ef017a724c0a03aa854144c7e0c75ce",
       "changed": [
         "/stdout"
       ]
@@ -109,10 +109,10 @@
     {
       "surface": "cli-text",
       "key": "governance status --help",
-      "task": "1.5",
-      "reason": "Reviewed credential-capability safety correction: the --protected-stdin description now states that credential enrollment is unavailable and that the flag reads no secret. Command, subcommand and flag shapes are unchanged.",
+      "task": "3.7",
+      "reason": "Preserve the credential-capability safety correction; document historical schema-2 versus modern schema-3 inspection, its exact revalidation-publication selector and 0/1/2 outcomes. Modern execution remains unavailable and the frozen capture is unchanged.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "3882ccc10dbb500dcb01d2c9f979c9721692e0288f6015e7d2157bdb931db6fd",
+      "currentSha256": "82c7ed1153177b7877fde088e86364cd2ef017a724c0a03aa854144c7e0c75ce",
       "changed": [
         "/stdout"
       ]
@@ -120,10 +120,10 @@
     {
       "surface": "cli-text",
       "key": "governance plan --help",
-      "task": "1.5",
-      "reason": "Reviewed credential-capability safety correction: the --protected-stdin description now states that credential enrollment is unavailable and that the flag reads no secret. Command, subcommand and flag shapes are unchanged.",
+      "task": "3.7",
+      "reason": "Preserve the credential-capability safety correction; document historical schema-2 versus modern schema-3 inspection, its exact revalidation-publication selector and 0/1/2 outcomes. Modern execution remains unavailable and the frozen capture is unchanged.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "3882ccc10dbb500dcb01d2c9f979c9721692e0288f6015e7d2157bdb931db6fd",
+      "currentSha256": "82c7ed1153177b7877fde088e86364cd2ef017a724c0a03aa854144c7e0c75ce",
       "changed": [
         "/stdout"
       ]
@@ -131,10 +131,10 @@
     {
       "surface": "cli-text",
       "key": "governance approve --help",
-      "task": "1.5",
-      "reason": "Reviewed credential-capability safety correction: the --protected-stdin description now states that credential enrollment is unavailable and that the flag reads no secret. Command, subcommand and flag shapes are unchanged.",
+      "task": "3.7",
+      "reason": "Preserve the credential-capability safety correction; document historical schema-2 versus modern schema-3 inspection, its exact revalidation-publication selector and 0/1/2 outcomes. Modern execution remains unavailable and the frozen capture is unchanged.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "3882ccc10dbb500dcb01d2c9f979c9721692e0288f6015e7d2157bdb931db6fd",
+      "currentSha256": "82c7ed1153177b7877fde088e86364cd2ef017a724c0a03aa854144c7e0c75ce",
       "changed": [
         "/stdout"
       ]
@@ -142,10 +142,10 @@
     {
       "surface": "cli-text",
       "key": "governance apply-next --help",
-      "task": "1.5",
-      "reason": "Reviewed credential-capability safety correction: the --protected-stdin description now states that credential enrollment is unavailable and that the flag reads no secret. Command, subcommand and flag shapes are unchanged.",
+      "task": "3.7",
+      "reason": "Preserve the credential-capability safety correction; document historical schema-2 versus modern schema-3 inspection, its exact revalidation-publication selector and 0/1/2 outcomes. Modern execution remains unavailable and the frozen capture is unchanged.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "3882ccc10dbb500dcb01d2c9f979c9721692e0288f6015e7d2157bdb931db6fd",
+      "currentSha256": "82c7ed1153177b7877fde088e86364cd2ef017a724c0a03aa854144c7e0c75ce",
       "changed": [
         "/stdout"
       ]
@@ -153,10 +153,10 @@
     {
       "surface": "cli-text",
       "key": "governance credential-enroll --help",
-      "task": "1.5",
-      "reason": "Reviewed credential-capability safety correction: the --protected-stdin description now states that credential enrollment is unavailable and that the flag reads no secret. Command, subcommand and flag shapes are unchanged.",
+      "task": "3.7",
+      "reason": "Preserve the credential-capability safety correction; document historical schema-2 versus modern schema-3 inspection, its exact revalidation-publication selector and 0/1/2 outcomes. Modern execution remains unavailable and the frozen capture is unchanged.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "3882ccc10dbb500dcb01d2c9f979c9721692e0288f6015e7d2157bdb931db6fd",
+      "currentSha256": "82c7ed1153177b7877fde088e86364cd2ef017a724c0a03aa854144c7e0c75ce",
       "changed": [
         "/stdout"
       ]
@@ -164,10 +164,10 @@
     {
       "surface": "cli-text",
       "key": "governance recover --help",
-      "task": "1.5",
-      "reason": "Reviewed credential-capability safety correction: the --protected-stdin description now states that credential enrollment is unavailable and that the flag reads no secret. Command, subcommand and flag shapes are unchanged.",
+      "task": "3.7",
+      "reason": "Preserve the credential-capability safety correction; document historical schema-2 versus modern schema-3 inspection, its exact revalidation-publication selector and 0/1/2 outcomes. Modern execution remains unavailable and the frozen capture is unchanged.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "3882ccc10dbb500dcb01d2c9f979c9721692e0288f6015e7d2157bdb931db6fd",
+      "currentSha256": "82c7ed1153177b7877fde088e86364cd2ef017a724c0a03aa854144c7e0c75ce",
       "changed": [
         "/stdout"
       ]
@@ -175,10 +175,10 @@
     {
       "surface": "cli-text",
       "key": "governance resume --help",
-      "task": "1.5",
-      "reason": "Reviewed credential-capability safety correction: the --protected-stdin description now states that credential enrollment is unavailable and that the flag reads no secret. Command, subcommand and flag shapes are unchanged.",
+      "task": "3.7",
+      "reason": "Preserve the credential-capability safety correction; document historical schema-2 versus modern schema-3 inspection, its exact revalidation-publication selector and 0/1/2 outcomes. Modern execution remains unavailable and the frozen capture is unchanged.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "3882ccc10dbb500dcb01d2c9f979c9721692e0288f6015e7d2157bdb931db6fd",
+      "currentSha256": "82c7ed1153177b7877fde088e86364cd2ef017a724c0a03aa854144c7e0c75ce",
       "changed": [
         "/stdout"
       ]
@@ -186,10 +186,10 @@
     {
       "surface": "cli-text",
       "key": "governance verify --help",
-      "task": "1.5",
-      "reason": "Reviewed credential-capability safety correction: the --protected-stdin description now states that credential enrollment is unavailable and that the flag reads no secret. Command, subcommand and flag shapes are unchanged.",
+      "task": "3.7",
+      "reason": "Preserve the credential-capability safety correction; document historical schema-2 versus modern schema-3 inspection, its exact revalidation-publication selector and 0/1/2 outcomes. Modern execution remains unavailable and the frozen capture is unchanged.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "3882ccc10dbb500dcb01d2c9f979c9721692e0288f6015e7d2157bdb931db6fd",
+      "currentSha256": "82c7ed1153177b7877fde088e86364cd2ef017a724c0a03aa854144c7e0c75ce",
       "changed": [
         "/stdout"
       ]
