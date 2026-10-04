@@ -1,21 +1,26 @@
 import { projectCatalog } from './catalog.js';
 import { readManifestFile } from '../../adapters/filesystem/manifest-file.js';
-import { createManifestReader } from '../../domain/project/manifest/reader.js';
+import { types } from 'node:util';
+import { createManifestReader, SUPPORTED_MANIFEST_VERSIONS } from '../../domain/project/manifest/reader.js';
 import { governancePolicyVersion } from '../../repository-governance.js';
 import { minimumLiftoffForManifestV7 } from '../../governance-activation/compatibility.js';
 import { validateReadableActivationIdentity } from '../../domain/governance/activation/validators.js';
 import { managedCoreArtifactPaths, repairManagedCoreLogicalNames } from '../../domain/project/artifact-lifecycle.js';
-import type { ManifestLayoutComponentId, ManifestLayoutDescriptor, ProjectPlan } from '../../domain/project/contracts.js';
+import type { HistoricalLiftoffManifest, ManifestLayoutComponentId, ManifestLayoutDescriptor, ProjectPlan } from '../../domain/project/contracts.js';
 import { composeManifestPlugins, composeModernManifestPlugins, composeProjectPlugins, type ProjectPluginComposition } from './plugins.js';
 import { frameworkOutputPaths } from '../../framework-validation.js';
 import { OPEN_SPEC_COPILOT_CLOUD_PATHS } from '../../openspec-profile.js';
 import { manifestPluginMetadataMatches, readManifestPluginMetadata, type ManifestPluginMetadata } from '../../domain/project/manifest/plugins.js';
 import { createManifestV8ProjectReader } from '../../domain/project/manifest/v8-project.js';
-import { exactRecord } from '../../domain/project/manifest/fields.js';
+import { exactRecord, isRecord } from '../../domain/project/manifest/fields.js';
 import { FileSystemError } from '../../domain/project/errors.js';
 import { toSafeProjectName } from '../../domain/project/planning.js';
 import { retiredFlatRootInfrastructureIdentities } from '../../domain/project/infrastructure-layout.js';
 import { modernActivationSourceContracts } from '../../domain/governance/policy/identity.js';
+import { createManifestV8Reader, type LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
+import { canonicalJson } from '../../domain/governance/activation/canonical-json.js';
+import { capturedFileBytes } from '../../domain/governance/activation/modern-local-inputs.js';
+import type { InstalledLocalSnapshot } from '../../domain/governance/activation/modern-local-runtime.js';
 
 const manifestReader = createManifestReader({
   catalog: projectCatalog,
@@ -29,6 +34,42 @@ export const { parseManifest, normalizeManifestProject, normalizeManifestFramewo
 
 export async function loadManifest(projectRoot: string) {
   return parseManifest(await readManifestFile(projectRoot));
+}
+
+export type SupportedProjectManifest = HistoricalLiftoffManifest | LiftoffManifestV8;
+export const SUPPORTED_PROJECT_MANIFEST_VERSIONS: readonly number[] = Object.freeze([...SUPPORTED_MANIFEST_VERSIONS, 8]);
+const currentManifestReader = createManifestV8Reader({
+  catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract
+});
+
+/** Source interpretation only; historical callers keep the unchanged v2-v7 reader above. */
+export function parseProjectManifest(raw: unknown): SupportedProjectManifest {
+  if (!isRecord(raw)) return parseManifest(raw);
+  if (types.isProxy(raw)) throw new FileSystemError('Manifest version selection requires a plain data object.');
+  const descriptor = Object.getOwnPropertyDescriptor(raw, 'artifactVersion');
+  if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) {
+    throw new FileSystemError('Manifest artifactVersion must be an own enumerable integer data field.');
+  }
+  const version: unknown = descriptor.value;
+  if (version === 8) return currentManifestReader.parseManifestV8(raw);
+  if (typeof version === 'number' && Number.isInteger(version) && !SUPPORTED_MANIFEST_VERSIONS.includes(version)) {
+    throw new FileSystemError(
+      `Unsupported manifest artifactVersion ${version}: supported values are ${SUPPORTED_PROJECT_MANIFEST_VERSIONS.join(', ')}. ` +
+      'Use a Liftoff release that supports this project; no downgrade or write was performed.'
+    );
+  }
+  return parseManifest(raw);
+}
+
+export async function loadProjectManifest(projectRoot: string): Promise<SupportedProjectManifest> {
+  return parseProjectManifest(await readManifestFile(projectRoot));
+}
+
+/** Compares source interpretation, not raw-byte freshness or execution authority. */
+export function modernManifestMatchesObservation(manifest: LiftoffManifestV8, snapshot: InstalledLocalSnapshot): boolean {
+  const captured = snapshot.files.find(file => file.pathParts.join('/') === 'liftoff.manifest.json');
+  const bytes = captured && capturedFileBytes(captured);
+  return !!bytes && canonicalJson(parseProjectManifest(JSON.parse(bytes.toString('utf8')) as unknown)) === canonicalJson(manifest);
 }
 
 export interface InstalledManifestBindingContext {

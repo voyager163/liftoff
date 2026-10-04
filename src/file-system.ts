@@ -2,6 +2,8 @@ export { FileSystemError } from './domain/project/errors.js';
 export { validateArtifactPathParts, manifestDisplayPath } from './domain/project/paths.js';
 export { SUPPORTED_MANIFEST_VERSIONS, manifestHadFilteredLegacyNonDurableOwnership } from './domain/project/manifest/reader.js';
 export { parseManifest, normalizeManifestProject, normalizeManifestFramework, loadManifest } from './application/project/manifest.js';
+export { parseProjectManifest, loadProjectManifest, SUPPORTED_PROJECT_MANIFEST_VERSIONS } from './application/project/manifest.js';
+export type { SupportedProjectManifest } from './application/project/manifest.js';
 export { validateGeneratedProject } from './application/diagnose/generated-project.js';
 export { resolveTargetRoot, findProjectRoot } from './adapters/filesystem/project-discovery.js';
 export { artifactPath, resolveProjectPath } from './adapters/filesystem/project-paths.js';

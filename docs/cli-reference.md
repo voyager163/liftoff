@@ -73,6 +73,13 @@ Generation, validation, doctor, governance, and update consume the packaged
 Node.js 24 LTS, Python 3.14, Go 1.27, OpenTofu 1.12, OpenSpec 1.11, and Spec Kit
 1.0 release lines; these commands never resolve mutable latest versions.
 
+`validate` also recognizes the independent v8 source format. It checks actual
+managed core and preserved control/history relationships without interpreting
+old provenance as current paths. Manual's `not-required` framework needs no
+framework markers. A valid source report does not prove native verification or
+live governance enforcement. Public v8 generation/update is not enabled by this
+read support; other operations retain their explicitly supported contracts.
+
 ## Capability discovery
 
 For skill and automation negotiation, `liftoff capabilities --json` is a
@@ -741,7 +748,7 @@ or updating a core file does not perform or authorize the migration.
 ## Development and infrastructure helpers
 
 `liftoff dev` and `liftoff infra` print commands rather than execute them.
-Infrastructure helpers use recorded layout, not merely new-looking paths.
+Historical infrastructure helpers use recorded layout, not merely new-looking paths.
 For a selected prod environment in the independent layout,
 `liftoff infra init --env prod` targets
 `infrastructure/opentofu/azure/environments/prod`; plan/apply use
@@ -753,6 +760,15 @@ at the Azure parent to include the shared module.
 The eight explicitly retired flat-root identities remain old provenance, not
 aliases for new roots. See the [exact inventory](azure-deployment.md#explicit-flat-root-identity-retirement)
 and [native runtime recipes](configuration-and-manifests.md#application-runtime-configuration).
+
+For v8 source, helpers require explicit active bindings instead. Compose uses
+the bound file and its directory; OpenTofu uses the bound selected-environment
+directory and, for plan/apply, the bound variables file. These may differ from
+their original generated paths. Unresolved/missing bindings, links, nested
+project/repository boundaries, unselected environments and preserved state/key
+overlaps prevent command emission. Directory observations stop explicitly above
+256 entries. Neither a printed command nor its prior path observation approves
+execution or guarantees that the path remains unchanged afterward.
 
 ## JSON and exit codes
 

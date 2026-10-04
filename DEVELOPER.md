@@ -737,6 +737,26 @@ be repurposed by active bindings. Adoption observations contain only
 ceiling. A source-history reference is syntax only, never evidence of stored
 bytes or fresh origin. Outputs are independent frozen values; no filesystem
 access, defaults or mutation authority are supplied by this reader.
+`parseProjectManifest` / `loadProjectManifest` dispatch supported source families
+2-8 to their existing independent readers; `parseManifest` / `loadManifest` and
+their historical version list remain limited to 2-7 for source-history callers.
+Unknown versions are refused without downgrade or inner-family interpretation.
+Public `liftoff validate` now accepts v8 source: it checks actual managed
+core/control/history consistency through the guarded installed inspector, then
+checks recorded initialized framework markers. Manual's `not-required` framework
+does not trigger a framework check. These are read-only source checks, not local
+execution, approval, current workload verification or permission to write.
+Historical provenance is not reused as an active filesystem layout. Public v8
+writers/update routing remain gated until the remaining consumers are integrated.
+The v8 `dev` / `infra` helpers print commands from explicit active bindings only,
+after control/history and path inspection. Compose uses the bound file's directory;
+OpenTofu uses the selected bound environment and, for plan/apply, its bound variables
+file. Missing bindings, links, nested project/repository boundaries, unselected
+environments and preserved state/key overlap stop command emission rather than
+falling back to old generated paths. Bound-directory observation uses the existing
+256-entry local input limit and fails explicitly if it cannot finish.
+Printing a command does not execute it, approve its effects or guarantee future
+path identity; developer review and any operation-specific permissions still apply.
 `createManifestV8Candidate` provides an independent origin-aware candidate writer
 with closed `fresh`, `historical-successor` and `maintenance` inputs. Fresh
 provenance comes only from a complete supplied artifact inventory. Historical
