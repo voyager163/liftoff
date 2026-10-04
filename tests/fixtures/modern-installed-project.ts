@@ -9,7 +9,7 @@ import { createManifestV8ProjectReader, type ManifestV8ProjectLeaf } from '../..
 import { createManifestV8Reader } from '../../src/domain/project/manifest/v8.js';
 import { readManifestPluginMetadata } from '../../src/domain/project/manifest/plugins.js';
 import { toSafeProjectName } from '../../src/domain/project/planning.js';
-import type { CodingAgentId, ManifestActiveLayout } from '../../src/domain/project/contracts.js';
+import type { ApiStackId, CodingAgentId, ManifestActiveLayout } from '../../src/domain/project/contracts.js';
 import { canonicalJson, canonicalSha256 } from '../../src/domain/governance/activation/canonical-json.js';
 import { createModernActivationRecordContract, type ModernPlanInput } from '../../src/domain/governance/activation/modern-records.js';
 import { createModernGovernanceContextContract } from '../../src/domain/governance/policy/modern-context.js';
@@ -48,12 +48,12 @@ export function selected(leaf: ManifestV8ProjectLeaf, profile: 'none' | 'single-
 /** Writes control-format fixtures, not framework initialization or execution evidence. */
 export async function writeModernInstalledProject(directory: string, workflow: 'manual' | 'openspec' | 'spec-kit' = 'manual',
   profile: 'none' | 'single-maintainer-gitflow' | 'team-gitflow' = 'single-maintainer-gitflow',
-  options: { agents?: readonly CodingAgentId[]; frameworkVersion?: string; activeLayout?: ManifestActiveLayout } = {}) {
+  options: { agents?: readonly CodingAgentId[]; frameworkVersion?: string; activeLayout?: ManifestActiveLayout; apiStack?: ApiStackId; frontend?: boolean } = {}) {
   const contracts = { catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract };
   const agents = options.agents ?? (workflow === 'manual' ? [] : ['github-copilot']);
   const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({
     project: { name: 'Installed local fixture',
-      workload: { kind: 'standard', apiStack: 'node-fastify', cloud: 'azure', region: 'eastus', frontend: false, environments: ['dev'] },
+      workload: { kind: 'standard', apiStack: options.apiStack ?? 'node-fastify', cloud: 'azure', region: 'eastus', frontend: options.frontend ?? false, environments: ['dev'] },
       specWorkflow: workflow, agents: [...agents],
       ...(workflow === 'spec-kit' ? { defaultAgent: agents[0] } : {}) },
     framework: workflow === 'manual' ? { state: 'not-required' } :

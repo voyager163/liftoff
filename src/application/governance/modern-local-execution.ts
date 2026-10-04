@@ -5,7 +5,7 @@ import {NodeCommandRunner,type CommandResult} from '../../process-runner.js';
 import {withProjectMutationLock} from '../../adapters/filesystem/project-lock.js';
 import {createModernLocalWorkspace,copyModernLocalWorkspace,type LocalExecutionWorkspace} from '../../adapters/filesystem/modern-local-workspaces.js';
 import {assertModernLocalToolsCurrent,LocalToolSettlementError} from '../../adapters/process/modern-local-tools.js';
-import {createApplicationEnvironment} from '../repair/application-environment.js';
+import {applicationPreparationEnvironment,createApplicationEnvironment,withoutApplicationDependencyNetwork} from '../repair/application-environment.js';
 import {CapturedApplicationProtection} from '../repair/application-protection.js';
 import {inspectModernLocalRuntime,planModernLocalRuntime} from './modern-local-inputs.js';
 import {localExecutionRoot,localExecutionStore,loadLocalExecutionPreview,loadLocalExecutionConsent,captureLocalExecutionPreviewRuntime,reconstructLocalExecution} from './modern-local-approval.js';
@@ -46,7 +46,6 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
   let workspace:LocalExecutionWorkspace|undefined,cleanupComplete=false,inputsUnchanged=false,uncertain=false,failed=false;
   let protection:CapturedApplicationProtection|undefined;
   let preparation:ApplicationResolvedPreparation[]=[];
-  if(preview.preparation.some(step=>typeof step==='object'&&step!==null&&'network'in step&&step.network===true))localInputFailure('Dependency network execution requires a separate authorized fixture/effect qualification; this bounded local executor does not perform it.');
   async function current(){
     if(performance.now()-start>=localExecutionPolicy.operationTimeoutMs)localInputFailure('Local whole-operation deadline exhausted.');
     const {inspection,plan,binding}=await captureLocalExecutionPreviewRuntime(canonical,preview);
@@ -112,16 +111,9 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
       },workspace.directory);
       await protection.captureControls();
       const runner=new NodeCommandRunner();
-      function environmentFor(step:ApplicationResolvedPreparation|undefined):NodeJS.ProcessEnv{
-        const env={...base};
-        if(!step)return env;
-        const id=step.cwdPathParts.join('-');
-        if(step.provider==='uv-locked-sync')Object.assign(env,{UV_PROJECT_ENVIRONMENT:path.join(workspace!.roles.project,...step.cwdPathParts,'.venv'),
-          UV_CACHE_DIR:path.join(workspace!.roles.cache,'uv',id),UV_OFFLINE:'1'});
-        if(step.provider==='npm-ci')Object.assign(env,{npm_config_cache:path.join(workspace!.roles.cache,'npm',id),npm_config_registry:step.registry,npm_config_offline:'true'});
-        if(step.provider==='go-mod-download')Object.assign(env,{GOPATH:path.join(workspace!.roles.cache,'go-path',id),
-          GOMODCACHE:path.join(workspace!.roles.cache,'go-mod',id),GOCACHE:path.join(workspace!.roles.cache,'go-build',id)});
-        return env;
+      function environmentFor(step:ApplicationResolvedPreparation|undefined,phase:'preparation'|'check'='check'):NodeJS.ProcessEnv{
+        const env=step?applicationPreparationEnvironment(base,workspace!.roles,step):{...base};
+        return phase==='preparation'?env:{...withoutApplicationDependencyNetwork(env),LIFTOFF_APPLICATION_NETWORK:'not-authorized'};
       }
       async function run(id:string,tool:LocalExecutionTool,args:string[],cwdParts:readonly string[],kind:'preparation'|'check'|'probe',environment:NodeJS.ProcessEnv=base){
         await lease.assertHeld();await current();await protection!.assertCurrent();await assertModernLocalToolsCurrent(canonical,workspace!.directory,preview.tools);
@@ -196,6 +188,7 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
         return observed;
       }
       if(preparation.length&&!consent.scopes.dependencyPreparation)localInputFailure('Locked preparation lacks its separate consent.');
+      if(preparation.some(step=>step.network)&&!consent.scopes.dependencyNetwork)localInputFailure('Locked preparation network lacks its separate consent.');
       for(const step of preparation){
         await workspace.checkpoint('preparing');
         for(const [index,command]of step.commands.entries()){
@@ -203,7 +196,7 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
           const python=preview.tools.find(tool=>tool.id==='python');
           const args=command.args.map(value=>value==='$APPROVED_PYTHON'?python?.executablePath??localInputFailure('Python identity missing.'):
             value==='$PRIVATE_PYTHON_ENVIRONMENT'?path.join(workspace!.roles.project,...step.cwdPathParts,'.venv'):value);
-          const outcome=await run(`${step.provider}:${step.cwdPathParts.join('/')}:${index}`,tool,args,step.cwdPathParts,'preparation',environmentFor(step));
+          const outcome=await run(`${step.provider}:${step.cwdPathParts.join('/')}:${index}`,tool,args,step.cwdPathParts,'preparation',environmentFor(step,'preparation'));
           if(outcome.status!=='passed')localInputFailure('Approved preparation did not complete.');
         }
         // npm legitimately omits node_modules for an empty locked dependency set.

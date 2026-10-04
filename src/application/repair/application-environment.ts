@@ -1,6 +1,47 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { applicationWithin } from './application-files.js';
+import { applicationPackageSources } from './application-preparation-policy.js';
+import type { ApplicationResolvedPreparation } from './application-preparation-types.js';
+
+export function applicationPreparationEnvironment(
+  base: NodeJS.ProcessEnv, roles: { project: string; cache: string },
+  entry: Pick<ApplicationResolvedPreparation, 'provider' | 'cwdPathParts' | 'packageSource' | 'registry' | 'network'>
+): NodeJS.ProcessEnv {
+  const env = { ...base };
+  const key = entry.cwdPathParts.join('-');
+  env.LIFTOFF_APPLICATION_NETWORK = entry.network ? 'declared-allowed' : 'not-authorized';
+  if (entry.provider === 'npm-ci') {
+    Object.assign(env, {
+      npm_config_prefix: path.join(roles.project, ...entry.cwdPathParts),
+      npm_config_cache: path.join(roles.cache, 'npm', key),
+      npm_config_registry: entry.registry, npm_config_offline: entry.network ? 'false' : 'true',
+      npm_config_ignore_scripts: 'true', npm_config_replace_registry_host: 'never',
+      ...(applicationPackageSources[entry.packageSource].remoteProxyOptIn ? { npm_config_allow_remote: 'all' } : {})
+    });
+  } else if (entry.provider === 'uv-locked-sync') {
+    Object.assign(env, {
+      UV_PROJECT_ENVIRONMENT: path.join(roles.project, ...entry.cwdPathParts, '.venv'),
+      UV_CACHE_DIR: path.join(roles.cache, 'uv', key), UV_DEFAULT_INDEX: entry.registry,
+      UV_OFFLINE: entry.network ? '0' : '1', PIP_NO_INDEX: entry.network ? '0' : '1'
+    });
+  } else {
+    Object.assign(env, {
+      GOPATH: path.join(roles.cache, 'go-path', key),
+      GOMODCACHE: path.join(roles.cache, 'go-mod', key),
+      GOCACHE: path.join(roles.cache, 'go-build', key),
+      GOPROXY: entry.network ? entry.registry : 'off', GOSUMDB: entry.network ? 'sum.golang.org' : 'off'
+    });
+  }
+  return env;
+}
+
+export function withoutApplicationDependencyNetwork(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...env, PIP_NO_INDEX: '1', UV_OFFLINE: '1', npm_config_offline: 'true',
+    GOPROXY: 'off', GOSUMDB: 'off'
+  };
+}
 
 export function applicationConfigurationFiles(platform: NodeJS.Platform = process.platform) {
   return [
