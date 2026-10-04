@@ -137,3 +137,20 @@ Current successors SHALL preserve the selected workflow, agent set, profile and 
 #### Scenario: Retained history is opened on Windows
 - **WHEN** original records and current links are read on Windows, macOS or Linux
 - **THEN** explicit portable path inventories remain confined and unsafe aliases are rejected
+
+### Requirement: Public finite revalidation has explicit selection and separate publication authority
+An existing supported successor SHALL expose finite revalidation through an explicit local operation, consuming actual completed verification before constructing exact local records. Construction and saved text review SHALL NOT publish project files or approve execution. Independent exact-byte publication approval and explicit execution SHALL remain mandatory. Public selectors SHALL identify the publication, never implicitly discover an intent, substitute a historical authority store or recover another transaction.
+
+#### Scenario: A successor publication is reviewed and approved
+- **WHEN** newly completed verification supports a declared successor revalidation
+- **THEN** construction exposes exact target descriptors and UTF-8 bytes without publication authority
+- **AND** only the separately approved exact publication can write the finite local records
+
+#### Scenario: Execution is omitted from a selected successor operation
+- **WHEN** apply-next or recover lacks affirmative execution
+- **THEN** it only inspects selected saved progress and cannot claim current proof or perform recovery
+
+#### Scenario: A partial revalidation is actually committed
+- **WHEN** publication independently reads back committed incomplete revalidation with no rollback or cleanup failure
+- **THEN** the public operation returns exit 2 and attention-required while retaining the active successor and original identities
+- **AND** it does not claim local, activation or lifecycle completion or automatically downgrade the successor

@@ -782,7 +782,8 @@ describe('public documentation', () => {
       '`update-successor-approval` namespace retains the first approval',
       'an audit, not an unforgeable capability',
       'Successful publication returns `committed-incomplete`',
-      'Public routing and modern finite local revalidation remain unwired for this lane',
+      'Public update routing remains unwired for this lane.',
+      'Finite revalidation of an independently admitted existing successor has its separate public interface below.',
       'Generation provenance and adoption observations remain separate historical records, not current ownership',
       'Public catalog, v2-v7 readers, v7 writer, activation-v3 and policy-6 behavior remain unchanged',
       'do not replace installed-package or native qualification'

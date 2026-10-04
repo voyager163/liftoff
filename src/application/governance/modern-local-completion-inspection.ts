@@ -1,4 +1,5 @@
 import { localExecutionRoot } from './modern-local-approval.js';
+import { reviewLocalPublicationWrites } from './modern-publication-review.js';
 import {
   finalizationStore, inspectCompletionBoundary, loadFinalizationResult, readFinalizationPreview
 } from './modern-local-finalization.js';
@@ -51,13 +52,7 @@ export async function inspectModernLocalPublication(root: string, publicationFin
 
 export async function reviewModernLocalPublication(root: string, publicationFingerprint: string) {
   const { boundary, review, state } = await selectedPublication(root, publicationFingerprint);
-  const files = review.mutations.map((mutation, index) => {
-    if (mutation.type !== 'write') localInputFailure('Only the registered exact-file completion writes may be reviewed.');
-    const bytes = Buffer.from(mutation.content), content = bytes.toString('utf8');
-    if (!Buffer.from(content).equals(bytes)) localInputFailure('Local completion review requires exact UTF8 target bytes.');
-    const target = review.result.targets[index] ?? localInputFailure('A prepared completion write has no target descriptor.');
-    return { ...target, content };
-  });
+  const files = reviewLocalPublicationWrites(review.result.targets, review.mutations);
   return {
     projectRoot: boundary.root, publicationFingerprint, finalizationFingerprint: review.preview.fingerprint,
     result: review.result, state, transaction: boundary.transaction, files,

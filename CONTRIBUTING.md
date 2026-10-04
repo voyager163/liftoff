@@ -457,6 +457,36 @@ not official initializer provenance. This group needs no Docker daemon,
 dependency network or providers and does not qualify other hosts, OpenSpec
 finalization, successor revalidation, generation or whole-directory rollback.
 
+#### Public successor revalidation qualification
+
+`tests/modern-revalidation-request.test.ts` checks the closed schema-6 requests
+and shared exact-text review. Portable cases in
+`tests/modern-revalidation-commands.test.ts` exercise producer selection,
+independent approval, selected inspection, attribution ordering and truthful
+commit/incomplete/error reporting. Injected producer values are not native proof.
+
+```bash
+LIFTOFF_HCL_TEST_LANE=portable npx vitest run tests/modern-revalidation-request.test.ts tests/modern-revalidation-commands.test.ts --maxWorkers=1 --no-file-parallelism
+LIFTOFF_HCL_TEST_LANE=native LIFTOFF_PUBLIC_REVALIDATION_TESTS=1 npx vitest run tests/modern-revalidation-commands.test.ts --maxWorkers=1 --no-file-parallelism
+```
+
+Run the entire native file on actual macOS ARM64 Node 24.21.0 with the admitted
+native HCL parser, Node/npm, OpenTofu 1.12.6, OpenSpec 1.11.0 and Docker/Compose.
+Its nine case identities include Spec Kit and archived OpenSpec for each
+supported historical family, actual committed incomplete revalidation,
+changed-source refusal and committed publication recovery. All begin with real
+public verification and separately approve exact publication bytes. Recovery
+injects checkpoint-storage failure, not a process crash. Controlled source
+markers do not establish official initializer provenance. Original history,
+transition/preparation identities, project source and non-target file identities
+remain preserved. No Docker daemon, dependency network or provider is required.
+The group does not qualify successor creation, fresh OpenSpec finalization,
+general update writers, other hosts or whole-directory rollback.
+
+The shared project fixture in `tests/fixtures/modern-revalidation-project.ts`
+also serves `tests/modern-revalidation-records.test.ts`; its private native and
+archived opt-in groups remain separate qualification obligations.
+
 #### OpenSpec initialization qualification
 
 `tests/modern-openspec-initialization.test.ts` requires the separate explicit

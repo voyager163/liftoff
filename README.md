@@ -70,21 +70,18 @@ An upgrade replaces the CLI only; generated projects use `liftoff update` separa
 for reviewed project maintenance. Application files remain project-owned.
 
 On builds that provide it, `liftoff capabilities --json` lists installed public
-interfaces, schemas and limitations without project discovery or telemetry.
-Use it before following a skill that requires newer commands; internal or
-planned capabilities are not advertised as available.
+interfaces without project discovery or telemetry. Check advertised schemas
+before following newer guidance; planned features are not installed support.
 
-Builds advertising `schemas.modernLocalVerification` also provide
-[explicit v8 local verification](docs/cli-reference.md#modern-local-verification):
-separate request, exact approval, and execution commands. This does not convert
-older projects, publish completion records, or authorize cloud operations.
+| Advertised schema | Separate public interface |
+| --- | --- |
+| `schemas.modernLocalVerification` | [V8 verification](docs/cli-reference.md#modern-local-verification): explicit request, approval and execution; no conversion or publication. |
+| `schemas.modernLocalCompletion` | [Manual/Spec Kit completion](docs/cli-reference.md#modern-local-completion): workflow-specific finalization, exact-file review and independent publication consent. |
+| `schemas.modernSuccessorRevalidation` | [Existing-successor revalidation](docs/cli-reference.md#modern-successor-revalidation): fresh verification and separate exact-byte publication approval. Incomplete commit exits 2, preserving the active successor and history without downgrade. |
 
-Builds advertising `schemas.modernLocalCompletion` separately expose
-[Manual/Spec Kit local completion](docs/cli-reference.md#modern-local-completion):
-workflow-specific finalization, exact-file review and independent publication
-approval. Attributed recovery is explicit; saved progress is not current proof.
-This does not enable Manual/team project generation, OpenSpec finalization,
-successor revalidation, or whole-directory rollback.
+Recovery is explicit; saved progress is not current proof. These interfaces do
+not grant Manual/team generation, successor creation, fresh OpenSpec finalization,
+cloud operations or whole-directory rollback.
 
 [Existing repositories](docs/existing-repositories.md) ·
 [Safety and consent](docs/safety-and-consent.md) ·

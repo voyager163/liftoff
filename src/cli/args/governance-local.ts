@@ -4,15 +4,16 @@ import { isUpdatePlanFingerprint } from '../../application/update/approval.js';
 export function modernLocalOperationIssue({ subcommand, flags }: Pick<ParsedArgs, 'subcommand' | 'flags'>): string | undefined {
   if (!Object.hasOwn(flags, 'local-operation')) return undefined;
   const operation = flags['local-operation'];
-  if (operation !== 'verify' && operation !== 'finalize' && operation !== 'publish') {
-    return 'Flag --local-operation accepts only verify, finalize, or publish.';
+  if (operation !== 'verify' && operation !== 'finalize' && operation !== 'publish' && operation !== 'revalidate-successor') {
+    return 'Flag --local-operation accepts only verify, finalize, publish, or revalidate-successor.';
   }
-  const commands = operation === 'publish' ? ['plan', 'approve', 'apply-next', 'recover'] : ['plan', 'approve', 'apply-next'];
+  const commands = operation === 'publish' || operation === 'revalidate-successor'
+    ? ['plan', 'approve', 'apply-next', 'recover'] : ['plan', 'approve', 'apply-next'];
   if (!commands.includes(subcommand ?? '')) {
     return `Flag --local-operation ${operation} requires governance ${commands.join(', ')}.`;
   }
   if (['revalidation-publication', 'recover-phase', 'protected-stdin', 'live'].some(flag => Object.hasOwn(flags, flag))) {
-    return 'Local operations accept no activation, successor, credential, live, or implicit recovery selectors.';
+    return 'Local operations accept no activation, inspection-only publication, credential, live, or implicit recovery selectors.';
   }
   if (flags.help === true) return undefined;
   if (flags.scope !== 'local') return `Flag --local-operation ${operation} requires explicit --scope local.`;
