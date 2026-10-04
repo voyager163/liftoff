@@ -8,6 +8,7 @@ import spawn from 'cross-spawn';
 import { buildProjectPlan } from '../dist/planner.js';
 import { buildArtifacts } from '../dist/templates.js';
 import { writeArtifacts } from '../dist/file-system.js';
+import { isContainerPortPending } from './generated-container-startup.mjs';
 
 const npmCliPath = process.env.npm_execpath;
 if (!npmCliPath) throw new Error('Run generated-container verification through npm.');
@@ -140,7 +141,7 @@ async function verifyStartup(build, projectRoot, probes) {
         encoding: 'utf8', shell: false, timeout: 10_000
       });
       if (binding.error) throw binding.error;
-      if (binding.status !== 0 && !/no such (object|container)/i.test(binding.stderr ?? '')) {
+      if (binding.status !== 0 && !isContainerPortPending(binding.stderr ?? '', name, port)) {
         throw new Error(`Unable to inspect generated container ${name}: ${binding.stderr}`);
       }
       const matched = /^127\.0\.0\.1:(\d+)$/m.exec(binding.stdout ?? '');

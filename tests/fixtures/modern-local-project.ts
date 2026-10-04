@@ -6,7 +6,7 @@ import { toSafeProjectName } from '../../src/domain/project/planning.js';
 import { specKitBootstrapTaskIds } from '../../src/domain/governance/activation/local-check-values.js';
 
 export async function writeModernLocalFixtureInputs(
-  leaf: ManifestV8ProjectLeaf, components: ReadonlyMap<ManifestLayoutComponentId, string[]>, compose: readonly string[],
+  leaf: ManifestV8ProjectLeaf, components: ReadonlyMap<ManifestLayoutComponentId, readonly string[]>, compose: readonly string[],
   write: (parts: readonly string[], content: string | Buffer) => Promise<void>
 ) {
   const workload = leaf.project.workload, workflow = leaf.project.specWorkflow;

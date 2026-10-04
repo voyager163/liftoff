@@ -1,17 +1,20 @@
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { projectCatalog } from '../../src/application/project/catalog.js';
-import { parseManifest } from '../../src/application/project/manifest.js';
+import { parseManifest, resolveModernManifestV8SourceContract } from '../../src/application/project/manifest.js';
 import { composeModernManifestPlugins } from '../../src/application/project/plugins.js';
 import { buildModernManagedCore } from '../../src/application/project/modern-managed-core.js';
 import { createManifestV8Candidate } from '../../src/application/project/manifest-writer.js';
 import { createManifestV8ProjectReader, type ManifestV8ProjectLeaf } from '../../src/domain/project/manifest/v8-project.js';
+import { createManifestV8Reader } from '../../src/domain/project/manifest/v8.js';
 import { readManifestPluginMetadata } from '../../src/domain/project/manifest/plugins.js';
 import { toSafeProjectName } from '../../src/domain/project/planning.js';
-import type { ManifestActiveLayout } from '../../src/domain/project/contracts.js';
+import type { CodingAgentId, ManifestActiveLayout } from '../../src/domain/project/contracts.js';
 import { canonicalJson, canonicalSha256 } from '../../src/domain/governance/activation/canonical-json.js';
-import type { createModernActivationRecordContract, ModernPlanInput } from '../../src/domain/governance/activation/modern-records.js';
-import { parseHistoryJson, historyRecord } from '../../src/governance-activation/history-contracts.js';
+import { createModernActivationRecordContract, type ModernPlanInput } from '../../src/domain/governance/activation/modern-records.js';
+import { createModernGovernanceContextContract } from '../../src/domain/governance/policy/modern-context.js';
+import { modernActivationSourceContracts } from '../../src/domain/governance/policy/identity.js';
+import { parseHistoryJson, historyRecord, rawHistoryDigest } from '../../src/governance-activation/history-contracts.js';
 import { readModernActivationSuccessorSource, planModernActivationSuccessor, prepareActivationHistorySuccessor } from '../../src/governance-activation/migration-history.js';
 import { createModernHistoryContract } from '../../src/governance-activation/modern-history-contracts.js';
 import { historicalV2EvidenceBodyDigest, historicalV2PhaseContractDigest, validateHistoricalV2EvidenceRecord } from '../../src/governance-activation/historical-v2.js';
@@ -40,6 +43,48 @@ export function selected(leaf: ManifestV8ProjectLeaf, profile: 'none' | 'single-
   const plugins = readManifestPluginMetadata({ schemaVersion: 1, resolutionDigest: resolution.digest, selections: resolution.plugins },
     { stack: work.apiStack, cloud: work.cloud, workflow: leaf.project.specWorkflow, agents: leaf.project.agents });
   return { selection: { ...leaf, profile }, plugins, activeLayout: { schemaVersion: 1 as const, state: 'unresolved' as const, bindings: [] as const } };
+}
+
+/** Writes control-format fixtures, not framework initialization or execution evidence. */
+export async function writeModernInstalledProject(directory: string, workflow: 'manual' | 'openspec' | 'spec-kit' = 'manual',
+  profile: 'none' | 'single-maintainer-gitflow' | 'team-gitflow' = 'single-maintainer-gitflow',
+  options: { agents?: readonly CodingAgentId[]; frameworkVersion?: string; activeLayout?: ManifestActiveLayout } = {}) {
+  const contracts = { catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract };
+  const agents = options.agents ?? (workflow === 'manual' ? [] : ['github-copilot']);
+  const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({
+    project: { name: 'Installed local fixture',
+      workload: { kind: 'standard', apiStack: 'node-fastify', cloud: 'azure', region: 'eastus', frontend: false, environments: ['dev'] },
+      specWorkflow: workflow, agents: [...agents],
+      ...(workflow === 'spec-kit' ? { defaultAgent: agents[0] } : {}) },
+    framework: workflow === 'manual' ? { state: 'not-required' } :
+      { state: 'initialized', adapter: workflow, contractVersion: options.frameworkVersion ?? '1.2.3' }
+  });
+  const input = { ...selected(leaf, profile), ...(options.activeLayout ? { activeLayout: options.activeLayout } : {}) };
+  const core = buildModernManagedCore(input);
+  const context = profile === 'none' ? undefined : createModernGovernanceContextContract(contracts).buildModernGovernanceContext(input);
+  const manifest = createManifestV8Reader(contracts).parseManifestV8({
+    artifactVersion: 8, generatedBy: 'Mission Control Liftoff', liftoffVersion: modernActivationSourceContracts()[0].identity.liftoffVersion,
+    project: leaf.project, framework: leaf.framework, plugins: input.plugins, activeLayout: input.activeLayout,
+    governance: context ? { profile, policyVersion: context.governance.policyVersion, state: 'handoff-generated',
+      activationIdentity: context.governance.activationIdentity } : { profile: 'none', state: 'disabled' },
+    managedArtifacts: core.map(file => ({ logicalName: file.logicalName, category: file.category, pathParts: file.pathParts,
+      contentHash: `sha256:${rawHistoryDigest(Buffer.from(file.content))}` })),
+    projectArtifacts: [], adoptionObservations: []
+  });
+  for (const file of core) await writeFixtureBytes(directory, file.pathParts, file.content);
+  await writeFixtureBytes(directory, ['liftoff.manifest.json'], canonicalJson(manifest));
+  const api = context && profile !== 'none' ? createModernActivationRecordContract(projectCatalog, {
+    recordedIdentity: context.governance.activationIdentity, profile, policyVersion: context.governance.policyVersion,
+    selection: { ...leaf, profile }, pluginResolutionDigest: input.plugins.resolutionDigest,
+    activeLayoutDigest: context.governance.activationIdentity.activeLayoutDigest
+  }) : undefined;
+  const state = api?.createInitialState({
+    repository: { id: 'local:11111111-1111-4111-8111-111111111111', name: leaf.project.name, defaultBranch: 'develop' },
+    applicability: { statePath: 'none', privateStagingDast: 'unknown', credentialRequired: 'unknown' },
+    createdAt: '2026-09-01T12:00:00.000Z'
+  });
+  return { root: directory, manifest, input, api, state,
+    write: (parts: readonly string[], bytes: string | Buffer, mode = 0o600) => writeFixtureBytes(directory, parts, bytes, mode) };
 }
 
 export async function writeModernHistoricalSource(directory: string, version: 1 | 2 | 3, retained = false, workflow?: 'spec-kit') {

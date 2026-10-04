@@ -141,6 +141,11 @@ npm run verify:generated-containers
 npm run check:supported-stack
 ```
 
+The container verifier allows the selected port to remain unpublished while
+Docker starts the named container, within the existing 60-second startup limit.
+That observation is not readiness: process exits and other Docker errors still
+fail, and the operational endpoints and build-context exclusions must pass.
+
 Changes to the telemetry gateway, container, or Azure service also require:
 
 ```bash

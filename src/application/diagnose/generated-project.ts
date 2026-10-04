@@ -7,16 +7,22 @@ import { resolveProjectPath } from '../../adapters/filesystem/project-paths.js';
 import { errorCode, errorMessage } from '../../adapters/filesystem/errors.js';
 import { validateFrameworkInstallation } from '../../framework-validation.js';
 import { validateGovernanceCompatibilityMetadata, type ManagedCompatibilityInventoryEntry } from '../../governance-activation/compatibility.js';
-import { loadManifest } from '../project/manifest.js';
+import { loadProjectManifest, modernManifestMatchesObservation, type SupportedProjectManifest } from '../project/manifest.js';
+import type { LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 
 export async function validateGeneratedProject(projectRoot: string): Promise<string[]> {
-  let manifest: LiftoffManifest;
+  let manifest: SupportedProjectManifest;
   try {
-    manifest = await loadManifest(projectRoot);
+    manifest = await loadProjectManifest(projectRoot);
   } catch (error) {
     return [(error as Error).message];
   }
+  return manifest.artifactVersion === 8
+    ? validateModernGeneratedProject(projectRoot, manifest)
+    : validateHistoricalGeneratedProject(projectRoot, manifest);
+}
 
+async function validateHistoricalGeneratedProject(projectRoot: string, manifest: LiftoffManifest): Promise<string[]> {
   const issues: string[] = [];
   for (const artifact of manifest.managedArtifacts) {
     if (isRetiredManagedCoreLogicalName(artifact.logicalName)) {
@@ -117,4 +123,21 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
     }));
   }
   return issues;
+}
+
+async function validateModernGeneratedProject(projectRoot: string, manifest: LiftoffManifestV8): Promise<string[]> {
+  const { inspectModernInstalledActivation } = await import('../governance/modern-installed-preflight.js');
+  const installed = await inspectModernInstalledActivation(projectRoot);
+  if (installed.status === 'blocked') return [...installed.blockers];
+  if (!modernManifestMatchesObservation(manifest, installed.snapshot)) {
+    return ['The manifest changed during control validation; inspect the current project again.'];
+  }
+  if (manifest.framework.state === 'initialized') {
+    return validateFrameworkInstallation(projectRoot, {
+      workflow: manifest.framework.adapter,
+      agents: [...manifest.project.agents],
+      ...(manifest.project.defaultAgent ? { defaultAgent: manifest.project.defaultAgent } : {})
+    });
+  }
+  return [];
 }

@@ -9,8 +9,9 @@ import {
   findProjectRoot
 } from '../../adapters/filesystem/project-discovery.js';
 import {
-  loadManifest
+  loadProjectManifest
 } from '../../application/project/manifest.js';
+import { buildModernHelperCommand } from '../../application/project/helper-commands.js';
 import {
   PlanValidationError
 } from '../../domain/project/planning.js';
@@ -42,7 +43,18 @@ export async function helperCommand(
     layoutReason: string;
   } | undefined;
   if (projectRoot) {
-    const manifest = await loadManifest(projectRoot);
+    const manifest = await loadProjectManifest(projectRoot);
+    if (manifest.artifactVersion === 8) {
+      const command = await buildModernHelperCommand(projectRoot, manifest, parsed.command === 'dev'
+        ? { command: 'dev', action: parsed.subcommand, profile: readStringFlag(parsed.flags, 'profile') }
+        : { command: 'infra', action: parsed.subcommand, environment: readStringFlag(parsed.flags, 'env') });
+      context.presentation.commandIdentity(parsed.command ?? tool, `${tool} helper command`);
+      context.presentation.section(
+        `${tool} helper command (${process.platform === 'win32' ? 'PowerShell' : 'POSIX shell'})`, []
+      );
+      context.presentation.command(formatShellCommand(command, commandShellForPlatform(process.platform)));
+      return 0;
+    }
     const infrastructureLayout = assessInfrastructureLayout(manifest);
     infraProject = {
       root: projectRoot,

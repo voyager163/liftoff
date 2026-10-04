@@ -14,8 +14,6 @@ import { buildModernManagedCore } from '../src/application/project/modern-manage
 import { createManifestV8Reader } from '../src/domain/project/manifest/v8.js';
 import { createManifestV8ProjectReader } from '../src/domain/project/manifest/v8-project.js';
 import { createModernGovernanceContextContract } from '../src/domain/governance/policy/modern-context.js';
-import { createModernActivationRecordContract } from '../src/domain/governance/activation/modern-records.js';
-import { modernActivationSourceContracts } from '../src/domain/governance/policy/identity.js';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { reservedLocalVerificationJournalPath } from '../src/domain/governance/activation/modern-local-runtime.js';
 import { createManifestHistoryIndex, encodeManifestHistoryIndex, manifestHistoryPaths } from '../src/domain/project/manifest/history.js';
@@ -25,7 +23,7 @@ import { createManifestV8Candidate } from '../src/application/project/manifest-w
 import { parseHistoryJson, historyRecord, rawHistoryDigest } from '../src/governance-activation/history-contracts.js';
 import { writeFixtureBytes } from './fixtures/activation-v3/fixture.js';
 import { writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
-import { selected, writeModernHistoricalSource, writeModernSuccessor, localInputsPlanFixture as planInput } from './fixtures/modern-installed-project.js';
+import { selected, writeModernInstalledProject, writeModernHistoricalSource, writeModernSuccessor, localInputsPlanFixture as planInput } from './fixtures/modern-installed-project.js';
 
 const io=vi.hoisted(()=>({opens:[] as string[],afterOpen:undefined as undefined|((target:string)=>Promise<void>)}));
 vi.mock('node:fs/promises',async importOriginal=>{
@@ -41,29 +39,7 @@ const contracts={catalog:projectCatalog,resolveSourceContract:resolveModernManif
 const timestamp='2026-09-01T12:00:00.000Z',expiry='2026-09-01T13:00:00.000Z';
 async function root(){const directory=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'installed-preflight-')));roots.push(directory);return directory;}
 async function fixture(workflow:'manual'|'openspec'|'spec-kit'='manual',profile:'none'|'single-maintainer-gitflow'|'team-gitflow'='single-maintainer-gitflow'){
-  const directory=await root(),leaf=createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({
-    project:{name:'Installed local fixture',workload:{kind:'standard',apiStack:'node-fastify',cloud:'azure',region:'eastus',frontend:false,environments:['dev']},
-      specWorkflow:workflow,agents:workflow==='manual'?[]:['github-copilot'],...(workflow==='spec-kit'?{defaultAgent:'github-copilot'}:{})},
-    framework:workflow==='manual'?{state:'not-required'}:{state:'initialized',adapter:workflow,contractVersion:'1.2.3'}
-  });
-  const input=selected(leaf,profile),core=buildModernManagedCore(input);
-  const context=profile==='none'?undefined:createModernGovernanceContextContract(contracts).buildModernGovernanceContext(input);
-  const manifest=createManifestV8Reader(contracts).parseManifestV8({
-    artifactVersion:8,generatedBy:'Mission Control Liftoff',liftoffVersion:modernActivationSourceContracts()[0].identity.liftoffVersion,
-    project:leaf.project,framework:leaf.framework,plugins:input.plugins,activeLayout:input.activeLayout,
-    governance:context?{profile,policyVersion:context.governance.policyVersion,state:'handoff-generated',activationIdentity:context.governance.activationIdentity}:{profile:'none',state:'disabled'},
-    managedArtifacts:core.map(file=>({logicalName:file.logicalName,category:file.category,pathParts:file.pathParts,contentHash:`sha256:${rawHistoryDigest(Buffer.from(file.content))}`})),
-    projectArtifacts:[],adoptionObservations:[]
-  });
-  for(const file of core)await writeFixtureBytes(directory,file.pathParts,file.content);
-  await writeFixtureBytes(directory,['liftoff.manifest.json'],canonicalJson(manifest));
-  const api=context&&profile!=='none'?createModernActivationRecordContract(projectCatalog,{
-    recordedIdentity:context.governance.activationIdentity,profile,policyVersion:context.governance.policyVersion,
-    selection:{...leaf,profile},pluginResolutionDigest:input.plugins.resolutionDigest,activeLayoutDigest:context.governance.activationIdentity.activeLayoutDigest
-  }):undefined;
-  const state=api?.createInitialState({repository:{id:'local:11111111-1111-4111-8111-111111111111',name:leaf.project.name,defaultBranch:'develop'},
-    applicability:{statePath:'none',privateStagingDast:'unknown',credentialRequired:'unknown'},createdAt:timestamp});
-  return {root:directory,manifest,input,api,state,write:(parts:readonly string[],bytes:string|Buffer,mode=0o600)=>writeFixtureBytes(directory,parts,bytes,mode)};
+  return writeModernInstalledProject(await root(),workflow,profile);
 }
 async function completedCurrent(){
   const f=await fixture(),api=f.api!,plan=api.createPlan(planInput(api));
