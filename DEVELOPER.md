@@ -979,7 +979,8 @@ no invented migration history. An existing reference is preserved, not chained.
 
 Active maintenance reports `committed-incomplete` with separately required
 revalidation; preservation is neither proof nor permission to execute.
-Public routing and modern finite local revalidation remain unwired for this lane.
+Public update routing remains unwired for this lane. Finite revalidation of an
+independently admitted existing successor has its separate public interface below.
 
 Public catalog, v2-v7 readers, v7 writer, activation-v3 and policy-6 behavior
 remain unchanged, including original graph/policy bytes and generation output.
@@ -1594,6 +1595,37 @@ routing remain separate. See
 [archived qualification](CONTRIBUTING.md#archived-openspec-revalidation-qualification)
 for the explicit native selection and portable evidence boundary.
 
+### Public successor revalidation
+
+`cli/commands/governance-local-revalidation.ts` exposes the existing finite
+successor engine through `--scope local --local-operation revalidate-successor`.
+Closed requests in `application/update/modern-revalidation-request.ts` select
+one completed verification or one saved publication review. Construction writes
+external metadata only; publication needs independent approval containing only
+the four private authorization fields, not the public discriminator.
+
+`inspectModernRevalidationProgress` is selected saved inspection, not the fresh
+`inspectModernSuccessorRevalidationPublication` readback. It rejects foreign
+transactions before opening result authority, rejects construction-key aliases,
+and keeps `recordedProgressIsCurrentProof: false`. Explicit public recovery
+performs that selection check before dispatching the private recovery producer.
+Exact UTF-8 target text is shared with completion review through
+`application/governance/modern-publication-review.ts`; output remains credential
+screened and no base64 representation bypasses the review boundary.
+
+Schema-6 reports separate requested effects, actual commit, uncertain effects,
+operation completion and current revalidation. `revalidation-incomplete` returns
+exit 2 only with actual commit, independent current readback and no rollback or
+cleanup failures. It records attention-required rather than success or failure
+and preserves the active successor. Complete revalidation needs those same
+conditions. Saved progress never establishes completion; clean explicit rollback
+is recovery success only. Failure or output withholding never implies rollback.
+Activation and lifecycle completion, providers, successor creation, workflow
+finalization and general v8 update routing remain outside this interface.
+
+See [public successor qualification](CONTRIBUTING.md#public-successor-revalidation-qualification)
+and the [exact public request shapes](docs/cli-reference.md#modern-successor-revalidation).
+
 ### Private local completion and attributed recovery
 
 The public adapter `cli/commands/governance-local-completion.ts` exposes this
@@ -1621,8 +1653,8 @@ Successful explicit rollback is recovery success, not local readiness. Failure
 or withheld output never implies that requested effects were rolled back.
 See [public completion qualification](CONTRIBUTING.md#public-modern-local-completion-qualification)
 and the [public request shapes](docs/cli-reference.md#modern-local-completion).
-OpenSpec finalization, successor revalidation, generation and general v8 writers
-remain separate rollout gates.
+Successor revalidation uses its separate public interface above. OpenSpec
+finalization, generation and general v8 writers remain separate rollout gates.
 
 `prepareModernLocalFinalization`, `approveModernLocalFinalization` and
 `finalizeModernLocalCompletion` consume the original complete execution result,

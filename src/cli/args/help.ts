@@ -58,9 +58,12 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
               'Both require their own closed --inputs for plan/approve and exact --plan for apply-next. ' +
               'For publication, governance recover --plan <fingerprint> --execute recovers only that attributed transaction; ' +
               'without --execute it only inspects saved progress. Failure does not imply rollback. ' +
-              'No OpenSpec finalization, successor revalidation, provider or whole-directory rollback ' +
-              'authority is granted. Local operations exit 0 for a completed ' +
-              'requested operation or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.'
+              'Separate schema-6 --local-operation revalidate-successor constructs or reviews exact records ' +
+              'from completed verification of an existing supported successor; it requires independent ' +
+              'publication approval and explicit execution/recovery. Committed incomplete revalidation ' +
+              'stays active and exits 2. No successor creation, OpenSpec finalization, provider or ' +
+              'whole-directory rollback authority is granted. Local operations otherwise exit 0 for a ' +
+              'completed requested operation or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.'
           }
         : commandDefinitions[command];
   if (!definition) {

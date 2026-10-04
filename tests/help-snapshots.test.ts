@@ -109,6 +109,8 @@ describe('update help review sequence', () => {
       expect(out).toContain('--local-operation publish');
       expect(out).toContain('independent approval');
       expect(out).toContain('Failure does not imply rollback');
+      expect(out).toContain('schema-6 --local-operation revalidate-successor');
+      expect(out).toContain('Committed incomplete revalidation stays active and exits 2');
     });
   });
 

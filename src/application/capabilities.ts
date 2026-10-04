@@ -10,6 +10,7 @@ import { updateReportSchemaVersion } from './update/output.js';
 import { modernGovernanceReportSchemaVersion } from './governance/modern-inspection.js';
 import { modernLocalCommandReportSchemaVersion } from './governance/modern-local-request.js';
 import { modernLocalCompletionReportSchemaVersion } from './governance/modern-local-completion-request.js';
+import { modernRevalidationCommandReportSchemaVersion } from './update/modern-revalidation-request.js';
 
 export function installedCapabilities() {
   const registry = builtinPluginRegistry();
@@ -49,6 +50,14 @@ export function installedCapabilities() {
         attributedRecovery: true, openSpecFinalization: false, successorRevalidation: false, providerOperations: false,
         scope: 'Existing admitted fresh/current local projects only. Exact-file publication requires original verification, workflow-specific finalization, independent exact-byte consent and current readback. Saved progress is not current proof; no generation, conversion or whole-directory rollback.'
       },
+      modernSuccessorRevalidation: {
+        manifestRead: [8], report: modernRevalidationCommandReportSchemaVersion,
+        selector: 'governance <plan|approve|apply-next|recover> --scope local --local-operation revalidate-successor',
+        requests: ['revalidate-successor', 'review-successor-revalidation'],
+        separatePublicationConsent: true, explicitExecution: true, attributedRecovery: true,
+        committedIncompleteExit: 2, successorCreation: false, workflowFinalization: false, providerOperations: false,
+        scope: 'Existing supported activation-history successors only. Completed Spec Kit or archived OpenSpec verification supplies fresh local proof; exact-byte publication preserves original transition/preparation identities. Committed incomplete revalidation stays active; saved progress is not current proof.'
+      },
       reports: {
         capabilities: 1, validate: 1, doctor: 1, upgrade: 1,
         update: updateReportSchemaVersion, governance: 2, governanceAssessment: 1
@@ -87,7 +96,7 @@ export function installedCapabilities() {
       publicStatefulMigration: false,
       projectTelemetryEnrollment: false,
       capabilityIsApproval: false,
-      privateApis: 'OpenSpec finalization, successor revalidation, Manual/team generation and general v8 project writer APIs are not public CLI support.',
+      privateApis: 'OpenSpec finalization, successor creation, Manual/team generation and general v8 project writer APIs are not public CLI support.',
       registration: 'Command syntax does not imply that every option combination is valid or an executor is available.'
     }
   };

@@ -133,6 +133,10 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
         const { governanceLocalCommand } = await import('./governance-local.js');
         return governanceLocalCommand(parsed, { ...context, projectRoot });
       }
+      if (localOperation === 'revalidate-successor') {
+        const { governanceLocalRevalidationCommand } = await import('./governance-local-revalidation.js');
+        return governanceLocalRevalidationCommand(parsed, { ...context, projectRoot });
+      }
       const { governanceLocalCompletionCommand } = await import('./governance-local-completion.js');
       return governanceLocalCompletionCommand(parsed, { ...context, projectRoot });
     }

@@ -87,6 +87,13 @@ describe('project-independent capability discovery', () => {
       separatePublicationConsent: true, explicitExecution: true, attributedRecovery: true,
       openSpecFinalization: false, successorRevalidation: false, providerOperations: false
     });
+    expect(report.schemas.modernSuccessorRevalidation).toMatchObject({
+      manifestRead: [8], report: 6,
+      selector: 'governance <plan|approve|apply-next|recover> --scope local --local-operation revalidate-successor',
+      requests: ['revalidate-successor', 'review-successor-revalidation'],
+      separatePublicationConsent: true, explicitExecution: true, attributedRecovery: true,
+      committedIncompleteExit: 2, successorCreation: false, workflowFinalization: false, providerOperations: false
+    });
     const plan = buildProjectPlan({
       projectName: 'Capability schema specimen', projectType: 'standard', apiStack: 'node',
       agents: ['copilot'], environments: ['dev']
@@ -213,6 +220,7 @@ describe('project-independent capability discovery', () => {
     expect(result.stdout).toContain('--local-operation verify');
     expect(result.stdout).toContain('--local-operation finalize');
     expect(result.stdout).toContain('--local-operation publish');
+    expect(result.stdout).toContain('--local-operation revalidate-successor');
     expect(result.stdout).toContain('governance verify');
     expect(result.stdout).toContain('not approval');
     for (const file of ['README.md', path.join('docs', 'cli-reference.md'), path.join('docs', 'telemetry.md')]) {
@@ -224,6 +232,7 @@ describe('project-independent capability discovery', () => {
     expect(reference).toContain('liftoff help capabilities');
     expect(reference).toContain('schemas.modernReadOnly');
     expect(reference).toContain('schemas.modernLocalCompletion');
+    expect(reference).toContain('schemas.modernSuccessorRevalidation');
     expect(reference).toContain('does not enable Manual/team generation');
   });
 });

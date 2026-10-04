@@ -427,6 +427,81 @@ A rolled-back publication attempt, pending readback/cleanup, failure or
 uncertainty exits 1. Known credential-shaped output is withheld without claiming
 effects were undone; inspect the protected checkpoint before retrying.
 
+### Modern successor revalidation
+
+`schemas.modernSuccessorRevalidation` advertises a separate **schema 6**
+interface for an **existing supported v8 activation-history successor**. It
+does not create or convert a successor, infer compatibility from version
+numbers, finalize workflow tasks, change providers or authorize general update
+writes. Spec Kit and already archived OpenSpec sources require newly completed,
+separately approved [local verification](#modern-local-verification); old
+historical success or consent is not current proof.
+
+Keep public request and consent files outside the project. Construct exact
+revalidation records from the completed verification with:
+
+```json
+{ "kind": "revalidate-successor", "executionFingerprint": "<64 lowercase hex>" }
+```
+
+```bash
+liftoff governance plan [project] --scope local --local-operation revalidate-successor --inputs ../revalidate.json --json
+```
+
+Construction saves external metadata, not project files. The returned
+`fingerprint` is the **publication fingerprint** used by all subsequent commands.
+`review.intentFingerprint` is a distinct construction identity, not a valid
+publication selector. Review includes exact UTF-8 text and target descriptors;
+`currentSourceVerified: false` and `publicationAuthorized: false` prevent saved
+bytes from becoming current proof or consent. To review that same saved candidate
+again, supply:
+
+```json
+{ "kind": "review-successor-revalidation", "publicationFingerprint": "<64 lowercase hex>" }
+```
+
+After reviewing the exact files, separately approve their bindings:
+
+```json
+{
+  "kind": "approve-successor-revalidation",
+  "publishExactLocalBytes": true,
+  "intentFingerprint": "<review.intentFingerprint>",
+  "candidateBinding": "<review.result.candidateBinding>",
+  "targetSetDigest": "<review.result.targetSetDigest>"
+}
+```
+
+```bash
+liftoff governance approve [project] --scope local --local-operation revalidate-successor --plan <publication-fingerprint> --inputs ../revalidation-consent.json --json
+liftoff governance apply-next [project] --scope local --local-operation revalidate-successor --plan <publication-fingerprint> --execute --json
+liftoff governance recover [project] --scope local --local-operation revalidate-successor --plan <publication-fingerprint> --execute --json
+```
+
+Approval independently checks current source and exact construction. Publication
+preserves original transition/preparation identities and historical bytes while
+writing only the reviewed local records. Recovery is bound to the selected
+transaction, never a replay or automatic downgrade. Another active transaction
+blocks before unrelated result authority is read.
+
+Without `--execute`, including `--execute=false`, `apply-next` and `recover`
+only inspect selected saved progress and report
+`recordedProgressIsCurrentProof: false`. Use `governance verify --scope local
+--revalidation-publication <publication-fingerprint>` for independent current
+inspection, not the saved-progress interface.
+
+Actual committed `revalidation-complete-current` with independent readback and
+no rollback/cleanup failures sets `revalidationComplete` and `localComplete`
+true. Actual committed, independently read-back `revalidation-incomplete`
+returns **exit 2**, records attention-required, and leaves both completion flags
+false while preserving the active successor. It is neither full completion nor
+a reason to restore historical state. Failure, pending cleanup/readback or
+uncertainty exits 1. Completed requested operations, saved inspection and clean
+explicit rollback recovery exit 0; rollback recovery is not local completion.
+`publicationCommitted` and `projectFileEffectsUncertain` retain known or unknown
+effects even when output is withheld. Activation, lifecycle and provider
+authority remain false.
+
 ### Historical completion and public inputs
 
 Local completion requires only `seed-valid`, `seed-verified`, and

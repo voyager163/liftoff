@@ -18,6 +18,21 @@ const phases = Object.entries(phaseCapabilities);
 const byExecutor = (executor: string) => phases.filter(([, capability]) => capability.executor === executor).map(([id]) => id);
 
 describe('developer activation-completeness guidance', () => {
+  it('documents explicit successor revalidation without promoting incomplete commit or saved progress', () => {
+    const section = developer.split('### Public successor revalidation')[1]?.split('\n### ')[0] ?? '';
+    for (const phrase of [
+      'cli/commands/governance-local-revalidation.ts', '--local-operation revalidate-successor', 'Schema-6',
+      'inspectModernRevalidationProgress', 'inspectModernSuccessorRevalidationPublication',
+      'recordedProgressIsCurrentProof: false', 'not the public discriminator', 'exit 2',
+      'independent current readback', 'attention-required', 'never implies rollback'
+    ]) expect(section).toContain(phrase);
+    const contributing = readFileSync(path.join(process.cwd(), 'CONTRIBUTING.md'), 'utf8');
+    expect(contributing).toContain('LIFTOFF_PUBLIC_REVALIDATION_TESTS=1');
+    expect(contributing).toContain('nine case identities');
+    const reference = readFileSync(path.join(process.cwd(), 'docs', 'cli-reference.md'), 'utf8');
+    for (const kind of ['revalidate-successor', 'review-successor-revalidation', 'approve-successor-revalidation']) expect(reference).toContain(kind);
+    expect(reference).toContain('**schema 6**');
+  });
   it('documents selected public completion without promoting saved progress or broadening authority', () => {
     const section = developer.split('### Private local completion and attributed recovery')[1]?.split('\n### ')[0] ?? '';
     for (const phrase of [
@@ -155,7 +170,8 @@ describe('developer activation-completeness guidance', () => {
       'source data, not installed\nexecution readiness', 'captured JSON collection membership',
       'original transition', 'preparation, successor anchor', 'Exact existing\nmaterial can be reused, never overwritten',
       'No-op/core-only maintenance creates no copy', 'An existing reference is preserved, not chained',
-      'Public routing and modern finite local revalidation remain unwired'
+      'Public update routing remains unwired for this lane',
+      'independently admitted existing successor has its separate public interface'
     ]) expect(developer).toContain(phrase);
     for (const document of [developer, manifests, state]) {
       expect(document).toContain('`activationTargetHistory`');
