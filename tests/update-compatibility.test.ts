@@ -10,7 +10,9 @@ describe('reviewed activation successor compatibility', () => {
   it('declares a successor lane without making historical proof executable', () => {
     const metadata = validateGovernanceCompatibilityMetadata(buildGovernanceCompatibilityMetadata([], [], []));
     expect(metadata.schemaVersion).toBe(4);
-    expect(metadata.activation.successorMigrations.map((entry) => entry.id)).toEqual([
+    const migrations = metadata.activation.successorMigrations;
+    if (!migrations) throw new Error('Expected the retained schema-4 successor declarations.');
+    expect(migrations.map((entry) => entry.id)).toEqual([
       'activation-v1-to-v3',
       'activation-v2-to-v3'
     ]);

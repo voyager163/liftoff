@@ -68,6 +68,9 @@ For maintenance, `liftoff upgrade --check` previews a CLI upgrade;
 `liftoff update --check` previews managed project changes before explicit approval.
 An upgrade replaces the CLI only; generated projects use `liftoff update` separately
 for reviewed project maintenance. Application files remain project-owned.
+Builds advertising `schemas.currentUpdate` preview v8 successors or maintenance,
+preserving workflow, profile, plugins and layout. Recovery requires
+`liftoff update <project> --recover --approve-plan <saved-fingerprint>`; local verification stays separate.
 
 On builds that provide it, `liftoff capabilities --json` lists installed public
 interfaces without project discovery or telemetry. Check advertised schemas
@@ -75,12 +78,13 @@ before following newer guidance; planned features are not installed support.
 
 | Advertised schema | Separate public interface |
 | --- | --- |
+| `schemas.currentUpdate` | [V8 project update](docs/cli-reference.md#update-modes): exact preview/approval, preserved configuration and history, and fingerprint-selected recovery. |
 | `schemas.modernLocalVerification` | [V8 verification](docs/cli-reference.md#modern-local-verification): explicit request, approval and execution; no conversion or publication. |
 | `schemas.modernLocalCompletion` | [Manual/Spec Kit completion](docs/cli-reference.md#modern-local-completion): workflow-specific finalization, exact-file review and independent publication consent. |
 | `schemas.modernSuccessorRevalidation` | [Existing-successor revalidation](docs/cli-reference.md#modern-successor-revalidation): fresh verification and separate exact-byte publication approval. Incomplete commit exits 2, preserving the active successor and history without downgrade. |
 
 Recovery is explicit; saved progress is not current proof. These interfaces do
-not grant Manual/team generation, successor creation, fresh OpenSpec finalization,
+not grant Manual/team generation, fresh OpenSpec finalization,
 cloud operations or whole-directory rollback.
 
 [Existing repositories](docs/existing-repositories.md) ·

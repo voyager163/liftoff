@@ -43,6 +43,21 @@ const historicalSkills: { bodies: Record<string, { sha256: string; text: string 
 export function expectBoundedCapabilitySkill(content: string, operation: 'setup' | 'assessment'): void {
   const original = historicalSkills.bodies[operation === 'setup' ? 'setup' : 'governance-assessment'];
   expect(createHash('sha256').update(original.text).digest('hex')).toBe(original.sha256);
+  if (operation === 'setup') {
+    const modernStart = content.indexOf('Current update 4 preserves configuration,');
+    const historicalStart = content.indexOf(original.text);
+    expect(modernStart).toBeGreaterThan(0);
+    expect(historicalStart).toBeGreaterThan(modernStart);
+    const modernGuidance = content.slice(modernStart, historicalStart);
+    // Only this reviewed v8 branch is outside the original historical bounds.
+    expect(createHash('sha256').update(modernGuidance).digest('hex'))
+      .toBe('dc8942ea3bfae14017327dc15b990605ece1941b2ac028405a219211eeb84c85');
+    expect(content.length).toBeLessThan(5_500);
+    const advertisement = 'governance 2,\nupdate 3 or update 4. Update 4 additionally requires `schemas.currentUpdate`\n'
+      + 'with report 4, manifestWrite 8, separateConsent and explicitRecovery.';
+    expect(content).toContain(advertisement);
+    content = content.replace(modernGuidance, '').replace(advertisement, 'governance 2, update 3.');
+  }
   const gateStart = content.indexOf('Before project access, run `liftoff capabilities --json`.');
   const protocolStart = content.indexOf(original.text);
   expect(gateStart).toBeGreaterThanOrEqual(0);

@@ -14,12 +14,12 @@ import { createActivationSuccessorRuntime } from './fixtures/activation-successo
 const roots = new Set<string>();
 const cacheRoot = path.resolve('tests', `.activation-successor-update-loader-${process.pid}-${randomUUID()}`);
 let loader: ViteDevServer;
-let commands: typeof import('../src/commands.js');
+let legacyUpdate: typeof import('./reviewed-update-helpers.js');
 let args: typeof import('../src/args.js');
 beforeAll(async () => {
   loader = await createActivationSuccessorRuntime(cacheRoot);
-  commands = await loader.ssrLoadModule('/src/commands.ts');
-  args = await loader.ssrLoadModule('/src/args.ts');
+  legacyUpdate = await loader.ssrLoadModule('/tests/reviewed-update-helpers.ts') as typeof legacyUpdate;
+  args = await loader.ssrLoadModule('/src/args.ts') as typeof args;
 });
 afterEach(async () => {
   for (const root of roots) await rm(root, { recursive: true, force: true });
@@ -69,7 +69,7 @@ async function fixture(family = 2, workflow: 'openspec' | 'spec-kit' = 'openspec
   async function run(extra: string[]) {
     const stdout = new Capture();
     const stderr = new Capture();
-    const code = await commands.runCommand(args.parseArgs(['update', '--project', projectRoot, '--json', ...extra]), {
+    const code = await legacyUpdate.runLegacyUpdateContract(args.parseArgs(['update', '--project', projectRoot, '--json', ...extra]), {
       cwd: directory, stdout, stderr, runner, updateNow: clock,
       updatePreview: { homedir: home, env: {}, clock }, env: {}
     });
@@ -78,7 +78,7 @@ async function fixture(family = 2, workflow: 'openspec' | 'spec-kit' = 'openspec
   return { projectRoot, source, run, calls, home };
 }
 
-describe('reviewed update activation successor integration', { timeout: 60_000 }, () => {
+describe('retained schema-3 activation successor integration', { timeout: 60_000 }, () => {
   it.each(['openspec', 'spec-kit'] as const)('preserves frozen v2 %s while deferring desired Codex/default additions', async (workflow) => {
     const f = await fixture(2, workflow);
     const configPath = path.join(f.projectRoot, 'liftoff.config.json');

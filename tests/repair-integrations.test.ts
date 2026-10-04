@@ -3,7 +3,7 @@ import { mkdir, readFile, rm, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
-import { runCommand } from '../src/commands.js';
+import { runLegacyUpdateContract } from './reviewed-update-helpers.js';
 import { loadManifest, parseManifest } from '../src/application/project/manifest.js';
 import { validateGeneratedProject } from '../src/application/diagnose/generated-project.js';
 import { inspectProjectUpdate } from '../src/application/update/inspection.js';
@@ -287,7 +287,7 @@ describe('exact repair manifest and compatibility readership', () => {
     'retains the $label exact allowlist without retagging records', ({ names }) => {
       const metadata = JSON.parse(rendered().find((entry) => entry.logicalName === 'repository-governance-compatibility')!.content);
       metadata.managedCore.logicalNameAllowlist = names;
-      metadata.managedCore.updateInventory = metadata.managedCore.updateInventory.filter((entry: { logicalName: string }) => names.includes(entry.logicalName));
+      metadata.managedCore.updateInventory = metadata.managedCore.updateInventory.filter((entry: { logicalName: string }) => names.some(name => name === entry.logicalName));
       metadata.managedCore.pathAllowlist = metadata.managedCore.updateInventory.map((entry: { pathParts: string[] }) => entry.pathParts);
       const before = JSON.stringify(metadata);
       expect(validateGovernanceCompatibilityMetadata(metadata).activation.historicalReadability.tuples).toEqual(historicalActivationIdentities);
@@ -323,7 +323,7 @@ async function removeRepairInventory(root: string, keepFiles = false) {
     metadata.managedCore.updateInventory = metadata.managedCore.updateInventory.filter((entry: { logicalName: string }) => !repairNames.has(entry.logicalName));
     metadata.managedCore.pathAllowlist = metadata.managedCore.updateInventory.map((entry: { pathParts: string[] }) => entry.pathParts);
     const content = `${JSON.stringify(metadata, null, 2)}\n`;
-    await writeProjectFile(root, governanceArtifactPaths.compatibility, content);
+    await writeProjectFile(root, [...governanceArtifactPaths.compatibility], content);
     value.managedArtifacts.find((entry: { logicalName: string }) =>
       entry.logicalName === 'repository-governance-compatibility').contentHash = sha(content);
   }
@@ -344,7 +344,7 @@ async function fixture(governanceProfile: 'single-maintainer-gitflow' | 'none' =
 async function update(root: string, args: string[], env: NodeJS.ProcessEnv = process.env) {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
-  const code = await runCommand(parseArgs(['update', ...args, '--json']), {
+  const code = await runLegacyUpdateContract(parseArgs(['update', ...args, '--json']), {
     cwd: root, stdout, stderr, env, updatePreview: updateTestPreviewOptions(root),
     terminal: { layout: 'plain', color: false },
     runner: { async run() { throw new Error('Managed repair integration maintenance must not run project/provider commands.'); } }
@@ -396,7 +396,7 @@ async function protectedFiles(root: string, governance: boolean) {
       { pathParts: ['governance', 'evidence', 'retained-repair-evidence.json'], content: `${JSON.stringify(evidence, null, 2)}\n` }
     );
   }
-  for (const file of files) await writeProjectFile(root, file.pathParts, file.content);
+  for (const file of files) await writeProjectFile(root, [...file.pathParts], file.content);
   return async () => {
     for (const file of files) expect(await readFile(path.join(root, ...file.pathParts), 'utf8')).toBe(file.content);
   };
@@ -424,7 +424,7 @@ async function preNegotiationGuidanceFixture() {
       const managed = manifest.managedArtifacts.find(row => row.logicalName === integration.logicalName);
       expect(managed).toBeDefined();
       managed!.contentHash = sha(previous);
-      await writeProjectFile(root, integration.pathParts, previous);
+      await writeProjectFile(root, [...integration.pathParts], previous);
       names.push(integration.logicalName);
     }
   }
@@ -432,7 +432,7 @@ async function preNegotiationGuidanceFixture() {
   return { root, names };
 }
 
-describe('reviewed capability-guidance upgrades', () => {
+describe('retained schema-3 reviewed capability-guidance upgrades', () => {
   it('previews the exact old six skill bodies and changes them only after normal update approval', async () => {
     const { root, names } = await preNegotiationGuidanceFixture();
     const assertPreserved = await protectedFiles(root, true);
@@ -469,7 +469,7 @@ describe('reviewed capability-guidance upgrades', () => {
     expect(preview.code).toBe(2);
     const normal = preview.report.plans.find((entry: { mode: string }) => entry.mode === 'normal');
     expect(normal).toBeDefined();
-    await writeProjectFile(root, governanceAgentIntegrations.claude.setup.pathParts, '# Developer changed this command\n');
+    await writeProjectFile(root, [...governanceAgentIntegrations.claude.setup.pathParts], '# Developer changed this command\n');
     const edited = await fingerprintUpdateTestProject(root);
     const refused = await update(root, ['--approve-plan', normal.fingerprint]);
     expect(refused.code).toBe(1);
@@ -477,7 +477,7 @@ describe('reviewed capability-guidance upgrades', () => {
   });
 });
 
-describe('reviewed additive native repair installation', () => {
+describe('retained schema-3 reviewed additive native repair installation', () => {
   it.each(['single-maintainer-gitflow', 'none'] as const)(
     'installs the old selected inventory only after approval with %s', async (governanceProfile) => {
       const root = await fixture(governanceProfile);
@@ -515,7 +515,7 @@ describe('reviewed additive native repair installation', () => {
       await removeRepairInventory(root);
       const collision = repairIdentities[0];
       const custom = '# Project-owned repair command\r\nDo not overwrite.\r\n';
-      await writeProjectFile(root, collision.pathParts, custom);
+      await writeProjectFile(root, [...collision.pathParts], custom);
       const assertPreserved = await protectedFiles(root, governanceProfile !== 'none');
       for (const force of [false, true]) {
         const applied = await approveUpdate(root, force, {
@@ -540,7 +540,7 @@ describe('reviewed additive native repair installation', () => {
     expect((await approveUpdate(root)).code).toBe(0);
     expect(await readFile(path.join(root, ...repairIdentities[2].pathParts))).toEqual(expected);
     const assertPreserved = await protectedFiles(root, true);
-    await writeProjectFile(root, repairIdentities[2].pathParts, '# Customized managed repair\n');
+    await writeProjectFile(root, [...repairIdentities[2].pathParts], '# Customized managed repair\n');
     const inspection = await inspectProjectUpdate(root);
     expect(planUpdateWrites(inspection, false).mutations.some((entry) =>
       entry.pathParts.join('\0') === repairIdentities[2].pathParts.join('\0'))).toBe(false);
@@ -560,7 +560,7 @@ describe('reviewed additive native repair installation', () => {
     const preview = await update(root, ['--check']);
     const selected = preview.report.plans.find((entry: { mode: string }) => entry.mode === 'normal');
     expect(selected).toBeDefined();
-    await writeProjectFile(root, repairIdentities[0].pathParts, '# Newly occupied native command\n');
+    await writeProjectFile(root, [...repairIdentities[0].pathParts], '# Newly occupied native command\n');
     const before = await fingerprintUpdateTestProject(root);
     expect((await update(root, ['--approve-plan', selected.fingerprint])).code).toBe(1);
     expect(await fingerprintUpdateTestProject(root)).toEqual(before);

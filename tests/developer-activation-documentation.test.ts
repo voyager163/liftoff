@@ -134,7 +134,7 @@ describe('developer activation-completeness guidance', () => {
     }
     expect(manifests).toContain(`activation-contract version\n  ${currentActivationIdentity.activationContractVersion}`);
     for (const phrase of [
-      'Public generation still writes v7; public v8 migration remains gated',
+      'Public generation still writes v7; public update targets v8',
       '`createManifestV8Reader`', '`createManifestV8Candidate`',
       '`adoptionObservations`', 'not the deferred activation',
       'source-metadata2/task-projection producer', 'retention due times',
@@ -170,7 +170,7 @@ describe('developer activation-completeness guidance', () => {
       'source data, not installed\nexecution readiness', 'captured JSON collection membership',
       'original transition', 'preparation, successor anchor', 'Exact existing\nmaterial can be reused, never overwritten',
       'No-op/core-only maintenance creates no copy', 'An existing reference is preserved, not chained',
-      'Public update routing remains unwired for this lane',
+      'Public update uses the recorded-project-intent selector for all four lanes',
       'independently admitted existing successor has its separate public interface'
     ]) expect(developer).toContain(phrase);
     for (const document of [developer, manifests, state]) {

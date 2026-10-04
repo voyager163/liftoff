@@ -192,13 +192,13 @@ Readers support artifact versions v2, v3, v4, v5, v6, and v7 for API/GenAI proje
 Enabled governance manifests retain their recorded positive-integer policy
 version only when the complete compatibility tuple is supported. Readers accept
 historical v2-v6 manifests so `liftoff update --check` can report managed-core
-drift and plain update can migrate them to v7. Malformed or future manifest,
+drift and approved update can publish a v8 successor. Malformed or future manifest,
 policy, contract, schema, or graph identities remain invalid or blocked without
 rewrite.
 
 `liftoff update --check`, including `--check --json`, leaves an old manifest
 byte-for-byte unchanged while disclosing an external preview receipt. An
-explicitly approved update writes v7 only after the
+explicitly approved public update writes v8 only after the
 transaction succeeds. V2-v6 backend, frontend, database, dependency, container,
 environment, documentation, and infrastructure entries become
 project provenance without reading or changing current production bytes.
@@ -212,11 +212,12 @@ comparisons to infer execution safety.
 | --- | --- |
 | CLI package version | 0.12.3 |
 | Activation package identity | 0.12.0 |
-| Manifest write / supported reads | 7 / 2-7 for API and GenAI |
+| Historical generation write / supported historical reads | 7 / 2-7 for API and GenAI |
+| Current update write / supported source reads | 8 / 2-8 for API and GenAI |
 | Normative policy | 6 |
 | Activation contract, state, evidence header, approval envelope | 3 |
 | Compatibility metadata / supported historical input | 4 / 2 |
-| Update report | 3 |
+| Public update report / retained historical application report | 4 / 3 |
 | Preview receipt, transaction approval, history index, migration journal | 1 |
 | Phase graph, supersession, credential policy | 1 |
 | Assessment report and control catalog | 1 |
@@ -227,7 +228,8 @@ envelope at version 3, and compatibility metadata at schema version 4, covering 
 explicitly recognizes generation versions 0.11.0, 0.11.1, 0.11.2, 0.11.3, 0.12.0, 0.12.1, 0.12.2, and 0.12.3,
 including mixed component histories; unknown releases are not automatically
 trusted or treated as compatible. The mandatory preview/approval workflow and
-schema-3 update reports remain unchanged.
+retained schema-3 application reports remain unchanged. Public update now
+uses the separately versioned schema-4 v8 successor/maintenance interface.
 
 Known activation-v1 history remains **diagnostic-only**, not executable proof.
 Current compatibility metadata v4 separately declares the exact history-preserving
@@ -244,11 +246,11 @@ A readable historical record never authorizes current provider scope; old
 approvals and checked tasks do not become fresh evidence. Revalidation failure
 after local commit leaves the linked current activation blocked and resumable.
 
-## Private modernization contracts
+## Current modernization contracts
 
 The `modernize-liftoff-platform` implementation has independent v8 source readers,
 origin-aware candidate writers and exact historical-successor contracts.
-**Public generation still writes v7; public v8 migration remains gated.**
+**Public generation still writes v7; public update targets v8.**
 Do not manually change an artifact version or call a private writer as an
 upgrade. There is no public target selector or environment bypass. A candidate
 containing correct bytes is not an approved or committed transaction.
@@ -259,7 +261,7 @@ table is `assets/governance/modern/source-contracts.json`, validated through
 `modernActivationSourceContracts`. It binds six contexts: two enabled profiles
 times OpenSpec, Spec Kit and Manual, with six actual computed graph hashes.
 
-| Private contract | Version |
+| Modern contract | Version |
 | --- | --- |
 | Manifest | 8 |
 | Activation contract / state / evidence header / approval envelope | 4 |
@@ -292,7 +294,7 @@ history and retention due times. Unknown or mixed identities, broken links and
 changed inputs block preparation rather than filling in missing history.
 Historical approval and evidence never authorize current effects.
 
-Private `previewModernSuccessorUpdate` / `applyModernSuccessorUpdate` compose
+`previewModernSuccessorUpdate` / `applyModernSuccessorUpdate` compose
 guarded publication for same-workflow single-maintainer activation sources
 and supported v2-v7 manifest-only sources with no activation.
 The saved schema-2 preview contains genuine construction parameters so apply
@@ -308,15 +310,15 @@ proof. Orphaned active records block this path, including malformed records;
 missing activation state alone is not sufficient. Original project provenance,
 framework uncertainty and application bytes are preserved. Existing history
 must match exactly before reuse and before final manifest replacement.
-The same private APIs can maintain current v8 metadata when activation controls
+The same APIs can maintain current v8 metadata when activation controls
 are absent and active record collections are empty. Existing standalone history,
 project provenance, compatible bindings and plugin identity remain unchanged.
-No-op apply preserves original formatting and reports `current` without approval
-or an audit; approved core/metadata changes report scoped `committed` without
+No-op apply requires a matching preview but preserves original formatting and
+reports `current` without mutation approval or an audit; approved core/metadata changes report scoped `committed` without
 inventing activation or duplicate history. This does not establish application
 readiness.
 
-Active v8 maintenance has a separate private scope. Its source observer accepts
+Active v8 maintenance has a separate scope. Its source observer accepts
 captured core drift only while validating the actual active records and history;
 it is not installed execution readiness. Exact approval protects original proof
 and collection membership. Metadata-changing maintenance of an activation-history
@@ -327,9 +329,18 @@ Readers use the actual copy to check the unchanged original transition and
 preparation, not a digest asserted by an audit. Missing, altered or contradictory
 copies block interpretation. No-op/core-only maintenance and fresh active projects
 create no such copy. Active maintenance returns `committed-incomplete`, not
-revalidated success. Public routing remains gated.
+revalidated success. Public `update` selects all four scopes using recorded
+project intent and actual captured configuration. Its optional config bytes,
+mode and absence are bound to the preview without replacing historical source
+identity. Configured identity changes remain explicit blockers/deferred work,
+not automatic application/template, profile or workflow transitions.
 
-A separate private successor revalidation coordinator now constructs fresh local
+Normal public apply cannot recover implicitly. Selected
+`update <project> --recover --approve-plan <saved-fingerprint>` checks the
+original transaction seals and observed digest before any manifest/config
+interpretation. It preserves known commit and does not start another update.
+
+A separate successor revalidation coordinator constructs fresh local
 proof from an actual completed native operation and independently rechecks its
 current source. Its exact-byte publication has a distinct approval and durable
 commit/cleanup/readback states. It preserves original transition/preparation
@@ -337,16 +348,19 @@ identities, historical due times and immutable earlier proof; it never replaces
 framework tasks or a native completion receipt. A changed local baseline requires
 new native proof and no prior nonlocal progression. Incomplete Spec Kit source
 remains blocked without task edits, and failed native checks cannot be relabeled
-as verified. Archived OpenSpec native execution is still separately gated; the
-existing active-change protocol is not replayed against archived work. These
-private capabilities do not enable public v8 migration.
+as verified. Archived OpenSpec uses its explicitly selected
+`verify-openspec-archived` operation and matching successor revalidation route;
+the active-change protocol is not replayed against archived work. These
+capabilities are exposed through the separately approved
+`governance --scope local --local-operation revalidate-successor` interface;
+they do not authorize application or deployment-state migration.
 
 Private managed-context schema 2 is not the deferred activation
 source-metadata2/task-projection producer. MR1 independently observes captured
 inputs and constructs read-only check plans with `execution: "not-authorized"`;
 it does not execute checks or finalize a framework. Modern installed-history
 preflight, actual execution/finalization, dedicated publication/recovery and
-fresh proof must be complete before public migration opens. A committed
+fresh proof remain independently required for local completion. A committed
 successor and successful revalidation are separate outcomes; failed follow-up
 must preserve the committed successor and source history, not downgrade them.
 

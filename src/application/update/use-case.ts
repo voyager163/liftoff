@@ -22,7 +22,7 @@ import { findProjectRoot } from '../../adapters/filesystem/project-discovery.js'
 import { manifestDisplayPath } from '../../domain/project/paths.js';
 import type { ExecutionContext } from '../context.js';
 import { loadManifest } from '../project/manifest.js';
-import { requestUpdateApproval, type UpdateApprovalContext } from './approval.js';
+import { isUpdatePlanFingerprint, requestUpdateApproval, type UpdateApprovalContext } from './approval.js';
 import {
   formatUpdateCommand, formatUpdateValidationCommands, type UpdateCommandMode, type UpdateGuidanceContext
 } from './command-guidance.js';
@@ -40,10 +40,11 @@ import { formatUpdatePreviewRemedy, matchPreparedUpdatePreviewReceipt, matchUpda
 import { prepareModernSuccessorReview, prepareUpdateReview, type ReviewedUpdatePlan, type ReviewedModernSuccessorPlan } from './review-plan.js';
 import { planManagedCoreWrites } from './write-plan.js';
 import { createUpdateSuccessorApprovalAudit } from './transaction-approval.js';
-import type { ModernManagedCoreInput } from '../project/modern-managed-core.js';
+import { isRecordedModernUpdateSelection, type ModernUpdateSelection } from './modern-update-selection.js';
 import { copySourceHistoryData } from '../../governance-activation/source-history-capture.js';
 import { ActivationHistoryError, createReleasedSourceHistoryIndex, rawHistoryDigest } from '../../governance-activation/history-contracts.js';
 import { FileSystemError } from '../../domain/project/errors.js';
+import { errorMessage } from '../../adapters/filesystem/errors.js';
 import { validateCapturedReleasedSource } from '../../governance-activation/historical-state.js';
 import { verifyActivationHistoryBeforeReplacement } from '../../governance-activation/migration-history.js';
 import { entryDisplay, maybeInjectUpdateFailure } from './reporting.js';
@@ -81,9 +82,8 @@ function previewObservedAt(options: UpdatePreviewOptions): string {
   return now.toISOString();
 }
 
-/** Private advancing-family integration; no public CLI version or capability is enabled here. */
 export async function previewModernSuccessorUpdate(
-  projectRoot: string, selection: ModernManagedCoreInput, options: UpdatePreviewOptions = {}
+  projectRoot: string, selection: ModernUpdateSelection, options: UpdatePreviewOptions = {}
 ) {
   const selected = copySourceHistoryData(selection, 'prepared successor selection');
   const storage = preparedStoreOptions(options);
@@ -106,7 +106,18 @@ export async function previewModernSuccessorUpdate(
     };
   }, storage);
   return {
-    ...stored, plans: reviews.map(review => review.summary),
+    ...stored, plans: reviews.map(review => ({
+      ...review.summary,
+      operations: review.mutations.map(mutation => ({
+        type: mutation.type, pathParts: [...mutation.pathParts],
+        ...(mutation.type === 'write' ? {
+          contentDigest: rawHistoryDigest(Buffer.from(mutation.content)),
+          byteLength: Buffer.byteLength(mutation.content),
+          requestedMode: mutation.mode ?? null
+        } : {})
+      }))
+    })),
+    configurationReview: inspection.configurationReview,
     scope: inspection.kind === 'activation-successor'
       ? 'history-core-state-manifest-publication-only' as const
       : inspection.kind === 'manifest-successor'
@@ -121,7 +132,7 @@ export async function previewModernSuccessorUpdate(
 
 export interface ApplyModernSuccessorRequest {
   readonly projectRoot: string;
-  readonly selection: ModernManagedCoreInput;
+  readonly selection: ModernUpdateSelection;
   readonly force: boolean;
   readonly approvePlan?: string;
 }
@@ -140,10 +151,14 @@ export async function applyModernSuccessorUpdate(
   const approvalStore = createUpdateTransactionApprovalStore(projectRoot, storage);
   const recovery = await inspectReviewedUpdateTransaction(projectRoot, { approvalStore });
   if (recovery.status !== 'absent') {
+    if (isRecordedModernUpdateSelection(request.selection)) {
+      return { status: 'recovery-required' as const, recovery };
+    }
     if (recovery.status === 'blocked') return { status: 'recovery-blocked' as const, recovery };
     if (!recovery.planFingerprint || !recovery.transactionDigest) {
       throw new FileSystemError('The interrupted update lacks an exact recovery identity; its journal was preserved.');
     }
+
     const outcome = await recoverReviewedUpdateTransaction(projectRoot, {
       approvalStore, expectedTransaction: {
         planFingerprint: recovery.planFingerprint, transactionDigest: recovery.transactionDigest
@@ -160,8 +175,11 @@ export async function applyModernSuccessorUpdate(
   const inspection = await inspect();
   const review = await prepareModernSuccessorReview(inspection, request.force, preparation, previewObservedAt(storage));
   matchPreparedUpdatePreviewReceipt(stored.receipt, review.descriptor, review.publication);
+  const configured = isRecordedModernUpdateSelection(request.selection) ? {
+    configurationReview: inspection.configurationReview
+  } : {};
   if (review.mutations.length === 0) {
-    return { status: 'current' as const, committed: false as const, revalidation: review.revalidation };
+    return { status: 'current' as const, committed: false as const, revalidation: review.revalidation, ...configured };
   }
   const approval = await requestUpdateApproval({
     fingerprint: review.descriptor.fingerprint,
@@ -172,7 +190,7 @@ export async function applyModernSuccessorUpdate(
         ? `Apply this exact ${review.mutations.length}-operation active managed maintenance (${review.descriptor.fingerprint})? Original activation, transition and history remain protected; local revalidation is separate.`
         : `Publish this exact ${review.mutations.length}-operation successor (${review.descriptor.fingerprint})? Historical bytes remain protected; local revalidation is separate.`
   }, approvalContext);
-  if (approval.status !== 'approved') return { status: 'approval-blocked' as const, approval };
+  if (approval.status !== 'approved') return { status: 'approval-blocked' as const, approval, ...configured };
 
   const audit = await retainUpdateSuccessorApprovalAudit(createUpdateSuccessorApprovalAudit({
     projectRoot, publication: review.publication, planFingerprint: review.descriptor.fingerprint,
@@ -221,7 +239,7 @@ export async function applyModernSuccessorUpdate(
     } : {}),
     ...(onCheckpoint ? { onCheckpoint } : {})
   });
-  if (!outcome.committed) return { status: 'publication-failed' as const, outcome, audit };
+  if (!outcome.committed) return { status: 'publication-failed' as const, outcome, audit, ...configured };
   const cleanupFailures = [...outcome.cleanupFailures];
   if (!cleanupFailures.length) {
     try { await consumePreparedUpdatePreviewReceipt(projectRoot, stored.receipt, storage); }
@@ -234,8 +252,42 @@ export async function applyModernSuccessorUpdate(
     status: cleanupFailures.length ? 'committed-cleanup-pending' as const :
       inspection.kind === 'manifest-maintenance' ? 'committed' as const : 'committed-incomplete' as const,
     committed: true as const,
-    outcome, audit, cleanupFailures, revalidation: review.revalidation
+    outcome, audit, cleanupFailures, revalidation: review.revalidation, ...configured
   };
+}
+
+export class ModernUpdateRecoveryError extends Error {
+  constructor(readonly observedCommitted: boolean, cause: unknown) {
+    super(errorMessage(cause), { cause });
+    this.name = 'ModernUpdateRecoveryError';
+  }
+}
+
+/** Recovery selects saved transaction authority before any manifest or desired-state interpretation. */
+export async function recoverModernSuccessorUpdate(
+  input: { readonly projectRoot: string; readonly planFingerprint: string },
+  options: UpdatePreviewOptions = {}
+) {
+  const request = copySourceHistoryData(input, 'selected update recovery request');
+  if (!isUpdatePlanFingerprint(request.planFingerprint)) {
+    throw new UpdatePreviewError('preview-invalid', 'Update recovery requires an exact lowercase 64-hex plan fingerprint.');
+  }
+  const storage = preparedStoreOptions(options);
+  const { projectRoot } = await resolveUpdatePreviewLocation(request.projectRoot, storage);
+  const approvalStore = createUpdateTransactionApprovalStore(projectRoot, storage);
+  const recovery = await inspectReviewedUpdateTransaction(projectRoot, { approvalStore });
+  if (recovery.status === 'absent') return { status: 'recovery-absent' as const, recovery };
+  if (recovery.status === 'blocked' || recovery.planFingerprint !== request.planFingerprint || !recovery.transactionDigest) {
+    return { status: 'recovery-blocked' as const, recovery };
+  }
+  const outcome = await recoverReviewedUpdateTransaction(projectRoot, {
+    approvalStore,
+    expectedTransaction: { planFingerprint: request.planFingerprint, transactionDigest: recovery.transactionDigest }
+  }).catch(error => { throw new ModernUpdateRecoveryError(recovery.committed, error); });
+  if (outcome.status === 'blocked' || outcome.rollbackFailures.length || outcome.cleanupFailures.length) {
+    return { status: 'recovery-incomplete' as const, outcome, observedCommitted: recovery.committed };
+  }
+  return { status: 'recovered' as const, outcome, observedCommitted: recovery.committed, requiresFreshPreview: true as const };
 }
 
 function storeOptions(context: ExecutionContext, inspection?: UpdateInspection): UpdatePreviewOptions {

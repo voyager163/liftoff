@@ -9,8 +9,9 @@ import { deepFrozen } from './core.js';
  * the same change, from the values the failing tests print. Content digests cover declarations and
  * asset bytes but not renderer code, so a reviewed change to a plugin's rendered behavior also
  * advances that plugin's contentVersion. Asset locations come from the C1 declaration table.
- * Public agent guidance advances to 3: version 2 is already allocated to the distinct private
- * modern source descriptors. Their unchanged renderers and recorded identities are not retagged.
+ * Public agent guidance advances from capability-first version 3 to v8-aware version 4.
+ * Version 2 remains allocated to the distinct modern source descriptors; their unchanged
+ * renderers and recorded identities are not retagged.
  */
 
 const assetSha256: Readonly<Record<string, Sha256Digest>> = {
@@ -44,16 +45,16 @@ const pluginRecords: readonly PluginRecord[] = [
   { category: 'cloud', id: 'azure', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7' },
   { category: 'workflow', id: 'openspec', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:8675a3187f44932c7bee9f9a8e5d3f307bcb36d66ced0f20593663221c509d5e' },
   { category: 'workflow', id: 'spec-kit', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:420fd4584bf02e8efc65bf9893848a4748ce676c030095de9ef1fba20ca7a137' },
-  { category: 'agent', id: 'github-copilot', apiVersion: 1, contentVersion: 3, contentDigest: 'sha256:5e9106f0d854a97f38a8b02b1c7f9a2df4f69a516f47b1c1d5c45787936cce15' },
-  { category: 'agent', id: 'claude', apiVersion: 1, contentVersion: 3, contentDigest: 'sha256:4ce992b50c2f35650aa325b7a538816e67d01818d706215f761f52392605bc77' },
-  { category: 'agent', id: 'codex', apiVersion: 1, contentVersion: 3, contentDigest: 'sha256:d3db2b86b2188b7812ca2b5f39c0e0bf2d4bb16763c4c86b0b7daf1e14a006c1' }
+  { category: 'agent', id: 'github-copilot', apiVersion: 1, contentVersion: 4, contentDigest: 'sha256:bb8fefb021d3a5dbad4fb0ddb052c5c5fe6ffa9d360030bdb72f9770efbefa40' },
+  { category: 'agent', id: 'claude', apiVersion: 1, contentVersion: 4, contentDigest: 'sha256:3fd7a42b9cc8daee3401dcf21b755782a1f28e0fb1b59f76c17139edc5b50873' },
+  { category: 'agent', id: 'codex', apiVersion: 1, contentVersion: 4, contentDigest: 'sha256:7ed80a1d4710117bf6888c3e5bacda1febb9a24878a82e394e1c3017d02d288d' }
 ];
 
 /** Expected registry identities of the built-ins. Tests assert them; runtime never consults them. */
 export const builtinReleaseDigests = deepFrozen({
-  pluginSetDigest: 'sha256:fc7e34f7d248fd9994d6f89706434dde07a3b5c41182723874e180e94cd519bd' as Sha256Digest,
+  pluginSetDigest: 'sha256:c71cdb0d0f8457e2046f36eb1956451e81a6aebe6dd791f6e02c5462c68b67ef' as Sha256Digest,
   coreContributionDigest: 'sha256:b46fee151601812c273ec4552c67fdb05c8a2a6125f11e0d9cd28f2e4dca169d' as Sha256Digest,
-  registryDigest: 'sha256:cb63953cf1070b764ac543034dc36653c990ec3201154b53e3ae6dab854fd464' as Sha256Digest
+  registryDigest: 'sha256:5bade82c410fb7ca510fb1bc503d9fb507618861318d9d5b16445c414bd6b186' as Sha256Digest
 });
 
 // A missing literal is reported by registry intake as a release mismatch at first use, never here.

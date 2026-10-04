@@ -145,8 +145,9 @@ describe('public documentation', () => {
     }
     expect(docs[1]).toContain('liftoff repair [project-path] --approve-plan <fingerprint>');
     expect(docs[1]).toContain('liftoff repair [project-path] --recover');
-    expect(docs[1]).toContain('revalidation.nextPhaseLabel');
-    expect(docs[1]).toContain('infrastructureRepair');
+    expect(docs[1]).toContain('liftoff-current-project-update');
+    expect(docs[1]).toContain('publicationCommitted');
+    expect(docs[1]).toContain('An update fingerprint never authorizes infrastructure repair');
     expect(docs[1]).toContain('120-second overall deadline');
     expect(docs[1]).toContain('30-second per-command');
     expect(docs[1]).toContain('maximum of 24 resource groups');
@@ -289,13 +290,13 @@ describe('public documentation', () => {
     expect(cli).toMatch(/former `liftoff create` command is intentionally rejected/);
     expect(cli).toContain('`liftoff update --check` is the human-first compatibility and migration preview');
     expect(cli).toContain('A receipt is not approval');
-    expect(cli).toContain('Human follow-ups omit `--project`');
+    expect(cli).toContain('Recovery deliberately uses an explicit project path');
     expect(cli).toContain('JSON remedies remain explicitly targeted');
     expect(cli).toContain('do not join check and apply with `&&`');
     expect(cli).toContain('`preview-missing` means no saved preview was found');
     expect(cli).toContain('`--approve-plan`');
     expect(cli).toContain('liftoff update --check --json');
-    expect(cli).toContain('schema version 3 and `scope: "project-update"`');
+    expect(cli).toContain('schema version 4 and `kind: "liftoff-current-project-update"`');
     expect(cli).not.toMatch(/schema version 2 and includes `scope: "managed-core"`/);
     expect(cli).not.toContain('Compatibility metadata is version 2');
     expect(cli).toContain('`migrationSummary`');
@@ -316,7 +317,7 @@ describe('public documentation', () => {
     expect(cli).toMatch(/activation migration additionally retains durable original history/);
     expect(cli).toContain('Next recommended command');
     expect(cli).toContain('Liftoff has not executed it automatically');
-    expect(safety).toContain('Default update skips core conflicts');
+    expect(safety).toContain('Check lists eligible normal/force variants');
     expect(safety).toMatch(/update neither changes\s+nor installs them/);
     expect(telemetry).toContain('LIFTOFF_TELEMETRY=0');
     expect(telemetry).toContain('DO_NOT_TRACK=1');
@@ -440,7 +441,7 @@ describe('public documentation', () => {
     expect(gettingStarted).toContain('local files only');
     expect(workloads).toContain('repository-governance');
     expect(cli).toContain('--governance single-maintainer-gitflow|none');
-    expect(existing).toContain('manifest artifact version 7');
+    expect(existing).toContain('manifest-v8 managed-core successor');
     expect(prerequisites).toMatch(/no additional initialization\s+prerequisite/);
     expect(safety).toMatch(/never authorizes agent execution/);
     expect(structure).toContain('.liftoff/');
@@ -448,7 +449,7 @@ describe('public documentation', () => {
     expect(manifests).toContain('handoff-partial');
     expect(troubleshooting).toContain('handoff-generated');
     expect(troubleshooting).toContain('no ownership entry');
-    expect(existing).toContain('handoff-partial');
+    expect(existing).toContain('required unowned conflict blocks the complete successor');
     expect(existing).toContain('Intentionally removed infrastructure stays absent');
     expect(manifests).toContain('`managedArtifacts`');
     expect(manifests).toContain('`projectArtifacts`');
@@ -782,7 +783,7 @@ describe('public documentation', () => {
       '`update-successor-approval` namespace retains the first approval',
       'an audit, not an unforgeable capability',
       'Successful publication returns `committed-incomplete`',
-      'Public update routing remains unwired for this lane.',
+      'Public update uses the recorded-project-intent selector for all four lanes.',
       'Finite revalidation of an independently admitted existing successor has its separate public interface below.',
       'Generation provenance and adoption observations remain separate historical records, not current ownership',
       'Public catalog, v2-v7 readers, v7 writer, activation-v3 and policy-6 behavior remain unchanged',

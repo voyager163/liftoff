@@ -133,17 +133,19 @@ Existing destination modes are preserved where supported, including POSIX 0600
 files. Windows does not provide equivalent POSIX mode-bit guarantees; this is
 not a promise to preserve all Windows ACLs or filesystem metadata.
 
-`liftoff update --check` presents compatibility and the exact proposed changes,
+`liftoff update --check` presents compatibility and exact operation descriptors
+(paths, write digests, byte lengths and requested modes, not a textual diff),
 then discloses its external preview receipt without changing project bytes.
 Apply requires that matching preview and explicit exact-plan approval. It
 rechecks protected inputs under the project lock before writing. Noninteractive
 approval uses `--approve-plan <fingerprint>`, not a generic yes.
 
-The approved transaction preflights exact managed-core and create-only
-provisioning paths separately from any explicitly authorized activation migration.
+The approved transaction preflights exact managed-core and history-preservation
+paths separately from its explicitly authorized activation successor.
 Schema/successor changes commit consistently with their manifest and history link.
 
-Managed update may install manifest v7, policy v6, activation-contract v2,
+Managed update targets manifest v8 and its release-owned profile/workflow
+identity, including policy, activation contract,
 phase graph, compatibility metadata, credential-policy schema, setup
 integrations, and forced removal of exact retired generated setup-alias entries
 from older manifests. It preserves user-owned activation state, approvals,
@@ -151,9 +153,9 @@ immutable evidence, credential policies, active OpenSpec changes, and bootstrap
 retention/disposal records. If the current activation identity is future,
 unsupported, or graph-incompatible, update and setup block with a remedy instead
 of downgrading or rewriting state.
-Exact known historical v1 can use the reviewed successor lane, not in-place
+Exact supported historical v1/v2/v3 can use the reviewed successor lane, not in-place
 retagging. Original records are copied byte-for-byte into immutable in-project
-history before their exact active paths are retired or replaced. A linked v2
+history before their exact active paths are retired or replaced. A linked current
 activation obtains fresh evidence; historical approvals never become current
 permission. Unavailable revalidation remains an explicit blocker.
 
@@ -165,7 +167,11 @@ Ordinary transaction backups are for failed-write recovery. Activation history
 is different: it remains after success and is never removed with disposable
 preview receipts. A durable recovery journal must match a separately persisted
 external transaction approval; a project-local claim alone cannot authorize
-recovery. Post-commit revalidation failure preserves v2 and its historical link.
+recovery. Normal apply never performs implicit recovery. Explicit
+`update <project> --recover --approve-plan <saved-fingerprint>` also binds the
+observed journal digest under lock, before manifest/configuration interpretation;
+it cannot borrow repair or local-verification authority. Post-commit
+revalidation failure preserves the current successor and its historical link.
 
 Dependency execution has a different recovery boundary: installer scripts can
 write arbitrary project files, and a concurrent developer edit cannot be
@@ -180,26 +186,26 @@ Update mode is selected explicitly rather than from terminal interactivity:
 
 - Existing project artifacts are never compared with current template bytes.
 - Plain `liftoff update` applies the matching explicitly approved plan, retaining
-  safe managed-core classification and the separate migration/provisioning lanes.
+  safe managed-core classification and exact supported successor scope.
 - `liftoff update --check` changes no project bytes but saves and discloses a
   preview receipt outside the repository.
 - `--json` changes output formatting only; machine apply still requires the
   matching preview and exact plan-fingerprint approval.
 - Managed-core developer edits are conflicts. Project edits are outside update.
-- Default update skips core conflicts and lists them by portable relative path.
-  `liftoff update --force` extends authority only to those guarded core
-  conflicts.
+- Check lists eligible normal/force variants. A required conflict blocks a
+  complete successor; `liftoff update --force` extends authority only to guarded
+  already-owned core conflicts, using its separately approved fingerprint.
 - Project source, dependencies, schemas, containers, environments,
   documentation, and infrastructure cannot be restored or overwritten by any
   update mode.
-- A newly selected frontend or environment is provisioned once only at absent
-  or byte-identical destinations. A collision blocks the complete group and
-  cannot be forced.
-- A new environment additionally requires recorded independent-root provenance
-  and safe existing shared-module files. Legacy or unknown layouts are blocked
+- Adding frontend/environments and changing workflow/profile/established agents
+  are separate operations. Current core update refuses those configured changes
   without moving state or rewriting project-owned infrastructure.
-- Unrecorded governance conflicts remain outside manifest ownership and produce
-  `handoff-partial` until a later update safely writes or adopts every artifact.
+- Configuration presence, content and permissions are preview preconditions.
+  Missing configuration is not created, and desired agents on an uncertain
+  legacy framework are explicitly deferred rather than initialized.
+- Unrecorded governance conflicts remain outside manifest ownership. A v8
+  successor cannot claim complete governance while required artifacts conflict.
 - Orphans are reported and left on disk for manual review.
 - Dependency definitions and locks are project-owned; update neither changes
   nor installs them.

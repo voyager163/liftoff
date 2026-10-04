@@ -32,7 +32,8 @@ Absent governance configuration SHALL retain the existing single-maintainer desi
 
 #### Scenario: Existing setup destination has different bytes
 - **WHEN** an unowned destination conflicts
-- **THEN** it is preserved and partial handoff is recorded without taking ownership
+- **THEN** check reports the incomplete handoff without taking ownership
+- **AND** a required conflict blocks v8 publication rather than recording a complete contract with missing required artifacts
 
 #### Scenario: Resolve a partial handoff
 - **WHEN** a later approved plan finds safe absent/identical destinations
@@ -92,3 +93,28 @@ An ordinary CLI/core upgrade SHALL not implicitly switch framework, enable team 
 #### Scenario: Nested project is updated on Windows
 - **WHEN** an explicit or nearest project boundary resolves on Windows, macOS or Linux
 - **THEN** receipts, plugin/binding comparisons and writes remain bound to that exact project and preserve sibling project metadata
+
+### Requirement: Public current update binds recorded intent and selected recovery
+Public update SHALL target the current v8 contract by default without requiring a target-version flag. Its schema-4 report SHALL distinguish requested execution, known committed publication, uncertain effects, scoped core completion and independently established local readiness. Retained historical application report schemas SHALL not be silently reinterpreted as current reports.
+
+#### Scenario: Optional desired configuration participates in review
+- **WHEN** current update reads optional project configuration
+- **THEN** its observed absence or exact content and mode bind the approved preview and locked validation
+- **AND** equivalent normalized intent preserves recorded ordering/identity without rewriting configuration
+
+#### Scenario: Legacy framework agent intent is unresolved
+- **WHEN** desired agents exist but historical framework initialization is unknown
+- **THEN** update reports deferred configuration instead of manufacturing framework state or claiming local readiness
+
+#### Scenario: Pending update requires selected recovery
+- **WHEN** check or ordinary apply finds a pending update transaction, including during locked validation
+- **THEN** no implicit recovery occurs and the reported saved fingerprint requires an explicit recovery request
+- **AND** recovery selects that fingerprint and observed transaction digest using original external seals before interpreting manifest or configuration
+
+#### Scenario: Committed recovery is refused
+- **WHEN** a selected committed journal was observed but recovery refuses changed or unattributable state
+- **THEN** the report preserves known publication commit and reports uncertainty/failure without claiming rollback or local completion
+
+#### Scenario: Sensitive diagnostic output follows actual commit
+- **WHEN** output screening withholds credential-shaped result data
+- **THEN** the command reports failure without exposing that data or hiding known committed effects

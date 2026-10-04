@@ -10,7 +10,6 @@ import {
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
-import { runCommand } from '../src/commands.js';
 import { loadManifest, validateGeneratedProject } from '../src/file-system.js';
 import { compareSemver } from '../src/semver.js';
 import { buildProjectPlan } from '../src/planner.js';
@@ -61,6 +60,7 @@ import {
   createUpdateTestRoot,
   fingerprintUpdateTestProject,
   reviewedUpdateArguments,
+  runLegacyUpdateContract,
   updateTestPreviewOptions
 } from './reviewed-update-helpers.js';
 
@@ -127,7 +127,7 @@ async function runRaw(
 ): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
-  const code = await runCommand(parseArgs(args), {
+  const code = await runLegacyUpdateContract(parseArgs(args), {
     cwd,
     stdout,
     stderr,
@@ -145,7 +145,7 @@ async function runInteractive(
   const approved = await reviewedUpdateArguments(args, (previewArgs) => runRaw(previewArgs, cwd));
   const stdout = ttyCaptureStream();
   const stderr = ttyCaptureStream();
-  const code = await runCommand(parseArgs(approved), {
+  const code = await runLegacyUpdateContract(parseArgs(approved), {
     cwd,
     stdin: scriptedTtyInput(''),
     stdout,
@@ -614,7 +614,7 @@ describe('semver comparison', () => {
   });
 });
 
-describe('core-only update command', () => {
+describe('retained schema-3 core-only update application', () => {
   it('reports no drift on a fresh schema-v7 project', async () => {
     const root = await fixtureProject();
     const manifestPath = path.join(root, 'liftoff.manifest.json');
@@ -2150,7 +2150,7 @@ describe('core-only update command', () => {
     const stderr = ttyCaptureStream();
     let prompted = false;
 
-    const code = await runCommand(parseArgs(['update']), {
+    const code = await runLegacyUpdateContract(parseArgs(['update']), {
       cwd: root,
       stdin: scriptedTtyInput(''),
       stdout,

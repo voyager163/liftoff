@@ -1,3 +1,3 @@
 import { governanceAgentDescriptor } from '../core.js';
 
-export const claudePlugin = governanceAgentDescriptor('claude', 3);
+export const claudePlugin = governanceAgentDescriptor('claude', 4);

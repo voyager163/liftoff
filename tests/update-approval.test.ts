@@ -7,14 +7,14 @@ import {
   type UpdateApprovalContext,
   type UpdateApprovalPrompt
 } from '../src/application/update/approval.js';
-import { updateProject } from '../src/application/update/use-case.js';
+import { updateCurrentProject } from '../src/application/update/current-use-case.js';
 import { parseArgs, UsageError } from '../src/args.js';
 import { updateCommand } from '../src/cli/commands/update.js';
 import { PresentationSession } from '../src/terminal.js';
 import { CaptureStream, scriptedTtyInput, ttyCaptureStream } from './helpers.js';
 
-vi.mock('../src/application/update/use-case.js', () => ({
-  updateProject: vi.fn(async () => 0)
+vi.mock('../src/application/update/current-use-case.js', () => ({
+  updateCurrentProject: vi.fn(async () => 0)
 }));
 
 const fingerprint = 'a1'.repeat(32);
@@ -270,14 +270,15 @@ describe('update command approval routing', () => {
 
   it('passes the exact approval and selected force/JSON flags unchanged to the use case', async () => {
     const context = commandContext();
-    vi.mocked(updateProject).mockResolvedValueOnce(2);
+    vi.mocked(updateCurrentProject).mockResolvedValueOnce(2);
     await expect(updateCommand(parseArgs([
       'update', 'project with spaces', '--force', '--json', '--approve-plan', fingerprint
     ]), context)).resolves.toBe(2);
-    expect(updateProject).toHaveBeenCalledExactlyOnceWith({
+    expect(updateCurrentProject).toHaveBeenCalledExactlyOnceWith({
       project: 'project with spaces',
       check: false,
       force: true,
+      recover: false,
       jsonMode: true,
       approvePlan: fingerprint
     }, context);
@@ -286,12 +287,28 @@ describe('update command approval routing', () => {
   it('does not turn force or JSON into an approval value', async () => {
     const context = commandContext();
     await updateCommand(parseArgs(['update', '--force', '--json']), context);
-    expect(updateProject).toHaveBeenCalledExactlyOnceWith({
+    expect(updateCurrentProject).toHaveBeenCalledExactlyOnceWith({
       project: undefined,
       check: false,
       force: true,
+      recover: false,
       jsonMode: true,
       approvePlan: undefined
+    }, context);
+  });
+
+  it('routes selected recovery separately without adding check or force', async () => {
+    const context = commandContext();
+    await updateCommand(parseArgs([
+      'update', 'project with spaces', '--recover', '--approve-plan', fingerprint, '--json'
+    ]), context);
+    expect(updateCurrentProject).toHaveBeenCalledExactlyOnceWith({
+      project: 'project with spaces',
+      check: false,
+      force: false,
+      recover: true,
+      jsonMode: true,
+      approvePlan: fingerprint
     }, context);
   });
 
@@ -307,7 +324,7 @@ describe('update command approval routing', () => {
   ])('rejects %j before dispatching any project or receipt IO', async (...argv) => {
     const context = commandContext();
     await expect(async () => updateCommand(parseArgs(argv), context)).rejects.toBeInstanceOf(UsageError);
-    expect(updateProject).not.toHaveBeenCalled();
+    expect(updateCurrentProject).not.toHaveBeenCalled();
     expect(context.stdout.text()).toBe('');
     expect(context.stderr.text()).toBe('');
   });

@@ -34,6 +34,9 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
             'is not approval. Apply needs the same checkout and receipt store. Noninteractive apply ' +
             'requires --approve-plan; force and JSON are not consent. Production files, history, and ' +
             'provisioning collisions remain protected; force cannot bypass compatibility. ' +
+            'Current updates target manifest v8 and bind captured configuration without changing recorded ' +
+            'workload, workflow, agents, profile or layout. Pending updates never recover implicitly: ' +
+            'use `liftoff update <project> --recover --approve-plan <saved-fingerprint>`. ' +
             'Exit 0: clean or approved scope completed; 2: drift or committed migration with incomplete ' +
             'revalidation; 1: rejected or failed operation.'
         }

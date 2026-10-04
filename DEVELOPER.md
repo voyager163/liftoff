@@ -979,7 +979,25 @@ no invented migration history. An existing reference is preserved, not chained.
 
 Active maintenance reports `committed-incomplete` with separately required
 revalidation; preservation is neither proof nor permission to execute.
-Public update routing remains unwired for this lane. Finite revalidation of an
+Public update uses the recorded-project-intent selector for all four lanes.
+`modern-update-selection.ts` captures the actual manifest and optional
+`liftoff.config.json`, reuses data-only configuration validation, and preserves
+recorded plugin/layout selection. Missing configuration is an observed absence,
+not a generated file. Manual/team/empty-agent parsing is isolated from the
+unchanged historical configuration loader. Unsupported configured transitions
+are refused; legacy framework agent requests are explicitly deferred.
+The config observation joins review preconditions without replacing original
+source-history binding. Apply resolves it again under transaction validation.
+The public selector cannot enter private compatibility callers' implicit
+recovery branch, including when a journal appears after the command's first
+inspection. `recoverModernSuccessorUpdate` selects the exact fingerprint and
+observed transaction digest before reading any manifest/configuration data.
+Its result is recovery progress, not completion of a fresh update.
+An observed commit remains reported if locked recovery is refused or throws;
+uncertain effects do not become a false rollback claim.
+Public reports use schema 4 and distinguish requested execution, known commit,
+uncertain effects, scoped completion and separately required local verification.
+Finite revalidation of an
 independently admitted existing successor has its separate public interface below.
 
 Public catalog, v2-v7 readers, v7 writer, activation-v3 and policy-6 behavior
@@ -1135,6 +1153,10 @@ reader and registry errors propagate through the existing command boundary.
 The release record is reviewed literal data, not computed from current assets at
 startup. Content digests do not hash renderer implementation; a renderer behavior
 change requires a reviewed `contentVersion` advance.
+The public agent descriptors use content version 4 for the shared v8-aware setup
+protocol, advancing the earlier capability-first version 3. The distinct modern
+source descriptors retain version 2 and their exact recorded digests; the
+public guidance change does not retag an existing project's plugin identity.
 
 `tests/import-boundaries.test.ts` enforces an exact reviewed map for runtime
 imports into plugins. Its current adapter exception is the template asset reader

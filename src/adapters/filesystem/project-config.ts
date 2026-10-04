@@ -14,13 +14,14 @@ export type ProjectConfigCatalog = Pick<
   | 'getApiStack'
   | 'getCodingAgent'
   | 'getEnvironment'
-  | 'getGovernanceProfile'
   | 'getPattern'
   | 'getProjectType'
   | 'getProvider'
-  | 'getSpecWorkflow'
   | 'resolveRegion'
->;
+> & {
+  getGovernanceProfile(value: string): { id: string } | undefined;
+  getSpecWorkflow(value: string): { id: string } | undefined;
+};
 
 const CONFIG_FIELDS = new Set([
   'projectName',
@@ -76,18 +77,6 @@ export async function loadProjectConfigOptions(
   cwd: string,
   catalog: ProjectConfigCatalog
 ): Promise<ProjectOptions> {
-  const {
-    canonicalizeCodingAgents,
-    getApiStack,
-    getCodingAgent,
-    getEnvironment,
-    getGovernanceProfile,
-    getPattern,
-    getProjectType,
-    getProvider,
-    getSpecWorkflow,
-    resolveRegion
-  } = catalog;
   const resolvedPath = path.resolve(cwd, configPath);
   let raw: string;
   try {
@@ -106,6 +95,26 @@ export async function loadProjectConfigOptions(
       `Unable to parse configuration ${resolvedPath}: ${error instanceof Error ? error.message : String(error)}`
     ]);
   }
+  return parseProjectConfigOptions(parsed, catalog);
+}
+
+export function parseProjectConfigOptions(
+  parsed: unknown,
+  catalog: ProjectConfigCatalog,
+  options: { allowEmptyAgents?: boolean } = {}
+): ProjectOptions {
+  const {
+    canonicalizeCodingAgents,
+    getApiStack,
+    getCodingAgent,
+    getEnvironment,
+    getGovernanceProfile,
+    getPattern,
+    getProjectType,
+    getProvider,
+    getSpecWorkflow,
+    resolveRegion
+  } = catalog;
   if (!isRecord(parsed)) {
     throw new PlanValidationError(['Configuration root must be a JSON object.']);
   }
@@ -161,8 +170,10 @@ export async function loadProjectConfigOptions(
 
   let selectedAgents: string[] | undefined;
   if (parsed.agents !== undefined) {
-    if (!Array.isArray(parsed.agents) || parsed.agents.length === 0) {
-      throw new PlanValidationError(['Configuration field agents must be a non-empty string array.']);
+    if (!Array.isArray(parsed.agents) || (parsed.agents.length === 0 && options.allowEmptyAgents !== true)) {
+      throw new PlanValidationError([
+        `Configuration field agents must be a ${options.allowEmptyAgents === true ? '' : 'non-empty '}string array.`
+      ]);
     }
     const values = parsed.agents.map((value, index) => {
       if (typeof value !== 'string') {

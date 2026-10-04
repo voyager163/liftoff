@@ -111,7 +111,7 @@ describe('modern source declarations', () => {
         expect(original.coreContributionDigest).toBe(builtinReleaseDigests.coreContributionDigest);
         expect(original.registryDigest).toBe(builtinReleaseDigests.registryDigest);
         expect(original.inventory.some((entry) => entry.id === 'manual')).toBe(false);
-        expect(original.inventory.filter((entry) => entry.category === 'agent').every((entry) => entry.contentVersion === 3)).toBe(true);
+        expect(original.inventory.filter((entry) => entry.category === 'agent').every((entry) => entry.contentVersion === 4)).toBe(true);
       });
 
       it('binds actual raw policies and canonical six-row table, never normalized prose or invented graph hashes', () => {
@@ -396,7 +396,7 @@ describe('modern source declarations', () => {
       }
       const integration = Object.entries(governanceAgentIntegrations).find(([id]) => id === original.id)![1];
       expect(modern).not.toBe(original);
-      expect(original.contentVersion).toBe(3);
+      expect(original.contentVersion).toBe(4);
       expect(modern.contentVersion).toBe(2);
       expect(modern).toEqual({
         ...original,
@@ -482,6 +482,6 @@ describe('modern source declarations', () => {
     }
     expect(Object.isFrozen(builtinCore)).toBe(true);
     expect(Object.isFrozen(builtinRelease)).toBe(true);
-    expect(builtinDescriptors.filter((descriptor) => descriptor.category === 'agent').every((descriptor) => descriptor.contentVersion === 3)).toBe(true);
+    expect(builtinDescriptors.filter((descriptor) => descriptor.category === 'agent').every((descriptor) => descriptor.contentVersion === 4)).toBe(true);
   });
 });

@@ -40,8 +40,8 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 | `liftoff governance assess [project]` | Read-only comparison against the installed CLI's packaged governance target; local-only unless `--live` is explicitly requested |
 | `liftoff upgrade` | Replaces a verified global npm installation with the exact canonical stable release exposed by the configured registry |
 | `liftoff upgrade --check` | Checks installation origin and registry parity without installing; exits 2 when an installable update exists |
-| `liftoff update [project]` | Applies safe managed-core maintenance and authorized create-only component provisioning |
-| `liftoff update --check` | Reports core maintenance and provisioning without mutation; exits 0 when clean and 2 when actionable |
+| `liftoff update [project]` | Applies an exactly approved v8 successor or managed-core maintenance plan |
+| `liftoff update --check` | Reports eligible v8 plans without project mutation; exits 0 when clean and 2 when actionable |
 | `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; project-owned files remain unreachable |
 | `liftoff repair [project-path]` | Displays an exact plan and offers action-specific default-No approval on a genuine terminal; no fingerprint entry |
 | `liftoff repair [project-path] --check` | Checks/previews bounded infrastructure repair without cloud calls, application scripts or project writes |
@@ -876,27 +876,25 @@ or undo verifier/host effects.
 
 ## Update modes
 
+Check `liftoff capabilities --json` for `schemas.currentUpdate` before using this
+v8 interface; older published builds retain their own update contract.
+
 ```bash
 liftoff update --check
 liftoff update
 liftoff update --force
 liftoff update --check --json
 liftoff update --approve-plan <fingerprint> --json
+liftoff update <project-path> --recover --approve-plan <saved-fingerprint>
 ```
 
 Run update from the project root or a subdirectory: Liftoff finds the nearest
 `liftoff.manifest.json`, so `--project` is not required for that project.
-Human follow-ups omit `--project` when discovery from the invocation directory
-selects the same target, and identify the selected project separately.
-When a positional path or `--project` selects a different project, follow-ups
-keep its explicit absolute target. An inner project never substitutes for an
-explicitly selected outer project. JSON remedies remain explicitly targeted so
-they can be used outside the originating shell.
-
-After apply, the recommended validation sequence omits a directory change when
-already at the project root. From other directories, including project
-subdirectories, it retains the change to that root. Validate must succeed before
-doctor runs; Liftoff prints these instructions without executing them.
+An explicit positional path or `--project` selects that exact project instead;
+do not supply both. Recovery deliberately uses an explicit project path or the
+exact current directory, before interpreting a possibly interrupted manifest.
+When recovering from a subdirectory, always provide the project path.
+JSON remedies remain explicitly targeted and use native-shell argument quoting.
 
 `liftoff update --check` is the human-first compatibility and migration preview.
 It changes no project bytes, but saves and discloses a project-bound preview
@@ -915,14 +913,30 @@ checkout and user-local storage; another runner, worktree, or moved project
 needs a fresh check and approval. `--force`, `--json`, and a generic yes do not
 waive these gates. The force variant has its own preview and fingerprint.
 
-Approved apply retains safe new, missing, untouched-upgrade, clean-move, and
-recorded-state changes only for explicit `managed-core` artifacts. For manifest v7 this includes governance
-policy, context, guide, phase graph, compatibility metadata, credential-policy
-schema, and selected-agent `/liftoff-setup` integrations. Core conflicts are
-skipped and core orphans are reported without deletion. During legacy governance
-adoption, preserved unrecorded conflicts remain outside managed ownership and
-set local state to `handoff-partial`. Forced update may remove exact retired
-generated setup-alias entries from older manifests after review.
+The current public writer targets manifest v8. Supported historical manifests
+use a reviewed standalone-history successor, or an activation-history successor
+when exact supported activation records are present. Existing v8 projects use
+inactive or active managed maintenance instead. Original manifest/history bytes,
+project provenance, workflow, agents, profile, plugins and compatible active
+layout are preserved. Current metadata does not imply successful activation.
+
+Preview lists each eligible normal/force fingerprint and its operations:
+write/delete, exact path, and write digest, byte length and requested mode.
+These descriptors are not a textual diff. The actual transaction candidate and
+all observed input bytes/modes are bound to the fingerprint. A required unowned
+conflict blocks a complete successor; force cannot acquire that ownership.
+Those conflicting files remain outside managed ownership.
+Only guarded managed core, exact historical preservation, associated local
+control records and the final manifest are publication targets. Exact retired
+generated aliases can be removed only by their independently eligible plan.
+
+The optional `liftoff.config.json` is read without following links, within the
+bounded source capture. Its presence, bytes and mode are preconditions, including
+an observed absence. Missing configuration is never created to materialize a
+default. Configured workload/workflow/profile or established-agent changes are
+refused, not silently applied. Desired agents on an uncertain legacy framework
+are explicitly listed as deferred configuration; core update does not initialize
+that framework. Configuration is resolved again during transaction validation.
 
 Application source, tests, dependencies and locks, database assets, Docker and
 Compose files, environment files, documentation, and
@@ -930,41 +944,40 @@ OpenTofu topology are `project` artifacts after generation. Update does not
 compare them with newer templates, restore deleted paths, or overwrite them
 under `--force`.
 
-Changing desired state from no frontend to frontend, or adding an environment,
-can authorize one create-only provisioning group. All destinations are
-preflighted together. Absent files are created and byte-identical files are
-adopted as provenance; any differing destination blocks the group even with
-`--force`. Disabling or re-enabling a previously provisioned group never
-recreates or deletes project files.
-New environments also require recorded independent-root infrastructure and safe
-existing shared-module files. Legacy/shared or unknown layout produces a
-component-level migration-required result; other safe managed-core work may
-continue. Force cannot migrate infrastructure state or rewrite shared infrastructure.
-New component provisioning is deferred during activation-v1 migration and needs
-a fresh post-migration preview.
+Adding frontend/environments, changing profile/workflow, additive-agent repair
+and application/layout migration are separate operations, not permissions
+conferred by this update fingerprint. The current public core path refuses
+unsupported configured changes. The older schema-3 application's create-only
+provisioning behavior is not part of this public v8 scope.
 
-Use `--check` whenever no project bytes may change. Human check mode prints
-managed-core drift, ownership-only manifest v2-v7 migration, activation-identity
-compatibility, history preservation, revalidation gaps, and authorized
-provisioning. It recommends `--force` only for eligible owned core conflicts
-and displays the additional exact changes and fingerprint separately.
+Use `--check` whenever no project bytes may change. Check reports current-target
+compatibility, required history preservation and eligible exact operations.
+It lists force only for an independently eligible variant.
 `--check --force` remains invalid because check mode never authorizes overwrites.
 
-`--json` selects output format, not safety or consent. Update JSON uses schema 3
-with project-update scope and separate core, provisioning, activation-migration,
-and revalidation outcomes. Prompts and progress use stderr; stdout remains one
+`--json` selects output format, not safety or consent. Update JSON uses schema 4,
+kind `liftoff-current-project-update`, with separate requested execution,
+known publication commit, uncertain effects, scoped completion and required
+revalidation. Prompts and progress use stderr; stdout remains one
 JSON result. Check exits 0 for no actionable work, 2 for differences, and 1 for
 errors. Apply exits 0 for completed scope, 2 when migration committed but
 revalidation is incomplete, and 1 for rejected approval or an error.
-`seed-verified` is **Local baseline verification**, not an OpenSpec feature
-change. Human and JSON output retain the actual next phase and blocker, and
-provide same-project repair/check follow-ups when recorded infrastructure needs
-reorganization. JSON includes `revalidation.nextPhaseLabel`,
-`revalidation.nextActions`, and `infrastructureRepair` separately from
-`activationMigration.status` and `committed`: a committed migration remains
-committed even when local verification is blocked. Infrastructure repair advice
-can appear even when managed core is current and no activation revalidation is
-required. An update fingerprint never authorizes infrastructure repair.
+`publicationCommitted` never becomes false just because revalidation remains
+incomplete. `localComplete`, `activationComplete` and `lifecycleComplete` are
+false for this scope: update does not establish those claims. Existing local
+verification/finalization/revalidation interfaces require their own review and
+consent. An update fingerprint never authorizes infrastructure repair.
+**Local baseline verification** is not an OpenSpec feature change; update
+does not automatically run that separately reviewed verification.
+
+Ordinary apply never implicitly recovers a pending transaction, including one
+that appears after initial inspection. Use `--recover --approve-plan` with the
+exact saved update fingerprint. Recovery also binds the observed transaction
+digest under lock, uses its original transaction seals, and cannot borrow
+repair/local-verification authority. It does not need parseable configuration
+or a fresh preview. It does require attributable safe target bytes; arbitrary
+edits to an interrupted target remain blockers. Clean recovery exits 2 and
+requires a fresh check before new work. Do not remove an unattributed lock.
 
 Update never installs dependencies. Ordinary transaction backups are for failure
 recovery; activation migration additionally retains durable original history.
@@ -1009,23 +1022,22 @@ approval records do not: another machine, checkout, worktree, or moved project
 needs its own fresh check and approval. A receipt stores digests, not project
 source bodies, and is never portable blanket authorization.
 
-### Reviewed activation-v1/v2 migration
+### Reviewed historical activation migration
 
-An exact supported v1/v2 source can be previewed with `liftoff update --check`.
+An exact supported v1/v2/v3 source can be previewed with `liftoff update --check`.
 Approved update verifies an immutable in-project history snapshot before
-replacing active records, then creates a linked strict v3 activation. Historical
+replacing active records, then creates linked state4/journal2 and v8 metadata. Historical
 state, evidence, plans, approvals, and source metadata retain their original
 bytes under the dedicated governance history directory. History is not managed
 core and is never automatically committed, pushed, or cleaned with receipts.
 
 Fresh local revalidation does not translate old success flags or approvals.
-It uses only the finite reviewed local operations and stops before provider
-access, dependency installation, publication, or other independently approved
-work. Validation commands execute project-controlled code, not a sandbox;
-unexpected protected-input edits are preserved and reported.
+It is a separate public verification and exact-byte publication operation,
+not automatically executed by update. Validation commands can execute
+project-controlled code; their private workspace is not a sandbox.
 
 A failed local transaction uses bounded recovery. A failure after commit keeps
-v3 blocked and resumable: repair the named cause, rerun check, then approve the
+the successor incomplete and resumable: repair the named cause, rerun check, then approve the
 remaining work. Do not reset state to v1, change identity fields manually, or
 recreate live resources to silence readiness diagnostics.
 
@@ -1103,9 +1115,9 @@ liftoff update --check --json
 ```
 
 Each JSON object has a top-level numeric `schemaVersion`. Update JSON uses
-schema version 3 and `scope: "project-update"`, with separate managed-core,
-provisioning, activation-migration, and revalidation outcomes plus preview and
-approval status. A committed migration does not imply governance readiness.
+schema version 4 and `kind: "liftoff-current-project-update"`, with separate
+publication commit, uncertain effects, scoped completion, preview and approval
+results. A committed migration does not imply governance readiness.
 Operational warnings, such as a dirty-worktree warning before JSON apply, are
 written to stderr so stdout remains one parseable JSON object.
 

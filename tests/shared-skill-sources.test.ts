@@ -133,6 +133,13 @@ describe('shared packaged Liftoff skill sources', () => {
       'no direct edits',
       'Never emulate commands or fabricate plans/receipts/approvals/evidence'
     ]) expect(text).toContain(phrase);
+    for (const phrase of [
+      'schemas.currentUpdate', 'report 4, manifestWrite 8, separateConsent and explicitRecovery',
+      'do not execute the historical phase sequence',
+      'schemas.modernLocalVerification', 'schemas.modernLocalCompletion', 'schemas.modernSuccessorRevalidation',
+      'never substitute repair/governance recovery', 'Committed-incomplete is not rollback or local completion',
+      'No admitted operation means STOP'
+    ]) expect(text).toContain(phrase);
     expectBoundedCapabilitySkill(renderSetupIntegration(agent), 'setup');
     expect(Object.keys(commandDefinitions.governance.flags)).toEqual(expect.arrayContaining(['scope', 'json', 'execute']));
     expect(commandDefinitions.governance.subcommands).toEqual(expect.arrayContaining(['status', 'plan', 'apply-next', 'verify', 'resume']));
@@ -167,7 +174,7 @@ describe('shared packaged Liftoff skill sources', () => {
     expect(repair).toContain('never direct edits followed by retrospective approval');
     expect(repair).toContain('external isolated staging OUTSIDE the project');
     expect(installedCapabilities().plugins.inventory.filter(({ category }) => category === 'agent')
-      .map(({ contentVersion }) => contentVersion)).toEqual([3, 3, 3]);
+      .map(({ contentVersion }) => contentVersion)).toEqual([4, 4, 4]);
     expect(installedCapabilities().workflows.map(({ id }) => id)).not.toContain('manual');
   });
 
@@ -176,6 +183,10 @@ describe('shared packaged Liftoff skill sources', () => {
     expect(() => expectBoundedCapabilitySkill(setup.replace('No/Ctrl-C/EOF blocks unapproved writes;', 'Approval bypassed;'), 'setup'))
       .toThrow();
     expect(() => expectBoundedCapabilitySkill(setup.replace('Require `schemaVersion:', `${'x'.repeat(700)}\nRequire \`schemaVersion:`), 'setup'))
+      .toThrow();
+    expect(() => expectBoundedCapabilitySkill(setup.replace('do not execute the historical phase sequence', 'execute the historical phase sequence'), 'setup'))
+      .toThrow();
+    expect(() => expectBoundedCapabilitySkill(setup.replace('explicitRecovery.', 'implicitRecovery.'), 'setup'))
       .toThrow();
     const assessment = renderAssessmentIntegration('codex');
     expect(() => expectBoundedCapabilitySkill(assessment.replace('Stop after explaining the report.', 'Execute its recommendations.'), 'assessment'))

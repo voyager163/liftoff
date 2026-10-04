@@ -366,18 +366,22 @@ system. A payload-free policy file alone is not independent readback evidence.
 
 ## Governance identity or manifest migration is blocked
 
-Current Liftoff reads manifest v2-v7 and writes v7. It resumes only explicit
-compatible tuples: policy version 6, activation contract 2, state/evidence-header/
-approval/compatibility metadata versions 2, and a recognized phase-graph hash.
-Phase graph, supersession, and credential-policy schemas stay at 1.
+Historical readers retain manifest v2-v7; generation still uses its historical
+v7 writer. Current public update reads supported v2-v8 sources and writes an
+exactly approved v8 successor or maintenance target. Its activation source lanes
+match complete release-owned tuples and graph hashes, never numeric ordering.
 Future versions, individually
 known but unsupported combinations, unknown graph hashes, or unversioned ad hoc
 state block without rewriting files. Use the exact upgrade, import-mapping, or
 reconciliation diagnostic printed by status or update; do not downgrade the
 manifest or copy evidence between identities. Historical v1 state and evidence
-remain diagnostic-only and byte-preserved. This release has no automatic or
-public historical-state reconciliation workflow; managed-core update does not
-make that history executable.
+remain diagnostic-only and byte-preserved. A reviewed control-record successor
+does not make historical proof executable and does not authorize deployment-state
+reconciliation. Finite local revalidation has its own approval and execution.
+An interrupted update is never recovered by ordinary apply: select
+`liftoff update <project> --recover --approve-plan <saved-fingerprint>`.
+Keep its journal and ownership-reviewed lock intact; do not replace damaged
+history with a guessed manifest or reuse a repair/local-verification seal.
 
 Do not run an older Liftoff release to reverse a completed baseline migration.
 Restore separately reviewed project changes through version control and reinstall
