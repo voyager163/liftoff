@@ -757,8 +757,8 @@ existing native/publication inspectors, without executing or recovering work.
 An interrupted local transaction remains visible with its actual commit bit and
 identifiers. Inspection failure leaves completion indeterminate rather than
 inventing a successful or absent receipt. Historical schema-2 output and
-execution remain separate; the capability catalog advertises only the specific
-modern read-only routes. Manifest-selection failures retain the historical
+execution remain separate; the capability catalog distinguishes the specific
+modern read-only routes from explicit modern local verification. Manifest-selection failures retain the historical
 verification failure envelope without falling through to historical execution.
 
 Historical provenance is not reused as an active filesystem layout. Public v8
@@ -1293,11 +1293,36 @@ selector, provider authority or other-platform qualification is implied.
 
 `prepareModernLocalExecution`, `approveModernLocalExecution`,
 `executeModernLocalExecution` and `inspectModernLocalExecution` provide a separate
-private execution path. Preparation reconstructs the installed/source preflight,
+application execution path. Preparation reconstructs the installed/source preflight,
 the complete selected check set and actual tool identities. Its compact preview
 binds raw and physical inputs, recipes, output roles, dependency preparation,
 issuance/expiry and, for governed projects, a genuine pre-execution plan3.
 Governance-none does not invent an activation plan or identity.
+
+The public adapter `cli/commands/governance-local.ts` exposes these engines only
+through `governance <plan|approve|apply-next> --scope local --local-operation verify`.
+`cli/args/governance-local.ts` shares its explicit flag boundary with the parser;
+`application/governance/modern-local-request.ts` decodes closed request/consent
+objects. The existing bounded, no-follow public input reader is reused, retaining
+historical activation decoding and errors. Input files belong outside the
+captured project. Each request kind selects one engine; no fallback searches
+historical, finalization, publication, or successor stores.
+
+Schema-4 command output keeps requested effects, operation success, captured
+verification, and unpublished readiness distinct. Initialized OpenSpec requires
+the dedicated attestation and reports generated obligations only; successful
+execution does not make `verificationComplete` true for that mode. Nonexecuting
+`apply-next` observes saved progress without source-current proof. API-result
+specimens in `tests/modern-local-commands.test.ts` exercise routing only.
+Its separate seven-case actual-host group requires
+`LIFTOFF_PUBLIC_LOCAL_TESTS=1`, actual macOS ARM64 Node 24.21.0, admitted HCL
+computation, and real installed tools. It executes Manual, Spec Kit, active,
+initialized and archived OpenSpec, plus missing/stale consent and actual test
+failure. Framework markers are controlled contract fixtures, not claims of
+official historical initialization. This group has no dependency-network or
+provider operations, no public finalization, and no publication qualification.
+Run the whole file when explicitly selecting that group; its case inventory is
+checked. Existing native dependency preparation has its separate qualification.
 
 Consent separately acknowledges project-code execution and its host/network
 capabilities, dependency preparation and dependency network access. A private

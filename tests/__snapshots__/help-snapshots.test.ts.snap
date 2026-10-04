@@ -168,11 +168,22 @@ Option  Description
 
 exports[`complete help screens > snapshots compact governance command help 1`] = `
 "LIFTOFF / GOVERNANCE
-Historical projects retain schema-2 planning and execution. V8 projects support
-only schema-3 status, resume and verify inspection; recorded phases are not
-current proof. An exact --revalidation-publication selects existing successor
-proof, never approval or execution. Verify exits 0 for complete or inapplicable
+Historical projects retain schema-2 planning and execution. V8 projects retain
+schema-3 status, resume and verify inspection; recorded phases are not current
+proof. An exact --revalidation-publication selects existing successor proof,
+never approval or execution. Verify exits 0 for complete or inapplicable
 selected scope, 2 for consistent incomplete work, and 1 for inspection failure.
+For separate schema-4 v8 verification, select --scope local --local-operation
+verify: plan --inputs <request.json>, approve --plan <fingerprint> --inputs
+<consent.json>, then apply-next --plan <fingerprint> --execute. Planning probes
+installed tools and saves an external preview; approval separately saves
+consent. Without --execute, apply-next only inspects saved progress. Keep public
+request and consent files outside the project. Initialized OpenSpec requires
+explicit generated-baseline scope attestation; it is not domain verification. No
+publication, successor revalidation, or provider operations are authorized; the
+private workspace is not a sandbox. Local operations exit 0 for a completed
+requested operation or nonexecuting inspection, and 1 for refusal, failure, or
+uncertainty.
 
 Usage
 ─────
@@ -203,8 +214,8 @@ Project options
 Option            Description
 ────────────────  ──────────────────────────────────────────────────────────────
 --project <path>  Liftoff project path
---inputs <file>   Public activation configuration JSON; never credentials or
-                  state
+--inputs <file>   Public activation configuration or explicit local
+                  request/consent JSON; never credentials or state
 
 Command options
 ───────────────
@@ -213,6 +224,8 @@ Option                                   Description
 --scope <scope>                          Execution/verification boundary: local,
                                          activation, or lifecycle (default:
                                          activation)
+--local-operation <operation>            v8 only: verify via separate plan,
+                                         approve, and apply-next --scope local
 --revalidation-publication               Inspect one exact v8 successor
 <fingerprint>                            publication; not approval or execution
 --recover-phase <phase>                  Plan explicit recovery of one failed or
@@ -225,8 +238,8 @@ Option                Description
 --plan <fingerprint>  Exact project-bound fingerprint from governance plan
 --protected-stdin     Credential enrollment is currently unavailable; this flag
                       reads no secret
---execute             Execute the reviewed governance apply-next plan; required
-                      for any mutation
+--execute             Execute the reviewed apply-next/recover operation;
+                      planning and approval save external metadata separately
 --live                Assess only: request bounded read-only GitHub/Azure
                       metadata with existing permissions
 
@@ -636,7 +649,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain governance command help 1`] = `
-"LIFTOFF / GOVERNANCE - Historical projects retain schema-2 planning and execution. V8 projects support only schema-3 status, resume and verify inspection; recorded phases are not current proof. An exact --revalidation-publication selects existing successor proof, never approval or execution. Verify exits 0 for complete or inapplicable selected scope, 2 for consistent incomplete work, and 1 for inspection failure.
+"LIFTOFF / GOVERNANCE - Historical projects retain schema-2 planning and execution. V8 projects retain schema-3 status, resume and verify inspection; recorded phases are not current proof. An exact --revalidation-publication selects existing successor proof, never approval or execution. Verify exits 0 for complete or inapplicable selected scope, 2 for consistent incomplete work, and 1 for inspection failure. For separate schema-4 v8 verification, select --scope local --local-operation verify: plan --inputs <request.json>, approve --plan <fingerprint> --inputs <consent.json>, then apply-next --plan <fingerprint> --execute. Planning probes installed tools and saves an external preview; approval separately saves consent. Without --execute, apply-next only inspects saved progress. Keep public request and consent files outside the project. Initialized OpenSpec requires explicit generated-baseline scope attestation; it is not domain verification. No publication, successor revalidation, or provider operations are authorized; the private workspace is not a sandbox. Local operations exit 0 for a completed requested operation or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.
 
 Usage
 Usage: liftoff governance <status|plan|approve|apply-next|credential-enroll|recover|resume|verify|assess> [project-path]
@@ -657,17 +670,18 @@ Subcommands
 
 Project options
 Option: --project <path> | Description: Liftoff project path
-Option: --inputs <file> | Description: Public activation configuration JSON; never credentials or state
+Option: --inputs <file> | Description: Public activation configuration or explicit local request/consent JSON; never credentials or state
 
 Command options
 Option: --scope <scope> | Description: Execution/verification boundary: local, activation, or lifecycle (default: activation)
+Option: --local-operation <operation> | Description: v8 only: verify via separate plan, approve, and apply-next --scope local
 Option: --revalidation-publication <fingerprint> | Description: Inspect one exact v8 successor publication; not approval or execution
 Option: --recover-phase <phase> | Description: Plan explicit recovery of one failed or interrupted phase without executing it
 
 Consent options
 Option: --plan <fingerprint> | Description: Exact project-bound fingerprint from governance plan
 Option: --protected-stdin | Description: Credential enrollment is currently unavailable; this flag reads no secret
-Option: --execute | Description: Execute the reviewed governance apply-next plan; required for any mutation
+Option: --execute | Description: Execute the reviewed apply-next/recover operation; planning and approval save external metadata separately
 Option: --live | Description: Assess only: request bounded read-only GitHub/Azure metadata with existing permissions
 
 Output options
@@ -985,11 +999,20 @@ exports[`complete help screens > snapshots rich governance assessment help 1`] =
 
 exports[`complete help screens > snapshots rich governance command help 1`] = `
 "┌─ LIFTOFF / GOVERNANCE ───────────────────────────────────────────────────────────────────────┐
-│ Historical projects retain schema-2 planning and execution. V8 projects support only         │
-│ schema-3 status, resume and verify inspection; recorded phases are not current proof. An     │
-│ exact --revalidation-publication selects existing successor proof, never approval or         │
-│ execution. Verify exits 0 for complete or inapplicable selected scope, 2 for consistent      │
-│ incomplete work, and 1 for inspection failure.                                               │
+│ Historical projects retain schema-2 planning and execution. V8 projects retain schema-3      │
+│ status, resume and verify inspection; recorded phases are not current proof. An exact        │
+│ --revalidation-publication selects existing successor proof, never approval or execution.    │
+│ Verify exits 0 for complete or inapplicable selected scope, 2 for consistent incomplete      │
+│ work, and 1 for inspection failure. For separate schema-4 v8 verification, select --scope    │
+│ local --local-operation verify: plan --inputs <request.json>, approve --plan <fingerprint>   │
+│ --inputs <consent.json>, then apply-next --plan <fingerprint> --execute. Planning probes     │
+│ installed tools and saves an external preview; approval separately saves consent. Without    │
+│ --execute, apply-next only inspects saved progress. Keep public request and consent files    │
+│ outside the project. Initialized OpenSpec requires explicit generated-baseline scope         │
+│ attestation; it is not domain verification. No publication, successor revalidation, or       │
+│ provider operations are authorized; the private workspace is not a sandbox. Local operations │
+│ exit 0 for a completed requested operation or nonexecuting inspection, and 1 for refusal,    │
+│ failure, or uncertainty.                                                                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
 │ liftoff governance                                                                           │
@@ -1014,15 +1037,18 @@ exports[`complete help screens > snapshots rich governance command help 1`] = `
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
 │ Option            Description                                                                │
-│ ────────────────  ────────────────────────────────────────────────────────────────           │
+│ ────────────────  ────────────────────────────────────────────────────────────────────────── │
 │ --project <path>  Liftoff project path                                                       │
-│ --inputs <file>   Public activation configuration JSON; never credentials or state           │
+│ --inputs <file>   Public activation configuration or explicit local request/consent JSON;    │
+│                   never credentials or state                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
 │ Option                                    Description                                        │
 │ ────────────────────────────────────────  ────────────────────────────────────────────────── │
 │ --scope <scope>                           Execution/verification boundary: local,            │
 │                                           activation, or lifecycle (default: activation)     │
+│ --local-operation <operation>             v8 only: verify via separate plan, approve, and    │
+│                                           apply-next --scope local                           │
 │ --revalidation-publication <fingerprint>  Inspect one exact v8 successor publication; not    │
 │                                           approval or execution                              │
 │ --recover-phase <phase>                   Plan explicit recovery of one failed or            │
@@ -1034,8 +1060,8 @@ exports[`complete help screens > snapshots rich governance command help 1`] = `
 │ --plan <fingerprint>  Exact project-bound fingerprint from governance plan                   │
 │ --protected-stdin     Credential enrollment is currently unavailable; this flag reads no     │
 │                       secret                                                                 │
-│ --execute             Execute the reviewed governance apply-next plan; required for any      │
-│                       mutation                                                               │
+│ --execute             Execute the reviewed apply-next/recover operation; planning and        │
+│                       approval save external metadata separately                             │
 │ --live                Assess only: request bounded read-only GitHub/Azure metadata with      │
 │                       existing permissions                                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘

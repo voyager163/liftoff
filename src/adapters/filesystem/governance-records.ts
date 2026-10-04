@@ -74,16 +74,18 @@ export async function pathExists(filePath: string): Promise<boolean> {
 }
 
 const inputLimitBytes = 64 * 1024;
-const inputRefusal = 'Activation inputs must be a singly linked regular public JSON file no larger than 64 KiB.';
-const inputIdentityUnavailable =
-  'Activation inputs file identity is unavailable on this file system; the opened file cannot be matched to the inspected path.';
+type PublicInputLabel = 'Activation' | 'Local execution';
+const inputRefusal = (label: PublicInputLabel) =>
+  `${label} inputs must be a singly linked regular public JSON file no larger than 64 KiB.`;
+const inputIdentityUnavailable = (label: PublicInputLabel) =>
+  `${label} inputs file identity is unavailable on this file system; the opened file cannot be matched to the inspected path.`;
 
 function acceptableInputFile(details: BigIntStats): boolean {
   return details.isFile() && !details.isSymbolicLink() && details.nlink === 1n && details.size <= BigInt(inputLimitBytes);
 }
 
 // Reads at most limit + 1 bytes, so growth after the size check cannot enlarge the read.
-async function readAtMost(handle: FileHandle, limit: number): Promise<Buffer> {
+async function readAtMost(handle: FileHandle, limit: number, label: PublicInputLabel): Promise<Buffer> {
   const bytes = Buffer.alloc(limit + 1);
   let length = 0;
   while (length < bytes.length) {
@@ -91,7 +93,7 @@ async function readAtMost(handle: FileHandle, limit: number): Promise<Buffer> {
     if (bytesRead === 0) break;
     length += bytesRead;
   }
-  if (length > limit) throw new Error(inputRefusal);
+  if (length > limit) throw new Error(inputRefusal(label));
   return bytes.subarray(0, length);
 }
 
@@ -101,42 +103,50 @@ function trustedCodeSuffix(error: unknown): string {
   return code !== undefined && /^E[A-Z0-9]{2,15}$/u.test(code) ? ` (${code})` : '';
 }
 
-async function readOpenedInputs(handle: FileHandle, observed: BigIntStats | undefined): Promise<ActivationConfiguration> {
+async function readOpenedInputs<T>(
+  handle: FileHandle, observed: BigIntStats | undefined, label: PublicInputLabel, validate: (value: unknown) => T
+): Promise<T> {
   const opened = await handle.stat({ bigint: true });
-  if (!acceptableInputFile(opened)) throw new Error(inputRefusal);
+  if (!acceptableInputFile(opened)) throw new Error(inputRefusal(label));
   if (observed) {
-    if (opened.ino === 0n) throw new Error(inputIdentityUnavailable);
-    if (opened.dev !== observed.dev || opened.ino !== observed.ino) throw new Error(inputRefusal);
+    if (opened.ino === 0n) throw new Error(inputIdentityUnavailable(label));
+    if (opened.dev !== observed.dev || opened.ino !== observed.ino) throw new Error(inputRefusal(label));
   }
-  const text = (await readAtMost(handle, inputLimitBytes)).toString('utf8');
+  const text = (await readAtMost(handle, inputLimitBytes, label)).toString('utf8');
   let value: unknown;
   try { value = JSON.parse(text); }
-  catch { throw new Error('Activation inputs are not valid JSON; credential or state content must not be supplied here.'); }
-  return validatePublicActivationInputs(value);
+  catch { throw new Error(`${label} inputs are not valid JSON; credential or state content must not be supplied here.`); }
+  return validate(value);
 }
 
-export async function readPublicActivationInputs(filePath: string): Promise<ActivationConfiguration> {
+export async function readPublicGovernanceInputs<T>(
+  filePath: string, label: PublicInputLabel, validate: (value: unknown) => T
+): Promise<T> {
   const noFollow = constants.O_NOFOLLOW;
   // Without an atomic no-follow open (Windows), the opened file must match the identity an
   // earlier lstat observed for the same path. Matching identities do not rule out every racing swap.
   const observed = noFollow === undefined ? await lstat(filePath, { bigint: true }) : undefined;
-  if (observed && !acceptableInputFile(observed)) throw new Error(inputRefusal);
+  if (observed && !acceptableInputFile(observed)) throw new Error(inputRefusal(label));
   const handle = await open(filePath, constants.O_RDONLY | (noFollow ?? 0) | (constants.O_NONBLOCK ?? 0));
-  let configuration: ActivationConfiguration;
+  let configuration: T;
   try {
-    configuration = await readOpenedInputs(handle, observed);
+    configuration = await readOpenedInputs(handle, observed, label, validate);
   } catch (error) {
     try {
       await handle.close();
     } catch (cleanupError) {
-      throw new Error(`${errorMessage(error)} Closing the activation inputs file also failed${trustedCodeSuffix(cleanupError)}.`, { cause: error });
+      throw new Error(`${errorMessage(error)} Closing the ${label.toLowerCase()} inputs file also failed${trustedCodeSuffix(cleanupError)}.`, { cause: error });
     }
     throw error;
   }
   try {
     await handle.close();
   } catch (cleanupError) {
-    throw new Error(`Closing the activation inputs file failed${trustedCodeSuffix(cleanupError)}; the inputs were not used.`);
+    throw new Error(`Closing the ${label.toLowerCase()} inputs file failed${trustedCodeSuffix(cleanupError)}; the inputs were not used.`);
   }
   return configuration;
+}
+
+export async function readPublicActivationInputs(filePath: string): Promise<ActivationConfiguration> {
+  return readPublicGovernanceInputs(filePath, 'Activation', validatePublicActivationInputs);
 }

@@ -126,7 +126,12 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
     throw error;
   }
   const revalidationPublication = readStringFlag(parsed.flags, 'revalidation-publication');
+  const localOperation = readStringFlag(parsed.flags, 'local-operation');
   if (manifest.artifactVersion === 8) {
+    if (localOperation !== undefined) {
+      const { governanceLocalCommand } = await import('./governance-local.js');
+      return governanceLocalCommand(parsed, { ...context, projectRoot });
+    }
     const { inspectModernGovernance, modernGovernanceReportSchemaVersion } =
       await import('../../application/governance/modern-inspection.js');
     try {
@@ -163,6 +168,7 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
       return 1;
     }
   }
+  if (localOperation !== undefined) throw new Error('--local-operation is supported only by modern v8 governance.');
   if (revalidationPublication !== undefined) {
     throw new Error('--revalidation-publication is supported only by modern v8 governance inspection.');
   }

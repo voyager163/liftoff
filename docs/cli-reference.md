@@ -102,8 +102,9 @@ explicit blockers are not usable production execution. Plugin host declarations
 do not prove local tool readiness or native-package qualification. The current
 public catalog lists OpenSpec/Spec Kit, single-maintainer/none, and manifest
 readers 2-7. `schemas.modernReadOnly` separately lists the v8 source/helper and
-governance inspection routes; it does not enable Manual/team generation, modern
-execution, or current writers. An older
+governance inspection routes. `schemas.modernLocalVerification` separately lists
+the explicit local request, approval and execution boundary below. This
+does not enable Manual/team generation or current writers. An older
 installed release may not have this command; use its documented help rather
 than assuming a missing interface or inventing receipts.
 
@@ -221,9 +222,104 @@ completion flags alone cannot establish current completion. `verify` returns 0
 for complete selected scope (or disabled governance's inapplicable nonlocal
 scope), 2 for consistent incomplete work, and 1 for inspection failure.
 `status` and `resume` may return 0 with consistent incomplete work. Local proof
-does not establish activation or lifecycle completion. Modern planning,
-approval, execution, recovery and governance assessment remain separate
-unavailable public routes; historical plans cannot execute v8 work.
+does not establish activation or lifecycle completion. Modern local verification
+has the separate explicit interface below. Public finalization, publication,
+recovery and modern governance assessment remain unavailable; historical plans
+cannot execute v8 work.
+
+### Modern local verification
+
+For an existing admitted v8 project, select `--scope local --local-operation verify`
+on every operation. Without that selector, the historical planning/approval path
+cannot interpret modern authority. Store request and consent files **outside the
+project**, since adding or changing captured source after planning invalidates
+the fingerprint. Relative input paths resolve from the invocation directory.
+
+```bash
+liftoff governance plan [project] --scope local --local-operation verify --inputs ../local-request.json --json
+liftoff governance approve [project] --scope local --local-operation verify --plan <fingerprint> --inputs ../local-consent.json --json
+liftoff governance apply-next [project] --scope local --local-operation verify --plan <fingerprint> --execute --json
+```
+
+An explicit dependency-free request is:
+
+```json
+{ "kind": "verify-local", "preparation": [] }
+```
+
+`verify-local` selects Manual or Spec Kit. `verify-openspec-local` selects complete
+active OpenSpec source; `verify-openspec-initialized` selects the narrowly admitted
+generated initialization obligations; `verify-openspec-archived` selects current
+validation of existing archived source. There is no automatic mode or store
+fallback. Generic historical OpenSpec schema-2 previews remain nonexecutable.
+Each mode retains its source, workflow, tool and actual-host admission checks;
+registration is not support for arbitrary projects or hosts.
+
+For projects requiring dependencies, `preparation` must declare the exact
+[registered application preparation descriptors](application-repair.md), not an
+automatic install instruction. Planning observes installed tool identity and
+saves an external, expiring, project-bound preview; it does not execute project
+recipes, install dependencies, grant consent, or modify project files.
+Review the full returned preview, including commands, inputs, tools, preparation,
+network declarations and output roles, before supplying its exact fingerprint.
+
+For example, a selected `backend` binding with admitted npm dependencies can
+declare `preparation: [{"provider":"npm-ci","version":1,"cwdPathParts":["backend"],
+"packageSource":"npmjs","network":true,"lifecycle":"disabled"}]`. The path must
+match the actual selected component, and this declaration still needs separate
+preparation and network consent. It is not permission to install in the original
+project.
+
+Ordinary consent is a closed public JSON object:
+
+```json
+{
+  "kind": "approve-local-execution",
+  "scopes": {
+    "projectCode": true,
+    "hostCapabilitiesAcknowledged": true,
+    "dependencyPreparation": false,
+    "dependencyNetwork": false,
+    "workflowFinalization": false,
+    "publishLocalRecords": false
+  }
+}
+```
+
+Set `dependencyPreparation` and `dependencyNetwork` true only for the separately
+reviewed effects in that exact preview; missing consent refuses execution.
+Acknowledging project-code host capabilities matters: copied workspaces and
+offline flags are **not a sandbox**. Project code retains host capabilities.
+Finalization and publication fields must remain false.
+
+Initialized OpenSpec instead requires `kind: "approve-openspec-initialized"`,
+`dependencyPreparation: true`, `dependencyNetwork: false`, and the additional
+`bootstrapScopeAttestation` object with both `generatedBaselineReviewed: true`
+and `domainBehaviorDeferred: true`. Ordinary consent cannot authorize this mode.
+Its successful `initialization-obligations-observed` result means only the
+generated obligations were observed; `verificationComplete` remains false.
+
+Local command JSON uses **schema 4**. `operationComplete` refers only to the
+selected operation, and `verificationComplete` refers to its captured baseline,
+not published readiness. `localComplete`, `activationComplete`, and
+`lifecycleComplete` remain false. Requested-effect flags do not assert that a
+process or write actually occurred; inspect the exact result and saved progress.
+Actual check failures, blocked preparation, and uncertain settlement exit 1.
+A successfully completed requested operation exits 0.
+
+Omitting `--execute`, or using `--execute=false`, only inspects saved execution
+progress and exits 0 unless that inspection fails or is blocked. It never
+promotes even a successful stored result to fresh proof. `apply-next` accepts
+no new `--inputs`; it reconstructs the exact saved request and consent before
+claiming work. Execution refuses unknown, stale or cross-project authority.
+
+This route neither finalizes workflows nor publishes local records, revalidates
+a successor transaction, performs recovery, or operates Azure/GitHub providers.
+Fresh OpenSpec synchronization/archive is not exposed here. Automatic directory
+rollback remains unavailable. Human output includes the complete JSON record
+for review; project command stdout/stderr is represented by digests, not echoed.
+
+### Historical completion and public inputs
 
 Local completion requires only `seed-valid`, `seed-verified`, and
 `seed-archived` (Spec Kit uses finalization, not an invented archive).

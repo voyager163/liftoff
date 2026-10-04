@@ -100,6 +100,10 @@ describe('update help review sequence', () => {
       expect(out).toContain('--revalidation-publication');
       expect(out).toContain('never approval or execution');
       expect(out).toContain('2 for consistent incomplete work');
+      expect(out).toContain('--local-operation verify');
+      expect(out).toContain('schema-4 v8 verification');
+      expect(out).toContain('explicit generated-baseline scope attestation');
+      expect(out).toContain('private workspace is not a sandbox');
     });
   });
 

@@ -220,12 +220,13 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     flags: {
       project: valueFlag('Liftoff project path', 'Project', 'path'),
       scope: valueFlag('Execution/verification boundary: local, activation, or lifecycle', 'Command', 'scope', 'activation'),
-      inputs: valueFlag('Public activation configuration JSON; never credentials or state', 'Project', 'file'),
+      inputs: valueFlag('Public activation configuration or explicit local request/consent JSON; never credentials or state', 'Project', 'file'),
       plan: valueFlag('Exact project-bound fingerprint from governance plan', 'Consent', 'fingerprint'),
+      'local-operation': valueFlag('v8 only: verify via separate plan, approve, and apply-next --scope local', 'Command', 'operation'),
       'revalidation-publication': valueFlag('Inspect one exact v8 successor publication; not approval or execution', 'Command', 'fingerprint'),
       'recover-phase': valueFlag('Plan explicit recovery of one failed or interrupted phase without executing it', 'Command', 'phase'),
       'protected-stdin': booleanFlag('Credential enrollment is currently unavailable; this flag reads no secret', 'Consent'),
-      execute: booleanFlag('Execute the reviewed governance apply-next plan; required for any mutation', 'Consent'),
+      execute: booleanFlag('Execute the reviewed apply-next/recover operation; planning and approval save external metadata separately', 'Consent'),
       live: booleanFlag('Assess only: request bounded read-only GitHub/Azure metadata with existing permissions', 'Consent'),
       json: booleanFlag('Emit machine-readable JSON', 'Output'),
       ...helpFlag

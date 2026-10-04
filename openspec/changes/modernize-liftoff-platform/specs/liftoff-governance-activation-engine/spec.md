@@ -94,6 +94,12 @@ The engine SHALL execute applicable actual project validation, backend tests, fr
 - **THEN** the already captured immediate component parent may act as a search namespace for selected copied source without adding input roots, reading siblings or copying excluded controls
 - **AND** the interpretation is revision-bound in the approved recipe, parent membership remains freshness-bound, recursive escaping test inputs remain blocked and an import requiring uncopied source fails without completion proof
 
+#### Scenario: Explicit public modern local verification
+- **WHEN** a v8 caller selects `governance plan`, `approve`, and `apply-next` with `--scope local --local-operation verify`, a closed mode-specific request, separate exact consent and explicit execution
+- **THEN** each operation routes to its one admitted modern engine without reading historical authority or discovering a publication or successor operation
+- **AND** project-code host capabilities, dependency preparation/network, and initialized OpenSpec scope attestation remain independent consent boundaries
+- **AND** absent `--execute` only observes saved progress, actual failed or uncertain execution remains unsuccessful, and captured verification or initialization obligations do not establish published local, activation or lifecycle completion
+
 #### Scenario: Seed was archived before activation began
 - **WHEN** OpenSpec seed is archived and activation has not begun
 - **THEN** current local checks and synchronized capability validation run without recreating the archive

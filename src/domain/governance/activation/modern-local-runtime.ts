@@ -377,13 +377,14 @@ export function assertExecutableLocalExecutionPreview(preview:LocalExecutionPrev
   if(value.schemaVersion===3||value.schemaVersion===4||value.schemaVersion===5){validateLocalExecutionPreview(value,new Date(value.createdAt));return;}
   if(hasOpenSpecExecutionIdentity(preview))localInputFailure('openspec-workflow-inputs-unqualified: OpenSpec previews cannot authorize consent or execution.');
 }
-export function validateLocalExecutionScopes(input:LocalExecutionScopes):LocalExecutionScopes{
-  const value=copyModernLocalData(input);
-  exactRecord(value,['projectCode','hostCapabilitiesAcknowledged','dependencyPreparation','dependencyNetwork','workflowFinalization','publishLocalRecords'],'Execution consent scopes');
+export function validateLocalExecutionScopes(input:unknown):LocalExecutionScopes{
+  const value=exactRecord(copyModernLocalData(input),['projectCode','hostCapabilitiesAcknowledged','dependencyPreparation','dependencyNetwork','workflowFinalization','publishLocalRecords'],'Execution consent scopes');
   if(value.projectCode!==true||value.hostCapabilitiesAcknowledged!==true||typeof value.dependencyPreparation!=='boolean'||
     typeof value.dependencyNetwork!=='boolean'||value.workflowFinalization!==false||value.publishLocalRecords!==false||
     value.dependencyNetwork&&!value.dependencyPreparation)localInputFailure('Local execution needs explicit limited consent; no finalization or publication is authorized.');
-  return value;
+  return {projectCode:value.projectCode,hostCapabilitiesAcknowledged:value.hostCapabilitiesAcknowledged,
+    dependencyPreparation:value.dependencyPreparation,dependencyNetwork:value.dependencyNetwork,
+    workflowFinalization:value.workflowFinalization,publishLocalRecords:value.publishLocalRecords};
 }
 export function validateLocalExecutionConsentRecord(root:string,preview:LocalExecutionPreview,input:unknown,observedAt:Date):LocalExecutionConsent{
   if(preview.schemaVersion===2)localInputFailure('OpenSpec schema2 has no legitimate execution consent.');

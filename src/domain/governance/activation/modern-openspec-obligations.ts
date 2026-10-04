@@ -74,11 +74,10 @@ export function validateInitializationOutputs(input:readonly OpenSpecInitializat
       canonicalSha256(output.entries)!==output.outputDigest||!workspace)localInputFailure('Missing initialization data-root proof.');
   }
 }
-export function validateBootstrapScopeAttestation(input:BootstrapScopeAttestation):BootstrapScopeAttestation{
-  const value=copyModernLocalData(input);
-  exactRecord(value,['generatedBaselineReviewed','domainBehaviorDeferred'],'Bootstrap scope attestation');
+export function validateBootstrapScopeAttestation(input:unknown):BootstrapScopeAttestation{
+  const value=exactRecord(copyModernLocalData(input),['generatedBaselineReviewed','domainBehaviorDeferred'],'Bootstrap scope attestation');
   if(value.generatedBaselineReviewed!==true||value.domainBehaviorDeferred!==true)localInputFailure('Explicit reviewed bootstrap-scope attestation is required.');
-  return value;
+  return {generatedBaselineReviewed:value.generatedBaselineReviewed,domainBehaviorDeferred:value.domainBehaviorDeferred};
 }
 export function validateOpenSpecInitialization(input:OpenSpecInitialization):OpenSpecInitialization{
   const value=copyModernLocalData(input);
