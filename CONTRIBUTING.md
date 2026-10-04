@@ -832,6 +832,18 @@ core update never applies them. The release rollback boundary is a source revert
 before publication. Project owners recover separately applied template changes
 through version control; Liftoff must not silently downgrade their dependencies.
 
+Current public update uses schema-4 reports and reviewed v8 writers. Keep the
+historical schema-3 application contract and frozen manifest captures distinct;
+do not regenerate historical evidence to hide a public routing change. Exercise
+configuration presence, bytes and modes across preview/approval, all four
+successor/maintenance lanes, explicit fingerprint-selected recovery, and
+committed-but-incomplete outcomes. Public recovery must work before manifest or
+configuration parsing, without borrowing repair/local-verification authority.
+`npm run smoke:package` also exercises the installed v7-to-v8 preview, missing
+approval refusal, exact approved publication, original manifest preservation
+and read-only current maintenance outside the checkout. This does not qualify
+framework execution or native runtime-inclusive distribution.
+
 The first release containing `liftoff upgrade` must retain the one-time bootstrap
 command for users on older versions:
 

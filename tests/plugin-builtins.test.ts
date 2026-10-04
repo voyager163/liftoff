@@ -268,7 +268,7 @@ describe('built-in plugin descriptors', () => {
     expect(new Set(declarations.map(({ declaration }) => declaration.logicalName)).size).toBe(154);
     for (const descriptor of builtinDescriptors) {
       expect(descriptor.apiVersion).toBe(1);
-      expect(descriptor.contentVersion).toBe(descriptor.category === 'agent' ? 3 : 1);
+      expect(descriptor.contentVersion).toBe(descriptor.category === 'agent' ? 4 : 1);
       expect(descriptor.hostPlatforms).toEqual([...supportedHostPlatforms]);
       expect([descriptor.sharedAssets, descriptor.checks, descriptor.recipes]).toEqual([[], [], []]);
     }

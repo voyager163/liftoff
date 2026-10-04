@@ -476,9 +476,12 @@ saves a project-bound receipt in user-local liftoff/update-previews storage
 outside the repository; the receipt is not approval. Apply needs the same
 checkout and receipt store. Noninteractive apply requires --approve-plan; force
 and JSON are not consent. Production files, history, and provisioning collisions
-remain protected; force cannot bypass compatibility. Exit 0: clean or approved
-scope completed; 2: drift or committed migration with incomplete revalidation;
-1: rejected or failed operation.
+remain protected; force cannot bypass compatibility. Current updates target
+manifest v8 and bind captured configuration without changing recorded workload,
+workflow, agents, profile or layout. Pending updates never recover implicitly:
+use \`liftoff update <project> --recover --approve-plan <saved-fingerprint>\`.
+Exit 0: clean or approved scope completed; 2: drift or committed migration with
+incomplete revalidation; 1: rejected or failed operation.
 
 Usage
 ─────
@@ -512,13 +515,16 @@ Option                        Description
                               still requires approval
 --approve-plan <fingerprint>  Approve the exact effective plan from check using
                               its full lowercase 64-hex SHA-256 fingerprint
+--recover                     Recover only the interrupted update selected by
+                              --approve-plan; use the exact project root or an
+                              explicit project path
 
 Output options
 ──────────────
 Option  Description
 ──────  ────────────────────────────────────────────────────────────────────────
---json  Emit one schema-3 result on stdout; interactive approval uses stderr and
-        still defaults to no
+--json  Emit one schema-4 v8 update result on stdout; interactive approval uses
+        stderr and still defaults to no
 
 General options
 ───────────────
@@ -814,7 +820,7 @@ Repair approval and native help
 `;
 
 exports[`complete help screens > snapshots plain update command help 1`] = `
-"LIFTOFF / UPDATE - Start with \`liftoff update --check\`, then run \`liftoff update\` to approve the matching effective plan (default: no). Check leaves project bytes unchanged and saves a project-bound receipt in user-local liftoff/update-previews storage outside the repository; the receipt is not approval. Apply needs the same checkout and receipt store. Noninteractive apply requires --approve-plan; force and JSON are not consent. Production files, history, and provisioning collisions remain protected; force cannot bypass compatibility. Exit 0: clean or approved scope completed; 2: drift or committed migration with incomplete revalidation; 1: rejected or failed operation.
+"LIFTOFF / UPDATE - Start with \`liftoff update --check\`, then run \`liftoff update\` to approve the matching effective plan (default: no). Check leaves project bytes unchanged and saves a project-bound receipt in user-local liftoff/update-previews storage outside the repository; the receipt is not approval. Apply needs the same checkout and receipt store. Noninteractive apply requires --approve-plan; force and JSON are not consent. Production files, history, and provisioning collisions remain protected; force cannot bypass compatibility. Current updates target manifest v8 and bind captured configuration without changing recorded workload, workflow, agents, profile or layout. Pending updates never recover implicitly: use \`liftoff update <project> --recover --approve-plan <saved-fingerprint>\`. Exit 0: clean or approved scope completed; 2: drift or committed migration with incomplete revalidation; 1: rejected or failed operation.
 
 Usage
 Usage: liftoff update [project-path]
@@ -831,9 +837,10 @@ Option: --check | Description: Preview normal and eligible forced plans without 
 Consent options
 Option: --force | Description: Select the separately previewed forced plan for exact owned-core conflicts and retired aliases; still requires approval
 Option: --approve-plan <fingerprint> | Description: Approve the exact effective plan from check using its full lowercase 64-hex SHA-256 fingerprint
+Option: --recover | Description: Recover only the interrupted update selected by --approve-plan; use the exact project root or an explicit project path
 
 Output options
-Option: --json | Description: Emit one schema-3 result on stdout; interactive approval uses stderr and still defaults to no
+Option: --json | Description: Emit one schema-4 v8 update result on stdout; interactive approval uses stderr and still defaults to no
 
 General options
 Option: --help | Description: Show command-specific help
@@ -1271,9 +1278,12 @@ exports[`complete help screens > snapshots rich update command help 1`] = `
 │ receipt in user-local liftoff/update-previews storage outside the repository; the receipt is │
 │ not approval. Apply needs the same checkout and receipt store. Noninteractive apply requires │
 │ --approve-plan; force and JSON are not consent. Production files, history, and provisioning  │
-│ collisions remain protected; force cannot bypass compatibility. Exit 0: clean or approved    │
-│ scope completed; 2: drift or committed migration with incomplete revalidation; 1: rejected   │
-│ or failed operation.                                                                         │
+│ collisions remain protected; force cannot bypass compatibility. Current updates target       │
+│ manifest v8 and bind captured configuration without changing recorded workload, workflow,    │
+│ agents, profile or layout. Pending updates never recover implicitly: use \`liftoff update     │
+│ <project> --recover --approve-plan <saved-fingerprint>\`. Exit 0: clean or approved scope     │
+│ completed; 2: drift or committed migration with incomplete revalidation; 1: rejected or      │
+│ failed operation.                                                                            │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
 │ liftoff update [project-path]                                                                │
@@ -1302,12 +1312,15 @@ exports[`complete help screens > snapshots rich update command help 1`] = `
 │                               approval                                                       │
 │ --approve-plan <fingerprint>  Approve the exact effective plan from check using its full     │
 │                               lowercase 64-hex SHA-256 fingerprint                           │
+│ --recover                     Recover only the interrupted update selected by                │
+│                               --approve-plan; use the exact project root or an explicit      │
+│                               project path                                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │
 │ ──────  ──────────────────────────────────────────────────────────────────────────────────── │
-│ --json  Emit one schema-3 result on stdout; interactive approval uses stderr and still       │
-│         defaults to no                                                                       │
+│ --json  Emit one schema-4 v8 update result on stdout; interactive approval uses stderr and   │
+│         still defaults to no                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ General options ────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │

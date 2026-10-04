@@ -51,7 +51,10 @@ const frozen = (file: string) => JSON.parse(readFileSync(path.join(directory, ..
 const review = JSON.parse(readFileSync(path.join(process.cwd(), ...contractChangesParts), 'utf8'));
 const hostVerified = (comparisonPlatforms as readonly string[]).includes(process.platform);
 
-type Change = { surface: string; key: string; task: string; reason: string; baselineSha256: string; currentSha256: string };
+type Change = {
+  surface: string; key: string; task: string; reason: string; baselineSha256: string; currentSha256: string;
+  addedVolatilePointers?: string[];
+};
 
 // Current behavior must equal the frozen capture, or carry an exact reviewed
 // record naming both digests; a record that no longer applies is stale.
@@ -122,18 +125,25 @@ describe('frozen public CLI surfaces', () => {
   }, 60_000);
 
   it.skipIf(!hostVerified)('keeps JSON results unchanged apart from recorded volatile values', async () => {
-    const current = await captureJson(modules);
+    const current: Record<string, { volatile: string[]; json: { schemaVersion?: number } }> = await captureJson(modules);
     const baseline = frozen('cli-json.json');
     expect(Object.keys(current)).toEqual(Object.keys(baseline));
-    for (const [key, value] of Object.entries(baseline) as [string, { volatile: string[] }][]) {
+    for (const [key, value] of Object.entries(baseline) as [string, { volatile: string[]; json: { schemaVersion?: number } }][]) {
       const newlyVolatile = current[key].volatile.filter((pointer: string) => !value.volatile.includes(pointer));
-      expect(newlyVolatile, `${key} gained nondeterministic values`).toEqual([]);
+      const change = (review.changes as Change[]).find(entry => entry.surface === 'cli-json' && entry.key === key);
+      if (change?.addedVolatilePointers) {
+        expect(key).toBe('update --check --json');
+        expect(change.task).toBe('3.7');
+        expect(value.json.schemaVersion).toBe(3);
+        expect(current[key].json.schemaVersion).toBe(4);
+      }
+      expect(newlyVolatile, `${key} gained unreviewed nondeterministic values`).toEqual(change?.addedVolatilePointers ?? []);
       expectFrozen('cli-json', key, current[key], value);
     }
   }, 60_000);
 
   it('keeps every rendered artifact for the representative plans byte-identical', () => {
-    const current = captureArtifacts(modules);
+    const current: Record<string, unknown> = captureArtifacts(modules);
     const baseline = frozen('rendered-artifacts.json');
     expect(Object.keys(current)).toEqual(Object.keys(baseline));
     for (const key of Object.keys(baseline)) expectFrozen('rendered-artifacts', key, current[key], baseline[key]);

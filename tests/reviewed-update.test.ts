@@ -2,7 +2,6 @@ import { access, mkdir, readFile, realpath, rename, rm, symlink, writeFile } fro
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
-import { runCommand } from '../src/commands.js';
 import type { CommandContext } from '../src/application/context.js';
 import { createUpdateTransactionApprovalStore, loadUpdatePreviewReceipt } from '../src/adapters/filesystem/update-previews.js';
 import { applyReviewedUpdateTransaction, inspectReviewedUpdateTransaction } from '../src/adapters/filesystem/reviewed-update-transaction.js';
@@ -31,6 +30,7 @@ import {
   cleanupUpdateTestRoots,
   createReviewedUpdateFixture,
   fingerprintUpdateTestProject,
+  runLegacyUpdateContract,
   updateTestPreviewOptions
 } from './reviewed-update-helpers.js';
 
@@ -57,7 +57,7 @@ async function runRaw(root: string, args: string[], overrides: Partial<CommandCo
   const stdout = new CaptureStream();
   const capturedStderr = new CaptureStream();
   const stderr = overrides.stderr ?? capturedStderr;
-  const code = await runCommand(parseArgs(args), {
+  const code = await runLegacyUpdateContract(parseArgs(args), {
     cwd: root, stdout, stderr, updatePreview: updateTestPreviewOptions(root),
     terminal: { layout: 'plain', color: false }, ...overrides
   });
@@ -73,7 +73,8 @@ async function run(root: string, args: string[], overrides: Partial<CommandConte
       typeof value.fingerprint !== 'string') throw new Error('Invalid preview plan.');
     return { mode: value.mode, fingerprint: value.fingerprint };
   });
-  return { code, report: { ...report, plans }, text, stderr };
+  const checked: Record<string, unknown> & { plans: typeof plans } = { ...report, plans };
+  return { code, report: checked, text, stderr };
 }
 
 function implicitUpdate(mode: 'normal' | 'check' | 'force' = 'normal'): string {
@@ -147,7 +148,7 @@ class MigrationRunner implements CommandRunner {
   }
 }
 
-describe('reviewed update command integration', () => {
+describe('retained schema-3 reviewed update application', () => {
   it.each(['check', 'apply'] as const)('blocks update %s before manifest loading when a repair journal is pending', async (mode) => {
     const { root } = await fixture();
     await writeProjectFile(root, [...reviewedRepairTransactionPathParts], '{}\n');
@@ -816,7 +817,7 @@ describe('reviewed update command integration', () => {
     expect(issues.length).toBeGreaterThan(0);
     const stdout = new CaptureStream();
     const stderr = new CaptureStream();
-    expect(await runCommand(parseArgs(['update', '--check']), {
+    expect(await runLegacyUpdateContract(parseArgs(['update', '--check']), {
       cwd: root, stdout, stderr, updatePreview: updateTestPreviewOptions(root)
     })).toBe(2);
     for (const issue of issues) expect(stdout.text()).toContain(issue);

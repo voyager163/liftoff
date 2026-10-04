@@ -285,6 +285,8 @@ try {
     !updateHelp.stdout.includes('--check') ||
     !updateHelp.stdout.includes('--force') ||
     !updateHelp.stdout.includes('--approve-plan') ||
+    !updateHelp.stdout.includes('--recover') ||
+    !updateHelp.stdout.includes('schema-4 v8 update') ||
     updateHelp.stdout.includes('--apply')
   ) {
     throw new Error('Installed liftoff update help did not expose reviewed preview and exact-plan approval');
@@ -549,6 +551,60 @@ try {
   const { buildProjectPlan: installedPlan } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'planner.js')).href);
   const { buildArtifacts: installedArtifacts } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'templates.js')).href);
   const { writeArtifacts: installedWrite } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'file-system.js')).href);
+  const updateProject = path.join(tempRoot, 'current update project');
+  const updateArtifacts = installedArtifacts(installedPlan({
+    projectName: 'Update Smoke', projectType: 'standard', apiStack: 'go', cloud: 'azure', region: 'eastus',
+    specWorkflow: 'openspec', agents: ['copilot'], includeFrontend: false, governanceProfile: 'none', environments: ['dev']
+  }, { requireProjectName: true }));
+  await installedWrite(updateProject, updateArtifacts);
+  const updateManifest = path.join(updateProject, 'liftoff.manifest.json');
+  const originalManifest = await readFile(updateManifest);
+  const beforeUpdate = await treeDigest(updateProject);
+  const updateCheck = runFailure(process.execPath, [liftoffEntrypoint, 'update', '--check', '--json'], {
+    cwd: updateProject, env: npmEnv
+  });
+  const updatePreview = JSON.parse(updateCheck.stdout);
+  const updatePlan = updatePreview.plans?.find(entry => entry.mode === 'normal');
+  if (updateCheck.status !== 2 || updatePreview.schemaVersion !== 4 || updatePreview.targetManifestVersion !== 8 ||
+      updatePreview.publicationCommitted !== false || !/^[a-f0-9]{64}$/.test(updatePlan?.fingerprint ?? '') ||
+      await treeDigest(updateProject) !== beforeUpdate) {
+    throw new Error('Installed current update did not issue a read-only schema-4 v8 preview.');
+  }
+  const unapprovedUpdate = runFailure(process.execPath, [liftoffEntrypoint, 'update', '--json'], {
+    cwd: updateProject, env: npmEnv
+  });
+  if (unapprovedUpdate.status !== 1 || JSON.parse(unapprovedUpdate.stdout).status !== 'approval-blocked' ||
+      await treeDigest(updateProject) !== beforeUpdate) {
+    throw new Error('Installed current update changed the project without exact approval.');
+  }
+  const approvedUpdate = runFailure(process.execPath, [
+    liftoffEntrypoint, 'update', '--json', '--approve-plan', updatePlan.fingerprint
+  ], { cwd: updateProject, env: npmEnv });
+  const updated = JSON.parse(approvedUpdate.stdout);
+  if (approvedUpdate.status !== 2 || updated.status !== 'committed-incomplete' ||
+      updated.publicationCommitted !== true || updated.localComplete !== false ||
+      JSON.parse(await readFile(updateManifest, 'utf8')).artifactVersion !== 8) {
+    throw new Error('Installed current update did not publish v8 while preserving incomplete local readiness.');
+  }
+  const history = updatePlan.operations.find(entry => entry.pathParts[0] === '.liftoff' &&
+    entry.pathParts[1] === 'manifest-history' && entry.pathParts.at(-1) === 'manifest.json');
+  if (!history || !(await readFile(path.join(updateProject, ...history.pathParts))).equals(originalManifest)) {
+    throw new Error('Installed current update did not preserve the original manifest bytes.');
+  }
+  for (const artifact of updateArtifacts.filter(entry => entry.lifecycle === 'project')) {
+    if (!(await readFile(path.join(updateProject, ...artifact.pathParts))).equals(Buffer.from(artifact.content))) {
+      throw new Error(`Installed current update modified project-owned artifact ${artifact.logicalName}.`);
+    }
+  }
+  const afterUpdate = await treeDigest(updateProject);
+  const currentUpdate = JSON.parse(run(process.execPath, [liftoffEntrypoint, 'update', '--check', '--json'], {
+    cwd: updateProject, env: npmEnv
+  }).stdout);
+  if (currentUpdate.status !== 'current' || currentUpdate.coreUpdateComplete !== true ||
+      currentUpdate.localComplete !== false || await treeDigest(updateProject) !== afterUpdate) {
+    throw new Error('Installed v8 maintenance did not preserve project bytes and separate local readiness.');
+  }
+
   const repairProject = path.join(tempRoot, 'guided repair project');
   const repairArtifacts = installedArtifacts(installedPlan({
     projectName: 'Repair Smoke', projectType: 'standard', apiStack: 'node',

@@ -13,7 +13,7 @@ import { phaseCapabilities } from '../src/domain/governance/activation/capabilit
 import { SUPPORTED_MANIFEST_VERSIONS } from '../src/domain/project/manifest/reader.js';
 import { buildProjectPlan } from '../src/application/project/planning.js';
 import { buildArtifacts } from '../src/templates.js';
-import { updateReportSchemaVersion } from '../src/application/update/output.js';
+import { currentUpdateReportSchemaVersion } from '../src/application/update/current-request.js';
 import { minimumNodeVersion } from '../src/runtime.js';
 import { liftoffVersion } from '../src/version.js';
 import * as telemetryConfig from '../src/telemetry/config.js';
@@ -101,13 +101,19 @@ describe('project-independent capability discovery', () => {
     const manifest = buildArtifacts(plan).find(({ logicalName }) => logicalName === 'manifest');
     if (!manifest) throw new Error('Expected actual generated manifest.');
     expect(report.schemas.manifestWrite).toBe(JSON.parse(manifest.content).artifactVersion);
-    expect(report.schemas.reports.update).toBe(updateReportSchemaVersion);
+    expect(report.schemas.reports.update).toBe(currentUpdateReportSchemaVersion);
+    expect(report.schemas.currentUpdate).toMatchObject({
+      manifestRead: [...SUPPORTED_MANIFEST_VERSIONS, 8], manifestWrite: 8, report: 4,
+      separateConsent: true, explicitRecovery: true, configurationBound: true,
+      applicationWrites: false, workflowChanges: false, profileChanges: false, providerOperations: false
+    });
     expect(report.schemas.repair).toEqual(repairCapabilities.schemas);
     expect(report.runtime).toMatchObject({ minimumNodeVersion, distribution: 'node/npm', nativeDistribution: false });
     expect(report.boundaries).toMatchObject({
       thirdPartyPluginLoading: false, publicStatefulMigration: false,
       projectTelemetryEnrollment: false, capabilityIsApproval: false
     });
+    expect(report.boundaries.privateApis).toContain('Historical successor creation is limited to the separately advertised currentUpdate scope');
   });
 
   it('retains unavailable/injected-only/blocker distinctions instead of treating registration as execution support', () => {

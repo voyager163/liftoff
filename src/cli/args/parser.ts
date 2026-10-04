@@ -1,5 +1,6 @@
 import type { ParsedArgs } from '../../domain/project/contracts.js';
 import { isUpdatePlanFingerprint } from '../../application/update/approval.js';
+import { currentUpdateRequestIssue } from '../../application/update/current-request.js';
 import { commandDefinitions } from './definitions.js';
 import { phaseIds } from '../../domain/governance/activation/types.js';
 import { repairRequestIssue } from '../../application/repair/request.js';
@@ -148,6 +149,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
   }
 
   if (command === 'update') {
+    if (positional.length && Object.hasOwn(flags, 'project')) {
+      throw new UsageError('Provide a project path either positionally or with --project, not both.');
+    }
     if (Object.hasOwn(flags, 'approve-plan')) {
       if (!isUpdatePlanFingerprint(flags['approve-plan'])) {
         throw new UsageError(
@@ -169,6 +173,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
           'forced plan with `liftoff update --force`.'
       );
     }
+    const issue = currentUpdateRequestIssue({
+      check: flags.check === true, force: flags.force === true, recover: flags.recover === true,
+      jsonMode: flags.json === true, approvePlan: readStringFlag(flags, 'approve-plan'),
+      project: readStringFlag(flags, 'project') ?? positional[0]
+    });
+    if (issue) throw new UsageError(issue);
   }
 
   if (command === 'repair') {

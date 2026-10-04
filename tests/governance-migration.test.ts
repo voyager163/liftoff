@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
-import { runCommand } from '../src/commands.js';
+import { runLegacyUpdateContract } from './reviewed-update-helpers.js';
 import {
   activationStateFilePathParts,
   canonicalJson,
@@ -95,7 +95,7 @@ async function run(
 ): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
-  const code = await runCommand(parseArgs(args), {
+  const code = await runLegacyUpdateContract(parseArgs(args), {
     cwd,
     stdout,
     stderr,
@@ -282,7 +282,7 @@ function testHistoricalStateMigration(): HistoricalActivationStateMigration {
   return {
     fromIdentity: testHistoricalActivationIdentity,
     toIdentity: currentActivationIdentity,
-    stateSchemaVersion: currentActivationIdentity.activationStateSchemaVersion,
+    stateSchemaVersion: validateActivationIdentity(currentActivationIdentity).activationStateSchemaVersion,
     graphMapping,
     transaction: 'managed-update-write-set',
     evidence: 'preserve-bytes',
@@ -298,11 +298,11 @@ async function planTestHistoricalMigration(root: string) {
   );
 }
 
-describe('governance managed migration framework', () => {
+describe('retained schema-3 governance managed migration framework', () => {
   it.each(['historical', 'future', 'mixed'] as const)('describes %s doctor incompatibility without mislabeling it as v1', async (kind) => {
     const root = await fixtureProject();
     const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
-    const state = kind === 'historical' ? buildHistoricalV1Fixture().state : stateWithIdentity(currentActivationIdentity);
+    const state = kind === 'historical' ? buildHistoricalV1Fixture().state : stateWithIdentity(validateActivationIdentity(currentActivationIdentity));
     if (kind === 'future') state.schemaVersion = currentActivationIdentity.activationStateSchemaVersion + 1;
     if (kind === 'mixed') state.identity = { ...state.identity, evidenceHeaderSchemaVersion: 1 };
     await writeJson(path.join(root, ...activationStateFilePathParts), state);
@@ -540,7 +540,7 @@ describe('governance managed migration framework', () => {
   it('rejects future activation-state schema without rewriting managed or user bytes', async () => {
     const root = await fixtureProject();
     await writeJson(path.join(root, ...activationStateFilePathParts), {
-      ...stateWithIdentity(currentActivationIdentity),
+      ...stateWithIdentity(validateActivationIdentity(currentActivationIdentity)),
       schemaVersion: currentActivationIdentity.activationStateSchemaVersion + 1
     });
     const before = await treeFingerprint(root);

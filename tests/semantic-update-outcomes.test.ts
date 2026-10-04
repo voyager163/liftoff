@@ -1,7 +1,7 @@
 import {Readable} from 'node:stream';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {runCli} from '../src/cli.js';
-import {runCommand} from '../src/commands.js';
+import {runLegacyUpdateContract} from './reviewed-update-helpers.js';
 import {CaptureStream,ttyCaptureStream} from './helpers.js';
 import type {SemanticTelemetryEvent} from '../src/telemetry/contract.js';
 const f=vi.hoisted(()=>({
@@ -56,13 +56,13 @@ async function invoke(check:boolean,answer?:'decline'|'cancel'){
     const code=await runCli({argv:['update',...(check?['--check']:answer?[]:['--approve-plan','a'.repeat(64)]),'--json'],
       cwd:'/owned-injected-project',env:{},stdout,stderr,stdin,
       telemetry:{beforeCommand:async()=>true,afterCommand:async()=>{},afterSemanticCommand:async event=>{events.push(event);}},
-      execute:(parsed,ctx)=>runCommand(parsed,{...ctx,approveUpdatePlan:async()=>{
+      execute:(parsed,ctx)=>runLegacyUpdateContract(parsed,{...ctx,approveUpdatePlan:async()=>{
         f.calls.push('prompt');if(answer==='cancel')throw Object.assign(new Error('synthetic cancellation'),{name:'ExitPromptError'});return false;
       }})});
     return {code,event:events[0],report:JSON.parse(stdout.text()),stderr:stderr.text()};
   }finally{stdin.destroy();}
 }
-describe('actual update producer semantic boundaries with injected I/O',()=>{
+describe('retained schema-3 update producer semantic boundaries with injected I/O',()=>{
   it('distinguishes successful drift detection from failed postcommit verification at the same exit2',async()=>{
     const check=await invoke(true);
     expect(check.code).toBe(2);expect(check.report.status).toBe('update-available');expect(check.event.outcome).toBe('attention-required');

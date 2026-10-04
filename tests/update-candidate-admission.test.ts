@@ -19,12 +19,11 @@ import { loadManifest } from '../src/application/project/manifest.js';
 import { issueUpdatePreviewReceipt, loadUpdatePreviewReceipt } from '../src/adapters/filesystem/update-previews.js';
 import { isRecord } from '../src/domain/governance/activation/canonical-json.js';
 import { governanceArtifactPaths } from '../src/repository-governance.js';
-import { runCommand } from '../src/commands.js';
 import { parseArgs } from '../src/args.js';
 import type { CommandContext } from '../src/application/context.js';
 import { CaptureStream, scriptedTtyInput, ttyCaptureStream } from './helpers.js';
 import {
-  createReviewedUpdateFixture, cleanupUpdateTestRoots, fingerprintUpdateTestProject, updateTestPreviewOptions
+  createReviewedUpdateFixture, cleanupUpdateTestRoots, fingerprintUpdateTestProject, updateTestPreviewOptions, runLegacyUpdateContract
 } from './reviewed-update-helpers.js';
 import { historicalV2ActivationIdentity } from '../src/domain/governance/policy/identity.js';
 import { historicalPhaseIds } from '../src/governance-activation/historical-state.js';
@@ -122,7 +121,7 @@ async function ordinary() {
 async function invoke(root: string, args: string[], overrides: Partial<CommandContext> = {}) {
   const stdout = new CaptureStream();
   const stderr = overrides.stderr ?? new CaptureStream();
-  const code = await runCommand(parseArgs(['update', '--json', ...args]), {
+  const code = await runLegacyUpdateContract(parseArgs(['update', '--json', ...args]), {
     cwd: root, stdout, stderr, updatePreview: updateTestPreviewOptions(root),
     env: { ...process.env, LIFTOFF_TELEMETRY: '0', DO_NOT_TRACK: '1' },
     ...overrides
@@ -400,7 +399,7 @@ describe('fixed preseal consistency passes', () => {
   });
 });
 
-describe('public byte-complete ordinary update admission', { timeout: 120_000 }, () => {
+describe('retained schema-3 byte-complete ordinary update admission', { timeout: 120_000 }, () => {
   it('checks and applies actual ordinary render bytes with no activation state or raw receipt content', async () => {
     const f = await ordinary();
     const before = await fingerprintUpdateTestProject(f.root);

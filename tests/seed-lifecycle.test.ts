@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
-import { runCommand, type CommandContext } from '../src/commands.js';
+import type { CommandContext } from '../src/commands.js';
 import { validateGeneratedProject, writeArtifacts, writeProjectFile } from '../src/file-system.js';
 import {
   archiveGeneratedSeedForPhase,
@@ -23,7 +23,7 @@ import { buildArtifacts } from '../src/templates.js';
 import type { ExternalCommand, ProjectOptions, ProjectPlan } from '../src/types.js';
 import { liftoffVersion } from '../src/version.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
-import { reviewedUpdateArguments } from './reviewed-update-helpers.js';
+import { reviewedUpdateArguments, runLegacyUpdateContract } from './reviewed-update-helpers.js';
 import { openSpecIntegrationPaths } from '../src/openspec-profile.js';
 import { SPEC_KIT_AGENT_SURFACES, SPEC_KIT_WORKFLOW_IDS } from '../src/domain/project/catalog.js';
 
@@ -101,7 +101,7 @@ async function runCli(
   const reviewedArgs = await reviewedUpdateArguments(args, (rawArgs) => runCli(rawArgs, cwd, context));
   const scopedArgs = reviewedArgs[0] === 'governance' && !reviewedArgs.includes('--scope')
     ? [...reviewedArgs, '--scope', 'local'] : reviewedArgs;
-  const code = await runCommand(parseArgs(scopedArgs), {
+  const code = await runLegacyUpdateContract(parseArgs(scopedArgs), {
     cwd,
     stdout,
     stderr,

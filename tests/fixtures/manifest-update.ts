@@ -13,6 +13,9 @@ import { toSafeProjectName } from '../../src/domain/project/planning.js';
 import { rawHistoryDigest } from '../../src/governance-activation/history-contracts.js';
 import { readUpdateSuccessorApprovalAudit, type UpdatePreviewOptions } from '../../src/adapters/filesystem/update-previews.js';
 import type { previewModernSuccessorUpdate } from '../../src/application/update/use-case.js';
+import { buildModernManagedCore } from '../../src/application/project/modern-managed-core.js';
+import { createManifestV8Candidate } from '../../src/application/project/manifest-writer.js';
+import type { GeneratedArtifact } from '../../src/domain/project/contracts.js';
 
 export const now = '2026-09-01T12:00:00.000Z';
 const roots: string[] = [], streams: PassThrough[] = [];
@@ -84,4 +87,49 @@ export async function auditFor(project: Awaited<ReturnType<typeof fixture>>, pre
     projectRoot: project.root, semanticTransitionDigest: preview.receipt.publication.semanticTransitionDigest,
     preparationId: preview.receipt.receiptId
   }, project.options);
+}
+
+export async function freshManifestFixture(
+  profile: 'none' | 'single-maintainer-gitflow' | 'team-gitflow',
+  workflow: 'manual' | 'openspec' | 'spec-kit'
+) {
+  const project = await fixture();
+  const agents = workflow === 'manual' ? [] : ['github-copilot'];
+  const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({
+    project: { ...project.manifest.project, specWorkflow: workflow, agents, ...(workflow === 'spec-kit' ? { defaultAgent: 'github-copilot' } : {}) },
+    framework: workflow === 'manual' ? { state: 'not-required' } :
+      { state: 'initialized', adapter: workflow, contractVersion: projectCatalog.getFrameworkDefinition(workflow).version }
+  });
+  const workload = leaf.project.workload;
+  const composition = composeModernManifestPlugins({
+    workload: workload.kind, ...(workload.kind === 'genai' ? { variant: workload.pattern } : {}),
+    stack: workload.apiStack, cloud: workload.cloud, workflow, agents: leaf.project.agents,
+    frontend: workload.frontend ? 'included' : 'omitted', governanceProfile: profile, environments: workload.environments
+  }, { safeProjectName: toSafeProjectName(leaf.project.name) });
+  const selection: ModernManagedCoreInput = {
+    selection: { ...leaf, profile },
+    plugins: readManifestPluginMetadata({
+      schemaVersion: 1, resolutionDigest: composition.resolution.digest, selections: composition.resolution.plugins
+    }, { stack: workload.apiStack, cloud: workload.cloud, workflow, agents: leaf.project.agents }),
+    activeLayout: {
+      schemaVersion: 1, state: 'bound', bindings: composition.expected.filter(entry => entry.lifecycle === 'project')
+        .map(entry => ({ kind: 'artifact', logicalName: entry.logicalName, pathParts: [...entry.pathParts] }))
+    }
+  };
+  const core = buildModernManagedCore(selection), byName = new Map(core.map(artifact => [artifact.logicalName, artifact]));
+  const generatedArtifacts: GeneratedArtifact[] = composition.expected.filter(entry => entry.lifecycle !== 'manifest').map(entry => {
+    const actual = byName.get(entry.logicalName);
+    if (actual) return { ...actual, pathParts: [...actual.pathParts] };
+    // Application specimens establish metadata provenance, not runnable-project qualification.
+    const common = { logicalName: entry.logicalName, category: entry.category, pathParts: [...entry.pathParts], content: `Application specimen: ${entry.logicalName}\n` };
+    if (entry.lifecycle === 'project') {
+      if (!entry.provisioningGroup) throw new Error('Expected project fixture provisioning group.');
+      return { ...common, lifecycle: 'project', provisioningGroup: entry.provisioningGroup };
+    }
+    return { ...common, lifecycle: entry.lifecycle };
+  });
+  const candidate = createManifestV8Candidate({ origin: 'fresh', selection: selection.selection, generatedArtifacts });
+  for (const artifact of core) await write(project.root, artifact.pathParts, artifact.content);
+  await write(project.root, ['liftoff.manifest.json'], candidate.content);
+  return { ...project, selection, current: candidate.manifest };
 }

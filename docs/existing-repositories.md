@@ -112,39 +112,38 @@ identities. A supported older manifest can acquire the selected-agent repair
 files through the reviewed update above, including when governance is disabled.
 Unowned custom integrations and neighboring skills are not overwritten by force.
 
-Projects created before manifest artifact version 7 automatically preview the
-default deterministic setup handoff as new named drift. After a matching check
-and explicit approval, update safely adopts collision-free policy, context,
-guide, phase graph, compatibility
-metadata, credential-policy schema, and selected-agent setup integrations
-without rewriting a configuration that omitted `governanceProfile`.
-Existing different files remain unowned conflicts and the v7 manifest records
-`handoff-partial`.
-Resolving every conflict promotes a later update to `handoff-generated`.
-Selecting `none` leaves previously managed handoff files as undeleted orphans
-while unrecorded conflicts remain user-owned. No update mode runs an agent or
+Supported historical projects preview a manifest-v8 managed-core successor.
+After a matching check and explicit approval, update adopts safe policy,
+context, guide, phase graph, compatibility metadata, credential-policy schema
+and selected-agent setup integrations. An omitted governance setting retains
+the single-maintainer default only when the historical profile is unspecified;
+recorded opt-out remains disabled. Configuration is never rewritten to
+materialize a default. A required unowned conflict blocks the complete successor
+rather than claiming a partially installed v8 contract; force cannot take
+ownership of that destination. Resolve the conflict and run a fresh check.
+Profile changes are a separate operation. No update mode runs an agent or
 activates GitHub settings.
 
-Projects carrying governance policy versions 2 through 5 preview policy version
-6, manifest v7, and activation-contract v2 as managed-core drift. Review the
-canonical phase graph, private-runner credential contract, bootstrap-state
-retention/disposal contract, and active-change reconciliation before
-replacement. Updating the handoff never provisions Azure or GitHub resources;
-active downstream work must have supported identity and current evidence before
-it can execute. Exact supported activation-v1 migration is previewed through
-`liftoff update --check` and requires approval of that plan. Original state,
-receipts, plans, approvals, and source metadata are retained in in-project
-history before a linked v2 successor is created. Historical records stay
-non-executable; updating a core file does not make them current proof.
-Post-commit revalidation failure leaves v2 blocked and resumable. Unsupported
-source formats and independent infrastructure migrations remain separate blockers.
+Review the exact profile/workflow contract and actual operation descriptors in
+the preview, including history preservation. Supported activation-v1/v2/v3
+sources retain original state, receipts, plans, approvals and source metadata
+in in-project history before a linked current successor is created. Sources
+without activation preserve their original manifest separately without
+inventing activation state. Historical records stay non-executable; updating
+core files never makes old proof or approval current.
+Publication returns committed-incomplete when local revalidation remains
+outstanding. Use the separately reviewed
+[modern local interfaces](cli-reference.md#modern-successor-revalidation);
+postcommit failures preserve the successor rather than downgrading it.
+Unsupported source formats and application/infrastructure migrations remain
+separate blockers.
 
-The manifest-v7 transition releases every legacy non-core artifact into project
-provenance without writing, restoring, moving, or deleting its path.
+The manifest-v8 successor retains legacy non-core artifacts as project
+provenance without writing, restoring, moving, or deleting their paths.
 Intentionally removed infrastructure stays absent and production source stays
 byte-for-byte unchanged.
 
-Supported readers normalize manifest v2-v6 and write only v7 after all
+Supported update readers accept manifest v2-v8 and write v8 only after all
 preflights pass. Future versions, unsupported policy/contract/schema tuples,
 unknown graph hashes, unversioned activation state, or prose-only task history
 block with explicit upgrade, import-mapping, or reconciliation remedies. Liftoff

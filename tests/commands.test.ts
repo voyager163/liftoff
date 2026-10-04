@@ -33,7 +33,7 @@ class FrameworkFailureRunner extends ReadyInitRunner {
   constructor(
     private readonly behavior: 'failure' | 'missing-marker',
     gitRoot?: string,
-    openSpecProfile?: ConstructorParameters<typeof ReadyInitRunner>[0]['openSpecProfile']
+    openSpecProfile?: NonNullable<ConstructorParameters<typeof ReadyInitRunner>[0]>['openSpecProfile']
   ) {
     super({ gitRoot, openSpecProfile });
   }
@@ -914,10 +914,11 @@ describe('commands', () => {
             cwd: tempRoot,
             stdout: new CaptureStream(),
             stderr: new CaptureStream(),
-            runner: new ReadyInitRunner()
+            runner: new ReadyInitRunner(),
+            updatePreview: { homedir: path.join(tempRoot, 'receipt-home'), env: {} }
           }
         );
-        expect(updateCheck).toBe(0);
+        expect(updateCheck).toBe(2);
       }
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
@@ -1210,13 +1211,22 @@ describe('commands', () => {
         );
         expect(validate).toBe(0);
 
+        const previewOutput = new CaptureStream();
+        const updatePreview = { homedir: path.join(tempRoot, 'receipt-home'), env: {} };
+        expect(await runCommand(parseArgs(['update', '--check', '--json']), {
+          cwd: projectRoot, stdout: previewOutput, stderr: new CaptureStream(), updatePreview
+        })).toBe(2);
+        const preview = JSON.parse(previewOutput.text());
+        expect(preview).toMatchObject({ schemaVersion: 4, targetManifestVersion: 8, publicationCommitted: false });
         const updateOutput = new CaptureStream();
         const update = await runCommand(
-          parseArgs(['update']),
-          { cwd: projectRoot, stdout: updateOutput, stderr: new CaptureStream() }
+          parseArgs(['update', '--json', '--approve-plan', preview.plans[0].fingerprint]),
+          { cwd: projectRoot, stdout: updateOutput, stderr: new CaptureStream(), updatePreview }
         );
-        expect(update).toBe(0);
-        expect(updateOutput.text()).toContain('Liftoff core is current');
+        expect(update, updateOutput.text()).toBe(2);
+        expect(JSON.parse(updateOutput.text())).toMatchObject({
+          status: 'committed-incomplete', publicationCommitted: true, localComplete: false
+        });
 
         const doctorOutput = new CaptureStream();
         await runCommand(

@@ -1,12 +1,37 @@
 Before project access, run `liftoff capabilities --json`.
 Require `schemaVersion: 1`, `kind: liftoff-capabilities`, `cliVersion`;
-check `commands` name/subcommands/flags and `schemas.reports`: governance 2, update 3.
+check `commands` name/subcommands/flags and `schemas.reports`: governance 2,
+update 3 or update 4. Update 4 additionally requires `schemas.currentUpdate`
+with report 4, manifestWrite 8, separateConsent and explicitRecovery.
 Missing/malformed/incompatible support: STOP. Use `liftoff --help` for supported
 upgrade guidance. Upgrade needs separate permission and fresh negotiation.
 Never emulate commands or fabricate plans/receipts/approvals/evidence.
 Execution also needs the applicable phase's `productionExecutorAvailable: true`,
 no blocker, actual readiness and independent approval. Before repair, negotiate
 its dedicated capabilities/recipes through the separate native repair protocol.
+
+Current update 4 preserves configuration, original history and recorded workflow,
+agents, profile and compatible layout. Check is an external preview, not approval.
+Apply needs its exact fingerprint; force has a separately eligible fingerprint.
+Pending update recovery needs `update <project> --recover --approve-plan <saved-fingerprint>`;
+never substitute repair/governance recovery or silently reap a lock.
+Preserve `publicationCommitted` and uncertain effects even on failure.
+Committed-incomplete is not rollback or local completion.
+
+For v8 projects, do not execute the historical phase sequence below.
+Use advertised schema-3 modern status/resume/verify inspection first.
+Negotiate `schemas.modernLocalVerification`, `schemas.modernLocalCompletion`
+and `schemas.modernSuccessorRevalidation` separately for the requested operation.
+Consult the installed command help for exact selectors and closed request/consent
+shapes; keep inputs outside the project and obtain separate verification,
+finalization and exact-byte publication consent. Existing activation-history
+successors require their successor-revalidation route, not fresh completion.
+No admitted operation means STOP and report the boundary; never turn a recorded
+phase, native receipt or `operationComplete` into `localComplete`.
+OpenSpec finalization, provider execution and workflow/profile transitions are
+not granted by core-update approval. Do not manufacture their missing support.
+
+For supported historical projects only:
 
 Use the Liftoff governance engine; read `.liftoff/governance/README.md`, `policy.md`, `context.json`.
 

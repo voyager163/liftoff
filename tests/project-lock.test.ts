@@ -201,7 +201,7 @@ describe('cooperating project mutation lock', () => {
     await writeFile(lockPath, 'other writer');
     for (const { args, code } of [
       { args: ['validate', '--json'], code: 0 },
-      { args: ['update', '--check', '--json'], code: 0 },
+      { args: ['update', '--check', '--json'], code: 2 },
       { args: ['governance', 'assess', '--json'], code: 2 },
       { args: ['governance', 'assess', '--help'], code: 0 }
     ]) {

@@ -10,6 +10,12 @@ import { writeArtifacts, writeProjectFile } from '../src/file-system.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
 import type { ProjectOptions } from '../src/types.js';
+import type { ParsedArgs } from '../src/domain/project/contracts.js';
+import type { CommandContext } from '../src/application/context.js';
+import { updateProject } from '../src/application/update/use-case.js';
+import { runCommand } from '../src/commands.js';
+import { readBooleanFlag, readStringFlag } from '../src/cli/args/readers.js';
+import { PresentationSession } from '../src/terminal.js';
 
 export interface UpdateTestResult {
   code: number;
@@ -19,6 +25,23 @@ export interface UpdateTestResult {
 
 const execFileAsync = promisify(execFile);
 const fixtureDirectories: string[] = [];
+
+/** Exercises the retained schema-3 application, not the current public v8 update route. */
+export async function runLegacyUpdateContract(parsed: ParsedArgs, context: CommandContext): Promise<number> {
+  if (parsed.command !== 'update' || parsed.flags.help === true) return runCommand(parsed, context);
+  const jsonMode = readBooleanFlag(parsed.flags, 'json') ?? false;
+  return updateProject({
+    check: readBooleanFlag(parsed.flags, 'check') ?? false,
+    force: readBooleanFlag(parsed.flags, 'force') ?? false,
+    jsonMode, approvePlan: readStringFlag(parsed.flags, 'approve-plan'),
+    project: parsed.positional[0] ?? readStringFlag(parsed.flags, 'project')
+  }, {
+    ...context,
+    presentation: new PresentationSession({
+      stdout: context.stdout, stderr: context.stderr, ...context.terminal, json: jsonMode
+    })
+  });
+}
 
 export async function fingerprintUpdateTestProject(root: string): Promise<Record<string, string>> {
   const result: Record<string, string> = {};

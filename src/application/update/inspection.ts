@@ -48,6 +48,9 @@ import { liftoffVersion } from '../../version.js';
 import { loadManifest, parseManifest, resolveModernManifestV8SourceContract } from '../project/manifest.js';
 import { buildProjectPlan, loadConfigOptions } from '../project/planning.js';
 import {
+  isRecordedModernUpdateSelection, readRecordedModernUpdateSelection, type ModernUpdateSelection
+} from './modern-update-selection.js';
+import {
   buildUpdateArtifacts,
   captureUpdateSnapshots,
   inspectProvisioningGroups,
@@ -84,10 +87,27 @@ export class UpdatePlanError extends Error {
   }
 }
 
-/** Private advancing-family path; the released CLI still selects its released update contract. */
-export async function inspectModernSuccessorUpdate(projectRoot: string, selected: ModernManagedCoreInput) {
-  const targetInput = copySourceHistoryData(selected, 'modern successor update selection');
+export async function inspectModernSuccessorUpdate(projectRoot: string, selected: ModernUpdateSelection) {
+  const input = copySourceHistoryData(selected, 'modern successor update selection');
   await assertNoPendingReviewedUpdate(projectRoot);
+  let recorded: Awaited<ReturnType<typeof readRecordedModernUpdateSelection>> | undefined;
+  let targetInput: ModernManagedCoreInput;
+  if (isRecordedModernUpdateSelection(input)) {
+    recorded = await readRecordedModernUpdateSelection(projectRoot);
+    targetInput = recorded.selection;
+  } else targetInput = input;
+  const inspection = await inspectSelectedModernSuccessorUpdate(projectRoot, targetInput);
+  return {
+    ...inspection,
+    snapshots: uniqueUpdateSnapshots([...inspection.snapshots, ...(recorded?.snapshots ?? [])], inspection.projectRoot),
+    configurationReview: recorded ? {
+      present: recorded.snapshots.some(file => file.pathParts.join('/') === 'liftoff.config.json' && file.content !== undefined),
+      deferredFields: recorded.deferredConfiguration
+    } : null
+  };
+}
+
+async function inspectSelectedModernSuccessorUpdate(projectRoot: string, targetInput: ModernManagedCoreInput) {
   const boundary = await createSourceHistoryCapture(projectRoot);
   const state = await boundary.capture(activationStateFilePathParts, true);
   if (state.content === undefined) {

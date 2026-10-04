@@ -6,7 +6,7 @@ import { liftoffVersion } from '../version.js';
 import { projectCatalog } from './project/catalog.js';
 import { builtinPluginRegistry } from './project/plugins.js';
 import { repairCapabilities } from './repair/capabilities.js';
-import { updateReportSchemaVersion } from './update/output.js';
+import { currentUpdateReportSchemaVersion } from './update/current-request.js';
 import { modernGovernanceReportSchemaVersion } from './governance/modern-inspection.js';
 import { modernLocalCommandReportSchemaVersion } from './governance/modern-local-request.js';
 import { modernLocalCompletionReportSchemaVersion } from './governance/modern-local-completion-request.js';
@@ -58,9 +58,16 @@ export function installedCapabilities() {
         committedIncompleteExit: 2, successorCreation: false, workflowFinalization: false, providerOperations: false,
         scope: 'Existing supported activation-history successors only. Completed Spec Kit or archived OpenSpec verification supplies fresh local proof; exact-byte publication preserves original transition/preparation identities. Committed incomplete revalidation stays active; saved progress is not current proof.'
       },
+      currentUpdate: {
+        manifestRead: [...SUPPORTED_MANIFEST_VERSIONS, 8], manifestWrite: 8, report: currentUpdateReportSchemaVersion,
+        command: 'update', preview: 'update --check', recovery: 'update <project> --recover --approve-plan <fingerprint>',
+        separateConsent: true, explicitRecovery: true, configurationBound: true, committedIncompleteExit: 2,
+        applicationWrites: false, workflowChanges: false, profileChanges: false, providerOperations: false,
+        scope: 'Historical-to-v8 successor and current-v8 managed maintenance. Recorded project, plugins, compatible layout, original history and configuration are preserved. Local revalidation and other transitions remain separate.'
+      },
       reports: {
         capabilities: 1, validate: 1, doctor: 1, upgrade: 1,
-        update: updateReportSchemaVersion, governance: 2, governanceAssessment: 1
+        update: currentUpdateReportSchemaVersion, governance: 2, governanceAssessment: 1
       },
       repair: { ...repairCapabilities.schemas }
     },
@@ -96,7 +103,7 @@ export function installedCapabilities() {
       publicStatefulMigration: false,
       projectTelemetryEnrollment: false,
       capabilityIsApproval: false,
-      privateApis: 'OpenSpec finalization, successor creation, Manual/team generation and general v8 project writer APIs are not public CLI support.',
+      privateApis: 'OpenSpec finalization, Manual/team generation and general v8 project writer APIs are not public CLI support. Historical successor creation is limited to the separately advertised currentUpdate scope.',
       registration: 'Command syntax does not imply that every option combination is valid or an executor is available.'
     }
   };

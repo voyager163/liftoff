@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runCli, type CliTelemetryHooks } from '../src/cli.js';
 import { runCommand } from '../src/commands.js';
-import { loadManifest } from '../src/application/project/manifest.js';
+import { loadManifest, loadProjectManifest } from '../src/application/project/manifest.js';
 import { captureTreeState } from '../src/init-filesystem.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 
@@ -56,7 +56,10 @@ describe('public CLI delivery flows', () => {
     expect(initialized.code, initialized.out + initialized.err).toBe(0);
     const project = path.join(root, 'delivered-app');
     const checked = await invoke(['update', '--check', '--json'], project, runner);
-    expect(checked.code, checked.out + checked.err).toBe(0);
+    expect(checked.code, checked.out + checked.err).toBe(2);
+    expect(JSON.parse(checked.out)).toMatchObject({
+      schemaVersion: 4, targetManifestVersion: 8, status: 'update-available', publicationCommitted: false
+    });
     const valid = await invoke(['validate', '--json'], project, runner);
     expect(valid.code, valid.out + valid.err).toBe(0);
     expect(JSON.parse(valid.out).valid).toBe(true);
@@ -86,19 +89,26 @@ describe('public CLI delivery flows', () => {
     const guide = manifest.managedArtifacts.find(artifact => artifact.logicalName === 'repository-governance-guide')!;
     const applicationPath = path.join(project, ...application.pathParts);
     const guidePath = path.join(project, ...guide.pathParts);
-    const originalGuide = await readFile(guidePath, 'utf8');
     await writeFile(applicationPath, 'project-owned application edit\n');
     await writeFile(guidePath, 'managed guide edit\n');
     const maintenancePreview = await invoke(['update', '--check', '--json'], project, runner);
     expect(maintenancePreview.code, maintenancePreview.out + maintenancePreview.err).toBe(2);
     const maintenancePlan = JSON.parse(maintenancePreview.out).plans.find((entry: { mode: string }) => entry.mode === 'force');
     expect(maintenancePlan).toBeDefined();
+    const callsBeforeUpdate = [...runner.calls];
     const maintained = await invoke([
       'update', '--force', '--json', '--approve-plan', maintenancePlan.fingerprint
     ], project, runner);
-    expect(maintained.code, maintained.out + maintained.err).toBe(0);
+    expect(maintained.code, maintained.out + maintained.err).toBe(2);
+    expect(JSON.parse(maintained.out)).toMatchObject({
+      schemaVersion: 4, status: 'committed-incomplete', publicationCommitted: true, localComplete: false
+    });
+    expect(runner.calls).toEqual(callsBeforeUpdate);
     expect(await readFile(applicationPath, 'utf8')).toBe('project-owned application edit\n');
-    expect(await readFile(guidePath, 'utf8')).toBe(originalGuide);
+    expect((await loadProjectManifest(project)).artifactVersion).toBe(8);
+    const current = await invoke(['update', '--check', '--json'], project, runner);
+    expect(current.code, current.out + current.err).toBe(0);
+    expect(JSON.parse(current.out)).toMatchObject({ status: 'current', coreUpdateComplete: true, localComplete: false });
     expect(runner.calls.filter(command => command.executable === 'az').every(command =>
       command.args[0] === 'version' || command.args[0] === 'account' && command.args[1] === 'show'
     )).toBe(true);

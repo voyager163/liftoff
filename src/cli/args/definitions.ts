@@ -144,8 +144,12 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
         'Consent',
         'fingerprint'
       ),
+      recover: booleanFlag(
+        'Recover only the interrupted update selected by --approve-plan; use the exact project root or an explicit project path',
+        'Consent'
+      ),
       json: booleanFlag(
-        'Emit one schema-3 result on stdout; interactive approval uses stderr and still defaults to no',
+        'Emit one schema-4 v8 update result on stdout; interactive approval uses stderr and still defaults to no',
         'Output'
       ),
       ...helpFlag

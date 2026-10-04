@@ -2,14 +2,13 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
-import { runCommand } from '../src/commands.js';
 import { getUpdatePreviewDirectory } from '../src/adapters/filesystem/update-previews.js';
 import {
   formatUpdateCommand, formatUpdateValidationCommands, type ResolvedUpdateGuidanceContext
 } from '../src/application/update/command-guidance.js';
 import {
   cleanupUpdateTestRoots, createReviewedUpdateFixture, reviewedUpdateArguments,
-  updateTestPreviewOptions
+  updateTestPreviewOptions, runLegacyUpdateContract
 } from './reviewed-update-helpers.js';
 import {
   CaptureStream,
@@ -79,6 +78,7 @@ function normalizeMaintenanceOutput(
     .replace(/[a-f0-9]{64}/g, 'a'.repeat(64));
 }
 
+// Update snapshots preserve the schema-3 application; other commands retain public dispatch.
 async function run(
   args: string[],
   cwd: string,
@@ -100,10 +100,10 @@ async function run(
   const reviewedArgs = options.reviewed ? await reviewedUpdateArguments(args, async (rawArgs) => {
     const out = new CaptureStream();
     const err = new CaptureStream();
-    const code = await runCommand(parseArgs(rawArgs), { cwd, stdout: out, stderr: err, updatePreview });
+    const code = await runLegacyUpdateContract(parseArgs(rawArgs), { cwd, stdout: out, stderr: err, updatePreview });
     return { code, out: out.text(), err: err.text() };
   }) : args;
-  const code = await runCommand(parseArgs(reviewedArgs), {
+  const code = await runLegacyUpdateContract(parseArgs(reviewedArgs), {
     cwd,
     ...(options.answers === undefined
       ? {}

@@ -11,17 +11,17 @@ Internal implementations and synthetic tests do not enable those operations.
 An unknown resource owner or missing local state file is not evidence of an
 undeployed environment.
 
-Manifest v2-v7 readers, private v8 candidate writers and activation-record
+Manifest v2-v7 readers, v8 candidate writers and activation-record
 successors concern Liftoff control records, not infrastructure state. They
 preserve original source/history and retention obligations; their approval
-cannot authorize any state operation below. Public v8 migration itself remains
-gated on the real modern runtime. Private reviewed publication can write a linked
+cannot authorize any state operation below. Public `update` now routes exact
+reviewed control-record publication and can write a linked
 v8/state4 control-record successor; it neither completes local revalidation nor
 grants deployment-state permission. Its manifest-only path can preserve and
 upgrade v2-v7 metadata without inventing activation records. Current-v8
 no-activation maintenance preserves existing history and project provenance;
 observed absence of activation does not authorize deployed-state inspection or
-mutation. Active-state maintenance has a separate private scope. Its read-only source
+mutation. Active-state maintenance has a separate publication scope. Its read-only source
 observer can retain valid active/history relationships while reporting missing or
 changed managed-core inputs; this is not installed execution readiness or write
 approval. The installed execution preflight still requires exact current core.
@@ -68,12 +68,15 @@ proof only through this protocol; checked historical tasks are observed source,
 not proof that Liftoff executed them. The active-change executor's archive
 refusal remains unchanged. Revalidation publication preserves archived/main
 bytes and original transition/preparation identities, including retained history.
-Neither this path nor the Spec Kit path enables public v8 routing, fresh OpenSpec
-finalization, archive replay, automatic directory rollback or deployment-state
-access.
+Public successor revalidation uses this protocol through separately approved
+verification and exact-byte publication. Neither this path nor the Spec Kit
+path enables fresh OpenSpec finalization, archive replay, automatic directory
+rollback or deployment-state access. Public update recovery selects the exact
+saved fingerprint and observed transaction digest before interpreting a
+manifest/configuration, and cannot borrow state-migration authority.
 See
 [configuration and manifests](../../../docs/configuration-and-manifests.md#private-modernization-contracts)
-for the separate source contracts and unchanged public defaults.
+for the separate source contracts and versioned public interfaces.
 
 Approved new-environment activation may eventually reuse these primitives only
 for a separately qualified protected bootstrap/handover whose resources were
