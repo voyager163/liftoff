@@ -4,6 +4,7 @@ import { commandDefinitions } from './definitions.js';
 import { phaseIds } from '../../domain/governance/activation/types.js';
 import { repairRequestIssue } from '../../application/repair/request.js';
 import { readStringFlag } from './readers.js';
+import { modernLocalOperationIssue } from './governance-local.js';
 
 export class UsageError extends Error {
   constructor(message: string) {
@@ -194,6 +195,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
   }
 
   if (command === 'governance') {
+    const localIssue = modernLocalOperationIssue({ subcommand, flags });
+    if (localIssue) throw new UsageError(localIssue);
     if (Object.hasOwn(flags, 'revalidation-publication') &&
       (!isUpdatePlanFingerprint(flags['revalidation-publication']) || !['status', 'resume', 'verify'].includes(subcommand ?? ''))) {
       throw new UsageError('Flag --revalidation-publication requires governance status, resume, or verify and an exact 64-character lowercase SHA-256 publication fingerprint.');

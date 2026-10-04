@@ -70,6 +70,12 @@ describe('project-independent capability discovery', () => {
       manifestRead: [8], governanceReport: 3, execution: false,
       commands: ['validate', 'doctor', 'dev', 'infra', 'governance status', 'governance resume', 'governance verify']
     });
+    expect(report.schemas.modernLocalVerification).toMatchObject({
+      manifestRead: [8], report: 4, selector: 'governance <plan|approve|apply-next> --scope local --local-operation verify',
+      requests: ['verify-local', 'verify-openspec-local', 'verify-openspec-initialized', 'verify-openspec-archived'],
+      explicitRequest: true, separateConsent: true, explicitExecution: true,
+      workflowFinalization: false, publication: false, successorRevalidation: false
+    });
     const plan = buildProjectPlan({
       projectName: 'Capability schema specimen', projectType: 'standard', apiStack: 'node',
       agents: ['copilot'], environments: ['dev']
@@ -192,6 +198,8 @@ describe('project-independent capability discovery', () => {
     expect(result.stdout).toContain('Manifest readers');
     expect(result.stdout).toContain('2, 3, 4, 5, 6, 7');
     expect(result.stdout).toContain('Modern v8 read-only');
+    expect(result.stdout).toContain('Modern v8 verification');
+    expect(result.stdout).toContain('--local-operation verify');
     expect(result.stdout).toContain('governance verify');
     expect(result.stdout).toContain('not approval');
     for (const file of ['README.md', path.join('docs', 'cli-reference.md'), path.join('docs', 'telemetry.md')]) {

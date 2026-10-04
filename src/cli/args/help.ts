@@ -41,11 +41,20 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
         ? {
             ...commandDefinitions.governance,
             description:
-              'Historical projects retain schema-2 planning and execution. V8 projects support only ' +
+              'Historical projects retain schema-2 planning and execution. V8 projects retain ' +
               'schema-3 status, resume and verify inspection; recorded phases are not current proof. ' +
               'An exact --revalidation-publication selects existing successor proof, never approval ' +
               'or execution. Verify exits 0 for complete or inapplicable selected scope, 2 for ' +
-              'consistent incomplete work, and 1 for inspection failure.'
+              'consistent incomplete work, and 1 for inspection failure. ' +
+              'For separate schema-4 v8 verification, select --scope local --local-operation verify: ' +
+              'plan --inputs <request.json>, approve --plan <fingerprint> --inputs <consent.json>, ' +
+              'then apply-next --plan <fingerprint> --execute. Planning probes installed tools and saves ' +
+              'an external preview; approval separately saves consent. Without --execute, apply-next ' +
+              'only inspects saved progress. Keep public request and consent files outside the project. ' +
+              'Initialized OpenSpec requires explicit generated-baseline scope attestation; it is not ' +
+              'domain verification. No publication, successor revalidation, or provider operations are ' +
+              'authorized; the private workspace is not a sandbox. Local operations exit 0 for a completed ' +
+              'requested operation or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.'
           }
         : commandDefinitions[command];
   if (!definition) {

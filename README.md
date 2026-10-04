@@ -74,6 +74,11 @@ interfaces, schemas and limitations without project discovery or telemetry.
 Use it before following a skill that requires newer commands; internal or
 planned capabilities are not advertised as available.
 
+Builds advertising `schemas.modernLocalVerification` also provide
+[explicit v8 local verification](docs/cli-reference.md#modern-local-verification):
+separate request, exact approval, and execution commands. This does not convert
+older projects, publish completion records, or authorize cloud operations.
+
 [Existing repositories](docs/existing-repositories.md) ·
 [Safety and consent](docs/safety-and-consent.md) ·
 [Repair modes](docs/cli-reference.md#repair-modes) ·

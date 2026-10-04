@@ -407,6 +407,30 @@ providers, dispose of retained history or enable public v8 routing. Portable
 JSON/source specimens are not native provenance. Keep their results separate
 and serialize the tool-intensive native selection.
 
+#### Public modern local verification qualification
+
+`tests/modern-local-request.test.ts` checks closed input/consent and command
+grammar. `tests/modern-local-commands.test.ts` separates portable application
+routing specimens from seven actual public plan/approve/apply-next cases.
+Its explicit `LIFTOFF_PUBLIC_LOCAL_TESTS=1` group requires the qualified
+macOS ARM64 Node 24.21.0 runtime, native HCL admission, and installed
+Node/npm, OpenSpec 1.11.0, OpenTofu 1.12.6, and Docker/Compose. It needs no
+Docker daemon, dependency network, or provider access.
+
+```bash
+LIFTOFF_HCL_TEST_LANE=portable npx vitest run tests/modern-local-request.test.ts tests/modern-local-commands.test.ts --maxWorkers=1 --no-file-parallelism
+LIFTOFF_HCL_TEST_LANE=native LIFTOFF_PUBLIC_LOCAL_TESTS=1 npx vitest run tests/modern-local-commands.test.ts --maxWorkers=1 --no-file-parallelism
+```
+
+Run the entire native file: it checks all seven case identities, not just a
+filtered success. Controlled Manual/Spec Kit, active/initialized/archived
+OpenSpec, missing/stale consent and actual failed project tests preserve
+original bytes. Framework markers are contract fixtures, not official
+initializer provenance. Initialized scope is not domain verification.
+Neither portable routing specimens nor this native group establish public
+finalization, publication, recovery, successor revalidation, or broader host
+support. Existing dependency-network execution has its separate qualification.
+
 #### OpenSpec initialization qualification
 
 `tests/modern-openspec-initialization.test.ts` requires the separate explicit

@@ -8,6 +8,7 @@ import { builtinPluginRegistry } from './project/plugins.js';
 import { repairCapabilities } from './repair/capabilities.js';
 import { updateReportSchemaVersion } from './update/output.js';
 import { modernGovernanceReportSchemaVersion } from './governance/modern-inspection.js';
+import { modernLocalCommandReportSchemaVersion } from './governance/modern-local-request.js';
 
 export function installedCapabilities() {
   const registry = builtinPluginRegistry();
@@ -25,6 +26,14 @@ export function installedCapabilities() {
         governanceReport: modernGovernanceReportSchemaVersion,
         execution: false,
         scope: 'Source inspection and independently reconstructed local publication proof only; no current writers or provider completion.'
+      },
+      modernLocalVerification: {
+        manifestRead: [8], report: modernLocalCommandReportSchemaVersion,
+        selector: 'governance <plan|approve|apply-next> --scope local --local-operation verify',
+        requests: ['verify-local', 'verify-openspec-local', 'verify-openspec-initialized', 'verify-openspec-archived'],
+        explicitRequest: true, separateConsent: true, explicitExecution: true,
+        workflowFinalization: false, publication: false, successorRevalidation: false,
+        scope: 'Exact captured-input verification in a private workspace; not a sandbox or full project readiness. Initialized OpenSpec requires a separate generated-baseline scope attestation.'
       },
       reports: {
         capabilities: 1, validate: 1, doctor: 1, upgrade: 1,
@@ -64,7 +73,7 @@ export function installedCapabilities() {
       publicStatefulMigration: false,
       projectTelemetryEnrollment: false,
       capabilityIsApproval: false,
-      privateApis: 'Modern execution, Manual/team generation and v8 writer APIs are not public CLI support.',
+      privateApis: 'Modern finalization/publication, successor revalidation, Manual/team generation and v8 writer APIs are not public CLI support.',
       registration: 'Command syntax does not imply that every option combination is valid or an executor is available.'
     }
   };
