@@ -96,7 +96,13 @@ describe('shared packaged Liftoff skill sources', () => {
     expect(repair).toContain(`repairContractVersion: ${repairContractVersion}`);
     expect(repair).toContain(`schemaVersion: ${repairSchemaVersions.capabilities}`);
     expect(repair).toContain(`schema-${repairSchemaVersions.applicationPatch} application patch`);
-    for (const recipe of Object.values(repairRecipes)) expect(repair).toContain(`\`${recipe.id}\` v${recipe.version}`);
+    for (const recipe of [repairRecipes['azure-local-layout'], repairRecipes['application-layout-patch']]) {
+      expect(repair).toContain(`\`${recipe.id}\` v${recipe.version}`);
+    }
+    expect(repair).not.toContain('application-active-layout-patch');
+    const active = renderRepairInstructions('application-active-layout-patch');
+    expect(active).toContain('`application-active-layout-patch` v1');
+    expect(active).not.toContain('`application-layout-patch` v1');
   });
 
   it.each([

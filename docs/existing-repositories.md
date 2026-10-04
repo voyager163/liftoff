@@ -72,9 +72,12 @@ liftoff update --check
 liftoff update
 ```
 
-For project-file layout repair, use `liftoff repair --check` for inspection or
-`liftoff repair` in a genuine terminal to review an eligible exact plan and
-answer Yes/No (default No), without copying a fingerprint. Unknown/deployed
+For project-file layout repair, use `liftoff repair --check` for inspection.
+Bare current-v8 repair also performs read-only application inventory, with
+explicit active bindings instead of assumed canonical paths. Use an external
+`--application-patch` in a genuine terminal to review its eligible exact plan
+and answer Yes/No (default No), without copying a fingerprint. Historical
+infrastructure recipes retain their separate bare-repair flow. Unknown/deployed
 infrastructure remains protected. For broader application paths, the selected
 native `/liftoff-repair` integration (Codex: `$liftoff-repair`) inventories the
 real project and stages a reviewed patch outside it. Verification/project-code,

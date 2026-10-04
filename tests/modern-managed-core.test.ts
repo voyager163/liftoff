@@ -180,7 +180,8 @@ describe('real modern managed-core inventory and content', () => {
         expect(artifact.content).toContain('Only a CLI that actually accepts this exact source');
         expect(artifact.content).toContain('No executable, framework version, marker, seed, constitution, task bundle or archive is required or created');
         if (operation === 'repair') {
-          expect(artifact.content).toContain(renderRepairInstructions());
+          expect(artifact.content).toContain(renderRepairInstructions('application-active-layout-patch'));
+          expect(artifact.content).toContain('currentApplication.manifestVersion: 8');
           expect(artifact.content).toContain('Conditional repair protocol');
           expect(renderRepairIntegration(agent)).toBe(`${nativeIntegrationHeader(agent, operation)}${renderRepairInstructions()}`);
         } else if (operation === 'assessment') {

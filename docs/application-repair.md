@@ -1,13 +1,42 @@
 # Reviewed application-file repair
 
-`application-layout-patch` version 1 moves or edits explicitly identified existing
-application files. It is **not** a historical-layout detector, a recursive folder
+`application-layout-patch` version 1 repairs explicitly identified application
+files in supported historical manifests. Current manifest-v8 projects use the
+separate `application-active-layout-patch` version-1 recipe. Neither is a
+historical-layout detector, a recursive folder
 mover, or permission to replace customized source with generated starters. The
-recorded manifest workload selects the current target identities; this lane
+recorded workload and applicable layout contract select target identities; this lane
 cannot change the stack, manifest, desired configuration, framework, or activation
 proof.
 These application-patch restrictions do not remove the deterministic Azure
 recipe's separately registered, reviewed manifest and history writes.
+
+## Current manifest-v8 projects
+
+Governance `none` and `single-maintainer-gitflow` support bounded application
+inspection and reviewed file patches. Manual projects need no coding agent:
+bare `liftoff repair <project>` and `--check` inventory application files without
+executing commands or manufacturing governance state. Selected native repair
+skills are optional; query `repair --capabilities --json` for
+`currentApplication` and the exact registered recipe before using them.
+
+Targets use **explicit active artifact bindings**, including compatible custom
+paths. Original generation paths/hashes remain historical provenance, not
+relocation instructions. Missing bindings are not filled in from templates or
+component roots. Unresolved layouts, layouts with no editable artifact bindings,
+and team-profile repair are unsupported.
+
+The current recipe can edit an existing bound artifact in place or review
+eligible custom-component files. Moving a bound artifact is refused because
+separately reviewed binding publication is not yet available. Bound control and
+infrastructure trees remain excluded even at custom paths. Current infrastructure
+transformation and `--live` discovery are not implemented; historical Azure
+approvals cannot authorize them. Successful file repair is not setup, local
+readiness, activation, or deployment completion.
+
+Older generated v8 repair guidance remains managed content: inspect its actual
+capabilities, then review a normal managed-core update rather than overwriting
+the guide or retagging its recorded content hash.
 
 ## Normal interactive flow
 
@@ -79,15 +108,19 @@ or substituted plan.
 
 The public inventory has schema 1 and kind `liftoff-application-inventory`.
 `projectRoot` is canonical. `inspectionDigest` binds the bounded observation and
-the supplied manifest. `target.digest` binds layout
-`liftoff-application-artifacts-v1`, version 1, the recorded workload, and the
-current generator's exact artifact identities.
+the supplied manifest. `target.digest` binds the recorded workload and exact target identities.
+Historical-manifest repair uses `liftoff-application-artifacts-v1`, version 1;
+current-manifest repair uses `liftoff-active-application-artifacts-v1`, version 1.
+Their source identities are respectively `explicit-project-file-mapping-v1`
+and `explicit-active-file-mapping-v1`. Old previews/receipts are not authority
+for the new recipe.
 
-Targets come from the real current generator, including the selected standard
+Target declarations come from the real current generator, including the selected standard
 Node/Python/Go or GenAI backend, applicable Functions worker, optional frontend,
 database, and containers. Each has `logicalName`, `category`, `pathParts`,
 `provisioningGroup`, `component`, and `componentRootPathParts`. Target identities
-are not generated replacement bytes.
+are not generated replacement bytes. For v8 the paths and component roots come
+from explicit active bindings, not the generator's default placement.
 
 `files` contains paths, byte digests, modes, lengths, current exact target matches,
 and any recorded provenance. `recorded-only` provenance is not a recognized

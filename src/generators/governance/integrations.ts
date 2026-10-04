@@ -21,7 +21,9 @@ export function renderRepairIntegration(agent: CodingAgentId): string {
   return `${nativeIntegrationHeader(agent, 'repair')}${renderRepairInstructions()}`;
 }
 
-export function renderRepairInstructions(): string {
+export function renderRepairInstructions(
+  applicationRecipe: 'application-layout-patch' | 'application-active-layout-patch' = 'application-layout-patch'
+): string {
   let text = packagedSkillSource('repair');
   const substitutions = {
     capabilitiesSchema: repairSchemaVersions.capabilities,
@@ -31,8 +33,8 @@ export function renderRepairInstructions(): string {
     patchSchema: repairSchemaVersions.applicationPatch,
     azureRecipe: repairRecipes['azure-local-layout'].id,
     azureRecipeVersion: repairRecipes['azure-local-layout'].version,
-    applicationRecipe: repairRecipes['application-layout-patch'].id,
-    applicationRecipeVersion: repairRecipes['application-layout-patch'].version
+    applicationRecipe: repairRecipes[applicationRecipe].id,
+    applicationRecipeVersion: repairRecipes[applicationRecipe].version
   };
   for (const [name, value] of Object.entries(substitutions)) {
     const token = `{{${name}}}`;

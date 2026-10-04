@@ -139,7 +139,12 @@ installed CLI accepts this exact v8 project and advertises the selected recipe.
 Do not execute per-project verification or writes after an unsupported-source
 read/preview. Governance none stays disabled: no setup, assessment, activation
 state or provider authority is created to use repair.
-${renderRepairInstructions()}`;
+Require \`currentApplication.manifestVersion: 8\`, the selected supported profile,
+and recipe \`application-active-layout-patch\` v1. Targets use explicit active
+artifact bindings, not original generation paths. The current recipe does not
+publish binding changes or transform infrastructure. The Azure recipe mentioned
+in the shared protocol below is historical reference, not current v8 authority.
+${renderRepairInstructions('application-active-layout-patch')}`;
   }
   if (operation === 'assessment') {
     return `${introduction}

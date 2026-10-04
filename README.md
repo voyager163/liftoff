@@ -92,7 +92,7 @@ team generation, fresh OpenSpec finalization, cloud operations or whole-director
 [Existing repositories](docs/existing-repositories.md) ·
 [Safety and consent](docs/safety-and-consent.md) ·
 [Repair modes](docs/cli-reference.md#repair-modes) ·
-[Application repair](docs/application-repair.md)
+[Application repair](docs/application-repair.md) (current v8 and historical recipes)
 
 ## Documentation
 

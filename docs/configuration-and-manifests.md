@@ -258,6 +258,11 @@ The `modernize-liftoff-platform` implementation has independent v8 source reader
 origin-aware candidate writers and exact historical-successor contracts.
 **Public current generation and update write v8.** The historical application
 generation APIs retain their v7 behavior for compatibility.
+Current application repair uses its separate active-layout recipe and explicit
+artifact bindings, preserving generation provenance and manifest bytes.
+It supports governance none/single-maintainer without publishing binding moves
+or enabling current infrastructure transformation; see
+[application repair](application-repair.md#current-manifest-v8-projects).
 Do not manually change an artifact version or call a private writer as an
 upgrade. There is no public target selector or environment bypass. A candidate
 containing correct bytes is not an approved or committed transaction.

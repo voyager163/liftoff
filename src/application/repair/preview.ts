@@ -8,7 +8,7 @@ import type { ProjectFileMutation, ProjectFileSnapshot } from '../../adapters/fi
 import { canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
 import { liftoffVersion } from '../../version.js';
 import {
-  repairExecutionIdentity, repairRecipes, repairSchemaVersions, validateRepairExecutionIdentity,
+  isApplicationRepairRecipe, repairExecutionIdentity, repairRecipes, repairSchemaVersions, validateRepairExecutionIdentity,
   type RepairExecutionIdentity, type RepairRecipeId
 } from '../../domain/repair/identity.js';
 import { repairValidationPolicy } from './validation.js';
@@ -63,8 +63,8 @@ export function buildRepairPreview(input: {
 }): RepairPreview {
   const recipe = input.recipe ?? 'azure-local-layout';
   if (!Object.hasOwn(repairRecipes, recipe) ||
-      (recipe === 'application-layout-patch') !== Boolean(input.applicationPatchPath) ||
-      recipe === 'application-layout-patch' && (input.live || input.subscription || input.verificationPolicy === undefined)) {
+      isApplicationRepairRecipe(recipe) !== Boolean(input.applicationPatchPath) ||
+      isApplicationRepairRecipe(recipe) && (input.live || input.subscription || input.verificationPolicy === undefined)) {
     throw new Error('Repair preview must bind one registered recipe and its exact discovery, staging and verification scope.');
   }
   const body = {
@@ -105,8 +105,8 @@ export async function loadRepairPreview(
       value.live !== (value.subscription !== null) ||
       !(value.applicationPatchPath === null || typeof value.applicationPatchPath === 'string' &&
         path.isAbsolute(value.applicationPatchPath) && path.resolve(value.applicationPatchPath) === value.applicationPatchPath) ||
-      (identity.recipe.id === 'application-layout-patch') !== (value.applicationPatchPath !== null) ||
-      identity.recipe.id === 'application-layout-patch' && value.live ||
+      isApplicationRepairRecipe(identity.recipe.id) !== (value.applicationPatchPath !== null) ||
+      isApplicationRepairRecipe(identity.recipe.id) && value.live ||
       typeof value.inputDigest !== 'string' || typeof value.effectsDigest !== 'string' ||
       typeof value.verificationDigest !== 'string' ||
       ![value.inputDigest, value.effectsDigest, value.verificationDigest].every((digest) => /^[a-f0-9]{64}$/u.test(digest))) {

@@ -1,10 +1,11 @@
 import path from 'node:path';
-import type { LiftoffManifest } from '../../domain/project/contracts.js';
 import { isManagedCoreLogicalName, retiredManagedCoreIdentities } from '../../domain/project/artifact-lifecycle.js';
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
-import { applicationTargetLayoutId, repairContractVersion } from '../../domain/repair/identity.js';
-import { buildArtifacts } from '../../templates.js';
-import { buildProjectPlan } from '../project/planning.js';
+import { activeApplicationTargetLayoutId, applicationTargetLayoutId, repairContractVersion } from '../../domain/repair/identity.js';
+import { buildArtifacts, buildCurrentArtifacts } from '../../templates.js';
+import { buildCurrentProjectPlan, buildProjectPlan } from '../project/planning.js';
+import { resolveModernManifestV8SourceContract, type SupportedProjectManifest } from '../project/manifest.js';
+import type { LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import {
   ApplicationFiles, ApplicationInspectionError, applicationDigest, applicationExclusion, applicationFailure,
   applicationParts, applicationPathFold, applicationPathKey, canonicalApplicationRoot
@@ -22,11 +23,87 @@ export const applicationInventoryLimitations = [
   'Inspection and preview execute no project code, Git commands, filters, hooks, network operations or file mutations.'
 ];
 
-export function currentApplicationTargets(manifest: LiftoffManifest): {
+interface ApplicationTargetContext {
   target: ApplicationTargetLayout;
   protectedPaths: Set<string>;
   examplePaths: Set<string>;
-} {
+  protectedTrees?: readonly string[];
+}
+
+function activeApplicationTargets(manifest: LiftoffManifestV8): ApplicationTargetContext {
+  if (manifest.activeLayout.state !== 'bound') {
+    throw new ApplicationInspectionError('Current application repair requires explicit active bindings; original generation paths are not current-path authority.');
+  }
+  if (manifest.governance.profile === 'team-gitflow') {
+    throw new ApplicationInspectionError('Current application repair supports governance none or single-maintainer-gitflow; team-profile repair is not available.');
+  }
+  const workload = manifest.project.workload;
+  const plan = buildCurrentProjectPlan({
+    projectName: manifest.project.name, projectType: workload.kind, apiStack: workload.apiStack,
+    ...(workload.kind === 'genai' ? { pattern: workload.pattern } : {}),
+    cloud: workload.cloud, region: workload.region, includeFrontend: workload.frontend,
+    environments: [...workload.environments], specWorkflow: manifest.project.specWorkflow,
+    agents: [...manifest.project.agents],
+    ...(manifest.project.defaultAgent ? { defaultAgent: manifest.project.defaultAgent } : {}),
+    governanceProfile: manifest.governance.profile
+  }, { requireProjectName: true });
+  const generated = buildCurrentArtifacts(plan);
+  const descriptor = resolveModernManifestV8SourceContract({
+    selection: { project: manifest.project, framework: manifest.framework, profile: manifest.governance.profile },
+    recordedPlugins: manifest.plugins
+  }).layoutDescriptor;
+  const foldedKey = (parts: readonly string[]) => parts.map(applicationPathFold).join('/');
+  const protectedPaths = new Set([
+    ...descriptor.protectedPaths.map(foldedKey),
+    ...manifest.projectArtifacts.filter(artifact => artifact.category === 'infrastructure')
+      .map(artifact => foldedKey(artifact.pathParts)),
+    ...retiredManagedCoreIdentities.map(artifact => foldedKey(artifact.pathParts))
+  ]);
+  const bindings = manifest.activeLayout.bindings;
+  const protectedTrees = [
+    ...descriptor.protectedPaths.map(foldedKey),
+    ...bindings.filter(binding => binding.kind === 'component' && binding.component.startsWith('opentofu-'))
+      .map(binding => foldedKey(binding.pathParts))
+  ];
+  for (const binding of bindings) {
+    if (binding.kind === 'artifact' && generated.some(artifact =>
+      artifact.logicalName === binding.logicalName && artifact.category === 'infrastructure')) {
+      protectedPaths.add(foldedKey(binding.pathParts));
+    }
+  }
+  const exampleNames = new Set(['.env.example', 'runtime.config.example.json', 'local.settings.example.json']);
+  const examplePaths = new Set(bindings.filter(binding => binding.kind === 'artifact' &&
+    exampleNames.has(binding.pathParts.at(-1)!) && generated.some(artifact =>
+      artifact.logicalName === binding.logicalName && exampleNames.has(artifact.pathParts.at(-1)!)))
+    .map(binding => foldedKey(binding.pathParts)));
+  const artifacts: ApplicationTargetArtifact[] = [];
+  for (const artifact of generated) {
+    if (artifact.lifecycle !== 'project') continue;
+    const binding = bindings.find(binding => binding.kind === 'artifact' && binding.logicalName === artifact.logicalName);
+    if (!binding || applicationExclusion(binding.pathParts, protectedPaths, examplePaths, protectedTrees)) continue;
+    const owner = descriptor.artifacts.find(entry => entry.logicalName === artifact.logicalName)?.component;
+    const component: ApplicationComponent = owner === 'function-worker' ? 'functions' :
+      owner === 'backend' || owner === 'frontend' || owner === 'database' ? owner : 'project';
+    const componentBinding = bindings.find(binding => binding.kind === 'component' && binding.component === owner);
+    artifacts.push({
+      logicalName: artifact.logicalName, category: artifact.category,
+      pathParts: applicationParts(binding.pathParts), provisioningGroup: artifact.provisioningGroup,
+      component, componentRootPathParts: componentBinding ? applicationParts(componentBinding.pathParts) : []
+    });
+  }
+  artifacts.sort((a, b) => a.logicalName.localeCompare(b.logicalName, 'en'));
+  if (!artifacts.length) {
+    throw new ApplicationInspectionError('No editable application artifacts have explicit active bindings. Review bindings separately; repair does not infer them from templates or provenance.');
+  }
+  const body = {
+    id: activeApplicationTargetLayoutId, version: 1 as const,
+    workload: { ...workload, environments: [...workload.environments] }, artifacts
+  };
+  return { target: { ...body, digest: canonicalSha256(body) }, protectedPaths, examplePaths, protectedTrees };
+}
+
+export function currentApplicationTargets(manifest: SupportedProjectManifest): ApplicationTargetContext {
+  if (manifest.artifactVersion === 8) return activeApplicationTargets(manifest);
   const workload = manifest.project.workload;
   const fallbackAgents = manifest.project.agents.length ? manifest.project.agents : ['github-copilot'];
   const plan = buildProjectPlan({
@@ -87,7 +164,7 @@ export function currentApplicationTargets(manifest: LiftoffManifest): {
 }
 
 export async function inspectApplicationLayout(
-  root: string, manifest: LiftoffManifest
+  root: string, manifest: SupportedProjectManifest
 ): Promise<ApplicationLayoutInspection> {
   const report: ApplicationInventoryReport = {
     schemaVersion: 1, kind: 'liftoff-application-inventory', projectRoot: path.resolve(root),
@@ -96,13 +173,20 @@ export async function inspectApplicationLayout(
     referenceCoverage: 'bounded-literals-only', limitations: [...applicationInventoryLimitations],
     blockers: [], bounds: applicationBounds
   };
+  if (manifest.artifactVersion === 8) {
+    report.limitations = [
+      'Targets use only explicit active artifact bindings. Original generation paths and hashes remain historical provenance, not relocation instructions or current-path authority.',
+      'Unbound artifact identities are not inferred. Moving a bound artifact requires separately approved binding publication, which this file-only recipe does not perform.',
+      ...applicationInventoryLimitations.slice(1)
+    ];
+  }
   let reader: ApplicationFiles | undefined;
   try {
     report.projectRoot = await canonicalApplicationRoot(root);
     const current = currentApplicationTargets(manifest);
     report.target = current.target;
     reader = new ApplicationFiles(report.projectRoot, (parts) =>
-      applicationExclusion(parts, current.protectedPaths, current.examplePaths));
+      applicationExclusion(parts, current.protectedPaths, current.examplePaths, current.protectedTrees));
     await reader.walk();
     await reader.assertUnchanged();
     report.complete = true;
@@ -118,7 +202,8 @@ export async function inspectApplicationLayout(
     const key = applicationPathKey(snapshot.pathParts);
     const digest = applicationDigest(snapshot.content!);
     const target = report.target?.artifacts.find((item) => applicationPathKey(item.pathParts) === key);
-    const recorded = manifest.projectArtifacts.find((item) => applicationPathKey(item.pathParts) === key);
+    const recorded = manifest.projectArtifacts.find((item) => manifest.artifactVersion === 8 && target
+      ? item.logicalName === target.logicalName : applicationPathKey(item.pathParts) === key);
     const identityMatches = recorded && target && recorded.logicalName === target.logicalName &&
       recorded.category === target.category && recorded.provisioningGroup === target.provisioningGroup;
     return {

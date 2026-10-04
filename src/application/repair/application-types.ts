@@ -42,7 +42,7 @@ export interface ApplicationTargetArtifact {
 }
 
 export interface ApplicationTargetLayout {
-  id: 'liftoff-application-artifacts-v1';
+  id: 'liftoff-application-artifacts-v1' | 'liftoff-active-application-artifacts-v1';
   version: 1;
   workload: ManifestWorkload;
   artifacts: ApplicationTargetArtifact[];
@@ -162,7 +162,7 @@ export interface ApplicationVerificationPolicy {
 
 export interface ApplicationPatchScope {
   kind: 'application-layout-patch';
-  sourceLayout: 'explicit-project-file-mapping-v1';
+  sourceLayout: 'explicit-project-file-mapping-v1' | 'explicit-active-file-mapping-v1';
   projectRoot: string;
   manifestDigest: string;
   inspectionDigest: string;

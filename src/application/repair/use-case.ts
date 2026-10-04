@@ -1,7 +1,7 @@
 import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { ExecutionContext } from '../context.js';
-import { loadManifest, parseManifest } from '../project/manifest.js';
+import { loadManifest, loadProjectManifest, parseManifest, type SupportedProjectManifest } from '../project/manifest.js';
 import { findProjectRoot } from '../../adapters/filesystem/project-discovery.js';
 import { captureProjectFileSnapshot, type ProjectFileMutation, type ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
 import {
@@ -14,7 +14,7 @@ import {
 } from '../../domain/project/infrastructure-layout.js';
 import type { LiftoffManifest } from '../../domain/project/contracts.js';
 import { NodeCommandRunner } from '../../process-runner.js';
-import { repairExecutionIdentity, repairSchemaVersions } from '../../domain/repair/identity.js';
+import { isApplicationRepairRecipe, repairExecutionIdentity, repairSchemaVersions } from '../../domain/repair/identity.js';
 import { liftoffVersion } from '../../version.js';
 import type { UpdateApprovalResult } from '../update/approval.js';
 import { inspectInfrastructureRepair, type InfrastructureRepairCandidate } from './infrastructure.js';
@@ -114,7 +114,7 @@ function assertSamePreview(current: RepairPreview, saved: RepairPreview): void {
 export async function repairProject(request: RepairRequest, context: ExecutionContext): Promise<number> {
   let root = request.project ? path.resolve(context.cwd, request.project) : context.cwd;
   let committed = false;
-  let selectedManifest: LiftoffManifest | undefined;
+  let selectedManifest: SupportedProjectManifest | undefined;
   let approval: UpdateApprovalResult | undefined;
   let validationAttempted = false;
   const now = () => context.updateNow?.() ?? new Date();
@@ -221,12 +221,30 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
       });
       return 2;
     }
-    selectedManifest = await loadManifest(root);
+    selectedManifest = await loadProjectManifest(root);
     const fingerprint = request.approvePlan ?? request.verifyPlan;
     let saved = fingerprint ? await loadRepairPreview(root, fingerprint, now(), storage) : undefined;
-    if (request.inspectLayout || request.applicationPatch || request.verifyPlan || saved?.recipe.id === 'application-layout-patch') {
+    if (request.inspectLayout || request.applicationPatch || request.verifyPlan ||
+        saved && isApplicationRepairRecipe(saved.recipe.id)) {
       const { repairApplicationProject } = await import('./patch-flow.js');
       return await repairApplicationProject({ root, manifest: selectedManifest, request, context, storage, saved });
+    }
+    if (selectedManifest.artifactVersion === 8) {
+      if (request.live || request.subscription || saved) {
+        emit({
+          ...base(), message: 'Current v8 infrastructure transformation and live infrastructure discovery are not available through this repair recipe.',
+          blockers: ['Historical infrastructure provenance and approvals cannot authorize current active-layout operations.'],
+          nextActions: [repairCommandAction(root, ['--inspect-layout'], {
+            id: 'application-inventory', label: 'Inspect current application bindings',
+            description: 'Read-only application inspection; no infrastructure, provider or binding mutation.'
+          })]
+        });
+        return 2;
+      }
+      const { repairApplicationProject } = await import('./patch-flow.js');
+      return await repairApplicationProject({
+        root, manifest: selectedManifest, request: { ...request, inspectLayout: true }, context, storage
+      });
     }
     const scope = saved
       ? { live: saved.live, subscription: saved.subscription ?? undefined }
