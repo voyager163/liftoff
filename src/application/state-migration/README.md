@@ -60,9 +60,17 @@ from current source and native provenance. The authenticated local-verification
 transaction records actual commit before cleanup; inspection/recovery never
 infer commit or successful seal cleanup from matching target bytes or an absent
 journal. Committed-but-incomplete revalidation retains the active successor.
-This private Spec Kit path does not enable public v8 routing or archived-OpenSpec
-execution: a separately qualified, already-archived read-only native protocol
-is still required, with no task mutation or archive replay.
+The separate private archived-OpenSpec protocol uses preview schema5 and
+consent/result schema4. It captures complete current/main/archive inputs and
+executes selected-main, current-all and archived-task strict JSON validation
+before approved project checks. An archived successor can supply fresh local
+proof only through this protocol; checked historical tasks are observed source,
+not proof that Liftoff executed them. The active-change executor's archive
+refusal remains unchanged. Revalidation publication preserves archived/main
+bytes and original transition/preparation identities, including retained history.
+Neither this path nor the Spec Kit path enables public v8 routing, fresh OpenSpec
+finalization, archive replay, automatic directory rollback or deployment-state
+access.
 See
 [configuration and manifests](../../../docs/configuration-and-manifests.md#private-modernization-contracts)
 for the separate source contracts and unchanged public defaults.

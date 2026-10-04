@@ -372,6 +372,36 @@ observations. Keep native and portable reports separate and do not count skipped
 cases as qualified. Serialize tool-intensive runs; preserve interrupted-run
 output and owned roots when settlement is unknown rather than inferring cleanup.
 
+#### Archived OpenSpec revalidation qualification
+
+`LIFTOFF_OPENSPEC_ARCHIVE_TESTS=1` separately enables nine native execution cases
+in `tests/modern-openspec-archived.test.ts` and three native successor-publication
+cases in `tests/modern-revalidation-records.test.ts`. Default and forced-portable
+runs leave these cases explicitly unrun. Explicit native selection requires the
+same darwin/arm64/Node24.21.0, OpenSpec 1.11.0 and supported Node/npm,
+Docker/Compose and OpenTofu tools described above.
+
+```bash
+LIFTOFF_HCL_TEST_LANE=native LIFTOFF_OPENSPEC_ARCHIVE_TESTS=1 npx vitest run tests/modern-openspec-archived.test.ts tests/modern-revalidation-records.test.ts -t 'explicit actual archived|publishes fresh archived' --maxWorkers=1 --no-file-parallelism
+LIFTOFF_HCL_TEST_LANE=portable npx vitest run tests/modern-openspec-archived.test.ts tests/modern-openspec-execution.test.ts tests/modern-openspec-initialization.test.ts tests/modern-revalidation-records.test.ts --maxWorkers=2
+```
+
+The native cases validate current main specs, all current subjects and all
+archived task lists using actual CLI JSON. They cover all three governance
+profiles, zero active changes, contextual/Copilot configuration, source drift,
+an invalid unrelated current subject, and immutable original archive bytes.
+One case first prepares a disposable fixture with Liftoff's actual seed renderers
+and the official `archive <change> --yes --json` command. Its completed checkboxes
+are fixture input, not historical execution proof. The subsequent product
+revalidation is read-only and must preserve that actual archived/main output,
+including OpenSpec's compact Purpose-heading formatting.
+Successor cases exercise history families 1/2/3, including retained history,
+separate exact-byte publication consent and independent committed readback.
+They do not execute historical tasks, initialize or archive a user project, access
+providers, dispose of retained history or enable public v8 routing. Portable
+JSON/source specimens are not native provenance. Keep their results separate
+and serialize the tool-intensive native selection.
+
 #### OpenSpec initialization qualification
 
 `tests/modern-openspec-initialization.test.ts` requires the separate explicit

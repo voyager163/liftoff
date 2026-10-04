@@ -6,9 +6,9 @@ import { hclComputationPolicy } from '../src/adapters/hcl/parser-child.js';
 import { modernActivationSourceContracts } from '../src/domain/governance/policy/identity.js';
 import { currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
 import { localVerificationTransactionSchemaVersion } from '../src/domain/project/reviewed-update-artifacts.js';
-import { localExecutionPolicy, openSpecReadOnlyExecutionPolicy } from '../src/domain/governance/activation/modern-local-runtime.js';
+import { localExecutionPolicy, openSpecReadOnlyExecutionPolicy, openSpecArchivedExecutionPolicy } from '../src/domain/governance/activation/modern-local-runtime.js';
 import { openSpecDistributionPolicy } from '../src/domain/governance/activation/installed-tool-distribution.js';
-import { openSpecReadSetPolicy } from '../src/domain/governance/activation/modern-openspec-execution.js';
+import { openSpecReadSetPolicy, openSpecArchivedReadSetPolicy } from '../src/domain/governance/activation/modern-openspec-execution.js';
 import { openSpecInitializationPolicy } from '../src/domain/governance/activation/modern-openspec-obligations.js';
 import { localCompletionPolicy, specKitCompletionPolicy, nativeCompletionPath } from '../src/domain/governance/activation/modern-local-completion.js';
 
@@ -18,6 +18,28 @@ const phases = Object.entries(phaseCapabilities);
 const byExecutor = (executor: string) => phases.filter(([, capability]) => capability.executor === executor).map(([id]) => id);
 
 describe('developer activation-completeness guidance', () => {
+  it('separates archived current-validation proof from historical execution and public routing',()=>{
+    const section=developer.split('#### Private archived OpenSpec revalidation')[1]?.split('\n### ')[0]??'';
+    for(const phrase of [
+      '`prepareModernArchivedOpenSpecExecution', 'private preview schema5', '`archivedOpenSpecInputs`',
+      'consent schema4', '`archivedOpenSpecInputDigest`', 'result schema4',
+      'active schemas3/4 still reject', 'generic OpenSpec schema2 remains blocked',
+      '`validate <capability> --type spec --strict --json --no-interactive`',
+      '`validate --all --strict --json --no-interactive --concurrency 1`',
+      '`validate --archived --strict --json --no-interactive --concurrency 1`',
+      'not historical task', 'does not authorize cloud-agent setup', 'not a sandbox',
+      'not changes to Purpose or requirement bodies', 'Raw source bytes remain bound',
+      'Original transition/preparation identities', 'Source-only',
+      'Fresh OpenSpec synchronization/archive', 'public v8', 'routing remain separate'
+    ])expect(section).toContain(phrase);
+    expect(section).toContain(`${openSpecArchivedReadSetPolicy.subjects}-subject ceiling`);
+    expect(section).toContain(`1-${openSpecArchivedReadSetPolicy.tasks} nonempty completed tasks`);
+    expect(section).toContain(`${openSpecArchivedReadSetPolicy.inputDescriptorBytes/1024}-KiB descriptor`);
+    expect(section).toContain(`${openSpecArchivedExecutionPolicy.jsonProofBytes/1024}-KiB JSON`);
+    expect(openSpecArchivedExecutionPolicy.basePolicy).toBe(localExecutionPolicy);
+    expect(openSpecReadSetPolicy.scope).toContain('empty-archive');
+  });
+
   it('states the actual executor counts from the release-owned capability table', () => {
     expect(completeness).toContain(`Of its ${phases.length} declared phases, ${byExecutor('built-in').length} have built-in handler paths, ` +
       `${byExecutor('injected-only').length} require an injected\nGitHub ruleset adapter`);

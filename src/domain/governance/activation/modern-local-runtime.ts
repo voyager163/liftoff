@@ -140,8 +140,9 @@ export function installedLocalBinding(snapshot: InstalledLocalSnapshot): string 
 }
 
 import {openSpecReadSetPolicy,validateOpenSpecExecutionInputs,openSpecExecutionChecks,validateOpenSpecCommandOutput,
-  validateInitializedOpenSpecCommandOutput,
-  type OpenSpecExecutionInputs,type OpenSpecExecutionObservation} from './modern-openspec-execution.js';
+  validateInitializedOpenSpecCommandOutput,openSpecArchivedReadSetPolicy,validateArchivedOpenSpecExecutionInputs,
+  archivedOpenSpecExecutionChecks,validateArchivedOpenSpecCommandOutput,
+  type OpenSpecExecutionInputs,type OpenSpecExecutionObservation,type OpenSpecArchivedExecutionInputs} from './modern-openspec-execution.js';
 import {openSpecInitializationPolicy,validateOpenSpecInitialization,validateBootstrapScopeAttestation,initializationObligationOutcomes,validateInitializationOutputs,
   type OpenSpecInitialization,type BootstrapScopeAttestation,type OpenSpecInitializationOutcome} from './modern-openspec-obligations.js';
 
@@ -164,6 +165,8 @@ export const openSpecReadOnlyExecutionPolicy=Object.freeze({kind:'liftoff-opensp
   diagnostics:'validated-machine-json-only-with-raw-output-commitment',finalization:'not-authorized'});
 export const openSpecInitializedExecutionPolicy=Object.freeze({...openSpecReadOnlyExecutionPolicy,version:3,initialization:openSpecInitializationPolicy,
   admission:'fresh-initialized-baseline-preparation-and-scope-attestation',completion:'initialization-obligations-observed-not-finalized'});
+export const openSpecArchivedExecutionPolicy=Object.freeze({...openSpecReadOnlyExecutionPolicy,version:4,readSetPolicy:openSpecArchivedReadSetPolicy,
+  admission:'fresh-complete-archived-inputs-and-consent',completion:'current-validation-not-historical-task-execution'});
 export interface LocalExecutionToolFile {
   path:string;digest:string;bytes:number;mode:number;device:string;inode:string;modifiedNs:string;changedNs:string;
 }
@@ -200,7 +203,10 @@ export interface LocalExecutionPreviewV3 extends Omit<LocalExecutionPreviewV1,'s
 export interface LocalExecutionPreviewV4 extends Omit<LocalExecutionPreviewV3,'schemaVersion'>{
   schemaVersion:4;initialization:OpenSpecInitialization;
 }
-export type LocalExecutionPreview=LocalExecutionPreviewV1|LocalExecutionPreviewV2|LocalExecutionPreviewV3|LocalExecutionPreviewV4;
+export interface LocalExecutionPreviewV5 extends Omit<LocalExecutionPreviewV1,'schemaVersion'>{
+  schemaVersion:5;archivedOpenSpecInputs:OpenSpecArchivedExecutionInputs;
+}
+export type LocalExecutionPreview=LocalExecutionPreviewV1|LocalExecutionPreviewV2|LocalExecutionPreviewV3|LocalExecutionPreviewV4|LocalExecutionPreviewV5;
 export interface LocalExecutionConsentV1 {
   kind:'liftoff-local-execution-consent';schemaVersion:1;projectRoot:string;fingerprint:string;
   approvedAt:string;expiresAt:string;scopes:LocalExecutionScopes;
@@ -211,7 +217,10 @@ export interface LocalExecutionConsentV2 extends Omit<LocalExecutionConsentV1,'s
 export interface LocalExecutionConsentV3 extends Omit<LocalExecutionConsentV2,'schemaVersion'>{
   schemaVersion:3;initializationDigest:string;bootstrapScopeAttestation:BootstrapScopeAttestation;
 }
-export type LocalExecutionConsent=LocalExecutionConsentV1|LocalExecutionConsentV2|LocalExecutionConsentV3;
+export interface LocalExecutionConsentV4 extends Omit<LocalExecutionConsentV1,'schemaVersion'>{
+  schemaVersion:4;archivedOpenSpecInputDigest:string;
+}
+export type LocalExecutionConsent=LocalExecutionConsentV1|LocalExecutionConsentV2|LocalExecutionConsentV3|LocalExecutionConsentV4;
 export type LocalExecutionCode = 'passed'|'inapplicable'|'nonzero-exit'|'process-failed'|'timeout'|'output-limit'|
   'cancelled'|'unsettled'|'admission-changed'|'workspace-failed'|'storage-failed'|'not-run'|'preparation-failed';
 export interface LocalExecutionCheckResult {
@@ -233,7 +242,10 @@ export interface LocalExecutionResultV2 extends Omit<LocalExecutionResultV1,'sch
 export interface LocalExecutionResultV3 extends Omit<LocalExecutionResultV2,'schemaVersion'|'status'>{
   schemaVersion:3;status:'initialization-obligations-observed'|'failed'|'blocked'|'uncertain';initialization:OpenSpecInitializationOutcome;
 }
-export type LocalExecutionResult=LocalExecutionResultV1|LocalExecutionResultV2|LocalExecutionResultV3;
+export interface LocalExecutionResultV4 extends Omit<LocalExecutionResultV2,'schemaVersion'>{
+  schemaVersion:4;
+}
+export type LocalExecutionResult=LocalExecutionResultV1|LocalExecutionResultV2|LocalExecutionResultV3|LocalExecutionResultV4;
 export interface LocalExecutionState {
   kind:'liftoff-local-execution-state';schemaVersion:1;projectRoot:string;fingerprint:string;operationId:string;
   phase:'claimed'|'copying'|'preparing'|'verifying'|'finished'|'uncertain';
@@ -250,8 +262,9 @@ export function validateLocalExecutionPreview(input:LocalExecutionPreview,now:Da
   const value=copyModernLocalData(input);
   exactRecord(value,['kind','schemaVersion','operationKind','projectRoot','operationId','createdAt','expiresAt','fingerprint',
     'installedBinding','observationDigest','physicalDigest','baselineDigest','recipeDigest','policyDigest','checks','tools',
-    'preparation','preparationDigest','outputRoles','selectedPlan','selectedPlanDigest',...(value.schemaVersion===2?['executionAdmission']:[]),...([3,4].includes(value.schemaVersion)?['openSpecInputs']:[]),...(value.schemaVersion===4?['initialization']:[])],'Local execution preview');
-  if(value.kind!=='liftoff-local-execution-preview'||![1,2,3,4].includes(value.schemaVersion)||value.operationKind!=='verify-local'||
+    'preparation','preparationDigest','outputRoles','selectedPlan','selectedPlanDigest',...(value.schemaVersion===2?['executionAdmission']:[]),...([3,4].includes(value.schemaVersion)?['openSpecInputs']:[]),
+    ...(value.schemaVersion===4?['initialization']:[]),...(value.schemaVersion===5?['archivedOpenSpecInputs']:[])],'Local execution preview');
+  if(value.kind!=='liftoff-local-execution-preview'||![1,2,3,4,5].includes(value.schemaVersion)||value.operationKind!=='verify-local'||
     !path.isAbsolute(value.projectRoot)||path.normalize(value.projectRoot)!==value.projectRoot||
     !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(value.operationId))localInputFailure('Invalid local execution identity.');
   const created=utc(value.createdAt),expires=utc(value.expiresAt);
@@ -278,7 +291,7 @@ export function validateLocalExecutionPreview(input:LocalExecutionPreview,now:Da
     const distribution='distribution'in tool;
     exactRecord(tool,['id','launcherPath','executablePath','prefixArgs','version','versions','files','probe','digest',...(distribution?['kind','schemaVersion','distribution','launcherObservation']:[])],'Local tool');
     if(distribution){
-      if(![2,3,4].includes(value.schemaVersion)||tool.id!=='openspec'||tool.kind!=='liftoff-distribution-bound-tool'||tool.schemaVersion!==1)localInputFailure('Mixed OpenSpec distribution tool identity.');
+      if(![2,3,4,5].includes(value.schemaVersion)||tool.id!=='openspec'||tool.kind!=='liftoff-distribution-bound-tool'||tool.schemaVersion!==1)localInputFailure('Mixed OpenSpec distribution tool identity.');
       validateInstalledToolDistribution(tool.distribution);
       exactRecord(tool.launcherObservation,['physical','linkText','resolvedPath'],'Observed tool launcher');validateDistributionPhysical(tool.launcherObservation.physical);
       if(tool.launcherObservation.linkText!==null&&typeof tool.launcherObservation.linkText!=='string'||
@@ -290,7 +303,7 @@ export function validateLocalExecutionPreview(input:LocalExecutionPreview,now:Da
         canonicalSha256(tool.probe)!==canonicalSha256({executable:tool.executablePath,args:[...tool.prefixArgs,'--version']}))localInputFailure('OpenSpec package/launcher/version/probe correspondence differs.');
       const node=value.tools.find(t=>t.id==='node');
       if(!node||tool.executablePath!==node.executablePath||!node.files.every((f:LocalExecutionToolFile)=>tool.files.some((anchor:LocalExecutionToolFile)=>canonicalSha256(anchor)===canonicalSha256(f))))localInputFailure('OpenSpec lacks its exact independently observed Node association.');
-    }else if([2,3,4].includes(value.schemaVersion)&&tool.id==='openspec')localInputFailure('OpenSpec preview requires complete distribution identity.');
+    }else if([2,3,4,5].includes(value.schemaVersion)&&tool.id==='openspec')localInputFailure('OpenSpec preview requires complete distribution identity.');
     if(!['node','npm','python','uv','go','docker','tofu','openspec'].includes(tool.id)||!path.isAbsolute(tool.launcherPath)||!path.isAbsolute(tool.executablePath)||
       typeof tool.version!=='string'||!tool.version||!tool.versions||typeof tool.versions!=='object'||Array.isArray(tool.versions)||
       Object.values(tool.versions).some(version=>typeof version!=='string'||!version))localInputFailure('Invalid local tool identity.');
@@ -323,6 +336,14 @@ export function validateLocalExecutionPreview(input:LocalExecutionPreview,now:Da
       value.tools.filter(t=>t.id==='openspec').length!==1||value.selectedPlan&&value.selectedPlan.identity.workflow!=='openspec'||
       !value.checks.some(c=>c.id==='framework-source'&&c.status==='planned'&&c.command===null))localInputFailure('OpenSpec executable preview lacks exact complete read-only recipes.');
   }
+  if(value.schemaVersion===5){
+    validateArchivedOpenSpecExecutionInputs(value.archivedOpenSpecInputs);
+    const expected=archivedOpenSpecExecutionChecks(value.archivedOpenSpecInputs).map(({inputPaths:_paths,...check})=>check);
+    if(canonicalSha256(value.checks.filter(c=>c.command?.executable==='openspec'))!==canonicalSha256(expected)||
+      value.tools.filter(t=>t.id==='openspec').length!==1||value.selectedPlan&&value.selectedPlan.identity.workflow!=='openspec'||
+      !value.checks.some(c=>c.id==='framework-source'&&c.status==='planned'&&c.command===null))
+      localInputFailure('Archived OpenSpec preview lacks exact complete current/main/archive validation recipes.');
+  }
   if(value.schemaVersion===4){
     const init=validateOpenSpecInitialization(value.initialization);
     if(init.taskPathParts[2]!==value.openSpecInputs.changeName||!value.tools.some(t=>t.id==='tofu')||value.preparation.some(p=>typeof p==='object'&&p!==null&&'network'in p&&p.network!==false))
@@ -337,7 +358,7 @@ export function validateLocalExecutionPreview(input:LocalExecutionPreview,now:Da
         canonicalSha256(next.cwdPathParts)!==canonicalSha256(r.cwdPathParts))localInputFailure('Init must precede its exact matching validate in the same workspace.');
     });
   }
-  if(value.policyDigest!==canonicalSha256(value.schemaVersion===4?openSpecInitializedExecutionPolicy:value.schemaVersion===3?openSpecReadOnlyExecutionPolicy:value.schemaVersion===2?openSpecExecutionPolicy:localExecutionPolicy)||value.preparationDigest!==canonicalSha256(value.preparation)||
+  if(value.policyDigest!==canonicalSha256(value.schemaVersion===5?openSpecArchivedExecutionPolicy:value.schemaVersion===4?openSpecInitializedExecutionPolicy:value.schemaVersion===3?openSpecReadOnlyExecutionPolicy:value.schemaVersion===2?openSpecExecutionPolicy:localExecutionPolicy)||value.preparationDigest!==canonicalSha256(value.preparation)||
     value.selectedPlanDigest!==(value.selectedPlan===null?null:canonicalSha256(value.selectedPlan)))localInputFailure('Local execution policy/preparation/plan binding mismatch.');
   const {fingerprint,...body}=value;
   if(fingerprint!==localExecutionDigest(body))localInputFailure('Local execution preview fingerprint mismatch.');
@@ -347,13 +368,13 @@ export function validateLocalExecutionPreview(input:LocalExecutionPreview,now:Da
 export function hasOpenSpecExecutionIdentity(input:LocalExecutionPreview):boolean{
   const value=copyModernLocalData(input);
   if(!Array.isArray(value.checks)||!Array.isArray(value.tools))localInputFailure('Execution identity requires explicit check/tool inventories.');
-  return [2,3,4].includes(value.schemaVersion)||'initialization'in value||'openSpecInputs'in value||'executionAdmission'in value||value.selectedPlan?.identity?.workflow==='openspec'||
+  return [2,3,4,5].includes(value.schemaVersion)||'initialization'in value||'openSpecInputs'in value||'archivedOpenSpecInputs'in value||'executionAdmission'in value||value.selectedPlan?.identity?.workflow==='openspec'||
     value.checks.some(c=>c.command?.executable==='openspec'||c.reasons.some((reason:string)=>reason.startsWith('openspec-')))||
     value.tools.some(t=>t.id==='openspec'||'distribution'in t||'kind'in t&&t.kind==='liftoff-distribution-bound-tool');
 }
 export function assertExecutableLocalExecutionPreview(preview:LocalExecutionPreview):void{
   const value=copyModernLocalData(preview);
-  if(value.schemaVersion===3||value.schemaVersion===4){validateLocalExecutionPreview(value,new Date(value.createdAt));return;}
+  if(value.schemaVersion===3||value.schemaVersion===4||value.schemaVersion===5){validateLocalExecutionPreview(value,new Date(value.createdAt));return;}
   if(hasOpenSpecExecutionIdentity(preview))localInputFailure('openspec-workflow-inputs-unqualified: OpenSpec previews cannot authorize consent or execution.');
 }
 export function validateLocalExecutionScopes(input:LocalExecutionScopes):LocalExecutionScopes{
@@ -368,13 +389,15 @@ export function validateLocalExecutionConsentRecord(root:string,preview:LocalExe
   if(preview.schemaVersion===2)localInputFailure('OpenSpec schema2 has no legitimate execution consent.');
   const value=copyModernLocalData(input) as LocalExecutionConsent;
   exactRecord(value,['kind','schemaVersion','projectRoot','fingerprint','approvedAt','expiresAt','scopes',...([3,4].includes(preview.schemaVersion)?['openSpecInputDigest']:[]),
-    ...(preview.schemaVersion===4?['initializationDigest','bootstrapScopeAttestation']:[])],'Local execution consent');
+    ...(preview.schemaVersion===4?['initializationDigest','bootstrapScopeAttestation']:[]),...(preview.schemaVersion===5?['archivedOpenSpecInputDigest']:[])],'Local execution consent');
   const at=Date.parse(value.approvedAt),expires=Date.parse(value.expiresAt);
   if(!Number.isFinite(observedAt.getTime())||!Number.isFinite(at)||!Number.isFinite(expires)||new Date(at).toISOString()!==value.approvedAt||
-    value.kind!=='liftoff-local-execution-consent'||value.schemaVersion!==(preview.schemaVersion===4?3:preview.schemaVersion===3?2:1)||value.projectRoot!==root||value.fingerprint!==preview.fingerprint||
+    value.kind!=='liftoff-local-execution-consent'||value.schemaVersion!==(preview.schemaVersion===5?4:preview.schemaVersion===4?3:preview.schemaVersion===3?2:1)||value.projectRoot!==root||value.fingerprint!==preview.fingerprint||
     value.expiresAt!==preview.expiresAt||Date.parse(value.approvedAt)<Date.parse(preview.createdAt)||Date.parse(value.approvedAt)>observedAt.getTime()||Date.parse(value.expiresAt)<=observedAt.getTime())localInputFailure('Local execution consent is invalid, stale or foreign.');
   validateLocalExecutionScopes(value.scopes);
   if(preview.schemaVersion===3&&(value.schemaVersion!==2||value.openSpecInputDigest!==canonicalSha256(preview.openSpecInputs)))localInputFailure('OpenSpec consent omits its exact complete input contract.');
+  if(preview.schemaVersion===5&&(value.schemaVersion!==4||value.archivedOpenSpecInputDigest!==canonicalSha256(preview.archivedOpenSpecInputs)))
+    localInputFailure('Archived OpenSpec consent omits its exact current/archive input contract.');
   if(preview.schemaVersion===4){
     if(value.schemaVersion!==3||value.openSpecInputDigest!==canonicalSha256(preview.openSpecInputs)||value.initializationDigest!==canonicalSha256(preview.initialization)||
       value.scopes.dependencyPreparation!==true||value.scopes.dependencyNetwork!==false)localInputFailure('Initialized baseline requires exact affirmative preparation and no-network consent.');
@@ -387,9 +410,9 @@ export function validateLocalExecutionConsentRecord(root:string,preview:LocalExe
 export function validateLocalExecutionResult(input:unknown,preview:LocalExecutionPreview,workspaceDirectory?:string):LocalExecutionResult{
   if(preview.schemaVersion===2)localInputFailure('OpenSpec schema2 has no legitimate execution result.');
   const value=copyModernLocalData(input) as LocalExecutionResult;
-  exactRecord(value,['kind','schemaVersion','projectRoot','fingerprint','operationId','status','complete','startedAt','completedAt','checks','preparation','inputsUnchanged','cleanupComplete','retainedWorkspace','policyDigest','baselineDigest','selectedPlanDigest','resultDigest','failureCode',...([3,4].includes(preview.schemaVersion)?['openSpec']:[]),
+  exactRecord(value,['kind','schemaVersion','projectRoot','fingerprint','operationId','status','complete','startedAt','completedAt','checks','preparation','inputsUnchanged','cleanupComplete','retainedWorkspace','policyDigest','baselineDigest','selectedPlanDigest','resultDigest','failureCode',...([3,4,5].includes(preview.schemaVersion)?['openSpec']:[]),
     ...(preview.schemaVersion===4?['initialization']:[])],'Local execution result');
-  if(value.kind!=='liftoff-local-execution-result'||value.schemaVersion!==(preview.schemaVersion===4?3:preview.schemaVersion===3?2:1)||value.projectRoot!==preview.projectRoot||
+  if(value.kind!=='liftoff-local-execution-result'||value.schemaVersion!==(preview.schemaVersion===5?4:preview.schemaVersion===4?3:preview.schemaVersion===3?2:1)||value.projectRoot!==preview.projectRoot||
     value.fingerprint!==preview.fingerprint||value.operationId!==preview.operationId||value.policyDigest!==preview.policyDigest||
     value.baselineDigest!==preview.baselineDigest||value.selectedPlanDigest!==preview.selectedPlanDigest||
     utc(value.completedAt)<utc(value.startedAt)||value.checks.length!==preview.checks.length||
@@ -450,17 +473,18 @@ export function validateLocalExecutionResult(input:unknown,preview:LocalExecutio
       result.startedAt===null||result.completedAt===null||result.status==='inapplicable'||result.status==='blocked'||
       result.status!=='uncertain'&&(result.stdoutDigest===null||result.stderrDigest===null))localInputFailure('Preparation result differs from its exact approved command/tool.');
   }
-  if(preview.schemaVersion===3||preview.schemaVersion===4){
-    if(value.schemaVersion!==2&&value.schemaVersion!==3)localInputFailure('OpenSpec execution result requires exact command-output proof.');
+  if(preview.schemaVersion===3||preview.schemaVersion===4||preview.schemaVersion===5){
+    if(value.schemaVersion!==2&&value.schemaVersion!==3&&value.schemaVersion!==4)localInputFailure('OpenSpec execution result requires exact command-output proof.');
     exactRecord(value.openSpec,['inputDigest','projectRoot','observations'],'OpenSpec result proof');
-    if(value.openSpec.inputDigest!==canonicalSha256(preview.openSpecInputs)||!workspaceDirectory||
+    if(value.openSpec.inputDigest!==canonicalSha256(preview.schemaVersion===5?preview.archivedOpenSpecInputs:preview.openSpecInputs)||!workspaceDirectory||
       value.openSpec.projectRoot!==path.join(workspaceDirectory,'project')||!Array.isArray(value.openSpec.observations))localInputFailure('OpenSpec result attribution differs from its original workspace/read set.');
     const passed=value.checks.filter(c=>c.id.startsWith('openspec-')&&c.status==='passed');
     if(passed.length!==value.openSpec.observations.length)localInputFailure('OpenSpec result is missing exact successful JSON observations.');
     value.openSpec.observations.forEach((proof,index)=>{
       exactRecord(proof,['id','stdout'],'OpenSpec observed JSON');
       if(proof.id!==passed[index].id||rawLocalDigest(proof.stdout)!==passed[index].stdoutDigest||passed[index].stderrDigest!==rawLocalDigest(''))localInputFailure('OpenSpec JSON proof is disconnected from command output.');
-      if(preview.schemaVersion===4)validateInitializedOpenSpecCommandOutput(preview.openSpecInputs,preview.initialization,proof.id,proof.stdout,value.openSpec.projectRoot);
+      if(preview.schemaVersion===5)validateArchivedOpenSpecCommandOutput(preview.archivedOpenSpecInputs,proof.id,proof.stdout,value.openSpec.projectRoot);
+      else if(preview.schemaVersion===4)validateInitializedOpenSpecCommandOutput(preview.openSpecInputs,preview.initialization,proof.id,proof.stdout,value.openSpec.projectRoot);
       else validateOpenSpecCommandOutput(preview.openSpecInputs,proof.id,proof.stdout,value.openSpec.projectRoot);
     });
   }
@@ -481,7 +505,7 @@ export function validateLocalExecutionResult(input:unknown,preview:LocalExecutio
       if(output&&init.status!=='passed')localInputFailure('Initialization output must not fabricate a passed init.');
     }
   }
-  if([3,4].includes(preview.schemaVersion)&&Buffer.byteLength(JSON.stringify(value))>localExecutionPolicy.recordBytes)localInputFailure('Execution result exceeds64KiB.');
+  if([3,4,5].includes(preview.schemaVersion)&&Buffer.byteLength(JSON.stringify(value))>localExecutionPolicy.recordBytes)localInputFailure('Execution result exceeds64KiB.');
   const verified=value.failureCode===null&&value.inputsUnchanged&&value.cleanupComplete&&value.retainedWorkspace===null&&
     value.checks.every((check,index)=>check.status===(preview.checks[index].status==='inapplicable'?'inapplicable':'passed'))&&
     value.preparation.length===preparationCommands.length&&value.preparation.every(check=>check.status==='passed')&&utc(value.completedAt)<=utc(preview.expiresAt)&&

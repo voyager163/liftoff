@@ -3,7 +3,8 @@ import type {ApplicationFiles} from '../repair/application-files.js';
 import type {LiftoffManifestV8} from '../../domain/project/manifest/v8.js';
 import {capturedFileBytes,localInputFailure,type ModernLocalSnapshot} from '../../domain/governance/activation/modern-local-inputs.js';
 import {canonicalSha256} from '../../domain/governance/activation/canonical-json.js';
-import {openSpecReadSetPolicy,validateOpenSpecExecutionInputs,type OpenSpecExecutionInputs} from '../../domain/governance/activation/modern-openspec-execution.js';
+import {openSpecReadSetPolicy,openSpecArchivedReadSetPolicy,validateOpenSpecExecutionInputs,validateArchivedOpenSpecExecutionInputs,
+  type OpenSpecExecutionInputs,type OpenSpecArchivedExecutionInputs} from '../../domain/governance/activation/modern-openspec-execution.js';
 import {toSafeProjectName} from '../../domain/project/planning.js';
 import {isRecord,exactRecord} from '../../domain/project/manifest/fields.js';
 import {buildProjectPlan} from '../project/planning.js';
@@ -11,8 +12,15 @@ import {renderOpenSpecConfig,renderSeedTasks} from '../../generators/common/spec
 import {frameworkOutputPaths} from '../../framework-validation.js';
 import {rawLocalDigest} from '../../domain/governance/activation/modern-local-inputs.js';
 import {validateOpenSpecInitialization,type OpenSpecInitialization} from '../../domain/governance/activation/modern-openspec-obligations.js';
+import {archivedOpenSpecMatchesMain,mainSpecPurpose} from '../../domain/governance/activation/local-check-values.js';
 
 export async function captureCompleteOpenSpecInputs(files:ApplicationFiles):Promise<void>{
+  return captureOpenSpecInputs(files,false);
+}
+export async function captureArchivedOpenSpecInputs(files:ApplicationFiles):Promise<void>{
+  return captureOpenSpecInputs(files,true);
+}
+async function captureOpenSpecInputs(files:ApplicationFiles,includeArchives:boolean):Promise<void>{
   async function directory(parts:string[],allowed:(name:string,kind:string)=>boolean){
     const observed=await files.inventory(parts);
     if(!observed.exists)localInputFailure(`OpenSpec complete read-set directory is missing: ${parts.join('/')}`);
@@ -28,31 +36,39 @@ export async function captureCompleteOpenSpecInputs(files:ApplicationFiles):Prom
       await files.read([...parts,entry.name,'spec.md']);
     }
   }
-  await directory(['openspec'],(name,kind)=>name==='config.yaml'&&kind==='file'||['changes','specs'].includes(name)&&kind==='directory');
-  await files.read(['openspec','config.yaml']);
-  const active=await directory(['openspec','changes'],(name,kind)=>kind==='directory'&&(name==='archive'||named(name))||name==='.gitkeep'&&kind==='file');
-  const archive=await files.inventory(['openspec','changes','archive']);
-  if(archive.entries.some(e=>e.name!=='.gitkeep'||e.kind!=='file'))localInputFailure('OpenSpec archived histories require separate execution applicability; no inactive change is executed.');
-  if(archive.entries.length)await files.read(['openspec','changes','archive','.gitkeep']);
-  for(const entry of active.entries){
-    if(entry.name==='archive')continue;
-    if(entry.name==='.gitkeep'){await files.read(['openspec','changes',entry.name]);continue;}
-    const parts=['openspec','changes',entry.name];
+  async function change(parts:string[]){
     await directory(parts,(name,kind)=>name==='specs'&&kind==='directory'||['.openspec.yaml','proposal.md','design.md','tasks.md'].includes(name)&&kind==='file');
     for(const name of ['.openspec.yaml','proposal.md','design.md','tasks.md'])await files.read([...parts,name]);
     await capabilities([...parts,'specs']);
   }
+  await directory(['openspec'],(name,kind)=>name==='config.yaml'&&kind==='file'||['changes','specs'].includes(name)&&kind==='directory');
+  await files.read(['openspec','config.yaml']);
+  const active=await directory(['openspec','changes'],(name,kind)=>kind==='directory'&&(name==='archive'||named(name))||name==='.gitkeep'&&kind==='file');
+  const archive=await files.inventory(['openspec','changes','archive']);
+  if(!includeArchives&&archive.entries.some(e=>e.name!=='.gitkeep'||e.kind!=='file'))localInputFailure('OpenSpec archived histories require separate execution applicability; no inactive change is executed.');
+  if(includeArchives&&archive.entries.some(e=>!(e.name==='.gitkeep'&&e.kind==='file'||named(e.name)&&e.kind==='directory')))
+    localInputFailure('Archived OpenSpec input scope contains an unsupported entry.');
+  if(archive.entries.some(e=>e.name==='.gitkeep'))await files.read(['openspec','changes','archive','.gitkeep']);
+  for(const entry of active.entries){
+    if(entry.name==='archive')continue;
+    if(entry.name==='.gitkeep'){await files.read(['openspec','changes',entry.name]);continue;}
+    await change(['openspec','changes',entry.name]);
+  }
+  if(includeArchives)for(const entry of archive.entries.filter(e=>e.kind==='directory'))await change(['openspec','changes','archive',entry.name]);
   await capabilities(['openspec','specs']);
 }
-export function deriveCompleteOpenSpecInputs(snapshot:ModernLocalSnapshot,manifest:LiftoffManifestV8,initialization?:OpenSpecInitialization):OpenSpecExecutionInputs{
-  if(manifest.project.specWorkflow!=='openspec'||manifest.framework.state!=='initialized')localInputFailure('Complete OpenSpec execution requires initialized OpenSpec source.');
+function openSpecText(snapshot:ModernLocalSnapshot){
   const files=new Map(snapshot.files.map(f=>[f.pathParts.join('/'),f]));
-  function text(parts:string[]):string{
+  return (parts:string[]):string=>{
     const file=files.get(parts.join('/')),bytes=file&&capturedFileBytes(file);
     if(!bytes?.length)localInputFailure('OpenSpec planning/current capability input is empty or absent.');
     const value=bytes.toString('utf8');if(!Buffer.from(value).equals(bytes)||value.includes('\0'))localInputFailure('OpenSpec inputs require UTF8 text.');
     return value;
-  }
+  };
+}
+export function deriveCompleteOpenSpecInputs(snapshot:ModernLocalSnapshot,manifest:LiftoffManifestV8,initialization?:OpenSpecInitialization):OpenSpecExecutionInputs{
+  if(manifest.project.specWorkflow!=='openspec'||manifest.framework.state!=='initialized')localInputFailure('Complete OpenSpec execution requires initialized OpenSpec source.');
+  const text=openSpecText(snapshot);
   function schema(parts:string[],metadata=false){
     let value:unknown;try{value=parseYaml(text(parts));}catch{localInputFailure('OpenSpec schema configuration is invalid YAML.');}
     if(!isRecord(value))localInputFailure('OpenSpec schema configuration must be an object.');
@@ -88,6 +104,70 @@ export function deriveCompleteOpenSpecInputs(snapshot:ModernLocalSnapshot,manife
   return validateOpenSpecExecutionInputs({kind:'liftoff-openspec-readonly-inputs',schemaVersion:1,changeName,capability,
     readSetDigest:canonicalSha256({policy:openSpecReadSetPolicy,files:snapshot.files.filter(f=>f.pathParts[0]==='openspec').map(({content:_content,...f})=>f),
       directories:snapshot.directories.filter(d=>d.pathParts[0]==='openspec')}),subjects,tasks});
+}
+export function deriveArchivedOpenSpecInputs(snapshot:ModernLocalSnapshot,manifest:LiftoffManifestV8):OpenSpecArchivedExecutionInputs{
+  if(manifest.project.specWorkflow!=='openspec'||manifest.framework.state!=='initialized')localInputFailure('Archived OpenSpec validation requires initialized OpenSpec source.');
+  const text=openSpecText(snapshot);
+  function schema(parts:string[],metadata=false){
+    let value:unknown;try{value=parseYaml(text(parts));}catch{localInputFailure('Archived OpenSpec configuration is invalid YAML.');}
+    if(!isRecord(value))localInputFailure('Archived OpenSpec configuration must be an object.');
+    exactRecord(value,['schema',...(metadata?'created'in value?['created']:[]:['context','rules','githubCopilot'].filter(key=>key in value))],'Archived OpenSpec configuration');
+    if(value.schema!=='spec-driven'||'created'in value&&(typeof value.created!=='string'||!/^\d{4}-\d{2}-\d{2}$/u.test(value.created))||
+      'context'in value&&typeof value.context!=='string')localInputFailure('Archived OpenSpec custom schema or configuration is unsupported.');
+    if('rules'in value&&(!isRecord(value.rules)||Object.entries(value.rules).some(([key,rules])=>
+      !['proposal','specs','design','tasks'].includes(key)||!Array.isArray(rules)||rules.some(rule=>typeof rule!=='string'))))
+      localInputFailure('Archived OpenSpec rules must be text-only packaged artifact rules.');
+    if('githubCopilot'in value){
+      if(!isRecord(value.githubCopilot))localInputFailure('Archived OpenSpec Copilot configuration must be an object.');
+      exactRecord(value.githubCopilot,['cloudAgent'],'Archived OpenSpec Copilot configuration');
+      if(typeof value.githubCopilot.cloudAgent!=='boolean')localInputFailure('Archived OpenSpec Copilot preference must be a captured boolean, not an execution grant.');
+    }
+  }
+  schema(['openspec','config.yaml']);
+  const changeName=`bootstrap-${toSafeProjectName(manifest.project.name)}`,
+    capability=`${manifest.project.workload.kind==='genai'?manifest.project.workload.pattern:manifest.project.workload.apiStack}-application-baseline`;
+  function directory(parts:string[]){
+    const value=snapshot.directories.find(d=>d.pathParts.join('/')===parts.join('/'));
+    if(!value?.exists)localInputFailure('Archived OpenSpec complete directory membership is missing.');
+    return value.entries.filter(e=>e.kind==='directory');
+  }
+  const active=directory(['openspec','changes']).filter(e=>e.name!=='archive'),archives=directory(['openspec','changes','archive']),
+    main=directory(['openspec','specs']),selected=archives.filter(e=>e.name===changeName||e.name.endsWith(`-${changeName}`));
+  if(active.some(e=>e.name.startsWith('bootstrap-'))||selected.length!==1)localInputFailure('Archived OpenSpec bootstrap source is active, absent or ambiguous.');
+  const archiveName=selected[0].name,subjects:OpenSpecArchivedExecutionInputs['subjects'][number][]=[],owners=new Set<string>();
+  for(const [entries,base,archived] of [
+    [active,['openspec','changes'],false],[archives,['openspec','changes','archive'],true]
+  ] as const)for(const entry of entries){
+    const parts=[...base,entry.name];schema([...parts,'.openspec.yaml'],true);
+    text([...parts,'proposal.md']);text([...parts,'design.md']);
+    const tasks=text([...parts,'tasks.md']).split('\n').flatMap(line=>{
+      const match=/^\s*[-*]\s*\[([\sxX])\]\s*(.*)/u.exec(line);
+      return match?[{description:match[2].trim(),done:match[1].toLowerCase()==='x'}]:[];
+    });
+    if(archived&&(!tasks.length||tasks.length>openSpecArchivedReadSetPolicy.tasks||tasks.some(t=>!t.done||!t.description)))
+      localInputFailure('Archived OpenSpec task source is empty, incomplete or exceeds supported bounds.');
+    const specs=directory([...parts,'specs']);
+    if(!specs.length)localInputFailure('OpenSpec change has no captured capability delta.');
+    if(archived&&entry.name===archiveName&&(specs.length!==1||specs[0].name!==capability))
+      localInputFailure('Archived bootstrap must retain exactly its original workload capability delta.');
+    for(const spec of specs){
+      if(!archived&&owners.has(spec.name))localInputFailure('Overlapping active OpenSpec capability work is unsupported.');
+      if(!archived)owners.add(spec.name);
+      text([...parts,'specs',spec.name,'spec.md']);
+    }
+    if(!archived)subjects.push({id:entry.name,type:'change'});
+  }
+  for(const spec of main){text(['openspec','specs',spec.name,'spec.md']);subjects.push({id:spec.name,type:'spec'});}
+  const current=text(['openspec','specs',capability,'spec.md']),purpose=mainSpecPurpose(current),
+    delta=text(['openspec','changes','archive',archiveName,'specs',capability,'spec.md']);
+  if(!purpose||purpose.startsWith('TBD - created by archiving change')||
+    !archivedOpenSpecMatchesMain(current,delta))
+    localInputFailure('Archived bootstrap and concrete synchronized main capability no longer correspond.');
+  return validateArchivedOpenSpecExecutionInputs({kind:'liftoff-openspec-archived-readonly-inputs',schemaVersion:1,changeName,archiveName,capability,
+    readSetDigest:canonicalSha256({policy:openSpecArchivedReadSetPolicy,
+      files:snapshot.files.filter(f=>f.pathParts[0]==='openspec').map(({content:_content,...f})=>f),
+      directories:snapshot.directories.filter(d=>d.pathParts[0]==='openspec')}),
+    subjects,archives:archives.map(e=>e.name)});
 }
 export function deriveOpenSpecInitialization(snapshot:ModernLocalSnapshot,manifest:LiftoffManifestV8):OpenSpecInitialization{
       const {project}=manifest,w=project.workload;
