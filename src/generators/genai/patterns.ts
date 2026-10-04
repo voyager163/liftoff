@@ -1,6 +1,6 @@
 import type { AddArtifact } from '../../template-types.js';
 import { genAiPattern } from '../common/values.js';
-import type { GenAiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentGenAiProjectPlan as GenAiProjectPlan } from '../../domain/project/contracts.js';
 import { pyModule } from '../common/values.js';
 
 export function addPatternArtifacts(add: AddArtifact, plan: GenAiProjectPlan): void {

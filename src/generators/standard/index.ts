@@ -8,7 +8,7 @@ import { addGoArtifacts } from './go.js';
 import { addNodeArtifacts } from './node.js';
 import { addPythonArtifacts } from './python.js';
 import type { ApiStackId } from '../../domain/project/contracts.js';
-import type { StandardApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentStandardApiProjectPlan as StandardApiProjectPlan } from '../../domain/project/contracts.js';
 
 export type StackBuilder = (add: AddArtifact, plan: StandardApiProjectPlan, context: GeneratorContext) => void;
 

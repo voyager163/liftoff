@@ -6,7 +6,7 @@ import {
   captureProjectFileSnapshot
 } from './adapters/filesystem/project-transaction.js';
 import { withProjectMutationLock } from './adapters/filesystem/project-lock.js';
-import type { ExternalCommand, ProjectPlan } from './domain/project/contracts.js';
+import type { ExternalCommand, CurrentProjectPlan as ProjectPlan } from './domain/project/contracts.js';
 import type { RequirementProbeResult } from './workstation.js';
 import {
   commandShellForPlatform,

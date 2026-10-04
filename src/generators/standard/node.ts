@@ -8,7 +8,7 @@ import { localPostgresUrl } from '../common/values.js';
 import { renderStandardSchema } from './configuration.js';
 import { sourceString } from '../common/values.js';
 import { renderNodeDotenvValidation } from '../common/dotenv-validation.js';
-import type { StandardApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentStandardApiProjectPlan as StandardApiProjectPlan } from '../../domain/project/contracts.js';
 
 export function addNodeArtifacts(add: AddArtifact, plan: StandardApiProjectPlan, context: GeneratorContext): void {
   add('node-backend-package', 'backend', ['backend', 'package.json'], renderNodePackage(plan, context));

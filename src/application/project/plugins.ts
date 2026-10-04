@@ -14,7 +14,7 @@ import {
   type ArtifactPathIssue,
   type ArtifactPathTokenValues
 } from '../../domain/project/artifact-path-tokens.js';
-import type { GeneratedArtifact, ProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentProjectPlan, GeneratedArtifact, ProjectPlan } from '../../domain/project/contracts.js';
 import { supportedHostPlatforms } from '../../domain/project/supported-stack.js';
 import { builtinAssets } from '../../plugins/builtin/assets.js';
 import { builtinRegistryInput } from '../../plugins/builtin/index.js';
@@ -165,12 +165,12 @@ export function builtinTemplateAssets(): PackagedTemplateAssetContext {
   return templateAssets;
 }
 
-export function pluginSelectionForPlan(plan: ProjectPlan): PluginSelection {
-  if (plan.framework.id !== plan.specWorkflow.id) {
+export function pluginSelectionForPlan(plan: CurrentProjectPlan): PluginSelection {
+  if (plan.specWorkflow.id === 'manual' ? plan.framework !== undefined : plan.framework?.id !== plan.specWorkflow.id) {
     throw new PluginCompositionError('pre-render', [{
       code: 'workflow-framework-mismatch',
       subject: 'selection',
-      detail: `the ${plan.specWorkflow.id} workflow does not match the ${plan.framework.id} framework adapter`
+      detail: `the ${plan.specWorkflow.id} workflow does not match the ${plan.framework?.id ?? 'not-required'} framework adapter`
     }]);
   }
   return {

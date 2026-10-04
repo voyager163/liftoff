@@ -138,7 +138,7 @@ describe('independent v8 project identity leaf', () => {
       expect(parsed).not.toHaveProperty('activeLayout');
     });
 
-  it('does not widen historical workflows, public v8 acceptance or actual installed Manual capability', () => {
+  it('does not widen historical entrypoints or accept a fabricated Manual framework', () => {
     expect(projectCatalog.getSpecWorkflow('manual')).toBeUndefined();
     expect(() => historical.normalizeManifestProject(manual().project, 7)).toThrow('specWorkflow');
     const raw = JSON.parse(readFileSync(
@@ -154,7 +154,7 @@ describe('independent v8 project identity leaf', () => {
     const selected = structuredClone(buildProjectPlan(selection, { requireProjectName: true }));
     Reflect.set(selected.specWorkflow, 'id', 'manual');
     Reflect.set(selected.framework, 'id', 'manual');
-    expect(() => resolveInstalledManifestBindingContext(selected)).toThrow(/unknown|unsupported|invalid/i);
+    expect(() => resolveInstalledManifestBindingContext(selected)).toThrow(/does not match/i);
   });
 
   it('makes independent frozen copies without freezing caller data or rewriting names', () => {

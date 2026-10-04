@@ -1,4 +1,4 @@
-import { getCodingAgent, getProjectType, projectInputCatalog } from '../project/catalog.js';
+import { getCodingAgent, getProjectType, currentProjectInputCatalog } from '../project/catalog.js';
 import type { ProjectOptions } from '../../domain/project/contracts.js';
 import { normalizeProjectOptions, resolveProjectTypeInput } from '../../domain/project/inputs.js';
 import { PlanValidationError } from '../../domain/project/planning.js';
@@ -11,7 +11,7 @@ export function assertSupportedProjectOptions(options: ProjectOptions): void {
 }
 
 export function hasMissingInitInputs(rawOptions: ProjectOptions): boolean {
-  const options = normalizeProjectOptions(rawOptions, projectInputCatalog);
+  const options = normalizeProjectOptions(rawOptions, currentProjectInputCatalog);
   const projectType = resolveProjectTypeInput(options, getProjectType).projectType?.id;
   const missingTypeSpecific = projectType === 'genai'
     ? !options.pattern

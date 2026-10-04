@@ -3,7 +3,7 @@ type GeneratorContext = { python: Pick<ResolvedGeneratorContext['python'], 'gena
 import type { AddArtifact } from '../../template-types.js';
 import { DEFAULT_FUNCTION_WORKER_QUEUE_NAME } from '../common/values.js';
 import { genAiPattern } from '../common/values.js';
-import type { GenAiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentGenAiProjectPlan as GenAiProjectPlan } from '../../domain/project/contracts.js';
 import { pyModule } from '../common/values.js';
 
 

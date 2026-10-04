@@ -99,7 +99,12 @@ describe('built-in plugin module boundaries', () => {
     expect(templates.filter((entry) => entry.runtime && within(entry.target, 'plugins')).map((entry) => entry.specifier)).toEqual([]);
     expect(templates.filter((entry) => entry.runtime && entry.target?.endsWith(`${path.sep}template-assets.ts`))).toEqual([]);
     expect(templates.filter((entry) => within(entry.target, 'application')).map((entry) => relative(entry.target as string)).sort())
-      .toEqual(['application/project/plugin-renderers.ts', 'application/project/plugins.ts']);
+      .toEqual([
+        'application/project/catalog.ts', 'application/project/manifest-writer.ts',
+        'application/project/manifest.ts', 'application/project/modern-managed-core.ts',
+        'application/project/modern-plugins.ts', 'application/project/plugin-renderers.ts',
+        'application/project/plugins.ts'
+      ]);
   });
 
   it('discovers nothing at runtime and never reads host platform state', async () => {

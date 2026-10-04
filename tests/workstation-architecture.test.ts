@@ -63,8 +63,8 @@ const frozenRuntimeNames = [
 ];
 
 describe('workstation compatibility facade', () => {
-  it('keeps the exact pre-extraction runtime export set, with every moved name a direct alias', () => {
-    expect(Object.keys(facade).sort()).toEqual(frozenRuntimeNames);
+  it('preserves pre-extraction aliases and explicitly adds current requirement selection', () => {
+    expect(Object.keys(facade).sort()).toEqual([...frozenRuntimeNames, 'selectCurrentWorkstationRequirements'].sort());
     const canonical: Record<string, Record<string, unknown>> = {
       probeRequirement: probeEngine, probeWorkstation: probeEngine,
       selectRemediation: remediationEngine, installRequirement: remediationEngine,
@@ -81,9 +81,10 @@ describe('workstation compatibility facade', () => {
     const nodes = await moduleNodes(path.join(sourceRoot, 'workstation.ts'));
     expect(nodes.flatMap(declaredNames).sort()).toEqual([
       'REQUIREMENT_ORDER', 'RequirementSelectionOptions', 'WorkstationRequirementSelection', 'WorkstationScopeReadiness',
-      'blockingReadinessFailures', 'selectLiftoffRuntimeRequirements', 'selectWorkstationRequirements', 'workstationScopeReadiness'
+      'blockingReadinessFailures', 'resolveWorkstationRequirements', 'selectCurrentWorkstationRequirements',
+      'selectLiftoffRuntimeRequirements', 'selectWorkstationRequirements', 'workstationScopeReadiness'
     ]);
-    expect(nodes.every((node) => ['ImportDeclaration', 'ExportNamedDeclaration', 'VariableDeclaration'].includes(node.type))).toBe(true);
+    expect(nodes.every((node) => ['ImportDeclaration', 'ExportNamedDeclaration', 'VariableDeclaration', 'FunctionDeclaration'].includes(node.type))).toBe(true);
   });
 
   it('shares one in-process remediation attempt ledger between the facade and the canonical module', async () => {

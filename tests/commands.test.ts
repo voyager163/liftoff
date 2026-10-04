@@ -578,7 +578,7 @@ describe('commands', () => {
       expect(stdout.text()).toContain('Copilot cloud agent: Enabled');
       expect(stdout.text()).toContain('Workstation requirements');
       expect(stdout.text()).toContain('OpenSpec: exactly 1.11.0 [blocking]');
-      expect(stdout.text()).toContain('Single-maintainer GitFlow policy 6');
+      expect(stdout.text()).toContain('Single-maintainer GitFlow policy 7');
       expect(stdout.text()).toMatch(/[Ll]ocal handoff generated/);
       expect(stdout.text()).toContain('repository-governance-policy');
       expect(stdout.text()).toContain('managed-core');
@@ -773,7 +773,7 @@ describe('commands', () => {
       expect(code).toBe(0);
       expect(stdout.text()).toContain('Initialized claims-api');
       expect(stdout.text()).toContain('local handoff generated, live activation deferred');
-      expect(stdout.text()).toContain('Deterministic setup generated; run /liftoff-setup next');
+      expect(stdout.text()).toContain('Local handoff generated; inspect local readiness with liftoff governance status --scope local --json');
       expect(runner.calls.some((command) => command.args.includes('assess'))).toBe(false);
       expect(stdout.text()).toContain('Deferred project dependencies');
       expect(runner.calls.some((command) => command.args.includes('venv'))).toBe(false);
@@ -803,16 +803,16 @@ describe('commands', () => {
         'prompts',
         'liftoff-setup.prompt.md'
       ), 'utf8');
-      expect(governancePolicy).toContain('policyVersion: "6"');
+      expect(governancePolicy).toContain('policyVersion: "7"');
       expect(governancePolicy).toContain('One provisioning exception only:');
       expect(governancePolicy).toContain('Azure Firewall Basic');
       expect(governancePolicy).toContain('Azure NAT Gateway');
       expect(governancePolicy).toContain('30 days read-only after verified remote import');
       expect(governancePolicy).toContain('Microsoft.Network');
       expect(governancePolicy).toContain('GitHub.Network');
-      expectBoundedCapabilitySkill(governanceLauncher, 'setup');
-      expect(governanceLauncher).toContain('liftoff governance status --json');
-      expect(governanceLauncher).toContain('liftoff governance verify --json');
+      expect(governanceLauncher).toContain('## Setup handoff');
+      expect(governanceLauncher).toContain('liftoff governance status --scope local --json');
+      expect(governanceLauncher).toContain("Follow only a supported CLI's actual returned nextActions");
       expect(governanceLauncher).not.toMatch(/\bmodel\b/i);
       expect(governanceLauncher).not.toContain('Private Staging runner provisioning contract');
       const assessmentLauncher = await readFile(path.join(
@@ -918,7 +918,7 @@ describe('commands', () => {
             updatePreview: { homedir: path.join(tempRoot, 'receipt-home'), env: {} }
           }
         );
-        expect(updateCheck).toBe(2);
+        expect(updateCheck).toBe(0);
       }
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
@@ -1215,17 +1215,17 @@ describe('commands', () => {
         const updatePreview = { homedir: path.join(tempRoot, 'receipt-home'), env: {} };
         expect(await runCommand(parseArgs(['update', '--check', '--json']), {
           cwd: projectRoot, stdout: previewOutput, stderr: new CaptureStream(), updatePreview
-        })).toBe(2);
+        })).toBe(0);
         const preview = JSON.parse(previewOutput.text());
-        expect(preview).toMatchObject({ schemaVersion: 4, targetManifestVersion: 8, publicationCommitted: false });
+        expect(preview).toMatchObject({ schemaVersion: 4, status: 'current', targetManifestVersion: 8, publicationCommitted: false });
         const updateOutput = new CaptureStream();
         const update = await runCommand(
           parseArgs(['update', '--json', '--approve-plan', preview.plans[0].fingerprint]),
           { cwd: projectRoot, stdout: updateOutput, stderr: new CaptureStream(), updatePreview }
         );
-        expect(update, updateOutput.text()).toBe(2);
+        expect(update, updateOutput.text()).toBe(0);
         expect(JSON.parse(updateOutput.text())).toMatchObject({
-          status: 'committed-incomplete', publicationCommitted: true, localComplete: false
+          status: 'current', publicationCommitted: false, localComplete: false
         });
 
         const doctorOutput = new CaptureStream();

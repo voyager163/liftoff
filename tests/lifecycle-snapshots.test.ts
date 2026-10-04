@@ -5,6 +5,7 @@ import { Readable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
+import { commandShellForPlatform, formatShellCommand } from '../src/adapters/process/shell-command.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 
 const cleanups: string[] = [];
@@ -43,10 +44,16 @@ async function runScreen(
     let normalized = value;
     for (const root of roots) {
       normalized = normalized
+        .replaceAll(formatShellCommand({
+          executable: 'liftoff',
+          args: ['governance', 'status', '--scope', 'local', '--json', '--project', path.join(root, 'snapshot-app')]
+        }, commandShellForPlatform(process.platform)),
+        "liftoff governance status --scope local --json --project '<workspace>/snapshot-app'")
         .replaceAll(JSON.stringify(root).slice(1, -1), '<workspace>')
         .replaceAll(root, '<workspace>');
     }
     return normalized
+      .replaceAll(`Node.js ${process.versions.node}`, 'Node.js <running-version>')
       .replaceAll('npm.cmd', 'npm')
       .replaceAll('\\\\', '/')
       .replaceAll('\\', '/')

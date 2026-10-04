@@ -83,6 +83,13 @@ execution order. The managed phase graph is the sole execution-order authority.
 
 ## Read-only governance assessment
 
+Current v8 manifests are validated and their exact identity is disclosed, but the
+existing assessment catalog does not yet interpret v8 active layout, managed-core
+compliance or activation records. Such reports mark identity support as
+`unsupported` and keep independent repository observations separate; they do not
+recommend a policy downgrade or reinterpret current records as historical proof.
+Use the advertised v8 local status/verification interfaces for their own scope.
+
 `/liftoff-governance-assess` is separate from `/liftoff-setup`, which remains the
 primary post-init path. Both OpenSpec and Spec Kit receive only their selected
 agents' assessment integrations when governance is enabled. Initialization never

@@ -1000,7 +1000,7 @@ uncertain effects, scoped completion and separately required local verification.
 Finite revalidation of an
 independently admitted existing successor has its separate public interface below.
 
-Public catalog, v2-v7 readers, v7 writer, activation-v3 and policy-6 behavior
+Historical catalog, v2-v7 readers, v7 writer, activation-v3 and policy-6 behavior
 remain unchanged, including original graph/policy bytes and generation output.
 `domain/project/manifest/history.ts` defines pure source-only history metadata
 for manifest versions 2 through 7, bounded to 1 through 8 MiB of original bytes.
@@ -1133,7 +1133,7 @@ environment lookup, or provider effect in registry construction or selection.
 Bundled plugins are trusted first-party code, not a security sandbox;
 validated contributions and matching digests never grant mutation approval.
 
-The normal generation path reads all 13 declared template assets on first use
+The historical generation path reads all 13 declared template assets on first use
 and caches the successfully validated registry and texts. Failed construction is
 not cached. CLI startup, help and version do not read these template assets;
 this does not eliminate the separate eager governance-policy reads. The byte
@@ -1153,9 +1153,9 @@ reader and registry errors propagate through the existing command boundary.
 The release record is reviewed literal data, not computed from current assets at
 startup. Content digests do not hash renderer implementation; a renderer behavior
 change requires a reviewed `contentVersion` advance.
-The public agent descriptors use content version 4 for the shared v8-aware setup
+The retained historical plugin family's agent descriptors use content version 4 for the shared v8-aware setup
 protocol, advancing the earlier capability-first version 3. The distinct modern
-source descriptors retain version 2 and their exact recorded digests; the
+current source descriptors retain version 2 and their exact recorded digests; the
 public guidance change does not retag an existing project's plugin identity.
 
 `tests/import-boundaries.test.ts` enforces an exact reviewed map for runtime
@@ -1201,11 +1201,29 @@ The registry accepts an empty agent selection for existing legacy-update and
 agentless-repair rendering, but only within scalar/host combinations supported by
 at least one bundled agent. Construction has validated those combinations, and
 removing agents only removes positively conditioned contributions. No agent is
-implicitly selected or emitted. Fresh-project planning still requires an agent;
-this compatibility rule does not enable the planned Manual workflow.
+implicitly selected or emitted. Historical fresh-project planning still requires
+an agent. Current planning uses a separate development-workflow catalog with
+Manual and all eight agent subsets; external workflows retain the original rules.
 Malformed plain data and exceeded validation budgets fail with structured
 errors. Accessors are not invoked, byte views are copied into owned memory, and
 hostile proxies are outside the release-owned-data trust boundary.
+
+Public `plan`, `init`, and `migrate` use `currentProjectGenerator` and real v8
+templates. `historicalProjectGenerator` keeps v7 application entrypoints and
+historical fixtures explicit; there is no dummy external framework for Manual.
+Shared workload rendering preserves application bytes, while current generated
+guidance and managed core use their actual source contracts. Fresh component
+bindings come from exact installed declarations; runtime-excluded artifacts keep
+their generation provenance without becoming readable inputs. The fresh writer
+validates an explicit complete runtime layout against those declarations.
+Omitting that optional layout retains its earlier artifact-only candidate
+semantics; maintenance and historical-successor layout rules are unchanged.
+
+The running runtime is observed without spawning `node --version`. Current
+workstation selection adds external Node/npm only for applicable workload,
+frontend, or framework operations. Manual agent prompts do not discover
+unselected executables or framework markers. Source-valid generation is not
+native local completion or provider authority.
 
 Manifest grammar, workload normalization, artifact authority, and governance
 compatibility have separate project-domain modules. Filesystem discovery,

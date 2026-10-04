@@ -5,7 +5,7 @@ import type {
   ExecutionContext
 } from '../../application/context.js';
 import {
-  initializeProject
+  initializeCurrentProject
 } from '../../application/initialize/use-case.js';
 import { optionsFromParsedArgs } from '../project-options.js';
 
@@ -14,5 +14,5 @@ export async function initializeCommand(
   context: ExecutionContext
 ): Promise<number> {
   context.presentation.identity('Initialize the project and prepare its workstation');
-  return initializeProject(await optionsFromParsedArgs(parsed, context.cwd, true), context);
+  return initializeCurrentProject(await optionsFromParsedArgs(parsed, context.cwd, true), context);
 }

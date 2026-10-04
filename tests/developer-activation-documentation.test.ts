@@ -132,9 +132,10 @@ describe('developer activation-completeness guidance', () => {
       expect(manifests).toContain(`| Phase graph / saved transition plan | ${source.savedPlanSchemaVersion} |`);
       expect(manifests).toContain(`| Compatibility metadata | ${source.compatibilityMetadataSchemaVersion} |`);
     }
-    expect(manifests).toContain(`activation-contract version\n  ${currentActivationIdentity.activationContractVersion}`);
+    expect(manifests).toContain(`Historical output uses\n  manifest artifact version 7, policy version 6, activation-contract version ${currentActivationIdentity.activationContractVersion}`);
     for (const phrase of [
-      'Public generation still writes v7; public update targets v8',
+      'Public current generation and update write v8',
+      'generation APIs retain their v7 behavior for compatibility',
       '`createManifestV8Reader`', '`createManifestV8Candidate`',
       '`adoptionObservations`', 'not the deferred activation',
       'source-metadata2/task-projection producer', 'retention due times',

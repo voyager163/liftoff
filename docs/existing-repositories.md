@@ -42,8 +42,8 @@ from unexpectedly treating that subdirectory as the repository root.
 Liftoff never blindly replaces a target tree. It:
 
 1. Renders Liftoff-owned files in temporary staging.
-2. Verifies or separately configures the required global OpenSpec profile.
-3. Runs the official OpenSpec or Spec Kit initializer in staging.
+2. For OpenSpec only, verifies or separately configures its required global profile.
+3. Runs the official initializer for OpenSpec or Spec Kit; Manual skips all framework work.
 4. Rejects unexpected roots, nested Git metadata, and unsafe paths.
 5. Compares every destination before writing.
 6. Lists different regular files as one replacement set.
@@ -180,9 +180,21 @@ liftoff migrate ../legacy-app --region eastus --agents copilot,claude --yes
 ```
 
 Migration requires a new or empty sibling target, runs the same readiness and
-framework pipeline, including separate global OpenSpec profile authorization,
+conditional framework pipeline, including separate global OpenSpec profile authorization,
 and leaves the source byte-for-byte unchanged. `--force` does not permit a
 non-empty migration target.
+
+Current generation also supports a framework-free migration:
+
+```bash
+liftoff migrate ../legacy-app --spec manual --agents none --governance none --yes
+```
+
+It writes a fresh v8 sibling, a filtered `migration/legacy/` copy, and an
+unchecked `MIGRATION.md`. No source adoption or semantic equivalence is claimed.
+Manual does not initialize a framework or change global profiles; existing
+source files and modes remain unchanged. The original project is not an in-place
+conversion target.
 
 The scan reads dependency declarations rather than comments or example text.
 Python setup/test configuration and non-workflow `.github` files remain
@@ -196,7 +208,7 @@ not Go-only destination paths; a declined frontend remains a placement decision.
 
 Complete the mapped work and run the backend tests, `liftoff validate`, and
 `liftoff doctor` before deleting `migration/legacy/`. OpenSpec archival follows
-the completed change; a Spec Kit migration checklist is finalized locally
+the completed change; a Manual or Spec Kit migration checklist is finalized locally
 without an invented archive command.
 
 Power Apps creation, maintenance, and migration are retired. Existing Power Apps

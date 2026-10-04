@@ -57,9 +57,7 @@ import {
 import {
   OPEN_SPEC_WORKFLOW_IDS
 } from '../../openspec-profile.js';
-import {
-  buildProjectPlan
-} from '../project/planning.js';
+import { currentProjectGenerator, historicalProjectGenerator, type ProjectGenerator } from '../project/generation.js';
 import {
   mergeOptions,
   projectPlanEntries
@@ -73,14 +71,13 @@ import {
   scanLegacyProject
 } from '../../scan.js';
 import {
-  buildArtifacts,
   partitionGeneratedArtifacts
 } from '../../templates.js';
 import type {
   ExecutionContext
 } from '../context.js';
 import type {
-  ApiProjectPlan,
+  CurrentProjectPlan as ApiProjectPlan,
   GeneratedArtifact,
   ProjectOptions
 } from '../../domain/project/contracts.js';
@@ -250,7 +247,8 @@ function migrationPlanArtifacts(
 async function executeMigration(
   flagOptions: ProjectOptions,
   context: ExecutionContext,
-  sourceRoot: string
+  sourceRoot: string,
+  generator: ProjectGenerator
 ): Promise<number> {
   const { presentation } = context;
   presentation.stage('Scan legacy project', sourceRoot);
@@ -302,7 +300,7 @@ async function executeMigration(
       presentation.stage('Configure migrated project');
     }
     const options = needsPrompts ? await prompter!.promptForInitOptions(initial) : initial;
-    const plan = buildProjectPlan(options, { requireProjectName: true });
+    const plan = generator.buildPlan(options, { requireProjectName: true });
     presentation.stage('Review migration plan');
     const confirmed = options.yes === true
       ? (presentation.definitions('Resolved migration plan', projectPlanEntries(plan)), true)
@@ -339,7 +337,8 @@ async function executeMigration(
           presentation,
           prompter,
           `liftoff migrate ${JSON.stringify(sourceRoot)}`,
-          readinessRoot
+          readinessRoot,
+          generator
         );
       } finally {
         await rm(readinessRoot, { recursive: true, force: true });
@@ -365,23 +364,26 @@ async function executeMigration(
     return await withProjectMutationLock(targetRoot, async () => {
       presentation.stage('Stage fresh migration project');
       await withStagingArea(async (area) => {
-        const partition = partitionGeneratedArtifacts(buildArtifacts(plan));
+        const partition = partitionGeneratedArtifacts(generator.buildArtifacts(plan));
         await writeStagedArtifacts(area, partition.liftoff, 'liftoff');
-        presentation.stage(
-          'Initialize spec-driven framework',
-          `${plan.specWorkflow.label} ${plan.framework.version}`
-        );
-        await initializeFramework(area, plan, runner, {
-          env: context.env,
-          ...presentation.childStreams(),
-          onCommand: (command) => presentation.command(command)
-        });
+        if (plan.framework) {
+          presentation.stage(
+            'Initialize spec-driven framework',
+            `${plan.specWorkflow.label} ${plan.framework.version}`
+          );
+          await initializeFramework(area, plan, runner, {
+            env: context.env,
+            ...presentation.childStreams(),
+            onCommand: (command) => presentation.command(command)
+          });
+        }
         await writeStagedArtifacts(area, partition.seed, 'seed');
         presentation.stage('Copy filtered legacy source', sourceRoot);
         await stageMigrationSource(area, sourceRoot);
         await writeStagedArtifacts(area, migrationPlan.artifacts, 'seed');
         await writeStagedArtifacts(area, [partition.manifest], 'liftoff');
         if (plan.specWorkflow.id === 'openspec') {
+          if (!plan.framework) throw new Error('OpenSpec migration validation requires its framework contract.');
           const command = {
             executable: plan.framework.executable,
             args: ['validate', migrationChangeName, '--strict']
@@ -447,7 +449,7 @@ async function executeMigration(
       }
 
       presentation.bullets('Configured integrations', [
-        `${plan.specWorkflow.label} ${plan.framework.version}`,
+        plan.framework ? `${plan.specWorkflow.label} ${plan.framework.version}` : `${plan.specWorkflow.label} (no external framework)`,
         ...plan.agents.map((agent) =>
           `${agent.label}${plan.defaultAgent?.id === agent.id ? ' (default)' : ''}`
         ),
@@ -495,6 +497,18 @@ export interface MigrationRequest {
 }
 
 export async function migrateProject(request: MigrationRequest, context: ExecutionContext): Promise<number> {
+  return executeMigrationRequest(request, context, historicalProjectGenerator);
+}
+
+export async function migrateCurrentProject(request: MigrationRequest, context: ExecutionContext): Promise<number> {
+  return executeMigrationRequest(request, context, currentProjectGenerator);
+}
+
+async function executeMigrationRequest(
+  request: MigrationRequest,
+  context: ExecutionContext,
+  generator: ProjectGenerator
+): Promise<number> {
   const sourceArg = request.source;
   if (!sourceArg) {
     context.presentation.error(
@@ -531,5 +545,5 @@ export async function migrateProject(request: MigrationRequest, context: Executi
     return 1;
   }
   context.presentation.identity('Migrate an existing application into a fresh Liftoff project');
-  return withUnchangedMigrationSource(sourceRoot, () => executeMigration(request.options, context, sourceRoot));
+  return withUnchangedMigrationSource(sourceRoot, () => executeMigration(request.options, context, sourceRoot, generator));
 }

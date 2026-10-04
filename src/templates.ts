@@ -8,21 +8,31 @@ import { addDockerArtifacts } from './generators/containers/compose.js';
 import { addEnvironmentArtifacts } from './generators/common/environments.js';
 import { addFrontendArtifacts } from './generators/common/frontend.js';
 import { boundRenderers, type BoundRenderers } from './application/project/plugin-renderers.js';
-import { builtinTemplateAssets, composeProjectPlugins } from './application/project/plugins.js';
-import type { ApiProjectPlan } from './domain/project/contracts.js';
+import {
+  builtinTemplateAssets, composeModernManifestPlugins, composeProjectPlugins,
+  pluginSelectionForPlan, templateAssetsFromRegistry
+} from './application/project/plugins.js';
+import type { CurrentProjectPlan as ApiProjectPlan } from './domain/project/contracts.js';
 import { assertImmutableGeneratedContainerReferences } from './container-validation.js';
 import { buildRepositoryGovernanceArtifacts } from './repository-governance.js';
 import { createArtifactAdder } from './generators/common/artifacts.js';
 import { createHash } from 'node:crypto';
 import { currentActivationIdentity } from './governance-activation/graph.js';
 import { ensureTrailingNewline } from './generators/common/artifacts.js';
-import type { GenAiProjectPlan } from './domain/project/contracts.js';
+import type { CurrentGenAiProjectPlan as GenAiProjectPlan } from './domain/project/contracts.js';
 import type { GeneratedArtifact } from './domain/project/contracts.js';
 import { governancePolicyVersion } from './repository-governance.js';
 import type { LiftoffManifest } from './domain/project/contracts.js';
 import { liftoffVersion } from './version.js';
 import type { ManifestWorkload } from './domain/project/contracts.js';
 import type { ProjectPlan } from './domain/project/contracts.js';
+import { buildModernManagedCore } from './application/project/modern-managed-core.js';
+import { createManifestV8Candidate } from './application/project/manifest-writer.js';
+import { modernSourceRegistry } from './application/project/modern-plugins.js';
+import { projectCatalog } from './application/project/catalog.js';
+import { createManifestV8ProjectReader } from './domain/project/manifest/v8-project.js';
+import { readManifestPluginMetadata } from './domain/project/manifest/plugins.js';
+import { freshActiveLayoutForComposition } from './application/project/manifest.js';
 
 const contentHash = (content: string) => `sha256:${createHash('sha256').update(content, 'utf8').digest('hex')}`;
 export { AZURE_NAME_LIMITS, buildAzureResourceNames } from './generators/infrastructure/names.js';
@@ -39,21 +49,7 @@ export function buildArtifacts(plan: ProjectPlan, context: GeneratorContext = re
   // Resolve, materialize and validate every identity before any renderer runs.
   const composition = composeProjectPlugins(plan);
   const renderers = boundRenderers(composition.resolution);
-  const artifacts: GeneratedArtifact[] = [];
-  const addProject = createArtifactAdder(artifacts, 'project', 'base');
-  const addDesiredState = createArtifactAdder(artifacts, 'desired-state');
-  const addFramework = createArtifactAdder(artifacts, 'framework');
-  const addSeed = createArtifactAdder(artifacts, 'seed');
-
-  switch (plan.workload) {
-    case 'genai':
-      addGenAiWorkloadArtifacts(addProject, addDesiredState, artifacts, plan, context, renderers);
-      break;
-    case 'standard':
-      addStandardWorkloadArtifacts(addProject, addDesiredState, artifacts, plan, context, renderers);
-      break;
-  }
-  renderers.renderWorkflow(addSeed, addFramework, plan);
+  const artifacts = renderWorkloadArtifacts(plan, context, renderers);
   for (const artifact of buildRepositoryGovernanceArtifacts(plan)) {
     artifacts.push({ ...artifact, content: ensureTrailingNewline(artifact.content) });
   }
@@ -79,6 +75,73 @@ export function buildArtifacts(plan: ProjectPlan, context: GeneratorContext = re
   return artifacts;
 }
 
+export function buildCurrentArtifacts(
+  plan: ApiProjectPlan,
+  context: GeneratorContext = resolveGeneratorContext(plan, templateAssetsFromRegistry(modernSourceRegistry()))
+): GeneratedArtifact[] {
+  const composition = composeModernManifestPlugins(pluginSelectionForPlan(plan), { safeProjectName: plan.safeProjectName });
+  const currentContext: GeneratorContext = { ...context, current: true };
+  const artifacts = renderWorkloadArtifacts(plan, currentContext, boundRenderers(composition.resolution));
+  if (plan.includeFrontend) {
+    addFrontendArtifacts(createArtifactAdder(artifacts, 'project', 'frontend'), plan, currentContext);
+  }
+  assertImmutableGeneratedContainerReferences(artifacts);
+  const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({
+    project: {
+      name: plan.projectName,
+      workload: manifestWorkloadForPlan(plan),
+      specWorkflow: plan.specWorkflow.id,
+      agents: plan.agents.map(agent => agent.id),
+      ...(plan.defaultAgent ? { defaultAgent: plan.defaultAgent.id } : {})
+    },
+    framework: plan.framework
+      ? { state: 'initialized', adapter: plan.framework.id, contractVersion: plan.framework.version }
+      : { state: 'not-required' }
+  });
+  const selection = { ...leaf, profile: plan.governanceProfile.id };
+  const plugins = readManifestPluginMetadata({
+    schemaVersion: 1,
+    resolutionDigest: composition.resolution.digest,
+    selections: composition.resolution.plugins
+  }, {
+    stack: plan.apiStack.id, cloud: plan.provider.id,
+    workflow: plan.specWorkflow.id, agents: plan.agents.map(agent => agent.id)
+  });
+  const activeLayout = freshActiveLayoutForComposition(composition);
+  artifacts.push(...buildModernManagedCore({ selection, plugins, activeLayout }).map(artifact => ({
+    ...artifact, pathParts: [...artifact.pathParts]
+  })));
+  const candidate = createManifestV8Candidate({ origin: 'fresh', selection, generatedArtifacts: artifacts, activeLayout });
+  artifacts.push({
+    logicalName: 'manifest', category: 'manifest', lifecycle: 'manifest',
+    pathParts: ['liftoff.manifest.json'], content: candidate.content
+  });
+  return artifacts;
+}
+
+function renderWorkloadArtifacts(
+  plan: ApiProjectPlan,
+  context: GeneratorContext,
+  renderers: BoundRenderers
+): GeneratedArtifact[] {
+  const artifacts: GeneratedArtifact[] = [];
+  const addProject = createArtifactAdder(artifacts, 'project', 'base');
+  const addDesiredState = createArtifactAdder(artifacts, 'desired-state');
+  const addFramework = createArtifactAdder(artifacts, 'framework');
+  const addSeed = createArtifactAdder(artifacts, 'seed');
+
+  switch (plan.workload) {
+    case 'genai':
+      addGenAiWorkloadArtifacts(addProject, addDesiredState, artifacts, plan, context, renderers);
+      break;
+    case 'standard':
+      addStandardWorkloadArtifacts(addProject, addDesiredState, artifacts, plan, context, renderers);
+      break;
+  }
+  renderers.renderWorkflow(addSeed, addFramework, plan);
+  return artifacts;
+}
+
 function addGenAiWorkloadArtifacts(
   add: AddArtifact,
   addDesiredState: AddArtifact,
@@ -95,7 +158,7 @@ function addStandardWorkloadArtifacts(
   add: AddArtifact,
   addDesiredState: AddArtifact,
   artifacts: GeneratedArtifact[],
-  plan: Extract<ProjectPlan, { workload: 'standard' }>, context: GeneratorContext,
+  plan: Extract<ApiProjectPlan, { workload: 'standard' }>, context: GeneratorContext,
   renderers: BoundRenderers
 ): void {
   addBaseArtifacts(add, addDesiredState, plan, context);
@@ -142,17 +205,8 @@ export function partitionGeneratedArtifacts(artifacts: GeneratedArtifact[]): {
   };
 }
 
-export function buildManifest(
-  plan: ProjectPlan,
-  artifacts: GeneratedArtifact[],
-  options: {
-    frameworkState?: 'initialized' | 'legacy';
-    projectArtifacts?: LiftoffManifest['projectArtifacts'];
-  } = {}
-): LiftoffManifest {
-  const frameworkState = options.frameworkState ?? 'initialized';
-  const agents = frameworkState === 'initialized' ? plan.agents.map((agent) => agent.id) : [];
-  const workload: ManifestWorkload = plan.workload === 'genai'
+function manifestWorkloadForPlan(plan: ApiProjectPlan): ManifestWorkload {
+  return plan.workload === 'genai'
       ? {
           kind: 'genai',
           apiStack: plan.apiStack.id,
@@ -170,6 +224,19 @@ export function buildManifest(
           frontend: plan.includeFrontend,
           environments: plan.environments.map((environment) => environment.id)
         };
+}
+
+export function buildManifest(
+  plan: ProjectPlan,
+  artifacts: GeneratedArtifact[],
+  options: {
+    frameworkState?: 'initialized' | 'legacy';
+    projectArtifacts?: LiftoffManifest['projectArtifacts'];
+  } = {}
+): LiftoffManifest {
+  const frameworkState = options.frameworkState ?? 'initialized';
+  const agents = frameworkState === 'initialized' ? plan.agents.map((agent) => agent.id) : [];
+  const workload = manifestWorkloadForPlan(plan);
   return {
     artifactVersion: 7,
     generatedBy: 'Mission Control Liftoff',

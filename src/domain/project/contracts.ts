@@ -14,6 +14,7 @@ export type PatternId =
 export type ProviderId = 'azure' | 'aws' | 'gcp';
 export type ProviderStatus = 'available' | 'planned';
 export type SpecWorkflowId = 'openspec' | 'spec-kit';
+export type DevelopmentWorkflowId = SpecWorkflowId | 'manual';
 export type CodingAgentId = 'github-copilot' | 'claude' | 'codex';
 export type EnvironmentId = 'dev' | 'staging' | 'prod';
 export type ScaffoldStatus = 'full' | 'foundation' | 'integration-shell';
@@ -83,6 +84,15 @@ export interface SpecWorkflowDefinition {
   default: boolean;
   description: string;
 }
+
+export interface ManualWorkflowDefinition {
+  id: 'manual';
+  label: string;
+  default: false;
+  description: string;
+}
+
+export type DevelopmentWorkflowDefinition = SpecWorkflowDefinition | ManualWorkflowDefinition;
 
 export interface GovernanceProfileDefinition {
   id: GovernanceProfileId;
@@ -190,6 +200,14 @@ export type ProjectPlan = ProjectPlanBase & WorkloadPlan;
 export type GenAiProjectPlan = ProjectPlanBase & GenAiWorkloadPlan;
 export type StandardApiProjectPlan = ProjectPlanBase & StandardApiWorkloadPlan;
 export type ApiProjectPlan = GenAiProjectPlan | StandardApiProjectPlan;
+
+export type ManualProjectPlan = Omit<ProjectPlanBase, 'specWorkflow' | 'framework'> & WorkloadPlan & {
+  specWorkflow: ManualWorkflowDefinition;
+  framework: undefined;
+};
+export type CurrentProjectPlan = ProjectPlan | ManualProjectPlan;
+export type CurrentGenAiProjectPlan = Extract<CurrentProjectPlan, { workload: 'genai' }>;
+export type CurrentStandardApiProjectPlan = Extract<CurrentProjectPlan, { workload: 'standard' }>;
 
 export type ArtifactLifecycle =
   | 'managed-core'

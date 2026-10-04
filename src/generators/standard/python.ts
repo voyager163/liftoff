@@ -6,7 +6,7 @@ import type { AddArtifact } from '../../template-types.js';
 import { renderStandardSchema } from './configuration.js';
 import { sourceString } from '../common/values.js';
 import { renderPythonRuntimeSettings } from '../common/python-settings.js';
-import type { StandardApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentStandardApiProjectPlan as StandardApiProjectPlan } from '../../domain/project/contracts.js';
 
 export function addPythonArtifacts(add: AddArtifact, plan: StandardApiProjectPlan, context: GeneratorContext): void {
   add('backend-pyproject', 'backend', ['backend', 'pyproject.toml'], renderPythonPyproject(plan, context));

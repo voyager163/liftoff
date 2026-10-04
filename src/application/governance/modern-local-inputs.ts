@@ -35,6 +35,7 @@ import { readModernActivationSuccessorSource } from '../../governance-activation
 import { inspectModernInstalledActivation, validateCapturedModernInstalledActivation } from './modern-installed-preflight.js';
 import type { InstalledLocalPreflight, ModernLocalRuntimeInspection, ModernLocalRuntimePlan } from '../../domain/governance/activation/modern-local-runtime.js';
 import {captureCompleteOpenSpecInputs,captureArchivedOpenSpecInputs} from './modern-openspec-inputs.js';
+import { modernLocalInputExclusion as exclusion } from '../../domain/governance/activation/modern-local-exclusions.js';
 
 const rootReader = createManifestV8Reader({ catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract });
 const key = (parts: readonly string[]) => parts.join('/');
@@ -42,28 +43,6 @@ const under = (parent: string, child: string) => child === parent || child.start
 const compare = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0;
 const journalPaths = [reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts];
 const installedBoundaryPaths = [['governance', 'activation-state.json'], ['governance', 'migration-state.json']] as const;
-const hiddenTrees = new Set([
-  '.git', '.hg', '.svn', '.terraform', '.tofu', '.terragrunt-cache', 'node_modules', 'vendor',
-  '.venv', 'venv', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.cache',
-  'dist', 'build', 'target', 'coverage', '.next', '.nuxt', '.npm', '.yarn', '.pnpm-store',
-  '.aws', '.azure', '.gcloud', '.kube', '.ssh', '.gnupg', '.docker', '.direnv',
-  'credentials', '.credentials', 'secrets', '.secrets', 'state', 'states', '.state'
-]);
-const hiddenFiles = new Set([
-  '.env', '.envrc', '.npmrc', '.netrc', '.pypirc', '.yarnrc', '.yarnrc.yml', '.terraformrc', 'terraform.rc',
-  'local.settings.json', 'credentials.json', 'secrets.json', 'service-account.json', 'service_account.json'
-]);
-
-function exclusion(parts: readonly string[]): string | null {
-  const folded = parts.map(part => part.toLowerCase());
-  if (folded.some(part => hiddenTrees.has(part))) return 'dependency-output-state-or-credential-tree';
-  if (folded.some(part => hiddenFiles.has(part) || /^\.env[.-]/u.test(part) ||
-      /\.(?:tfstate|tfplan|tfvars|pem|key|p12|pfx|kdbx|sqlite|db)(?:\.|$)/u.test(part))) {
-    return 'live-configuration-or-sensitive-file';
-  }
-  return null;
-}
-
 function safeFailure(error: unknown): string {
   return error instanceof ModernLocalInputError || error instanceof ApplicationInspectionError ||
     error instanceof IsolatedHclError ? error.message : 'Local input inspection could not safely validate the complete selected scope.';

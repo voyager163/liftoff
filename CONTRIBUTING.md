@@ -617,6 +617,16 @@ package smoke, and the live audit.
 
 ## Refresh the supported stack
 
+Current onboarding uses the explicit v8 generator; historical application
+entrypoints and v7 fixtures must keep their original behavior. For workflow,
+prompt, or template changes, exercise `current-project-planning`,
+`current-project-generation`, and `current-project-onboarding` alongside the
+historical planner/composition tests. Manual must not acquire an external
+framework or unselected agent through a fallback. Running-process Node evidence
+is separate from external tool readiness. Keep sensitive/state exclusions
+unchanged, and do not treat successful generation or doctor source inspection as
+native verification/finalization.
+
 `assets/supported-stack.json` is the release-owned source of truth for tested
 runtimes, framework CLIs, direct dependency sets, provider locks, immutable
 container images, and packaged asset identity.

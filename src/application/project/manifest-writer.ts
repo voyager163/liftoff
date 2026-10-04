@@ -10,12 +10,12 @@ import { toSafeProjectName } from '../../domain/project/planning.js';
 import { denseArray, exactRecord, isRecord, requiredString } from '../../domain/project/manifest/fields.js';
 import { manifestHistoryMaximumSourceBytes, validateManifestSourceHistoryReference, type ManifestSourceHistoryReference } from '../../domain/project/manifest/history.js';
 import { validateActivationTargetHistoryReference, type ActivationTargetHistoryReference } from '../../domain/project/manifest/activation-target-history.js';
-import { manifestActiveLayoutDigest } from '../../domain/project/manifest/layout.js';
+import { manifestActiveLayoutDigest, validateManifestActiveLayout } from '../../domain/project/manifest/layout.js';
 import { readManifestPluginMetadata } from '../../domain/project/manifest/plugins.js';
 import { createManifestV8Reader, type LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import { createManifestV8ProjectReader, type ManifestV8ProjectLeaf } from '../../domain/project/manifest/v8-project.js';
 import { projectCatalog } from './catalog.js';
-import { parseManifest, resolveModernManifestV8SourceContract } from './manifest.js';
+import { freshActiveLayoutForComposition, parseManifest, resolveModernManifestV8SourceContract } from './manifest.js';
 import { composeModernManifestPlugins, type ExpectedArtifact } from './plugins.js';
 
 export type ManagedManifestDecision =
@@ -34,6 +34,7 @@ export type ManifestV8WriteRequest =
       readonly origin: 'fresh';
       readonly selection: ManifestV8ProjectLeaf & { readonly profile: 'none' | ModernGovernanceProfile };
       readonly generatedArtifacts: readonly GeneratedArtifact[];
+      readonly activeLayout?: ManifestActiveLayout;
     }
   | {
       readonly origin: 'historical-successor';
@@ -230,7 +231,10 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
   if (origin !== 'fresh' && origin !== 'historical-successor' && origin !== 'maintenance') {
     throw new FileSystemError('Manifest writer requires explicit fresh, historical-successor or maintenance origin.');
   }
-  const request = exactRecord(input, origin === 'fresh' ? ['origin', 'selection', 'generatedArtifacts'] :
+  const request = exactRecord(input, origin === 'fresh' ? [
+    'origin', 'selection', 'generatedArtifacts',
+    ...(isRecord(input) && Object.hasOwn(input, 'activeLayout') ? ['activeLayout'] : [])
+  ] :
     origin === 'historical-successor' ? ['origin', 'source', 'profile', 'activeLayout', 'sourceManifestHistory', 'managed'] :
       ['origin', 'source', 'managed',
         ...(isRecord(input) && Object.hasOwn(input, 'activationTargetHistory') ? ['activationTargetHistory'] : [])
@@ -286,11 +290,19 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
     logicalName: entry.logicalName, category: entry.category, pathParts: [...entry.pathParts],
     generatedBy: liftoffVersion, generationHash: `sha256:${hash(entry.content)}`, provisioningGroup: entry.provisioningGroup
   }] : []) : source!.projectArtifacts;
-  const activeLayout = generated ? {
+  let activeLayout = generated ? {
     schemaVersion: 1, state: 'bound',
     bindings: projectArtifacts.map((entry) => ({ kind: 'artifact', logicalName: entry.logicalName, pathParts: entry.pathParts }))
   } : origin === 'historical-successor' ? sourceData(request.activeLayout) :
     source?.artifactVersion === 8 ? source.activeLayout : undefined;
+  if (generated && Object.hasOwn(request, 'activeLayout')) {
+    const requested = validateManifestActiveLayout(sourceData(request.activeLayout), target.source.layoutDescriptor);
+    const declared = freshActiveLayoutForComposition(target.composition);
+    if (canonicalJson(requested) !== canonicalJson(declared)) {
+      throw new FileSystemError('Fresh explicit active layout must match the exact generated runtime layout.');
+    }
+    activeLayout = requested;
+  }
   const adoptionObservations = source?.artifactVersion === 8 ? source.adoptionObservations : [];
   const owned = new Set(managedArtifacts.map((entry) => entry.logicalName));
   const governance = profile === 'none' ? { profile, state: 'disabled' } : (() => {

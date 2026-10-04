@@ -3,7 +3,7 @@ type GeneratorContext = Pick<ResolvedGeneratorContext, 'functionsRequirements'> 
   python: Pick<ResolvedGeneratorContext['python'], 'genai'>;
 };
 import type { AddArtifact } from '../../template-types.js';
-import type { GenAiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentGenAiProjectPlan as GenAiProjectPlan } from '../../domain/project/contracts.js';
 import { addBackendArtifacts } from './backend.js';
 import { addDatabaseArtifacts } from './database.js';
 import { addPatternArtifacts } from './patterns.js';

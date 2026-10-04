@@ -8,11 +8,12 @@ import { getGeneralHelp } from '../src/cli/args/help.js';
 import { installedCapabilities } from '../src/application/capabilities.js';
 import { repairCapabilities } from '../src/application/repair/capabilities.js';
 import * as pluginApplication from '../src/application/project/plugins.js';
+import * as modernPlugins from '../src/application/project/modern-plugins.js';
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { phaseCapabilities } from '../src/domain/governance/activation/capabilities.js';
 import { SUPPORTED_MANIFEST_VERSIONS } from '../src/domain/project/manifest/reader.js';
-import { buildProjectPlan } from '../src/application/project/planning.js';
-import { buildArtifacts } from '../src/templates.js';
+import { buildCurrentProjectPlan } from '../src/application/project/planning.js';
+import { buildCurrentArtifacts } from '../src/templates.js';
 import { currentUpdateReportSchemaVersion } from '../src/application/update/current-request.js';
 import { minimumNodeVersion } from '../src/runtime.js';
 import { liftoffVersion } from '../src/version.js';
@@ -56,16 +57,20 @@ describe('project-independent capability discovery', () => {
     expect(Buffer.byteLength(result.stdout)).toBeLessThan(128 * 1024);
   });
 
-  it('derives the current release inventory rather than advertising private modern contracts', () => {
-    const report = installedCapabilities(), registry = pluginApplication.builtinPluginRegistry();
+  it('derives the exact current generation inventory without advertising unsupported transitions', () => {
+    const report = installedCapabilities(), registry = modernPlugins.modernSourceRegistry();
     expect(report.plugins.registryDigest).toBe(registry.registryDigest);
     expect(report.plugins.pluginSetDigest).toBe(registry.pluginSetDigest);
     expect(report.plugins.inventory.map(({ id }) => id)).toEqual(registry.inventory.map(({ id }) => id));
-    expect(report.workflows.map(({ id }) => id)).toEqual(projectCatalog.specWorkflows.map(({ id }) => id));
-    expect(report.workflows.map(({ id }) => id)).toEqual(['openspec', 'spec-kit']);
+    expect(report.workflows.map(({ id }) => id)).toEqual(projectCatalog.developmentWorkflows.map(({ id }) => id));
+    expect(report.workflows.map(({ id }) => id)).toEqual(['openspec', 'spec-kit', 'manual']);
     expect(report.profiles.map(({ id }) => id)).toEqual(['single-maintainer-gitflow', 'none']);
     expect(report.agents.map(({ id }) => id)).toEqual(projectCatalog.codingAgents.map(({ id }) => id));
-    expect(report.schemas.manifestRead).toEqual(SUPPORTED_MANIFEST_VERSIONS);
+    expect(report.schemas.manifestRead).toEqual([...SUPPORTED_MANIFEST_VERSIONS, 8]);
+    expect(report.schemas.currentGeneration).toMatchObject({
+      manifestWrite: 8, commands: ['plan', 'init', 'migrate'],
+      workflows: ['openspec', 'spec-kit', 'manual'], defaultWorkflow: 'openspec', manualAgentsOptional: true
+    });
     expect(report.schemas.modernReadOnly).toMatchObject({
       manifestRead: [8], governanceReport: 3, execution: false,
       commands: ['validate', 'doctor', 'dev', 'infra', 'governance status', 'governance resume', 'governance verify']
@@ -94,11 +99,11 @@ describe('project-independent capability discovery', () => {
       separatePublicationConsent: true, explicitExecution: true, attributedRecovery: true,
       committedIncompleteExit: 2, successorCreation: false, workflowFinalization: false, providerOperations: false
     });
-    const plan = buildProjectPlan({
+    const plan = buildCurrentProjectPlan({
       projectName: 'Capability schema specimen', projectType: 'standard', apiStack: 'node',
       agents: ['copilot'], environments: ['dev']
     }, { requireProjectName: true });
-    const manifest = buildArtifacts(plan).find(({ logicalName }) => logicalName === 'manifest');
+    const manifest = buildCurrentArtifacts(plan).find(({ logicalName }) => logicalName === 'manifest');
     if (!manifest) throw new Error('Expected actual generated manifest.');
     expect(report.schemas.manifestWrite).toBe(JSON.parse(manifest.content).artifactVersion);
     expect(report.schemas.reports.update).toBe(currentUpdateReportSchemaVersion);
@@ -141,7 +146,7 @@ describe('project-independent capability discovery', () => {
     Reflect.set(report.repair.modes, 0, 'not-a-real-mode');
     report.schemas.manifestRead.length = 0;
     expect(installedCapabilities().repair).toEqual(repairCapabilities);
-    expect(installedCapabilities().schemas.manifestRead).toEqual(SUPPORTED_MANIFEST_VERSIONS);
+    expect(installedCapabilities().schemas.manifestRead).toEqual([...SUPPORTED_MANIFEST_VERSIONS, 8]);
   });
 
   it.each([
@@ -180,6 +185,9 @@ describe('project-independent capability discovery', () => {
     const registry = vi.spyOn(pluginApplication, 'builtinPluginRegistry').mockImplementation(() => {
       throw new Error('Unexpected registry read');
     });
+    const modern = vi.spyOn(modernPlugins, 'modernSourceRegistry').mockImplementation(() => {
+      throw new Error('Unexpected current registry read');
+    });
     for (const argv of [['capabilities', '--help'], ['help', 'capabilities']]) {
       const result = await invoke(argv);
       expect(result.code).toBe(0);
@@ -187,10 +195,11 @@ describe('project-independent capability discovery', () => {
       expect(result.stderr).toBe('');
     }
     expect(registry).not.toHaveBeenCalled();
+    expect(modern).not.toHaveBeenCalled();
   });
 
   it('surfaces an invalid installed bundle instead of returning success-shaped metadata', async () => {
-    vi.spyOn(pluginApplication, 'builtinPluginRegistry').mockImplementation(() => {
+    vi.spyOn(modernPlugins, 'modernSourceRegistry').mockImplementation(() => {
       throw new Error('Installed bundle failed verification');
     });
     const result = await invoke(['capabilities', '--json']);

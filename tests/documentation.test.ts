@@ -99,8 +99,11 @@ describe('public documentation', () => {
     expect(readme.indexOf(init)).toBeLessThan(workloadSection);
     expect(readme.indexOf('cd my-project')).toBeGreaterThan(readme.indexOf(init));
     expect(readme.indexOf(setup)).toBeGreaterThan(readme.indexOf('cd my-project'));
-    expect(readme.replace(/\s+/g, ' ')).toMatch(/For OpenSpec, .*completes, syncs, and archives the generated bootstrap seed/);
-    expect(readme.replace(/\s+/g, ' ')).toMatch(/Spec Kit finalizes .*locally, without an OpenSpec archive or new Git branch/);
+    expect(readme.replace(/\s+/g, ' ')).toContain('Manual creates no external framework or bootstrap seed');
+    expect(readme.replace(/\s+/g, ' ')).toContain('Generation is not local completion or fresh OpenSpec finalization');
+    expect(readme).toContain('schemas.currentGeneration');
+    expect(readme).toContain('--spec manual --agents none');
+    expect(readme).toContain('liftoff governance status --scope local --json');
     expect(readme).toContain('No model selection is required for setup');
     expect(readme).toContain('GenAI application');
     expect(readme).toContain('API application');
@@ -786,7 +789,7 @@ describe('public documentation', () => {
       'Public update uses the recorded-project-intent selector for all four lanes.',
       'Finite revalidation of an independently admitted existing successor has its separate public interface below.',
       'Generation provenance and adoption observations remain separate historical records, not current ownership',
-      'Public catalog, v2-v7 readers, v7 writer, activation-v3 and policy-6 behavior remain unchanged',
+      'Historical catalog, v2-v7 readers, v7 writer, activation-v3 and policy-6 behavior remain unchanged',
       'do not replace installed-package or native qualification'
     ]) expect(pluginGuidance).toContain(phrase);
     expect(pluginGuidance).not.toContain('still packaged pending');
@@ -814,7 +817,8 @@ describe('public documentation', () => {
     expect(architecture).toContain('not\ncomplete data-flow analysis or installed-startup isolation');
     expect(architecture).toContain('trusted first-party code, not a security sandbox');
     expect(architecture).toContain('matching digests never grant mutation approval');
-    expect(architecture).toMatch(/empty agent selection[\s\S]*No agent is\s+implicitly selected or emitted[\s\S]*Fresh-project planning still requires an agent/);
+    expect(architecture).toMatch(/empty agent selection[\s\S]*No agent is\s+implicitly selected or emitted[\s\S]*Historical fresh-project planning still requires\s+an agent/);
+    expect(architecture).toContain('Manual and all eight agent subsets');
     for (const phase of Object.entries(phaseCapabilities).filter(([, value]) => value.executor !== 'built-in').map(([id]) => id)) {
       expect(developer).toContain(`\`${phase}\``);
     }

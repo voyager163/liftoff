@@ -139,7 +139,8 @@ These runtime files remain project-owned, not managed update targets.
 
 ## `liftoff.manifest.json`: CLI-owned compatibility record
 
-New projects use manifest artifact version 7. Its common project identity includes the
+Builds advertising `schemas.currentGeneration` create manifest artifact version 8.
+Its common project identity includes the
 name, spec workflow, selected agents, and applicable Spec Kit default. A
 discriminated `project.workload` object contains only fields valid for one
 workload:
@@ -150,18 +151,21 @@ workload:
 The manifest also records:
 
 - Last manifest-writing Liftoff version.
-- Official framework adapter, state, and tested contract version when known.
+- Official framework adapter, state, and tested contract version for external
+  workflows; Manual records only `{"state":"not-required"}`.
 - `managedArtifacts`: exact Liftoff core logical names, paths, and
   reconciliation `contentHash` values.
 - `projectArtifacts`: starter provenance with the original path, generating
   Liftoff version, `generationHash`, and provisioning group. These hashes never
   authorize update writes.
 - OS-neutral path-part arrays.
-- Repository governance profile, policy version 6, activation-contract version
-  3, state/evidence-header/approval schema versions 3,
-  graph/supersession/credential schema versions 1, the
-  exact phase-graph hash, and local `handoff-generated`, `handoff-partial`, or
-  disabled state.
+- Selected profile and its actual modern source identity (single-maintainer
+  policy 7), exact plugin resolution and layout digests, and a handoff or
+  disabled state. Governance `none` has no fabricated activation identity.
+- Explicit fresh component and readable-artifact bindings, derived from the
+  selected templates. Sensitive configuration/state exclusions remain excluded
+  from runtime reads even when their original generation hashes are recorded.
+  Existing-project layout is never inferred from old generation paths.
 
 An existing Power Apps manifest is rejected at its retired workload boundary
 before starter metadata or artifact paths are interpreted. Its original files
@@ -184,10 +188,12 @@ Readers support artifact versions v2, v3, v4, v5, v6, and v7 for API/GenAI proje
   enforcement.
 - V6 separates managed-core update authority from project generation
   provenance.
-- V7 adds deterministic setup identity. Current output uses
+- V7 adds historical deterministic setup identity. Historical output uses
   manifest artifact version 7, policy version 6, activation-contract version 3, and the canonical
   phase-graph hash. Governance-disabled v7 manifests use the
   disabled variant and do not fabricate activation identity.
+  Enabled historical handoffs record `handoff-generated` or `handoff-partial`;
+  these are not proof of completed activation.
 
 Enabled governance manifests retain their recorded positive-integer policy
 version only when the complete compatibility tuple is supported. Readers accept
@@ -213,8 +219,8 @@ comparisons to infer execution safety.
 | CLI package version | 0.12.3 |
 | Activation package identity | 0.12.0 |
 | Historical generation write / supported historical reads | 7 / 2-7 for API and GenAI |
-| Current update write / supported source reads | 8 / 2-8 for API and GenAI |
-| Normative policy | 6 |
+| Current generation/update write / supported source reads | 8 / 2-8 for API and GenAI |
+| Historical normative policy | 6 |
 | Activation contract, state, evidence header, approval envelope | 3 |
 | Compatibility metadata / supported historical input | 4 / 2 |
 | Public update report / retained historical application report | 4 / 3 |
@@ -250,7 +256,8 @@ after local commit leaves the linked current activation blocked and resumable.
 
 The `modernize-liftoff-platform` implementation has independent v8 source readers,
 origin-aware candidate writers and exact historical-successor contracts.
-**Public generation still writes v7; public update targets v8.**
+**Public current generation and update write v8.** The historical application
+generation APIs retain their v7 behavior for compatibility.
 Do not manually change an artifact version or call a private writer as an
 upgrade. There is no public target selector or environment bypass. A candidate
 containing correct bytes is not an approved or committed transaction.

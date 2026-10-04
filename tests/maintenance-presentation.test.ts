@@ -72,6 +72,7 @@ function normalizeMaintenanceOutput(
         `liftoff update${mode === 'normal' ? '' : ` --${mode}`}`);
   }
   return normalized.replaceAll(cwd, '<project>')
+    .replaceAll(`Node.js ${process.versions.node}`, 'Node.js <running-version>')
     .replaceAll(`${previewDirectory}${path.win32.sep}`, '<preview-store>/')
     .replaceAll(`${previewDirectory}${path.posix.sep}`, '<preview-store>/')
     .replaceAll(previewDirectory, '<preview-store>')

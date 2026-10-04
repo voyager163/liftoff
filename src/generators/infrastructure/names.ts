@@ -1,4 +1,4 @@
-import type { ApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentProjectPlan as ApiProjectPlan } from '../../domain/project/contracts.js';
 import { createHash } from 'node:crypto';
 
 export const AZURE_NAME_LIMITS = {

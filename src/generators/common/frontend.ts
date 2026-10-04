@@ -3,7 +3,7 @@ type GeneratorContext = Pick<ResolvedGeneratorContext, 'stack'> & {
   npm: Pick<ResolvedGeneratorContext['npm'], 'frontend'>;
 };
 import type { AddArtifact } from '../../template-types.js';
-import type { ApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentProjectPlan as ApiProjectPlan } from '../../domain/project/contracts.js';
 import { escapeHtml } from './values.js';
 import { genAiPattern } from './values.js';
 import { renderFrontendDockerfile } from '../containers/images.js';

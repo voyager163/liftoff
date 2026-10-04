@@ -1,10 +1,10 @@
 import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
-import { liftoffManifestArtifactVersion } from '../domain/governance/policy/identity.js';
+import { modernActivationSourceContracts } from '../domain/governance/policy/identity.js';
 import { SUPPORTED_MANIFEST_VERSIONS } from '../domain/project/manifest/reader.js';
 import { minimumNodeVersion } from '../runtime.js';
 import { liftoffVersion } from '../version.js';
 import { projectCatalog } from './project/catalog.js';
-import { builtinPluginRegistry } from './project/plugins.js';
+import { modernSourceRegistry } from './project/modern-plugins.js';
 import { repairCapabilities } from './repair/capabilities.js';
 import { currentUpdateReportSchemaVersion } from './update/current-request.js';
 import { modernGovernanceReportSchemaVersion } from './governance/modern-inspection.js';
@@ -13,15 +13,24 @@ import { modernLocalCompletionReportSchemaVersion } from './governance/modern-lo
 import { modernRevalidationCommandReportSchemaVersion } from './update/modern-revalidation-request.js';
 
 export function installedCapabilities() {
-  const registry = builtinPluginRegistry();
+  const registry = modernSourceRegistry();
   return {
     schemaVersion: 1 as const,
     kind: 'liftoff-capabilities' as const,
     cliVersion: liftoffVersion,
     projectIndependent: true,
     schemas: {
-      manifestRead: [...SUPPORTED_MANIFEST_VERSIONS],
-      manifestWrite: liftoffManifestArtifactVersion,
+      manifestRead: [...SUPPORTED_MANIFEST_VERSIONS, 8],
+      manifestWrite: 8,
+      currentGeneration: {
+        manifestWrite: 8,
+        commands: ['plan', 'init', 'migrate'],
+        workflows: projectCatalog.developmentWorkflows.map(({ id }) => id),
+        defaultWorkflow: 'openspec',
+        manualAgentsOptional: true,
+        frameworkInitialization: 'Official initialization is required only for OpenSpec and Spec Kit.',
+        scope: 'Fresh project generation and sibling migration scaffolding. No automatic source adoption, local verification/finalization, provider operations, or live governance activation.'
+      },
       modernReadOnly: {
         manifestRead: [8],
         commands: ['validate', 'doctor', 'dev', 'infra', 'governance status', 'governance resume', 'governance verify'],
@@ -78,11 +87,14 @@ export function installedCapabilities() {
       inventory: registry.inventory.map(({ category, id, apiVersion, contentVersion, contentDigest, hostPlatforms, supports }) =>
         ({ category, id, apiVersion, contentVersion, contentDigest, hostPlatforms, supports }))
     },
-    workflows: projectCatalog.specWorkflows.map(({ id, default: isDefault }) => ({ id, default: isDefault })),
+    workflows: projectCatalog.developmentWorkflows.map(({ id, default: isDefault }) => ({ id, default: isDefault })),
     agents: projectCatalog.codingAgents.map(({ id, inputName }) => ({ id, inputName })),
-    profiles: projectCatalog.governanceProfiles.map(({ id, policyVersion }) => ({
-      id, policyVersion: policyVersion ?? 'none'
-    })),
+    profiles: projectCatalog.governanceProfiles.map(({ id }) => {
+      if (id === 'none') return { id, policyVersion: 'none' };
+      const source = modernActivationSourceContracts().find(({ identity }) => identity.profile === id && identity.workflow === 'openspec');
+      if (!source) throw new Error('No current governance source matches the public profile.');
+      return { id, policyVersion: source.identity.policyVersion };
+    }),
     repair: structuredClone(repairCapabilities),
     governance: {
       phases: Object.entries(phaseCapabilities).map(([phase, capability]) => ({
@@ -103,7 +115,7 @@ export function installedCapabilities() {
       publicStatefulMigration: false,
       projectTelemetryEnrollment: false,
       capabilityIsApproval: false,
-      privateApis: 'OpenSpec finalization, Manual/team generation and general v8 project writer APIs are not public CLI support. Historical successor creation is limited to the separately advertised currentUpdate scope.',
+      privateApis: 'OpenSpec finalization, team generation and arbitrary v8 project writer APIs are not public CLI support. Fresh generation is limited to currentGeneration. Historical successor creation is limited to the separately advertised currentUpdate scope.',
       registration: 'Command syntax does not imply that every option combination is valid or an executor is available.'
     }
   };

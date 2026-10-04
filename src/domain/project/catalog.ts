@@ -4,6 +4,7 @@ import type {
   AgentWorkflowSurface,
   CodingAgentDefinition,
   CodingAgentId,
+  DevelopmentWorkflowDefinition,
   EnvironmentDefinition,
   EnvironmentId,
   PatternDefinition,
@@ -439,6 +440,16 @@ export function createProjectCatalog(context: ProjectCatalogContext) {
     }
   ];
 
+  const developmentWorkflows: DevelopmentWorkflowDefinition[] = [
+    ...specWorkflows,
+    {
+      id: 'manual',
+      label: 'Manual',
+      default: false,
+      description: 'Use Liftoff without an external specification framework; coding agents are optional.'
+    }
+  ];
+
   const governanceProfiles: GovernanceProfileDefinition[] = [
     {
       id: 'single-maintainer-gitflow',
@@ -552,6 +563,13 @@ export function createProjectCatalog(context: ProjectCatalogContext) {
   function getSpecWorkflow(value: string): SpecWorkflowDefinition | undefined {
     const normalized = normalize(value);
     return specWorkflows.find((workflow) => normalize(workflow.id) === normalized || normalize(workflow.label) === normalized);
+  }
+
+  function getDevelopmentWorkflow(value: string): DevelopmentWorkflowDefinition | undefined {
+    const normalized = normalize(value);
+    return developmentWorkflows.find((workflow) =>
+      normalize(workflow.id) === normalized || normalize(workflow.label) === normalized
+    );
   }
 
   function getGovernanceProfile(
@@ -693,6 +711,10 @@ export function createProjectCatalog(context: ProjectCatalogContext) {
     getCodingAgent,
     getEnvironment
   };
+  const currentProjectInputCatalog: ProjectInputCatalog = {
+    ...projectInputCatalog,
+    getSpecWorkflow: getDevelopmentWorkflow
+  };
   return {
     approvedStack,
     projectTypes,
@@ -704,6 +726,7 @@ export function createProjectCatalog(context: ProjectCatalogContext) {
     environments,
     canonicalDefaultEnvironments,
     specWorkflows,
+    developmentWorkflows,
     governanceProfiles,
     codingAgents,
     frameworkDefinitions,
@@ -712,6 +735,7 @@ export function createProjectCatalog(context: ProjectCatalogContext) {
     getApiStack,
     getProvider,
     getSpecWorkflow,
+    getDevelopmentWorkflow,
     getGovernanceProfile,
     getCodingAgent,
     getFrameworkDefinition,
@@ -729,6 +753,7 @@ export function createProjectCatalog(context: ProjectCatalogContext) {
     isSpecWorkflowId,
     isCodingAgentId,
     projectInputCatalog,
+    currentProjectInputCatalog,
   };
 }
 

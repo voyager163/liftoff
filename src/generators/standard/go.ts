@@ -5,7 +5,7 @@ import type { AddArtifact } from '../../template-types.js';
 
 import { renderStandardSchema } from './configuration.js';
 import { sourceString } from '../common/values.js';
-import type { StandardApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentStandardApiProjectPlan as StandardApiProjectPlan } from '../../domain/project/contracts.js';
 
 
 export function addGoArtifacts(add: AddArtifact, plan: StandardApiProjectPlan, context: GeneratorContext): void {

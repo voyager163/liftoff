@@ -368,6 +368,28 @@ export const installedPlanCases = Object.freeze([
       ...opentofuArtifacts
     },
     excludedPathPrefixes: []
+  }),
+  frozenCase({
+    id: 'manual-cli-only',
+    directory: 'outside with spaces',
+    args: [
+      '--type', 'standard', '--api', 'go', '--cloud', 'azure', '--region', 'eastus',
+      '--spec', 'manual', '--agents', 'none', '--no-frontend', '--governance', 'none'
+    ],
+    decisions: {
+      ...commonDecisions, 'Project type': 'Standard application',
+      'API stack': 'Go / Huma / Chi', 'Spec workflow': 'Manual',
+      'Coding agents': 'None (CLI only)', Frontend: 'Not generated'
+    },
+    artifacts: {
+      'go-backend-module': 'backend/go.mod',
+      'go-backend-checksums': 'backend/go.sum',
+      ...opentofuArtifacts
+    },
+    excludedPathPrefixes: [
+      'frontend/', 'openspec/', '.specify/', '.claude/', '.agents/',
+      '.github/prompts/', '.github/skills/', '.liftoff/governance/'
+    ]
   })
 ]);
 
