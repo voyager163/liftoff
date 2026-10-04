@@ -1334,12 +1334,27 @@ source bytes/modes, verify actual checks and readback, and distinguish missing
 consent, a fresh-cache miss, stale input and a later source change after actual
 preparation. Preparation does not publish local-completion records.
 
-The generated Python `pythonpath = [".."]` remains **blocked** because its parent
-is outside the finite selected input roots. The confined Python fixture uses
-`pythonpath = ["."]` and a component-local application; it is not qualification
-of the unchanged generated Python application's import layout. Dependency
-permission cannot expand that source boundary. A separate explicit bounded
-parent-import contract is needed before that layout can execute.
+The genuine `[tool.pytest.ini_options].pythonpath` can use the exact literal
+`".."` as the immediate selected Python component's **package search namespace**.
+Its parent must already be in the captured directory inventory. This does not
+add input roots, scan or copy sibling source, or expose excluded controls.
+Directory membership and physical identities remain bound. Other escaping
+references, including `testpaths = [".."]`, remain blocked. The interpretation
+is bound into required-input closure policy revision3; earlier recipe approvals
+cannot silently authorize the new semantics. Dependency permission cannot
+expand that source boundary.
+
+Explicit native cases exercise unchanged generated standard Python application
+bytes, configuration and locks at project-root and nested component bindings.
+They add a captured project-owned `tests/conftest.py` with two explicit test-only
+loopback database/Redis settings; generated settings require those values.
+No original `.env` or workstation credentials are read or injected. This is
+not qualification of an unconfigured generated application.
+An actual import from an uncopied sibling must fail after successful preparation,
+without local-completion proof or changes to original source. The separate
+confined fixture retains `pythonpath = ["."]`; it is not a substitute for these
+generated-layout cases. Neither case proves arbitrary sibling imports,
+whole-project runtime equivalence or GenAI worker execution.
 
 These framework fixtures do not prove official initializer provenance or run
 `specify` or `openspec init`. The preparation fixtures do not qualify Microsoft
