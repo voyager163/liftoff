@@ -16,6 +16,7 @@ const f=vi.hoisted(()=>({
 const fingerprint='a'.repeat(64);
 vi.mock('../src/application/project/manifest.js',async original=>({...await original<typeof import('../src/application/project/manifest.js')>(),
   loadManifest:vi.fn(async()=>({artifactVersion:7,projectArtifacts:[],project:{workload:{environments:['dev']}}})),
+  loadProjectManifest:vi.fn(async()=>({artifactVersion:7,projectArtifacts:[],project:{workload:{environments:['dev']}}})),
   parseManifest:vi.fn(()=>({}))
 }));
 vi.mock('../src/domain/project/infrastructure-layout.js',async original=>({...await original<typeof import('../src/domain/project/infrastructure-layout.js')>(),
@@ -56,6 +57,7 @@ vi.mock('../src/application/repair/application-patch.js',()=>({
   applicationCandidateDigest:()=> 'c'.repeat(64),
   inspectApplicationPatch:vi.fn(async()=>({
     patchPath:'/injected/patch',blockers:[],snapshots:[],mutations:[],report:{effects:[]},
+    scope:{sourceLayout:'explicit-project-file-mapping-v1'},
     verificationPolicy:{effects:{preparation:f.preparation,network:f.network},preparation:[],
       commands:[{executable:'injected-never-executed',args:[],cwdPathParts:[],timeoutMs:1000,network:false}]}
   })),

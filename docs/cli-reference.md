@@ -44,7 +44,7 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | `liftoff update --check` | Reports eligible v8 plans without project mutation; exits 0 when clean and 2 when actionable |
 | `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; project-owned files remain unreachable |
 | `liftoff repair [project-path]` | Displays an exact plan and offers action-specific default-No approval on a genuine terminal; no fingerprint entry |
-| `liftoff repair [project-path] --check` | Checks/previews bounded infrastructure repair without cloud calls, application scripts or project writes |
+| `liftoff repair [project-path] --check` | Inventories current-v8 application bindings or previews historical infrastructure repair without cloud calls, application scripts or project writes |
 | `liftoff repair --capabilities --json` | Lists packaged repair contracts, recipes, schemas and real command modes without needing a project |
 | `liftoff repair [project-path] --inspect-layout` | Inventories actual application paths, target identities, references and unresolved mappings without execution |
 | `liftoff repair [project-path] --application-patch <patch.json>` | Reviews external staged application mappings; interactive verification/network/file consents remain separate |
@@ -719,8 +719,10 @@ liftoff repair [project-path] --check --application-patch <external-patch.json> 
 liftoff repair [project-path] --recover [--json]
 ```
 
-**Normal terminal use does not require copying a fingerprint.** Bare repair
-shows the exact immutable plan and its effects, then asks Yes/No with default
+**Normal terminal use does not require copying a fingerprint.** Bare current-v8
+repair performs read-only application inventory. An explicit application patch
+or supported historical infrastructure repair shows the exact immutable plan
+and its effects, then asks Yes/No with default
 No on usable input/stderr TTYs. Only Yes authorizes that displayed plan.
 `--check` never executes the proposed repair. JSON and non-TTY invocations never
 prompt or execute implicitly; piped yes, autopilot and generic confirmation are
@@ -736,6 +738,8 @@ presence without reading state or contacting cloud services. Only explicit
 `--live` with a selected subscription permits bounded read-only Azure metadata
 requests using existing authentication: no login, privilege expansion, state
 reads, backend writes, or deployment.
+This infrastructure discovery lane accepts historical manifests only; v8
+requests are explicitly blocked, not silently converted to application checks.
 Metadata discovery has a 120-second overall deadline, a 30-second per-command
 deadline, and a maximum of 24 resource groups. Exceeding a bound leaves
 eligibility incomplete and blocks writes.
@@ -789,7 +793,17 @@ it does not infer an old layout version or offer automatic folder moves. The
 agent resolves imports, customizations, build/tests, Docker/Compose, scripts,
 CI and docs, and authors exact mappings/replacement bytes **outside the project**.
 Unresolved mappings, occupied destinations, protected files or unsafe paths block
-the `application-layout-patch` version-1 recipe.
+the selected version-1 recipe: historical `application-layout-patch` or current
+`application-active-layout-patch`.
+
+Current-v8 repair supports governance `none` and `single-maintainer-gitflow`,
+including Manual/no-agent projects. It uses explicit active artifact bindings
+and component roots, including compatible custom paths; generation history does
+not select current locations. Missing bindings are not inferred. Moving an
+actively bound artifact requires separately reviewed binding publication, which
+is not yet available. Current infrastructure and team-profile repair remain
+unsupported. Inspect `currentApplication` in the repair capabilities document
+instead of assuming historical recipes also authorize current sources.
 
 Normal `--application-patch <external-patch.json>` displays the actual patch and
 asks independently about exact staged project-code verification, any declared

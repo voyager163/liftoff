@@ -13,6 +13,15 @@ export const repairCapabilities = {
   repairContractVersion,
   schemas: repairSchemaVersions,
   recipes: Object.values(repairRecipes),
+  currentApplication: {
+    manifestVersion: 8,
+    profiles: ['none', 'single-maintainer-gitflow'],
+    recipe: 'application-active-layout-patch',
+    targets: 'Explicit active artifact bindings only; missing bindings are not inferred from generation history.',
+    defaultOperation: 'Read-only application inventory.',
+    bindingPublication: false,
+    infrastructureTransformation: false
+  },
   preparation: applicationPreparationSupport,
   modes: [
     'check', 'interactive-repair', 'capabilities', 'inspect-layout', 'application-patch',

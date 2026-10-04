@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import type { ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
-import type { LiftoffManifest } from '../../domain/project/contracts.js';
+import type { SupportedProjectManifest } from '../project/manifest.js';
 import { canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
 import {
   ApplicationFiles, ApplicationInspectionError, applicationDigest, applicationExclusion, applicationFailure,
@@ -201,7 +201,7 @@ export function applicationCandidateDigest(candidate: ApplicationPatchCandidate)
 }
 
 interface PrivateCandidateBinding {
-  manifest: LiftoffManifest;
+  manifest: SupportedProjectManifest;
   digest: string;
   projectRoot: string;
   inspectionDigest: string;
@@ -328,7 +328,7 @@ function validateReferenceReview(
 }
 
 async function inspectApplicationPatchState(
-  root: string, manifest: LiftoffManifest, externalPatchFile: string, options: ApplicationInspectionOptions,
+  root: string, manifest: SupportedProjectManifest, externalPatchFile: string, options: ApplicationInspectionOptions,
   approvedTools?: readonly ApplicationToolIdentity[]
 ): Promise<ApplicationPatchCandidate> {
   const inspection = await inspectApplicationLayout(root, manifest);
@@ -342,7 +342,9 @@ async function inspectApplicationPatchState(
   const candidate: ApplicationPatchCandidate = {
     patchPath, blockers, snapshots: inspection.snapshots, mutations: [],
     scope: {
-      kind: 'application-layout-patch', sourceLayout: 'explicit-project-file-mapping-v1', projectRoot,
+      kind: 'application-layout-patch',
+      sourceLayout: manifest.artifactVersion === 8 ? 'explicit-active-file-mapping-v1' : 'explicit-project-file-mapping-v1',
+      projectRoot,
       manifestDigest: canonicalSha256(manifest), inspectionDigest: inspection.report.inspectionDigest,
       target: inspection.report.target, patch: { path: patchPath, digest: null, mode: null },
       staging: { root: path.dirname(patchPath), files: [], directoryInventory: [] },
@@ -398,7 +400,7 @@ async function inspectApplicationPatchState(
     validateMappingCollisions(document.mappings);
     const current = currentApplicationTargets(manifest);
     const source = new ApplicationFiles(projectRoot, (parts) =>
-      applicationExclusion(parts, current.protectedPaths, current.examplePaths));
+      applicationExclusion(parts, current.protectedPaths, current.examplePaths, current.protectedTrees));
     const snapshots = new Map(inspection.snapshots.map((item) => [applicationPathKey(item.pathParts), item]));
     const transformed = new Map(snapshots);
     candidate.scope.mappings = document.mappings;
@@ -407,13 +409,18 @@ async function inspectApplicationPatchState(
     verificationPolicy.effects.network = verificationPolicy.commands.some((item) => item.network);
     for (const mapping of document.mappings) {
       const sourceKey = applicationPathKey(mapping.sourcePathParts), targetKey = applicationPathKey(mapping.targetPathParts);
+      if (manifest.artifactVersion === 8 && sourceKey !== targetKey &&
+          manifest.activeLayout.bindings.some(binding =>
+            binding.kind === 'artifact' && applicationPathKey(binding.pathParts) === sourceKey)) {
+        throw new ApplicationInspectionError('Moving an actively bound artifact requires separate reviewed binding publication. This file-only repair cannot leave a stale active binding.');
+      }
       if (process.platform === 'win32' && mapping.targetMode !== (mapping.targetMode & 0o200 ? 0o666 : 0o444)) {
         throw new ApplicationInspectionError('Windows application target modes must bind the effective native read-only or writable mode (444 or 666 octal).');
       }
       const targetIdentity = current.target.artifacts.find((item) => item.logicalName === mapping.targetIdentity.logicalName);
       if (!targetIdentity) throw new ApplicationInspectionError('Application patch names an unknown or unselected current target identity.');
       for (const parts of [mapping.sourcePathParts, mapping.targetPathParts]) {
-        if (applicationExclusion(parts, current.protectedPaths, current.examplePaths)) {
+        if (applicationExclusion(parts, current.protectedPaths, current.examplePaths, current.protectedTrees)) {
           throw new ApplicationInspectionError(`${parts.join('/')}: protected files cannot participate in an application patch.`);
         }
       }
@@ -431,7 +438,7 @@ async function inspectApplicationPatchState(
         if (mapping.role === 'application') {
           const componentRoot = applicationPathKey(targetIdentity.componentRootPathParts);
           if (!componentRoot || !targetKey.startsWith(`${componentRoot}/`) ||
-              targetIdentity.component === 'functions' && targetIdentity.componentRootPathParts.length !== 2) {
+              manifest.artifactVersion !== 8 && targetIdentity.component === 'functions' && targetIdentity.componentRootPathParts.length !== 2) {
             throw new ApplicationInspectionError('Custom application files require an explicit mapping into a selected current application component.');
           }
         } else if (sourceKey !== targetKey) {
@@ -511,7 +518,7 @@ async function inspectApplicationPatchState(
 }
 
 export async function inspectApplicationPatch(
-  root: string, manifest: LiftoffManifest, externalPatchFile: string, options: ApplicationInspectionOptions = {}
+  root: string, manifest: SupportedProjectManifest, externalPatchFile: string, options: ApplicationInspectionOptions = {}
 ): Promise<ApplicationPatchCandidate> {
   return inspectApplicationPatchState(root, manifest, externalPatchFile, options);
 }

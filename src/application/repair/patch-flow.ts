@@ -1,7 +1,6 @@
 import path from 'node:path';
 import type { ExecutionContext } from '../context.js';
-import { loadManifest } from '../project/manifest.js';
-import type { LiftoffManifest } from '../../domain/project/contracts.js';
+import { loadProjectManifest, type SupportedProjectManifest } from '../project/manifest.js';
 import {
   captureProjectFileSnapshot, type ProjectFileSnapshot
 } from '../../adapters/filesystem/project-transaction.js';
@@ -44,7 +43,7 @@ async function inspectBoundPatch(
   if (!metadata[0].content || metadata[0].content.length > 4 * 1024 * 1024) {
     throw new Error('Application repair requires a bounded existing manifest, not new or fabricated provenance.');
   }
-  const manifest = await loadManifest(root);
+  const manifest = await loadProjectManifest(root);
   const candidate = await inspectApplicationPatch(root, manifest, patchPath, options);
   const after = await Promise.all(metadataPaths.map((parts) => captureProjectFileSnapshot(root, parts)));
   if (canonicalSha256(snapshotDescriptors(metadata)) !== canonicalSha256(snapshotDescriptors(after))) {
@@ -56,7 +55,10 @@ async function inspectBoundPatch(
 
 function previewFor(root: string, inspected: BoundPatch, now: Date): RepairPreview {
   return buildRepairPreview({
-    projectRoot: root, recipe: 'application-layout-patch', applicationPatchPath: inspected.candidate.patchPath,
+    projectRoot: root,
+    recipe: inspected.candidate.scope.sourceLayout === 'explicit-active-file-mapping-v1'
+      ? 'application-active-layout-patch' : 'application-layout-patch',
+    applicationPatchPath: inspected.candidate.patchPath,
     snapshots: inspected.snapshots, mutations: inspected.candidate.mutations,
     scope: { application: inspected.candidate.scope, historyRoot: repairHistoryRoot, historyFiles: repairHistoryFiles },
     verificationPolicy: inspected.candidate.verificationPolicy, live: false, now
@@ -65,7 +67,7 @@ function previewFor(root: string, inspected: BoundPatch, now: Date): RepairPrevi
 
 export async function repairApplicationProject(input: {
   root: string;
-  manifest: LiftoffManifest;
+  manifest: SupportedProjectManifest;
   request: RepairRequest;
   context: ExecutionContext;
   storage: UpdatePreviewOptions;
@@ -74,7 +76,8 @@ export async function repairApplicationProject(input: {
   const { root, manifest, request, context, storage: initialStorage } = input;
   const now = () => context.updateNow?.() ?? new Date();
   const storage: UpdatePreviewOptions = { ...initialStorage, clock: () => now() };
-  const identity = repairExecutionIdentity(liftoffVersion, 'application-layout-patch');
+  const identity = repairExecutionIdentity(liftoffVersion, manifest.artifactVersion === 8
+    ? 'application-active-layout-patch' : 'application-layout-patch');
   let committed = false;
   let approval: UpdateApprovalResult | undefined;
   let verificationReceipt: RepairVerificationReceipt | null = null;
@@ -121,8 +124,10 @@ export async function repairApplicationProject(input: {
       });
       return inspected.report.complete ? 0 : 2;
     }
-    if (input.saved && input.saved.recipe.id !== 'application-layout-patch') {
-      throw new Error('Application verification requires a reviewed application-layout-patch plan, not infrastructure approval.');
+    if (input.saved && input.saved.recipe.id !== identity.recipe.id) {
+      throw new Error(identity.recipe.id === 'application-layout-patch'
+        ? 'Application verification requires a reviewed application-layout-patch plan, not infrastructure approval.'
+        : 'Application verification requires the exact reviewed recipe for this manifest source, not another application or infrastructure recipe.');
     }
     const patchPath = input.saved?.applicationPatchPath ??
       (request.applicationPatch ? path.resolve(context.cwd, request.applicationPatch) : undefined);

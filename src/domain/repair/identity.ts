@@ -16,6 +16,7 @@ export const repairSchemaVersions = {
 } as const;
 
 export const applicationTargetLayoutId = 'liftoff-application-artifacts-v1' as const;
+export const activeApplicationTargetLayoutId = 'liftoff-active-application-artifacts-v1' as const;
 
 export const repairRecipes = {
   'azure-local-layout': {
@@ -29,11 +30,21 @@ export const repairRecipes = {
     version: 1,
     sourceLayouts: ['explicit-project-file-mapping-v1'],
     targetLayout: applicationTargetLayoutId
+  },
+  'application-active-layout-patch': {
+    id: 'application-active-layout-patch',
+    version: 1,
+    sourceLayouts: ['explicit-active-file-mapping-v1'],
+    targetLayout: activeApplicationTargetLayoutId
   }
 } as const;
 
 export type RepairRecipeId = keyof typeof repairRecipes;
 export type RepairRecipeIdentity = (typeof repairRecipes)[RepairRecipeId];
+
+export function isApplicationRepairRecipe(id: RepairRecipeId): boolean {
+  return id === 'application-layout-patch' || id === 'application-active-layout-patch';
+}
 
 export interface RepairExecutionIdentity {
   cliVersion: string;
@@ -57,7 +68,7 @@ export function validateRepairExecutionIdentity(value: unknown): RepairExecution
   const recipe = Object.values(repairRecipes).find((entry) =>
     isRecord(value.recipe) && canonicalSha256(entry) === canonicalSha256(value.recipe));
   if (!recipe) {
-    throw new Error('Unsupported repair recipe/layout identity; supported azure-local-layout v1 or application-layout-patch v1 with their exact registered layouts. Use a compatible CLI or request a new preview; do not retag history.');
+    throw new Error('Unsupported repair recipe/layout identity; supported azure-local-layout v1, application-layout-patch v1 or application-active-layout-patch v1 with their exact registered layouts. Use a compatible CLI or request a new preview; do not retag history.');
   }
   return { cliVersion: value.cliVersion, repairContractVersion, recipe };
 }

@@ -104,10 +104,14 @@ const excludedNames = new Set([
  */
 export function applicationExclusion(
   parts: readonly string[], protectedPaths: ReadonlySet<string> = new Set(),
-  examplePaths: ReadonlySet<string> = new Set()
+  examplePaths: ReadonlySet<string> = new Set(),
+  protectedTrees: readonly string[] = []
 ): string | null {
   const folded = parts.map(applicationPathFold);
   const key = folded.join('/');
+  if (protectedTrees.some(root => key === root || key.startsWith(`${root}/`))) {
+    return 'excluded-current-control-or-infrastructure-binding';
+  }
   if (protectedPaths.has(key)) return 'exact-protected-artifact';
   if (folded.some((part) => excludedDirectories.has(part))) return 'excluded-control-state-secret-or-output-tree';
   if (folded.some((part) => excludedNames.has(part))) return 'excluded-control-or-live-configuration';

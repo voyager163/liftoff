@@ -549,7 +549,8 @@ try {
     throw new Error('Installed ordinary-Git assessment initialized or modified its repository.');
   }
   const { buildProjectPlan: installedPlan } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'planner.js')).href);
-  const { buildArtifacts: installedArtifacts } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'templates.js')).href);
+  const { buildCurrentProjectPlan: installedCurrentPlan } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'planning.js')).href);
+  const { buildArtifacts: installedArtifacts, buildCurrentArtifacts: installedCurrentArtifacts } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'templates.js')).href);
   const { writeArtifacts: installedWrite } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'file-system.js')).href);
   const updateProject = path.join(tempRoot, 'current update project');
   const updateArtifacts = installedArtifacts(installedPlan({
@@ -603,6 +604,25 @@ try {
   if (currentUpdate.status !== 'current' || currentUpdate.coreUpdateComplete !== true ||
       currentUpdate.localComplete !== false || await treeDigest(updateProject) !== afterUpdate) {
     throw new Error('Installed v8 maintenance did not preserve project bytes and separate local readiness.');
+  }
+
+  const currentRepairProject = path.join(tempRoot, 'current manual repair project');
+  await installedWrite(currentRepairProject, installedCurrentArtifacts(installedCurrentPlan({
+    projectName: 'Current Repair Smoke', projectType: 'standard', apiStack: 'go',
+    specWorkflow: 'manual', agents: [], governanceProfile: 'none', includeFrontend: false, environments: ['dev']
+  }, { requireProjectName: true })));
+  const beforeCurrentRepair = await treeDigest(currentRepairProject);
+  for (const flags of [[], ['--check'], ['--inspect-layout']]) {
+    const result = JSON.parse(run(process.execPath, [liftoffEntrypoint, 'repair', currentRepairProject, ...flags, '--json'], {
+      cwd: outsideDirectory, env: npmEnv
+    }).stdout);
+    if (result.status !== 'inspected' || result.committed !== false || result.application?.complete !== true ||
+        result.identity?.recipe?.id !== 'application-active-layout-patch' ||
+        result.application.target?.id !== 'liftoff-active-application-artifacts-v1' ||
+        result.nextActions.some(action => action.kind === 'agent') ||
+        await treeDigest(currentRepairProject) !== beforeCurrentRepair) {
+      throw new Error('Installed current Manual/no-agent repair did not preserve its read-only active-layout contract.');
+    }
   }
 
   const repairProject = path.join(tempRoot, 'guided repair project');

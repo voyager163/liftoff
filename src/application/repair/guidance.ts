@@ -1,5 +1,6 @@
 import { commandShellForPlatform, formatShellCommand } from '../../adapters/process/shell-command.js';
 import type { LiftoffManifest } from '../../domain/project/contracts.js';
+import type { SupportedProjectManifest } from '../project/manifest.js';
 import { governanceAgentIntegrations } from '../../domain/project/catalog.js';
 import { assessInfrastructureLayout } from '../../domain/project/infrastructure-layout.js';
 import { formatUpdateCommand, type UpdateGuidanceContext } from '../update/command-guidance.js';
@@ -26,7 +27,7 @@ export function repairCheckAction(projectRoot: string): RepairNextAction {
   });
 }
 
-export function repairResumeActions(projectRoot: string, manifest: LiftoffManifest): RepairNextAction[] {
+export function repairResumeActions(projectRoot: string, manifest: SupportedProjectManifest): RepairNextAction[] {
   const commands = [
     { id: 'update-check', label: 'Check managed updates', args: ['update', '--check', '--project', projectRoot],
       description: 'Managed update approval is separate from project repair.', scope: 'managed-update' },
@@ -46,7 +47,7 @@ export function repairResumeActions(projectRoot: string, manifest: LiftoffManife
   });
 }
 
-export function repairAgentActions(projectRoot: string, manifest: LiftoffManifest): RepairNextAction[] {
+export function repairAgentActions(projectRoot: string, manifest: SupportedProjectManifest): RepairNextAction[] {
   return manifest.project.agents.map((agent): RepairNextAction => ({
     kind: 'agent', id: `native-repair-${agent}`, label: 'Open the project in a coding agent',
     agent, invocation: governanceAgentIntegrations[agent].repair.invocation,

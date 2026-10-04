@@ -41,7 +41,8 @@ describe('independent repair identities', () => {
     expect(repairCapabilities).toMatchObject({
       schemaVersion: 1, cliVersion: liftoffVersion, repairContractVersion: 1,
       schemas: { report: 2, preview: 2, history: 2, journal: 2, applicationPatch: 1 },
-      recipes: [repairRecipes['azure-local-layout'], repairRecipes['application-layout-patch']]
+      recipes: [repairRecipes['azure-local-layout'], repairRecipes['application-layout-patch'],
+        repairRecipes['application-active-layout-patch']]
     });
     expect(currentActivationIdentity).toMatchObject({
       liftoffVersion: '0.12.0', manifestArtifactVersion: 7, policyVersion: '6', activationContractVersion: 3

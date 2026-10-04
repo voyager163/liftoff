@@ -2,7 +2,7 @@ import {
   createScopedUserLocalRecordStore, type UpdatePreviewOptions
 } from '../../adapters/filesystem/update-previews.js';
 import { canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
-import { repairSchemaVersions } from '../../domain/repair/identity.js';
+import { isApplicationRepairRecipe, repairSchemaVersions } from '../../domain/repair/identity.js';
 import type { RepairPreview } from './preview.js';
 
 export interface RepairVerificationReceipt {
@@ -55,7 +55,7 @@ export async function saveRepairVerification(
   preview: RepairPreview, now: Date, networkAuthorized: boolean, storage?: UpdatePreviewOptions,
   dependencyPreparationAuthorized = false
 ): Promise<RepairVerificationReceipt> {
-  if (preview.recipe.id !== 'application-layout-patch' ||
+  if (!isApplicationRepairRecipe(preview.recipe.id) ||
       now.getTime() < Date.parse(preview.createdAt) || now.getTime() >= Date.parse(preview.expiresAt)) {
     throw new Error('The application plan expired during verification; request a new preview before file approval.');
   }

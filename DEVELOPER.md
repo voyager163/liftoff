@@ -119,14 +119,27 @@ capability contract and preparation matrix directly rather than fabricating a re
 | Repair result, expiring approval preview, new history receipt, repair transaction journal | independent schemas 2 |
 | Application inventory, patch input/nested report, verification result/receipt, private backup index/chunks | independent schemas 1 |
 | Azure local transformation | recipe `azure-local-layout`, version 1; sources `azure-flat-root-v1` / `azure-partial-independent-v1`, target `azure-independent-roots-v1` |
-| Reviewed application-file patch | recipe `application-layout-patch`, version 1; source `explicit-project-file-mapping-v1`, target `liftoff-application-artifacts-v1` plus exact workload/artifact-inventory digest |
+| Historical-manifest application-file patch | recipe `application-layout-patch`, version 1; source `explicit-project-file-mapping-v1`, target `liftoff-application-artifacts-v1` plus exact workload/artifact-inventory digest |
+| Current-manifest application-file patch | recipe `application-active-layout-patch`, version 1; source `explicit-active-file-mapping-v1`, target `liftoff-active-application-artifacts-v1` plus exact workload/active-target digest |
 | Shared update transaction | schema 1, unchanged |
 
 The application target is derived from current explicit generator declarations,
 not an invented legacy version. Source provenance remains historical.
 Generation hashes do not authorize moving or replacing application files.
+For v8, explicit artifact and component bindings select current paths; missing
+bindings are not inferred from generator placement. The current recipe supports
+none/single-maintainer profiles, excludes bound infrastructure/control trees,
+and refuses bound-artifact moves pending separate binding publication. Bare
+current repair is read-only inventory, including Manual/no-agent projects.
+It cannot transform current infrastructure or manufacture governance state.
+Both application recipes share the same separately approved verification and
+file-transaction boundaries; exact recipe/source/target identities cannot be
+substituted in previews or receipts.
 The thin native `/liftoff-repair`/`$liftoff-repair` integrations use managed
 content hashes, not a separate skill SemVer or activation/policy bump.
+Historical rendering retains its original recipe by default. Current rendering
+selects the new recipe explicitly, and older owned v8 guides use ordinary
+reviewed managed-core maintenance. A changed guide is not new activation proof.
 
 Preview fingerprints bind exact CLI/contract/recipe/layout identity, project,
 bytes/modes, directory inventory, external staging, reference dispositions,

@@ -2,6 +2,7 @@ import { chmod, mkdir, realpath, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ExternalCommand } from '../../domain/project/contracts.js';
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
+import { isApplicationRepairRecipe } from '../../domain/repair/identity.js';
 import { extractVersion } from '../../domain/workstation/versions.js';
 import { NodeCommandRunner, type CommandResult, type CommandRunner } from '../../process-runner.js';
 import { ApplicationFiles, ApplicationInspectionError, applicationParts, applicationPathKey } from './application-files.js';
@@ -107,7 +108,10 @@ export async function verifyApplicationPatch(
     }
     const preview = await loadRepairPreview(root, options.preview.fingerprint, options.storage?.clock?.() ?? new Date(), options.storage);
     if (canonicalSha256(preview) !== canonicalSha256(options.preview) || preview.applicationPatchPath !== candidate.patchPath ||
-        preview.recipe.id !== 'application-layout-patch' || preview.verificationDigest !== result.verificationPolicyDigest) {
+        !isApplicationRepairRecipe(preview.recipe.id) ||
+        preview.recipe.sourceLayouts[0] !== candidate.scope.sourceLayout ||
+        preview.recipe.targetLayout !== candidate.scope.target?.id ||
+        preview.verificationDigest !== result.verificationPolicyDigest) {
       throw new ApplicationInspectionError('[stale-preview] The real saved preview does not match this application candidate, recipe, or verification/preparation policy.');
     }
     try { await options.assertCurrent(); }

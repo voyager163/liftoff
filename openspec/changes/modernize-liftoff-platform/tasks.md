@@ -50,8 +50,8 @@ Depends on 3. References: design D7; liftoff-cli-workflow, liftoff-project-scaff
 - [ ] 4.3 Separate bundled CLI runtime from external workload/framework/agent prerequisites; verify native Manual/no-agent startup does not probe or require Node/npm/frameworks unless the selected project operation needs them.
 - [x] 4.4 Remove unconditional framework calls and non-OpenSpec-equals-Spec-Kit fallbacks across generation, initialization, sibling migration and validation; verify Manual creates no framework directories, seeds, global profile reads or fictitious markers.
 - [ ] 4.5 Implement explicit native Manual local verification/finalization with optional agents and selected governance; verify no fake archive and valid CLI-only local completion without remote credentials.
-- [ ] 4.6 Keep governance-none Manual validation/repair usable without manufacturing governance state; verify actual CLI next actions and no nonexistent shell setup command.
-- [ ] 4.7 Add Windows, macOS and Linux Manual generation/path tests with spaces, case collisions and omitted tools; verify identical logical inventories and protected unselected framework files.
+- [x] 4.6 Keep governance-none Manual validation/repair usable without manufacturing governance state; verify actual CLI next actions and no nonexistent shell setup command.
+- [x] 4.7 Add Windows, macOS and Linux Manual generation/path tests with spaces, case collisions and omitted tools; verify identical logical inventories and protected unselected framework files.
 - [x] 4.8 Refresh workflow/prerequisite/getting-started guides and generated root/infrastructure README content for Manual and CLI-only use; verify each example against command definitions and documentation tests.
 
 ## 5. Deliver canonical skills and capability negotiation
