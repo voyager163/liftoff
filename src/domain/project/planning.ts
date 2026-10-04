@@ -1,4 +1,5 @@
 import type {
+  CurrentProjectPlan,
   EnvironmentDefinition,
   ProjectOptions,
   ProjectPlan,
@@ -32,6 +33,9 @@ export type ProjectPlanningCatalog = Pick<
   | 'specWorkflows'
 >;
 
+type CurrentWorkflowCatalog = Pick<ProjectCatalog, 'getDevelopmentWorkflow' | 'currentProjectInputCatalog'>;
+export type CurrentProjectPlanningCatalog = ProjectPlanningCatalog & CurrentWorkflowCatalog;
+
 export class PlanValidationError extends Error {
   constructor(public readonly issues: string[]) {
     super(issues.join('\n'));
@@ -61,6 +65,28 @@ export function buildProjectPlanWithCatalog(
   options: BuildPlanOptions,
   catalog: ProjectPlanningCatalog
 ): ProjectPlan {
+  const plan = resolveProjectPlan(rawInput, options, catalog);
+  if (!plan.framework) {
+    throw new PlanValidationError(['Historical project planning requires an external framework.']);
+  }
+  return plan;
+}
+
+export function buildCurrentProjectPlanWithCatalog(
+  rawInput: ProjectOptions,
+  options: BuildPlanOptions,
+  catalog: CurrentProjectPlanningCatalog
+): CurrentProjectPlan {
+  return resolveProjectPlan(rawInput, options, catalog, catalog);
+}
+
+function resolveProjectPlan(
+  rawInput: ProjectOptions,
+  options: BuildPlanOptions,
+  catalog: ProjectPlanningCatalog,
+  currentWorkflowCatalog?: CurrentWorkflowCatalog
+): CurrentProjectPlan {
+  const current = currentWorkflowCatalog !== undefined;
   const {
     apiStacks,
     canonicalDefaultEnvironments,
@@ -73,12 +99,13 @@ export function buildProjectPlanWithCatalog(
     getPattern,
     getProvider,
     getProjectType,
-    getSpecWorkflow,
+    getSpecWorkflow: getHistoricalWorkflow,
     governanceProfiles,
-    projectInputCatalog,
     resolveRegion,
     specWorkflows
   } = catalog;
+  const projectInputCatalog = currentWorkflowCatalog?.currentProjectInputCatalog ?? catalog.projectInputCatalog;
+  const getSpecWorkflow = currentWorkflowCatalog?.getDevelopmentWorkflow ?? getHistoricalWorkflow;
   const input = normalizeProjectOptions(rawInput, projectInputCatalog);
   const issues: string[] = [];
   if (isRetiredPowerAppsWorkload(input.projectType)) {
@@ -144,15 +171,25 @@ export function buildProjectPlanWithCatalog(
     );
   }
 
-  const selectedAgents = canonicalizeCodingAgents(input.agents);
-  if (input.agents?.length === 0) {
+  const manual = specWorkflow?.id === 'manual';
+  const requestsNoAgents = current && input.agents?.some((agent) => agent.trim().toLowerCase() === 'none') === true;
+  if (requestsNoAgents && (!manual || input.agents?.length !== 1)) {
+    issues.push('--agents none is valid only as the sole agent selection for Manual.');
+  }
+  const selectedAgents = canonicalizeCodingAgents(
+    manual && (input.agents === undefined || requestsNoAgents && input.agents.length === 1) ? [] : input.agents
+  );
+  if (!manual && input.agents?.length === 0) {
     issues.push('At least one AI coding agent is required.');
   }
   if (selectedAgents.unknown.length > 0) {
     issues.push(`Unknown AI coding agent${selectedAgents.unknown.length === 1 ? '' : 's'}: ${selectedAgents.unknown.join(', ')}.`);
   }
-  if (selectedAgents.agents.length === 0) {
+  if (!manual && selectedAgents.agents.length === 0) {
     issues.push('At least one supported AI coding agent is required.');
+  }
+  if (manual && input.configureOpenSpecProfile !== undefined) {
+    issues.push('--configure-openspec-profile/--no-configure-openspec-profile requires OpenSpec, not Manual.');
   }
   const includesGitHubCopilot = selectedAgents.agents.some((agent) => agent.id === 'github-copilot');
   if (
@@ -202,7 +239,7 @@ export function buildProjectPlanWithCatalog(
     !projectType ||
     !specWorkflow ||
     !governanceProfile ||
-    selectedAgents.agents.length === 0 ||
+    !manual && selectedAgents.agents.length === 0 ||
     (
       !apiStack ||
       projectType.id === 'genai' && !pattern ||
@@ -255,22 +292,23 @@ export function buildProjectPlanWithCatalog(
     };
   }
 
-  return {
+  const common = {
     projectName: effectiveProjectName,
     safeProjectName,
     packageName: safeProjectName.replace(/_/g, '-'),
     projectType,
     ...workload,
-    specWorkflow,
     agents: selectedAgents.agents,
     ...(defaultAgent ? { defaultAgent } : {}),
     copilotCloud: specWorkflow.id === 'openspec' && includesGitHubCopilot
       ? input.copilotCloud ?? false
       : false,
-    framework: getFrameworkDefinition(specWorkflow.id),
     governanceProfile,
     approvedStack: approvedStackFor(workload)
   };
+  return specWorkflow.id === 'manual'
+    ? { ...common, specWorkflow, framework: undefined }
+    : { ...common, specWorkflow, framework: getFrameworkDefinition(specWorkflow.id) };
 }
 
 function approvedStackFor(workload: WorkloadPlan): string[] {
@@ -347,14 +385,14 @@ export interface ProjectPlanEntry {
   value: string;
 }
 
-export function projectPlanEntries(plan: ProjectPlan): ProjectPlanEntry[] {
+export function projectPlanEntries(plan: CurrentProjectPlan): ProjectPlanEntry[] {
   const common = [
     { label: 'Project', value: plan.projectName },
     { label: 'Project type', value: plan.projectType.label }
   ];
   const integrations = [
     { label: 'Spec workflow', value: plan.specWorkflow.label },
-    { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') },
+    { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') || 'None (CLI only)' },
     ...(plan.defaultAgent ? [{ label: 'Default agent', value: plan.defaultAgent.label }] : []),
     ...(plan.specWorkflow.id === 'openspec'
       ? [{ label: 'OpenSpec workflows', value: `12 workflows; ${openSpecDeliveryDescription(plan.agents)}` }]
@@ -385,7 +423,7 @@ export function projectPlanEntries(plan: ProjectPlan): ProjectPlanEntry[] {
           label: 'Governance setup integrations',
           value: plan.agents.map((agent) =>
             governanceAgentIntegrations[agent.id].setup.pathParts.join('/')
-          ).join(', ')
+          ).join(', ') || 'None; use the CLI directly'
         },
         {
           label: 'Governance activation',
@@ -417,7 +455,7 @@ export function projectPlanEntries(plan: ProjectPlan): ProjectPlanEntry[] {
   ];
 }
 
-export function formatProjectPlan(plan: ProjectPlan): string {
+export function formatProjectPlan(plan: CurrentProjectPlan): string {
   return projectPlanEntries(plan)
     .map((entry) => `${entry.label}: ${entry.value}`)
     .join('\n');

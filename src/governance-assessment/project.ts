@@ -1,7 +1,8 @@
 import {
   normalizeManifestFramework,
   normalizeManifestProject,
-  parseManifest
+  parseManifest,
+  parseProjectManifest
 } from '../application/project/manifest.js';
 import { validateArtifactPathParts } from '../domain/project/paths.js';
 import { buildProjectPlan } from '../application/project/planning.js';
@@ -179,6 +180,29 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
         'liftoff.manifest.json'
       );
     }
+  }
+  if (isRecord(raw) && raw.artifactVersion === 8) {
+    const manifest = parseProjectManifest(raw);
+    if (manifest.artifactVersion !== 8) {
+      throw new AssessmentInputError('inputs-changed', 'Current manifest interpretation changed.', 'liftoff.manifest.json');
+    }
+    return {
+      kind: 'liftoff', manifest: null, project: null,
+      identity: {
+        availability: 'unsupported', manifestVersion: 8, cliVersion: manifest.liftoffVersion,
+        profile: manifest.governance.profile,
+        policyVersion: manifest.governance.profile === 'none' ? null : manifest.governance.policyVersion,
+        recordedActivationIdentity: manifest.governance.profile === 'none' ? null : jsonValue(manifest.governance.activationIdentity),
+        stateSource: 'unsupported'
+      },
+      managedEntries: [], renderedCore: [], state: null, stateIdentity: null,
+      evidence: [], approvals: [], plans: [], bindingBaseline: null, invalidEvidence: false,
+      diagnostics: [diagnostic(
+        'unsupported-current-assessment',
+        'Manifest v8 identity is validated, but this assessment catalog does not interpret its active layout, managed-core compliance or current activation records. Independent repository facts remain assessable. No conversion, evidence reuse or policy downgrade is recommended; use separately advertised v8 inspection commands.',
+        'liftoff.manifest.json'
+      )]
+    };
   }
   if (!isRecord(raw) || typeof raw.artifactVersion !== 'number' || ![2, 3, 4, 5, 6, 7].includes(raw.artifactVersion)) {
     throw new AssessmentInputError('unsupported-manifest', 'Manifest schema is unknown; no artifact paths were accessed.', 'liftoff.manifest.json');

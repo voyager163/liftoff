@@ -23,7 +23,7 @@ Spec workflow             OpenSpec
 Coding agents             GitHub Copilot
 OpenSpec workflows        12 workflows; skills and commands
 Copilot cloud agent       Disabled (default)
-Repository governance     Single-maintainer GitFlow policy 6
+Repository governance     Single-maintainer GitFlow policy 7
 Governance handoff Local handoff generated; live enforcement is not active
 Governance setup integrations  .github/prompts/liftoff-setup.prompt.md
 Governance activation Setup coordinates local readiness, then separately
@@ -66,7 +66,7 @@ Spec workflow             OpenSpec
 Coding agents             GitHub Copilot
 OpenSpec workflows        12 workflows; skills and commands
 Copilot cloud agent       Disabled (default)
-Repository governance     Single-maintainer GitFlow policy 6
+Repository governance     Single-maintainer GitFlow policy 7
 Governance handoff Local handoff generated; live enforcement is not active
 Governance setup integrations  .github/prompts/liftoff-setup.prompt.md
 Governance activation Setup coordinates local readiness, then separately
@@ -80,6 +80,7 @@ Infrastructure            OpenTofu for Azure
 
 ◆: Resolve destination
 ◆: Check workstation readiness
+✓ Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 Workstation readiness
 ─────────────────────
 Requirement     Level     State    Cause            Executable  Detail
@@ -120,7 +121,7 @@ Spec workflow             OpenSpec
 Coding agents             GitHub Copilot
 OpenSpec workflows        12 workflows; skills and commands
 Copilot cloud agent       Disabled (default)
-Repository governance     Single-maintainer GitFlow policy 6
+Repository governance     Single-maintainer GitFlow policy 7
 Governance handoff Local handoff generated; live enforcement is not active
 Governance setup integrations  .github/prompts/liftoff-setup.prompt.md
 Governance activation Setup coordinates local readiness, then separately
@@ -134,6 +135,7 @@ Infrastructure            OpenTofu for Azure
 
 ◆: Resolve destination
 ◆: Check workstation readiness
+✓ Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 Workstation readiness
 ─────────────────────
 Requirement     Level     State  Cause       Executable  Detail
@@ -162,7 +164,7 @@ Configured integrations
 - GitHub Copilot
 - OpenSpec global profile: verified; 12 workflows; skills and commands
 - GitHub Copilot cloud agent: disabled
-- Repository governance: Single-maintainer GitFlow policy 6; local handoff
+- Repository governance: Single-maintainer GitFlow policy 7; local handoff
 generated, live activation deferred
 
 Deferred advisory checks
@@ -181,11 +183,12 @@ Completion
 Target                 <workspace>/snapshot-app
 Spec workflow          OpenSpec
 Coding agents          GitHub Copilot
-Repository governance  Deterministic setup generated; run /liftoff-setup next
+Repository governance Local handoff generated; inspect local readiness with
+liftoff governance status --scope local --json
 
 Next recommended command
 ────────────────────────
-$ /liftoff-setup
+$ liftoff governance status --scope local --json --project '<workspace>/snapshot-app'
 
 ",
 }
@@ -222,7 +225,7 @@ Spec workflow             OpenSpec
 Coding agents             GitHub Copilot
 OpenSpec workflows        12 workflows; skills and commands
 Copilot cloud agent       Disabled (default)
-Repository governance     Single-maintainer GitFlow policy 6
+Repository governance     Single-maintainer GitFlow policy 7
 Governance handoff Local handoff generated; live enforcement is not active
 Governance setup integrations  .github/prompts/liftoff-setup.prompt.md
 Governance activation Setup coordinates local readiness, then separately
@@ -236,6 +239,7 @@ Infrastructure            OpenTofu for Azure
 
 ◆: Resolve fresh migration target
 ◆: Check workstation readiness
+✓ Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 Workstation readiness
 ─────────────────────
 Requirement     Level     State  Cause       Executable  Detail
@@ -311,6 +315,7 @@ exports[`complete onboarding screens > snapshots the compact plan screen 1`] = `
 ┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
 Preview project decisions, artifacts, and workstation requirements
+✓ Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 Project decisions
 ─────────────────
 Project                   liftoff-preview
@@ -323,7 +328,7 @@ Spec workflow             OpenSpec
 Coding agents             GitHub Copilot
 OpenSpec workflows        12 workflows; skills and commands
 Copilot cloud agent       Disabled (default)
-Repository governance     Single-maintainer GitFlow policy 6
+Repository governance     Single-maintainer GitFlow policy 7
 Governance handoff Local handoff generated; live enforcement is not active
 Governance setup integrations  .github/prompts/liftoff-setup.prompt.md
 Governance activation Setup coordinates local readiness, then separately
@@ -424,24 +429,24 @@ openspec-seed-spec         seed                       openspec/changes/bootstrap
                                                       huma-application-baseline/
                                                       spec.md
 openspec-spec-placeholder  seed                       openspec/specs/.gitkeep
-repository-governance-pol  managed-core               .liftoff/governance/policy
-icy                                                   .md
-repository-governance-con  managed-core               .liftoff/governance/contex
-text                                                  t.json
-repository-governance-gui  managed-core               .liftoff/governance/README
-de                                                    .md
-repository-governance-pha  managed-core               .liftoff/governance/phase-
-se-graph                                              graph.json
-repository-governance-com  managed-core               .liftoff/governance/compat
-patibility                                            ibility.json
-repository-governance-cre  managed-core               .liftoff/governance/creden
-dential-policy-schema                                 tial-policy.schema.json
-liftoff-setup-copilot      managed-core               .github/prompts/liftoff-se
-                                                      tup.prompt.md
 liftoff-governance-assess  managed-core               .github/prompts/liftoff-go
 -copilot                                              vernance-assess.prompt.md
 liftoff-repair-copilot     managed-core               .github/prompts/liftoff-re
                                                       pair.prompt.md
+liftoff-setup-copilot      managed-core               .github/prompts/liftoff-se
+                                                      tup.prompt.md
+repository-governance-com  managed-core               .liftoff/governance/compat
+patibility                                            ibility.json
+repository-governance-con  managed-core               .liftoff/governance/contex
+text                                                  t.json
+repository-governance-cre  managed-core               .liftoff/governance/creden
+dential-policy-schema                                 tial-policy.schema.json
+repository-governance-pha  managed-core               .liftoff/governance/phase-
+se-graph                                              graph.json
+repository-governance-pol  managed-core               .liftoff/governance/policy
+icy                                                   .md
+repository-governance-gui  managed-core               .liftoff/governance/README
+de                                                    .md
 manifest                   manifest                   liftoff.manifest.json
 
 Workstation requirements
@@ -481,7 +486,7 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 6
+Repository governance: Single-maintainer GitFlow policy 7
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance setup integrations: .github/prompts/liftoff-setup.prompt.md
 Governance activation: Setup coordinates local readiness, then separately approved publication, cloud, and governance activation
@@ -518,7 +523,7 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 6
+Repository governance: Single-maintainer GitFlow policy 7
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance setup integrations: .github/prompts/liftoff-setup.prompt.md
 Governance activation: Setup coordinates local readiness, then separately approved publication, cloud, and governance activation
@@ -529,6 +534,7 @@ Infrastructure: OpenTofu for Azure
 
 Stage: Resolve destination
 Stage: Check workstation readiness
+[ok] Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 Workstation readiness
 Requirement: Node.js | Level: blocking | State: ready | Cause: compatible | Executable: node | Detail: Version 24.20.0
 Requirement: npm | Level: blocking | State: ready | Cause: compatible | Executable: npm | Detail: Version 12.0.2
@@ -562,7 +568,7 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 6
+Repository governance: Single-maintainer GitFlow policy 7
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance setup integrations: .github/prompts/liftoff-setup.prompt.md
 Governance activation: Setup coordinates local readiness, then separately approved publication, cloud, and governance activation
@@ -573,6 +579,7 @@ Infrastructure: OpenTofu for Azure
 
 Stage: Resolve destination
 Stage: Check workstation readiness
+[ok] Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 Workstation readiness
 Requirement: Node.js | Level: blocking | State: ready | Cause: compatible | Executable: node | Detail: Version 24.20.0
 Requirement: npm | Level: blocking | State: ready | Cause: compatible | Executable: npm | Detail: Version 12.0.2
@@ -597,7 +604,7 @@ Configured integrations
 - GitHub Copilot
 - OpenSpec global profile: verified; 12 workflows; skills and commands
 - GitHub Copilot cloud agent: disabled
-- Repository governance: Single-maintainer GitFlow policy 6; local handoff generated, live activation deferred
+- Repository governance: Single-maintainer GitFlow policy 7; local handoff generated, live activation deferred
 
 Deferred advisory checks
 - GitHub Copilot authentication: Liftoff does not automate or persist Copilot credentials. Remedy: Run \`copilot\` and sign in if prompted.
@@ -610,10 +617,10 @@ Completion
 Target: <workspace>/snapshot-app
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
-Repository governance: Deterministic setup generated; run /liftoff-setup next
+Repository governance: Local handoff generated; inspect local readiness with liftoff governance status --scope local --json
 
 Next recommended command
-$ /liftoff-setup
+$ liftoff governance status --scope local --json --project '<workspace>/snapshot-app'
 
 ",
 }
@@ -644,7 +651,7 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 6
+Repository governance: Single-maintainer GitFlow policy 7
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance setup integrations: .github/prompts/liftoff-setup.prompt.md
 Governance activation: Setup coordinates local readiness, then separately approved publication, cloud, and governance activation
@@ -655,6 +662,7 @@ Infrastructure: OpenTofu for Azure
 
 Stage: Resolve fresh migration target
 Stage: Check workstation readiness
+[ok] Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 Workstation readiness
 Requirement: Node.js | Level: blocking | State: ready | Cause: compatible | Executable: node | Detail: Version 24.20.0
 Requirement: npm | Level: blocking | State: ready | Cause: compatible | Executable: npm | Detail: Version 12.0.2
@@ -714,6 +722,7 @@ exports[`complete onboarding screens > snapshots the plain plan screen 1`] = `
   "err": "",
   "out": "Liftoff - Preview project decisions, artifacts, and workstation requirements
 
+[ok] Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 Project decisions
 Project: liftoff-preview
 Project type: Standard application
@@ -725,7 +734,7 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 6
+Repository governance: Single-maintainer GitFlow policy 7
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance setup integrations: .github/prompts/liftoff-setup.prompt.md
 Governance activation: Setup coordinates local readiness, then separately approved publication, cloud, and governance activation
@@ -776,15 +785,15 @@ Artifact: openspec-seed-design | Lifecycle: seed | Path: openspec/changes/bootst
 Artifact: openspec-seed-tasks | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/tasks.md
 Artifact: openspec-seed-spec | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/specs/go-huma-application-baseline/spec.md
 Artifact: openspec-spec-placeholder | Lifecycle: seed | Path: openspec/specs/.gitkeep
-Artifact: repository-governance-policy | Lifecycle: managed-core | Path: .liftoff/governance/policy.md
-Artifact: repository-governance-context | Lifecycle: managed-core | Path: .liftoff/governance/context.json
-Artifact: repository-governance-guide | Lifecycle: managed-core | Path: .liftoff/governance/README.md
-Artifact: repository-governance-phase-graph | Lifecycle: managed-core | Path: .liftoff/governance/phase-graph.json
-Artifact: repository-governance-compatibility | Lifecycle: managed-core | Path: .liftoff/governance/compatibility.json
-Artifact: repository-governance-credential-policy-schema | Lifecycle: managed-core | Path: .liftoff/governance/credential-policy.schema.json
-Artifact: liftoff-setup-copilot | Lifecycle: managed-core | Path: .github/prompts/liftoff-setup.prompt.md
 Artifact: liftoff-governance-assess-copilot | Lifecycle: managed-core | Path: .github/prompts/liftoff-governance-assess.prompt.md
 Artifact: liftoff-repair-copilot | Lifecycle: managed-core | Path: .github/prompts/liftoff-repair.prompt.md
+Artifact: liftoff-setup-copilot | Lifecycle: managed-core | Path: .github/prompts/liftoff-setup.prompt.md
+Artifact: repository-governance-compatibility | Lifecycle: managed-core | Path: .liftoff/governance/compatibility.json
+Artifact: repository-governance-context | Lifecycle: managed-core | Path: .liftoff/governance/context.json
+Artifact: repository-governance-credential-policy-schema | Lifecycle: managed-core | Path: .liftoff/governance/credential-policy.schema.json
+Artifact: repository-governance-phase-graph | Lifecycle: managed-core | Path: .liftoff/governance/phase-graph.json
+Artifact: repository-governance-policy | Lifecycle: managed-core | Path: .liftoff/governance/policy.md
+Artifact: repository-governance-guide | Lifecycle: managed-core | Path: .liftoff/governance/README.md
 Artifact: manifest | Lifecycle: manifest | Path: liftoff.manifest.json
 
 Workstation requirements
@@ -829,7 +838,7 @@ exports[`complete onboarding screens > snapshots the rich conflict consent and c
 │ Coding agents             GitHub Copilot                                                     │
 │ OpenSpec workflows        12 workflows; skills and commands                                  │
 │ Copilot cloud agent       Disabled (default)                                                 │
-│ Repository governance     Single-maintainer GitFlow policy 6                                 │
+│ Repository governance     Single-maintainer GitFlow policy 7                                 │
 │ Governance handoff        Local handoff generated; live enforcement is not active            │
 │ Governance setup integrations  .github/prompts/liftoff-setup.prompt.md                       │
 │ Governance activation Setup coordinates local readiness, then separately approved            │
@@ -881,7 +890,7 @@ exports[`complete onboarding screens > snapshots the rich handled readiness fail
 │ Coding agents             GitHub Copilot                                                     │
 │ OpenSpec workflows        12 workflows; skills and commands                                  │
 │ Copilot cloud agent       Disabled (default)                                                 │
-│ Repository governance     Single-maintainer GitFlow policy 6                                 │
+│ Repository governance     Single-maintainer GitFlow policy 7                                 │
 │ Governance handoff        Local handoff generated; live enforcement is not active            │
 │ Governance setup integrations  .github/prompts/liftoff-setup.prompt.md                       │
 │ Governance activation Setup coordinates local readiness, then separately approved            │
@@ -894,6 +903,7 @@ exports[`complete onboarding screens > snapshots the rich handled readiness fail
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Resolve destination
 ◆: Check workstation readiness
+✓ Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 ┌─ Workstation readiness ──────────────────────────────────────────────────────────────────────┐
 │ Requirement     Level     State    Cause               Executable  Detail                    │
 │ ──────────────  ────────  ───────  ──────────────────  ──────────  ──────────────────        │
@@ -937,7 +947,7 @@ exports[`complete onboarding screens > snapshots the rich init readiness and com
 │ Coding agents             GitHub Copilot                                                     │
 │ OpenSpec workflows        12 workflows; skills and commands                                  │
 │ Copilot cloud agent       Disabled (default)                                                 │
-│ Repository governance     Single-maintainer GitFlow policy 6                                 │
+│ Repository governance     Single-maintainer GitFlow policy 7                                 │
 │ Governance handoff        Local handoff generated; live enforcement is not active            │
 │ Governance setup integrations  .github/prompts/liftoff-setup.prompt.md                       │
 │ Governance activation Setup coordinates local readiness, then separately approved            │
@@ -950,6 +960,7 @@ exports[`complete onboarding screens > snapshots the rich init readiness and com
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Resolve destination
 ◆: Check workstation readiness
+✓ Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 ┌─ Workstation readiness ──────────────────────────────────────────────────────────────────────┐
 │ Requirement     Level     State  Cause       Executable  Detail                              │
 │ ──────────────  ────────  ─────  ──────────  ──────────  ───────────────                     │
@@ -976,7 +987,7 @@ $ openspec init --tools github-copilot --profile custom --no-copilot-cloud
 │ • GitHub Copilot                                                                             │
 │ • OpenSpec global profile: verified; 12 workflows; skills and commands                       │
 │ • GitHub Copilot cloud agent: disabled                                                       │
-│ • Repository governance: Single-maintainer GitFlow policy 6; local handoff generated, live   │
+│ • Repository governance: Single-maintainer GitFlow policy 7; local handoff generated, live   │
 │ activation deferred                                                                          │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Deferred advisory checks ───────────────────────────────────────────────────────────────────┐
@@ -992,11 +1003,12 @@ $ openspec init --tools github-copilot --profile custom --no-copilot-cloud
 │ Target                 <workspace>/snapshot-app                                              │
 │ Spec workflow          OpenSpec                                                              │
 │ Coding agents          GitHub Copilot                                                        │
-│ Repository governance  Deterministic setup generated; run /liftoff-setup next                │
+│ Repository governance Local handoff generated; inspect local readiness with liftoff          │
+│ governance status --scope local --json                                                       │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 Next recommended command
 ────────────────────────
-$ /liftoff-setup
+$ liftoff governance status --scope local --json --project '<workspace>/snapshot-app'
 
 ",
 }
@@ -1037,7 +1049,7 @@ exports[`complete onboarding screens > snapshots the rich migration provenance a
 │ Coding agents             GitHub Copilot                                                     │
 │ OpenSpec workflows        12 workflows; skills and commands                                  │
 │ Copilot cloud agent       Disabled (default)                                                 │
-│ Repository governance     Single-maintainer GitFlow policy 6                                 │
+│ Repository governance     Single-maintainer GitFlow policy 7                                 │
 │ Governance handoff        Local handoff generated; live enforcement is not active            │
 │ Governance setup integrations  .github/prompts/liftoff-setup.prompt.md                       │
 │ Governance activation Setup coordinates local readiness, then separately approved            │
@@ -1050,6 +1062,7 @@ exports[`complete onboarding screens > snapshots the rich migration provenance a
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Resolve fresh migration target
 ◆: Check workstation readiness
+✓ Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 ┌─ Workstation readiness ──────────────────────────────────────────────────────────────────────┐
 │ Requirement     Level     State  Cause       Executable  Detail                              │
 │ ──────────────  ────────  ─────  ──────────  ──────────  ───────────────                     │
@@ -1125,6 +1138,7 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │                                                                                              │
 │ Preview project decisions, artifacts, and workstation requirements                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
+✓ Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 ┌─ Project decisions ──────────────────────────────────────────────────────────────────────────┐
 │ Project                   liftoff-preview                                                    │
 │ Project type              Standard application                                               │
@@ -1136,7 +1150,7 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │ Coding agents             GitHub Copilot                                                     │
 │ OpenSpec workflows        12 workflows; skills and commands                                  │
 │ Copilot cloud agent       Disabled (default)                                                 │
-│ Repository governance     Single-maintainer GitFlow policy 6                                 │
+│ Repository governance     Single-maintainer GitFlow policy 7                                 │
 │ Governance handoff        Local handoff generated; live enforcement is not active            │
 │ Governance setup integrations  .github/prompts/liftoff-setup.prompt.md                       │
 │ Governance activation Setup coordinates local readiness, then separately approved            │
@@ -1216,21 +1230,21 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │                                                             ff-preview/specs/go-huma-applica │
 │                                                             tion-baseline/spec.md            │
 │ openspec-spec-placeholder        seed                       openspec/specs/.gitkeep          │
-│ repository-governance-policy     managed-core               .liftoff/governance/policy.md    │
-│ repository-governance-context    managed-core               .liftoff/governance/context.json │
-│ repository-governance-guide      managed-core               .liftoff/governance/README.md    │
-│ repository-governance-phase-gra  managed-core               .liftoff/governance/phase-graph. │
-│ ph                                                          json                             │
-│ repository-governance-compatibi  managed-core               .liftoff/governance/compatibilit │
-│ lity                                                        y.json                           │
-│ repository-governance-credentia  managed-core               .liftoff/governance/credential-p │
-│ l-policy-schema                                             olicy.schema.json                │
-│ liftoff-setup-copilot            managed-core               .github/prompts/liftoff-setup.pr │
-│                                                             ompt.md                          │
 │ liftoff-governance-assess-copil  managed-core               .github/prompts/liftoff-governan │
 │ ot                                                          ce-assess.prompt.md              │
 │ liftoff-repair-copilot           managed-core               .github/prompts/liftoff-repair.p │
 │                                                             rompt.md                         │
+│ liftoff-setup-copilot            managed-core               .github/prompts/liftoff-setup.pr │
+│                                                             ompt.md                          │
+│ repository-governance-compatibi  managed-core               .liftoff/governance/compatibilit │
+│ lity                                                        y.json                           │
+│ repository-governance-context    managed-core               .liftoff/governance/context.json │
+│ repository-governance-credentia  managed-core               .liftoff/governance/credential-p │
+│ l-policy-schema                                             olicy.schema.json                │
+│ repository-governance-phase-gra  managed-core               .liftoff/governance/phase-graph. │
+│ ph                                                          json                             │
+│ repository-governance-policy     managed-core               .liftoff/governance/policy.md    │
+│ repository-governance-guide      managed-core               .liftoff/governance/README.md    │
 │ manifest                         manifest                   liftoff.manifest.json            │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Workstation requirements ───────────────────────────────────────────────────────────────────┐

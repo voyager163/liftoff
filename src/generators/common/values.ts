@@ -1,5 +1,5 @@
-import type { ApiProjectPlan } from '../../domain/project/contracts.js';
-import type { GenAiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentProjectPlan as ApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentGenAiProjectPlan as GenAiProjectPlan } from '../../domain/project/contracts.js';
 
 export const DEFAULT_FUNCTION_WORKER_QUEUE_NAME = 'events';
 

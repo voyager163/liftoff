@@ -88,11 +88,11 @@ describe('installed finite layout descriptor', () => {
     }
   });
 
-  it('leaves Manual and team targets unavailable', () => {
+  it('rejects fabricated Manual frameworks and team targets in the historical context', () => {
     const manual = structuredClone(plan());
     Reflect.set(manual.specWorkflow, 'id', 'manual');
     Reflect.set(manual.framework, 'id', 'manual');
-    expect(() => resolveManifestLayoutDescriptor(manual)).toThrow(/unknown|unsupported|invalid/i);
+    expect(() => resolveManifestLayoutDescriptor(manual)).toThrow(/does not match/i);
     const team = structuredClone(plan());
     Reflect.set(team.governanceProfile, 'id', 'team-gitflow');
     expect(() => resolveManifestLayoutDescriptor(team)).toThrow(/unknown|unsupported|invalid/i);

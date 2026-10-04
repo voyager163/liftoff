@@ -1,7 +1,7 @@
 import type { GeneratorContext as ResolvedGeneratorContext } from '../context.js';
-type GeneratorContext = Pick<ResolvedGeneratorContext, 'opentofu' | 'stack'>;
+type GeneratorContext = Pick<ResolvedGeneratorContext, 'opentofu' | 'stack' | 'current'>;
 import type { AddArtifact } from '../../template-types.js';
-import type { ApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentProjectPlan as ApiProjectPlan } from '../../domain/project/contracts.js';
 import { buildAzureResourceNames } from './names.js';
 import { createArtifactAdder } from '../common/artifacts.js';
 import { DEFAULT_FUNCTION_WORKER_QUEUE_NAME } from '../common/values.js';
@@ -27,7 +27,7 @@ export function addInfrastructureArtifacts(
   add('opentofu-application-variables', 'infrastructure', [...application, 'variables.tf'], renderTofuVariables(plan, context));
   add('opentofu-application-main', 'infrastructure', [...application, 'main.tf'], renderTofuMain(plan));
   add('opentofu-application-outputs', 'infrastructure', [...application, 'outputs.tf'], renderTofuOutputs(plan));
-  add('opentofu-readme', 'infrastructure', [...base, 'README.md'], renderTofuReadme(plan));
+  add('opentofu-readme', 'infrastructure', [...base, 'README.md'], renderTofuReadme(plan, context.current));
   for (const environment of plan.environments) {
     const addEnvironment = createArtifactAdder(
       artifacts,
@@ -586,9 +586,23 @@ export function renderTofuRemoteStateExample(plan: ApiProjectPlan, environment: 
 `;
 }
 
-export function renderTofuReadme(plan: ApiProjectPlan): string {
+export function renderTofuReadme(plan: ApiProjectPlan, current?: boolean): string {
   const env = selectedEnvironmentId(plan);
-  const governanceGate = plan.governanceProfile.id === 'none' ? '' : `
+  const governanceGate = current || !plan.framework ? `
+## Local Checks and Independent Azure Approval
+
+From each selected environment root, local checks use \`tofu fmt -check -recursive\`,
+\`tofu init -backend=false\`, and \`tofu validate\`. These checks do not authorize
+backend migration, provider deployment, image publication, or cloud state changes.
+${plan.specWorkflow.id === 'manual'
+    ? '\nManual does not require OpenSpec, Spec Kit, a framework archive, or an agent to run these checks.\n'
+    : ''}
+${plan.governanceProfile.id === 'none'
+    ? 'No governance policy is generated. Review and authorize every Azure operation independently.'
+    : 'Inspect the selected policy with `liftoff governance status --scope local --json` from the project directory. Local verification/finalization is separate from infrastructure authority. Only execute an operation when its actual installed adapter is available and its exact target and authority have been reviewed.'}
+There is no \`liftoff setup\` shell command. Agent guidance is optional and does
+not grant provider authority. The commands below are reference material, not approval.
+` : plan.governanceProfile.id === 'none' ? '' : `
 ## Governance Gate
 
 The commands below are reference material, not authorization to mutate Azure.

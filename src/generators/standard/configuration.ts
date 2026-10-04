@@ -1,5 +1,5 @@
 import { localPostgresUrl } from '../common/values.js';
-import type { StandardApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentStandardApiProjectPlan as StandardApiProjectPlan } from '../../domain/project/contracts.js';
 
 export function renderStandardEnv(plan: StandardApiProjectPlan, environment = 'dev'): string {
   const local = environment === 'dev';

@@ -1,7 +1,7 @@
 import type { GeneratorContext as ResolvedGeneratorContext } from '../context.js';
-type GeneratorContext = Pick<ResolvedGeneratorContext, 'stack'>;
+type GeneratorContext = Pick<ResolvedGeneratorContext, 'stack' | 'current'>;
 import type { AddArtifact } from '../../template-types.js';
-import type { ApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentProjectPlan as ApiProjectPlan } from '../../domain/project/contracts.js';
 import { DEFAULT_FUNCTION_WORKER_QUEUE_NAME } from './values.js';
 import { formatCommand } from '../../process-runner.js';
 import { functionWorkerName } from './values.js';
@@ -10,7 +10,8 @@ import { hasFunctionWorker } from './values.js';
 import { OPEN_SPEC_DELIVERY } from '../../openspec-profile.js';
 import { OPEN_SPEC_PROFILE } from '../../openspec-profile.js';
 import { OPEN_SPEC_WORKFLOW_IDS } from '../../openspec-profile.js';
-import type { ProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentProjectPlan as ProjectPlan } from '../../domain/project/contracts.js';
+import { governanceAgentIntegrations } from '../../domain/project/catalog.js';
 import { renderBackendDockerfile } from '../containers/images.js';
 import { governanceInvocationGuide, renderGovernanceAssessmentGuide } from '../../repository-governance.js';
 import { activationContractVersion } from '../../governance-activation/identity.js';
@@ -26,7 +27,7 @@ export function addBaseArtifacts(
   addDesiredState: AddArtifact,
   plan: ApiProjectPlan, context: GeneratorContext
 ): void {
-  add('root-readme', 'documentation', ['README.md'], renderRootReadme(plan));
+  add('root-readme', 'documentation', ['README.md'], renderRootReadme(plan, context.current === true));
   add('root-gitignore', 'project', ['.gitignore'], renderGeneratedGitignore());
   add('root-dockerignore', 'runtime', ['.dockerignore'], renderDockerignore());
   addDesiredState('liftoff-config', 'project', ['liftoff.config.json'], JSON.stringify({
@@ -104,7 +105,56 @@ ${backendCommands}
 ${frontendCommands}${functionCommands}`;
 }
 
-export function renderDeterministicSetupGuide(plan: ApiProjectPlan): string {
+function renderCurrentSetupGuide(plan: ApiProjectPlan): string {
+  const selected = plan.agents.length === 0
+    ? 'No coding agents are selected. Use the CLI directly; no agent installation is required. There is no `liftoff setup` shell command.'
+    : plan.agents.map(agent => {
+      const integration = governanceAgentIntegrations[agent.id][plan.governanceProfile.id === 'none' ? 'repair' : 'setup'];
+      return `- ${agent.label}: \`${integration.invocation}\` is an optional agent-native integration, not a shell command or permission to execute changes.`;
+    }).join('\n');
+  return `## Local Setup And Completion
+
+Generation creates the current v8 project and its selected handoff, not successful
+local verification, live governance or deployment. ${plan.specWorkflow.id === 'manual'
+  ? 'Manual has no external specification framework, seed, constitution or archive. No replacement proposal/design/task framework is required.'
+  : `${plan.specWorkflow.label} keeps its real official initialization contract. Framework files and one-time seed content remain outside managed-core ownership.`}
+
+${selected}
+
+Start with actual read-only discovery and diagnostics:
+
+\`\`\`bash
+liftoff capabilities --json
+liftoff validate
+liftoff doctor
+liftoff governance status --scope local --json
+\`\`\`
+
+Use the installed capabilities and \`liftoff governance --help\` to select supported
+local operations. Verification uses \`--scope local --local-operation verify\`;
+finalization and exact publication are separately negotiated \`finalize\` and
+\`publish\` operations, not a fabricated framework archive. Supply the documented
+public inputs and review the exact plan. Tool/dependency preparation, project
+scripts, network use and file publication each retain their independent consent.
+Unavailable host, framework or operation support is a blocker, not completed work.
+
+${plan.governanceProfile.id === 'none'
+  ? 'Repository governance stays disabled. Applicable local verification and repair do not require manufacturing governance state, setup integrations, credentials or remote enforcement.'
+  : `The selected ${plan.governanceProfile.label} policy ${plan.governanceProfile.policyVersion} remains a handoff until its applicable operations are actually approved and verified. Local completion never authorizes repository publication, provider access, infrastructure mutation or live enforcement.`}
+
+Run the applicable backend tests and optional frontend build described below.
+Local infrastructure checks use \`docker compose config -q\`, \`tofu fmt -check -recursive\`,
+and backend-disabled \`tofu init -backend=false\` followed by
+\`tofu validate\` in each selected environment root. These are not a live plan,
+apply, container startup or deployment. Actual completion needs the CLI's verified
+native receipt; passing individual commands or editing a task checkbox is not a
+substitute. Exit 2 identifies incomplete work, not success or rollback.
+
+`;
+}
+
+export function renderDeterministicSetupGuide(plan: ApiProjectPlan, current = false): string {
+  if (current || !plan.framework) return renderCurrentSetupGuide(plan);
   const backend = plan.workload === 'genai' || plan.apiStack.id === 'python-fastapi'
     ? '`uv run --project backend python -m pytest -q backend/tests`'
     : plan.apiStack.id === 'node-fastify'
@@ -183,7 +233,24 @@ export function renderAdvisoryReadinessGuide(plan: ApiProjectPlan): string {
   }).join('\n');
 }
 
-export function renderSpecWorkflowGuide(plan: ApiProjectPlan): string {
+export function renderSpecWorkflowGuide(plan: ApiProjectPlan, current = false): string {
+  if (current || !plan.framework) {
+    return `## Development Workflow And Validation
+
+- Workflow: ${plan.specWorkflow.label}${plan.framework ? ` ${plan.framework.version}` : ' (external framework not required)'}
+- AI coding agents: ${plan.agents.map(agent => agent.label).join(', ') || 'None; CLI-only'}
+- Framework ownership: ${plan.framework
+  ? 'the pinned official initializer owns the selected external framework files; Liftoff checks their real markers without treating them as managed core.'
+  : 'Manual does not create OpenSpec or Spec Kit files, inspect global framework profiles, or require an agent.'}
+- Framework or agent changes require a separately supported reviewed operation; ordinary update is not a workflow transition.
+
+Applicable workload tools still apply. The running Liftoff runtime is not proof
+that external Node/npm, Python/uv, Go or selected agents are installed.
+If doctor reports a deferred infrastructure tool, use its registered remedy:
+
+${renderAdvisoryReadinessGuide(plan)}
+`;
+  }
   const agents = plan.agents.map((agent) =>
     `${agent.label}${plan.defaultAgent?.id === agent.id ? ' (default integration)' : ''}`
   ).join(', ') || 'Not recorded; legacy framework adoption requires separate review';
@@ -285,7 +352,40 @@ Configure only the integrations you use:
 `;
 }
 
-export function renderGeneratedUpdateGuide(plan: ProjectPlan): string {
+export function renderGeneratedUpdateGuide(plan: ProjectPlan, current = false): string {
+  if (current || !plan.framework) {
+    return `## Safe Liftoff Updates
+
+\`liftoff upgrade\` updates the CLI installation, not this project. Check its
+supported installation owner separately with \`liftoff upgrade --check\`.
+
+For this v8 project, start with \`liftoff update --check --json\`. Check writes
+only a disclosed external preview receipt. Review its exact operations and use
+\`liftoff update --approve-plan <fingerprint> --json\` only for that approved
+plan. Force requires its own reviewed force-plan fingerprint; it never grants
+ownership of application files, directories or unrelated integrations.
+
+Update maintains the declared managed core and preserves original generation
+and transition history. Application source, dependencies, locks, runtime,
+infrastructure and documentation remain project-owned. Configuration changes
+do not silently add components, change workflows/profiles or enroll telemetry.
+Use capability-negotiated assessment and separately approved repair for
+application changes, not reinitialization or a template overwrite.
+
+Update JSON uses schema 4. Exit 0 means the requested core scope is current or
+complete; exit 2 means work or revalidation remains; exit 1 means refusal or
+failure. Committed publication and uncertain effects remain visible even after
+an error. Neither core completion nor old proof establishes local readiness or
+provider authority.
+
+Recovery is explicit: from the exact project, use
+\`liftoff update --recover --approve-plan <saved-fingerprint>\` only for the selected recorded operation.
+Recovery never implies rollback or authorization for another plan. After
+successful recovery, run a fresh check. Never delete locks, rewrite provenance,
+retag proof or restore an older manifest to simulate completion.
+
+`;
+  }
   const governance = plan.governanceProfile.id === 'none'
     ? 'Repository governance is disabled for this project, so Liftoff does not generate setup integrations, a managed phase graph, credential-policy schema, or post-init setup command.'
     : plan.agents.length === 0
@@ -321,8 +421,30 @@ ${plan.governanceProfile.id === 'none'
 `;
 }
 
-export function renderRootInfrastructureGuide(plan: ApiProjectPlan): string {
+export function renderRootInfrastructureGuide(plan: ApiProjectPlan, current = false): string {
   const environment = selectedEnvironmentId(plan);
+  if (current || !plan.framework) {
+    return `## Infrastructure
+
+Selected Azure OpenTofu roots live under
+\`infrastructure/opentofu/azure/environments/\`. For local validation:
+
+\`\`\`bash
+cd infrastructure/opentofu/azure/environments/${environment}
+tofu init -backend=false
+tofu validate
+\`\`\`
+
+Repeat for each selected environment. Backend-disabled validation is not cloud
+readiness or permission to run a live plan/apply. See
+\`infrastructure/opentofu/azure/README.md\` for the infrastructure contract.
+${plan.governanceProfile.id === 'none'
+  ? 'Governance remains disabled; deployment is a separate developer-controlled operation with its own credentials and state review.'
+  : 'Generated policy and local completion are not live enforcement. Use only an actually supported, separately approved activation operation; an unavailable production adapter remains a blocker.'}
+Existing deployments and state require independent assessment and planning.
+
+`;
+  }
   const governanceGate = plan.governanceProfile.id === 'none'
     ? ''
     : `These commands are reference material, not the next setup action. Do not run this
@@ -349,7 +471,7 @@ ${plan.governanceProfile.id === 'none'
 `;
 }
 
-export function renderRootReadme(plan: ApiProjectPlan): string {
+export function renderRootReadme(plan: ApiProjectPlan, current = false): string {
   if (plan.workload === 'standard') {
     return `# ${plan.projectName}
 
@@ -367,7 +489,7 @@ Generated by Mission Control Liftoff.
 - Cache and local messaging: Redis
 - Local development: Docker Compose
 ${plan.includeFrontend ? '- Frontend: Vue 3 with Tailwind\n' : ''}
-${renderDeterministicSetupGuide(plan)}
+${renderDeterministicSetupGuide(plan, current)}
 ## Local Development
 
 \`\`\`bash
@@ -378,9 +500,9 @@ The backend API is available on port 8000. Health and readiness endpoints are av
 
 ${renderGeneratedConfigurationGuide(plan)}
 ${renderDirectBuildAndTestGuide(plan)}
-${renderGeneratedUpdateGuide(plan)}
-${renderRootInfrastructureGuide(plan)}
-${renderSpecWorkflowGuide(plan)}
+${renderGeneratedUpdateGuide(plan, current)}
+${renderRootInfrastructureGuide(plan, current)}
+${renderSpecWorkflowGuide(plan, current)}
 `;
   }
 
@@ -425,7 +547,7 @@ conversation history, tools, prompt-file loading, multi-agent coordination, fine
 workflow stages, and incremental streaming remain project work. The streaming pattern
 emits one buffered SSE result after model completion; it is not real-time token streaming.
 
-${renderDeterministicSetupGuide(plan)}
+${renderDeterministicSetupGuide(plan, current)}
 ## Local Development
 
 \`\`\`bash
@@ -437,9 +559,9 @@ The backend API is available on port 8000. Scalar is exposed at \`/scalar\`.
 
 ${renderGeneratedConfigurationGuide(plan)}
 ${renderDirectBuildAndTestGuide(plan)}
-${renderGeneratedUpdateGuide(plan)}
-${renderRootInfrastructureGuide(plan)}
-${renderSpecWorkflowGuide(plan)}
+${renderGeneratedUpdateGuide(plan, current)}
+${renderRootInfrastructureGuide(plan, current)}
+${renderSpecWorkflowGuide(plan, current)}
 ${functionsSection}
 ${genericSection}
 `;

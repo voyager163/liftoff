@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
-import type { CommandContext } from '../src/commands.js';
+import { runCommand, type CommandContext } from '../src/commands.js';
 import { validateGeneratedProject, writeArtifacts, writeProjectFile } from '../src/file-system.js';
 import {
   archiveGeneratedSeedForPhase,
@@ -94,14 +94,15 @@ async function runCli(
   context: Partial<Pick<
     CommandContext,
     'configuredRegistryTargetLookup' | 'stableReleaseLookup' | 'runner'
-  >> = {}
+  >> = {},
+  route: 'historical-update' | 'current' = 'historical-update'
 ): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
   const reviewedArgs = await reviewedUpdateArguments(args, (rawArgs) => runCli(rawArgs, cwd, context));
   const scopedArgs = reviewedArgs[0] === 'governance' && !reviewedArgs.includes('--scope')
     ? [...reviewedArgs, '--scope', 'local'] : reviewedArgs;
-  const code = await runLegacyUpdateContract(parseArgs(scopedArgs), {
+  const code = await (route === 'current' ? runCommand : runLegacyUpdateContract)(parseArgs(scopedArgs), {
     cwd,
     stdout,
     stderr,
@@ -288,7 +289,7 @@ describe('seed artifact lifecycle', () => {
     }
   });
 
-  it('generates Spec Kit setup integrations only for selected agents and stops at the local seed gate', async () => {
+  it('generates current Spec Kit integrations only for selected agents without inventing local completion', async () => {
     const cases: Array<{
       args: string[];
       safeProjectName: string;
@@ -324,9 +325,13 @@ describe('seed artifact lifecycle', () => {
       expect(await fileExists(path.join(root, '.claude', 'commands', 'liftoff-setup.md')))
         .toBe(selected.includes('claude'));
       expect(status.code, `${status.out}${status.err}`).toBe(0);
-      expect(body.schemaVersion).toBe(2);
-      expect(body.nextReadyPhase).toBe('seed-valid');
-      expect(body.activeSourceOfTruth.createPlan.status).toBe('blocked');
+      expect(body).toMatchObject({
+        schemaVersion: 3, readOnly: true, projectWrites: false, providerWrites: false,
+        source: { status: 'observed', classification: 'fresh' },
+        consistent: true, localComplete: false, recordedPhases: []
+      });
+      expect(body).not.toHaveProperty('nextReadyPhase');
+      expect(body).not.toHaveProperty('activeSourceOfTruth');
       expect(JSON.stringify(body)).not.toMatch(/setup[-_]?skillVersion|gh repo|az deployment|tofu apply/i);
     }
   });
@@ -1228,9 +1233,9 @@ describe('seed artifact lifecycle', () => {
       path.join(target, 'openspec', 'changes', 'archive', 'done-migrate-to-liftoff')
     );
 
-    const check = await runCli(['update', '--check'], target);
-    expect(check.code).toBe(0);
-    expect(check.out).toContain('Liftoff core is current');
+    const check = await runCli(['update', '--check'], target, {}, 'current');
+    expect(check.code, check.out + check.err).toBe(0);
+    expect(check.out).toContain('current');
 
     const validate = await runCli(['validate'], target);
     expect(validate.code).toBe(0);

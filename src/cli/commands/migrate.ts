@@ -5,7 +5,7 @@ import type {
   ExecutionContext
 } from '../../application/context.js';
 import {
-  migrateProject
+  migrateCurrentProject
 } from '../../application/migrate/use-case.js';
 import { optionsFromParsedArgs } from '../project-options.js';
 
@@ -15,5 +15,5 @@ export async function migrateCommand(
 ): Promise<number> {
   const source = parsed.positional[0];
   const options = source ? await optionsFromParsedArgs(parsed, context.cwd, false) : {};
-  return migrateProject({ source, options }, context);
+  return migrateCurrentProject({ source, options }, context);
 }

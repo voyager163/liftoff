@@ -75,7 +75,8 @@ function resolveConfigCatalogValue(
 export async function loadProjectConfigOptions(
   configPath: string,
   cwd: string,
-  catalog: ProjectConfigCatalog
+  catalog: ProjectConfigCatalog,
+  options: { allowEmptyAgents?: boolean } = {}
 ): Promise<ProjectOptions> {
   const resolvedPath = path.resolve(cwd, configPath);
   let raw: string;
@@ -95,7 +96,7 @@ export async function loadProjectConfigOptions(
       `Unable to parse configuration ${resolvedPath}: ${error instanceof Error ? error.message : String(error)}`
     ]);
   }
-  return parseProjectConfigOptions(parsed, catalog);
+  return parseProjectConfigOptions(parsed, catalog, options);
 }
 
 export function parseProjectConfigOptions(

@@ -6,7 +6,8 @@ import { governancePolicyVersion } from '../../repository-governance.js';
 import { minimumLiftoffForManifestV7 } from '../../governance-activation/compatibility.js';
 import { validateReadableActivationIdentity } from '../../domain/governance/activation/validators.js';
 import { managedCoreArtifactPaths, repairManagedCoreLogicalNames } from '../../domain/project/artifact-lifecycle.js';
-import type { HistoricalLiftoffManifest, ManifestLayoutComponentId, ManifestLayoutDescriptor, ProjectPlan } from '../../domain/project/contracts.js';
+import type { HistoricalLiftoffManifest, ManifestActiveLayout, ManifestLayoutComponentId, ManifestLayoutDescriptor, ProjectPlan } from '../../domain/project/contracts.js';
+import { validateManifestActiveLayout } from '../../domain/project/manifest/layout.js';
 import { composeManifestPlugins, composeModernManifestPlugins, composeProjectPlugins, type ProjectPluginComposition } from './plugins.js';
 import { frameworkOutputPaths } from '../../framework-validation.js';
 import { OPEN_SPEC_COPILOT_CLOUD_PATHS } from '../../openspec-profile.js';
@@ -21,6 +22,7 @@ import { createManifestV8Reader, type LiftoffManifestV8 } from '../../domain/pro
 import { canonicalJson } from '../../domain/governance/activation/canonical-json.js';
 import { capturedFileBytes } from '../../domain/governance/activation/modern-local-inputs.js';
 import type { InstalledLocalSnapshot } from '../../domain/governance/activation/modern-local-runtime.js';
+import { modernLocalInputExclusion } from '../../domain/governance/activation/modern-local-exclusions.js';
 
 const manifestReader = createManifestReader({
   catalog: projectCatalog,
@@ -163,8 +165,10 @@ function resolveSourceContract(input: unknown, compose: typeof composeManifestPl
   return { contract, profile, workflow: project.specWorkflow };
 }
 
-function layoutDescriptorForComposition({ expected, resolution }: ProjectPluginComposition): ManifestLayoutDescriptor {
-  const roots: readonly { id: ManifestLayoutComponentId; pathParts: readonly string[] }[] = [
+function componentRootsForComposition({ resolution }: ProjectPluginComposition): readonly {
+  id: ManifestLayoutComponentId; pathParts: readonly string[];
+}[] {
+  return [
     { id: 'backend', pathParts: ['backend'] },
     { id: 'database', pathParts: ['database'] },
     { id: 'frontend', pathParts: ['frontend'] },
@@ -177,6 +181,29 @@ function layoutDescriptorForComposition({ expected, resolution }: ProjectPluginC
       pathParts: ['infrastructure', 'opentofu', 'azure', 'environments', environment]
     }))
   ];
+}
+
+/** Fresh exact template output only; never infer current bindings from historical provenance. */
+export function freshActiveLayoutForComposition(composition: ProjectPluginComposition): ManifestActiveLayout {
+  const descriptor = layoutDescriptorForComposition(composition);
+  return validateManifestActiveLayout({
+    schemaVersion: 1,
+    state: 'bound',
+    bindings: [
+      ...componentRootsForComposition(composition).filter(root => descriptor.components.includes(root.id)).map(root => ({
+        kind: 'component', component: root.id, pathParts: [...root.pathParts]
+      })),
+      ...composition.expected.filter(artifact =>
+        artifact.lifecycle === 'project' && modernLocalInputExclusion(artifact.pathParts) === null).map(artifact => ({
+        kind: 'artifact', logicalName: artifact.logicalName, pathParts: [...artifact.pathParts]
+      }))
+    ]
+  }, descriptor);
+}
+
+function layoutDescriptorForComposition(composition: ProjectPluginComposition): ManifestLayoutDescriptor {
+  const { expected } = composition;
+  const roots = componentRootsForComposition(composition);
   // Membership is derived once from exact installed declarations, never from a
   // caller's custom binding or from directory contents.
   const artifacts = expected.filter((artifact) => artifact.lifecycle === 'project').map((artifact) => {

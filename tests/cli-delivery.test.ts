@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runCli, type CliTelemetryHooks } from '../src/cli.js';
 import { runCommand } from '../src/commands.js';
-import { loadManifest, loadProjectManifest } from '../src/application/project/manifest.js';
+import { loadProjectManifest } from '../src/application/project/manifest.js';
 import { captureTreeState } from '../src/init-filesystem.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 
@@ -49,42 +49,49 @@ async function invoke(
 }
 
 describe('public CLI delivery flows', () => {
-  it('runs initialization, local setup, assessment and guarded maintenance through the entrypoint', async () => {
+  it('runs current initialization, read-only setup inspection, assessment and guarded maintenance through the entrypoint', async () => {
     const root = await workspace();
     const runner = new ReadyInitRunner();
     const initialized = await invoke(['init', 'delivered-app', ...projectFlags], root, runner);
     expect(initialized.code, initialized.out + initialized.err).toBe(0);
     const project = path.join(root, 'delivered-app');
     const checked = await invoke(['update', '--check', '--json'], project, runner);
-    expect(checked.code, checked.out + checked.err).toBe(2);
+    expect(checked.code, checked.out + checked.err).toBe(0);
     expect(JSON.parse(checked.out)).toMatchObject({
-      schemaVersion: 4, targetManifestVersion: 8, status: 'update-available', publicationCommitted: false
+      schemaVersion: 4, targetManifestVersion: 8, status: 'current', publicationCommitted: false, localComplete: false
     });
     const valid = await invoke(['validate', '--json'], project, runner);
     expect(valid.code, valid.out + valid.err).toBe(0);
     expect(JSON.parse(valid.out).valid).toBe(true);
 
-    for (const phase of ['seed-valid', 'seed-verified', 'seed-archived']) {
-      const executed = await invoke(['governance', 'apply-next', '--execute', '--json'], project, runner);
-      expect(executed.code, executed.out + executed.err).toBe(0);
-      expect(JSON.parse(executed.out).executedPhase).toBe(phase);
-    }
     const beforeInspection = await captureTreeState(project);
-    const verified = await invoke(['governance', 'verify', '--json'], project, runner);
-    expect(verified.code, verified.out + verified.err).toBe(0);
-    expect(JSON.parse(verified.out)).toMatchObject({ consistent: true, complete: false });
+    const callsBeforeInspection = [...runner.calls];
+    const executed = await invoke(['governance', 'apply-next', '--execute', '--json'], project, runner);
+    expect(executed.code, executed.out + executed.err).not.toBe(0);
+    expect(executed.out + executed.err).toMatch(/manifest|v8/i);
+    const verified = await invoke(['governance', 'verify', '--scope', 'local', '--json'], project, runner);
+    expect(verified.code, verified.out + verified.err).toBe(2);
+    expect(JSON.parse(verified.out)).toMatchObject({
+      schemaVersion: 3, consistent: true, complete: false, readOnly: true,
+      workloadExecution: false, source: { status: 'observed', classification: 'fresh' }
+    });
+    expect(runner.calls).toEqual(callsBeforeInspection);
     const telemetry = {
       beforeCommand: vi.fn<CliTelemetryHooks['beforeCommand']>().mockResolvedValue(true),
       afterCommand: vi.fn<CliTelemetryHooks['afterCommand']>().mockResolvedValue(undefined)
     };
     const assessed = await invoke(['governance', 'assess', '--json'], project, runner, telemetry);
     expect(assessed.code, assessed.out + assessed.err).toBe(2);
-    expect(JSON.parse(assessed.out)).toMatchObject({ schemaVersion: 1, readOnly: true, outcome: 'partial' });
+    expect(JSON.parse(assessed.out)).toMatchObject({
+      schemaVersion: 1, readOnly: true, outcome: 'partial',
+      projectIdentity: { availability: 'unsupported', manifestVersion: 8, policyVersion: '7', stateSource: 'unsupported' },
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'unsupported-current-assessment' })])
+    });
     expect(telemetry.beforeCommand).not.toHaveBeenCalled();
     expect(telemetry.afterCommand).not.toHaveBeenCalled();
     expect(await captureTreeState(project)).toEqual(beforeInspection);
 
-    const manifest = await loadManifest(project);
+    const manifest = await loadProjectManifest(project);
     const application = manifest.projectArtifacts.find(artifact => artifact.logicalName === 'node-backend-app')!;
     const guide = manifest.managedArtifacts.find(artifact => artifact.logicalName === 'repository-governance-guide')!;
     const applicationPath = path.join(project, ...application.pathParts);
@@ -99,9 +106,10 @@ describe('public CLI delivery flows', () => {
     const maintained = await invoke([
       'update', '--force', '--json', '--approve-plan', maintenancePlan.fingerprint
     ], project, runner);
-    expect(maintained.code, maintained.out + maintained.err).toBe(2);
+    expect(maintained.code, maintained.out + maintained.err).toBe(0);
     expect(JSON.parse(maintained.out)).toMatchObject({
-      schemaVersion: 4, status: 'committed-incomplete', publicationCommitted: true, localComplete: false
+      schemaVersion: 4, status: 'committed', publicationCommitted: true, localComplete: false,
+      result: { revalidation: 'not-required-no-activation' }
     });
     expect(runner.calls).toEqual(callsBeforeUpdate);
     expect(await readFile(applicationPath, 'utf8')).toBe('project-owned application edit\n');

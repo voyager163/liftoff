@@ -1,9 +1,9 @@
 import type {
-  ApiProjectPlan,
-  GenAiProjectPlan,
+  CurrentProjectPlan as ApiProjectPlan,
+  CurrentGenAiProjectPlan as GenAiProjectPlan,
   GeneratedArtifact,
   ProjectPlan,
-  StandardApiProjectPlan
+  CurrentStandardApiProjectPlan as StandardApiProjectPlan
 } from '../../domain/project/contracts.js';
 import { addOpenSpecArtifacts, addSpecKitArtifacts } from '../../generators/common/spec-workflow.js';
 import type { GeneratorContext } from '../../generators/context.js';
@@ -53,7 +53,7 @@ export interface BoundRenderers {
   renderStandardStack(add: AddArtifact, plan: StandardApiProjectPlan, context: GeneratorContext): void;
   renderGenAiStack(add: AddArtifact, plan: GenAiProjectPlan, context: GeneratorContext): void;
   renderCloud(add: AddArtifact, artifacts: GeneratedArtifact[], plan: ApiProjectPlan, context: GeneratorContext): void;
-  renderWorkflow(addSeed: AddArtifact, addFramework: AddArtifact, plan: ProjectPlan): void;
+  renderWorkflow(addSeed: AddArtifact, addFramework: AddArtifact, plan: ApiProjectPlan): void;
 }
 
 const missingBinding = (subject: string, detail: string): PluginCompositionError =>
@@ -87,7 +87,8 @@ export function boundRenderers(
     throw missingBinding(`plugin:stack:${stackId}`, `no canonical renderer is bound for the ${workload} workload`);
   }
   const cloud = bound(bindings.cloud, 'cloud', resolvedPlugin(resolution, 'cloud'));
-  const workflow = bound(bindings.workflow, 'workflow', resolvedPlugin(resolution, 'workflow'));
+  const workflowId = resolvedPlugin(resolution, 'workflow');
+  const workflow = workflowId === 'manual' ? undefined : bound(bindings.workflow, 'workflow', workflowId);
   const wrongWorkload = (requested: string): PluginCompositionError =>
     missingBinding(`plugin:stack:${stackId}`, `the resolution was bound for the ${workload} workload, not ${requested}`);
   return Object.freeze({
@@ -100,6 +101,11 @@ export function boundRenderers(
       genai(add, plan, context);
     },
     renderCloud: cloud,
-    renderWorkflow: workflow
+    renderWorkflow(addSeed: AddArtifact, addFramework: AddArtifact, plan: ApiProjectPlan): void {
+      if (plan.specWorkflow.id !== workflowId || (!plan.framework) !== (workflowId === 'manual')) {
+        throw missingBinding(`plugin:workflow:${workflowId}`, 'the plan does not match its resolved framework requirement');
+      }
+      if (plan.framework && workflow) workflow(addSeed, addFramework, plan);
+    }
   });
 }

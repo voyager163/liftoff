@@ -166,7 +166,7 @@ describe('shared packaged Liftoff skill sources', () => {
     expect(commandDefinitions.governance.flags).toHaveProperty('json');
   });
 
-  it('preserves the separately negotiated repair protocol and private modern guidance allocation', () => {
+  it('preserves separately negotiated repair and the exact current guidance family', () => {
     const repair = renderRepairInstructions().replace(/\s+/gu, ' ');
     expect(repair).toContain('First run `liftoff repair --capabilities --json`, before project access');
     expect(repair).toContain('Never emulate missing features with direct edits, commands or receipts');
@@ -174,8 +174,8 @@ describe('shared packaged Liftoff skill sources', () => {
     expect(repair).toContain('never direct edits followed by retrospective approval');
     expect(repair).toContain('external isolated staging OUTSIDE the project');
     expect(installedCapabilities().plugins.inventory.filter(({ category }) => category === 'agent')
-      .map(({ contentVersion }) => contentVersion)).toEqual([4, 4, 4]);
-    expect(installedCapabilities().workflows.map(({ id }) => id)).not.toContain('manual');
+      .map(({ contentVersion }) => contentVersion)).toEqual([2, 2, 2]);
+    expect(installedCapabilities().workflows.map(({ id }) => id)).toContain('manual');
   });
 
   it('rejects dropping old safety guidance or hiding oversized additions in the new capability allowance', () => {

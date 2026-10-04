@@ -152,10 +152,10 @@ describe('migrate command', () => {
     expect(validate.code).toBe(0);
 
     const manifest = JSON.parse(await readFile(path.join(target, 'liftoff.manifest.json'), 'utf8'));
-    expect(manifest.artifactVersion).toBe(7);
+    expect(manifest.artifactVersion).toBe(8);
     expect(manifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '6',
+      policyVersion: '7',
       activationIdentity: expect.any(Object),
       state: 'handoff-generated'
     });
@@ -203,7 +203,7 @@ describe('migrate command', () => {
     expect(gitignore).toContain('migration/legacy/');
   });
 
-  it.each([
+  it.each<{ name: string; files: Record<string, string>; stack: string; expectedPath: string[] }>([
     {
       name: 'legacy-python',
       files: { 'requirements.txt': 'fastapi==0.111.0\nsqlalchemy==2.0.30\n' },

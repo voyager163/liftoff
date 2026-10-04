@@ -61,8 +61,9 @@ The guided flow asks for:
    when no specialization has been selected.
 3. Whether to generate the default single-maintainer GitFlow repository-
    governance handoff. Accepting it creates local files only.
-4. OpenSpec or Spec Kit.
-5. One or more coding agents. On a real TTY, Space toggles agents and Enter
+4. OpenSpec (default), Spec Kit, or Manual.
+5. Coding agents. External workflows require at least one; Manual defaults to
+   none and permits any subset. On a real TTY, Space toggles agents and Enter
    confirms the selection.
 6. Whether to configure the default-off GitHub-hosted Copilot coding agent when
    OpenSpec and GitHub Copilot are selected.
@@ -70,18 +71,39 @@ The guided flow asks for:
 8. Plan confirmation, workstation readiness, and any separate install or
    overwrite permissions that are needed.
 
-Liftoff renders into temporary staging, runs the official framework initializer
-there, validates the complete result, and only then merges it into the target.
+Liftoff renders into temporary staging, runs the official initializer only for a
+selected external framework, validates the complete result, and only then merges
+it into the target. Builds advertising `schemas.currentGeneration` write v8 for
+all three workflows; historical readers remain available.
 OpenSpec projects use all 12 OpenSpec 1.11 workflows as both skills and commands.
 If the global OpenSpec profile differs, Liftoff displays the exact global change
 and asks separately before staging.
 
-When governance is enabled, `/liftoff-setup` is the next selected-agent action.
+For CLI-only Manual generation:
+
+```bash
+liftoff init manual-api --type standard --api go --spec manual --agents none --no-frontend --governance none --yes
+cd manual-api
+liftoff validate
+liftoff doctor
+```
+
+Manual neither discovers unselected agents nor reads global framework profiles.
+External Node/npm is required only when the selected workload or operation needs
+it, not merely because Liftoff is running. Current npm distribution still needs
+Node.js to launch the CLI.
+
+When governance is enabled, start with
+`liftoff governance status --scope local --json`. `/liftoff-setup` is an optional
+selected-agent action, not a requirement for Manual.
 It has no model-selection requirement: safety comes from the Liftoff CLI phase
-graph, local evidence, approval envelopes, and readback. OpenSpec setup completes,
-syncs, and archives `bootstrap-<project>`; Spec Kit validates and finalizes
-`specs/000-liftoff-bootstrap/` locally. Neither workflow invents completed product
-work. Missing approval-persistence, credential-enrollment, and production phase
+graph, local evidence, approval envelopes, and readback. Generation leaves
+OpenSpec's `bootstrap-<project>` and Spec Kit's
+`specs/000-liftoff-bootstrap/` pending; Manual has no framework seed.
+Use only the installed CLI's advertised verification/finalization operations and
+actual supported inputs. Current generation does not supply fresh OpenSpec
+finalization. No workflow invents completed product work. Missing
+approval-persistence, credential-enrollment, and production phase
 executors remain specific blockers. Commit and push are never implicit in
 `liftoff init`, `--yes`, or read-only checks.
 
@@ -104,8 +126,10 @@ non-empty target.
 
 ## 4. Local baseline setup verifies
 
-`/liftoff-setup` runs only local, project-applicable baseline checks before
-archiving the OpenSpec seed or finalizing the Spec Kit bundle. Commands run in
+The local baseline is separate from generation. An advertised native operation
+must admit the exact current inputs and receive its required consent; a returned
+blocker is not permission to synthesize a receipt. Manual has no archive step.
+Commands run in
 their declared component directories, not all from an arbitrary working directory:
 
 ```bash
@@ -118,7 +142,7 @@ tofu fmt -check -recursive
 # Within each selected environments/<environment>/ infrastructure root:
 tofu init -backend=false
 tofu validate
-# OpenSpec only, from the project root (replace the generated change name):
+# External OpenSpec only, from the project root (replace the generated change name):
 openspec validate bootstrap-my-project --strict
 ```
 

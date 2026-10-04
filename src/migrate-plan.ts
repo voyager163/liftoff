@@ -1,5 +1,5 @@
 import type { LegacyInventory, ScanFinding } from './scan.js';
-import type { ApiProjectPlan } from './domain/project/contracts.js';
+import type { CurrentProjectPlan as ApiProjectPlan } from './domain/project/contracts.js';
 
 export interface SeededGroup {
   title: string;

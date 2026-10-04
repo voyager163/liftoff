@@ -1,13 +1,42 @@
 # Spec workflows and agents
 
-Spec-driven governance and coding-agent integration are common to every
-Liftoff workload.
+Development workflows and optional coding-agent integration are available for
+every Liftoff workload. Check `schemas.currentGeneration` in the installed
+capability catalog before using Manual on an older release.
 
-## Choose a spec workflow
+## Choose a development workflow
+
+### Manual
+
+`--spec manual` generates the same selected application and infrastructure
+templates without OpenSpec or Spec Kit. Its v8 framework state is
+`{"state":"not-required"}`, not legacy uncertainty or a fake initialized adapter.
+No framework executable, version, marker, global profile, seed, or archive is
+required or created.
+
+Manual defaults to no agents. Omit `agents`, set `"agents": []` in configuration,
+or use `--agents none`. Selected agents receive only their applicable native
+Liftoff integrations. A genuine TTY starts with every agent unchecked; the line
+fallback accepts Enter or `none`. Unselected agents and framework markers are not
+discovered. `none` cannot be combined with another value or repeated.
+`--default-agent`, either `--copilot-cloud` value, and
+`--configure-openspec-profile` are rejected for Manual.
+
+```bash
+liftoff plan --type standard --api go --spec manual --agents none --no-frontend --governance none
+liftoff init manual-api --type standard --api go --spec manual --agents none --no-frontend --governance none --yes
+```
+
+Manual does not disable a selected governance policy. With governance `none`, no
+policy, setup/assessment integration, or fake activation state is generated.
+With no agents, use the CLI directly. Local verification/finalization uses only
+the actual installed local interfaces; generation does not create completion
+receipts or authorize project scripts, publication, or cloud operations.
+Unrelated framework files and custom skills in an existing target are preserved.
 
 ### OpenSpec
 
-OpenSpec 1.11.0 organizes proposed behavior changes as reviewable artifacts
+OpenSpec remains the workflow when `--spec` is omitted. OpenSpec 1.11.0 organizes proposed behavior changes as reviewable artifacts
 before implementation. Liftoff runs that pinned official initializer in
 isolated staging, passes every selected coding agent in stable order, and
 requires the complete custom profile with native-surface-aware `both` delivery:
@@ -82,7 +111,8 @@ Liftoff supports:
 - GitHub Copilot.
 - Claude Code.
 - OpenAI Codex.
-- Any nonempty combination of the three agents (all seven subsets).
+- Any nonempty combination of the three agents (all seven subsets), plus the
+  empty subset for Manual.
 
 The canonical IDs and order are `github-copilot`, `claude`, `codex`. The CLI
 also accepts `copilot` for GitHub Copilot, and normalizes aliases and duplicates
@@ -95,7 +125,8 @@ model/provider configuration is separate from coding assistance. Host autonomy
 or model confidence never substitutes for the developer's approval of a CLI plan.
 
 On a real TTY, use the arrow keys to move, Space to mark or unmark an agent,
-and Enter to confirm. At least one agent is required.
+and Enter to confirm. At least one agent is required for OpenSpec and Spec Kit;
+Manual permits an empty selection.
 
 When standard input is redirected, the deterministic fallback accepts a
 comma-separated value such as:
@@ -128,11 +159,16 @@ setup entry point:
 | Claude Code | `/liftoff-setup` | `/liftoff-repair` | `/liftoff-governance-assess` |
 | OpenAI Codex | `$liftoff-setup` | `$liftoff-repair` | `$liftoff-governance-assess` |
 
-Each operation uses one release-owned instruction body in the installed CLI's
+The historical public guidance family uses one release-owned instruction body per operation in the installed CLI's
 `assets/skills/` directory. Host adapters add the native header and invocation;
 there is no model-specific policy fork. These packaged sources are not project
 directories to overwrite: existing logical names, generated paths and managed
 update ownership stay unchanged.
+
+Current v8 generation uses its separately identified modern managed-source
+family. Its conservative source-contract guidance and exact digests remain
+distinct from historical plugin versions. Neither family authorizes execution:
+the actual installed command must accept the project and the selected operation.
 
 On builds that provide [capability discovery](cli-reference.md#capability-discovery),
 `liftoff capabilities --json` describes installed public commands, schemas and

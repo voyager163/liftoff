@@ -43,6 +43,42 @@
   "changes": [
     {
       "surface": "cli-text",
+      "key": "init --help",
+      "task": "4.1",
+      "reason": "Advertise the implemented Manual development workflow and optional agents, preserving OpenSpec omission defaults and the untouched historical capture.",
+      "baselineSha256": "d0990e06b38dbc55af30130b629aa95df1e149d63e213e9870c0958b1ad16354",
+      "currentSha256": "bc33f95ec4b84500959acd4034f9b44ba91d2250068e12ec6f72664c5d8a9841",
+      "changed": ["/stdout"]
+    },
+    {
+      "surface": "cli-text",
+      "key": "plan --help",
+      "task": "4.1",
+      "reason": "Advertise the implemented Manual development workflow and optional agents, preserving OpenSpec omission defaults and the untouched historical capture.",
+      "baselineSha256": "28d485286ef0ada7003175a765a232d18e23e1ff01c55277cf4f76eb4309fc6a",
+      "currentSha256": "3445e443f37239623fa83153cbe96670aec6e7fc900d2cf7458564fdda89bcb3",
+      "changed": ["/stdout"]
+    },
+    {
+      "surface": "cli-text",
+      "key": "migrate --help",
+      "task": "4.1",
+      "reason": "Advertise the implemented Manual development workflow and optional agents, preserving OpenSpec omission defaults and the untouched historical capture.",
+      "baselineSha256": "7ae121662786a7ece6083da323c8d8314c1c5b2064916f1a461ff75f7a9defc8",
+      "currentSha256": "9d8d5b90682edd667dea0e6dc01563f41e57055d436349a668979deb54fdd246",
+      "changed": ["/stdout"]
+    },
+    {
+      "surface": "cli-text",
+      "key": "init --spec manual",
+      "task": "4.1",
+      "reason": "Manual is recognized and reaches the missing-project-name prompt instead of an unknown-workflow error. The captured EOF cancels normally with exit 0 and no destination writes. The original rejected-syntax observation remains frozen.",
+      "baselineSha256": "e2512151ab4eeb2e663de57a48e75d3aa4ff2ad7f24898f68908c30b90ebf9d1",
+      "currentSha256": "48c15673c4960623a5532f92f48f37ea38c1783529daa2bef1966e82e050b649",
+      "changed": ["/exitCode", "/stdout", "/stderr"]
+    },
+    {
+      "surface": "cli-text",
       "key": "update --help",
       "task": "3.7",
       "reason": "Public update now targets v8 with captured configuration, schema-4 output and explicit fingerprint-selected recovery; preview, ownership and separate consent remain mandatory. Frozen help remains unchanged.",

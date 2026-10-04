@@ -25,8 +25,8 @@ const projectFlags = {
   region: valueFlag('Cloud deployment region', 'Project', 'region', 'eastus'),
   frontend: booleanFlag('Include the Vue frontend starter', 'Project', true, 'false'),
   environments: valueFlag('Comma-separated environments', 'Project', 'list', canonicalDefaultEnvironmentIds.join(',')),
-  spec: valueFlag('Spec-driven framework', 'Framework', 'framework', 'openspec'),
-  agents: valueFlag('Comma-separated AI coding agents', 'Framework', 'list', 'copilot'),
+  spec: valueFlag('Development workflow: openspec, spec-kit, or manual', 'Framework', 'workflow', 'openspec'),
+  agents: valueFlag('Comma-separated AI coding agents; none is valid only for Manual', 'Framework', 'list', 'copilot; none for Manual'),
   'default-agent': valueFlag('Primary agent for Spec Kit when multiple agents are selected', 'Framework', 'agent'),
   governance: valueFlag(
     'Repository-governance profile',

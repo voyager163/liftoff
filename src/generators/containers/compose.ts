@@ -1,6 +1,6 @@
 import type { GeneratorContext as ResolvedGeneratorContext } from '../context.js';
 import type { AddArtifact } from '../../template-types.js';
-import type { ApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentProjectPlan as ApiProjectPlan } from '../../domain/project/contracts.js';
 import { formatContainerImage } from '../../domain/project/supported-stack.js';
 type GeneratorContext = Pick<ResolvedGeneratorContext, 'stack'>;
 

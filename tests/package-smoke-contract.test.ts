@@ -312,7 +312,7 @@ async function renderPlan(args: readonly string[]): Promise<string> {
 describe('installed plan contracts', () => {
   it('keeps the original Node plan invocation and runs the other stacks from a directory with spaces', () => {
     expect(installedPlanCases.map((planCase) => planCase.id))
-      .toEqual(['node-api', 'node-api-frontend', 'python-api', 'go-api', 'genai-rag']);
+      .toEqual(['node-api', 'node-api-frontend', 'python-api', 'go-api', 'genai-rag', 'manual-cli-only']);
     expect(installedPlanCases[0].directory).toBe('outside');
     expect(installedPlanCases[0].args).toEqual([
       '--no-genai', '--api', 'node', '--cloud', 'azure', '--region', 'eastus',

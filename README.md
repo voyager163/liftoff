@@ -17,8 +17,7 @@ One interactive CLI to give your next project a considered start.
 
 ## Quick start
 
-Use **Node.js 24 LTS, version 24.20.0 or newer within that line**.
-Check the [prerequisites](docs/prerequisites.md) for your chosen workload.
+Use **Node.js 24 LTS, version 24.20.0 or newer within that line**; check [prerequisites](docs/prerequisites.md).
 
 ```bash
 npm install -g @msn-control/liftoff@latest
@@ -27,18 +26,21 @@ liftoff init my-project
 cd my-project
 ```
 
-Then invoke `/liftoff-setup` in **GitHub Copilot** or **Claude Code**.
-In **Codex**, use `$liftoff-setup` or select the native skill.
-These are agent invocations, not a `liftoff setup` shell command.
+On builds advertising `schemas.currentGeneration` in `liftoff capabilities --json`,
+initialization writes v8. Inspect it with `liftoff validate`, `liftoff doctor`,
+and, when governed, `liftoff governance status --scope local --json`.
 
-Choose your workload, spec workflow, and agents; review the plan before files are
-written. No model selection is required for setup. Local-only use is supported;
-publication, cloud activation, deployment, and live governance need separate approval.
+With a selected agent and governance, invoke `/liftoff-setup` in **GitHub Copilot** or **Claude Code**, or `$liftoff-setup` in **Codex**.
+These are native agent invocations, not a `liftoff setup` shell command.
 
-For OpenSpec, setup completes, syncs, and archives the generated bootstrap seed.
-Spec Kit finalizes its bootstrap bundle locally, without an OpenSpec archive or new Git branch.
-Using a managed registry? Follow the [installation and mirror guidance](docs/getting-started.md#1-install-the-cli);
-do not bypass your organization's registry policy.
+Choose your workload, workflow and agents; review the plan before writing files.
+No model selection is required for setup. Local-only use is supported; publication,
+cloud activation, deployment and live governance need separate approval.
+
+Manual creates no external framework or bootstrap seed; OpenSpec and Spec Kit use
+their official initializers. Generation is not local completion or fresh OpenSpec
+finalization: use only advertised operations and supported inputs.
+For managed registries, follow [installation guidance](docs/getting-started.md#1-install-the-cli), not a policy bypass.
 
 ![Liftoff terminal showing interactive workload, workflow, multi-agent, readiness, and safe completion steps](docs/assets/liftoff-terminal.svg)
 
@@ -52,9 +54,9 @@ do not bypass your organization's registry policy.
 Not sure about your GenAI architecture yet? Choose **Generic GenAI starter**
 (`--pattern generic`) for a neutral foundation, without assuming RAG or agents.
 
-Both workloads support **OpenSpec** or **Spec Kit**, with **GitHub Copilot**,
-**Claude Code**, **Codex**, or a combination. See [workloads](docs/workloads.md)
-and [workflows and agents](docs/spec-workflows-and-agents.md).
+Choose **OpenSpec** (default), **Spec Kit**, or **Manual**, with **GitHub Copilot**,
+**Claude Code**, **Codex**, or a combination. Only Manual permits no agents
+(`--spec manual --agents none`). See [workloads](docs/workloads.md) and [workflows and agents](docs/spec-workflows-and-agents.md).
 Power Apps is retired; it is not an available creation or conversion path.
 
 ## Work with an existing project
@@ -78,14 +80,14 @@ before following newer guidance; planned features are not installed support.
 
 | Advertised schema | Separate public interface |
 | --- | --- |
+| `schemas.currentGeneration` | Fresh v8 `plan`, `init`, and sibling `migrate`, including framework-free Manual and optional agents. |
 | `schemas.currentUpdate` | [V8 project update](docs/cli-reference.md#update-modes): exact preview/approval, preserved configuration and history, and fingerprint-selected recovery. |
 | `schemas.modernLocalVerification` | [V8 verification](docs/cli-reference.md#modern-local-verification): explicit request, approval and execution; no conversion or publication. |
 | `schemas.modernLocalCompletion` | [Manual/Spec Kit completion](docs/cli-reference.md#modern-local-completion): workflow-specific finalization, exact-file review and independent publication consent. |
 | `schemas.modernSuccessorRevalidation` | [Existing-successor revalidation](docs/cli-reference.md#modern-successor-revalidation): fresh verification and separate exact-byte publication approval. Incomplete commit exits 2, preserving the active successor and history without downgrade. |
 
-Recovery is explicit; saved progress is not current proof. These interfaces do
-not grant Manual/team generation, fresh OpenSpec finalization,
-cloud operations or whole-directory rollback.
+Recovery is explicit; saved progress is not current proof. These interfaces do not grant
+team generation, fresh OpenSpec finalization, cloud operations or whole-directory rollback.
 
 [Existing repositories](docs/existing-repositories.md) ·
 [Safety and consent](docs/safety-and-consent.md) ·
@@ -108,10 +110,8 @@ cloud operations or whole-directory rollback.
 
 ## Project status
 
-Liftoff is actively developed. The current published CLI and its documented
-support policy remain available while a larger rewrite is planned separately.
-Planned work is not a shipped capability, and `develop` may be ahead of the
-latest release. Use [release notes](https://github.com/voyager163/liftoff/releases)
+Liftoff is actively developed; `develop` may be ahead of the latest release.
+Planned work is not shipped support. Use [release notes](https://github.com/voyager163/liftoff/releases)
 and [SECURITY.md](SECURITY.md) for version-specific guidance.
 
 ## Contributing

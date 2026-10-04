@@ -27,6 +27,7 @@ export const {
   environments,
   canonicalDefaultEnvironments,
   specWorkflows,
+  developmentWorkflows,
   governanceProfiles,
   codingAgents,
   frameworkDefinitions,
@@ -35,6 +36,7 @@ export const {
   getApiStack,
   getProvider,
   getSpecWorkflow,
+  getDevelopmentWorkflow,
   getGovernanceProfile,
   getCodingAgent,
   getFrameworkDefinition,
@@ -51,5 +53,6 @@ export const {
   isEnvironmentId,
   isSpecWorkflowId,
   isCodingAgentId,
-  projectInputCatalog
+  projectInputCatalog,
+  currentProjectInputCatalog
 } = projectCatalog;

@@ -31,9 +31,9 @@ import {
   OPEN_SPEC_PROFILE,
   OPEN_SPEC_WORKFLOW_IDS
 } from '../../openspec-profile.js';
-import {
-  buildProjectPlan
-} from '../project/planning.js';
+import { currentProjectGenerator, historicalProjectGenerator, type ProjectGenerator } from '../project/generation.js';
+import { commandShellForPlatform, formatShellCommand } from '../../adapters/process/shell-command.js';
+import { observeRunningRuntime } from '../workstation/running-runtime.js';
 import {
   projectPlanEntries
 } from '../../domain/project/planning.js';
@@ -49,7 +49,6 @@ import {
   type CommandRunner
 } from '../../process-runner.js';
 import {
-  buildArtifacts,
   partitionGeneratedArtifacts
 } from '../../templates.js';
 import {
@@ -60,14 +59,13 @@ import type {
 } from '../context.js';
 import type {
   ProjectOptions,
-  ProjectPlan
+  CurrentProjectPlan as ProjectPlan
 } from '../../domain/project/contracts.js';
 import {
   detectHostEnvironment,
   installRequirement,
   probeWorkstation,
   selectRemediation,
-  selectWorkstationRequirements,
   workstationScopeReadiness,
   type RequirementProbeResult,
   type InstallResult
@@ -77,6 +75,18 @@ import { governanceAgentIntegrations, openSpecDeliveryDescription } from '../../
 import { createWorkstationNoProgressStore } from '../../adapters/filesystem/workstation-attempts.js';
 
 export async function initializeProject(input: ProjectOptions, context: ExecutionContext): Promise<number> {
+  return executeInitialization(input, context, historicalProjectGenerator);
+}
+
+export async function initializeCurrentProject(input: ProjectOptions, context: ExecutionContext): Promise<number> {
+  return executeInitialization(input, context, currentProjectGenerator);
+}
+
+async function executeInitialization(
+  input: ProjectOptions,
+  context: ExecutionContext,
+  generator: ProjectGenerator
+): Promise<number> {
   const { presentation } = context;
   assertSupportedProjectOptions(input);
   const runner = context.runner ?? new NodeCommandRunner();
@@ -107,7 +117,7 @@ export async function initializeProject(input: ProjectOptions, context: Executio
     let confirmed: boolean;
     try {
       options = needsPrompts ? await prompter!.promptForInitOptions(initial) : initial;
-      plan = buildProjectPlan(options, { requireProjectName: true });
+      plan = generator.buildPlan(options, { requireProjectName: true });
       presentation.stage('Review resolved plan');
       confirmed = options.yes === true
         ? (presentation.definitions('Resolved project plan', projectPlanEntries(plan)), true)
@@ -137,7 +147,10 @@ export async function initializeProject(input: ProjectOptions, context: Executio
       context,
       runner,
       presentation,
-      prompter
+      prompter,
+      undefined,
+      undefined,
+      generator
     );
     if (!readiness.ready) {
       return 1;
@@ -159,17 +172,19 @@ export async function initializeProject(input: ProjectOptions, context: Executio
       const staged = await withStagingArea(async (area): Promise<
         { status: 'applied'; merge: MergeResult } | { status: 'authorization-required' | 'declined' }
       > => {
-        const partition = partitionGeneratedArtifacts(buildArtifacts(plan));
+        const partition = partitionGeneratedArtifacts(generator.buildArtifacts(plan));
         await writeStagedArtifacts(area, partition.liftoff, 'liftoff');
-        presentation.stage(
-          'Initialize spec-driven framework',
-          `${plan.specWorkflow.label} ${plan.framework.version}`
-        );
-        await initializeFramework(area, plan, runner, {
-          env: context.env,
-          ...presentation.childStreams(),
-          onCommand: (command) => presentation.command(command)
-        });
+        if (plan.framework) {
+          presentation.stage(
+            'Initialize spec-driven framework',
+            `${plan.specWorkflow.label} ${plan.framework.version}`
+          );
+          await initializeFramework(area, plan, runner, {
+            env: context.env,
+            ...presentation.childStreams(),
+            onCommand: (command) => presentation.command(command)
+          });
+        }
         await writeStagedArtifacts(area, partition.seed, 'seed');
         await writeStagedArtifacts(area, [partition.manifest], 'liftoff');
         presentation.stage('Validate staged project');
@@ -229,7 +244,7 @@ export async function initializeProject(input: ProjectOptions, context: Executio
 
       const setupInvocations = [...new Set(plan.agents.map((agent) => governanceAgentIntegrations[agent.id].setup.invocation))];
       presentation.bullets('Configured integrations', [
-        `${plan.specWorkflow.label} ${plan.framework.version}`,
+        plan.framework ? `${plan.specWorkflow.label} ${plan.framework.version}` : `${plan.specWorkflow.label} (no external framework)`,
         ...plan.agents.map((agent) =>
           `${agent.label}${plan.defaultAgent?.id === agent.id ? ' (default)' : ''}`
         ),
@@ -264,19 +279,28 @@ export async function initializeProject(input: ProjectOptions, context: Executio
         [
           { label: 'Target', value: target.root },
           { label: 'Spec workflow', value: plan.specWorkflow.label },
-          { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') },
+          { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') || 'None (CLI only)' },
           {
             label: 'Repository governance',
             value: plan.governanceProfile.id === 'none'
               ? 'Disabled'
-              : setupInvocations.length === 1
+              : generator.current
+                ? 'Local handoff generated; inspect local readiness with liftoff governance status --scope local --json'
+                : setupInvocations.length === 1
                 ? `Deterministic setup generated; run ${setupInvocation} next`
                 : 'Deterministic setup generated; use the agent-specific invocation shown above'
           }
         ],
-        plan.governanceProfile.id === 'none'
-          ? `liftoff validate ${JSON.stringify(target.root)}`
-          : setupInvocation
+        generator.current
+          ? formatShellCommand({
+              executable: 'liftoff',
+              args: plan.governanceProfile.id === 'none'
+                ? ['validate', target.root]
+                : ['governance', 'status', '--scope', 'local', '--json', '--project', target.root]
+            }, commandShellForPlatform(process.platform))
+          : plan.governanceProfile.id === 'none'
+            ? `liftoff validate ${JSON.stringify(target.root)}`
+            : setupInvocation
       );
       return 0;
     });
@@ -305,9 +329,18 @@ export async function ensureWorkstationReady(
   presentation: PresentationSession,
   prompter?: InteractivePrompter,
   resumeInvocation = 'liftoff init',
-  commandCwd?: string
+  commandCwd?: string,
+  generator: ProjectGenerator = historicalProjectGenerator
 ): Promise<WorkstationReadinessResult> {
-  const requirements = selectWorkstationRequirements(plan, { scope: 'initialization' });
+  if (generator.current) {
+    const runtime = observeRunningRuntime();
+    presentation.status(runtime.ready ? 'success' : 'error', 'Liftoff runtime', runtime.detail);
+    if (!runtime.ready) {
+      presentation.error('The running Liftoff runtime is unsupported.', runtime.remedy);
+      return { ready: false, deferred: [], probes: [] };
+    }
+  }
+  const requirements = generator.requirements(plan, { scope: 'initialization' });
   const probeOptions = { ...context.workstationProbe, cwd: commandCwd ?? context.cwd, env: context.env ?? context.workstationProbe?.env };
   const initialProbes = await probeWorkstation(requirements, runner, probeOptions);
   let probes = initialProbes;
@@ -463,6 +496,7 @@ export async function ensureOpenSpecProfileReady(
   if (plan.specWorkflow.id !== 'openspec') {
     return { ready: true, changed: false };
   }
+  if (!plan.framework) throw new Error('OpenSpec profile readiness requires its framework contract.');
 
   presentation.stage('Check OpenSpec global profile');
   const inspection = await inspectOpenSpecProfile(plan.framework.executable, runner, {

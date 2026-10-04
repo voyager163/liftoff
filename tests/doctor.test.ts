@@ -200,7 +200,8 @@ describe('doctor command', () => {
     expect(result.out).toContain(`version: Liftoff ${liftoffVersion}`);
     expect(result.out).not.toContain('cli freshness');
     expect(result.out).toContain('Environment');
-    expect(result.out).toContain('node:');
+    expect(result.out).toContain(`Liftoff runtime: Running Liftoff runtime: Node.js ${process.versions.node}`);
+    expect(result.out).toContain('not evidence that external node or npm is installed');
     expect(result.out).not.toContain('Project');
     expect(result.out).not.toContain('Runtime');
     expect(result.out).not.toContain('Cloud -');

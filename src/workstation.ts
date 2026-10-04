@@ -15,7 +15,7 @@ import type {
   ApiStackId,
   CodingAgentId,
   ProviderId,
-  ProjectPlan,
+  CurrentProjectPlan,
   SpecWorkflowId
 } from './domain/project/contracts.js';
 
@@ -70,7 +70,7 @@ export interface WorkstationRequirementSelection {
     frontend?: boolean;
   };
   specWorkflow: { id: SpecWorkflowId | 'manual' };
-  framework: { version: string } | null;
+  framework: { version: string } | null | undefined;
   agents: Array<{ id: CodingAgentId; label: string }>;
 }
 
@@ -111,8 +111,23 @@ export function selectLiftoffRuntimeRequirements(): SelectedRequirement[] {
 }
 
 export function selectWorkstationRequirements(
-  plan: ProjectPlan | WorkstationRequirementSelection,
+  plan: CurrentProjectPlan | WorkstationRequirementSelection,
   options: RequirementSelectionOptions = {}
+): SelectedRequirement[] {
+  return resolveWorkstationRequirements(plan, options, false);
+}
+
+export function selectCurrentWorkstationRequirements(
+  plan: CurrentProjectPlan | WorkstationRequirementSelection,
+  options: RequirementSelectionOptions = {}
+): SelectedRequirement[] {
+  return resolveWorkstationRequirements(plan, options, true);
+}
+
+function resolveWorkstationRequirements(
+  plan: CurrentProjectPlan | WorkstationRequirementSelection,
+  options: RequirementSelectionOptions,
+  current: boolean
 ): SelectedRequirement[] {
   if (!['openspec', 'spec-kit', 'manual'].includes(plan.specWorkflow.id)) {
     throw new Error('Workstation prerequisite selection requires a supported workflow.');
@@ -159,9 +174,11 @@ export function selectWorkstationRequirements(
   const includeFrontend = typeof plan.workload === 'string'
     ? plan.includeFrontend
     : plan.workload.frontend ?? false;
-  add('node', 'Liftoff runtime', {
-    minimumVersion: supportedStack.runtimes.node.minimumVersion
-  });
+  if (!current) {
+    add('node', 'Liftoff runtime', {
+      minimumVersion: supportedStack.runtimes.node.minimumVersion
+    });
+  }
   if (scope === 'activation' || scope === 'migration' || scope === 'lifecycle') {
     if (scope !== 'lifecycle') add('opentofu', `${scope} infrastructure operations`, { severity: 'blocking' });
     if (scope === 'activation') {
@@ -172,9 +189,11 @@ export function selectWorkstationRequirements(
     return REQUIREMENT_ORDER.flatMap((id) => selected.has(id) ? [selected.get(id)!] : []);
   }
   if (workload.apiStack.id === 'node-fastify') {
+    if (current) add('node', 'selected Node.js API runtime');
     add('npm', 'selected Node.js API dependency manager');
   }
   if (includeFrontend) {
+    if (current) add('node', 'selected frontend runtime');
     add('npm', 'selected frontend dependency manager');
   }
   if (workload.apiStack.id === 'python-fastapi') {

@@ -305,9 +305,11 @@ Framework options
 ─────────────────
 Option                                Description
 ────────────────────────────────────  ──────────────────────────────────────────
---spec <framework>                    Spec-driven framework (default: openspec)
---agents <list>                       Comma-separated AI coding agents (default:
-                                      copilot)
+--spec <workflow>                     Development workflow: openspec, spec-kit,
+                                      or manual (default: openspec)
+--agents <list>                       Comma-separated AI coding agents; none is
+                                      valid only for Manual (default: copilot;
+                                      none for Manual)
 --default-agent <agent>               Primary agent for Spec Kit when multiple
                                       agents are selected
 --governance <profile>                Repository-governance profile (default:
@@ -733,8 +735,8 @@ Option: --environments <list> | Description: Comma-separated environments (defau
 Option: --config <file> | Description: Load deterministic project options from JSON
 
 Framework options
-Option: --spec <framework> | Description: Spec-driven framework (default: openspec)
-Option: --agents <list> | Description: Comma-separated AI coding agents (default: copilot)
+Option: --spec <workflow> | Description: Development workflow: openspec, spec-kit, or manual (default: openspec)
+Option: --agents <list> | Description: Comma-separated AI coding agents; none is valid only for Manual (default: copilot; none for Manual)
 Option: --default-agent <agent> | Description: Primary agent for Spec Kit when multiple agents are selected
 Option: --governance <profile> | Description: Repository-governance profile (default: single-maintainer-gitflow)
 Option: --copilot-cloud / --no-copilot-cloud | Description: Set up the GitHub-hosted Copilot coding agent for OpenSpec (default: false)
@@ -1136,8 +1138,10 @@ exports[`complete help screens > snapshots rich init command help 1`] = `
 ┌─ Framework options ──────────────────────────────────────────────────────────────────────────┐
 │ Option                                Description                                            │
 │ ────────────────────────────────────  ────────────────────────────────────────────────────── │
-│ --spec <framework>                    Spec-driven framework (default: openspec)              │
-│ --agents <list>                       Comma-separated AI coding agents (default: copilot)    │
+│ --spec <workflow>                     Development workflow: openspec, spec-kit, or manual    │
+│                                       (default: openspec)                                    │
+│ --agents <list>                       Comma-separated AI coding agents; none is valid only   │
+│                                       for Manual (default: copilot; none for Manual)         │
 │ --default-agent <agent>               Primary agent for Spec Kit when multiple agents are    │
 │                                       selected                                               │
 │ --governance <profile>                Repository-governance profile (default:                │

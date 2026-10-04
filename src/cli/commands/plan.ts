@@ -1,11 +1,11 @@
 import {
-  buildProjectPlan
+  buildCurrentProjectPlan
 } from '../../application/project/planning.js';
 import {
   projectPlanEntries
 } from '../../domain/project/planning.js';
 import {
-  buildArtifacts
+  buildCurrentArtifacts
 } from '../../templates.js';
 import type {
   ExecutionContext
@@ -14,19 +14,26 @@ import type {
   ParsedArgs
 } from '../../domain/project/contracts.js';
 import {
-  selectWorkstationRequirements
+  selectCurrentWorkstationRequirements
 } from '../../workstation.js';
 import {
   optionsFromParsedArgs
 } from '../project-options.js';
 import { formatRequirementVersion } from '../../domain/workstation/constraints.js';
+import { observeRunningRuntime } from '../../application/workstation/running-runtime.js';
 
 export async function planCommand(parsed: ParsedArgs, context: ExecutionContext): Promise<number> {
   const { presentation } = context;
   presentation.identity('Preview project decisions, artifacts, and workstation requirements');
   const options = await optionsFromParsedArgs(parsed, context.cwd, false);
-  const plan = buildProjectPlan(options, { requireProjectName: false });
-  const artifacts = buildArtifacts(plan);
+  const plan = buildCurrentProjectPlan(options, { requireProjectName: false });
+  const runtime = observeRunningRuntime();
+  presentation.status(runtime.ready ? 'success' : 'error', 'Liftoff runtime', runtime.detail);
+  if (!runtime.ready) {
+    presentation.error('The running Liftoff runtime is unsupported.', runtime.remedy);
+    return 1;
+  }
+  const artifacts = buildCurrentArtifacts(plan);
   presentation.definitions('Project decisions', projectPlanEntries(plan));
   presentation.table(
     `Artifacts (${artifacts.length})`,
@@ -39,7 +46,7 @@ export async function planCommand(parsed: ParsedArgs, context: ExecutionContext)
       artifact.pathParts.join('/')
     ])
   );
-  const workstationRows = selectWorkstationRequirements(plan).map((requirement) => [
+  const workstationRows = selectCurrentWorkstationRequirements(plan).map((requirement) => [
     requirement.definition.label,
     formatRequirementVersion(requirement),
     requirement.severity

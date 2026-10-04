@@ -104,6 +104,7 @@ exports[`maintenance presentation > snapshots plain doctor layers and remedies 1
 
 CLI
 [ok] version: Liftoff 0.12.3
+[ok] Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 
 Environment
 [ok] node: Version 24.20.0
@@ -297,6 +298,8 @@ exports[`maintenance presentation > snapshots rich doctor layers and remedies 1`
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ CLI ────────────────────────────────────────────────────────────────────────────────────────┐
 │ ✓ version: Liftoff 0.12.3                                                                    │
+│ ✓ Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+.    │
+│ This is not evidence that external node or npm is installed.                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Environment ────────────────────────────────────────────────────────────────────────────────┐
 │ ✓ node: Version 24.20.0                                                                      │

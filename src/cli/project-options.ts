@@ -4,7 +4,7 @@ import {
   readStringFlag
 } from './args/readers.js';
 import {
-  loadConfigOptions
+  loadCurrentConfigOptions
 } from '../application/project/planning.js';
 import {
   mergeOptions,
@@ -27,7 +27,11 @@ export async function optionsFromParsedArgs(parsed: ParsedArgs, cwd: string, inc
     ]);
   }
   const configPath = readStringFlag(parsed.flags, 'config');
-  const configOptions = configPath ? await loadConfigOptions(configPath, cwd) : {};
+  const configOptions = configPath ? await loadCurrentConfigOptions(configPath, cwd) : {};
+  const agentFlag = readStringFlag(parsed.flags, 'agents');
+  if (agentFlag !== undefined && agentFlag.split(',').some(value => value.trim().length === 0)) {
+    throw new PlanValidationError(['Flag --agents requires agent names or the single Manual value none; empty list entries are not allowed.']);
+  }
   const flagOptions: ProjectOptions = {
     projectName: includeProjectName ? parsed.positional[0] ?? readStringFlag(parsed.flags, 'project') : readStringFlag(parsed.flags, 'project'),
     projectType: readStringFlag(parsed.flags, 'type'),

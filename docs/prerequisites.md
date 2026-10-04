@@ -6,14 +6,26 @@ framework such as Spec Kit can require Python for its own tooling.
 
 ## Baseline
 
-- Workstation Node.js: stable Node.js 24 LTS, version 24.20.0 or newer within 24.x.
+- CLI runtime: the running process is checked against Liftoff's minimum Node.js
+  version. npm installations still need Node.js to launch; no native distribution
+  is claimed by this readiness check.
+- External Node.js for a Node backend, frontend, or OpenSpec: stable Node.js 24
+  LTS, version 24.20.0 or newer within 24.x.
 - npm-dependent stacks or OpenSpec: stable npm 12.x, version 12.0.2 or newer.
 - Python projects: stable Python 3.14.x and `uv` 0.12.x at version 0.12.7 or newer.
 - Go projects: stable Go 1.27.x.
 - Generated Azure infrastructure: stable OpenTofu 1.12.x at version 1.12.6 or newer.
-- Selected framework: OpenSpec 1.11.0 or Spec Kit 1.0.1 exactly.
+- Selected external framework: OpenSpec 1.11.0 or Spec Kit 1.0.1 exactly.
+  Manual requires neither framework nor its global profile.
 - Selected agents: GitHub Copilot, Claude Code, OpenAI Codex, or any nonempty
-  combination of the three.
+  combination of the three for external workflows. Manual also permits none.
+
+Current generation and doctor distinguish the running CLI runtime from commands
+on PATH. A Manual Go project without a frontend or agents does not probe external
+Node/npm, Python/uv, OpenSpec, Spec Kit, or coding-agent executables. Selecting a
+frontend adds genuine Node/npm requirements; selecting agents adds only those
+agents' requirements. An embedded or already-running runtime is never evidence
+that external npm is installed.
 
 Minimum versions do not authorize a different, untested release line. Release
 candidates and other prereleases do not satisfy stable runtime/package-manager

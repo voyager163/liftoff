@@ -1,5 +1,5 @@
 import type { SupportedStackBaseline } from '../domain/project/supported-stack.js';
-import type { ApiProjectPlan } from '../domain/project/contracts.js';
+import type { CurrentProjectPlan as ApiProjectPlan } from '../domain/project/contracts.js';
 
 export interface GeneratorTemplateSources {
   npm: Record<'node-backend' | 'frontend', { packageJson: string; packageLock: string }>;
@@ -10,6 +10,7 @@ export interface GeneratorTemplateSources {
 }
 
 export interface GeneratorContext {
+  current?: true;
   stack: SupportedStackBaseline;
   npm: Record<'node-backend' | 'frontend', { package: string; lock: string }>;
   python: Record<'genai' | 'standard', { project: string; lock: string }>;

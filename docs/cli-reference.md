@@ -18,7 +18,7 @@ duplicates, and extra positional arguments fail before generation.
 ## Lifecycle
 
 ```text
-install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate, doctor, governance verify -> update project -> dev and infra helpers
+install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitly scoped local operations -> update project -> dev and infra helpers
 ```
 
 | Command | Behavior |
@@ -77,8 +77,14 @@ Node.js 24 LTS, Python 3.14, Go 1.27, OpenTofu 1.12, OpenSpec 1.11, and Spec Kit
 managed core and preserved control/history relationships without interpreting
 old provenance as current paths. Manual's `not-required` framework needs no
 framework markers. A valid source report does not prove native verification or
-live governance enforcement. Public v8 generation/update is not enabled by this
-read support; other operations retain their explicitly supported contracts.
+live governance enforcement. Public generation is advertised separately as
+`schemas.currentGeneration`, and update as `schemas.currentUpdate`; read support
+alone does not enable other operations.
+
+`governance assess` validates v8 identity but marks its interpretation unsupported
+by the existing assessment catalog. Independent repository facts remain
+read-only; current layout, managed-core compliance and activation proof require
+their separately advertised interfaces, not historical policy inference.
 
 For v8, `doctor` reports bounded source inventory from active bindings, not
 historical default paths. Unresolved bindings and unsafe/invalid source remain
@@ -100,11 +106,15 @@ current directory or load project plugins. Registered syntax is distinguished
 from governance executor availability: `unavailable`, `injected-only`, and
 explicit blockers are not usable production execution. Plugin host declarations
 do not prove local tool readiness or native-package qualification. The current
-public catalog lists OpenSpec/Spec Kit, single-maintainer/none, and manifest
-readers 2-7. `schemas.modernReadOnly` separately lists the v8 source/helper and
+public catalog lists OpenSpec/Spec Kit/Manual, single-maintainer/none, historical
+manifest readers 2-7, and v8 reading/writing. Its plugin inventory is the exact
+current generation source family. `schemas.currentGeneration` covers `plan`,
+`init`, and sibling `migrate`, not arbitrary source conversion.
+`schemas.modernReadOnly` separately lists the v8 source/helper and
 governance inspection routes. `schemas.modernLocalVerification` separately lists
 the explicit local request, approval and execution boundary below. This
-does not enable Manual/team generation or current writers. An older
+does not enable team generation, arbitrary writer access, or automatic local
+completion. An older
 installed release may not have this command; use its documented help rather
 than assuming a missing interface or inventing receipts.
 
@@ -120,8 +130,8 @@ Common noninteractive inputs include:
 --region <slug>
 --frontend | --no-frontend
 --environments dev,staging,prod
---spec openspec|spec-kit
---agents copilot,claude,codex
+--spec openspec|spec-kit|manual
+--agents copilot,claude,codex | --agents none
 --default-agent copilot|claude|codex
 --governance single-maintainer-gitflow|none
 --copilot-cloud | --no-copilot-cloud
@@ -129,6 +139,11 @@ Common noninteractive inputs include:
 ```
 
 For an undecided GenAI architecture, use `--type genai --pattern generic`.
+OpenSpec remains the default when the workflow is omitted. Manual defaults to
+no agents; configuration may omit `agents` or use `[]`. `--agents none` is Manual
+only, must appear alone, and cannot be mixed with empty or real-agent entries.
+External workflows keep their nonempty/default-agent rules. Manual rejects
+external-framework flags, including explicit `--no-copilot-cloud`.
 Interactive initialization presents **I'm not sure yet - Generic GenAI
 starter** first and accepts it as the default. `liftoff patterns` lists this
 stable `generic` identifier alongside the eight specialized patterns.

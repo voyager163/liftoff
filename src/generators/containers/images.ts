@@ -1,7 +1,7 @@
 import type { GeneratorContext as ResolvedGeneratorContext } from '../context.js';
 type GeneratorContext = Pick<ResolvedGeneratorContext, 'stack'>;
 import { formatContainerImage } from '../../domain/project/supported-stack.js';
-import type { StandardApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentStandardApiProjectPlan as StandardApiProjectPlan } from '../../domain/project/contracts.js';
 
 
 export function renderBackendDockerfile(context: GeneratorContext): string {

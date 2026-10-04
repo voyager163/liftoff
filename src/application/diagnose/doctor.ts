@@ -65,8 +65,7 @@ import {
 } from '../../domain/project/retired-workload.js';
 import {
   probeWorkstation,
-  selectLiftoffRuntimeRequirements,
-  selectWorkstationRequirements,
+  selectCurrentWorkstationRequirements,
   workstationScopeReadiness,
   type ExecutableIdentity,
   type RequirementReasonCode,
@@ -74,6 +73,7 @@ import {
   type WorkstationRequirementSelection
 } from '../../workstation.js';
 import { inspectProjectUpdate, UpdatePlanError } from '../update/inspection.js';
+import { observeRunningRuntime } from '../workstation/running-runtime.js';
 
 interface DoctorCheck {
   id?: string;
@@ -746,16 +746,28 @@ export async function diagnoseProject(request: DoctorRequest, context: Execution
       runner,
       environment: context.env ?? process.env
     }));
-  layers.push(await cliLayer(releaseLookup, configuredRegistryLookup));
+  const runtime = observeRunningRuntime();
+  const cli = await cliLayer(releaseLookup, configuredRegistryLookup);
+  cli.checks.push({
+    id: 'liftoff-runtime',
+    label: 'Liftoff runtime',
+    severity: runtime.ready ? 'ok' : 'fail',
+    state: runtime.ready ? 'ready' : 'unhealthy',
+    detail: runtime.detail,
+    required: runtime.required,
+    observedVersion: runtime.observedVersion,
+    ...(runtime.remedy ? { remedy: runtime.remedy } : {})
+  });
+  layers.push(cli);
   const requirements = manifest
-    ? selectWorkstationRequirements(
+    ? selectCurrentWorkstationRequirements(
         workstationSelectionFromManifest(manifest),
         { includeFramework: manifest.framework.state === 'initialized', scope: 'initialization' }
       ).filter((requirement) => requirement.id !== 'docker' || (manifest.artifactVersion === 8
         ? manifest.activeLayout.bindings.some(binding => binding.kind === 'artifact' && binding.logicalName === 'docker-compose')
         : ['compose.yaml', 'compose.yml', 'docker-compose.yml', 'docker-compose.yaml']
           .some((name) => existsSync(path.join(projectRoot!, name)))))
-    : selectLiftoffRuntimeRequirements();
+    : [];
   const probes = await probeWorkstation(requirements, runner, {
     ...context.workstationProbe, cwd: projectRoot ?? context.cwd, env: context.env ?? context.workstationProbe?.env
   });
@@ -806,7 +818,7 @@ export async function diagnoseProject(request: DoctorRequest, context: Execution
       `${JSON.stringify({
         schemaVersion: 1, layers, summary: { failures, warnings },
         workstation: {
-          scope: readiness.scope, ready: readiness.ready,
+          scope: readiness.scope, ready: runtime.ready && readiness.ready,
           blockingTools: readiness.toolFailures.map((probe) => ({ id: probe.requirement.id, reasonCode: probe.reasonCode })),
           authenticationRequiredForLocal: false
         }

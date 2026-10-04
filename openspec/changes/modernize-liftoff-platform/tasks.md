@@ -45,14 +45,14 @@ Depends on 2. References: design D6; liftoff-manifest-contract, liftoff-activati
 
 Depends on 3. References: design D7; liftoff-cli-workflow, liftoff-project-scaffold, liftoff-workstation-bootstrap, liftoff-project-doctor.
 
-- [ ] 4.1 Add Manual to the development-workflow catalog/prompt and `--spec`, preserving OpenSpec omission defaults; verify interactive/noninteractive/configuration parity and invalid input rejection.
-- [ ] 4.2 Support Manual empty agent selection and `--agents none`, rejecting mixed none/real IDs and retaining external-framework nonempty/default-agent rules; verify all Manual subsets and every existing OpenSpec/Spec Kit subset.
+- [x] 4.1 Add Manual to the development-workflow catalog/prompt and `--spec`, preserving OpenSpec omission defaults; verify interactive/noninteractive/configuration parity and invalid input rejection.
+- [x] 4.2 Support Manual empty agent selection and `--agents none`, rejecting mixed none/real IDs and retaining external-framework nonempty/default-agent rules; verify all Manual subsets and every existing OpenSpec/Spec Kit subset.
 - [ ] 4.3 Separate bundled CLI runtime from external workload/framework/agent prerequisites; verify native Manual/no-agent startup does not probe or require Node/npm/frameworks unless the selected project operation needs them.
-- [ ] 4.4 Remove unconditional framework calls and non-OpenSpec-equals-Spec-Kit fallbacks across generation, initialization, sibling migration and validation; verify Manual creates no framework directories, seeds, global profile reads or fictitious markers.
+- [x] 4.4 Remove unconditional framework calls and non-OpenSpec-equals-Spec-Kit fallbacks across generation, initialization, sibling migration and validation; verify Manual creates no framework directories, seeds, global profile reads or fictitious markers.
 - [ ] 4.5 Implement explicit native Manual local verification/finalization with optional agents and selected governance; verify no fake archive and valid CLI-only local completion without remote credentials.
 - [ ] 4.6 Keep governance-none Manual validation/repair usable without manufacturing governance state; verify actual CLI next actions and no nonexistent shell setup command.
 - [ ] 4.7 Add Windows, macOS and Linux Manual generation/path tests with spaces, case collisions and omitted tools; verify identical logical inventories and protected unselected framework files.
-- [ ] 4.8 Refresh workflow/prerequisite/getting-started guides and generated root/infrastructure README content for Manual and CLI-only use; verify each example against command definitions and documentation tests.
+- [x] 4.8 Refresh workflow/prerequisite/getting-started guides and generated root/infrastructure README content for Manual and CLI-only use; verify each example against command definitions and documentation tests.
 
 ## 5. Deliver canonical skills and capability negotiation
 
@@ -60,7 +60,7 @@ Depends on 2-4. References: design D9; liftoff-bundled-plugins, liftoff-cli-work
 
 - [x] 5.1 Implement project-independent `liftoff capabilities --json` and preserve repair capability discovery; verify catalog entries represent actual modes/schemas/host boundaries and neither command performs telemetry, probes, network or state writes.
 - [x] 5.2 Move canonical setup/repair/governance-assessment content into shared packaged sources while preserving existing Copilot/Claude/Codex logical paths and invocation forms; verify generated content/ownership and installed asset lookup.
-- [ ] 5.3 Generate selected Liftoff integrations for Manual without external framework artifacts and allow no-agent output; verify unselected/custom neighboring skills remain untouched.
+- [x] 5.3 Generate selected Liftoff integrations for Manual without external framework artifacts and allow no-agent output; verify unselected/custom neighboring skills remain untouched.
 - [x] 5.4 Require skills to negotiate actual commands/recipes and use external staged patches with independent permission boundaries; verify contract fixtures prohibit invented receipts, retrospective approval and direct real-project patching.
 - [ ] 5.5 Add shared whole-project assessment/adoption guidance that uses only advertised capabilities; verify CLI-only fallback and capability-mismatch remedies without fabricating commands in old releases.
 - [x] 5.6 Document native invocation, ownership/update rules, agent-host/model distinction and staging limitations; verify equivalent instructions and packaged links for all three hosts.
@@ -87,7 +87,7 @@ Depends on 3-6. References: design D8-D9; liftoff-project-migration, liftoff-pro
 - [ ] 7.4 Extend external preparation/check staging to non-Liftoff adoption candidates while retaining exact independent preparation/script/network permissions; verify failed or declined checks cannot authorize a file transaction.
 - [ ] 7.5 Implement exact adoption metadata/core/application publication with authenticated external transaction ownership; verify rollback/resume works even when the final manifest was never written and concurrent edits survive.
 - [ ] 7.6 Add separately reviewed active-binding publication after verified application moves without allowing patches to write provenance; verify partial binding failure reports committed file effects and cannot repeat the move or invent generation history.
-- [ ] 7.7 Preserve sibling migrate safety and add its Manual/current-manifest output; verify source snapshots, filtered staging, strict OpenSpec plans, non-OpenSpec checklist and verification-before-cleanup.
+- [x] 7.7 Preserve sibling migrate safety and add its Manual/current-manifest output; verify source snapshots, filtered staging, strict OpenSpec plans, non-OpenSpec checklist and verification-before-cleanup.
 - [ ] 7.8 Enforce existing-deployment/state planning-only boundaries in adopt and repair; verify absence of local state or an approved local patch never enables resource/state mutation.
 - [ ] 7.9 Qualify Windows paths, junctions, modes, spaces, process settlement and interrupted transaction handling alongside macOS/Linux; verify exact ownership without broad cleanup.
 - [ ] 7.10 Update existing-repository, migration and application-repair guides plus generated migration instructions; verify complete developer/agent/CLI-only journeys and honest partial completion.

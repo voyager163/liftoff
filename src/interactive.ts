@@ -10,13 +10,13 @@ import {
   getFrameworkDefinition,
   getProjectType,
   getProvider,
-  getSpecWorkflow,
+  getDevelopmentWorkflow,
   patterns,
-  projectInputCatalog,
+  currentProjectInputCatalog,
   projectTypes,
   providers,
   resolveRegion,
-  specWorkflows
+  developmentWorkflows
 } from './application/project/catalog.js';
 import type { DependencyCommandPlan } from './project-dependencies.js';
 import {
@@ -28,7 +28,8 @@ import { PresentationSession } from './terminal.js';
 import type {
   CodingAgentId,
   ProjectOptions,
-  ProjectPlan,
+  CurrentProjectPlan as ProjectPlan,
+  DevelopmentWorkflowId,
   RegionDefinition,
   SpecWorkflowId
 } from './domain/project/contracts.js';
@@ -165,13 +166,19 @@ export class InteractivePrompter {
     }
     const typeInput = resolveProjectTypeInput(initial, getProjectType);
     const issues = [...typeInput.issues];
-    if (initial.specWorkflow && !getSpecWorkflow(initial.specWorkflow)) {
+    if (initial.specWorkflow && !getDevelopmentWorkflow(initial.specWorkflow)) {
       issues.push(`Unknown spec-driven workflow: ${initial.specWorkflow}.`);
     }
     if (initial.agents !== undefined) {
       const supplied = canonicalizeCodingAgents(initial.agents);
-      if (!initial.agents.length) issues.push('At least one AI coding agent is required.');
-      if (supplied.unknown.length) {
+      const none = initial.agents.filter(agent => agent.trim().toLowerCase() === 'none');
+      if (none.length && (initial.agents.length !== 1 || (initial.specWorkflow && initial.specWorkflow !== 'manual'))) {
+        issues.push('Use --agents none by itself and only with Manual.');
+      }
+      if (!initial.agents.length && initial.specWorkflow && initial.specWorkflow !== 'manual') {
+        issues.push('At least one AI coding agent is required.');
+      }
+      if (supplied.unknown.length && !(none.length === 1 && initial.agents.length === 1)) {
         issues.push(`Unknown AI coding agent${supplied.unknown.length === 1 ? '' : 's'}: ${supplied.unknown.join(', ')}.`);
       }
     }
@@ -219,18 +226,23 @@ export class InteractivePrompter {
         : 'none'
     );
     const specWorkflow = initial.specWorkflow ?? await this.choose(
-      'Select spec-driven workflow',
-      specWorkflows.map((workflow) => ({
+      'Select development workflow',
+      developmentWorkflows.map((workflow) => ({
         value: workflow.id,
         label: workflow.label,
         disabled: false
       })),
       'openspec'
     );
-    const selectedAgents = initial.agents ?? await this.askAgents(specWorkflow as SpecWorkflowId);
+    const workflow = getDevelopmentWorkflow(specWorkflow);
+    if (!workflow) throw new PlanValidationError([`Unknown development workflow: ${specWorkflow}.`]);
+    const manual = workflow.id === 'manual';
+    const selectedAgents = initial.agents?.length === 1 && initial.agents[0]!.trim().toLowerCase() === 'none' && manual
+      ? []
+      : initial.agents ?? await this.askAgents(workflow.id);
     const selected = canonicalizeCodingAgents(selectedAgents);
-    if (selected.unknown.length || !selected.agents.length) {
-      throw new PlanValidationError(['Select at least one supported AI coding agent.']);
+    if (selected.unknown.length || (!manual && !selected.agents.length)) {
+      throw new PlanValidationError([manual ? 'Select supported AI coding agents or none.' : 'Select at least one supported AI coding agent.']);
     }
     const normalizedAgents = selected.agents.map((agent) => agent.id);
     const defaultAgent = specWorkflow === 'spec-kit' && normalizedAgents.length > 1
@@ -243,7 +255,7 @@ export class InteractivePrompter {
         )
       : specWorkflow === 'spec-kit'
         ? initial.defaultAgent ?? normalizedAgents[0]
-        : undefined;
+        : manual ? initial.defaultAgent : undefined;
     const copilotCloud = specWorkflow === 'openspec' &&
       normalizedAgents.includes('github-copilot')
       ? initial.copilotCloud ?? await this.confirm(
@@ -423,21 +435,24 @@ export class InteractivePrompter {
     return answer.split(',').map((value) => value.trim()).filter(Boolean);
   }
 
-  private async askAgents(specWorkflow: SpecWorkflowId): Promise<string[]> {
-    const discovery = await this.discoverAgents(specWorkflow);
+  private async askAgents(specWorkflow: DevelopmentWorkflowId): Promise<string[]> {
+    const optional = specWorkflow === 'manual';
+    const discovery: AgentDiscovery = optional
+      ? { configured: new Set(), detected: new Set(), defaults: [] }
+      : await this.discoverAgents(specWorkflow);
     if (
       isInteractiveTerminal(this.input, this.output) &&
       supportsRawMode(this.input)
     ) {
-      return this.askAgentsWithCheckbox(discovery);
+      return this.askAgentsWithCheckbox(discovery, optional);
     }
-    return this.askAgentsWithLines(discovery);
+    return this.askAgentsWithLines(discovery, optional);
   }
 
-  private async askAgentsWithLines(discovery: AgentDiscovery): Promise<string[]> {
+  private async askAgentsWithLines(discovery: AgentDiscovery, optional: boolean): Promise<string[]> {
     while (true) {
-      this.presentation.choices('Select one or more AI coding agents', codingAgents.map((agent) => ({
-        label: this.agentChoiceLabel(agent.id, discovery),
+      this.presentation.choices(optional ? 'Select optional AI coding agents (Enter for none)' : 'Select one or more AI coding agents', codingAgents.map((agent) => ({
+        label: optional ? agent.label : this.agentChoiceLabel(agent.id, discovery),
         value: agent.id,
         default: discovery.defaults.includes(agent.id),
         selected: discovery.defaults.includes(agent.id)
@@ -449,7 +464,8 @@ export class InteractivePrompter {
         'Select comma-separated options',
         defaultSelection
       )).trim() || defaultSelection;
-      const selected = answer.split(',').map((value) => value.trim()).filter(Boolean);
+      if (optional && (!answer || answer.toLowerCase() === 'none')) return [];
+      const selected = answer.split(',').map((value) => value.trim());
       const resolved = selected.map((value) => {
         const byIndex = codingAgents[Number(value) - 1];
         return byIndex ?? getCodingAgent(value);
@@ -464,19 +480,19 @@ export class InteractivePrompter {
     }
   }
 
-  private async askAgentsWithCheckbox(discovery: AgentDiscovery): Promise<CodingAgentId[]> {
+  private async askAgentsWithCheckbox(discovery: AgentDiscovery, optional: boolean): Promise<CodingAgentId[]> {
     this.releaseLineInput();
     try {
       const checkbox = this.checkboxPrompt ?? (await import('@inquirer/prompts')).checkbox;
       const selected = await checkbox({
-        message: 'Select one or more AI coding agents',
+        message: optional ? 'Select optional AI coding agents (none is valid)' : 'Select one or more AI coding agents',
         choices: codingAgents.map((agent) => ({
-          name: this.agentChoiceLabel(agent.id, discovery),
+          name: optional ? agent.label : this.agentChoiceLabel(agent.id, discovery),
           value: agent.id,
           checked: discovery.defaults.includes(agent.id)
         })),
-        required: true,
-        validate: (values) => values.length > 0 || 'Select at least one AI coding agent.'
+        required: !optional,
+        validate: (values) => optional || values.length > 0 || 'Select at least one AI coding agent.'
       }, {
         input: this.input,
         output: this.output
@@ -619,5 +635,5 @@ export async function confirmDependencyInstallation(
 }
 
 export function resolveCatalogInput(options: ProjectOptions): ProjectOptions {
-  return normalizeProjectOptions(options, projectInputCatalog);
+  return normalizeProjectOptions(options, currentProjectInputCatalog);
 }

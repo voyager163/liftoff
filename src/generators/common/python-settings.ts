@@ -1,4 +1,4 @@
-import type { ApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentProjectPlan as ApiProjectPlan } from '../../domain/project/contracts.js';
 import { sourceString } from './values.js';
 import { renderPythonDotenvValidation } from './dotenv-validation.js';
 

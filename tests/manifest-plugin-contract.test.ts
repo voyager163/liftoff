@@ -135,7 +135,7 @@ describe('one installed plugin and layout binding context', () => {
     }
   });
 
-  it('keeps full v8 reading and installed Manual/team targets unavailable', () => {
+  it('keeps v8 and fabricated Manual/team targets out of historical entrypoints', () => {
     const raw = JSON.parse(readFileSync(
       new URL('./fixtures/contract-baseline-0.12.3/manifests/0.12.3-standard-go.json', import.meta.url), 'utf8'));
     raw.artifactVersion = 8;
@@ -143,7 +143,7 @@ describe('one installed plugin and layout binding context', () => {
     const manual = structuredClone(plan());
     Reflect.set(manual.specWorkflow, 'id', 'manual');
     Reflect.set(manual.framework, 'id', 'manual');
-    expect(() => resolveInstalledManifestBindingContext(manual)).toThrow(/unknown|unsupported|invalid/i);
+    expect(() => resolveInstalledManifestBindingContext(manual)).toThrow(/does not match/i);
     const team = structuredClone(plan());
     Reflect.set(team.governanceProfile, 'id', 'team-gitflow');
     expect(() => resolveInstalledManifestBindingContext(team)).toThrow(/unknown|unsupported|invalid/i);

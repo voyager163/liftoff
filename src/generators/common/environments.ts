@@ -1,4 +1,4 @@
-import type { ApiProjectPlan } from '../../domain/project/contracts.js';
+import type { CurrentProjectPlan as ApiProjectPlan } from '../../domain/project/contracts.js';
 import { createArtifactAdder } from './artifacts.js';
 import type { GeneratedArtifact } from '../../domain/project/contracts.js';
 import { hasFunctionWorker } from './values.js';
