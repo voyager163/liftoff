@@ -8,7 +8,6 @@ import { errorCode, errorMessage } from '../../adapters/filesystem/errors.js';
 import { validateFrameworkInstallation } from '../../framework-validation.js';
 import { validateGovernanceCompatibilityMetadata, type ManagedCompatibilityInventoryEntry } from '../../governance-activation/compatibility.js';
 import { loadProjectManifest, modernManifestMatchesObservation, type SupportedProjectManifest } from '../project/manifest.js';
-import { inspectModernInstalledActivation } from '../governance/modern-installed-preflight.js';
 import type { LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 
 export async function validateGeneratedProject(projectRoot: string): Promise<string[]> {
@@ -127,6 +126,7 @@ async function validateHistoricalGeneratedProject(projectRoot: string, manifest:
 }
 
 async function validateModernGeneratedProject(projectRoot: string, manifest: LiftoffManifestV8): Promise<string[]> {
+  const { inspectModernInstalledActivation } = await import('../governance/modern-installed-preflight.js');
   const installed = await inspectModernInstalledActivation(projectRoot);
   if (installed.status === 'blocked') return [...installed.blockers];
   if (!modernManifestMatchesObservation(manifest, installed.snapshot)) {

@@ -7,7 +7,6 @@ import type { ExternalCommand, ManifestLayoutBinding } from '../../domain/projec
 import type { LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import { manifestPathAliasKey } from '../../domain/project/manifest/layout.js';
 import { modernLocalBounds } from '../../domain/governance/activation/modern-local-inputs.js';
-import { inspectModernInstalledActivation } from '../governance/modern-installed-preflight.js';
 import { modernManifestMatchesObservation } from './manifest.js';
 import { getEnvironment } from './catalog.js';
 
@@ -36,6 +35,7 @@ export async function buildModernHelperCommand(
   if (manifest.activeLayout.state !== 'bound') {
     invalid('Active layout is unresolved; no helper command was emitted. Record a reviewed active binding first; generation provenance is not a fallback.');
   }
+  const { inspectModernInstalledActivation } = await import('../governance/modern-installed-preflight.js');
   const installed = await inspectModernInstalledActivation(projectRoot);
   if (installed.status === 'blocked') invalid(`Project control inspection failed: ${installed.blockers.join('; ')}`);
   if (!modernManifestMatchesObservation(manifest, installed.snapshot)) {

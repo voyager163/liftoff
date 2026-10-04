@@ -38,9 +38,6 @@ export async function loadManifest(projectRoot: string) {
 
 export type SupportedProjectManifest = HistoricalLiftoffManifest | LiftoffManifestV8;
 export const SUPPORTED_PROJECT_MANIFEST_VERSIONS: readonly number[] = Object.freeze([...SUPPORTED_MANIFEST_VERSIONS, 8]);
-const currentManifestReader = createManifestV8Reader({
-  catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract
-});
 
 /** Source interpretation only; historical callers keep the unchanged v2-v7 reader above. */
 export function parseProjectManifest(raw: unknown): SupportedProjectManifest {
@@ -51,7 +48,11 @@ export function parseProjectManifest(raw: unknown): SupportedProjectManifest {
     throw new FileSystemError('Manifest artifactVersion must be an own enumerable integer data field.');
   }
   const version: unknown = descriptor.value;
-  if (version === 8) return currentManifestReader.parseManifestV8(raw);
+  if (version === 8) {
+    return createManifestV8Reader({
+      catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract
+    }).parseManifestV8(raw);
+  }
   if (typeof version === 'number' && Number.isInteger(version) && !SUPPORTED_MANIFEST_VERSIONS.includes(version)) {
     throw new FileSystemError(
       `Unsupported manifest artifactVersion ${version}: supported values are ${SUPPORTED_PROJECT_MANIFEST_VERSIONS.join(', ')}. ` +

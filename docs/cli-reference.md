@@ -80,6 +80,13 @@ framework markers. A valid source report does not prove native verification or
 live governance enforcement. Public v8 generation/update is not enabled by this
 read support; other operations retain their explicitly supported contracts.
 
+For v8, `doctor` reports bounded source inventory from active bindings, not
+historical default paths. Unresolved bindings and unsafe/invalid source remain
+visible failures. Excluded entries are not inspected, and the runtime layer
+explicitly distinguishes source observation from unexecuted tests, builds,
+Compose and OpenTofu checks. Manual does not acquire an external-framework
+requirement; selected workload and coding-agent prerequisites still apply.
+
 ## Capability discovery
 
 For skill and automation negotiation, `liftoff capabilities --json` is a

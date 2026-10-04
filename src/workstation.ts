@@ -69,8 +69,8 @@ export interface WorkstationRequirementSelection {
     provider: { id: ProviderId };
     frontend?: boolean;
   };
-  specWorkflow: { id: SpecWorkflowId };
-  framework: { version: string };
+  specWorkflow: { id: SpecWorkflowId | 'manual' };
+  framework: { version: string } | null;
   agents: Array<{ id: CodingAgentId; label: string }>;
 }
 
@@ -114,6 +114,9 @@ export function selectWorkstationRequirements(
   plan: ProjectPlan | WorkstationRequirementSelection,
   options: RequirementSelectionOptions = {}
 ): SelectedRequirement[] {
+  if (!['openspec', 'spec-kit', 'manual'].includes(plan.specWorkflow.id)) {
+    throw new Error('Workstation prerequisite selection requires a supported workflow.');
+  }
   const scope = options.scope ?? 'initialization';
   const selected = new Map<WorkstationRequirementId, SelectedRequirement>();
   const add = (
@@ -191,14 +194,16 @@ export function selectWorkstationRequirements(
       minimumVersion: supportedStack.runtimes.node.minimumVersion
     });
     if (options.includeFramework !== false) {
+      if (!plan.framework) throw new Error('OpenSpec prerequisite selection requires its framework contract.');
       add('openspec', 'selected spec-driven framework', { exactVersion: plan.framework.version });
     }
-  } else {
+  } else if (plan.specWorkflow.id === 'spec-kit') {
     add('python', 'Spec Kit runtime', {
       minimumVersion: supportedStack.runtimes.python.minimumVersion
     });
     add('uv', 'Spec Kit installer and launcher');
     if (options.includeFramework !== false) {
+      if (!plan.framework) throw new Error('Spec Kit prerequisite selection requires its framework contract.');
       add('spec-kit', 'selected spec-driven framework', { exactVersion: plan.framework.version });
     }
   }

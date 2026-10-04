@@ -757,6 +757,13 @@ falling back to old generated paths. Bound-directory observation uses the existi
 256-entry local input limit and fails explicitly if it cannot finish.
 Printing a command does not execute it, approve its effects or guarantee future
 path identity; developer review and any operation-specific permissions still apply.
+V8 doctor uses the same source reader and bounded local input capture rather than
+the historical graph, default `backend` paths or project configuration commands.
+It reports unresolved bindings and actual capture failures, and explicitly
+separates observed source inventory from unexecuted native verification. Manual
+workstation selection has no external framework contract or fallback to Spec Kit;
+selected workload and agent requirements still apply. The npm CLI's Node runtime
+requirement is unchanged; this is not native-bundle qualification.
 `createManifestV8Candidate` provides an independent origin-aware candidate writer
 with closed `fresh`, `historical-successor` and `maintenance` inputs. Fresh
 provenance comes only from a complete supplied artifact inventory. Historical

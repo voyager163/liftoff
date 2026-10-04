@@ -9,7 +9,7 @@ import { createManifestV8ProjectReader, type ManifestV8ProjectLeaf } from '../..
 import { createManifestV8Reader } from '../../src/domain/project/manifest/v8.js';
 import { readManifestPluginMetadata } from '../../src/domain/project/manifest/plugins.js';
 import { toSafeProjectName } from '../../src/domain/project/planning.js';
-import type { ManifestActiveLayout } from '../../src/domain/project/contracts.js';
+import type { CodingAgentId, ManifestActiveLayout } from '../../src/domain/project/contracts.js';
 import { canonicalJson, canonicalSha256 } from '../../src/domain/governance/activation/canonical-json.js';
 import { createModernActivationRecordContract, type ModernPlanInput } from '../../src/domain/governance/activation/modern-records.js';
 import { createModernGovernanceContextContract } from '../../src/domain/governance/policy/modern-context.js';
@@ -47,16 +47,20 @@ export function selected(leaf: ManifestV8ProjectLeaf, profile: 'none' | 'single-
 
 /** Writes control-format fixtures, not framework initialization or execution evidence. */
 export async function writeModernInstalledProject(directory: string, workflow: 'manual' | 'openspec' | 'spec-kit' = 'manual',
-  profile: 'none' | 'single-maintainer-gitflow' | 'team-gitflow' = 'single-maintainer-gitflow') {
+  profile: 'none' | 'single-maintainer-gitflow' | 'team-gitflow' = 'single-maintainer-gitflow',
+  options: { agents?: readonly CodingAgentId[]; frameworkVersion?: string; activeLayout?: ManifestActiveLayout } = {}) {
   const contracts = { catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract };
+  const agents = options.agents ?? (workflow === 'manual' ? [] : ['github-copilot']);
   const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({
     project: { name: 'Installed local fixture',
       workload: { kind: 'standard', apiStack: 'node-fastify', cloud: 'azure', region: 'eastus', frontend: false, environments: ['dev'] },
-      specWorkflow: workflow, agents: workflow === 'manual' ? [] : ['github-copilot'],
-      ...(workflow === 'spec-kit' ? { defaultAgent: 'github-copilot' } : {}) },
-    framework: workflow === 'manual' ? { state: 'not-required' } : { state: 'initialized', adapter: workflow, contractVersion: '1.2.3' }
+      specWorkflow: workflow, agents: [...agents],
+      ...(workflow === 'spec-kit' ? { defaultAgent: agents[0] } : {}) },
+    framework: workflow === 'manual' ? { state: 'not-required' } :
+      { state: 'initialized', adapter: workflow, contractVersion: options.frameworkVersion ?? '1.2.3' }
   });
-  const input = selected(leaf, profile), core = buildModernManagedCore(input);
+  const input = { ...selected(leaf, profile), ...(options.activeLayout ? { activeLayout: options.activeLayout } : {}) };
+  const core = buildModernManagedCore(input);
   const context = profile === 'none' ? undefined : createModernGovernanceContextContract(contracts).buildModernGovernanceContext(input);
   const manifest = createManifestV8Reader(contracts).parseManifestV8({
     artifactVersion: 8, generatedBy: 'Mission Control Liftoff', liftoffVersion: modernActivationSourceContracts()[0].identity.liftoffVersion,
