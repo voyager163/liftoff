@@ -132,6 +132,10 @@ function constructRecords(source: ModernSuccessorSource, current: Awaited<Return
   intent: LocalRevalidationIntent, sourcePlan: ModernSuccessorRevalidationPlan, schedule?: RecordSchedule) {
   const { api, history } = admissible(source), canonical = intent.projectRoot;
   if (!current.preview.selectedPlan) localInputFailure('Revalidation lacks its actual native baseline plan.');
+  if (api.identity.workflow === 'openspec' && sourcePlan.completionSource.status === 'already-completed-source' &&
+      (current.preview.schemaVersion !== 5 || current.result.schemaVersion !== 4)) {
+    localInputFailure('Archived successor completion requires fresh complete current/main/archive native validation.');
+  }
   const refs = { plans: [...source.current.records.plans ?? []], evidence: [...source.current.records.evidence ?? []],
     approvals: [...source.current.records.approvals ?? []] };
   let activation = source.current.state, baselineEvidence: ReturnType<typeof api.createEvidence> | undefined;

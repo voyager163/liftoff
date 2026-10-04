@@ -94,18 +94,80 @@ function validateCommandOutput(input:OpenSpecExecutionInputs,id:string,stdout:st
     same(raw.state,complete===value.tasks.length?'all_done':'ready','apply state');
     if(typeof raw.instruction!=='string'||!raw.instruction.trim())localInputFailure('OpenSpec apply instructions are missing.');
   }else if(id==='openspec-selected'||id==='openspec-all'){
-    object(raw,['items','summary','version','root'],'validation');same(raw.version,'1.0','validation format');
     const expected=id==='openspec-selected'?[{id:value.changeName,type:'change'}]:value.subjects;
-    if(!Array.isArray(raw.items)||raw.items.length!==expected.length)localInputFailure('OpenSpec validation omitted or added subjects.');
-    const subjects=raw.items.map(item=>{
-      const v=object(item,['id','type','valid','issues','durationMs'],'validation item');
-      if(v.valid!==true||canonicalJson(v.issues)!=='[]\n'||typeof v.durationMs!=='number'||!Number.isFinite(v.durationMs)||v.durationMs<0)localInputFailure('OpenSpec strict validation contains issues or incomplete observations.');
-      return {id:v.id,type:v.type};
-    });
-    same(subjects.map(s=>canonicalJson(s)).sort(),expected.map(s=>canonicalJson(s)).sort(),'exact validation subjects');
-    const byType=Object.fromEntries(['change','spec'].flatMap(type=>{
-      const count=expected.filter(s=>s.type===type).length;return count||generatedContext!==undefined&&id==='openspec-all'?[[type,{items:count,passed:count,failed:0}]]:[];
-    }));
-    same(raw.summary,{totals:{items:expected.length,passed:expected.length,failed:0},byType},'validation totals');
+    validateStrictResults(raw,expected,generatedContext!==undefined&&id==='openspec-all');
   }else localInputFailure('Unknown OpenSpec observation command.');
+}
+function validateStrictResults(raw:Record<string,unknown>,expected:readonly {id:string;type:string}[],includeEmptyTypes:boolean):void{
+  object(raw,['items','summary','version','root'],'validation');same(raw.version,'1.0','validation format');
+  if(!Array.isArray(raw.items)||raw.items.length!==expected.length)localInputFailure('OpenSpec validation omitted or added subjects.');
+  const subjects=raw.items.map(item=>{
+    const v=object(item,['id','type','valid','issues','durationMs'],'validation item');
+    if(v.valid!==true||canonicalJson(v.issues)!=='[]\n'||typeof v.durationMs!=='number'||!Number.isFinite(v.durationMs)||v.durationMs<0)localInputFailure('OpenSpec strict validation contains issues or incomplete observations.');
+    return {id:v.id,type:v.type};
+  });
+  same(subjects.map(s=>canonicalJson(s)).sort(),expected.map(s=>canonicalJson(s)).sort(),'exact validation subjects');
+  const byType=Object.fromEntries(['change','spec'].flatMap(type=>{
+    const count=expected.filter(s=>s.type===type).length;return count||includeEmptyTypes?[[type,{items:count,passed:count,failed:0}]]:[];
+  }));
+  same(raw.summary,{totals:{items:expected.length,passed:expected.length,failed:0},byType},'validation totals');
+}
+
+export const openSpecArchivedReadSetPolicy=Object.freeze({
+  kind:'liftoff-openspec-archived-readonly-inputs',version:1,schema:'packaged-spec-driven',
+  scope:'complete-supported-active-main-archives-config-selected-markers',
+  unsupported:'custom-schemas-stores-references-skipped-artifacts-retired-selected-capability-overlapping-active-changes',
+  commands:'selected-main-current-all-archived-all-strict-json',concurrency:1,
+  inputDescriptorBytes:16384,subjects:64,tasks:256,
+  taskCompletion:'observed-archived-checkboxes-only-not-historical-execution-proof',finalization:'not-authorized'
+});
+export interface OpenSpecArchivedExecutionInputs {
+  kind:'liftoff-openspec-archived-readonly-inputs';schemaVersion:1;
+  changeName:string;archiveName:string;capability:string;readSetDigest:string;
+  subjects:readonly {id:string;type:'change'|'spec'}[];archives:readonly string[];
+}
+export function validateArchivedOpenSpecExecutionInputs(input:OpenSpecArchivedExecutionInputs):OpenSpecArchivedExecutionInputs{
+  const value=copyModernLocalData(input);
+  exactRecord(value,['kind','schemaVersion','changeName','archiveName','capability','readSetDigest','subjects','archives'],'Archived OpenSpec read set');
+  if(value.kind!=='liftoff-openspec-archived-readonly-inputs'||value.schemaVersion!==1||
+    [value.changeName,value.archiveName,value.capability].some(name=>typeof name!=='string'||!namePattern.test(name))||
+    !value.changeName.startsWith('bootstrap-')||
+    !(value.archiveName===value.changeName||/^\d{4}-\d{2}-\d{2}-/u.test(value.archiveName)&&value.archiveName.slice(11)===value.changeName)||
+    typeof value.readSetDigest!=='string'||!/^[a-f0-9]{64}$/u.test(value.readSetDigest)||
+    !Array.isArray(value.subjects)||!value.subjects.length||!Array.isArray(value.archives)||!value.archives.length||
+    value.subjects.length+value.archives.length>openSpecArchivedReadSetPolicy.subjects)localInputFailure('Unsupported archived OpenSpec read-set identity or bounds.');
+  const seen=new Set<string>();
+  for(const subject of value.subjects){
+    exactRecord(subject,['id','type'],'Archived OpenSpec current subject');
+    if(typeof subject.id!=='string'||!namePattern.test(subject.id)||!['change','spec'].includes(subject.type)||seen.has(subject.id))localInputFailure('Ambiguous archived OpenSpec current subject.');
+    seen.add(subject.id);
+  }
+  if(value.archives.some(name=>typeof name!=='string'||!namePattern.test(name))||new Set(value.archives).size!==value.archives.length||
+    !value.archives.includes(value.archiveName)||!value.subjects.some(s=>s.id===value.capability&&s.type==='spec')||
+    value.subjects.some(s=>s.id===value.changeName&&s.type==='change'))localInputFailure('Archived OpenSpec selected/main/archive correspondence is incomplete or still active.');
+  if(Buffer.byteLength(canonicalJson(value))>openSpecArchivedReadSetPolicy.inputDescriptorBytes)localInputFailure('Archived OpenSpec descriptor exceeds its fixed record allocation.');
+  return value;
+}
+export function archivedOpenSpecExecutionChecks(input:OpenSpecArchivedExecutionInputs):ModernLocalCheck[]{
+  const value=validateArchivedOpenSpecExecutionInputs(input),commands=[
+    ['openspec-current-main',['validate',value.capability,'--type','spec','--strict','--json','--no-interactive']],
+    ['openspec-current-all',['validate','--all','--strict','--json','--no-interactive','--concurrency','1']],
+    ['openspec-archived-all',['validate','--archived','--strict','--json','--no-interactive','--concurrency','1']]
+  ] as const;
+  return commands.map(([id,args],index)=>({id,status:'planned',inputPaths:[],reasons:['openspec-complete-archived-read-set-v1'],
+    command:{executable:'openspec',args:[...args]},cwdPathParts:[],env:{},
+    prerequisites:index?[commands[index-1][0]]:['framework-source'],
+    effects:['read-only current source and archived task validation; no historical execution proof, task writes, initialization, archive or sync']}));
+}
+export function validateArchivedOpenSpecCommandOutput(input:OpenSpecArchivedExecutionInputs,id:string,stdout:string,projectRoot:string):void{
+  const value=validateArchivedOpenSpecExecutionInputs(input);
+  if(typeof stdout!=='string'||Buffer.byteLength(stdout)>65536||!path.isAbsolute(projectRoot))localInputFailure('Archived OpenSpec output/root exceeds the admitted contract.');
+  let raw:unknown;try{raw=JSON.parse(stdout);}catch{localInputFailure('Archived OpenSpec command did not produce one JSON value.');}
+  if(!isRecord(raw))localInputFailure('Archived OpenSpec JSON output must be an object.');
+  same(raw.root,{path:projectRoot,source:'nearest'},'archived command root');
+  const expected=id==='openspec-current-main'?[{id:value.capability,type:'spec'}]:
+    id==='openspec-current-all'?value.subjects:
+    id==='openspec-archived-all'?value.archives.map(name=>({id:name,type:'change'})):null;
+  if(!expected)localInputFailure('Unknown archived OpenSpec observation command.');
+  validateStrictResults(raw,expected,id==='openspec-current-all');
 }

@@ -27,14 +27,14 @@ import {
 import {
   appendSpecKitDefaultIssues, appendSpecKitDocumentIssues, appendSpecKitSelectedIssues, appendSpecKitTaskIssues,
   extractDeclaredCapabilities, isOpenSpecCodexTarget, isSpecKitInstalledList, isSpecKitIntegrationRecord,
-  mainSpecPurpose, nodeBackendCommand, goBackendCommand, pythonBackendCommand, workerTestCommand,
+  archivedOpenSpecMatchesMain, mainSpecPurpose, nodeBackendCommand, goBackendCommand, pythonBackendCommand, workerTestCommand,
   frontendBuildCommand, tofuFormatCommand, tofuValidateCommand, specKitBootstrapId, specKitBootstrapPath
 } from '../../domain/governance/activation/local-check-values.js';
 import { frameworkOutputPaths, OPEN_SPEC_CODEX_TARGET_PATH } from '../../framework-validation.js';
 import { readModernActivationSuccessorSource } from '../../governance-activation/migration-history.js';
 import { inspectModernInstalledActivation, validateCapturedModernInstalledActivation } from './modern-installed-preflight.js';
 import type { InstalledLocalPreflight, ModernLocalRuntimeInspection, ModernLocalRuntimePlan } from '../../domain/governance/activation/modern-local-runtime.js';
-import {captureCompleteOpenSpecInputs} from './modern-openspec-inputs.js';
+import {captureCompleteOpenSpecInputs,captureArchivedOpenSpecInputs} from './modern-openspec-inputs.js';
 
 const rootReader = createManifestV8Reader({ catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract });
 const key = (parts: readonly string[]) => parts.join('/');
@@ -130,7 +130,7 @@ export async function inspectModernLocalVerification(root: string): Promise<Mode
 }
 
 async function inspectLocalInputs(
-  root: string, installed?: Extract<InstalledLocalPreflight, { status: 'observed' }>, completeOpenSpec=false
+  root: string, installed?: Extract<InstalledLocalPreflight, { status: 'observed' }>, openSpecReadSet:'active'|'archived'|false=false
 ): Promise<ModernLocalInspection> {
   if (typeof root !== 'string' || !root || root.length > 4096 || /[\u0000-\u001f]/u.test(root)) {
     localInputFailure('Local verification requires a bounded project root string.');
@@ -241,7 +241,7 @@ async function inspectLocalInputs(
       if (workflow === 'spec-kit') {
         for (const name of ['spec', 'plan', 'tasks']) await files.read([...specKitBootstrapPath, `${name}.md`]);
       } else {
-        if(completeOpenSpec)await captureCompleteOpenSpecInputs(files);
+        if(openSpecReadSet)await (openSpecReadSet==='archived'?captureArchivedOpenSpecInputs:captureCompleteOpenSpecInputs)(files);
         const name = bootstrapName(manifest), capability = capabilityName(manifest);
         const changes = await files.inventory(['openspec', 'changes']);
         const archives = await files.inventory(['openspec', 'changes', 'archive']);
@@ -619,8 +619,8 @@ function checkWorkflow(data: Derivation): { state: string; command: ModernLocalC
   if (archivedSource) {
     const main = ['openspec', 'specs', capability, 'spec.md'], content = requiredText(data, main), purpose = mainSpecPurpose(content);
     if (!purpose || purpose.startsWith('TBD - created by archiving change')) localInputFailure('Archived bootstrap has no concrete synchronized main Purpose.');
-    const source = requiredText(data, [...base, 'specs', capability, 'spec.md']).replace(/\r\n/g, '\n').replace('## ADDED Requirements', '## Requirements');
-    if (!content.replace(/\r\n/g, '\n').includes(source)) localInputFailure('Archived and synchronized capability sources do not have the required concrete content relationship.');
+    const source = requiredText(data, [...base, 'specs', capability, 'spec.md']);
+    if (!archivedOpenSpecMatchesMain(content, source)) localInputFailure('Archived and synchronized capability sources do not have the required concrete content relationship.');
     data.omitFromBaseline.add(key(main));
   }
   return { state: archivedSource ? 'openspec-archived-source' : 'openspec-active-source',
@@ -879,9 +879,12 @@ export async function inspectModernLocalRuntime(root: string): Promise<ModernLoc
   return inspectRuntime(root,false);
 }
 export async function inspectModernOpenSpecRuntime(root:string):Promise<ModernLocalRuntimeInspection>{
-  return inspectRuntime(root,true);
+  return inspectRuntime(root,'active');
 }
-async function inspectRuntime(root:string,completeOpenSpec:boolean):Promise<ModernLocalRuntimeInspection>{
+export async function inspectModernArchivedOpenSpecRuntime(root:string):Promise<ModernLocalRuntimeInspection>{
+  return inspectRuntime(root,'archived');
+}
+async function inspectRuntime(root:string,openSpecReadSet:'active'|'archived'|false):Promise<ModernLocalRuntimeInspection>{
   if (typeof root !== 'string' || !root || root.length > 4096) localInputFailure('Runtime observation requires a bounded root.');
   const selectedRoot = root;
   const installed = await inspectModernInstalledActivation(selectedRoot);
@@ -889,7 +892,7 @@ async function inspectRuntime(root:string,completeOpenSpec:boolean):Promise<Mode
   const local = installed.classification === 'released-source'
     ? { status: 'released-source' as const, root: installed.snapshot.root,
       manifestVersion: Number(historyManifestVersion(installed)), sourceDigest: installed.binding }
-    : await inspectLocalInputs(selectedRoot, installed,completeOpenSpec);
+    : await inspectLocalInputs(selectedRoot, installed,openSpecReadSet);
   const fresh = await inspectModernInstalledActivation(selectedRoot);
   if (fresh.status !== 'observed' || fresh.binding !== installed.binding) {
     return { kind: 'liftoff-modern-local-runtime-inputs', schemaVersion: 1, status: 'blocked', blockers: ['Installed input changed during runtime scope observation.'] };

@@ -26,7 +26,7 @@ export interface LocalExecutionWorkspace {
 export async function createModernLocalWorkspace(root:string,preview:LocalExecutionPreview,port:LocalExecutionRecordStore):Promise<LocalExecutionWorkspace>{
   preview=validateLocalExecutionPreview(preview,new Date());const store=captureLocalExecutionStore(port,root);
   assertExecutableLocalExecutionPreview(preview);
-  if(preview.schemaVersion===3||preview.schemaVersion===4)await loadLocalExecutionConsent(root,preview,store);
+  if(preview.schemaVersion===3||preview.schemaVersion===4||preview.schemaVersion===5)await loadLocalExecutionConsent(root,preview,store);
   if(preview.projectRoot!==root)localInputFailure('Local workspace intent root mismatch.');
   const project=await canonicalWorkspaceBoundary(root);
   const ownerToken=randomBytes(32).toString('hex'),ownerTokenDigest=canonicalSha256(ownerToken);

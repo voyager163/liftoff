@@ -1430,6 +1430,60 @@ unavailable for this path. See
 [OpenSpec initialization qualification](CONTRIBUTING.md#openspec-initialization-qualification)
 for the separate native opt-in and the limits of its evidence.
 
+#### Private archived OpenSpec revalidation
+
+`prepareModernArchivedOpenSpecExecution(root, { kind: 'verify-openspec-archived', preparation })`
+creates private preview schema5 with `archivedOpenSpecInputs`. The shared
+`approveModernLocalExecution` entrypoint issues consent schema4, binding
+`archivedOpenSpecInputDigest`; result schema4 retains exact current-validation
+JSON and its command-output commitments. Existing schemas1-4 keep their meanings:
+generic OpenSpec schema2 remains blocked and active schemas3/4 still reject
+nonempty archives. This is a separate read-only protocol, not initialization or
+permission to replay an inactive change.
+
+The complete bounded capture includes configuration, all supported active changes,
+all archives, main capabilities, selected integration markers and directory
+membership. Exactly one matching archived bootstrap and its concrete synchronized
+main capability must remain; an active bootstrap, ambiguous source, missing
+artifact, unsupported member or overlapping active capability blocks admission.
+Archive/main correspondence tolerates CRLF and OpenSpec's blank-line compaction
+immediately after `## Purpose`, not changes to Purpose or requirement bodies.
+Raw source bytes remain bound by capture and consent; formatting changes after
+approval still require a fresh preview.
+Configuration supports packaged `spec-driven`, text context, text-only rules for
+the packaged artifacts and an optional boolean `githubCopilot.cloudAgent`.
+That captured preference does not authorize cloud-agent setup or other effects.
+Custom schemas, stores and external configuration references remain unsupported.
+Current subjects and archives share a 64-subject ceiling; each archived task list
+must contain 1-256 nonempty completed tasks. Liftoff does not rewrite their bytes;
+a successful result requires unchanged original source.
+
+After the two in-process source checks, three exact commands run in order:
+`validate <capability> --type spec --strict --json --no-interactive`,
+`validate --all --strict --json --no-interactive --concurrency 1`, and
+`validate --archived --strict --json --no-interactive --concurrency 1`.
+Only then may the applicable approved project checks run. Output validation
+requires the exact workspace, complete subject sets, issue-free results and
+matching totals, including an explicit zero-change total when no active change
+exists. Archived task validation observes current source, not historical task
+execution or original initializer provenance.
+
+Approval, workspace admission, per-effect recapture and completed-result readback
+use this same distinct input contract. The fresh empty OpenSpec home, complete
+installed-tool identity, source protection, settlement, deadlines and existing
+16-KiB descriptor/32-KiB JSON/64-KiB record limits are unchanged. Approved project
+code retains host capabilities; this is not a sandbox.
+An already-installed activation successor can use the completed native result
+for private revalidation publication, with separate exact-byte approval and
+independent installed readback. Original transition/preparation identities,
+archived/main source and retention obligations survive unchanged. Source-only
+archive recognition cannot supply that native proof.
+
+Fresh OpenSpec synchronization/archive, deployment-state work and public v8
+routing remain separate. See
+[archived qualification](CONTRIBUTING.md#archived-openspec-revalidation-qualification)
+for the explicit native selection and portable evidence boundary.
+
 ### Private local completion and attributed recovery
 
 `prepareModernLocalFinalization`, `approveModernLocalFinalization` and

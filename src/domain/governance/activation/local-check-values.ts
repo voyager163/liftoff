@@ -50,6 +50,12 @@ export function mainSpecPurpose(markdown: string): string | null {
   return match?.[1]?.trim() || null;
 }
 
+export function archivedOpenSpecMatchesMain(main: string, delta: string): boolean {
+  // OpenSpec archive compacts blank lines after Purpose without changing its body.
+  const normalize = (value: string) => value.replace(/\r\n/g, '\n').replace(/^## Purpose\n+/mu, '## Purpose\n');
+  return normalize(main).includes(normalize(delta).replace('## ADDED Requirements', '## Requirements'));
+}
+
 export function isSpecKitIntegrationRecord(parsed: unknown): parsed is Record<string, unknown> {
   return !(typeof parsed !== 'object' || parsed === null || Array.isArray(parsed));
 }

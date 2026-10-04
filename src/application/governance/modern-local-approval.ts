@@ -8,12 +8,12 @@ import {copyModernLocalData,localInputFailure,capturedFileBytes} from '../../dom
 import {canonicalSha256,canonicalJson} from '../../domain/governance/activation/canonical-json.js';
 import {exactRecord} from '../../domain/project/manifest/fields.js';
 import {localExecutionPolicy,localExecutionDigest,validateLocalExecutionPreview,validateLocalExecutionScopes,validateLocalExecutionResult,validateLocalExecutionState,validateLocalExecutionConsentRecord,
-  openSpecExecutionPolicy,openSpecReadOnlyExecutionPolicy,openSpecInitializedExecutionPolicy,openSpecExecutionAdmission,assertExecutableLocalExecutionPreview,hasOpenSpecExecutionIdentity,
+  openSpecExecutionPolicy,openSpecReadOnlyExecutionPolicy,openSpecInitializedExecutionPolicy,openSpecArchivedExecutionPolicy,openSpecExecutionAdmission,assertExecutableLocalExecutionPreview,hasOpenSpecExecutionIdentity,
   type LocalExecutionPreview,type LocalExecutionScopes,type LocalExecutionConsent,type LocalExecutionState,type LocalExecutionResult,type LocalExecutionTool} from '../../domain/governance/activation/modern-local-runtime.js';
-import {inspectModernLocalRuntime,inspectModernOpenSpecRuntime,planModernLocalRuntime} from './modern-local-inputs.js';
-import {deriveCompleteOpenSpecInputs,deriveOpenSpecInitialization} from './modern-openspec-inputs.js';
+import {inspectModernLocalRuntime,inspectModernOpenSpecRuntime,inspectModernArchivedOpenSpecRuntime,planModernLocalRuntime} from './modern-local-inputs.js';
+import {deriveCompleteOpenSpecInputs,deriveArchivedOpenSpecInputs,deriveOpenSpecInitialization} from './modern-openspec-inputs.js';
 import {openSpecInitializationPolicy,validateBootstrapScopeAttestation,type BootstrapScopeAttestation} from '../../domain/governance/activation/modern-openspec-obligations.js';
-import {openSpecExecutionChecks,openSpecReadSetPolicy} from '../../domain/governance/activation/modern-openspec-execution.js';
+import {openSpecExecutionChecks,openSpecReadSetPolicy,archivedOpenSpecExecutionChecks,openSpecArchivedReadSetPolicy} from '../../domain/governance/activation/modern-openspec-execution.js';
 import {observeModernLocalTools,assertModernLocalToolsCurrent} from '../../adapters/process/modern-local-tools.js';
 import {parseApplicationPreparation,resolveCapturedApplicationPreparationInputs} from '../repair/application-preparation-inputs.js';
 import type {ApplicationTargetArtifact} from '../repair/application-types.js';
@@ -57,14 +57,19 @@ export async function prepareModernLocalExecution(root:string,request:{kind:'ver
   await store.write('preview',derived.preview.fingerprint,derived.preview);
   return derived.preview;
 }
+type LocalExecutionInputMode='generic'|'active-openspec'|'initialized-openspec'|'archived-openspec';
+function previewInputMode(preview:LocalExecutionPreview):LocalExecutionInputMode{
+  return preview.schemaVersion===5?'archived-openspec':preview.schemaVersion===4?'initialized-openspec':
+    preview.schemaVersion===3?'active-openspec':'generic';
+}
 async function deriveLocalExecution(canonical:string,requests:readonly ApplicationPreparationRequest[],
-  issuance?:Pick<LocalExecutionPreview,'operationId'|'createdAt'|'expiresAt'>,completeOpenSpec=false,initialized=false){
-  const captured=await captureLocalExecutionInput(canonical,requests,completeOpenSpec,initialized);
+  issuance?:Pick<LocalExecutionPreview,'operationId'|'createdAt'|'expiresAt'>,mode:LocalExecutionInputMode='generic'){
+  const captured=await captureLocalExecutionInput(canonical,requests,mode);
   const {inspection,plan,binding,preparation}=captured;
   const tools=await observeModernLocalTools(canonical,plan.localPlan!.checks,preparation);
   const now=new Date(),createdAt=issuance?.createdAt??now.toISOString(),expiresAt=issuance?.expiresAt??new Date(now.getTime()+localExecutionPolicy.approvalLifetimeMs).toISOString();
   const preview=assembleLocalExecutionPreview(canonical,captured,tools,{operationId:issuance?.operationId,createdAt,expiresAt},now);
-  const after=(await captureLocalExecutionRuntime(canonical,completeOpenSpec,initialized)).binding;
+  const after=(await captureExecutionRuntime(canonical,mode)).binding;
   if(canonicalJson(after)!==canonicalJson(binding))localInputFailure('Original inputs changed while tools were being inspected.');
   return {preview,inspection,preparation};
 }
@@ -72,7 +77,7 @@ export async function prepareModernOpenSpecExecution(root:string,request:{kind:'
   const selected=copyModernLocalData({root,request});exactRecord(selected.request,['kind','preparation'],'OpenSpec execution request');
   if(selected.request.kind!=='verify-openspec-local')localInputFailure('Fresh complete OpenSpec execution intent is required.');
   const requests=parseApplicationPreparation(selected.request.preparation),canonical=await localExecutionRoot(selected.root);
-  const derived=await deriveLocalExecution(canonical,requests,undefined,true);
+  const derived=await deriveLocalExecution(canonical,requests,undefined,'active-openspec');
   await localExecutionStore(canonical).write('preview',derived.preview.fingerprint,derived.preview);
   return derived.preview;
 }
@@ -81,12 +86,27 @@ export async function prepareModernOpenSpecInitializedBaseline(root:string,reque
   if(selected.request.kind!=='verify-openspec-initialized')localInputFailure('Fresh initialized-baseline request required.');
   const requests=parseApplicationPreparation(selected.request.preparation);
   if(requests.some(r=>r.network))localInputFailure('Initialized baseline permits no dependency network.');
-  const canonical=await localExecutionRoot(selected.root),derived=await deriveLocalExecution(canonical,requests,undefined,true,true);
+  const canonical=await localExecutionRoot(selected.root),derived=await deriveLocalExecution(canonical,requests,undefined,'initialized-openspec');
+  await localExecutionStore(canonical).write('preview',derived.preview.fingerprint,derived.preview);return derived.preview;
+}
+export async function prepareModernArchivedOpenSpecExecution(root:string,request:{kind:'verify-openspec-archived';preparation:readonly ApplicationPreparationRequest[]}):Promise<LocalExecutionPreview>{
+  const selected=copyModernLocalData({root,request});exactRecord(selected.request,['kind','preparation'],'Archived OpenSpec execution request');
+  if(selected.request.kind!=='verify-openspec-archived')localInputFailure('Fresh archived OpenSpec validation intent is required.');
+  const requests=parseApplicationPreparation(selected.request.preparation),canonical=await localExecutionRoot(selected.root);
+  const derived=await deriveLocalExecution(canonical,requests,undefined,'archived-openspec');
   await localExecutionStore(canonical).write('preview',derived.preview.fingerprint,derived.preview);return derived.preview;
 }
 export async function captureLocalExecutionRuntime(canonical:string,completeOpenSpec=false,initialized=false){
   if(initialized&&!completeOpenSpec)localInputFailure('Initialization requires complete OpenSpec input admission.');
-  const inspection=await (completeOpenSpec?inspectModernOpenSpecRuntime:inspectModernLocalRuntime)(canonical);
+  return captureExecutionRuntime(canonical,initialized?'initialized-openspec':completeOpenSpec?'active-openspec':'generic');
+}
+export async function captureLocalExecutionPreviewRuntime(canonical:string,preview:LocalExecutionPreview){
+  return captureExecutionRuntime(canonical,previewInputMode(preview));
+}
+async function captureExecutionRuntime(canonical:string,mode:LocalExecutionInputMode){
+  const initialized=mode==='initialized-openspec',archived=mode==='archived-openspec',
+    completeOpenSpec=mode==='active-openspec'||initialized;
+  const inspection=await (archived?inspectModernArchivedOpenSpecRuntime:completeOpenSpec?inspectModernOpenSpecRuntime:inspectModernLocalRuntime)(canonical);
   let plan=await planModernLocalRuntime(inspection,initialized);
   executionBinding(plan);
   if(inspection.status!=='observed'||inspection.local.status!=='modern-observed')localInputFailure('Missing actual captured runtime inputs.');
@@ -95,7 +115,8 @@ export async function captureLocalExecutionRuntime(canonical:string,completeOpen
   const manifest=createManifestV8Reader({catalog:projectCatalog,resolveSourceContract:resolveModernManifestV8SourceContract}).parseManifestV8(JSON.parse(raw.toString('utf8')));
   const initialization=initialized?deriveOpenSpecInitialization(snapshot,manifest):null;
   const openSpecInputs=completeOpenSpec?deriveCompleteOpenSpecInputs(snapshot,manifest,initialization??undefined):null;
-  if(openSpecInputs){
+  const archivedOpenSpecInputs=archived?deriveArchivedOpenSpecInputs(snapshot,manifest):null;
+  if(openSpecInputs||archivedOpenSpecInputs){
     const original=plan.localPlan!.checks,source=original.find(c=>c.id==='source-consistency')!,framework=original.find(c=>c.id==='framework-source')!;
     const remaining=original.filter(c=>!['source-consistency','framework-source'].includes(c.id)).flatMap(check=>{
       const r=initialization?.roots.find(r=>check.id===`tofu-validate:${r.component}`);
@@ -103,14 +124,17 @@ export async function captureLocalExecutionRuntime(canonical:string,completeOpen
         env:{},prerequisites:['explicit initialization preparation consent'],effects:['private provider-free backend-disabled init; no original writes or network']},
         {...check,env:{},prerequisites:[`tofu-initialize:${r.component}`]}]:[check];
     });
-    const checks=[source,{...framework,command:null,prerequisites:[],effects:[]},...openSpecExecutionChecks(openSpecInputs),...remaining];
+    const workflowChecks=archivedOpenSpecInputs?archivedOpenSpecExecutionChecks(archivedOpenSpecInputs):openSpecExecutionChecks(openSpecInputs!);
+    const checks=[source,{...framework,command:null,prerequisites:[],effects:[]},...workflowChecks,...remaining];
     plan={...plan,localPlan:{...plan.localPlan!,checks,recipeSet:{...plan.localPlan!.recipeSet,
-      digest:canonicalSha256({originalRecipe:plan.localPlan!.recipeSet.digest,policy:openSpecReadSetPolicy,openSpecInputs,checks,...(initialization?{initialization,initializationPolicy:openSpecInitializationPolicy}:{})})}}};
+      digest:canonicalSha256({originalRecipe:plan.localPlan!.recipeSet.digest,
+        ...(archivedOpenSpecInputs?{policy:openSpecArchivedReadSetPolicy,archivedOpenSpecInputs}:{policy:openSpecReadSetPolicy,openSpecInputs}),
+        checks,...(initialization?{initialization,initializationPolicy:openSpecInitializationPolicy}:{})})}}};
   }
-  return {inspection,plan,binding:executionBinding(plan),manifest,openSpecInputs,initialization};
+  return {inspection,plan,binding:executionBinding(plan),manifest,openSpecInputs,initialization,archivedOpenSpecInputs};
 }
-async function captureLocalExecutionInput(canonical:string,requests:readonly ApplicationPreparationRequest[],completeOpenSpec=false,initialized=false){
-  const captured=await captureLocalExecutionRuntime(canonical,completeOpenSpec,initialized),{inspection,plan,manifest}=captured;
+async function captureLocalExecutionInput(canonical:string,requests:readonly ApplicationPreparationRequest[],mode:LocalExecutionInputMode='generic'){
+  const captured=await captureExecutionRuntime(canonical,mode),{inspection,plan,manifest}=captured;
   if(inspection.status!=='observed'||inspection.local.status!=='modern-observed')localInputFailure('Missing actual captured runtime inputs.');
   const snapshot=inspection.local.snapshot;
   const targets:ApplicationTargetArtifact[]=[];
@@ -137,10 +161,10 @@ async function captureLocalExecutionInput(canonical:string,requests:readonly App
 }
 function assembleLocalExecutionPreview(canonical:string,captured:Awaited<ReturnType<typeof captureLocalExecutionInput>>,tools:readonly LocalExecutionTool[],
   issuance:{operationId?:string;createdAt:string;expiresAt:string},now:Date){
-  const {inspection,plan,binding,manifest,preparation,openSpecInputs,initialization}=captured,{createdAt,expiresAt}=issuance;
+  const {inspection,plan,binding,manifest,preparation,openSpecInputs,initialization,archivedOpenSpecInputs}=captured,{createdAt,expiresAt}=issuance;
   const openSpec=manifest.project.specWorkflow==='openspec';
   if(openSpec!==tools.some(t=>t.id==='openspec')||openSpec!==plan.localPlan!.checks.some(c=>c.command?.executable==='openspec'))localInputFailure('Actual workflow/check/tool OpenSpec identity mismatch.');
-  const policy=initialization?openSpecInitializedExecutionPolicy:openSpecInputs?openSpecReadOnlyExecutionPolicy:openSpec?openSpecExecutionPolicy:localExecutionPolicy;
+  const policy=archivedOpenSpecInputs?openSpecArchivedExecutionPolicy:initialization?openSpecInitializedExecutionPolicy:openSpecInputs?openSpecReadOnlyExecutionPolicy:openSpec?openSpecExecutionPolicy:localExecutionPolicy;
   let selectedPlan:LocalExecutionPreview['selectedPlan']=null;
   if(manifest.governance.profile!=='none'){
     const leaf=createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({project:manifest.project,framework:manifest.framework});
@@ -148,7 +172,8 @@ function assembleLocalExecutionPreview(canonical:string,captured:Awaited<ReturnT
       selection:{...leaf,profile:manifest.governance.profile},pluginResolutionDigest:manifest.plugins.resolutionDigest,activeLayoutDigest:manifest.governance.activationIdentity.activeLayoutDigest});
     const phaseId='local-baseline-verified',phase=api.graph.phases.find(phase=>phase.id===phaseId)!;
     selectedPlan=api.createPlan({phaseId,createdAt,expiresAt,stateHash:inspection.installed.current?canonicalSha256(inspection.installed.current.state):null,
-      baselineDigest:binding.baselineDigest,inputDigest:binding.observationDigest,transitionDigest:canonicalSha256({binding,policy,tools,preparation,...(initialization?{initialization}:{}),...(openSpecInputs?{openSpecInputs}:openSpec?{executionAdmission:openSpecExecutionAdmission}:{})}),
+      baselineDigest:binding.baselineDigest,inputDigest:binding.observationDigest,transitionDigest:canonicalSha256({binding,policy,tools,preparation,...(initialization?{initialization}:{}),
+        ...(archivedOpenSpecInputs?{archivedOpenSpecInputs}:openSpecInputs?{openSpecInputs}:openSpec?{executionAdmission:openSpecExecutionAdmission}:{})}),
       operations:[{adapter:'local-evidence',actionId:'governance.local.observe-approved-checks',mutationClass:'read-worktree',phaseId,
         inputs:{recipeDigest:binding.recipeDigest,completeCheckIds:plan.localPlan!.checks.map(check=>check.id)},destination:{type:'local',identity:canonical},remote:false,destructive:false}],
       approval:{gateKind:phase.approvalGate.kind,required:false,envelopeId:null,envelopeHash:null,evaluation:{phaseId,gateKind:phase.approvalGate.kind,questionKind:null,approvalRequired:false,status:'not-required',envelopeId:null,envelopeHash:null,reasons:[],expansionReasons:[]}},
@@ -163,7 +188,8 @@ function assembleLocalExecutionPreview(canonical:string,captured:Awaited<ReturnT
     operationId:issuance.operationId??randomUUID(),createdAt,expiresAt,...binding,policyDigest:canonicalSha256(policy),
     checks:plan.localPlan!.checks.map(({inputPaths:_paths,...check})=>check),tools,preparation,preparationDigest:canonicalSha256(preparation),
     outputRoles,selectedPlan,selectedPlanDigest:selectedPlan?canonicalSha256(selectedPlan):null};
-  const selected=initialization&&openSpecInputs?{...body,schemaVersion:4 as const,openSpecInputs,initialization}:openSpecInputs?{...body,schemaVersion:3 as const,openSpecInputs}:openSpec?{...body,schemaVersion:2 as const,executionAdmission:openSpecExecutionAdmission}:body;
+  const selected=archivedOpenSpecInputs?{...body,schemaVersion:5 as const,archivedOpenSpecInputs}:
+    initialization&&openSpecInputs?{...body,schemaVersion:4 as const,openSpecInputs,initialization}:openSpecInputs?{...body,schemaVersion:3 as const,openSpecInputs}:openSpec?{...body,schemaVersion:2 as const,executionAdmission:openSpecExecutionAdmission}:body;
   return validateLocalExecutionPreview({...selected,fingerprint:localExecutionDigest(selected)},now);
 }
 export async function reconstructLocalExecution(preview:LocalExecutionPreview){
@@ -174,7 +200,7 @@ export async function reconstructLocalExecution(preview:LocalExecutionPreview){
     const entry=value as Record<string,unknown>;
     return {provider:entry.provider,version:entry.version,cwdPathParts:entry.cwdPathParts,packageSource:entry.packageSource,network:entry.network,lifecycle:entry.lifecycle};
   }));
-  const actual=await deriveLocalExecution(captured.projectRoot,requests,captured,captured.schemaVersion===3||captured.schemaVersion===4,captured.schemaVersion===4);
+  const actual=await deriveLocalExecution(captured.projectRoot,requests,captured,previewInputMode(captured));
   if(canonicalJson(actual.preview)!==canonicalJson(captured))localInputFailure('Saved intent differs from actual source, tool, lock, recipe or selected-plan reconstruction.');
   return actual;
 }
@@ -199,7 +225,8 @@ export async function approveModernLocalExecution(root:string,fingerprint:string
     return original;
   }
   const body={kind:'liftoff-local-execution-consent' as const,projectRoot:canonical,fingerprint:key,approvedAt:new Date().toISOString(),expiresAt:preview.expiresAt,scopes};
-  const record:LocalExecutionConsent=preview.schemaVersion===3?{...body,schemaVersion:2,openSpecInputDigest:canonicalSha256(preview.openSpecInputs)}:{...body,schemaVersion:1};
+  const record:LocalExecutionConsent=preview.schemaVersion===5?{...body,schemaVersion:4,archivedOpenSpecInputDigest:canonicalSha256(preview.archivedOpenSpecInputs)}:
+    preview.schemaVersion===3?{...body,schemaVersion:2,openSpecInputDigest:canonicalSha256(preview.openSpecInputs)}:{...body,schemaVersion:1};
   await store.write('consent',key,record);return record;
 }
 export async function approveModernOpenSpecInitializedBaseline(root:string,fingerprint:string,input:{scopes:LocalExecutionScopes;bootstrapScopeAttestation:BootstrapScopeAttestation}):Promise<LocalExecutionConsent>{
@@ -257,7 +284,7 @@ export async function readCompletedModernLocalExecution(root:string,fingerprint:
     const entry=value as Record<string,unknown>;
     return {provider:entry.provider,version:entry.version,cwdPathParts:entry.cwdPathParts,packageSource:entry.packageSource,network:entry.network,lifecycle:entry.lifecycle};
   }));
-  const current=await captureLocalExecutionInput(preview.projectRoot,requests,preview.schemaVersion===3||preview.schemaVersion===4,preview.schemaVersion===4);
+  const current=await captureLocalExecutionInput(preview.projectRoot,requests,previewInputMode(preview));
   await assertModernLocalToolsCurrent(preview.projectRoot,records.state.workspace??preview.projectRoot,preview.tools);
   const reconstructed=assembleLocalExecutionPreview(preview.projectRoot,current,preview.tools,preview,new Date(preview.createdAt));
   if(canonicalJson(reconstructed)!==canonicalJson(preview))localInputFailure('Completed execution no longer corresponds to the actual full source/recipe/preparation/plan.');
@@ -278,7 +305,7 @@ export async function inspectModernLocalExecution(root:string,fingerprint:string
   const progress=state?validateLocalExecutionState(state.value as LocalExecutionState,preview):null;
   const observed=result?validateLocalExecutionResult(result.value as LocalExecutionResult,preview,progress?.workspace??undefined):null;
   if(observed?.complete&&(!progress||progress.phase!=='finished'||progress.resultDigest!==observed.resultDigest))localInputFailure('Verified receipt lacks its actual finished operation progress.');
-  if(preview.schemaVersion!==3&&preview.schemaVersion!==4&&hasOpenSpecExecutionIdentity(preview)){
+  if(preview.schemaVersion!==3&&preview.schemaVersion!==4&&preview.schemaVersion!==5&&hasOpenSpecExecutionIdentity(preview)){
     if(preview.schemaVersion===2&&await store.read('consent',fingerprint))localInputFailure('OpenSpec schema2 has no legitimate execution consent.');
     return {kind:'liftoff-local-execution-inspection' as const,projectRoot:canonical,fingerprint,
       status:'blocked' as const,state:progress,result:observed,execution:'not-authorized' as const,admission:openSpecExecutionAdmission};

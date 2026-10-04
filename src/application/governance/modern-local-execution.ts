@@ -8,14 +8,14 @@ import {assertModernLocalToolsCurrent,LocalToolSettlementError} from '../../adap
 import {createApplicationEnvironment} from '../repair/application-environment.js';
 import {CapturedApplicationProtection} from '../repair/application-protection.js';
 import {inspectModernLocalRuntime,planModernLocalRuntime} from './modern-local-inputs.js';
-import {localExecutionRoot,localExecutionStore,loadLocalExecutionPreview,loadLocalExecutionConsent,captureLocalExecutionRuntime,reconstructLocalExecution} from './modern-local-approval.js';
+import {localExecutionRoot,localExecutionStore,loadLocalExecutionPreview,loadLocalExecutionConsent,captureLocalExecutionPreviewRuntime,reconstructLocalExecution} from './modern-local-approval.js';
 import {canonicalSha256} from '../../domain/governance/activation/canonical-json.js';
 import {copyModernLocalData,capturedFileBytes,localInputFailure,rawLocalDigest,ModernLocalInputError} from '../../domain/governance/activation/modern-local-inputs.js';
 import {localExecutionPolicy,validateLocalExecutionResult,type LocalExecutionResult,type LocalExecutionCheckResult,
   assertExecutableLocalExecutionPreview,openSpecMetadataEnvironment,openSpecReadOnlyExecutionPolicy,
   type LocalExecutionPreview,type LocalExecutionTool,type LocalExecutionCode} from '../../domain/governance/activation/modern-local-runtime.js';
 import type {ApplicationResolvedPreparation} from '../repair/application-preparation-types.js';
-import {validateOpenSpecCommandOutput,validateInitializedOpenSpecCommandOutput,type OpenSpecExecutionObservation} from '../../domain/governance/activation/modern-openspec-execution.js';
+import {validateOpenSpecCommandOutput,validateInitializedOpenSpecCommandOutput,validateArchivedOpenSpecCommandOutput,type OpenSpecExecutionObservation} from '../../domain/governance/activation/modern-openspec-execution.js';
 import {createOpenSpecInitializationEnvironment} from './modern-openspec-preparation.js';
 import {initializationObligationOutcomes,openSpecInitializationPolicy,type OpenSpecInitializationOutput} from '../../domain/governance/activation/modern-openspec-obligations.js';
 
@@ -49,7 +49,7 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
   if(preview.preparation.some(step=>typeof step==='object'&&step!==null&&'network'in step&&step.network===true))localInputFailure('Dependency network execution requires a separate authorized fixture/effect qualification; this bounded local executor does not perform it.');
   async function current(){
     if(performance.now()-start>=localExecutionPolicy.operationTimeoutMs)localInputFailure('Local whole-operation deadline exhausted.');
-    const {inspection,plan,binding}=await captureLocalExecutionRuntime(canonical,preview.schemaVersion===3||preview.schemaVersion===4,preview.schemaVersion===4);
+    const {inspection,plan,binding}=await captureLocalExecutionPreviewRuntime(canonical,preview);
     const expected={installedBinding:preview.installedBinding,observationDigest:preview.observationDigest,physicalDigest:preview.physicalDigest,
       baselineDigest:preview.baselineDigest,recipeDigest:preview.recipeDigest};
     if(canonicalSha256(binding)!==canonicalSha256(expected)||canonicalSha256(plan.localPlan!.checks.map(({inputPaths:_paths,...check})=>check))!==canonicalSha256(preview.checks))localInputFailure('Approved original runtime inputs or complete recipes changed.');
@@ -82,7 +82,7 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
       if(node)base.PATH=[path.dirname(node.executablePath),base.PATH??''].filter(Boolean).join(path.delimiter);
       Object.assign(base,{DOCKER_CONFIG:path.join(workspace.roles.home,'docker'),DOCKER_HOST:`unix://${path.join(workspace.roles.scratch,'no-daemon.sock')}`,
         DOCKER_CLI_HINTS:'false',COMPOSE_DISABLE_ENV_FILE:'1'});
-      const openSpecHome=preview.schemaVersion===3||preview.schemaVersion===4?path.join(workspace.roles.home,'openspec-readonly'):null;
+      const openSpecHome=preview.schemaVersion===3||preview.schemaVersion===4||preview.schemaVersion===5?path.join(workspace.roles.home,'openspec-readonly'):null;
       if(openSpecHome)await mkdir(openSpecHome,{mode:0o700});
       const openSpecHomeIdentity=openSpecHome?await lstat(openSpecHome,{bigint:true}):null;
       async function assertOpenSpecHome(){
@@ -162,8 +162,9 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
         let observed=observedResult(id,tool,command,result,at);
         if(tool.id==='openspec'&&observed.status==='passed'){
           try{
-            if((preview.schemaVersion!==3&&preview.schemaVersion!==4)||result.stderr!=='')localInputFailure('OpenSpec command has unexpected diagnostics or admission.');
-            if(preview.schemaVersion===4)validateInitializedOpenSpecCommandOutput(preview.openSpecInputs,preview.initialization,id,result.stdout,workspace!.roles.project);
+            if((preview.schemaVersion!==3&&preview.schemaVersion!==4&&preview.schemaVersion!==5)||result.stderr!=='')localInputFailure('OpenSpec command has unexpected diagnostics or admission.');
+            if(preview.schemaVersion===5)validateArchivedOpenSpecCommandOutput(preview.archivedOpenSpecInputs,id,result.stdout,workspace!.roles.project);
+            else if(preview.schemaVersion===4)validateInitializedOpenSpecCommandOutput(preview.openSpecInputs,preview.initialization,id,result.stdout,workspace!.roles.project);
             else validateOpenSpecCommandOutput(preview.openSpecInputs,id,result.stdout,workspace!.roles.project);
             await assertOpenSpecHome();
             const proof={id,stdout:result.stdout};
@@ -259,7 +260,9 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
       initialization:{inputDigest:canonicalSha256(preview.initialization),markerProvenance:openSpecInitializationPolicy.markerProvenance,
         attestation:consent.bootstrapScopeAttestation,outputs:initializationOutputs,
         obligations:initializationObligationOutcomes(preview.initialization,checks,consent.bootstrapScopeAttestation)}}:preview.schemaVersion===3?{...body,schemaVersion:2 as const,openSpec:{
-      inputDigest:canonicalSha256(preview.openSpecInputs),projectRoot:path.join(workspace!.directory,'project'),observations:openSpecObservations}}:body;
+      inputDigest:canonicalSha256(preview.openSpecInputs),projectRoot:path.join(workspace!.directory,'project'),observations:openSpecObservations}}:
+      preview.schemaVersion===5?{...body,schemaVersion:4 as const,openSpec:{
+        inputDigest:canonicalSha256(preview.archivedOpenSpecInputs),projectRoot:path.join(workspace!.directory,'project'),observations:openSpecObservations}}:body;
     const result=validateLocalExecutionResult({...selectedBody,resultDigest:canonicalSha256(selectedBody)},preview,workspace?.directory);
     if(workspace&&!uncertain)await workspace.finish(result.resultDigest);
     await store.write('result',preview.fingerprint,result);

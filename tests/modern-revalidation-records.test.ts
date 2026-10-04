@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as storage from '../src/adapters/filesystem/update-previews.js';
 import * as transactions from '../src/adapters/filesystem/reviewed-update-transaction.js';
-import { prepareModernLocalExecution, approveModernLocalExecution } from '../src/application/governance/modern-local-approval.js';
+import { prepareModernLocalExecution, prepareModernArchivedOpenSpecExecution, approveModernLocalExecution } from '../src/application/governance/modern-local-approval.js';
 import { executeModernLocalExecution } from '../src/application/governance/modern-local-execution.js';
 import { prepareModernSuccessorRevalidation, loadRevalidationResult, validateRevalidationConstruction } from '../src/application/update/modern-revalidation-records.js';
 import { inspectModernInstalledActivation } from '../src/application/governance/modern-installed-preflight.js';
@@ -25,16 +25,20 @@ import { completedSpecKitTasks } from '../src/governance-activation/spec-kit-see
 import { fixture, inventory, write } from './fixtures/manifest-update.js';
 import { selected, writeModernHistoricalSource, writeModernSuccessor } from './fixtures/modern-installed-project.js';
 import { writeModernLocalFixtureInputs } from './fixtures/modern-local-project.js';
+import {spec,originalFiles} from './modern-openspec-fixtures.js';
 
 const lane = process.env.LIFTOFF_HCL_TEST_LANE ?? 'auto';
 const qualified = process.platform === 'darwin' && process.arch === 'arm64' && process.versions.node === '24.21.0';
 if (!['native', 'portable', 'auto'].includes(lane) || lane === 'native' && !qualified) throw new Error('Invalid successor native qualification host/lane.');
 const nativeIt = it.skipIf(lane === 'portable' || !qualified);
+const archivedRequested=process.env.LIFTOFF_OPENSPEC_ARCHIVE_TESTS==='1';
+if(archivedRequested&&lane!=='portable'&&!qualified)throw new Error('Archived successor native qualification requires the recorded runtime.');
+const archivedNativeIt=it.skipIf(!archivedRequested||lane==='portable'||!qualified);
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
-async function project(completed = true, version: 1 | 2 | 3 = 3, retained = false) {
+async function project(completed = true, version: 1 | 2 | 3 = 3, retained = false, workflow:'spec-kit'|'openspec'='spec-kit') {
   const f = await fixture();
-  await writeModernHistoricalSource(f.root, version, retained, 'spec-kit');
+  await writeModernHistoricalSource(f.root, version, retained, workflow==='spec-kit'?workflow:undefined);
   const manifest = parseManifest(JSON.parse(await fs.readFile(path.join(f.root, 'liftoff.manifest.json'), 'utf8')));
   const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({ project: manifest.project, framework: manifest.framework });
   const selection = selected(leaf, 'single-maintainer-gitflow');
@@ -44,11 +48,24 @@ async function project(completed = true, version: 1 | 2 | 3 = 3, retained = fals
     ...[...components].map(([component, pathParts]) => ({ kind: 'component' as const, component, pathParts })),
     { kind: 'artifact', logicalName: 'docker-compose', pathParts: compose }
   ] };
-  const successor = await writeModernSuccessor(f.root, version, retained, false, false, { layout, workflow: 'spec-kit' });
+  const successor = await writeModernSuccessor(f.root, version, retained, false, false, { layout, ...(workflow==='spec-kit'?{workflow}:{}) });
   const put = (parts: readonly string[], content: string | Buffer) => write(f.root, parts, content);
-  const tasks = await writeModernLocalFixtureInputs(leaf, components, compose, put);
-  if (!tasks) throw new Error('Expected initialized Spec Kit source fixture.');
-  if (completed) await put(tasks, completedSpecKitTasks(await fs.readFile(path.join(f.root, ...tasks), 'utf8')));
+  let tasks = await writeModernLocalFixtureInputs(leaf, components, compose, put);
+  if (!tasks) throw new Error('Expected initialized framework source fixture.');
+  if(workflow==='openspec'){
+    const base=tasks.slice(0,-1),workload=leaf.project.workload,
+      capability=`${workload.kind==='genai'?workload.pattern:workload.apiStack}-application-baseline`,
+      archived=['openspec','changes','archive',`2026-10-01-${base[2]}`];
+    await put(['openspec','config.yaml'],'schema: spec-driven\ncontext: Preserve the existing successor source and original history.\n');
+    await put([...base,'proposal.md'],`## Why\nPreserve local inputs.\n\n## What Changes\nObserve readonly source.\n\n## Capabilities\n\n### New Capabilities\n- \`${capability}\`: Preserve source.\n\n## Impact\nLocal observation only.\n`);
+    await put([...base,'design.md'],'## Context\nExisting source.\n\n## Goals / Non-Goals\nNo historical execution claim.\n\n## Decisions\nPreserve source.\n\n## Risks / Trade-offs\nNo sandbox claim.\n');
+    await put([...base,'specs',capability,'spec.md'],spec('Preserve '+capability,true));
+    await put(['openspec','specs',capability,'spec.md'],spec('Preserve '+capability));
+    await put(tasks,`- [${completed?'x':' '}] 1.1 Existing historical task, not prior execution proof.\r\n`);
+    await fs.mkdir(path.join(f.root,'openspec','changes','archive'),{recursive:true});
+    await fs.rename(path.join(f.root,...base),path.join(f.root,...archived));
+    tasks=[...archived,'tasks.md'];
+  }else if(completed)await put(tasks,completedSpecKitTasks(await fs.readFile(path.join(f.root,...tasks),'utf8')));
   return { ...f, successor, tasks, put, components };
 }
 
@@ -68,6 +85,34 @@ const approval = (result: Awaited<ReturnType<typeof prepareModernSuccessorRevali
 });
 
 describe('successor native record construction', () => {
+  archivedNativeIt.each([1,2,3] as const)('publishes fresh archived OpenSpec validation for history v%s without rewriting original identities or source',async version=>{
+    const f=await project(true,version,version===2,'openspec'),before=await inventory(f.root),
+      sourceBefore=await originalFiles(path.join(f.root,'openspec')),
+      native=await prepareModernArchivedOpenSpecExecution(f.root,{kind:'verify-openspec-archived',preparation:[]});
+    expect(native.schemaVersion).toBe(5);
+    await approveModernLocalExecution(f.root,native.fingerprint,scopes);
+    const execution=await executeModernLocalExecution(f.root,native.fingerprint);
+    expect(execution.complete,JSON.stringify(execution)).toBe(true);expect(execution.schemaVersion).toBe(4);
+    const result=await prepareModernSuccessorRevalidation(f.root,{kind:'revalidate-successor',executionFingerprint:native.fingerprint});
+    expect(result.phases.map(phase=>phase.status)).toEqual(['complete','complete','complete']);
+    expect(result.originalTransitionDigest).toBe(f.successor.prepared.journal.semanticTransitionDigest);
+    expect(result.originalPreparationDigest).toBe(canonicalSha256(f.successor.prepared.journal.preparation));
+    expect(result.targets).toHaveLength(8);
+    expect(result.targets.every(target=>target.pathParts[0]==='governance')).toBe(true);
+    expect(await inventory(f.root)).toEqual(before);
+    await expect(publishModernSuccessorRevalidation(f.root,result.publicationFingerprint)).rejects.toThrow(/consent/);
+    await approveModernSuccessorRevalidationPublication(f.root,result.publicationFingerprint,approval(result));
+    const published=await publishModernSuccessorRevalidation(f.root,result.publicationFingerprint);
+    expect(published.status).toBe('revalidation-complete-current');
+    expect(published.committed).toBe(true);expect(published.readbackDigest).toMatch(/^[a-f0-9]{64}$/);
+    const after=await inventory(f.root),targets=new Set(result.targets.map(target=>target.pathParts.join('/')));
+    for(const [key,value] of Object.entries(before))if(!targets.has(key))expect(after[key],key).toEqual(value);
+    expect(await originalFiles(path.join(f.root,'openspec'))).toEqual(sourceBefore);
+    const installed=await inspectModernInstalledActivation(f.root);
+    expect(installed.status).toBe('observed');
+    expect((await inspectModernSuccessorRevalidationPublication(f.root,result.publicationFingerprint)).status).toBe('revalidation-complete-current');
+  },300000);
+
   it('requires actual completed native provenance, not a supplied success or guessed receipt', async () => {
     const f = await project(), before = await inventory(f.root), home = await inventory(f.home);
     await expect(prepareModernSuccessorRevalidation(f.root, { kind: 'revalidate-successor', executionFingerprint: 'a'.repeat(64) }))
