@@ -52,8 +52,14 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
               'an external preview; approval separately saves consent. Without --execute, apply-next ' +
               'only inspects saved progress. Keep public request and consent files outside the project. ' +
               'Initialized OpenSpec requires explicit generated-baseline scope attestation; it is not ' +
-              'domain verification. No publication, successor revalidation, or provider operations are ' +
-              'authorized; the private workspace is not a sandbox. Local operations exit 0 for a completed ' +
+              'domain verification; the private workspace is not a sandbox. Separate schema-5 completion ' +
+              'uses --local-operation finalize for admitted Manual/Spec Kit verification, then ' +
+              '--local-operation publish for exact target review, independent approval and execution. ' +
+              'Both require their own closed --inputs for plan/approve and exact --plan for apply-next. ' +
+              'For publication, governance recover --plan <fingerprint> --execute recovers only that attributed transaction; ' +
+              'without --execute it only inspects saved progress. Failure does not imply rollback. ' +
+              'No OpenSpec finalization, successor revalidation, provider or whole-directory rollback ' +
+              'authority is granted. Local operations exit 0 for a completed ' +
               'requested operation or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.'
           }
         : commandDefinitions[command];

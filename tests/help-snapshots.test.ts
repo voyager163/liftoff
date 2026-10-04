@@ -104,6 +104,11 @@ describe('update help review sequence', () => {
       expect(out).toContain('schema-4 v8 verification');
       expect(out).toContain('explicit generated-baseline scope attestation');
       expect(out).toContain('private workspace is not a sandbox');
+      expect(out).toContain('schema-5 completion');
+      expect(out).toContain('--local-operation finalize');
+      expect(out).toContain('--local-operation publish');
+      expect(out).toContain('independent approval');
+      expect(out).toContain('Failure does not imply rollback');
     });
   });
 

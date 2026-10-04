@@ -9,6 +9,7 @@ import { repairCapabilities } from './repair/capabilities.js';
 import { updateReportSchemaVersion } from './update/output.js';
 import { modernGovernanceReportSchemaVersion } from './governance/modern-inspection.js';
 import { modernLocalCommandReportSchemaVersion } from './governance/modern-local-request.js';
+import { modernLocalCompletionReportSchemaVersion } from './governance/modern-local-completion-request.js';
 
 export function installedCapabilities() {
   const registry = builtinPluginRegistry();
@@ -34,6 +35,19 @@ export function installedCapabilities() {
         explicitRequest: true, separateConsent: true, explicitExecution: true,
         workflowFinalization: false, publication: false, successorRevalidation: false,
         scope: 'Exact captured-input verification in a private workspace; not a sandbox or full project readiness. Initialized OpenSpec requires a separate generated-baseline scope attestation.'
+      },
+      modernLocalCompletion: {
+        manifestRead: [8], report: modernLocalCompletionReportSchemaVersion,
+        selectors: {
+          finalize: 'governance <plan|approve|apply-next> --scope local --local-operation finalize',
+          publish: 'governance <plan|approve|apply-next|recover> --scope local --local-operation publish'
+        },
+        workflows: ['manual', 'spec-kit'],
+        profiles: ['none', 'single-maintainer-gitflow', 'team-gitflow'],
+        requests: ['finalize-local', 'review-local-publication'],
+        separateFinalizationConsent: true, separatePublicationConsent: true, explicitExecution: true,
+        attributedRecovery: true, openSpecFinalization: false, successorRevalidation: false, providerOperations: false,
+        scope: 'Existing admitted fresh/current local projects only. Exact-file publication requires original verification, workflow-specific finalization, independent exact-byte consent and current readback. Saved progress is not current proof; no generation, conversion or whole-directory rollback.'
       },
       reports: {
         capabilities: 1, validate: 1, doctor: 1, upgrade: 1,
@@ -73,7 +87,7 @@ export function installedCapabilities() {
       publicStatefulMigration: false,
       projectTelemetryEnrollment: false,
       capabilityIsApproval: false,
-      privateApis: 'Modern finalization/publication, successor revalidation, Manual/team generation and v8 writer APIs are not public CLI support.',
+      privateApis: 'OpenSpec finalization, successor revalidation, Manual/team generation and general v8 project writer APIs are not public CLI support.',
       registration: 'Command syntax does not imply that every option combination is valid or an executor is available.'
     }
   };

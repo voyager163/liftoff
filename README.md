@@ -79,6 +79,13 @@ Builds advertising `schemas.modernLocalVerification` also provide
 separate request, exact approval, and execution commands. This does not convert
 older projects, publish completion records, or authorize cloud operations.
 
+Builds advertising `schemas.modernLocalCompletion` separately expose
+[Manual/Spec Kit local completion](docs/cli-reference.md#modern-local-completion):
+workflow-specific finalization, exact-file review and independent publication
+approval. Attributed recovery is explicit; saved progress is not current proof.
+This does not enable Manual/team project generation, OpenSpec finalization,
+successor revalidation, or whole-directory rollback.
+
 [Existing repositories](docs/existing-repositories.md) ·
 [Safety and consent](docs/safety-and-consent.md) ·
 [Repair modes](docs/cli-reference.md#repair-modes) ·

@@ -18,6 +18,25 @@ const phases = Object.entries(phaseCapabilities);
 const byExecutor = (executor: string) => phases.filter(([, capability]) => capability.executor === executor).map(([id]) => id);
 
 describe('developer activation-completeness guidance', () => {
+  it('documents selected public completion without promoting saved progress or broadening authority', () => {
+    const section = developer.split('### Private local completion and attributed recovery')[1]?.split('\n### ')[0] ?? '';
+    for (const phrase of [
+      'cli/commands/governance-local-completion.ts', '--local-operation finalize', '--local-operation publish',
+      'Schema-5', 'recordedProgressIsCurrentProof: false', 'inspectModernLocalCompletion',
+      'not the public discriminator', 'exact UTF-8 target text', 'Wrong transaction attribution',
+      'not accepted as a public publication selector', 'Successful explicit rollback',
+      'never implies', 'remain separate rollout gates'
+    ]) expect(section).toContain(phrase);
+    const contributing = readFileSync(path.join(process.cwd(), 'CONTRIBUTING.md'), 'utf8');
+    expect(contributing).toContain('LIFTOFF_PUBLIC_COMPLETION_TESTS=1');
+    expect(contributing).toContain('eight case identities');
+    expect(contributing).toContain('not a process crash');
+    const reference = readFileSync(path.join(process.cwd(), 'docs', 'cli-reference.md'), 'utf8');
+    for (const kind of ['finalize-local', 'approve-manual-finalization', 'approve-spec-kit-finalization',
+      'review-local-publication', 'approve-local-publication']) expect(reference).toContain(kind);
+    expect(reference).toContain('**schema 5**');
+    expect(reference).toContain('projectFileEffectsUncertain');
+  });
   it('separates archived current-validation proof from historical execution and public routing',()=>{
     const section=developer.split('#### Private archived OpenSpec revalidation')[1]?.split('\n### ')[0]??'';
     for(const phrase of [

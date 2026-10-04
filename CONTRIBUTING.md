@@ -431,6 +431,32 @@ Neither portable routing specimens nor this native group establish public
 finalization, publication, recovery, successor revalidation, or broader host
 support. Existing dependency-network execution has its separate qualification.
 
+#### Public modern local completion qualification
+
+`tests/modern-local-completion-request.test.ts` covers closed requests and
+independent finalization/publication grammar. Portable cases in
+`tests/modern-local-completion-commands.test.ts` cover producer routing,
+nonexecution, attribution ordering, effect uncertainty and output withholding;
+mocked outcomes are not native publication proof.
+
+```bash
+LIFTOFF_HCL_TEST_LANE=portable npx vitest run tests/modern-local-completion-request.test.ts tests/modern-local-completion-commands.test.ts --maxWorkers=1 --no-file-parallelism
+LIFTOFF_HCL_TEST_LANE=native LIFTOFF_PUBLIC_COMPLETION_TESTS=1 npx vitest run tests/modern-local-completion-commands.test.ts --maxWorkers=1 --no-file-parallelism
+```
+
+The explicit native group requires actual macOS ARM64 Node 24.21.0, native HCL
+admission, Node/npm, OpenTofu 1.12.6 and Docker/Compose. Run the whole file:
+its eight case identities cover Manual/Spec Kit across all three profiles,
+changed-source refusal, and real committed publication followed by attributed
+recovery. Recovery injects a checkpoint-storage failure, not a process crash.
+The journeys first execute genuine public verification, then independently
+approve finalization and exact-file publication. They compare published bytes
+and modes to reviewed targets and preserve non-target file identities. Saved
+progress never replaces current inspection. Controlled framework markers are
+not official initializer provenance. This group needs no Docker daemon,
+dependency network or providers and does not qualify other hosts, OpenSpec
+finalization, successor revalidation, generation or whole-directory rollback.
+
 #### OpenSpec initialization qualification
 
 `tests/modern-openspec-initialization.test.ts` requires the separate explicit

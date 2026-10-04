@@ -163,15 +163,17 @@ export function validateFinalizationPreview(input:LocalFinalizationPreview,now:D
   if(!Array.isArray(p.prospectiveTargets)||p.prospectiveTargets.length>localCompletionPolicy.mutations||p.prospectiveTargets.some(item=>typeof item!=='string'))localInputFailure('Invalid prospective completion roles.');
   return p;
 }
-export function validateFinalizationScopes(input:LocalFinalizationScopes):ManualFinalizationScopes{
-  const value=completionRecord(input,['finalizeLocal','workflowWrites','projectCode','dependencyPreparation','dependencyNetwork','publishLocalRecords'],'Finalization scopes');
+export function validateFinalizationScopes(input:unknown):ManualFinalizationScopes{
+  const keys=['finalizeLocal','workflowWrites','projectCode','dependencyPreparation','dependencyNetwork','publishLocalRecords'];
+  const value=exactRecord(completionRecord(input,keys,'Finalization scopes'),keys,'Finalization scopes');
   if(value.finalizeLocal!==true||value.workflowWrites!==false||Object.entries(value).some(([key,v])=>key!=='finalizeLocal'&&v!==false))localInputFailure('Native finalization requires explicit limited consent; no code/workflow/publication permission.');
-  return value;
+  return {finalizeLocal:true,workflowWrites:false,projectCode:false,dependencyPreparation:false,dependencyNetwork:false,publishLocalRecords:false};
 }
-export function validateSpecKitFinalizationScopes(input:LocalFinalizationScopes):SpecKitFinalizationScopes{
-  const value=completionRecord(input,['finalizeLocal','workflowWrites','projectCode','dependencyPreparation','dependencyNetwork','publishLocalRecords'],'Spec Kit finalization scopes');
+export function validateSpecKitFinalizationScopes(input:unknown):SpecKitFinalizationScopes{
+  const keys=['finalizeLocal','workflowWrites','projectCode','dependencyPreparation','dependencyNetwork','publishLocalRecords'];
+  const value=exactRecord(completionRecord(input,keys,'Spec Kit finalization scopes'),keys,'Spec Kit finalization scopes');
   if(value.finalizeLocal!==true||value.workflowWrites!==true||Object.entries(value).some(([key,v])=>!['finalizeLocal','workflowWrites'].includes(key)&&v!==false))localInputFailure('Spec Kit requires affirmative fixed bootstrap workflow consent, not code/install/publication authority.');
-  return value;
+  return {finalizeLocal:true,workflowWrites:true,projectCode:false,dependencyPreparation:false,dependencyNetwork:false,publishLocalRecords:false};
 }
 export function validateFinalizationConsent(input:LocalFinalizationConsent,p:LocalFinalizationPreview,now:Date):LocalFinalizationConsent{
   const value=completionRecord(input,['kind','schemaVersion','projectRoot','fingerprint','approvedAt','expiresAt','scopes'],'Finalization consent');

@@ -223,9 +223,10 @@ for complete selected scope (or disabled governance's inapplicable nonlocal
 scope), 2 for consistent incomplete work, and 1 for inspection failure.
 `status` and `resume` may return 0 with consistent incomplete work. Local proof
 does not establish activation or lifecycle completion. Modern local verification
-has the separate explicit interface below. Public finalization, publication,
-recovery and modern governance assessment remain unavailable; historical plans
-cannot execute v8 work.
+has the separate explicit interface below. `schemas.modernLocalCompletion`
+separately advertises the admitted Manual/Spec Kit finalization, publication and
+attributed recovery interface. Modern governance assessment remains unavailable;
+historical plans cannot execute v8 work.
 
 ### Modern local verification
 
@@ -318,6 +319,113 @@ a successor transaction, performs recovery, or operates Azure/GitHub providers.
 Fresh OpenSpec synchronization/archive is not exposed here. Automatic directory
 rollback remains unavailable. Human output includes the complete JSON record
 for review; project command stdout/stderr is represented by digests, not echoed.
+
+### Modern local completion
+
+Existing admitted fresh/current v8 Manual and Spec Kit projects can finalize
+successful local verification, review exact publication files, and independently
+approve their publication. This does not enable Manual/team generation, project
+conversion, successor revalidation, OpenSpec finalization, providers or automatic
+whole-directory rollback. Historical, retained, changed-baseline and nonlocal
+progression require their separately supported reconciliation paths.
+
+Keep all request and consent files outside the captured project. Every step
+requires `--scope local` and its exact `--local-operation`; no operation discovers
+or inherits another operation's authority. Finalization starts with:
+
+```json
+{ "kind": "finalize-local", "executionFingerprint": "<completed-verification-fingerprint>" }
+```
+
+```bash
+liftoff governance plan [project] --scope local --local-operation finalize --inputs ../finalize.json --json
+liftoff governance approve [project] --scope local --local-operation finalize --plan <finalization-fingerprint> --inputs ../finalize-consent.json --json
+liftoff governance apply-next [project] --scope local --local-operation finalize --plan <finalization-fingerprint> --execute --json
+```
+
+Review the returned preview before providing the matching Manual consent:
+
+```json
+{
+  "kind": "approve-manual-finalization",
+  "scopes": {
+    "finalizeLocal": true,
+    "workflowWrites": false,
+    "projectCode": false,
+    "dependencyPreparation": false,
+    "dependencyNetwork": false,
+    "publishLocalRecords": false
+  }
+}
+```
+
+For Spec Kit use `kind: "approve-spec-kit-finalization"` and
+`workflowWrites: true`; keep the other values unchanged. Consent must match the
+exact preview. Spec Kit finalization prepares only the fixed bootstrap task
+checkbox changes; it does not complete arbitrary tasks or run an initializer.
+Finalization saves external artifacts, not project files, and does not yet
+establish local completion.
+
+Use the returned **publication fingerprint**, not the finalization fingerprint,
+in a new review request:
+
+```json
+{ "kind": "review-local-publication", "publicationFingerprint": "<publication-fingerprint>" }
+```
+
+```bash
+liftoff governance plan [project] --scope local --local-operation publish --inputs ../publication-review.json --json
+liftoff governance approve [project] --scope local --local-operation publish --plan <publication-fingerprint> --inputs ../publication-consent.json --json
+liftoff governance apply-next [project] --scope local --local-operation publish --plan <publication-fingerprint> --execute --json
+```
+
+Review every `review.files` entry: its path, original precondition, target
+digest/mode and exact UTF-8 `content`. This is saved-artifact review, not a fresh
+source check or approval. Bind independent consent to that exact result:
+
+```json
+{
+  "kind": "approve-local-publication",
+  "publishExactLocalBytes": true,
+  "finalizationFingerprint": "<finalization-fingerprint>",
+  "candidateBinding": "<review.result.candidateBinding>",
+  "targetSetDigest": "<review.result.targetSetDigest>"
+}
+```
+
+Publication independently checks current source, original verification and
+consent, exact target bytes, transaction ownership, durable commit and installed
+readback. Neither previous consent authorizes publication. It changes only the
+reviewed local completion records and, for Spec Kit, admitted bootstrap tasks.
+It does not commit or push Git, deploy infrastructure or authorize activation.
+
+Recover only the selected publication, without replaying it:
+
+```bash
+liftoff governance recover [project] --scope local --local-operation publish --plan <publication-fingerprint> --execute --json
+```
+
+Without `--execute` (including `--execute=false`), `apply-next` and publication
+`recover` only inspect selected saved progress. They never grant current proof,
+approve work or recover implicitly. A different active transaction blocks before
+another operation's authority is read. Finalization has no recovery selector.
+
+Completion command JSON uses **schema 5**, separately from schema-4 verification
+and schema-3 current inspection. `operationComplete` describes the requested
+operation; `localComplete` is true only for returned committed
+`local-complete-current` proof with independent readback and no rollback/cleanup
+failures. Activation and lifecycle remain false. Saved successful progress
+always has `recordedProgressIsCurrentProof: false`; use `governance verify
+--scope local` for independent current inspection.
+
+Requested-effect flags do not prove writes occurred. `publicationCommitted`
+preserves an observed commit and is null if execution returned no outcome.
+`projectFileEffectsUncertain` exposes an unknown outcome or rollback/cleanup
+failures. An error does not imply successful rollback. Confirmed completion or
+clean explicit rollback recovery exits 0; the latter is not local completion.
+A rolled-back publication attempt, pending readback/cleanup, failure or
+uncertainty exits 1. Known credential-shaped output is withheld without claiming
+effects were undone; inspect the protected checkpoint before retrying.
 
 ### Historical completion and public inputs
 
