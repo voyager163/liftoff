@@ -104,6 +104,13 @@ The engine SHALL execute applicable actual project validation, backend tests, fr
 - **WHEN** OpenSpec seed is archived and activation has not begun
 - **THEN** current local checks and synchronized capability validation run without recreating the archive
 
+#### Scenario: Explicit public Manual or Spec Kit completion
+- **WHEN** an admitted v8 caller explicitly selects local finalization of a completed verification and separately reviews and approves exact publication bytes
+- **THEN** workflow-specific consent, publication consent and execution remain independent, and only original provenance, committed exact-file publication and independent current readback establish local completion
+- **AND** selected saved-progress inspection is not fresh proof, a finalization key cannot select publication, and a different active transaction blocks before unrelated authority is read
+- **AND** explicit attributed recovery does not replay publication; a clean rollback may complete recovery without establishing local completion, while uncertain or incomplete effects remain unsuccessful
+- **AND** OpenSpec finalization, successor revalidation, provider operations and whole-directory rollback remain outside this public interface
+
 #### Scenario: Spec Kit baseline is finalized locally
 - **WHEN** Spec Kit local setup runs
 - **THEN** its actual bundle/markers and checks are validated without fake OpenSpec work

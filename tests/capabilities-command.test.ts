@@ -76,6 +76,17 @@ describe('project-independent capability discovery', () => {
       explicitRequest: true, separateConsent: true, explicitExecution: true,
       workflowFinalization: false, publication: false, successorRevalidation: false
     });
+    expect(report.schemas.modernLocalCompletion).toMatchObject({
+      manifestRead: [8], report: 5,
+      selectors: {
+        finalize: 'governance <plan|approve|apply-next> --scope local --local-operation finalize',
+        publish: 'governance <plan|approve|apply-next|recover> --scope local --local-operation publish'
+      },
+      workflows: ['manual', 'spec-kit'], profiles: ['none', 'single-maintainer-gitflow', 'team-gitflow'],
+      requests: ['finalize-local', 'review-local-publication'], separateFinalizationConsent: true,
+      separatePublicationConsent: true, explicitExecution: true, attributedRecovery: true,
+      openSpecFinalization: false, successorRevalidation: false, providerOperations: false
+    });
     const plan = buildProjectPlan({
       projectName: 'Capability schema specimen', projectType: 'standard', apiStack: 'node',
       agents: ['copilot'], environments: ['dev']
@@ -200,6 +211,8 @@ describe('project-independent capability discovery', () => {
     expect(result.stdout).toContain('Modern v8 read-only');
     expect(result.stdout).toContain('Modern v8 verification');
     expect(result.stdout).toContain('--local-operation verify');
+    expect(result.stdout).toContain('--local-operation finalize');
+    expect(result.stdout).toContain('--local-operation publish');
     expect(result.stdout).toContain('governance verify');
     expect(result.stdout).toContain('not approval');
     for (const file of ['README.md', path.join('docs', 'cli-reference.md'), path.join('docs', 'telemetry.md')]) {
@@ -210,6 +223,7 @@ describe('project-independent capability discovery', () => {
     expect(reference).toContain('injected-only');
     expect(reference).toContain('liftoff help capabilities');
     expect(reference).toContain('schemas.modernReadOnly');
+    expect(reference).toContain('schemas.modernLocalCompletion');
     expect(reference).toContain('does not enable Manual/team generation');
   });
 });

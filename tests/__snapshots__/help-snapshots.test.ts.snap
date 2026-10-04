@@ -179,10 +179,17 @@ verify: plan --inputs <request.json>, approve --plan <fingerprint> --inputs
 installed tools and saves an external preview; approval separately saves
 consent. Without --execute, apply-next only inspects saved progress. Keep public
 request and consent files outside the project. Initialized OpenSpec requires
-explicit generated-baseline scope attestation; it is not domain verification. No
-publication, successor revalidation, or provider operations are authorized; the
-private workspace is not a sandbox. Local operations exit 0 for a completed
-requested operation or nonexecuting inspection, and 1 for refusal, failure, or
+explicit generated-baseline scope attestation; it is not domain verification;
+the private workspace is not a sandbox. Separate schema-5 completion uses
+--local-operation finalize for admitted Manual/Spec Kit verification, then
+--local-operation publish for exact target review, independent approval and
+execution. Both require their own closed --inputs for plan/approve and exact
+--plan for apply-next. For publication, governance recover --plan <fingerprint>
+--execute recovers only that attributed transaction; without --execute it only
+inspects saved progress. Failure does not imply rollback. No OpenSpec
+finalization, successor revalidation, provider or whole-directory rollback
+authority is granted. Local operations exit 0 for a completed requested
+operation or nonexecuting inspection, and 1 for refusal, failure, or
 uncertainty.
 
 Usage
@@ -224,8 +231,9 @@ Option                                   Description
 --scope <scope>                          Execution/verification boundary: local,
                                          activation, or lifecycle (default:
                                          activation)
---local-operation <operation>            v8 only: verify via separate plan,
-                                         approve, and apply-next --scope local
+--local-operation <operation>            v8 only: verify, finalize, or publish
+                                         with --scope local; publish also
+                                         supports recover
 --revalidation-publication               Inspect one exact v8 successor
 <fingerprint>                            publication; not approval or execution
 --recover-phase <phase>                  Plan explicit recovery of one failed or
@@ -649,7 +657,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain governance command help 1`] = `
-"LIFTOFF / GOVERNANCE - Historical projects retain schema-2 planning and execution. V8 projects retain schema-3 status, resume and verify inspection; recorded phases are not current proof. An exact --revalidation-publication selects existing successor proof, never approval or execution. Verify exits 0 for complete or inapplicable selected scope, 2 for consistent incomplete work, and 1 for inspection failure. For separate schema-4 v8 verification, select --scope local --local-operation verify: plan --inputs <request.json>, approve --plan <fingerprint> --inputs <consent.json>, then apply-next --plan <fingerprint> --execute. Planning probes installed tools and saves an external preview; approval separately saves consent. Without --execute, apply-next only inspects saved progress. Keep public request and consent files outside the project. Initialized OpenSpec requires explicit generated-baseline scope attestation; it is not domain verification. No publication, successor revalidation, or provider operations are authorized; the private workspace is not a sandbox. Local operations exit 0 for a completed requested operation or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.
+"LIFTOFF / GOVERNANCE - Historical projects retain schema-2 planning and execution. V8 projects retain schema-3 status, resume and verify inspection; recorded phases are not current proof. An exact --revalidation-publication selects existing successor proof, never approval or execution. Verify exits 0 for complete or inapplicable selected scope, 2 for consistent incomplete work, and 1 for inspection failure. For separate schema-4 v8 verification, select --scope local --local-operation verify: plan --inputs <request.json>, approve --plan <fingerprint> --inputs <consent.json>, then apply-next --plan <fingerprint> --execute. Planning probes installed tools and saves an external preview; approval separately saves consent. Without --execute, apply-next only inspects saved progress. Keep public request and consent files outside the project. Initialized OpenSpec requires explicit generated-baseline scope attestation; it is not domain verification; the private workspace is not a sandbox. Separate schema-5 completion uses --local-operation finalize for admitted Manual/Spec Kit verification, then --local-operation publish for exact target review, independent approval and execution. Both require their own closed --inputs for plan/approve and exact --plan for apply-next. For publication, governance recover --plan <fingerprint> --execute recovers only that attributed transaction; without --execute it only inspects saved progress. Failure does not imply rollback. No OpenSpec finalization, successor revalidation, provider or whole-directory rollback authority is granted. Local operations exit 0 for a completed requested operation or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.
 
 Usage
 Usage: liftoff governance <status|plan|approve|apply-next|credential-enroll|recover|resume|verify|assess> [project-path]
@@ -674,7 +682,7 @@ Option: --inputs <file> | Description: Public activation configuration or explic
 
 Command options
 Option: --scope <scope> | Description: Execution/verification boundary: local, activation, or lifecycle (default: activation)
-Option: --local-operation <operation> | Description: v8 only: verify via separate plan, approve, and apply-next --scope local
+Option: --local-operation <operation> | Description: v8 only: verify, finalize, or publish with --scope local; publish also supports recover
 Option: --revalidation-publication <fingerprint> | Description: Inspect one exact v8 successor publication; not approval or execution
 Option: --recover-phase <phase> | Description: Plan explicit recovery of one failed or interrupted phase without executing it
 
@@ -1009,10 +1017,15 @@ exports[`complete help screens > snapshots rich governance command help 1`] = `
 │ installed tools and saves an external preview; approval separately saves consent. Without    │
 │ --execute, apply-next only inspects saved progress. Keep public request and consent files    │
 │ outside the project. Initialized OpenSpec requires explicit generated-baseline scope         │
-│ attestation; it is not domain verification. No publication, successor revalidation, or       │
-│ provider operations are authorized; the private workspace is not a sandbox. Local operations │
-│ exit 0 for a completed requested operation or nonexecuting inspection, and 1 for refusal,    │
-│ failure, or uncertainty.                                                                     │
+│ attestation; it is not domain verification; the private workspace is not a sandbox. Separate │
+│ schema-5 completion uses --local-operation finalize for admitted Manual/Spec Kit             │
+│ verification, then --local-operation publish for exact target review, independent approval   │
+│ and execution. Both require their own closed --inputs for plan/approve and exact --plan for  │
+│ apply-next. For publication, governance recover --plan <fingerprint> --execute recovers only │
+│ that attributed transaction; without --execute it only inspects saved progress. Failure does │
+│ not imply rollback. No OpenSpec finalization, successor revalidation, provider or            │
+│ whole-directory rollback authority is granted. Local operations exit 0 for a completed       │
+│ requested operation or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.  │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
 │ liftoff governance                                                                           │
@@ -1047,8 +1060,8 @@ exports[`complete help screens > snapshots rich governance command help 1`] = `
 │ ────────────────────────────────────────  ────────────────────────────────────────────────── │
 │ --scope <scope>                           Execution/verification boundary: local,            │
 │                                           activation, or lifecycle (default: activation)     │
-│ --local-operation <operation>             v8 only: verify via separate plan, approve, and    │
-│                                           apply-next --scope local                           │
+│ --local-operation <operation>             v8 only: verify, finalize, or publish with --scope │
+│                                           local; publish also supports recover               │
 │ --revalidation-publication <fingerprint>  Inspect one exact v8 successor publication; not    │
 │                                           approval or execution                              │
 │ --recover-phase <phase>                   Plan explicit recovery of one failed or            │

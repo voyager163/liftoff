@@ -141,7 +141,7 @@ describe('explicit modern local command grammar', () => {
     expect(() => parseArgs(['governance', ...tail, '--scope', 'local', '--local-operation', 'verify'])).toThrow();
   });
   it('rejects unknown operations and missing explicit scope while keeping help project independent', () => {
-    expect(() => parseArgs(['governance', 'plan', '--local-operation', 'publish', '--scope', 'local', '--inputs', 'request.json'])).toThrow();
+    expect(() => parseArgs(['governance', 'plan', '--local-operation', 'archive', '--scope', 'local', '--inputs', 'request.json'])).toThrow();
     expect(() => parseArgs(['governance', 'plan', '--local-operation', 'verify', '--inputs', 'request.json'])).toThrow();
     expect(() => parseArgs(['governance', 'plan', '--local-operation', 'verify', '--help'])).not.toThrow();
     expect(() => parseArgs(['governance', 'plan', '--local-operation', 'verify', '--scope', 'local', '--inputs', '   '])).toThrow();

@@ -129,8 +129,12 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
   const localOperation = readStringFlag(parsed.flags, 'local-operation');
   if (manifest.artifactVersion === 8) {
     if (localOperation !== undefined) {
-      const { governanceLocalCommand } = await import('./governance-local.js');
-      return governanceLocalCommand(parsed, { ...context, projectRoot });
+      if (localOperation === 'verify') {
+        const { governanceLocalCommand } = await import('./governance-local.js');
+        return governanceLocalCommand(parsed, { ...context, projectRoot });
+      }
+      const { governanceLocalCompletionCommand } = await import('./governance-local-completion.js');
+      return governanceLocalCompletionCommand(parsed, { ...context, projectRoot });
     }
     const { inspectModernGovernance, modernGovernanceReportSchemaVersion } =
       await import('../../application/governance/modern-inspection.js');

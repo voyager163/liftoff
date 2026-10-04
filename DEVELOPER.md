@@ -1596,6 +1596,34 @@ for the explicit native selection and portable evidence boundary.
 
 ### Private local completion and attributed recovery
 
+The public adapter `cli/commands/governance-local-completion.ts` exposes this
+coordinator through explicit `--scope local --local-operation finalize` and
+`--local-operation publish`. Closed schema-specific requests in
+`application/governance/modern-local-completion-request.ts` keep workflow
+finalization consent separate from exact-byte publication consent. Only the
+authorization body, not the public discriminator, reaches the closed private
+publication approval API. No historical or successor authority-store fallback
+is permitted.
+
+Schema-5 command reports separate requested effects, observed commit,
+uncertain effects, operation completion and current local completion.
+`inspectModernLocalFinalization` and `inspectModernLocalPublication` inspect
+selected saved progress with `recordedProgressIsCurrentProof: false`;
+they do not replace the fresh `inspectModernLocalCompletion` reader.
+Publication review exposes exact UTF-8 target text and descriptors through the
+existing credential-screened output boundary. Wrong transaction attribution
+blocks before reading another operation's authority. A finalization fingerprint
+is not accepted as a public publication selector.
+
+Planning, approval and execution remain separate. Publication `recover` needs
+the exact selector and `--execute`; without execution it is read-only.
+Successful explicit rollback is recovery success, not local readiness. Failure
+or withheld output never implies that requested effects were rolled back.
+See [public completion qualification](CONTRIBUTING.md#public-modern-local-completion-qualification)
+and the [public request shapes](docs/cli-reference.md#modern-local-completion).
+OpenSpec finalization, successor revalidation, generation and general v8 writers
+remain separate rollout gates.
+
 `prepareModernLocalFinalization`, `approveModernLocalFinalization` and
 `finalizeModernLocalCompletion` consume the original complete execution result,
 consent and finished progress. Historical verification checks the actual

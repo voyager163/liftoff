@@ -74,7 +74,7 @@ export async function pathExists(filePath: string): Promise<boolean> {
 }
 
 const inputLimitBytes = 64 * 1024;
-type PublicInputLabel = 'Activation' | 'Local execution';
+type PublicInputLabel = 'Activation' | 'Local execution' | 'Local completion';
 const inputRefusal = (label: PublicInputLabel) =>
   `${label} inputs must be a singly linked regular public JSON file no larger than 64 KiB.`;
 const inputIdentityUnavailable = (label: PublicInputLabel) =>
