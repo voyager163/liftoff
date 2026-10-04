@@ -1302,8 +1302,13 @@ Governance-none does not invent an activation plan or identity.
 Consent separately acknowledges project-code execution and its host/network
 capabilities, dependency preparation and dependency network access. A private
 workspace and offline flags are not a sandbox. `workflowFinalization` and
-`publishLocalRecords` remain false; network preparation is rejected even with
-consent until separately qualified. `LocalExecutionRecordStore` binds immutable
+`publishLocalRecords` remain false. Registered preparation uses the same
+credential-free source, private-cache and lifecycle-disabled environment as
+application repair. Network access requires the exact saved preparation
+descriptor and its separate affirmative consent; it does not authorize an
+unrequested provider or dependency set. Subsequent checks restore all package
+managers' offline settings, while arbitrary project code still has the
+acknowledged host capabilities. `LocalExecutionRecordStore` binds immutable
 `operationKind: "local-execution"` and the canonical project root. Its preview,
 consent, result, workspace-authority and CAS-state namespaces are distinct from
 update, repair and local-publication authority, with a 64-KiB record limit.
@@ -1321,10 +1326,33 @@ per preparation and 600 seconds per operation. Previews expire after 15 minutes.
 Actual local qualification covers Manual, preinitialized Spec Kit and OpenSpec contract
 fixtures across governance-none, single-maintainer and team profiles, using real
 Node/frontend/Compose/provider-free OpenTofu checks. Empty-lock offline npm
-preparation is separately qualified for Manual. These framework fixtures do not
-prove official initializer provenance or run `specify` or `openspec init`. This does not newly
-qualify downloaded dependencies, Python/uv/Go dependency execution, OpenSpec
-finalization, other platforms or hosted CI. Offline npm may legitimately create
+preparation is separately qualified for Manual. Explicit native preparation
+fixtures additionally exercise real generated Node backend and Vue dependencies
+from npmjs, Go dependencies from the Go proxy, and the generated Python wheel
+lock from PyPI with an explicitly confined FastAPI application. They retain
+source bytes/modes, verify actual checks and readback, and distinguish missing
+consent, a fresh-cache miss, stale input and a later source change after actual
+preparation. Preparation does not publish local-completion records.
+
+The generated Python `pythonpath = [".."]` remains **blocked** because its parent
+is outside the finite selected input roots. The confined Python fixture uses
+`pythonpath = ["."]` and a component-local application; it is not qualification
+of the unchanged generated Python application's import layout. Dependency
+permission cannot expand that source boundary. A separate explicit bounded
+parent-import contract is needed before that layout can execute.
+
+These framework fixtures do not prove official initializer provenance or run
+`specify` or `openspec init`. The preparation fixtures do not qualify Microsoft
+mirror network paths, other hosts, hosted native execution, OpenSpec
+finalization or provider preparation. Run the complete explicit native
+preparation selection with the documented qualified host and pinned tools:
+
+```bash
+LIFTOFF_HCL_TEST_LANE=native LIFTOFF_MODERN_PREPARATION_NATIVE=1 npm test -- tests/modern-local-dependency-preparation.test.ts --maxWorkers=1 --no-file-parallelism
+```
+
+Without that explicit selection these network cases are unrun, not passing
+qualification. Offline npm may legitimately create
 no `node_modules` for an empty lock; only proven-empty successful preparation creates that declared empty root
 before dependency freezing.
 
