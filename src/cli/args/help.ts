@@ -37,7 +37,17 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
             'Exit 0: clean or approved scope completed; 2: drift or committed migration with incomplete ' +
             'revalidation; 1: rejected or failed operation.'
         }
-      : commandDefinitions[command];
+      : command === 'governance'
+        ? {
+            ...commandDefinitions.governance,
+            description:
+              'Historical projects retain schema-2 planning and execution. V8 projects support only ' +
+              'schema-3 status, resume and verify inspection; recorded phases are not current proof. ' +
+              'An exact --revalidation-publication selects existing successor proof, never approval ' +
+              'or execution. Verify exits 0 for complete or inapplicable selected scope, 2 for ' +
+              'consistent incomplete work, and 1 for inspection failure.'
+          }
+        : commandDefinitions[command];
   if (!definition) {
     throw new UsageError(`Unknown command for help: ${command}.`);
   }

@@ -222,6 +222,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
       scope: valueFlag('Execution/verification boundary: local, activation, or lifecycle', 'Command', 'scope', 'activation'),
       inputs: valueFlag('Public activation configuration JSON; never credentials or state', 'Project', 'file'),
       plan: valueFlag('Exact project-bound fingerprint from governance plan', 'Consent', 'fingerprint'),
+      'revalidation-publication': valueFlag('Inspect one exact v8 successor publication; not approval or execution', 'Command', 'fingerprint'),
       'recover-phase': valueFlag('Plan explicit recovery of one failed or interrupted phase without executing it', 'Command', 'phase'),
       'protected-stdin': booleanFlag('Credential enrollment is currently unavailable; this flag reads no secret', 'Consent'),
       execute: booleanFlag('Execute the reviewed governance apply-next plan; required for any mutation', 'Consent'),

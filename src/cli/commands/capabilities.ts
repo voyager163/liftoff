@@ -28,6 +28,7 @@ export function capabilitiesCommand(parsed: ParsedArgs, context: ExecutionContex
       { label: 'CLI version', value: report.cliVersion },
       { label: 'Capability schema', value: String(report.schemaVersion) },
       { label: 'Manifest readers', value: report.schemas.manifestRead.join(', ') },
+      { label: 'Modern v8 read-only', value: report.schemas.modernReadOnly.commands.join(', ') },
       { label: 'Workflows', value: report.workflows.map(({ id }) => id).join(', ') },
       { label: 'Profiles', value: report.profiles.map(({ id }) => id).join(', ') },
       { label: 'Bundled plugins', value: String(report.plugins.inventory.length) },
@@ -37,7 +38,7 @@ export function capabilitiesCommand(parsed: ParsedArgs, context: ExecutionContex
       report.commands.map(({ name, subcommands }) => [name, subcommands.join(', ') || '-']));
     context.presentation.bullets('Limitations', [
       report.governance.scope, report.runtime.hostSupport, report.runtime.readiness,
-      report.boundaries.privateApis, report.boundaries.registration,
+      report.boundaries.privateApis, report.boundaries.registration, report.schemas.modernReadOnly.scope,
       'Public stateful migration and project telemetry enrollment are unavailable.',
       'Use liftoff capabilities --json for exact schemas, recipes and per-phase executor blockers.',
       'Capability discovery is not approval to execute or modify anything.'

@@ -8,6 +8,7 @@ import {prepareModernLocalExecution,approveModernLocalExecution,readCompletedMod
 import {executeModernLocalExecution} from '../src/application/governance/modern-local-execution.js';
 import {prepareModernLocalFinalization,approveModernLocalFinalization,finalizeModernLocalCompletion} from '../src/application/governance/modern-local-finalization.js';
 import {approveModernLocalPublication,publishModernLocalCompletion,inspectModernLocalCompletion,recoverModernLocalCompletion} from '../src/application/governance/modern-local-publication.js';
+import * as publicationInspection from '../src/application/governance/modern-local-publication.js';
 import {inspectLocalVerificationTransaction} from '../src/adapters/filesystem/reviewed-update-transaction.js';
 import * as transactions from '../src/adapters/filesystem/reviewed-update-transaction.js';
 import {projectMutationLockPath} from '../src/adapters/filesystem/project-lock.js';
@@ -25,6 +26,9 @@ import {modernActivationSourceContracts} from '../src/domain/governance/policy/i
 import {rawLocalDigest} from '../src/domain/governance/activation/modern-local-inputs.js';
 import {NodeCommandRunner} from '../src/process-runner.js';
 import {localVerificationTransactionAuthorityKey} from '../src/application/update/transaction-approval.js';
+import {parseArgs} from '../src/args.js';
+import {runCommand} from '../src/commands.js';
+import {CaptureStream} from './helpers.js';
 const lane=process.env.LIFTOFF_HCL_TEST_LANE??'auto',qualified=process.platform==='darwin'&&process.arch==='arm64'&&process.versions.node==='24.21.0';
 if(!['native','portable','auto'].includes(lane)||lane==='native'&&!qualified)throw new Error('Invalid C1 qualification host/lane.');
 const nativeIt=it.skipIf(lane==='portable'||!qualified),executed:string[]=[];
@@ -186,6 +190,12 @@ describe('actual native completion publication',()=>{
     console.info('MR2_C1_ACTUAL_COMPLETE '+JSON.stringify({profile,outcome}));
     expect(outcome.status).toBe('local-complete-current');expect(outcome.committed).toBe(true);
     const inspection=await inspectModernLocalCompletion(f.root);expect(inspection.status).toBe('local-complete-current');
+    const stdout=new CaptureStream(),stderr=new CaptureStream(),commands=vi.spyOn(NodeCommandRunner.prototype,'run');
+    expect(await runCommand(parseArgs(['governance','verify','--scope','local','--json']),{cwd:f.root,stdout,stderr})).toBe(0);
+    expect(JSON.parse(stdout.text())).toMatchObject({schemaVersion:3,consistent:true,complete:true,localComplete:true,
+      localVerification:'current',publication:{status:'local-complete-current',committed:true,readbackDigest:inspection.readbackDigest},
+      projectWrites:false,providerWrites:false,workloadExecution:false});
+    expect(stderr.text()).toBe('');expect(commands).not.toHaveBeenCalled();commands.mockRestore();
     expect(await readFile(path.join(f.root,'liftoff.manifest.json'))).toEqual(before);
     if(profile==='none')await expect(lstat(path.join(f.root,'governance/activation-state.json'))).rejects.toMatchObject({code:'ENOENT'});
     else{
@@ -211,6 +221,23 @@ describe('actual native completion publication',()=>{
       await f.put(['Source Space','backend','late.cjs'],'later source, not automatic revalidation\n');
       await expect(inspectModernLocalCompletion(f.root)).rejects.toThrow(/directory/);
     }
+  },120000);
+  nativeIt('withholds public completion when source changes after real independent publication readback',async()=>{
+    const f=await reviewed();await consent(f);
+    expect((await publishModernLocalCompletion(f.root,f.finalization.publicationFingerprint)).status).toBe('local-complete-current');
+    const original=publicationInspection.inspectModernLocalCompletion;
+    vi.spyOn(publicationInspection,'inspectModernLocalCompletion').mockImplementation(async root=>{
+      const result=await original(root);expect(result.status).toBe('local-complete-current');
+      const manifest=JSON.parse(await readFile(path.join(root,'liftoff.manifest.json'),'utf8'));
+      await f.put(['liftoff.manifest.json'],JSON.stringify({...manifest,liftoffVersion:'0.14.0'}));
+      return result;
+    });
+    const stdout=new CaptureStream(),stderr=new CaptureStream();
+    expect(await runCommand(parseArgs(['governance','verify','--scope','local','--json']),{cwd:f.root,stdout,stderr})).toBe(1);
+    const report=JSON.parse(stdout.text());
+    expect(report).toMatchObject({schemaVersion:3,consistent:false,complete:null,publication:{status:'local-complete-current',committed:true}});
+    expect(report.blockers.join(' ')).toContain('changed during publication inspection');
+    expect(JSON.parse(await readFile(path.join(f.root,'liftoff.manifest.json'),'utf8')).liftoffVersion).toBe('0.14.0');
   },120000);
   nativeIt('historically reconstructs original consent and full B without metadata probes',async()=>{
     const f=await completed(),run=vi.spyOn(NodeCommandRunner.prototype,'run');
@@ -352,6 +379,13 @@ describe('actual native completion publication',()=>{
     expect(childResult.status,childResult.stderr).toBe(73);expect(childResult.error).toBeUndefined();expect(()=>process.kill(childResult.pid,0)).toThrow();
     const before=await inspectModernLocalCompletion(f.root);
     expect(before.status).toBe(cut==='prepared'?'interrupted':'committed-cleanup-pending');
+    const stdout=new CaptureStream(),stderr=new CaptureStream();
+    expect(await runCommand(parseArgs(['governance','status','--scope','local','--json']),{cwd:f.root,stdout,stderr})).toBe(1);
+    expect(JSON.parse(stdout.text())).toMatchObject({schemaVersion:3,consistent:false,complete:null,transaction:{
+      status:cut==='prepared'?'interrupted':'committed',committed:cut!=='prepared',
+      planFingerprint:before.publicationFingerprint,transactionDigest:before.transactionDigest
+    }});
+    expect(stderr.text()).toBe('');
     await expect(readCompletedModernLocalExecution(f.root,f.execution.fingerprint)).rejects.toThrow(/recovery first/);
     const lock=await projectMutationLockPath(f.root),identity=await lstat(lock),bytes=await readFile(lock),latest=await lstat(lock);
     expect(latest.ino).toBe(identity.ino);expect(latest.dev).toBe(identity.dev);expect(await readFile(lock)).toEqual(bytes);

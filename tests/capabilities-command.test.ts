@@ -66,6 +66,10 @@ describe('project-independent capability discovery', () => {
     expect(report.profiles.map(({ id }) => id)).toEqual(['single-maintainer-gitflow', 'none']);
     expect(report.agents.map(({ id }) => id)).toEqual(projectCatalog.codingAgents.map(({ id }) => id));
     expect(report.schemas.manifestRead).toEqual(SUPPORTED_MANIFEST_VERSIONS);
+    expect(report.schemas.modernReadOnly).toMatchObject({
+      manifestRead: [8], governanceReport: 3, execution: false,
+      commands: ['validate', 'doctor', 'dev', 'infra', 'governance status', 'governance resume', 'governance verify']
+    });
     const plan = buildProjectPlan({
       projectName: 'Capability schema specimen', projectType: 'standard', apiStack: 'node',
       agents: ['copilot'], environments: ['dev']
@@ -187,6 +191,8 @@ describe('project-independent capability discovery', () => {
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('Manifest readers');
     expect(result.stdout).toContain('2, 3, 4, 5, 6, 7');
+    expect(result.stdout).toContain('Modern v8 read-only');
+    expect(result.stdout).toContain('governance verify');
     expect(result.stdout).toContain('not approval');
     for (const file of ['README.md', path.join('docs', 'cli-reference.md'), path.join('docs', 'telemetry.md')]) {
       expect(readFileSync(file, 'utf8')).toContain('liftoff capabilities');
@@ -195,6 +201,7 @@ describe('project-independent capability discovery', () => {
     expect(reference).toContain('schema-1');
     expect(reference).toContain('injected-only');
     expect(reference).toContain('liftoff help capabilities');
-    expect(reference).toContain('internal Manual/team/v8 APIs are deliberately not promoted');
+    expect(reference).toContain('schemas.modernReadOnly');
+    expect(reference).toContain('does not enable Manual/team generation');
   });
 });

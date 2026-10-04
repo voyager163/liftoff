@@ -7,6 +7,7 @@ import { projectCatalog } from './project/catalog.js';
 import { builtinPluginRegistry } from './project/plugins.js';
 import { repairCapabilities } from './repair/capabilities.js';
 import { updateReportSchemaVersion } from './update/output.js';
+import { modernGovernanceReportSchemaVersion } from './governance/modern-inspection.js';
 
 export function installedCapabilities() {
   const registry = builtinPluginRegistry();
@@ -18,6 +19,13 @@ export function installedCapabilities() {
     schemas: {
       manifestRead: [...SUPPORTED_MANIFEST_VERSIONS],
       manifestWrite: liftoffManifestArtifactVersion,
+      modernReadOnly: {
+        manifestRead: [8],
+        commands: ['validate', 'doctor', 'dev', 'infra', 'governance status', 'governance resume', 'governance verify'],
+        governanceReport: modernGovernanceReportSchemaVersion,
+        execution: false,
+        scope: 'Source inspection and independently reconstructed local publication proof only; no current writers or provider completion.'
+      },
       reports: {
         capabilities: 1, validate: 1, doctor: 1, upgrade: 1,
         update: updateReportSchemaVersion, governance: 2, governanceAssessment: 1
@@ -56,7 +64,7 @@ export function installedCapabilities() {
       publicStatefulMigration: false,
       projectTelemetryEnrollment: false,
       capabilityIsApproval: false,
-      privateApis: 'Internal modern source, Manual/team and v8 candidate APIs are not public CLI support.',
+      privateApis: 'Modern execution, Manual/team generation and v8 writer APIs are not public CLI support.',
       registration: 'Command syntax does not imply that every option combination is valid or an executor is available.'
     }
   };

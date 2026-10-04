@@ -101,7 +101,9 @@ from governance executor availability: `unavailable`, `injected-only`, and
 explicit blockers are not usable production execution. Plugin host declarations
 do not prove local tool readiness or native-package qualification. The current
 public catalog lists OpenSpec/Spec Kit, single-maintainer/none, and manifest
-readers 2-7; internal Manual/team/v8 APIs are deliberately not promoted. An older
+readers 2-7. `schemas.modernReadOnly` separately lists the v8 source/helper and
+governance inspection routes; it does not enable Manual/team generation, modern
+execution, or current writers. An older
 installed release may not have this command; use its documented help rather
 than assuming a missing interface or inventing receipts.
 
@@ -183,7 +185,7 @@ Status/resume preserve `storedState` and `storedBlockers` when
 an archived baseline is `retryable`; only explicit execution may replace that
 failure with verified evidence.
 
-Governance command JSON uses schema 2 and includes selected `scope`, separate
+Historical governance command JSON uses schema 2 and includes selected `scope`, separate
 local/activation/lifecycle progress, and `nextActions`. Each action carries its
 registered executable/argument array, project working directory, scope, and
 approval requirement; integrations must use it rather than invent commands.
@@ -196,6 +198,32 @@ tuples, and unrecognized graph hashes block without rewriting state; the remedy
 names the exact field and required Liftoff upgrade. Known v1/v2 history is
 diagnostic-only and byte-preserved; a supported successor requires
 `liftoff update --check` and explicit approval, not automatic reconciliation.
+
+For v8 projects, `status`, `resume`, and `verify` instead use schema 3 and the
+modern record reader before any historical inputs or plans are read. Failures
+before a supported manifest family can be selected retain the schema-2
+verification failure envelope and never enter an execution path. Source
+consistency and `recordedPhases` are not current proof. A genuine local completion
+is independently reconstructed from the original operation, consent, committed
+publication, unchanged source and current tools, without rerunning checks.
+An activation-history successor requires its exact separately approved
+publication selector:
+
+```bash
+liftoff governance verify [project] --scope local --revalidation-publication <fingerprint> --json
+```
+
+The selector is also accepted by v8 `status` and `resume`; it never discovers,
+approves, publishes or recovers a transaction. Missing, stale or mismatched
+authority is an inspection failure, not missing proof silently treated as valid.
+No selector means successor proof remains unobserved. Native or journal
+completion flags alone cannot establish current completion. `verify` returns 0
+for complete selected scope (or disabled governance's inapplicable nonlocal
+scope), 2 for consistent incomplete work, and 1 for inspection failure.
+`status` and `resume` may return 0 with consistent incomplete work. Local proof
+does not establish activation or lifecycle completion. Modern planning,
+approval, execution, recovery and governance assessment remain separate
+unavailable public routes; historical plans cannot execute v8 work.
 
 Local completion requires only `seed-valid`, `seed-verified`, and
 `seed-archived` (Spec Kit uses finalization, not an invented archive).

@@ -168,7 +168,11 @@ Option  Description
 
 exports[`complete help screens > snapshots compact governance command help 1`] = `
 "LIFTOFF / GOVERNANCE
-Plan, approve, execute, recover, and inspect scoped governance work
+Historical projects retain schema-2 planning and execution. V8 projects support
+only schema-3 status, resume and verify inspection; recorded phases are not
+current proof. An exact --revalidation-publication selects existing successor
+proof, never approval or execution. Verify exits 0 for complete or inapplicable
+selected scope, 2 for consistent incomplete work, and 1 for inspection failure.
 
 Usage
 ─────
@@ -204,12 +208,15 @@ Option            Description
 
 Command options
 ───────────────
-Option                   Description
-───────────────────────  ───────────────────────────────────────────────────────
---scope <scope>          Execution/verification boundary: local, activation, or
-                         lifecycle (default: activation)
---recover-phase <phase>  Plan explicit recovery of one failed or interrupted
-                         phase without executing it
+Option                                   Description
+───────────────────────────────────────  ───────────────────────────────────────
+--scope <scope>                          Execution/verification boundary: local,
+                                         activation, or lifecycle (default:
+                                         activation)
+--revalidation-publication               Inspect one exact v8 successor
+<fingerprint>                            publication; not approval or execution
+--recover-phase <phase>                  Plan explicit recovery of one failed or
+                                         interrupted phase without executing it
 
 Consent options
 ───────────────
@@ -629,7 +636,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain governance command help 1`] = `
-"LIFTOFF / GOVERNANCE - Plan, approve, execute, recover, and inspect scoped governance work
+"LIFTOFF / GOVERNANCE - Historical projects retain schema-2 planning and execution. V8 projects support only schema-3 status, resume and verify inspection; recorded phases are not current proof. An exact --revalidation-publication selects existing successor proof, never approval or execution. Verify exits 0 for complete or inapplicable selected scope, 2 for consistent incomplete work, and 1 for inspection failure.
 
 Usage
 Usage: liftoff governance <status|plan|approve|apply-next|credential-enroll|recover|resume|verify|assess> [project-path]
@@ -654,6 +661,7 @@ Option: --inputs <file> | Description: Public activation configuration JSON; nev
 
 Command options
 Option: --scope <scope> | Description: Execution/verification boundary: local, activation, or lifecycle (default: activation)
+Option: --revalidation-publication <fingerprint> | Description: Inspect one exact v8 successor publication; not approval or execution
 Option: --recover-phase <phase> | Description: Plan explicit recovery of one failed or interrupted phase without executing it
 
 Consent options
@@ -977,7 +985,11 @@ exports[`complete help screens > snapshots rich governance assessment help 1`] =
 
 exports[`complete help screens > snapshots rich governance command help 1`] = `
 "┌─ LIFTOFF / GOVERNANCE ───────────────────────────────────────────────────────────────────────┐
-│ Plan, approve, execute, recover, and inspect scoped governance work                          │
+│ Historical projects retain schema-2 planning and execution. V8 projects support only         │
+│ schema-3 status, resume and verify inspection; recorded phases are not current proof. An     │
+│ exact --revalidation-publication selects existing successor proof, never approval or         │
+│ execution. Verify exits 0 for complete or inapplicable selected scope, 2 for consistent      │
+│ incomplete work, and 1 for inspection failure.                                               │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
 │ liftoff governance                                                                           │
@@ -1007,12 +1019,14 @@ exports[`complete help screens > snapshots rich governance command help 1`] = `
 │ --inputs <file>   Public activation configuration JSON; never credentials or state           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
-│ Option                   Description                                                         │
-│ ───────────────────────  ─────────────────────────────────────────────────────────────────── │
-│ --scope <scope>          Execution/verification boundary: local, activation, or lifecycle    │
-│                          (default: activation)                                               │
-│ --recover-phase <phase>  Plan explicit recovery of one failed or interrupted phase without   │
-│                          executing it                                                        │
+│ Option                                    Description                                        │
+│ ────────────────────────────────────────  ────────────────────────────────────────────────── │
+│ --scope <scope>                           Execution/verification boundary: local,            │
+│                                           activation, or lifecycle (default: activation)     │
+│ --revalidation-publication <fingerprint>  Inspect one exact v8 successor publication; not    │
+│                                           approval or execution                              │
+│ --recover-phase <phase>                   Plan explicit recovery of one failed or            │
+│                                           interrupted phase without executing it             │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
 │ Option                Description                                                            │

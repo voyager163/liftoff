@@ -93,6 +93,16 @@ describe('update help review sequence', () => {
     expect(out).not.toContain('Option: --yes');
   });
 
+  describe('modern governance inspection help', () => {
+    it('distinguishes the modern read-only report and selected publication from historical execution', async () => {
+      const { out } = await screen(['governance', '--help'], 50);
+      expect(out).toContain('schema-3 status, resume and verify inspection');
+      expect(out).toContain('--revalidation-publication');
+      expect(out).toContain('never approval or execution');
+      expect(out).toContain('2 for consistent incomplete work');
+    });
+  });
+
   it('keeps help available before discovery regardless of JSON or the approval flag', async () => {
     const plain = await screen(['update', '--help'], 50);
     const withApproval = await screen([
