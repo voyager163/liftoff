@@ -15,9 +15,10 @@ export const modernLocalBounds = Object.freeze({
 });
 
 export const modernLocalRequiredInputClosurePolicy = Object.freeze({
-  kind: 'liftoff-local-required-input-closure', revision: 2,
+  kind: 'liftoff-local-required-input-closure', revision: 3,
   typeScriptConfigs: 'captured-local-extends-and-project-reference-graph',
   typeScriptTargets: 'all-reached-basenames-with-shared-input-rules-cycle-rejection-and-global-bounds',
+  pythonPackageSearchPaths: 'pytest-literal-immediate-component-parent-namespace-without-additional-source-roots',
   composeLabelFiles: 'unsupported-service-declaration-scalar-and-list-without-source-read',
   composeCredentialSpecs: 'unsupported-service-declaration-without-file-or-registry-read',
   composeLiteralData: 'label-and-environment-or-extension-keys-are-not-service-source-declarations',

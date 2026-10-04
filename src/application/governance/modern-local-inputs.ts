@@ -489,6 +489,20 @@ function checkNode(data: Derivation, parts: readonly string[], script: 'test' | 
   }
 }
 
+function pythonPackageSearchPath(data: Derivation, parts: readonly string[], value: unknown): void {
+  if (value !== '..') {
+    reference(data, [...parts, 'pyproject.toml'], value, true);
+    return;
+  }
+  if (++data.references > modernLocalBounds.references) localInputFailure('Local configuration exceeds the reference count bound.');
+  const parent = parts.slice(0, -1);
+  // A search namespace exposes only copied components; it does not select sibling source.
+  if (!parts.length || exclusion(parent) ||
+      !data.snapshot.directories.some(directory => key(directory.pathParts) === key(parent) && directory.exists)) {
+    localInputFailure('Python package search parent is missing, protected or uncaptured.');
+  }
+}
+
 function checkPython(data: Derivation, parts: readonly string[]): void {
   let parsed: unknown;
   try { parsed = parseToml(requiredText(data, [...parts, 'pyproject.toml'])); }
@@ -496,13 +510,18 @@ function checkPython(data: Derivation, parts: readonly string[]): void {
     if (error instanceof ModernLocalInputError) throw error;
     localInputFailure('Python project contains invalid TOML; source values were omitted.');
   }
+  const pytestOptions = isRecord(parsed) && isRecord(parsed.tool) && isRecord(parsed.tool.pytest) &&
+    isRecord(parsed.tool.pytest.ini_options) ? parsed.tool.pytest.ini_options : null;
   countParsed(data, parsed, record => {
     if (record.workspace !== undefined || record.sources !== undefined) localInputFailure('Python workspace/source remapping needs an explicit supported local relationship.');
     if (record.addopts !== undefined && record.addopts !== '') localInputFailure('Project-supplied pytest options require separate bounded interpretation.');
     for (const name of ['testpaths', 'pythonpath']) {
       if (record[name] === undefined) continue;
       if (!Array.isArray(record[name])) localInputFailure('Python input roots must be explicit literal arrays.');
-      for (const value of record[name]) reference(data, [...parts, 'pyproject.toml'], value, true);
+      for (const value of record[name]) {
+        if (name === 'pythonpath' && record === pytestOptions) pythonPackageSearchPath(data, parts, value);
+        else reference(data, [...parts, 'pyproject.toml'], value, true);
+      }
     }
     if (record.dependencies !== undefined && Array.isArray(record.dependencies) &&
         record.dependencies.some(value => typeof value !== 'string' || /file:|@\s*[./\\]/u.test(value))) {

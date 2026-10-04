@@ -329,6 +329,85 @@ describe('captured configuration relationships and raw freshness', () => {
   });
 
   describe('parent independent required-input closure', () => {
+    it.each([false, true])('admits the captured Python package parent without selecting sibling source, custom=%s', async custom => {
+      const f = await fixture({ stack: 'python-fastapi', custom }), backend = f.components.get('backend')!;
+      const config = [...backend, 'pyproject.toml'], sibling = [...backend.slice(0, -1), 'unselected_sibling.py'];
+      const original = await readFile(path.join(f.root, ...config), 'utf8');
+      await f.write(config, original + '\n[tool.pytest.ini_options]\npythonpath = [".."]\ntestpaths = ["tests"]\n');
+      await f.write(sibling, 'raise RuntimeError("Unselected source must not be copied.")\n');
+      const inspection = await inspectModernLocalVerification(f.root);
+      expect(inspection.status).toBe('modern-observed');
+      if (inspection.status !== 'modern-observed') throw new Error('Expected real selected source capture.');
+      expect(inspection.snapshot.files.some(file => file.pathParts.join('/') === sibling.join('/'))).toBe(false);
+      const plan = await testPlan(inspection);
+      expectCompleteLocalPlan(plan);
+      expect(plan.checks.find(check => check.id === 'backend-tests')?.status).toBe('planned');
+      expect(plan.execution).toBe('not-authorized');
+      await f.write([...backend.slice(0, -1), 'new_sibling.py'], 'value = 1\n');
+      expect((await testReinspect(f.root, plan)).status).toBe('blocked');
+      expect(await readFile(path.join(f.root, ...sibling), 'utf8')).toContain('Unselected source must not be copied.');
+    });
+
+    it.each([
+      ['tool.pytest.ini_options', 'testpaths', '..'],
+      ['tool.unrelated', 'pythonpath', '..'],
+      ['tool.pytest.ini_options', 'pythonpath', '../..'],
+      ['tool.pytest.ini_options', 'pythonpath', '../'],
+      ['tool.pytest.ini_options', 'pythonpath', './../'],
+      ['tool.pytest.ini_options', 'pythonpath', '../unselected'],
+      ['tool.pytest.ini_options', 'pythonpath', '/outside']
+    ])('does not broaden %s %s=%s into an input root', async (table, field, value) => {
+      const f = await fixture({ stack: 'python-fastapi', custom: true }), backend = f.components.get('backend')!;
+      const config = [...backend, 'pyproject.toml'];
+      const original = await readFile(path.join(f.root, ...config), 'utf8');
+      await f.write(config, `${original}\n[${table}]\n${field} = [${JSON.stringify(value)}]\n`);
+      const plan = await testPlan(await inspectModernLocalVerification(f.root));
+      expect(plan.checks.find(check => check.id === 'backend-tests')?.status).toBe('blocked');
+      expect(plan.execution).toBe('not-authorized');
+    });
+
+    it.each(projectCatalog.patterns.map(({ id }) => id))('uses the same Python namespace interpretation for the %s backend and selected worker', async pattern => {
+      const f = await fixture({ pattern, custom: true }), backend = f.components.get('backend')!;
+      const config = [...backend, 'pyproject.toml'];
+      await f.write(config, (await readFile(path.join(f.root, ...config), 'utf8')) +
+        '\n[tool.pytest.ini_options]\npythonpath = [".."]\ntestpaths = ["tests"]\n');
+      const plan = await testPlan(await inspectModernLocalVerification(f.root));
+      expectCompleteLocalPlan(plan);
+      expect(plan.checks.find(check => check.id === 'backend-tests')?.status).toBe('planned');
+      expect(plan.checks.find(check => check.id === 'worker-tests')?.status).toBe(
+        f.components.has('function-worker') ? 'planned' : 'inapplicable'
+      );
+    });
+
+    it('requires the Python search parent to exist in the captured directory inventory', async () => {
+      const f = await fixture({ stack: 'python-fastapi', custom: true }), backend = f.components.get('backend')!;
+      const config = [...backend, 'pyproject.toml'];
+      await f.write(config, (await readFile(path.join(f.root, ...config), 'utf8')) +
+        '\n[tool.pytest.ini_options]\npythonpath = [".."]\n');
+      const inspection = await inspectModernLocalVerification(f.root);
+      if (inspection.status !== 'modern-observed') throw new Error('Expected real source capture.');
+      const captured = { ...inspection, snapshot: { ...inspection.snapshot,
+        directories: inspection.snapshot.directories.filter(directory =>
+          directory.pathParts.join('/') !== backend.slice(0, -1).join('/'))
+      } };
+      const plan = await testPlan(captured);
+      expect(plan.checks.find(check => check.id === 'backend-tests')).toMatchObject({
+        status: 'blocked', reasons: ['Python package search parent is missing, protected or uncaptured.']
+      });
+    });
+
+    it.each([0, 1])('counts Python search namespaces against the original reference bound plus %s', async excess => {
+      const f = await fixture({ stack: 'python-fastapi' }), backend = f.components.get('backend')!;
+      const config = [...backend, 'pyproject.toml'];
+      await f.write(config, (await readFile(path.join(f.root, ...config), 'utf8')) +
+        '\n[tool.pytest.ini_options]\ntestpaths = ["tests"]\npythonpath = ' +
+        JSON.stringify(Array.from({ length: modernLocalBounds.references - 1 + excess }, () => '..')) + '\n');
+      const plan = await testPlan(await inspectModernLocalVerification(f.root));
+      const check = plan.checks.find(check => check.id === 'backend-tests');
+      expect(check?.status).toBe(excess ? 'blocked' : 'planned');
+      if (excess) expect(check?.reasons).toEqual(['Local configuration exceeds the reference count bound.']);
+    });
+
     it('blocks inherited TypeScript config references outside the captured scopes', async () => {
       const f = await planned(), backend = f.components.get('backend')!;
       await f.write([...backend, 'tsconfig.json'], '{"extends":"./config/base.json"}\n');
@@ -597,7 +676,11 @@ describe('captured configuration relationships and raw freshness', () => {
       expect(plan.recipeSet.digest).not.toBe(canonicalSha256(legacyRecipe));
       expect(plan.recipeSet.digest).toBe(canonicalSha256({ ...legacyRecipe, requiredInputClosurePolicy: modernLocalRequiredInputClosurePolicy }));
       expect(Object.isFrozen(modernLocalRequiredInputClosurePolicy)).toBe(true);
-      expect(modernLocalRequiredInputClosurePolicy.revision).toBe(2);
+      expect(modernLocalRequiredInputClosurePolicy.revision).toBe(3);
+      const { pythonPackageSearchPaths: _search, ...oldPolicy } = modernLocalRequiredInputClosurePolicy;
+      expect(plan.recipeSet.digest).not.toBe(canonicalSha256({
+        ...legacyRecipe, requiredInputClosurePolicy: { ...oldPolicy, revision: 2 }
+      }));
       expect(plan.execution).toBe('not-authorized');
     });
   });

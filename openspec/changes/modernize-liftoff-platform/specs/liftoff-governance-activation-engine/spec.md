@@ -89,6 +89,11 @@ The engine SHALL execute applicable actual project validation, backend tests, fr
 - **WHEN** an applicable check fails
 - **THEN** no verified proof or automatic publication is produced
 
+#### Scenario: Generated Python needs its component parent as a package search namespace
+- **WHEN** the genuine pytest configuration declares the exact literal `pythonpath = [".."]`
+- **THEN** the already captured immediate component parent may act as a search namespace for selected copied source without adding input roots, reading siblings or copying excluded controls
+- **AND** the interpretation is revision-bound in the approved recipe, parent membership remains freshness-bound, recursive escaping test inputs remain blocked and an import requiring uncopied source fails without completion proof
+
 #### Scenario: Seed was archived before activation began
 - **WHEN** OpenSpec seed is archived and activation has not begun
 - **THEN** current local checks and synchronized capability validation run without recreating the archive
