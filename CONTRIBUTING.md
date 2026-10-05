@@ -818,6 +818,13 @@ do not blindly auto-merge a green check or an automated suggestion.
 
 ## Release verification
 
+The separate [native development bundle builder](docs/native-development-bundles.md)
+uses pinned official runtime bytes, the production dependency lock and original
+license notices. Run its portable contracts with
+`npx vitest run tests/native-bundle.test.ts --maxWorkers=1 --no-file-parallelism`.
+An unsigned development inventory is not signature, installer ownership, OS-floor
+or publication evidence. It does not replace the npm release gates below.
+
 The public release authority is `https://registry.npmjs.org`. The `Release
 Liftoff` workflow runs package checks, both source-complete coverage gates,
 package smoke, a pack inspection, and release-identity validation before

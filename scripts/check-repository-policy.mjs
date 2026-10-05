@@ -87,6 +87,41 @@ export function isolatedHclQualificationJob(filename) {
     ]
   };
 }
+export function nativeBundleQualificationJob() {
+  return {
+    name: 'Runtime-inclusive bundle (macOS ARM64)', 'runs-on': 'macos-15', 'timeout-minutes': 20,
+    permissions: { contents: 'read' },
+    steps: [
+      { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', with: { 'persist-credentials': false } },
+      { uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+        with: { 'node-version': '24.21.0', architecture: 'arm64', cache: 'npm' } },
+      { uses: 'actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e',
+        with: { 'go-version': '1.27.0', 'cache-dependency-path': 'assets/supported-stack.json' } },
+      { name: 'Select supported npm', run: 'npm install --global "npm@12.0.2"' },
+      { name: 'Install dependencies', run: 'npm ci' },
+      { name: 'Retrieve the pinned standalone runtime', shell: 'bash', run: [
+        'url="$(node --input-type=module -e \'import inputs from "./distribution/native/inputs.json" with { type: "json" }; console.log(inputs.runtime.url)\')"',
+        'curl --fail --location --proto \'=https\' --proto-redir \'=https\' --max-time 180 \\',
+        '  "$url" --output "$RUNNER_TEMP/liftoff-node-runtime.tgz"', ''
+      ].join('\n') },
+      { name: 'Assemble the development bundle', run: 'npm run build:native -- build ' +
+        '--runtime-archive "$RUNNER_TEMP/liftoff-node-runtime.tgz" --output "$RUNNER_TEMP/liftoff-native-bundle"' },
+      { name: 'Qualify actual installed behavior', shell: 'bash', run: [
+        'LIFTOFF_NATIVE_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
+        'LIFTOFF_NATIVE_GO_EXECUTABLE="$(command -v go)" \\',
+        'npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \\',
+        '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
+        '  --reporter=default --reporter=json --outputFile.json=qualification/native-bundle.json',
+        'node scripts/native-bundle.mjs verify-report qualification/native-bundle.json', ''
+      ].join('\n') },
+      { name: 'Store development qualification evidence', if: independentStepCondition,
+        uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+        with: { name: 'liftoff-native-bundle-ci-${{ github.run_id }}-${{ github.run_attempt }}',
+          path: 'qualification/native-bundle.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n',
+          'if-no-files-found': 'error', 'retention-days': 14 } }
+    ]
+  };
+}
 export function checkIsolatedHclRuntime(runtime = {
   platform: process.platform, arch: process.arch, versions: { node: process.versions.node }
 }, lane = process.env.LIFTOFF_HCL_TEST_LANE) {
@@ -149,8 +184,9 @@ export function checkWorkflow(filename, workflow) {
   assert.ok(triggers.length && triggers.every(trigger => allowedTriggers.includes(trigger)), `${filename}: unapproved trigger.`);
   for (const [id, job] of Object.entries(workflow.jobs)) {
     const parserQualification = ['ci.yml', 'release.yml'].includes(filename) && id === 'qualify-isolated-hcl';
+    const bundleQualification = filename === 'ci.yml' && id === 'qualify-native-bundle';
     assert.ok(['ubuntu-latest', 'macos-latest', 'windows-latest', '${{ matrix.os }}'].includes(job['runs-on']) ||
-      parserQualification && job['runs-on'] === 'macos-15', `${filename}/${id}: use reviewed hosted runners.`);
+      (parserQualification || bundleQualification) && job['runs-on'] === 'macos-15', `${filename}/${id}: use reviewed hosted runners.`);
     assert.ok(Number.isInteger(job['timeout-minutes']) && job['timeout-minutes'] > 0 && job['timeout-minutes'] <= 60, `${filename}/${id}: bounded timeout required.`);
     assert.ok(!job['continue-on-error'], `${filename}/${id}: do not suppress a failed check.`);
     if (release && id === 'publish') {
@@ -179,6 +215,8 @@ export function checkWorkflow(filename, workflow) {
     }
   }
   if (filename === 'ci.yml') {
+    assert.deepEqual(workflow.jobs['qualify-native-bundle'], nativeBundleQualificationJob(),
+      'Native bundle qualification must retain its exact reviewed host, inputs, complete cases and report gate.');
     const platforms = ['ubuntu-latest', 'macos-latest', 'windows-latest'];
     const required = workflow.jobs.test;
     assert.deepEqual(required, {

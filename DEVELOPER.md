@@ -349,6 +349,16 @@ See [assessment guidance](docs/repository-governance.md#read-only-governance-ass
 
 ## Release integrity requirements
 
+`scripts/native-bundle.mjs` and its bounded inventory contract build a separate
+[runtime-inclusive development artifact](docs/native-development-bundles.md).
+Reuse the existing packaged-asset inventory and locked production dependencies;
+do not copy Homebrew Node and infer that its external dylibs are bundled.
+The launcher keeps private Node off `PATH`, so workload readiness cannot inherit
+it as an external tool. Development manifests remain unsigned local consistency
+records, with explicit false release/installer/OS-floor qualification fields.
+Pinned HCL notices preserve its embedded module inventory and its upstream
+modified-source disclosure; they are not a reproducible-build attestation.
+
 - Validate the canonical graph, graph hash, per-phase contract digests, and
   compatibility metadata together.
 - A graph byte change with unchanged phase semantics needs a compatibility

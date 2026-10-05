@@ -47,7 +47,7 @@ Depends on 3. References: design D7; liftoff-cli-workflow, liftoff-project-scaff
 
 - [x] 4.1 Add Manual to the development-workflow catalog/prompt and `--spec`, preserving OpenSpec omission defaults; verify interactive/noninteractive/configuration parity and invalid input rejection.
 - [x] 4.2 Support Manual empty agent selection and `--agents none`, rejecting mixed none/real IDs and retaining external-framework nonempty/default-agent rules; verify all Manual subsets and every existing OpenSpec/Spec Kit subset.
-- [ ] 4.3 Separate bundled CLI runtime from external workload/framework/agent prerequisites; verify native Manual/no-agent startup does not probe or require Node/npm/frameworks unless the selected project operation needs them.
+- [x] 4.3 Separate bundled CLI runtime from external workload/framework/agent prerequisites; verify native Manual/no-agent startup does not probe or require Node/npm/frameworks unless the selected project operation needs them.
 - [x] 4.4 Remove unconditional framework calls and non-OpenSpec-equals-Spec-Kit fallbacks across generation, initialization, sibling migration and validation; verify Manual creates no framework directories, seeds, global profile reads or fictitious markers.
 - [x] 4.5 Implement explicit native Manual local verification/finalization with optional agents and selected governance; verify no fake archive and valid CLI-only local completion without remote credentials.
 - [x] 4.6 Keep governance-none Manual validation/repair usable without manufacturing governance state; verify actual CLI next actions and no nonexistent shell setup command.
@@ -109,7 +109,7 @@ Depends on 3-7. References: design D7-D10; liftoff-project-migration, liftoff-pr
 
 Depends on 2-5. References: design D3; liftoff-native-distribution, liftoff-npm-distribution, liftoff-supported-stack-baselines.
 
-- [ ] 9.1 Build a runtime-inclusive bundle from the existing implementation and explicit asset/license inventory; verify help/version/capabilities/plan and HCL/native-helper resolution outside the checkout without global Node/npm.
+- [x] 9.1 Build a runtime-inclusive bundle from the existing implementation and explicit asset/license inventory; verify help/version/capabilities/plan and HCL/native-helper resolution outside the checkout without global Node/npm.
 - [ ] 9.2 Qualify native Apple Silicon runtime dependencies and determine/document the minimum macOS floor; verify unsupported Intel/translated/unqualified hosts are refused before installation changes.
 - [ ] 9.3 Produce signed/notarized macOS packaging and a cask definition under a verified approved namespace; verify signature/notarization, exact artifact checksum, install/uninstall ownership and no forced launcher overwrite in isolation.
 - [ ] 9.4 Produce a signed Windows x64 installer and WinGet manifests under a verified approved ID; verify stock policy behavior, executable locking, native paths and packaged controller assets in Windows CI.
