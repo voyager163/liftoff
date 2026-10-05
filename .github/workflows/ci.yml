@@ -432,16 +432,36 @@ jobs:
         run: npx vitest run tests/telemetry-infrastructure.test.ts
 
   standard-node-templates:
-    name: Standard Node templates (npm ${{ matrix.npm-version }})
-    runs-on: ubuntu-latest
+    name: ${{ matrix.check-name }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
-          - node-version: "22.12.0"
+          - os: ubuntu-latest
+            check-name: Standard Node templates (npm 10.9.4)
+            node-version: "22.12.0"
             npm-version: "10.9.4"
-          - node-version: "24.20.0"
+          - os: ubuntu-latest
+            check-name: Standard Node templates (npm 12.0.2)
+            node-version: "24.20.0"
+            npm-version: "12.0.2"
+          - os: macos-latest
+            check-name: Standard Node templates (macos-latest, npm 10.9.4)
+            node-version: "22.12.0"
+            npm-version: "10.9.4"
+          - os: macos-latest
+            check-name: Standard Node templates (macos-latest, npm 12.0.2)
+            node-version: "24.20.0"
+            npm-version: "12.0.2"
+          - os: windows-latest
+            check-name: Standard Node templates (windows-latest, npm 10.9.4)
+            node-version: "22.12.0"
+            npm-version: "10.9.4"
+          - os: windows-latest
+            check-name: Standard Node templates (windows-latest, npm 12.0.2)
+            node-version: "24.20.0"
             npm-version: "12.0.2"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -456,12 +476,46 @@ jobs:
       - name: Select npm compatibility lane
         run: npm install --global "npm@${{ matrix.npm-version }}"
 
+      - name: Prefer the selected npm distribution on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          EXPECTED_NPM_VERSION: ${{ matrix.npm-version }}
+        run: |
+          $prefix = (npm prefix --global).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "Unable to locate the selected npm prefix." }
+          $manifest = Join-Path $prefix "node_modules/npm/package.json"
+          $version = (Get-Content -Raw $manifest | ConvertFrom-Json).version
+          if ($version -ne $env:EXPECTED_NPM_VERSION) { throw "Unexpected npm at the selected prefix: $version." }
+          $prefix | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Install Liftoff dependencies
         env:
           npm_config_engine_strict: "false"
         run: npm ci
 
+      - name: Capture the exact generated-project runtime
+        env:
+          EXPECTED_PROJECT_NODE: ${{ matrix.node-version }}
+          EXPECTED_PROJECT_NPM: ${{ matrix.npm-version }}
+        run: node scripts/standard-node-template-runtime.mjs --capture
+
+      - name: Select the supported Liftoff generator runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+
       - name: Verify standard Node.js templates
         env:
           npm_config_engine_strict: "false"
+          LIFTOFF_TEMPLATE_QUALIFICATION_REPORT: ${{ runner.temp }}/standard-node-templates.json
         run: npm run verify:standard-node-templates
+
+      - name: Store actual generated-project qualification
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: liftoff-node-templates-${{ matrix.os }}-npm${{ matrix.npm-version }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/standard-node-templates.json
+          if-no-files-found: error
+          retention-days: 14

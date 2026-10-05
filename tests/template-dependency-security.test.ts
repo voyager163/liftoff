@@ -217,18 +217,12 @@ describe('template dependency security', () => {
     const policy = parseTemplateDependencyPolicy(source, templateDependencyInventory);
 
     expect(policy.schemaVersion).toBe(1);
-    expect(policy.exceptions).toHaveLength(1);
+    expect(policy.exceptions).toHaveLength(0);
     expect(policy.exceptions.map((entry) => ({
       advisoryId: entry.advisoryId,
       package: entry.package,
       disposition: entry.disposition
-    }))).toEqual([
-      {
-        advisoryId: 'GHSA-67MH-4WV8-2F99',
-        package: 'esbuild',
-        disposition: 'vulnerable-code-not-used'
-      }
-    ]);
+    }))).toEqual([]);
   });
 
   it('rejects malformed, duplicate, and out-of-inventory policy entries', () => {

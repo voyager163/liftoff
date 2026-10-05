@@ -1230,16 +1230,27 @@ root fast-uri 3.1.8 and npm's compatible nested fast-uri 4.2.1. Regenerate locks
 with their package managers, canonicalize official PyPI artifacts, reproduce the
 Functions export, synchronize supported-stack metadata, and advance changed
 stack content versions and literal release hashes together. The unchanged
-drizzle-kit chain still contains esbuild 0.18.20; its development-server exception
-is explicitly reviewed through 2026-11-29, not a claim of zero vulnerabilities.
+drizzle-kit loader now uses an exact, `@esbuild-kit/core-utils`-scoped esbuild
+0.25.12 override; it does not globally replace other esbuild releases. The
+corresponding development-server exception is removed after an actual npm audit,
+and its advisory is tracked as resolved for the Node backend. Standard generated
+Node qualification additionally runs Drizzle generation and journal checks under
+each supported npm version. An audit is a dated observation, not a permanent
+claim of zero vulnerabilities.
+CI generates projects on supported Node.js 24.20, then runs their dependency,
+build, test and Drizzle metadata commands on the captured native Node/npm pair
+(22.12.0/10.9.4 or 24.20.0/12.0.2). The schema-2 report records both actual
+runtime versions and exact command argv; an older generated-project compatibility
+lane does not qualify execution of Liftoff itself on Node 22.
 The npm audit does not cover PyPI. The generated Python integration case runs
 `tests/fixtures/pyjwt-options-regression.py` against the installed frozen GenAI
 environment: unsigned decoding must not mutate reused options or disable
 subsequent verified expiration checks in either decode API.
 
-`plugins/builtin/modern-historical-release.ts` records one exact metadata-only
-pre-refresh v8 family from revision `289e7033`. Modern source interpretation
-accepts that family only while its complete declaration digest, shared assets,
+`plugins/builtin/modern-historical-release.ts` preserves the exact metadata-only
+pre-refresh v8 family from revision `289e7033`; `modern-previous-release.ts`
+additively records the accepted post-security-refresh family from `77762b75`.
+Modern source interpretation accepts either complete family only while its declaration digest, shared assets,
 selected identities and reconstructed resolution digest match. It does not
 accept version ranges, mixed families or plugin IDs alone, bundle old templates,
 or grant mutation authority. Ordinary maintenance preserves those recorded

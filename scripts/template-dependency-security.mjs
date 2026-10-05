@@ -32,6 +32,11 @@ export const templateDependencyInventory = Object.freeze([
 export const resolvedTemplateAdvisories = Object.freeze([
   Object.freeze({
     manifestId: 'node-backend',
+    advisoryId: 'GHSA-67mh-4wv8-2f99',
+    package: 'esbuild'
+  }),
+  Object.freeze({
+    manifestId: 'node-backend',
     advisoryId: 'GHSA-gpj5-g38j-94v9',
     package: 'drizzle-orm'
   }),

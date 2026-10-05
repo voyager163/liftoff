@@ -1,31 +1,4 @@
 {
   "schemaVersion": 1,
-  "exceptions": [
-    {
-      "advisoryId": "GHSA-67mh-4wv8-2f99",
-      "package": "esbuild",
-      "manifestPathParts": [
-        "assets",
-        "plugins",
-        "node-fastify",
-        "node-backend",
-        "package-lock.json"
-      ],
-      "dependencyChains": [
-        [
-          "drizzle-kit",
-          "@esbuild-kit/esm-loader",
-          "@esbuild-kit/core-utils",
-          "esbuild"
-        ]
-      ],
-      "disposition": "vulnerable-code-not-used",
-      "rationale": "The affected esbuild development server is present only through drizzle-kit tooling. Generated commands use drizzle-kit generate and migrate and never invoke esbuild serve.",
-      "mitigation": "Keep the development server API unexposed and re-evaluate the chain whenever drizzle-kit or its loader dependencies change.",
-      "owner": "voyager163",
-      "reviewedAt": "2026-08-31",
-      "reviewBy": "2026-11-29",
-      "upstreamReference": "https://github.com/advisories/GHSA-67mh-4wv8-2f99"
-    }
-  ]
+  "exceptions": []
 }
