@@ -5,7 +5,8 @@ import { canonicalJson } from '../../domain/governance/activation/canonical-json
 import { renderModernCredentialPolicySchema } from '../../domain/governance/activation/credential-policy-schema.js';
 import { createModernGovernanceContextContract } from '../../domain/governance/policy/modern-context.js';
 import { assertGovernanceContentSafe } from '../../domain/governance/policy/policy-contract.js';
-import { governanceAgentIntegrations } from '../../domain/project/catalog.js';
+import { governanceAgentIntegrations, projectAssessmentAgentIntegrations } from '../../domain/project/catalog.js';
+import { renderProjectAssessmentIntegration } from '../../generators/governance/integrations.js';
 import { createModernCompatibilityContract } from '../../governance-activation/modern-compatibility.js';
 import { renderModernGovernanceGuide, renderModernGovernanceIntegration } from '../../generators/governance/modern-handoff.js';
 import { projectCatalog } from './catalog.js';
@@ -60,6 +61,10 @@ export function buildModernManagedCore(value: unknown): readonly ModernManagedCo
     for (const operation of profile === 'none' ? ['repair'] as const : ['setup', 'assessment', 'repair'] as const) {
       const integration = governanceAgentIntegrations[agent][operation];
       contentByName.set(integration.logicalName, renderModernGovernanceIntegration(agent, operation, selection));
+    }
+    const assessment = projectAssessmentAgentIntegrations[agent];
+    if (source.managedArtifacts.some(artifact => artifact.logicalName === assessment.logicalName)) {
+      contentByName.set(assessment.logicalName, renderProjectAssessmentIntegration(agent));
     }
   }
   if (contentByName.size !== source.managedArtifacts.length) {

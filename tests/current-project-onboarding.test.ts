@@ -170,8 +170,8 @@ describe('public current project onboarding', () => {
     expect(await readFile(custom, 'utf8')).toBe('Custom skill, not owned by Liftoff\n');
     const manifest = JSON.parse(await readFile(path.join(target, 'liftoff.manifest.json'), 'utf8'));
     expect(manifest.project.agents).toEqual([agent === 'copilot' ? 'github-copilot' : agent]);
-    expect(manifest.managedArtifacts).toHaveLength(1);
-    expect(manifest.managedArtifacts[0].logicalName).toBe(`liftoff-repair-${agent}`);
+    expect(manifest.managedArtifacts.map((entry: { logicalName: string }) => entry.logicalName))
+      .toEqual([`liftoff-assess-${agent}`, `liftoff-repair-${agent}`]);
   });
 
   it('migrates to a fresh Manual sibling with a local checklist and unchanged source', async () => {

@@ -138,6 +138,23 @@ export const governanceAgentIntegrations = {
   repair: { logicalName: string; pathParts: readonly string[]; invocation: string };
 }>;
 
+export const projectAssessmentAgentIntegrations = {
+  'github-copilot': {
+    kind: 'command', logicalName: 'liftoff-assess-copilot',
+    pathParts: ['.github', 'prompts', 'liftoff-assess.prompt.md'], invocation: '/liftoff-assess'
+  },
+  claude: {
+    kind: 'command', logicalName: 'liftoff-assess-claude',
+    pathParts: ['.claude', 'commands', 'liftoff-assess.md'], invocation: '/liftoff-assess'
+  },
+  codex: {
+    kind: 'skill', logicalName: 'liftoff-assess-codex',
+    pathParts: ['.agents', 'skills', 'liftoff-assess', 'SKILL.md'], invocation: '$liftoff-assess'
+  }
+} as const satisfies Record<CodingAgentId, {
+  kind: 'command' | 'skill'; logicalName: string; pathParts: readonly string[]; invocation: string;
+}>;
+
 export const governanceArtifactPaths = {
   policy: ['.liftoff', 'governance', 'policy.md'],
   context: ['.liftoff', 'governance', 'context.json'],

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildCurrentProjectPlan } from '../src/application/project/planning.js';
 import { parseProjectManifest, resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
 import { composeModernManifestPlugins, pluginSelectionForPlan } from '../src/application/project/plugins.js';
-import { matchesHistoricalModernPlugins } from '../src/application/project/modern-plugins.js';
+import { matchesHistoricalModernPlugins, modernPreAssessmentRegistry } from '../src/application/project/modern-plugins.js';
 import { createManifestV8Candidate } from '../src/application/project/manifest-writer.js';
 import { buildModernManagedCore } from '../src/application/project/modern-managed-core.js';
 import { modernProjectSourceInput, resolveModernManifestSourceContext } from '../src/application/project/source-context.js';
@@ -24,10 +24,13 @@ const baseline: {
 function specimen(entry = baseline.cases[0]) {
   const plan = buildCurrentProjectPlan(entry.options, { requireProjectName: true });
   const composition = composeModernManifestPlugins(pluginSelectionForPlan(plan), { safeProjectName: plan.safeProjectName });
+  const sourceComposition = composeModernManifestPlugins(
+    pluginSelectionForPlan(plan), { safeProjectName: plan.safeProjectName }, modernPreAssessmentRegistry()
+  );
   const manifest = parseProjectManifest(entry.manifest);
   if (manifest.artifactVersion !== 8) throw new Error('Expected a frozen v8 source.');
   const selection = { project: manifest.project, framework: manifest.framework, profile: manifest.governance.profile };
-  return { manifest, composition, selection };
+  return { manifest, composition, sourceComposition, selection };
 }
 
 describe('template security refresh preserves exact historical source contracts', () => {
@@ -42,7 +45,7 @@ describe('template security refresh preserves exact historical source contracts'
   it.each(baseline.cases.map((entry, index) => ({ ...entry, index })))(
     'reads and maintains original source $index without retagging plugin identity or provenance', (entry) => {
       const before = canonicalJson(entry.manifest);
-      const { manifest, composition, selection } = specimen(entry);
+      const { manifest, composition, sourceComposition, selection } = specimen(entry);
       expect(manifest).toEqual(entry.manifest);
       expect(matchesHistoricalModernPlugins(manifest.plugins, composition.resolution)).toBe(true);
       const source = resolveModernManifestV8SourceContract({ selection, recordedPlugins: manifest.plugins });
@@ -54,7 +57,7 @@ describe('template security refresh preserves exact historical source contracts'
       expect(modernProjectSourceInput(manifest)).toEqual({
         selection, plugins: manifest.plugins, activeLayout: manifest.activeLayout
       });
-      expect(source.managedArtifacts).toEqual(composition.expected.filter(artifact => artifact.lifecycle === 'managed-core')
+      expect(source.managedArtifacts).toEqual(sourceComposition.expected.filter(artifact => artifact.lifecycle === 'managed-core')
         .map(({ logicalName, category, pathParts }) => ({ logicalName, category, pathParts })));
       const core = buildModernManagedCore({ selection, plugins: manifest.plugins, activeLayout: manifest.activeLayout });
       expect(core.map(artifact => artifact.logicalName)).toEqual(source.managedArtifacts.map(artifact => artifact.logicalName));

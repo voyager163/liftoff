@@ -1,5 +1,5 @@
 import { packagedSkillSource } from '../../adapters/packaged-assets/skill-sources.js';
-import { governanceAgentIntegrations } from '../../domain/project/catalog.js';
+import { governanceAgentIntegrations, projectAssessmentAgentIntegrations } from '../../domain/project/catalog.js';
 import type { CodingAgentId } from '../../domain/project/contracts.js';
 import { repairContractVersion, repairRecipes, repairSchemaVersions } from '../../domain/repair/identity.js';
 
@@ -51,4 +51,12 @@ export function renderSetupIntegration(agent: CodingAgentId): string {
 
 export function renderAssessmentIntegration(agent: CodingAgentId): string {
   return `${nativeIntegrationHeader(agent, 'assessment')}\n${packagedSkillSource('governance-assessment')}`;
+}
+
+export function renderProjectAssessmentIntegration(agent: CodingAgentId): string {
+  const integration = projectAssessmentAgentIntegrations[agent];
+  const metadata = integration.kind === 'skill'
+    ? '---\nname: liftoff-assess\ndescription: "Explain a capability-negotiated read-only whole-project assessment without executing remediation."\n---\n\n'
+    : '';
+  return `${metadata}# ${integration.invocation}\n\n${packagedSkillSource('assessment')}`;
 }

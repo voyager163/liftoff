@@ -54,6 +54,7 @@ import { createManifestV8Candidate, type ManagedManifestDecision, type ManifestV
 import { createManifestV8Reader } from '../domain/project/manifest/v8.js';
 import { resolveModernManifestV8SourceContract } from '../application/project/manifest.js';
 import { projectCatalog } from '../application/project/catalog.js';
+import { projectAssessmentAgentIntegrations } from '../domain/project/catalog.js';
 import { createManifestV8ProjectReader } from '../domain/project/manifest/v8-project.js';
 import { manifestActiveLayoutDigest } from '../domain/project/manifest/layout.js';
 import { createModernCompatibilityContract } from './modern-compatibility.js';
@@ -877,6 +878,9 @@ export async function readModernActivationSuccessorSource(
     }
   }
   for (const artifact of inventory.manifest.managedArtifacts) await reader.capture(artifact.pathParts, true);
+  for (const agent of inventory.manifest.project.agents) {
+    await reader.capture(projectAssessmentAgentIntegrations[agent].pathParts, true);
+  }
   for (const directory of sourceCollections) {
     if (canonicalSha256(await reader.recordPaths(directory)) !== canonicalSha256(collections.get(directory))) {
       historyFail(directory, 'source collection changed during capture.', 'historical-source-changed');

@@ -104,7 +104,7 @@ describe('real modern managed-core inventory and content', () => {
           expect(input).toEqual(before);
           expect(files.map(({ logicalName, category, pathParts, lifecycle }) => ({ logicalName, category, pathParts, lifecycle })))
             .toEqual(source.managedArtifacts.map((entry) => ({ ...entry, lifecycle: 'managed-core' })));
-          expect(files).toHaveLength(profile === 'none' ? agents.length : 6 + agents.length * 3);
+          expect(files).toHaveLength(profile === 'none' ? agents.length * 2 : 6 + agents.length * 4);
           expect(Object.isFrozen(files)).toBe(true);
           expect(files.every((entry) => Object.isFrozen(entry) && Object.isFrozen(entry.pathParts) && entry.content.length > 0)).toBe(true);
           expect(files.some((entry) => entry.logicalName === 'manifest' || entry.logicalName === 'liftoff-config')).toBe(false);
@@ -135,7 +135,7 @@ describe('real modern managed-core inventory and content', () => {
             expect(schema.properties.identity.properties).toEqual(Object.fromEntries(
               Object.entries(context.governance.activationIdentity).map(([field, value]) => [field, { const: value }])));
           } else {
-            expect(files.every((entry) => entry.logicalName.startsWith('liftoff-repair-'))).toBe(true);
+            expect(files.every((entry) => /^liftoff-(?:repair|assess)-/u.test(entry.logicalName))).toBe(true);
           }
           if (index === 0) expect(buildModernManagedCore(input)).toEqual(files);
         }
@@ -199,8 +199,8 @@ describe('real modern managed-core inventory and content', () => {
       }
     }
     const none = buildModernManagedCore(fixture('manual', 'none', ['codex']));
-    expect(none.map((entry) => entry.logicalName)).toEqual(['liftoff-repair-codex']);
-    expect(none[0].content).toContain('Governance none stays disabled');
+    expect(none.map((entry) => entry.logicalName)).toEqual(['liftoff-assess-codex', 'liftoff-repair-codex']);
+    expect(text(none, 'liftoff-repair-codex')).toContain('Governance none stays disabled');
     expect(buildModernManagedCore(fixture('manual', 'none', []))).toEqual([]);
     expect(() => renderModernGovernanceIntegration('claude', 'repair', fixture('manual', 'none', ['codex']).selection)).toThrow('not applicable');
     expect(() => renderModernGovernanceIntegration('codex', 'setup', fixture('manual', 'none', ['codex']).selection)).toThrow('not applicable');

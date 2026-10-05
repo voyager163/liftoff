@@ -730,6 +730,27 @@ path, even when assessment runs from another working directory.
 No finding, target choice or digest is write approval, ownership,
 activation evidence or permission to run a recommendation.
 
+### Agent-assisted interpretation
+
+Fresh projects in the whole-project guidance family include `/liftoff-assess`
+for selected Copilot/Claude hosts and `$liftoff-assess` for Codex. All three use
+one packaged `assets/skills/assessment.md` body, independent of the chosen
+workflow and governance profile. Manual/no-agent projects use the CLI directly.
+This is distinct from the narrower `/liftoff-governance-assess`.
+
+The guidance negotiates the actual installed capability/report contract before
+collection, or explains a supplied valid report without project/provider access.
+Missing or incompatible support stops collection; upgrading requires separate
+permission and fresh negotiation. Only an explicit request permits advertised
+scoped live reads. Interpretation stops at explaining actual findings, unknowns
+and available previews; it never executes remediation. Adoption, workflow/profile
+transitions and deployed-state work remain unavailable unless separately advertised.
+
+Historical projects retain their recorded source declarations, logical inventory
+and managed contents. Ordinary update does not silently add this new integration
+or retag an older plugin family. Use the advertised CLI assessment until a
+separately reviewed contribution transition is available.
+
 ## Read-only governance assessment
 
 ```bash

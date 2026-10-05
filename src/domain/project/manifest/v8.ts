@@ -184,7 +184,9 @@ export function createManifestV8Reader(context: ManifestV8ReaderContext) {
     const projectArtifacts = artifacts.normalizeManifestProjectArtifacts(artifactRecords(root.projectArtifacts, [
       'logicalName', 'category', 'pathParts', 'generatedBy', 'generationHash', 'provisioningGroup'
     ], manifestV8ProvenanceMaximumEntries, 'Manifest.projectArtifacts'));
-    artifacts.validateV6AndV7ArtifactAuthority(managedArtifacts, projectArtifacts);
+    artifacts.validateV6AndV7ArtifactAuthority(
+      managedArtifacts, projectArtifacts, source.managedArtifacts.map(entry => entry.logicalName)
+    );
     const declaredManaged = new Map(source.managedArtifacts.map((entry) => [entry.logicalName, entry]));
     for (const entry of managedArtifacts) {
       const declared = declaredManaged.get(entry.logicalName);

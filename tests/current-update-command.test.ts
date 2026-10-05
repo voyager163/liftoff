@@ -7,6 +7,7 @@ import { runCommand } from '../src/commands.js';
 import { parseArgs } from '../src/cli/args/parser.js';
 import { applyModernSuccessorUpdate, previewModernSuccessorUpdate } from '../src/application/update/use-case.js';
 import { buildModernManagedCore } from '../src/application/project/modern-managed-core.js';
+import { renderProjectAssessmentIntegration } from '../src/generators/governance/integrations.js';
 import { createModernGovernanceContextContract } from '../src/domain/governance/policy/modern-context.js';
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
@@ -53,6 +54,7 @@ describe('public current-v8 project update', () => {
     const project = await fixture();
     await writeModernHistoricalSource(project.root, version);
     const before = await inventory(project.root);
+    expect(before['.github/prompts/liftoff-assess.prompt.md']).toBeUndefined();
     const preview = await invoke(project, ['--check']);
     expect(preview).toMatchObject({ code: 2, report: { scope: 'history-core-state-manifest-publication-only' } });
     const result = await invoke(project, ['--approve-plan', preview.report.plans[0].fingerprint]);
@@ -66,6 +68,8 @@ describe('public current-v8 project update', () => {
       file.digest === before['governance/activation-state.json'].digest)).toBe(true);
     expect(after['application.txt']).toEqual(before['application.txt']);
     expect(after['package.json']).toEqual(before['package.json']);
+    expect(await fs.readFile(path.join(project.root, '.github', 'prompts', 'liftoff-assess.prompt.md'), 'utf8'))
+      .toBe(renderProjectAssessmentIntegration('github-copilot'));
   });
 
   it.each([1, 2, 3] as const)('maintains an active successor of family %s without retagging its original transition', async version => {

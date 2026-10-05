@@ -28,7 +28,7 @@ liftoff init manual-api --type standard --api go --spec manual --agents none --n
 ```
 
 Manual does not disable a selected governance policy. With governance `none`, no
-policy, setup/assessment integration, or fake activation state is generated.
+policy, setup/governance-assessment integration, or fake activation state is generated.
 With no agents, use the CLI directly. Local verification/finalization uses only
 the actual installed local interfaces; generation does not create completion
 receipts or authorize project scripts, publication, or cloud operations.
@@ -188,7 +188,7 @@ through a separately reviewed managed `liftoff update`, not by reinstalling
 frameworks or replacing neighboring user-owned skills.
 
 Repair is also generated when governance is `none`. That does not generate
-policy, setup, assessment, activation state or evidence, or enable governance.
+policy, setup, governance assessment, activation state or evidence, or enable governance.
 The exact managed repair entries are:
 
 | Logical name | Native file |
@@ -196,6 +196,28 @@ The exact managed repair entries are:
 | `liftoff-repair-copilot` | `.github/prompts/liftoff-repair.prompt.md` |
 | `liftoff-repair-claude` | `.claude/commands/liftoff-repair.md` |
 | `liftoff-repair-codex` | `.agents/skills/liftoff-repair/SKILL.md` |
+
+Fresh projects in the whole-project guidance family additionally receive the
+selected host's independent read-only assessment integration, including when
+governance is `none`:
+
+| Logical name | Native file | Invocation |
+| --- | --- | --- |
+| `liftoff-assess-copilot` | `.github/prompts/liftoff-assess.prompt.md` | `/liftoff-assess` |
+| `liftoff-assess-claude` | `.claude/commands/liftoff-assess.md` | `/liftoff-assess` |
+| `liftoff-assess-codex` | `.agents/skills/liftoff-assess/SKILL.md` | `$liftoff-assess` |
+
+All three render the same packaged `assets/skills/assessment.md` instructions.
+They negotiate actual whole-project schema-1 support, distinguish unknown or
+unsupported evidence from alignment, and explain only advertised preview routes.
+They never execute recommendations or borrow setup/repair approval. CLI-only users
+run `liftoff capabilities --json` and, when advertised, `liftoff assess --json`;
+an agent host or external framework is not a prerequisite.
+
+Historical source families retain their original integrations, managed bytes
+and layout. Ordinary maintenance does not install this new contribution or
+reinterpret old identities through current declarations; use CLI assessment
+until a separately reviewed contribution transition is available.
 
 In Codex, use `$<skill-name>` or the `/skills` picker. Its managed files are
 `.agents/skills/liftoff-setup/SKILL.md`,

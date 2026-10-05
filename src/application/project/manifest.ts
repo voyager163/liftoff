@@ -23,7 +23,9 @@ import { canonicalJson } from '../../domain/governance/activation/canonical-json
 import { capturedFileBytes } from '../../domain/governance/activation/modern-local-inputs.js';
 import type { InstalledLocalSnapshot } from '../../domain/governance/activation/modern-local-runtime.js';
 import { modernLocalInputExclusion } from '../../domain/governance/activation/modern-local-exclusions.js';
-import { matchesHistoricalModernPlugins } from './modern-plugins.js';
+import { matchesHistoricalModernPlugins, modernPreAssessmentRegistry } from './modern-plugins.js';
+import type { PluginSelection } from '../../plugins/contracts.js';
+import { projectAssessmentAgentIntegrations } from '../../domain/project/catalog.js';
 
 const manifestReader = createManifestReader({
   catalog: projectCatalog,
@@ -133,7 +135,7 @@ function resolveSourceContract(input: unknown, compose: typeof composeManifestPl
   const recorded = readManifestPluginMetadata(request.recordedPlugins, {
     stack: workload.apiStack, cloud: workload.cloud, workflow: project.specWorkflow, agents: project.agents
   });
-  const composition = compose({
+  const pluginSelection: PluginSelection = {
     workload: workload.kind,
     ...(workload.kind === 'genai' ? { variant: workload.pattern } : {}),
     stack: workload.apiStack,
@@ -143,17 +145,24 @@ function resolveSourceContract(input: unknown, compose: typeof composeManifestPl
     frontend: workload.frontend ? 'included' : 'omitted',
     governanceProfile: profile,
     environments: workload.environments
-  }, { safeProjectName: toSafeProjectName(project.name) });
-  const installed = bindingContextForComposition(composition);
+  };
+  const values = { safeProjectName: toSafeProjectName(project.name) };
+  let composition = compose(pluginSelection, values);
+  let installed = bindingContextForComposition(composition);
   const current = manifestPluginMetadataMatches(recorded, installed.plugins);
-  if (!current && !(compose === composeModernManifestPlugins && matchesHistoricalModernPlugins(recorded, composition.resolution))) {
-    throw new FileSystemError('Manifest v8 source plugin metadata does not match the exact installed release-owned source contract.');
+  if (!current) {
+    if (compose !== composeModernManifestPlugins || !matchesHistoricalModernPlugins(recorded, composition.resolution)) {
+      throw new FileSystemError('Manifest v8 source plugin metadata does not match the exact installed release-owned source contract.');
+    }
+    composition = composeModernManifestPlugins(pluginSelection, values, modernPreAssessmentRegistry());
+    installed = bindingContextForComposition(composition);
   }
   const context = current ? installed : Object.freeze({ ...installed, plugins: recorded });
   const managedArtifacts = composition.expected.filter((artifact) => artifact.lifecycle === 'managed-core').map((artifact) =>
     Object.freeze({ logicalName: artifact.logicalName, category: artifact.category, pathParts: Object.freeze([...artifact.pathParts]) }));
   const requiredHandoffLogicalNames = profile === 'none' ? [] : managedArtifacts
-    .filter((artifact) => !repairManagedCoreLogicalNames.some((name) => name === artifact.logicalName))
+    .filter((artifact) => !repairManagedCoreLogicalNames.some((name) => name === artifact.logicalName) &&
+      !Object.values(projectAssessmentAgentIntegrations).some(integration => integration.logicalName === artifact.logicalName))
     .map((artifact) => artifact.logicalName);
   const readableProjectLogicalNames = [...new Set([
     ...composition.expected.filter((artifact) => artifact.lifecycle === 'project').map((artifact) => artifact.logicalName),
@@ -228,7 +237,9 @@ function layoutDescriptorForComposition(composition: ProjectPluginComposition): 
       workflow: workflow.id, agents: projectCatalog.codingAgents.map((agent) => agent.id)
     })),
     ...OPEN_SPEC_COPILOT_CLOUD_PATHS,
-    ...[...managedCoreArtifactPaths.values()]
+    ...[...managedCoreArtifactPaths.values()],
+    ...(composition.resolution.sharedAssets.some(asset => asset.id === 'liftoff-project-assessment')
+      ? Object.values(projectAssessmentAgentIntegrations).map(integration => integration.pathParts) : [])
   ].map((parts) => Object.freeze([...parts]));
   return Object.freeze({
     components: Object.freeze(components),

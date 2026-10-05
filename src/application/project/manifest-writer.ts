@@ -136,7 +136,9 @@ function contentReader() {
   };
 }
 
-function exactArtifactIdentity(record: Record<string, unknown>, declared: ExpectedArtifact | undefined): ExpectedArtifact {
+function exactArtifactIdentity<T extends Pick<ExpectedArtifact, 'category' | 'pathParts'>>(
+  record: Record<string, unknown>, declared: T | undefined
+): T {
   if (!declared || record.category !== declared.category) {
     throw new FileSystemError('Manifest artifact is not an exact applicable target declaration.');
   }
@@ -188,7 +190,7 @@ function managedInput(
   target: ReturnType<typeof targetFor>
 ) {
   const previous = new Map(source.managedArtifacts.map((entry) => [entry.logicalName, entry]));
-  const declared = new Map(target.composition.expected.filter((entry) => entry.lifecycle === 'managed-core').map((entry) => [entry.logicalName, entry]));
+  const declared = new Map(target.source.managedArtifacts.map(entry => [entry.logicalName, entry]));
   const names = new Set<string>();
   const content = contentReader();
   const entries = denseArray(value, previous.size + declared.size, 'Managed manifest decisions').flatMap((entry) => {

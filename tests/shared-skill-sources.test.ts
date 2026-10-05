@@ -13,7 +13,7 @@ import { installedCapabilities } from '../src/application/capabilities.js';
 import { commandDefinitions } from '../src/cli/args/definitions.js';
 import { expectBoundedCapabilitySkill } from './fixtures/reviewed-rendering.js';
 
-const ids = ['setup', 'governance-assessment', 'repair'] as const;
+const ids = ['setup', 'governance-assessment', 'repair', 'assessment'] as const;
 const agents = ['github-copilot', 'claude', 'codex'] as const;
 const originals = Object.fromEntries(ids.map(id => [
   id, readFileSync(path.join('assets', 'skills', `${id}.md`), 'utf8')
@@ -53,7 +53,7 @@ describe('shared packaged Liftoff skill sources', () => {
   it.each(ids)('fails explicitly when the packaged %s source is missing', id => {
     const root = fixture(id);
     expect(() => sources.loadPackagedSkillSource(id, { packageRoot: root }))
-      .toThrow(`Packaged asset core/liftoff-${id} at "assets/skills/${id}.md" could not be used: the file does not exist`);
+      .toThrow(`Packaged asset core/${id === 'assessment' ? 'liftoff-project-assessment' : `liftoff-${id}`} at "assets/skills/${id}.md" could not be used: the file does not exist`);
   });
 
   it.each(['../setup', 'SETUP', 'unknown', '', null])('rejects undeclared identities before file access: %s', id => {
@@ -79,7 +79,7 @@ describe('shared packaged Liftoff skill sources', () => {
     expect(() => sources.loadPackagedSkillSource('setup', { packageRoot: directory })).toThrow('not a regular file');
   });
 
-  it.each(['setup', 'governance-assessment'] as const)('rejects undeclared templating in the static %s body', id => {
+  it.each(['setup', 'governance-assessment', 'assessment'] as const)('rejects undeclared templating in the static %s body', id => {
     const root = fixture(id, 'Not an implemented {{template}}\n');
     expect(() => sources.loadPackagedSkillSource(id, { packageRoot: root })).toThrow('does not support placeholders');
   });
@@ -180,7 +180,7 @@ describe('shared packaged Liftoff skill sources', () => {
     expect(repair).toContain('never direct edits followed by retrospective approval');
     expect(repair).toContain('external isolated staging OUTSIDE the project');
     expect(installedCapabilities().plugins.inventory.filter(({ category }) => category === 'agent')
-      .map(({ contentVersion }) => contentVersion)).toEqual([2, 2, 2]);
+      .map(({ contentVersion }) => contentVersion)).toEqual([3, 3, 3]);
     expect(installedCapabilities().workflows.map(({ id }) => id)).toContain('manual');
   });
 

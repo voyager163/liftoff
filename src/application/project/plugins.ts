@@ -258,9 +258,9 @@ export function composeManifestPlugins(
 
 export function composeModernManifestPlugins(
   selection: PluginSelection,
-  values: ArtifactPathTokenValues
+  values: ArtifactPathTokenValues,
+  source: PluginRegistry = modernSourceRegistry()
 ): ProjectPluginComposition {
-  const source = modernSourceRegistry();
   const resolution = resolveComposition(source, selection);
   return materializeComposition(source, resolution, values);
 }
