@@ -715,7 +715,7 @@ an ordinary Git repository without a manifest. Nested working directories resolv
 to the nearest applicable Git or Liftoff boundary; invalid or retired inner
 manifests cannot be bypassed. No initialization or slash-command installation is
 required. Help needs no project or
-credential discovery. Within governance subcommands, only `assess` accepts `--live`; assessment rejects
+credential discovery. Only `assess` accepts `--live` within governance subcommands; assessment rejects
 `--execute` (including `--execute=false`), `--force`, installation, automatic
 upgrade, and output-file flags before project access.
 
