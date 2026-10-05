@@ -181,25 +181,27 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
   it('assesses explicit local and unbound live projects without global tools or project/user-state changes', async () => {
     const before = await bundleInventory(outside);
     const homeBefore = await bundleInventory(environment.HOME!);
-    for (const live of [false, true]) {
-      const result = execute(cli, [
-        'assess', '--project', outside, '--governance', 'none', '--json', ...(live ? ['--live'] : [])
-      ]);
-      expect(result.status, result.stdout + result.stderr).toBe(2);
-      expect(result.stderr).toBe('');
-      const report = JSON.parse(result.stdout);
-      expect(report).toMatchObject({
-        schemaVersion: 1, readOnly: true, mode: live ? 'live' : 'local', outcome: 'partial',
-        snapshot: { inputsStable: !live },
-        project: { root: outside, kind: 'non-git' }, target: { profile: 'none', profileSelection: 'explicit' }
-      });
-      expect(report.coverage.notObserved).toBeGreaterThan(0);
-      if (live) {
-        const findings = report.findings.filter((finding: { id: string }) => finding.id.startsWith('live.'));
-        expect(findings.length).toBeGreaterThan(0);
-        expect(findings.every((finding: { supported: boolean; classification: string; observed: { availability: string; source: unknown } }) =>
-          !finding.supported && finding.classification === 'not-observed' &&
-          finding.observed.availability === 'not-observed' && finding.observed.source === null)).toBe(true);
+    for (const profile of ['none', 'single-maintainer-gitflow']) {
+      for (const live of [false, true]) {
+        const result = execute(cli, [
+          'assess', '--project', outside, '--governance', profile, '--json', ...(live ? ['--live'] : [])
+        ]);
+        expect(result.status, result.stdout + result.stderr).toBe(2);
+        expect(result.stderr).toBe('');
+        const report = JSON.parse(result.stdout);
+        expect(report).toMatchObject({
+          schemaVersion: 1, readOnly: true, mode: live ? 'live' : 'local', outcome: 'partial',
+          snapshot: { inputsStable: !live || profile === 'none' },
+          project: { root: outside, kind: 'non-git' }, target: { profile, profileSelection: 'explicit' }
+        });
+        expect(report.coverage.notObserved).toBeGreaterThan(0);
+        if (live) {
+          const findings = report.findings.filter((finding: { id: string }) => finding.id.startsWith('live.'));
+          expect(findings.length).toBeGreaterThan(0);
+          expect(findings.every((finding: { supported: boolean; classification: string; observed: { availability: string; source: unknown } }) =>
+            !finding.supported && finding.classification === 'not-observed' &&
+            finding.observed.availability === 'not-observed' && finding.observed.source === null)).toBe(true);
+        }
       }
     }
     expect(await bundleInventory(outside)).toEqual(before);
