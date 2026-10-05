@@ -13,6 +13,11 @@ export interface ProjectLiveMetadata extends LiveAssessmentResult {
   inputsStable: boolean;
 }
 
+export function gitConfigNullFile(platform: NodeJS.Platform = process.platform): string {
+  // Git for Windows does not accept Node's \\.\nul device pathname as a config file.
+  return platform === 'win32' ? 'NUL' : devNull;
+}
+
 function metadataDigest(facts: AssessmentGitFacts): string {
   return canonicalSha256({
     isRepository: facts.isRepository,
@@ -33,7 +38,7 @@ function metadataRunner(runner: CommandRunner): CommandRunner {
         if (key.toUpperCase().startsWith('GIT_')) environment[key] = undefined;
       }
       Object.assign(environment, {
-        GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_COUNT: '0',
+        GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: gitConfigNullFile(), GIT_CONFIG_COUNT: '0',
         GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0'
       });
       const result = await runner.run(command, {

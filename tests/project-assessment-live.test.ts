@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promi
 import { devNull, tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { inspectProjectLiveMetadata } from '../src/adapters/assessment/live.js';
+import { gitConfigNullFile, inspectProjectLiveMetadata } from '../src/adapters/assessment/live.js';
 import { inspectScopedLiveProject, ScopedLiveAssessmentError } from '../src/application/assessment/live-report.js';
 import { providerAssessmentObservation } from '../src/domain/assessment/report.js';
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
@@ -27,6 +27,12 @@ const repository = 'example-org/assessment';
 const base = `https://api.github.com/repos/${repository}`;
 const head = 'a'.repeat(40);
 const now = () => new Date('2026-10-05T00:00:00.000Z');
+it.each([
+  ['win32', 'NUL'], ['darwin', devNull], ['linux', devNull]
+] as const)('uses the Git-compatible null configuration for %s', (platform, expected) => {
+  expect(gitConfigNullFile(platform)).toBe(expected);
+});
+
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -387,7 +393,7 @@ describe('private scoped live metadata prototype', () => {
         if (key.toUpperCase().startsWith('GIT_')) environment[key] = undefined;
       }
       Object.assign(environment, {
-        HOME: directory, XDG_CONFIG_HOME: directory, GIT_CONFIG_GLOBAL: devNull,
+        HOME: directory, XDG_CONFIG_HOME: directory, GIT_CONFIG_GLOBAL: gitConfigNullFile(),
         GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_COUNT: '0', GIT_TERMINAL_PROMPT: '0'
       });
       for (const args of [
@@ -397,7 +403,7 @@ describe('private scoped live metadata prototype', () => {
         const result = await local.run({ executable: 'git', args }, {
           cwd: directory, env: environment, timeoutMs: 2000, maxOutputBytes: 1024 * 1024
         });
-        expect(result).toMatchObject({ status: 0, timedOut: false, outputLimitExceeded: false });
+        expect(result, result.stderr).toMatchObject({ status: 0, timedOut: false, outputLimitExceeded: false });
       }
     }
     vi.stubEnv('GIT_DIR', path.join(foreign, '.git'));
@@ -628,7 +634,7 @@ async function nativeRepository(origin = `https://github.com/${repository}.git`)
     if (key.toUpperCase().startsWith('GIT_')) environment[key] = undefined;
   }
   Object.assign(environment, {
-    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_COUNT: '0',
+    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: gitConfigNullFile(), GIT_CONFIG_COUNT: '0',
     GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0',
     GIT_AUTHOR_DATE: '2026-10-05T00:00:00Z', GIT_COMMITTER_DATE: '2026-10-05T00:00:00Z'
   });
@@ -640,7 +646,7 @@ async function nativeRepository(origin = `https://github.com/${repository}.git`)
         '-c', 'user.name=Assessment fixture', '-c', 'user.email=fixture@example.invalid', ...args
       ]
     }, { cwd: root, env: environment, timeoutMs: 10_000, maxOutputBytes: 64 * 1024 });
-    expect(result.status).toBe(0);
+    expect(result.status, result.stderr).toBe(0);
     expect(result.signal).toBeNull();
     expect(result.timedOut).toBe(false);
     expect(result.errorCode).toBeUndefined();
@@ -669,7 +675,7 @@ describe('actual native Git reads with separately injected provider responses', 
     expect(runner.calls.filter(call => call.command.executable === 'git').every(call => {
       const environment = call.options.env;
       return call.options.cwd === root && call.options.timeoutMs === 10_000 &&
-        call.options.maxOutputBytes === assessmentLimits.fileBytes && environment?.GIT_CONFIG_GLOBAL === devNull &&
+        call.options.maxOutputBytes === assessmentLimits.fileBytes && environment?.GIT_CONFIG_GLOBAL === gitConfigNullFile() &&
         environment.GIT_CONFIG_NOSYSTEM === '1' && environment.GIT_CONFIG_COUNT === '0' &&
         environment.GIT_OPTIONAL_LOCKS === '0' && environment.GIT_TERMINAL_PROMPT === '0';
     })).toBe(true);
