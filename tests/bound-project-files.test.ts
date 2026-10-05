@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import {
-  appendFile, chmod, link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, unlink, writeFile
+  appendFile, chmod, link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, unlink, utimes, writeFile
 } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import os from 'node:os';
@@ -567,10 +567,16 @@ describe('separate streamed single-link file digests', () => {
   it('refuses a changed parent even when leaf bytes and identity stay unchanged', async () => {
     const { root } = await fixture(), target = path.join(root, 'source');
     await writeFile(target, raw);
-    io.afterOpen = async () => { await mkdir(path.join(root, 'concurrent-directory')); };
+    const before = await lstat(root);
+    io.afterOpen = async () => {
+      await mkdir(path.join(root, 'concurrent-directory'));
+      // Directory membership changes need not immediately advance timestamps on every host.
+      await utimes(root, before.atime, new Date(before.mtime.getTime() - 1000));
+    };
     await expect(readBoundProjectFileDigest(root, ['source'], digestOptions)).rejects.toThrow(/ancestor changed/);
     expect(await readFile(target)).toEqual(raw);
     expect((await lstat(path.join(root, 'concurrent-directory'))).isDirectory()).toBe(true);
+    expect((await lstat(root)).mtime.getTime()).not.toBe(before.mtime.getTime());
   });
 });
 

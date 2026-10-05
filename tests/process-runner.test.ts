@@ -104,12 +104,23 @@ async function cleanupTree(file: string): Promise<void> {
   }
 }
 
-async function treeCommand(mode: 'timeout' | 'output' | 'orphan-output'): Promise<{ file: string; command: ExternalCommand }> {
+async function treeCommand(
+  mode: 'timeout' | 'output' | 'orphan-output', publicationDelayMs: 0 | 250 = 0
+): Promise<{ file: string; command: ExternalCommand }> {
   const file = path.join(await testRoot('owned-tree'), 'processes.json');
   treeFiles.push(file);
   const descendant = `
     process.on('SIGTERM', () => {});
-    ${mode !== 'timeout' ? "setTimeout(() => process.stdout.write('x'.repeat(4096)), 100);" : ''}
+    ${mode !== 'timeout' ? `
+      const {existsSync} = require('node:fs');
+      const ready = setInterval(() => {
+        if (!existsSync(process.argv[1])) return;
+        clearInterval(ready);
+        clearTimeout(expires);
+        setTimeout(() => process.stdout.write('x'.repeat(4096)), 100);
+      }, 5);
+      const expires = setTimeout(() => clearInterval(ready), 3000);
+    ` : ''}
     setTimeout(() => {}, 3500);
   `;
   return {
@@ -124,10 +135,14 @@ async function treeCommand(mode: 'timeout' | 'output' | 'orphan-output'): Promis
           Number(execFileSync('ps', ['-o', 'pgid=', '-p', String(process.pid)], {encoding:'utf8', timeout:500}).trim());
         const descendant = spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}, file], {stdio:['ignore','inherit','inherit']});
         descendant.once('spawn', () => {
-          writeFileSync(file + '.stage', JSON.stringify({parent:process.pid, descendant:descendant.pid, group}));
-          renameSync(file + '.stage', file);
-          process.stdout.write('ready\\n');
-          ${mode === 'orphan-output' ? 'descendant.unref(); process.exit(0);' : 'setTimeout(() => {}, 3500);'}
+          const publish = () => {
+            writeFileSync(file + '.stage', JSON.stringify({parent:process.pid, descendant:descendant.pid, group}));
+            renameSync(file + '.stage', file);
+            process.stdout.write('ready\\n');
+            ${mode === 'orphan-output' ? 'descendant.unref(); process.exit(0);' : 'setTimeout(() => {}, 3500);'}
+          };
+          if (${publicationDelayMs} > 0) setTimeout(publish, ${publicationDelayMs});
+          else publish();
         });
       `, file]
     }
@@ -310,6 +325,18 @@ describe('external command runner', () => {
 
   it('terminates the entire owned tree on output overflow and settles without waiting for descendant pipes', async () => {
     const fixture = await treeCommand('output');
+    const started = performance.now();
+    const result = await new NodeCommandRunner().run(fixture.command, { maxOutputBytes: 1024 });
+
+    expect(performance.now() - started).toBeLessThan(1300);
+    expect(result).toMatchObject({
+      outputLimitExceeded: true, errorCode: 'MAX_OUTPUT_BYTES_EXCEEDED', stdout: '', stderr: '', timedOut: false
+    });
+    await expectStopped(await fixtureState(fixture.file));
+  });
+
+  it('publishes attributable tree identities before overflow even when parent publication is delayed', async () => {
+    const fixture = await treeCommand('output', 250);
     const started = performance.now();
     const result = await new NodeCommandRunner().run(fixture.command, { maxOutputBytes: 1024 });
 
