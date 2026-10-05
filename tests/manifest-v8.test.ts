@@ -281,7 +281,7 @@ describe('complete source, activation and ownership relations fail closed', () =
   it('never admits a governance handoff under none, or unselected-agent ownership', () => {
     const none = rootFixture('none');
     const enabled = rootFixture();
-    none.managedArtifacts[0] = enabled.managedArtifacts[0];
+    none.managedArtifacts[0] = enabled.managedArtifacts.find(entry => entry.logicalName === 'repository-governance-policy')!;
     expect(() => parseManifestV8(none)).toThrow('exact applicable');
     const otherAgents = rootFixture('single-maintainer-gitflow', 'openspec', ['claude']);
     enabled.managedArtifacts[0] = otherAgents.managedArtifacts.find((entry) => entry.logicalName === 'liftoff-setup-claude')!;

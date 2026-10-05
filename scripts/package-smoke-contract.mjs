@@ -28,6 +28,7 @@ export const requiredAncillaryAssets = Object.freeze([
   'assets/governance/team-gitflow/policy-v1.md',
   'assets/repair/windows-job-controller.ps1',
   'assets/skills/governance-assessment.md',
+  'assets/skills/assessment.md',
   'assets/skills/repair.md',
   'assets/skills/setup.md',
   'assets/supported-stack.json'

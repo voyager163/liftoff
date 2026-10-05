@@ -135,10 +135,11 @@ export function createManifestArtifactReader(catalog: ManifestContractContext['c
 
   function validateV6AndV7ArtifactAuthority(
     managedArtifacts: readonly ManifestManagedArtifact[],
-    projectArtifacts: readonly ManifestProjectArtifact[]
+    projectArtifacts: readonly ManifestProjectArtifact[],
+    additionalManagedLogicalNames: readonly string[] = []
   ): void {
     for (const artifact of managedArtifacts) {
-      if (isManagedCoreLogicalName(artifact.logicalName)) {
+      if (isManagedCoreLogicalName(artifact.logicalName) || additionalManagedLogicalNames.includes(artifact.logicalName)) {
         continue;
       }
       if (isRetiredManagedCoreLogicalName(artifact.logicalName)) {
@@ -165,7 +166,7 @@ export function createManifestArtifactReader(catalog: ManifestContractContext['c
       );
     }
     for (const artifact of projectArtifacts) {
-      if (isManagedCoreLogicalName(artifact.logicalName)) {
+      if (isManagedCoreLogicalName(artifact.logicalName) || additionalManagedLogicalNames.includes(artifact.logicalName)) {
         throw new FileSystemError(
           `Manifest project artifact ${artifact.logicalName} cannot contain a managed-core logical name.`
         );

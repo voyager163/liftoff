@@ -1,12 +1,13 @@
 import { readDeclaredAssetBytes, type PackagedAssetReadOptions } from './plugin-assets.js';
 
-const skillIds = ['setup', 'governance-assessment', 'repair'] as const;
+const skillIds = ['setup', 'governance-assessment', 'repair', 'assessment'] as const;
 export type PackagedSkillId = typeof skillIds[number];
 
 export function loadPackagedSkillSource(id: PackagedSkillId, options?: PackagedAssetReadOptions): string {
   if (!skillIds.includes(id)) throw new Error('Unknown packaged Liftoff skill source.');
   const [asset] = readDeclaredAssetBytes([{
-    owner: { kind: 'core' }, id: `liftoff-${id}`, pathParts: ['assets', 'skills', `${id}.md`]
+    owner: { kind: 'core' }, id: id === 'assessment' ? 'liftoff-project-assessment' : `liftoff-${id}`,
+    pathParts: ['assets', 'skills', `${id}.md`]
   }], { maxAssetBytes: 16_384, maxTotalAssetBytes: 16_384, maxPathParts: 4, maxPartLength: 64 }, options);
   if (!asset) throw new Error(`Packaged Liftoff skill source ${id} was not read.`);
   const text = new TextDecoder('utf-8', { fatal: true }).decode(asset.bytes);

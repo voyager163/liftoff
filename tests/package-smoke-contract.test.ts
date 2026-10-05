@@ -68,9 +68,9 @@ describe('unpacked package budget', () => {
 });
 
 describe('required packaged assets', () => {
-  it('requires exactly the thirteen template assets and twelve core ancillary assets', () => {
-    expect(required).toHaveLength(25);
-    expect(new Set(required).size).toBe(25);
+  it('requires exactly the thirteen template assets and thirteen core ancillary assets', () => {
+    expect(required).toHaveLength(26);
+    expect(new Set(required).size).toBe(26);
     expect(required).toEqual([...templatePaths, ...requiredAncillaryAssets].sort());
     expect(templatePaths.filter((entry) => requiredAncillaryAssets.includes(entry))).toEqual([]);
     const declaredAssets = packageJson.files.filter((entry) =>
@@ -101,6 +101,7 @@ describe('packed asset inventory', () => {
         'assets/governance/team-gitflow/policy-v1.md',
         ...eggInfoPaths,
         helperPath,
+        'assets/skills/assessment.md',
         'assets/skills/governance-assessment.md',
         'assets/skills/repair.md',
         'assets/skills/setup.md'

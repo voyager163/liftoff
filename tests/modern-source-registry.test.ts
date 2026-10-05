@@ -27,7 +27,7 @@ import { builtinCore, builtinDescriptors, builtinRelease, builtinReleaseDigests,
 import {
   modernAssets, modernCore, modernDescriptors, modernGovernanceAssets, modernRegistryInput, modernSelectionSpace
 } from '../src/plugins/builtin/modern.js';
-import { governanceAgentIntegrations } from '../src/domain/project/catalog.js';
+import { governanceAgentIntegrations, projectAssessmentAgentIntegrations } from '../src/domain/project/catalog.js';
 import { createPluginRegistry, pluginContentDigest } from '../src/plugins/registry.js';
 import { PluginRegistryError } from '../src/plugins/contracts.js';
 import type { PluginSelection } from '../src/plugins/contracts.js';
@@ -46,7 +46,7 @@ describe('modern source declarations', () => {
     expect(Object.values(manual!).some((value) => typeof value === 'function')).toBe(false);
   });
 
-    const rawDigest = (bytes: Uint8Array | string) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+    const rawDigest = (bytes: Uint8Array | string): `sha256:${string}` => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
     const readAssets = () => modernAssets.map(({ pathParts }) => ({
       pathParts, bytes: readFileSync(path.join(...pathParts))
     }));
@@ -101,9 +101,9 @@ describe('modern source declarations', () => {
     describe('actual modern registry and C1 source binding', () => {
       it('matches independently derived literal registry identities and keeps the default registry unchanged', () => {
         const modern = createModernSourceRegistry();
-        expect(modern.pluginSetDigest).toBe('sha256:b37f1ea2319bdf25e2fda09faa271639c48007acdcbd80aaf540835a210eab73');
-        expect(modern.coreContributionDigest).toBe('sha256:8502ebf3f4bce4ec93c98d674445828cf4db360bf32b0b7bfe30ba3f3fb39146');
-        expect(modern.registryDigest).toBe('sha256:3f586dc05020ab6f8f5f8c312098fef7e2a1a0ff3a802d60c1f0366ef25023a1');
+        expect(modern.pluginSetDigest).toBe('sha256:16942ffaa2ee9ec4459e91935f550fce39ec97f5cfe146331713b3bd06ba4113');
+        expect(modern.coreContributionDigest).toBe('sha256:49a59408342ef7e770c5fca5b494f9089a2c8c24a28ebb484d5fd528b81389a0');
+        expect(modern.registryDigest).toBe('sha256:2c55904621a03f20fc3b10ea2352b5d0f328b3038f3f867f8e25525c13d6f995');
         const original = builtinPluginRegistry();
         expect(original).not.toBe(modernSourceRegistry());
         expect(modernSourceRegistry()).toBe(modernSourceRegistry());
@@ -147,7 +147,7 @@ describe('modern source declarations', () => {
               expect(current.request).toEqual(before);
               expect(result.plugins).toEqual(current.request.recordedPlugins);
               expect(result.plugins.resolutionDigest).toBe(current.composition.resolution.digest);
-              expect(result.managedArtifacts).toHaveLength(profile === 'none' ? agents.length : 6 + agents.length * 3);
+              expect(result.managedArtifacts).toHaveLength(profile === 'none' ? agents.length * 2 : 6 + agents.length * 4);
               expect(result.requiredHandoffLogicalNames).toHaveLength(profile === 'none' ? 0 : 6 + agents.length * 2);
               expect(result.layoutDescriptor.components.includes('frontend')).toBe(index % 2 === 0);
               expect(result.layoutDescriptor.components.includes('opentofu-environment:prod')).toBe(index % 2 === 0);
@@ -245,7 +245,8 @@ describe('modern source declarations', () => {
     });
 
     describe('modern source asset integrity and lazy isolation', () => {
-      it.each(modernGovernanceAssets.map((asset) => ({ asset })))('fails closed for missing or changed $asset.id bytes', ({ asset }) => {
+      const sources = modernAssets.filter(asset => asset.owner.kind === 'core');
+      it.each(sources.map((asset) => ({ asset })))('fails closed for missing or changed $asset.id bytes', ({ asset }) => {
         const key = asset.pathParts.join('/');
         expect(() => createModernSourceRegistry(() => readAssets().filter((entry) => entry.pathParts.join('/') !== key))).toThrow();
         expect(() => createModernSourceRegistry(() => readAssets().map((entry) => entry.pathParts.join('/') === key
@@ -253,7 +254,7 @@ describe('modern source declarations', () => {
           : entry))).toThrow();
       });
 
-      it.each(modernGovernanceAssets.filter((asset) => asset.pathParts.at(-1)?.endsWith('.md')).map((asset) => ({ asset })))(
+      it.each(sources.filter((asset) => asset.pathParts.at(-1)?.endsWith('.md')).map((asset) => ({ asset })))(
         'does not normalize newline changes in $asset.id', ({ asset }) => {
           const key = asset.pathParts.join('/');
           for (const rewrite of [
@@ -277,7 +278,7 @@ describe('modern source declarations', () => {
           const read: Parameters<typeof createModernSourceRegistry>[0] = (declarations, bounds) =>
             readDeclaredAssetBytes(declarations, bounds, { packageRoot: root });
           expect(createModernSourceRegistry(read).registryDigest).toBe(modernSourceRegistry().registryDigest);
-          for (const asset of modernGovernanceAssets) {
+          for (const asset of sources) {
             const target = path.join(root, ...asset.pathParts), bytes = await readFile(target);
             await rm(target);
             expect(() => createModernSourceRegistry(read)).toThrow('could not be used');
@@ -386,7 +387,7 @@ describe('modern source declarations', () => {
         }
       });
     });
-  it('changes only exact agent setup/assessment applicability and agent content version', () => {
+  it('adds exact whole-project assessment integration while preserving prior agent applicability', () => {
     const sourceRegistry = builtinPluginRegistry();
     for (const original of builtinDescriptors) {
       const modern = modernDescriptors.find((descriptor) => descriptor.id === original.id)!;
@@ -395,22 +396,30 @@ describe('modern source declarations', () => {
         continue;
       }
       const integration = Object.entries(governanceAgentIntegrations).find(([id]) => id === original.id)![1];
+      const assessment = Object.entries(projectAssessmentAgentIntegrations).find(([id]) => id === original.id)![1];
       expect(modern).not.toBe(original);
       expect(original.contentVersion).toBe(4);
-      expect(modern.contentVersion).toBe(2);
+      expect(modern.contentVersion).toBe(3);
       expect(modern).toEqual({
         ...original,
-        contentVersion: 2,
-        artifacts: original.artifacts.map((artifact) =>
+        contentVersion: 3,
+        sharedAssets: [...original.sharedAssets, 'liftoff-project-assessment'],
+        artifacts: [...original.artifacts.map((artifact) =>
           artifact.logicalName === integration.setup.logicalName || artifact.logicalName === integration.assessment.logicalName
             ? { ...artifact, when: { governanceProfile: ['single-maintainer-gitflow', 'team-gitflow'] } }
-            : artifact)
+            : artifact), {
+          logicalName: assessment.logicalName, category: 'assessment',
+          pathParts: [...assessment.pathParts], lifecycle: 'managed-core'
+        }]
       });
       const repair = modern.artifacts.find((artifact) => artifact.logicalName === integration.repair.logicalName)!;
       expect(repair).toBe(original.artifacts.find((artifact) => artifact.logicalName === integration.repair.logicalName));
       expect(repair).not.toHaveProperty('when');
-      // These plugins have no assets; this checks their actual declaration change, not a C1 release qualification.
-      const actualDigest = pluginContentDigest({ ...modern, assets: [], sharedAssets: [] });
+      const actualDigest = pluginContentDigest({
+        ...modern, assets: [], sharedAssets: [{
+          id: 'liftoff-project-assessment', sha256: rawDigest(readFileSync('assets/skills/assessment.md'))
+        }]
+      });
       expect(actualDigest).not.toBe(sourceRegistry.inventory.find((entry) => entry.id === original.id)!.contentDigest);
     }
   });
@@ -427,7 +436,10 @@ describe('modern source declarations', () => {
       expect(artifact).toEqual({ ...original, when: { governanceProfile: ['single-maintainer-gitflow', 'team-gitflow'] } });
       expect(original.when).toEqual({ governanceProfile: ['single-maintainer-gitflow'] });
     }
-    expect(modernCore.managedCore).toBe(builtinCore.managedCore);
+    expect(modernCore.managedCore).toEqual([
+      ...builtinCore.managedCore,
+      ...Object.values(projectAssessmentAgentIntegrations).map(({ logicalName, pathParts }) => ({ logicalName, pathParts }))
+    ]);
     expect(modernCore.retiredLogicalNames).toBe(builtinCore.retiredLogicalNames);
     expect(modernCore.artifacts).toHaveLength(builtinCore.artifacts.length);
   });
@@ -440,11 +452,14 @@ describe('modern source declarations', () => {
     expect(modernSelectionSpace.workloads.find((workload) => workload.id === 'genai')?.variants).toHaveLength(9);
   });
 
-  it('reuses all thirteen dependency assets and adds three exact core source assets without fake sets', () => {
+  it('reuses all thirteen dependency assets and adds four exact core source assets without fake sets', () => {
     expect(builtinAssets).toHaveLength(13);
-    expect(modernAssets).toHaveLength(16);
+    expect(modernAssets).toHaveLength(17);
     expect(modernAssets.slice(0, 13)).toEqual(builtinAssets.map(({ owner, id, pathParts }) => ({ owner, id, pathParts })));
-    expect(modernAssets.slice(13)).toEqual(modernGovernanceAssets);
+    expect(modernAssets.slice(13)).toEqual([
+      ...modernGovernanceAssets,
+      { owner: { kind: 'core' }, id: 'liftoff-project-assessment', pathParts: ['assets', 'skills', 'assessment.md'] }
+    ]);
     expect(modernGovernanceAssets.map((asset) => [asset.id, asset.pathParts.join('/')])).toEqual([
       ['modern-single-maintainer-policy', 'assets/governance/single-maintainer-gitflow/policy-v7.md'],
       ['modern-team-policy', 'assets/governance/team-gitflow/policy-v1.md'],
@@ -458,7 +473,8 @@ describe('modern source declarations', () => {
     expect(modernGovernanceAssets.every((asset) => asset.owner.kind === 'core')).toBe(true);
     expect(modernCore.sharedAssets).toEqual([
       ...builtinCore.sharedAssets,
-      ...modernGovernanceAssets.map(({ id, pathParts }) => ({ id, pathParts }))
+      ...modernGovernanceAssets.map(({ id, pathParts }) => ({ id, pathParts })),
+      { id: 'liftoff-project-assessment', pathParts: ['assets', 'skills', 'assessment.md'] }
     ]);
   });
 

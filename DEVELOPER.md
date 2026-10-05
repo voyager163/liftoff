@@ -369,6 +369,15 @@ observation or execution and grants no ownership, approval or mutation authority
 
 ### Whole-project assessment and private inventory
 
+Fresh whole-project guidance uses one `assets/skills/assessment.md` body with
+native headers from `renderProjectAssessmentIntegration`. The independent
+`projectAssessmentAgentIntegrations` catalog defines exact selected-host
+`liftoff-assess` paths; it is not a fourth governance operation or completion
+requirement. Manual/no-agent generation has a CLI-only fallback, and governance
+`none` does not suppress this independent read-only integration. Tests cover all
+three hosts, advertised workflow/profile combinations and negotiation/remediation
+boundaries; instruction assertions do not claim actual LLM behavioral qualification.
+
 `src/application/assessment/inventory.ts` exposes `inspectProjectInventory` as
 one private observation source for the bounded public `liftoff assess` producer
 in `application/assessment/engine.ts`. Inventory alone is not conformance,
@@ -1205,7 +1214,8 @@ explicitly unowned under `assets/locks/python-genai/`, retained byte-for-byte in
 the repository and excluded from the package.
 
 The current public Liftoff integration bodies have one shared source each in
-`assets/skills/setup.md`, `governance-assessment.md` and `repair.md`. The packaged
+`assets/skills/setup.md`, `governance-assessment.md`, `repair.md` and the independent
+whole-project `assessment.md`. The packaged
 skill adapter uses the existing bounded, installed-root reader (16 KiB per
 source), rejects missing or malformed text, and caches only successful reads.
 The governance renderer supplies host-specific native headers and substitutes
@@ -1265,7 +1275,15 @@ subsequent verified expiration checks in either decode API.
 `plugins/builtin/modern-historical-release.ts` preserves the exact metadata-only
 pre-refresh v8 family from revision `289e7033`; `modern-previous-release.ts`
 additively records the accepted post-security-refresh family from `77762b75`.
-Modern source interpretation accepts either complete family only while its declaration digest, shared assets,
+`modern-pre-assessment.ts` additionally freezes the actual declarations, release,
+selection space and operation inventory captured before whole-project guidance.
+The real generic registry reconstructs that family from bounded, verified assets;
+`tests/fixtures/pre-assessment-guidance-source.json` preserves genuine original
+metadata, layouts and every managed body. Historical interpretation composes those
+old declarations, never current declarations with old hashes. Its layout protects
+only the captured old inventory, while the current family's exact assessment paths
+are protected for all hosts without acquiring whole-directory ownership.
+Modern source interpretation accepts complete historical families only while their declaration digest, shared assets,
 selected identities and reconstructed resolution digest match. It does not
 accept version ranges, mixed families or plugin IDs alone, bundle old templates,
 or grant mutation authority. Ordinary maintenance preserves those recorded
@@ -1275,9 +1293,15 @@ a readable historical selection with changed stack identity as the currently
 installed template bundle. Historical snapshots and generated captures remain
 immutable; exact additive reviewed rendering records account for current bytes.
 
+Legacy activation-to-v8 publication captures the exact new assessment destination
+for each already-recorded agent before planning, including physical absence.
+The original immutable history index still contains only original released files.
+New guidance is separately included in the approved target transaction; missing
+physical observations, foreign files and concurrent changes remain blockers.
+
 `scripts/package-smoke-contract.mjs` independently requires the 13 template
-assets and twelve core ancillary assets, including the two modern profile policies,
-their canonical source-contract table and three shared skill sources. The smoke enforces exact declarations
+assets and thirteen core ancillary assets, including the two modern profile policies,
+their canonical source-contract table and four shared skill sources. The smoke enforces exact declarations
 and packed entries, compares installed asset bytes with the checkout, excludes
 `assets/locks/`, and checks five installed plan contracts across Node, Python,
 Go and GenAI RAG, with and without the frontend. Four cases run outside the

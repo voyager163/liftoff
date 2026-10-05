@@ -62,7 +62,7 @@ Depends on 2-4. References: design D9; liftoff-bundled-plugins, liftoff-cli-work
 - [x] 5.2 Move canonical setup/repair/governance-assessment content into shared packaged sources while preserving existing Copilot/Claude/Codex logical paths and invocation forms; verify generated content/ownership and installed asset lookup.
 - [x] 5.3 Generate selected Liftoff integrations for Manual without external framework artifacts and allow no-agent output; verify unselected/custom neighboring skills remain untouched.
 - [x] 5.4 Require skills to negotiate actual commands/recipes and use external staged patches with independent permission boundaries; verify contract fixtures prohibit invented receipts, retrospective approval and direct real-project patching.
-- [ ] 5.5 Add shared whole-project assessment/adoption guidance that uses only advertised capabilities; verify CLI-only fallback and capability-mismatch remedies without fabricating commands in old releases.
+- [x] 5.5 Add shared whole-project assessment/adoption guidance that uses only advertised capabilities; verify CLI-only fallback and capability-mismatch remedies without fabricating commands in old releases.
 - [x] 5.6 Document native invocation, ownership/update rules, agent-host/model distinction and staging limitations; verify equivalent instructions and packaged links for all three hosts.
 
 ## 6. Add shared project assessment and active-layout interpretation
@@ -72,10 +72,10 @@ Depends on 3-5. References: design D8; liftoff-project-assessment, liftoff-gover
 - [x] 6.1 Implement bounded static inventory for supported application layout, dependencies, framework/agents, CI/infrastructure and documentation; verify no project-script execution, unsafe link traversal, secret/state payload reads or unbounded repository scan.
 - [x] 6.2 Share explicit active-binding and expected-managed-context interpretation across update, repair, doctor and assessments; verify compatible custom layouts do not become cosmetic migration debt.
 - [x] 6.3 Add `liftoff assess` and explicit `--governance` comparison target selection, preserving the narrower governance-assess contract; verify target selection is advisory and does not change project profile or query registry latest.
-- [ ] 6.4 Compose stable findings/provenance/coverage and schema-1 reports with deterministic ordering and 0/1/2 outcomes; verify missing evidence, unknown applicability, denied/paginated reads and genuine differences remain distinct.
-- [ ] 6.5 Wire scoped live metadata collection with existing permissions only; verify assessment/help/capabilities stay telemetry/disclosure/receipt-free and never enroll credentials or execute recommendations.
-- [ ] 6.6 Add ordinary-Git, explicit non-Git, nested-manifest/worktree and monorepo tests on Windows/macOS/Linux; verify unsafe inner boundaries stop rather than select an outer project.
-- [ ] 6.7 Document the assessment/remediation categories and update the canonical assessment skill; verify examples distinguish core update, application repair, adoption, workflow changes and deferred deployed-state work.
+- [x] 6.4 Compose stable findings/provenance/coverage and schema-1 reports with deterministic ordering and 0/1/2 outcomes; verify missing evidence, unknown applicability, denied/paginated reads and genuine differences remain distinct.
+- [x] 6.5 Wire scoped live metadata collection with existing permissions only; verify assessment/help/capabilities stay telemetry/disclosure/receipt-free and never enroll credentials or execute recommendations.
+- [x] 6.6 Add ordinary-Git, explicit non-Git, nested-manifest/worktree and monorepo tests on Windows/macOS/Linux; verify unsafe inner boundaries stop rather than select an outer project.
+- [x] 6.7 Document the assessment/remediation categories and update the canonical assessment skill; verify examples distinguish core update, application repair, adoption, workflow changes and deferred deployed-state work.
 
 ## 7. Implement reviewed in-place adoption and preserved-layout repair
 

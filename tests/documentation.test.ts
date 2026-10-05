@@ -740,7 +740,7 @@ describe('public documentation', () => {
       'retained byte-for-byte in the repository and excluded from the package',
       'before any npm request',
       'explicitly reported as not audited, not as clean',
-      '13 template assets and twelve core ancillary assets',
+      '13 template assets and thirteen core ancillary assets',
       '`resolveModernManifestV8SourceContract`',
       'verifies all 16 declared asset byte streams',
       'Failed initialization is not cached',

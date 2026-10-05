@@ -103,6 +103,11 @@ project/
 - `/liftoff-governance-assess` is a separate selected-agent, read-only wrapper
   around `liftoff governance assess --json`. It is local-only unless live reads
   are explicitly requested; it never runs automatically or replaces setup.
+- Fresh whole-project guidance adds `/liftoff-assess` (Copilot/Claude) or
+  `$liftoff-assess` (Codex) for each selected host, also under governance `none`.
+  Its exact managed paths are listed in [agent integrations](spec-workflows-and-agents.md#native-setup-repair-and-assessment).
+  No-agent projects use the advertised CLI assessment. Historical source families
+  keep their old managed inventory; ordinary update does not add this contribution.
 
 ### Conditional areas
 

@@ -1,9 +1,9 @@
 import type {
   AssetDeclaration, ContributionOwner, PackagedAssetBytes, PluginDescriptor, PluginRegistryInput, PluginReleaseInventory
 } from '../contracts.js';
-import { governanceAgentIntegrations } from '../../domain/project/catalog.js';
+import { governanceAgentIntegrations, projectAssessmentAgentIntegrations } from '../../domain/project/catalog.js';
 import { builtinAssets } from './assets.js';
-import { builtinDescriptor, deepFrozen } from './core.js';
+import { builtinDescriptor, deepFrozen, lifecycleArtifact } from './core.js';
 import { builtinCore, builtinDescriptors, builtinOperations, builtinSelectionSpace } from './index.js';
 
 const enabledProfiles = ['single-maintainer-gitflow', 'team-gitflow'] as const;
@@ -29,7 +29,8 @@ export const modernGovernanceAssets: readonly (AssetDeclaration & { readonly own
 
 export const modernAssets: readonly (AssetDeclaration & { readonly owner: ContributionOwner })[] = deepFrozen([
   ...builtinAssets.map(({ owner, id, pathParts }) => ({ owner, id, pathParts })),
-  ...modernGovernanceAssets
+  ...modernGovernanceAssets,
+  { owner: { kind: 'core' }, id: 'liftoff-project-assessment', pathParts: ['assets', 'skills', 'assessment.md'] }
 ]);
 
 const manual = builtinDescriptor({
@@ -41,13 +42,17 @@ export const modernDescriptors: readonly PluginDescriptor[] = deepFrozen([
     if (descriptor.category !== 'agent') return descriptor;
     const integration = Object.entries(governanceAgentIntegrations).find(([id]) => id === descriptor.id)?.[1];
     if (!integration) throw new Error(`No registered governance integrations for modern agent ${descriptor.id}.`);
+    const assessment = Object.entries(projectAssessmentAgentIntegrations).find(([id]) => id === descriptor.id)?.[1];
+    if (!assessment) throw new Error(`No registered whole-project assessment integration for modern agent ${descriptor.id}.`);
     return {
       ...descriptor,
-      contentVersion: 2,
-      artifacts: descriptor.artifacts.map((artifact) =>
+      contentVersion: 3,
+      sharedAssets: [...descriptor.sharedAssets, 'liftoff-project-assessment'],
+      artifacts: [...descriptor.artifacts.map((artifact) =>
         artifact.logicalName === integration.setup.logicalName || artifact.logicalName === integration.assessment.logicalName
           ? { ...artifact, when: { governanceProfile: [...enabledProfiles] } }
-          : artifact)
+          : artifact),
+        lifecycleArtifact(assessment.logicalName, 'assessment', assessment.pathParts, 'managed-core')]
     };
   }),
   manual
@@ -60,7 +65,12 @@ export const modernCore = deepFrozen({
     : artifact),
   sharedAssets: [
     ...builtinCore.sharedAssets,
-    ...modernGovernanceAssets.map(({ id, pathParts }) => ({ id, pathParts }))
+    ...modernGovernanceAssets.map(({ id, pathParts }) => ({ id, pathParts })),
+    { id: 'liftoff-project-assessment', pathParts: ['assets', 'skills', 'assessment.md'] }
+  ],
+  managedCore: [
+    ...builtinCore.managedCore,
+    ...Object.values(projectAssessmentAgentIntegrations).map(({ logicalName, pathParts }) => ({ logicalName, pathParts }))
   ]
 });
 

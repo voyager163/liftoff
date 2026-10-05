@@ -613,6 +613,42 @@ try {
   const { buildCurrentProjectPlan: installedCurrentPlan } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'planning.js')).href);
   const { buildArtifacts: installedArtifacts, buildCurrentArtifacts: installedCurrentArtifacts } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'templates.js')).href);
   const { writeArtifacts: installedWrite } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'file-system.js')).href);
+  const assessmentBody = await readFile(path.join(installedPackageRoot, 'assets', 'skills', 'assessment.md'), 'utf8');
+  const assessmentIntegrations = [
+    { agent: 'github-copilot', logicalName: 'liftoff-assess-copilot', pathParts: ['.github', 'prompts', 'liftoff-assess.prompt.md'], invocation: '/liftoff-assess' },
+    { agent: 'claude', logicalName: 'liftoff-assess-claude', pathParts: ['.claude', 'commands', 'liftoff-assess.md'], invocation: '/liftoff-assess' },
+    { agent: 'codex', logicalName: 'liftoff-assess-codex', pathParts: ['.agents', 'skills', 'liftoff-assess', 'SKILL.md'], invocation: '$liftoff-assess' }
+  ];
+  for (const governanceProfile of ['none', 'single-maintainer-gitflow']) {
+    for (const selected of [[], ...assessmentIntegrations.map(({ agent }) => [agent]), assessmentIntegrations.map(({ agent }) => agent)]) {
+      const artifacts = installedCurrentArtifacts(installedCurrentPlan({
+        projectName: 'Installed assessment guidance', projectType: 'standard', apiStack: 'node',
+        specWorkflow: 'manual', agents: selected, governanceProfile, includeFrontend: false, environments: ['dev']
+      }, { requireProjectName: true }));
+      const manifest = JSON.parse(artifacts.find(artifact => artifact.logicalName === 'manifest').content);
+      for (const integration of assessmentIntegrations) {
+        const artifact = artifacts.find(entry => entry.logicalName === integration.logicalName);
+        const owned = manifest.managedArtifacts.find(entry => entry.logicalName === integration.logicalName);
+        if (selected.includes(integration.agent)) {
+          const expectedTail = `# ${integration.invocation}\n\n${assessmentBody}`;
+          if (!artifact || !owned || artifact.lifecycle !== 'managed-core' || artifact.category !== 'assessment' ||
+              JSON.stringify(artifact.pathParts) !== JSON.stringify(integration.pathParts) ||
+              JSON.stringify(owned.pathParts) !== JSON.stringify(integration.pathParts) ||
+              !artifact.content.endsWith(expectedTail) ||
+              owned.contentHash !== `sha256:${createHash('sha256').update(artifact.content).digest('hex')}` ||
+              (integration.agent === 'codex' && !artifact.content.startsWith('---\nname: liftoff-assess\n'))) {
+            throw new Error(`Installed ${integration.agent} whole-project assessment guidance differs from its exact selected source.`);
+          }
+        } else if (artifact || owned) {
+          throw new Error(`Installed generation claimed an unselected ${integration.agent} assessment integration.`);
+        }
+      }
+      if (manifest.framework.state !== 'not-required' ||
+          artifacts.some(artifact => artifact.lifecycle === 'framework' || artifact.lifecycle === 'seed')) {
+        throw new Error('Installed assessment guidance introduced an external framework into Manual generation.');
+      }
+    }
+  }
   const wholeAssessmentProject = path.join(tempRoot, 'whole assessment current project');
   await installedWrite(wholeAssessmentProject, installedCurrentArtifacts(installedCurrentPlan({
     projectName: 'Whole Assessment Smoke', projectType: 'standard', apiStack: 'node',

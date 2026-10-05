@@ -2,7 +2,7 @@ import type { PluginReleaseInventory } from '../contracts.js';
 import { deepFrozen } from './core.js';
 import { builtinRelease } from './release.js';
 
-// Reviewed hashes of the actual modern declarations and C1 source assets.
+// Reviewed hashes of the actual modern declarations and canonical source assets.
 export const modernRelease: PluginReleaseInventory = deepFrozen({
   schemaVersion: 1,
   sharedAssets: [
@@ -21,21 +21,26 @@ export const modernRelease: PluginReleaseInventory = deepFrozen({
       id: 'modern-governance-source-contracts',
       pathParts: ['assets', 'governance', 'modern', 'source-contracts.json'],
       sha256: 'sha256:b336953323f1099a429e35cb22a39c9dda48e884bc5e610bfa44424db914bcf6'
+    },
+    {
+      id: 'liftoff-project-assessment',
+      pathParts: ['assets', 'skills', 'assessment.md'],
+      sha256: 'sha256:d84e9d9dae16d51165fc0d7aceba9594e92b8910194c917b1cbb99793f900713'
     }
   ],
   plugins: [
     ...builtinRelease.plugins.filter((entry) => entry.category !== 'agent'),
     {
-      category: 'agent', id: 'github-copilot', apiVersion: 1, contentVersion: 2,
-      contentDigest: 'sha256:e27664b5c85487cdf40fbf7da40691b3fb26d71d0026686152842d167bc46ce8', assets: []
+      category: 'agent', id: 'github-copilot', apiVersion: 1, contentVersion: 3,
+      contentDigest: 'sha256:e60e0ec46c170b90888c87bc498a7e6bd4febd4118952f828082fba71f6d90a2', assets: []
     },
     {
-      category: 'agent', id: 'claude', apiVersion: 1, contentVersion: 2,
-      contentDigest: 'sha256:001e1e7b1ee4e8b9f2f4ed250ed9d1eada084ef33992682165821277379cbfb1', assets: []
+      category: 'agent', id: 'claude', apiVersion: 1, contentVersion: 3,
+      contentDigest: 'sha256:28a08ce4964a48b6e24bb4441cc6988c63ef59d5605b595fc0f0559181645c54', assets: []
     },
     {
-      category: 'agent', id: 'codex', apiVersion: 1, contentVersion: 2,
-      contentDigest: 'sha256:4ad1642e726ac08037442f67a63b714bc544821a185281defdc6c682227e3b39', assets: []
+      category: 'agent', id: 'codex', apiVersion: 1, contentVersion: 3,
+      contentDigest: 'sha256:de760a5347c2314841339bf22211a0b883937e2ca7ac2d8a236595e4598ad84e', assets: []
     },
     {
       category: 'workflow', id: 'manual', apiVersion: 1, contentVersion: 1,
