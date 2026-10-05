@@ -1,4 +1,5 @@
 import { constants } from 'node:fs';
+import { createHash } from 'node:crypto';
 import {
   appendFile, chmod, link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, unlink, writeFile
 } from 'node:fs/promises';
@@ -7,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  assertBoundProjectPath, readBoundProjectFileSnapshot,
+  assertBoundProjectPath, readBoundProjectFileSnapshot, readBoundProjectFileDigest,
   type BoundFileReadOptions, type BoundPathDiagnostics
 } from '../src/adapters/filesystem/bound-project-files.js';
 import { FileSystemError } from '../src/domain/project/errors.js';
@@ -59,6 +60,7 @@ const diagnostics: BoundPathDiagnostics = {
 };
 const options: BoundFileReadOptions = { maximumBytes: 1024, linkPolicy: 'single-link', diagnostics };
 const policies = ['transaction-compatible', 'single-link'] as const;
+const digestOptions = { ...options, linkPolicy: 'single-link' as const };
 
 async function fixture() {
   const parent = await realpath(await mkdtemp(path.join(os.tmpdir(), 'bpf-')));
@@ -474,6 +476,101 @@ describe('caller structural rejections are not filesystem absence', () => {
     expect(await readFile(alias)).toEqual(raw);
     expect((await lstat(source)).mode & 0o7777).toBe(mode);
     expect((await lstat(alias)).nlink).toBe(2);
+  });
+});
+
+describe('separate streamed single-link file digests', () => {
+  it('streams a file above 32 MiB with bounded reads without changing the buffered snapshot limit', async () => {
+    const { root } = await fixture(), bytes = Buffer.alloc(33 * 1024 * 1024, 'a');
+    await writeFile(path.join(root, 'large-provider'), bytes);
+    let opened: FileHandle | undefined;
+    io.afterOpen = async handle => { opened = handle; vi.spyOn(handle, 'read'); vi.spyOn(handle, 'close'); };
+    const result = await readBoundProjectFileDigest(root, ['large-provider'], { ...digestOptions, maximumBytes: bytes.length });
+    expect(result).toMatchObject({
+      pathParts: ['large-provider'], bytes: bytes.length,
+      digest: createHash('sha256').update(bytes).digest('hex'), header: bytes.subarray(0, 8).toString('hex')
+    });
+    expect(result.physical).toMatch(/^\d+(?::\d+){9}$/u);
+    if (!opened) throw new Error('Expected a streamed file handle.');
+    for (const [buffer] of vi.mocked(opened.read).mock.calls) {
+      expect(Buffer.isBuffer(buffer)).toBe(true);
+      if (Buffer.isBuffer(buffer)) expect(buffer.length).toBeLessThanOrEqual(1024 * 1024);
+    }
+    expect(vi.mocked(opened.read).mock.calls).toHaveLength(34);
+    expect(opened.close).toHaveBeenCalledOnce();
+    await expect(readBoundProjectFileSnapshot(root, ['large-provider'], { ...options, maximumBytes: bytes.length }))
+      .rejects.toThrow(/33554432/);
+  });
+
+  it.each([0, -1, 1.5, 512 * 1024 * 1024 + 1])('rejects invalid digest bound %s before filesystem access', async maximumBytes => {
+    await expect(readBoundProjectFileDigest(path.resolve('never-read-digest-root'), ['file'], { ...digestOptions, maximumBytes }))
+      .rejects.toThrow(/536870912/);
+    expect(io.calls).toEqual([]);
+  });
+
+  it('rejects expanded options and a weaker link policy before filesystem access', async () => {
+    for (const value of [{ ...digestOptions, extra: true }, { ...digestOptions, linkPolicy: 'transaction-compatible' }]) {
+      await expect(Reflect.apply(readBoundProjectFileDigest, undefined, [path.resolve('never-read-digest-root'), ['file'], value]))
+        .rejects.toBeInstanceOf(FileSystemError);
+    }
+    expect(io.calls).toEqual([]);
+  });
+
+  it('distinguishes an empty file from missing and refuses an oversized or hard-linked file before opening', async () => {
+    const { root, outside } = await fixture();
+    await writeFile(path.join(root, 'empty'), '');
+    expect(await readBoundProjectFileDigest(root, ['empty'], digestOptions)).toMatchObject({
+      bytes: 0, header: '', digest: createHash('sha256').digest('hex')
+    });
+    await expect(readBoundProjectFileDigest(root, ['missing'], digestOptions)).rejects.toMatchObject({ code: 'ENOENT' });
+    await writeFile(path.join(root, 'source'), raw);
+    const opened = io.calls.filter(call => call.operation === 'open').length;
+    await expect(readBoundProjectFileDigest(root, ['source'], { ...digestOptions, maximumBytes: raw.length - 1 }))
+      .rejects.toThrow(/bounded regular single-link/);
+    await link(path.join(root, 'source'), path.join(outside, 'alias'));
+    await expect(readBoundProjectFileDigest(root, ['source'], digestOptions)).rejects.toThrow(/single-link/);
+    expect(io.calls.filter(call => call.operation === 'open')).toHaveLength(opened);
+    expect(await readFile(path.join(outside, 'alias'))).toEqual(raw);
+  });
+
+  it('rejects an identity change before streamed reading and closes its opened handle', async () => {
+    const { root } = await fixture(), target = path.join(root, 'source');
+    await writeFile(target, raw);
+    let opened: FileHandle | undefined;
+    io.afterOpen = async handle => {
+      opened = handle; vi.spyOn(handle, 'close');
+      await appendFile(target, 'changed');
+    };
+    await expect(readBoundProjectFileDigest(root, ['source'], digestOptions)).rejects.toThrow(/before streamed/);
+    expect(opened?.close).toHaveBeenCalledOnce();
+    expect(await readFile(target)).toEqual(Buffer.concat([raw, Buffer.from('changed')]));
+  });
+
+  it.each(['truncate', 'grow'] as const)('detects %s after the opened identity observation and preserves the concurrent effect', async operation => {
+    const { root } = await fixture(), target = path.join(root, 'source');
+    await writeFile(target, raw);
+    let opened: FileHandle | undefined;
+    io.afterOpen = async handle => {
+      opened = handle;
+      const before = await handle.stat({ bigint: true });
+      if (operation === 'truncate') await writeFile(target, raw.subarray(0, 4));
+      else await appendFile(target, 'x');
+      vi.spyOn(handle, 'stat').mockResolvedValueOnce(before);
+      vi.spyOn(handle, 'close');
+    };
+    await expect(readBoundProjectFileDigest(root, ['source'], digestOptions))
+      .rejects.toThrow(operation === 'truncate' ? /truncated/ : /bytes or identity changed/);
+    expect(opened?.close).toHaveBeenCalledOnce();
+    expect(await readFile(target)).toEqual(operation === 'truncate' ? raw.subarray(0, 4) : Buffer.concat([raw, Buffer.from('x')]));
+  });
+
+  it('refuses a changed parent even when leaf bytes and identity stay unchanged', async () => {
+    const { root } = await fixture(), target = path.join(root, 'source');
+    await writeFile(target, raw);
+    io.afterOpen = async () => { await mkdir(path.join(root, 'concurrent-directory')); };
+    await expect(readBoundProjectFileDigest(root, ['source'], digestOptions)).rejects.toThrow(/ancestor changed/);
+    expect(await readFile(target)).toEqual(raw);
+    expect((await lstat(path.join(root, 'concurrent-directory'))).isDirectory()).toBe(true);
   });
 });
 

@@ -11,6 +11,8 @@ import { modernGovernanceReportSchemaVersion } from './governance/modern-inspect
 import { modernLocalCommandReportSchemaVersion } from './governance/modern-local-request.js';
 import { modernLocalCompletionReportSchemaVersion } from './governance/modern-local-completion-request.js';
 import { modernRevalidationCommandReportSchemaVersion } from './update/modern-revalidation-request.js';
+import { manualInfrastructurePolicy } from '../domain/governance/activation/modern-manual-infrastructure.js';
+import { protectedCompletionIndexEncoding } from '../domain/governance/activation/modern-local-completion.js';
 
 export function installedCapabilities() {
   const registry = modernSourceRegistry();
@@ -41,10 +43,18 @@ export function installedCapabilities() {
       modernLocalVerification: {
         manifestRead: [8], report: modernLocalCommandReportSchemaVersion,
         selector: 'governance <plan|approve|apply-next> --scope local --local-operation verify',
-        requests: ['verify-local', 'verify-openspec-local', 'verify-openspec-initialized', 'verify-openspec-archived'],
+        requests: ['verify-local', 'verify-manual-native', 'verify-openspec-local', 'verify-openspec-initialized', 'verify-openspec-archived'],
         explicitRequest: true, separateConsent: true, explicitExecution: true,
         workflowFinalization: false, publication: false, successorRevalidation: false,
-        scope: 'Exact captured-input verification in a private workspace; not a sandbox or full project readiness. Initialized OpenSpec requires a separate generated-baseline scope attestation.'
+        nativeManual: {
+          consent: 'approve-manual-native', previewSchema: 6, consentSchema: 5, resultSchema: 5,
+          requiredScopes: ['infrastructurePreparation', 'infrastructureNetwork'],
+          platform: manualInfrastructurePolicy.qualifiedPlatform, architecture: manualInfrastructurePolicy.qualifiedArchitecture,
+          tofuVersion: manualInfrastructurePolicy.tofuVersion, providerSource: manualInfrastructurePolicy.providerSource,
+          providerVersion: manualInfrastructurePolicy.providerVersion,
+          admission: 'Actual native HCL runtime, installed tools and captured source are revalidated; discovery performs no probes.'
+        },
+        scope: 'Exact captured-input verification in a private workspace; not a sandbox or full project readiness. Native Manual needs independent locked-provider preparation/network consent; local provider execution grants no Azure/GitHub resource operations. Initialized OpenSpec requires a separate generated-baseline scope attestation.'
       },
       modernLocalCompletion: {
         manifestRead: [8], report: modernLocalCompletionReportSchemaVersion,
@@ -55,6 +65,7 @@ export function installedCapabilities() {
         workflows: ['manual', 'spec-kit'],
         profiles: ['none', 'single-maintainer-gitflow', 'team-gitflow'],
         requests: ['finalize-local', 'review-local-publication'],
+        artifactSchemas: [1, 2, 3], protectedIndexArtifact: protectedCompletionIndexEncoding,
         separateFinalizationConsent: true, separatePublicationConsent: true, explicitExecution: true,
         attributedRecovery: true, openSpecFinalization: false, successorRevalidation: false, providerOperations: false,
         scope: 'Existing admitted fresh/current local projects only. Exact-file publication requires original verification, workflow-specific finalization, independent exact-byte consent and current readback. Saved progress is not current proof; no generation, conversion or whole-directory rollback.'

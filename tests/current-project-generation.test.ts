@@ -92,9 +92,37 @@ describe('current real-project generation', () => {
       ...input, specWorkflow: 'manual', agents: []
     }, { requireProjectName: true }));
     const manifest = manifestFor(current);
+    const isolatedPythonHealth = manifest.project.workload.apiStack === 'python-fastapi';
+    const isolatedPythonSettings = workload.projectType === 'genai' ? ['backend-test-tracing', 'pattern-agent-test'] : [];
+    const intentionalDifferences = [
+      'root-readme', 'opentofu-readme', ...(isolatedPythonHealth ? ['backend-test-health'] : []),
+      ...isolatedPythonSettings
+    ];
     const application = (artifacts: GeneratedArtifact[]) => artifacts
-      .filter(artifact => artifact.lifecycle === 'project' && !['root-readme', 'opentofu-readme'].includes(artifact.logicalName));
+      .filter(artifact => artifact.lifecycle === 'project' && !intentionalDifferences.includes(artifact.logicalName));
     expect(application(current)).toEqual(application(legacy));
+    if (isolatedPythonHealth) {
+      const currentHealth = current.find(artifact => artifact.logicalName === 'backend-test-health')!.content;
+      const legacyHealth = legacy.find(artifact => artifact.logicalName === 'backend-test-health')!.content;
+      expect(currentHealth).toContain('def client(monkeypatch):');
+      expect(currentHealth).toContain('configuration.Settings(_env_file=None, **values)');
+      expect(currentHealth).toContain('monkeypatch.setattr(configuration, "get_settings", lambda: settings)');
+      expect(currentHealth).not.toContain('os.environ');
+      expect(legacyHealth).toContain('from backend.apis.main import app');
+      expect(legacyHealth).not.toContain('monkeypatch');
+    }
+    for (const name of isolatedPythonSettings) {
+      const currentTest = current.find(artifact => artifact.logicalName === name)!.content;
+      const legacyTest = legacy.find(artifact => artifact.logicalName === name)!.content;
+      expect(currentTest).toContain(legacyTest);
+      expect(currentTest).toContain('@_liftoff_fixture(autouse=True)');
+      expect(currentTest).toContain('name.casefold() in names');
+      expect(currentTest).toContain('names.add("liftoff_env_file")');
+      expect(currentTest).toContain('monkeypatch.setattr(configuration, "PROJECT_ROOT", tmp_path)');
+      expect(currentTest).toContain('monkeypatch.setitem(configuration.Settings.model_config, "env_file", None)');
+      expect(currentTest).toContain('yield\n    get_settings.cache_clear()');
+      expect(legacyTest).not.toContain('_liftoff_isolated_settings');
+    }
     expect(current.find(artifact => artifact.logicalName === 'opentofu-readme')!.content)
       .toContain('Manual does not require OpenSpec, Spec Kit, a framework archive, or an agent');
     expect(manifest.activeLayout.bindings).toEqual(expect.arrayContaining([

@@ -2,12 +2,13 @@ import type { AddArtifact } from '../../template-types.js';
 import { genAiPattern } from '../common/values.js';
 import type { CurrentGenAiProjectPlan as GenAiProjectPlan } from '../../domain/project/contracts.js';
 import { pyModule } from '../common/values.js';
+import { withCurrentPythonTestSettings } from '../common/python-tests.js';
 
-export function addPatternArtifacts(add: AddArtifact, plan: GenAiProjectPlan): void {
+export function addPatternArtifacts(add: AddArtifact, plan: GenAiProjectPlan, current = false): void {
   const pattern = genAiPattern(plan);
   const routeModule = pyModule(pattern.id);
   add('pattern-agent', 'pattern', ['backend', 'orchestration', 'agents', `${routeModule}_agent.py`], renderPatternAgent(plan));
-  add('pattern-agent-test', 'backend-test', ['backend', 'tests', `test_${routeModule}_orchestration.py`], renderPatternAgentTest(plan));
+  add('pattern-agent-test', 'backend-test', ['backend', 'tests', `test_${routeModule}_orchestration.py`], renderPatternAgentTest(plan, current));
   add('pattern-prompt', 'pattern', ['backend', 'orchestration', 'prompts', `${pattern.id}.md`], renderPromptTemplate(plan));
   add('pattern-agent-package', 'pattern', ['backend', 'orchestration', 'agents', '__init__.py'], '');
   add('pattern-prompt-readme', 'pattern', ['backend', 'orchestration', 'prompts', 'README.md'], renderPromptReadme());
@@ -131,7 +132,11 @@ async def run_${moduleName}(
 `;
 }
 
-export function renderPatternAgentTest(plan: GenAiProjectPlan): string {
+export function renderPatternAgentTest(plan: GenAiProjectPlan, current = false): string {
+  return withCurrentPythonTestSettings(renderPatternAgentTestSource(plan), current);
+}
+
+function renderPatternAgentTestSource(plan: GenAiProjectPlan): string {
   const pattern = genAiPattern(plan);
   const moduleName = pyModule(pattern.id);
   const agentModule = `backend.orchestration.agents.${moduleName}_agent`;

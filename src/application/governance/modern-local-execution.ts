@@ -18,6 +18,9 @@ import type {ApplicationResolvedPreparation} from '../repair/application-prepara
 import {validateOpenSpecCommandOutput,validateInitializedOpenSpecCommandOutput,validateArchivedOpenSpecCommandOutput,type OpenSpecExecutionObservation} from '../../domain/governance/activation/modern-openspec-execution.js';
 import {createOpenSpecInitializationEnvironment} from './modern-openspec-preparation.js';
 import {initializationObligationOutcomes,openSpecInitializationPolicy,type OpenSpecInitializationOutput} from '../../domain/governance/activation/modern-openspec-obligations.js';
+import { createManualInfrastructureEnvironment } from './modern-manual-preparation.js';
+import type { ManualInfrastructureOutput } from '../../domain/governance/activation/modern-manual-infrastructure.js';
+import { modernComposeEnvironment } from './modern-compose.js';
 
 function observedResult(id:string,tool:LocalExecutionTool,command:{executable:string;args:string[]},raw:CommandResult,startedAt:string):LocalExecutionCheckResult{
   const code:LocalExecutionCode=raw.processTreeSettled!==true?'unsettled':raw.timedOut?'timeout':raw.outputLimitExceeded?'output-limit':
@@ -42,7 +45,9 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
   const preparationResults:LocalExecutionCheckResult[]=[];
   const openSpecObservations:OpenSpecExecutionObservation[]=[];
   const initializationOutputs:OpenSpecInitializationOutput[]=[];
+  const infrastructureOutputs: ManualInfrastructureOutput[] = [];
   let initializationEnvironment:Awaited<ReturnType<typeof createOpenSpecInitializationEnvironment>>|undefined;
+  let infrastructureEnvironment: Awaited<ReturnType<typeof createManualInfrastructureEnvironment>> | undefined;
   let workspace:LocalExecutionWorkspace|undefined,cleanupComplete=false,inputsUnchanged=false,uncertain=false,failed=false;
   let protection:CapturedApplicationProtection|undefined;
   let preparation:ApplicationResolvedPreparation[]=[];
@@ -76,6 +81,10 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
       const captured=inspection.local.snapshot;
       await copyModernLocalWorkspace(captured,workspace);
       if(preview.schemaVersion===4)initializationEnvironment=await createOpenSpecInitializationEnvironment(workspace.directory,preview.initialization);
+      if (preview.schemaVersion === 6) {
+        if (consent.schemaVersion !== 5) localInputFailure('Native Manual preparation lacks its exact independently scoped consent.');
+        infrastructureEnvironment = await createManualInfrastructureEnvironment(workspace.directory, preview.manualInputs.infrastructure);
+      }
       const base=await createApplicationEnvironment(process.env,canonical,workspace.directory,workspace.directory);
       const node=preview.tools.find(tool=>tool.id==='node');
       if(node)base.PATH=[path.dirname(node.executablePath),base.PATH??''].filter(Boolean).join(path.delimiter);
@@ -115,6 +124,14 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
         const env=step?applicationPreparationEnvironment(base,workspace!.roles,step):{...base};
         return phase==='preparation'?env:{...withoutApplicationDependencyNetwork(env),LIFTOFF_APPLICATION_NETWORK:'not-authorized'};
       }
+      async function assertInfrastructureOutputs() {
+        if (!infrastructureEnvironment) return;
+        await infrastructureEnvironment.assertControls();
+        for (const prior of infrastructureOutputs) {
+          const actual = await infrastructureEnvironment.capture(prior.component, preview.observationDigest, prior.toolDigest);
+          if (canonicalSha256(actual) !== canonicalSha256(prior)) localInputFailure('Owned Manual provider/module output changed around a dependent command.');
+        }
+      }
       async function run(id:string,tool:LocalExecutionTool,args:string[],cwdParts:readonly string[],kind:'preparation'|'check'|'probe',environment:NodeJS.ProcessEnv=base){
         await lease.assertHeld();await current();await protection!.assertCurrent();await assertModernLocalToolsCurrent(canonical,workspace!.directory,preview.tools);
         if(initializationEnvironment){
@@ -125,11 +142,24 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
             if(canonicalSha256(actual)!==canonicalSha256(old))localInputFailure('Prepared initialization output changed before a dependent check.');
           }
         }
+        await assertInfrastructureOutputs();
+        if (infrastructureEnvironment && id.startsWith('tofu-initialize:')) {
+          await infrastructureEnvironment.assertFresh(id.slice('tofu-initialize:'.length));
+        }
+        if (infrastructureEnvironment && id.startsWith('tofu-validate:') &&
+            !infrastructureOutputs.some(output => output.component === id.slice('tofu-validate:'.length))) {
+          localInputFailure('Native validation cannot start without its prior captured owned initialization output.');
+        }
         const remaining=localExecutionPolicy.operationTimeoutMs-(performance.now()-start);
         if(remaining<=0)localInputFailure('Local whole-operation deadline exhausted before dispatch.');
         if(tool.id==='openspec')await assertOpenSpecHome();
         const command={executable:tool.executablePath,args:[...tool.prefixArgs,...args]},commandDigest=canonicalSha256(command);
         await workspace!.begin({kind,id,commandDigest});
+        const dispatchRemaining = preview.schemaVersion === 6 ? localExecutionPolicy.operationTimeoutMs - (performance.now() - start) : remaining;
+        if (dispatchRemaining <= 0) {
+          await workspace!.settle();
+          localInputFailure('Local whole-operation deadline exhausted before native Manual dispatch.');
+        }
         const at=new Date().toISOString();
         let result:CommandResult;
         try{
@@ -141,8 +171,23 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
               DO_NOT_TRACK:'1',LIFTOFF_TELEMETRY:'0',NODE_DISABLE_COMPILE_CACHE:'1'};
           }
           if(preview.schemaVersion===4)dispatchEnvironment={...Object.fromEntries(Object.keys(process.env).map(key=>[key,undefined])),...dispatchEnvironment};
+          if (preview.schemaVersion === 6) {
+            dispatchEnvironment = modernComposeEnvironment(dispatchEnvironment, preview.manualInputs.compose);
+            if (tool.id === 'tofu') {
+              const component = preview.manualInputs.infrastructure.roots.find(root =>
+                id === `tofu-initialize:${root.component}` || id === `tofu-validate:${root.component}`);
+              dispatchEnvironment = {
+                ...dispatchEnvironment,
+                TF_CLI_CONFIG_FILE: path.join(workspace!.roles.cache, 'manual-init', 'tofu.rc'),
+                TF_CLI_ARGS: undefined, TF_CLI_ARGS_fmt: undefined, TF_CLI_ARGS_init: undefined, TF_CLI_ARGS_validate: undefined,
+                CHECKPOINT_DISABLE: '1', TF_INPUT: '0', TF_IN_AUTOMATION: '1',
+                ...(component ? infrastructureEnvironment!.environment(component.component) : {})
+              };
+            }
+          }
           result=await runner.run(command,{cwd:path.join(workspace!.roles.project,...cwdParts),env:dispatchEnvironment,
-            timeoutMs:Math.min(remaining,kind==='preparation'?localExecutionPolicy.preparationTimeoutMs:localExecutionPolicy.checkTimeoutMs),
+            timeoutMs:Math.min(dispatchRemaining,kind==='preparation'||preview.schemaVersion===6&&id.startsWith('tofu-initialize:')
+              ?localExecutionPolicy.preparationTimeoutMs:localExecutionPolicy.checkTimeoutMs),
             maxOutputBytes:localExecutionPolicy.checkOutputBytes,ensureProcessTreeSettled:true,stream:false});
         }catch{
           uncertain=true;
@@ -179,10 +224,20 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
             throw error;
           }
         }
+        if (infrastructureEnvironment && id.startsWith('tofu-initialize:') && observed.status === 'passed') {
+          try {
+            infrastructureOutputs.push(await infrastructureEnvironment.capture(id.slice('tofu-initialize:'.length), preview.observationDigest, tool.digest));
+          } catch (error) {
+            const index = checks.findIndex(check => check.id === id);
+            if (index >= 0) checks[index] = { ...observed, status: 'failed', code: 'admission-changed' };
+            throw error;
+          }
+        }
         if(initializationEnvironment)for(const old of initializationOutputs){
           if(canonicalSha256(await initializationEnvironment.capture(old.component,preview.observationDigest,old.toolDigest))!==canonicalSha256(old))
             localInputFailure('Initialization output changed after a process.');
         }
+        await assertInfrastructureOutputs();
         await assertModernLocalToolsCurrent(canonical,workspace!.directory,preview.tools);
         await protection!.assertCurrent();await current();await lease.assertHeld();
         return observed;
@@ -225,7 +280,8 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
         const outcome=await run(check.id,tool,args,check.cwdPathParts,'check',env);checks[index]=outcome;
         if(outcome.status!=='passed')localInputFailure('Actual local check did not pass.');
       }
-      await current();await assertModernLocalToolsCurrent(canonical,workspace.directory,preview.tools);inputsUnchanged=true;
+      await current();await assertModernLocalToolsCurrent(canonical,workspace.directory,preview.tools);
+      await assertInfrastructureOutputs();inputsUnchanged=true;
     }catch{
       failed=true;
       if(workspace?.state().activity){
@@ -247,7 +303,10 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
       policyDigest:preview.policyDigest,baselineDigest:preview.baselineDigest,selectedPlanDigest:preview.selectedPlanDigest,
       failureCode:complete?null:uncertain?'unsettled' as const:!inputsUnchanged?'admission-changed' as const:!cleanupComplete?'workspace-failed' as const:'process-failed' as const};
     if(preview.schemaVersion===4&&consent.schemaVersion!==3)localInputFailure('Initialization consent changed during execution.');
-    const selectedBody=preview.schemaVersion===4&&consent.schemaVersion===3?{...body,schemaVersion:3 as const,
+    if(preview.schemaVersion===6&&consent.schemaVersion!==5)localInputFailure('Native Manual consent changed during execution.');
+    const selectedBody=preview.schemaVersion===6?{...body,schemaVersion:5 as const,
+      infrastructure:{inputDigest:canonicalSha256(preview.manualInputs.infrastructure),outputs:infrastructureOutputs}}:
+      preview.schemaVersion===4&&consent.schemaVersion===3?{...body,schemaVersion:3 as const,
       status:complete?'initialization-obligations-observed' as const:uncertain?'uncertain' as const:workspace?'failed' as const:'blocked' as const,
       openSpec:{inputDigest:canonicalSha256(preview.openSpecInputs),projectRoot:path.join(workspace!.directory,'project'),observations:openSpecObservations},
       initialization:{inputDigest:canonicalSha256(preview.initialization),markerProvenance:openSpecInitializationPolicy.markerProvenance,

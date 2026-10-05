@@ -19,7 +19,7 @@ import {frameworkOutputPaths} from '../../framework-validation.js';
 import {completedSpecKitTasks} from '../../governance-activation/spec-kit-seed.js';
 import {appendSpecKitDocumentIssues,appendSpecKitTaskIssues,appendSpecKitDefaultIssues,appendSpecKitSelectedIssues,isSpecKitIntegrationRecord,isSpecKitInstalledList,
   specKitBootstrapId,specKitBootstrapPath,specKitBootstrapTaskIds} from '../../domain/governance/activation/local-check-values.js';
-import {artifactBytes,completionDigest,completionHash,completionTime,completedExecutionBinding,localCompletionPolicy,nativeCompletionPath,
+import {artifactBytes,createCompletionArtifact as artifact,completionDigest,completionHash,completionTime,completedExecutionBinding,localCompletionPolicy,nativeCompletionPath,
   publicationFingerprint,validateFinalizationPreview,validateFinalizationScopes,validateFinalizationConsent,validateFinalizationResult,validateFinalizationState,
   specKitCompletionPolicy,validateSpecKitFinalizationScopes,validateSpecKitWorkflowInput,
   type SpecKitFinalizationPreview,type SpecKitWorkflowInput,type SpecKitWorkflowOutcome,
@@ -54,12 +54,6 @@ export async function readFinalizationPreview(root:string,fingerprint:string,sto
   const raw=copyModernLocalData(saved.value) as LocalFinalizationPreview,p=validateFinalizationPreview(raw,new Date(raw.createdAt));
   if(p.projectRoot!==root||p.fingerprint!==fingerprint||completionTime(p.createdAt)>Date.now())localInputFailure('Finalization preview root/issuance differs.');
   return p;
-}
-function artifact(p:LocalFinalizationPreview,role:LocalFinalizationArtifact['role'],bytes:Buffer,parts:string[]|null,mode:number|null):LocalFinalizationArtifact{
-  const body={kind:'liftoff-local-finalization-artifact' as const,projectRoot:p.projectRoot,operationId:p.operationId,finalizationFingerprint:p.fingerprint,
-    pathParts:parts,contentBase64:bytes.toString('base64'),bytes:bytes.length,rawDigest:rawLocalDigest(bytes),mode};
-  const result:LocalFinalizationArtifact=role==='workflow-original'?{...body,schemaVersion:2,role}:{...body,schemaVersion:1,role};
-  artifactBytes(result,p);return result;
 }
 export async function loadCompletionArtifact(store:LocalFinalizationRecordStore,key:string,p:LocalFinalizationPreview){
   const saved=await store.read('artifact',key);if(!saved)localInputFailure('Original exact completion artifact is missing.');

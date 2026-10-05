@@ -263,7 +263,9 @@ An explicit dependency-free request is:
 { "kind": "verify-local", "preparation": [] }
 ```
 
-`verify-local` selects Manual or Spec Kit. `verify-openspec-local` selects complete
+`verify-local` retains its existing Manual or Spec Kit recipe; it does not gain
+provider installation. `verify-manual-native` separately selects the locked
+Manual application/infrastructure baseline described below. `verify-openspec-local` selects complete
 active OpenSpec source; `verify-openspec-initialized` selects the narrowly admitted
 generated initialization obligations; `verify-openspec-archived` selects current
 validation of existing archived source. There is no automatic mode or store
@@ -308,6 +310,52 @@ Acknowledging project-code host capabilities matters: copied workspaces and
 offline flags are **not a sandbox**. Project code retains host capabilities.
 Finalization and publication fields must remain false.
 
+For a current generated Manual project, use `kind: "verify-manual-native"` with
+the exact application `preparation` descriptors for its selected backend and
+optional frontend. This mode currently requires **macOS ARM64, Node 24.21.0 for
+the native HCL adapter, OpenTofu 1.12.6 and the packaged AzureRM 5.3.0 lock**.
+Selected workload tools are additional requirements. Capability discovery does
+not establish their availability, and "native" verification does not mean a
+native installer is published.
+
+Review preview6, then use the distinct native consent:
+
+```json
+{
+  "kind": "approve-manual-native",
+  "scopes": {
+    "projectCode": true,
+    "hostCapabilitiesAcknowledged": true,
+    "dependencyPreparation": true,
+    "dependencyNetwork": true,
+    "infrastructurePreparation": true,
+    "infrastructureNetwork": true,
+    "workflowFinalization": false,
+    "publishLocalRecords": false
+  }
+}
+```
+
+The dependency flags above apply only to separately reviewed application
+preparation; set them false when that preview declares none. The two
+infrastructure flags independently authorize locked provider-distribution
+preparation and its network use. Ordinary dependency consent cannot substitute.
+Native Manual runs actual backend tests, optional frontend/worker checks,
+closed Compose configuration, explicitly named `.tf` formatting, locked
+backend-disabled initialization and validation in each selected environment.
+It neither traverses excluded tfvars nor invents standalone application-module
+validation. Provider binaries run locally; **no Azure/GitHub resource operations,
+backend initialization, cloud plan/apply, container startup or credentials are
+authorized**. Source, owned controls and captured provider/module outputs are
+rechecked around dependent commands.
+
+Result5 binds the native outputs. A successful report has
+`verificationScope: "manual-locked-local-baseline"` but still has
+`localComplete: false`. Continue through the separately approved
+[finalization and publication](#modern-local-completion) operations, then
+`liftoff governance verify --scope local --json`. No agent, external framework
+or fictional archive is required, and governance `none` remains disabled.
+
 Initialized OpenSpec instead requires `kind: "approve-openspec-initialized"`,
 `dependencyPreparation: true`, `dependencyNetwork: false`, and the additional
 `bootstrapScopeAttestation` object with both `generatedBaselineReviewed: true`
@@ -315,7 +363,9 @@ and `domainBehaviorDeferred: true`. Ordinary consent cannot authorize this mode.
 Its successful `initialization-obligations-observed` result means only the
 generated obligations were observed; `verificationComplete` remains false.
 
-Local command JSON uses **schema 4**. `operationComplete` refers only to the
+Local verification command JSON uses **schema 7**. Completion schema 5 and
+successor-revalidation schema 6 retain their distinct report kinds.
+`operationComplete` refers only to the
 selected operation, and `verificationComplete` refers to its captured baseline,
 not published readiness. `localComplete`, `activationComplete`, and
 `lifecycleComplete` remain false. Requested-effect flags do not assert that a
@@ -330,7 +380,9 @@ no new `--inputs`; it reconstructs the exact saved request and consent before
 claiming work. Execution refuses unknown, stale or cross-project authority.
 
 This route neither finalizes workflows nor publishes local records, revalidates
-a successor transaction, performs recovery, or operates Azure/GitHub providers.
+a successor transaction, performs recovery, or performs Azure/GitHub resource
+operations. `providerOperationsAuthorized: false` refers to those resource
+operations, not the explicitly approved native Manual local provider binaries.
 Fresh OpenSpec synchronization/archive is not exposed here. Automatic directory
 rollback remains unavailable. Human output includes the complete JSON record
 for review; project command stdout/stderr is represented by digests, not echoed.
@@ -425,13 +477,19 @@ Without `--execute` (including `--execute=false`), `apply-next` and publication
 approve work or recover implicitly. A different active transaction blocks before
 another operation's authority is read. Finalization has no recovery selector.
 
-Completion command JSON uses **schema 5**, separately from schema-4 verification
+Completion command JSON uses **schema 5**, separately from schema-7 verification
 and schema-3 current inspection. `operationComplete` describes the requested
 operation; `localComplete` is true only for returned committed
 `local-complete-current` proof with independent readback and no rollback/cleanup
 failures. Activation and lifecycle remain false. Saved successful progress
 always has `recordedProgressIsCurrentProof: false`; use `governance verify
 --scope local` for independent current inspection.
+
+`schemas.modernLocalCompletion` also advertises stored artifact schemas. New
+protected indexes use artifact3 raw-DEFLATE encoding so a full selected input
+index fits without base64 inflation. Both the serialized record and decoded
+index retain the 64-KiB limit. Historical artifact1/2 remain readable; target
+bytes and independent finalization/publication permissions are unchanged.
 
 Requested-effect flags do not prove writes occurred. `publicationCommitted`
 preserves an observed commit and is null if execution returned no outcome.

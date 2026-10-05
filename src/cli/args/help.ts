@@ -49,11 +49,14 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
               'An exact --revalidation-publication selects existing successor proof, never approval ' +
               'or execution. Verify exits 0 for complete or inapplicable selected scope, 2 for ' +
               'consistent incomplete work, and 1 for inspection failure. ' +
-              'For separate schema-4 v8 verification, select --scope local --local-operation verify: ' +
+              'For separate schema-7 v8 verification, select --scope local --local-operation verify: ' +
               'plan --inputs <request.json>, approve --plan <fingerprint> --inputs <consent.json>, ' +
               'then apply-next --plan <fingerprint> --execute. Planning probes installed tools and saves ' +
               'an external preview; approval separately saves consent. Without --execute, apply-next ' +
               'only inspects saved progress. Keep public request and consent files outside the project. ' +
+              'Native Manual uses verify-manual-native and approve-manual-native with independent ' +
+              'infrastructure preparation/network consent and the advertised qualified host/tool limits. ' +
+              'Locked provider downloads and local validation grant no Azure/GitHub resource operations. ' +
               'Initialized OpenSpec requires explicit generated-baseline scope attestation; it is not ' +
               'domain verification; the private workspace is not a sandbox. Separate schema-5 completion ' +
               'uses --local-operation finalize for admitted Manual/Spec Kit verification, then ' +

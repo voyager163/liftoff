@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {deflateRawSync,inflateRawSync} from 'node:zlib';
 import {canonicalSha256,canonicalJson} from './canonical-json.js';
 import {copyModernLocalData,localInputFailure,rawLocalDigest} from './modern-local-inputs.js';
 import {exactRecord} from '../../project/manifest/fields.js';
@@ -11,6 +12,8 @@ export const nativeCompletionPath=['.liftoff','local-completion.json'] as const;
 export const localCompletionPolicy=Object.freeze({kind:'liftoff-local-completion-policy',schemaVersion:1,
   workflow:'manual',protocol:'manual-native-v1',recordBytes:65536,artifacts:12,mutations:12,approvalLifetimeMs:900000,
   execution:'historical-complete-only',publication:'second-exact-byte-consent',recovery:'explicit-attributed-transaction-only'});
+export const protectedCompletionIndexEncoding=Object.freeze({schemaVersion:3,encoding:'deflate-raw',
+  maximumRecordBytes:localCompletionPolicy.recordBytes,maximumDecodedBytes:localCompletionPolicy.recordBytes});
 export const specKitCompletionPolicy=Object.freeze({...localCompletionPolicy,workflow:'spec-kit',protocol:'spec-kit-bootstrap-v1',
   taskPath:Object.freeze([...specKitBootstrapPath,'tasks.md']),taskIds:specKitBootstrapTaskIds,transformation:'existing-B001-B006-checkbox-characters-only'});
 export interface CompletedLocalExecutionBinding {
@@ -72,7 +75,9 @@ export interface CompletionArtifactV1 {
   kind:'liftoff-local-finalization-artifact';schemaVersion:1;projectRoot:string;operationId:string;finalizationFingerprint:string;
   role:'target'|'protected-index';pathParts:string[]|null;contentBase64:string;bytes:number;rawDigest:string;mode:number|null;
 }
-export type LocalFinalizationArtifact=CompletionArtifactV1|(Omit<CompletionArtifactV1,'schemaVersion'|'role'>&{schemaVersion:2;role:'workflow-original'});
+export type LocalFinalizationArtifact=CompletionArtifactV1
+  |(Omit<CompletionArtifactV1,'schemaVersion'|'role'>&{schemaVersion:2;role:'workflow-original'})
+  |(Omit<CompletionArtifactV1,'schemaVersion'|'role'>&{schemaVersion:3;role:'protected-index';encoding:'deflate-raw'});
 export interface ManualFinalizationResult {
   kind:'liftoff-local-finalization-result';schemaVersion:1;projectRoot:string;operationId:string;fingerprint:string;consentDigest:string;
   execution:CompletedLocalExecutionBinding;startedAt:string;completedAt:string;protectedIndexKey:string;protectedSetDigest:string;
@@ -188,13 +193,41 @@ export function snapshotControl(input:CompletionSnapshot):void{
     (input.exists?input.mode===null||!Number.isInteger(input.mode)||input.mode<0||input.mode>0o777:input.mode!==null||input.rawDigest!==null||input.bytes!==0))localInputFailure('Invalid completion snapshot.');
   if(input.exists)completionHash(input.rawDigest);
 }
-export function artifactBytes(input:LocalFinalizationArtifact,p:LocalFinalizationPreview):Buffer{
-  const value=completionRecord(input,['kind','schemaVersion','projectRoot','operationId','finalizationFingerprint','role','pathParts','contentBase64','bytes','rawDigest','mode'],'Completion artifact');
+type CompletionArtifactContext=
+  |Pick<ManualFinalizationPreview,'schemaVersion'|'projectRoot'|'operationId'|'fingerprint'>
+  |Pick<SpecKitFinalizationPreview,'schemaVersion'|'projectRoot'|'operationId'|'fingerprint'|'workflowInput'>;
+export function createCompletionArtifact(p:CompletionArtifactContext,role:LocalFinalizationArtifact['role'],bytes:Buffer,parts:string[]|null,mode:number|null):LocalFinalizationArtifact{
+  if(bytes.length>localCompletionPolicy.recordBytes)localInputFailure('Completion artifact payload exceeds64KiB.');
+  const body={kind:'liftoff-local-finalization-artifact' as const,projectRoot:p.projectRoot,operationId:p.operationId,finalizationFingerprint:p.fingerprint,
+    pathParts:parts,contentBase64:bytes.toString('base64'),bytes:bytes.length,rawDigest:rawLocalDigest(bytes),mode};
+  const result:LocalFinalizationArtifact=role==='workflow-original'?{...body,schemaVersion:2,role}:
+    role==='protected-index'?{...body,schemaVersion:3,role,encoding:'deflate-raw',contentBase64:deflateRawSync(bytes).toString('base64')}:
+      {...body,schemaVersion:1,role};
+  artifactBytes(result,p);return result;
+}
+function inflateCompletionIndex(encoded:Buffer,expectedBytes:number):Buffer{
+  if(!Number.isSafeInteger(expectedBytes)||expectedBytes<1||expectedBytes>protectedCompletionIndexEncoding.maximumDecodedBytes)localInputFailure('Invalid bounded completion index length.');
+  let inflated:unknown;
+  try{inflated=inflateRawSync(encoded,{info:true,maxOutputLength:protectedCompletionIndexEncoding.maximumDecodedBytes});}
+  catch{localInputFailure('Invalid or oversized compressed completion index.');}
+  // Node's declarations omit the info:true return shape; validate it before use.
+  if(!inflated||typeof inflated!=='object'||!('buffer'in inflated)||!Buffer.isBuffer(inflated.buffer)||
+    !('engine'in inflated)||!inflated.engine||typeof inflated.engine!=='object'||!('bytesWritten'in inflated.engine)||
+    inflated.engine.bytesWritten!==encoded.length)localInputFailure('Compressed completion index has trailing data or an invalid decoder result.');
+  return inflated.buffer;
+}
+export function artifactBytes(input:LocalFinalizationArtifact,p:CompletionArtifactContext):Buffer{
+  input=copyModernLocalData(input);
+  const value=completionRecord(input,['kind','schemaVersion','projectRoot','operationId','finalizationFingerprint','role','pathParts','contentBase64','bytes','rawDigest','mode',
+    ...(input.schemaVersion===3?['encoding']:[])],'Completion artifact');
   const workflowOriginal=value.schemaVersion===2&&value.role==='workflow-original'&&p.schemaVersion===2;
-  if(value.kind!=='liftoff-local-finalization-artifact'||!(workflowOriginal||value.schemaVersion===1&&['target','protected-index'].includes(value.role))||
+  const compressed=value.schemaVersion===3&&value.role==='protected-index'&&value.encoding==='deflate-raw';
+  if(value.kind!=='liftoff-local-finalization-artifact'||!(workflowOriginal||compressed||value.schemaVersion===1&&['target','protected-index'].includes(value.role))||
     value.projectRoot!==p.projectRoot||value.operationId!==p.operationId||value.finalizationFingerprint!==p.fingerprint||typeof value.contentBase64!=='string')localInputFailure('Completion artifact attribution mismatch.');
-  const bytes=Buffer.from(value.contentBase64,'base64');
-  if(bytes.toString('base64')!==value.contentBase64||bytes.length!==value.bytes||rawLocalDigest(bytes)!==value.rawDigest)localInputFailure('Completion artifact bytes mismatch.');
+  const encoded=Buffer.from(value.contentBase64,'base64');
+  if(encoded.toString('base64')!==value.contentBase64)localInputFailure('Completion artifact base64 is not canonical.');
+  const bytes=compressed?inflateCompletionIndex(encoded,value.bytes):encoded;
+  if(bytes.length!==value.bytes||rawLocalDigest(bytes)!==value.rawDigest)localInputFailure('Completion artifact bytes mismatch.');
   if(value.role==='target'||workflowOriginal){validateManifestPathParts(value.pathParts,'Completion target');snapshotControl({exists:true,rawDigest:value.rawDigest,bytes:value.bytes,mode:value.mode});
     if(workflowOriginal&&(completionDigest(value.pathParts)!==completionDigest(specKitCompletionPolicy.taskPath)||p.schemaVersion!==2||
       value.rawDigest!==p.workflowInput.originalTaskHash||value.bytes!==p.workflowInput.originalTaskBytes||value.mode!==p.workflowInput.originalTaskMode))localInputFailure('Original task artifact differs from the approved Spec Kit input.');

@@ -167,6 +167,13 @@ The manifest also records:
   from runtime reads even when their original generation hashes are recorded.
   Existing-project layout is never inferred from old generation paths.
 
+The separately registered [native Manual verification](cli-reference.md#modern-local-verification)
+uses external preview6/consent5/result5 records, not a new manifest version.
+They bind captured Compose/lock inputs, actual tools and owned provider outputs.
+Infrastructure preparation/network consent does not authorize finalization,
+publication or Azure resource operations; runtime observations stay outside
+deterministic manifest generation.
+
 An existing Power Apps manifest is rejected at its retired workload boundary
 before starter metadata or artifact paths are interpreted. Its original files
 remain unchanged.

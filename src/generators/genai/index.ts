@@ -1,5 +1,5 @@
 import type { GeneratorContext as ResolvedGeneratorContext } from '../context.js';
-type GeneratorContext = Pick<ResolvedGeneratorContext, 'functionsRequirements'> & {
+type GeneratorContext = Pick<ResolvedGeneratorContext, 'functionsRequirements' | 'current'> & {
   python: Pick<ResolvedGeneratorContext['python'], 'genai'>;
 };
 import type { AddArtifact } from '../../template-types.js';
@@ -12,6 +12,6 @@ import { addFunctionArtifacts } from './functions.js';
 export function addGenAiExtensionArtifacts(add: AddArtifact, plan: GenAiProjectPlan, context: GeneratorContext): void {
   addBackendArtifacts(add, plan, context);
   addDatabaseArtifacts(add, plan);
-  addPatternArtifacts(add, plan);
+  addPatternArtifacts(add, plan, context.current);
   addFunctionArtifacts(add, plan, context);
 }

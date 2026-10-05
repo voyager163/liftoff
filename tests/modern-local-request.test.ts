@@ -10,7 +10,7 @@ const scopes = {
   projectCode: true, hostCapabilitiesAcknowledged: true, dependencyPreparation: false, dependencyNetwork: false,
   workflowFinalization: false, publishLocalRecords: false
 };
-const kinds = ['verify-local', 'verify-openspec-local', 'verify-openspec-initialized', 'verify-openspec-archived'];
+const kinds = ['verify-local', 'verify-manual-native', 'verify-openspec-local', 'verify-openspec-initialized', 'verify-openspec-archived'];
 const fingerprint = 'a'.repeat(64);
 const roots: { path: string; dev: number; ino: number }[] = [];
 afterEach(async () => {
@@ -67,6 +67,18 @@ describe('closed public local request and consent values', () => {
     expect(parseModernLocalConsentRequest(request)).toEqual(request);
     expect(() => parseModernLocalVerificationRequest({ kind: 'verify-local',
       preparation: [{ ...preparation[0], credentials: 'not-accepted' }] })).toThrow();
+  });
+  it('requires exact separately affirmative native infrastructure scopes without extending ordinary consent', () => {
+    const native = { kind: 'approve-manual-native', scopes: { ...scopes, infrastructurePreparation: true, infrastructureNetwork: true } };
+    expect(parseModernLocalConsentRequest(native)).toEqual(native);
+    expect(() => parseModernLocalConsentRequest({ ...native, kind: 'approve-local-execution' })).toThrow();
+    expect(() => parseModernLocalConsentRequest({ kind: native.kind, scopes })).toThrow();
+    expect(() => parseModernLocalConsentRequest({ ...native, bootstrapScopeAttestation: {} })).toThrow();
+    for (const field of ['infrastructurePreparation', 'infrastructureNetwork']) {
+      for (const value of [false, 'true', null]) {
+        expect(() => parseModernLocalConsentRequest({ ...native, scopes: { ...native.scopes, [field]: value } })).toThrow();
+      }
+    }
   });
   it.each([null, [], 'yes', true, {}, { kind: 'approve', scopes }, { kind: 'approve-local-execution', scopes, credentials: {} },
     { kind: 'approve-local-execution', scopes: { ...scopes, network: true } }])('refuses unknown consent %j', value => {

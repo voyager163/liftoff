@@ -103,7 +103,10 @@ describe('update help review sequence', () => {
       expect(out).toContain('never approval or execution');
       expect(out).toContain('2 for consistent incomplete work');
       expect(out).toContain('--local-operation verify');
-      expect(out).toContain('schema-4 v8 verification');
+      expect(out).toContain('schema-7 v8 verification');
+      expect(out).toContain('verify-manual-native and approve-manual-native');
+      expect(out).toContain('independent infrastructure preparation/network consent');
+      expect(out).toContain('no Azure/GitHub resource operations');
       expect(out).toContain('explicit generated-baseline scope attestation');
       expect(out).toContain('private workspace is not a sandbox');
       expect(out).toContain('schema-5 completion');

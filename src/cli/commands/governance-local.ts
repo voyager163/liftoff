@@ -2,9 +2,9 @@ import path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import { readPublicGovernanceInputs } from '../../adapters/filesystem/governance-records.js';
 import {
-  approveModernLocalExecution, approveModernOpenSpecInitializedBaseline, inspectModernLocalExecution,
+  approveModernLocalExecution, approveModernManualNativeExecution, approveModernOpenSpecInitializedBaseline, inspectModernLocalExecution,
   loadLocalExecutionPreview, prepareModernArchivedOpenSpecExecution, prepareModernLocalExecution,
-  prepareModernOpenSpecExecution, prepareModernOpenSpecInitializedBaseline
+  prepareModernManualNativeExecution, prepareModernOpenSpecExecution, prepareModernOpenSpecInitializedBaseline
 } from '../../application/governance/modern-local-approval.js';
 import { executeModernLocalExecution } from '../../application/governance/modern-local-execution.js';
 import {
@@ -36,7 +36,7 @@ export async function governanceLocalCommand(
       executionRequested, externalMetadataWriteRequested,
       localComplete: false, activationComplete: false, lifecycleComplete: false,
       publicationAuthorized: false, providerOperationsAuthorized: false,
-      boundary: 'Private-workspace verification is not a sandbox, workflow finalization, publication, successor revalidation, or full project readiness.',
+      boundary: 'Private-workspace verification is not a sandbox, workflow finalization, publication, successor revalidation, or full project readiness. Native Manual may separately authorize locked provider downloads and local provider binaries, never Azure/GitHub resource operations.',
       ...detail
     });
     context.outcome?.record(code ? 'failure' : status === 'not-executed' ? 'attention-required' : 'success');
@@ -54,6 +54,7 @@ export async function governanceLocalCommand(
       externalMetadataWriteRequested = true;
       const { preparation } = request;
       const preview = request.kind === 'verify-local' ? await prepareModernLocalExecution(projectRoot, { kind: request.kind, preparation })
+        : request.kind === 'verify-manual-native' ? await prepareModernManualNativeExecution(projectRoot, { kind: request.kind, preparation })
         : request.kind === 'verify-openspec-local' ? await prepareModernOpenSpecExecution(projectRoot, { kind: request.kind, preparation })
         : request.kind === 'verify-openspec-initialized' ? await prepareModernOpenSpecInitializedBaseline(projectRoot, { kind: request.kind, preparation })
         : await prepareModernArchivedOpenSpecExecution(projectRoot, { kind: request.kind, preparation });
@@ -62,14 +63,16 @@ export async function governanceLocalCommand(
     if (parsed.subcommand === 'approve' && inputsFile && fingerprint) {
       const request = await readPublicGovernanceInputs(path.resolve(context.cwd, inputsFile), 'Local execution', parseModernLocalConsentRequest);
       const preview = await loadLocalExecutionPreview(projectRoot, fingerprint);
-      if ((preview.schemaVersion === 4) !== (request.kind === 'approve-openspec-initialized')) {
-        throw new Error('The consent kind must match the exact initialized or ordinary local verification preview.');
+      if ((preview.schemaVersion === 4) !== (request.kind === 'approve-openspec-initialized') ||
+          (preview.schemaVersion === 6) !== (request.kind === 'approve-manual-native')) {
+        throw new Error('The consent kind must match the exact native Manual, initialized or ordinary local verification preview.');
       }
       externalMetadataWriteRequested = true;
       const consent = request.kind === 'approve-openspec-initialized'
         ? await approveModernOpenSpecInitializedBaseline(projectRoot, fingerprint, {
           scopes: request.scopes, bootstrapScopeAttestation: request.bootstrapScopeAttestation
         })
+        : request.kind === 'approve-manual-native' ? await approveModernManualNativeExecution(projectRoot, fingerprint, request.scopes)
         : await approveModernLocalExecution(projectRoot, fingerprint, request.scopes);
       return report('approved', { consent, fingerprint, operationComplete: true, verificationComplete: false });
     }
@@ -85,7 +88,8 @@ export async function governanceLocalCommand(
       const result = await executeModernLocalExecution(projectRoot, fingerprint);
       return report(result.status, {
         fingerprint, result, operationComplete: result.complete,
-        verificationScope: result.schemaVersion === 3 ? 'generated-initialization-obligations' : 'captured-local-baseline',
+        verificationScope: result.schemaVersion === 5 ? 'manual-locked-local-baseline'
+          : result.schemaVersion === 3 ? 'generated-initialization-obligations' : 'captured-local-baseline',
         verificationComplete: result.schemaVersion !== 3 && result.complete
       }, result.complete ? 0 : 1);
     }

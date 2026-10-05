@@ -1,11 +1,12 @@
 import type { GeneratorContext as ResolvedGeneratorContext } from '../context.js';
-type GeneratorContext = { python: Pick<ResolvedGeneratorContext['python'], 'standard'> };
+type GeneratorContext = Pick<ResolvedGeneratorContext, 'current'> & { python: Pick<ResolvedGeneratorContext['python'], 'standard'> };
 import type { AddArtifact } from '../../template-types.js';
 
 
 import { renderStandardSchema } from './configuration.js';
 import { sourceString } from '../common/values.js';
 import { renderPythonRuntimeSettings } from '../common/python-settings.js';
+import { renderCurrentPythonHealthTests } from '../common/python-tests.js';
 import type { CurrentStandardApiProjectPlan as StandardApiProjectPlan } from '../../domain/project/contracts.js';
 
 export function addPythonArtifacts(add: AddArtifact, plan: StandardApiProjectPlan, context: GeneratorContext): void {
@@ -21,7 +22,7 @@ export function addPythonArtifacts(add: AddArtifact, plan: StandardApiProjectPla
   add('backend-settings', 'backend', ['backend', 'config', 'settings.py'], renderPythonSettings(plan));
   add('backend-observability', 'backend', ['backend', 'observability', 'logging.py'], renderPythonLogging());
   add('backend-observability-package', 'backend', ['backend', 'observability', '__init__.py'], '');
-  add('backend-test-health', 'backend-test', ['backend', 'tests', 'test_health.py'], renderPythonHealthTest());
+  add('backend-test-health', 'backend-test', ['backend', 'tests', 'test_health.py'], renderPythonHealthTest(context.current));
   add('database-alembic-ini', 'database', ['database', 'alembic.ini'], renderAlembicIni());
   add('database-alembic-env', 'database', ['database', 'migrations', 'env.py'], renderAlembicEnv());
   add('database-initial-migration', 'database', ['database', 'migrations', 'versions', '0001_initial.py'], renderPythonMigration());
@@ -117,7 +118,8 @@ def configure_logging() -> None:
 `;
 }
 
-export function renderPythonHealthTest(): string {
+export function renderPythonHealthTest(current = false): string {
+  if (current) return renderCurrentPythonHealthTests('standard');
   return `from fastapi.testclient import TestClient
 
 from backend.apis.main import app
