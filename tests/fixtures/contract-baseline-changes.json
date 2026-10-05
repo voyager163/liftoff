@@ -102,10 +102,10 @@
       "surface": "cli-json",
       "key": "update --check --json",
       "task": "3.7",
-      "reason": "The actual generated-v7 fixture now receives a schema-4 v8 successor preview rather than a schema-3 current result. Two isolated captures expose only the new project/preparation-bound normal and force fingerprints and receipt path as additional volatile values. The exact masked report and volatile pointer set are digest-bound; original captures, historical schemas and all other volatility rules remain unchanged. The exact current digest additionally binds the reviewed shared v8 setup instructions and task 4.6's active-layout repair guide. Relative to the previous accepted result, only the repair guide content digest/length and its enclosing manifest digest change in each normal/force plan.",
+      "reason": "The schema-4 v8 successor preview now includes task 5.5/6.7's exact selected Copilot whole-project assessment write and coherent compatibility, context, credential-policy and manifest metadata for the new current declaration family. Two isolated roots/clocks and the actual compiled accepted develop implementation confirm that only this captured JSON surface changes. Both normal/force plans add exactly one write; every original operation outside those four metadata paths remains identical. Original policy/graph and setup/governance-assessment/repair bodies remain unchanged. The three additional volatile pointers remain exact, and the complete previous reviewed record and frozen baseline are preserved.",
       "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
-      "currentSha256": "6268384197918285b5f1801a1d87ed62348e6374299764a50f15eb399dc5d365",
-      "priorCurrentSha256": "96105ab165cbc3b1867d1729c6f3c0aba5de048fdfb09593ac6dfd1924987ea1",
+      "currentSha256": "2264e8e8e50be74959a1d80e94acd692efdd74e371322a9df184d1ff40ae0571",
+      "priorCurrentSha256": "6268384197918285b5f1801a1d87ed62348e6374299764a50f15eb399dc5d365",
       "addedVolatilePointers": [
         "/plans/0/fingerprint",
         "/plans/1/fingerprint",
@@ -115,14 +115,28 @@
         "surface": "cli-json",
         "key": "update --check --json",
         "task": "3.7",
-        "reason": "The actual generated-v7 fixture now receives a schema-4 v8 successor preview rather than a schema-3 current result. Two isolated captures expose only the new project/preparation-bound normal and force fingerprints and receipt path as additional volatile values. The exact masked report and volatile pointer set are digest-bound; original captures, historical schemas and all other volatility rules remain unchanged.",
+        "reason": "The actual generated-v7 fixture now receives a schema-4 v8 successor preview rather than a schema-3 current result. Two isolated captures expose only the new project/preparation-bound normal and force fingerprints and receipt path as additional volatile values. The exact masked report and volatile pointer set are digest-bound; original captures, historical schemas and all other volatility rules remain unchanged. The exact current digest additionally binds the reviewed shared v8 setup instructions and task 4.6's active-layout repair guide. Relative to the previous accepted result, only the repair guide content digest/length and its enclosing manifest digest change in each normal/force plan.",
         "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
-        "currentSha256": "f19ed08929cc7ac2f82c59ae25b10c341107f301fab932848e016873655668f5",
+        "currentSha256": "6268384197918285b5f1801a1d87ed62348e6374299764a50f15eb399dc5d365",
+        "priorCurrentSha256": "96105ab165cbc3b1867d1729c6f3c0aba5de048fdfb09593ac6dfd1924987ea1",
         "addedVolatilePointers": [
           "/plans/0/fingerprint",
           "/plans/1/fingerprint",
           "/receipt/path"
-        ]
+        ],
+        "priorChange": {
+          "surface": "cli-json",
+          "key": "update --check --json",
+          "task": "3.7",
+          "reason": "The actual generated-v7 fixture now receives a schema-4 v8 successor preview rather than a schema-3 current result. Two isolated captures expose only the new project/preparation-bound normal and force fingerprints and receipt path as additional volatile values. The exact masked report and volatile pointer set are digest-bound; original captures, historical schemas and all other volatility rules remain unchanged.",
+          "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
+          "currentSha256": "f19ed08929cc7ac2f82c59ae25b10c341107f301fab932848e016873655668f5",
+          "addedVolatilePointers": [
+            "/plans/0/fingerprint",
+            "/plans/1/fingerprint",
+            "/receipt/path"
+          ]
+        }
       }
     },
     {
