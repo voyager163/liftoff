@@ -20,6 +20,7 @@ import { writeModernInstalledProject, writeModernHistoricalSource } from './fixt
 import { writeModernLocalFixtureInputs } from './fixtures/modern-local-project.js';
 import { createOpenSpecExecutionFixture, selected, capability, spec, originalFiles } from './modern-openspec-fixtures.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
+import { manualExecutionWirePreview } from './fixtures/modern-manual-records.js';
 
 const roots: { path: string; dev: number; ino: number }[] = [];
 const fingerprint = 'a'.repeat(64);
@@ -95,6 +96,7 @@ async function controlFixture() {
 describe('public modern local application routing', () => {
   it.each([
     ['verify-local', 'prepareModernLocalExecution'],
+    ['verify-manual-native', 'prepareModernManualNativeExecution'],
     ['verify-openspec-local', 'prepareModernOpenSpecExecution'],
     ['verify-openspec-initialized', 'prepareModernOpenSpecInitializedBaseline'],
     ['verify-openspec-archived', 'prepareModernArchivedOpenSpecExecution']
@@ -102,6 +104,7 @@ describe('public modern local application routing', () => {
     const f = await controlFixture(), files = await inputFiles(f.root, kind), before = await originalFiles(f.root);
     const spies = {
       prepareModernLocalExecution: vi.spyOn(approval, 'prepareModernLocalExecution'),
+      prepareModernManualNativeExecution: vi.spyOn(approval, 'prepareModernManualNativeExecution'),
       prepareModernOpenSpecExecution: vi.spyOn(approval, 'prepareModernOpenSpecExecution'),
       prepareModernOpenSpecInitializedBaseline: vi.spyOn(approval, 'prepareModernOpenSpecInitializedBaseline'),
       prepareModernArchivedOpenSpecExecution: vi.spyOn(approval, 'prepareModernArchivedOpenSpecExecution')
@@ -111,7 +114,7 @@ describe('public modern local application routing', () => {
     const result = await invoke(f.root, ['plan', '--inputs', files.request]);
     expect(result.code).toBe(1);
     expect(result.semantic).toBe('failure');
-    expect(result.report).toMatchObject({ schemaVersion: 4, status: 'failed', executionRequested: false,
+    expect(result.report).toMatchObject({ schemaVersion: 7, status: 'failed', executionRequested: false,
       externalMetadataWriteRequested: true, verificationComplete: false, localComplete: false });
     for (const [name, spy] of Object.entries(spies)) {
       if (name === producer) expect(spy).toHaveBeenCalledWith(f.root, { kind, preparation: [] });
@@ -155,6 +158,35 @@ describe('public modern local application routing', () => {
     expect(result.report.externalMetadataWriteRequested).toBe(false);
     expect(result.report.diagnostics.join(' ')).toContain('consent kind');
     expect(approve).not.toHaveBeenCalled();
+  });
+  it('routes separately decoded native consent only to its native producer', async () => {
+    const f = await controlFixture(), files = await inputFiles(f.root);
+    const nativeScopes = { ...scopes, infrastructurePreparation: true, infrastructureNetwork: true };
+    await fs.writeFile(files.consent, JSON.stringify({ kind: 'approve-manual-native', scopes: nativeScopes }));
+    vi.spyOn(approval, 'loadLocalExecutionPreview').mockResolvedValue({
+      ...manualExecutionWirePreview(), projectRoot: f.root, fingerprint
+    });
+    const native = vi.spyOn(approval, 'approveModernManualNativeExecution').mockRejectedValue(new Error('Native routing specimen refused.'));
+    const ordinary = vi.spyOn(approval, 'approveModernLocalExecution'), initialized = vi.spyOn(approval, 'approveModernOpenSpecInitializedBaseline');
+    const execute = vi.spyOn(execution, 'executeModernLocalExecution');
+    const result = await invoke(f.root, ['approve', '--plan', fingerprint, '--inputs', files.consent]);
+    expect(result.code).toBe(1);
+    expect(native).toHaveBeenCalledWith(f.root, fingerprint, nativeScopes);
+    expect(ordinary).not.toHaveBeenCalled(); expect(initialized).not.toHaveBeenCalled(); expect(execute).not.toHaveBeenCalled();
+  });
+  it.each([true, false])('rejects crossed native/ordinary consent with native preview %s before a write', async nativePreview => {
+    const f = await controlFixture(), files = await inputFiles(f.root);
+    if (!nativePreview) await fs.writeFile(files.consent, JSON.stringify({
+      kind: 'approve-manual-native', scopes: { ...scopes, infrastructurePreparation: true, infrastructureNetwork: true }
+    }));
+    vi.spyOn(approval, 'loadLocalExecutionPreview').mockResolvedValue(nativePreview
+      ? { ...manualExecutionWirePreview(), projectRoot: f.root, fingerprint } : routingPreview(f.root));
+    const native = vi.spyOn(approval, 'approveModernManualNativeExecution'), ordinary = vi.spyOn(approval, 'approveModernLocalExecution');
+    const result = await invoke(f.root, ['approve', '--plan', fingerprint, '--inputs', files.consent]);
+    expect(result.code).toBe(1);
+    expect(result.report).toMatchObject({ externalMetadataWriteRequested: false, executionRequested: false });
+    expect(result.report.diagnostics.join(' ')).toContain('consent kind');
+    expect(native).not.toHaveBeenCalled(); expect(ordinary).not.toHaveBeenCalled();
   });
   it.each(['checks-verified', 'blocked', 'failed', 'uncertain'] as const)('preserves producer %s without publication claims', async status => {
     const f = await controlFixture(), receipt = routingResult(f.root, status);

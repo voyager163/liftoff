@@ -1279,6 +1279,86 @@ history remain blocked in the original MR1 entrypoints. The separate installed
 preflight below does not remove provider/cache or execution prerequisites.
 Manual skips external-framework checks; governance `none` alone does not.
 
+`planClosedManualLocalInputs` is a separate **source-only** Manual planner.
+It binds bounded YAML aliases, literal-default interpolation and implicit
+environment lookups to explicitly absent project variables. Execution-control
+names, required/nested interpolation, dotenv, credential sources and dynamic
+paths remain excluded. A root build context means only the captured directory
+for `compose config`; it grants neither recursive context reads nor a build.
+Standalone Dockerfiles must match explicit active Dockerfile bindings.
+Formatting names captured `.tf` files with `fmt -check -write=false`, never
+recursive traversal through excluded tfvars. This planner does not replace
+`verify-local`: provider/module preparation and validation remain blocked, and
+no new execution, finalization or publication authority is registered.
+
+`planManualNativeLocalRuntime` additionally revalidates the installed inputs and
+derives a distinct Manual recipe for the qualified OpenTofu/AzureRM baseline.
+It binds each environment's exact packaged lock, default provider configuration
+and one captured local application module. Application validation is attributed
+to those environment roots, not an invented standalone module run. Its HCL
+interpretation distinguishes Terraform backend blocks from resource names and
+adds only the generated pure `regex`/`urlencode` functions; historical recipes
+are unchanged. Native input planning is still **not execution authority**.
+The separate private `prepareModernManualNativeExecution` path emits preview6;
+`approveModernManualNativeExecution` requires consent5 with independent
+infrastructure-preparation and provider-distribution network scopes. Ordinary
+dependency consent cannot authorize those effects. The engine rederives the
+inputs and tools, checks consent before allocation, initializes only locked
+environment roots, and captures immutable owned provider/module output before
+dependent validation. Result5 carries that proof through completed-record
+readback. Existing preview1-5 and their consent/result contracts remain distinct.
+Public `verify-manual-native` and `approve-manual-native` requests delegate to
+this distinct protocol through verification report7. Completion report5 and
+successor-revalidation report6 keep their existing report kinds and semantics.
+Installed capabilities expose the exact native provider/host limits without
+probing. Verification alone never authorizes finalization or publication.
+The owned scratch path is expressed relative to the approved OpenTofu cwd to
+avoid the qualified macOS provider's Unix-socket path limit without relocating
+the workspace. The separate streamed file-digest reader supports bounded large
+provider files; it does not widen the 32 MiB buffered snapshot limit, establish
+provider ownership, or provide atomic filesystem confinement.
+
+`createManualInfrastructureEnvironment` supplies the separate owned-control and
+output-capture primitives. It admits only the selected native provider layout,
+rejects unknown entries before reading their contents, streams large regular
+single-link files, and rechecks ownership, modes, identities and the captured
+module graph. These primitives do not dispatch initialization or supply consent.
+The opt-in `LIFTOFF_MANUAL_PROVIDER_TEST_LANE=native` test lane downloads the
+locked provider and validates through the real tool in a newly owned fixture.
+It requires the qualified host and OpenTofu version; it performs no backend,
+plan, apply or Azure credential operation. An incomplete diagnostic retains its
+own fixture rather than claiming cleanup. This is primitive-level qualification,
+not qualification of a public verification/finalization route.
+
+`LIFTOFF_MANUAL_ENGINE_TEST_LANE=native` separately opts into actual generated
+application dependency preparation and locked provider execution through the
+private engine. It requires the qualified host/tools and independently approved
+preparation/network scopes. Its completion cases exercise separate finalization
+and exact-byte publication approvals; they do not authorize Azure operations.
+Both network test lanes default to `off`.
+Protected completion indexes use artifact3 with bounded raw-DEFLATE encoding:
+the original index and its serialized wrapper each remain at most64KiB. This
+avoids base64 expansion excluding full agent/frontend/environment selections.
+Artifact1 target/index and artifact2 Spec Kit-original decoding remain intact;
+targets are never compressed, and the decoded index still has its exact original
+digest and physical/file/directory comparisons. Invalid streams, trailing data
+and expansion beyond64KiB are rejected before publication. This storage encoding
+does not change finalization/publication approvals or their policy digests.
+`tests/modern-manual-public.test.ts` uses the engine opt-in for actual public
+request/approval/execution, independent finalization/publication, and current
+inspection with no-agent/none and all-agent/single-maintainer selections.
+`tests/modern-manual-records.test.ts` supplies explicitly synthetic wire-codec
+coverage, not native proof. Control tests prevent project/network dispatch while
+checking actual owned-control changes and preserve unknown settlement.
+Current Python and GenAI health-test templates provide explicit local settings
+through a pytest fixture before importing the app. They do not need a developer
+`.env`, database, Redis service or cloud credential. Historical template bytes
+and runtime configuration behavior are unchanged. Current GenAI tracing and
+orchestration unit tests additionally isolate known settings environment names,
+the dotenv lookup and the cached getter for each test. The real settings
+validator still runs; explicit model/tracing configuration errors are tested
+without requiring unrelated database/Redis configuration.
+
 `adapters/hcl/isolated-parser.ts` launches only its packaged sibling
 `parser-child`: `.ts` with native Node type stripping in source, `.js` in a
 compiled installation. Policy2/protocol2 admits only darwin/arm64/Node24.21.0;

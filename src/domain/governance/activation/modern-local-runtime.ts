@@ -145,6 +145,12 @@ import {openSpecReadSetPolicy,validateOpenSpecExecutionInputs,openSpecExecutionC
   type OpenSpecExecutionInputs,type OpenSpecExecutionObservation,type OpenSpecArchivedExecutionInputs} from './modern-openspec-execution.js';
 import {openSpecInitializationPolicy,validateOpenSpecInitialization,validateBootstrapScopeAttestation,initializationObligationOutcomes,validateInitializationOutputs,
   type OpenSpecInitialization,type BootstrapScopeAttestation,type OpenSpecInitializationOutcome} from './modern-openspec-obligations.js';
+import { modernComposeInputPolicy, validateModernComposeInputs, type ModernComposeInputs } from './modern-compose.js';
+import { explicitTofuFormatPolicy } from './modern-tofu-format.js';
+import {
+  manualInfrastructurePolicy, validateManualInfrastructureInputs, validateManualInfrastructureOutput,
+  type ManualInfrastructureInputs, type ManualInfrastructureOutput
+} from './modern-manual-infrastructure.js';
 
 export const localExecutionPolicy = Object.freeze({
   kind:'liftoff-local-execution-policy',version:1,checks:32,checkTimeoutMs:120000,
@@ -167,6 +173,17 @@ export const openSpecInitializedExecutionPolicy=Object.freeze({...openSpecReadOn
   admission:'fresh-initialized-baseline-preparation-and-scope-attestation',completion:'initialization-obligations-observed-not-finalized'});
 export const openSpecArchivedExecutionPolicy=Object.freeze({...openSpecReadOnlyExecutionPolicy,version:4,readSetPolicy:openSpecArchivedReadSetPolicy,
   admission:'fresh-complete-archived-inputs-and-consent',completion:'current-validation-not-historical-task-execution'});
+export const manualNativeExecutionPolicy = Object.freeze({
+  kind: 'liftoff-manual-native-execution-policy', version: 1, basePolicy: localExecutionPolicy,
+  compose: modernComposeInputPolicy, formatting: explicitTofuFormatPolicy, infrastructure: manualInfrastructurePolicy,
+  outputRole: Object.freeze({
+    id: 'manual-infrastructure-preparation', kind: 'cache' as const,
+    pathParts: Object.freeze(['cache', 'manual-init']), protectedAfterPreparation: false
+  }),
+  environment: 'fresh-owned-controls-and-explicitly-absent-compose-inputs-after-last-await',
+  admission: 'independent-project-dependency-and-infrastructure-preparation-consent',
+  completion: 'complete-native-checks-not-finalization-or-publication'
+});
 export interface LocalExecutionToolFile {
   path:string;digest:string;bytes:number;mode:number;device:string;inode:string;modifiedNs:string;changedNs:string;
 }
@@ -206,7 +223,11 @@ export interface LocalExecutionPreviewV4 extends Omit<LocalExecutionPreviewV3,'s
 export interface LocalExecutionPreviewV5 extends Omit<LocalExecutionPreviewV1,'schemaVersion'>{
   schemaVersion:5;archivedOpenSpecInputs:OpenSpecArchivedExecutionInputs;
 }
-export type LocalExecutionPreview=LocalExecutionPreviewV1|LocalExecutionPreviewV2|LocalExecutionPreviewV3|LocalExecutionPreviewV4|LocalExecutionPreviewV5;
+export interface LocalExecutionPreviewV6 extends Omit<LocalExecutionPreviewV1, 'schemaVersion'> {
+  schemaVersion: 6;
+  manualInputs: { compose: ModernComposeInputs; infrastructure: ManualInfrastructureInputs };
+}
+export type LocalExecutionPreview=LocalExecutionPreviewV1|LocalExecutionPreviewV2|LocalExecutionPreviewV3|LocalExecutionPreviewV4|LocalExecutionPreviewV5|LocalExecutionPreviewV6;
 export interface LocalExecutionConsentV1 {
   kind:'liftoff-local-execution-consent';schemaVersion:1;projectRoot:string;fingerprint:string;
   approvedAt:string;expiresAt:string;scopes:LocalExecutionScopes;
@@ -220,7 +241,14 @@ export interface LocalExecutionConsentV3 extends Omit<LocalExecutionConsentV2,'s
 export interface LocalExecutionConsentV4 extends Omit<LocalExecutionConsentV1,'schemaVersion'>{
   schemaVersion:4;archivedOpenSpecInputDigest:string;
 }
-export type LocalExecutionConsent=LocalExecutionConsentV1|LocalExecutionConsentV2|LocalExecutionConsentV3|LocalExecutionConsentV4;
+export interface ManualNativeExecutionScopes extends LocalExecutionScopes {
+  infrastructurePreparation: true;
+  infrastructureNetwork: true;
+}
+export interface LocalExecutionConsentV5 extends Omit<LocalExecutionConsentV1, 'schemaVersion' | 'scopes'> {
+  schemaVersion: 5; manualInputDigest: string; scopes: ManualNativeExecutionScopes;
+}
+export type LocalExecutionConsent=LocalExecutionConsentV1|LocalExecutionConsentV2|LocalExecutionConsentV3|LocalExecutionConsentV4|LocalExecutionConsentV5;
 export type LocalExecutionCode = 'passed'|'inapplicable'|'nonzero-exit'|'process-failed'|'timeout'|'output-limit'|
   'cancelled'|'unsettled'|'admission-changed'|'workspace-failed'|'storage-failed'|'not-run'|'preparation-failed';
 export interface LocalExecutionCheckResult {
@@ -245,7 +273,11 @@ export interface LocalExecutionResultV3 extends Omit<LocalExecutionResultV2,'sch
 export interface LocalExecutionResultV4 extends Omit<LocalExecutionResultV2,'schemaVersion'>{
   schemaVersion:4;
 }
-export type LocalExecutionResult=LocalExecutionResultV1|LocalExecutionResultV2|LocalExecutionResultV3|LocalExecutionResultV4;
+export interface LocalExecutionResultV5 extends Omit<LocalExecutionResultV1, 'schemaVersion'> {
+  schemaVersion: 5;
+  infrastructure: { inputDigest: string; outputs: readonly ManualInfrastructureOutput[] };
+}
+export type LocalExecutionResult=LocalExecutionResultV1|LocalExecutionResultV2|LocalExecutionResultV3|LocalExecutionResultV4|LocalExecutionResultV5;
 export interface LocalExecutionState {
   kind:'liftoff-local-execution-state';schemaVersion:1;projectRoot:string;fingerprint:string;operationId:string;
   phase:'claimed'|'copying'|'preparing'|'verifying'|'finished'|'uncertain';
@@ -263,8 +295,9 @@ export function validateLocalExecutionPreview(input:LocalExecutionPreview,now:Da
   exactRecord(value,['kind','schemaVersion','operationKind','projectRoot','operationId','createdAt','expiresAt','fingerprint',
     'installedBinding','observationDigest','physicalDigest','baselineDigest','recipeDigest','policyDigest','checks','tools',
     'preparation','preparationDigest','outputRoles','selectedPlan','selectedPlanDigest',...(value.schemaVersion===2?['executionAdmission']:[]),...([3,4].includes(value.schemaVersion)?['openSpecInputs']:[]),
-    ...(value.schemaVersion===4?['initialization']:[]),...(value.schemaVersion===5?['archivedOpenSpecInputs']:[])],'Local execution preview');
-  if(value.kind!=='liftoff-local-execution-preview'||![1,2,3,4,5].includes(value.schemaVersion)||value.operationKind!=='verify-local'||
+    ...(value.schemaVersion===4?['initialization']:[]),...(value.schemaVersion===5?['archivedOpenSpecInputs']:[]),
+    ...(value.schemaVersion===6?['manualInputs']:[])],'Local execution preview');
+  if(value.kind!=='liftoff-local-execution-preview'||![1,2,3,4,5,6].includes(value.schemaVersion)||value.operationKind!=='verify-local'||
     !path.isAbsolute(value.projectRoot)||path.normalize(value.projectRoot)!==value.projectRoot||
     !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(value.operationId))localInputFailure('Invalid local execution identity.');
   const created=utc(value.createdAt),expires=utc(value.expiresAt);
@@ -358,7 +391,58 @@ export function validateLocalExecutionPreview(input:LocalExecutionPreview,now:Da
         canonicalSha256(next.cwdPathParts)!==canonicalSha256(r.cwdPathParts))localInputFailure('Init must precede its exact matching validate in the same workspace.');
     });
   }
-  if(value.policyDigest!==canonicalSha256(value.schemaVersion===5?openSpecArchivedExecutionPolicy:value.schemaVersion===4?openSpecInitializedExecutionPolicy:value.schemaVersion===3?openSpecReadOnlyExecutionPolicy:value.schemaVersion===2?openSpecExecutionPolicy:localExecutionPolicy)||value.preparationDigest!==canonicalSha256(value.preparation)||
+  if (value.schemaVersion === 6) {
+    exactRecord(value.manualInputs, ['compose', 'infrastructure'], 'Manual native execution inputs');
+    validateModernComposeInputs(value.manualInputs.compose);
+    const infrastructure = validateManualInfrastructureInputs(value.manualInputs.infrastructure);
+    const tofu = value.tools.find(tool => tool.id === 'tofu');
+    if (value.outputRoles.filter(role => role.id === manualNativeExecutionPolicy.outputRole.id).length !== 1 ||
+        !value.outputRoles.some(role => canonicalSha256(role) === canonicalSha256(manualNativeExecutionPolicy.outputRole))) {
+      localInputFailure('Manual execution requires its exact separately guarded owned preparation output role.');
+    }
+    if (hasOpenSpecExecutionIdentity(value) || !tofu || tofu.version !== manualInfrastructurePolicy.tofuVersion ||
+        tofu.versions.tofu !== manualInfrastructurePolicy.tofuVersion ||
+        value.selectedPlan && value.selectedPlan.identity.workflow !== 'manual' ||
+        !value.checks.some(check => check.id === 'framework-source' && check.status === 'inapplicable' && check.command === null) ||
+        !value.checks.some(check => check.id === 'tofu-validate:opentofu-application' && check.status === 'inapplicable' && check.command === null)) {
+      localInputFailure('Native Manual execution requires its exact workflow, qualified tool and honest application-module coverage.');
+    }
+    const initialization = value.checks.filter(check => check.id.startsWith('tofu-initialize:'));
+    const validation = value.checks.filter(check => check.id.startsWith('tofu-validate:') && check.command !== null);
+    if (initialization.length !== infrastructure.roots.length || validation.length !== infrastructure.roots.length) {
+      localInputFailure('Native Manual initialization and validation must cover every selected locked root.');
+    }
+    for (const root of infrastructure.roots) {
+      const at = value.checks.findIndex(check => check.id === `tofu-initialize:${root.component}`);
+      const init = value.checks[at], validate = value.checks[at + 1];
+      if (!init || init.status !== 'planned' || validate?.id !== `tofu-validate:${root.component}` || validate.status !== 'planned' ||
+          canonicalSha256(init.command) !== canonicalSha256({ executable: 'tofu', args: manualInfrastructurePolicy.initArgs }) ||
+          canonicalSha256(validate.command) !== canonicalSha256({ executable: 'tofu', args: manualInfrastructurePolicy.validateArgs }) ||
+          canonicalSha256(init.cwdPathParts) !== canonicalSha256(root.cwdPathParts) ||
+          canonicalSha256(validate.cwdPathParts) !== canonicalSha256(root.cwdPathParts) ||
+          Object.keys(init.env).length || Object.keys(validate.env).length) {
+        localInputFailure('Manual initialization must precede its exact matching validation with owned runtime configuration.');
+      }
+    }
+    const formatting = value.checks.filter(check => check.id.startsWith('tofu-format:'));
+    const components = [{ component: infrastructure.moduleComponent, cwdPathParts: infrastructure.modulePathParts }, ...infrastructure.roots];
+    if (formatting.length !== components.length) localInputFailure('Manual formatting must cover the complete selected component set.');
+    for (const component of components) {
+      const check = formatting.find(check => check.id === `tofu-format:${component.component}`);
+      if (!check || check.status !== 'planned' || check.command?.executable !== 'tofu' ||
+          canonicalSha256(check.cwdPathParts) !== canonicalSha256(component.cwdPathParts) ||
+          canonicalSha256(check.command.args.slice(0, 3)) !== canonicalSha256(explicitTofuFormatPolicy.args) ||
+          check.command.args.length <= 3 || check.command.args.length > explicitTofuFormatPolicy.files + 3 ||
+          Buffer.byteLength(check.command.args.join('\0')) > explicitTofuFormatPolicy.argumentsBytes) {
+        localInputFailure('Manual formatting requires bounded explicit captured .tf arguments in each approved component.');
+      }
+      for (const argument of check.command.args.slice(3)) {
+        if (!argument.startsWith('./') || !argument.endsWith('.tf')) localInputFailure('Manual formatting cannot discover recursive or variable-file input.');
+        validateManifestPathParts(argument.slice(2).split('/'), 'Manual explicit format input');
+      }
+    }
+  }
+  if(value.policyDigest!==canonicalSha256(value.schemaVersion===6?manualNativeExecutionPolicy:value.schemaVersion===5?openSpecArchivedExecutionPolicy:value.schemaVersion===4?openSpecInitializedExecutionPolicy:value.schemaVersion===3?openSpecReadOnlyExecutionPolicy:value.schemaVersion===2?openSpecExecutionPolicy:localExecutionPolicy)||value.preparationDigest!==canonicalSha256(value.preparation)||
     value.selectedPlanDigest!==(value.selectedPlan===null?null:canonicalSha256(value.selectedPlan)))localInputFailure('Local execution policy/preparation/plan binding mismatch.');
   const {fingerprint,...body}=value;
   if(fingerprint!==localExecutionDigest(body))localInputFailure('Local execution preview fingerprint mismatch.');
@@ -374,7 +458,7 @@ export function hasOpenSpecExecutionIdentity(input:LocalExecutionPreview):boolea
 }
 export function assertExecutableLocalExecutionPreview(preview:LocalExecutionPreview):void{
   const value=copyModernLocalData(preview);
-  if(value.schemaVersion===3||value.schemaVersion===4||value.schemaVersion===5){validateLocalExecutionPreview(value,new Date(value.createdAt));return;}
+  if(value.schemaVersion===3||value.schemaVersion===4||value.schemaVersion===5||value.schemaVersion===6){validateLocalExecutionPreview(value,new Date(value.createdAt));return;}
   if(hasOpenSpecExecutionIdentity(preview))localInputFailure('openspec-workflow-inputs-unqualified: OpenSpec previews cannot authorize consent or execution.');
 }
 export function validateLocalExecutionScopes(input:unknown):LocalExecutionScopes{
@@ -386,16 +470,32 @@ export function validateLocalExecutionScopes(input:unknown):LocalExecutionScopes
     dependencyPreparation:value.dependencyPreparation,dependencyNetwork:value.dependencyNetwork,
     workflowFinalization:value.workflowFinalization,publishLocalRecords:value.publishLocalRecords};
 }
+export function validateManualNativeExecutionScopes(input: unknown): ManualNativeExecutionScopes {
+  const value = exactRecord(copyModernLocalData(input), ['projectCode', 'hostCapabilitiesAcknowledged', 'dependencyPreparation',
+    'dependencyNetwork', 'workflowFinalization', 'publishLocalRecords', 'infrastructurePreparation', 'infrastructureNetwork'], 'Manual native consent scopes');
+  const { infrastructurePreparation, infrastructureNetwork, ...base } = value;
+  const scopes = validateLocalExecutionScopes(base);
+  if (infrastructurePreparation !== true || infrastructureNetwork !== true) {
+    localInputFailure('Manual execution requires independent affirmative infrastructure preparation and provider-distribution network consent.');
+  }
+  return { ...scopes, infrastructurePreparation, infrastructureNetwork };
+}
 export function validateLocalExecutionConsentRecord(root:string,preview:LocalExecutionPreview,input:unknown,observedAt:Date):LocalExecutionConsent{
   if(preview.schemaVersion===2)localInputFailure('OpenSpec schema2 has no legitimate execution consent.');
   const value=copyModernLocalData(input) as LocalExecutionConsent;
   exactRecord(value,['kind','schemaVersion','projectRoot','fingerprint','approvedAt','expiresAt','scopes',...([3,4].includes(preview.schemaVersion)?['openSpecInputDigest']:[]),
-    ...(preview.schemaVersion===4?['initializationDigest','bootstrapScopeAttestation']:[]),...(preview.schemaVersion===5?['archivedOpenSpecInputDigest']:[])],'Local execution consent');
+    ...(preview.schemaVersion===4?['initializationDigest','bootstrapScopeAttestation']:[]),...(preview.schemaVersion===5?['archivedOpenSpecInputDigest']:[]),
+    ...(preview.schemaVersion===6?['manualInputDigest']:[])],'Local execution consent');
   const at=Date.parse(value.approvedAt),expires=Date.parse(value.expiresAt);
   if(!Number.isFinite(observedAt.getTime())||!Number.isFinite(at)||!Number.isFinite(expires)||new Date(at).toISOString()!==value.approvedAt||
-    value.kind!=='liftoff-local-execution-consent'||value.schemaVersion!==(preview.schemaVersion===5?4:preview.schemaVersion===4?3:preview.schemaVersion===3?2:1)||value.projectRoot!==root||value.fingerprint!==preview.fingerprint||
+    value.kind!=='liftoff-local-execution-consent'||value.schemaVersion!==(preview.schemaVersion===6?5:preview.schemaVersion===5?4:preview.schemaVersion===4?3:preview.schemaVersion===3?2:1)||value.projectRoot!==root||value.fingerprint!==preview.fingerprint||
     value.expiresAt!==preview.expiresAt||Date.parse(value.approvedAt)<Date.parse(preview.createdAt)||Date.parse(value.approvedAt)>observedAt.getTime()||Date.parse(value.expiresAt)<=observedAt.getTime())localInputFailure('Local execution consent is invalid, stale or foreign.');
-  validateLocalExecutionScopes(value.scopes);
+  if (preview.schemaVersion === 6) {
+    validateManualNativeExecutionScopes(value.scopes);
+    if (value.schemaVersion !== 5 || value.manualInputDigest !== canonicalSha256(preview.manualInputs)) {
+      localInputFailure('Manual consent omits its exact complete native input contract.');
+    }
+  } else validateLocalExecutionScopes(value.scopes);
   if(preview.schemaVersion===3&&(value.schemaVersion!==2||value.openSpecInputDigest!==canonicalSha256(preview.openSpecInputs)))localInputFailure('OpenSpec consent omits its exact complete input contract.');
   if(preview.schemaVersion===5&&(value.schemaVersion!==4||value.archivedOpenSpecInputDigest!==canonicalSha256(preview.archivedOpenSpecInputs)))
     localInputFailure('Archived OpenSpec consent omits its exact current/archive input contract.');
@@ -412,8 +512,8 @@ export function validateLocalExecutionResult(input:unknown,preview:LocalExecutio
   if(preview.schemaVersion===2)localInputFailure('OpenSpec schema2 has no legitimate execution result.');
   const value=copyModernLocalData(input) as LocalExecutionResult;
   exactRecord(value,['kind','schemaVersion','projectRoot','fingerprint','operationId','status','complete','startedAt','completedAt','checks','preparation','inputsUnchanged','cleanupComplete','retainedWorkspace','policyDigest','baselineDigest','selectedPlanDigest','resultDigest','failureCode',...([3,4,5].includes(preview.schemaVersion)?['openSpec']:[]),
-    ...(preview.schemaVersion===4?['initialization']:[])],'Local execution result');
-  if(value.kind!=='liftoff-local-execution-result'||value.schemaVersion!==(preview.schemaVersion===5?4:preview.schemaVersion===4?3:preview.schemaVersion===3?2:1)||value.projectRoot!==preview.projectRoot||
+    ...(preview.schemaVersion===4?['initialization']:[]),...(preview.schemaVersion===6?['infrastructure']:[])],'Local execution result');
+  if(value.kind!=='liftoff-local-execution-result'||value.schemaVersion!==(preview.schemaVersion===6?5:preview.schemaVersion===5?4:preview.schemaVersion===4?3:preview.schemaVersion===3?2:1)||value.projectRoot!==preview.projectRoot||
     value.fingerprint!==preview.fingerprint||value.operationId!==preview.operationId||value.policyDigest!==preview.policyDigest||
     value.baselineDigest!==preview.baselineDigest||value.selectedPlanDigest!==preview.selectedPlanDigest||
     utc(value.completedAt)<utc(value.startedAt)||value.checks.length!==preview.checks.length||
@@ -506,7 +606,35 @@ export function validateLocalExecutionResult(input:unknown,preview:LocalExecutio
       if(output&&init.status!=='passed')localInputFailure('Initialization output must not fabricate a passed init.');
     }
   }
-  if([3,4,5].includes(preview.schemaVersion)&&Buffer.byteLength(JSON.stringify(value))>localExecutionPolicy.recordBytes)localInputFailure('Execution result exceeds64KiB.');
+  if (preview.schemaVersion === 6) {
+    if (value.schemaVersion !== 5) localInputFailure('Native Manual execution needs its independently identified infrastructure outcome.');
+    exactRecord(value.infrastructure, ['inputDigest', 'outputs'], 'Manual infrastructure outcome');
+    if (value.infrastructure.inputDigest !== canonicalSha256(preview.manualInputs.infrastructure) || !workspaceDirectory ||
+        !path.isAbsolute(workspaceDirectory) || path.normalize(workspaceDirectory) !== workspaceDirectory ||
+        path.basename(workspaceDirectory) !== preview.operationId ||
+        !Array.isArray(value.infrastructure.outputs) || value.infrastructure.outputs.length > preview.manualInputs.infrastructure.roots.length ||
+        new Set(value.infrastructure.outputs.map(output => output.component)).size !== value.infrastructure.outputs.length) {
+      localInputFailure('Manual infrastructure outcome lacks its exact source, output mapping or original workspace.');
+    }
+    const prepared = value.checks.filter(check => check.id.startsWith('tofu-initialize:') && check.status === 'passed');
+    if (value.infrastructure.outputs.some((output, index) => prepared[index]?.id !== `tofu-initialize:${output.component}`)) {
+      localInputFailure('Manual output proofs must follow their actual successful initialization order.');
+    }
+    for (const output of value.infrastructure.outputs) {
+      validateManualInfrastructureOutput(output, preview.manualInputs.infrastructure, preview.observationDigest,
+        preview.tools.find(tool => tool.id === 'tofu')!.digest, workspaceDirectory);
+    }
+    for (const root of preview.manualInputs.infrastructure.roots) {
+      const init = value.checks.find(check => check.id === `tofu-initialize:${root.component}`)!;
+      const validate = value.checks.find(check => check.id === `tofu-validate:${root.component}`)!;
+      const output = value.infrastructure.outputs.find(output => output.component === root.component);
+      if (validate.status === 'passed' && (init.status !== 'passed' || !output || !init.completedAt ||
+          !validate.startedAt || utc(init.completedAt) > utc(validate.startedAt)) || output && init.status !== 'passed') {
+        localInputFailure('Manual validation requires its prior settled initialization and unchanged owned provider/module output.');
+      }
+    }
+  }
+  if([3,4,5,6].includes(preview.schemaVersion)&&Buffer.byteLength(JSON.stringify(value))>localExecutionPolicy.recordBytes)localInputFailure('Execution result exceeds64KiB.');
   const verified=value.failureCode===null&&value.inputsUnchanged&&value.cleanupComplete&&value.retainedWorkspace===null&&
     value.checks.every((check,index)=>check.status===(preview.checks[index].status==='inapplicable'?'inapplicable':'passed'))&&
     value.preparation.length===preparationCommands.length&&value.preparation.every(check=>check.status==='passed')&&utc(value.completedAt)<=utc(preview.expiresAt)&&

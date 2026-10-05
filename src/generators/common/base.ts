@@ -143,9 +143,9 @@ ${plan.governanceProfile.id === 'none'
   : `The selected ${plan.governanceProfile.label} policy ${plan.governanceProfile.policyVersion} remains a handoff until its applicable operations are actually approved and verified. Local completion never authorizes repository publication, provider access, infrastructure mutation or live enforcement.`}
 
 Run the applicable backend tests and optional frontend build described below.
-Local infrastructure checks use \`docker compose config -q\`, \`tofu fmt -check -recursive\`,
-and backend-disabled \`tofu init -backend=false\` followed by
-\`tofu validate\` in each selected environment root. These are not a live plan,
+${plan.specWorkflow.id === 'manual'
+  ? 'For the advertised native Manual path, select `verify-manual-native` and its matching `approve-manual-native` consent. Infrastructure preparation and provider-distribution network permission are independent of application dependency consent. The CLI plans closed Compose configuration, `tofu fmt -check -write=false` with explicit captured `.tf` files, locked backend-disabled initialization, and validation in each selected environment. Honor the installed native host/tool limits; do not substitute recursive formatting or generic consent.\nThese are not a live plan,'
+  : 'Local infrastructure checks use `docker compose config -q`, `tofu fmt -check -recursive`,\nand backend-disabled `tofu init -backend=false` followed by\n`tofu validate` in each selected environment root. These are not a live plan,'}
 apply, container startup or deployment. Actual completion needs the CLI's verified
 native receipt; passing individual commands or editing a task checkbox is not a
 substitute. Exit 2 identifies incomplete work, not success or rollback.

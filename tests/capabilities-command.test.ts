@@ -76,10 +76,16 @@ describe('project-independent capability discovery', () => {
       commands: ['validate', 'doctor', 'dev', 'infra', 'governance status', 'governance resume', 'governance verify']
     });
     expect(report.schemas.modernLocalVerification).toMatchObject({
-      manifestRead: [8], report: 4, selector: 'governance <plan|approve|apply-next> --scope local --local-operation verify',
-      requests: ['verify-local', 'verify-openspec-local', 'verify-openspec-initialized', 'verify-openspec-archived'],
+      manifestRead: [8], report: 7, selector: 'governance <plan|approve|apply-next> --scope local --local-operation verify',
+      requests: ['verify-local', 'verify-manual-native', 'verify-openspec-local', 'verify-openspec-initialized', 'verify-openspec-archived'],
       explicitRequest: true, separateConsent: true, explicitExecution: true,
-      workflowFinalization: false, publication: false, successorRevalidation: false
+      workflowFinalization: false, publication: false, successorRevalidation: false,
+      nativeManual: {
+        consent: 'approve-manual-native', previewSchema: 6, consentSchema: 5, resultSchema: 5,
+        requiredScopes: ['infrastructurePreparation', 'infrastructureNetwork'],
+        platform: 'darwin', architecture: 'arm64', tofuVersion: '1.12.6',
+        providerSource: 'registry.opentofu.org/hashicorp/azurerm', providerVersion: '5.3.0'
+      }
     });
     expect(report.schemas.modernLocalCompletion).toMatchObject({
       manifestRead: [8], report: 5,
@@ -89,6 +95,9 @@ describe('project-independent capability discovery', () => {
       },
       workflows: ['manual', 'spec-kit'], profiles: ['none', 'single-maintainer-gitflow', 'team-gitflow'],
       requests: ['finalize-local', 'review-local-publication'], separateFinalizationConsent: true,
+      artifactSchemas: [1, 2, 3], protectedIndexArtifact: {
+        schemaVersion: 3, encoding: 'deflate-raw', maximumRecordBytes: 65536, maximumDecodedBytes: 65536
+      },
       separatePublicationConsent: true, explicitExecution: true, attributedRecovery: true,
       openSpecFinalization: false, successorRevalidation: false, providerOperations: false
     });

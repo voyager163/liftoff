@@ -457,6 +457,30 @@ not official initializer provenance. This group needs no Docker daemon,
 dependency network or providers and does not qualify other hosts, OpenSpec
 finalization, successor revalidation, generation or whole-directory rollback.
 
+#### Generated native Manual qualification
+
+The separate `LIFTOFF_MANUAL_ENGINE_TEST_LANE=native` opt-in runs real generated
+workloads and permits their reviewed application dependency and locked provider
+downloads. It requires macOS ARM64, Node24.21.0, OpenTofu1.12.6, Docker/Compose,
+and the selected workload tools on PATH. No Docker daemon, remote credentials,
+Azure resource operations or agent execution are needed.
+
+```bash
+LIFTOFF_MANUAL_ENGINE_TEST_LANE=native npx vitest run tests/modern-manual-public.test.ts --max-workers 1
+LIFTOFF_MANUAL_ENGINE_TEST_LANE=native npx vitest run tests/modern-manual-execution.test.ts --max-workers 1
+```
+
+The public file covers no-agent/governance-none and all-agent/single-maintainer
+projects with frontend and dev/staging/prod. It requires actual verification,
+separate finalization/exact-publication consent and independent CLI inspection,
+preserving original non-target files. The engine file additionally covers all
+three standard stacks and nine GenAI patterns. Both network groups default to
+off; run them serially and keep failed fixtures rather than claiming cleanup.
+`tests/modern-completion-artifacts.test.ts` exercises actual full-selection
+protected-index storage and portable codec bounds; it is not execution proof.
+Historical uncompressed artifacts remain readable and neither compressed nor
+expanded records may exceed64KiB.
+
 #### Public successor revalidation qualification
 
 `tests/modern-revalidation-request.test.ts` checks the closed schema-6 requests

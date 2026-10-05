@@ -1,5 +1,5 @@
 import type { GeneratorContext as ResolvedGeneratorContext } from '../context.js';
-type GeneratorContext = { python: Pick<ResolvedGeneratorContext['python'], 'genai'> };
+type GeneratorContext = Pick<ResolvedGeneratorContext, 'current'> & { python: Pick<ResolvedGeneratorContext['python'], 'genai'> };
 import type { AddArtifact } from '../../template-types.js';
 import { DEFAULT_FUNCTION_WORKER_QUEUE_NAME } from '../common/values.js';
 import { genAiPattern } from '../common/values.js';
@@ -10,6 +10,7 @@ import { pyModule } from '../common/values.js';
 import { sourceString } from '../common/values.js';
 import { titleCase } from '../common/values.js';
 import { renderPythonRuntimeSettings } from '../common/python-settings.js';
+import { renderCurrentPythonHealthTests, withCurrentPythonTestSettings } from '../common/python-tests.js';
 
 export function addBackendArtifacts(add: AddArtifact, plan: GenAiProjectPlan, context: GeneratorContext): void {
   const routeModule = pyModule(genAiPattern(plan).id);
@@ -30,9 +31,9 @@ export function addBackendArtifacts(add: AddArtifact, plan: GenAiProjectPlan, co
   add('backend-tools-package', 'backend', ['backend', 'orchestration', 'tools', '__init__.py'], '');
   add('backend-observability', 'backend', ['backend', 'observability', 'tracing.py'], renderTracing());
   add('backend-observability-package', 'backend', ['backend', 'observability', '__init__.py'], '');
-  add('backend-test-health', 'backend-test', ['backend', 'tests', 'test_health.py'], renderBackendHealthTest());
+  add('backend-test-health', 'backend-test', ['backend', 'tests', 'test_health.py'], renderBackendHealthTest(context.current));
   add('backend-test-messaging', 'backend-test', ['backend', 'tests', 'test_messaging.py'], renderMessagingTest());
-  add('backend-test-tracing', 'backend-test', ['backend', 'tests', 'test_tracing.py'], renderTracingTest());
+  add('backend-test-tracing', 'backend-test', ['backend', 'tests', 'test_tracing.py'], renderTracingTest(context.current));
 }
 
 export function renderBackendPyproject(plan: GenAiProjectPlan, context: GeneratorContext): string {
@@ -495,7 +496,8 @@ def build_tracer(
 `;
 }
 
-export function renderBackendHealthTest(): string {
+export function renderBackendHealthTest(current = false): string {
+  if (current) return renderCurrentPythonHealthTests('genai');
   return `from fastapi.testclient import TestClient
 
 from backend.apis.main import app
@@ -610,8 +612,8 @@ def test_service_bus_publisher_uses_async_sender():
 `;
 }
 
-export function renderTracingTest(): string {
-  return `import asyncio
+export function renderTracingTest(current = false): string {
+  return withCurrentPythonTestSettings(`import asyncio
 
 import pytest
 
@@ -685,5 +687,5 @@ def test_partial_langfuse_configuration_fails(monkeypatch):
     get_settings.cache_clear()
     with pytest.raises(TracingConfigurationError, match="configured together"):
         build_tracer()
-`;
+`, current);
 }

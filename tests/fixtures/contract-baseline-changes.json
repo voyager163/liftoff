@@ -199,101 +199,200 @@
     {
       "surface": "cli-text",
       "key": "governance --help",
-      "task": "3.7",
-      "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+      "task": "4.5",
+      "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+      "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
       "changed": [
         "/stdout"
-      ]
+      ],
+      "priorChange": {
+        "surface": "cli-text",
+        "key": "governance --help",
+        "task": "3.7",
+        "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+        "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+        "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+        "changed": [
+          "/stdout"
+        ]
+      }
     },
     {
       "surface": "cli-text",
       "key": "governance status --help",
-      "task": "3.7",
-      "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+      "task": "4.5",
+      "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+      "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
       "changed": [
         "/stdout"
-      ]
+      ],
+      "priorChange": {
+        "surface": "cli-text",
+        "key": "governance status --help",
+        "task": "3.7",
+        "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+        "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+        "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+        "changed": [
+          "/stdout"
+        ]
+      }
     },
     {
       "surface": "cli-text",
       "key": "governance plan --help",
-      "task": "3.7",
-      "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+      "task": "4.5",
+      "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+      "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
       "changed": [
         "/stdout"
-      ]
+      ],
+      "priorChange": {
+        "surface": "cli-text",
+        "key": "governance plan --help",
+        "task": "3.7",
+        "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+        "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+        "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+        "changed": [
+          "/stdout"
+        ]
+      }
     },
     {
       "surface": "cli-text",
       "key": "governance approve --help",
-      "task": "3.7",
-      "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+      "task": "4.5",
+      "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+      "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
       "changed": [
         "/stdout"
-      ]
+      ],
+      "priorChange": {
+        "surface": "cli-text",
+        "key": "governance approve --help",
+        "task": "3.7",
+        "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+        "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+        "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+        "changed": [
+          "/stdout"
+        ]
+      }
     },
     {
       "surface": "cli-text",
       "key": "governance apply-next --help",
-      "task": "3.7",
-      "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+      "task": "4.5",
+      "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+      "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
       "changed": [
         "/stdout"
-      ]
+      ],
+      "priorChange": {
+        "surface": "cli-text",
+        "key": "governance apply-next --help",
+        "task": "3.7",
+        "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+        "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+        "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+        "changed": [
+          "/stdout"
+        ]
+      }
     },
     {
       "surface": "cli-text",
       "key": "governance credential-enroll --help",
-      "task": "3.7",
-      "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+      "task": "4.5",
+      "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+      "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
       "changed": [
         "/stdout"
-      ]
+      ],
+      "priorChange": {
+        "surface": "cli-text",
+        "key": "governance credential-enroll --help",
+        "task": "3.7",
+        "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+        "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+        "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+        "changed": [
+          "/stdout"
+        ]
+      }
     },
     {
       "surface": "cli-text",
       "key": "governance recover --help",
-      "task": "3.7",
-      "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+      "task": "4.5",
+      "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+      "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
       "changed": [
         "/stdout"
-      ]
+      ],
+      "priorChange": {
+        "surface": "cli-text",
+        "key": "governance recover --help",
+        "task": "3.7",
+        "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+        "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+        "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+        "changed": [
+          "/stdout"
+        ]
+      }
     },
     {
       "surface": "cli-text",
       "key": "governance resume --help",
-      "task": "3.7",
-      "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+      "task": "4.5",
+      "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+      "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
       "changed": [
         "/stdout"
-      ]
+      ],
+      "priorChange": {
+        "surface": "cli-text",
+        "key": "governance resume --help",
+        "task": "3.7",
+        "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+        "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+        "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+        "changed": [
+          "/stdout"
+        ]
+      }
     },
     {
       "surface": "cli-text",
       "key": "governance verify --help",
-      "task": "3.7",
-      "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+      "task": "4.5",
+      "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+      "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
       "changed": [
         "/stdout"
-      ]
+      ],
+      "priorChange": {
+        "surface": "cli-text",
+        "key": "governance verify --help",
+        "task": "3.7",
+        "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+        "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+        "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+        "changed": [
+          "/stdout"
+        ]
+      }
     },
     {
       "surface": "cli-json",

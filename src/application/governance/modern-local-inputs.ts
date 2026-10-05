@@ -36,6 +36,11 @@ import { inspectModernInstalledActivation, validateCapturedModernInstalledActiva
 import type { InstalledLocalPreflight, ModernLocalRuntimeInspection, ModernLocalRuntimePlan } from '../../domain/governance/activation/modern-local-runtime.js';
 import {captureCompleteOpenSpecInputs,captureArchivedOpenSpecInputs} from './modern-openspec-inputs.js';
 import { modernLocalInputExclusion as exclusion } from '../../domain/governance/activation/modern-local-exclusions.js';
+import { inspectModernComposeInputs } from './modern-compose.js';
+import { modernComposeInputPolicy, type ModernComposeInputs } from '../../domain/governance/activation/modern-compose.js';
+import { explicitTofuFormatCommand, explicitTofuFormatPolicy } from '../../domain/governance/activation/modern-tofu-format.js';
+import { deriveManualInfrastructureInputs } from './modern-manual-infrastructure.js';
+import { manualInfrastructurePolicy, type ManualInfrastructureInputs } from '../../domain/governance/activation/modern-manual-infrastructure.js';
 
 const rootReader = createManifestV8Reader({ catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract });
 const key = (parts: readonly string[]) => parts.join('/');
@@ -269,6 +274,10 @@ async function inspectLocalInputs(
   }
 }
 
+interface ManualNativeDetails {
+  composeInputs?: ModernComposeInputs;
+  infrastructure?: ManualInfrastructureInputs;
+}
 interface Derivation {
   readonly manifest: LiftoffManifestV8;
   readonly snapshot: ModernLocalSnapshot;
@@ -278,6 +287,9 @@ interface Derivation {
   readonly omitFromBaseline: Set<string>;
   readonly checkedTypeScriptConfigs: Set<string>;
   readonly providerFreeInitialization:boolean;
+  readonly closedManualInputs: boolean;
+  composeInputs?: ModernComposeInputs;
+  manualInfrastructure?: ManualInfrastructureInputs;
   references: number;
   tokens: number;
 }
@@ -288,14 +300,23 @@ function requiredText(data: Derivation, parts: readonly string[]): string {
   if (!bytes) return localInputFailure(`${key(parts)}: required input is missing.`);
   return text(bytes, key(parts));
 }
-function reference(data: Derivation, from: readonly string[], value: unknown, directory = false): string {
+function reference(data: Derivation, from: readonly string[], value: unknown, directory = false,
+  scope?: { rootBuildContext?: boolean; artifacts?: ReadonlySet<string> }): string {
   if (++data.references > modernLocalBounds.references) localInputFailure('Local configuration exceeds the reference count bound.');
   if (typeof value !== 'string' || !value || /[\\$*?\u0000-\u001f]/u.test(value) ||
       value.startsWith('/') || /^[A-Za-z][A-Za-z0-9+.-]*:/u.test(value)) localInputFailure('A configuration reference is dynamic, absolute or unsupported.');
   const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(key(from)), value));
   if (resolved === '..' || resolved.startsWith('../')) localInputFailure(`${key(from)}: reference escapes the explicitly selected input roots.`);
+  if (directory && scope?.rootBuildContext && resolved === '.') {
+    if (!data.snapshot.directories.some(entry => entry.pathParts.length === 0 && entry.exists)) {
+      localInputFailure('Compose root build context requires the actual captured root directory; no recursive build input is granted.');
+    }
+    return '';
+  }
   const parts = localPath(resolved.split('/'));
-  if (!data.roots.some(root => under(root, resolved))) localInputFailure(`${key(from)}: reference escapes the explicitly selected input roots.`);
+  if (!data.roots.some(root => under(root, resolved)) && !scope?.artifacts?.has(resolved)) {
+    localInputFailure(`${key(from)}: reference escapes the explicitly selected input roots.`);
+  }
   if (exclusion(parts)) localInputFailure(`${key(from)}: reference overlaps a protected input.`);
   if (directory) {
     if (!data.snapshot.directories.some(entry => key(entry.pathParts) === resolved && entry.exists)) localInputFailure(`${key(from)}: referenced directory is missing or uncaptured.`);
@@ -318,7 +339,8 @@ async function checkHcl(data: Derivation, parts: readonly string[], result: Isol
   const safeFunctions = new Set(['lower', 'upper', 'format', 'join', 'replace', 'concat', 'length', 'toset', 'tolist',
     'tostring', 'tonumber', 'try', 'coalesce', 'lookup', 'jsonencode', 'yamlencode', 'merge', 'contains',
     'can', 'cidrsubnet', 'cidrhost', 'substr', 'trimspace', 'split', 'flatten', 'range', 'element', 'distinct',
-    'zipmap', 'keys', 'values', 'one', 'min', 'max']);
+    'zipmap', 'keys', 'values', 'one', 'min', 'max',
+    ...(data.manualInfrastructure ? manualInfrastructurePolicy.additionalPureFunctions : [])]);
   function literalString(ast: HclExpression): string | undefined {
     if (ast.type === 'literalValue' && typeof ast.meta.value === 'string') return ast.meta.value;
     if (ast.type === 'template') {
@@ -353,8 +375,9 @@ async function checkHcl(data: Derivation, parts: readonly string[], result: Isol
     }
     else if (Array.isArray(value)) for (const child of value) await visit(child, depth + 1);
     else if (isRecord(value)) {
-      if (value.required_providers !== undefined) localInputFailure('Provider package preparation is not established by source metadata.');
-      if (value.backend !== undefined && (!isRecord(value.backend) || Object.keys(value.backend).some(name => name !== 'local'))) {
+      if (value.required_providers !== undefined && !data.manualInfrastructure) localInputFailure('Provider package preparation is not established by source metadata.');
+      if (!data.manualInfrastructure && value.backend !== undefined &&
+          (!isRecord(value.backend) || Object.keys(value.backend).some(name => name !== 'local'))) {
         localInputFailure('Remote or unsupported backend initialization is not a local revalidation operation.');
       }
       for (const name of Object.keys(value).sort()) await visit(value[name], depth + 1);
@@ -372,7 +395,7 @@ async function checkHcl(data: Derivation, parts: readonly string[], result: Isol
       }
     }
   }
-  if (parsed.provider !== undefined || parsed.data !== undefined) {
+  if (!data.manualInfrastructure && (parsed.provider !== undefined || parsed.data !== undefined)) {
     localInputFailure('Provider/data configuration requires separately qualified provider-cache and execution preflight; a directory is not that proof.');
   }
   await visit(parsed);
@@ -515,7 +538,13 @@ function checkPython(data: Derivation, parts: readonly string[]): void {
 
 function checkCompose(data: Derivation, parts: readonly string[]): void {
   let parsed: unknown;
-  try { parsed = parseYaml(requiredText(data, parts), { uniqueKeys: true, maxAliasCount: 0 }); }
+  try {
+    if (data.closedManualInputs) {
+      const observed = inspectModernComposeInputs(requiredText(data, parts));
+      parsed = observed.document;
+      data.composeInputs = observed.inputs;
+    } else parsed = parseYaml(requiredText(data, parts), { uniqueKeys: true, maxAliasCount: 0 });
+  }
   catch (error) {
     if (error instanceof ModernLocalInputError) throw error;
     localInputFailure('Compose contains invalid or unsupported YAML; source values were omitted.');
@@ -523,7 +552,7 @@ function checkCompose(data: Derivation, parts: readonly string[]): void {
   if (!isRecord(parsed) || !isRecord(parsed.services)) localInputFailure('Compose requires an explicit services object.');
   function visit(value: unknown): void {
     if (++data.tokens > modernLocalBounds.tokens) localInputFailure('Compose exceeds the node bound.');
-    if (typeof value === 'string' && value.includes('$')) localInputFailure('Compose interpolation is not bound to captured local input.');
+    if (!data.closedManualInputs && typeof value === 'string' && value.includes('$')) localInputFailure('Compose interpolation is not bound to captured local input.');
     if (Array.isArray(value)) value.forEach(visit);
     else if (isRecord(value)) {
       if (['include', 'extends', 'env_file', 'secrets', 'driver_opts'].some(name => Object.hasOwn(value, name))) {
@@ -540,6 +569,11 @@ function checkCompose(data: Derivation, parts: readonly string[]): void {
       reference(data, parts, config.file);
     }
   }
+  const buildScope = data.closedManualInputs ? { rootBuildContext: true } : undefined;
+  const dockerfileScope = data.closedManualInputs ? {
+    artifacts: new Set(data.manifest.activeLayout.bindings.filter(binding => binding.kind === 'artifact' &&
+      ['backend-dockerfile', 'frontend-dockerfile', 'function-worker-dockerfile'].includes(binding.logicalName)).map(binding => key(binding.pathParts)))
+  } : undefined;
   for (const service of Object.values(parsed.services)) {
     if (!isRecord(service)) localInputFailure('Compose service must be an object.');
     if (Object.hasOwn(service, 'label_file')) localInputFailure('Compose service label_file inputs are unsupported and are not read by this local recipe.');
@@ -547,13 +581,13 @@ function checkCompose(data: Derivation, parts: readonly string[]): void {
     if (service.build !== undefined) {
       const build = service.build;
       const context = typeof build === 'string' ? build : isRecord(build) ? build.context : undefined;
-      reference(data, parts, context, true);
+      reference(data, parts, context, true, buildScope);
       if (isRecord(build) && (build.additional_contexts !== undefined || build.dockerfile_inline !== undefined)) {
         localInputFailure('Additional or inline Compose build contexts are unsupported.');
       }
       if (isRecord(build) && build.dockerfile !== undefined) {
-        const contextPath = reference(data, parts, context, true);
-        reference(data, [...contextPath.split('/'), 'context'], build.dockerfile);
+        const contextPath = reference(data, parts, context, true, buildScope);
+        reference(data, [...(contextPath ? contextPath.split('/') : []), 'context'], build.dockerfile, false, dockerfileScope);
       }
     }
     if (Array.isArray(service.volumes)) for (const volume of service.volumes) {
@@ -631,7 +665,8 @@ export async function planModernLocalVerification(inspection: ModernLocalInspect
 }
 
 async function deriveLocalVerification(
-  inspection: ModernLocalInspection, installed?: Extract<InstalledLocalPreflight, { status: 'observed' }>,providerFreeInitialization=false
+  inspection: ModernLocalInspection, installed?: Extract<InstalledLocalPreflight, { status: 'observed' }>,providerFreeInitialization=false,
+  closedManualInputs=false, manualNative?: ManualNativeDetails
 ): Promise<ModernLocalVerificationPlan> {
   const captured = copyModernLocalData(inspection);
   if (captured.status !== 'modern-observed') {
@@ -667,7 +702,8 @@ async function deriveLocalVerification(
   );
   const data: Derivation = {
     manifest, snapshot, files, roots: components.map(binding => key(binding.pathParts)),
-    normalized: new Map(), omitFromBaseline: new Set(), checkedTypeScriptConfigs: new Set(),providerFreeInitialization, references: 0, tokens: 0
+    normalized: new Map(), omitFromBaseline: new Set(), checkedTypeScriptConfigs: new Set(),providerFreeInitialization,
+    closedManualInputs, references: 0, tokens: 0
   };
   const checks: ModernLocalCheck[] = [], expected: string[] = [];
   const hclFiles = snapshot.files.filter(file => file.content !== null && file.pathParts.at(-1)?.endsWith('.tf') &&
@@ -699,7 +735,10 @@ async function deriveLocalVerification(
     return found.pathParts;
   }
   const pending = ['installed tool identity and supported version', 'isolated execution boundary and explicit local consent', 'MR2 installed-state/history and settlement preflight'];
-  await check('source-consistency', () => {
+  await check('source-consistency', async () => {
+    if (closedManualInputs && manifest.project.specWorkflow !== 'manual') {
+      localInputFailure('Closed Manual input interpretation cannot replace an external framework input contract.');
+    }
     if (manifest.sourceManifestHistory && !installed) localInputFailure('Installed preserved-history preflight is not established by a source reference.');
     for (const parts of journalPaths) if (!files.has(key(parts)) || files.get(key(parts))?.content !== null) localInputFailure('Transaction absence was not captured.');
     for (const parts of installedBoundaryPaths) {
@@ -743,6 +782,17 @@ async function deriveLocalVerification(
           if (!snapshot.directories.some(child => key(child.pathParts) === name && child.exists)) localInputFailure('A selected directory is absent from the captured scope.');
         } else if (entry.kind !== 'file' || !files.has(name) || files.get(name)?.content === null) localInputFailure('A selected source file is missing, unsafe or omitted from captured membership.');
       }
+    }
+    if (manualNative) {
+      const parsed = await hclDerivation();
+      const infrastructure = deriveManualInfrastructureInputs(manifest, files, parsed);
+      data.manualInfrastructure = infrastructure;
+      for (const file of hclFiles) {
+        const result = parsed.get(key(file.pathParts));
+        if (!result) localInputFailure('Native Manual source interpretation is missing a selected HCL result.');
+        await checkHcl(data, file.pathParts, result);
+      }
+      manualNative.infrastructure = infrastructure;
     }
   });
   const backend = components.find(binding => binding.component === 'backend')?.pathParts ?? [];
@@ -806,12 +856,19 @@ async function deriveLocalVerification(
     checkCompose(data, compose);
   }, { command: compose ? { executable: 'docker', args: ['compose', '--project-directory', path.posix.dirname(key(compose)), '-f', key(compose), 'config', '-q'] } : null,
     env: { COMPOSE_DISABLE_ENV_FILE: '1', COMPOSE_ENV_FILES: '' }, prerequisites: pending,
-    effects: ['configuration-only; no container build or startup; dotenv/interpolation inputs are not admitted'] });
+    effects: [closedManualInputs
+      ? 'configuration-only; no container build or startup; project variables must be explicitly unset without dotenv'
+      : 'configuration-only; no container build or startup; dotenv/interpolation inputs are not admitted'] });
   for (const id of source.layoutDescriptor.components.filter(id => id.startsWith('opentofu-'))) {
     const parts = components.find(binding => binding.component === id)?.pathParts ?? [];
     let sources: ModernLocalFile[] = [];
+    let explicitFormat: ModernLocalCheck['command'] = null;
     await check(`tofu-format:${id}`, async () => {
       component(id);
+      if (closedManualInputs) {
+        explicitFormat = explicitTofuFormatCommand(parts, snapshot.files);
+        return;
+      }
       if (snapshot.exclusions.some(entry => under(key(parts), key(entry.pathParts)) && /\.tfvars(?:\.json)?$/u.test(key(entry.pathParts)))) {
         localInputFailure('Live OpenTofu variable inputs are excluded, so recursive format/revalidation is not admitted.');
       }
@@ -831,13 +888,39 @@ async function deriveLocalVerification(
       }
     }, { command: tofuFormatCommand(), cwdPathParts: parts, prerequisites: pending,
       env: { TF_CLI_ARGS: '', TF_CLI_ARGS_fmt: '', TF_INPUT: '0', CHECKPOINT_DISABLE: '1' }, effects: ['format check only; no writes, init, plan or apply'] });
+    if (closedManualInputs) checks[checks.length - 1] = { ...checks[checks.length - 1], command: explicitFormat };
+    const formatting = checks.at(-1);
+    const coveredModule = Boolean(manualNative) && id === 'opentofu-application';
+    if (manualNative && !coveredModule) {
+      await check(`tofu-initialize:${id}`, () => {
+        if (!formatting || formatting.status !== 'planned' || !manualNative.infrastructure?.roots.some(root => root.component === id)) {
+          localInputFailure('Native initialization requires the complete captured lock, provider and module graph.');
+        }
+      }, {
+        command: { executable: 'tofu', args: [...manualInfrastructurePolicy.initArgs] }, cwdPathParts: parts, env: {},
+        prerequisites: [...pending, 'separate locked infrastructure preparation and provider-distribution network approval'],
+        effects: ['downloads the explicitly locked provider into owned storage; backend disabled; no plan, apply or original writes']
+      });
+    }
     await check(`tofu-validate:${id}`, () => {
-      const formatting = checks.at(-1);
       if (!formatting || formatting.status === 'blocked') localInputFailure('OpenTofu source/reference prerequisites are incomplete.');
-    }, { command: tofuValidateCommand(), cwdPathParts: parts,
+      if (manualNative) {
+        if (!manualNative.infrastructure || !coveredModule && checks.at(-1)?.status !== 'planned') {
+          localInputFailure('Locked initialization and source-closed module prerequisites are incomplete.');
+        }
+      } else if (closedManualInputs) localInputFailure('Closed formatting inputs do not establish separately approved locked provider/module preparation or native validation.');
+    }, coveredModule ? {
+      status: 'inapplicable', command: null, reasons: ['The application module is validated through every selected locked environment root, not by an unperformed standalone command.']
+    } : manualNative ? {
+      command: { executable: 'tofu', args: [...manualInfrastructurePolicy.validateArgs] }, cwdPathParts: parts, env: {},
+      prerequisites: [...pending, `tofu-initialize:${id}`, 'unchanged owned provider/module outputs'],
+      effects: ['executes the locked provider for schema validation; no backend, plan, apply or remote credential requirement']
+    } : {
+      command: tofuValidateCommand(), cwdPathParts: parts,
       env: { TF_CLI_ARGS: '', TF_CLI_ARGS_validate: '', TF_DATA_DIR: '.terraform', TF_INPUT: '0', CHECKPOINT_DISABLE: '1' },
       prerequisites: [...pending, 'any module/provider preparation must be separately established; no init is authorized'],
-      effects: ['local validation only; provider/backend execution and initialization remain unavailable'] });
+      effects: ['local validation only; provider/backend execution and initialization remain unavailable']
+    });
   }
   let workflow: ReturnType<typeof checkWorkflow> | undefined;
   await check('framework-source', () => { workflow = checkWorkflow(data); }, {
@@ -854,7 +937,21 @@ async function deriveLocalVerification(
     return { path: normalized?.path ?? key(file.pathParts), mode: file.mode,
       digest: normalized ? sha256Hex(normalized.content) : file.digest };
   }).sort((a, b) => compare(a.path, b.path));
-  return assembleModernLocalPlan(captured, context, checks, expected, baseline, hclComputationPolicy);
+  if (manualNative) manualNative.composeInputs = data.composeInputs;
+  return assembleModernLocalPlan(captured, context, checks, expected, baseline, manualNative ? {
+    kind: 'liftoff-manual-native-source-plan', version: 1, hcl: hclComputationPolicy,
+    compose: modernComposeInputPolicy, composeInputs: data.composeInputs ?? null,
+    formatting: explicitTofuFormatPolicy, infrastructure: manualInfrastructurePolicy,
+    infrastructureInputs: manualNative.infrastructure ?? null
+  } : closedManualInputs ? {
+    kind: 'liftoff-closed-manual-source-plan', version: 1,
+    hcl: hclComputationPolicy, compose: modernComposeInputPolicy,
+    composeInputs: data.composeInputs ?? null, formatting: explicitTofuFormatPolicy
+  } : hclComputationPolicy);
+}
+
+export async function planClosedManualLocalInputs(inspection: ModernLocalInspection): Promise<ModernLocalVerificationPlan> {
+  return deriveLocalVerification(inspection, undefined, false, true);
 }
 
 export async function reinspectModernLocalVerification(root: string, prior: ModernLocalVerificationPlan): Promise<ModernLocalInspection> {
@@ -903,6 +1000,16 @@ function historyManifestVersion(installed: Extract<InstalledLocalPreflight, { st
   return isRecord(manifest) ? manifest.artifactVersion : undefined;
 }
 export async function planModernLocalRuntime(input: ModernLocalRuntimeInspection,providerFreeInitialization=false): Promise<ModernLocalRuntimePlan> {
+  return deriveModernLocalRuntime(input, providerFreeInitialization);
+}
+export async function planManualNativeLocalRuntime(input: ModernLocalRuntimeInspection) {
+  const details: ManualNativeDetails = {};
+  const plan = await deriveModernLocalRuntime(input, false, details);
+  return { plan, composeInputs: details.composeInputs ?? null, infrastructure: details.infrastructure ?? null };
+}
+async function deriveModernLocalRuntime(
+  input: ModernLocalRuntimeInspection, providerFreeInitialization: boolean, manualNative?: ManualNativeDetails
+): Promise<ModernLocalRuntimePlan> {
   const inspection = copyModernLocalData(input);
   exactRecord(inspection, inspection.status === 'blocked' ? ['kind','schemaVersion','status','blockers'] :
     ['kind','schemaVersion','status','installed','local'], 'Runtime inspection');
@@ -915,7 +1022,7 @@ export async function planModernLocalRuntime(input: ModernLocalRuntimeInspection
   if (inspection.status !== 'observed') localInputFailure('Unknown runtime inspection status.');
   const actual = await validateCapturedModernInstalledActivation(inspection.installed.snapshot);
   if (canonicalJson(actual) !== canonicalJson(inspection.installed)) localInputFailure('Supplied installed summary differs from its captured actual records.');
-  const localPlan = await deriveLocalVerification(inspection.local, actual,providerFreeInitialization);
+  const localPlan = await deriveLocalVerification(inspection.local, actual,providerFreeInitialization,Boolean(manualNative),manualNative);
   return { kind:'liftoff-modern-local-runtime-plan',schemaVersion:1,status:localPlan.status,inspection,
     localPlan,installedBinding:actual.binding,blockers:localPlan.blockers,execution:'not-authorized',publication:'codec-unavailable-not-authorized' };
 }
