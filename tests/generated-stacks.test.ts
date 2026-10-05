@@ -266,6 +266,11 @@ describe('generated standard stack smoke checks', () => {
         readFile(path.join(ragRoot, 'backend', 'uv.lock'))
       ])).toEqual(genAiMetadata);
 
+      checkedSpawn(uvCommand, [
+        'run', '--no-sync', '--frozen', '--project', path.join(ragRoot, 'backend'),
+        'python', fileURLToPath(new URL('./fixtures/pyjwt-options-regression.py', import.meta.url))
+      ], path.join(ragRoot, 'backend'));
+
       const genericMetadata = await Promise.all([
         readFile(path.join(genericRoot, 'backend', 'pyproject.toml')),
         readFile(path.join(genericRoot, 'backend', 'uv.lock'))

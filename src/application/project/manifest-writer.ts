@@ -101,7 +101,10 @@ function sourceData(value: unknown): unknown {
   return copy(value, 0);
 }
 
-function targetFor(leaf: ManifestV8ProjectLeaf, profile: 'none' | ModernGovernanceProfile) {
+function targetFor(
+  leaf: ManifestV8ProjectLeaf, profile: 'none' | ModernGovernanceProfile,
+  recordedPlugins?: LiftoffManifestV8['plugins']
+) {
   const workload = leaf.project.workload;
   const composition = composeModernManifestPlugins({
     workload: workload.kind, ...(workload.kind === 'genai' ? { variant: workload.pattern } : {}),
@@ -109,7 +112,7 @@ function targetFor(leaf: ManifestV8ProjectLeaf, profile: 'none' | ModernGovernan
     agents: leaf.project.agents, frontend: workload.frontend ? 'included' : 'omitted',
     governanceProfile: profile, environments: workload.environments
   }, { safeProjectName: toSafeProjectName(leaf.project.name) });
-  const plugins = readManifestPluginMetadata({
+  const plugins = recordedPlugins ?? readManifestPluginMetadata({
     schemaVersion: 1, resolutionDigest: composition.resolution.digest, selections: composition.resolution.plugins
   }, { stack: workload.apiStack, cloud: workload.cloud, workflow: leaf.project.specWorkflow, agents: leaf.project.agents });
   const source = resolveModernManifestV8SourceContract({ selection: { ...leaf, profile }, recordedPlugins: plugins });
@@ -279,7 +282,7 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
       activationTargetHistory = requested;
     }
   }
-  const target = targetFor(leaf, profile);
+  const target = targetFor(leaf, profile, origin === 'maintenance' && source?.artifactVersion === 8 ? source.plugins : undefined);
   const generated = origin === 'fresh' ? generatedInput(request.generatedArtifacts, target.composition.expected) : undefined;
   const managedArtifacts = generated ? generated.filter((entry) => entry.lifecycle === 'managed-core').map((entry) => {
     const contentHash = `sha256:${hash(entry.content)}`;

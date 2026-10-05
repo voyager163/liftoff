@@ -1122,6 +1122,31 @@ sets are explicitly reported as not audited, not as clean.
 including shared Python views, the Function export, Go tool pin and provider
 subset.
 
+The reviewed security refresh pins urllib3 2.8.0 in both Python locks and PyJWT
+2.15.1 in GenAI and its reproduced Functions export. Node uses Fastify 5.12.5,
+root fast-uri 3.1.8 and npm's compatible nested fast-uri 4.2.1. Regenerate locks
+with their package managers, canonicalize official PyPI artifacts, reproduce the
+Functions export, synchronize supported-stack metadata, and advance changed
+stack content versions and literal release hashes together. The unchanged
+drizzle-kit chain still contains esbuild 0.18.20; its development-server exception
+is explicitly reviewed through 2026-11-29, not a claim of zero vulnerabilities.
+The npm audit does not cover PyPI. The generated Python integration case runs
+`tests/fixtures/pyjwt-options-regression.py` against the installed frozen GenAI
+environment: unsigned decoding must not mutate reused options or disable
+subsequent verified expiration checks in either decode API.
+
+`plugins/builtin/modern-historical-release.ts` records one exact metadata-only
+pre-refresh v8 family from revision `289e7033`. Modern source interpretation
+accepts that family only while its complete declaration digest, shared assets,
+selected identities and reconstructed resolution digest match. It does not
+accept version ranges, mixed families or plugin IDs alone, bundle old templates,
+or grant mutation authority. Ordinary maintenance preserves those recorded
+identities, provenance and layout; it does not upgrade application dependencies.
+Fresh generation records current identities. Project telemetry refuses to label
+a readable historical selection with changed stack identity as the currently
+installed template bundle. Historical snapshots and generated captures remain
+immutable; exact additive reviewed rendering records account for current bytes.
+
 `scripts/package-smoke-contract.mjs` independently requires the 13 template
 assets and twelve core ancillary assets, including the two modern profile policies,
 their canonical source-contract table and three shared skill sources. The smoke enforces exact declarations

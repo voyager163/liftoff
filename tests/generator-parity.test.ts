@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
 import { isManagedCoreLogicalName } from '../src/domain/project/artifact-lifecycle.js';
+import { expectReviewedRendering } from './fixtures/reviewed-rendering.js';
 
 const fixture = new URL('./fixtures/generator-parity.json', import.meta.url);
 const cases = [
@@ -55,8 +56,12 @@ describe('generator extraction parity', () => {
     }));
     const baseline = JSON.parse(readFileSync(fixture, 'utf8')) as typeof results;
     for (const [selection, values] of Object.entries(results)) {
-      expect(Object.fromEntries(Object.entries(values).filter(([name]) => unchanged(name))))
-        .toEqual(Object.fromEntries(Object.entries(baseline[selection]).filter(([name]) => unchanged(name))));
+      const current = Object.fromEntries(Object.entries(values).filter(([name]) => unchanged(name)));
+      const original = Object.fromEntries(Object.entries(baseline[selection]).filter(([name]) => unchanged(name)));
+      expect(Object.keys(current)).toEqual(Object.keys(original));
+      for (const [name, digest] of Object.entries(current)) {
+        expectReviewedRendering('generator-extraction', `${selection}/${name}`, digest, original[name]);
+      }
     }
   });
 });

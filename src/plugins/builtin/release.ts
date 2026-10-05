@@ -15,15 +15,15 @@ import { deepFrozen } from './core.js';
  */
 
 const assetSha256: Readonly<Record<string, Sha256Digest>> = {
-  'node-backend-package-manifest': 'sha256:6ce7e8d9f6a5c878c9e6ed843e75772453bac1d72b049762f84e4a403b9b3382',
-  'node-backend-package-lock': 'sha256:1eedf51491d8900fe4b487980720ea7257ced4697ee8d6a4865c922734bf2c86',
+  'node-backend-package-manifest': 'sha256:ea6b3a1d30c5212d5da178909c63fb5778a992a4d8361218e3f8f99af6c8a41b',
+  'node-backend-package-lock': 'sha256:6eb1a969ae4a82dcf8eed901fb65b36552905da3f538729e34d8540b326824e7',
   'go-backend-module': 'sha256:b4a00ccd7a9881c7e518dcbba83bd8ead0a852b29cb2509402f3c8c9af5bafac',
   'go-backend-checksums': 'sha256:c4c5f94664176df8c09e6fbf02a48391e606d135caec6b75932271333bbb4fb5',
   'python-standard-project': 'sha256:dc551853962b84bec527bb3463801b74ab9681b41d362653892243836a6e6935',
-  'python-standard-lock': 'sha256:ac827ab61c9704b1cd080034571320a2b9285e9f7d420658b2d232ae14ed2647',
+  'python-standard-lock': 'sha256:4bc135105548ce5d16d64fe034be6993cf722f75f51ac4d728a56c35c80d0dc2',
   'python-genai-project': 'sha256:94cbed85dbaf807866b4908703106d19e01eee9a30b7ccf186b88f68d8154745',
-  'python-genai-lock': 'sha256:4aa3bea0873ade3a2d4266adeeb1d504138f18bc2f093459f90699674d805648',
-  'python-genai-function-requirements': 'sha256:3d8fa15e16764e7b1d5d2b884829a06e0e020f4627bd2e83c221461564e4cbfb',
+  'python-genai-lock': 'sha256:2d6c651f9237d092ef56461b3f492aa19b1a825f08f14608b3cc2d020d89e16d',
+  'python-genai-function-requirements': 'sha256:6297c0dbb51146fa6188b380e026d6a31f61d1cec9c5586aa495ff1dca26ef46',
   'opentofu-azure-versions': 'sha256:7f1b60e1d88e6e8f0bc3981fafbb33b9d1471b3fe028b2eaa757d01d7f7001af',
   'opentofu-azure-provider-lock': 'sha256:e4a061da79009c7e1c2f9cb356b3a4df0bb05802f9b98f30de79c351c280ef61',
   'frontend-package-manifest': 'sha256:8217179388207e3d8e8599544e7741b29beb6dded81f01bcf5d4356785a68561',
@@ -39,8 +39,8 @@ interface PluginRecord {
 }
 
 const pluginRecords: readonly PluginRecord[] = [
-  { category: 'stack', id: 'python-fastapi', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:3cf538179f9cd748aea425bae9723bee29d232b91db6a794df88c65fc6e82c63' },
-  { category: 'stack', id: 'node-fastify', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:34dcdb9e17e17441709eba87c462e08de49a55abc187989b84f1482f64fbb24e' },
+  { category: 'stack', id: 'python-fastapi', apiVersion: 1, contentVersion: 2, contentDigest: 'sha256:44f91983bc9b69360cb6c0f35c61b8e0132bd4bfd1f7c93c1bf696d525bed7ea' },
+  { category: 'stack', id: 'node-fastify', apiVersion: 1, contentVersion: 2, contentDigest: 'sha256:a7477dd1f477e3b9e78e0ea6f9d2a9f6cc9657346b881be78b69549f55dda385' },
   { category: 'stack', id: 'go-huma', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:89f2689d613fcd5708bf9a94b5138cc0d39fb3c0c18374c75a190e7ee8ba1432' },
   { category: 'cloud', id: 'azure', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7' },
   { category: 'workflow', id: 'openspec', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:8675a3187f44932c7bee9f9a8e5d3f307bcb36d66ced0f20593663221c509d5e' },
@@ -52,9 +52,9 @@ const pluginRecords: readonly PluginRecord[] = [
 
 /** Expected registry identities of the built-ins. Tests assert them; runtime never consults them. */
 export const builtinReleaseDigests = deepFrozen({
-  pluginSetDigest: 'sha256:c71cdb0d0f8457e2046f36eb1956451e81a6aebe6dd791f6e02c5462c68b67ef' as Sha256Digest,
+  pluginSetDigest: 'sha256:aa341a94e3ed5c0e6aef1af618bac9441dd3e62fbf035f96db60be153d754f65' as Sha256Digest,
   coreContributionDigest: 'sha256:b46fee151601812c273ec4552c67fdb05c8a2a6125f11e0d9cd28f2e4dca169d' as Sha256Digest,
-  registryDigest: 'sha256:5bade82c410fb7ca510fb1bc503d9fb507618861318d9d5b16445c414bd6b186' as Sha256Digest
+  registryDigest: 'sha256:b489a9545421983def6810feb72630cc578135cf382991cf943031aa0a752659' as Sha256Digest
 });
 
 // A missing literal is reported by registry intake as a release mismatch at first use, never here.

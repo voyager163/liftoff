@@ -101,9 +101,9 @@ describe('modern source declarations', () => {
     describe('actual modern registry and C1 source binding', () => {
       it('matches independently derived literal registry identities and keeps the default registry unchanged', () => {
         const modern = createModernSourceRegistry();
-        expect(modern.pluginSetDigest).toBe('sha256:0380904da4b4d067fbbd19dac09d1477c71cc43fc00a45d3b86c8763354f6fcd');
+        expect(modern.pluginSetDigest).toBe('sha256:e1530af185fcb21e4647995ad5ccdf365284767dc267a9ca1bfae8e1c1902acc');
         expect(modern.coreContributionDigest).toBe('sha256:8502ebf3f4bce4ec93c98d674445828cf4db360bf32b0b7bfe30ba3f3fb39146');
-        expect(modern.registryDigest).toBe('sha256:790223d4fc3cfcfbf3a6e7cbc7a7889253fd67bcd94047d62ce5adcc339bc415');
+        expect(modern.registryDigest).toBe('sha256:a0f220e7409cb6318fbb227f12960b9004637e0f5235f9288abfe99f9a41d563');
         const original = builtinPluginRegistry();
         expect(original).not.toBe(modernSourceRegistry());
         expect(modernSourceRegistry()).toBe(modernSourceRegistry());

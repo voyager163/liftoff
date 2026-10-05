@@ -23,6 +23,7 @@ import { canonicalJson } from '../../domain/governance/activation/canonical-json
 import { capturedFileBytes } from '../../domain/governance/activation/modern-local-inputs.js';
 import type { InstalledLocalSnapshot } from '../../domain/governance/activation/modern-local-runtime.js';
 import { modernLocalInputExclusion } from '../../domain/governance/activation/modern-local-exclusions.js';
+import { matchesHistoricalModernPlugins } from './modern-plugins.js';
 
 const manifestReader = createManifestReader({
   catalog: projectCatalog,
@@ -143,10 +144,12 @@ function resolveSourceContract(input: unknown, compose: typeof composeManifestPl
     governanceProfile: profile,
     environments: workload.environments
   }, { safeProjectName: toSafeProjectName(project.name) });
-  const context = bindingContextForComposition(composition);
-  if (!manifestPluginMetadataMatches(recorded, context.plugins)) {
+  const installed = bindingContextForComposition(composition);
+  const current = manifestPluginMetadataMatches(recorded, installed.plugins);
+  if (!current && !(compose === composeModernManifestPlugins && matchesHistoricalModernPlugins(recorded, composition.resolution))) {
     throw new FileSystemError('Manifest v8 source plugin metadata does not match the exact installed release-owned source contract.');
   }
+  const context = current ? installed : Object.freeze({ ...installed, plugins: recorded });
   const managedArtifacts = composition.expected.filter((artifact) => artifact.lifecycle === 'managed-core').map((artifact) =>
     Object.freeze({ logicalName: artifact.logicalName, category: artifact.category, pathParts: Object.freeze([...artifact.pathParts]) }));
   const requiredHandoffLogicalNames = profile === 'none' ? [] : managedArtifacts
