@@ -197,6 +197,8 @@ try {
   assertPackageContains(packResult, 'dist/governance-assessment/live.js');
   assertPackageContains(packResult, 'dist/governance-assessment/catalog.js');
   assertPackageContains(packResult, 'dist/application/assessment/engine.js');
+  assertPackageContains(packResult, 'dist/application/assessment/live-report.js');
+  assertPackageContains(packResult, 'dist/adapters/assessment/live.js');
   assertPackageContains(packResult, 'dist/domain/assessment/report.js');
   assertPackageContains(packResult, 'dist/cli/commands/assess.js');
   assertPackageContains(packResult, 'dist/supported-stack.js');
@@ -310,8 +312,12 @@ try {
   }).stdout);
   if (installedCapabilities.schemas?.projectAssessment?.report !== 1 ||
       installedCapabilities.schemas.projectAssessment.readOnly !== true ||
-      installedCapabilities.schemas.projectAssessment.liveMetadata !== false) {
-    throw new Error('Installed capabilities did not expose only the qualified local whole-project producer.');
+      installedCapabilities.schemas.projectAssessment.liveMetadata !== true ||
+      installedCapabilities.schemas.projectAssessment.liveConformance !== false ||
+      installedCapabilities.schemas.projectAssessment.credentialEnrollment !== false ||
+      JSON.stringify(installedCapabilities.schemas.projectAssessment.liveProviders) !== '["github"]' ||
+      JSON.stringify(installedCapabilities.schemas.projectAssessment.modes) !== '["local","live"]') {
+    throw new Error('Installed capabilities lost the bounded local/live metadata and no-conformance contract.');
   }
   for (const flag of ['--check', '--live', '--subscription', '--approve-plan', '--recover', '--json',
     '--capabilities', '--inspect-layout', '--application-patch', '--verify-plan', '--allow-network', '--allow-dependency-preparation']) {
@@ -591,13 +597,14 @@ try {
       })}`);
     }
   }
-  const unavailableLive = runFailure(process.execPath, [liftoffEntrypoint, 'assess', '--live', '--json'], {
+  const missingLiveProject = runFailure(process.execPath, [liftoffEntrypoint, 'assess', '--live', '--json'], {
     cwd: outsideDirectory, env: npmEnv
   });
-  const unavailableLiveReport = JSON.parse(unavailableLive.stdout);
-  if (unavailableLive.status !== 1 || unavailableLiveReport.mode !== 'live' || unavailableLiveReport.outcome !== 'error' ||
-      !unavailableLiveReport.diagnostics?.some(item => item.message.includes('no network or credential access'))) {
-    throw new Error('Installed whole-project assessment did not explicitly refuse unsupported live collection.');
+  const missingLiveReport = JSON.parse(missingLiveProject.stdout);
+  if (missingLiveProject.status !== 1 || missingLiveReport.mode !== 'live' || missingLiveReport.outcome !== 'error' ||
+      missingLiveReport.target !== null || missingLiveReport.snapshot?.inputsStable !== false ||
+      !missingLiveReport.limitations?.includes('No provider request was dispatched.')) {
+    throw new Error('Installed live assessment did not reject missing project scope before provider access.');
   }
   if (await treeDigest(ordinaryRepository) !== ordinaryBefore || await treeDigest(homeDirectory) !== profileBefore) {
     throw new Error('Installed whole-project assessment changed its project or user profile.');
@@ -798,6 +805,28 @@ try {
     includeFrontend: false
   }, { requireProjectName: true })));
   const assessmentBefore = await treeDigest(assessmentProject);
+  const assessmentHomeBefore = await treeDigest(homeDirectory);
+  for (const flags of [[], ['--live']]) {
+    const assessment = runFailure(process.execPath, [liftoffEntrypoint, 'assess',
+      '--project', assessmentProject, '--json', ...flags], { cwd: outsideDirectory, env: npmEnv });
+    const report = JSON.parse(assessment.stdout);
+    if (assessment.status !== 2 || report.schemaVersion !== 1 || report.readOnly !== true ||
+        report.command !== 'assess' || report.outcome !== 'partial' ||
+        report.mode !== (flags.length ? 'live' : 'local') ||
+        report.target?.cliVersion !== packResult.version || report.snapshot?.inputsStable !== (flags.length === 0) ||
+        report.coverage?.notObserved < 1) {
+      throw new Error(`Installed whole-project assessment lost its bounded partial-report contract: ${assessment.stdout}`);
+    }
+    if (flags.length && !report.findings.filter(finding => finding.id.startsWith('live.')).every(finding =>
+      finding.supported === false && finding.classification === 'not-observed' &&
+      finding.observed.availability === 'not-observed' && finding.observed.source === null)) {
+      throw new Error('Installed unbound live assessment fabricated provider observations or conformance.');
+    }
+  }
+  if (await treeDigest(assessmentProject) !== assessmentBefore ||
+      await treeDigest(homeDirectory) !== assessmentHomeBefore) {
+    throw new Error('Installed whole-project assessment changed project or user state.');
+  }
   for (const flags of [[], ['--live']]) {
     const assessment = runFailure(process.execPath, [liftoffEntrypoint, 'governance', 'assess', '--json', ...flags], {
       cwd: assessmentProject, env: npmEnv

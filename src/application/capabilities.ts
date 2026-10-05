@@ -86,11 +86,13 @@ export function installedCapabilities() {
         scope: 'Historical-to-v8 successor and current-v8 managed maintenance. Recorded project, plugins, compatible layout, original history and configuration are preserved. Local revalidation and other transitions remain separate.'
       },
       projectAssessment: {
-        command: 'assess', report: 1, modes: ['local'], readOnly: true,
+        command: 'assess', report: 1, modes: ['local', 'live'], readOnly: true,
         comparisonProfiles: ['none', 'single-maintainer-gitflow', 'team-gitflow'],
-        explicitNonGitRoot: true, liveMetadata: false, projectExecution: false, projectWrites: false, telemetry: false,
+        explicitNonGitRoot: true, liveMetadata: true, liveProviders: ['github'], liveConformance: false,
+        credentialEnrollment: false, projectExecution: false, projectWrites: false, telemetry: false,
         scope: 'Bounded local metadata, declaration names and exact current managed-byte comparisons. Runtime constraints, references, agent behavior, effective governance and deployment proof remain unobserved. Team policy metadata comparison is not public team generation or enforcement support.',
-        recommendations: 'Advisory separate lanes only. Unavailable adoption, workflow/profile/plugin transitions, provider activation and deployed-state migration have no executable recommendation.'
+        recommendations: 'Advisory separate lanes only. Unavailable adoption, workflow/profile/plugin transitions, provider activation and deployed-state migration have no executable recommendation.',
+        liveScope: 'Explicit bounded GitHub metadata reads for the verified local repository binding, applicable main/develop/release/hotfix refs and declared current environments, plus fixed GitHub Actions app metadata. No account/runner/Azure discovery; observed metadata is not current-profile conformance or activation proof.'
       },
       reports: {
         capabilities: 1, validate: 1, doctor: 1, upgrade: 1,

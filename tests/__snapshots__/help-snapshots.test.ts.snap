@@ -50,8 +50,8 @@ Command options
 ───────────────
 Option  Description
 ──────  ────────────────────────────────────────────────────────────────────────
---live  Live whole-project collection is unavailable; this request fails without
-        network or credential access
+--live  Explicit bounded GitHub metadata reads with existing permissions; no
+        enrollment, scripts, Azure discovery or conformance proof
 
 General options
 ───────────────
@@ -652,7 +652,7 @@ Output options
 Option: --json | Description: Emit one schema-1 read-only report; unknown coverage is not a pass
 
 Command options
-Option: --live | Description: Live whole-project collection is unavailable; this request fails without network or credential access
+Option: --live | Description: Explicit bounded GitHub metadata reads with existing permissions; no enrollment, scripts, Azure discovery or conformance proof
 
 General options
 Option: --help | Description: Show command-specific help
@@ -1001,8 +1001,8 @@ exports[`complete help screens > snapshots rich assess command help 1`] = `
 ┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │
 │ ──────  ──────────────────────────────────────────────────────────────────────────────────── │
-│ --live  Live whole-project collection is unavailable; this request fails without network or  │
-│         credential access                                                                    │
+│ --live  Explicit bounded GitHub metadata reads with existing permissions; no enrollment,     │
+│         scripts, Azure discovery or conformance proof                                        │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ General options ────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │

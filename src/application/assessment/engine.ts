@@ -84,7 +84,7 @@ export async function assessProject(input: {
   live?: boolean;
 }): Promise<ProjectAssessmentReport> {
   if (input.governance !== undefined) projectAssessmentProfile(input.governance);
-  if (input.live) throw new ApplicationInspectionError('Whole-project live metadata collection is not available yet. Use local assess; no network or credential access occurred.');
+  if (input.live) throw new ApplicationInspectionError('The local assessment engine does not collect live metadata. Use the scoped live coordinator; no network or credential access occurred.');
   const selected = await boundary(input.start, input.explicitRoot);
   const root = selected.root;
   const inventory = await inspectProjectInventory(root);

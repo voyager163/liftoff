@@ -160,6 +160,55 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
     expect(await probeNames()).toEqual([]);
   });
 
+  it('keeps installed live assessment help project-independent and tool-free', async () => {
+    const before = await bundleInventory(outside);
+    const homeBefore = await bundleInventory(environment.HOME!);
+    for (const argv of [
+      ['assess', '--live', '--help'],
+      ['assess', '--live', '--help', '--json'],
+      ['help', 'assess']
+    ]) {
+      const result = execute(cli, argv);
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(result.stdout).toContain('--live');
+      expect(result.stdout).toContain('GitHub');
+    }
+    expect(await bundleInventory(outside)).toEqual(before);
+    expect(await bundleInventory(environment.HOME!)).toEqual(homeBefore);
+    expect(await probeNames()).toEqual([]);
+  });
+
+  it('assesses explicit local and unbound live projects without global tools or project/user-state changes', async () => {
+    const before = await bundleInventory(outside);
+    const homeBefore = await bundleInventory(environment.HOME!);
+    for (const profile of ['none', 'single-maintainer-gitflow']) {
+      for (const live of [false, true]) {
+        const result = execute(cli, [
+          'assess', '--project', outside, '--governance', profile, '--json', ...(live ? ['--live'] : [])
+        ]);
+        expect(result.status, result.stdout + result.stderr).toBe(2);
+        expect(result.stderr).toBe('');
+        const report = JSON.parse(result.stdout);
+        expect(report).toMatchObject({
+          schemaVersion: 1, readOnly: true, mode: live ? 'live' : 'local', outcome: 'partial',
+          snapshot: { inputsStable: !live || profile === 'none' },
+          project: { root: outside, kind: 'non-git' }, target: { profile, profileSelection: 'explicit' }
+        });
+        expect(report.coverage.notObserved).toBeGreaterThan(0);
+        if (live) {
+          const findings = report.findings.filter((finding: { id: string }) => finding.id.startsWith('live.'));
+          expect(findings.length).toBeGreaterThan(0);
+          expect(findings.every((finding: { supported: boolean; classification: string; observed: { availability: string; source: unknown } }) =>
+            !finding.supported && finding.classification === 'not-observed' &&
+            finding.observed.availability === 'not-observed' && finding.observed.source === null)).toBe(true);
+        }
+      }
+    }
+    expect(await bundleInventory(outside)).toEqual(before);
+    expect(await bundleInventory(environment.HOME!)).toEqual(homeBefore);
+    expect(await probeNames()).toEqual([]);
+  });
+
   it('initializes and validates real Manual/no-agent Go output using external Go, never private Node as a toolchain', async () => {
     const profile = path.join(environment.HOME!, '.config/openspec/config.json');
     const before = await readFile(profile);
