@@ -367,12 +367,14 @@ v8 metadata does not enable the narrower governance assessment's unsupported
 managed-core/activation proof interpretation. This service performs no project
 observation or execution and grants no ownership, approval or mutation authority.
 
-### Private whole-project inventory foundation
+### Whole-project assessment and private inventory
 
-`src/application/assessment/inventory.ts` exposes `inspectProjectInventory` for
-the separately staged whole-project assessment/adoption work. It is not a public
-`liftoff assess` or `adopt` command, and neither capability may be advertised from
-this inventory alone. The existing `governance assess` contract is unchanged.
+`src/application/assessment/inventory.ts` exposes `inspectProjectInventory` as
+one private observation source for the bounded public `liftoff assess` producer
+in `application/assessment/engine.ts`. Inventory alone is not conformance,
+adoption or execution support. The existing `governance assess` contract is
+unchanged; in-place adoption and whole-project live metadata collection are
+not implemented by this local producer.
 
 The caller selects one explicit real root. The inventory reuses `ApplicationFiles`
 for confined, sorted directory observations, portable alias checks, bounded
@@ -413,6 +415,38 @@ Run the focused inventory/repair/import tests with:
 
 ```bash
 npx vitest run tests/project-assessment-inventory.test.ts tests/repair-application.test.ts tests/import-boundaries.test.ts --maxWorkers=2
+```
+
+The public producer separately validates the nearest safe Liftoff/Git boundary,
+or one explicitly selected non-Git root. Discovery observations are retained
+and revalidated; malformed or unsafe inner metadata never selects an outer
+project. An advisory comparison profile preserves the recorded manifest and
+uses the installed policy and plugin/layout contracts, not registry latest.
+Historical manifests stay historical; their generation paths never become
+current bindings. Exact v8 managed bytes come from `buildModernManagedCore`.
+Only the manifest and finite renderer-declared managed files are read beyond
+the inventory's dependency declarations. Parent directories receive bounded
+metadata inspection; this does not grant neighboring-file access. Release-owned
+managed metadata under `.liftoff` can be compared separately, but activation
+state, evidence, credentials and other excluded payloads are not opened.
+
+The independent schema-1 whole-project report lives in
+`src/domain/assessment/report.ts`; do not reuse the narrower governance report's
+target or proof scope. Findings retain observed absence, actual differences,
+unknown applicability and unsupported proof. Two bounded inventory passes and
+exact metadata/file revalidation fence observed drift. Unread payload changes
+remain unobserved. Current production reports remain partial because runtime
+constraints, reference compatibility, agent behavior, effective governance and
+deployment proof are not evaluated. Local matches are not full compliance.
+`assess --live` currently returns an explicit error without account access.
+All assessment/help paths bypass disclosure and every telemetry hook.
+Recommendations identify only real preview routes and their separate consent;
+their argument arrays bind the selected project rather than the caller's cwd.
+Unavailable adoption, workflow/profile/plugin transitions, provider activation
+and deployed-state work have no executable recommendation.
+
+```bash
+npx vitest run tests/project-assessment-report.test.ts tests/project-assessment-engine.test.ts tests/project-assessment-command.test.ts --maxWorkers=1
 ```
 
 ## Release integrity requirements

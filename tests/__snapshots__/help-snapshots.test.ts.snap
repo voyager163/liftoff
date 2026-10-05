@@ -1,5 +1,67 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`complete help screens > snapshots compact assess command help 1`] = `
+"LIFTOFF / ASSESS
+Read-only whole-project comparison against the installed CLI, selected policy
+and bundled plugin/layout contracts; no registry latest, project scripts, tool
+probes, network, enrollment, telemetry/disclosure, receipts or writes. Omitted
+--governance preserves a supported recorded profile, or displays the
+single-maintainer baseline for an unrecorded project. An explicit profile is
+advisory, never a profile change. Select an exact path for a non-Git
+application; unsafe or malformed inner boundaries never fall through to an outer
+project. Static names, path presence and matching managed bytes do not prove
+runtime, references, agent behavior, effective governance or deployed-state
+conformance. These gaps remain visible. Exit 0 requires complete applicable
+alignment or explicitly inapplicable scope; 2 means differences or partial
+coverage; 1 means invalid/unsafe input or unavailable scope. Current
+whole-project reports remain partial because unsupported proof is not inferred.
+--live is unavailable and fails without contacting accounts. The narrower
+governance assess contract and its independently supported live mode are
+unchanged.
+
+Usage
+─────
+liftoff assess [project-path] [--governance <profile>] [--json]
+
+Arguments
+─────────
+Argument      Description
+────────────  ──────────────────────────────────────────────────────────────────
+project-path  Selected Liftoff, Git or explicitly identified non-Git project
+              boundary
+
+Project options
+───────────────
+Option                  Description
+──────────────────────  ────────────────────────────────────────────────────────
+--project <path>        One exact project path; explicitly select non-Git
+                        applications
+--governance <profile>  Advisory comparison profile: none,
+                        single-maintainer-gitflow, or team-gitflow; never
+                        changes recorded selection
+
+Output options
+──────────────
+Option  Description
+──────  ──────────────────────────────────────────────────────────────────
+--json  Emit one schema-1 read-only report; unknown coverage is not a pass
+
+Command options
+───────────────
+Option  Description
+──────  ────────────────────────────────────────────────────────────────────────
+--live  Live whole-project collection is unavailable; this request fails without
+        network or credential access
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
 exports[`complete help screens > snapshots compact dev command help 1`] = `
 "LIFTOFF / DEV
 Print Docker Compose helper commands
@@ -88,6 +150,8 @@ Maintenance
 ───────────
 Command   Description
 ────────  ──────────────────────────────────────────────────────────────────────
+assess    Read-only whole-project comparison against explicitly displayed
+          installed targets
 validate  Validate a generated project manifest
 update    Preview and explicitly approve scoped project updates
 repair    Review and repair supported project files with separate default-No
@@ -571,6 +635,31 @@ Option  Description
 "
 `;
 
+exports[`complete help screens > snapshots plain assess command help 1`] = `
+"LIFTOFF / ASSESS - Read-only whole-project comparison against the installed CLI, selected policy and bundled plugin/layout contracts; no registry latest, project scripts, tool probes, network, enrollment, telemetry/disclosure, receipts or writes. Omitted --governance preserves a supported recorded profile, or displays the single-maintainer baseline for an unrecorded project. An explicit profile is advisory, never a profile change. Select an exact path for a non-Git application; unsafe or malformed inner boundaries never fall through to an outer project. Static names, path presence and matching managed bytes do not prove runtime, references, agent behavior, effective governance or deployed-state conformance. These gaps remain visible. Exit 0 requires complete applicable alignment or explicitly inapplicable scope; 2 means differences or partial coverage; 1 means invalid/unsafe input or unavailable scope. Current whole-project reports remain partial because unsupported proof is not inferred. --live is unavailable and fails without contacting accounts. The narrower governance assess contract and its independently supported live mode are unchanged.
+
+Usage
+Usage: liftoff assess [project-path] [--governance <profile>] [--json]
+
+Arguments
+Argument: project-path | Description: Selected Liftoff, Git or explicitly identified non-Git project boundary
+
+Project options
+Option: --project <path> | Description: One exact project path; explicitly select non-Git applications
+Option: --governance <profile> | Description: Advisory comparison profile: none, single-maintainer-gitflow, or team-gitflow; never changes recorded selection
+
+Output options
+Option: --json | Description: Emit one schema-1 read-only report; unknown coverage is not a pass
+
+Command options
+Option: --live | Description: Live whole-project collection is unavailable; this request fails without network or credential access
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
 exports[`complete help screens > snapshots plain dev command help 1`] = `
 "LIFTOFF / DEV - Print Docker Compose helper commands
 
@@ -626,6 +715,7 @@ Command: plan | Description: Preview generated artifacts
 Command: migrate | Description: Adopt an existing project
 
 Maintenance
+Command: assess | Description: Read-only whole-project comparison against explicitly displayed installed targets
 Command: validate | Description: Validate a generated project manifest
 Command: update | Description: Preview and explicitly approve scoped project updates
 Command: repair | Description: Review and repair supported project files with separate default-No approval
@@ -872,6 +962,56 @@ Option: --help | Description: Show command-specific help
 "
 `;
 
+exports[`complete help screens > snapshots rich assess command help 1`] = `
+"┌─ LIFTOFF / ASSESS ───────────────────────────────────────────────────────────────────────────┐
+│ Read-only whole-project comparison against the installed CLI, selected policy and bundled    │
+│ plugin/layout contracts; no registry latest, project scripts, tool probes, network,          │
+│ enrollment, telemetry/disclosure, receipts or writes. Omitted --governance preserves a       │
+│ supported recorded profile, or displays the single-maintainer baseline for an unrecorded     │
+│ project. An explicit profile is advisory, never a profile change. Select an exact path for a │
+│ non-Git application; unsafe or malformed inner boundaries never fall through to an outer     │
+│ project. Static names, path presence and matching managed bytes do not prove runtime,        │
+│ references, agent behavior, effective governance or deployed-state conformance. These gaps   │
+│ remain visible. Exit 0 requires complete applicable alignment or explicitly inapplicable     │
+│ scope; 2 means differences or partial coverage; 1 means invalid/unsafe input or unavailable  │
+│ scope. Current whole-project reports remain partial because unsupported proof is not         │
+│ inferred. --live is unavailable and fails without contacting accounts. The narrower          │
+│ governance assess contract and its independently supported live mode are unchanged.          │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff assess [project-path] [--governance <profile>] [--json]                              │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Arguments ──────────────────────────────────────────────────────────────────────────────────┐
+│ Argument      Description                                                                    │
+│ ────────────  ───────────────────────────────────────────────────────────────────────        │
+│ project-path  Selected Liftoff, Git or explicitly identified non-Git project boundary        │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                  Description                                                          │
+│ ──────────────────────  ──────────────────────────────────────────────────────────────────── │
+│ --project <path>        One exact project path; explicitly select non-Git applications       │
+│ --governance <profile>  Advisory comparison profile: none, single-maintainer-gitflow, or     │
+│                         team-gitflow; never changes recorded selection                       │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────────────────────────────────────────────                   │
+│ --json  Emit one schema-1 read-only report; unknown coverage is not a pass                   │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────────────────────────────────────────────────────────────── │
+│ --live  Live whole-project collection is unavailable; this request fails without network or  │
+│         credential access                                                                    │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
 exports[`complete help screens > snapshots rich dev command help 1`] = `
 "┌─ LIFTOFF / DEV ──────────────────────────────────────────────────────────────────────────────┐
 │ Print Docker Compose helper commands                                                         │
@@ -954,6 +1094,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 ┌─ Maintenance ────────────────────────────────────────────────────────────────────────────────┐
 │ Command   Description                                                                        │
 │ ────────  ────────────────────────────────────────────────────────────────────────────────── │
+│ assess    Read-only whole-project comparison against explicitly displayed installed targets  │
 │ validate  Validate a generated project manifest                                              │
 │ update    Preview and explicitly approve scoped project updates                              │
 │ repair    Review and repair supported project files with separate default-No approval        │

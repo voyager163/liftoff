@@ -24,7 +24,25 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
         arguments: commandDefinitions.governance.arguments,
         defaultMaxPositionals: 1
       }
-    : command === 'update'
+    : command === 'assess'
+      ? {
+          ...commandDefinitions.assess,
+          description:
+            'Read-only whole-project comparison against the installed CLI, selected policy and bundled ' +
+            'plugin/layout contracts; no registry latest, project scripts, tool probes, network, enrollment, ' +
+            'telemetry/disclosure, receipts or writes. Omitted --governance preserves a supported recorded ' +
+            'profile, or displays the single-maintainer baseline for an unrecorded project. An explicit ' +
+            'profile is advisory, never a profile change. Select an exact path for a non-Git application; ' +
+            'unsafe or malformed inner boundaries never fall through to an outer project. Static names, ' +
+            'path presence and matching managed bytes do not prove runtime, references, agent behavior, ' +
+            'effective governance or deployed-state conformance. These gaps remain visible. ' +
+            'Exit 0 requires complete applicable alignment or explicitly inapplicable scope; ' +
+            '2 means differences or partial coverage; 1 means invalid/unsafe input or unavailable scope. ' +
+            'Current whole-project reports remain partial because unsupported proof is not inferred. ' +
+            '--live is unavailable and fails without contacting accounts. The narrower governance assess ' +
+            'contract and its independently supported live mode are unchanged.'
+        }
+      : command === 'update'
       ? {
           ...commandDefinitions.update,
           description:

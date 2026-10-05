@@ -29,7 +29,7 @@ const suppliedTarball = smokeArgs.length === 2 ? path.resolve(smokeArgs[1]) : un
 const suppliedDigest = suppliedTarball
   ? createHash('sha256').update(await readFile(suppliedTarball)).digest('hex')
   : undefined;
-const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-package-smoke-'));
+const tempRoot = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff-package-smoke-')));
 const npmCliPath = process.env.npm_execpath;
 
 if (!npmCliPath) {
@@ -196,6 +196,9 @@ try {
   assertPackageContains(packResult, 'dist/governance-assessment/engine.js');
   assertPackageContains(packResult, 'dist/governance-assessment/live.js');
   assertPackageContains(packResult, 'dist/governance-assessment/catalog.js');
+  assertPackageContains(packResult, 'dist/application/assessment/engine.js');
+  assertPackageContains(packResult, 'dist/domain/assessment/report.js');
+  assertPackageContains(packResult, 'dist/cli/commands/assess.js');
   assertPackageContains(packResult, 'dist/supported-stack.js');
   const declaredPackage = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
   const packedAssetIssues = packagedAssetIssues({
@@ -295,6 +298,21 @@ try {
   const repairHelp = run(process.execPath, [liftoffEntrypoint, 'repair', '--help'], {
     cwd: outsideDirectory, env: npmEnv
   });
+  const projectAssessHelp = run(process.execPath, [liftoffEntrypoint, 'assess', '--help'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  if (!projectAssessHelp.stdout.includes('liftoff assess') || !projectAssessHelp.stdout.includes('--governance') ||
+      !projectAssessHelp.stdout.includes('partial')) {
+    throw new Error('Installed whole-project assessment help lost its advisory comparison and coverage contract.');
+  }
+  const installedCapabilities = JSON.parse(run(process.execPath, [liftoffEntrypoint, 'capabilities', '--json'], {
+    cwd: outsideDirectory, env: npmEnv
+  }).stdout);
+  if (installedCapabilities.schemas?.projectAssessment?.report !== 1 ||
+      installedCapabilities.schemas.projectAssessment.readOnly !== true ||
+      installedCapabilities.schemas.projectAssessment.liveMetadata !== false) {
+    throw new Error('Installed capabilities did not expose only the qualified local whole-project producer.');
+  }
   for (const flag of ['--check', '--live', '--subscription', '--approve-plan', '--recover', '--json',
     '--capabilities', '--inspect-layout', '--application-patch', '--verify-plan', '--allow-network', '--allow-dependency-preparation']) {
     if (!repairHelp.stdout.includes(flag)) throw new Error(`Installed repair help is missing ${flag}.`);
@@ -548,10 +566,76 @@ try {
   if (await treeDigest(ordinaryRepository) !== ordinaryBefore) {
     throw new Error('Installed ordinary-Git assessment initialized or modified its repository.');
   }
+  const profileBefore = await treeDigest(homeDirectory);
+  for (const args of [
+    ['assess', '--json'],
+    ['assess', '--project', ordinaryRepository, '--governance', 'team-gitflow', '--json']
+  ]) {
+    const result = runFailure(process.execPath, [liftoffEntrypoint, ...args], {
+      cwd: nestedDirectory, env: npmEnv
+    });
+    const report = JSON.parse(result.stdout);
+    if (result.status !== 2 || report.kind !== 'liftoff-project-assessment' ||
+        report.schemaVersion !== 1 || report.readOnly !== true || report.outcome !== 'partial' ||
+        report.project?.root !== await realpath(ordinaryRepository) || report.project.manifestVersion !== null ||
+        report.target?.cliVersion !== packResult.version ||
+        report.target.profile !== (args.includes('--governance') ? 'team-gitflow' : 'single-maintainer-gitflow') ||
+        !Number.isSafeInteger(report.coverage?.notObserved) || report.coverage.notObserved < 1) {
+      throw new Error(`Installed whole-project assessment lost its exact project, target or partial coverage: ${JSON.stringify({
+        status: result.status, kind: report.kind, schemaVersion: report.schemaVersion,
+        readOnly: report.readOnly, outcome: report.outcome,
+        exactRoot: report.project?.root === await realpath(ordinaryRepository),
+        manifestVersion: report.project?.manifestVersion, cliVersion: report.target?.cliVersion,
+        profile: report.target?.profile, notObserved: report.coverage?.notObserved,
+        diagnosticCodes: report.diagnostics?.map(item => item.code)
+      })}`);
+    }
+  }
+  const unavailableLive = runFailure(process.execPath, [liftoffEntrypoint, 'assess', '--live', '--json'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  const unavailableLiveReport = JSON.parse(unavailableLive.stdout);
+  if (unavailableLive.status !== 1 || unavailableLiveReport.mode !== 'live' || unavailableLiveReport.outcome !== 'error' ||
+      !unavailableLiveReport.diagnostics?.some(item => item.message.includes('no network or credential access'))) {
+    throw new Error('Installed whole-project assessment did not explicitly refuse unsupported live collection.');
+  }
+  if (await treeDigest(ordinaryRepository) !== ordinaryBefore || await treeDigest(homeDirectory) !== profileBefore) {
+    throw new Error('Installed whole-project assessment changed its project or user profile.');
+  }
   const { buildProjectPlan: installedPlan } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'planner.js')).href);
   const { buildCurrentProjectPlan: installedCurrentPlan } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'planning.js')).href);
   const { buildArtifacts: installedArtifacts, buildCurrentArtifacts: installedCurrentArtifacts } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'templates.js')).href);
   const { writeArtifacts: installedWrite } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'file-system.js')).href);
+  const wholeAssessmentProject = path.join(tempRoot, 'whole assessment current project');
+  await installedWrite(wholeAssessmentProject, installedCurrentArtifacts(installedCurrentPlan({
+    projectName: 'Whole Assessment Smoke', projectType: 'standard', apiStack: 'node',
+    specWorkflow: 'manual', agents: [], governanceProfile: 'none', environments: ['dev']
+  }, { requireProjectName: true })));
+  const wholeAssessmentBefore = await treeDigest(wholeAssessmentProject);
+  const currentAssessment = runFailure(process.execPath, [
+    liftoffEntrypoint, 'assess', '--project', wholeAssessmentProject, '--json'
+  ], { cwd: outsideDirectory, env: npmEnv });
+  const currentAssessmentReport = JSON.parse(currentAssessment.stdout);
+  if (currentAssessment.status !== 2 || currentAssessmentReport.kind !== 'liftoff-project-assessment' ||
+      currentAssessmentReport.project?.manifestVersion !== 8 || currentAssessmentReport.target?.profile !== 'none' ||
+      currentAssessmentReport.outcome !== 'partial' ||
+      !currentAssessmentReport.findings?.some(item => item.id === 'project.manifest' && item.classification === 'aligned') ||
+      !currentAssessmentReport.findings?.some(item => item.id === 'workflow.marker' && item.classification === 'inapplicable') ||
+      !currentAssessmentReport.findings?.some(item => item.id === 'runtime.declarations' && item.classification === 'not-observed')) {
+    throw new Error('Installed current Manual assessment invented full conformance or external-framework prerequisites.');
+  }
+  for (const finding of currentAssessmentReport.findings) {
+    if (finding.remediation.available &&
+        JSON.stringify(finding.remediation.previewCommand) !== JSON.stringify([
+          'liftoff', finding.remediation.category === 'managed-update' ? 'update' : 'repair',
+          '--project', await realpath(wholeAssessmentProject), '--check'
+        ])) {
+      throw new Error('Installed assessment recommendation was not bound to its selected project.');
+    }
+  }
+  if (await treeDigest(wholeAssessmentProject) !== wholeAssessmentBefore || await treeDigest(homeDirectory) !== profileBefore) {
+    throw new Error('Installed current Manual assessment changed project or user state.');
+  }
   const updateProject = path.join(tempRoot, 'current update project');
   const updateArtifacts = installedArtifacts(installedPlan({
     projectName: 'Update Smoke', projectType: 'standard', apiStack: 'go', cloud: 'azure', region: 'eastus',

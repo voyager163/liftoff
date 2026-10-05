@@ -39,7 +39,7 @@ describe('telemetry contract', () => {
       }
     }
     expect([...telemetryCommands, ...telemetryExcludedCommands].sort()).toEqual([...expected].sort());
-    expect(telemetryExcludedCommands).toEqual(['governance:assess', 'capabilities']);
+    expect(telemetryExcludedCommands).toEqual(['governance:assess', 'capabilities', 'assess']);
     expect(telemetryCommands.some((command) => telemetryExcludedCommands.some((excluded) => excluded === String(command)))).toBe(false);
   });
 

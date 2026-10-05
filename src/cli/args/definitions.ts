@@ -113,6 +113,20 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     defaultMaxPositionals: 0,
     subcommandMaxPositionals: { search: 1 }
   },
+  assess: {
+    description: 'Read-only whole-project comparison against explicitly displayed installed targets',
+    usage: '[project-path] [--governance <profile>] [--json]',
+    group: 'Maintenance',
+    flags: {
+      project: valueFlag('One exact project path; explicitly select non-Git applications', 'Project', 'path'),
+      governance: valueFlag('Advisory comparison profile: none, single-maintainer-gitflow, or team-gitflow; never changes recorded selection', 'Project', 'profile'),
+      json: booleanFlag('Emit one schema-1 read-only report; unknown coverage is not a pass', 'Output'),
+      live: booleanFlag('Live whole-project collection is unavailable; this request fails without network or credential access', 'Command'),
+      ...helpFlag
+    },
+    arguments: [{ syntax: 'project-path', description: 'Selected Liftoff, Git or explicitly identified non-Git project boundary' }],
+    defaultMaxPositionals: 1
+  },
   validate: {
     description: 'Validate a generated project manifest',
     usage: '[project-path]',

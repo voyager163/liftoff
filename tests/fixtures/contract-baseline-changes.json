@@ -167,10 +167,11 @@
     {
       "surface": "cli-text",
       "key": "help",
-      "task": "5.1",
-      "reason": "Add the project-independent capabilities command to the Reference group. Existing command help, original frozen captures, generation and historical schemas remain unchanged.",
+      "task": "6.3",
+      "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
       "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-      "currentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+      "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+      "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
       "changed": [
         "/stdout"
       ]
@@ -178,10 +179,11 @@
     {
       "surface": "cli-text",
       "key": "--help",
-      "task": "5.1",
-      "reason": "Add the project-independent capabilities command to the Reference group. Existing command help, original frozen captures, generation and historical schemas remain unchanged.",
+      "task": "6.3",
+      "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
       "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-      "currentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+      "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+      "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
       "changed": [
         "/stdout"
       ]
