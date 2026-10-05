@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { buildModernManagedCore, type ModernManagedCoreArtifact } from '../src/application/project/modern-managed-core.js';
+import {
+  buildModernManagedCore, resolveModernManagedCoreInput, type ModernManagedCoreArtifact
+} from '../src/application/project/modern-managed-core.js';
+import {
+  findModernActiveArtifactBinding, findModernActiveComponentBinding, resolveModernProjectSourceContext
+} from '../src/application/project/source-context.js';
 import { createManifestV8Candidate, type ManagedManifestDecision } from '../src/application/project/manifest-writer.js';
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { parseManifest, resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
@@ -11,7 +16,7 @@ import { createManifestV8ProjectReader, type ManifestV8ProjectLeaf } from '../sr
 import { readManifestPluginMetadata } from '../src/domain/project/manifest/plugins.js';
 import { createManifestV8Reader } from '../src/domain/project/manifest/v8.js';
 import { createManifestHistoryIndex, encodeManifestHistoryIndex } from '../src/domain/project/manifest/history.js';
-import { manifestActiveLayoutDigest } from '../src/domain/project/manifest/layout.js';
+import { manifestActiveLayoutDigest, validateManifestActiveLayout } from '../src/domain/project/manifest/layout.js';
 import { createModernGovernanceContextContract } from '../src/domain/governance/policy/modern-context.js';
 import { renderCredentialPolicySchema, renderModernCredentialPolicySchema } from '../src/domain/governance/activation/credential-policy-schema.js';
 import { createModernCompatibilityContract } from '../src/governance-activation/modern-compatibility.js';
@@ -436,5 +441,75 @@ describe('context and producer fail-closed boundaries', () => {
       vi.doUnmock('../src/application/project/modern-plugins.js');
       vi.resetModules();
     }
+  });
+});
+
+describe('shared recorded source and active-binding interpretation', () => {
+  it.each(profiles)('preserves custom paths and the original managed-core contract for %s', profile => {
+    const unbound = fixture('manual', profile, []), original = resolveModernProjectSourceContext(unbound);
+    const identity = original.source.layoutDescriptor.artifacts.find(artifact => artifact.component === 'backend');
+    if (!identity) throw new Error('Expected a real declared backend artifact.');
+    const layout = { schemaVersion: 1, state: 'bound', bindings: [
+      { kind: 'component', component: 'backend', pathParts: ['Services', 'Custom API'] },
+      { kind: 'artifact', logicalName: identity.logicalName, pathParts: ['Services', 'Custom API', 'custom-file'] }
+    ] };
+    const input = { ...unbound, activeLayout: layout }, before = structuredClone(input);
+    const context = resolveModernProjectSourceContext(input);
+    expect(context).toEqual(resolveModernManagedCoreInput(input));
+    expect(context.activeLayout).toEqual(validateManifestActiveLayout(layout, original.source.layoutDescriptor));
+    expect(findModernActiveComponentBinding(context, 'backend')?.pathParts).toEqual(['Services', 'Custom API']);
+    expect(findModernActiveArtifactBinding(context, identity.logicalName)?.pathParts)
+      .toEqual(['Services', 'Custom API', 'custom-file']);
+    expect(findModernActiveComponentBinding(context, 'frontend')).toBeUndefined();
+    expect(buildModernManagedCore(input)).toEqual(buildModernManagedCore({
+      selection: context.selection, plugins: context.plugins, activeLayout: context.activeLayout
+    }));
+    expect(input).toEqual(before);
+  });
+
+  it.each(['unresolved', 'bound'] as const)('keeps missing %s bindings unknown rather than selecting template paths', state => {
+    const bindings = state === 'bound'
+      ? [{ kind: 'artifact', logicalName: 'root-readme', pathParts: ['Custom Documentation', 'README.md'] }] : [];
+    const input = { ...fixture('manual', 'none', []), activeLayout: { schemaVersion: 1, state, bindings } };
+    const context = resolveModernProjectSourceContext(input);
+    expect(context.activeLayout.state).toBe(state);
+    for (const component of context.source.layoutDescriptor.components) {
+      expect(findModernActiveComponentBinding(context, component)).toBeUndefined();
+    }
+    for (const artifact of context.source.layoutDescriptor.artifacts) {
+      expect(findModernActiveArtifactBinding(context, artifact.logicalName))
+        .toEqual(bindings.find(binding => binding.logicalName === artifact.logicalName));
+    }
+    expect(context.activeLayout.bindings).toEqual(bindings);
+  });
+
+  it('preserves the rejection of an empty claimed-bound layout', () => {
+    expect(() => resolveModernProjectSourceContext({
+      ...fixture('manual', 'none', []), activeLayout: { schemaVersion: 1, state: 'bound', bindings: [] }
+    })).toThrow('at least one binding');
+  });
+
+  it('rejects undeclared lookup identities instead of inventing an applicable target', () => {
+    const context = resolveModernProjectSourceContext(fixture('manual', 'none', []));
+    expect(() => findModernActiveComponentBinding(context, 'function-worker')).toThrow('declared by the selected source');
+    expect(() => findModernActiveArtifactBinding(context, 'unselected-artifact')).toThrow('declared by the selected source');
+  });
+
+  it('does not accept foreign profile/plugin combinations or unsafe active paths', () => {
+    const input = fixture('manual', 'none', []), other = fixture('openspec', 'team-gitflow');
+    expect(() => resolveModernProjectSourceContext({ ...input, plugins: other.plugins })).toThrow();
+    expect(() => resolveModernProjectSourceContext({
+      ...input, activeLayout: { schemaVersion: 1, state: 'bound', bindings: [
+        { kind: 'component', component: 'backend', pathParts: ['governance', 'credentials'] }
+      ] }
+    })).toThrow('reserved');
+    expect(() => resolveModernProjectSourceContext({ ...input, execution: 'approved' })).toThrow();
+  });
+
+  it('rejects accessor input before invoking a hook or interpreting its source', () => {
+    const input = fixture(), hook = vi.fn(() => { throw new Error('must not invoke'); });
+    Object.defineProperty(input, 'activeLayout', { enumerable: true, get: hook });
+    expect(() => resolveModernProjectSourceContext(input)).toThrow();
+    expect(hook).not.toHaveBeenCalled();
   });
 });

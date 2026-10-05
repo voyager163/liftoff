@@ -4,7 +4,10 @@ import { canonicalSha256 } from '../../domain/governance/activation/canonical-js
 import { activeApplicationTargetLayoutId, applicationTargetLayoutId, repairContractVersion } from '../../domain/repair/identity.js';
 import { buildArtifacts, buildCurrentArtifacts } from '../../templates.js';
 import { buildCurrentProjectPlan, buildProjectPlan } from '../project/planning.js';
-import { resolveModernManifestV8SourceContract, type SupportedProjectManifest } from '../project/manifest.js';
+import type { SupportedProjectManifest } from '../project/manifest.js';
+import {
+  findModernActiveArtifactBinding, findModernActiveComponentBinding, resolveModernManifestSourceContext
+} from '../project/source-context.js';
 import type { LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import {
   ApplicationFiles, ApplicationInspectionError, applicationDigest, applicationExclusion, applicationFailure,
@@ -48,10 +51,7 @@ function activeApplicationTargets(manifest: LiftoffManifestV8): ApplicationTarge
     governanceProfile: manifest.governance.profile
   }, { requireProjectName: true });
   const generated = buildCurrentArtifacts(plan);
-  const descriptor = resolveModernManifestV8SourceContract({
-    selection: { project: manifest.project, framework: manifest.framework, profile: manifest.governance.profile },
-    recordedPlugins: manifest.plugins
-  }).layoutDescriptor;
+  const context = resolveModernManifestSourceContext(manifest), descriptor = context.source.layoutDescriptor;
   const foldedKey = (parts: readonly string[]) => parts.map(applicationPathFold).join('/');
   const protectedPaths = new Set([
     ...descriptor.protectedPaths.map(foldedKey),
@@ -59,7 +59,7 @@ function activeApplicationTargets(manifest: LiftoffManifestV8): ApplicationTarge
       .map(artifact => foldedKey(artifact.pathParts)),
     ...retiredManagedCoreIdentities.map(artifact => foldedKey(artifact.pathParts))
   ]);
-  const bindings = manifest.activeLayout.bindings;
+  const bindings = context.activeLayout.bindings;
   const protectedTrees = [
     ...descriptor.protectedPaths.map(foldedKey),
     ...bindings.filter(binding => binding.kind === 'component' && binding.component.startsWith('opentofu-'))
@@ -79,12 +79,12 @@ function activeApplicationTargets(manifest: LiftoffManifestV8): ApplicationTarge
   const artifacts: ApplicationTargetArtifact[] = [];
   for (const artifact of generated) {
     if (artifact.lifecycle !== 'project') continue;
-    const binding = bindings.find(binding => binding.kind === 'artifact' && binding.logicalName === artifact.logicalName);
+    const binding = findModernActiveArtifactBinding(context, artifact.logicalName);
     if (!binding || applicationExclusion(binding.pathParts, protectedPaths, examplePaths, protectedTrees)) continue;
     const owner = descriptor.artifacts.find(entry => entry.logicalName === artifact.logicalName)?.component;
     const component: ApplicationComponent = owner === 'function-worker' ? 'functions' :
       owner === 'backend' || owner === 'frontend' || owner === 'database' ? owner : 'project';
-    const componentBinding = bindings.find(binding => binding.kind === 'component' && binding.component === owner);
+    const componentBinding = owner === undefined ? undefined : findModernActiveComponentBinding(context, owner);
     artifacts.push({
       logicalName: artifact.logicalName, category: artifact.category,
       pathParts: applicationParts(binding.pathParts), provisioningGroup: artifact.provisioningGroup,

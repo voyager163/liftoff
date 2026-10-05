@@ -9,14 +9,14 @@ import { parseHistoryJson } from '../../governance-activation/history-contracts.
 import { copySourceHistoryData, createSourceHistoryCapture } from '../../governance-activation/source-history-capture.js';
 import { projectCatalog } from '../project/catalog.js';
 import { parseProjectManifest } from '../project/manifest.js';
-import { resolveModernManagedCoreInput, type ModernManagedCoreInput } from '../project/modern-managed-core.js';
+import { resolveModernProjectSourceContext, type ModernProjectSourceInput } from '../project/source-context.js';
 import { composeModernManifestPlugins } from '../project/plugins.js';
 
 export interface RecordedModernUpdateSelection {
   readonly kind: 'recorded-project-intent';
 }
 
-export type ModernUpdateSelection = ModernManagedCoreInput | RecordedModernUpdateSelection;
+export type ModernUpdateSelection = ModernProjectSourceInput | RecordedModernUpdateSelection;
 
 export function isRecordedModernUpdateSelection(value: ModernUpdateSelection): value is RecordedModernUpdateSelection {
   if (!Object.hasOwn(value, 'kind')) return false;
@@ -84,7 +84,7 @@ export async function readRecordedModernUpdateSelection(projectRoot: string) {
     canonicalJson([...config.environments].sort()) !== canonicalJson([...workload.environments].sort())) {
     throw new FileSystemError('Configuration field environments changes recorded workload intent; core update cannot apply that migration.');
   }
-  let selection: ModernManagedCoreInput;
+  let selection: ModernProjectSourceInput;
   if (manifest.artifactVersion === 8) {
     selection = { selection: { ...leaf, profile }, plugins: manifest.plugins, activeLayout: manifest.activeLayout };
   } else {
@@ -102,7 +102,7 @@ export async function readRecordedModernUpdateSelection(projectRoot: string) {
       activeLayout: { schemaVersion: 1, state: 'unresolved', bindings: [] }
     };
   }
-  const resolved = resolveModernManagedCoreInput(selection);
+  const resolved = resolveModernProjectSourceContext(selection);
   await reader.assertRoot();
   return {
     selection: { selection: resolved.selection, plugins: resolved.plugins, activeLayout: resolved.activeLayout },

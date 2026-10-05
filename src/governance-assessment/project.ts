@@ -4,6 +4,7 @@ import {
   parseManifest,
   parseProjectManifest
 } from '../application/project/manifest.js';
+import { resolveModernManifestSourceContext } from '../application/project/source-context.js';
 import { validateArtifactPathParts } from '../domain/project/paths.js';
 import { buildProjectPlan } from '../application/project/planning.js';
 import { formatUpdateCommand } from '../application/update/command-guidance.js';
@@ -186,11 +187,12 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
     if (manifest.artifactVersion !== 8) {
       throw new AssessmentInputError('inputs-changed', 'Current manifest interpretation changed.', 'liftoff.manifest.json');
     }
+    const context = resolveModernManifestSourceContext(manifest);
     return {
       kind: 'liftoff', manifest: null, project: null,
       identity: {
         availability: 'unsupported', manifestVersion: 8, cliVersion: manifest.liftoffVersion,
-        profile: manifest.governance.profile,
+        profile: context.selection.profile,
         policyVersion: manifest.governance.profile === 'none' ? null : manifest.governance.policyVersion,
         recordedActivationIdentity: manifest.governance.profile === 'none' ? null : jsonValue(manifest.governance.activationIdentity),
         stateSource: 'unsupported'
@@ -199,7 +201,7 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
       evidence: [], approvals: [], plans: [], bindingBaseline: null, invalidEvidence: false,
       diagnostics: [diagnostic(
         'unsupported-current-assessment',
-        'Manifest v8 identity is validated, but this assessment catalog does not interpret its active layout, managed-core compliance or current activation records. Independent repository facts remain assessable. No conversion, evidence reuse or policy downgrade is recommended; use separately advertised v8 inspection commands.',
+        'Manifest v8 source and active-binding metadata are validated, but this assessment catalog does not assess active-layout or managed-core compliance or current activation records. Independent repository facts remain assessable. No conversion, evidence reuse or policy downgrade is recommended; use separately advertised v8 inspection commands.',
         'liftoff.manifest.json'
       )]
     };

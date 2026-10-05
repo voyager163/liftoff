@@ -6,6 +6,7 @@ import { composeModernManifestPlugins, pluginSelectionForPlan } from '../src/app
 import { matchesHistoricalModernPlugins } from '../src/application/project/modern-plugins.js';
 import { createManifestV8Candidate } from '../src/application/project/manifest-writer.js';
 import { buildModernManagedCore } from '../src/application/project/modern-managed-core.js';
+import { modernProjectSourceInput, resolveModernManifestSourceContext } from '../src/application/project/source-context.js';
 import { projectTelemetryDimensions } from '../src/application/project/telemetry.js';
 import { manifestPluginMetadataMatches, readManifestPluginMetadata } from '../src/domain/project/manifest/plugins.js';
 import type { ProjectOptions } from '../src/domain/project/contracts.js';
@@ -46,6 +47,13 @@ describe('template security refresh preserves exact historical source contracts'
       expect(matchesHistoricalModernPlugins(manifest.plugins, composition.resolution)).toBe(true);
       const source = resolveModernManifestV8SourceContract({ selection, recordedPlugins: manifest.plugins });
       expect(source.plugins).toEqual(manifest.plugins);
+      const shared = resolveModernManifestSourceContext(manifest);
+      expect(shared.source).toEqual(source);
+      expect(shared.plugins).toEqual(manifest.plugins);
+      expect(shared.activeLayout).toEqual(manifest.activeLayout);
+      expect(modernProjectSourceInput(manifest)).toEqual({
+        selection, plugins: manifest.plugins, activeLayout: manifest.activeLayout
+      });
       expect(source.managedArtifacts).toEqual(composition.expected.filter(artifact => artifact.lifecycle === 'managed-core')
         .map(({ logicalName, category, pathParts }) => ({ logicalName, category, pathParts })));
       const core = buildModernManagedCore({ selection, plugins: manifest.plugins, activeLayout: manifest.activeLayout });

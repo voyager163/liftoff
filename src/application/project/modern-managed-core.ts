@@ -1,12 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { GeneratedArtifact, ManifestActiveLayout } from '../../domain/project/contracts.js';
-import type { ManifestV8ProjectLeaf } from '../../domain/project/manifest/v8-project.js';
-import { createManifestV8ProjectReader } from '../../domain/project/manifest/v8-project.js';
-import { exactRecord } from '../../domain/project/manifest/fields.js';
-import { readManifestPluginMetadata, type ManifestPluginMetadata } from '../../domain/project/manifest/plugins.js';
-import { manifestActiveLayoutDigest, validateManifestActiveLayout } from '../../domain/project/manifest/layout.js';
-import type { ModernGovernanceProfile } from '../../domain/governance/activation/modern-record-contracts.js';
-import { assertModernRecordData } from '../../domain/governance/activation/source-values.js';
+import type { GeneratedArtifact } from '../../domain/project/contracts.js';
+import { manifestActiveLayoutDigest } from '../../domain/project/manifest/layout.js';
 import { canonicalJson } from '../../domain/governance/activation/canonical-json.js';
 import { renderModernCredentialPolicySchema } from '../../domain/governance/activation/credential-policy-schema.js';
 import { createModernGovernanceContextContract } from '../../domain/governance/policy/modern-context.js';
@@ -17,12 +11,9 @@ import { renderModernGovernanceGuide, renderModernGovernanceIntegration } from '
 import { projectCatalog } from './catalog.js';
 import { resolveModernManifestV8SourceContract } from './manifest.js';
 import { modernSourceRegistry } from './modern-plugins.js';
+import { resolveModernProjectSourceContext, type ModernProjectSourceInput } from './source-context.js';
 
-export interface ModernManagedCoreInput {
-  readonly selection: ManifestV8ProjectLeaf & { readonly profile: 'none' | ModernGovernanceProfile };
-  readonly plugins: ManifestPluginMetadata;
-  readonly activeLayout: ManifestActiveLayout;
-}
+export type ModernManagedCoreInput = ModernProjectSourceInput;
 
 export type ModernManagedCoreArtifact = Readonly<Pick<GeneratedArtifact, 'logicalName' | 'category' | 'content'>> & {
   readonly lifecycle: 'managed-core';
@@ -30,24 +21,7 @@ export type ModernManagedCoreArtifact = Readonly<Pick<GeneratedArtifact, 'logica
 };
 
 export function resolveModernManagedCoreInput(value: unknown) {
-  assertModernRecordData(value, 'modern managed-core input');
-  const input = exactRecord(value, ['selection', 'plugins', 'activeLayout'], 'Modern managed-core input');
-  const selected = exactRecord(input.selection, ['project', 'framework', 'profile'], 'Modern managed-core selection');
-  const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({
-    project: selected.project, framework: selected.framework
-  });
-  const profile = selected.profile;
-  if (profile !== 'none' && profile !== 'single-maintainer-gitflow' && profile !== 'team-gitflow') {
-    throw new Error('Modern managed-core selection requires a supported explicit profile.');
-  }
-  const selection: ModernManagedCoreInput['selection'] = { ...leaf, profile };
-  const plugins = readManifestPluginMetadata(input.plugins, {
-    stack: leaf.project.workload.apiStack, cloud: leaf.project.workload.cloud,
-    workflow: leaf.project.specWorkflow, agents: leaf.project.agents
-  });
-  const source = resolveModernManifestV8SourceContract({ selection, recordedPlugins: plugins });
-  const activeLayout = validateManifestActiveLayout(input.activeLayout, source.layoutDescriptor);
-  return { selection, plugins, activeLayout, source };
+  return resolveModernProjectSourceContext(value);
 }
 
 /** Produces source-only managed content. No framework tools, project writes, credentials or providers are invoked. */
