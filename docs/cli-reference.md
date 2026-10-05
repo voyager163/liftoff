@@ -700,8 +700,11 @@ credential-free github.com origin and matching push binding before requests,
 reads only that repository's metadata, applicable main/develop/release/hotfix
 refs and declared current environments, plus fixed GitHub Actions app metadata.
 Foreign, ambiguous, credential-bearing or unobserved Git bindings withhold
-provider requests. An unbound live snapshot stays partial and cannot assert
-`inputsStable: true`. Denied or masked responses remain unobserved, never absence.
+provider requests. An unbound live snapshot stays partial. Requested governance
+refs cannot be verified without that binding, so `inputsStable` is false. With
+`--governance none`, no refs are requested and unchanged inputs may remain stable;
+this does not establish provider absence or conformance. Denied or masked
+responses remain unobserved, never absence.
 This mode does not discover accounts, runners or Azure resources, enroll
 credentials, install tools, execute project code or write receipts.
 
