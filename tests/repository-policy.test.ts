@@ -6,7 +6,8 @@ import { parse } from 'yaml';
 import {
   checkIssueForm, checkPromotion, checkRepositoryPolicy, checkWorkflow,
   communityFiles, workflowFiles, checkIsolatedHclReport, checkIsolatedHclRuntime,
-  isolatedHclQualificationJob, isolatedHclTestCommand, checkPluginPathReport, pluginPathTestCommand
+  isolatedHclQualificationJob, isolatedHclTestCommand, checkPluginPathReport, pluginPathTestCommand,
+  nativeBundleQualificationJob
 } from '../scripts/check-repository-policy.mjs';
 
 const root = process.cwd();
@@ -25,6 +26,34 @@ function pullRequest(base: string, head: string, owner = 'voyager163/liftoff') {
 }
 
 describe('source repository setup policy', () => {
+  it('pins the complete runtime-inclusive development qualification without changing release publication', async () => {
+    const workflow = await readWorkflow('ci.yml');
+    expect(workflow.jobs['qualify-native-bundle']).toEqual(nativeBundleQualificationJob());
+    expect(() => checkWorkflow('ci.yml', workflow)).not.toThrow();
+    expect((await readWorkflow('release.yml')).jobs['qualify-native-bundle']).toBeUndefined();
+  });
+  it.each([
+    'missing', 'conditional', 'runner', 'node', 'architecture', 'go', 'install', 'download',
+    'build', 'filtered', 'unset-bundle', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
+  ])('rejects incomplete runtime-inclusive qualification: %s', async fault => {
+    const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-bundle'];
+    if (fault === 'missing') delete workflow.jobs['qualify-native-bundle'];
+    if (fault === 'conditional') job.if = 'false';
+    if (fault === 'runner') job['runs-on'] = 'macos-latest';
+    if (fault === 'node') job.steps[1].with['node-version'] = '24.20.0';
+    if (fault === 'architecture') job.steps[1].with.architecture = 'x64';
+    if (fault === 'go') job.steps[2].with['go-version'] = 'latest';
+    if (fault === 'install') job.steps[4].run = 'npm install';
+    if (fault === 'download') job.steps[5].run += ' || true';
+    if (fault === 'build') job.steps[6].run = 'npm run build';
+    if (fault === 'filtered') job.steps[7].run = job.steps[7].run.replace('--allowOnly=false', '-t skipped');
+    if (fault === 'unset-bundle') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_BUNDLE_ROOT', 'UNSELECTED_BUNDLE');
+    if (fault === 'skip-report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/native-bundle.mjs verify-report.*\n/m, '');
+    if (fault === 'conditional-cases') job.steps[7].if = 'false';
+    if (fault === 'missing-upload') job.steps.pop();
+    if (fault === 'ignored-report') job.steps[8].with['if-no-files-found'] = 'ignore';
+    expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
+  });
   it.each([
     'missing-platform', 'conditional-job', 'filtered-command', 'conditional-command',
     'missing-verifier', 'conditional-verifier', 'missing-upload', 'success-only-upload', 'ignored-report'

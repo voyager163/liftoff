@@ -71,6 +71,7 @@
   },
   "scripts": {
     "build": "node scripts/clean-build.mjs && tsc -p tsconfig.json",
+    "build:native": "node scripts/native-bundle.mjs",
     "test": "vitest run",
     "coverage:cli": "node scripts/coverage-gate.mjs run cli",
     "coverage:gateway": "node scripts/coverage-gate.mjs run gateway",

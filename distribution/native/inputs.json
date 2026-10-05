@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "runtime": {
+    "version": "24.21.0",
+    "platform": "darwin",
+    "architecture": "arm64",
+    "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-darwin-arm64.tar.gz",
+    "sha256": "bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057",
+    "executableSha256": "e4b5a3af0e05c75de2eae013904145f40fe7fc2a6e6f17510128bf45cca4e79b",
+    "licenseSha256": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace",
+    "archiveRoot": "node-v24.21.0-darwin-arm64"
+  },
+  "hcl": {
+    "package": "@cdktf/hcl2json",
+    "version": "0.21.0",
+    "integrity": "sha512-cwX3i/mSJI/cRrtqwEPRfawB7pXgNioriSlkvou8LWiCrrcDe9ZtTbAbu8W1tEJQpe1pnX9VEgpzf/BbM7xF8Q==",
+    "sourceRevision": "c7c1144103eae481dd6292a716d88d593e199624",
+    "sourceUrl": "https://github.com/hashicorp/terraform-cdk/tree/c7c1144103eae481dd6292a716d88d593e199624/packages/%40cdktf/hcl2json",
+    "upstreamBuildReportsModifiedSource": true,
+    "reproducibleSourceCorrespondenceVerified": false
+  },
+  "notices": [
+    {
+      "id": "hcl2json",
+      "url": "https://raw.githubusercontent.com/hashicorp/terraform-cdk/c7c1144103eae481dd6292a716d88d593e199624/LICENSE",
+      "sha256": "8a318096d516c4b23566f94f4129260a9d4f72672dc52405573b619451f7b6c2",
+      "files": [{ "path": "LICENSE", "sha256": "8a318096d516c4b23566f94f4129260a9d4f72672dc52405573b619451f7b6c2" }]
+    },
+    {
+      "id": "go-runtime",
+      "url": "https://raw.githubusercontent.com/golang/go/go1.18.5/LICENSE",
+      "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
+      "files": [{ "path": "LICENSE", "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067" }]
+    },
+    {
+      "id": "levenshtein",
+      "module": "github.com/agext/levenshtein",
+      "version": "v1.2.3",
+      "h1": "h1:YB2fHEn0UJagG8T1rrWknE3ZQzWM06O8AMAatNn7lmo=",
+      "url": "https://proxy.golang.org/github.com/agext/levenshtein/@v/v1.2.3.zip",
+      "sha256": "f24dcae174b3418f6340fb8f54797788a71130b960da4f07d3e08206cbcbdc02",
+      "files": [
+        { "path": "LICENSE", "member": "github.com/agext/levenshtein@v1.2.3/LICENSE", "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4" },
+        { "path": "NOTICE", "member": "github.com/agext/levenshtein@v1.2.3/NOTICE", "sha256": "5f8cebc9aab3ce69ade921efb14caec472c34f22566e015df9512111dcacae06" }
+      ]
+    },
+    {
+      "id": "textseg",
+      "module": "github.com/apparentlymart/go-textseg/v15",
+      "version": "v15.0.0",
+      "h1": "h1:uYvfpb3DyLSCGWnctWKGj857c6ew1u1fNQOlOtuGxQY=",
+      "url": "https://proxy.golang.org/github.com/apparentlymart/go-textseg/v15/@v/v15.0.0.zip",
+      "sha256": "4886c2e43b8cd2f6ffbd3a78ef436bd7bc8da7825ab7426257969f346e7bb7eb",
+      "files": [{ "path": "LICENSE", "member": "github.com/apparentlymart/go-textseg/v15@v15.0.0/LICENSE", "sha256": "59e80949c14925f65181757d837ed93dea3783f62b031f642281d9e5b1936917" }]
+    },
+    {
+      "id": "hcl",
+      "module": "github.com/hashicorp/hcl/v2",
+      "version": "v2.23.0",
+      "h1": "h1:Fphj1/gCylPxHutVSEOf2fBOh1VE4AuLV7+kbJf3qos=",
+      "url": "https://proxy.golang.org/github.com/hashicorp/hcl/v2/@v/v2.23.0.zip",
+      "sha256": "78c8c3350ee51970a6c04a15e822c3f7344a85a60b07ea5b44717140e22c12a7",
+      "files": [{ "path": "LICENSE", "member": "github.com/hashicorp/hcl/v2@v2.23.0/LICENSE", "sha256": "28ca54ff46a27183631aa262673d13e3c829d909059f5c861da835fe1783fbec" }]
+    },
+    {
+      "id": "wordwrap",
+      "module": "github.com/mitchellh/go-wordwrap",
+      "version": "v1.0.1",
+      "h1": "h1:TLuKupo69TCn6TQSyGxwI1EblZZEsQ0vMlAFQflz0v0=",
+      "url": "https://proxy.golang.org/github.com/mitchellh/go-wordwrap/@v/v1.0.1.zip",
+      "sha256": "5f96426c4b3b3e90a9b7471568cb1d61d6a306744f5d4765a30fa8a61e1c0b47",
+      "files": [{ "path": "LICENSE.md", "member": "github.com/mitchellh/go-wordwrap@v1.0.1/LICENSE.md", "sha256": "3c377fad2e5ae1d7081c7c2f16da867a87cca1d1f5f1aa7ed0b8a16bb553142a" }]
+    },
+    {
+      "id": "tmccombs-hcl2json",
+      "module": "github.com/tmccombs/hcl2json",
+      "version": "v0.6.5",
+      "h1": "h1:SieU9/Xdsx0kRRtZcms+5CjXaWsl7LKnuSmtKGFGjx4=",
+      "url": "https://proxy.golang.org/github.com/tmccombs/hcl2json/@v/v0.6.5.zip",
+      "sha256": "788afa372288e3aaa7e3086a20cbe806f3768d5158d4cf08d7fea01303c9e6a0",
+      "files": [{ "path": "LICENSE", "member": "github.com/tmccombs/hcl2json@v0.6.5/LICENSE", "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4" }]
+    },
+    {
+      "id": "cty",
+      "module": "github.com/zclconf/go-cty",
+      "version": "v1.15.1",
+      "h1": "h1:RgQYm4j2EvoBRXOPxhUvxPzRrGDo1eCOhHXuGfrj5S0=",
+      "url": "https://proxy.golang.org/github.com/zclconf/go-cty/@v/v1.15.1.zip",
+      "sha256": "3aefb077926e87fb2933e8e3c4c298390c58f17ecaf34c1f2306d33519580324",
+      "files": [{ "path": "LICENSE", "member": "github.com/zclconf/go-cty@v1.15.1/LICENSE", "sha256": "5b75e242a5bf5b40228d068037a7746e86bc1f9ea96b691e5f64b555579bfa52" }]
+    },
+    {
+      "id": "go-text",
+      "module": "golang.org/x/text",
+      "version": "v0.21.0",
+      "h1": "h1:zyQAAkrwaneQ066sspRyJaG9VNi/YJ1NfzcGB3hZ/qo=",
+      "url": "https://proxy.golang.org/golang.org/x/text/@v/v0.21.0.zip",
+      "sha256": "be3db791651af6f2cb0225aa5d5578c23149b2017246ba8e59586080baadd612",
+      "files": [
+        { "path": "LICENSE", "member": "golang.org/x/text@v0.21.0/LICENSE", "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad" },
+        { "path": "PATENTS", "member": "golang.org/x/text@v0.21.0/PATENTS", "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc" }
+      ]
+    }
+  ]
+}

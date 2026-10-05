@@ -14,6 +14,60 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  qualify-native-bundle:
+    name: Runtime-inclusive bundle (macOS ARM64)
+    runs-on: macos-15
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.21.0"
+          architecture: arm64
+          cache: npm
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.0"
+          cache-dependency-path: assets/supported-stack.json
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+      - name: Install dependencies
+        run: npm ci
+      - name: Retrieve the pinned standalone runtime
+        shell: bash
+        run: |
+          url="$(node --input-type=module -e 'import inputs from "./distribution/native/inputs.json" with { type: "json" }; console.log(inputs.runtime.url)')"
+          curl --fail --location --proto '=https' --proto-redir '=https' --max-time 180 \
+            "$url" --output "$RUNNER_TEMP/liftoff-node-runtime.tgz"
+      - name: Assemble the development bundle
+        run: >-
+          npm run build:native -- build
+          --runtime-archive "$RUNNER_TEMP/liftoff-node-runtime.tgz"
+          --output "$RUNNER_TEMP/liftoff-native-bundle"
+      - name: Qualify actual installed behavior
+        shell: bash
+        run: |
+          LIFTOFF_NATIVE_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \
+          LIFTOFF_NATIVE_GO_EXECUTABLE="$(command -v go)" \
+          npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \
+            --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \
+            --reporter=default --reporter=json --outputFile.json=qualification/native-bundle.json
+          node scripts/native-bundle.mjs verify-report qualification/native-bundle.json
+      - name: Store development qualification evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: liftoff-native-bundle-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            qualification/native-bundle.json
+            ${{ runner.temp }}/liftoff-native-bundle/bundle.json
+          if-no-files-found: error
+          retention-days: 14
+
   qualify-isolated-hcl:
     name: Isolated HCL parser (macOS ARM64)
     runs-on: macos-15

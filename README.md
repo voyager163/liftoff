@@ -106,7 +106,7 @@ team generation, fresh OpenSpec finalization, cloud operations or whole-director
 | [Azure deployment](docs/azure-deployment.md) | Review infrastructure and deployment boundaries |
 | [Telemetry and privacy](docs/telemetry.md) | Understand collected fields, retention, and opt-outs |
 | [Troubleshooting](docs/troubleshooting.md) | Resolve registry, readiness, migration, and update blockers |
-| [Developer guide](DEVELOPER.md) | Maintain compatibility, packaging, and release procedures |
+| [Developer guide](DEVELOPER.md) · [Native development bundles](docs/native-development-bundles.md) | Maintain compatibility and releases; native bundles are not a published installation or migration channel |
 
 ## Project status
 
