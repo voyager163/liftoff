@@ -10,6 +10,15 @@ import {
 
 export class ApplicationInspectionError extends Error {}
 
+export class ApplicationInventoryLimitError extends ApplicationInspectionError {
+  constructor(
+    readonly limit: 'directories' | 'directoryEntries' | 'entries' | 'files' | 'fileBytes' | 'totalBytes',
+    message: string
+  ) {
+    super(message);
+  }
+}
+
 export const applicationDigest = (bytes: Buffer | string): string =>
   createHash('sha256').update(bytes).digest('hex');
 export const applicationPathKey = (parts: readonly string[]): string => parts.join('/');
@@ -54,7 +63,10 @@ export async function canonicalApplicationRoot(input: string): Promise<string> {
   }
 }
 
-export async function assertApplicationNoLinkAncestors(absolute: string): Promise<void> {
+export async function assertApplicationNoLinkAncestors(
+  absolute: string,
+  scope: 'External application staging' | 'Project inventory root' = 'External application staging'
+): Promise<void> {
   const resolved = path.resolve(absolute);
   const root = path.parse(resolved).root;
   const parts = path.relative(root, resolved).split(path.sep).filter(Boolean);
@@ -64,10 +76,10 @@ export async function assertApplicationNoLinkAncestors(absolute: string): Promis
     let details: Stats;
     try { details = await lstat(current); }
     catch {
-      throw new ApplicationInspectionError('External application staging has a missing or inaccessible path.');
+      throw new ApplicationInspectionError(`${scope} has a missing or inaccessible path.`);
     }
     if (details.isSymbolicLink() || index < parts.length - 1 && !details.isDirectory()) {
-      throw new ApplicationInspectionError('External application staging must not traverse links or junctions.');
+      throw new ApplicationInspectionError(`${scope} must not traverse links or junctions.`);
     }
   }
 }
@@ -171,7 +183,13 @@ export class ApplicationFiles {
     return path.join(this.root, ...parts);
   }
 
-  async inventory(input: readonly string[]): Promise<ApplicationDirectoryObservation> {
+  async inventory(
+    input: readonly string[], maximumEntries: number = applicationBounds.directoryEntries
+  ): Promise<ApplicationDirectoryObservation> {
+    if (!Number.isSafeInteger(maximumEntries) || maximumEntries < 0 ||
+        maximumEntries > applicationBounds.directoryEntries) {
+      throw new ApplicationInspectionError('Application directory entry limit must remain within the bounded inventory.');
+    }
     const parts = applicationParts(input, true);
     const key = applicationPathKey(parts);
     const previous = this.directories.get(key);
@@ -180,7 +198,7 @@ export class ApplicationFiles {
       throw new ApplicationInspectionError(`${key}: excluded directories cannot be inspected.`);
     }
     if (this.directories.size >= applicationBounds.directories) {
-      throw new ApplicationInspectionError('Application inventory exceeds the directory count bound.');
+      throw new ApplicationInventoryLimitError('directories', 'Application inventory exceeds the directory count bound.');
     }
     const observation: ApplicationDirectoryObservation = { pathParts: parts, exists: false, mode: null, entries: [] };
     this.directories.set(key, observation);
@@ -194,8 +212,12 @@ export class ApplicationFiles {
       observation.mode = before.mode & 0o7777;
       const directory = await opendir(target);
       for await (const entry of directory) {
-        if (observation.entries.length >= applicationBounds.directoryEntries) {
-          throw new ApplicationInspectionError(`${key || '.'}: directory exceeds the entry bound.`);
+        if (observation.entries.length >= maximumEntries) {
+          throw new ApplicationInventoryLimitError(
+            maximumEntries === applicationBounds.directoryEntries ? 'directoryEntries' : 'entries',
+            maximumEntries === applicationBounds.directoryEntries
+              ? `${key || '.'}: directory exceeds the entry bound.`
+              : `${key || '.'}: directory exceeds the remaining entry bound.`);
         }
         applicationParts([entry.name]);
         observation.entries.push({ name: entry.name, kind: entryKind(entry) });
@@ -240,7 +262,7 @@ export class ApplicationFiles {
     const previous = this.snapshots.get(key);
     if (previous) return previous;
     if (this.snapshots.size >= applicationBounds.files) {
-      throw new ApplicationInspectionError('Application inventory exceeds the file count bound.');
+      throw new ApplicationInventoryLimitError('files', 'Application inventory exceeds the file count bound.');
     }
     await this.observeParents(parts);
     const snapshot: ProjectFileSnapshot = { pathParts: parts };
@@ -255,7 +277,8 @@ export class ApplicationFiles {
       }
       if ((before.mode & 0o7000) !== 0) throw new ApplicationInspectionError(`${key}: special file modes are unsupported.`);
       if (before.size > limit || this.totalBytes + before.size > applicationBounds.totalBytes) {
-        throw new ApplicationInspectionError(`${key}: application file or total byte bound exceeded.`);
+        throw new ApplicationInventoryLimitError(before.size > limit ? 'fileBytes' : 'totalBytes',
+          `${key}: application file or total byte bound exceeded.`);
       }
       const handle = await open(target, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
       try {
