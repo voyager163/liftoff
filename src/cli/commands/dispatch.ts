@@ -59,12 +59,14 @@ import {
 } from './upgrade.js';
 import { repairCommand } from './repair.js';
 import { capabilitiesCommand } from './capabilities.js';
+import { assessCommand } from './assess.js';
 
 export async function runCommand(parsed: ParsedArgs, context: CommandContext): Promise<number> {
   const helpRequested = parsed.command !== undefined && readBooleanFlag(parsed.flags, 'help') === true;
   const jsonMode = !helpRequested && (
     parsed.command === 'doctor' ||
     parsed.command === 'capabilities' ||
+    parsed.command === 'assess' ||
     parsed.command === 'update' ||
     parsed.command === 'repair' ||
     parsed.command === 'governance' ||
@@ -105,6 +107,8 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
         return patternsCommand(executionContext);
       case 'capabilities':
         return capabilitiesCommand(parsed, executionContext);
+      case 'assess':
+        return await assessCommand(parsed, executionContext);
       case 'providers':
         return providersCommand(executionContext);
       case 'regions':

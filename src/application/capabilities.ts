@@ -85,9 +85,16 @@ export function installedCapabilities() {
         applicationWrites: false, workflowChanges: false, profileChanges: false, providerOperations: false,
         scope: 'Historical-to-v8 successor and current-v8 managed maintenance. Recorded project, plugins, compatible layout, original history and configuration are preserved. Local revalidation and other transitions remain separate.'
       },
+      projectAssessment: {
+        command: 'assess', report: 1, modes: ['local'], readOnly: true,
+        comparisonProfiles: ['none', 'single-maintainer-gitflow', 'team-gitflow'],
+        explicitNonGitRoot: true, liveMetadata: false, projectExecution: false, projectWrites: false, telemetry: false,
+        scope: 'Bounded local metadata, declaration names and exact current managed-byte comparisons. Runtime constraints, references, agent behavior, effective governance and deployment proof remain unobserved. Team policy metadata comparison is not public team generation or enforcement support.',
+        recommendations: 'Advisory separate lanes only. Unavailable adoption, workflow/profile/plugin transitions, provider activation and deployed-state migration have no executable recommendation.'
+      },
       reports: {
         capabilities: 1, validate: 1, doctor: 1, upgrade: 1,
-        update: currentUpdateReportSchemaVersion, governance: 2, governanceAssessment: 1
+        update: currentUpdateReportSchemaVersion, governance: 2, governanceAssessment: 1, projectAssessment: 1
       },
       repair: { ...repairCapabilities.schemas }
     },

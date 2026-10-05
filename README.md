@@ -82,6 +82,7 @@ before following newer guidance; planned features are not installed support.
 | --- | --- |
 | `schemas.currentGeneration` | Fresh v8 `plan`, `init`, and sibling `migrate`, including framework-free Manual and optional agents. |
 | `schemas.currentUpdate` | [V8 project update](docs/cli-reference.md#update-modes): exact preview/approval, preserved configuration and history, and fingerprint-selected recovery. |
+| `schemas.projectAssessment` | [Read-only project assessment](docs/cli-reference.md#read-only-whole-project-assessment): bounded local observations and explicit installed comparison targets; runtime, reference and live-proof gaps remain partial. |
 | `schemas.modernLocalVerification` | [V8 verification](docs/cli-reference.md#modern-local-verification): explicit request, approval and execution, including separately consented locked Manual checks on the qualified native host; no conversion or publication. |
 | `schemas.modernLocalCompletion` | [Manual/Spec Kit completion](docs/cli-reference.md#modern-local-completion): workflow-specific finalization, exact-file review and independent publication consent. |
 | `schemas.modernSuccessorRevalidation` | [Existing-successor revalidation](docs/cli-reference.md#modern-successor-revalidation): fresh verification and separate exact-byte publication approval. Incomplete commit exits 2, preserving the active successor and history without downgrade. |
@@ -129,5 +130,4 @@ for community concerns. Never include credentials or private data in public repo
 
 ## License
 
-Liftoff is open source under **[GPL-3.0-only](LICENSE)**.
-Contributions use the same license; preserve applicable third-party notices.
+Liftoff is open source under **[GPL-3.0-only](LICENSE)**. Contributions use the same license; preserve applicable third-party notices.

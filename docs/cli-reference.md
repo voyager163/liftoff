@@ -7,6 +7,7 @@ liftoff init --help
 liftoff migrate --help
 liftoff governance --help
 liftoff governance assess --help
+liftoff assess --help
 liftoff upgrade --help
 liftoff update --help
 liftoff repair --help
@@ -24,6 +25,7 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | Command | Behavior |
 | --- | --- |
 | `liftoff capabilities --json` | Returns the schema-1 installed command, schema, plugin, profile, recipe and limitation catalog without project discovery, tool probes, telemetry or state writes |
+| `liftoff assess [project] [--governance <profile>] [--json]` | Bounded read-only whole-project comparison against installed targets; unknown runtime, reference and live-proof coverage remains partial |
 | `liftoff plan` | Resolves decisions and previews artifacts and requirements without side effects |
 | `liftoff init [project-name]` | Initializes a named child or the exact current Git root through staged readiness and framework setup |
 | `liftoff migrate <source>` | Creates a new sibling scaffold and filtered source copy without changing the source |
@@ -641,6 +643,65 @@ consent. Noninteractive `init` and `migrate` require
 `openspec config set` commands. The flag has no effect during `plan`, which
 never inspects or changes machine configuration.
 
+## Read-only whole-project assessment
+
+On builds advertising `schemas.projectAssessment`:
+
+```bash
+liftoff assess --json
+liftoff assess --project "path with spaces" --governance single-maintainer-gitflow --json
+liftoff assess "./existing application" --governance none
+```
+
+Choose one positional path or `--project`, not both. Without a path, the nearest
+safe Git or Liftoff boundary is selected. Non-Git applications require an
+explicit directory. Linked roots/ancestors, aliases and malformed, unsupported
+or retired inner manifests fail without falling through to an outer project.
+Worktree pointers are presence markers only and are not followed.
+
+The target displays the installed CLI, policy, bundled plugin catalog and, for
+validated current projects, the selected plugin/layout comparison identities.
+Omitted `--governance` uses a supported recorded profile; unrecorded projects
+display the single-maintainer baseline. Explicit `none`,
+`single-maintainer-gitflow` or `team-gitflow` comparisons are advisory and never
+change selection, weaken existing controls or enable team generation/enforcement.
+No registry latest is queried.
+
+Schema 1 has `command: "assess"`, `kind: "liftoff-project-assessment"`,
+`readOnly: true`, explicit target/project identities, deterministic findings,
+provenance, coverage, diagnostics and a result digest. It is separate from the
+schema-1 `governance assess` report. Static declaration names, path presence and
+exact expected managed-byte comparisons are observations, not complete
+dependency, runtime, reference, agent or governance conformance. Compatible
+explicit custom bindings are preserved; generation hashes and canonical
+template paths are not current-path authority.
+
+Unknown applicability, uncollected evidence, excluded/limited scopes and
+unsupported evaluators remain visible. Current whole-project reports normally
+return `partial` and exit 2. Exit 0 requires complete applicable alignment or
+explicitly inapplicable requested scope; exit 1 means invalid/unsafe input or
+an unavailable requested scope. Known missing files and byte differences are
+retained even when overall coverage is partial.
+
+This local producer performs no project-script, framework, Git or package-manager
+execution, tool probe, network, credential enrollment, telemetry/disclosure,
+receipt or project write. It reads bounded dependency declarations, the selected
+manifest and only exact renderer-declared managed files, never activation/state
+or credential payloads. Two bounded inventory passes and file/metadata
+revalidation detect observed drift; unread payload changes are outside that
+scope. Help needs no project and also skips telemetry/disclosure.
+
+`assess --live` is currently unavailable and fails explicitly without accessing
+accounts. The narrower `governance assess --live` remains a distinct existing
+capability, not a substitute whole-project report. Recommendations separate
+managed update, application repair, adoption, workflow/profile/plugin migration,
+new-environment activation and existing-deployment planning. Only actual
+supported preview routes are supplied; unavailable lanes have no executable
+command. Available preview argument arrays include the selected `--project`
+path, even when assessment runs from another working directory.
+No finding, target choice or digest is write approval, ownership,
+activation evidence or permission to run a recommendation.
+
 ## Read-only governance assessment
 
 ```bash
@@ -654,7 +715,7 @@ an ordinary Git repository without a manifest. Nested working directories resolv
 to the nearest applicable Git or Liftoff boundary; invalid or retired inner
 manifests cannot be bypassed. No initialization or slash-command installation is
 required. Help needs no project or
-credential discovery. Only `assess` accepts `--live`; assessment rejects
+credential discovery. Within governance subcommands, only `assess` accepts `--live`; assessment rejects
 `--execute` (including `--execute=false`), `--force`, installation, automatic
 upgrade, and output-file flags before project access.
 
