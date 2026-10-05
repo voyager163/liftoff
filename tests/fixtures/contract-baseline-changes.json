@@ -4547,17 +4547,35 @@
       "surface": "generator-extraction",
       "key": "1/node-backend-package",
       "task": "2.5",
-      "reason": "Reviewed package-manager security refresh changes this exact dependency asset, not generator inventory or unrelated application files. The original hash fixture remains immutable.",
+      "reason": "Reviewed package-manager security refresh changes this exact dependency asset, not generator inventory or unrelated application files. The original hash fixture remains immutable. The exact scoped esbuild 0.25.12 content-only successor advances this current record; the frozen artifact hash and preceding accepted record remain unchanged.",
       "baselineSha256": "d507d67098c4b1ad8658a773573b6950e6966065975809d3677b783169d9ed48",
-      "currentSha256": "39754f8fd8d1a5dfc9649fa9098702a23969fb110a9b1760cbf2c3bcc738e5e1"
+      "currentSha256": "c127408c06ac81500c52759ab426cc4acb05af434ebc962c2a910aeb03daaf5d",
+      "priorCurrentSha256": "39754f8fd8d1a5dfc9649fa9098702a23969fb110a9b1760cbf2c3bcc738e5e1",
+      "priorChange": {
+        "surface": "generator-extraction",
+        "key": "1/node-backend-package",
+        "task": "2.5",
+        "reason": "Reviewed package-manager security refresh changes this exact dependency asset, not generator inventory or unrelated application files. The original hash fixture remains immutable.",
+        "baselineSha256": "d507d67098c4b1ad8658a773573b6950e6966065975809d3677b783169d9ed48",
+        "currentSha256": "39754f8fd8d1a5dfc9649fa9098702a23969fb110a9b1760cbf2c3bcc738e5e1"
+      }
     },
     {
       "surface": "generator-extraction",
       "key": "1/node-backend-lock",
       "task": "2.5",
-      "reason": "Reviewed package-manager security refresh changes this exact dependency asset, not generator inventory or unrelated application files. The original hash fixture remains immutable.",
+      "reason": "Reviewed package-manager security refresh changes this exact dependency asset, not generator inventory or unrelated application files. The original hash fixture remains immutable. The exact scoped esbuild 0.25.12 content-only successor advances this current record; the frozen artifact hash and preceding accepted record remain unchanged.",
       "baselineSha256": "ca2446fcc2f6eadd70027fa1a24acea2be9bfe4e4fe83d4b28711e194ce409d8",
-      "currentSha256": "80999a6b1aecf9d4ff51e3d8979b2c829a8c9deeb4ed422eb6c8477e5431d278"
+      "currentSha256": "313807a3b6398494e430ff0c35e7fc67763cd43352dbd201e47a351432b5a5d4",
+      "priorCurrentSha256": "80999a6b1aecf9d4ff51e3d8979b2c829a8c9deeb4ed422eb6c8477e5431d278",
+      "priorChange": {
+        "surface": "generator-extraction",
+        "key": "1/node-backend-lock",
+        "task": "2.5",
+        "reason": "Reviewed package-manager security refresh changes this exact dependency asset, not generator inventory or unrelated application files. The original hash fixture remains immutable.",
+        "baselineSha256": "ca2446fcc2f6eadd70027fa1a24acea2be9bfe4e4fe83d4b28711e194ce409d8",
+        "currentSha256": "80999a6b1aecf9d4ff51e3d8979b2c829a8c9deeb4ed422eb6c8477e5431d278"
+      }
     },
     {
       "surface": "generator-extraction",
@@ -4667,45 +4685,93 @@
       "surface": "governance-extraction-cli",
       "key": "status-json",
       "task": "2.5",
-      "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged.",
+      "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged. Independent actual accepted-parent/current CLI execution confirms only the blocker fingerprint change with Node package/lock generation hashes; all other normalized JSON, result fields and frozen capture/harness remain unchanged.",
       "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
-      "currentSha256": "39bea3b02d927ec7ce0d8da5789e22645536607f92c81486eb91b418718f971e",
+      "currentSha256": "b5f87a42b9d4ce8c5b84a8b4fcdf4fac1951801a677d4c15e9b71b6feaa9e868",
       "changed": [
         "/stdout/sha256"
-      ]
+      ],
+      "priorCurrentSha256": "39bea3b02d927ec7ce0d8da5789e22645536607f92c81486eb91b418718f971e",
+      "priorChange": {
+        "surface": "governance-extraction-cli",
+        "key": "status-json",
+        "task": "2.5",
+        "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged.",
+        "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
+        "currentSha256": "39bea3b02d927ec7ce0d8da5789e22645536607f92c81486eb91b418718f971e",
+        "changed": [
+          "/stdout/sha256"
+        ]
+      }
     },
     {
       "surface": "governance-extraction-cli",
       "key": "status-local-json",
       "task": "2.5",
-      "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged.",
+      "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged. Independent actual accepted-parent/current CLI execution confirms only the blocker fingerprint change with Node package/lock generation hashes; all other normalized JSON, result fields and frozen capture/harness remain unchanged.",
       "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
-      "currentSha256": "420baa8ceb9fb662aa1c5454b593fc52fe185ff24b0e4bf2248e4d75724761a1",
+      "currentSha256": "279074399503e8812fc43a36882f1741ae3c681bd723f99cb7a443d49de294b6",
       "changed": [
         "/stdout/sha256"
-      ]
+      ],
+      "priorCurrentSha256": "420baa8ceb9fb662aa1c5454b593fc52fe185ff24b0e4bf2248e4d75724761a1",
+      "priorChange": {
+        "surface": "governance-extraction-cli",
+        "key": "status-local-json",
+        "task": "2.5",
+        "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged.",
+        "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
+        "currentSha256": "420baa8ceb9fb662aa1c5454b593fc52fe185ff24b0e4bf2248e4d75724761a1",
+        "changed": [
+          "/stdout/sha256"
+        ]
+      }
     },
     {
       "surface": "governance-extraction-cli",
       "key": "resume-json",
       "task": "2.5",
-      "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged.",
+      "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged. Independent actual accepted-parent/current CLI execution confirms only the blocker fingerprint change with Node package/lock generation hashes; all other normalized JSON, result fields and frozen capture/harness remain unchanged.",
       "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
-      "currentSha256": "7781024a01856301aef5f635216a0c49882fa0fc54468e27051e85fb3036deac",
+      "currentSha256": "e9686676af5688b9b9c695a49f79cac55d717fb9d92e50accd234a625d6e5528",
       "changed": [
         "/stdout/sha256"
-      ]
+      ],
+      "priorCurrentSha256": "7781024a01856301aef5f635216a0c49882fa0fc54468e27051e85fb3036deac",
+      "priorChange": {
+        "surface": "governance-extraction-cli",
+        "key": "resume-json",
+        "task": "2.5",
+        "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged.",
+        "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
+        "currentSha256": "7781024a01856301aef5f635216a0c49882fa0fc54468e27051e85fb3036deac",
+        "changed": [
+          "/stdout/sha256"
+        ]
+      }
     },
     {
       "surface": "governance-extraction-cli",
       "key": "plan-json",
       "task": "2.5",
-      "reason": "Actual preserved-parent and current normalized JSON differ only at /plan/baselineDigest, /plan/inputDigest, /plan/transitionDigest because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged.",
+      "reason": "Actual preserved-parent and current normalized JSON differ only at /plan/baselineDigest, /plan/inputDigest, /plan/transitionDigest because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged. Independent actual accepted-parent/current CLI execution confirms only the baseline/input/transition digests change with Node package/lock generation hashes; all other normalized JSON, result fields and frozen capture/harness remain unchanged.",
       "baselineSha256": "c5abe8887e02a6d0d246c46b5fcaa1bd6d7de03867dc624d50b72d3c8d463b58",
-      "currentSha256": "f5419a37633cc4b69a69c9f5750876d15809f59b7dd38f5c3938fb2cc7dabce7",
+      "currentSha256": "0627422e4f7333b5f06c86ce31ed663ef1057b700f8d03d0f4633fda06346c2b",
       "changed": [
         "/stdout/sha256"
-      ]
+      ],
+      "priorCurrentSha256": "f5419a37633cc4b69a69c9f5750876d15809f59b7dd38f5c3938fb2cc7dabce7",
+      "priorChange": {
+        "surface": "governance-extraction-cli",
+        "key": "plan-json",
+        "task": "2.5",
+        "reason": "Actual preserved-parent and current normalized JSON differ only at /plan/baselineDigest, /plan/inputDigest, /plan/transitionDigest because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged.",
+        "baselineSha256": "c5abe8887e02a6d0d246c46b5fcaa1bd6d7de03867dc624d50b72d3c8d463b58",
+        "currentSha256": "f5419a37633cc4b69a69c9f5750876d15809f59b7dd38f5c3938fb2cc7dabce7",
+        "changed": [
+          "/stdout/sha256"
+        ]
+      }
     }
   ]
 }
