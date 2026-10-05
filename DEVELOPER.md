@@ -347,6 +347,54 @@ loaders or claiming a migration exists. A future governance upgrade must collect
 fresh observations, produce its own authoritative plan, and obtain approvals.
 See [assessment guidance](docs/repository-governance.md#read-only-governance-assessment).
 
+### Private whole-project inventory foundation
+
+`src/application/assessment/inventory.ts` exposes `inspectProjectInventory` for
+the separately staged whole-project assessment/adoption work. It is not a public
+`liftoff assess` or `adopt` command, and neither capability may be advertised from
+this inventory alone. The existing `governance assess` contract is unchanged.
+
+The caller selects one explicit real root. The inventory reuses `ApplicationFiles`
+for confined, sorted directory observations, portable alias checks, bounded
+no-follow regular-file reads and revalidation. It never searches parent roots,
+follows Git worktree pointers or descends into nested Git/Liftoff projects.
+Unsafe boundary markers, links/junctions, hard-linked declarations, special modes,
+inaccessible paths and concurrent observed changes fail inspection rather than
+falling back to another project.
+
+Only package.json, pyproject.toml, requirements.txt, setup.cfg and go.mod outside
+control/state/output trees are read, for static dependency-name extraction.
+Executable setup.py, application source, locks, workflows, native agent files,
+CI, infrastructure and documentation are metadata observations only. Credential,
+state, installed-dependency and output exclusions are not read or traversed.
+These exclusions are intentionally distinct from repair's editable-file scope:
+infrastructure and agent presence can be observed without granting their payloads
+to an application repair recipe.
+
+Limits are 512 files, 256 directories, 256 entries per directory, 4,096 total
+entries including exclusions and enumerated nested-boundary directories,
+depth 12, 1,024 relative path bytes,
+1 MiB per declaration, 8 MiB combined declaration bytes and 2,048 extracted
+names per declaration. Hitting a limit records the exact unobserved scope and
+sets `complete: false`. Metadata traversal stops at the first limit; later
+unvisited scopes are not evidence of absence. An unenumerated root marker is
+`not-observed`, not absent. The remaining overall entry budget is passed into
+directory enumeration, not checked after an unbounded collection.
+Malformed dependency metadata also remains explicit. A complete inventory means
+only that this bounded observation scope completed. It does not establish active
+bindings, installed/resolved versions, reference coverage, syntax correctness,
+runtime behavior, conformance, cloud proof, provenance or mutation authority.
+
+Inventory digests are deterministic local observations, not approvals or
+activation evidence. Unread payload changes are outside their revalidation
+scope. No project script, package-manager/Git/framework command, network,
+telemetry/disclosure, consent, receipt or project write is performed.
+Run the focused inventory/repair/import tests with:
+
+```bash
+npx vitest run tests/project-assessment-inventory.test.ts tests/repair-application.test.ts tests/import-boundaries.test.ts --maxWorkers=2
+```
+
 ## Release integrity requirements
 
 `scripts/native-bundle.mjs` and its bounded inventory contract build a separate
