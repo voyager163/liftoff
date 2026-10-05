@@ -267,7 +267,11 @@ the same npm 10.9.4/12.0.2 compatibility pairs natively on macOS and Windows.
 Each lane records actual installation, build, tests and Drizzle metadata
 generation/check commands, immutable template hashes and unchanged generated
 package metadata. Node 22/npm 10 remains a compatibility control, not a change
-to the supported CLI runtime floor. These controls never run database migrations.
+to the supported CLI runtime floor: each lane captures its exact project Node/npm
+paths before selecting Node 24.20 for Liftoff generation. Schema-2 reports retain
+the generator and actual project runtime versions separately, together with the
+original executable/argv and all nine command results. These controls never run
+database migrations.
 
 CI runs the `CLI coverage gate` and `Telemetry gateway coverage gate` jobs on
 Linux and uploads each evidence directory. Release qualification runs both gates
@@ -638,7 +642,9 @@ npm ci --ignore-scripts --no-audit --no-fund
 ```
 
 The standard-template CI matrix repeats the locked install with npm 10.9.4 on
-Node.js 22 and npm 12.0.2 on Node.js 24. The older lane checks template/lock
+Node.js 22 and npm 12.0.2 on Node.js 24. Liftoff itself generates both fixtures on
+supported Node.js 24.20; the captured absolute Node/npm paths run the generated
+project commands on the exact compatibility pair. The older lane checks template/lock
 compatibility; it does not lower Liftoff's Node.js 24.20/npm 12 workstation
 readiness floors. Prefer the smallest compatible patched
 line between reviewed baseline refreshes. Do not use `npm audit fix`, downgrade a

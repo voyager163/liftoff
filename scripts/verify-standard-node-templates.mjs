@@ -7,13 +7,13 @@ import spawn from 'cross-spawn';
 import { buildProjectPlan } from '../dist/planner.js';
 import { buildArtifacts } from '../dist/templates.js';
 import { writeArtifacts } from '../dist/file-system.js';
+import { nodeRuntimeError } from '../dist/runtime.js';
+import { resolveTemplateRuntime, templateRuntimeEnvironment } from './standard-node-template-runtime.mjs';
 
-const npmCliPath = process.env.npm_execpath;
+const { nodePath, npmCliPath } = resolveTemplateRuntime();
 const reportPath = process.env.LIFTOFF_TEMPLATE_QUALIFICATION_REPORT;
-
-if (!npmCliPath) {
-  throw new Error('npm_execpath is required. Run this verification through npm.');
-}
+const generatorError = nodeRuntimeError(process.versions.node);
+if (generatorError) throw new Error(generatorError);
 if (reportPath !== undefined && !path.isAbsolute(reportPath)) {
   throw new Error('LIFTOFF_TEMPLATE_QUALIFICATION_REPORT must be an absolute report path.');
 }
@@ -23,10 +23,11 @@ const commands = [];
 let qualification;
 const sha256 = (bytes) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 
-function runNpm(cwd, args, extraEnv = {}) {
-  const result = spawn.sync(process.execPath, [npmCliPath, ...args], {
+function runNode(cwd, args, extraEnv = {}, npm = false) {
+  const argv = npm ? [npmCliPath, ...args] : args;
+  const result = spawn.sync(nodePath, argv, {
     cwd,
-    env: { ...process.env, ...extraEnv },
+    env: { ...templateRuntimeEnvironment({ nodePath, npmCliPath }), ...extraEnv },
     encoding: 'utf8',
     shell: false,
     timeout: 15 * 60_000,
@@ -34,22 +35,25 @@ function runNpm(cwd, args, extraEnv = {}) {
   });
   commands.push({
     component: path.relative(projectRoot, cwd) || 'project', args,
+    executable: nodePath, argv,
     status: result.status, signal: result.signal,
     error: result.error ? { code: result.error.code, message: result.error.message } : null,
     stdout: result.stdout, stderr: result.stderr
   });
   if (result.error) {
     throw new Error(
-      `npm ${args.join(' ')} could not start in ${cwd}: ${result.error.message}`
+      `${npm ? 'npm' : 'node'} ${args.join(' ')} could not start in ${cwd}: ${result.error.message}`
     );
   }
-  if (result.status !== 0) {
+  if (result.status !== 0 || result.signal !== null) {
     throw new Error(
-      `npm ${args.join(' ')} failed in ${cwd}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`
+      `${npm ? 'npm' : 'node'} ${args.join(' ')} failed in ${cwd}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`
     );
   }
   return result.stdout;
 }
+
+const runNpm = (cwd, args, extraEnv = {}) => runNode(cwd, args, extraEnv, true);
 
 function requireVersion(lock, packagePath, expected) {
   const version = lock.packages?.[packagePath]?.version;
@@ -69,7 +73,15 @@ try {
     environments: ['dev']
   }, { requireProjectName: true });
   await writeArtifacts(projectRoot, buildArtifacts(plan));
+  const projectNodeVersion = runNode(projectRoot, ['--version']).trim().replace(/^v/u, '');
   const npmVersion = runNpm(projectRoot, ['--version']).trim();
+  if (!/^\d+\.\d+\.\d+$/u.test(projectNodeVersion) ||
+      (process.env.LIFTOFF_TEMPLATE_EXPECTED_PROJECT_NODE !== undefined &&
+       projectNodeVersion !== process.env.LIFTOFF_TEMPLATE_EXPECTED_PROJECT_NODE) ||
+      (process.env.LIFTOFF_TEMPLATE_EXPECTED_NPM !== undefined &&
+       npmVersion !== process.env.LIFTOFF_TEMPLATE_EXPECTED_NPM)) {
+    throw new Error('The actual generated-project Node/npm runtime does not match its selected qualification lane.');
+  }
 
   const backendRoot = path.join(projectRoot, 'backend');
   const frontendRoot = path.join(projectRoot, 'frontend');
@@ -132,9 +144,10 @@ try {
   ];
   const templateBytes = await Promise.all(templatePaths.map(file => readFile(path.resolve(file))));
   qualification = {
-    schemaVersion: 1, kind: 'liftoff-standard-node-template-qualification',
+    schemaVersion: 2, kind: 'liftoff-standard-node-template-qualification',
     sourceRevision: process.env.GITHUB_SHA ?? null,
-    platform: process.platform, architecture: process.arch, nodeVersion: process.versions.node, npmVersion,
+    platform: process.platform, architecture: process.arch,
+    nodeVersion: process.versions.node, projectNodeVersion, npmVersion,
     templateInputs: templatePaths.map((file, index) => ({
       pathParts: file.split('/'), bytes: templateBytes[index].length, sha256: sha256(templateBytes[index])
     })),

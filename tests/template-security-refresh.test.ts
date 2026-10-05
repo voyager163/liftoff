@@ -29,6 +29,14 @@ describe('reviewed patched template dependency closure', () => {
       name: 'Store actual generated-project qualification',
       with: expect.objectContaining({ 'if-no-files-found': 'error' })
     }));
+    const names = job.steps.map((step: { name?: string }) => step.name);
+    expect(names.indexOf('Install Liftoff dependencies')).toBeLessThan(names.indexOf('Capture the exact generated-project runtime'));
+    expect(names.indexOf('Capture the exact generated-project runtime')).toBeLessThan(names.indexOf('Select the supported Liftoff generator runtime'));
+    expect(names.indexOf('Select the supported Liftoff generator runtime')).toBeLessThan(names.indexOf('Verify standard Node.js templates'));
+    expect(job.steps.find((step: { name?: string }) => step.name === 'Select the supported Liftoff generator runtime').with['node-version']).toBe('24.20.0');
+    expect(parseYaml(read('.github/workflows/ci.yml')).jobs['test-shards'].steps.some(
+      (step: { name?: string }) => step.name === 'Capture the exact generated-project runtime'
+    )).toBe(false);
   });
 
   it.each(['python-standard', 'python-genai'])('pins patched urllib3 in %s', (template) => {

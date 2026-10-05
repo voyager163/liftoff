@@ -494,6 +494,17 @@ jobs:
           npm_config_engine_strict: "false"
         run: npm ci
 
+      - name: Capture the exact generated-project runtime
+        env:
+          EXPECTED_PROJECT_NODE: ${{ matrix.node-version }}
+          EXPECTED_PROJECT_NPM: ${{ matrix.npm-version }}
+        run: node scripts/standard-node-template-runtime.mjs --capture
+
+      - name: Select the supported Liftoff generator runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+
       - name: Verify standard Node.js templates
         env:
           npm_config_engine_strict: "false"

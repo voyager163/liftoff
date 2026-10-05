@@ -1237,6 +1237,11 @@ and its advisory is tracked as resolved for the Node backend. Standard generated
 Node qualification additionally runs Drizzle generation and journal checks under
 each supported npm version. An audit is a dated observation, not a permanent
 claim of zero vulnerabilities.
+CI generates projects on supported Node.js 24.20, then runs their dependency,
+build, test and Drizzle metadata commands on the captured native Node/npm pair
+(22.12.0/10.9.4 or 24.20.0/12.0.2). The schema-2 report records both actual
+runtime versions and exact command argv; an older generated-project compatibility
+lane does not qualify execution of Liftoff itself on Node 22.
 The npm audit does not cover PyPI. The generated Python integration case runs
 `tests/fixtures/pyjwt-options-regression.py` against the installed frozen GenAI
 environment: unsigned decoding must not mutate reused options or disable
