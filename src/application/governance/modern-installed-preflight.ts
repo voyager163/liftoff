@@ -6,7 +6,6 @@ import { inspectReviewedUpdateTransaction } from '../../adapters/filesystem/revi
 import { reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts } from '../../domain/project/reviewed-update-artifacts.js';
 import type { ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
 import { createManifestV8Reader, type LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
-import { createManifestV8ProjectReader } from '../../domain/project/manifest/v8-project.js';
 import { manifestHistoryPaths } from '../../domain/project/manifest/history.js';
 import { activationTargetHistoryPathParts } from '../../domain/project/manifest/activation-target-history.js';
 import { validateManifestPathParts } from '../../domain/project/manifest/layout.js';
@@ -15,6 +14,7 @@ import { readPreservedActivationTargetManifest } from '../update/activation-targ
 import { parseManifest, resolveModernManifestV8SourceContract } from '../project/manifest.js';
 import { projectCatalog } from '../project/catalog.js';
 import { buildModernManagedCore } from '../project/modern-managed-core.js';
+import { modernProjectSourceInput, resolveModernManifestSourceContext } from '../project/source-context.js';
 import { canonicalJson, canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
 import { copyModernLocalData, capturedFileBytes, localInputFailure, rawLocalDigest, ModernLocalInputError,
   type ModernLocalFile, type ModernLocalDirectory, type ModernLocalPhysical } from '../../domain/governance/activation/modern-local-inputs.js';
@@ -47,10 +47,10 @@ function retention(origin:string,repositoryId:string,value:BootstrapStateRetenti
 }
 function context(manifest:LiftoffManifestV8) {
   if(manifest.governance.profile==='none')return localInputFailure('Governance-none has no activation record contract.');
-  const leaf=createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({project:manifest.project,framework:manifest.framework});
+  const source=resolveModernManifestSourceContext(manifest);
   return {recordedIdentity:manifest.governance.activationIdentity,profile:manifest.governance.profile,policyVersion:manifest.governance.policyVersion,
-    selection:{...leaf,profile:manifest.governance.profile},
-    pluginResolutionDigest:manifest.plugins.resolutionDigest,activeLayoutDigest:manifest.governance.activationIdentity.activeLayoutDigest};
+    selection:{...source.selection,profile:manifest.governance.profile},
+    pluginResolutionDigest:source.plugins.resolutionDigest,activeLayoutDigest:manifest.governance.activationIdentity.activeLayoutDigest};
 }
 interface CapturedHistory {
   readonly inventories: readonly ReleasedSourceInventory[];
@@ -139,8 +139,7 @@ async function validateCapturedModernActivation(
     return result('released-source',[],null);
   }
   const manifest=reader.parseManifestV8(raw);
-  const core=buildModernManagedCore({selection:{project:manifest.project,framework:manifest.framework,profile:manifest.governance.profile},
-    plugins:manifest.plugins,activeLayout:manifest.activeLayout});
+  const core=buildModernManagedCore(modernProjectSourceInput(manifest));
   for(const artifact of core){
     const observed=bytes(artifact.pathParts,requireCurrentCore);
     const recorded=manifest.managedArtifacts.find(file=>file.logicalName===artifact.logicalName);
@@ -350,8 +349,7 @@ async function collectModernInstalledActivation(root:string):Promise<InstalledLo
       for(const ancestor of source.ancestors)await capture(ancestor.indexPathParts);
     }else if(raw.artifactVersion===8){
       const manifest=reader.parseManifestV8(raw);
-      const core=buildModernManagedCore({selection:{project:manifest.project,framework:manifest.framework,profile:manifest.governance.profile},
-        plugins:manifest.plugins,activeLayout:manifest.activeLayout});
+      const core=buildModernManagedCore(modernProjectSourceInput(manifest));
       for(const artifact of core)await capture(artifact.pathParts);
       if(manifest.sourceManifestHistory?.kind==='manifest-history'){
         const paths=manifestHistoryPaths(manifest.sourceManifestHistory);await capture(paths.indexPathParts);await capture(paths.manifestPathParts);

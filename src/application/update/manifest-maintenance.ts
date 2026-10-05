@@ -10,7 +10,7 @@ import { copySourceHistoryData, copySourceHistoryObservations } from '../../gove
 import { projectCatalog } from '../project/catalog.js';
 import { resolveModernManifestV8SourceContract } from '../project/manifest.js';
 import { createManifestV8Candidate, type ManagedManifestDecision } from '../project/manifest-writer.js';
-import { resolveModernManagedCoreInput, type ModernManagedCoreInput } from '../project/modern-managed-core.js';
+import { resolveModernProjectSourceContext, type ModernProjectSourceInput } from '../project/source-context.js';
 import { readPreservedStandaloneManifest, type CapturedPresentFile } from './manifest-history.js';
 
 export const manifestOnlyAbsentControlPaths = [
@@ -55,7 +55,7 @@ export function readCurrentManifestMaintenanceSource(captures: readonly ProjectF
 }
 
 export function prepareManifestMaintenanceCandidate(
-  original: CapturedPresentFile, selected: ModernManagedCoreInput, managed: readonly ManagedManifestDecision[],
+  original: CapturedPresentFile, selected: ModernProjectSourceInput, managed: readonly ManagedManifestDecision[],
   activationTargetHistory?: ActivationTargetHistoryReference
 ) {
   const [captured] = copySourceHistoryObservations([{
@@ -65,8 +65,8 @@ export function prepareManifestMaintenanceCandidate(
     fail('requires an actual captured source manifest.');
   }
   const source = reader.parseManifestV8(parseHistoryJson(captured.content, 'current source manifest'));
-  const resolved = resolveModernManagedCoreInput(copySourceHistoryData(selected, 'current maintenance selection'));
-  const selection: ModernManagedCoreInput = {
+  const resolved = resolveModernProjectSourceContext(copySourceHistoryData(selected, 'current maintenance selection'));
+  const selection: ModernProjectSourceInput = {
     selection: resolved.selection, plugins: resolved.plugins, activeLayout: resolved.activeLayout
   };
   const recorded = {
@@ -86,7 +86,7 @@ export function prepareManifestMaintenanceCandidate(
 }
 
 export function prepareCurrentManifestMaintenance(
-  captures: readonly ProjectFileSnapshot[], selected: ModernManagedCoreInput, managed: readonly ManagedManifestDecision[]
+  captures: readonly ProjectFileSnapshot[], selected: ModernProjectSourceInput, managed: readonly ManagedManifestDecision[]
 ) {
   const source = readCurrentManifestMaintenanceSource(captures);
   const { manifest, manifestChanged } = prepareManifestMaintenanceCandidate(source.original, selected, managed);

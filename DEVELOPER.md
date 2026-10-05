@@ -347,6 +347,26 @@ loaders or claiming a migration exists. A future governance upgrade must collect
 fresh observations, produce its own authoritative plan, and obtain approvals.
 See [assessment guidance](docs/repository-governance.md#read-only-governance-assessment).
 
+### Shared current source interpretation
+
+Current source metadata is interpreted through
+`src/application/project/source-context.ts`. Reuse its strict
+`resolveModernProjectSourceContext` or `resolveModernManifestSourceContext`
+instead of independently resolving selection, recorded plugins and active
+layout. Finite component/artifact lookups return only explicit bindings;
+missing bindings remain unknown even when a canonical template path exists.
+Custom paths are preserved, and historical generation paths/hashes are not
+current-path authority. `resolveModernManagedCoreInput` remains a compatible
+entry point into this same interpreter. Expected managed bytes still come from
+`buildModernManagedCore`, not from an invented second renderer.
+
+Update, application repair, doctor, installed/local inspection and assessment
+share this metadata interpretation while retaining their independent admission
+rules. Partial bound repair scope is not complete doctor scope, and validated
+v8 metadata does not enable the narrower governance assessment's unsupported
+managed-core/activation proof interpretation. This service performs no project
+observation or execution and grants no ownership, approval or mutation authority.
+
 ### Private whole-project inventory foundation
 
 `src/application/assessment/inventory.ts` exposes `inspectProjectInventory` for

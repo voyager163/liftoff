@@ -70,7 +70,7 @@ Depends on 2-4. References: design D9; liftoff-bundled-plugins, liftoff-cli-work
 Depends on 3-5. References: design D8; liftoff-project-assessment, liftoff-governance-assessment, liftoff-project-doctor.
 
 - [x] 6.1 Implement bounded static inventory for supported application layout, dependencies, framework/agents, CI/infrastructure and documentation; verify no project-script execution, unsafe link traversal, secret/state payload reads or unbounded repository scan.
-- [ ] 6.2 Share explicit active-binding and expected-managed-context interpretation across update, repair, doctor and assessments; verify compatible custom layouts do not become cosmetic migration debt.
+- [x] 6.2 Share explicit active-binding and expected-managed-context interpretation across update, repair, doctor and assessments; verify compatible custom layouts do not become cosmetic migration debt.
 - [ ] 6.3 Add `liftoff assess` and explicit `--governance` comparison target selection, preserving the narrower governance-assess contract; verify target selection is advisory and does not change project profile or query registry latest.
 - [ ] 6.4 Compose stable findings/provenance/coverage and schema-1 reports with deterministic ordering and 0/1/2 outcomes; verify missing evidence, unknown applicability, denied/paginated reads and genuine differences remain distinct.
 - [ ] 6.5 Wire scoped live metadata collection with existing permissions only; verify assessment/help/capabilities stay telemetry/disclosure/receipt-free and never enroll credentials or execute recommendations.

@@ -1,17 +1,17 @@
 import type { LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
-import { modernManifestMatchesObservation, resolveModernManifestV8SourceContract } from '../project/manifest.js';
+import { modernManifestMatchesObservation } from '../project/manifest.js';
+import {
+  findModernActiveArtifactBinding, findModernActiveComponentBinding, resolveModernManifestSourceContext
+} from '../project/source-context.js';
 import type { DoctorLayer } from './doctor.js';
 
 /** Bounded source observation only; doctor does not run or approve project recipes. */
 export async function modernDoctorRuntime(projectRoot: string, manifest: LiftoffManifestV8): Promise<DoctorLayer> {
   const layer: DoctorLayer = { title: 'Runtime', checks: [] };
-  const source = resolveModernManifestV8SourceContract({
-    selection: { project: manifest.project, framework: manifest.framework, profile: manifest.governance.profile },
-    recordedPlugins: manifest.plugins
-  });
+  const context = resolveModernManifestSourceContext(manifest), { source } = context;
   const missing: string[] = source.layoutDescriptor.components.filter(component =>
-    !manifest.activeLayout.bindings.some(binding => binding.kind === 'component' && binding.component === component));
-  if (!manifest.activeLayout.bindings.some(binding => binding.kind === 'artifact' && binding.logicalName === 'docker-compose')) {
+    !findModernActiveComponentBinding(context, component));
+  if (!findModernActiveArtifactBinding(context, 'docker-compose')) {
     missing.push('docker-compose');
   }
   if (manifest.activeLayout.state !== 'bound' || missing.length) {

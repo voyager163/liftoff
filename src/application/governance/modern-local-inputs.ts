@@ -10,11 +10,14 @@ import { ApplicationFiles, ApplicationInspectionError, applicationWithin, canoni
 import { projectCatalog } from '../project/catalog.js';
 import { parseManifest, resolveModernManifestV8SourceContract } from '../project/manifest.js';
 import { buildModernManagedCore } from '../project/modern-managed-core.js';
+import {
+  findModernActiveComponentBinding, modernProjectSourceInput, resolveModernManifestSourceContext
+} from '../project/source-context.js';
 import { createManifestV8Reader, type LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import { manifestActiveLayoutDigest } from '../../domain/project/manifest/layout.js';
 import { exactRecord, isRecord } from '../../domain/project/manifest/fields.js';
 import { toSafeProjectName } from '../../domain/project/planning.js';
-import type { ManifestLayoutBinding } from '../../domain/project/contracts.js';
+import type { ManifestLayoutBinding, ManifestLayoutComponentId } from '../../domain/project/contracts.js';
 import { reviewedRepairTransactionPathParts, reviewedUpdateTransactionPathParts } from '../../domain/project/reviewed-update-artifacts.js';
 import { canonicalJson, canonicalSha256, sha256Hex } from '../../domain/governance/activation/canonical-json.js';
 import { normalizedSeedInput } from '../../domain/governance/activation/inputs.js';
@@ -62,16 +65,10 @@ function text(bytes: Buffer, label: string): string {
   return decoded;
 }
 function selectedSource(manifest: LiftoffManifestV8) {
-  return resolveModernManifestV8SourceContract({
-    selection: { project: manifest.project, framework: manifest.framework, profile: manifest.governance.profile },
-    recordedPlugins: manifest.plugins
-  });
+  return resolveModernManifestSourceContext(manifest).source;
 }
 function verifyManagedInputs(manifest: LiftoffManifestV8, files: ReadonlyMap<string, ModernLocalFile>): void {
-  const core = buildModernManagedCore({
-    selection: { project: manifest.project, framework: manifest.framework, profile: manifest.governance.profile },
-    plugins: manifest.plugins, activeLayout: manifest.activeLayout
-  });
+  const core = buildModernManagedCore(modernProjectSourceInput(manifest));
   for (const artifact of core) {
     const entry = manifest.managedArtifacts.find(file => file.logicalName === artifact.logicalName);
     const observed = files.get(key(artifact.pathParts));
@@ -689,14 +686,15 @@ async function deriveLocalVerification(
   const manifestFile = files.get('liftoff.manifest.json');
   const manifestBytes = manifestFile && capturedFileBytes(manifestFile);
   if (!manifestBytes) localInputFailure('Local snapshot is missing its complete manifest bytes.');
-  const manifest = rootReader.parseManifestV8(jsonContent(text(manifestBytes, 'Manifest'), 'Manifest')), source = selectedSource(manifest);
+  const manifest = rootReader.parseManifestV8(jsonContent(text(manifestBytes, 'Manifest'), 'Manifest'));
+  const sourceContext = resolveModernManifestSourceContext(manifest), { source } = sourceContext;
   const context: ModernLocalContext = manifest.governance.profile === 'none' ? {
     kind: 'governance-none', selectionDigest: `sha256:${canonicalSha256({
       kind: 'liftoff-local-selection', schemaVersion: 1, project: manifest.project, framework: manifest.framework, profile: 'none'
     })}`, pluginResolutionDigest: manifest.plugins.resolutionDigest,
     activeLayoutDigest: manifestActiveLayoutDigest(manifest.activeLayout, source.layoutDescriptor)
   } : { kind: 'governed', identity: manifest.governance.activationIdentity };
-  const bindings: readonly ManifestLayoutBinding[] = [...manifest.activeLayout.bindings];
+  const bindings: readonly ManifestLayoutBinding[] = [...sourceContext.activeLayout.bindings];
   const components: readonly Extract<ManifestLayoutBinding, { kind: 'component' }>[] = bindings.filter(
     (binding): binding is Extract<ManifestLayoutBinding, { kind: 'component' }> => binding.kind === 'component'
   );
@@ -723,8 +721,8 @@ async function deriveLocalVerification(
       command: null, cwdPathParts: [], env: {}, prerequisites: [], effects: [], ...recipe,
       ...(reasons.length ? { status: 'blocked' as const, reasons } : {}) });
   }
-  function component(id: string): readonly string[] {
-    const found = components.find(binding => binding.component === id);
+  function component(id: ManifestLayoutComponentId): readonly string[] {
+    const found = findModernActiveComponentBinding(sourceContext, id);
     if (!found) return localInputFailure(`Selected component ${id} has no explicit active binding.`);
     if (!snapshot.directories.some(directory => key(directory.pathParts) === key(found.pathParts) && directory.exists)) {
       localInputFailure(`Selected component ${id} is missing or uncaptured.`);
