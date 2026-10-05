@@ -63,7 +63,7 @@ describe('current real-project generation', () => {
         expect(artifacts.filter(artifact => artifact.lifecycle === 'seed' || artifact.lifecycle === 'framework')).toEqual([]);
         expect(artifacts.filter(artifact => ['openspec', '.specify', 'specs'].includes(artifact.pathParts[0]!))).toEqual([]);
         const managed = artifacts.filter(artifact => artifact.lifecycle === 'managed-core');
-        expect(managed.length).toBe(governanceProfile === 'none' ? selected.length : 6 + selected.length * 3);
+        expect(managed.length).toBe(governanceProfile === 'none' ? selected.length * 2 : 6 + selected.length * 4);
         expect(manifest.governance.profile).toBe(governanceProfile);
         expect(manifest.governance.state).toBe(governanceProfile === 'none' ? 'disabled' : 'handoff-generated');
         for (const artifact of manifest.managedArtifacts) {

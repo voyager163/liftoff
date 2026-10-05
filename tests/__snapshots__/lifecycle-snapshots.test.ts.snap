@@ -340,7 +340,7 @@ Compose, OpenTofu
 Local development Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
 Infrastructure            OpenTofu for Azure
 
-Artifacts (51)
+Artifacts (52)
 ──────────────
 Artifact                   Lifecycle                  Path
 ─────────────────────────  ─────────────────────────  ──────────────────────────
@@ -429,6 +429,8 @@ openspec-seed-spec         seed                       openspec/changes/bootstrap
                                                       huma-application-baseline/
                                                       spec.md
 openspec-spec-placeholder  seed                       openspec/specs/.gitkeep
+liftoff-assess-copilot     managed-core               .github/prompts/liftoff-as
+                                                      sess.prompt.md
 liftoff-governance-assess  managed-core               .github/prompts/liftoff-go
 -copilot                                              vernance-assess.prompt.md
 liftoff-repair-copilot     managed-core               .github/prompts/liftoff-re
@@ -743,7 +745,7 @@ Approved stack: Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Az
 Local development: Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
 Infrastructure: OpenTofu for Azure
 
-Artifacts (51)
+Artifacts (52)
 Artifact: root-readme | Lifecycle: project (base) | Path: README.md
 Artifact: root-gitignore | Lifecycle: project (base) | Path: .gitignore
 Artifact: root-dockerignore | Lifecycle: project (base) | Path: .dockerignore
@@ -785,6 +787,7 @@ Artifact: openspec-seed-design | Lifecycle: seed | Path: openspec/changes/bootst
 Artifact: openspec-seed-tasks | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/tasks.md
 Artifact: openspec-seed-spec | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/specs/go-huma-application-baseline/spec.md
 Artifact: openspec-spec-placeholder | Lifecycle: seed | Path: openspec/specs/.gitkeep
+Artifact: liftoff-assess-copilot | Lifecycle: managed-core | Path: .github/prompts/liftoff-assess.prompt.md
 Artifact: liftoff-governance-assess-copilot | Lifecycle: managed-core | Path: .github/prompts/liftoff-governance-assess.prompt.md
 Artifact: liftoff-repair-copilot | Lifecycle: managed-core | Path: .github/prompts/liftoff-repair.prompt.md
 Artifact: liftoff-setup-copilot | Lifecycle: managed-core | Path: .github/prompts/liftoff-setup.prompt.md
@@ -1161,7 +1164,7 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │ Local development         Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit        │
 │ Infrastructure            OpenTofu for Azure                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-┌─ Artifacts (51) ─────────────────────────────────────────────────────────────────────────────┐
+┌─ Artifacts (52) ─────────────────────────────────────────────────────────────────────────────┐
 │ Artifact                         Lifecycle                  Path                             │
 │ ───────────────────────────────  ─────────────────────────  ──────────────────────────────── │
 │ root-readme                      project (base)             README.md                        │
@@ -1230,6 +1233,8 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │                                                             ff-preview/specs/go-huma-applica │
 │                                                             tion-baseline/spec.md            │
 │ openspec-spec-placeholder        seed                       openspec/specs/.gitkeep          │
+│ liftoff-assess-copilot           managed-core               .github/prompts/liftoff-assess.p │
+│                                                             rompt.md                         │
 │ liftoff-governance-assess-copil  managed-core               .github/prompts/liftoff-governan │
 │ ot                                                          ce-assess.prompt.md              │
 │ liftoff-repair-copilot           managed-core               .github/prompts/liftoff-repair.p │

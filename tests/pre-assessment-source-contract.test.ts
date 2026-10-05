@@ -4,6 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { createModernPreAssessmentRegistry, modernPreAssessmentRegistry } from '../src/application/project/modern-plugins.js';
 import { parseProjectManifest } from '../src/application/project/manifest.js';
 import { buildModernManagedCore } from '../src/application/project/modern-managed-core.js';
+import { createManifestV8Candidate } from '../src/application/project/manifest-writer.js';
+import { projectAssessmentAgentIntegrations } from '../src/domain/project/catalog.js';
+import { renderProjectAssessmentIntegration } from '../src/generators/governance/integrations.js';
 import { modernProjectSourceInput, resolveModernManifestSourceContext } from '../src/application/project/source-context.js';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { supportedHostPlatforms } from '../src/domain/project/supported-stack.js';
@@ -96,7 +99,42 @@ describe('genuine pre-assessment declaration and managed-body source contract', 
         const digest = createHash('sha256').update(artifact.content).digest('hex');
         expect(artifact.content).toBe(before.bodies[digest]);
       }
+      const candidate = createManifestV8Candidate({
+        origin: 'maintenance', source: manifest,
+        managed: managed.map(artifact => ({
+          kind: 'bytes', logicalName: artifact.logicalName, category: artifact.category,
+          pathParts: artifact.pathParts, content: artifact.content
+        }))
+      });
+      expect(candidate.manifest.plugins).toEqual(manifest.plugins);
+      expect(candidate.manifest.activeLayout).toEqual(manifest.activeLayout);
+      expect(candidate.manifest.managedArtifacts).toEqual(manifest.managedArtifacts);
+      expect(candidate.manifest.projectArtifacts).toEqual(manifest.projectArtifacts);
       expect(canonicalJson(entry.manifest)).toBe(original);
+    }
+  );
+
+  it.each(['github-copilot', 'claude', 'codex'] as const)(
+    'rejects rather than silently discards undeclared %s assessment decisions for a genuine historical source', agent => {
+      const entry = before.cases.find(entry => entry.options.agents?.includes(agent));
+      if (!entry) throw new Error('The genuine capture must include each selected agent host.');
+      const manifest = parseProjectManifest(entry.manifest);
+      if (manifest.artifactVersion !== 8) throw new Error('The genuine capture must contain manifest 8.');
+      const managed = buildModernManagedCore(modernProjectSourceInput(manifest));
+      const integration = projectAssessmentAgentIntegrations[agent];
+      expect(() => createManifestV8Candidate({
+        origin: 'maintenance', source: manifest,
+        managed: [
+          ...managed.map(artifact => ({
+            kind: 'bytes', logicalName: artifact.logicalName, category: artifact.category,
+            pathParts: artifact.pathParts, content: artifact.content
+          })),
+          {
+            kind: 'bytes', logicalName: integration.logicalName, category: 'assessment',
+            pathParts: integration.pathParts, content: renderProjectAssessmentIntegration(agent)
+          }
+        ]
+      })).toThrow('exact applicable target declaration');
     }
   );
 });

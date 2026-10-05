@@ -359,6 +359,10 @@ Custom paths are preserved, and historical generation paths/hashes are not
 current-path authority. `resolveModernManagedCoreInput` remains a compatible
 entry point into this same interpreter. Expected managed bytes still come from
 `buildModernManagedCore`, not from an invented second renderer.
+Manifest writers admit managed decisions only through the resolved source's
+explicit managed declarations, not desired-current composition. Historical
+maintenance preserves its original bodies and metadata; an undeclared new
+contribution must be rejected rather than silently discarded.
 
 Update, application repair, doctor, installed/local inspection and assessment
 share this metadata interpretation while retaining their independent admission
