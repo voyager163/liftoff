@@ -75,7 +75,9 @@ describe('governance responsibility extraction parity', () => {
     const recordedResults = recorded.cli.results as Record<string, unknown>;
     const currentResults = current.results as Record<string, unknown>;
     expect(Object.keys(currentResults)).toEqual(Object.keys(recordedResults));
-    for (const key of Object.keys(recordedResults)) expect(currentResults[key], key).toEqual(recordedResults[key]);
+    for (const key of Object.keys(recordedResults)) {
+      expectReviewedRendering('governance-extraction-cli', key, currentResults[key], recordedResults[key]);
+    }
   }, 120_000);
 });
 

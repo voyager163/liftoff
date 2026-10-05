@@ -172,7 +172,8 @@ describe('recognition is not installed release verification', () => {
     const installed = resolveInstalledManifestBindingContext(selected).plugins;
     expect(manifestPluginMetadataMatches(installed, readManifestPluginMetadata(installed, expectationFromPlan(selected)))).toBe(true);
     for (const [field, value] of [
-      ['apiVersion', 2], ['contentVersion', 2], ['contentDigest', digest('e')]
+      ['apiVersion', installed.selections[0].apiVersion + 1],
+      ['contentVersion', installed.selections[0].contentVersion + 1], ['contentDigest', digest('e')]
     ] as const) {
       const changed = structuredClone(installed);
       Reflect.set(changed.selections[0], field, value);

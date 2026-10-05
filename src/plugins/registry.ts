@@ -2263,8 +2263,13 @@ function resolveInternal(
       };
     })
   };
-  const digest = digestOf({ kind: 'liftoff-plugin-resolution', schemaVersion: 1, pluginApiVersion, ...semantic });
+  const digest = pluginResolutionDigest(semantic);
   return deepFreeze({ ...semantic, hostPlatform: platform as SupportedHostPlatform, digest });
+}
+
+/** Canonical identity only; callers must independently validate the complete resolution semantics. */
+export function pluginResolutionDigest(semantic: Omit<PluginResolution, 'hostPlatform' | 'digest'>): Sha256Digest {
+  return digestOf({ kind: 'liftoff-plugin-resolution', schemaVersion: 1, pluginApiVersion, ...semantic });
 }
 
 function verifyComposition(state: RegistryState, resolutionValue: unknown, artifactsValue: unknown): void {
