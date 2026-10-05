@@ -25,7 +25,7 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | Command | Behavior |
 | --- | --- |
 | `liftoff capabilities --json` | Returns the schema-1 installed command, schema, plugin, profile, recipe and limitation catalog without project discovery, tool probes, telemetry or state writes |
-| `liftoff assess [project] [--governance <profile>] [--json]` | Bounded read-only whole-project comparison against installed targets; unknown runtime, reference and live-proof coverage remains partial |
+| `liftoff assess [project] [--governance <profile>] [--json] [--live]` | Bounded read-only comparison against installed targets; optional scoped GitHub metadata is not conformance or activation proof |
 | `liftoff plan` | Resolves decisions and previews artifacts and requirements without side effects |
 | `liftoff init [project-name]` | Initializes a named child or the exact current Git root through staged readiness and framework setup |
 | `liftoff migrate <source>` | Creates a new sibling scaffold and filtered source copy without changing the source |
@@ -651,13 +651,15 @@ On builds advertising `schemas.projectAssessment`:
 liftoff assess --json
 liftoff assess --project "path with spaces" --governance single-maintainer-gitflow --json
 liftoff assess "./existing application" --governance none
+liftoff assess --project "./existing application" --live --json
 ```
 
 Choose one positional path or `--project`, not both. Without a path, the nearest
 safe Git or Liftoff boundary is selected. Non-Git applications require an
 explicit directory. Linked roots/ancestors, aliases and malformed, unsupported
 or retired inner manifests fail without falling through to an outer project.
-Worktree pointers are presence markers only and are not followed.
+Local inventory treats worktree pointers as presence markers, not scan targets;
+explicit live mode separately verifies Git's selected-root metadata interpretation.
 
 The target displays the installed CLI, policy, bundled plugin catalog and, for
 validated current projects, the selected plugin/layout comparison identities.
@@ -691,9 +693,32 @@ or credential payloads. Two bounded inventory passes and file/metadata
 revalidation detect observed drift; unread payload changes are outside that
 scope. Help needs no project and also skips telemetry/disclosure.
 
-`assess --live` is currently unavailable and fails explicitly without accessing
-accounts. The narrower `governance assess --live` remains a distinct existing
-capability, not a substitute whole-project report. Recommendations separate
+On builds advertising `schemas.projectAssessment.liveMetadata: true` and
+`liveProviders: ["github"]`, explicit `assess --live` collects bounded GitHub
+metadata with existing permissions. It verifies the selected local repository's
+credential-free github.com origin and matching push binding before requests,
+reads only that repository's metadata, applicable main/develop/release/hotfix
+refs and declared current environments, plus fixed GitHub Actions app metadata.
+Foreign, ambiguous, credential-bearing or unobserved Git bindings withhold
+provider requests. An unbound live snapshot stays partial and cannot assert
+`inputsStable: true`. Denied or masked responses remain unobserved, never absence.
+This mode does not discover accounts, runners or Azure resources, enroll
+credentials, install tools, execute project code or write receipts.
+
+Provider observation `source` retains `kind`, `location`, `capturedAt`, optional
+raw 64-hex `digest`, `revision` and `line`, alongside original availability,
+values and facts. Observed provider metadata is distinct from supported
+current-profile evaluation: `supported: false` and `classification: "not-observed"`
+remain explicit, and overall coverage stays partial. Two complete local
+assessments, exact manifest revalidation and final Git reobservation detect
+observed drift; they are not an atomic filesystem/provider snapshot. A failure
+after a provider dispatch explicitly reports attempted access rather than
+claiming no network occurred.
+Local-only limitations are labeled separately in live reports; they do not
+claim the explicitly requested Git/provider reads were absent.
+
+The narrower `governance assess --live` remains a distinct existing capability,
+not a substitute whole-project report. Recommendations separate
 managed update, application repair, adoption, workflow/profile/plugin migration,
 new-environment activation and existing-deployment planning. Only actual
 supported preview routes are supplied; unavailable lanes have no executable

@@ -121,7 +121,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
       project: valueFlag('One exact project path; explicitly select non-Git applications', 'Project', 'path'),
       governance: valueFlag('Advisory comparison profile: none, single-maintainer-gitflow, or team-gitflow; never changes recorded selection', 'Project', 'profile'),
       json: booleanFlag('Emit one schema-1 read-only report; unknown coverage is not a pass', 'Output'),
-      live: booleanFlag('Live whole-project collection is unavailable; this request fails without network or credential access', 'Command'),
+      live: booleanFlag('Explicit bounded GitHub metadata reads with existing permissions; no enrollment, scripts, Azure discovery or conformance proof', 'Command'),
       ...helpFlag
     },
     arguments: [{ syntax: 'project-path', description: 'Selected Liftoff, Git or explicitly identified non-Git project boundary' }],

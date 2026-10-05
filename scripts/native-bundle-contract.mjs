@@ -15,6 +15,8 @@ export const nativeBundleLimits = Object.freeze({
 export const nativeBundleCases = Object.freeze([
   'runs actual help, version and capabilities through direct and linked launchers with an empty PATH',
   'runs every existing installed planning contract without global Node/npm or framework tools',
+  'keeps installed live assessment help project-independent and tool-free',
+  'assesses explicit local and unbound live projects without global tools or project/user-state changes',
   'initializes and validates real Manual/no-agent Go output using external Go, never private Node as a toolchain',
   'still probes and requires external Node/npm for a selected Node workload before writing a project',
   'requires an explicitly selected Manual agent without adding a framework or external Node requirement',

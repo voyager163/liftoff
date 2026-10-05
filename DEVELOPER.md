@@ -333,7 +333,7 @@ When adding a control or evaluator:
   before retention/truncation and fixed live read allowlists and limits.
 - Cover Windows/macOS/Linux paths, CRLF, spaces, case handling, and
   symlink/junction rejection; never execute project YAML, hooks, or scripts.
-- Keep both agent wrappers equivalent and limited to
+- Keep all three agent-host wrappers equivalent and limited to
   `liftoff governance assess --json` or, after explicit live consent,
   `liftoff governance assess --live --json`. Keep `/liftoff-setup` primary.
 - Append exact `liftoff-governance-assess-copilot` and
@@ -373,8 +373,8 @@ observation or execution and grants no ownership, approval or mutation authority
 one private observation source for the bounded public `liftoff assess` producer
 in `application/assessment/engine.ts`. Inventory alone is not conformance,
 adoption or execution support. The existing `governance assess` contract is
-unchanged; in-place adoption and whole-project live metadata collection are
-not implemented by this local producer.
+unchanged; in-place adoption is unavailable, and the local engine does not
+perform provider collection. Explicit live metadata uses a separate coordinator.
 
 The caller selects one explicit real root. The inventory reuses `ApplicationFiles`
 for confined, sorted directory observations, portable alias checks, bounded
@@ -438,7 +438,22 @@ exact metadata/file revalidation fence observed drift. Unread payload changes
 remain unobserved. Current production reports remain partial because runtime
 constraints, reference compatibility, agent behavior, effective governance and
 deployment proof are not evaluated. Local matches are not full compliance.
-`assess --live` currently returns an explicit error without account access.
+`application/assessment/live-report.ts` composes explicit live reports without
+duplicating the existing domain assembler. The bounded effect adapter is
+`adapters/assessment/live.ts`, reusing the existing scoped collector and Git
+inspection. Neutralized ambient Git selectors/configuration, bounded process
+results and verified credential-free origin/push bindings fence local metadata.
+Only the exact repository's GitHub metadata, applicable ref families, declared
+current environments and fixed GitHub Actions app metadata are requested.
+There is no account/runner/Azure discovery or credential enrollment.
+Provider availability, values, facts and first-class source location/time/digest
+remain independent from unsupported current-profile evaluation. Local JSON,
+classification and digest assembly stay unchanged. An observed provider value
+does not become conformance or activation proof.
+Two complete local reports, manifest revalidation and final Git reads detect
+observed drift, not atomic confinement. Failures retain actual provider-dispatch
+attribution; they cannot claim no access after collection. Git overflow, abort,
+signal and unsettled results with a zero exit are unobserved, not passes.
 All assessment/help paths bypass disclosure and every telemetry hook.
 Recommendations identify only real preview routes and their separate consent;
 their argument arrays bind the selected project rather than the caller's cwd.
@@ -446,7 +461,7 @@ Unavailable adoption, workflow/profile/plugin transitions, provider activation
 and deployed-state work have no executable recommendation.
 
 ```bash
-npx vitest run tests/project-assessment-report.test.ts tests/project-assessment-engine.test.ts tests/project-assessment-command.test.ts --maxWorkers=1
+npx vitest run tests/project-assessment-report.test.ts tests/project-assessment-engine.test.ts tests/project-assessment-command.test.ts tests/project-assessment-live.test.ts --maxWorkers=1
 ```
 
 ## Release integrity requirements

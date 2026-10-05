@@ -1,5 +1,5 @@
 import { canonicalJson, canonicalSha256 } from '../governance/activation/canonical-json.js';
-import type { Classification, JsonValue } from '../governance/assessment/types.js';
+import type { Classification, JsonValue, ObservationSource } from '../governance/assessment/types.js';
 
 export type ProjectAssessmentProfile = 'none' | 'single-maintainer-gitflow' | 'team-gitflow';
 export type ProjectAssessmentCategory = 'metadata' | 'layout' | 'dependencies' | 'runtime' |
@@ -21,7 +21,8 @@ export interface ProjectAssessmentTarget {
 export interface ProjectAssessmentObservation {
   availability: 'observed' | 'missing' | 'not-observed';
   value: JsonValue;
-  source: { kind: 'file' | 'inventory' | 'installed-source'; pathParts: string[] | null; digest: string } | null;
+  source: { kind: 'file' | 'inventory' | 'installed-source'; pathParts: string[] | null; digest: string } |
+    (ObservationSource & { kind: 'github' | 'azure' }) | null;
   facts?: JsonValue;
 }
 
@@ -117,4 +118,32 @@ export function assembleProjectAssessmentReport(
   };
   report.resultDigest = canonicalSha256({ ...report, resultDigest: '' });
   return report;
+}
+
+export function providerAssessmentObservation(
+  observation: { availability: ProjectAssessmentObservation['availability']; value: JsonValue; source: ObservationSource | null; facts?: JsonValue }
+): ProjectAssessmentObservation {
+  const provenance = observation.source;
+  if (observation.availability !== 'not-observed' && provenance === null) {
+    throw new Error('Observed live values and absence require complete provider provenance.');
+  }
+  let source: ProjectAssessmentObservation['source'] = null;
+  if (provenance !== null) {
+    const kind = provenance.kind;
+    if (kind !== 'github' && kind !== 'azure') {
+      throw new Error('Live observations require actual provider provenance, not installed-source or file provenance.');
+    }
+    if (!provenance.location || !Number.isFinite(Date.parse(provenance.capturedAt)) ||
+        (provenance.digest !== null && !/^[a-f0-9]{64}$/u.test(provenance.digest)) ||
+        (provenance.revision !== null && !provenance.revision) ||
+        (provenance.line !== null && (!Number.isSafeInteger(provenance.line) || provenance.line < 1))) {
+      throw new Error('Live observations require complete, valid provider provenance.');
+    }
+    source = { ...provenance, kind };
+  }
+  return {
+    availability: observation.availability, value: observation.value,
+    source,
+    ...(observation.facts === undefined ? {} : { facts: observation.facts })
+  };
 }

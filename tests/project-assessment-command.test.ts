@@ -73,12 +73,12 @@ describe('actual public read-only project assessment route', () => {
       expect(canonicalTelemetryCommand(parseArgs(argv))).toBeUndefined();
     }
   );
-  it('returns explicit JSON errors for conflicting paths, invalid profiles and unavailable live scope', async () => {
+  it('returns explicit JSON errors for conflicting paths and invalid local/live comparison profiles before provider access', async () => {
     const root = await fixture();
     for (const argv of [
       ['assess', root, '--project', root, '--json'],
       ['assess', root, '--governance', 'unsupported', '--json'],
-      ['assess', root, '--live', '--json']
+      ['assess', root, '--live', '--governance', 'unsupported', '--json']
     ]) {
       const result = await invoke(argv, root);
       expect(result.code).toBe(1);
@@ -119,11 +119,12 @@ describe('actual public read-only project assessment route', () => {
       expect(hooks.beforeCommand).not.toHaveBeenCalled();
     }
   );
-  it('advertises only the actual bounded local producer and preserves separate governance assessment', () => {
+  it('advertises actual bounded local/live metadata producers without conformance or enrollment and preserves separate governance assessment', () => {
     const capabilities = installedCapabilities();
     expect(capabilities.schemas.projectAssessment).toMatchObject({
-      command: 'assess', report: 1, modes: ['local'], readOnly: true,
-      liveMetadata: false, projectExecution: false, projectWrites: false, telemetry: false
+      command: 'assess', report: 1, modes: ['local', 'live'], readOnly: true,
+      liveMetadata: true, liveProviders: ['github'], liveConformance: false, credentialEnrollment: false,
+      projectExecution: false, projectWrites: false, telemetry: false
     });
     expect(capabilities.schemas.reports.governanceAssessment).toBe(1);
     expect(capabilities.boundaries.publicStatefulMigration).toBe(false);
