@@ -6,6 +6,7 @@ import { modernAssets, modernCore, modernDescriptors, modernGovernanceAssets, mo
 import { builtinOperations } from '../../plugins/builtin/index.js';
 import { modernRelease } from '../../plugins/builtin/modern-release.js';
 import { modernHistoricalRelease } from '../../plugins/builtin/modern-historical-release.js';
+import { modernPreviousRelease } from '../../plugins/builtin/modern-previous-release.js';
 import { pluginRegistryLimits, type PackagedAssetBytes, type PluginRegistry, type PluginResolution } from '../../plugins/contracts.js';
 import { createPluginRegistry, pluginResolutionDigest } from '../../plugins/registry.js';
 import { manifestPluginMetadataMatches, readManifestPluginMetadata, type ManifestPluginMetadata } from '../../domain/project/manifest/plugins.js';
@@ -62,28 +63,30 @@ export function modernSourceRegistry(): PluginRegistry {
   return registry;
 }
 
-/** Recognizes one pinned historical source family, never old template bytes or execution permission. */
+/** Recognizes exact pinned source families, never old template bytes or execution permission. */
 export function matchesHistoricalModernPlugins(recorded: ManifestPluginMetadata, resolution: PluginResolution): boolean {
   const declarationsDigest = `sha256:${canonicalSha256({
     descriptors: modernDescriptors.map(({ contentVersion: _version, ...descriptor }) => descriptor),
     core: modernCore, selectionSpace: modernSelectionSpace, operations: builtinOperations
   })}`;
-  if (declarationsDigest !== modernHistoricalRelease.declarationsDigest ||
-      canonicalJson(resolution.sharedAssets) !== canonicalJson([...modernHistoricalRelease.sharedAssets]
-        .sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0))) {
-    return false;
-  }
-  const plugins = resolution.plugins.map((plugin) => modernHistoricalRelease.plugins.find((entry) =>
-    entry.category === plugin.category && entry.id === plugin.id));
-  if (plugins.some((plugin) => plugin === undefined)) return false;
-  const { hostPlatform: _host, digest: _digest, ...semantic } = resolution;
-  const historical = plugins.filter((plugin) => plugin !== undefined);
-  return manifestPluginMetadataMatches(recorded, readManifestPluginMetadata({
-    schemaVersion: 1,
-    resolutionDigest: pluginResolutionDigest({ ...semantic, plugins: historical }),
-    selections: historical
-  }, {
-    stack: resolution.selection.stack, cloud: resolution.selection.cloud,
-    workflow: resolution.selection.workflow, agents: resolution.selection.agents
-  }));
+  return [modernHistoricalRelease, modernPreviousRelease].some((family) => {
+    if (declarationsDigest !== family.declarationsDigest ||
+        canonicalJson(resolution.sharedAssets) !== canonicalJson([...family.sharedAssets]
+          .sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0))) {
+      return false;
+    }
+    const plugins = resolution.plugins.map((plugin) => family.plugins.find((entry) =>
+      entry.category === plugin.category && entry.id === plugin.id && entry.apiVersion === plugin.apiVersion));
+    if (plugins.some((plugin) => plugin === undefined)) return false;
+    const { hostPlatform: _host, digest: _digest, ...semantic } = resolution;
+    const historical = plugins.filter((plugin) => plugin !== undefined);
+    return manifestPluginMetadataMatches(recorded, readManifestPluginMetadata({
+      schemaVersion: 1,
+      resolutionDigest: pluginResolutionDigest({ ...semantic, plugins: historical }),
+      selections: historical
+    }, {
+      stack: resolution.selection.stack, cloud: resolution.selection.cloud,
+      workflow: resolution.selection.workflow, agents: resolution.selection.agents
+    }));
+  });
 }

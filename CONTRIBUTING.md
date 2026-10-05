@@ -262,6 +262,13 @@ Windows native CI lanes, `npm run smoke:package`,
 the host-gated CI steps, and separately approved live qualification. A passing
 coverage gate does not claim any of them.
 
+Standard Node template CI retains the existing required Linux checks and runs
+the same npm 10.9.4/12.0.2 compatibility pairs natively on macOS and Windows.
+Each lane records actual installation, build, tests and Drizzle metadata
+generation/check commands, immutable template hashes and unchanged generated
+package metadata. Node 22/npm 10 remains a compatibility control, not a change
+to the supported CLI runtime floor. These controls never run database migrations.
+
 CI runs the `CLI coverage gate` and `Telemetry gateway coverage gate` jobs on
 Linux and uploads each evidence directory. Release qualification runs both gates
 before packing the release tarball; the gateway gate runs even when the CLI gate

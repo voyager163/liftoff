@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 
 const read = (parts: string) => readFileSync(new URL(`../${parts}`, import.meta.url), 'utf8');
 const python = 'assets/plugins/python-fastapi';
@@ -12,6 +13,24 @@ function lockedVersion(source: string, name: string) {
 }
 
 describe('reviewed patched template dependency closure', () => {
+  it('retains both required Linux checks and qualifies generated Node projects on all three native hosts', () => {
+    const job = parseYaml(read('.github/workflows/ci.yml')).jobs['standard-node-templates'];
+    expect(job.name).toBe('${{ matrix.check-name }}');
+    expect(job['runs-on']).toBe('${{ matrix.os }}');
+    expect(job['timeout-minutes']).toBe(30);
+    expect(job.strategy['fail-fast']).toBe(false);
+    expect(job.strategy.matrix.include).toEqual(['ubuntu-latest', 'macos-latest', 'windows-latest'].flatMap(os =>
+      [['22.12.0', '10.9.4'], ['24.20.0', '12.0.2']].map(([node, npm]) => ({
+        os, 'node-version': node, 'npm-version': npm,
+        'check-name': os === 'ubuntu-latest' ? `Standard Node templates (npm ${npm})` : `Standard Node templates (${os}, npm ${npm})`
+      }))
+    ));
+    expect(job.steps).toContainEqual(expect.objectContaining({
+      name: 'Store actual generated-project qualification',
+      with: expect.objectContaining({ 'if-no-files-found': 'error' })
+    }));
+  });
+
   it.each(['python-standard', 'python-genai'])('pins patched urllib3 in %s', (template) => {
     expect(lockedVersion(read(`${python}/${template}/uv.lock`), 'urllib3')).toBe('2.8.0');
   });
@@ -37,16 +56,13 @@ describe('reviewed patched template dependency closure', () => {
     expect(baseline.resolved.dependencies.fastify).toBe('5.12.5');
   });
 
-  it('does not hide the reviewed old development-server dependency with a forced major override', () => {
+  it('replaces only the retired loader esbuild dependency with its qualified patched version', () => {
     const manifest = JSON.parse(read(`${node}/package.json`));
     const lock = JSON.parse(read(`${node}/package-lock.json`));
     const policy = JSON.parse(read('security/template-dependency-exceptions.json'));
-    expect(manifest).not.toHaveProperty('overrides');
-    expect(lock.packages['node_modules/@esbuild-kit/core-utils/node_modules/esbuild'].version).toBe('0.18.20');
-    expect(policy.exceptions).toHaveLength(1);
-    expect(policy.exceptions[0]).toMatchObject({
-      advisoryId: 'GHSA-67mh-4wv8-2f99', package: 'esbuild',
-      disposition: 'vulnerable-code-not-used', reviewedAt: '2026-08-31', reviewBy: '2026-11-29'
-    });
+    expect(manifest.overrides).toEqual({ '@esbuild-kit/core-utils': { esbuild: '0.25.12' } });
+    expect(lock.packages['node_modules/@esbuild-kit/core-utils/node_modules/esbuild'].version).toBe('0.25.12');
+    expect(lock.packages['node_modules/@esbuild-kit/core-utils'].dependencies.esbuild).toBe('~0.18.20');
+    expect(policy.exceptions).toHaveLength(0);
   });
 });

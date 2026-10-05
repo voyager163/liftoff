@@ -527,33 +527,42 @@
       "surface": "rendered-artifacts",
       "key": "standard-node-frontend",
       "task": "2.5",
-      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh changes exact dependency templates and honest generation hashes, never frozen historical captures.",
+      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh changes exact dependency templates and honest generation hashes, never frozen historical captures. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "5780fd6078e932e26dae4012c0de099505e5853654ff076ba457b9f78858a651",
-      "currentSha256": "7a63b626fb687d145c198aa3c5bc1c44c1617e8cbddeb3a7b54638c0b5fbdeab",
+      "currentSha256": "8557c3837f2d718c075d28683213e7e1fd1f0b241cc32169438d8dc020475f90",
       "priorChange": {
         "surface": "rendered-artifacts",
         "key": "standard-node-frontend",
-        "task": "5.4",
-        "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+        "task": "2.5",
+        "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh changes exact dependency templates and honest generation hashes, never frozen historical captures.",
         "baselineSha256": "5780fd6078e932e26dae4012c0de099505e5853654ff076ba457b9f78858a651",
-        "currentSha256": "1dc1b7a1c9e7b672de4987d02f43334098a71a70627d397c6754e947831ca06f",
+        "currentSha256": "7a63b626fb687d145c198aa3c5bc1c44c1617e8cbddeb3a7b54638c0b5fbdeab",
         "priorChange": {
           "surface": "rendered-artifacts",
           "key": "standard-node-frontend",
-          "task": "1.5",
-          "reason": "Reviewed credential-capability safety correction: the managed-core repository-governance-guide and liftoff-setup launcher text now state that credential enrollment is unavailable; the manifest records their new managed-core hashes. No other artifact changes.",
+          "task": "5.4",
+          "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
           "baselineSha256": "5780fd6078e932e26dae4012c0de099505e5853654ff076ba457b9f78858a651",
-          "currentSha256": "2230c09357ca361b07eaebea006ee123ca27859c5675bd4da73e7960b05777d8",
-          "changed": [
-            "/artifacts/repository-governance-guide/contentSha256",
-            "/artifacts/repository-governance-guide/artifactSha256",
-            "/artifacts/liftoff-setup-copilot/contentSha256",
-            "/artifacts/liftoff-setup-copilot/artifactSha256",
-            "/artifacts/manifest/contentSha256",
-            "/artifacts/manifest/artifactSha256"
-          ]
+          "currentSha256": "1dc1b7a1c9e7b672de4987d02f43334098a71a70627d397c6754e947831ca06f",
+          "priorChange": {
+            "surface": "rendered-artifacts",
+            "key": "standard-node-frontend",
+            "task": "1.5",
+            "reason": "Reviewed credential-capability safety correction: the managed-core repository-governance-guide and liftoff-setup launcher text now state that credential enrollment is unavailable; the manifest records their new managed-core hashes. No other artifact changes.",
+            "baselineSha256": "5780fd6078e932e26dae4012c0de099505e5853654ff076ba457b9f78858a651",
+            "currentSha256": "2230c09357ca361b07eaebea006ee123ca27859c5675bd4da73e7960b05777d8",
+            "changed": [
+              "/artifacts/repository-governance-guide/contentSha256",
+              "/artifacts/repository-governance-guide/artifactSha256",
+              "/artifacts/liftoff-setup-copilot/contentSha256",
+              "/artifacts/liftoff-setup-copilot/artifactSha256",
+              "/artifacts/manifest/contentSha256",
+              "/artifacts/manifest/artifactSha256"
+            ]
+          }
         }
-      }
+      },
+      "priorCurrentSha256": "7a63b626fb687d145c198aa3c5bc1c44c1617e8cbddeb3a7b54638c0b5fbdeab"
     },
     {
       "surface": "rendered-artifacts",
@@ -913,37 +922,46 @@
       "surface": "rendered-artifacts",
       "key": "standard-node-all-agents",
       "task": "2.5",
-      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh changes exact dependency templates and honest generation hashes, never frozen historical captures.",
+      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh changes exact dependency templates and honest generation hashes, never frozen historical captures. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "e06d6e6cfee21fc2ba2fdb1eeb96b5832f90a5ba85367fc01371533d908be2bf",
-      "currentSha256": "dffe2dcc256b7f1e3c26aa60ffa1e75d8600d7697cdd0634ea47b4c84ab49582",
+      "currentSha256": "38025d7add299bad77b68ae1baf81e129c054d7dbd1ca044e2ef5bf490b61693",
       "priorChange": {
         "surface": "rendered-artifacts",
         "key": "standard-node-all-agents",
-        "task": "5.4",
-        "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+        "task": "2.5",
+        "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh changes exact dependency templates and honest generation hashes, never frozen historical captures.",
         "baselineSha256": "e06d6e6cfee21fc2ba2fdb1eeb96b5832f90a5ba85367fc01371533d908be2bf",
-        "currentSha256": "a4eef2a9979ce74f2f3997b60f63ee4ca968c4eddc10b3b6e6f56fda5788b540",
+        "currentSha256": "dffe2dcc256b7f1e3c26aa60ffa1e75d8600d7697cdd0634ea47b4c84ab49582",
         "priorChange": {
           "surface": "rendered-artifacts",
           "key": "standard-node-all-agents",
-          "task": "1.5",
-          "reason": "Reviewed credential-capability safety correction: the managed-core repository-governance-guide and liftoff-setup launcher text now state that credential enrollment is unavailable; the manifest records their new managed-core hashes. No other artifact changes.",
+          "task": "5.4",
+          "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
           "baselineSha256": "e06d6e6cfee21fc2ba2fdb1eeb96b5832f90a5ba85367fc01371533d908be2bf",
-          "currentSha256": "9e9f4830299cb0e2d3781fc5566731947db0bb1537274772469bb237ba190e49",
-          "changed": [
-            "/artifacts/repository-governance-guide/contentSha256",
-            "/artifacts/repository-governance-guide/artifactSha256",
-            "/artifacts/liftoff-setup-copilot/contentSha256",
-            "/artifacts/liftoff-setup-copilot/artifactSha256",
-            "/artifacts/liftoff-setup-claude/contentSha256",
-            "/artifacts/liftoff-setup-claude/artifactSha256",
-            "/artifacts/liftoff-setup-codex/contentSha256",
-            "/artifacts/liftoff-setup-codex/artifactSha256",
-            "/artifacts/manifest/contentSha256",
-            "/artifacts/manifest/artifactSha256"
-          ]
+          "currentSha256": "a4eef2a9979ce74f2f3997b60f63ee4ca968c4eddc10b3b6e6f56fda5788b540",
+          "priorChange": {
+            "surface": "rendered-artifacts",
+            "key": "standard-node-all-agents",
+            "task": "1.5",
+            "reason": "Reviewed credential-capability safety correction: the managed-core repository-governance-guide and liftoff-setup launcher text now state that credential enrollment is unavailable; the manifest records their new managed-core hashes. No other artifact changes.",
+            "baselineSha256": "e06d6e6cfee21fc2ba2fdb1eeb96b5832f90a5ba85367fc01371533d908be2bf",
+            "currentSha256": "9e9f4830299cb0e2d3781fc5566731947db0bb1537274772469bb237ba190e49",
+            "changed": [
+              "/artifacts/repository-governance-guide/contentSha256",
+              "/artifacts/repository-governance-guide/artifactSha256",
+              "/artifacts/liftoff-setup-copilot/contentSha256",
+              "/artifacts/liftoff-setup-copilot/artifactSha256",
+              "/artifacts/liftoff-setup-claude/contentSha256",
+              "/artifacts/liftoff-setup-claude/artifactSha256",
+              "/artifacts/liftoff-setup-codex/contentSha256",
+              "/artifacts/liftoff-setup-codex/artifactSha256",
+              "/artifacts/manifest/contentSha256",
+              "/artifacts/manifest/artifactSha256"
+            ]
+          }
         }
-      }
+      },
+      "priorCurrentSha256": "dffe2dcc256b7f1e3c26aa60ffa1e75d8600d7697cdd0634ea47b4c84ab49582"
     },
     {
       "surface": "rendered-artifacts",
@@ -1113,9 +1131,9 @@
       "surface": "plugin-generation",
       "key": "m1/node-fastify/openspec/governed/api-only",
       "task": "2.5",
-      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
+      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "dbc43cd4a4c7b00265401ff0ed043c6cab3ff2cb399d27d4a7c36cd7a012f49c",
-      "currentSha256": "3ee8a034778b821648f6e52f4588cb0636ff6443c0a440df6af561de6feca646",
+      "currentSha256": "dc6e83dfb2ea850ec970b33f46193c09eec1431aee91e11c619896e6591c29ce",
       "previous": {
         "artifacts": "sha256:55942cf99b7033ae84a45edf3a58ed3a3add4f3290167214003b86b86daf875a",
         "contents": "sha256:80b2d631921beb6acaaf3215b6c2a56c9f09d406c125d76b9bc112d9d4322521",
@@ -1124,24 +1142,38 @@
       "priorChange": {
         "surface": "plugin-generation",
         "key": "m1/node-fastify/openspec/governed/api-only",
-        "task": "5.4",
-        "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+        "task": "2.5",
+        "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
         "baselineSha256": "dbc43cd4a4c7b00265401ff0ed043c6cab3ff2cb399d27d4a7c36cd7a012f49c",
-        "currentSha256": "0c17cc8a3ceebbcaa3389e45ad1708d6e71ae1a2c5a35ee7def86104ec178988",
+        "currentSha256": "3ee8a034778b821648f6e52f4588cb0636ff6443c0a440df6af561de6feca646",
         "previous": {
           "artifacts": "sha256:55942cf99b7033ae84a45edf3a58ed3a3add4f3290167214003b86b86daf875a",
           "contents": "sha256:80b2d631921beb6acaaf3215b6c2a56c9f09d406c125d76b9bc112d9d4322521",
           "manifest": "sha256:70058cf0a859af30dc771cea76e48ef2506e79369e25c80253a0a748af42bba1"
+        },
+        "priorChange": {
+          "surface": "plugin-generation",
+          "key": "m1/node-fastify/openspec/governed/api-only",
+          "task": "5.4",
+          "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+          "baselineSha256": "dbc43cd4a4c7b00265401ff0ed043c6cab3ff2cb399d27d4a7c36cd7a012f49c",
+          "currentSha256": "0c17cc8a3ceebbcaa3389e45ad1708d6e71ae1a2c5a35ee7def86104ec178988",
+          "previous": {
+            "artifacts": "sha256:55942cf99b7033ae84a45edf3a58ed3a3add4f3290167214003b86b86daf875a",
+            "contents": "sha256:80b2d631921beb6acaaf3215b6c2a56c9f09d406c125d76b9bc112d9d4322521",
+            "manifest": "sha256:70058cf0a859af30dc771cea76e48ef2506e79369e25c80253a0a748af42bba1"
+          }
         }
-      }
+      },
+      "priorCurrentSha256": "3ee8a034778b821648f6e52f4588cb0636ff6443c0a440df6af561de6feca646"
     },
     {
       "surface": "plugin-generation",
       "key": "m1/node-fastify/openspec/governed/frontend",
       "task": "2.5",
-      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
+      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "260fe600de786ff1c4e4729daa4dada52b0df5ddcac4def6405482a02a8c80b6",
-      "currentSha256": "45477faf4e9f07ee7bd4cffccc023793786cc013061c3c0686ace4410145fd4a",
+      "currentSha256": "510fa239be3cabf3e8fc1e7ee6ffc28030ce84c126cbb20199aac7f5d04e8f6c",
       "previous": {
         "artifacts": "sha256:ade0d5ba19a422a24d9a712e6d0c377fc63010c91be5f10c2ad1054149811294",
         "contents": "sha256:fb50aa689d4f8e4395d19685087138fa1dd5d7022dcd0894edb8a529121da39c",
@@ -1150,24 +1182,38 @@
       "priorChange": {
         "surface": "plugin-generation",
         "key": "m1/node-fastify/openspec/governed/frontend",
-        "task": "5.4",
-        "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+        "task": "2.5",
+        "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
         "baselineSha256": "260fe600de786ff1c4e4729daa4dada52b0df5ddcac4def6405482a02a8c80b6",
-        "currentSha256": "1946bfabfaaa1e7e9bd982ce85fb5aaeded87b010645c2b391e1a232fc4afdc8",
+        "currentSha256": "45477faf4e9f07ee7bd4cffccc023793786cc013061c3c0686ace4410145fd4a",
         "previous": {
           "artifacts": "sha256:ade0d5ba19a422a24d9a712e6d0c377fc63010c91be5f10c2ad1054149811294",
           "contents": "sha256:fb50aa689d4f8e4395d19685087138fa1dd5d7022dcd0894edb8a529121da39c",
           "manifest": "sha256:31a1ecf89554d57fe7914003b40ee822b1926037a9201f43fbe08181e70f5427"
+        },
+        "priorChange": {
+          "surface": "plugin-generation",
+          "key": "m1/node-fastify/openspec/governed/frontend",
+          "task": "5.4",
+          "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+          "baselineSha256": "260fe600de786ff1c4e4729daa4dada52b0df5ddcac4def6405482a02a8c80b6",
+          "currentSha256": "1946bfabfaaa1e7e9bd982ce85fb5aaeded87b010645c2b391e1a232fc4afdc8",
+          "previous": {
+            "artifacts": "sha256:ade0d5ba19a422a24d9a712e6d0c377fc63010c91be5f10c2ad1054149811294",
+            "contents": "sha256:fb50aa689d4f8e4395d19685087138fa1dd5d7022dcd0894edb8a529121da39c",
+            "manifest": "sha256:31a1ecf89554d57fe7914003b40ee822b1926037a9201f43fbe08181e70f5427"
+          }
         }
-      }
+      },
+      "priorCurrentSha256": "45477faf4e9f07ee7bd4cffccc023793786cc013061c3c0686ace4410145fd4a"
     },
     {
       "surface": "plugin-generation",
       "key": "m1/node-fastify/spec-kit/governed/api-only",
       "task": "2.5",
-      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
+      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "54bceffa1e2cdd1a46a77315470bf6328d84991a5e720eda25c48f02f448ab42",
-      "currentSha256": "60a8b872b79991c3ba62efd38af7866735325e2a5d570824d4d457a0f219ac97",
+      "currentSha256": "2ff06c9f96e98f1f60d1876ad31e761dfacd03cf0b7893d0c91a00e82605f66f",
       "previous": {
         "artifacts": "sha256:e53c1d97ce85ab37d2d2ea630490e1884f36c98b86ae3ba2f24e779b276c5cb0",
         "contents": "sha256:effc0698bcf2c9f77e6f93d6bc8417281eaf410a2a07e6405829bf6dab71735d",
@@ -1176,24 +1222,38 @@
       "priorChange": {
         "surface": "plugin-generation",
         "key": "m1/node-fastify/spec-kit/governed/api-only",
-        "task": "5.4",
-        "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+        "task": "2.5",
+        "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
         "baselineSha256": "54bceffa1e2cdd1a46a77315470bf6328d84991a5e720eda25c48f02f448ab42",
-        "currentSha256": "8bab61185cd8e57cf1a352c467acdd7391ad889b195cc256696425d2412224bb",
+        "currentSha256": "60a8b872b79991c3ba62efd38af7866735325e2a5d570824d4d457a0f219ac97",
         "previous": {
           "artifacts": "sha256:e53c1d97ce85ab37d2d2ea630490e1884f36c98b86ae3ba2f24e779b276c5cb0",
           "contents": "sha256:effc0698bcf2c9f77e6f93d6bc8417281eaf410a2a07e6405829bf6dab71735d",
           "manifest": "sha256:422a6bb791e94e3d53b4bbdd0a3e9271c4ba7bba68534ae819b9f3d7f500160c"
+        },
+        "priorChange": {
+          "surface": "plugin-generation",
+          "key": "m1/node-fastify/spec-kit/governed/api-only",
+          "task": "5.4",
+          "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+          "baselineSha256": "54bceffa1e2cdd1a46a77315470bf6328d84991a5e720eda25c48f02f448ab42",
+          "currentSha256": "8bab61185cd8e57cf1a352c467acdd7391ad889b195cc256696425d2412224bb",
+          "previous": {
+            "artifacts": "sha256:e53c1d97ce85ab37d2d2ea630490e1884f36c98b86ae3ba2f24e779b276c5cb0",
+            "contents": "sha256:effc0698bcf2c9f77e6f93d6bc8417281eaf410a2a07e6405829bf6dab71735d",
+            "manifest": "sha256:422a6bb791e94e3d53b4bbdd0a3e9271c4ba7bba68534ae819b9f3d7f500160c"
+          }
         }
-      }
+      },
+      "priorCurrentSha256": "60a8b872b79991c3ba62efd38af7866735325e2a5d570824d4d457a0f219ac97"
     },
     {
       "surface": "plugin-generation",
       "key": "m1/node-fastify/spec-kit/governed/frontend",
       "task": "2.5",
-      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
+      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "55f92c17dd3998cd3a868cc7df680cc6164da6aed4304f517f40d87a3d7d80cb",
-      "currentSha256": "78da1b206199353070dbad91f518dcd623c3912ccfc8b4b89b7334c513506eee",
+      "currentSha256": "964c76a80bc64b450dd7c9c1c5029db4b209dedd05b0038bebecf388f49278c3",
       "previous": {
         "artifacts": "sha256:4238cb35135d69f345511004588e63da960ff13d42e066425dfa3c9bb5fe15d4",
         "contents": "sha256:bc748cc3df86ef9fc63185108593a11a3ca29e835480d1edb1a1f876e2353f01",
@@ -1202,16 +1262,30 @@
       "priorChange": {
         "surface": "plugin-generation",
         "key": "m1/node-fastify/spec-kit/governed/frontend",
-        "task": "5.4",
-        "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+        "task": "2.5",
+        "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
         "baselineSha256": "55f92c17dd3998cd3a868cc7df680cc6164da6aed4304f517f40d87a3d7d80cb",
-        "currentSha256": "d5f60b7338b99841480579cf51a4b984679f9aec47479f0933621fdf8106a8d9",
+        "currentSha256": "78da1b206199353070dbad91f518dcd623c3912ccfc8b4b89b7334c513506eee",
         "previous": {
           "artifacts": "sha256:4238cb35135d69f345511004588e63da960ff13d42e066425dfa3c9bb5fe15d4",
           "contents": "sha256:bc748cc3df86ef9fc63185108593a11a3ca29e835480d1edb1a1f876e2353f01",
           "manifest": "sha256:9fca4fdb419b33681804f496e6c354994baaa22ce10f6d749d9b2e8b91e487f9"
+        },
+        "priorChange": {
+          "surface": "plugin-generation",
+          "key": "m1/node-fastify/spec-kit/governed/frontend",
+          "task": "5.4",
+          "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+          "baselineSha256": "55f92c17dd3998cd3a868cc7df680cc6164da6aed4304f517f40d87a3d7d80cb",
+          "currentSha256": "d5f60b7338b99841480579cf51a4b984679f9aec47479f0933621fdf8106a8d9",
+          "previous": {
+            "artifacts": "sha256:4238cb35135d69f345511004588e63da960ff13d42e066425dfa3c9bb5fe15d4",
+            "contents": "sha256:bc748cc3df86ef9fc63185108593a11a3ca29e835480d1edb1a1f876e2353f01",
+            "manifest": "sha256:9fca4fdb419b33681804f496e6c354994baaa22ce10f6d749d9b2e8b91e487f9"
+          }
         }
-      }
+      },
+      "priorCurrentSha256": "78da1b206199353070dbad91f518dcd623c3912ccfc8b4b89b7334c513506eee"
     },
     {
       "surface": "plugin-generation",
@@ -3167,9 +3241,9 @@
       "surface": "plugin-generation",
       "key": "m4/name-my-app-2-node",
       "task": "2.5",
-      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
+      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "0c0eef8ed54488592de804c365d9817ff90aed81fcb27b8625ce05c89f0a8a36",
-      "currentSha256": "89da12534b1e9e03b588e38c6696735bd782a963cd416f732f02eae6690e2e73",
+      "currentSha256": "9a33e2de3a3c2d791636b2ca818dd8d3db735fa61761fa6a1a2b5008d61c3bf7",
       "previous": {
         "artifacts": "sha256:92a3dfed8c74d39535501a328acc6a3e743505be300b36bc8ade25a5bc2b8497",
         "contents": "sha256:5fa24f4ae087ef77c0316502a70ac10a92c11bbafd7d7460fd5b149250e5fbae",
@@ -3178,24 +3252,38 @@
       "priorChange": {
         "surface": "plugin-generation",
         "key": "m4/name-my-app-2-node",
-        "task": "5.4",
-        "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+        "task": "2.5",
+        "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
         "baselineSha256": "0c0eef8ed54488592de804c365d9817ff90aed81fcb27b8625ce05c89f0a8a36",
-        "currentSha256": "f0a102d3a1f5a53f219e9ae9324b8df21927d55844cda3d6dc829c9a78f31e1b",
+        "currentSha256": "89da12534b1e9e03b588e38c6696735bd782a963cd416f732f02eae6690e2e73",
         "previous": {
           "artifacts": "sha256:92a3dfed8c74d39535501a328acc6a3e743505be300b36bc8ade25a5bc2b8497",
           "contents": "sha256:5fa24f4ae087ef77c0316502a70ac10a92c11bbafd7d7460fd5b149250e5fbae",
           "manifest": "sha256:30a66335989f37ccc9ca9eba34624be7ae1bba07eea007ce4252efa4ed4379a1"
+        },
+        "priorChange": {
+          "surface": "plugin-generation",
+          "key": "m4/name-my-app-2-node",
+          "task": "5.4",
+          "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+          "baselineSha256": "0c0eef8ed54488592de804c365d9817ff90aed81fcb27b8625ce05c89f0a8a36",
+          "currentSha256": "f0a102d3a1f5a53f219e9ae9324b8df21927d55844cda3d6dc829c9a78f31e1b",
+          "previous": {
+            "artifacts": "sha256:92a3dfed8c74d39535501a328acc6a3e743505be300b36bc8ade25a5bc2b8497",
+            "contents": "sha256:5fa24f4ae087ef77c0316502a70ac10a92c11bbafd7d7460fd5b149250e5fbae",
+            "manifest": "sha256:30a66335989f37ccc9ca9eba34624be7ae1bba07eea007ce4252efa4ed4379a1"
+          }
         }
-      }
+      },
+      "priorCurrentSha256": "89da12534b1e9e03b588e38c6696735bd782a963cd416f732f02eae6690e2e73"
     },
     {
       "surface": "plugin-generation",
       "key": "m4/name-cafe-omega-node",
       "task": "2.5",
-      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
+      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "7de54d301169c5979d09b65f1f43ff5f58ed936865c3b686fb8a4d2cf6ce8f7a",
-      "currentSha256": "8dec77416c703ab9a9dc8e2f44f51a7ce5e32f69b3bcc7a98f8d8c4066e34e80",
+      "currentSha256": "5fc95e84601b60c402499ca684e2667765dddd9ec18f391866d9e6d760e1ec83",
       "previous": {
         "artifacts": "sha256:1ebe8190d5c183cca4e265e1c835ae517c8cd9760dbc5832a4e3e9fe3ff59700",
         "contents": "sha256:c04996c5fc8f56aec69c803e8c1522cc2664f8625159a0c7bcb1ff098f7cc655",
@@ -3204,24 +3292,38 @@
       "priorChange": {
         "surface": "plugin-generation",
         "key": "m4/name-cafe-omega-node",
-        "task": "5.4",
-        "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+        "task": "2.5",
+        "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
         "baselineSha256": "7de54d301169c5979d09b65f1f43ff5f58ed936865c3b686fb8a4d2cf6ce8f7a",
-        "currentSha256": "e7859685f826818bcf52706a064a919ae20050005a95c88a0b7e75ac2e1a56e6",
+        "currentSha256": "8dec77416c703ab9a9dc8e2f44f51a7ce5e32f69b3bcc7a98f8d8c4066e34e80",
         "previous": {
           "artifacts": "sha256:1ebe8190d5c183cca4e265e1c835ae517c8cd9760dbc5832a4e3e9fe3ff59700",
           "contents": "sha256:c04996c5fc8f56aec69c803e8c1522cc2664f8625159a0c7bcb1ff098f7cc655",
           "manifest": "sha256:b98fe38cb70b8f42efe3074e1906029f859928e7c43a15adb26434e41425a2a8"
+        },
+        "priorChange": {
+          "surface": "plugin-generation",
+          "key": "m4/name-cafe-omega-node",
+          "task": "5.4",
+          "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+          "baselineSha256": "7de54d301169c5979d09b65f1f43ff5f58ed936865c3b686fb8a4d2cf6ce8f7a",
+          "currentSha256": "e7859685f826818bcf52706a064a919ae20050005a95c88a0b7e75ac2e1a56e6",
+          "previous": {
+            "artifacts": "sha256:1ebe8190d5c183cca4e265e1c835ae517c8cd9760dbc5832a4e3e9fe3ff59700",
+            "contents": "sha256:c04996c5fc8f56aec69c803e8c1522cc2664f8625159a0c7bcb1ff098f7cc655",
+            "manifest": "sha256:b98fe38cb70b8f42efe3074e1906029f859928e7c43a15adb26434e41425a2a8"
+          }
         }
-      }
+      },
+      "priorCurrentSha256": "8dec77416c703ab9a9dc8e2f44f51a7ce5e32f69b3bcc7a98f8d8c4066e34e80"
     },
     {
       "surface": "plugin-generation",
       "key": "m4/name-punctuation-only-node",
       "task": "2.5",
-      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
+      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "34a405bc31aa68bec3fca6129c0eacce5e349488642aa2b96d485d8e561d3f42",
-      "currentSha256": "a09fb83cc699e632bed769a6cb84350b3c121d8e73835822db47a806a63efa16",
+      "currentSha256": "086963024ec74652d95ab181b5283ea64da2c596100973f53bb7ebbd4227ddd5",
       "previous": {
         "artifacts": "sha256:2a1fd8543041a594452dab264de21fe904249ad001d0a754aa55dbbd14f629eb",
         "contents": "sha256:34cc9a0fefcba7bd2304f23568330099131e8b9bfb0876dbec9c47165bb58fef",
@@ -3230,24 +3332,38 @@
       "priorChange": {
         "surface": "plugin-generation",
         "key": "m4/name-punctuation-only-node",
-        "task": "5.4",
-        "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+        "task": "2.5",
+        "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
         "baselineSha256": "34a405bc31aa68bec3fca6129c0eacce5e349488642aa2b96d485d8e561d3f42",
-        "currentSha256": "07f4812c9ad2cc6a1f4c815fa4252f99091350f4fad3ef09ed8a71570ff44a9b",
+        "currentSha256": "a09fb83cc699e632bed769a6cb84350b3c121d8e73835822db47a806a63efa16",
         "previous": {
           "artifacts": "sha256:2a1fd8543041a594452dab264de21fe904249ad001d0a754aa55dbbd14f629eb",
           "contents": "sha256:34cc9a0fefcba7bd2304f23568330099131e8b9bfb0876dbec9c47165bb58fef",
           "manifest": "sha256:a82d01b835f45a51293e8f31ae9eca400e68d2ba1e0909d51a9cdb6c86c177f9"
+        },
+        "priorChange": {
+          "surface": "plugin-generation",
+          "key": "m4/name-punctuation-only-node",
+          "task": "5.4",
+          "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+          "baselineSha256": "34a405bc31aa68bec3fca6129c0eacce5e349488642aa2b96d485d8e561d3f42",
+          "currentSha256": "07f4812c9ad2cc6a1f4c815fa4252f99091350f4fad3ef09ed8a71570ff44a9b",
+          "previous": {
+            "artifacts": "sha256:2a1fd8543041a594452dab264de21fe904249ad001d0a754aa55dbbd14f629eb",
+            "contents": "sha256:34cc9a0fefcba7bd2304f23568330099131e8b9bfb0876dbec9c47165bb58fef",
+            "manifest": "sha256:a82d01b835f45a51293e8f31ae9eca400e68d2ba1e0909d51a9cdb6c86c177f9"
+          }
         }
-      }
+      },
+      "priorCurrentSha256": "a09fb83cc699e632bed769a6cb84350b3c121d8e73835822db47a806a63efa16"
     },
     {
       "surface": "plugin-generation",
       "key": "m4/name-160-x-node",
       "task": "2.5",
-      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
+      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "845dc082ecc103bec726f6f09c27a5533d0c8c7f280333168cb0d6f1ace4d8ab",
-      "currentSha256": "8bd64c07987686e04d62bd9598c5f3fdc380f65eaca9370ac5c2aa07505783d2",
+      "currentSha256": "3eb912076d25e47de17e7b1aa8d478ae747f8f64ec32a699fb87f151808541dd",
       "previous": {
         "artifacts": "sha256:497ed976c27379b90e6670a4328a5c409c01ad6a8ab5bc1d67770610dd670da5",
         "contents": "sha256:75bd9d2f0585a7744786f423d0d4ea178f234c000670104d58c9751d65cad7dc",
@@ -3256,16 +3372,30 @@
       "priorChange": {
         "surface": "plugin-generation",
         "key": "m4/name-160-x-node",
-        "task": "5.4",
-        "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+        "task": "2.5",
+        "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged. Security refresh updates only project-owned dependency bytes and their generation provenance; original snapshots remain unchanged.",
         "baselineSha256": "845dc082ecc103bec726f6f09c27a5533d0c8c7f280333168cb0d6f1ace4d8ab",
-        "currentSha256": "0e229c40fb5b26319186fcb939a07ee44b5bd5966bbed6b48c5ca5929d977b0b",
+        "currentSha256": "8bd64c07987686e04d62bd9598c5f3fdc380f65eaca9370ac5c2aa07505783d2",
         "previous": {
           "artifacts": "sha256:497ed976c27379b90e6670a4328a5c409c01ad6a8ab5bc1d67770610dd670da5",
           "contents": "sha256:75bd9d2f0585a7744786f423d0d4ea178f234c000670104d58c9751d65cad7dc",
           "manifest": "sha256:c8cd0f6d4e7316c488493dccb9ca5ee73ae21a55d6f28406eb97bfb3363d484a"
+        },
+        "priorChange": {
+          "surface": "plugin-generation",
+          "key": "m4/name-160-x-node",
+          "task": "5.4",
+          "reason": "Public agent contentVersion3 adds capability-first setup/assessment guidance. Only those six managed integration bodies and their enclosing manifest content hashes change; native paths, ownership, original captures and private modern contentVersion2 remain unchanged.",
+          "baselineSha256": "845dc082ecc103bec726f6f09c27a5533d0c8c7f280333168cb0d6f1ace4d8ab",
+          "currentSha256": "0e229c40fb5b26319186fcb939a07ee44b5bd5966bbed6b48c5ca5929d977b0b",
+          "previous": {
+            "artifacts": "sha256:497ed976c27379b90e6670a4328a5c409c01ad6a8ab5bc1d67770610dd670da5",
+            "contents": "sha256:75bd9d2f0585a7744786f423d0d4ea178f234c000670104d58c9751d65cad7dc",
+            "manifest": "sha256:c8cd0f6d4e7316c488493dccb9ca5ee73ae21a55d6f28406eb97bfb3363d484a"
+          }
         }
-      }
+      },
+      "priorCurrentSha256": "8bd64c07987686e04d62bd9598c5f3fdc380f65eaca9370ac5c2aa07505783d2"
     },
     {
       "surface": "plugin-generation",
@@ -3547,52 +3677,108 @@
       "surface": "plugin-generation",
       "key": "m1/node-fastify/openspec/ungoverned/api-only",
       "task": "2.5",
-      "reason": "Security refresh updates only project-owned dependency bytes and generation provenance; original snapshots remain unchanged.",
+      "reason": "Security refresh updates only project-owned dependency bytes and generation provenance; original snapshots remain unchanged. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "cf6897617987d63d8b437bb7883826b32643bed960f6f0d16ed642c5cbbb9d36",
-      "currentSha256": "443aee788f17e23d01fc5f6349b068361896225f1ec70f431b28dd08c462285b",
+      "currentSha256": "c4ec7b3dd5b8a580a6449d54220fd1b0d7ba346871cc2ea88ca94e79718b3689",
       "previous": {
         "artifacts": "sha256:ee33110807dd975a2e7f2dc481d5ffc1c7034abc95dc25362405b5281b45950c",
         "contents": "sha256:dd872be61a9d6f55e5e26275a7b517b035b29bdb8f4ee11755e2a604449a79fa",
         "manifest": "sha256:1acd508bc663fa730ca6df5a908e5f2cb0d2e45c82eaa2f9763c0a3ab6cbeb98"
+      },
+      "priorCurrentSha256": "443aee788f17e23d01fc5f6349b068361896225f1ec70f431b28dd08c462285b",
+      "priorChange": {
+        "surface": "plugin-generation",
+        "key": "m1/node-fastify/openspec/ungoverned/api-only",
+        "task": "2.5",
+        "reason": "Security refresh updates only project-owned dependency bytes and generation provenance; original snapshots remain unchanged.",
+        "baselineSha256": "cf6897617987d63d8b437bb7883826b32643bed960f6f0d16ed642c5cbbb9d36",
+        "currentSha256": "443aee788f17e23d01fc5f6349b068361896225f1ec70f431b28dd08c462285b",
+        "previous": {
+          "artifacts": "sha256:ee33110807dd975a2e7f2dc481d5ffc1c7034abc95dc25362405b5281b45950c",
+          "contents": "sha256:dd872be61a9d6f55e5e26275a7b517b035b29bdb8f4ee11755e2a604449a79fa",
+          "manifest": "sha256:1acd508bc663fa730ca6df5a908e5f2cb0d2e45c82eaa2f9763c0a3ab6cbeb98"
+        }
       }
     },
     {
       "surface": "plugin-generation",
       "key": "m1/node-fastify/openspec/ungoverned/frontend",
       "task": "2.5",
-      "reason": "Security refresh updates only project-owned dependency bytes and generation provenance; original snapshots remain unchanged.",
+      "reason": "Security refresh updates only project-owned dependency bytes and generation provenance; original snapshots remain unchanged. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "552d98430b8e6d2aa080fe978eebf5a4fb02f25f3c7c872010d4485fb4b5bd56",
-      "currentSha256": "f77bd983c185c6ff7e7c3bfd699f1b5a7874ec7e14356b30fe687a69dd606100",
+      "currentSha256": "24deed4ddab1a2964643d627fad90d9f94c1788bc057d7f1e0390780a161c8f1",
       "previous": {
         "artifacts": "sha256:a044803ab51a55bdde3f8acdc2ff82d4387a2422e1035a818a4a6496cda3eb10",
         "contents": "sha256:25af9ac1ad5ce04ff70eaae0f5e537bb9ca810354c1bfebe91df9fffde3cced2",
         "manifest": "sha256:2192cfac1dec0c19d61ff81a07f531a5a8dedd54dc8900c2e5802acd12f31cff"
+      },
+      "priorCurrentSha256": "f77bd983c185c6ff7e7c3bfd699f1b5a7874ec7e14356b30fe687a69dd606100",
+      "priorChange": {
+        "surface": "plugin-generation",
+        "key": "m1/node-fastify/openspec/ungoverned/frontend",
+        "task": "2.5",
+        "reason": "Security refresh updates only project-owned dependency bytes and generation provenance; original snapshots remain unchanged.",
+        "baselineSha256": "552d98430b8e6d2aa080fe978eebf5a4fb02f25f3c7c872010d4485fb4b5bd56",
+        "currentSha256": "f77bd983c185c6ff7e7c3bfd699f1b5a7874ec7e14356b30fe687a69dd606100",
+        "previous": {
+          "artifacts": "sha256:a044803ab51a55bdde3f8acdc2ff82d4387a2422e1035a818a4a6496cda3eb10",
+          "contents": "sha256:25af9ac1ad5ce04ff70eaae0f5e537bb9ca810354c1bfebe91df9fffde3cced2",
+          "manifest": "sha256:2192cfac1dec0c19d61ff81a07f531a5a8dedd54dc8900c2e5802acd12f31cff"
+        }
       }
     },
     {
       "surface": "plugin-generation",
       "key": "m1/node-fastify/spec-kit/ungoverned/api-only",
       "task": "2.5",
-      "reason": "Security refresh updates only project-owned dependency bytes and generation provenance; original snapshots remain unchanged.",
+      "reason": "Security refresh updates only project-owned dependency bytes and generation provenance; original snapshots remain unchanged. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "bb06465b976055e471c7a75b30c33097c0075acb35bb8a053c1f1e6650480c80",
-      "currentSha256": "1058cd1164bd44cb995a8fe0b1222e9cf68e6e84b134033c28f58e41896079a1",
+      "currentSha256": "e5d7338635ce505b19d668a94115ba707edbdb98d41a0068564bb7508190ea5c",
       "previous": {
         "artifacts": "sha256:7010aae70ca010f5df9dc06a4e7719438874d9a290daf377bf0482b311dfdf81",
         "contents": "sha256:fc940ca63a4aead8721fccc166577741135ad8b2cdbbf6af905da6c770a18f50",
         "manifest": "sha256:c788c8024c419d59065bf1a0cb1a57dc96edd4f1e7daaa59f8301223fcdbb886"
+      },
+      "priorCurrentSha256": "1058cd1164bd44cb995a8fe0b1222e9cf68e6e84b134033c28f58e41896079a1",
+      "priorChange": {
+        "surface": "plugin-generation",
+        "key": "m1/node-fastify/spec-kit/ungoverned/api-only",
+        "task": "2.5",
+        "reason": "Security refresh updates only project-owned dependency bytes and generation provenance; original snapshots remain unchanged.",
+        "baselineSha256": "bb06465b976055e471c7a75b30c33097c0075acb35bb8a053c1f1e6650480c80",
+        "currentSha256": "1058cd1164bd44cb995a8fe0b1222e9cf68e6e84b134033c28f58e41896079a1",
+        "previous": {
+          "artifacts": "sha256:7010aae70ca010f5df9dc06a4e7719438874d9a290daf377bf0482b311dfdf81",
+          "contents": "sha256:fc940ca63a4aead8721fccc166577741135ad8b2cdbbf6af905da6c770a18f50",
+          "manifest": "sha256:c788c8024c419d59065bf1a0cb1a57dc96edd4f1e7daaa59f8301223fcdbb886"
+        }
       }
     },
     {
       "surface": "plugin-generation",
       "key": "m1/node-fastify/spec-kit/ungoverned/frontend",
       "task": "2.5",
-      "reason": "Security refresh updates only project-owned dependency bytes and generation provenance; original snapshots remain unchanged.",
+      "reason": "Security refresh updates only project-owned dependency bytes and generation provenance; original snapshots remain unchanged. The reviewed Node content-only successor scopes esbuild 0.25.12 to @esbuild-kit/core-utils; only its package/lock bytes and resulting generation hashes change. Artifact identities, ownership, original captures and previous accepted records remain intact.",
       "baselineSha256": "0b95c6731738f9a8834452fef482c1f305a668eee749a77921648117800cd62d",
-      "currentSha256": "5c4d5e3b6035fb9c09152148807c672973d06bbc8eebe66f6003e631b59f537f",
+      "currentSha256": "d33b25e83e601f4061256da11feaa120f2b40a6ee4fc8f4d609a85560851d07d",
       "previous": {
         "artifacts": "sha256:dac85603158c26ac6a30bb97117992db5408c0297452c269043bcca2ea0dbb26",
         "contents": "sha256:f116069d795c95a46716b08705b224ccf02f25f1d861e23f907a0d927d952741",
         "manifest": "sha256:1aeb4fc4511165fe7b39dff328f1d5ff06a9502772d358d409ca2dd5907234b2"
+      },
+      "priorCurrentSha256": "5c4d5e3b6035fb9c09152148807c672973d06bbc8eebe66f6003e631b59f537f",
+      "priorChange": {
+        "surface": "plugin-generation",
+        "key": "m1/node-fastify/spec-kit/ungoverned/frontend",
+        "task": "2.5",
+        "reason": "Security refresh updates only project-owned dependency bytes and generation provenance; original snapshots remain unchanged.",
+        "baselineSha256": "0b95c6731738f9a8834452fef482c1f305a668eee749a77921648117800cd62d",
+        "currentSha256": "5c4d5e3b6035fb9c09152148807c672973d06bbc8eebe66f6003e631b59f537f",
+        "previous": {
+          "artifacts": "sha256:dac85603158c26ac6a30bb97117992db5408c0297452c269043bcca2ea0dbb26",
+          "contents": "sha256:f116069d795c95a46716b08705b224ccf02f25f1d861e23f907a0d927d952741",
+          "manifest": "sha256:1aeb4fc4511165fe7b39dff328f1d5ff06a9502772d358d409ca2dd5907234b2"
+        }
       }
     },
     {

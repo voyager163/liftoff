@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import spawn from 'cross-spawn';
@@ -7,21 +8,35 @@ import { buildProjectPlan } from '../dist/planner.js';
 import { buildArtifacts } from '../dist/templates.js';
 import { writeArtifacts } from '../dist/file-system.js';
 
-const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-standard-node-'));
-const projectRoot = path.join(await realpath(tempRoot), 'verified-standard-app');
 const npmCliPath = process.env.npm_execpath;
+const reportPath = process.env.LIFTOFF_TEMPLATE_QUALIFICATION_REPORT;
 
 if (!npmCliPath) {
   throw new Error('npm_execpath is required. Run this verification through npm.');
 }
+if (reportPath !== undefined && !path.isAbsolute(reportPath)) {
+  throw new Error('LIFTOFF_TEMPLATE_QUALIFICATION_REPORT must be an absolute report path.');
+}
+const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-standard-node-'));
+const projectRoot = path.join(await realpath(tempRoot), 'verified-standard-app');
+const commands = [];
+let qualification;
+const sha256 = (bytes) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 
-function runNpm(cwd, args) {
+function runNpm(cwd, args, extraEnv = {}) {
   const result = spawn.sync(process.execPath, [npmCliPath, ...args], {
     cwd,
+    env: { ...process.env, ...extraEnv },
     encoding: 'utf8',
     shell: false,
     timeout: 15 * 60_000,
     maxBuffer: 10 * 1024 * 1024
+  });
+  commands.push({
+    component: path.relative(projectRoot, cwd) || 'project', args,
+    status: result.status, signal: result.signal,
+    error: result.error ? { code: result.error.code, message: result.error.message } : null,
+    stdout: result.stdout, stderr: result.stderr
   });
   if (result.error) {
     throw new Error(
@@ -33,6 +48,7 @@ function runNpm(cwd, args) {
       `npm ${args.join(' ')} failed in ${cwd}\n${result.stdout ?? ''}\n${result.stderr ?? ''}`
     );
   }
+  return result.stdout;
 }
 
 function requireVersion(lock, packagePath, expected) {
@@ -53,6 +69,7 @@ try {
     environments: ['dev']
   }, { requireProjectName: true });
   await writeArtifacts(projectRoot, buildArtifacts(plan));
+  const npmVersion = runNpm(projectRoot, ['--version']).trim();
 
   const backendRoot = path.join(projectRoot, 'backend');
   const frontendRoot = path.join(projectRoot, 'frontend');
@@ -64,6 +81,7 @@ try {
   ];
   const before = await Promise.all(metadataPaths.map((filePath) => readFile(filePath)));
   const backendLock = JSON.parse(before[1].toString('utf8'));
+  const backendManifest = JSON.parse(before[0].toString('utf8'));
   const frontendLock = JSON.parse(before[3].toString('utf8'));
   const baseline = JSON.parse(
     await readFile(path.resolve('assets', 'supported-stack.json'), 'utf8')
@@ -73,6 +91,16 @@ try {
     backendLock,
     'node_modules/drizzle-orm',
     baseline.npmProjects['node-backend'].resolved.dependencies['drizzle-orm']
+  );
+  if (JSON.stringify(backendManifest.overrides) !== JSON.stringify({
+    '@esbuild-kit/core-utils': { esbuild: '0.25.12' }
+  })) {
+    throw new Error('Generated backend must contain only the reviewed loader-scoped esbuild override.');
+  }
+  requireVersion(
+    backendLock,
+    'node_modules/@esbuild-kit/core-utils/node_modules/esbuild',
+    '0.25.12'
   );
   for (const dependency of ['vite', '@vitejs/plugin-vue', 'tailwindcss']) {
     requireVersion(
@@ -85,6 +113,12 @@ try {
   runNpm(backendRoot, ['ci', '--ignore-scripts', '--no-audit', '--no-fund']);
   runNpm(backendRoot, ['run', 'build']);
   runNpm(backendRoot, ['test']);
+  const metadataEnvironment = {
+    DATABASE_URL: 'postgresql://127.0.0.1:1/liftoff_qualification',
+    REDIS_URL: 'redis://127.0.0.1:1/0'
+  };
+  runNpm(backendRoot, ['run', 'db:generate'], metadataEnvironment);
+  runNpm(backendRoot, ['exec', '--offline', '--', 'drizzle-kit', 'check'], metadataEnvironment);
   runNpm(frontendRoot, ['ci', '--ignore-scripts', '--no-audit', '--no-fund']);
   runNpm(frontendRoot, ['run', 'build']);
 
@@ -92,7 +126,28 @@ try {
   if (before.some((contents, index) => !contents.equals(after[index]))) {
     throw new Error('Standard Node.js template verification modified generated package metadata.');
   }
-  console.log('Standard Node.js backend and frontend install, build, and test verification passed.');
+  const templatePaths = [
+    'assets/plugins/node-fastify/node-backend/package.json',
+    'assets/plugins/node-fastify/node-backend/package-lock.json'
+  ];
+  const templateBytes = await Promise.all(templatePaths.map(file => readFile(path.resolve(file))));
+  qualification = {
+    schemaVersion: 1, kind: 'liftoff-standard-node-template-qualification',
+    sourceRevision: process.env.GITHUB_SHA ?? null,
+    platform: process.platform, architecture: process.arch, nodeVersion: process.versions.node, npmVersion,
+    templateInputs: templatePaths.map((file, index) => ({
+      pathParts: file.split('/'), bytes: templateBytes[index].length, sha256: sha256(templateBytes[index])
+    })),
+    generatedMetadata: metadataPaths.map((file, index) => ({
+      pathParts: path.relative(projectRoot, file).split(path.sep), bytes: before[index].length, sha256: sha256(before[index])
+    })),
+    metadataUnchanged: true, databaseExecution: false, commands
+  };
 } finally {
   await rm(tempRoot, { recursive: true, force: true });
 }
+if (reportPath !== undefined) {
+  await mkdir(path.dirname(reportPath), { recursive: true });
+  await writeFile(reportPath, `${JSON.stringify(qualification, null, 2)}\n`, { flag: 'wx' });
+}
+console.log('Standard Node.js backend and frontend install, build, test, and Drizzle metadata verification passed.');
