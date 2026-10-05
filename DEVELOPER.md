@@ -933,7 +933,7 @@ workstation selection has no external framework contract or fallback to Spec Kit
 selected workload and agent requirements still apply. The npm CLI's Node runtime
 requirement is unchanged; this is not native-bundle qualification.
 `createManifestV8Candidate` provides an independent origin-aware candidate writer
-with closed `fresh`, `historical-successor` and `maintenance` inputs. Fresh
+with closed `fresh`, `adoption`, `historical-successor` and `maintenance` inputs. Fresh
 provenance comes only from a complete supplied artifact inventory. Historical
 succession preserves normalized original v2-v7 project/provenance data and
 requires an explicit layout and original history reference; layout data is
@@ -948,6 +948,32 @@ LF and the raw SHA-256 of those exact UTF-8 bytes. The last-writer version is th
 actual local CLI version, distinct from the unpublished activation source.
 Other managed content still requires its real producer/semantic checks. This
 candidate is not storage proof, publication, approval or installed readiness.
+The private `adoption` origin accepts explicit selection, bound layout, exact
+managed-byte decisions and imported `adoptionObservations`. Every bound artifact
+requires one observation at the exact active path; unbound observations,
+unresolved layouts, retain/retire decisions and legacy framework claims are
+rejected. Observations are sorted by logical identity without changing supplied
+hashes or paths. Imported files acquire no `projectArtifacts`, generation hashes
+or source/activation history. Later maintenance preserves these observations and
+bindings rather than treating current templates as the original application.
+Own-data copying rejects accessors and proxies before invoking their hooks.
+These candidate inputs still require independently captured bytes/modes,
+compatible application checks, authenticated external transaction ownership and
+separate approval before publication. This private writer does not register
+`liftoff adopt`, create a manifest on disk or establish deployment absence.
+`application/adoption/inventory.ts` adds private manifest-free observation of one
+explicit canonical nonlink root and an independently validated installed source
+selection/layout. It refuses existing or aliased Liftoff control/transaction
+boundaries instead of reading them or selecting an outer project. The shared
+bound application-target interpreter uses registered declarations, not starter
+rendering or a fabricated manifest. It preserves existing repair's separate
+historical infrastructure exclusions.
+The inventory captures bounded actual bytes/modes and literal reference
+locations, keeps private snapshots out of JSON, and derives observations only
+for exact bound readable files. Missing/excluded bindings and unmapped files
+remain explicit. Compatibility is `not-verified` and deployment is
+`planning-only`; no consent, staging, check execution, adoption publication or
+new public capability follows from this observation.
 `createModernActivationRecordContract` provides independent state4, evidence4,
 approval4, plan3, credential2 and supersession2 readers and supplied-value
 constructors. These share the current/released decoder engine without changing
