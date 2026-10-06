@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { types } from 'node:util';
 import { liftoffVersion } from '../../version.js';
 import { canonicalJson } from '../../domain/governance/activation/canonical-json.js';
 import { createModernActivationIdentityReader } from '../../domain/governance/activation/modern-identity.js';
@@ -12,7 +13,7 @@ import { manifestHistoryMaximumSourceBytes, validateManifestSourceHistoryReferen
 import { validateActivationTargetHistoryReference, type ActivationTargetHistoryReference } from '../../domain/project/manifest/activation-target-history.js';
 import { manifestActiveLayoutDigest, validateManifestActiveLayout } from '../../domain/project/manifest/layout.js';
 import { readManifestPluginMetadata } from '../../domain/project/manifest/plugins.js';
-import { createManifestV8Reader, type LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
+import { createManifestV8Reader, type LiftoffManifestV8, type ManifestAdoptionObservation } from '../../domain/project/manifest/v8.js';
 import { createManifestV8ProjectReader, type ManifestV8ProjectLeaf } from '../../domain/project/manifest/v8-project.js';
 import { projectCatalog } from './catalog.js';
 import { freshActiveLayoutForComposition, parseManifest, resolveModernManifestV8SourceContract } from './manifest.js';
@@ -35,6 +36,13 @@ export type ManifestV8WriteRequest =
       readonly selection: ManifestV8ProjectLeaf & { readonly profile: 'none' | ModernGovernanceProfile };
       readonly generatedArtifacts: readonly GeneratedArtifact[];
       readonly activeLayout?: ManifestActiveLayout;
+    }
+  | {
+      readonly origin: 'adoption';
+      readonly selection: ManifestV8ProjectLeaf & { readonly profile: 'none' | ModernGovernanceProfile };
+      readonly activeLayout: ManifestActiveLayout;
+      readonly managed: readonly Extract<ManagedManifestDecision, { readonly kind: 'bytes' }>[];
+      readonly adoptionObservations: readonly ManifestAdoptionObservation[];
     }
   | {
       readonly origin: 'historical-successor';
@@ -69,6 +77,7 @@ function sourceData(value: unknown): unknown {
     if (remainingBytes < 0) throw new FileSystemError('Source manifest exceeds the 8 MiB JSON input bound.');
   };
   function copy(value: unknown, depth: number): unknown {
+    if (types.isProxy(value)) throw new FileSystemError('Source manifest cannot contain proxies.');
     if (depth > 64 || --remainingNodes < 0) throw new FileSystemError('Source manifest exceeds the bounded JSON depth or node count.');
     if (value === null || typeof value === 'string' || typeof value === 'boolean' ||
       typeof value === 'number' && Number.isFinite(value)) {
@@ -185,11 +194,12 @@ function generatedInput(value: unknown, expected: readonly ExpectedArtifact[]): 
 
 function managedInput(
   value: unknown,
-  origin: 'historical-successor' | 'maintenance',
-  source: HistoricalLiftoffManifest | LiftoffManifestV8,
+  origin: 'adoption' | 'historical-successor' | 'maintenance',
+  source: HistoricalLiftoffManifest | LiftoffManifestV8 | undefined,
   target: ReturnType<typeof targetFor>
 ) {
-  const previous = new Map(source.managedArtifacts.map((entry) => [entry.logicalName, entry]));
+  if (!source && origin !== 'adoption') throw new FileSystemError('Managed maintenance requires its actual source manifest.');
+  const previous = new Map(source?.managedArtifacts.map((entry) => [entry.logicalName, entry]) ?? []);
   const declared = new Map(target.source.managedArtifacts.map(entry => [entry.logicalName, entry]));
   const names = new Set<string>();
   const content = contentReader();
@@ -230,16 +240,43 @@ function managedInput(
   });
 }
 
+function adoptionInput(value: unknown, target: ReturnType<typeof targetFor>) {
+  return denseArray(sourceData(value), target.source.layoutDescriptor.artifacts.length, 'Adoption observations')
+    .map((entry) => {
+      const record = exactRecord(entry, ['logicalName', 'pathParts', 'observedHash'], 'Adoption observation');
+      return { ...record, logicalName: requiredString(record, 'logicalName', 'Adoption observation') };
+    })
+    .sort((left, right) => left.logicalName < right.logicalName ? -1 : left.logicalName > right.logicalName ? 1 : 0);
+}
+
+function assertAdoptionBindings(manifest: LiftoffManifestV8): void {
+  if (manifest.activeLayout.state !== 'bound') {
+    throw new FileSystemError('Adoption requires explicit bound current paths; unresolved layout is not compatibility.');
+  }
+  const artifacts = manifest.activeLayout.bindings.filter((binding) => binding.kind === 'artifact');
+  const observed = new Map(manifest.adoptionObservations.map((entry) => [entry.logicalName, entry]));
+  if (artifacts.length === 0 || artifacts.length !== observed.size) {
+    throw new FileSystemError('Adoption requires one exact observation for every bound artifact and no unbound observations.');
+  }
+  for (const binding of artifacts) {
+    const observation = observed.get(binding.logicalName);
+    if (!observation || binding.pathParts.join('\0') !== observation.pathParts.join('\0')) {
+      throw new FileSystemError(`Adoption observation ${binding.logicalName} must match its exact active path.`);
+    }
+  }
+}
+
 /** Produces reviewed-candidate data only; caller eligibility, source-history truth and publication are separate. */
 export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
+  if (types.isProxy(input)) throw new FileSystemError('Manifest writer request cannot be a proxy.');
   const origin = isRecord(input) ? Object.getOwnPropertyDescriptor(input, 'origin')?.value : undefined;
-  if (origin !== 'fresh' && origin !== 'historical-successor' && origin !== 'maintenance') {
-    throw new FileSystemError('Manifest writer requires explicit fresh, historical-successor or maintenance origin.');
+  if (origin !== 'fresh' && origin !== 'adoption' && origin !== 'historical-successor' && origin !== 'maintenance') {
+    throw new FileSystemError('Manifest writer requires explicit fresh, adoption, historical-successor or maintenance origin.');
   }
   const request = exactRecord(input, origin === 'fresh' ? [
     'origin', 'selection', 'generatedArtifacts',
     ...(isRecord(input) && Object.hasOwn(input, 'activeLayout') ? ['activeLayout'] : [])
-  ] :
+  ] : origin === 'adoption' ? ['origin', 'selection', 'activeLayout', 'managed', 'adoptionObservations'] :
     origin === 'historical-successor' ? ['origin', 'source', 'profile', 'activeLayout', 'sourceManifestHistory', 'managed'] :
       ['origin', 'source', 'managed',
         ...(isRecord(input) && Object.hasOwn(input, 'activationTargetHistory') ? ['activationTargetHistory'] : [])
@@ -249,12 +286,14 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
   let source: HistoricalLiftoffManifest | LiftoffManifestV8 | undefined;
   let originalReference: ManifestSourceHistoryReference | undefined;
   let activationTargetHistory: ActivationTargetHistoryReference | undefined;
-  if (origin === 'fresh') {
-    const selection = exactRecord(request.selection, ['project', 'framework', 'profile'], 'Fresh manifest selection');
+  if (origin === 'fresh' || origin === 'adoption') {
+    const label = origin === 'fresh' ? 'Fresh' : 'Adoption';
+    const selection = exactRecord(origin === 'adoption' ? sourceData(request.selection) : request.selection,
+      ['project', 'framework', 'profile'], `${label} manifest selection`);
     leaf = projectReader.validateManifestV8Project({ project: selection.project, framework: selection.framework });
-    if (leaf.framework.state === 'legacy') throw new FileSystemError('Fresh origin cannot claim historical legacy framework uncertainty.');
+    if (leaf.framework.state === 'legacy') throw new FileSystemError(`${label} origin cannot claim historical legacy framework uncertainty.`);
     if (selection.profile !== 'none' && selection.profile !== 'single-maintainer-gitflow' && selection.profile !== 'team-gitflow') {
-      throw new FileSystemError('Fresh manifest requires an explicit supported profile.');
+      throw new FileSystemError(`${label} manifest requires an explicit supported profile.`);
     }
     profile = selection.profile;
   } else if (origin === 'historical-successor') {
@@ -290,15 +329,16 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
     const contentHash = `sha256:${hash(entry.content)}`;
     assertStaticHash(entry.logicalName, contentHash, target.staticHashes);
     return { logicalName: entry.logicalName, category: entry.category, pathParts: [...entry.pathParts], contentHash };
-  }) : managedInput(request.managed, origin === 'historical-successor' ? origin : 'maintenance', source!, target);
+  }) : managedInput(origin === 'adoption' ? sourceData(request.managed) : request.managed,
+    origin === 'adoption' || origin === 'historical-successor' ? origin : 'maintenance', source, target);
   const projectArtifacts = generated ? generated.flatMap((entry) => entry.lifecycle === 'project' ? [{
     logicalName: entry.logicalName, category: entry.category, pathParts: [...entry.pathParts],
     generatedBy: liftoffVersion, generationHash: `sha256:${hash(entry.content)}`, provisioningGroup: entry.provisioningGroup
-  }] : []) : source!.projectArtifacts;
+  }] : []) : origin === 'adoption' ? [] : source!.projectArtifacts;
   let activeLayout = generated ? {
     schemaVersion: 1, state: 'bound',
     bindings: projectArtifacts.map((entry) => ({ kind: 'artifact', logicalName: entry.logicalName, pathParts: entry.pathParts }))
-  } : origin === 'historical-successor' ? sourceData(request.activeLayout) :
+  } : origin === 'historical-successor' || origin === 'adoption' ? sourceData(request.activeLayout) :
     source?.artifactVersion === 8 ? source.activeLayout : undefined;
   if (generated && Object.hasOwn(request, 'activeLayout')) {
     const requested = validateManifestActiveLayout(sourceData(request.activeLayout), target.source.layoutDescriptor);
@@ -308,7 +348,8 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
     }
     activeLayout = requested;
   }
-  const adoptionObservations = source?.artifactVersion === 8 ? source.adoptionObservations : [];
+  const adoptionObservations = origin === 'adoption' ? adoptionInput(request.adoptionObservations, target) :
+    source?.artifactVersion === 8 ? source.adoptionObservations : [];
   const owned = new Set(managedArtifacts.map((entry) => entry.logicalName));
   const governance = profile === 'none' ? { profile, state: 'disabled' } : (() => {
     if (!('identity' in target.source.governanceSource)) throw new FileSystemError('Enabled target lacks a real modern governance source.');
@@ -329,6 +370,7 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
     ...(originalReference ? { sourceManifestHistory: originalReference } : {}),
     ...(activationTargetHistory ? { activationTargetHistory } : {})
   });
+  if (origin === 'adoption') assertAdoptionBindings(manifest);
   if (source) {
     for (const [name, previous, next] of [
       ['project', source.project, manifest.project], ['framework', source.framework, manifest.framework],

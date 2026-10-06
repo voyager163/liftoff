@@ -2,11 +2,14 @@ import path from 'node:path';
 import { isManagedCoreLogicalName, retiredManagedCoreIdentities } from '../../domain/project/artifact-lifecycle.js';
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
 import { activeApplicationTargetLayoutId, applicationTargetLayoutId, repairContractVersion } from '../../domain/repair/identity.js';
-import { buildArtifacts, buildCurrentArtifacts } from '../../templates.js';
+import { buildArtifacts } from '../../templates.js';
+import { toSafeProjectName } from '../../domain/project/planning.js';
 import { buildCurrentProjectPlan, buildProjectPlan } from '../project/planning.js';
+import { composeModernManifestPlugins } from '../project/plugins.js';
 import type { SupportedProjectManifest } from '../project/manifest.js';
 import {
-  findModernActiveArtifactBinding, findModernActiveComponentBinding, resolveModernManifestSourceContext
+  findModernActiveArtifactBinding, findModernActiveComponentBinding,
+  modernProjectSourceInput, resolveModernProjectSourceContext, type ModernProjectSourceContext
 } from '../project/source-context.js';
 import type { LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import {
@@ -33,30 +36,41 @@ interface ApplicationTargetContext {
   protectedTrees?: readonly string[];
 }
 
-function activeApplicationTargets(manifest: LiftoffManifestV8): ApplicationTargetContext {
-  if (manifest.activeLayout.state !== 'bound') {
+export function currentBoundApplicationTargets(input: unknown): ApplicationTargetContext {
+  return boundApplicationTargets(resolveModernProjectSourceContext(input), []);
+}
+
+function boundApplicationTargets(
+  context: ModernProjectSourceContext, historicalInfrastructurePaths: readonly (readonly string[])[]
+): ApplicationTargetContext {
+  if (context.activeLayout.state !== 'bound') {
     throw new ApplicationInspectionError('Current application repair requires explicit active bindings; original generation paths are not current-path authority.');
   }
-  if (manifest.governance.profile === 'team-gitflow') {
+  if (context.selection.profile === 'team-gitflow') {
     throw new ApplicationInspectionError('Current application repair supports governance none or single-maintainer-gitflow; team-profile repair is not available.');
   }
-  const workload = manifest.project.workload;
+  const { project } = context.selection;
+  const workload = project.workload;
   const plan = buildCurrentProjectPlan({
-    projectName: manifest.project.name, projectType: workload.kind, apiStack: workload.apiStack,
+    projectName: project.name, projectType: workload.kind, apiStack: workload.apiStack,
     ...(workload.kind === 'genai' ? { pattern: workload.pattern } : {}),
     cloud: workload.cloud, region: workload.region, includeFrontend: workload.frontend,
-    environments: [...workload.environments], specWorkflow: manifest.project.specWorkflow,
-    agents: [...manifest.project.agents],
-    ...(manifest.project.defaultAgent ? { defaultAgent: manifest.project.defaultAgent } : {}),
-    governanceProfile: manifest.governance.profile
+    environments: [...workload.environments], specWorkflow: project.specWorkflow,
+    agents: [...project.agents],
+    ...(project.defaultAgent ? { defaultAgent: project.defaultAgent } : {}),
+    governanceProfile: context.selection.profile
   }, { requireProjectName: true });
-  const generated = buildCurrentArtifacts(plan);
-  const context = resolveModernManifestSourceContext(manifest), descriptor = context.source.layoutDescriptor;
+  const generated = composeModernManifestPlugins({
+    workload: workload.kind, ...(workload.kind === 'genai' ? { variant: workload.pattern } : {}),
+    stack: workload.apiStack, cloud: workload.cloud, workflow: project.specWorkflow, agents: project.agents,
+    frontend: workload.frontend ? 'included' : 'omitted', governanceProfile: context.selection.profile,
+    environments: workload.environments
+  }, { safeProjectName: toSafeProjectName(plan.projectName) }).expected;
+  const descriptor = context.source.layoutDescriptor;
   const foldedKey = (parts: readonly string[]) => parts.map(applicationPathFold).join('/');
   const protectedPaths = new Set([
     ...descriptor.protectedPaths.map(foldedKey),
-    ...manifest.projectArtifacts.filter(artifact => artifact.category === 'infrastructure')
-      .map(artifact => foldedKey(artifact.pathParts)),
+    ...historicalInfrastructurePaths.map(foldedKey),
     ...retiredManagedCoreIdentities.map(artifact => foldedKey(artifact.pathParts))
   ]);
   const bindings = context.activeLayout.bindings;
@@ -81,6 +95,9 @@ function activeApplicationTargets(manifest: LiftoffManifestV8): ApplicationTarge
     if (artifact.lifecycle !== 'project') continue;
     const binding = findModernActiveArtifactBinding(context, artifact.logicalName);
     if (!binding || applicationExclusion(binding.pathParts, protectedPaths, examplePaths, protectedTrees)) continue;
+    if (!artifact.provisioningGroup) {
+      throw new ApplicationInspectionError('Current application target lacks its exact declared provisioning identity.');
+    }
     const owner = descriptor.artifacts.find(entry => entry.logicalName === artifact.logicalName)?.component;
     const component: ApplicationComponent = owner === 'function-worker' ? 'functions' :
       owner === 'backend' || owner === 'frontend' || owner === 'database' ? owner : 'project';
@@ -100,6 +117,11 @@ function activeApplicationTargets(manifest: LiftoffManifestV8): ApplicationTarge
     workload: { ...workload, environments: [...workload.environments] }, artifacts
   };
   return { target: { ...body, digest: canonicalSha256(body) }, protectedPaths, examplePaths, protectedTrees };
+}
+
+function activeApplicationTargets(manifest: LiftoffManifestV8): ApplicationTargetContext {
+  return boundApplicationTargets(resolveModernProjectSourceContext(modernProjectSourceInput(manifest)),
+    manifest.projectArtifacts.filter(entry => entry.category === 'infrastructure').map(entry => entry.pathParts));
 }
 
 export function currentApplicationTargets(manifest: SupportedProjectManifest): ApplicationTargetContext {

@@ -109,10 +109,10 @@ function replaceDecision(value: ReturnType<typeof historical>, name: string, rep
 }
 
 describe('fresh origin produces exact complete bytes without publication', () => {
-  it('exports the concrete candidate and three-origin request types', () => {
+  it('exports the concrete candidate and closed-origin request types', () => {
     expectTypeOf(createManifestV8Candidate).parameter(0).toEqualTypeOf<unknown>();
     expectTypeOf(createManifestV8Candidate).returns.toEqualTypeOf<ManifestV8Candidate>();
-    expectTypeOf<ManifestV8WriteRequest['origin']>().toEqualTypeOf<'fresh' | 'historical-successor' | 'maintenance'>();
+    expectTypeOf<ManifestV8WriteRequest['origin']>().toEqualTypeOf<'fresh' | 'adoption' | 'historical-successor' | 'maintenance'>();
     expectTypeOf<keyof ManifestV8Candidate>().toEqualTypeOf<'manifest' | 'content' | 'digest'>();
   });
 
