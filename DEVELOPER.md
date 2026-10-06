@@ -988,6 +988,21 @@ capability, and it does not publish metadata or prepare/execute project code.
 The shared modern own-data boundary rejects root, nested, array and revoked
 proxies before reflection; legitimate plain JSON record bytes and identities
 are unchanged. Source observation cannot execute a proxy hook as validation.
+`application/adoption/preview.ts` gives these actual observations their own
+schema-1 review contract, current CLI identity, complete fingerprints and
+15-minute validity interval. Its optional user-local `adoption-preview` record
+is separate from update/repair previews and approval stores. Revalidation
+repeats the real bounded inspection and compares the exact captured source,
+inventory, proposed managed source and candidate. Changed included bytes,
+modes, entries, bindings or source identity invalidate the review.
+Saved and successfully re-observed comparisons remain unverified and grant no
+preparation, project-code, network, file-write or recovery authority. Excluded
+payloads and dynamic references remain unobserved, not silently verified;
+source hashes still do not observe managed-core destinations. There is no
+public command or advertised adoption capability from this private contract.
+The inherited inventory eligibility remains governance `none` or
+`single-maintainer-gitflow`; a valid team-profile metadata identity does not
+enable team adoption or repair before its distinct implementation qualifies.
 `createModernActivationRecordContract` provides independent state4, evidence4,
 approval4, plan3, credential2 and supersession2 readers and supplied-value
 constructors. These share the current/released decoder engine without changing
