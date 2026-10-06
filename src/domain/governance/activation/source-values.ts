@@ -1,3 +1,4 @@
+import { types } from 'node:util';
 import type { ApprovalDestinationValueV1 } from './approval-values.js';
 import { canonicalJson, canonicalSha256, isRecord } from './canonical-json.js';
 import { cleanString, sortedUnique, resourceKey, destinationKey, normalizeApprovalCostCeiling, normalizeApprovalResources,
@@ -381,7 +382,7 @@ export function assertModernRecordData(value: unknown, label = 'modern record', 
   if (depth > 20) throw new Error(`${label} exceeds the supported JSON nesting depth.`);
   if (value === null || typeof value === 'boolean' || typeof value === 'string' ||
     typeof value === 'number' && Number.isFinite(value)) return;
-  if (typeof value !== 'object' || value === null ||
+  if (typeof value !== 'object' || value === null || types.isProxy(value) ||
     ![Object.prototype, Array.prototype, null].includes(Object.getPrototypeOf(value))) {
     throw new Error(`${label} must contain only plain JSON data.`);
   }
