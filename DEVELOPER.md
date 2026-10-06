@@ -974,6 +974,20 @@ for exact bound readable files. Missing/excluded bindings and unmapped files
 remain explicit. Compatibility is `not-verified` and deployment is
 `planning-only`; no consent, staging, check execution, adoption publication or
 new public capability follows from this observation.
+`application/adoption/candidate.ts` connects those actual bounded observations
+to the separate imported candidate writer using a validated source copy taken
+before asynchronous root reads. Missing bound files produce explicit blocked
+results without constructing a comparison manifest. Complete observations
+produce only an unverified private candidate; managed source hashes describe
+proposed content, not observed destinations or authorized effects. Original
+bytes/modes remain unchanged and candidate bytes/snapshots are excluded from JSON.
+The report retains compatibility/deployment limits and names the outstanding
+semantic, core-destination, integration, permission, ownership, staged-check and
+lock/recovery obligations. This is not a saved preview, consent or public adopt
+capability, and it does not publish metadata or prepare/execute project code.
+The shared modern own-data boundary rejects root, nested, array and revoked
+proxies before reflection; legitimate plain JSON record bytes and identities
+are unchanged. Source observation cannot execute a proxy hook as validation.
 `createModernActivationRecordContract` provides independent state4, evidence4,
 approval4, plan3, credential2 and supersession2 readers and supplied-value
 constructors. These share the current/released decoder engine without changing
