@@ -30,6 +30,7 @@ import {
 import {
   inspectRepairVerificationWorkspaces
 } from '../src/application/repair/workspaces.js';
+import * as repairWorkspaces from '../src/application/repair/workspaces.js';
 import type {
   CommandResult, CommandRunner, RunCommandOptions
 } from '../src/process-runner.js';
@@ -336,6 +337,63 @@ describe('authenticated adoption verification execution', () => {
     )).toMatchObject({ status: 'absent', workspaces: [] });
   });
 
+  it('admits only one execution attempt for the exact plan under concurrent callers', async () => {
+    const input = await prepared();
+    await grant(input);
+    let enter!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>(resolve => {
+      enter = resolve;
+    });
+    const blocked = new Promise<void>(resolve => {
+      release = resolve;
+    });
+    const runner: CommandRunner = {
+      run: vi.fn(async (command: ExternalCommand) => {
+        if (!command.args.includes('--version')) {
+          enter();
+          await blocked;
+        }
+        return commandResult(command);
+      })
+    };
+    const first = execute(input, { runner });
+    await entered;
+    await expect(execute(input, { runner })).rejects.toThrow(
+      /attempt already owns this exact plan/u
+    );
+    release();
+    await expect(first).resolves.toMatchObject({
+      status: 'passed',
+      compatibility: 'verified-by-declared-checks'
+    });
+    expect(vi.mocked(runner.run).mock.calls.filter(([command]) =>
+      !command.args.includes('--version')
+    )).toHaveLength(1);
+  });
+
+  it('recovers a verified cleaned attempt without rerunning checks when receipt persistence fails', async () => {
+    const input = await prepared();
+    await grant(input);
+    const runner: CommandRunner = {
+      run: vi.fn(async (command: ExternalCommand) => commandResult(command))
+    };
+    const seal = vi.spyOn(
+      repairWorkspaces, 'sealCompletedAdoptionVerificationResult'
+    ).mockRejectedValueOnce(new Error('injected receipt persistence failure'));
+    await expect(execute(input, { runner })).rejects.toThrow(
+      /injected receipt persistence failure/u
+    );
+    const callsAfterFailure = vi.mocked(runner.run).mock.calls.length;
+    seal.mockRestore();
+    await expect(execute(input, { runner })).resolves.toMatchObject({
+      status: 'passed',
+      compatibility: 'verified-by-declared-checks',
+      receiptFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u)
+    });
+    expect(runner.run).toHaveBeenCalledTimes(callsAfterFailure);
+  });
+
   it('refuses absent consent before dispatching any execution command', async () => {
     const input = await prepared();
     const runner: CommandRunner = { run: vi.fn() };
@@ -363,6 +421,7 @@ describe('authenticated adoption verification execution', () => {
     });
     expect(result.blockers.join('\n')).toMatch(/check failed|exit/u);
     expect(await readResult(input)).toBeNull();
+    expect(await execute(input)).toEqual(result);
     expect(await inspectRepairVerificationWorkspaces(
       input.root, input.storage
     )).toMatchObject({ status: 'absent' });

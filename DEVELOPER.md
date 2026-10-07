@@ -1071,16 +1071,23 @@ or transaction authority; this constructor alone runs no adoption checks.
 `executeAdoptionVerification` reloads the exact current plan and consent,
 re-observes compatibility inputs and installed tool file identities before
 each effect, copies bounded source snapshots into that workspace, and runs only
-the resolved registered preparation and check commands. Every process requires
-process-tree settlement; uncertain scope is retained rather than cleaned or
-reported as success. A passed result is persisted only after every declared
-check passes, protected inputs remain current, the owner is released and
-authenticated cleanup completes. Its receipt is HMAC-bound to the settled
-`verified` adoption workspace record and is revalidated against current plan,
-consent, source, destination and tool identities on read. Failed, expired,
-changed or uncertain work stores no success receipt. Even a current receipt is
-only declared-check compatibility evidence: file approval, transaction,
-recovery, active-binding publication and deployment remain unauthorized.
+the resolved registered preparation and check commands. An authenticated
+compare-and-exchange claim admits only one attempt for the exact plan; a
+concurrent or later caller never dispatches the commands again. Every process
+requires process-tree settlement; uncertain scope is retained rather than
+cleaned or reported as success. A non-authoritative verified draft is saved
+before owner release and cleanup. If final receipt storage is interrupted, a
+later caller may only finish identity-pinned workspace/staging cleanup and seal
+that exact draft; it cannot rerun checks or invent success from elapsed time,
+PID state or an incomplete workspace. A passed result is persisted only after
+every declared check passes, protected inputs remain current, the owner is
+released and authenticated cleanup completes. Its receipt is HMAC-bound to the
+settled `verified` adoption workspace record and is revalidated against current
+plan, consent, source, destination and tool identities on read. Failed,
+expired, changed or uncertain work stores no success receipt. Even a current
+receipt is only declared-check compatibility evidence: file approval,
+transaction, recovery, active-binding publication and deployment remain
+unauthorized.
 `createModernActivationRecordContract` provides independent state4, evidence4,
 approval4, plan3, credential2 and supersession2 readers and supplied-value
 constructors. These share the current/released decoder engine without changing

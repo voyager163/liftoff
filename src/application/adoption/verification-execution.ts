@@ -1,5 +1,7 @@
+import { randomBytes } from 'node:crypto';
+import type { BigIntStats } from 'node:fs';
 import {
-  chmod, lstat, mkdir, mkdtemp, realpath, rmdir, writeFile
+  chmod, lstat, mkdir, realpath, rmdir, writeFile
 } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -37,7 +39,9 @@ import type {
   ApplicationDirectoryObservation, ApplicationVerificationCommand
 } from '../repair/application-types.js';
 import {
+  completeAdoptionVerificationWorkspaceCleanup,
   createAdoptionVerificationWorkspace,
+  type RepairWorkspaceFileIdentity,
   type RepairVerificationWorkspace,
   type RepairWorkspaceStorageOptions
 } from '../repair/workspaces.js';
@@ -51,11 +55,18 @@ import {
 import { inspectAdoptionCandidate } from './candidate.js';
 import { liftoffVersion } from '../../version.js';
 import {
+  claimAdoptionVerificationExecution,
+  updateAdoptionVerificationExecutionAttempt,
+  type AdoptionVerificationAttempt,
+  type SavedAdoptionVerificationAttempt
+} from './verification-attempt.js';
+import {
   adoptionVerificationResultSchemaVersion, adoptionVerificationTime,
   loadAdoptionVerificationAuthority, persistAdoptionVerificationReceipt,
   readBoundAdoptionVerificationResult,
   type AdoptionVerificationCommandResult,
   type AdoptionVerificationExecutionResult,
+  type AdoptionVerificationIdentity,
   type AdoptionVerificationPreparationResult
 } from './verification-result.js';
 
@@ -134,6 +145,87 @@ function safeSignal(result: CommandResult | undefined): string | null {
     ? result.signal : null;
 }
 
+function errorCode(error: unknown): unknown {
+  return typeof error === 'object' && error !== null && 'code' in error
+    ? error.code
+    : undefined;
+}
+
+function stagingIdentity(
+  details: BigIntStats
+): RepairWorkspaceFileIdentity {
+  return {
+    device: details.dev.toString(),
+    inode: details.ino.toString(),
+    birthtime: details.birthtimeNs.toString()
+  };
+}
+
+async function removeAttemptStaging(
+  staging: AdoptionVerificationAttempt['staging']
+): Promise<void> {
+  if (!staging.identity) {
+    throw new Error(
+      'Adoption verification staging ownership was not authenticated.'
+    );
+  }
+  try {
+    const details = await lstat(staging.path, { bigint: true });
+    const current = stagingIdentity(details);
+    if (!details.isDirectory() || details.isSymbolicLink() ||
+        current.device !== staging.identity.device ||
+        current.inode !== staging.identity.inode ||
+        current.birthtime !== staging.identity.birthtime) {
+      throw new Error('Adoption verification staging identity changed.');
+    }
+    await rmdir(staging.path);
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') throw error;
+  }
+}
+
+function completeVerifiedDraft(
+  draft: AdoptionVerificationExecutionResult
+): AdoptionVerificationExecutionResult {
+  const { retainedWorkspace: _retained, ...body } = draft;
+  return {
+    ...body,
+    cleanupComplete: true,
+    compatibility: 'verified-by-declared-checks'
+  };
+}
+
+async function resumeAdoptionVerificationAttempt(
+  saved: SavedAdoptionVerificationAttempt,
+  identity: AdoptionVerificationIdentity,
+  consentExpiresAt: string,
+  storage?: RepairWorkspaceStorageOptions
+): Promise<AdoptionVerificationExecutionResult> {
+  const { attempt } = saved;
+  if ((attempt.phase === 'failed' || attempt.phase === 'uncertain') &&
+      attempt.draft) {
+    return Object.freeze(structuredClone(attempt.draft));
+  }
+  if (attempt.phase !== 'verified' || !attempt.draft ||
+      !attempt.workspaceId) {
+    throw new Error(
+      'An authenticated adoption verification attempt already owns this exact plan; commands will not be dispatched again.'
+    );
+  }
+  await completeAdoptionVerificationWorkspaceCleanup(
+    identity.projectRoot, attempt.workspaceId,
+    identity.verificationPlanFingerprint, storage
+  );
+  await removeAttemptStaging(attempt.staging);
+  const completed = completeVerifiedDraft(attempt.draft);
+  if (Date.parse(completed.completedAt) >= Date.parse(consentExpiresAt)) {
+    throw new Error(
+      'Adoption verification consent expired before the verified attempt completed.'
+    );
+  }
+  return persistAdoptionVerificationReceipt(completed, storage);
+}
+
 export async function executeAdoptionVerification(
   projectRoot: string,
   reviewFingerprint: string,
@@ -165,17 +257,22 @@ export async function executeAdoptionVerification(
       'Adoption verification inputs changed before isolated execution.'
     );
   }
-  const boundary = await realpath(await mkdtemp(
-    `${await adoptionVerificationStagingBoundary(plan.report.projectRoot)}-`
-  ));
-  const boundaryDetails = await lstat(boundary, { bigint: true });
-  if (!boundaryDetails.isDirectory() || boundaryDetails.isSymbolicLink()) {
-    throw new Error('Adoption verification staging boundary is unsafe.');
+  const attemptId = randomBytes(32).toString('hex');
+  const boundary = path.normalize(
+    `${await adoptionVerificationStagingBoundary(plan.report.projectRoot)}-${attemptId}`
+  );
+  const claimed = await claimAdoptionVerificationExecution(
+    identity, consent.fingerprint, attemptId, boundary, options.storage
+  );
+  if (!claimed.acquired) {
+    return resumeAdoptionVerificationAttempt(
+      claimed.saved, identity, consent.expiresAt, options.storage
+    );
   }
-  const boundaryIdentity = {
-    device: boundaryDetails.dev,
-    inode: boundaryDetails.ino,
-    birthtimeNs: boundaryDetails.birthtimeNs
+  let savedAttempt = claimed.saved;
+  let attemptStaging: AdoptionVerificationAttempt['staging'] = {
+    path: boundary,
+    identity: null
   };
   const runner = options.runner ?? new NodeCommandRunner();
   let workspace: RepairVerificationWorkspace | undefined;
@@ -184,11 +281,104 @@ export async function executeAdoptionVerification(
   const commands: AdoptionVerificationCommandResult[] = [];
   const preparation: AdoptionVerificationPreparationResult[] = [];
   const blockers: string[] = [];
-  const startedAt = adoptionVerificationTime(options.storage).toISOString();
+  const startedAt = savedAttempt.attempt.startedAt;
+  let completedAt = startedAt;
   let status: AdoptionVerificationExecutionResult['status'] = 'failed';
   let inputsUnchanged = false;
   let cleanupComplete = false;
   let retainedWorkspace: string | undefined;
+
+  const buildResult = (): AdoptionVerificationExecutionResult => ({
+    schemaVersion: adoptionVerificationResultSchemaVersion,
+    kind: 'liftoff-adoption-verification-result',
+    projectRoot: plan.report.projectRoot,
+    reviewFingerprint,
+    destinationPlanFingerprint,
+    compatibilityPlanFingerprint,
+    verificationPlanFingerprint,
+    consentFingerprint: consent.fingerprint,
+    snapshotDigest: plan.report.snapshotDigest,
+    verificationPolicyDigest: plan.report.verificationPolicyDigest,
+    providerDigest: plan.report.providerDigest,
+    toolchainDigest: plan.report.toolchainDigest,
+    workspaceId: workspace?.workspaceId ?? canonicalSha256('unallocated'),
+    status,
+    startedAt,
+    completedAt,
+    commands,
+    preparation,
+    blockers,
+    inputsUnchanged,
+    cleanupComplete,
+    ...(retainedWorkspace ? { retainedWorkspace } : {}),
+    compatibility: status === 'passed' && inputsUnchanged && cleanupComplete
+      ? 'verified-by-declared-checks' : 'not-verified',
+    approval: 'not-requested',
+    transaction: 'not-authorized',
+    publication: 'not-authorized',
+    limitations: [
+      'Success covers only the exact declared checks against a disposable copy of the bounded observed application.',
+      'The private workspace and credential-free environment are not an operating-system or network sandbox.',
+      'Verification success is not file approval, transaction, recovery, active-binding publication or deployment authority.'
+    ],
+    receiptFingerprint: null
+  });
+
+  try {
+    await mkdir(boundary, { mode: 0o700 });
+    const boundaryDetails = await lstat(boundary, { bigint: true });
+    if (!boundaryDetails.isDirectory() || boundaryDetails.isSymbolicLink() ||
+        await realpath(boundary) !== boundary) {
+      throw new Error('Adoption verification staging boundary is unsafe.');
+    }
+    attemptStaging = {
+      path: boundary,
+      identity: stagingIdentity(boundaryDetails)
+    };
+    savedAttempt = await updateAdoptionVerificationExecutionAttempt(
+      savedAttempt, identity, consent.fingerprint,
+      {
+        phase: 'claimed',
+        staging: attemptStaging,
+        workspaceId: null,
+        draft: null
+      },
+      options.storage
+    );
+  } catch (error) {
+    completedAt = adoptionVerificationTime(options.storage).toISOString();
+    blockers.push(
+      `[staging-allocation] ${error instanceof Error
+        ? error.message
+        : 'Adoption verification staging allocation failed.'}`
+    );
+    if (attemptStaging.identity) {
+      try {
+        await removeAttemptStaging(attemptStaging);
+        cleanupComplete = true;
+      } catch {
+        blockers.push(
+          '[staging-cleanup] Owned adoption verification staging cleanup was not proven.'
+        );
+      }
+    }
+    const result = buildResult();
+    try {
+      await updateAdoptionVerificationExecutionAttempt(
+        savedAttempt, identity, consent.fingerprint,
+        {
+          phase: 'failed',
+          staging: attemptStaging,
+          workspaceId: null,
+          draft: result
+        },
+        options.storage
+      );
+    } catch {
+      // The original authenticated claim remains a fail-closed retry fence.
+    }
+    return Object.freeze(structuredClone(result));
+  }
 
   const assertCurrent = async () => {
     const now = adoptionVerificationTime(options.storage);
@@ -357,6 +547,16 @@ export async function executeAdoptionVerification(
       },
       options.storage
     );
+    savedAttempt = await updateAdoptionVerificationExecutionAttempt(
+      savedAttempt, identity, consent.fingerprint,
+      {
+        phase: 'executing',
+        staging: attemptStaging,
+        workspaceId: workspace.workspaceId,
+        draft: null
+      },
+      options.storage
+    );
     await workspace.checkpoint('copying');
     await copySnapshots(
       workspace.roles.project, candidate.snapshots,
@@ -514,6 +714,20 @@ export async function executeAdoptionVerification(
     await assertCurrent();
     await workspace.checkpoint('verified');
     status = 'passed';
+    completedAt = adoptionVerificationTime(options.storage).toISOString();
+    retainedWorkspace = workspace.directory;
+    const verifiedDraft = buildResult();
+    savedAttempt = await updateAdoptionVerificationExecutionAttempt(
+      savedAttempt, identity, consent.fingerprint,
+      {
+        phase: 'verified',
+        staging: attemptStaging,
+        workspaceId: workspace.workspaceId,
+        draft: verifiedDraft
+      },
+      options.storage
+    );
+    retainedWorkspace = undefined;
   } catch (error) {
     status = uncertain ? 'uncertain' : 'failed';
     blockers.push(
@@ -576,14 +790,7 @@ export async function executeAdoptionVerification(
       }
     }
     try {
-      const identity = await lstat(boundary, { bigint: true });
-      if (!identity.isDirectory() || identity.isSymbolicLink() ||
-          identity.dev !== boundaryIdentity.device ||
-          identity.ino !== boundaryIdentity.inode ||
-          identity.birthtimeNs !== boundaryIdentity.birthtimeNs) {
-        throw new Error('Adoption verification staging identity changed.');
-      }
-      await rmdir(boundary);
+      await removeAttemptStaging(attemptStaging);
     } catch {
       cleanupComplete = false;
       status = uncertain ? 'uncertain' : 'failed';
@@ -593,42 +800,32 @@ export async function executeAdoptionVerification(
     }
   }
 
-  const completedAt = adoptionVerificationTime(options.storage).toISOString();
-  const baseResult: AdoptionVerificationExecutionResult = {
-    schemaVersion: adoptionVerificationResultSchemaVersion,
-    kind: 'liftoff-adoption-verification-result',
-    projectRoot: plan.report.projectRoot,
-    reviewFingerprint,
-    destinationPlanFingerprint,
-    compatibilityPlanFingerprint,
-    verificationPlanFingerprint,
-    consentFingerprint: consent.fingerprint,
-    snapshotDigest: plan.report.snapshotDigest,
-    verificationPolicyDigest: plan.report.verificationPolicyDigest,
-    providerDigest: plan.report.providerDigest,
-    toolchainDigest: plan.report.toolchainDigest,
-    workspaceId: workspace?.workspaceId ?? canonicalSha256('unallocated'),
-    status,
-    startedAt, completedAt,
-    commands, preparation, blockers,
-    inputsUnchanged, cleanupComplete,
-    ...(retainedWorkspace ? { retainedWorkspace } : {}),
-    compatibility: status === 'passed' && inputsUnchanged && cleanupComplete
-      ? 'verified-by-declared-checks' : 'not-verified',
-    approval: 'not-requested',
-    transaction: 'not-authorized',
-    publication: 'not-authorized',
-    limitations: [
-      'Success covers only the exact declared checks against a disposable copy of the bounded observed application.',
-      'The private workspace and credential-free environment are not an operating-system or network sandbox.',
-      'Verification success is not file approval, transaction, recovery, active-binding publication or deployment authority.'
-    ],
-    receiptFingerprint: null
-  };
+  if (completedAt === startedAt) {
+    completedAt = adoptionVerificationTime(options.storage).toISOString();
+  }
+  const baseResult = buildResult();
   if (baseResult.status !== 'passed' ||
       !baseResult.inputsUnchanged ||
       !baseResult.cleanupComplete ||
       !workspace) {
+    if (savedAttempt.attempt.phase !== 'verified') {
+      try {
+        await updateAdoptionVerificationExecutionAttempt(
+          savedAttempt, identity, consent.fingerprint,
+          {
+            phase: baseResult.status === 'uncertain'
+              ? 'uncertain'
+              : 'failed',
+            staging: attemptStaging,
+            workspaceId: workspace?.workspaceId ?? null,
+            draft: baseResult
+          },
+          options.storage
+        );
+      } catch {
+        // The prior authenticated claim still prevents duplicate execution.
+      }
+    }
     return Object.freeze(structuredClone(baseResult));
   }
   if (adoptionVerificationTime(options.storage).getTime() >=

@@ -43,6 +43,11 @@ interface Context {
   key: string;
 }
 
+export interface AuthenticatedAdoptionVerificationAttempt {
+  readonly value: unknown;
+  readonly digest: string;
+}
+
 function issue(error: unknown): RepairWorkspaceIssue {
   if (error instanceof RepairWorkspaceError) return { code: error.code, message: error.message };
   const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
@@ -454,6 +459,90 @@ export function createAdoptionVerificationWorkspace(
   return createVerificationWorkspace(root, request, storage);
 }
 
+function adoptionVerificationAttemptKey(planFingerprint: string): string {
+  if (!/^[a-f0-9]{64}$/u.test(planFingerprint)) {
+    throw new RepairWorkspaceError(
+      'invalid-request',
+      'Adoption verification attempts require an exact plan fingerprint.'
+    );
+  }
+  return canonicalSha256({
+    kind: 'liftoff-adoption-verification-attempt',
+    planFingerprint
+  });
+}
+
+function attemptFrom(
+  saved: RepairWorkspaceRegistryValue, key: string
+): AuthenticatedAdoptionVerificationAttempt {
+  return {
+    value: structuredClone(openWorkspaceSeal(saved.value, key)),
+    digest: saved.digest
+  };
+}
+
+export async function readAdoptionVerificationAttempt(
+  root: string, planFingerprint: string,
+  storage: RepairWorkspaceStorageOptions = {}
+): Promise<AuthenticatedAdoptionVerificationAttempt | null> {
+  const context = await openContext(root, storage, false);
+  if (!context) return null;
+  const saved = await context.registry.read(
+    adoptionVerificationAttemptKey(planFingerprint)
+  );
+  return saved ? attemptFrom(saved, context.key) : null;
+}
+
+export async function claimAdoptionVerificationAttempt(
+  root: string, planFingerprint: string, value: unknown,
+  storage: RepairWorkspaceStorageOptions = {}
+): Promise<{
+  readonly acquired: boolean;
+  readonly attempt: AuthenticatedAdoptionVerificationAttempt;
+}> {
+  const context = await openContext(root, storage, true);
+  if (!context) {
+    throw new RepairWorkspaceError(
+      'registry-unavailable',
+      'Adoption verification attempt authority is unavailable.'
+    );
+  }
+  const key = adoptionVerificationAttemptKey(planFingerprint);
+  const existing = await context.registry.read(key);
+  if (existing) {
+    return { acquired: false, attempt: attemptFrom(existing, context.key) };
+  }
+  try {
+    const saved = await context.registry.compareExchange(
+      key, null, workspaceSeal(structuredClone(value), context.key)
+    );
+    return { acquired: true, attempt: attemptFrom(saved, context.key) };
+  } catch (error) {
+    const raced = await context.registry.read(key);
+    if (!raced) throw error;
+    return { acquired: false, attempt: attemptFrom(raced, context.key) };
+  }
+}
+
+export async function updateAdoptionVerificationAttempt(
+  root: string, planFingerprint: string, expectedDigest: string,
+  value: unknown, storage: RepairWorkspaceStorageOptions = {}
+): Promise<AuthenticatedAdoptionVerificationAttempt> {
+  const context = await openContext(root, storage, false);
+  if (!context) {
+    throw new RepairWorkspaceError(
+      'registry-unavailable',
+      'Adoption verification attempt authority is unavailable.'
+    );
+  }
+  const saved = await context.registry.compareExchange(
+    adoptionVerificationAttemptKey(planFingerprint),
+    expectedDigest,
+    workspaceSeal(structuredClone(value), context.key)
+  );
+  return attemptFrom(saved, context.key);
+}
+
 function assertCompletedAdoptionWorkspace(
   record: VerificationWorkspaceRecord, planFingerprint: string
 ): void {
@@ -471,6 +560,38 @@ function assertCompletedAdoptionWorkspace(
       'Only an authenticated, settled, verified and completely cleaned adoption workspace can seal a result.'
     );
   }
+}
+
+export async function completeAdoptionVerificationWorkspaceCleanup(
+  root: string, workspaceId: string, planFingerprint: string,
+  storage: RepairWorkspaceStorageOptions = {}
+): Promise<string> {
+  const context = await openContext(root, storage, false);
+  if (!context) {
+    throw new RepairWorkspaceError(
+      'registry-unavailable', 'Adoption verification workspace authority is unavailable.'
+    );
+  }
+  let record = (await readRecord(context, workspaceId)).value;
+  if (record.kind !== 'liftoff-adoption-verification-workspace' ||
+      record.planFingerprint !== planFingerprint) {
+    throw new RepairWorkspaceError(
+      'scope-mismatch',
+      'Adoption verification cleanup belongs to another workspace kind or plan.'
+    );
+  }
+  if (record.phase !== 'cleaned') {
+    const cleanup = await cleanupOne(context, workspaceId);
+    if (!cleanup.cleanupComplete) {
+      throw new RepairWorkspaceError(
+        'cleanup-failed',
+        'Authenticated adoption verification cleanup is incomplete; no result can be issued.'
+      );
+    }
+    record = (await readRecord(context, workspaceId)).value;
+  }
+  assertCompletedAdoptionWorkspace(record, planFingerprint);
+  return record.updatedAt;
 }
 
 export async function sealCompletedAdoptionVerificationResult(
