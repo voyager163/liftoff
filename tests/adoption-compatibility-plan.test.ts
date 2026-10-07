@@ -1,9 +1,10 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  prepareAdoptionCompatibilityPlan, type AdoptionCompatibilityReview
+  loadAdoptionCompatibilityPlan, prepareAdoptionCompatibilityPlan,
+  saveAdoptionCompatibilityPlan, type AdoptionCompatibilityReview
 } from '../src/application/adoption/compatibility-plan.js';
 import { inspectAdoptionCandidate } from '../src/application/adoption/candidate.js';
 import {
@@ -12,7 +13,9 @@ import {
 import {
   createAdoptionReview, saveAdoptionPreview, type AdoptionReviewInspection
 } from '../src/application/adoption/preview.js';
-import type { UpdatePreviewOptions } from '../src/adapters/filesystem/update-previews.js';
+import {
+  createScopedUserLocalRecordStore, type UpdatePreviewOptions
+} from '../src/adapters/filesystem/update-previews.js';
 import { adoptionFixture } from './fixtures/adoption.js';
 
 const roots: string[] = [];
@@ -95,7 +98,7 @@ async function prepared(
 ) {
   const root = await directory('lf compatibility ');
   const userDataRoot = await directory('lf compatibility home ');
-  const storage: UpdatePreviewOptions = { userDataRoot };
+  const storage: UpdatePreviewOptions = { homedir: userDataRoot, env: {}, clock: () => now };
   const value = adoptionFixture(stack, 'single-maintainer-gitflow', 'openspec');
   const backend = value.request.adoptionObservations.find(entry => entry.logicalName !== 'root-readme');
   if (!backend) throw new Error('Missing backend fixture.');
@@ -347,5 +350,131 @@ describe('exact adoption compatibility planning without verification or transact
     expect(plan.snapshots[0]!.content).toEqual(original);
     expect(plan.snapshots[0]!.pathParts[0]).not.toBe('changed');
     expect(Object.keys(plan)).toEqual(['report']);
+  });
+
+  it('saves only a current ready report and rebuilds defensive private snapshots when loading', async () => {
+    const input = await prepared();
+    const before = await readdir(input.root);
+    const saved = await saveAdoptionCompatibilityPlan(
+      input.value, input.source, now, input.storage
+    );
+    expect(path.relative(input.storage.homedir!, saved.path).startsWith('..')).toBe(false);
+    expect(path.basename(saved.path)).toMatch(/^adoption-compatibility-plan-/);
+    expect(Object.keys(saved.plan)).toEqual(['report']);
+    const loaded = await loadAdoptionCompatibilityPlan(
+      input.root, input.review.preview.fingerprint, input.saved.plan.report.fingerprint,
+      saved.plan.report.fingerprint, input.source, now, input.storage
+    );
+    expect(loaded.report).toEqual(saved.plan.report);
+    expect(loaded.snapshots).toEqual(saved.plan.snapshots);
+    expect((await saveAdoptionCompatibilityPlan(
+      input.value, input.source, now, input.storage
+    )).path).toBe(saved.path);
+    expect(await readdir(input.root)).toEqual(before);
+    const text = await readFile(saved.path, 'utf8');
+    expect(text).not.toContain('PRIVATE_');
+    expect(text).not.toContain('"snapshots":');
+    expect(loaded.report).toMatchObject({
+      compatibility: 'not-verified',
+      preparation: 'not-performed',
+      checkExecution: 'not-performed',
+      approval: 'not-requested',
+      publication: 'not-authorized'
+    });
+    expect(await createScopedUserLocalRecordStore(
+      input.root, 'repair-verification', input.storage
+    ).read(saved.plan.report.fingerprint)).toBeNull();
+    if (process.platform !== 'win32') expect((await stat(saved.path)).mode & 0o777).toBe(0o600);
+  });
+
+  it('does not persist a blocked compatibility report as a verification-staging input', async () => {
+    const input = await prepared();
+    await expect(saveAdoptionCompatibilityPlan({
+      ...input.value,
+      dynamicReferencesReviewed: false
+    }, input.source, now, input.storage)).rejects.toThrow(/Blocked/);
+    expect((await readdir(input.storage.homedir!, { recursive: true })).map(String)
+      .some(name => name.includes('adoption-compatibility-plan-'))).toBe(false);
+  });
+
+  it.each(['application', 'destination', 'source', 'expired'] as const)(
+    'refuses a saved compatibility plan after %s changes without exposing old snapshots',
+    async change => {
+      const input = await prepared();
+      const saved = await saveAdoptionCompatibilityPlan(
+        input.value, input.source, now, input.storage
+      );
+      let source: unknown = input.source;
+      let clock = now;
+      if (change === 'application') {
+        const file = input.review.report.inventory.files.find(item =>
+          item.currentTargetLogicalName !== 'root-readme')!;
+        await put(input.root, file.pathParts, 'PRIVATE_CHANGED_APPLICATION\n');
+      }
+      if (change === 'destination') {
+        const destination = input.saved.plan.report.destinations[0]!;
+        await put(input.root, destination.pathParts, 'PRIVATE_CHANGED_DESTINATION\n');
+      }
+      if (change === 'source') source = adoptionFixture('python-fastapi').source;
+      if (change === 'expired') clock = new Date(now.getTime() + 15 * 60_000);
+      await expect(loadAdoptionCompatibilityPlan(
+        input.root, input.review.preview.fingerprint, input.saved.plan.report.fingerprint,
+        saved.plan.report.fingerprint, source, clock, input.storage
+      )).rejects.toThrow();
+      expect(JSON.stringify(saved.plan)).not.toContain('PRIVATE_');
+    }
+  );
+
+  it('does not load another namespace, project, prerequisite identity or forged plan key', async () => {
+    const first = await prepared(), second = await prepared();
+    const plan = await prepareAdoptionCompatibilityPlan(
+      first.value, first.source, now, first.storage
+    );
+    await createScopedUserLocalRecordStore(
+      first.root, 'repair-verification', first.storage
+    ).write(plan.report.fingerprint, plan.report);
+    await expect(loadAdoptionCompatibilityPlan(
+      first.root, first.review.preview.fingerprint, first.saved.plan.report.fingerprint,
+      plan.report.fingerprint, first.source, now, first.storage
+    )).rejects.toThrow(/No matching/);
+    const saved = await saveAdoptionCompatibilityPlan(
+      first.value, first.source, now, first.storage
+    );
+    await expect(loadAdoptionCompatibilityPlan(
+      second.root, first.review.preview.fingerprint, first.saved.plan.report.fingerprint,
+      saved.plan.report.fingerprint, first.source, now, first.storage
+    )).rejects.toThrow();
+    for (const [reviewFingerprint, destinationPlanFingerprint] of [
+      ['0'.repeat(64), first.saved.plan.report.fingerprint],
+      [first.review.preview.fingerprint, '0'.repeat(64)]
+    ]) {
+      await expect(loadAdoptionCompatibilityPlan(
+        first.root, reviewFingerprint, destinationPlanFingerprint,
+        saved.plan.report.fingerprint, first.source, now, first.storage
+      )).rejects.toThrow(/invalid|different identities/);
+    }
+    await expect(loadAdoptionCompatibilityPlan(
+      first.root, first.review.preview.fingerprint, first.saved.plan.report.fingerprint,
+      'partial', first.source, now, first.storage
+    )).rejects.toThrow(/complete/);
+  });
+
+  it('reports changed saved review and check metadata without repairing or trusting it', async () => {
+    const input = await prepared();
+    const saved = await saveAdoptionCompatibilityPlan(
+      input.value, input.source, now, input.storage
+    );
+    const changed = JSON.stringify({
+      ...saved.plan.report,
+      checkExecution: 'performed',
+      verification: { commands: [], preparation: [] }
+    });
+    await writeFile(saved.path, changed);
+    await expect(loadAdoptionCompatibilityPlan(
+      input.root, input.review.preview.fingerprint, input.saved.plan.report.fingerprint,
+      saved.plan.report.fingerprint, input.source, now, input.storage
+    )).rejects.toThrow(/invalid|stale|different/);
+    expect(await readFile(saved.path, 'utf8')).toBe(changed);
+    expect(await readdir(input.root)).not.toContain('liftoff.manifest.json');
   });
 });

@@ -1033,6 +1033,13 @@ project-code or network effect and still reports compatibility as
 source bytes remain non-serializable. The plan has no file approval,
 transaction, binding-publication, recovery, deployment or public-command
 authority.
+Only a current ready report can be stored in the private
+`adoption-compatibility-plan` namespace. Loading requires the same saved
+adoption review and destination plan, then rebuilds the review and private
+source snapshots from current project/source bytes before accepting the exact
+stored report. Saved compatibility metadata supplies no preparation,
+project-code, network, verification, approval, transaction, recovery,
+deployment, binding-publication or public-command authority.
 `createModernActivationRecordContract` provides independent state4, evidence4,
 approval4, plan3, credential2 and supersession2 readers and supplied-value
 constructors. These share the current/released decoder engine without changing
