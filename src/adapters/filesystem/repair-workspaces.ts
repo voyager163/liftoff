@@ -5,7 +5,8 @@ import path from 'node:path';
 import { validateArtifactPathParts } from '../../domain/project/paths.js';
 import {
   RepairWorkspaceError, repairWorkspaceRoleNames,
-  type RepairWorkspaceFileIdentity, type RepairWorkspaceRecord, type RepairWorkspaceStorageOptions
+  type RepairWorkspaceFileIdentity, type RepairWorkspaceStorageOptions,
+  type VerificationWorkspaceRecord
 } from '../../application/repair/workspaces-types.js';
 import { sameWorkspaceFileIdentity, workspaceDigest } from '../../application/repair/workspaces-records.js';
 import { resolveUpdatePreviewLocation, getUpdatePreviewDirectory, type UpdatePreviewPathOptions } from './update-previews.js';
@@ -200,7 +201,7 @@ export async function createRegisteredWorkspaceDirectory(
 }
 
 export async function assertRegisteredWorkspace(
-  record: RepairWorkspaceRecord, location: RepairWorkspaceLocation, allowMissing: boolean
+  record: VerificationWorkspaceRecord, location: RepairWorkspaceLocation, allowMissing: boolean
 ): Promise<boolean> {
   const project = await canonicalWorkspaceBoundary(record.projectRoot);
   if (!sameWorkspaceFileIdentity(project.identity, record.projectIdentity)) {
@@ -283,7 +284,7 @@ async function inspectInternalFileLink(target: string, workspace: string): Promi
 }
 
 async function scanWorkspace(
-  record: Pick<RepairWorkspaceRecord, 'directory'>,
+  record: Pick<VerificationWorkspaceRecord, 'directory'>,
   pinnedRootIdentity: RepairWorkspaceFileIdentity,
   pinnedRoleIdentities: ReadonlyMap<string, RepairWorkspaceFileIdentity>
 ): Promise<{ entries: CleanupEntry[]; inodeCounts: Map<string, bigint>; peerPathsByInode: Map<string, Set<string>> }> {
@@ -434,7 +435,7 @@ export async function hasRepairWorkspaceCleanupLease(location: RepairWorkspaceLo
 }
 
 export async function deleteRegisteredWorkspace(
-  record: RepairWorkspaceRecord, location: RepairWorkspaceLocation,
+  record: VerificationWorkspaceRecord, location: RepairWorkspaceLocation,
   options: RepairWorkspaceStorageOptions, progress: (removedEntries: number) => Promise<void>
 ): Promise<number> {
   const exists = await assertRegisteredWorkspace(record, location, true);
@@ -449,7 +450,7 @@ export async function deleteRegisteredWorkspace(
 export interface CapturedWorkspaceScope {
   readonly directory: string;
   readonly creationIdentity: RepairWorkspaceFileIdentity | null;
-  readonly roles: RepairWorkspaceRecord['roles'];
+  readonly roles: VerificationWorkspaceRecord['roles'];
   readonly privateBoundaries: readonly string[];
   readonly protectedRoots: readonly string[];
 }

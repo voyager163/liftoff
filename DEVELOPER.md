@@ -1058,6 +1058,16 @@ extra scope are both rejected. Consent reloads the current verification plan
 and adoption review before use; it does not run a command or assert check
 success, compatibility, file approval, transaction/recovery authority,
 publication or deployment.
+`createAdoptionVerificationWorkspace` allocates the later executor a distinct
+authenticated `liftoff-adoption-verification-workspace` record with the current
+CLI and adoption-verification contract identity. It reuses the repair
+workspace's fixed private roles, owner settlement, bounded activity inventory,
+identity-pinned cleanup and recovery machinery without accepting a repair
+identity or changing existing repair records. Exact project-code,
+dependency-preparation, network and lifecycle scopes are checked before an
+operation callback runs. The workspace is disposable execution confinement,
+not a sandbox, consent record, successful verification result, file approval
+or transaction authority; this constructor alone runs no adoption checks.
 `createModernActivationRecordContract` provides independent state4, evidence4,
 approval4, plan3, credential2 and supersession2 readers and supplied-value
 constructors. These share the current/released decoder engine without changing

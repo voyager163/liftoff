@@ -31,6 +31,25 @@ export interface CreateRepairVerificationWorkspaceOptions {
   approvedScopes: RepairWorkspaceApprovedScopes;
 }
 
+export interface AdoptionVerificationWorkspaceIdentity {
+  schemaVersion: 1;
+  kind: 'liftoff-adoption-verification-execution';
+  cliVersion: string;
+  adoptionVerificationContractVersion: 1;
+}
+
+export interface CreateAdoptionVerificationWorkspaceOptions {
+  planFingerprint: string;
+  adoptionIdentity: AdoptionVerificationWorkspaceIdentity;
+  patchStagingRoot: string;
+  bindings: RepairWorkspaceBindings;
+  approvedScopes: RepairWorkspaceApprovedScopes;
+}
+
+export type CreateVerificationWorkspaceOptions =
+  | CreateRepairVerificationWorkspaceOptions
+  | CreateAdoptionVerificationWorkspaceOptions;
+
 export interface RepairWorkspaceActivity {
   kind: 'preparation' | 'verification';
   commandDigest: string;
@@ -60,9 +79,8 @@ export interface RepairWorkspaceFileIdentity {
   birthtime: string;
 }
 
-export interface RepairWorkspaceRecord {
+interface VerificationWorkspaceRecordBase {
   schemaVersion: 1;
-  kind: 'liftoff-repair-workspace';
   workspaceId: string;
   revision: number;
   projectRoot: string;
@@ -70,7 +88,6 @@ export interface RepairWorkspaceRecord {
   patchStagingRoot: string;
   patchStagingIdentity: RepairWorkspaceFileIdentity;
   planFingerprint: string;
-  repairIdentity: RepairExecutionIdentity;
   bindings: RepairWorkspaceBindings;
   approvedScopes: RepairWorkspaceApprovedScopes;
   directory: string;
@@ -95,13 +112,27 @@ export interface RepairWorkspaceRecord {
   updatedAt: string;
 }
 
+export interface RepairWorkspaceRecord extends VerificationWorkspaceRecordBase {
+  kind: 'liftoff-repair-workspace';
+  repairIdentity: RepairExecutionIdentity;
+}
+
+export interface AdoptionVerificationWorkspaceRecord extends VerificationWorkspaceRecordBase {
+  kind: 'liftoff-adoption-verification-workspace';
+  adoptionIdentity: AdoptionVerificationWorkspaceIdentity;
+}
+
+export type VerificationWorkspaceRecord =
+  | RepairWorkspaceRecord
+  | AdoptionVerificationWorkspaceRecord;
+
 export interface RepairWorkspaceSummary {
   workspaceId: string;
   directory: string;
   planFingerprint: string;
   phase: RepairWorkspacePhase;
   /** Diagnostic owner progress, not a verification receipt or conformance claim. */
-  lastCheckpoint: RepairWorkspaceRecord['lastCheckpoint'];
+  lastCheckpoint: VerificationWorkspaceRecord['lastCheckpoint'];
   owner: 'active' | 'released' | 'uncertain';
   commandsStarted: number;
   commandsSettled: number;
