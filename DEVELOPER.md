@@ -1019,6 +1019,20 @@ Only a freshly re-observed ready report can be stored in the private
 review and rebuilds the private effects/preconditions from current project
 bytes; saved metadata never supplies old transaction bytes, verification or
 consent.
+`application/adoption/compatibility-plan.ts` consumes that saved current
+destination identity plus an explicit schema-1 application review. Every
+bounded file needs its exact digest/mode, current-path or move decision and
+active-binding/custom identity; every observed literal reference needs an
+unchanged or update disposition. Missing files/references, unresolved scope,
+dynamic-reference review gaps, moves or reference updates remain blocked.
+Compatible current paths can become only
+`ready-for-independent-verification-staging`, with exact bounded check and
+optional preparation declarations. This status performs no preparation,
+project-code or network effect and still reports compatibility as
+`not-verified`. Moves require a later external staged-patch contract; private
+source bytes remain non-serializable. The plan has no file approval,
+transaction, binding-publication, recovery, deployment or public-command
+authority.
 `createModernActivationRecordContract` provides independent state4, evidence4,
 approval4, plan3, credential2 and supersession2 readers and supplied-value
 constructors. These share the current/released decoder engine without changing
