@@ -1040,6 +1040,17 @@ source snapshots from current project/source bytes before accepting the exact
 stored report. Saved compatibility metadata supplies no preparation,
 project-code, network, verification, approval, transaction, recovery,
 deployment, binding-publication or public-command authority.
+`application/adoption/verification-plan.ts` reloads that saved compatibility
+identity, re-observes the same private source snapshots, resolves registered
+preparation inputs and exact installed tool identities, and repeats current
+input/tool checks before saving a private verification-plan report. Tool
+metadata probes require proven process settlement, but no candidate preparation
+or project check runs. The stored report contains only digests and declared
+permissions, not source bytes, executable paths or the private resolved policy.
+Its ready status requests later independent dependency-preparation,
+project-code and declared-network permission as applicable; it is not
+compatibility success, file approval, transaction/recovery authority,
+active-binding publication, deployment permission or a public command.
 `createModernActivationRecordContract` provides independent state4, evidence4,
 approval4, plan3, credential2 and supersession2 readers and supplied-value
 constructors. These share the current/released decoder engine without changing

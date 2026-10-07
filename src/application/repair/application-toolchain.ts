@@ -99,11 +99,13 @@ export async function readNpmIdentity(file: string): Promise<{ name: string; ver
 
 export async function resolveApplicationPreparationTools(
   projectRoot: string, stagingRoot: string, preparation: readonly ApplicationResolvedPreparation[],
-  options: ApplicationInspectionOptions = {}, additionalTools: readonly ApplicationToolId[] = []
+  options: ApplicationInspectionOptions = {}, additionalTools: readonly ApplicationToolId[] = [],
+  requireSettlement = false
 ): Promise<ApplicationToolIdentity[]> {
   if (!preparation.length) return [];
   return resolveApplicationToolValues(projectRoot, stagingRoot,
-    () => new Set([...preparation.flatMap((item) => item.tools), ...additionalTools]), options, false);
+    () => new Set([...preparation.flatMap((item) => item.tools), ...additionalTools]),
+    options, requireSettlement);
 }
 
 export async function resolveApplicationToolsForLocalChecks(
