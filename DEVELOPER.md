@@ -1003,6 +1003,17 @@ public command or advertised adoption capability from this private contract.
 The inherited inventory eligibility remains governance `none` or
 `single-maintainer-gitflow`; a valid team-profile metadata identity does not
 enable team adoption or repair before its distinct implementation qualifies.
+`application/adoption/destination-plan.ts` revalidates that review and reads
+each finite proposed managed-core/manifest destination with single-link,
+case/Unicode-collision, regular-file and size checks. Absent destinations are
+private proposed writes; byte-identical existing files remain explicitly
+`matching-unowned`; any different unowned destination blocks the entire write
+inventory. The plan fingerprint also binds all included application and
+destination snapshots, but those private bytes/preconditions stay out of JSON.
+The manifest-free application remains untouched and the plan is only
+`ready-for-independent-verification`: it requests no approval and exposes no
+transaction candidate. Preparation, project-code execution, declared network
+and a later distinct file-transaction permission remain independent.
 `createModernActivationRecordContract` provides independent state4, evidence4,
 approval4, plan3, credential2 and supersession2 readers and supplied-value
 constructors. These share the current/released decoder engine without changing
