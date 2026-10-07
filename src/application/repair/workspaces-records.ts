@@ -316,6 +316,58 @@ export function workspaceSeal(payload: unknown, key: string): unknown {
   };
 }
 
+export function adoptionWorkspaceResultSeal(
+  payload: unknown, key: string, workspaceId: string, planFingerprint: string
+): unknown {
+  workspaceDigest(key);
+  workspaceDigest(workspaceId);
+  workspaceDigest(planFingerprint);
+  const authenticated = { workspaceId, planFingerprint, payload };
+  return {
+    schemaVersion: 1,
+    kind: 'liftoff-adoption-verification-result-seal',
+    ...authenticated,
+    mac: createHmac('sha256', Buffer.from(key, 'hex'))
+      .update(canonicalJson(authenticated)).digest('hex')
+  };
+}
+
+export function openAdoptionWorkspaceResultSeal(
+  value: unknown, key: string, workspaceId: string, planFingerprint: string
+): unknown {
+  workspaceDigest(key);
+  workspaceDigest(workspaceId);
+  workspaceDigest(planFingerprint);
+  const envelope = exact(value, [
+    'schemaVersion', 'kind', 'workspaceId', 'planFingerprint', 'payload', 'mac'
+  ]);
+  if (envelope.schemaVersion !== 1 ||
+      envelope.kind !== 'liftoff-adoption-verification-result-seal') {
+    throw new RepairWorkspaceError(
+      'unsupported-record',
+      'Adoption verification result authentication schema is unsupported.'
+    );
+  }
+  if (envelope.workspaceId !== workspaceId ||
+      envelope.planFingerprint !== planFingerprint) {
+    throw new RepairWorkspaceError(
+      'scope-mismatch',
+      'Adoption verification result belongs to another workspace or plan.'
+    );
+  }
+  workspaceDigest(envelope.mac);
+  const expected = createHmac('sha256', Buffer.from(key, 'hex')).update(canonicalJson({
+    workspaceId, planFingerprint, payload: envelope.payload
+  })).digest();
+  if (!timingSafeEqual(expected, Buffer.from(envelope.mac, 'hex'))) {
+    throw new RepairWorkspaceError(
+      'unauthenticated-record',
+      'Adoption verification result authentication failed.'
+    );
+  }
+  return envelope.payload;
+}
+
 export function openWorkspaceSeal(value: unknown, key: string): unknown {
   const envelope = exact(value, ['schemaVersion', 'kind', 'payload', 'mac']);
   if (envelope.schemaVersion !== 1 || envelope.kind !== 'liftoff-repair-workspace-seal') {

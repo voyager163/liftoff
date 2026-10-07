@@ -6,7 +6,8 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createAdoptionVerificationWorkspace, inspectRepairVerificationWorkspaces,
-  recoverRepairVerificationWorkspaces,
+  openCompletedAdoptionVerificationResult, recoverRepairVerificationWorkspaces,
+  sealCompletedAdoptionVerificationResult,
   type AdoptionVerificationWorkspaceRecord,
   type CreateAdoptionVerificationWorkspaceOptions,
   type RepairWorkspaceStorageOptions
@@ -257,5 +258,45 @@ describe('authenticated adoption verification workspaces', () => {
       cleanupComplete: true
     });
     await expect(lstat(workspace.directory)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('seals results only after verified settlement and complete authenticated cleanup', async () => {
+    const f = await fixture();
+    const workspace = await createAdoptionVerificationWorkspace(
+      f.project, f.request, f.storage
+    );
+    const payload = {
+      kind: 'qualified-adoption-verification',
+      digest: canonicalSha256('exact successful checks')
+    };
+    await expect(sealCompletedAdoptionVerificationResult(
+      f.project, workspace.workspaceId, f.request.planFingerprint,
+      payload, f.storage
+    )).rejects.toThrow(/settled, verified and completely cleaned/u);
+    await workspace.runOwned({
+      kind: 'verification',
+      commandDigest: canonicalSha256('successful check'),
+      network: false,
+      lifecycle: false
+    }, async () => ({ value: undefined, allKnownCommandsSettled: true }));
+    await workspace.checkpoint('verified');
+    await workspace.releaseOwner();
+    expect((await workspace.cleanup()).cleanupComplete).toBe(true);
+    const sealed = await sealCompletedAdoptionVerificationResult(
+      f.project, workspace.workspaceId, f.request.planFingerprint,
+      payload, f.storage
+    );
+    expect(await openCompletedAdoptionVerificationResult(
+      f.project, workspace.workspaceId, f.request.planFingerprint,
+      sealed, f.storage
+    )).toEqual(payload);
+    await expect(openCompletedAdoptionVerificationResult(
+      f.project, workspace.workspaceId, canonicalSha256('another plan'),
+      sealed, f.storage
+    )).rejects.toThrow();
+    await expect(openCompletedAdoptionVerificationResult(
+      f.project, workspace.workspaceId, f.request.planFingerprint,
+      { ...(sealed as object), mac: '0'.repeat(64) }, f.storage
+    )).rejects.toThrow(/authentication failed/u);
   });
 });

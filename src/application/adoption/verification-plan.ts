@@ -68,7 +68,9 @@ function contentDigest(content: Buffer): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
-function snapshotDigest(snapshots: readonly ProjectFileSnapshot[]): string {
+export function adoptionVerificationSnapshotDigest(
+  snapshots: readonly ProjectFileSnapshot[]
+): string {
   return canonicalSha256(snapshots.map(snapshot => ({
     pathParts: [...snapshot.pathParts],
     digest: snapshot.content === undefined ? null : contentDigest(snapshot.content),
@@ -76,7 +78,9 @@ function snapshotDigest(snapshots: readonly ProjectFileSnapshot[]): string {
   })));
 }
 
-async function stagingBoundary(projectRoot: string): Promise<string> {
+export async function adoptionVerificationStagingBoundary(
+  projectRoot: string
+): Promise<string> {
   return path.join(
     await realpath(tmpdir()),
     `liftoff-adoption-verification-staging-${canonicalSha256(projectRoot).slice(0, 16)}`
@@ -88,7 +92,8 @@ function sameCompatibility(
   right: AdoptionCompatibilityPlan
 ): boolean {
   return canonicalSha256(left.report) === canonicalSha256(right.report) &&
-    snapshotDigest(left.snapshots) === snapshotDigest(right.snapshots);
+    adoptionVerificationSnapshotDigest(left.snapshots) ===
+      adoptionVerificationSnapshotDigest(right.snapshots);
 }
 
 export async function prepareAdoptionVerificationPlan(
@@ -108,10 +113,13 @@ export async function prepareAdoptionVerificationPlan(
   const candidate = await inspectAdoptionCandidate(compatibility.report.projectRoot, source);
   if (candidate.report.inventory.inspectionDigest !== compatibility.report.inventoryDigest ||
       candidate.report.inventory.target.digest !== compatibility.report.targetLayoutDigest ||
-      snapshotDigest(candidate.snapshots) !== snapshotDigest(compatibility.snapshots)) {
+      adoptionVerificationSnapshotDigest(candidate.snapshots) !==
+        adoptionVerificationSnapshotDigest(compatibility.snapshots)) {
     throw new Error('Adoption verification planning observed different compatibility inputs.');
   }
-  const boundary = await stagingBoundary(compatibility.report.projectRoot);
+  const boundary = await adoptionVerificationStagingBoundary(
+    compatibility.report.projectRoot
+  );
   const policy = await resolveCapturedApplicationVerificationPolicy({
     projectRoot: compatibility.report.projectRoot,
     stagingRoot: boundary,
@@ -149,7 +157,7 @@ export async function prepareAdoptionVerificationPlan(
     compatibilityPlanFingerprint,
     inventoryDigest: compatibility.report.inventoryDigest,
     targetLayoutDigest: compatibility.report.targetLayoutDigest,
-    snapshotDigest: snapshotDigest(compatibility.snapshots),
+    snapshotDigest: adoptionVerificationSnapshotDigest(compatibility.snapshots),
     verificationPolicyDigest: canonicalSha256(policy),
     providerDigest: canonicalSha256(policy.preparation),
     toolchainDigest: canonicalSha256(policy.toolchain),

@@ -13,7 +13,9 @@ import {
   type RepairWorkspaceLocation
 } from '../../adapters/filesystem/repair-workspaces.js';
 import {
-  maximumRepairWorkspaces, openWorkspaceSeal, repairWorkspaceAuthorityKey, repairWorkspaceIndexKey,
+  adoptionWorkspaceResultSeal, maximumRepairWorkspaces,
+  openAdoptionWorkspaceResultSeal, openWorkspaceSeal,
+  repairWorkspaceAuthorityKey, repairWorkspaceIndexKey,
   validateWorkspaceActivity, validateWorkspaceAuthority, validateWorkspaceIndex, validateWorkspaceRecord,
   validateWorkspaceRequest, workspaceRecordKey, workspaceSeal, type RepairWorkspaceIndex
 } from './workspaces-records.js';
@@ -450,6 +452,59 @@ export function createAdoptionVerificationWorkspace(
   storage: RepairWorkspaceStorageOptions = {}
 ): Promise<RepairVerificationWorkspace> {
   return createVerificationWorkspace(root, request, storage);
+}
+
+function assertCompletedAdoptionWorkspace(
+  record: VerificationWorkspaceRecord, planFingerprint: string
+): void {
+  if (record.kind !== 'liftoff-adoption-verification-workspace' ||
+      record.planFingerprint !== planFingerprint ||
+      record.phase !== 'cleaned' ||
+      record.lastCheckpoint !== 'verified' ||
+      record.owner.state !== 'released' ||
+      record.cleanup.complete !== true ||
+      record.activities.uncertain !== 0 ||
+      record.activities.inFlight.length !== 0 ||
+      record.activities.started !== record.activities.settled) {
+    throw new RepairWorkspaceError(
+      'unsupported-record',
+      'Only an authenticated, settled, verified and completely cleaned adoption workspace can seal a result.'
+    );
+  }
+}
+
+export async function sealCompletedAdoptionVerificationResult(
+  root: string, workspaceId: string, planFingerprint: string, payload: unknown,
+  storage: RepairWorkspaceStorageOptions = {}
+): Promise<unknown> {
+  const context = await openContext(root, storage, false);
+  if (!context) {
+    throw new RepairWorkspaceError(
+      'registry-unavailable', 'Adoption verification workspace authority is unavailable.'
+    );
+  }
+  const record = (await readRecord(context, workspaceId)).value;
+  assertCompletedAdoptionWorkspace(record, planFingerprint);
+  return adoptionWorkspaceResultSeal(
+    structuredClone(payload), context.key, workspaceId, planFingerprint
+  );
+}
+
+export async function openCompletedAdoptionVerificationResult(
+  root: string, workspaceId: string, planFingerprint: string, sealed: unknown,
+  storage: RepairWorkspaceStorageOptions = {}
+): Promise<unknown> {
+  const context = await openContext(root, storage, false);
+  if (!context) {
+    throw new RepairWorkspaceError(
+      'registry-unavailable', 'Adoption verification workspace authority is unavailable.'
+    );
+  }
+  const record = (await readRecord(context, workspaceId)).value;
+  assertCompletedAdoptionWorkspace(record, planFingerprint);
+  return openAdoptionWorkspaceResultSeal(
+    sealed, context.key, workspaceId, planFingerprint
+  );
 }
 
 export async function inspectRepairVerificationWorkspaces(

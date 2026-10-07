@@ -1068,6 +1068,19 @@ dependency-preparation, network and lifecycle scopes are checked before an
 operation callback runs. The workspace is disposable execution confinement,
 not a sandbox, consent record, successful verification result, file approval
 or transaction authority; this constructor alone runs no adoption checks.
+`executeAdoptionVerification` reloads the exact current plan and consent,
+re-observes compatibility inputs and installed tool file identities before
+each effect, copies bounded source snapshots into that workspace, and runs only
+the resolved registered preparation and check commands. Every process requires
+process-tree settlement; uncertain scope is retained rather than cleaned or
+reported as success. A passed result is persisted only after every declared
+check passes, protected inputs remain current, the owner is released and
+authenticated cleanup completes. Its receipt is HMAC-bound to the settled
+`verified` adoption workspace record and is revalidated against current plan,
+consent, source, destination and tool identities on read. Failed, expired,
+changed or uncertain work stores no success receipt. Even a current receipt is
+only declared-check compatibility evidence: file approval, transaction,
+recovery, active-binding publication and deployment remain unauthorized.
 `createModernActivationRecordContract` provides independent state4, evidence4,
 approval4, plan3, credential2 and supersession2 readers and supplied-value
 constructors. These share the current/released decoder engine without changing
