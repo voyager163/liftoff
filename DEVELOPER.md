@@ -1014,6 +1014,11 @@ The manifest-free application remains untouched and the plan is only
 `ready-for-independent-verification`: it requests no approval and exposes no
 transaction candidate. Preparation, project-code execution, declared network
 and a later distinct file-transaction permission remain independent.
+Only a freshly re-observed ready report can be stored in the private
+`adoption-destination-plan` namespace. Loading requires its same saved adoption
+review and rebuilds the private effects/preconditions from current project
+bytes; saved metadata never supplies old transaction bytes, verification or
+consent.
 `createModernActivationRecordContract` provides independent state4, evidence4,
 approval4, plan3, credential2 and supersession2 readers and supplied-value
 constructors. These share the current/released decoder engine without changing
