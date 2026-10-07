@@ -181,15 +181,23 @@ describe('exact read-only adoption destination plan without transaction authorit
     expect(await readdir(root)).not.toContain('liftoff.manifest.json');
   });
 
-  it.each(['application-bytes', 'application-mode', 'new-member', 'source'] as const)(
+  it.each(['application-bytes', 'new-member', 'source'] as const)(
     'refuses stale reviewed %s before proposing any destination write', async change => {
       const { root, filename, source, review } = await fixture();
       let current: unknown = source;
       if (change === 'application-bytes') await writeFile(filename, 'PRIVATE_CONCURRENT_EDIT\n');
-      if (change === 'application-mode') await chmod(filename, 0o600);
       if (change === 'new-member') await writeFile(path.join(root, 'new-source.ts'), 'PRIVATE_NEW_MEMBER\n');
       if (change === 'source') current = adoptionFixture('python-fastapi').source;
       await expect(prepareAdoptionDestinationPlan(review.preview, current, now)).rejects.toThrow(/stale/);
+      expect(await readdir(root)).not.toContain('liftoff.manifest.json');
+    });
+
+  it.skipIf(process.platform === 'win32')(
+    'refuses stale reviewed application-mode before proposing any destination write', async () => {
+      const { root, filename, source, review } = await fixture();
+      await chmod(filename, 0o600);
+      await expect(prepareAdoptionDestinationPlan(review.preview, source, now)).rejects.toThrow(/stale/);
+      expect((await stat(filename)).mode & 0o777).toBe(0o600);
       expect(await readdir(root)).not.toContain('liftoff.manifest.json');
     });
 
