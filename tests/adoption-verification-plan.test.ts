@@ -3,7 +3,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createScopedUserLocalRecordStore, type UpdatePreviewOptions
 } from '../src/adapters/filesystem/update-previews.js';
@@ -21,6 +21,9 @@ import {
   loadAdoptionVerificationPlan, prepareAdoptionVerificationPlan,
   saveAdoptionVerificationPlan
 } from '../src/application/adoption/verification-plan.js';
+import {
+  readAdoptionVerificationConsent, saveAdoptionVerificationConsent
+} from '../src/application/adoption/verification-consent.js';
 import { adoptionFixture } from './fixtures/adoption.js';
 
 const roots: string[] = [];
@@ -151,6 +154,45 @@ async function load(
     clock,
     input.storage,
     inspection
+  );
+}
+
+async function grant(
+  input: Awaited<ReturnType<typeof prepared>>,
+  saved: Awaited<ReturnType<typeof save>>,
+  request: {
+    projectCode: boolean;
+    dependencyPreparation: boolean;
+    declaredNetwork: boolean;
+  }
+) {
+  return saveAdoptionVerificationConsent(
+    input.root,
+    input.review.preview.fingerprint,
+    input.destination.plan.report.fingerprint,
+    input.compatibility.plan.report.fingerprint,
+    saved.plan.report.fingerprint,
+    input.source,
+    now,
+    request,
+    input.storage
+  );
+}
+
+async function readConsent(
+  input: Awaited<ReturnType<typeof prepared>>,
+  saved: Awaited<ReturnType<typeof save>>,
+  clock = now
+) {
+  return readAdoptionVerificationConsent(
+    input.root,
+    input.review.preview.fingerprint,
+    input.destination.plan.report.fingerprint,
+    input.compatibility.plan.report.fingerprint,
+    saved.plan.report.fingerprint,
+    input.source,
+    clock,
+    input.storage
   );
 }
 
@@ -319,5 +361,111 @@ describe('adoption verification planning without effect or transaction authority
     await expect(load(first, saved)).rejects.toThrow(/invalid|stale|different/u);
     expect(await readFile(saved.path, 'utf8')).toBe(changed);
     expect(await readdir(first.root)).not.toContain('liftoff.manifest.json');
+  });
+
+  it('stores exact expiring verification scopes without granting success or transaction authority', async () => {
+    const input = await prepared();
+    const saved = await save(input);
+    const before = await readFile(path.join(input.root, ...input.backend.pathParts));
+    const granted = await grant(input, saved, {
+      projectCode: true,
+      dependencyPreparation: false,
+      declaredNetwork: false
+    });
+    expect(path.basename(granted.path)).toMatch(/^adoption-verification-consent-/u);
+    expect(granted.consent).toMatchObject({
+      schemaVersion: 1,
+      kind: 'liftoff-adoption-verification-consent',
+      projectRoot: input.root,
+      verificationPlanFingerprint: saved.plan.report.fingerprint,
+      verificationPolicyDigest: saved.plan.report.verificationPolicyDigest,
+      permissions: {
+        projectCode: true,
+        dependencyPreparation: false,
+        declaredNetwork: false
+      },
+      result: 'granted-for-isolated-verification-only',
+      compatibility: 'not-verified',
+      transaction: 'not-authorized',
+      publication: 'not-authorized'
+    });
+    expect(Object.isFrozen(granted.consent)).toBe(true);
+    expect(Object.isFrozen(granted.consent.permissions)).toBe(true);
+    expect(await readConsent(input, saved)).toEqual(granted.consent);
+    expect((await grant(input, saved, granted.consent.permissions)).path).toBe(granted.path);
+    expect(await readFile(path.join(input.root, ...input.backend.pathParts))).toEqual(before);
+  });
+
+  it('requires every displayed scope and rejects unused scope or hostile request objects', async () => {
+    const input = await prepared();
+    const saved = await save(input);
+    for (const request of [
+      { projectCode: false, dependencyPreparation: false, declaredNetwork: false },
+      { projectCode: true, dependencyPreparation: true, declaredNetwork: false },
+      { projectCode: true, dependencyPreparation: false, declaredNetwork: true }
+    ]) {
+      await expect(grant(input, saved, request)).rejects.toThrow(/exactly grant/u);
+    }
+    const get = vi.fn();
+    const proxied = new Proxy({
+      projectCode: true, dependencyPreparation: false, declaredNetwork: false
+    }, {
+      get(target, key, receiver) {
+        get();
+        return Reflect.get(target, key, receiver);
+      }
+    });
+    await expect(saveAdoptionVerificationConsent(
+      input.root,
+      input.review.preview.fingerprint,
+      input.destination.plan.report.fingerprint,
+      input.compatibility.plan.report.fingerprint,
+      saved.plan.report.fingerprint,
+      input.source,
+      now,
+      proxied,
+      input.storage
+    )).rejects.toThrow(/plain fields/u);
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it('grants declared network only for a plan that requires it and still performs no check', async () => {
+    const input = await prepared(true);
+    const saved = await save(input);
+    const granted = await grant(input, saved, {
+      projectCode: true,
+      dependencyPreparation: false,
+      declaredNetwork: true
+    });
+    expect(granted.consent.permissions.declaredNetwork).toBe(true);
+    expect(granted.consent.compatibility).toBe('not-verified');
+    expect(granted.consent.transaction).toBe('not-authorized');
+  });
+
+  it('rejects absent namespaces, expiry and modified consent metadata', async () => {
+    const input = await prepared();
+    const saved = await save(input);
+    await createScopedUserLocalRecordStore(
+      input.root, 'repair-approval', input.storage
+    ).write(saved.plan.report.fingerprint, { unrelated: true });
+    expect(await readConsent(input, saved)).toBeNull();
+
+    const granted = await grant(input, saved, {
+      projectCode: true,
+      dependencyPreparation: false,
+      declaredNetwork: false
+    });
+    await expect(readConsent(
+      input, saved, new Date(now.getTime() + 15 * 60_000)
+    )).rejects.toThrow();
+
+    const changed = JSON.stringify({
+      ...granted.consent,
+      result: 'declared-checks-passed',
+      transaction: 'authorized'
+    });
+    await writeFile(granted.path, changed);
+    await expect(readConsent(input, saved)).rejects.toThrow(/invalid|stale|different/u);
+    expect(await readFile(granted.path, 'utf8')).toBe(changed);
   });
 });

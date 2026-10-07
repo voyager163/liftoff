@@ -1051,6 +1051,13 @@ Its ready status requests later independent dependency-preparation,
 project-code and declared-network permission as applicable; it is not
 compatibility success, file approval, transaction/recovery authority,
 active-binding publication, deployment permission or a public command.
+`application/adoption/verification-consent.ts` records only an exact,
+same-plan, expiring grant for the displayed dependency-preparation,
+project-code and declared-network scopes. Missing required scope and unused
+extra scope are both rejected. Consent reloads the current verification plan
+and adoption review before use; it does not run a command or assert check
+success, compatibility, file approval, transaction/recovery authority,
+publication or deployment.
 `createModernActivationRecordContract` provides independent state4, evidence4,
 approval4, plan3, credential2 and supersession2 readers and supplied-value
 constructors. These share the current/released decoder engine without changing
