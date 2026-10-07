@@ -4,8 +4,13 @@ import {
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { prepareAdoptionDestinationPlan } from '../src/application/adoption/destination-plan.js';
-import { createAdoptionReview } from '../src/application/adoption/preview.js';
+import {
+  loadAdoptionDestinationPlan, prepareAdoptionDestinationPlan, saveAdoptionDestinationPlan
+} from '../src/application/adoption/destination-plan.js';
+import {
+  createAdoptionReview, saveAdoptionPreview
+} from '../src/application/adoption/preview.js';
+import { createScopedUserLocalRecordStore } from '../src/adapters/filesystem/update-previews.js';
 import { buildModernManagedCore } from '../src/application/project/modern-managed-core.js';
 import { adoptionFixture } from './fixtures/adoption.js';
 
@@ -23,7 +28,9 @@ async function fixture(
   const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'adoption-plan-owned-')));
   roots.push(directory);
   const root = path.join(directory, 'Existing Project With Spaces');
+  const home = path.join(directory, 'Private Home');
   await mkdir(root);
+  await mkdir(home);
   const { source } = adoptionFixture(stack, profile, workflow);
   const backend = source.activeLayout.bindings.find(binding =>
     binding.kind === 'artifact' && binding.logicalName !== 'root-readme');
@@ -33,7 +40,8 @@ async function fixture(
   await writeFile(filename, 'PRIVATE_ACTUAL_APPLICATION\r\n', { mode: 0o640 });
   await writeFile(path.join(root, 'README.md'), 'PRIVATE_ACTUAL_DOCUMENTATION\n');
   const review = await createAdoptionReview(root, source, now);
-  return { root, filename, source, review };
+  const storage = { homedir: home, env: {}, clock: () => new Date(now) };
+  return { root, home, filename, source, review, storage };
 }
 
 async function write(root: string, pathParts: readonly string[], content: string | Buffer, mode?: number) {
@@ -282,5 +290,105 @@ describe('exact read-only adoption destination plan without transaction authorit
       .toBe((await stat(filename)).mode & 0o7777);
     expect(second.report.verification).toBe('not-performed');
     expect(second.report.approval).toBe('not-requested');
+  });
+
+  it('saves only a fresh ready report and rebuilds private effects from current observations when loading', async () => {
+    const { root, home, source, review, storage } = await fixture(
+      'node-fastify', 'single-maintainer-gitflow', 'openspec');
+    await saveAdoptionPreview(review.preview, now, storage);
+    const before = await readdir(root);
+    const saved = await saveAdoptionDestinationPlan(
+      root, review.preview.fingerprint, source, now, storage);
+    expect(path.relative(home, saved.path).startsWith('..')).toBe(false);
+    expect(path.basename(saved.path)).toMatch(/^adoption-destination-plan-/);
+    expect(Object.keys(saved.plan)).toEqual(['report']);
+    const loaded = await loadAdoptionDestinationPlan(
+      root, review.preview.fingerprint, saved.plan.report.fingerprint, source, now, storage);
+    expect(loaded.report).toEqual(saved.plan.report);
+    expect(loaded.mutations).toEqual(saved.plan.mutations);
+    expect(loaded.preconditions).toEqual(saved.plan.preconditions);
+    expect((await saveAdoptionDestinationPlan(
+      root, review.preview.fingerprint, source, now, storage)).path).toBe(saved.path);
+    expect(await readdir(root)).toEqual(before);
+    const text = await readFile(saved.path, 'utf8');
+    expect(text).not.toContain('PRIVATE_ACTUAL');
+    expect(text).not.toContain('"mutations":');
+    expect(text).not.toContain('"preconditions":');
+    expect(loaded.report.verification).toBe('not-performed');
+    expect(loaded.report.approval).toBe('not-requested');
+    expect(loaded.report.publication).toBe('not-authorized');
+    expect(await createScopedUserLocalRecordStore(
+      root, 'repair-verification', storage).read(saved.plan.report.fingerprint)).toBeNull();
+    if (process.platform !== 'win32') expect((await stat(saved.path)).mode & 0o777).toBe(0o600);
+  });
+
+  it('does not persist a blocked destination report as a verification input', async () => {
+    const { root, home, source, review, storage } = await fixture(
+      'node-fastify', 'single-maintainer-gitflow', 'openspec');
+    const artifact = buildModernManagedCore(source)[0]!;
+    await write(root, artifact.pathParts, 'PRIVATE_CONFLICT\n');
+    const current = await createAdoptionReview(root, source, now);
+    await saveAdoptionPreview(current.preview, now, storage);
+    await expect(saveAdoptionDestinationPlan(
+      root, current.preview.fingerprint, source, now, storage)).rejects.toThrow(/Blocked/);
+    expect((await readdir(home, { recursive: true })).map(String)
+      .some(name => name.includes('adoption-destination-plan-'))).toBe(false);
+    expect(await readFile(path.join(root, ...artifact.pathParts), 'utf8')).toBe('PRIVATE_CONFLICT\n');
+    expect(review.preview.fingerprint).not.toBe(current.preview.fingerprint);
+  });
+
+  it.each(['application', 'destination', 'source', 'expired'] as const)(
+    'refuses a saved destination plan after %s changes without exposing old private effects', async change => {
+      const { root, filename, source, review, storage } = await fixture(
+        'node-fastify', 'single-maintainer-gitflow', 'openspec');
+      await saveAdoptionPreview(review.preview, now, storage);
+      const saved = await saveAdoptionDestinationPlan(
+        root, review.preview.fingerprint, source, now, storage);
+      let current: unknown = source;
+      let clock = now;
+      if (change === 'application') await writeFile(filename, 'PRIVATE_CHANGED_APPLICATION\n');
+      if (change === 'destination') {
+        const artifact = buildModernManagedCore(source)[0]!;
+        await write(root, artifact.pathParts, 'PRIVATE_NEW_DESTINATION\n');
+      }
+      if (change === 'source') current = adoptionFixture('python-fastapi').source;
+      if (change === 'expired') clock = new Date(now.getTime() + 15 * 60_000);
+      await expect(loadAdoptionDestinationPlan(
+        root, review.preview.fingerprint, saved.plan.report.fingerprint, current, clock, storage))
+        .rejects.toThrow();
+      expect(await readdir(root)).not.toContain('liftoff.manifest.json');
+    });
+
+  it('does not load another namespace, another project or a forged plan key', async () => {
+    const first = await fixture(), second = await fixture();
+    await saveAdoptionPreview(first.review.preview, now, first.storage);
+    const prepared = await prepareAdoptionDestinationPlan(first.review.preview, first.source, now);
+    await createScopedUserLocalRecordStore(
+      first.root, 'repair-verification', first.storage).write(prepared.report.fingerprint, prepared.report);
+    await expect(loadAdoptionDestinationPlan(
+      first.root, first.review.preview.fingerprint, prepared.report.fingerprint,
+      first.source, now, first.storage)).rejects.toThrow(/No matching/);
+    const saved = await saveAdoptionDestinationPlan(
+      first.root, first.review.preview.fingerprint, first.source, now, first.storage);
+    await expect(loadAdoptionDestinationPlan(
+      second.root, first.review.preview.fingerprint, saved.plan.report.fingerprint,
+      first.source, now, first.storage)).rejects.toThrow();
+    await expect(loadAdoptionDestinationPlan(
+      first.root, first.review.preview.fingerprint, 'partial',
+      first.source, now, first.storage)).rejects.toThrow(/complete/);
+  });
+
+  it('reports a changed saved report without repairing or trusting its metadata', async () => {
+    const { root, source, review, storage } = await fixture();
+    await saveAdoptionPreview(review.preview, now, storage);
+    const saved = await saveAdoptionDestinationPlan(
+      root, review.preview.fingerprint, source, now, storage);
+    const changed = JSON.stringify({ ...saved.plan.report, verification: 'performed' });
+    await writeFile(saved.path, changed);
+    await expect(loadAdoptionDestinationPlan(
+      root, review.preview.fingerprint, saved.plan.report.fingerprint, source, now, storage))
+      .rejects.toThrow(/invalid|stale|different/);
+    expect(await readFile(saved.path, 'utf8')).toBe(changed);
+    expect(await readdir(root)).not.toContain('liftoff.manifest.json');
   });
 });

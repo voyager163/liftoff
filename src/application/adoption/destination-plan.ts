@@ -5,11 +5,14 @@ import {
 import type {
   ProjectFileMutation, ProjectFileSnapshot
 } from '../../adapters/filesystem/project-transaction.js';
+import {
+  createScopedUserLocalRecordStore, type UpdatePreviewOptions
+} from '../../adapters/filesystem/update-previews.js';
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
 import { applicationBounds } from '../repair/application-types.js';
 import { buildModernManagedCore } from '../project/modern-managed-core.js';
 import {
-  revalidateAdoptionPreview, validateAdoptionPreview, type AdoptionPreview
+  loadAdoptionPreview, revalidateAdoptionPreview, validateAdoptionPreview, type AdoptionPreview
 } from './preview.js';
 
 export const adoptionDestinationPlanSchemaVersion = 1 as const;
@@ -55,6 +58,11 @@ export interface AdoptionDestinationPlan {
   readonly report: AdoptionDestinationPlanReport;
   readonly mutations: readonly ProjectFileMutation[];
   readonly preconditions: readonly ProjectFileSnapshot[];
+}
+
+export interface SavedAdoptionDestinationPlan {
+  readonly path: string;
+  readonly plan: AdoptionDestinationPlan;
 }
 
 function digest(content: string | Buffer): string {
@@ -203,6 +211,54 @@ export async function prepareAdoptionDestinationPlan(
     })),
     preconditions: preconditions.map(snapshotDescriptor)
   }) }, mutations, preconditions);
+}
+
+/** Persists only a freshly re-observed report; private effects remain transient and unapproved. */
+export async function saveAdoptionDestinationPlan(
+  projectRoot: string,
+  reviewFingerprint: string,
+  source: unknown,
+  now: Date,
+  storage?: UpdatePreviewOptions
+): Promise<SavedAdoptionDestinationPlan> {
+  const preview = await loadAdoptionPreview(projectRoot, reviewFingerprint, now, storage);
+  const plan = await prepareAdoptionDestinationPlan(preview, source, now);
+  if (plan.report.status !== 'ready-for-independent-verification') {
+    throw new Error('Blocked adoption destinations cannot become a saved verification input.');
+  }
+  const stored = await createScopedUserLocalRecordStore(
+    preview.projectRoot, 'adoption-destination-plan', storage
+  ).write(plan.report.fingerprint, plan.report);
+  if (stored.projectRoot !== preview.projectRoot) {
+    throw new Error('Adoption destination-plan storage resolved a different canonical project root.');
+  }
+  return { path: stored.path, plan };
+}
+
+/** Rebuilds private effects from current inputs; saved metadata never supplies transaction bytes. */
+export async function loadAdoptionDestinationPlan(
+  projectRoot: string,
+  reviewFingerprint: string,
+  planFingerprint: string,
+  source: unknown,
+  now: Date,
+  storage?: UpdatePreviewOptions
+): Promise<AdoptionDestinationPlan> {
+  const preview = await loadAdoptionPreview(projectRoot, reviewFingerprint, now, storage);
+  const stored = await createScopedUserLocalRecordStore(
+    preview.projectRoot, 'adoption-destination-plan', storage
+  ).read(planFingerprint);
+  if (!stored) throw new Error('No matching same-project adoption destination plan exists; request a new review.');
+  if (stored.projectRoot !== preview.projectRoot) {
+    throw new Error('Adoption destination-plan storage resolved a different canonical project root.');
+  }
+  const plan = await prepareAdoptionDestinationPlan(preview, source, now);
+  if (plan.report.status !== 'ready-for-independent-verification' ||
+      plan.report.fingerprint !== planFingerprint ||
+      canonicalSha256(stored.value) !== canonicalSha256(plan.report)) {
+    throw new Error('Adoption destination plan is invalid, stale or bound to different observations; request a new review.');
+  }
+  return plan;
 }
 
 function privatePlan(
