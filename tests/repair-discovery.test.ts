@@ -44,6 +44,8 @@ describe('public repair command grammar', () => {
     ['--approve-plan', 'a'.repeat(64), '--live', '--subscription', subscription],
     ['--approve-plan', 'no'], ['--live'], ['--subscription', subscription],
     ['--live', '--subscription', 'a-name'], ['--force'], ['--yes'],
+    ['--state', 'terraform.tfstate'], ['--import', 'resource.id'],
+    ['--apply'], ['--destroy'], ['--register-provider'], ['--enroll-credential'],
     ['some-project', '--project', 'another-project']
   ])('rejects invalid authority before inspection: %j', (...args) => {
     expect(() => parseArgs(['repair', ...args])).toThrow();
@@ -70,10 +72,22 @@ describe('repair metadata discovery', () => {
     const result = await discoverRepairEligibility(project, candidate(), { live: true, subscription, runner });
     expect(result.status).toBe('verified-undeployed');
     expect(runner.calls).toHaveLength(2);
-    for (const call of runner.calls) {
-      expect(call.command.args).toContain(subscription);
-      expect(call.options).toMatchObject({ ...repairCommandLimits, cwd: project });
-    }
+    expect(runner.calls.map(call => call.command)).toEqual([
+      {
+        executable: 'az',
+        args: ['account', 'show', '--subscription', subscription, '--only-show-errors', '--output', 'json']
+      },
+      {
+        executable: 'az',
+        args: ['group', 'exists', '--name', 'example-dev', '--subscription', subscription, '--only-show-errors', '--output', 'json']
+      }
+    ]);
+    expect(runner.calls.every(call =>
+      call.options?.cwd === project &&
+      call.options.timeoutMs === repairCommandLimits.timeoutMs &&
+      call.options.maxOutputBytes === repairCommandLimits.maxOutputBytes &&
+      call.options.signal instanceof AbortSignal
+    )).toBe(true);
   });
   it('rejects a different subscription before group reads', async () => {
     const runner = new Runner(undefined, 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');

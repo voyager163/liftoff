@@ -433,10 +433,14 @@ describe('public reviewed adoption command', () => {
 
   it('applies only the exact externally verified publication plan and reports independent readback', async () => {
     const project = await fixture();
+    const statePath = path.join(project.root, 'terraform.tfstate');
+    const statePayload = '{"private":"deployment-state-must-not-be-read-or-written"}\n';
+    await writeFile(statePath, statePayload, { mode: 0o600 });
     const publication = await preparePublication(project);
     const verificationBefore = await stat(
       path.join(project.root, 'verify.cjs')
     );
+    const stateBefore = await stat(statePath);
     const result = await invoke(
       [
         'adopt', '--project', project.root, ...selection,
@@ -446,6 +450,7 @@ describe('public reviewed adoption command', () => {
       project.home
     );
     expect(result).toMatchObject({ code: 0, stderr: '' });
+    expect(result.stdout).not.toContain('deployment-state-must-not-be-read-or-written');
     expect(JSON.parse(result.stdout)).toMatchObject({
       operation: 'approve',
       readOnly: false,
@@ -485,6 +490,17 @@ describe('public reviewed adoption command', () => {
       ino: verificationBefore.ino,
       mode: verificationBefore.mode,
       mtimeMs: verificationBefore.mtimeMs
+    });
+    const stateAfter = await stat(statePath);
+    expect(await readFile(statePath, 'utf8')).toBe(statePayload);
+    expect({
+      ino: stateAfter.ino,
+      mode: stateAfter.mode,
+      mtimeMs: stateAfter.mtimeMs
+    }).toEqual({
+      ino: stateBefore.ino,
+      mode: stateBefore.mode,
+      mtimeMs: stateBefore.mtimeMs
     });
     const recovery = await invoke(
       [
@@ -627,6 +643,12 @@ describe('public reviewed adoption command', () => {
       ['adopt', '--recover'],
       ['adopt', '--yes'],
       ['adopt', '--force'],
+      ['adopt', '--state', 'terraform.tfstate'],
+      ['adopt', '--import', 'resource.id'],
+      ['adopt', '--apply'],
+      ['adopt', '--destroy'],
+      ['adopt', '--register-provider'],
+      ['adopt', '--enroll-credential'],
       ['adopt', '--configure-openspec-profile']
     ]) {
       expect(() => parseArgs(argv)).toThrow();
