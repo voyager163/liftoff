@@ -491,7 +491,7 @@ describe('public reviewed adoption command', () => {
         rollbackFailures: [],
         cleanupFailures: []
       }
-    }, 120_000);
+    });
     expect(JSON.parse(await readFile(
       path.join(project.root, 'liftoff.manifest.json'), 'utf8'
     )).artifactVersion).toBe(8);
@@ -532,7 +532,7 @@ describe('public reviewed adoption command', () => {
       status: 'recovery-unavailable',
       transaction: { status: 'absent', committed: false }
     });
-  });
+  }, 120_000);
 
   it('fails closed on unknown approval and recovery before touching a selected project', async () => {
     const home = await directory('liftoff-adopt-authority-home-');

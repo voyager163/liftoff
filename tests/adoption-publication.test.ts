@@ -265,7 +265,7 @@ describe('verified adoption publication planning and execution', () => {
       .toEqual(['liftoff.manifest.json']);
     expect(Object.isFrozen(report)).toBe(true);
     expect(Object.isFrozen(report.effects)).toBe(true);
-  });
+  }, 120_000);
 
   it('publishes exact managed metadata with the manifest last and preserves application identity', async () => {
     const input = await prepared();
@@ -289,7 +289,7 @@ describe('verified adoption publication planning and execution', () => {
       readbackDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
       rollbackFailures: [],
       cleanupFailures: []
-    }, 120_000);
+    });
     for (const effect of input.publication.plan.report.effects) {
       expect(await readFile(path.join(input.root, ...effect.pathParts)))
         .toHaveLength(effect.contentBytes);
@@ -316,7 +316,7 @@ describe('verified adoption publication planning and execution', () => {
       status: 'absent',
       committed: false
     });
-  });
+  }, 120_000);
 
   it('rejects duplicate manifest effects and platform-folded path collisions', async () => {
     const input = await prepared();
@@ -444,5 +444,5 @@ describe('verified adoption publication planning and execution', () => {
     await expect(readFile(
       path.join(modified.root, 'liftoff.manifest.json')
     )).rejects.toMatchObject({ code: 'ENOENT' });
-  }, 120_000);
+  });
 });
