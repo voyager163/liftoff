@@ -174,8 +174,19 @@ async function prepared(
     await mkdir(path.join(tools, 'node_modules', 'npm', 'bin'), {
       recursive: true
     });
-    await writeFile(path.join(tools, 'npm'), '#!/bin/sh\nexit 1\n');
-    await chmod(path.join(tools, 'npm'), 0o755);
+    const npmLauncher = path.join(
+      tools,
+      process.platform === 'win32' ? 'npm.cmd' : 'npm'
+    );
+    await writeFile(
+      npmLauncher,
+      process.platform === 'win32'
+        ? '@echo off\r\nexit /b 1\r\n'
+        : '#!/bin/sh\nexit 1\n'
+    );
+    if (process.platform !== 'win32') {
+      await chmod(npmLauncher, 0o755);
+    }
     await writeFile(
       path.join(tools, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
       'console.log("npm 12.0.2");\n'
