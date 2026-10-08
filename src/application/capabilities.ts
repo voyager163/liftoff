@@ -117,12 +117,16 @@ export function installedCapabilities() {
         approval: 'workflow set <target> <project> --approve-plan <fingerprint>',
         recovery: 'workflow set <target> <project> --recover --approve-plan <fingerprint>',
         previewAvailable: true,
-        executableTransitions: [],
+        executableTransitions: [
+          'openspec-to-manual',
+          'spec-kit-to-manual'
+        ],
         exactSourceTargetAgentsInputsChecksAndExpiry: true,
         applicationWrites: false,
+        projectMetadataWrites: true,
         frameworkHistoryDeletion: false,
         providerOperations: false,
-        scope: 'Exact external planning and approval/recovery selection only. Schema 1 registers no transition executor; Manual preservation and official OpenSpec/Spec Kit staging are qualified separately before executable transitions are advertised.'
+        scope: 'Initialized OpenSpec or Spec Kit projects can execute an exact approved transition to Manual through a dedicated project-attributed transaction. The executor changes only selected managed integrations, liftoff.config.json, and the manifest; application/Git/framework/history bytes and shared tools remain untouched. Transitions into external frameworks remain unavailable pending official isolated staging qualification.'
       },
       reports: {
         capabilities: 1, validate: 1, doctor: 1, upgrade: 1,

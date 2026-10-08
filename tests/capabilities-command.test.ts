@@ -131,9 +131,13 @@ describe('project-independent capability discovery', () => {
       command: 'workflow set',
       report: 1,
       previewAvailable: true,
-      executableTransitions: [],
+      executableTransitions: [
+        'openspec-to-manual',
+        'spec-kit-to-manual'
+      ],
       exactSourceTargetAgentsInputsChecksAndExpiry: true,
       applicationWrites: false,
+      projectMetadataWrites: true,
       frameworkHistoryDeletion: false,
       providerOperations: false
     });

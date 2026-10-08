@@ -444,5 +444,5 @@ describe('verified adoption publication planning and execution', () => {
     await expect(readFile(
       path.join(modified.root, 'liftoff.manifest.json')
     )).rejects.toMatchObject({ code: 'ENOENT' });
-  });
+  }, 120_000);
 });

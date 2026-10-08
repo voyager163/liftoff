@@ -29,6 +29,43 @@ const historyRaw = (name: string): unknown => JSON.parse(readFileSync(historyPat
 const retained = (candidate: ManifestV8Candidate): ManagedManifestDecision[] =>
   candidate.manifest.managedArtifacts.map(({ logicalName }) => ({ kind: 'retain', logicalName }));
 
+function workflowTransition(
+  profile: (typeof profiles)[number] = 'none',
+  sourceWorkflow: 'openspec' | 'spec-kit' = 'openspec'
+) {
+  const initial = createManifestV8Candidate(
+    fresh(profile, sourceWorkflow, ['github-copilot'])
+  );
+  const target = selection(profile, 'manual', ['github-copilot']);
+  const targetManaged = suppliedArtifacts(target, profile)
+    .filter(artifact => artifact.lifecycle === 'managed-core');
+  const targetNames = new Set(
+    targetManaged.map(artifact => artifact.logicalName)
+  );
+  const managed: ManagedManifestDecision[] = [
+    ...targetManaged.map(artifact => ({
+      kind: 'bytes' as const,
+      logicalName: artifact.logicalName,
+      category: artifact.category,
+      pathParts: artifact.pathParts,
+      content: artifact.content
+    })),
+    ...initial.manifest.managedArtifacts
+      .filter(artifact => !targetNames.has(artifact.logicalName))
+      .map(artifact => ({
+        kind: 'retire' as const,
+        logicalName: artifact.logicalName
+      }))
+  ];
+  return {
+    origin: 'workflow-transition' as const,
+    source: initial.manifest,
+    selection: structuredClone(target),
+    activeLayout: structuredClone(initial.manifest.activeLayout),
+    managed
+  };
+}
+
 function selection(
   profile: (typeof profiles)[number] = 'single-maintainer-gitflow',
   workflow: (typeof workflows)[number] = 'openspec',
@@ -112,7 +149,10 @@ describe('fresh origin produces exact complete bytes without publication', () =>
   it('exports the concrete candidate and closed-origin request types', () => {
     expectTypeOf(createManifestV8Candidate).parameter(0).toEqualTypeOf<unknown>();
     expectTypeOf(createManifestV8Candidate).returns.toEqualTypeOf<ManifestV8Candidate>();
-    expectTypeOf<ManifestV8WriteRequest['origin']>().toEqualTypeOf<'fresh' | 'adoption' | 'historical-successor' | 'maintenance'>();
+    expectTypeOf<ManifestV8WriteRequest['origin']>().toEqualTypeOf<
+      'fresh' | 'adoption' | 'historical-successor' | 'maintenance' |
+      'workflow-transition'
+    >();
     expectTypeOf<keyof ManifestV8Candidate>().toEqualTypeOf<'manifest' | 'content' | 'digest'>();
   });
 
@@ -446,6 +486,82 @@ describe('same-contract maintenance has no origin overrides', () => {
     expect(() => createManifestV8Candidate({
       origin: 'maintenance', source: initial.manifest, managed: [{ kind: 'retire-alias', logicalName: 'repository-governance-policy' }]
     })).toThrow('Only an exact existing historical setup alias');
+  });
+});
+
+describe('workflow transition origin has a closed external-to-Manual boundary', () => {
+  it.each(['openspec', 'spec-kit'] as const)(
+    'changes initialized %s identity while preserving provenance and history',
+    sourceWorkflow => {
+      const input = workflowTransition(
+        'single-maintainer-gitflow',
+        sourceWorkflow
+      );
+      const source = structuredClone(input.source);
+      const candidate = createManifestV8Candidate(input);
+      expect(input.source).toEqual(source);
+      expect(candidate.manifest.project).toMatchObject({
+        name: source.project.name,
+        workload: source.project.workload,
+        specWorkflow: 'manual',
+        agents: source.project.agents
+      });
+      expect(candidate.manifest.project).not.toHaveProperty('defaultAgent');
+      expect(candidate.manifest.framework).toEqual({
+        state: 'not-required'
+      });
+      expect(candidate.manifest.projectArtifacts)
+        .toEqual(source.projectArtifacts);
+      expect(candidate.manifest.adoptionObservations)
+        .toEqual(source.adoptionObservations);
+      expect(candidate.manifest.activeLayout).toEqual(source.activeLayout);
+      expect(candidate.manifest.sourceManifestHistory)
+        .toEqual(source.sourceManifestHistory);
+      expect(candidate.manifest.activationTargetHistory)
+        .toEqual(source.activationTargetHistory);
+      expect(candidate.manifest.plugins.resolutionDigest)
+        .not.toBe(source.plugins.resolutionDigest);
+      expect(candidate.manifest.governance.profile)
+        .toBe(source.governance.profile);
+      expect(candidate.manifest.governance).not.toEqual(source.governance);
+    }
+  );
+
+  it('rejects unsupported direction, project identity and retirement changes', () => {
+    const manual = createManifestV8Candidate(
+      fresh('none', 'manual', ['github-copilot'])
+    );
+    const manualInput = workflowTransition();
+    manualInput.source = manual.manifest;
+    expect(() => createManifestV8Candidate(manualInput))
+      .toThrow('initialized external framework to Manual');
+
+    const externalTarget = workflowTransition();
+    externalTarget.selection = selection(
+      'none',
+      'spec-kit',
+      ['github-copilot']
+    );
+    expect(() => createManifestV8Candidate(externalTarget))
+      .toThrow('initialized external framework to Manual');
+
+    const renamed = workflowTransition();
+    renamed.selection.project.name = 'Different project';
+    expect(() => createManifestV8Candidate(renamed))
+      .toThrow('without changing project identity');
+
+    const profile = workflowTransition();
+    profile.selection.profile = 'team-gitflow';
+    expect(() => createManifestV8Candidate(profile))
+      .toThrow('cannot change the governance profile');
+
+    const invalidRetirement = workflowTransition();
+    invalidRetirement.managed[0] = {
+      kind: 'retire',
+      logicalName: invalidRetirement.managed[0]!.logicalName
+    };
+    expect(() => createManifestV8Candidate(invalidRetirement))
+      .toThrow('exact source-only managed identity');
   });
 });
 

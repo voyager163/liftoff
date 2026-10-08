@@ -8,7 +8,7 @@ import { canonicalJson, canonicalSha256, isRecord } from '../../domain/governanc
 import { FileSystemError } from '../../domain/project/errors.js';
 import {
   reviewedAdoptionTransactionPathParts, reviewedRepairTransactionPathParts,
-  reviewedUpdateTransactionPathParts,
+  reviewedUpdateTransactionPathParts, workflowTransitionTransactionPathParts,
   localVerificationTransactionPathParts, localVerificationTransactionSchemaVersion
 } from '../../domain/project/reviewed-update-artifacts.js';
 import type { ReviewedTransactionKind } from '../../domain/project/reviewed-update-artifacts.js';
@@ -38,6 +38,7 @@ import type {
 export {
   reviewedAdoptionTransactionPathParts, reviewedRepairTransactionPathParts,
   reviewedUpdateTransactionPathParts, reviewedUpdateTransactionSchemaVersion,
+  workflowTransitionTransactionPathParts,
   localVerificationTransactionPathParts, localVerificationTransactionSchemaVersion
 } from '../../domain/project/reviewed-update-artifacts.js';
 export type { ReviewedTransactionKind } from '../../domain/project/reviewed-update-artifacts.js';
@@ -51,6 +52,11 @@ export interface ReviewedUpdateApprovalStore {
 
 export interface AdoptionTransactionAuthorityStore extends ReviewedUpdateApprovalStore {
   readonly transactionKind: 'adoption';
+  readonly projectRoot: string;
+}
+
+export interface WorkflowTransitionTransactionAuthorityStore extends ReviewedUpdateApprovalStore {
+  readonly transactionKind: 'workflow-transition';
   readonly projectRoot: string;
 }
 
@@ -93,6 +99,16 @@ export interface AdoptionTransactionOptions {
   validateCurrentInputs: (stage: ReviewedPublicationInputStage) => Promise<void>;
   onBeforeMutation?: (mutation: ProjectFileMutation, index: number) => Promise<void>;
   onBeforeCommit?: () => Promise<void>;
+  onCheckpoint?: (checkpoint: ReviewedUpdateTransactionCheckpoint) => Promise<void>;
+}
+
+export interface WorkflowTransitionTransactionOptions {
+  planFingerprint: string;
+  authorityStore: WorkflowTransitionTransactionAuthorityStore;
+  preconditions: readonly ProjectFileSnapshot[];
+  expectedCandidateBinding: string;
+  /** Revalidate the exact saved transition and physical inputs under the project lock. */
+  validateCurrentInputs: (stage: ReviewedPublicationInputStage) => Promise<void>;
   onCheckpoint?: (checkpoint: ReviewedUpdateTransactionCheckpoint) => Promise<void>;
 }
 
@@ -161,7 +177,9 @@ interface LoadedJournal {
 const MAX_FILE_BYTES = reviewedJournalLimits.fileBytes;
 const MAX_JOURNAL_BYTES = reviewedJournalLimits.journalBytes;
 const privateFileMode = process.platform === 'win32' ? 0o666 : 0o600;
-const transactionKinds = ['update', 'repair', 'adoption', 'local-verification'] as const;
+const transactionKinds = [
+  'update', 'repair', 'adoption', 'workflow-transition', 'local-verification'
+] as const;
 
 function fail(message: string): never {
   throw new FileSystemError(`Reviewed update transaction: ${message}`);
@@ -173,6 +191,7 @@ function journalParts(kind: ReviewedTransactionKind = 'update'): readonly string
   if (kind === 'update') return reviewedUpdateTransactionPathParts;
   if (kind === 'repair') return reviewedRepairTransactionPathParts;
   if (kind === 'adoption') return reviewedAdoptionTransactionPathParts;
+  if (kind === 'workflow-transition') return workflowTransitionTransactionPathParts;
   if (kind === 'local-verification') return localVerificationTransactionPathParts;
   return fail('unregistered transaction kind.');
 }
@@ -194,7 +213,8 @@ function captureAuthorityStore(store: ReviewedUpdateApprovalStore | undefined, k
   if (store && 'transactionKind' in store &&
       (!attribution || !Object.hasOwn(attribution, 'value'))) fail('authority kind must be an own data field.');
   let projectRoot: string | undefined;
-  if (kind === 'local-verification' || kind === 'adoption') {
+  if (kind === 'local-verification' || kind === 'adoption' ||
+      kind === 'workflow-transition') {
     const root = store && Object.getOwnPropertyDescriptor(store, 'projectRoot');
     if (attribution?.value !== kind || !root || !Object.hasOwn(root, 'value') ||
         typeof root.value !== 'string' || !path.isAbsolute(root.value) || path.resolve(root.value) !== root.value) {
@@ -214,7 +234,7 @@ function captureAuthorityStore(store: ReviewedUpdateApprovalStore | undefined, k
 
 function assertAuthorityRoot(root: string, authority: ReturnType<typeof captureAuthorityStore>): void {
   if (authority.projectRoot !== undefined && authority.projectRoot !== root) {
-    fail('local-verification authority belongs to a different canonical project root.');
+    fail('scoped transaction authority belongs to a different canonical project root.');
   }
 }
 
@@ -250,6 +270,14 @@ async function assertNoPendingTransactions(root: string, kind: ReviewedTransacti
             executable: 'liftoff',
             args: ['adopt', '--project', root, '--recover', '--approve-plan', '<fingerprint>']
           }, commandShellForPlatform(process.platform))
+        : pendingKind === 'workflow-transition'
+          ? formatShellCommand({
+              executable: 'liftoff',
+              args: [
+                'workflow', 'set', '<target>', root, '--recover',
+                '--approve-plan', '<fingerprint>'
+              ]
+            }, commandShellForPlatform(process.platform))
       : formatShellCommand({
       executable: 'liftoff',
       args: pendingKind === 'repair' ? ['repair', root, '--recover'] : ['update', '--project', root]
@@ -258,6 +286,8 @@ async function assertNoPendingTransactions(root: string, kind: ReviewedTransacti
       executable: 'liftoff',
       args: kind === 'repair' ? ['repair', root, '--check']
         : kind === 'adoption' ? ['adopt', '--project', root, '--check']
+          : kind === 'workflow-transition'
+            ? ['workflow', 'set', '<target>', root, '--check']
           : ['update', '--check', '--project', root]
     }, commandShellForPlatform(process.platform));
     let snapshot: ProjectFileSnapshot;
@@ -440,6 +470,8 @@ async function captureTransactionCandidate(
         ? 'local-verification-candidate'
         : kind === 'adoption'
           ? 'adoption-transaction-candidate'
+          : kind === 'workflow-transition'
+            ? 'workflow-transition-transaction-candidate'
           : 'reviewed-update-candidate',
       payload, suppliedPreconditions, rootIdentity, parents: [...parents.values()]
     })
@@ -491,6 +523,26 @@ export async function inspectAdoptionTransactionCandidate(
     canonicalProjectRoot, selected, supplied, 'adoption'
   );
   await assertNoPendingTransactions(canonicalProjectRoot, 'adoption', true);
+  return captured.candidate;
+}
+
+export async function inspectWorkflowTransitionTransactionCandidate(
+  canonicalProjectRoot: string,
+  mutations: readonly ProjectFileMutation[],
+  preconditions: readonly ProjectFileSnapshot[]
+): Promise<ReviewedUpdateCandidate> {
+  const selected = captureJournalMutations(mutations);
+  const supplied = captureJournalPreconditions(preconditions);
+  await candidateRootIdentity(canonicalProjectRoot);
+  await assertNoPendingTransactions(
+    canonicalProjectRoot, 'workflow-transition', true
+  );
+  const captured = await captureTransactionCandidate(
+    canonicalProjectRoot, selected, supplied, 'workflow-transition'
+  );
+  await assertNoPendingTransactions(
+    canonicalProjectRoot, 'workflow-transition', true
+  );
   return captured.candidate;
 }
 
@@ -935,7 +987,8 @@ export async function applyReviewedUpdateTransaction(
   projectRoot: string, mutations: readonly ProjectFileMutation[], options: ReviewedUpdateTransactionOptions
 ): Promise<ReviewedUpdateTransactionOutcome> {
   const kind = captureTransactionKind(options);
-  if (kind === 'local-verification' || kind === 'adoption') {
+  if (kind === 'local-verification' || kind === 'adoption' ||
+      kind === 'workflow-transition') {
     fail(`${kind} requires its dedicated publication entrypoint.`);
   }
   return applyTransaction(projectRoot, mutations, options);
@@ -985,6 +1038,60 @@ export function recoverAdoptionTransaction(
 ): Promise<ReviewedUpdateTransactionOutcome> {
   return recoverReviewedUpdateTransaction(projectRoot, {
     transactionKind: 'adoption',
+    approvalStore: options.authorityStore,
+    ...(options.expectedTransaction
+      ? { expectedTransaction: options.expectedTransaction }
+      : {})
+  });
+}
+
+export async function applyWorkflowTransitionTransaction(
+  projectRoot: string,
+  mutations: readonly ProjectFileMutation[],
+  options: WorkflowTransitionTransactionOptions
+): Promise<ReviewedUpdateTransactionOutcome> {
+  const {
+    authorityStore, planFingerprint, preconditions, expectedCandidateBinding,
+    validateCurrentInputs, onCheckpoint
+  } = options;
+  assertDigest(expectedCandidateBinding);
+  if (!Array.isArray(preconditions) ||
+      typeof validateCurrentInputs !== 'function') {
+    fail(
+      'workflow-transition requires physical preconditions and locked current-input checks.'
+    );
+  }
+  return applyTransaction(projectRoot, mutations, {
+    planFingerprint,
+    transactionKind: 'workflow-transition',
+    approvalStore: authorityStore,
+    preconditions,
+    expectedCandidateBinding,
+    ...(onCheckpoint ? { onCheckpoint } : {})
+  }, validateCurrentInputs);
+}
+
+export function inspectWorkflowTransitionTransaction(
+  projectRoot: string,
+  options: {
+    authorityStore: WorkflowTransitionTransactionAuthorityStore;
+  }
+): Promise<ReviewedUpdateTransactionInspection> {
+  return inspectReviewedUpdateTransaction(projectRoot, {
+    transactionKind: 'workflow-transition',
+    approvalStore: options.authorityStore
+  });
+}
+
+export function recoverWorkflowTransitionTransaction(
+  projectRoot: string,
+  options: {
+    authorityStore: WorkflowTransitionTransactionAuthorityStore;
+    expectedTransaction?: ReviewedRecoveryExpectation;
+  }
+): Promise<ReviewedUpdateTransactionOutcome> {
+  return recoverReviewedUpdateTransaction(projectRoot, {
+    transactionKind: 'workflow-transition',
     approvalStore: options.authorityStore,
     ...(options.expectedTransaction
       ? { expectedTransaction: options.expectedTransaction }

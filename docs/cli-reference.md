@@ -48,8 +48,8 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | `liftoff update --check` | Reports eligible v8 plans without project mutation; exits 0 when clean and 2 when actionable |
 | `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; project-owned files remain unreachable |
 | `liftoff workflow set <openspec\|spec-kit\|manual> [project] --check` | Saves an exact external workflow-transition plan binding source, target, agents, current identity files, checks and expiry without project writes |
-| `liftoff workflow set <target> [project] --approve-plan <fingerprint>` | Selects one exact current transition plan; the schema-1 foundation reports execution unavailable until the corresponding transition executor is qualified |
-| `liftoff workflow set <target> [project] --recover --approve-plan <fingerprint>` | Selects only recovery attributable to that plan; no transaction is manufactured from plan metadata |
+| `liftoff workflow set manual [project] --approve-plan <fingerprint>` | Applies an exact current initialized OpenSpec/Spec Kit-to-Manual plan through the dedicated transition transaction |
+| `liftoff workflow set <target> [project] --recover --approve-plan <fingerprint>` | Recovers only the authenticated transition attributable to that exact plan and observed transaction digest |
 | `liftoff repair [project-path]` | Displays an exact plan and offers action-specific default-No approval on a genuine terminal; no fingerprint entry |
 | `liftoff repair [project-path] --check` | Inventories current-v8 application bindings or previews historical infrastructure repair without cloud calls, application scripts or project writes |
 | `liftoff repair --capabilities --json` | Lists packaged repair contracts, recipes, schemas and real command modes without needing a project |
@@ -826,16 +826,35 @@ Changed inputs, a mismatched target/agent selection, aliases that do not resolve
 to the same canonical selection, unknown fields, tampering, future dates and
 expiry all reject the saved plan.
 
-`--approve-plan` and fingerprint-selected `--recover` are registered authority
-selection interfaces, but this foundation advertises
-`executableTransitions: []`. It performs no project write or transaction.
-Manual preservation and official isolated OpenSpec/Spec Kit staging become
-executable only after their separate transition recipes are qualified. Until
-then, exact approval reports `execution-unavailable`, recovery reports
-`recovery-unavailable`, and application files, Git history, framework
-specifications/history, global tools/profiles, deployment/state and telemetry
-remain unchanged. Generic yes, force, JSON, an agent, or a saved plan is not
-transition authority.
+Initialized OpenSpec and Spec Kit projects can transition to Manual. The saved
+plan includes exact managed-integration/config/manifest effects, physical
+preconditions, transaction measurement, final-manifest ordering and the
+dedicated recovery identity. Exact `--approve-plan` automation or genuine
+interactive default-No consent can apply that plan. JSON, non-TTY input,
+generic yes, force, an agent, or a saved plan alone never grants authority.
+
+The dedicated transaction may rewrite or retire only exact recorded Liftoff
+managed integrations, write `liftoff.config.json`, and publish the manifest
+last. It never deletes OpenSpec/Spec Kit trees, specifications or history,
+uninstalls shared tools, changes application/Git bytes, touches deployment
+state, changes shared profiles, or enrolls telemetry. Managed drift, occupied
+new integration paths, stale inputs, changed plugin resolution, expiry, and
+mismatched target/agents fail closed. Recovery requires the same plan
+fingerprint and the authenticated observed transaction digest.
+
+The plan also records a bounded digest inventory of the complete source
+framework trees. Recognized active OpenSpec changes or Spec Kit specification
+directories are explicitly reconciled as preserved-on-disk,
+non-authoritative Manual history; their identifiers and bytes are part of the
+fingerprint. Links, special entries, unknown active-work shapes, or any
+framework-byte change after preview block the transition. Committed readback
+rechecks that inventory and verifies the native Manual local-readiness contract
+reports the external-framework check as inapplicable; unrelated local
+infrastructure blockers remain separate readiness work.
+
+Transitions into OpenSpec or Spec Kit remain `execution-unavailable` until
+their official pinned isolated staging and separate machine/global-profile
+consent are qualified.
 
 ## Read-only governance assessment
 

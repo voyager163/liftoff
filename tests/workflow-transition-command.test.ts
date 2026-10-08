@@ -1,11 +1,16 @@
 import {
   mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile
 } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { PassThrough } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
+import {
+  projectMutationLockPath
+} from '../src/adapters/filesystem/project-lock.js';
 import { buildCurrentProjectPlan } from '../src/application/project/planning.js';
 import { buildCurrentArtifacts } from '../src/templates.js';
 import { CaptureStream } from './helpers.js';
@@ -68,22 +73,125 @@ async function invoke(
   argv: string[],
   cwd: string,
   home: string,
-  clock = now
+  clock = now,
+  approval?: (
+    config: { message: string; default: false }
+  ) => Promise<boolean>
 ) {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
+  const stdin = new PassThrough() as PassThrough & { isTTY?: boolean };
+  if (approval) {
+    stdin.isTTY = true;
+    (stderr as CaptureStream & { isTTY?: boolean }).isTTY = true;
+  }
   const code = await runCommand(parseArgs(argv), {
     cwd,
     stdout,
     stderr,
+    ...(approval
+      ? {
+          stdin,
+          approveWorkflowTransitionPlan: approval
+        }
+      : {}),
     updateNow: () => clock,
     updatePreview: { homedir: home, env: {}, clock: () => clock }
   });
   return { code, stdout: stdout.text(), stderr: stderr.text() };
 }
 
+async function interruptTransition(
+  project: { root: string; home: string },
+  fingerprint: string,
+  phase: 'after-mutation' | 'committed',
+  index?: number
+) {
+  const loaderUrl = new URL(
+    './fixtures/source-typescript-loader.mjs',
+    import.meta.url
+  ).href;
+  const planUrl = new URL(
+    '../src/application/workflow-transition/plan.ts',
+    import.meta.url
+  ).href;
+  const authorityUrl = new URL(
+    '../src/application/workflow-transition/transaction-authority.ts',
+    import.meta.url
+  ).href;
+  const transactionUrl = new URL(
+    '../src/adapters/filesystem/reviewed-update-transaction.ts',
+    import.meta.url
+  ).href;
+  const child = spawnSync(
+    process.execPath,
+    ['--import', loaderUrl, '--input-type=module', '-e', `
+      const {
+        assertWorkflowTransitionPlanCurrent,
+        readWorkflowTransitionPlan,
+        rebuildWorkflowTransitionExecution
+      } = await import(${JSON.stringify(planUrl)});
+      const {
+        createWorkflowTransitionTransactionAuthorityStore
+      } = await import(${JSON.stringify(authorityUrl)});
+      const {
+        applyWorkflowTransitionTransaction
+      } = await import(${JSON.stringify(transactionUrl)});
+      const now = new Date(${JSON.stringify(now.toISOString())});
+      const storage = {
+        homedir: ${JSON.stringify(project.home)},
+        env: {},
+        clock: () => now
+      };
+      const plan = await readWorkflowTransitionPlan(
+        ${JSON.stringify(project.root)},
+        ${JSON.stringify(fingerprint)},
+        now,
+        storage
+      );
+      const candidate = await rebuildWorkflowTransitionExecution(plan);
+      const authorityStore =
+        createWorkflowTransitionTransactionAuthorityStore(
+          plan.projectRoot,
+          storage
+        );
+      await applyWorkflowTransitionTransaction(
+        plan.projectRoot,
+        candidate.mutations,
+        {
+          planFingerprint: plan.fingerprint,
+          authorityStore,
+          preconditions: candidate.preconditions,
+          expectedCandidateBinding:
+            plan.execution.transactionCandidateBinding,
+          validateCurrentInputs: async stage => {
+            if (stage !== 'before-commit') {
+              await assertWorkflowTransitionPlanCurrent(plan);
+            }
+          },
+          onCheckpoint: async checkpoint => {
+            if (checkpoint.phase === ${JSON.stringify(phase)} &&
+                checkpoint.index === ${JSON.stringify(index)}) {
+              process.exit(73);
+            }
+          }
+        }
+      );
+      process.exitCode = 9;
+    `],
+    {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      timeout: 30_000
+    }
+  );
+  expect(child.error).toBeUndefined();
+  expect(child.status, child.stderr).toBe(73);
+  await rm(await projectMutationLockPath(project.root), { force: true });
+}
+
 describe('reviewed workflow transition command', () => {
-  it('documents planning authority without advertising a transition executor', async () => {
+  it('documents exact transition authority without generic override flags', async () => {
     const project = await fixture();
     const result = await invoke(
       ['workflow', '--help'],
@@ -182,7 +290,7 @@ describe('reviewed workflow transition command', () => {
         applicationFiles: 'preserved',
         gitHistory: 'preserved',
         frameworkHistory: 'preserved',
-        effects: 'not-authorized',
+        execution: { status: 'unavailable' },
         createdAt: now.toISOString(),
         expiresAt: new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
         fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u)
@@ -193,7 +301,7 @@ describe('reviewed workflow transition command', () => {
     expect(await readdir(project.home, { recursive: true })).not.toEqual([]);
   });
 
-  it('revalidates exact inputs and refuses execution until a transition executor is registered', async () => {
+  it('keeps transitions into external frameworks unavailable', async () => {
     const project = await fixture();
     const before = await snapshot(project.root);
     const preview = JSON.parse((await invoke([
@@ -322,5 +430,320 @@ describe('reviewed workflow transition command', () => {
     ], project.root, project.home, new Date(now.getTime() + 31 * 60 * 1000));
     expect(expired.code).toBe(1);
     expect(JSON.parse(expired.stdout).diagnostics.join(' ')).toContain('expired');
+  });
+
+  for (const source of ['openspec', 'spec-kit'] as const) {
+    it(`transitions initialized ${source} to Manual while preserving framework and unrelated bytes`, async () => {
+      const project = await fixture(source);
+      const before = await snapshot(project.root);
+      const preview = await invoke([
+        'workflow', 'set', 'manual', project.root,
+        '--check', '--json'
+      ], project.root, project.home);
+      expect(preview).toMatchObject({ code: 2, stderr: '' });
+      const reviewed = JSON.parse(preview.stdout);
+      expect(reviewed).toMatchObject({
+        status: 'review-required',
+        projectWrites: false,
+        plan: {
+          source: {
+            workflow: source,
+            frameworkState: 'initialized'
+          },
+          target: {
+            workflow: 'manual',
+            frameworkState: 'not-required',
+            agents: ['github-copilot'],
+            defaultAgent: null
+          },
+          execution: {
+            status: 'ready-for-file-approval',
+            transition: 'external-framework-to-manual',
+            manifestPublishedLast: true,
+            frameworkDocuments: 'preserved-on-disk',
+            sharedTools: 'unchanged',
+            targetLocalReadiness:
+              'manual-native-framework-inapplicable',
+            transactionCandidateBinding:
+              expect.stringMatching(/^[a-f0-9]{64}$/u),
+            effects: expect.arrayContaining([
+              expect.objectContaining({
+                logicalName: 'liftoff-config',
+                kind: 'desired-state',
+                operation: 'write',
+                pathParts: ['liftoff.config.json']
+              }),
+              expect.objectContaining({
+                logicalName: 'manifest',
+                kind: 'manifest',
+                operation: 'write',
+                pathParts: ['liftoff.manifest.json']
+              })
+            ])
+          }
+        }
+      });
+      const effects = reviewed.plan.execution.effects as Array<{
+        pathParts: string[];
+      }>;
+      expect(effects.at(-1)?.pathParts).toEqual([
+        'liftoff.manifest.json'
+      ]);
+      expect(effects.some(effect =>
+        ['openspec', '.specify', 'specs'].includes(
+          effect.pathParts[0] ?? ''
+        ))).toBe(false);
+        expect(reviewed.plan.frameworkInventory).toMatchObject({
+          status: 'preserved',
+          workflow: source,
+          activeWork: {
+            identifiers: [expect.any(String)],
+            reconciliation:
+              'preserve-on-disk-as-non-authoritative'
+          },
+          fileCount: expect.any(Number),
+          directoryCount: expect.any(Number),
+          totalBytes: expect.any(Number),
+          digest: expect.stringMatching(/^[a-f0-9]{64}$/u)
+        });
+
+      const applied = await invoke([
+        'workflow', 'set', 'manual', project.root,
+        '--approve-plan', reviewed.plan.fingerprint, '--json'
+      ], project.root, project.home);
+      expect(applied).toMatchObject({ code: 0, stderr: '' });
+      expect(JSON.parse(applied.stdout)).toMatchObject({
+        operation: 'apply',
+        status: 'applied',
+        readOnly: false,
+        projectWrites: true,
+        transaction: {
+          operation: 'apply',
+          status: 'committed',
+          committed: true,
+          transactionDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+          readbackDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+          rollbackFailures: [],
+          cleanupFailures: [],
+          readbackFailures: []
+        }
+      });
+      const manifest = JSON.parse(await readFile(
+        path.join(project.root, 'liftoff.manifest.json'),
+        'utf8'
+      ));
+      expect(manifest).toMatchObject({
+        project: {
+          specWorkflow: 'manual',
+          agents: ['github-copilot']
+        },
+        framework: { state: 'not-required' }
+      });
+      expect(manifest.project).not.toHaveProperty('defaultAgent');
+      expect(JSON.parse(await readFile(
+        path.join(project.root, 'liftoff.config.json'),
+        'utf8'
+      ))).toMatchObject({
+        specWorkflow: 'manual',
+        agents: ['github-copilot']
+      });
+      const after = await snapshot(project.root);
+      const changed = new Set(
+        effects.map(effect => effect.pathParts.join('/'))
+      );
+      for (const [file, bytes] of Object.entries(before.files)) {
+        if (!changed.has(file)) {
+          expect(after.files[file], file).toBe(bytes);
+        }
+      }
+      for (const file of Object.keys(before.files).filter(file =>
+        file.startsWith('openspec/') ||
+        file.startsWith('.specify/') ||
+        file.startsWith('specs/'))) {
+        expect(after.files[file], file).toBe(before.files[file]);
+      }
+    });
+  }
+
+  it('uses genuine interactive default-No consent for an executable Manual transition', async () => {
+    const project = await fixture('openspec');
+    const before = await snapshot(project.root);
+    let prompt: { message: string; default: false } | undefined;
+    const result = await invoke([
+      'workflow', 'set', 'manual', project.root
+    ], project.root, project.home, now, async config => {
+      prompt = config;
+      return false;
+    });
+    expect(result.code).toBe(2);
+    expect(result.stdout).toContain('declined');
+    expect(prompt).toMatchObject({
+      default: false,
+      message: expect.stringContaining('Apply this exact workflow transition')
+    });
+    expect(await snapshot(project.root)).toEqual(before);
+  });
+
+  it('rejects drifted managed integrations before issuing executable authority', async () => {
+    const project = await fixture('openspec');
+    const manifest = JSON.parse(await readFile(
+      path.join(project.root, 'liftoff.manifest.json'),
+      'utf8'
+    ));
+    const managed = manifest.managedArtifacts[0];
+    await writeFile(
+      path.join(project.root, ...managed.pathParts),
+      'developer-owned drift\n'
+    );
+    const result = await invoke([
+      'workflow', 'set', 'manual', project.root,
+      '--check', '--json'
+    ], project.root, project.home);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'blocked',
+      projectWrites: false
+    });
+    expect(JSON.parse(result.stdout).diagnostics.join(' '))
+      .toContain('differs from its recorded Liftoff bytes');
+  });
+
+  it('binds preserved framework bytes and blocks unknown active-work shapes', async () => {
+    const project = await fixture('openspec');
+    const preview = JSON.parse((await invoke([
+      'workflow', 'set', 'manual', project.root,
+      '--check', '--json'
+    ], project.root, project.home)).stdout);
+    const proposal = path.join(
+      project.root,
+      'openspec',
+      'changes',
+      preview.plan.frameworkInventory.activeWork.identifiers[0],
+      'proposal.md'
+    );
+    await writeFile(proposal, `${await readFile(proposal, 'utf8')}\nchanged\n`);
+    const stale = await invoke([
+      'workflow', 'set', 'manual', project.root,
+      '--approve-plan', preview.plan.fingerprint, '--json'
+    ], project.root, project.home);
+    expect(stale.code).toBe(1);
+    expect(JSON.parse(stale.stdout).diagnostics.join(' '))
+      .toContain('framework documents or active work changed');
+
+    const unknown = await fixture('openspec');
+    await writeFile(
+      path.join(unknown.root, 'openspec', 'changes', 'unowned.txt'),
+      'unknown active work\n'
+    );
+    const blocked = await invoke([
+      'workflow', 'set', 'manual', unknown.root,
+      '--check', '--json'
+    ], unknown.root, unknown.home);
+    expect(blocked.code).toBe(1);
+    expect(JSON.parse(blocked.stdout).diagnostics.join(' '))
+      .toContain('Unknown OpenSpec active work entry');
+  });
+
+  it('reports absent recovery for an executable plan without manufacturing a transaction', async () => {
+    const project = await fixture('spec-kit');
+    const preview = JSON.parse((await invoke([
+      'workflow', 'set', 'manual', project.root,
+      '--check', '--json'
+    ], project.root, project.home)).stdout);
+    const recovery = await invoke([
+      'workflow', 'set', 'manual', project.root,
+      '--recover', '--approve-plan', preview.plan.fingerprint, '--json'
+    ], project.root, project.home);
+    expect(recovery.code).toBe(1);
+    expect(JSON.parse(recovery.stdout)).toMatchObject({
+      operation: 'recover',
+      status: 'recovery-unavailable',
+      projectWrites: false,
+      transaction: {
+        operation: 'recover',
+        status: 'absent',
+        committed: false
+      }
+    });
+  });
+
+  it('recovers an interrupted transition only through its authenticated lane', async () => {
+    const project = await fixture('openspec');
+    const before = await snapshot(project.root);
+    const preview = JSON.parse((await invoke([
+      'workflow', 'set', 'manual', project.root,
+      '--check', '--json'
+    ], project.root, project.home)).stdout);
+    await interruptTransition(
+      project,
+      preview.plan.fingerprint,
+      'after-mutation',
+      0
+    );
+    const recovered = await invoke([
+      'workflow', 'set', 'manual', project.root,
+      '--recover', '--approve-plan', preview.plan.fingerprint, '--json'
+    ], project.root, project.home);
+    expect(recovered.code).toBe(0);
+    expect(JSON.parse(recovered.stdout)).toMatchObject({
+      operation: 'recover',
+      status: 'recovered',
+      projectWrites: false,
+      transaction: {
+        operation: 'recover',
+        status: 'rolled-back',
+        committed: false,
+        transactionDigest: expect.stringMatching(/^[a-f0-9]{64}$/u)
+      }
+    });
+    expect(await snapshot(project.root)).toEqual(before);
+  });
+
+  it('recovers committed transition cleanup with native Manual readback', async () => {
+    const project = await fixture('spec-kit');
+    const preview = JSON.parse((await invoke([
+      'workflow', 'set', 'manual', project.root,
+      '--check', '--json'
+    ], project.root, project.home)).stdout);
+    await interruptTransition(
+      project,
+      preview.plan.fingerprint,
+      'committed'
+    );
+    const recovered = await invoke([
+      'workflow', 'set', 'manual', project.root,
+      '--recover', '--approve-plan', preview.plan.fingerprint, '--json'
+    ], project.root, project.home);
+    expect(recovered.code).toBe(0);
+    expect(JSON.parse(recovered.stdout)).toMatchObject({
+      operation: 'recover',
+      status: 'recovered',
+      projectWrites: true,
+      transaction: {
+        operation: 'recover',
+        status: 'committed',
+        committed: true,
+        transactionDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        readbackDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        cleanupFailures: [],
+        readbackFailures: []
+      },
+      plan: {
+        frameworkInventory: {
+          workflow: 'spec-kit',
+          activeWork: {
+            reconciliation:
+              'preserve-on-disk-as-non-authoritative'
+          }
+        }
+      }
+    });
+    expect(JSON.parse(await readFile(
+      path.join(project.root, 'liftoff.manifest.json'),
+      'utf8'
+    ))).toMatchObject({
+      project: { specWorkflow: 'manual' },
+      framework: { state: 'not-required' }
+    });
   });
 });

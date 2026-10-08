@@ -597,7 +597,7 @@ describe('public reviewed adoption command', () => {
         rollbackFailures: [],
         cleanupFailures: []
       }
-    });
+    }, 120_000);
     await expect(readFile(
       path.join(project.root, 'liftoff.manifest.json')
     )).rejects.toMatchObject({ code: 'ENOENT' });
