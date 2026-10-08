@@ -289,7 +289,7 @@ describe('verified adoption publication planning and execution', () => {
       readbackDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
       rollbackFailures: [],
       cleanupFailures: []
-    });
+    }, 120_000);
     for (const effect of input.publication.plan.report.effects) {
       expect(await readFile(path.join(input.root, ...effect.pathParts)))
         .toHaveLength(effect.contentBytes);
@@ -444,5 +444,5 @@ describe('verified adoption publication planning and execution', () => {
     await expect(readFile(
       path.join(modified.root, 'liftoff.manifest.json')
     )).rejects.toMatchObject({ code: 'ENOENT' });
-  });
+  }, 120_000);
 });

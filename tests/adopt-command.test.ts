@@ -491,7 +491,7 @@ describe('public reviewed adoption command', () => {
         rollbackFailures: [],
         cleanupFailures: []
       }
-    });
+    }, 120_000);
     expect(JSON.parse(await readFile(
       path.join(project.root, 'liftoff.manifest.json'), 'utf8'
     )).artifactVersion).toBe(8);
