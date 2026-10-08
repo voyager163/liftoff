@@ -13,6 +13,7 @@ import { modernLocalCompletionReportSchemaVersion } from './governance/modern-lo
 import { modernRevalidationCommandReportSchemaVersion } from './update/modern-revalidation-request.js';
 import { manualInfrastructurePolicy } from '../domain/governance/activation/modern-manual-infrastructure.js';
 import { protectedCompletionIndexEncoding } from '../domain/governance/activation/modern-local-completion.js';
+import { adoptionCommandReportSchemaVersion } from './adoption/public-command.js';
 
 export function installedCapabilities() {
   const registry = modernSourceRegistry();
@@ -91,12 +92,27 @@ export function installedCapabilities() {
         explicitNonGitRoot: true, liveMetadata: true, liveProviders: ['github'], liveConformance: false,
         credentialEnrollment: false, projectExecution: false, projectWrites: false, telemetry: false,
         scope: 'Bounded local metadata, declaration names and exact current managed-byte comparisons. Runtime constraints, references, agent behavior, effective governance and deployment proof remain unobserved. Team policy metadata comparison is not public team generation or enforcement support.',
-        recommendations: 'Advisory separate lanes only. Unavailable adoption, workflow/profile/plugin transitions, provider activation and deployed-state migration have no executable recommendation.',
+        recommendations: 'Advisory separate lanes only. Non-Liftoff projects may receive the read-only adopt preview; unavailable workflow/profile/plugin transitions, provider activation and deployed-state migration have no executable recommendation.',
         liveScope: 'Explicit bounded GitHub metadata reads for the verified local repository binding, applicable main/develop/release/hotfix refs and declared current environments, plus fixed GitHub Actions app metadata. No account/runner/Azure discovery; observed metadata is not current-profile conformance or activation proof.'
+      },
+      projectAdoption: {
+        command: 'adopt',
+        report: adoptionCommandReportSchemaVersion,
+        preview: 'adopt <project> --check',
+        approval: 'adopt <project> --approve-plan <fingerprint>',
+        recovery: 'adopt <project> --recover --approve-plan <fingerprint>',
+        previewAvailable: true,
+        executablePlanAvailable: false,
+        separateVerificationPermission: true,
+        separateFileApproval: true,
+        activeBindingPublication: false,
+        providerOperations: false,
+        scope: 'Current public support performs bounded non-Liftoff discovery and destination review only. Compatibility mapping, verification, file publication and authenticated recovery retain separate authority and are not inferred from command registration, JSON or manifest absence.'
       },
       reports: {
         capabilities: 1, validate: 1, doctor: 1, upgrade: 1,
-        update: currentUpdateReportSchemaVersion, governance: 2, governanceAssessment: 1, projectAssessment: 1
+        update: currentUpdateReportSchemaVersion, governance: 2, governanceAssessment: 1,
+        projectAssessment: 1, projectAdoption: adoptionCommandReportSchemaVersion
       },
       repair: { ...repairCapabilities.schemas }
     },

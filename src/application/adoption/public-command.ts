@@ -1,0 +1,322 @@
+import path from 'node:path';
+import type { UpdatePreviewOptions } from '../../adapters/filesystem/update-previews.js';
+import { isUpdatePlanFingerprint } from '../update/approval.js';
+import {
+  ApplicationFiles,
+  ApplicationInspectionError,
+  applicationPathFold,
+  assertApplicationNoLinkAncestors,
+  canonicalApplicationRoot
+} from '../repair/application-files.js';
+import {
+  prepareAdoptionDestinationPlan,
+  saveAdoptionDestinationPlan,
+  type AdoptionDestinationPlanReport
+} from './destination-plan.js';
+import {
+  createAdoptionReview,
+  saveAdoptionPreview,
+  type AdoptionPreview
+} from './preview.js';
+import type { AdoptionCandidateReport } from './candidate.js';
+
+export const adoptionCommandReportSchemaVersion = 1 as const;
+
+export interface AdoptionCommandRequest {
+  readonly project?: string;
+  readonly explicitProject: boolean;
+  readonly check: boolean;
+  readonly approvePlan?: string;
+  readonly recover: boolean;
+  readonly json: boolean;
+}
+
+export type AdoptionProjectBoundary =
+  | { readonly projectRoot: string; readonly kind: 'liftoff' | 'git' }
+  | { readonly projectRoot: string; readonly kind: 'explicit-non-git' };
+
+export interface AdoptionCommandReport {
+  readonly schemaVersion: 1;
+  readonly kind: 'liftoff-adoption';
+  readonly command: 'adopt';
+  readonly operation: 'preview' | 'approve' | 'recover';
+  readonly readOnly: true;
+  readonly projectRoot: string;
+  readonly projectKind: AdoptionProjectBoundary['kind'] | 'unavailable';
+  readonly status:
+    | 'compatibility-review-required'
+    | 'blocked'
+    | 'existing-liftoff-project'
+    | 'approval-unavailable'
+    | 'recovery-unavailable'
+    | 'error';
+  readonly exitCode: 1 | 2;
+  readonly target: {
+    readonly sourceDigest: string;
+    readonly inventoryDigest: string;
+    readonly pluginResolutionDigest: string;
+    readonly activeLayoutDigest: string;
+    readonly targetLayoutDigest: string;
+  } | null;
+  readonly review: AdoptionPreview | null;
+  readonly candidate: AdoptionCandidateReport | null;
+  readonly destinationPlan: AdoptionDestinationPlanReport | null;
+  readonly approval: {
+    readonly requestedFingerprint: string | null;
+    readonly status: 'not-requested' | 'unavailable-before-complete-plan';
+  };
+  readonly recovery: {
+    readonly requested: boolean;
+    readonly status: 'not-requested' | 'unavailable-before-authenticated-transaction';
+  };
+  readonly nextActions: readonly {
+    readonly command: readonly string[];
+    readonly purpose: string;
+  }[];
+  readonly diagnostics: readonly string[];
+  readonly limitations: readonly string[];
+}
+
+const limitations = Object.freeze([
+  'This schema-1 result is adoption discovery only; it grants no verification, file approval, transaction, active-binding publication, deployment or recovery authority.',
+  'No commit, branch switch, stash, reset, push, database mutation, cloud/state mutation or starter replacement is performed.',
+  'Existing deployment configuration, state and resources remain planning-only even when local application review can continue.'
+]);
+
+export function adoptionCommandRequestIssue(
+  request: AdoptionCommandRequest
+): string | undefined {
+  for (const field of ['explicitProject', 'check', 'recover', 'json'] as const) {
+    if (typeof Object.getOwnPropertyDescriptor(request, field)?.value !== 'boolean') {
+      return `Adoption ${field} must be an explicit boolean.`;
+    }
+  }
+  if (request.project !== undefined &&
+      (typeof request.project !== 'string' || !request.project.trim())) {
+    return 'Adoption project must be a non-empty path.';
+  }
+  if (request.approvePlan !== undefined &&
+      !isUpdatePlanFingerprint(request.approvePlan)) {
+    return '--approve-plan requires exactly 64 lowercase hexadecimal characters.';
+  }
+  if (request.check && (request.approvePlan !== undefined || request.recover)) {
+    return 'Adoption --check cannot be combined with --approve-plan or --recover.';
+  }
+  if (request.recover && request.approvePlan === undefined) {
+    return 'Adoption --recover requires --approve-plan <saved-fingerprint>.';
+  }
+  return undefined;
+}
+
+function marker(
+  directory: Awaited<ReturnType<ApplicationFiles['inventory']>>,
+  name: '.git' | 'liftoff.manifest.json'
+) {
+  const entry = directory.entries.find(item => applicationPathFold(item.name) === name);
+  if (entry && (entry.name !== name ||
+      entry.kind !== 'file' && (name !== '.git' || entry.kind !== 'directory'))) {
+    throw new ApplicationInspectionError(
+      'Adoption encountered an unsafe or aliased project boundary; no outer project was selected.'
+    );
+  }
+  return entry;
+}
+
+export async function resolveAdoptionProjectBoundary(
+  start: string,
+  explicit: boolean
+): Promise<AdoptionProjectBoundary> {
+  await assertApplicationNoLinkAncestors(path.resolve(start), 'Project inventory root');
+  let projectRoot = await canonicalApplicationRoot(start);
+  const readers: ApplicationFiles[] = [];
+  while (true) {
+    const reader = new ApplicationFiles(projectRoot);
+    readers.push(reader);
+    const directory = await reader.inventory([]);
+    const manifest = marker(directory, 'liftoff.manifest.json');
+    const git = marker(directory, '.git');
+    if (manifest || git || explicit) {
+      for (const observed of readers) await observed.assertUnchanged();
+      return manifest
+        ? { projectRoot, kind: 'liftoff' }
+        : git
+          ? { projectRoot, kind: 'git' }
+          : { projectRoot, kind: 'explicit-non-git' };
+    }
+    const parent = path.dirname(projectRoot);
+    if (parent === projectRoot) {
+      throw new ApplicationInspectionError(
+        'No Liftoff or Git boundary was found. Select an explicit project directory to adopt a non-Git application.'
+      );
+    }
+    projectRoot = parent;
+  }
+}
+
+function operation(request: AdoptionCommandRequest): AdoptionCommandReport['operation'] {
+  return request.recover ? 'recover' : request.approvePlan === undefined ? 'preview' : 'approve';
+}
+
+function unavailableReport(
+  request: AdoptionCommandRequest,
+  status: 'approval-unavailable' | 'recovery-unavailable',
+  diagnostic: string
+): AdoptionCommandReport {
+  return {
+    schemaVersion: adoptionCommandReportSchemaVersion,
+    kind: 'liftoff-adoption',
+    command: 'adopt',
+    operation: operation(request),
+    readOnly: true,
+    projectRoot: path.resolve(request.project ?? '.'),
+    projectKind: 'unavailable',
+    status,
+    exitCode: 1,
+    target: null,
+    review: null,
+    candidate: null,
+    destinationPlan: null,
+    approval: {
+      requestedFingerprint: request.approvePlan ?? null,
+      status: request.approvePlan === undefined
+        ? 'not-requested'
+        : 'unavailable-before-complete-plan'
+    },
+    recovery: {
+      requested: request.recover,
+      status: request.recover
+        ? 'unavailable-before-authenticated-transaction'
+        : 'not-requested'
+    },
+    nextActions: [{
+      command: ['liftoff', 'adopt', '--project', path.resolve(request.project ?? '.'), '--check'],
+      purpose: 'Create a fresh bounded adoption preview before requesting any later authority.'
+    }],
+    diagnostics: [diagnostic],
+    limitations
+  };
+}
+
+export function unavailableAdoptionAuthorityReport(
+  request: AdoptionCommandRequest
+): AdoptionCommandReport | null {
+  const issue = adoptionCommandRequestIssue(request);
+  if (issue) {
+    return unavailableReport(request, request.recover ? 'recovery-unavailable' : 'approval-unavailable', issue);
+  }
+  if (request.recover) {
+    return unavailableReport(
+      request,
+      'recovery-unavailable',
+      'No public authenticated adoption transaction exists yet for recovery; no project or receipt was accessed.'
+    );
+  }
+  if (request.approvePlan !== undefined) {
+    return unavailableReport(
+      request,
+      'approval-unavailable',
+      'Discovery and destination review are not a complete public adoption plan and cannot be approved for project effects.'
+    );
+  }
+  return null;
+}
+
+export function adoptionCommandErrorReport(
+  request: AdoptionCommandRequest,
+  projectRoot: string,
+  diagnostic: string
+): AdoptionCommandReport {
+  return {
+    ...unavailableReport(request, 'approval-unavailable', diagnostic),
+    operation: 'preview',
+    projectRoot: path.resolve(projectRoot),
+    status: 'error',
+    approval: { requestedFingerprint: null, status: 'not-requested' }
+  };
+}
+
+export async function previewAdoptionProject(
+  request: AdoptionCommandRequest,
+  boundary: AdoptionProjectBoundary,
+  source: unknown,
+  now: Date,
+  storage?: UpdatePreviewOptions
+): Promise<AdoptionCommandReport> {
+  const issue = adoptionCommandRequestIssue(request);
+  if (issue) return adoptionCommandErrorReport(request, boundary.projectRoot, issue);
+  if (boundary.kind === 'liftoff') {
+    return {
+      ...adoptionCommandErrorReport(
+        request,
+        boundary.projectRoot,
+        'The selected project already has a Liftoff manifest and cannot be adopted again.'
+      ),
+      projectKind: 'liftoff',
+      status: 'existing-liftoff-project',
+      exitCode: 2,
+      nextActions: [
+        {
+          command: ['liftoff', 'update', '--project', boundary.projectRoot, '--check'],
+          purpose: 'Review supported manifest/control-plane maintenance.'
+        },
+        {
+          command: ['liftoff', 'repair', '--project', boundary.projectRoot, '--check'],
+          purpose: 'Review separately authorized application repair.'
+        }
+      ]
+    };
+  }
+  const inspection = await createAdoptionReview(boundary.projectRoot, source, now);
+  const destination = await prepareAdoptionDestinationPlan(
+    inspection.preview,
+    source,
+    now
+  );
+  await saveAdoptionPreview(inspection.preview, now, storage);
+  if (destination.report.status === 'ready-for-independent-verification') {
+    await saveAdoptionDestinationPlan(
+      boundary.projectRoot,
+      inspection.preview.fingerprint,
+      source,
+      now,
+      storage
+    );
+  }
+  const ready = destination.report.status === 'ready-for-independent-verification';
+  return {
+    schemaVersion: adoptionCommandReportSchemaVersion,
+    kind: 'liftoff-adoption',
+    command: 'adopt',
+    operation: 'preview',
+    readOnly: true,
+    projectRoot: boundary.projectRoot,
+    projectKind: boundary.kind,
+    status: ready ? 'compatibility-review-required' : 'blocked',
+    exitCode: 2,
+    target: {
+      sourceDigest: inspection.report.sourceDigest,
+      inventoryDigest: inspection.report.inventory.inspectionDigest,
+      pluginResolutionDigest: inspection.report.inventory.pluginResolutionDigest,
+      activeLayoutDigest: inspection.report.inventory.activeLayoutDigest,
+      targetLayoutDigest: inspection.report.inventory.target.digest
+    },
+    review: inspection.preview,
+    candidate: inspection.report,
+    destinationPlan: destination.report,
+    approval: { requestedFingerprint: null, status: 'not-requested' },
+    recovery: { requested: false, status: 'not-requested' },
+    nextActions: ready
+      ? [{
+          command: ['liftoff', 'adopt', '--project', boundary.projectRoot, '--check'],
+          purpose: 'Repeat discovery after completing explicit compatible file, reference, and verification review.'
+        }]
+      : [{
+          command: ['liftoff', 'adopt', '--project', boundary.projectRoot, '--check'],
+          purpose: 'Resolve every reported blocker, then request a fresh preview.'
+        }],
+    diagnostics: ready
+      ? ['Destination review is current, but explicit compatibility mappings and declared checks are still required before a public plan can exist.']
+      : ['Adoption remains blocked by the reported candidate or destination observations.'],
+    limitations
+  };
+}

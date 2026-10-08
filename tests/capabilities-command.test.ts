@@ -121,6 +121,12 @@ describe('project-independent capability discovery', () => {
       separateConsent: true, explicitRecovery: true, configurationBound: true,
       applicationWrites: false, workflowChanges: false, profileChanges: false, providerOperations: false
     });
+    expect(report.schemas.projectAdoption).toMatchObject({
+      command: 'adopt', report: 1, previewAvailable: true, executablePlanAvailable: false,
+      separateVerificationPermission: true, separateFileApproval: true,
+      activeBindingPublication: false, providerOperations: false
+    });
+    expect(report.schemas.reports.projectAdoption).toBe(1);
     expect(report.schemas.repair).toEqual(repairCapabilities.schemas);
     expect(report.runtime).toMatchObject({ minimumNodeVersion, distribution: 'node/npm', nativeDistribution: false });
     expect(report.boundaries).toMatchObject({

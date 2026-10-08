@@ -81,7 +81,7 @@ Depends on 3-5. References: design D8; liftoff-project-assessment, liftoff-gover
 
 Depends on 3-6. References: design D8-D9; liftoff-project-migration, liftoff-project-repair, liftoff-template-ownership.
 
-- [ ] 7.1 Register adopt parsing/help/JSON/preview/approval/recovery surfaces with separate schema-1 identity; verify bare non-TTY/JSON previews only and invalid authority flags fail before effects.
+- [x] 7.1 Register adopt parsing/help/JSON/preview/approval/recovery surfaces with separate schema-1 identity; verify bare non-TTY/JSON previews only and invalid authority flags fail before effects.
 - [ ] 7.2 Build supported in-place plans from static evidence and explicit compatible bindings; verify existing application paths and Git history remain unchanged when already compliant.
 - [ ] 7.3 Implement necessary per-file mapping/reference review across imports, build/tests, Docker/Compose, CI and docs; verify unresolved mappings and unsupported language/framework conversion remain blocked rather than replaced with starters.
 - [x] 7.4 Extend external preparation/check staging to non-Liftoff adoption candidates while retaining exact independent preparation/script/network permissions; verify failed or declined checks cannot authorize a file transaction.

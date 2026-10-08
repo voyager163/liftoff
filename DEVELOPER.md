@@ -386,8 +386,10 @@ boundaries; instruction assertions do not claim actual LLM behavioral qualificat
 one private observation source for the bounded public `liftoff assess` producer
 in `application/assessment/engine.ts`. Inventory alone is not conformance,
 adoption or execution support. The existing `governance assess` contract is
-unchanged; in-place adoption is unavailable, and the local engine does not
-perform provider collection. Explicit live metadata uses a separate coordinator.
+unchanged. A missing manifest may now recommend the separately registered,
+read-only `liftoff adopt --check` surface; this does not change assessment
+authority or make compatibility/publication available. The local engine does
+not perform provider collection. Explicit live metadata uses a separate coordinator.
 
 The caller selects one explicit real root. The inventory reuses `ApplicationFiles`
 for confined, sorted directory observations, portable alias checks, bounded
@@ -470,8 +472,9 @@ signal and unsettled results with a zero exit are unobserved, not passes.
 All assessment/help paths bypass disclosure and every telemetry hook.
 Recommendations identify only real preview routes and their separate consent;
 their argument arrays bind the selected project rather than the caller's cwd.
-Unavailable adoption, workflow/profile/plugin transitions, provider activation
-and deployed-state work have no executable recommendation.
+Non-Liftoff projects may receive the read-only adoption preview. Unavailable
+workflow/profile/plugin transitions, provider activation and deployed-state
+work have no executable recommendation.
 
 ```bash
 npx vitest run tests/project-assessment-report.test.ts tests/project-assessment-engine.test.ts tests/project-assessment-command.test.ts tests/project-assessment-live.test.ts --maxWorkers=1
@@ -984,7 +987,9 @@ bytes/modes remain unchanged and candidate bytes/snapshots are excluded from JSO
 The report retains compatibility/deployment limits and names the outstanding
 semantic, core-destination, integration, permission, ownership, staged-check and
 lock/recovery obligations. This is not a saved preview, consent or public adopt
-capability, and it does not publish metadata or prepare/execute project code.
+approval capability, and it does not publish metadata or prepare/execute project
+code. The later public command may serialize this report only as bounded
+discovery.
 The shared modern own-data boundary rejects root, nested, array and revoked
 proxies before reflection; legitimate plain JSON record bytes and identities
 are unchanged. Source observation cannot execute a proxy hook as validation.
@@ -999,7 +1004,7 @@ Saved and successfully re-observed comparisons remain unverified and grant no
 preparation, project-code, network, file-write or recovery authority. Excluded
 payloads and dynamic references remain unobserved, not silently verified;
 source hashes still do not observe managed-core destinations. There is no
-public command or advertised adoption capability from this private contract.
+approval or execution capability from this private contract.
 The inherited inventory eligibility remains governance `none` or
 `single-maintainer-gitflow`; a valid team-profile metadata identity does not
 enable team adoption or repair before its distinct implementation qualifies.
@@ -1058,6 +1063,17 @@ extra scope are both rejected. Consent reloads the current verification plan
 and adoption review before use; it does not run a command or assert check
 success, compatibility, file approval, transaction/recovery authority,
 publication or deployment.
+`application/adoption/public-command.ts` and `cli/commands/adopt.ts` expose the
+separate schema-1 public discovery coordinator. It resolves the nearest exact
+Git/Liftoff boundary unless a non-Git root is explicitly selected, routes an
+existing manifest to update/repair, derives an installed target selection from
+the ordinary project flags, saves only current review/destination records
+outside the repository, and preserves all candidate/destination blockers.
+Bare JSON and non-TTY use remain preview-only. Exact approval and recovery
+syntax is registered but fails before project/receipt access until later tasks
+produce a complete public plan and authenticated transaction. Do not bridge
+that boundary by treating a private plan/consent/result fingerprint as the
+public file-plan identity.
 `createAdoptionVerificationWorkspace` allocates the later executor a distinct
 authenticated `liftoff-adoption-verification-workspace` record with the current
 CLI and adoption-verification contract identity. It reuses the repair

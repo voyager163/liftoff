@@ -8,6 +8,7 @@ liftoff migrate --help
 liftoff governance --help
 liftoff governance assess --help
 liftoff assess --help
+liftoff adopt --help
 liftoff upgrade --help
 liftoff update --help
 liftoff repair --help
@@ -26,6 +27,7 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | --- | --- |
 | `liftoff capabilities --json` | Returns the schema-1 installed command, schema, plugin, profile, recipe and limitation catalog without project discovery, tool probes, telemetry or state writes |
 | `liftoff assess [project] [--governance <profile>] [--json] [--live]` | Bounded read-only comparison against installed targets; optional scoped GitHub metadata is not conformance or activation proof |
+| `liftoff adopt [project] [--check] [--json]` | Creates a schema-1 read-only non-Liftoff discovery/destination preview; bare JSON and non-TTY invocations never infer approval |
 | `liftoff plan` | Resolves decisions and previews artifacts and requirements without side effects |
 | `liftoff init [project-name]` | Initializes a named child or the exact current Git root through staged readiness and framework setup |
 | `liftoff migrate <source>` | Creates a new sibling scaffold and filtered source copy without changing the source |
@@ -750,6 +752,39 @@ Historical projects retain their recorded source declarations, logical inventory
 and managed contents. Ordinary update does not silently add this new integration
 or retag an older plugin family. Use the advertised CLI assessment until a
 separately reviewed contribution transition is available.
+
+## Reviewed in-place adoption
+
+Use `adopt` only for a supported application without a Liftoff manifest:
+
+```bash
+liftoff adopt --project "./existing application" --check
+liftoff adopt "./existing application" --type standard --api node --spec manual --agents none --governance none --json
+```
+
+The current schema-1 public surface resolves one exact Git boundary, or an
+explicitly selected non-Git root, and compares it with the installed target
+selection. It saves the expiring adoption review outside the repository.
+Candidate and destination reports retain missing bindings, excluded protected
+infrastructure, destination conflicts, literal-reference limits, and
+deployment/state uncertainty as blockers. Project files, Git history, commands,
+dependencies, network, credentials, state, and cloud resources are unchanged.
+
+`--approve-plan <fingerprint>` and
+`--recover --approve-plan <fingerprint>` are registered exact-authority
+surfaces. They currently fail before project or receipt access because discovery
+and destination review are not a complete executable public adoption plan and
+no authenticated public file transaction exists. JSON, piped input, a missing
+manifest, PID/process age, generic yes, and force never create authority.
+Future advertised compatibility, verification, file-approval, transaction, and
+active-binding stages must retain separate identities and consent.
+
+If the selected root already contains `liftoff.manifest.json`, adoption returns
+an existing-project route instead of reinitializing it. Use
+`liftoff update --project <path> --check` for supported control-plane/schema
+maintenance and `liftoff repair --project <path> --check` for separately
+authorized application work. Existing deployment/state adoption remains
+planning-only.
 
 ## Read-only governance assessment
 

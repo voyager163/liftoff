@@ -83,12 +83,12 @@ before following newer guidance; planned features are not installed support.
 | `schemas.currentGeneration` | Fresh v8 `plan`, `init`, and sibling `migrate`, including framework-free Manual and optional agents. |
 | `schemas.currentUpdate` | [V8 project update](docs/cli-reference.md#update-modes): exact preview/approval, preserved configuration and history, and fingerprint-selected recovery. |
 | `schemas.projectAssessment` | [Read-only project assessment](docs/cli-reference.md#read-only-whole-project-assessment): bounded local observations and explicitly requested scoped GitHub metadata; fresh selected hosts receive `/liftoff-assess` (Copilot/Claude) or `$liftoff-assess` (Codex). Installed comparison targets and unobserved conformance remain distinct. |
+| `schemas.projectAdoption` | [Existing-application adoption preview](docs/cli-reference.md#reviewed-in-place-adoption): schema-1 non-Liftoff discovery and destination review. Compatibility, verification, file approval, transaction recovery, active bindings, and deployment remain separate unavailable authorities until independently advertised. |
 | `schemas.modernLocalVerification` | [V8 verification](docs/cli-reference.md#modern-local-verification): explicit request, approval and execution, including separately consented locked Manual checks on the qualified native host; no conversion or publication. |
 | `schemas.modernLocalCompletion` | [Manual/Spec Kit completion](docs/cli-reference.md#modern-local-completion): workflow-specific finalization, exact-file review and independent publication consent. |
 | `schemas.modernSuccessorRevalidation` | [Existing-successor revalidation](docs/cli-reference.md#modern-successor-revalidation): fresh verification and separate exact-byte publication approval. Incomplete commit exits 2, preserving the active successor and history without downgrade. |
 
-Recovery is explicit; saved progress is not current proof. These interfaces do not grant
-team generation, fresh OpenSpec finalization, cloud operations or whole-directory rollback.
+Recovery is explicit; saved progress is not current proof. These interfaces do not grant team generation, fresh OpenSpec finalization, cloud operations or whole-directory rollback.
 
 [Existing repositories](docs/existing-repositories.md) ·
 [Safety and consent](docs/safety-and-consent.md) ·

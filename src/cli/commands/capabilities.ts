@@ -35,6 +35,8 @@ export function capabilitiesCommand(parsed: ParsedArgs, context: ExecutionContex
       { label: 'Modern v8 successor revalidation', value: report.schemas.modernSuccessorRevalidation.selector },
       { label: 'Current v8 update', value: report.schemas.currentUpdate.preview },
       { label: 'Selected update recovery', value: report.schemas.currentUpdate.recovery },
+      { label: 'Adoption preview', value: report.schemas.projectAdoption.preview },
+      { label: 'Adoption execution', value: report.schemas.projectAdoption.executablePlanAvailable ? 'available' : 'not yet available' },
       { label: 'Workflows', value: report.workflows.map(({ id }) => id).join(', ') },
       { label: 'Profiles', value: report.profiles.map(({ id }) => id).join(', ') },
       { label: 'Bundled plugins', value: String(report.plugins.inventory.length) },
@@ -49,6 +51,7 @@ export function capabilitiesCommand(parsed: ParsedArgs, context: ExecutionContex
       report.schemas.modernLocalCompletion.scope,
       report.schemas.modernSuccessorRevalidation.scope,
       report.schemas.currentUpdate.scope,
+      report.schemas.projectAdoption.scope,
       'Public stateful migration and project telemetry enrollment are unavailable.',
       'Use liftoff capabilities --json for exact schemas, recipes and per-phase executor blockers.',
       'Capability discovery is not approval to execute or modify anything.'

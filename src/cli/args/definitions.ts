@@ -127,6 +127,55 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     arguments: [{ syntax: 'project-path', description: 'Selected Liftoff, Git or explicitly identified non-Git project boundary' }],
     defaultMaxPositionals: 1
   },
+  adopt: {
+    description: 'Preview reviewed in-place adoption for a supported non-Liftoff application',
+    usage: '[project-path]',
+    group: 'Maintenance',
+    flags: {
+      type: projectFlags.type,
+      genai: projectFlags.genai,
+      api: projectFlags.api,
+      pattern: projectFlags.pattern,
+      cloud: projectFlags.cloud,
+      region: projectFlags.region,
+      frontend: projectFlags.frontend,
+      environments: projectFlags.environments,
+      spec: projectFlags.spec,
+      agents: projectFlags.agents,
+      'default-agent': projectFlags['default-agent'],
+      governance: projectFlags.governance,
+      'copilot-cloud': projectFlags['copilot-cloud'],
+      config: projectFlags.config,
+      project: valueFlag(
+        'Exact project path; explicitly select non-Git applications',
+        'Project',
+        'path'
+      ),
+      check: booleanFlag(
+        'Preview only and save bounded review records outside the repository',
+        'Command'
+      ),
+      'approve-plan': valueFlag(
+        'Approve one complete current public adoption plan by its full lowercase 64-hex SHA-256 fingerprint',
+        'Consent',
+        'fingerprint'
+      ),
+      recover: booleanFlag(
+        'Inspect or continue only the authenticated recovery owned by --approve-plan',
+        'Consent'
+      ),
+      json: booleanFlag(
+        'Emit one schema-1 adoption result on stdout; bare JSON always previews',
+        'Output'
+      ),
+      ...helpFlag
+    },
+    arguments: [{
+      syntax: 'project-path',
+      description: 'Supported non-Liftoff Git project or explicitly identified non-Git application'
+    }],
+    defaultMaxPositionals: 1
+  },
   validate: {
     description: 'Validate a generated project manifest',
     usage: '[project-path]',

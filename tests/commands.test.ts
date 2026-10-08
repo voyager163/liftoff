@@ -153,7 +153,8 @@ describe('strict update approval arguments', () => {
     expect(() => parseArgs(['update', ...flags])).toThrow(/--check and --approve-plan cannot be combined/);
   });
 
-  it.each(Object.keys(commandDefinitions).filter((command) => command !== 'update' && command !== 'repair'))(
+  it.each(Object.keys(commandDefinitions).filter((command) =>
+    command !== 'update' && command !== 'repair' && command !== 'adopt'))(
     'does not accept update approval on %s',
     (command) => {
       expect(() => parseArgs([command, '--approve-plan', fingerprint])).toThrow(/Unknown flag/);

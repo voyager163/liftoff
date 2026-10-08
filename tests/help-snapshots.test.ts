@@ -36,7 +36,7 @@ describe('complete help screens', () => {
       }
     });
 
-    for (const command of ['init', 'assess', 'update', 'repair', 'upgrade', 'doctor', 'governance', 'regions', 'dev'] as const) {
+    for (const command of ['init', 'assess', 'adopt', 'update', 'repair', 'upgrade', 'doctor', 'governance', 'regions', 'dev'] as const) {
       it(`snapshots ${layout.name} ${command} command help`, async () => {
         const result = await screen([command, '--help'], layout.columns);
         expect(result.err).toBe('');
@@ -62,6 +62,29 @@ describe('complete help screens', () => {
 });
 
 describe('update help review sequence', () => {
+  it('explains adoption preview, exact authority, recovery, and protected boundaries', async () => {
+    const { out, err } = await screen(['adopt', '--help'], 50);
+    expect(err).toBe('');
+    for (const phrase of [
+      'liftoff adopt --project <path> --check',
+      'Bare JSON and non-TTY invocations',
+      'stored outside the repository',
+      'not verification, file approval',
+      'liftoff update --check',
+      '--approve-plan <fingerprint>',
+      '--recover --approve-plan <fingerprint>',
+      'defaults to no',
+      'blocked or incomplete previews never prompt',
+      'existing deployment/state',
+      'No commit, branch switch',
+      'Exit 2: safe preview'
+    ]) {
+      expect(out).toContain(phrase);
+    }
+    expect(out).not.toContain('Option: --yes');
+    expect(out).not.toContain('Option: --force');
+  });
+
   it('explains previews, receipts, exact approval, protected scope, and exit behavior', async () => {
     const { out, err } = await screen(['update', '--help'], 50);
     expect(err).toBe('');

@@ -181,6 +181,26 @@ export function parseArgs(argv: string[]): ParsedArgs {
     if (issue) throw new UsageError(issue);
   }
 
+  if (command === 'adopt') {
+    if (positional.length && Object.hasOwn(flags, 'project')) {
+      throw new UsageError('Provide an adoption project path either positionally or with --project, not both.');
+    }
+    if (Object.hasOwn(flags, 'approve-plan') &&
+        !isUpdatePlanFingerprint(flags['approve-plan'])) {
+      throw new UsageError(
+        'Flag --approve-plan expects the complete fingerprint from a current public adoption plan: ' +
+          'exactly 64 lowercase hexadecimal characters.'
+      );
+    }
+    if (flags.check === true &&
+        (Object.hasOwn(flags, 'approve-plan') || flags.recover === true)) {
+      throw new UsageError('Adoption --check cannot be combined with --approve-plan or --recover.');
+    }
+    if (flags.recover === true && !Object.hasOwn(flags, 'approve-plan')) {
+      throw new UsageError('Adoption --recover requires --approve-plan <saved-fingerprint>.');
+    }
+  }
+
   if (command === 'repair') {
     if (positional.length && Object.hasOwn(flags, 'project')) {
       throw new UsageError('Provide a project path either positionally or with --project, not both.');

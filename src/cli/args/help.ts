@@ -42,6 +42,28 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
             '--live is unavailable and fails without contacting accounts. The narrower governance assess ' +
             'contract and its independently supported live mode are unchanged.'
         }
+      : command === 'adopt'
+      ? {
+          ...commandDefinitions.adopt,
+          description:
+            'Start with `liftoff adopt --project <path> --check`. Bare JSON and non-TTY invocations ' +
+            'also preview only. Preview records are stored outside the repository and are observations, ' +
+            'not verification, file approval, transaction ownership, active-binding publication, ' +
+            'deployment authority, or recovery proof. The target workload, workflow, agents, profile, ' +
+            'plugins, and layout come from the installed release plus explicit target flags/configuration. ' +
+            'Existing Liftoff projects use `liftoff update --check` and separately authorized ' +
+            '`liftoff repair --check`, never re-adoption. A complete later public plan requires exact ' +
+            '`--approve-plan <fingerprint>`; registration of the flag cannot approve discovery or a ' +
+            'blocked compatibility review. Recovery requires `--recover --approve-plan <fingerprint>` ' +
+            'and may address only that authenticated transaction. Bare interactive execution can prompt ' +
+            'only after displaying a complete current executable plan and defaults to no; blocked or ' +
+            'incomplete previews never prompt. JSON, piped answers, manifest absence, process age, PID, ' +
+            'generic yes, and force are not consent. Unresolved mappings, dynamic behavior, missing checks, ' +
+            'unsupported conversions, collisions, existing deployment/state, and unsafe boundaries remain ' +
+            'blockers. No commit, branch switch, stash/reset, push, database/cloud mutation, starter ' +
+            'replacement, or implicit telemetry enrollment is authorized. Exit 2: safe preview or ' +
+            'existing-project route needs further review; 1: invalid/unsafe/unavailable approval or recovery.'
+        }
       : command === 'update'
       ? {
           ...commandDefinitions.update,

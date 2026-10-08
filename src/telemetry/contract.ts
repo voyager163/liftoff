@@ -53,6 +53,7 @@ export const telemetryCommands = [
   'validate',
   'update',
   'repair',
+  'adopt',
   'upgrade',
   'migrate',
   'doctor',

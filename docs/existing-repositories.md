@@ -175,6 +175,27 @@ Changing the configuration to RAG, chatbot, or another pattern and running
 
 ## Existing non-Liftoff application
 
+Use the read-only in-place adoption preview when the application should remain
+at its existing root:
+
+```bash
+liftoff adopt --project ../legacy-app --check
+liftoff adopt ../legacy-app --type standard --api node --spec manual --agents none --governance none --json
+```
+
+The schema-1 preview observes one exact Git boundary or explicitly selected
+non-Git root and saves only expiring review metadata outside the repository.
+It does not run project scripts, install dependencies, access credentials or
+network, write a manifest, move application files, change Git history, infer
+deployment absence, or approve later work. Missing target bindings, protected
+infrastructure, destination conflicts, unresolved references, and unsupported
+conversion remain explicit blockers.
+
+The registered `--approve-plan` and fingerprint-selected `--recover` surfaces
+fail closed until a complete public compatibility/file plan and authenticated
+transaction exist. Existing Liftoff manifests route to `update --check` and
+`repair --check` rather than re-adoption.
+
 Use migration when you want a fresh governed scaffold and a filtered source
 copy:
 
