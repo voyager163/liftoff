@@ -782,7 +782,7 @@ active-binding stages must retain separate identities and consent.
 If the selected root already contains `liftoff.manifest.json`, adoption returns
 an existing-project route instead of reinitializing it. Use
 `liftoff update --project <path> --check` for supported control-plane/schema
-maintenance and `liftoff repair --project <path> --check` for separately
+maintenance and `liftoff repair <path> --check` for separately
 authorized application work. Existing deployment/state adoption remains
 planning-only.
 
