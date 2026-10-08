@@ -1,12 +1,51 @@
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, unlink, writeFile
+} from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import {
+  saveAdoptionCompatibilityPlan,
+  type AdoptionCompatibilityReview
+} from '../src/application/adoption/compatibility-plan.js';
+import {
+  prepareAdoptionDestinationPlan, saveAdoptionDestinationPlan
+} from '../src/application/adoption/destination-plan.js';
+import {
+  createAdoptionReview, saveAdoptionPreview,
+  type AdoptionReviewInspection
+} from '../src/application/adoption/preview.js';
+import {
+  prepareAdoptionLayoutPlan
+} from '../src/application/adoption/layout-plan.js';
+import {
+  saveAdoptionPublicationPlan
+} from '../src/application/adoption/publication-plan.js';
+import {
+  executeAdoptionVerification
+} from '../src/application/adoption/verification-execution.js';
+import {
+  saveAdoptionVerificationConsent
+} from '../src/application/adoption/verification-consent.js';
+import {
+  saveAdoptionVerificationPlan
+} from '../src/application/adoption/verification-plan.js';
+import {
+  parseProjectManifest
+} from '../src/application/project/manifest.js';
 import { buildCurrentProjectPlan } from '../src/application/project/planning.js';
+import {
+  modernProjectSourceInput
+} from '../src/application/project/source-context.js';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import { buildCurrentArtifacts } from '../src/templates.js';
+import { optionsFromParsedArgs } from '../src/cli/project-options.js';
 import { CaptureStream } from './helpers.js';
+import {
+  projectMutationLockPath
+} from '../src/adapters/filesystem/project-lock.js';
 
 const roots: string[] = [];
 const now = new Date('2026-10-19T06:00:00.000Z');
@@ -37,17 +76,14 @@ async function fixture(options: { manifest?: boolean } = {}) {
   const home = await directory('liftoff-adopt-home-');
   await mkdir(path.join(root, '.git'));
   await writeFile(path.join(root, '.git', 'HEAD'), 'ref: refs/heads/main\n');
+  const targetOptions = await optionsFromParsedArgs(
+    parseArgs(['plan', ...selection]),
+    root,
+    false
+  );
   const plan = buildCurrentProjectPlan({
-    projectName: path.basename(root),
-    projectType: 'standard',
-    apiStack: 'node',
-    cloud: 'azure',
-    region: 'eastus',
-    environments: ['dev'],
-    specWorkflow: 'manual',
-    agents: [],
-    governanceProfile: 'none',
-    includeFrontend: false
+    ...targetOptions,
+    projectName: path.basename(root)
   }, { requireProjectName: true });
   for (const artifact of buildCurrentArtifacts(plan)) {
     if (artifact.logicalName === 'manifest' && !options.manifest) continue;
@@ -55,7 +91,228 @@ async function fixture(options: { manifest?: boolean } = {}) {
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, artifact.content);
   }
-  return { root, home };
+  const manifest = buildCurrentArtifacts(plan).find(
+    artifact => artifact.logicalName === 'manifest'
+  );
+  if (!manifest) throw new Error('Missing command fixture manifest source.');
+  return {
+    root,
+    home,
+    source: modernProjectSourceInput(
+      parseProjectManifest(JSON.parse(manifest.content) as unknown)
+    )
+  };
+}
+
+function compatibilityReview(
+  review: AdoptionReviewInspection,
+  destinationPlanFingerprint: string
+): AdoptionCompatibilityReview {
+  const inventory = review.report.inventory;
+  return {
+    schemaVersion: 1,
+    kind: 'liftoff-adoption-compatibility-review',
+    projectRoot: inventory.projectRoot,
+    reviewFingerprint: review.preview.fingerprint,
+    destinationPlanFingerprint,
+    inventoryDigest: inventory.inspectionDigest,
+    targetLayoutDigest: inventory.target.digest,
+    dynamicReferencesReviewed: true,
+    unresolvedMappings: [],
+    files: inventory.files.map((file, index) => ({
+      sourcePathParts: [...file.pathParts],
+      expectedDigest: file.digest,
+      expectedMode: file.mode,
+      decision: 'preserve-current-path',
+      targetPathParts: [...file.pathParts],
+      targetIdentity: file.currentTargetLogicalName === null
+        ? {
+            kind: 'custom-component',
+            logicalName: `custom-file-${index + 1}`
+          }
+        : {
+            kind: 'active-binding',
+            logicalName: file.currentTargetLogicalName
+          }
+    })),
+    references: inventory.references.map(reference => ({
+      referenceId: reference.id,
+      disposition: 'unchanged-reviewed',
+      afterTargetPathParts: [...reference.targetPathParts]
+    })),
+    verification: {
+      commands: [{
+        executable: 'node',
+        args: ['verify.cjs'],
+        cwdPathParts: [],
+        timeoutMs: 30_000,
+        maxOutputBytes: 16_384,
+        network: false
+      }],
+      preparation: []
+    }
+  };
+}
+
+async function preparePublication(
+  project: Awaited<ReturnType<typeof fixture>>
+) {
+  await writeFile(
+    path.join(project.root, 'verify.cjs'),
+    'if (!process.env.LIFTOFF_APPLICATION_VERIFICATION) process.exit(9);\n'
+  );
+  const storage = {
+    homedir: project.home,
+    env: {},
+    clock: () => now
+  };
+  const layout = await prepareAdoptionLayoutPlan(
+    project.root, project.source
+  );
+  if (!layout.source) {
+    throw new Error('Command publication fixture has no supported layout.');
+  }
+  const source = layout.source;
+  const review = await createAdoptionReview(
+    project.root, source, now
+  );
+  await saveAdoptionPreview(review.preview, now, storage);
+  const observedDestination = await prepareAdoptionDestinationPlan(
+    review.preview, source, now
+  );
+  if (observedDestination.report.status !==
+      'ready-for-independent-verification') {
+    throw new Error(JSON.stringify(observedDestination.report.blockers));
+  }
+  const destination = await saveAdoptionDestinationPlan(
+    project.root, review.preview.fingerprint, source, now, storage
+  );
+  const compatibility = await saveAdoptionCompatibilityPlan(
+    compatibilityReview(review, destination.plan.report.fingerprint),
+    source,
+    now,
+    storage
+  );
+  const verification = await saveAdoptionVerificationPlan(
+    project.root,
+    review.preview.fingerprint,
+    destination.plan.report.fingerprint,
+    compatibility.plan.report.fingerprint,
+    source,
+    now,
+    storage
+  );
+  await saveAdoptionVerificationConsent(
+    project.root,
+    review.preview.fingerprint,
+    destination.plan.report.fingerprint,
+    compatibility.plan.report.fingerprint,
+    verification.plan.report.fingerprint,
+    source,
+    now,
+    {
+      projectCode: true,
+      dependencyPreparation: false,
+      declaredNetwork: false
+    },
+    storage
+  );
+  const receipt = await executeAdoptionVerification(
+    project.root,
+    review.preview.fingerprint,
+    destination.plan.report.fingerprint,
+    compatibility.plan.report.fingerprint,
+    verification.plan.report.fingerprint,
+    source,
+    { storage }
+  );
+  expect(receipt.status).toBe('passed');
+  return saveAdoptionPublicationPlan({
+    projectRoot: project.root,
+    reviewFingerprint: review.preview.fingerprint,
+    destinationPlanFingerprint: destination.plan.report.fingerprint,
+    compatibilityPlanFingerprint: compatibility.plan.report.fingerprint,
+    verificationPlanFingerprint: verification.plan.report.fingerprint
+  }, source, { storage });
+}
+
+async function interruptPublication(
+  project: Awaited<ReturnType<typeof fixture>>,
+  publication: Awaited<ReturnType<typeof preparePublication>>
+) {
+  const transactionUrl = new URL(
+    '../src/adapters/filesystem/reviewed-update-transaction.ts',
+    import.meta.url
+  ).href;
+  const authorityUrl = new URL(
+    '../src/application/adoption/transaction-authority.ts',
+    import.meta.url
+  ).href;
+  const loaderUrl = new URL(
+    './fixtures/source-typescript-loader.mjs',
+    import.meta.url
+  ).href;
+  const mutations = publication.plan.mutations.map(mutation =>
+    mutation.type === 'write'
+      ? {
+          ...mutation,
+          content: Buffer.from(mutation.content).toString('base64')
+        }
+      : mutation
+  );
+  const preconditions = publication.plan.preconditions.map(snapshot => ({
+    pathParts: snapshot.pathParts,
+    ...(snapshot.content === undefined
+      ? {}
+      : { content: snapshot.content.toString('base64') }),
+    ...(snapshot.mode === undefined ? {} : { mode: snapshot.mode })
+  }));
+  const child = spawnSync(
+    process.execPath,
+    ['--import', loaderUrl, '--input-type=module', '-e', `
+      const { applyAdoptionTransaction } = await import(${JSON.stringify(transactionUrl)});
+      const { createAdoptionTransactionAuthorityStore } = await import(${JSON.stringify(authorityUrl)});
+      const mutations = ${JSON.stringify(mutations)}.map(entry => entry.type === 'write'
+        ? { ...entry, content: Buffer.from(entry.content, 'base64') }
+        : entry);
+      const preconditions = ${JSON.stringify(preconditions)}.map(entry => ({
+        ...entry,
+        ...(entry.content === undefined
+          ? {}
+          : { content: Buffer.from(entry.content, 'base64') })
+      }));
+      await applyAdoptionTransaction(
+        ${JSON.stringify(project.root)},
+        mutations,
+        {
+          planFingerprint: ${JSON.stringify(publication.plan.report.fingerprint)},
+          authorityStore: createAdoptionTransactionAuthorityStore(
+            ${JSON.stringify(project.root)},
+            {
+              homedir: ${JSON.stringify(project.home)},
+              env: {},
+              clock: () => new Date(${JSON.stringify(now.toISOString())})
+            }
+          ),
+          preconditions,
+          expectedCandidateBinding: ${JSON.stringify(publication.plan.report.transactionCandidateBinding)},
+          validateCurrentInputs: async () => {},
+          onCheckpoint: async checkpoint => {
+            if (checkpoint.phase === 'prepared') process.exit(73);
+          }
+        }
+      );
+      process.exitCode = 9;
+    `],
+    {
+      encoding: 'utf8',
+      timeout: 20_000,
+      cwd: process.cwd()
+    }
+  );
+  expect(child.error).toBeUndefined();
+  expect(child.status, child.stderr).toBe(73);
+  await unlink(await projectMutationLockPath(project.root));
 }
 
 async function snapshot(root: string) {
@@ -84,7 +341,7 @@ async function invoke(
     stdout,
     stderr,
     updateNow: () => now,
-    updatePreview: { homedir: home, env: {} }
+    updatePreview: { homedir: home, env: {}, clock: () => now }
   });
   return { code, stdout: stdout.text(), stderr: stderr.text() };
 }
@@ -174,7 +431,78 @@ describe('public reviewed adoption command', () => {
     expect(await snapshot(project.root)).toEqual(before);
   });
 
-  it('fails closed on approval and recovery before touching a selected project', async () => {
+  it('applies only the exact externally verified publication plan and reports independent readback', async () => {
+    const project = await fixture();
+    const publication = await preparePublication(project);
+    const verificationBefore = await stat(
+      path.join(project.root, 'verify.cjs')
+    );
+    const result = await invoke(
+      [
+        'adopt', '--project', project.root, ...selection,
+        '--approve-plan', publication.plan.report.fingerprint, '--json'
+      ],
+      project.root,
+      project.home
+    );
+    expect(result).toMatchObject({ code: 0, stderr: '' });
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      operation: 'approve',
+      readOnly: false,
+      projectRoot: project.root,
+      projectKind: 'git',
+      status: 'applied',
+      exitCode: 0,
+      publicationPlan: {
+        fingerprint: publication.plan.report.fingerprint,
+        status: 'ready-for-file-approval',
+        manifestPublishedLast: true
+      },
+      approval: {
+        requestedFingerprint: publication.plan.report.fingerprint,
+        status: 'approved-exact-plan'
+      },
+      transaction: {
+        status: 'committed',
+        committed: true,
+        transactionDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        readbackDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        rollbackFailures: [],
+        cleanupFailures: []
+      }
+    });
+    expect(JSON.parse(await readFile(
+      path.join(project.root, 'liftoff.manifest.json'), 'utf8'
+    )).artifactVersion).toBe(8);
+    const verificationAfter = await stat(
+      path.join(project.root, 'verify.cjs')
+    );
+    expect({
+      ino: verificationAfter.ino,
+      mode: verificationAfter.mode,
+      mtimeMs: verificationAfter.mtimeMs
+    }).toEqual({
+      ino: verificationBefore.ino,
+      mode: verificationBefore.mode,
+      mtimeMs: verificationBefore.mtimeMs
+    });
+    const recovery = await invoke(
+      [
+        'adopt', '--project', project.root, '--recover',
+        '--approve-plan', publication.plan.report.fingerprint, '--json'
+      ],
+      project.root,
+      project.home
+    );
+    expect(recovery.code).toBe(1);
+    expect(JSON.parse(recovery.stdout)).toMatchObject({
+      operation: 'recover',
+      status: 'recovery-unavailable',
+      transaction: { status: 'absent', committed: false }
+    });
+  });
+
+  it('fails closed on unknown approval and recovery before touching a selected project', async () => {
     const home = await directory('liftoff-adopt-authority-home-');
     const missing = path.join(await directory('liftoff-adopt-authority-parent-'), 'missing');
     const fingerprint = 'a'.repeat(64);
@@ -186,7 +514,7 @@ describe('public reviewed adoption command', () => {
     expect(approval.code).toBe(1);
     expect(JSON.parse(approval.stdout)).toMatchObject({
       operation: 'approve',
-      status: 'approval-unavailable',
+      status: 'error',
       approval: {
         requestedFingerprint: fingerprint,
         status: 'unavailable-before-complete-plan'
@@ -200,7 +528,7 @@ describe('public reviewed adoption command', () => {
     expect(recovery.code).toBe(1);
     expect(JSON.parse(recovery.stdout)).toMatchObject({
       operation: 'recover',
-      status: 'recovery-unavailable',
+      status: 'error',
       recovery: {
         requested: true,
         status: 'unavailable-before-authenticated-transaction'
@@ -208,6 +536,39 @@ describe('public reviewed adoption command', () => {
     });
     await expect(readdir(missing)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await readdir(home)).toEqual([]);
+  });
+
+  it('recovers only the fingerprint-selected authenticated adoption transaction', async () => {
+    const project = await fixture();
+    const publication = await preparePublication(project);
+    await interruptPublication(project, publication);
+    const result = await invoke(
+      [
+        'adopt', '--project', project.root, '--recover',
+        '--approve-plan', publication.plan.report.fingerprint, '--json'
+      ],
+      project.root,
+      project.home
+    );
+    expect(result).toMatchObject({ code: 2, stderr: '' });
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      operation: 'recover',
+      readOnly: false,
+      projectRoot: project.root,
+      status: 'recovered',
+      exitCode: 2,
+      recovery: { requested: true, status: 'recovered' },
+      transaction: {
+        status: 'rolled-back',
+        committed: false,
+        transactionDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        rollbackFailures: [],
+        cleanupFailures: []
+      }
+    });
+    await expect(readFile(
+      path.join(project.root, 'liftoff.manifest.json')
+    )).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('routes an existing Liftoff project to update and repair without re-adoption', async () => {

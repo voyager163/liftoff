@@ -122,7 +122,7 @@ describe('project-independent capability discovery', () => {
       applicationWrites: false, workflowChanges: false, profileChanges: false, providerOperations: false
     });
     expect(report.schemas.projectAdoption).toMatchObject({
-      command: 'adopt', report: 1, previewAvailable: true, executablePlanAvailable: false,
+      command: 'adopt', report: 1, previewAvailable: true, executablePlanAvailable: true,
       separateVerificationPermission: true, separateFileApproval: true,
       activeBindingPublication: false, providerOperations: false
     });

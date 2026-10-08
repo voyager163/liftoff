@@ -198,9 +198,17 @@ unsupported conversion remains an explicit blocker rather than triggering
 starter replacement.
 
 The registered `--approve-plan` and fingerprint-selected `--recover` surfaces
-fail closed until a complete public compatibility/file plan and authenticated
-transaction exist. Existing Liftoff manifests route to `update --check` and
-`repair --check` rather than re-adoption.
+accept only a complete expiring publication plan produced after explicit
+compatibility mapping, exact verification permission and a successful unchanged
+receipt. File approval writes only the displayed absent managed-core/manifest
+targets through the dedicated root-bound adoption transaction, with the final
+manifest last. Recovery selects the same plan plus the observed transaction
+digest, restores only attributable unchanged writes and preserves concurrent
+edits. A missing manifest never authorizes a second adoption while the
+authenticated journal remains. Existing Liftoff manifests route to
+`update --check` and `repair --check` rather than re-adoption, except that
+fingerprint-selected recovery may settle an already authenticated adoption
+transaction.
 
 Use migration when you want a fresh governed scaffold and a filtered source
 copy:

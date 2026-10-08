@@ -1,8 +1,10 @@
 import path from 'node:path';
 import {
+  approveAdoptionProject,
   adoptionCommandErrorReport,
   adoptionCommandRequestIssue,
   previewAdoptionProject,
+  recoverAdoptionProject,
   resolveAdoptionProjectBoundary,
   unavailableAdoptionAuthorityReport,
   type AdoptionCommandReport,
@@ -28,7 +30,9 @@ function render(report: AdoptionCommandReport, presentation: PresentationSession
     { label: 'Layout plan', value: report.layoutPlan?.fingerprint ?? 'unavailable' },
     { label: 'Mapping review', value: report.mappingReview?.fingerprint ?? 'unavailable' },
     { label: 'Review fingerprint', value: report.review?.fingerprint ?? 'unavailable' },
-    { label: 'Destination plan', value: report.destinationPlan?.fingerprint ?? 'unavailable' }
+    { label: 'Destination plan', value: report.destinationPlan?.fingerprint ?? 'unavailable' },
+    { label: 'Publication plan', value: report.publicationPlan?.fingerprint ?? 'unavailable' },
+    { label: 'Transaction', value: report.transaction.status }
   ]);
   if (report.layoutPlan) {
     presentation.table(
@@ -62,7 +66,7 @@ function render(report: AdoptionCommandReport, presentation: PresentationSession
     );
   }
   presentation.status(
-    report.exitCode === 1 ? 'error' : 'warning',
+    report.exitCode === 0 ? 'success' : report.exitCode === 1 ? 'error' : 'warning',
     report.status,
     report.diagnostics.join(' ')
   );
@@ -79,6 +83,26 @@ function render(report: AdoptionCommandReport, presentation: PresentationSession
   }
   for (const blocker of report.destinationPlan?.blockers ?? []) {
     presentation.status('warning', blocker.code, blocker.pathParts.join('/'));
+  }
+  if (report.publicationPlan) {
+    presentation.table(
+      'Approved publication effects',
+      ['Identity', 'Operation', 'Path'],
+      report.publicationPlan.effects.map(effect => [
+        effect.logicalName,
+        effect.operation,
+        effect.pathParts.join('/')
+      ])
+    );
+  }
+  for (const failure of report.transaction.rollbackFailures) {
+    presentation.status('error', 'Rollback', failure);
+  }
+  for (const failure of report.transaction.cleanupFailures) {
+    presentation.status('warning', 'Cleanup', failure);
+  }
+  for (const failure of report.transaction.readbackFailures) {
+    presentation.status('error', 'Readback', failure);
   }
   for (const action of report.nextActions) {
     presentation.status('info', action.command.join(' '), action.purpose);
@@ -138,7 +162,13 @@ export async function adoptCommand(
           selected.project ?? context.cwd,
           selected.explicitProject
         );
-        if (boundary.kind === 'liftoff') {
+        if (selected.recover) {
+          report = await recoverAdoptionProject(
+            selected,
+            boundary,
+            context.updatePreview
+          );
+        } else if (boundary.kind === 'liftoff') {
           report = await previewAdoptionProject(
             selected,
             boundary,
@@ -156,13 +186,21 @@ export async function adoptCommand(
             ...options,
             projectName: options.projectName ?? path.basename(boundary.projectRoot)
           }, { requireProjectName: true });
-          report = await previewAdoptionProject(
-            selected,
-            boundary,
-            sourceForPlan(plan),
-            context.updateNow?.() ?? new Date(),
-            context.updatePreview
-          );
+          const source = sourceForPlan(plan);
+          report = selected.approvePlan === undefined
+            ? await previewAdoptionProject(
+                selected,
+                boundary,
+                source,
+                context.updateNow?.() ?? new Date(),
+                context.updatePreview
+              )
+            : await approveAdoptionProject(
+                selected,
+                boundary,
+                source,
+                context.updatePreview
+              );
         }
       } catch (error) {
         report = adoptionCommandErrorReport(

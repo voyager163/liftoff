@@ -3,7 +3,10 @@ import path from 'node:path';
 import { readBoundProjectFileSnapshot, assertBoundProjectPath } from '../../adapters/filesystem/bound-project-files.js';
 import { errorCode } from '../../adapters/filesystem/errors.js';
 import { inspectReviewedUpdateTransaction } from '../../adapters/filesystem/reviewed-update-transaction.js';
-import { reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts } from '../../domain/project/reviewed-update-artifacts.js';
+import {
+  reviewedAdoptionTransactionPathParts, reviewedUpdateTransactionPathParts,
+  reviewedRepairTransactionPathParts
+} from '../../domain/project/reviewed-update-artifacts.js';
 import type { ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
 import { createManifestV8Reader, type LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import { manifestHistoryPaths } from '../../domain/project/manifest/history.js';
@@ -32,7 +35,12 @@ import { readModernActivationSuccessorSource } from '../../governance-activation
 
 const statePath = ['governance','activation-state.json'], journalPath = ['governance','migration-state.json'];
 const collections = ['plans','evidence','approvals','supersessions','reconciliation'] as const;
-const transactionPaths = [reviewedUpdateTransactionPathParts,reviewedRepairTransactionPathParts,reservedLocalVerificationJournalPath];
+const transactionPaths = [
+  reviewedUpdateTransactionPathParts,
+  reviewedRepairTransactionPathParts,
+  reviewedAdoptionTransactionPathParts,
+  reservedLocalVerificationJournalPath
+];
 const reader = createManifestV8Reader({catalog:projectCatalog,resolveSourceContract:resolveModernManifestV8SourceContract});
 const key = (parts:readonly string[]) => parts.join('/');
 const compare = (a:string,b:string) => a<b?-1:a>b?1:0;
@@ -105,7 +113,7 @@ async function validateCapturedModernActivation(
     const file=files.get(key(parts));if(!file)localInputFailure(`${key(parts)}: installed input was not captured.`);
     const content=capturedFileBytes(file);if(required&&!content)localInputFailure(`${key(parts)}: installed input is missing.`);return content;
   }
-  for(const parts of transactionPaths)if(bytes(parts)!==undefined)localInputFailure('Pending local/update/repair transaction requires its actual recovery codec before installed-state interpretation.');
+  for(const parts of transactionPaths)if(bytes(parts)!==undefined)localInputFailure('Pending local/update/repair/adoption transaction requires its actual recovery codec before installed-state interpretation.');
   const manifestBytes=bytes(['liftoff.manifest.json'],true)!,raw=historyRecord(parseHistoryJson(manifestBytes,'installed manifest'),'installed manifest');
   const stateBytes=bytes(statePath),journalBytes=bytes(journalPath);
   const observedCollections=collections.map(name=>{

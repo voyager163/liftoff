@@ -780,12 +780,21 @@ state, and cloud resources are unchanged.
 
 `--approve-plan <fingerprint>` and
 `--recover --approve-plan <fingerprint>` are registered exact-authority
-surfaces. They currently fail before project or receipt access because discovery
-and destination review are not a complete executable public adoption plan and
-no authenticated public file transaction exists. JSON, piped input, a missing
-manifest, PID/process age, generic yes, and force never create authority.
-Future advertised compatibility, verification, file-approval, transaction, and
-active-binding stages must retain separate identities and consent.
+surfaces. Approval accepts only an expiring saved publication fingerprint
+created after complete compatibility review, exact preparation/script/network
+permission, successful isolated verification, unchanged-input confirmation and
+fresh transaction measurement. It writes only the listed absent managed-core
+and manifest files, keeps every application byte/mode/path as a precondition,
+and publishes the manifest last. The project journal and root-bound user-local
+authority record must agree throughout the transaction.
+
+Recovery requires the same publication fingerprint and the transaction digest
+observed from that authenticated journal. It restores only attributable writes
+that still equal the transaction target, preserves concurrent edits, reports
+partial cleanup honestly and blocks new update/repair/verification/adoption
+work until recovery is settled. Manifest absence, JSON, piped input,
+PID/process age, generic yes, and force never create authority. Active-binding
+publication after reviewed application moves remains a separate stage.
 
 If the selected root already contains `liftoff.manifest.json`, adoption returns
 an existing-project route instead of reinitializing it. Use

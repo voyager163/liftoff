@@ -16,7 +16,8 @@ import { inspectModernSuccessorUpdate } from '../src/application/update/inspecti
 import { planManagedCoreWrites } from '../src/application/update/write-plan.js';
 import type { SemanticTelemetryEvent } from '../src/telemetry/contract.js';
 import {
-  reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts, localVerificationTransactionPathParts
+  reviewedAdoptionTransactionPathParts, reviewedUpdateTransactionPathParts,
+  reviewedRepairTransactionPathParts, localVerificationTransactionPathParts
 } from '../src/adapters/filesystem/reviewed-update-transaction.js';
 import * as transactions from '../src/adapters/filesystem/reviewed-update-transaction.js';
 import { CaptureStream, ttyCaptureStream } from './helpers.js';
@@ -324,7 +325,12 @@ describe('public current-v8 project update', () => {
     expect(JSON.parse(await fs.readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')).artifactVersion).toBe(8);
   });
 
-  it.each([reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts, localVerificationTransactionPathParts])(
+  it.each([
+    reviewedUpdateTransactionPathParts,
+    reviewedRepairTransactionPathParts,
+    reviewedAdoptionTransactionPathParts,
+    localVerificationTransactionPathParts
+  ])(
     'refuses the pending %j journal before malformed manifest interpretation', async (...parts) => {
       const project = await fixture();
       await write(project.root, parts, 'Pending foreign or malformed transaction.\n');

@@ -32,7 +32,8 @@ import { buildModernManagedCore } from '../src/application/project/modern-manage
 import { historyRecord, historyPathParts, parseHistoryJson, rawHistoryDigest } from '../src/governance-activation/history-contracts.js';
 import { capturedV3Records, capturedV3Successor, writeCapturedV3Successor, writeFixtureBytes } from './fixtures/activation-v3/fixture.js';
 import {
-  reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts, localVerificationTransactionPathParts
+  reviewedAdoptionTransactionPathParts, reviewedUpdateTransactionPathParts,
+  reviewedRepairTransactionPathParts, localVerificationTransactionPathParts
 } from '../src/adapters/filesystem/reviewed-update-transaction.js';
 import * as reviewedTransactions from '../src/adapters/filesystem/reviewed-update-transaction.js';
 import { projectMutationLockPath } from '../src/adapters/filesystem/project-lock.js';
@@ -368,6 +369,7 @@ describe('actual guarded prepared successor publication', () => {
   it.each([
     { kind: 'update', parts: reviewedUpdateTransactionPathParts },
     { kind: 'repair', parts: reviewedRepairTransactionPathParts },
+    { kind: 'adoption', parts: reviewedAdoptionTransactionPathParts },
     { kind: 'local-verification', parts: localVerificationTransactionPathParts }
   ])('refuses a pending $kind journal before interpreting partial control records', async ({ parts }) => {
     const fixture = await historicalProject(3);

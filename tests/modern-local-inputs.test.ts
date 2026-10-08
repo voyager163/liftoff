@@ -26,7 +26,10 @@ import { hclComputationPolicy } from '../src/adapters/hcl/parser-child.js';
 import { parseIsolatedHcl, type HclExpression } from '../src/adapters/hcl/isolated-parser.js';
 import { toSafeProjectName } from '../src/domain/project/planning.js';
 import type { ManifestActiveLayout, ManifestLayoutComponentId } from '../src/domain/project/contracts.js';
-import { reviewedRepairTransactionPathParts, reviewedUpdateTransactionPathParts } from '../src/domain/project/reviewed-update-artifacts.js';
+import {
+  reviewedAdoptionTransactionPathParts, reviewedRepairTransactionPathParts,
+  reviewedUpdateTransactionPathParts
+} from '../src/domain/project/reviewed-update-artifacts.js';
 import { writeModernLocalFixtureInputs } from './fixtures/modern-local-project.js';
 
 vi.mock('node:child_process', async importOriginal => {
@@ -797,7 +800,11 @@ describe('captured configuration relationships and raw freshness', () => {
     if (fault === 'nested') await f.write([...backend, 'inner', 'liftoff.manifest.json'], '{}');
     expect((await inspectModernLocalVerification(f.root)).status).toBe('blocked');
   });
-  it.each([reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts].map(parts => [parts]))('checks actual pending transaction %j without an approval store', async parts => {
+  it.each([
+    reviewedUpdateTransactionPathParts,
+    reviewedRepairTransactionPathParts,
+    reviewedAdoptionTransactionPathParts
+  ].map(parts => [parts]))('checks actual pending transaction %j without an approval store', async parts => {
     const f = await fixture(); await f.write(parts, '{}');
     expect((await inspectModernLocalVerification(f.root)).status).toBe('blocked');
   });

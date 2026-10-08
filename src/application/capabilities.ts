@@ -102,12 +102,12 @@ export function installedCapabilities() {
         approval: 'adopt <project> --approve-plan <fingerprint>',
         recovery: 'adopt <project> --recover --approve-plan <fingerprint>',
         previewAvailable: true,
-        executablePlanAvailable: false,
+        executablePlanAvailable: true,
         separateVerificationPermission: true,
         separateFileApproval: true,
         activeBindingPublication: false,
         providerOperations: false,
-        scope: 'Current public support performs bounded non-Liftoff discovery and destination review only. Compatibility mapping, verification, file publication and authenticated recovery retain separate authority and are not inferred from command registration, JSON or manifest absence.'
+        scope: 'Bounded non-Liftoff discovery remains preview-only. A separately completed compatibility review, exact verification permission and successful receipt can produce an expiring exact-file publication plan. Explicit fingerprint approval publishes only absent managed-core/manifest effects through the dedicated adoption transaction; recovery requires the same plan fingerprint plus its observed authenticated transaction digest. Active-binding and provider operations remain separate.'
       },
       reports: {
         capabilities: 1, validate: 1, doctor: 1, upgrade: 1,
