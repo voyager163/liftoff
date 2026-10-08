@@ -90,7 +90,7 @@ Depends on 3-6. References: design D8-D9; liftoff-project-migration, liftoff-pro
 - [x] 7.7 Preserve sibling migrate safety and add its Manual/current-manifest output; verify source snapshots, filtered staging, strict OpenSpec plans, non-OpenSpec checklist and verification-before-cleanup.
 - [x] 7.8 Enforce existing-deployment/state planning-only boundaries in adopt and repair; verify absence of local state or an approved local patch never enables resource/state mutation.
 - [ ] 7.9 Qualify Windows paths, junctions, modes, spaces, process settlement and interrupted transaction handling alongside macOS/Linux; verify exact ownership without broad cleanup.
-- [ ] 7.10 Update existing-repository, migration and application-repair guides plus generated migration instructions; verify complete developer/agent/CLI-only journeys and honest partial completion.
+- [x] 7.10 Update existing-repository, migration and application-repair guides plus generated migration instructions; verify complete developer/agent/CLI-only journeys and honest partial completion.
 
 ## 8. Implement workflow and profile transitions with integration repair
 

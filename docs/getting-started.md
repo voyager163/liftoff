@@ -187,15 +187,17 @@ See [workloads](workloads.md) for exact generated outputs and deferred actions.
 
 ## Maintain or repair an existing project
 
-Start with `liftoff update --check`, then run `liftoff update` and approve the
-matching plan. Check leaves project bytes unchanged and saves a disclosed
-preview receipt outside the repository. Missing or stale previews block apply.
-Automation uses `--approve-plan <fingerprint>`; `--json` only selects formatting.
-Supported activation-v1/v2 migration preserves original in-project records and
-creates a linked v3 activation. Failed revalidation remains blocked and resumable,
-not reset to an older contract. Application source, dependencies, schemas,
-containers, environments, documentation, and infrastructure remain project-owned,
-including when `--force` is used.
+Start with `liftoff assess --project <path> --json`. For a Liftoff project,
+preview managed-core work with `liftoff update --check`, then run
+`liftoff update` and approve the matching plan. Check leaves project bytes
+unchanged and saves a disclosed preview receipt outside the repository. Missing
+or stale previews block apply. Automation uses
+`--approve-plan <fingerprint>`; `--json` only selects formatting. Supported
+activation-v1/v2 migration preserves original in-project records and creates a
+linked v3 activation. Failed revalidation remains blocked and resumable, not
+reset to an older contract. Application source, dependencies, schemas,
+containers, environments, documentation, and infrastructure remain
+project-owned, including when `--force` is used.
 
 For legacy OpenTofu layout blockers, `seed-verified` means **Local baseline
 verification**, not an OpenSpec feature change. Start with:
@@ -253,13 +255,28 @@ See the [CLI reference](cli-reference.md) and
 
 ## Existing application migration
 
-`liftoff migrate <source>` scans a non-Liftoff application, creates a fresh
-sibling scaffold, and stages a filtered source copy for guided migration. The
-source remains byte-for-byte unchanged.
+Assess the application first:
+
+```bash
+liftoff assess --project ../legacy-app --json
+```
+
+Choose `liftoff adopt --project ../legacy-app --check` when the application
+must remain at the same root. Adoption preserves application bytes as
+preconditions and separates compatibility review, verification, publication,
+recovery, active bindings, and deployment/state authority.
+
+Choose `liftoff migrate <source>` when you want a fresh sibling scaffold and a
+filtered source copy for guided migration. The source remains byte-for-byte
+unchanged.
 
 ```bash
 liftoff migrate ../legacy-app --region eastus --agents copilot,claude --yes
 ```
+
+See [existing repositories](existing-repositories.md) for CLI-only versus
+agent-assisted repair, generated-source migrations, partial publication,
+transaction recovery, and required follow-up checks.
 
 Power Apps support is retired, including existing-project maintenance. Retired
 inputs are rejected without converting or deleting the original application.

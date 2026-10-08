@@ -72,6 +72,26 @@ the guide or retagging its recorded content hash.
    fingerprint again reconstructs only current binding work from immutable
    repair history.
 
+## CLI-only and agent-assisted authoring
+
+The CLI-only path is complete for registered deterministic repair recipes:
+
+1. inventory with `--inspect-layout --json`;
+2. author the strict patch document and staged replacement files outside the
+   project;
+3. run the normal interactive flow above; and
+4. use only the reported fingerprint-selected automation or recovery commands
+   when noninteractive operation is required.
+
+An installed `/liftoff-repair` integration (`$liftoff-repair` in Codex) may
+help explain findings, inspect references, and author the same external patch.
+It does not receive broader authority: it cannot infer unresolved mappings,
+mint consent, approve its own verification, move project files before review,
+publish active bindings, recover an unrelated transaction, or turn successful
+checks into deployment/state approval. Agent-assisted and CLI-only paths
+therefore produce the same inspectable plans, receipts, transactions, and
+partial-failure reports.
+
 No, Ctrl-C, or EOF never grants authority and leaves repair's project-file
 transaction unapplied. If the later file-write question is canceled after
 separately approved verification, report **verification already ran, with its

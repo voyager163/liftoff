@@ -61,13 +61,13 @@ Power Apps is retired; it is not an available creation or conversion path.
 
 ## Work with an existing project
 
-Run `liftoff init` at the **exact current Git root** to initialize in place.
-Liftoff stages and validates output, asks before replacing files, and keeps
-installation and overwrite permissions separate. Do not reinitialize a project
-to fix a verification blocker.
+Use `liftoff init` only at the exact current Git root of a new or intentionally empty target. For an existing non-Liftoff
+application, start with read-only `liftoff assess --project <path> --json`, then choose
+reviewed in-place `liftoff adopt` or a fresh sibling `liftoff migrate`. For an existing
+Liftoff project, use `liftoff update --check` or separately scoped `liftoff repair --check`.
+Do not initialize over an application or reinitialize a project to fix a blocker.
 
-For maintenance, `liftoff upgrade --check` previews a CLI upgrade;
-`liftoff update --check` previews managed project changes before explicit approval.
+For maintenance, `liftoff upgrade --check` previews a CLI upgrade; `liftoff update --check` previews managed project changes before explicit approval.
 An upgrade replaces the CLI only; generated projects use `liftoff update` separately
 for reviewed project maintenance. Application files remain project-owned.
 Builds advertising `schemas.currentUpdate` preview v8 successors or maintenance,
@@ -83,7 +83,7 @@ before following newer guidance; planned features are not installed support.
 | `schemas.currentGeneration` | Fresh v8 `plan`, `init`, and sibling `migrate`, including framework-free Manual and optional agents. |
 | `schemas.currentUpdate` | [V8 project update](docs/cli-reference.md#update-modes): exact preview/approval, preserved configuration and history, and fingerprint-selected recovery. |
 | `schemas.projectAssessment` | [Read-only project assessment](docs/cli-reference.md#read-only-whole-project-assessment): bounded local observations and explicitly requested scoped GitHub metadata; fresh selected hosts receive `/liftoff-assess` (Copilot/Claude) or `$liftoff-assess` (Codex). Installed comparison targets and unobserved conformance remain distinct. |
-| `schemas.projectAdoption` | [Existing-application adoption preview](docs/cli-reference.md#reviewed-in-place-adoption): schema-1 non-Liftoff discovery and destination review. Compatibility, verification, file approval, transaction recovery, active bindings, and deployment remain separate unavailable authorities until independently advertised. |
+| `schemas.projectAdoption` | [Reviewed in-place adoption](docs/cli-reference.md#reviewed-in-place-adoption): schema-1 non-Liftoff discovery, explicit compatibility review, separately consented verification, exact publication approval, manifest-last transaction, and fingerprint-selected recovery. Application bytes remain preconditions; active-binding publication after later moves and deployment/state operations remain separate. |
 | `schemas.modernLocalVerification` | [V8 verification](docs/cli-reference.md#modern-local-verification): explicit request, approval and execution, including separately consented locked Manual checks on the qualified native host; no conversion or publication. |
 | `schemas.modernLocalCompletion` | [Manual/Spec Kit completion](docs/cli-reference.md#modern-local-completion): workflow-specific finalization, exact-file review and independent publication consent. |
 | `schemas.modernSuccessorRevalidation` | [Existing-successor revalidation](docs/cli-reference.md#modern-successor-revalidation): fresh verification and separate exact-byte publication approval. Incomplete commit exits 2, preserving the active successor and history without downgrade. |
