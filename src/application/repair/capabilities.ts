@@ -19,7 +19,7 @@ export const repairCapabilities = {
     recipe: 'application-active-layout-patch',
     targets: 'Explicit active artifact bindings only; missing bindings are not inferred from generation history.',
     defaultOperation: 'Read-only application inventory.',
-    bindingPublication: false,
+    bindingPublication: true,
     infrastructureTransformation: false
   },
   preparation: applicationPreparationSupport,
@@ -38,6 +38,7 @@ export const repairCapabilities = {
   boundaries: {
     automaticApplicationMigration: false,
     applicationPatch: 'Explicit per-file staged mappings and reference edits; never a starter replacement.',
+    activeBindingPublication: 'A verified move commits first; a second exact manifest-only plan publishes approved bindings without changing generation provenance.',
     verificationIsolation: 'Staging is not an OS or network sandbox. Approved project commands can affect the host.',
     statefulMigration: 'Not executable through this public repair interface.',
     agentInstallation: 'Not executable through repair; managed integrations for selected agents use reviewed update.',

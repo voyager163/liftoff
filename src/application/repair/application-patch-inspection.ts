@@ -2,6 +2,12 @@ import path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import type { ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
 import type { SupportedProjectManifest } from '../project/manifest.js';
+import {
+  modernProjectSourceInput, resolveModernProjectSourceContext
+} from '../project/source-context.js';
+import {
+  validateManifestActiveLayout
+} from '../../domain/project/manifest/layout.js';
 import { canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
 import {
   ApplicationFiles, ApplicationInspectionError, applicationDigest, applicationExclusion, applicationFailure,
@@ -315,7 +321,9 @@ function validateReferenceReview(
       }
       if (!existing.has(afterTarget) || !after.some((item) =>
         applicationPathKey(item.sourcePathParts) === target && applicationPathKey(item.targetPathParts) === afterTarget)) {
-        throw new ApplicationInspectionError(`${source}: staged bytes do not contain the declared concrete reference target.`);
+        throw new ApplicationInspectionError(
+          `${source}: staged bytes do not contain the declared concrete reference target ${afterTarget} for reference ${reference.id}.`
+        );
       }
     }
     for (const reference of after.filter((item) => applicationPathKey(item.sourcePathParts) === target)) {
@@ -349,6 +357,7 @@ async function inspectApplicationPatchState(
       target: inspection.report.target, patch: { path: patchPath, digest: null, mode: null },
       staging: { root: path.dirname(patchPath), files: [], directoryInventory: [] },
       directoryInventory: inspection.report.directoryInventory, mappings: [], references: inspection.report.references,
+      activeBindingChanges: [],
       candidateReferences: [], dynamicReferencesReviewed: false, preparation: [], toolchain: []
     },
     verificationPolicy,
@@ -409,10 +418,20 @@ async function inspectApplicationPatchState(
     verificationPolicy.effects.network = verificationPolicy.commands.some((item) => item.network);
     for (const mapping of document.mappings) {
       const sourceKey = applicationPathKey(mapping.sourcePathParts), targetKey = applicationPathKey(mapping.targetPathParts);
-      if (manifest.artifactVersion === 8 && sourceKey !== targetKey &&
-          manifest.activeLayout.bindings.some(binding =>
-            binding.kind === 'artifact' && applicationPathKey(binding.pathParts) === sourceKey)) {
-        throw new ApplicationInspectionError('Moving an actively bound artifact requires separate reviewed binding publication. This file-only repair cannot leave a stale active binding.');
+      const observedBinding = manifest.artifactVersion === 8 && sourceKey !== targetKey
+        ? manifest.activeLayout.bindings.find(binding =>
+            binding.kind === 'artifact' &&
+            applicationPathKey(binding.pathParts) === sourceKey)
+        : undefined;
+      const activeBinding = observedBinding?.kind === 'artifact'
+        ? observedBinding
+        : undefined;
+      if (activeBinding &&
+          (mapping.targetIdentity.kind !== 'generated-artifact' ||
+            mapping.targetIdentity.logicalName !== activeBinding.logicalName)) {
+        throw new ApplicationInspectionError(
+          'An actively bound artifact move must retain its exact registered logical identity for separate binding publication.'
+        );
       }
       if (process.platform === 'win32' && mapping.targetMode !== (mapping.targetMode & 0o200 ? 0o666 : 0o444)) {
         throw new ApplicationInspectionError('Windows application target modes must bind the effective native read-only or writable mode (444 or 666 octal).');
@@ -430,7 +449,8 @@ async function inspectApplicationPatchState(
         throw new ApplicationInspectionError('Application destination aliases a generated target identity.');
       }
       if (mapping.targetIdentity.kind === 'generated-artifact') {
-        if (applicationPathKey(targetIdentity.pathParts) !== targetKey) {
+        if (applicationPathKey(targetIdentity.pathParts) !== targetKey &&
+            !activeBinding) {
           throw new ApplicationInspectionError('Generated target identity requires its exact current path.');
         }
       } else {
@@ -469,6 +489,15 @@ async function inspectApplicationPatchState(
       candidate.scope.staging.files.push({
         pathParts: mapping.stagedPathParts, digest: applicationDigest(replacement.content), mode: replacement.mode!
       });
+      if (activeBinding) {
+        candidate.scope.activeBindingChanges.push({
+          logicalName: activeBinding.logicalName,
+          sourcePathParts: [...mapping.sourcePathParts],
+          targetPathParts: [...mapping.targetPathParts],
+          targetDigest: applicationDigest(replacement.content),
+          targetMode: mapping.targetMode
+        });
+      }
       transformed.delete(sourceKey);
       transformed.set(targetKey, { pathParts: mapping.targetPathParts, content: replacement.content, mode: mapping.targetMode });
       if (sourceKey !== targetKey || !replacement.content.equals(observed.content) || mapping.targetMode !== observed.mode) {
@@ -484,6 +513,21 @@ async function inspectApplicationPatchState(
     }
     candidate.snapshots = [...snapshots.values()].sort((a, b) => applicationPathKey(a.pathParts).localeCompare(applicationPathKey(b.pathParts), 'en'));
     candidate.scope.directoryInventory = mergeDirectories(inspection.report.directoryInventory, source.directoryInventory);
+    if (manifest.artifactVersion === 8 &&
+        candidate.scope.activeBindingChanges.length) {
+      const context = resolveModernProjectSourceContext(
+        modernProjectSourceInput(manifest)
+      );
+      const changes = new Map(candidate.scope.activeBindingChanges.map(change =>
+        [change.logicalName, change.targetPathParts] as const));
+      validateManifestActiveLayout({
+        ...manifest.activeLayout,
+        bindings: manifest.activeLayout.bindings.map(binding =>
+          binding.kind === 'artifact' && changes.has(binding.logicalName)
+            ? { ...binding, pathParts: changes.get(binding.logicalName)! }
+            : binding)
+      }, context.source.layoutDescriptor);
+    }
     assertApplicationCandidateBounds(candidate);
     const transformedFiles = [...transformed.values()];
     candidate.scope.candidateReferences = inspectApplicationReferences(transformedFiles, candidate.scope.directoryInventory,

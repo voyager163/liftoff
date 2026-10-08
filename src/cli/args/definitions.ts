@@ -232,7 +232,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
       'application-patch': valueFlag('Review an exact application patch authored in external staging, not a starter replacement', 'Project', 'patch.json'),
       live: booleanFlag('Allow bounded Azure metadata reads with existing authentication; never read state', 'Consent'),
       subscription: valueFlag('Exact Azure subscription ID for live absence checks', 'Project', 'id'),
-      'approve-plan': valueFlag('Optional automation: approve the exact saved plan; ordinary TTY repair asks instead', 'Consent', 'fingerprint'),
+      'approve-plan': valueFlag('Optional automation: approve the exact saved application or follow-up binding plan; ordinary TTY repair asks instead', 'Consent', 'fingerprint'),
       'verify-plan': valueFlag('Optional automation: run exact staged checks; declared preparation/network require separate permissions, never file commit', 'Consent', 'fingerprint'),
       'allow-dependency-preparation': booleanFlag('Separately permit only declared locked private preparation with --verify-plan; not global tools or file writes', 'Consent'),
       'allow-network': booleanFlag('Additionally authorize declared network effects for exact --verify-plan checks', 'Consent'),

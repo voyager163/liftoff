@@ -85,6 +85,12 @@ declared network and file-transaction permissions are separate; see
 [repair modes](cli-reference.md#repair-modes) and
 [application repair](application-repair.md). This is not a fresh scaffold over
 the application, and `liftoff migrate` remains a separate adoption workflow.
+When an approved current-v8 patch moves an actively bound artifact, application
+files commit first and the manifest remains unchanged. Review and approve the
+separate binding fingerprint reported by repair. A failure reports the exact
+committed effects and preserves them; rerunning the original application
+fingerprint reconstructs only pending manifest binding work and cannot repeat
+the move or claim new generation/activation history.
 
 Always run `--check` before a write-capable update. Check leaves project bytes
 unchanged and discloses a user-local preview receipt outside the repository.

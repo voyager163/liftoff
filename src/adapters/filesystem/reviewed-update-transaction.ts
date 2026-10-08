@@ -494,6 +494,23 @@ export async function inspectAdoptionTransactionCandidate(
   return captured.candidate;
 }
 
+export async function inspectRepairTransactionCandidate(
+  canonicalProjectRoot: string,
+  mutations: readonly ProjectFileMutation[],
+  preconditions: readonly ProjectFileSnapshot[],
+  repairIdentity: RepairExecutionIdentity
+): Promise<ReviewedUpdateCandidate> {
+  const selected = captureJournalMutations(mutations);
+  const supplied = captureJournalPreconditions(preconditions);
+  await candidateRootIdentity(canonicalProjectRoot);
+  await assertNoPendingTransactions(canonicalProjectRoot, 'repair', true);
+  const captured = await captureTransactionCandidate(
+    canonicalProjectRoot, selected, supplied, 'repair', repairIdentity
+  );
+  await assertNoPendingTransactions(canonicalProjectRoot, 'repair', true);
+  return captured.candidate;
+}
+
 function parseHeader(value: unknown, root: string, kind: ReviewedTransactionKind): JournalHeader {
   return parseReviewedJournalHeader(value, root, kind, process.platform);
 }

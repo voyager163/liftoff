@@ -1019,9 +1019,17 @@ the selected version-1 recipe: historical `application-layout-patch` or current
 Current-v8 repair supports governance `none` and `single-maintainer-gitflow`,
 including Manual/no-agent projects. It uses explicit active artifact bindings
 and component roots, including compatible custom paths; generation history does
-not select current locations. Missing bindings are not inferred. Moving an
-actively bound artifact requires separately reviewed binding publication, which
-is not yet available. Current infrastructure and team-profile repair remain
+not select current locations. Missing bindings are not inferred. A verified
+actively bound artifact move commits application and affected reference files
+first, leaving the manifest unchanged. The CLI then emits a distinct
+`application-active-binding-publication` plan whose second
+`--approve-plan <fingerprint>` transaction writes only immutable repair history
+and the final manifest active-layout update. For governed projects it also
+updates the bound active-layout digest. Generation hashes, adoption observations,
+and activation evidence remain unchanged. If publication is blocked, the report
+lists the committed application effects and preserves concurrent bytes; the
+original application fingerprint reconstructs only pending binding work and
+cannot replay the move. Current infrastructure and team-profile repair remain
 unsupported. Inspect `currentApplication` in the repair capabilities document
 instead of assuming historical recipes also authorize current sources.
 
@@ -1063,6 +1071,10 @@ never runs application verification on the caller's behalf: a fresh matching
 successful receipt is required first. Flags cannot select a different patch,
 discovery subscription, command set or recipe. Repeated matching verification
 can reuse its recorded result without claiming another command ran.
+For an already committed active-artifact move, the separately displayed binding
+fingerprint selects only manifest publication; passing the original application
+fingerprint resumes or rebuilds that binding plan without repeating application
+effects.
 
 Do not chain check and apply with `&&`: exit 2 can mean an available plan or a
 blocked/plan-only result. Schema-2 results distinguish `inspected`, `current`,

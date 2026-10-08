@@ -586,7 +586,8 @@ Option                          Description
 --live                          Allow bounded Azure metadata reads with existing
                                 authentication; never read state
 --approve-plan <fingerprint>    Optional automation: approve the exact saved
-                                plan; ordinary TTY repair asks instead
+                                application or follow-up binding plan; ordinary
+                                TTY repair asks instead
 --verify-plan <fingerprint>     Optional automation: run exact staged checks;
                                 declared preparation/network require separate
                                 permissions, never file commit
@@ -1037,7 +1038,7 @@ Option: --recover | Description: Recover only eligible recorded repair effects; 
 
 Consent options
 Option: --live | Description: Allow bounded Azure metadata reads with existing authentication; never read state
-Option: --approve-plan <fingerprint> | Description: Optional automation: approve the exact saved plan; ordinary TTY repair asks instead
+Option: --approve-plan <fingerprint> | Description: Optional automation: approve the exact saved application or follow-up binding plan; ordinary TTY repair asks instead
 Option: --verify-plan <fingerprint> | Description: Optional automation: run exact staged checks; declared preparation/network require separate permissions, never file commit
 Option: --allow-dependency-preparation | Description: Separately permit only declared locked private preparation with --verify-plan; not global tools or file writes
 Option: --allow-network | Description: Additionally authorize declared network effects for exact --verify-plan checks
@@ -1608,8 +1609,8 @@ exports[`complete help screens > snapshots rich repair command help 1`] = `
 │ ──────────────────────────────  ──────────────────────────────────────────────────────────── │
 │ --live                          Allow bounded Azure metadata reads with existing             │
 │                                 authentication; never read state                             │
-│ --approve-plan <fingerprint>    Optional automation: approve the exact saved plan; ordinary  │
-│                                 TTY repair asks instead                                      │
+│ --approve-plan <fingerprint>    Optional automation: approve the exact saved application or  │
+│                                 follow-up binding plan; ordinary TTY repair asks instead     │
 │ --verify-plan <fingerprint>     Optional automation: run exact staged checks; declared       │
 │                                 preparation/network require separate permissions, never file │
 │                                 commit                                                       │

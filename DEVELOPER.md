@@ -121,6 +121,7 @@ capability contract and preparation matrix directly rather than fabricating a re
 | Azure local transformation | recipe `azure-local-layout`, version 1; sources `azure-flat-root-v1` / `azure-partial-independent-v1`, target `azure-independent-roots-v1` |
 | Historical-manifest application-file patch | recipe `application-layout-patch`, version 1; source `explicit-project-file-mapping-v1`, target `liftoff-application-artifacts-v1` plus exact workload/artifact-inventory digest |
 | Current-manifest application-file patch | recipe `application-active-layout-patch`, version 1; source `explicit-active-file-mapping-v1`, target `liftoff-active-application-artifacts-v1` plus exact workload/active-target digest |
+| Current active-binding publication | recipe `application-active-binding-publication`, version 1; source/target `liftoff-active-application-artifacts-v1`; separately approved manifest-last metadata publication after a committed verified move |
 | Shared update transaction | schema 1, unchanged |
 
 The application target is derived from current explicit generator declarations,
@@ -129,8 +130,15 @@ Generation hashes do not authorize moving or replacing application files.
 For v8, explicit artifact and component bindings select current paths; missing
 bindings are not inferred from generator placement. The current recipe supports
 none/single-maintainer profiles, excludes bound infrastructure/control trees,
-and refuses bound-artifact moves pending separate binding publication. Bare
-current repair is read-only inventory, including Manual/no-agent projects.
+and admits a bound-artifact move only when the exact logical identity is retained
+and every affected reference has its own reviewed mapping. The verified
+application transaction commits first and records immutable binding intent.
+`application-active-binding-publication` then reconstructs a second exact plan
+from the preserved manifest, committed repair receipt, current target bytes/modes
+and source absences. Its repair-lane transaction writes the publication receipt
+before `liftoff.manifest.json`; it cannot contain or repeat application moves,
+change generation/adoption provenance, or issue activation evidence. Bare current
+repair is read-only inventory, including Manual/no-agent projects.
 It cannot transform current infrastructure or manufacture governance state.
 Both application recipes share the same separately approved verification and
 file-transaction boundaries; exact recipe/source/target identities cannot be

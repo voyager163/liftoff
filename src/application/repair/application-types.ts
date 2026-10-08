@@ -175,6 +175,13 @@ export interface ApplicationPatchScope {
   };
   directoryInventory: ApplicationDirectoryObservation[];
   mappings: ApplicationPatchMapping[];
+  activeBindingChanges: {
+    logicalName: string;
+    sourcePathParts: string[];
+    targetPathParts: string[];
+    targetDigest: string;
+    targetMode: number;
+  }[];
   references: ApplicationReference[];
   candidateReferences: ApplicationReference[];
   dynamicReferencesReviewed: boolean;

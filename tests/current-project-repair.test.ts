@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -16,6 +16,9 @@ import type { ApplicationPatchDocument } from '../src/application/repair/applica
 import { createScopedUserLocalRecordStore } from '../src/adapters/filesystem/update-previews.js';
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { repairRecipes } from '../src/domain/repair/identity.js';
+import {
+  readActiveBindingPublicationPlan
+} from '../src/application/repair/active-binding-publication.js';
 import { NodeCommandRunner, type CommandRunner, type RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/domain/project/contracts.js';
 import { CaptureStream } from './helpers.js';
@@ -32,7 +35,13 @@ async function put(root: string, parts: readonly string[], content: string) {
   await writeFile(file, content);
 }
 
-async function fixture(options: { custom?: boolean; governed?: boolean; failing?: boolean; agent?: boolean } = {}) {
+async function fixture(options: {
+  custom?: boolean;
+  governed?: boolean;
+  failing?: boolean;
+  agent?: boolean;
+  move?: boolean;
+} = {}) {
   const parent = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff current repair ')));
   roots.push(parent);
   const root = path.join(parent, 'project'), stage = path.join(parent, 'staged patch'), home = path.join(parent, 'home');
@@ -60,14 +69,18 @@ async function fixture(options: { custom?: boolean; governed?: boolean; failing?
     manifest = next;
     await writeFile(path.join(root, 'liftoff.manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   }
-  const source = [...backend, 'package.json'], check = ['checks', 'repair.test.mjs'];
+  const source = [...backend, 'package.json'];
+  const targetPath = options.move
+    ? [...backend, 'package-moved.json']
+    : source;
+  const check = ['checks', 'repair.test.mjs'];
   const before = await readFile(path.join(root, ...source));
   const after = `${JSON.stringify({ ...JSON.parse(before.toString('utf8')), description: 'Reviewed customization' }, null, 2)}\n`;
   await put(root, check, [
     "import { test } from 'node:test';",
     "import assert from 'node:assert/strict';",
     "import { readFileSync } from 'node:fs';",
-    `test('checks actual staged project bytes', () => assert.equal(JSON.parse(readFileSync(${JSON.stringify(source.join('/'))}, 'utf8')).description, ${JSON.stringify(options.failing ? 'Incorrect expected value' : 'Reviewed customization')}));`,
+    `test('checks actual staged project bytes', () => assert.equal(JSON.parse(readFileSync(${JSON.stringify(targetPath.join('/'))}, 'utf8')).description, ${JSON.stringify(options.failing ? 'Incorrect expected value' : 'Reviewed customization')}));`,
     ''
   ].join('\n'));
   const inspection = await inspectApplicationLayout(root, manifest);
@@ -75,18 +88,83 @@ async function fixture(options: { custom?: boolean; governed?: boolean; failing?
   const observed = inspection.report.files.find(file => file.pathParts.join('/') === source.join('/'))!;
   const target = inspection.report.target!.artifacts.find(artifact => artifact.pathParts.join('/') === source.join('/'))!;
   await put(stage, ['package.json'], after);
+  const mappings: ApplicationPatchDocument['mappings'] = [{
+    sourcePathParts: source, targetPathParts: targetPath, stagedPathParts: ['package.json'],
+    expectedSourceDigest: observed.digest, expectedSourceMode: observed.mode, targetMode: observed.mode,
+    role: 'application', targetIdentity: { kind: 'generated-artifact', logicalName: target.logicalName },
+    customization: 'reviewed-edit',
+    references: inspection.report.references.filter(reference => reference.sourcePathParts.join('/') === source.join('/'))
+      .map(reference => ({ referenceId: reference.id, disposition: 'unchanged-reviewed', afterTargetPathParts: reference.targetPathParts }))
+  }];
+  if (options.move) {
+    const sourceKey = source.join('/');
+    const affectedSources = [...new Set(inspection.report.references.filter(reference => {
+      const targetKey = reference.targetPathParts.join('/');
+      return targetKey === sourceKey ||
+        reference.targetKind === 'directory' &&
+          sourceKey.startsWith(`${targetKey}/`);
+    }).map(reference => reference.sourcePathParts.join('/')))]
+      .filter(value => value !== sourceKey);
+    for (const [index, referenceSource] of affectedSources.entries()) {
+      const pathParts = referenceSource.split('/');
+      const sourceObservation = inspection.report.files.find(file =>
+        file.pathParts.join('/') === referenceSource);
+      if (!sourceObservation) {
+        throw new Error(`Missing reference source ${referenceSource}.`);
+      }
+      const outgoing = inspection.report.references.filter(reference =>
+        reference.sourcePathParts.join('/') === referenceSource);
+      const original = await readFile(path.join(root, ...pathParts), 'utf8');
+      const replacement = original.replaceAll(
+        sourceKey, targetPath.join('/')
+      ).replaceAll(
+        sourceKey.replace(/(\.[^./]+)$/u, '*$1'),
+        targetPath.join('/')
+      );
+      const stagedPathParts = [
+        'references', String(index), path.basename(referenceSource)
+      ];
+      await put(stage, stagedPathParts, replacement);
+      const exactTarget = inspection.report.target!.artifacts.find(artifact =>
+        artifact.pathParts.join('/') === referenceSource);
+      mappings.push({
+        sourcePathParts: pathParts,
+        targetPathParts: pathParts,
+        stagedPathParts,
+        expectedSourceDigest: sourceObservation.digest,
+        expectedSourceMode: sourceObservation.mode,
+        targetMode: sourceObservation.mode,
+        role: 'reference',
+        targetIdentity: exactTarget
+          ? {
+              kind: 'generated-artifact',
+              logicalName: exactTarget.logicalName
+            }
+          : {
+              kind: 'custom-component',
+              logicalName: target.logicalName
+            },
+        customization: replacement === original
+          ? 'preserved'
+          : 'reviewed-edit',
+        references: outgoing.map(reference => {
+          const affected = reference.targetPathParts.join('/') === sourceKey;
+          return {
+            referenceId: reference.id,
+            disposition: affected ? 'updated' : 'unchanged-reviewed',
+            afterTargetPathParts: affected
+              ? targetPath
+              : reference.targetPathParts
+          };
+        })
+      });
+    }
+  }
   const document: ApplicationPatchDocument = {
     schemaVersion: 1, kind: 'liftoff-application-patch', projectRoot: root,
     inspectionDigest: inspection.report.inspectionDigest, targetLayoutDigest: inspection.report.target!.digest,
     dynamicReferencesReviewed: true, unresolvedMappings: [],
-    mappings: [{
-      sourcePathParts: source, targetPathParts: source, stagedPathParts: ['package.json'],
-      expectedSourceDigest: observed.digest, expectedSourceMode: observed.mode, targetMode: observed.mode,
-      role: 'application', targetIdentity: { kind: 'generated-artifact', logicalName: target.logicalName },
-      customization: 'reviewed-edit',
-      references: inspection.report.references.filter(reference => reference.sourcePathParts.join('/') === source.join('/'))
-        .map(reference => ({ referenceId: reference.id, disposition: 'unchanged-reviewed', afterTargetPathParts: reference.targetPathParts }))
-    }],
+    mappings,
     verification: { commands: [{
       executable: 'node', args: ['--test', check.join('/')], cwdPathParts: [],
       timeoutMs: 30_000, maxOutputBytes: 16_384, network: false
@@ -95,7 +173,7 @@ async function fixture(options: { custom?: boolean; governed?: boolean; failing?
   const patch = path.join(stage, 'patch.json');
   await writeFile(patch, `${JSON.stringify(document, null, 2)}\n`);
   return {
-    root, stage, home, manifest, patch, document, source, before, after, target,
+    root, stage, home, manifest, patch, document, source, targetPath, before, after, target,
     controlsBefore: await Promise.all(manifest.managedArtifacts.map(async artifact => ({
       pathParts: artifact.pathParts, content: await readFile(path.join(root, ...artifact.pathParts))
     }))),
@@ -122,7 +200,9 @@ async function run(project: Awaited<ReturnType<typeof fixture>>, args: string[],
       ...context, runner, updateNow: () => now, updatePreview: { homedir: project.home, env: {} }
     })
   });
-  return { code, report: JSON.parse(stdout.text()), stderr: stderr.text(), runner };
+  const output = stdout.text();
+  if (!output) throw new Error(stderr.text() || 'Repair command emitted no JSON report.');
+  return { code, report: JSON.parse(output), stderr: stderr.text(), runner };
 }
 
 async function unchanged(project: Awaited<ReturnType<typeof fixture>>) {
@@ -191,6 +271,311 @@ describe('current active-layout application repair', () => {
     expect(history).toMatchObject({ recipe: repairRecipes['application-active-layout-patch'], activationEvidence: 'not-issued' });
   }, 30_000);
 
+  it.each([false, true])(
+    'commits a verified active artifact move before separate binding publication, governed=%s',
+    async governed => {
+      const project = await fixture({ move: true, governed });
+      const runner = new Runner();
+      const preview = await run(
+        project, ['--check', '--application-patch', project.patch], runner
+      );
+      expect(preview.code, JSON.stringify(preview.report)).toBe(2);
+      expect(preview.report, JSON.stringify(preview.report)).toMatchObject({
+        status: 'available',
+        fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u)
+      });
+      const applicationFingerprint = preview.report.fingerprint;
+      expect((await run(
+        project, ['--verify-plan', applicationFingerprint], runner
+      )).code).toBe(0);
+      const moved = await run(
+        project, ['--approve-plan', applicationFingerprint], runner
+      );
+      expect(moved.code, JSON.stringify(moved.report)).toBe(2);
+      expect(moved.report).toMatchObject({
+        status: 'partial',
+        committed: true,
+        repairScopeComplete: false,
+        bindingPublication: {
+          status: 'available',
+          applicationPlanFingerprint: applicationFingerprint,
+          publicationPlanFingerprint:
+            expect.stringMatching(/^[a-f0-9]{64}$/u)
+        }
+      });
+      await expect(stat(path.join(
+        project.root, ...project.source
+      ))).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await readFile(path.join(
+        project.root, ...project.targetPath
+      ), 'utf8')).toBe(project.after);
+      expect(await readFile(
+        path.join(project.root, 'liftoff.manifest.json')
+      )).toEqual(project.manifestBefore);
+
+      const resumed = await run(
+        project, ['--approve-plan', applicationFingerprint], runner
+      );
+      expect(resumed.code, JSON.stringify(resumed.report)).toBe(2);
+      expect(resumed.report.bindingPublication.publicationPlanFingerprint)
+        .toBe(moved.report.bindingPublication.publicationPlanFingerprint);
+      const publicationPlan = await readActiveBindingPublicationPlan(
+        project.root,
+        moved.report.bindingPublication.publicationPlanFingerprint,
+        now,
+        { homedir: project.home, env: {} }
+      );
+      expect(publicationPlan).not.toBeNull();
+      expect(publicationPlan!.effects.map(effect => ({
+        kind: effect.kind,
+        path: effect.pathParts.join('/')
+      }))).toEqual([
+        {
+          kind: 'repair-history',
+          path: `.liftoff/repair-history/${applicationFingerprint}/binding-publication.json`
+        },
+        { kind: 'manifest', path: 'liftoff.manifest.json' }
+      ]);
+      expect(publicationPlan!.committedApplicationEffects).toEqual(
+        moved.report.bindingPublication.committedApplicationEffects
+      );
+      expect(Object.isFrozen(publicationPlan)).toBe(true);
+      expect(Object.isFrozen(publicationPlan!.effects)).toBe(true);
+      expect(Object.isFrozen(publicationPlan!.effects[0].pathParts)).toBe(true);
+      await expect(readActiveBindingPublicationPlan(
+        project.root,
+        moved.report.bindingPublication.publicationPlanFingerprint,
+        new Date(now.getTime() + 16 * 60_000),
+        { homedir: project.home, env: {} }
+      )).rejects.toThrow(
+        'Active-binding publication plan is invalid or expired.'
+      );
+
+      const published = await run(project, [
+        '--approve-plan',
+        moved.report.bindingPublication.publicationPlanFingerprint
+      ], runner);
+      expect(published.code, JSON.stringify(published.report)).toBe(0);
+      expect(published.report).toMatchObject({
+        status: 'applied',
+        committed: true,
+        repairScopeComplete: true,
+        bindingPublication: { status: 'committed' }
+      });
+      const manifest = await loadProjectManifest(project.root);
+      if (manifest.artifactVersion !== 8) {
+        throw new Error('Expected manifest v8 after binding publication.');
+      }
+      expect(manifest.activeLayout.bindings).toContainEqual({
+        kind: 'artifact',
+        logicalName: project.target.logicalName,
+        pathParts: project.targetPath
+      });
+      expect(manifest.projectArtifacts).toEqual(project.manifest.projectArtifacts);
+      expect(manifest.managedArtifacts).toEqual(project.manifest.managedArtifacts);
+      expect(manifest.adoptionObservations).toEqual(
+        project.manifest.adoptionObservations
+      );
+      if (governed) {
+        if (manifest.governance.profile === 'none' ||
+            project.manifest.governance.profile === 'none') {
+          throw new Error('Expected governed manifest identities.');
+        }
+        const {
+          activeLayoutDigest: nextLayoutDigest,
+          ...nextActivationIdentity
+        } = manifest.governance.activationIdentity;
+        const {
+          activeLayoutDigest: _previousLayoutDigest,
+          ...previousActivationIdentity
+        } = project.manifest.governance.activationIdentity;
+        expect(nextLayoutDigest).toBe(
+          moved.report.bindingPublication.targetActiveLayoutDigest
+        );
+        expect(nextActivationIdentity).toEqual(previousActivationIdentity);
+      } else {
+        expect(manifest.governance).toEqual(project.manifest.governance);
+      }
+      const publication = JSON.parse(await readFile(path.join(
+        project.root,
+        '.liftoff',
+        'repair-history',
+        applicationFingerprint,
+        'binding-publication.json'
+      ), 'utf8'));
+      expect(publication).toMatchObject({
+        kind: 'liftoff-active-binding-publication',
+        activationEvidence: 'not-issued'
+      });
+
+      const repeated = await run(
+        project, ['--approve-plan', applicationFingerprint], runner
+      );
+      expect(repeated.code, JSON.stringify(repeated.report)).toBe(0);
+      expect(repeated.report.bindingPublication.status).toBe('complete');
+      expect(await readFile(path.join(
+        project.root, ...project.targetPath
+      ), 'utf8')).toBe(project.after);
+    },
+    60_000
+  );
+
+  it('preserves a concurrent edit when binding publication fails after the move committed', async () => {
+    const project = await fixture({ move: true });
+    const runner = new Runner();
+    const preview = await run(
+      project, ['--check', '--application-patch', project.patch], runner
+    );
+    expect(preview.report, JSON.stringify(preview.report)).toMatchObject({
+      status: 'available',
+      fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u)
+    });
+    const applicationFingerprint = preview.report.fingerprint;
+    expect((await run(
+      project, ['--verify-plan', applicationFingerprint], runner
+    )).code).toBe(0);
+    const moved = await run(
+      project, ['--approve-plan', applicationFingerprint], runner
+    );
+    const concurrent = 'developer changed committed target\n';
+    await writeFile(
+      path.join(project.root, ...project.targetPath), concurrent
+    );
+    const result = await run(project, [
+      '--approve-plan',
+      moved.report.bindingPublication.publicationPlanFingerprint
+    ], runner);
+    expect(result.code, JSON.stringify(result.report)).toBe(2);
+    expect(result.report).toMatchObject({
+      status: 'partial',
+      committed: true,
+      repairScopeComplete: false,
+      bindingPublication: {
+        status: 'blocked',
+        committedApplicationEffects: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'write',
+            pathParts: project.targetPath
+          }),
+          expect.objectContaining({
+            type: 'delete',
+            pathParts: project.source
+          })
+        ])
+      }
+    });
+    expect(await readFile(path.join(
+      project.root, ...project.targetPath
+    ), 'utf8')).toBe(concurrent);
+    await expect(stat(path.join(
+      project.root, ...project.source
+    ))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(
+      path.join(project.root, 'liftoff.manifest.json')
+    )).toEqual(project.manifestBefore);
+  }, 60_000);
+
+  it('preserves a concurrently changed manifest while reporting the committed move', async () => {
+    const project = await fixture({ move: true });
+    const runner = new Runner();
+    const preview = await run(
+      project, ['--check', '--application-patch', project.patch], runner
+    );
+    const applicationFingerprint = preview.report.fingerprint;
+    expect((await run(
+      project, ['--verify-plan', applicationFingerprint], runner
+    )).code).toBe(0);
+    const moved = await run(
+      project, ['--approve-plan', applicationFingerprint], runner
+    );
+    const changedManifest = Buffer.from(
+      `${JSON.stringify({
+        ...project.manifest,
+        project: {
+          ...project.manifest.project,
+          displayName: 'Concurrent manifest edit'
+        }
+      }, null, 2)}\n`
+    );
+    await writeFile(
+      path.join(project.root, 'liftoff.manifest.json'),
+      changedManifest
+    );
+    const result = await run(project, [
+      '--approve-plan',
+      moved.report.bindingPublication.publicationPlanFingerprint
+    ], runner);
+    expect(result.code, JSON.stringify(result.report)).toBe(2);
+    expect(result.report).toMatchObject({
+      status: 'partial',
+      committed: true,
+      repairScopeComplete: false,
+      bindingPublication: {
+        status: 'blocked',
+        committedApplicationEffects: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'write',
+            pathParts: project.targetPath
+          }),
+          expect.objectContaining({
+            type: 'delete',
+            pathParts: project.source
+          })
+        ])
+      }
+    });
+    expect(result.report.blockers).toContainEqual(
+      expect.stringContaining('Current manifest changed')
+    );
+    expect(await readFile(
+      path.join(project.root, 'liftoff.manifest.json')
+    )).toEqual(changedManifest);
+    expect(await readFile(
+      path.join(project.root, ...project.targetPath),
+      'utf8'
+    )).toBe(project.after);
+    await expect(stat(path.join(
+      project.root, ...project.source
+    ))).rejects.toMatchObject({ code: 'ENOENT' });
+  }, 60_000);
+
+  it('rejects re-signed active-binding plans with unknown nested fields', async () => {
+    const project = await fixture({ move: true });
+    const runner = new Runner();
+    const preview = await run(
+      project, ['--check', '--application-patch', project.patch], runner
+    );
+    expect((await run(
+      project, ['--verify-plan', preview.report.fingerprint], runner
+    )).code).toBe(0);
+    const moved = await run(
+      project, ['--approve-plan', preview.report.fingerprint], runner
+    );
+    const planPath = moved.report.bindingPublication.receiptPath;
+    const plan = JSON.parse(await readFile(planPath, 'utf8'));
+    plan.transactionSize.unreviewed = 1;
+    delete plan.fingerprint;
+    const forgedFingerprint = canonicalSha256(plan);
+    plan.fingerprint = forgedFingerprint;
+    const forgedPath = planPath.replace(
+      moved.report.bindingPublication.publicationPlanFingerprint,
+      forgedFingerprint
+    );
+    await writeFile(forgedPath, JSON.stringify(plan));
+    await chmod(forgedPath, 0o600);
+    await expect(readActiveBindingPublicationPlan(
+      project.root,
+      forgedFingerprint,
+      now,
+      { homedir: project.home, env: {} }
+    )).rejects.toThrow(
+      'Active-binding publication transaction size must contain exactly its schema-1 fields.'
+    );
+    expect(await readFile(
+      path.join(project.root, 'liftoff.manifest.json')
+    )).toEqual(project.manifestBefore);
+  }, 60_000);
+
   it('inspects an older current guide and updates only its approved managed content without activation', async () => {
     const project = await fixture({ agent: true }), runner = new Runner();
     const legacy = JSON.parse(await readFile(new URL('./fixtures/current-repair-legacy-guide.json', import.meta.url), 'utf8'));
@@ -257,7 +642,7 @@ describe('current active-layout application repair', () => {
     await writeFile(project.patch, JSON.stringify(project.document));
     const result = await run(project, ['--check', '--application-patch', project.patch]);
     expect(result.code).toBe(2);
-    expect(result.report.blockers).toContainEqual(expect.stringContaining('separate reviewed binding publication'));
+    expect(result.report.blockers).toContainEqual(expect.stringContaining('separate binding publication'));
     expect(result.runner.calls).toEqual([]);
     await unchanged(project);
     await expect(stat(path.join(project.root, ...moved))).rejects.toMatchObject({ code: 'ENOENT' });

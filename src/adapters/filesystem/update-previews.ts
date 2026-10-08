@@ -914,6 +914,7 @@ export function createScopedUserLocalRecordStore(
   projectRoot: string,
   namespace: 'governance-preview' | 'governance-approval' | 'workstation-remediation' |
     'repair-preview' | 'repair-approval' | 'repair-verification' | 'repair-backup' |
+    'repair-active-binding-plan' |
     'adoption-preview' | 'adoption-destination-plan' | 'adoption-compatibility-plan' |
     'adoption-verification-plan' | 'adoption-verification-consent' |
     'adoption-verification-result' | 'adoption-publication-plan' |
