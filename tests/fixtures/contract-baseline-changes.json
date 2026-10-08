@@ -246,49 +246,73 @@
     {
       "surface": "cli-text",
       "key": "help",
-      "task": "7.1",
-      "reason": "Add the implemented schema-1 read-only adopt preview to the Maintenance group. Existing help, assessment, generation, update/repair authority and historical schemas remain unchanged; registration does not advertise executable adoption publication.",
+      "task": "8.1",
+      "reason": "Register the schema-1 workflow set planning command in the Maintenance group. It advertises exact source/target/agent/input/check/expiry review and approval/recovery selection while explicitly reporting that no transition executor or project-write authority is available yet.",
       "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-      "currentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
-      "priorCurrentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+      "currentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
+      "priorCurrentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "help",
-        "task": "6.3",
-        "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
+        "task": "7.1",
+        "reason": "Add the implemented schema-1 read-only adopt preview to the Maintenance group. Existing help, assessment, generation, update/repair authority and historical schemas remain unchanged; registration does not advertise executable adoption publication.",
         "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-        "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
-        "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+        "currentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
+        "priorCurrentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
         "changed": [
           "/stdout"
-        ]
+        ],
+        "priorChange": {
+          "surface": "cli-text",
+          "key": "help",
+          "task": "6.3",
+          "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
+          "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
+          "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+          "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+          "changed": [
+            "/stdout"
+          ]
+        }
       }
     },
     {
       "surface": "cli-text",
       "key": "--help",
-      "task": "7.1",
-      "reason": "Add the implemented schema-1 read-only adopt preview to the Maintenance group. Existing help, assessment, generation, update/repair authority and historical schemas remain unchanged; registration does not advertise executable adoption publication.",
+      "task": "8.1",
+      "reason": "Register the schema-1 workflow set planning command in the Maintenance group. It advertises exact source/target/agent/input/check/expiry review and approval/recovery selection while explicitly reporting that no transition executor or project-write authority is available yet.",
       "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-      "currentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
-      "priorCurrentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+      "currentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
+      "priorCurrentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "--help",
-        "task": "6.3",
-        "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
+        "task": "7.1",
+        "reason": "Add the implemented schema-1 read-only adopt preview to the Maintenance group. Existing help, assessment, generation, update/repair authority and historical schemas remain unchanged; registration does not advertise executable adoption publication.",
         "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-        "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
-        "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+        "currentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
+        "priorCurrentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
         "changed": [
           "/stdout"
-        ]
+        ],
+        "priorChange": {
+          "surface": "cli-text",
+          "key": "--help",
+          "task": "6.3",
+          "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
+          "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
+          "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+          "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+          "changed": [
+            "/stdout"
+          ]
+        }
       }
     },
     {

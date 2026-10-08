@@ -64,6 +64,21 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
             'replacement, or implicit telemetry enrollment is authorized. Exit 2: safe preview or ' +
             'existing-project route needs further review; 1: invalid/unsafe/unavailable approval or recovery.'
         }
+      : command === 'workflow'
+      ? {
+          ...commandDefinitions.workflow,
+          description:
+            'Schema-1 exact workflow transition planning for current manifest-v8 projects. ' +
+            'The preview binds source workflow/framework identity, target workflow, canonical agents/default, ' +
+            'raw manifest/config digests and modes, installed target plugin resolution, required checks and expiry. ' +
+            'Plans are project-bound user-local metadata outside the repository. --approve-plan and ' +
+            'fingerprint-selected --recover select only that current plan; changed inputs, mismatched selection, ' +
+            'tampering and expiry fail closed. This schema-1 foundation advertises no executable transitions and ' +
+            'performs no project write or transaction. Manual preservation and official isolated OpenSpec/Spec Kit ' +
+            'staging require separately qualified executors. Application files, Git/framework history, global ' +
+            'tools/profiles, deployment/state and telemetry remain unchanged. Generic yes, force, JSON, an agent, ' +
+            'or saved plan is not transition authority.'
+        }
       : command === 'update'
       ? {
           ...commandDefinitions.update,

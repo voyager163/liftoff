@@ -47,6 +47,9 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | `liftoff update [project]` | Applies an exactly approved v8 successor or managed-core maintenance plan |
 | `liftoff update --check` | Reports eligible v8 plans without project mutation; exits 0 when clean and 2 when actionable |
 | `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; project-owned files remain unreachable |
+| `liftoff workflow set <openspec\|spec-kit\|manual> [project] --check` | Saves an exact external workflow-transition plan binding source, target, agents, current identity files, checks and expiry without project writes |
+| `liftoff workflow set <target> [project] --approve-plan <fingerprint>` | Selects one exact current transition plan; the schema-1 foundation reports execution unavailable until the corresponding transition executor is qualified |
+| `liftoff workflow set <target> [project] --recover --approve-plan <fingerprint>` | Selects only recovery attributable to that plan; no transaction is manufactured from plan metadata |
 | `liftoff repair [project-path]` | Displays an exact plan and offers action-specific default-No approval on a genuine terminal; no fingerprint entry |
 | `liftoff repair [project-path] --check` | Inventories current-v8 application bindings or previews historical infrastructure repair without cloud calls, application scripts or project writes |
 | `liftoff repair --capabilities --json` | Lists packaged repair contracts, recipes, schemas and real command modes without needing a project |
@@ -118,7 +121,10 @@ current generation source family. `schemas.currentGeneration` covers `plan`,
 governance inspection routes. `schemas.modernLocalVerification` separately lists
 the explicit local request, approval and execution boundary below. This
 does not enable team generation, arbitrary writer access, or automatic local
-completion. An older
+completion. `schemas.workflowTransition` advertises the exact schema-1 planning
+and authority-selection interface separately from its empty
+`executableTransitions` list; command registration does not imply a transition
+executor. An older
 installed release may not have this command; use its documented help rather
 than assuming a missing interface or inventing receipts.
 
@@ -802,6 +808,34 @@ an existing-project route instead of reinitializing it. Use
 maintenance and `liftoff repair <path> --check` for separately
 authorized application work. Existing deployment/state adoption remains
 planning-only.
+
+## Reviewed workflow transition planning
+
+```bash
+liftoff workflow set manual . --check --json
+liftoff workflow set openspec . --agents copilot --check --json
+liftoff workflow set spec-kit . --agents copilot --default-agent copilot --check --json
+```
+
+The schema-1 surface supports current manifest-v8 projects and binds
+the exact project root, source workflow/framework identity, target workflow,
+selected agents/default, raw manifest/config digests and modes, required checks,
+installed target plugin resolution, creation time, expiry and fingerprint.
+Plans are saved in project-bound user-local metadata outside the repository.
+Changed inputs, a mismatched target/agent selection, aliases that do not resolve
+to the same canonical selection, unknown fields, tampering, future dates and
+expiry all reject the saved plan.
+
+`--approve-plan` and fingerprint-selected `--recover` are registered authority
+selection interfaces, but this foundation advertises
+`executableTransitions: []`. It performs no project write or transaction.
+Manual preservation and official isolated OpenSpec/Spec Kit staging become
+executable only after their separate transition recipes are qualified. Until
+then, exact approval reports `execution-unavailable`, recovery reports
+`recovery-unavailable`, and application files, Git history, framework
+specifications/history, global tools/profiles, deployment/state and telemetry
+remain unchanged. Generic yes, force, JSON, an agent, or a saved plan is not
+transition authority.
 
 ## Read-only governance assessment
 

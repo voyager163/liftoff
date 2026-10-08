@@ -252,6 +252,7 @@ assess    Read-only whole-project comparison against explicitly displayed
           installed targets
 adopt     Preview reviewed in-place adoption for a supported non-Liftoff
           application
+workflow  Review an explicit development-workflow transition
 validate  Validate a generated project manifest
 update    Preview and explicitly approve scoped project updates
 repair    Review and repair supported project files with separate default-No
@@ -862,6 +863,7 @@ Command: migrate | Description: Adopt an existing project
 Maintenance
 Command: assess | Description: Read-only whole-project comparison against explicitly displayed installed targets
 Command: adopt | Description: Preview reviewed in-place adoption for a supported non-Liftoff application
+Command: workflow | Description: Review an explicit development-workflow transition
 Command: validate | Description: Validate a generated project manifest
 Command: update | Description: Preview and explicitly approve scoped project updates
 Command: repair | Description: Review and repair supported project files with separate default-No approval
@@ -1324,6 +1326,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ────────  ────────────────────────────────────────────────────────────────────────────────── │
 │ assess    Read-only whole-project comparison against explicitly displayed installed targets  │
 │ adopt     Preview reviewed in-place adoption for a supported non-Liftoff application         │
+│ workflow  Review an explicit development-workflow transition                                 │
 │ validate  Validate a generated project manifest                                              │
 │ update    Preview and explicitly approve scoped project updates                              │
 │ repair    Review and repair supported project files with separate default-No approval        │

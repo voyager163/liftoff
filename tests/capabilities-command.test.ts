@@ -57,7 +57,7 @@ describe('project-independent capability discovery', () => {
     expect(Buffer.byteLength(result.stdout)).toBeLessThan(128 * 1024);
   });
 
-  it('derives the exact current generation inventory without advertising unsupported transitions', () => {
+  it('derives current inventory while separating workflow planning from unavailable execution', () => {
     const report = installedCapabilities(), registry = modernPlugins.modernSourceRegistry();
     expect(report.plugins.registryDigest).toBe(registry.registryDigest);
     expect(report.plugins.pluginSetDigest).toBe(registry.pluginSetDigest);
@@ -127,6 +127,17 @@ describe('project-independent capability discovery', () => {
       activeBindingPublication: false, providerOperations: false
     });
     expect(report.schemas.reports.projectAdoption).toBe(1);
+    expect(report.schemas.workflowTransition).toMatchObject({
+      command: 'workflow set',
+      report: 1,
+      previewAvailable: true,
+      executableTransitions: [],
+      exactSourceTargetAgentsInputsChecksAndExpiry: true,
+      applicationWrites: false,
+      frameworkHistoryDeletion: false,
+      providerOperations: false
+    });
+    expect(report.schemas.reports.workflowTransition).toBe(1);
     expect(report.schemas.repair).toEqual(repairCapabilities.schemas);
     expect(report.runtime).toMatchObject({ minimumNodeVersion, distribution: 'node/npm', nativeDistribution: false });
     expect(report.boundaries).toMatchObject({

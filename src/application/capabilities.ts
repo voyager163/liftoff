@@ -14,6 +14,7 @@ import { modernRevalidationCommandReportSchemaVersion } from './update/modern-re
 import { manualInfrastructurePolicy } from '../domain/governance/activation/modern-manual-infrastructure.js';
 import { protectedCompletionIndexEncoding } from '../domain/governance/activation/modern-local-completion.js';
 import { adoptionCommandReportSchemaVersion } from './adoption/public-command.js';
+import { workflowTransitionReportSchemaVersion } from './workflow-transition/use-case.js';
 
 export function installedCapabilities() {
   const registry = modernSourceRegistry();
@@ -92,7 +93,7 @@ export function installedCapabilities() {
         explicitNonGitRoot: true, liveMetadata: true, liveProviders: ['github'], liveConformance: false,
         credentialEnrollment: false, projectExecution: false, projectWrites: false, telemetry: false,
         scope: 'Bounded local metadata, declaration names and exact current managed-byte comparisons. Runtime constraints, references, agent behavior, effective governance and deployment proof remain unobserved. Team policy metadata comparison is not public team generation or enforcement support.',
-        recommendations: 'Advisory separate lanes only. Non-Liftoff projects may receive the read-only adopt preview; unavailable workflow/profile/plugin transitions, provider activation and deployed-state migration have no executable recommendation.',
+        recommendations: 'Advisory separate lanes only. Non-Liftoff projects may receive the read-only adopt preview; current v8 workflow changes may receive the exact workflow set preview. Workflow execution, profile/plugin transitions, provider activation and deployed-state migration remain unavailable.',
         liveScope: 'Explicit bounded GitHub metadata reads for the verified local repository binding, applicable main/develop/release/hotfix refs and declared current environments, plus fixed GitHub Actions app metadata. No account/runner/Azure discovery; observed metadata is not current-profile conformance or activation proof.'
       },
       projectAdoption: {
@@ -109,10 +110,25 @@ export function installedCapabilities() {
         providerOperations: false,
         scope: 'Bounded non-Liftoff discovery remains preview-only. A separately completed compatibility review, exact verification permission and successful receipt can produce an expiring exact-file publication plan. Explicit fingerprint approval publishes only absent managed-core/manifest effects through the dedicated adoption transaction; recovery requires the same plan fingerprint plus its observed authenticated transaction digest. Active-binding and provider operations remain separate.'
       },
+      workflowTransition: {
+        command: 'workflow set',
+        report: workflowTransitionReportSchemaVersion,
+        preview: 'workflow set <openspec|spec-kit|manual> <project> --check',
+        approval: 'workflow set <target> <project> --approve-plan <fingerprint>',
+        recovery: 'workflow set <target> <project> --recover --approve-plan <fingerprint>',
+        previewAvailable: true,
+        executableTransitions: [],
+        exactSourceTargetAgentsInputsChecksAndExpiry: true,
+        applicationWrites: false,
+        frameworkHistoryDeletion: false,
+        providerOperations: false,
+        scope: 'Exact external planning and approval/recovery selection only. Schema 1 registers no transition executor; Manual preservation and official OpenSpec/Spec Kit staging are qualified separately before executable transitions are advertised.'
+      },
       reports: {
         capabilities: 1, validate: 1, doctor: 1, upgrade: 1,
         update: currentUpdateReportSchemaVersion, governance: 2, governanceAssessment: 1,
-        projectAssessment: 1, projectAdoption: adoptionCommandReportSchemaVersion
+        projectAssessment: 1, projectAdoption: adoptionCommandReportSchemaVersion,
+        workflowTransition: workflowTransitionReportSchemaVersion
       },
       repair: { ...repairCapabilities.schemas }
     },

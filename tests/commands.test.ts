@@ -154,7 +154,8 @@ describe('strict update approval arguments', () => {
   });
 
   it.each(Object.keys(commandDefinitions).filter((command) =>
-    command !== 'update' && command !== 'repair' && command !== 'adopt'))(
+    command !== 'update' && command !== 'repair' && command !== 'adopt' &&
+    command !== 'workflow'))(
     'does not accept update approval on %s',
     (command) => {
       expect(() => parseArgs([command, '--approve-plan', fingerprint])).toThrow(/Unknown flag/);

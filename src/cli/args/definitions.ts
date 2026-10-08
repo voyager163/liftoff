@@ -176,6 +176,28 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     }],
     defaultMaxPositionals: 1
   },
+  workflow: {
+    description: 'Review an explicit development-workflow transition',
+    usage: 'set <openspec|spec-kit|manual> [project-path]',
+    group: 'Maintenance',
+    flags: {
+      project: valueFlag('Exact current Liftoff project path', 'Project', 'path'),
+      agents: projectFlags.agents,
+      'default-agent': projectFlags['default-agent'],
+      check: booleanFlag('Create or refresh the exact external transition plan without project writes', 'Command'),
+      'approve-plan': valueFlag('Select one exact saved transition plan by its full lowercase 64-hex SHA-256 fingerprint', 'Consent', 'fingerprint'),
+      recover: booleanFlag('Inspect only recovery attributable to the exact selected transition plan', 'Consent'),
+      json: booleanFlag('Emit one schema-1 workflow-transition report', 'Output'),
+      ...helpFlag
+    },
+    subcommands: ['set'],
+    arguments: [
+      { syntax: 'openspec|spec-kit|manual', description: 'Explicit target development workflow' },
+      { syntax: 'project-path', description: 'Current manifest-v8 Liftoff project' }
+    ],
+    defaultMaxPositionals: 0,
+    subcommandMaxPositionals: { set: 2 }
+  },
   validate: {
     description: 'Validate a generated project manifest',
     usage: '[project-path]',

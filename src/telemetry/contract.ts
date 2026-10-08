@@ -54,6 +54,8 @@ export const telemetryCommands = [
   'update',
   'repair',
   'adopt',
+  'workflow',
+  'workflow:set',
   'upgrade',
   'migrate',
   'doctor',

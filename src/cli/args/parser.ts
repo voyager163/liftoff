@@ -6,6 +6,7 @@ import { phaseIds } from '../../domain/governance/activation/types.js';
 import { repairRequestIssue } from '../../application/repair/request.js';
 import { readStringFlag } from './readers.js';
 import { modernLocalOperationIssue } from './governance-local.js';
+import { workflowTransitionRequestIssue } from '../../application/workflow-transition/request.js';
 
 export class UsageError extends Error {
   constructor(message: string) {
@@ -220,6 +221,24 @@ export function parseArgs(argv: string[]): ParsedArgs {
       applicationPatch: readStringFlag(flags, 'application-patch'), verifyPlan: readStringFlag(flags, 'verify-plan'),
       allowNetwork: flags['allow-network'] === true,
       allowDependencyPreparation: flags['allow-dependency-preparation'] === true
+    }, flags.help === true);
+    if (issue) throw new UsageError(issue);
+  }
+
+  if (command === 'workflow') {
+    if (positional.length > 1 && Object.hasOwn(flags, 'project')) {
+      throw new UsageError('Provide a workflow project path either positionally or with --project, not both.');
+    }
+    const issue = workflowTransitionRequestIssue({
+      subcommand,
+      target: positional[0],
+      project: readStringFlag(flags, 'project') ?? positional[1],
+      agents: readStringFlag(flags, 'agents')?.split(',').map(value => value.trim()).filter(Boolean),
+      defaultAgent: readStringFlag(flags, 'default-agent'),
+      check: flags.check === true,
+      approvePlan: readStringFlag(flags, 'approve-plan'),
+      recover: flags.recover === true,
+      json: flags.json === true
     }, flags.help === true);
     if (issue) throw new UsageError(issue);
   }

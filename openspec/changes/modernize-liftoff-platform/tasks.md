@@ -96,7 +96,7 @@ Depends on 3-6. References: design D8-D9; liftoff-project-migration, liftoff-pro
 
 Depends on 3-7. References: design D7-D10; liftoff-project-migration, liftoff-project-update, liftoff-repository-governance-profile.
 
-- [ ] 8.1 Implement reviewed workflow-set plans and exact check/apply/recovery interfaces; verify source workflow, target, agent selection, current files, checks and expiry bind one immutable plan.
+- [x] 8.1 Implement reviewed workflow-set plans and exact check/apply/recovery interfaces; verify source workflow, target, agent selection, current files, checks and expiry bind one immutable plan.
 - [ ] 8.2 Implement external-framework-to-Manual transition without deleting framework documents/history or uninstalling shared tools; verify preserved bytes and correct native local readiness.
 - [ ] 8.3 Implement transitions into pinned OpenSpec/Spec Kit using official isolated staging and separate tool/global-profile consent; verify collisions, active overlapping changes and invalid framework output block safely.
 - [ ] 8.4 Complete additive agent/default repair for external workflows and Manual; verify existing integrations/defaults are preserved unless the exact requested change authorizes them.
