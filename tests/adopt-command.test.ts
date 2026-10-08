@@ -118,6 +118,15 @@ describe('public reviewed adoption command', () => {
         deployment: 'planning-only',
         gitHistory: 'not-read-or-modified'
       },
+      mappingReview: {
+        schemaVersion: 1,
+        kind: 'liftoff-adoption-mapping-review',
+        status: 'explicit-review-required',
+        dynamicReferencesReviewed: false,
+        verificationSelection: 'not-provided',
+        compatibility: 'not-verified',
+        publication: 'not-authorized'
+      },
       review: {
         schemaVersion: 1,
         kind: 'liftoff-adoption-preview',
@@ -158,6 +167,9 @@ describe('public reviewed adoption command', () => {
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('Reviewed in-place adoption');
     expect(result.stdout).toContain('compatibility-review-required');
+    expect(result.stdout).toContain('Mapping review');
+    expect(result.stdout).toContain('Per-file review draft');
+    expect(result.stdout).toContain('Reference review draft');
     expect(result.stdout).toContain('grants no verification, file approval');
     expect(await snapshot(project.root)).toEqual(before);
   });
@@ -237,6 +249,7 @@ describe('public reviewed adoption command', () => {
         status: 'blocked',
         blockers: [{ code: 'supported-application-binding-unobserved' }]
       },
+      mappingReview: null,
       review: null,
       candidate: null,
       destinationPlan: null

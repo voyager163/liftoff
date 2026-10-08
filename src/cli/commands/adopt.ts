@@ -26,6 +26,7 @@ function render(report: AdoptionCommandReport, presentation: PresentationSession
     { label: 'Operation', value: report.operation },
     { label: 'Status', value: report.status },
     { label: 'Layout plan', value: report.layoutPlan?.fingerprint ?? 'unavailable' },
+    { label: 'Mapping review', value: report.mappingReview?.fingerprint ?? 'unavailable' },
     { label: 'Review fingerprint', value: report.review?.fingerprint ?? 'unavailable' },
     { label: 'Destination plan', value: report.destinationPlan?.fingerprint ?? 'unavailable' }
   ]);
@@ -37,6 +38,26 @@ function render(report: AdoptionCommandReport, presentation: PresentationSession
         binding.logicalName,
         binding.status,
         binding.pathParts.join('/')
+      ])
+    );
+  }
+  if (report.mappingReview) {
+    presentation.table(
+      'Per-file review draft',
+      ['Surface', 'Disposition', 'Path'],
+      report.mappingReview.files.map(file => [
+        file.surface,
+        file.suggestedDisposition,
+        file.pathParts.join('/')
+      ])
+    );
+    presentation.table(
+      'Reference review draft',
+      ['Surface', 'Kind', 'Source -> target'],
+      report.mappingReview.references.map(reference => [
+        reference.surface,
+        reference.kind,
+        `${reference.sourcePathParts.join('/')} -> ${reference.targetPathParts.join('/')}`
       ])
     );
   }

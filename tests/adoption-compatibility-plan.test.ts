@@ -189,6 +189,62 @@ describe('exact adoption compatibility planning without verification or transact
     expect(plan.report.compatibility).toBe('not-verified');
   });
 
+  it('keeps unsupported language conversion explicitly blocked instead of substituting a starter', async () => {
+    const input = await prepared('node-fastify', async (root, backendPathParts) => {
+      await put(root, [...backendPathParts.slice(0, -1), 'legacy.go'], 'package legacy\n');
+    });
+    const incompatible = input.value.files.find(mapping =>
+      mapping.sourcePathParts.at(-1) === 'legacy.go');
+    if (!incompatible) throw new Error('Missing incompatible language fixture.');
+    const plan = await prepareAdoptionCompatibilityPlan({
+      ...input.value,
+      unresolvedMappings: [{
+        pathParts: [...incompatible.sourcePathParts],
+        reason: 'unsupported-language-conversion' as const
+      }]
+    }, input.source, now, input.storage);
+    expect(plan.report.status).toBe('blocked');
+    expect(plan.report.unresolvedMappings).toContainEqual({
+      pathParts: incompatible.sourcePathParts,
+      reason: 'unsupported-language-conversion'
+    });
+    expect(plan.report.blockers).toContainEqual({
+      code: 'unresolved-mapping',
+      pathParts: incompatible.sourcePathParts
+    });
+    expect(JSON.stringify(plan.report)).not.toContain('package legacy');
+  });
+
+  it('keeps unsupported framework conversion explicitly blocked instead of substituting a starter', async () => {
+    const input = await prepared('node-fastify', async (root, backendPathParts) => {
+      await put(
+        root,
+        [...backendPathParts.slice(0, -1), 'package.json'],
+        '{"dependencies":{"express":"5.0.0"}}\n'
+      );
+    });
+    const incompatible = input.value.files.find(mapping =>
+      mapping.sourcePathParts.at(-1) === 'package.json');
+    if (!incompatible) throw new Error('Missing incompatible framework fixture.');
+    const plan = await prepareAdoptionCompatibilityPlan({
+      ...input.value,
+      unresolvedMappings: [{
+        pathParts: [...incompatible.sourcePathParts],
+        reason: 'unsupported-framework-conversion' as const
+      }]
+    }, input.source, now, input.storage);
+    expect(plan.report.status).toBe('blocked');
+    expect(plan.report.unresolvedMappings).toContainEqual({
+      pathParts: incompatible.sourcePathParts,
+      reason: 'unsupported-framework-conversion'
+    });
+    expect(plan.report.blockers).toContainEqual({
+      code: 'unresolved-mapping',
+      pathParts: incompatible.sourcePathParts
+    });
+    expect(JSON.stringify(plan.report)).not.toContain('"express"');
+  });
+
   it('retains exact move and affected-reference review while blocking until staged changed bytes exist', async () => {
     const input = await prepared();
     const backend = input.review.report.inventory.files.find(file =>

@@ -190,9 +190,12 @@ It does not run project scripts, install dependencies, access credentials or
 network, write a manifest, move application files, change Git history, infer
 deployment absence, or approve later work. Static planning retains observed
 application bindings at their current paths, omits unobserved starter bindings,
-and leaves protected infrastructure uninspected and planning-only. A missing
-supported application-component binding, destination conflict, unresolved
-reference, or unsupported conversion remains an explicit blocker.
+and leaves protected infrastructure uninspected and planning-only. Its mapping
+draft lists bounded source, build/test, Docker/Compose, CI, documentation and
+import references for explicit review. A missing supported application-component
+binding, destination conflict, unresolved custom mapping/reference, or
+unsupported conversion remains an explicit blocker rather than triggering
+starter replacement.
 
 The registered `--approve-plan` and fingerprint-selected `--recover` surfaces
 fail closed until a complete public compatibility/file plan and authenticated

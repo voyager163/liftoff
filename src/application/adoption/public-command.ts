@@ -23,6 +23,10 @@ import {
   prepareAdoptionLayoutPlan,
   type AdoptionLayoutPlanReport
 } from './layout-plan.js';
+import {
+  createAdoptionMappingReview,
+  type AdoptionMappingReviewReport
+} from './mapping-review.js';
 
 export const adoptionCommandReportSchemaVersion = 1 as const;
 
@@ -63,6 +67,7 @@ export interface AdoptionCommandReport {
     readonly targetLayoutDigest: string;
   } | null;
   readonly layoutPlan: AdoptionLayoutPlanReport | null;
+  readonly mappingReview: AdoptionMappingReviewReport | null;
   readonly review: AdoptionPreview | null;
   readonly candidate: AdoptionCandidateReport | null;
   readonly destinationPlan: AdoptionDestinationPlanReport | null;
@@ -179,6 +184,7 @@ function unavailableReport(
     exitCode: 1,
     target: null,
     layoutPlan: null,
+    mappingReview: null,
     review: null,
     candidate: null,
     destinationPlan: null,
@@ -287,6 +293,7 @@ export async function previewAdoptionProject(
       exitCode: 2,
       target: null,
       layoutPlan: layout.report,
+      mappingReview: null,
       review: null,
       candidate: null,
       destinationPlan: null,
@@ -307,6 +314,11 @@ export async function previewAdoptionProject(
     inspection.preview,
     plannedSource,
     now
+  );
+  const mappingReview = createAdoptionMappingReview(
+    inspection.report.inventory,
+    inspection.preview,
+    destination.report
   );
   await saveAdoptionPreview(inspection.preview, now, storage);
   if (destination.report.status === 'ready-for-independent-verification') {
@@ -337,6 +349,7 @@ export async function previewAdoptionProject(
       targetLayoutDigest: inspection.report.inventory.target.digest
     },
     layoutPlan: layout.report,
+    mappingReview,
     review: inspection.preview,
     candidate: inspection.report,
     destinationPlan: destination.report,

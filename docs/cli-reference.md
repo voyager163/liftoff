@@ -769,10 +769,14 @@ expiring adoption review outside the repository.
 Its static layout plan preserves observed application bindings at their current
 paths, omits unobserved starter bindings, and leaves protected infrastructure
 uninspected and planning-only. At least one selected application-component
-binding must be observed before candidate and destination review. Destination
-conflicts, literal-reference limits, and deployment/state uncertainty remain
-explicit. Project files, Git history, commands, dependencies, network,
-credentials, state, and cloud resources are unchanged.
+binding must be observed before candidate and destination review. The mapping
+review draft then enumerates every bounded file and reference across source,
+build/tests, Docker/Compose, CI, and documentation without approving its
+suggestions. Custom mappings and incompatible backend-language evidence remain
+blocked instead of being replaced with starter bytes. Destination conflicts,
+literal-reference limits, and deployment/state uncertainty remain explicit.
+Project files, Git history, commands, dependencies, network, credentials,
+state, and cloud resources are unchanged.
 
 `--approve-plan <fingerprint>` and
 `--recover --approve-plan <fingerprint>` are registered exact-authority

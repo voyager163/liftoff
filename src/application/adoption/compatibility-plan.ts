@@ -53,7 +53,8 @@ export interface AdoptionCompatibilityReview {
     readonly reason:
       | 'mapping-decision-required'
       | 'dynamic-reference-review-required'
-      | 'unsupported-language-conversion';
+      | 'unsupported-language-conversion'
+      | 'unsupported-framework-conversion';
   }[];
   readonly files: readonly AdoptionCompatibilityFileReview[];
   readonly references: readonly AdoptionCompatibilityReferenceReview[];
@@ -228,7 +229,12 @@ export function validateAdoptionCompatibilityReview(value: unknown): AdoptionCom
     review.unresolvedMappings, applicationBounds.files, 'Unresolved compatibility mappings'
   ).map(value => {
     const item = exact(value, ['pathParts', 'reason'], 'Unresolved compatibility mapping');
-    if (!['mapping-decision-required', 'dynamic-reference-review-required', 'unsupported-language-conversion']
+    if (![
+      'mapping-decision-required',
+      'dynamic-reference-review-required',
+      'unsupported-language-conversion',
+      'unsupported-framework-conversion'
+    ]
       .includes(String(item.reason))) {
       invalid('Unresolved compatibility mappings require a supported explicit reason.');
     }
