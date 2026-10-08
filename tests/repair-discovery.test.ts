@@ -37,10 +37,13 @@ describe('public repair command grammar', () => {
     expect(parseArgs(['repair', 'project with spaces', '--check', '--live', '--subscription', subscription]).command).toBe('repair');
     expect(parseArgs(['repair', '--approve-plan', 'a'.repeat(64)]).flags['approve-plan']).toBe('a'.repeat(64));
     expect(parseArgs(['repair', '--recover', '--json']).flags.recover).toBe(true);
+    expect(parseArgs([
+      'repair', '--recover', '--approve-plan', 'a'.repeat(64)
+    ]).flags.recover).toBe(true);
   });
   it.each([
     ['--check', '--approve-plan', 'a'.repeat(64)],
-    ['--check', '--recover'], ['--recover', '--approve-plan', 'a'.repeat(64)],
+    ['--check', '--recover'],
     ['--approve-plan', 'a'.repeat(64), '--live', '--subscription', subscription],
     ['--approve-plan', 'no'], ['--live'], ['--subscription', subscription],
     ['--live', '--subscription', 'a-name'], ['--force'], ['--yes'],

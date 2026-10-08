@@ -142,105 +142,156 @@
     {
       "surface": "cli-text",
       "key": "repair --help",
-      "task": "7.6",
-      "reason": "Clarify that exact repair automation can select either the verified application plan or its separately reviewed follow-up active-binding publication plan. Existing consent, verification, recovery and all other repair syntax remain unchanged.",
+      "task": "8.4",
+      "reason": "Advertise additive-only agent integration repair, explicit Spec Kit default selection, scoped preparation permissions, exact fingerprint approval and authenticated recovery. Existing application, infrastructure and active-binding repair syntax remains available and independently authorized.",
       "baselineSha256": "9ea2b3c469ec31a1cd429059f08123a8e59161d5e11a2b18dffc8c6854b711f5",
-      "currentSha256": "6588f9a8f0021464ef4c3c3af6a4694a39fa7d176c5b348ed58c9e17304651af",
+      "currentSha256": "cc26b8ecd1c15a826b8a936f5bf64adb57d14fa41902514b4ba13ee15872390c",
+      "priorCurrentSha256": "6588f9a8f0021464ef4c3c3af6a4694a39fa7d176c5b348ed58c9e17304651af",
       "changed": [
         "/stdout"
-      ]
+      ],
+      "priorChange": {
+        "surface": "cli-text",
+        "key": "repair --help",
+        "task": "7.6",
+        "reason": "Clarify that exact repair automation can select either the verified application plan or its separately reviewed follow-up active-binding publication plan. Existing consent, verification, recovery and all other repair syntax remain unchanged.",
+        "baselineSha256": "9ea2b3c469ec31a1cd429059f08123a8e59161d5e11a2b18dffc8c6854b711f5",
+        "currentSha256": "6588f9a8f0021464ef4c3c3af6a4694a39fa7d176c5b348ed58c9e17304651af",
+        "changed": [
+          "/stdout"
+        ]
+      }
     },
     {
       "surface": "cli-json",
       "key": "repair --capabilities --json",
-      "task": "7.6",
-      "reason": "Add the separately registered active-binding publication recipe, schema and recovery identity after the current-v8 application recipe. The capability now advertises file-commit-first binding publication and its provenance boundary; historical recipes and all unrelated capability fields remain unchanged.",
+      "task": "8.4",
+      "reason": "Advertise additive agent repair on current-v8 projects and replace the former unavailable-agent limitation with the exact additive-only Manual, OpenSpec and Spec Kit boundary. No repair recipe, schema or recovery identity changes because agent repair reuses the authenticated workflow transaction.",
       "baselineSha256": "687f7a4d3c1a11d159c2fa9345a5bcd98ab449a3d228cff7dd46b508ddd55003",
-      "currentSha256": "a64c1d0a41ba6412f825efab80396fbb31109d979598634faa9687c81a370bf5",
-      "priorCurrentSha256": "e9b8439019f7bdc05115fd51477001403d7d424b73d46eff6f642c7ad106e28b",
+      "currentSha256": "212a5f61036efef50258e920abca7922c31d71da733faaaa05b851bfacd7e4ad",
+      "priorCurrentSha256": "a64c1d0a41ba6412f825efab80396fbb31109d979598634faa9687c81a370bf5",
       "changed": [
-        "/json/schemas/activeBindingPublication",
-        "/json/recipes/2",
-        "/json/recipes/3",
-        "/json/recoveryCompatibility/3",
-        "/json/recoveryCompatibility/4",
-        "/json/currentApplication",
-        "/json/boundaries/activeBindingPublication"
+        "/json/currentApplication/additiveAgentRepair",
+        "/json/boundaries/agentInstallation"
       ],
       "priorChange": {
         "surface": "cli-json",
         "key": "repair --capabilities --json",
-        "task": "4.6",
-        "reason": "Add the independently registered current-v8 application recipe, its exact recovery-only identity and the bounded currentApplication capability declaration. Both historical recipes, schemas and all other capability fields remain unchanged; no new volatile values are masked.",
+        "task": "7.6",
+        "reason": "Add the separately registered active-binding publication recipe, schema and recovery identity after the current-v8 application recipe. The capability now advertises file-commit-first binding publication and its provenance boundary; historical recipes and all unrelated capability fields remain unchanged.",
         "baselineSha256": "687f7a4d3c1a11d159c2fa9345a5bcd98ab449a3d228cff7dd46b508ddd55003",
-        "currentSha256": "e9b8439019f7bdc05115fd51477001403d7d424b73d46eff6f642c7ad106e28b",
+        "currentSha256": "a64c1d0a41ba6412f825efab80396fbb31109d979598634faa9687c81a370bf5",
+        "priorCurrentSha256": "e9b8439019f7bdc05115fd51477001403d7d424b73d46eff6f642c7ad106e28b",
         "changed": [
+          "/json/schemas/activeBindingPublication",
           "/json/recipes/2",
+          "/json/recipes/3",
           "/json/recoveryCompatibility/3",
-          "/json/currentApplication"
-        ]
+          "/json/recoveryCompatibility/4",
+          "/json/currentApplication",
+          "/json/boundaries/activeBindingPublication"
+        ],
+        "priorChange": {
+          "surface": "cli-json",
+          "key": "repair --capabilities --json",
+          "task": "4.6",
+          "reason": "Add the independently registered current-v8 application recipe, its exact recovery-only identity and the bounded currentApplication capability declaration. Both historical recipes, schemas and all other capability fields remain unchanged; no new volatile values are masked.",
+          "baselineSha256": "687f7a4d3c1a11d159c2fa9345a5bcd98ab449a3d228cff7dd46b508ddd55003",
+          "currentSha256": "e9b8439019f7bdc05115fd51477001403d7d424b73d46eff6f642c7ad106e28b",
+          "changed": [
+            "/json/recipes/2",
+            "/json/recoveryCompatibility/3",
+            "/json/currentApplication"
+          ]
+        }
       }
     },
     {
       "surface": "cli-json",
       "key": "repair --check --json",
-      "task": "7.6",
-      "reason": "The historical infrastructure report embeds the additive active-binding publication capability, recipe, schema and recovery identity. Its historical recipe, eligibility, paths, effects and exit outcome remain unchanged; no new volatile values are masked.",
+      "task": "8.4",
+      "reason": "The historical infrastructure report embeds the additive-agent repair capability and exact framework boundary. Its historical recipe, eligibility, paths, effects and exit outcome remain unchanged; no new volatile values are masked.",
       "baselineSha256": "00e428fcbbb86793bcf3042aa2a7c349266a17e92ea4061a6df9d3933b749a98",
-      "currentSha256": "8583868275447b0a9f502e353af874750f42a08b639f602f1427a5f82c525b4a",
-      "priorCurrentSha256": "176511de8a2e826a3ede1bf3d57d34617b3f4b6035da156aa9ebb405edf60b5b",
+      "currentSha256": "2ced105d841ecf23cdc7908b2848130ea96e7df6989e1b731255381a6ed7ded7",
+      "priorCurrentSha256": "8583868275447b0a9f502e353af874750f42a08b639f602f1427a5f82c525b4a",
       "changed": [
-        "/json/capabilities/schemas/activeBindingPublication",
-        "/json/capabilities/recipes/2",
-        "/json/capabilities/recipes/3",
-        "/json/capabilities/recoveryCompatibility/3",
-        "/json/capabilities/recoveryCompatibility/4",
-        "/json/capabilities/currentApplication",
-        "/json/capabilities/boundaries/activeBindingPublication"
+        "/json/capabilities/currentApplication/additiveAgentRepair",
+        "/json/capabilities/boundaries/agentInstallation"
       ],
       "priorChange": {
         "surface": "cli-json",
         "key": "repair --check --json",
-        "task": "4.6",
-        "reason": "The historical infrastructure report embeds the additive current-v8 capability declaration. Its historical recipe, eligibility, paths, effects and exit outcome remain unchanged; no new volatile values are masked.",
+        "task": "7.6",
+        "reason": "The historical infrastructure report embeds the additive active-binding publication capability, recipe, schema and recovery identity. Its historical recipe, eligibility, paths, effects and exit outcome remain unchanged; no new volatile values are masked.",
         "baselineSha256": "00e428fcbbb86793bcf3042aa2a7c349266a17e92ea4061a6df9d3933b749a98",
-        "currentSha256": "176511de8a2e826a3ede1bf3d57d34617b3f4b6035da156aa9ebb405edf60b5b",
+        "currentSha256": "8583868275447b0a9f502e353af874750f42a08b639f602f1427a5f82c525b4a",
+        "priorCurrentSha256": "176511de8a2e826a3ede1bf3d57d34617b3f4b6035da156aa9ebb405edf60b5b",
         "changed": [
+          "/json/capabilities/schemas/activeBindingPublication",
           "/json/capabilities/recipes/2",
+          "/json/capabilities/recipes/3",
           "/json/capabilities/recoveryCompatibility/3",
-          "/json/capabilities/currentApplication"
-        ]
+          "/json/capabilities/recoveryCompatibility/4",
+          "/json/capabilities/currentApplication",
+          "/json/capabilities/boundaries/activeBindingPublication"
+        ],
+        "priorChange": {
+          "surface": "cli-json",
+          "key": "repair --check --json",
+          "task": "4.6",
+          "reason": "The historical infrastructure report embeds the additive current-v8 capability declaration. Its historical recipe, eligibility, paths, effects and exit outcome remain unchanged; no new volatile values are masked.",
+          "baselineSha256": "00e428fcbbb86793bcf3042aa2a7c349266a17e92ea4061a6df9d3933b749a98",
+          "currentSha256": "176511de8a2e826a3ede1bf3d57d34617b3f4b6035da156aa9ebb405edf60b5b",
+          "changed": [
+            "/json/capabilities/recipes/2",
+            "/json/capabilities/recoveryCompatibility/3",
+            "/json/capabilities/currentApplication"
+          ]
+        }
       }
     },
     {
       "surface": "cli-json",
       "key": "repair --inspect-layout --json",
-      "task": "7.6",
-      "reason": "The historical application inventory embeds the additive active-binding publication capability, recipe, schema and recovery identity. Its original target, provenance, bounded observations and exit outcome remain unchanged; no new volatile values are masked.",
+      "task": "8.4",
+      "reason": "The historical application inventory embeds the additive-agent repair capability and exact framework boundary. Its original target, provenance, bounded observations and exit outcome remain unchanged; no new volatile values are masked.",
       "baselineSha256": "ac420c0a0da6dcfa788788b7303b9dfb1408513dc8930658ed49dde6f7a6fec1",
-      "currentSha256": "ff5a7f3088767d75298d6dee1133d4d494a12678b4b173a7c438dbd352d55ddf",
-      "priorCurrentSha256": "f8f813d631dfc454dbb589977902d9426eaf108947fc3cdfc70660b4abe38406",
+      "currentSha256": "0d0a7b2c06c3206118dd34434ee68cd53f2147143c8a72ad304218fb6d403132",
+      "priorCurrentSha256": "ff5a7f3088767d75298d6dee1133d4d494a12678b4b173a7c438dbd352d55ddf",
       "changed": [
-        "/json/capabilities/schemas/activeBindingPublication",
-        "/json/capabilities/recipes/2",
-        "/json/capabilities/recipes/3",
-        "/json/capabilities/recoveryCompatibility/3",
-        "/json/capabilities/recoveryCompatibility/4",
-        "/json/capabilities/currentApplication",
-        "/json/capabilities/boundaries/activeBindingPublication"
+        "/json/capabilities/currentApplication/additiveAgentRepair",
+        "/json/capabilities/boundaries/agentInstallation"
       ],
       "priorChange": {
         "surface": "cli-json",
         "key": "repair --inspect-layout --json",
-        "task": "4.6",
-        "reason": "The historical application inventory embeds the additive current-v8 capability declaration. Its original target, provenance, bounded observations and exit outcome remain unchanged; no new volatile values are masked.",
+        "task": "7.6",
+        "reason": "The historical application inventory embeds the additive active-binding publication capability, recipe, schema and recovery identity. Its original target, provenance, bounded observations and exit outcome remain unchanged; no new volatile values are masked.",
         "baselineSha256": "ac420c0a0da6dcfa788788b7303b9dfb1408513dc8930658ed49dde6f7a6fec1",
-        "currentSha256": "f8f813d631dfc454dbb589977902d9426eaf108947fc3cdfc70660b4abe38406",
+        "currentSha256": "ff5a7f3088767d75298d6dee1133d4d494a12678b4b173a7c438dbd352d55ddf",
+        "priorCurrentSha256": "f8f813d631dfc454dbb589977902d9426eaf108947fc3cdfc70660b4abe38406",
         "changed": [
+          "/json/capabilities/schemas/activeBindingPublication",
           "/json/capabilities/recipes/2",
+          "/json/capabilities/recipes/3",
           "/json/capabilities/recoveryCompatibility/3",
-          "/json/capabilities/currentApplication"
-        ]
+          "/json/capabilities/recoveryCompatibility/4",
+          "/json/capabilities/currentApplication",
+          "/json/capabilities/boundaries/activeBindingPublication"
+        ],
+        "priorChange": {
+          "surface": "cli-json",
+          "key": "repair --inspect-layout --json",
+          "task": "4.6",
+          "reason": "The historical application inventory embeds the additive current-v8 capability declaration. Its original target, provenance, bounded observations and exit outcome remain unchanged; no new volatile values are masked.",
+          "baselineSha256": "ac420c0a0da6dcfa788788b7303b9dfb1408513dc8930658ed49dde6f7a6fec1",
+          "currentSha256": "f8f813d631dfc454dbb589977902d9426eaf108947fc3cdfc70660b4abe38406",
+          "changed": [
+            "/json/capabilities/recipes/2",
+            "/json/capabilities/recoveryCompatibility/3",
+            "/json/capabilities/currentApplication"
+          ]
+        }
       }
     },
     {

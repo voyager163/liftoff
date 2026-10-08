@@ -99,7 +99,7 @@ Depends on 3-7. References: design D7-D10; liftoff-project-migration, liftoff-pr
 - [x] 8.1 Implement reviewed workflow-set plans and exact check/apply/recovery interfaces; verify source workflow, target, agent selection, current files, checks and expiry bind one immutable plan.
 - [x] 8.2 Implement external-framework-to-Manual transition without deleting framework documents/history or uninstalling shared tools; verify preserved bytes and correct native local readiness.
 - [x] 8.3 Implement transitions into pinned OpenSpec/Spec Kit using official isolated staging and separate tool/global-profile consent; verify collisions, active overlapping changes and invalid framework output block safely.
-- [ ] 8.4 Complete additive agent/default repair for external workflows and Manual; verify existing integrations/defaults are preserved unless the exact requested change authorizes them.
+- [x] 8.4 Complete additive agent/default repair for external workflows and Manual; verify existing integrations/defaults are preserved unless the exact requested change authorizes them.
 - [ ] 8.5 Add team profile assets, identity, input selection and one-independent-human-review rules while retaining single-maintainer defaults; verify self/bot/stale approvals fail and no deployment-reviewer requirement is added implicitly.
 - [ ] 8.6 Implement profile-specific assessment and a distinct local policy/successor update plan for explicit profile changes; verify stronger existing controls, CODEOWNERS and old proof are not silently weakened/reused.
 - [ ] 8.7 Extend update routing and shared output contracts for workflow/profile/plugin incompatibility; verify ordinary update and force cannot execute another lane or enroll telemetry.

@@ -23,7 +23,8 @@ import {
 } from '../../adapters/filesystem/update-previews.js';
 import {
   validateStagedTree,
-  withStagingArea
+  withStagingArea,
+  type StagingArea
 } from '../../init-filesystem.js';
 import type {
   ProjectFileMutation,
@@ -42,6 +43,10 @@ import type {
   CurrentProjectPlan,
   ProjectPlan
 } from '../../domain/project/contracts.js';
+import {
+  governanceAgentIntegrations,
+  projectAssessmentAgentIntegrations
+} from '../../domain/project/catalog.js';
 import { FileSystemError } from '../../domain/project/errors.js';
 import {
   readManifestPluginMetadata
@@ -49,8 +54,18 @@ import {
 import type { LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import { PlanValidationError } from '../../domain/project/planning.js';
 import {
+  buildOpenSpecInitCommand,
+  buildSpecKitDefaultCommand,
+  buildSpecKitIntegrationInstallCommand,
+  executeFrameworkCommands,
   initializeFramework
 } from '../../framework-adapters.js';
+import {
+  frameworkIntegrationPaths,
+  frameworkOutputPaths,
+  OPEN_SPEC_CODEX_TARGET_PATH,
+  SPEC_KIT_CODEX_CONFIG_PATH
+} from '../../framework-validation.js';
 import { renderLiftoffConfig } from '../../generators/common/base.js';
 import {
   NodeCommandRunner,
@@ -80,7 +95,7 @@ import {
   type WorkflowTransitionPreparationReport
 } from './preparation.js';
 
-export const workflowTransitionPlanSchemaVersion = 2 as const;
+export const workflowTransitionPlanSchemaVersion = 3 as const;
 export const workflowTransitionPlanLifetimeMs = 30 * 60 * 1000;
 
 export type WorkflowTransitionTarget = 'openspec' | 'spec-kit' | 'manual';
@@ -155,8 +170,10 @@ export type WorkflowTransitionTargetFrameworkInventory =
     };
 
 export interface WorkflowTransitionPlanReport {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 2 | 3;
   readonly kind: 'liftoff-workflow-transition-plan';
+  readonly operation: 'workflow-transition' | 'agent-repair';
+  readonly repairAgents: readonly CodingAgentId[];
   readonly projectRoot: string;
   readonly source: {
     readonly workflow: WorkflowTransitionTarget;
@@ -223,7 +240,8 @@ export interface WorkflowTransitionExecutionReport {
   readonly transition:
     | 'external-framework-to-manual'
     | 'manual-to-external-framework'
-    | 'external-framework-to-external-framework';
+    | 'external-framework-to-external-framework'
+    | 'agent-integration-repair';
   readonly preconditionDigest: string;
   readonly preconditionCount: number;
   readonly transactionCandidateBinding: string;
@@ -238,11 +256,13 @@ export interface WorkflowTransitionExecutionReport {
   readonly manifestPublishedLast: true;
   readonly frameworkDocuments:
     | 'preserved-on-disk'
-    | 'official-staged-with-existing-history-preserved';
+    | 'official-staged-with-existing-history-preserved'
+    | 'official-integration-staged-with-history-preserved';
   readonly sharedTools: 'unchanged';
   readonly targetLocalReadiness:
     | 'manual-native-framework-inapplicable'
-    | 'official-framework-initialized';
+    | 'official-framework-initialized'
+    | 'agent-integrations-verified';
   readonly officialStage: null | {
     readonly commands: readonly string[];
     readonly fileCount: number;
@@ -622,11 +642,39 @@ function targetSelection(
   manifest: LiftoffManifestV8,
   target: WorkflowTransitionTarget,
   requestedAgents?: readonly string[],
-  requestedDefaultAgent?: string
+  requestedDefaultAgent?: string,
+  mode: 'replace' | 'additive' = 'replace'
 ) {
-  const agents = requestedAgents === undefined
-    ? [...manifest.project.agents]
-    : requestedAgents.map(agent => agent.trim());
+  const requested = requestedAgents === undefined
+    ? []
+    : projectCatalog.canonicalizeCodingAgents(
+        requestedAgents.map(agent => agent.trim())
+      ).agents.map(agent => agent.id);
+  const canonicalDefault = requestedDefaultAgent === undefined
+    ? undefined
+    : projectCatalog.getCodingAgent(requestedDefaultAgent)?.id;
+  if (requestedDefaultAgent !== undefined &&
+      canonicalDefault === undefined) {
+    invalid(
+      `Unknown workflow default agent: ${requestedDefaultAgent.trim()}.`
+    );
+  }
+  const existingAgents = new Set<string>(manifest.project.agents);
+  const agents: string[] = mode === 'additive'
+    ? [
+        ...manifest.project.agents,
+        ...requested.filter(agent =>
+          !existingAgents.has(agent)
+        ),
+        ...(canonicalDefault &&
+            !existingAgents.has(canonicalDefault) &&
+            !requested.includes(canonicalDefault)
+          ? [canonicalDefault]
+          : [])
+      ]
+    : requestedAgents === undefined
+      ? [...manifest.project.agents]
+      : requested;
   const workload = manifest.project.workload;
   const profile = manifest.governance.profile;
   const plan = buildCurrentProjectPlan({
@@ -642,7 +690,7 @@ function targetSelection(
     agents,
     ...(target === 'spec-kit'
       ? {
-          defaultAgent: requestedDefaultAgent ??
+          defaultAgent: canonicalDefault ??
             (manifest.project.defaultAgent && agents.includes(manifest.project.defaultAgent)
               ? manifest.project.defaultAgent
               : agents.length === 1 ? agents[0] : undefined)
@@ -996,7 +1044,8 @@ async function buildTargetFrameworkCommitInventory(
   projectRoot: string,
   workflow: Exclude<WorkflowTransitionTarget, 'manual'>,
   targetInventory: WorkflowTransitionTargetFrameworkInventory,
-  files: readonly TransitionFrameworkFile[]
+  files: readonly TransitionFrameworkFile[],
+  allowActiveWork = false
 ): Promise<WorkflowTransitionFrameworkInventory> {
   return await withStagingArea(async area => {
     if (targetInventory.status === 'preserved') {
@@ -1036,7 +1085,7 @@ async function buildTargetFrameworkCommitInventory(
     }
     const expected = await inspectFrameworkInventory(area.root, workflow);
     if (expected.status !== 'preserved' ||
-        expected.activeWork.identifiers.length > 0) {
+        !allowActiveWork && expected.activeWork.identifiers.length > 0) {
       invalid(
         'Expected external target commit inventory is incomplete or contains active work.'
       );
@@ -1403,6 +1452,498 @@ async function buildExternalExecution(
   });
 }
 
+function agentRepairLogicalNames(
+  agents: readonly CodingAgentId[]
+): ReadonlySet<string> {
+  return new Set(agents.flatMap(agent => [
+    governanceAgentIntegrations[agent].setup.logicalName,
+    governanceAgentIntegrations[agent].assessment.logicalName,
+    governanceAgentIntegrations[agent].repair.logicalName,
+    projectAssessmentAgentIntegrations[agent].logicalName
+  ]));
+}
+
+async function seedFrameworkRepairStage(
+  area: StagingArea,
+  projectRoot: string,
+  selection: {
+    readonly workflow: 'openspec' | 'spec-kit';
+    readonly agents: readonly CodingAgentId[];
+    readonly defaultAgent: CodingAgentId | null;
+  }
+): Promise<void> {
+  const paths = frameworkOutputPaths({
+    workflow: selection.workflow,
+    agents: [...selection.agents],
+    ...(selection.defaultAgent
+      ? { defaultAgent: selection.defaultAgent }
+      : {})
+  });
+  const seen = new Set<string>();
+  for (const pathParts of paths) {
+    const relativePath = pathParts.join('/');
+    if (seen.has(relativePath)) continue;
+    seen.add(relativePath);
+    const snapshot = await readFrameworkInput(projectRoot, pathParts);
+    if (snapshot.content === undefined) continue;
+    const destination = path.join(area.root, ...pathParts);
+    await mkdir(path.dirname(destination), {
+      recursive: true,
+      mode: 0o700
+    });
+    await writeFile(destination, snapshot.content);
+    if (snapshot.mode !== undefined) {
+      await chmod(destination, snapshot.mode);
+    }
+    area.origins.set(relativePath, 'framework');
+    area.frameworkAllowedRoots.add(pathParts[0]!);
+  }
+}
+
+function frameworkRepairAllowedPaths(
+  workflow: 'openspec' | 'spec-kit',
+  agents: readonly CodingAgentId[],
+  allowDefaultState: boolean
+): ReadonlySet<string> {
+  const paths = agents.flatMap(agent =>
+    frameworkIntegrationPaths(workflow, agent)
+  );
+  if (agents.includes('codex')) {
+    paths.push([
+      ...(workflow === 'openspec'
+        ? OPEN_SPEC_CODEX_TARGET_PATH
+        : SPEC_KIT_CODEX_CONFIG_PATH)
+    ]);
+  }
+  if (workflow === 'spec-kit' && allowDefaultState) {
+    paths.push(['.specify', 'integration.json']);
+  }
+  return new Set(paths.map(parts => parts.join('/')));
+}
+
+async function stageExternalAgentRepair(
+  projectRoot: string,
+  selected: ReturnType<typeof targetSelection>,
+  source: WorkflowTransitionPlanReport['source'],
+  repairAgents: readonly CodingAgentId[],
+  defaultChanged: boolean,
+  options: {
+    readonly runner: CommandRunner;
+    readonly env?: NodeJS.ProcessEnv;
+    readonly streamOptions?: Pick<RunCommandOptions, 'stdout' | 'stderr'>;
+    readonly onCommand?: (command: string) => void;
+  }
+): Promise<{
+  readonly commands: readonly string[];
+  readonly files: readonly TransitionFrameworkFile[];
+  readonly totalBytes: number;
+  readonly digest: string;
+}> {
+  if (!isExternalProjectPlan(selected.plan) ||
+      selected.target.workflow === 'manual' ||
+      source.workflow === 'manual' ||
+      source.workflow !== selected.target.workflow) {
+    invalid('External agent repair requires one initialized unchanged framework.');
+  }
+  const externalPlan = selected.plan as ProjectPlan;
+  const workflow = selected.target.workflow as 'openspec' | 'spec-kit';
+  const allowed = frameworkRepairAllowedPaths(
+    workflow,
+    repairAgents,
+    defaultChanged || repairAgents.length > 0
+  );
+  return await withStagingArea(async area => {
+    await seedFrameworkRepairStage(area, projectRoot, {
+      workflow,
+      agents: source.agents,
+      defaultAgent: source.defaultAgent
+    });
+    const commands = workflow === 'openspec'
+      ? [buildOpenSpecInitCommand(externalPlan)]
+      : [
+          ...repairAgents.map(agent => {
+            const selectedAgent = externalPlan.agents.find(
+              candidate => candidate.id === agent
+            );
+            if (!selectedAgent) {
+              invalid(`Requested repair agent ${agent} is not selected.`);
+            }
+            return buildSpecKitIntegrationInstallCommand(
+              externalPlan,
+              selectedAgent
+            );
+          }),
+          ...(defaultChanged
+            ? [buildSpecKitDefaultCommand(externalPlan)]
+            : [])
+        ];
+    if (commands.length === 0) {
+      return Object.freeze({
+        commands: Object.freeze([]),
+        files: Object.freeze([]),
+        totalBytes: 0,
+        digest: canonicalSha256([])
+      });
+    }
+    const result = await executeFrameworkCommands(
+      area,
+      externalPlan,
+      commands,
+      options.runner,
+      {
+        env: options.env,
+        ...options.streamOptions,
+        onCommand: options.onCommand
+      }
+    );
+    const changed = new Set(result.changedPaths);
+    const staged = await validateStagedTree(area);
+    const changedFiles: TransitionFrameworkFile[] = staged
+      .filter(file => changed.has(file.relativePath))
+      .map(file => Object.freeze({
+        pathParts: Object.freeze([...file.pathParts]),
+        relativePath: file.relativePath,
+        content: Buffer.from(file.content),
+        contentHash: file.contentHash,
+        mode: file.mode,
+        origin: 'official' as const
+      }));
+    const changedFilePaths = new Set(
+      changedFiles.map(file => file.relativePath)
+    );
+    for (const changedPath of changed) {
+      if (changedFilePaths.has(changedPath) ||
+          changedFiles.some(file =>
+            file.relativePath.startsWith(`${changedPath}/`)
+          )) {
+        continue;
+      }
+      invalid(
+        `Official ${selected.target.workflow} agent repair removed or created an untracked empty path: ${changedPath}.`
+      );
+    }
+    for (const file of changedFiles) {
+      if (!allowed.has(file.relativePath)) {
+        invalid(
+          `Official ${selected.target.workflow} agent repair changed an unapproved path: ${file.relativePath}.`
+        );
+      }
+    }
+    const totalBytes = changedFiles.reduce(
+      (total, file) => total + file.content.length,
+      0
+    );
+    if (changedFiles.length > maximumFrameworkFiles ||
+        totalBytes > maximumFrameworkBytes) {
+      invalid('Official agent repair output exceeds its bounded file inventory.');
+    }
+    return Object.freeze({
+      commands: Object.freeze([...result.commands]),
+      files: Object.freeze(changedFiles),
+      totalBytes,
+      digest: canonicalSha256(changedFiles.map(file => ({
+        pathParts: file.pathParts,
+        contentHash: file.contentHash,
+        bytes: file.content.length,
+        mode: file.mode
+      })))
+    });
+  });
+}
+
+async function buildAgentRepairExecution(
+  projectRoot: string,
+  manifest: LiftoffManifestV8,
+  manifestSnapshot: ProjectFileSnapshot,
+  configSnapshot: ProjectFileSnapshot,
+  selected: ReturnType<typeof targetSelection>,
+  source: WorkflowTransitionPlanReport['source'],
+  targetInventory: WorkflowTransitionTargetFrameworkInventory,
+  repairAgents: readonly CodingAgentId[],
+  options: {
+    readonly runner: CommandRunner;
+    readonly env?: NodeJS.ProcessEnv;
+    readonly streamOptions?: Pick<RunCommandOptions, 'stdout' | 'stderr'>;
+    readonly onCommand?: (command: string) => void;
+  }
+): Promise<WorkflowTransitionExecutionCandidate | null> {
+  if (source.workflow !== selected.target.workflow ||
+      manifest.project.specWorkflow !== source.workflow ||
+      repairAgents.some(agent => !selected.target.agents.includes(agent))) {
+    invalid('Agent repair must preserve the recorded workflow and add only selected agents.');
+  }
+  const defaultChanged =
+    source.defaultAgent !== selected.target.defaultAgent;
+  const staged = selected.target.workflow === 'manual'
+    ? null
+    : await stageExternalAgentRepair(
+        projectRoot,
+        selected,
+        source,
+        repairAgents,
+        defaultChanged,
+        options
+      );
+  const sourceSelected = targetSelection(
+    manifest,
+    source.workflow,
+    source.agents,
+    source.defaultAgent ?? undefined
+  );
+  const sourceManaged = buildModernManagedCore({
+    selection: sourceSelected.selection,
+    plugins: sourceSelected.plugins,
+    activeLayout: manifest.activeLayout
+  });
+  const targetManaged = buildModernManagedCore({
+    selection: selected.selection,
+    plugins: selected.plugins,
+    activeLayout: manifest.activeLayout
+  });
+  const sourceManagedByName = new Map(
+    sourceManaged.map(artifact => [artifact.logicalName, artifact])
+  );
+  const targetManagedByName = new Map(
+    targetManaged.map(artifact => [artifact.logicalName, artifact])
+  );
+  const repairNames = agentRepairLogicalNames(repairAgents);
+  const decisions: ManagedManifestDecision[] = [
+    ...manifest.managedArtifacts.map(artifact => ({
+      kind: 'retain' as const,
+      logicalName: artifact.logicalName
+    })),
+    ...targetManaged
+      .filter(artifact =>
+        !sourceManagedByName.has(artifact.logicalName)
+      )
+      .map(artifact => ({
+        kind: 'bytes' as const,
+        logicalName: artifact.logicalName,
+        category: artifact.category,
+        pathParts: artifact.pathParts,
+        content: artifact.content
+      }))
+  ];
+  const candidateManifest = createManifestV8Candidate({
+    origin: 'workflow-transition',
+    source: manifest,
+    selection: selected.selection,
+    activeLayout: manifest.activeLayout,
+    managed: decisions
+  });
+  const configContent = `${renderLiftoffConfig(selected.plan)}\n`;
+  const snapshots = new Map<string, ProjectFileSnapshot>([
+    ['liftoff.manifest.json', manifestSnapshot],
+    ['liftoff.config.json', configSnapshot]
+  ]);
+  const mutations: ProjectFileMutation[] = [];
+  const identities: Array<Pick<
+    WorkflowTransitionEffect,
+    'logicalName' | 'kind' | 'operation' | 'pathParts'
+  >> = [];
+  for (const file of staged?.files ?? []) {
+    const snapshot = await readFrameworkInput(projectRoot, file.pathParts);
+    snapshots.set(file.relativePath, snapshot);
+    const mutableSpecKitState =
+      selected.target.workflow === 'spec-kit' &&
+      file.relativePath === '.specify/integration.json';
+    if (snapshot.content !== undefined &&
+        (!snapshot.content.equals(file.content) ||
+          snapshot.mode !== file.mode) &&
+        !mutableSpecKitState) {
+      invalid(
+        `Requested ${selected.target.workflow} agent repair collides with existing bytes or mode at ${file.relativePath}.`
+      );
+    }
+    if (snapshot.content?.equals(file.content) &&
+        snapshot.mode === file.mode) {
+      continue;
+    }
+    mutations.push({
+      type: 'write',
+      pathParts: [...file.pathParts],
+      content: file.content,
+      mode: file.mode
+    });
+    identities.push({
+      logicalName: `framework:${file.relativePath}`,
+      kind: 'framework',
+      operation: 'write',
+      pathParts: [...file.pathParts]
+    });
+  }
+  const sourceManifestByName = new Map(
+    manifest.managedArtifacts.map(artifact => [
+      artifact.logicalName,
+      artifact
+    ])
+  );
+  for (const logicalName of [...repairNames].sort((left, right) =>
+    left.localeCompare(right, 'en'))) {
+    const sourceArtifact = sourceManagedByName.get(logicalName);
+    const targetArtifact = targetManagedByName.get(logicalName);
+    const artifact = sourceArtifact ?? targetArtifact;
+    if (!artifact) continue;
+    const recorded = sourceManifestByName.get(logicalName);
+    if (recorded && !sourceArtifact) {
+      invalid(
+        `Recorded managed integration ${logicalName} lacks its source producer.`
+      );
+    }
+    if (recorded &&
+        `sha256:${digest(Buffer.from(artifact.content, 'utf8'))}` !==
+          recorded.contentHash) {
+      invalid(
+        `Recorded managed integration ${logicalName} cannot be reproduced exactly by this CLI.`
+      );
+    }
+    const key = artifact.pathParts.join('/');
+    const snapshot = await readInput(
+      projectRoot,
+      artifact.pathParts,
+      false
+    );
+    snapshots.set(key, snapshot);
+    if (snapshot.content !== undefined) {
+      if (snapshot.content.toString('utf8') !== artifact.content) {
+        invalid(
+          `Requested Liftoff agent integration ${key} is occupied by different bytes.`
+        );
+      }
+      continue;
+    }
+    mutations.push({
+      type: 'write',
+      pathParts: [...artifact.pathParts],
+      content: artifact.content
+    });
+    identities.push({
+      logicalName: artifact.logicalName,
+      kind: 'managed-core',
+      operation: 'write',
+      pathParts: [...artifact.pathParts]
+    });
+  }
+  if (configSnapshot.content?.toString('utf8') !== configContent) {
+    mutations.push({
+      type: 'write',
+      pathParts: ['liftoff.config.json'],
+      content: configContent
+    });
+    identities.push({
+      logicalName: 'liftoff-config',
+      kind: 'desired-state',
+      operation: 'write',
+      pathParts: ['liftoff.config.json']
+    });
+  }
+  if (manifestSnapshot.content?.toString('utf8') !==
+      candidateManifest.content) {
+    mutations.push({
+      type: 'write',
+      pathParts: ['liftoff.manifest.json'],
+      content: candidateManifest.content
+    });
+    identities.push({
+      logicalName: 'manifest',
+      kind: 'manifest',
+      operation: 'write',
+      pathParts: ['liftoff.manifest.json']
+    });
+  }
+  if (mutations.length === 0) return null;
+  if (identities.some(identity => identity.operation !== 'write') ||
+      identities.some((identity, index) =>
+        identity.kind === 'manifest' && index !== identities.length - 1
+      )) {
+    invalid('Agent repair may only add exact integrations and publish its manifest last.');
+  }
+  const preconditions = [...snapshots.values()];
+  const transaction = await inspectWorkflowTransitionTransactionCandidate(
+    projectRoot,
+    mutations,
+    preconditions
+  );
+  if (transaction.size.kind !== 'journal' ||
+      transaction.payload.mutations.length !== mutations.length ||
+      identities.length !== mutations.length) {
+    invalid('Agent repair transaction measurement is incomplete.');
+  }
+  const effects = identities.map((identity, index) => {
+    const measured = transaction.payload.mutations[index]?.target;
+    if (measured?.kind !== 'file') {
+      invalid('Agent repair effect measurement is missing.');
+    }
+    return Object.freeze({
+      ...identity,
+      pathParts: Object.freeze([...identity.pathParts]),
+      contentDigest: measured.sha256,
+      contentBytes: Buffer.byteLength(
+        (mutations[index] as Extract<
+          ProjectFileMutation, { type: 'write' }
+        >).content
+      ),
+      mode: measured.mode
+    });
+  });
+  const targetFrameworkCommitInventory =
+    selected.target.workflow === 'manual'
+      ? null
+      : await buildTargetFrameworkCommitInventory(
+          projectRoot,
+          selected.target.workflow,
+          targetInventory,
+          staged?.files ?? [],
+          true
+        );
+  const report: WorkflowTransitionExecutionReport = Object.freeze({
+    status: 'ready-for-file-approval',
+    transition: 'agent-integration-repair',
+    preconditionDigest: canonicalSha256(
+      preconditions.map(snapshotDescriptor)
+    ),
+    preconditionCount: preconditions.length,
+    transactionCandidateBinding: transaction.binding,
+    transactionCandidateDigest: canonicalSha256(transaction.payload),
+    transactionSize: Object.freeze({
+      mutationCount: transaction.size.mutationCount,
+      suppliedPreconditionCount:
+        transaction.size.suppliedPreconditionCount,
+      snapshotBytes: transaction.size.snapshotBytes,
+      completeJournalBytes: transaction.size.completeJournalBytes
+    }),
+    effects: Object.freeze(effects),
+    manifestPublishedLast: true,
+    frameworkDocuments: selected.target.workflow === 'manual'
+      ? 'preserved-on-disk'
+      : 'official-integration-staged-with-history-preserved',
+    sharedTools: 'unchanged',
+    targetLocalReadiness: 'agent-integrations-verified',
+    officialStage: staged
+      ? Object.freeze({
+          commands: staged.commands,
+          fileCount: staged.files.length,
+          totalBytes: staged.totalBytes,
+          digest: staged.digest
+        })
+      : null,
+    targetFrameworkCommitInventory,
+    recovery: Object.freeze({
+      transactionKind: 'workflow-transition',
+      journalPathParts: Object.freeze([
+        ...workflowTransitionTransactionPathParts
+      ]),
+      selectedBy:
+        'plan-fingerprint-and-observed-transaction-digest'
+    })
+  });
+  return Object.freeze({
+    report,
+    mutations: Object.freeze(mutations),
+    preconditions: Object.freeze(preconditions)
+  });
+}
+
 function isExternalProjectPlan(
   plan: CurrentProjectPlan
 ): plan is ProjectPlan {
@@ -1410,9 +1951,12 @@ function isExternalProjectPlan(
     plan.specWorkflow.id === 'spec-kit';
 }
 
-function validateFingerprint(report: WorkflowTransitionPlanReport): void {
+function validateFingerprint(
+  report: Record<string, unknown> & { readonly fingerprint?: unknown }
+): void {
   const { fingerprint, ...unsigned } = report;
-  if (!/^[a-f0-9]{64}$/u.test(fingerprint) ||
+  if (typeof fingerprint !== 'string' ||
+      !/^[a-f0-9]{64}$/u.test(fingerprint) ||
       canonicalSha256(unsigned) !== fingerprint) {
     invalid('Workflow transition plan fingerprint is invalid.');
   }
@@ -1869,7 +2413,8 @@ function validateChecks(
 function validateExecution(
   value: unknown,
   source: WorkflowTransitionPlanReport['source'],
-  target: WorkflowTransitionPlanReport['target']
+  target: WorkflowTransitionPlanReport['target'],
+  operation: WorkflowTransitionPlanReport['operation']
 ): void {
   if (!isRecord(value)) {
     invalid('Workflow transition execution must be an object.');
@@ -1891,7 +2436,55 @@ function validateExecution(
       execution.sharedTools !== 'unchanged') {
     invalid('Workflow transition executable identity is invalid.');
   }
-  if (manual) {
+  if (operation === 'agent-repair') {
+    if (execution.transition !== 'agent-integration-repair' ||
+        source.workflow !== target.workflow ||
+        execution.frameworkDocuments !==
+          (target.workflow === 'manual'
+            ? 'preserved-on-disk'
+            : 'official-integration-staged-with-history-preserved') ||
+        execution.targetLocalReadiness !==
+          'agent-integrations-verified') {
+      invalid('Agent repair executable identity is invalid.');
+    }
+    if (target.workflow === 'manual') {
+      if (execution.officialStage !== null ||
+          execution.targetFrameworkCommitInventory !== null) {
+        invalid('Manual agent repair cannot stage an external framework.');
+      }
+    } else {
+      const stage = exactRecord(execution.officialStage, [
+        'commands', 'fileCount', 'totalBytes', 'digest'
+      ], 'Agent repair official stage');
+      const stageCommands = denseArray(
+        stage.commands,
+        16,
+        'Agent repair official stage commands'
+      );
+      if (stageCommands.length === 0 ||
+          stageCommands.some(command =>
+            typeof command !== 'string' || !command
+          ) ||
+          !Number.isSafeInteger(stage.fileCount) ||
+          Number(stage.fileCount) < 0 ||
+          Number(stage.fileCount) > maximumFrameworkFiles ||
+          !Number.isSafeInteger(stage.totalBytes) ||
+          Number(stage.totalBytes) < 0 ||
+          Number(stage.totalBytes) > maximumFrameworkBytes) {
+        invalid('Agent repair official stage inventory is invalid.');
+      }
+      sha256(stage.digest, 'Agent repair official stage digest');
+      validateTargetFrameworkInventory(
+        execution.targetFrameworkCommitInventory,
+        target
+      );
+      const commitInventory =
+        execution.targetFrameworkCommitInventory as { status?: unknown };
+      if (commitInventory.status !== 'preserved') {
+        invalid('Agent repair commit inventory must be preserved.');
+      }
+    }
+  } else if (manual) {
     if (execution.transition !== 'external-framework-to-manual' ||
         source.workflow === 'manual' ||
         source.frameworkState !== 'initialized' ||
@@ -2028,11 +2621,18 @@ function validateExecution(
       invalid(`Workflow transition effect ${index} deletion is invalid.`);
     }
   });
+  const manifestIndex = effects.findIndex(effect =>
+    isRecord(effect) && effect.kind === 'manifest'
+  );
   const last = effects.at(-1) as Record<string, unknown> | undefined;
-  if (last?.kind !== 'manifest' ||
-      canonicalJson(last.pathParts) !==
-        canonicalJson(['liftoff.manifest.json'])) {
-    invalid('Workflow transition manifest effect must be last.');
+  if (operation === 'workflow-transition' &&
+      (last?.kind !== 'manifest' ||
+        canonicalJson(last.pathParts) !==
+          canonicalJson(['liftoff.manifest.json'])) ||
+      operation === 'agent-repair' &&
+      manifestIndex >= 0 &&
+      manifestIndex !== effects.length - 1) {
+    invalid('Workflow or agent repair manifest effect must be last when present.');
   }
   const recovery = exactRecord(execution.recovery, [
     'transactionKind', 'journalPathParts', 'selectedBy'
@@ -2063,20 +2663,42 @@ function validatePlan(
   allowExpired = false
 ): WorkflowTransitionPlanReport {
   if (!isRecord(value)) invalid('Workflow transition plan must be an object.');
-  const exact = [
-    'schemaVersion', 'kind', 'projectRoot', 'source', 'target',
+  const currentFields = [
+    'schemaVersion', 'kind', 'operation', 'repairAgents', 'projectRoot',
+    'source', 'target',
     'governanceProfile', 'inputs', 'frameworkInventory',
     'targetFrameworkInventory', 'preparation', 'checks',
     'applicationFiles', 'gitHistory', 'frameworkHistory', 'execution',
     'createdAt', 'expiresAt', 'fingerprint'
   ];
+  const legacy = value.schemaVersion === 2 &&
+    !Object.hasOwn(value, 'operation') &&
+    !Object.hasOwn(value, 'repairAgents');
+  const exact = legacy
+    ? currentFields.filter(field =>
+        field !== 'operation' && field !== 'repairAgents'
+      )
+    : currentFields;
   if (Object.keys(value).length !== exact.length ||
       exact.some(field => !Object.hasOwn(value, field))) {
     invalid('Workflow transition plan fields are invalid.');
   }
-  const report = value as unknown as WorkflowTransitionPlanReport;
-  if (report.schemaVersion !== workflowTransitionPlanSchemaVersion ||
+  const report = (legacy
+    ? Object.defineProperties(structuredClone(value), {
+        operation: {
+          value: 'workflow-transition' as const,
+          enumerable: false
+        },
+        repairAgents: {
+          value: Object.freeze([] as CodingAgentId[]),
+          enumerable: false
+        }
+      })
+    : value) as unknown as WorkflowTransitionPlanReport;
+  if ((!legacy &&
+        report.schemaVersion !== workflowTransitionPlanSchemaVersion) ||
       report.kind !== 'liftoff-workflow-transition-plan' ||
+      !['workflow-transition', 'agent-repair'].includes(report.operation) ||
       report.projectRoot !== projectRoot ||
       report.applicationFiles !== 'preserved' ||
       report.gitHistory !== 'preserved' ||
@@ -2085,6 +2707,30 @@ function validatePlan(
   }
   validateSelection(report.source, true);
   validateSelection(report.target, false);
+  const repairAgents = projectCatalog.canonicalizeCodingAgents([
+    ...report.repairAgents
+  ]).agents.map(agent => agent.id);
+  if (canonicalJson(repairAgents) !== canonicalJson(report.repairAgents) ||
+      (report.operation === 'agent-repair'
+        ? repairAgents.length === 0 ||
+          repairAgents.some(agent => !report.target.agents.includes(agent))
+        : repairAgents.length !== 0)) {
+    invalid('Workflow transition repair-agent identity is invalid.');
+  }
+  if (report.operation === 'agent-repair' &&
+      (report.source.workflow !== report.target.workflow ||
+        report.source.agents.some(agent =>
+          !report.target.agents.includes(agent)
+        ) ||
+        report.target.agents.some(agent =>
+          !report.source.agents.includes(agent) &&
+          !repairAgents.includes(agent)
+        ) ||
+        report.source.defaultAgent !== report.target.defaultAgent &&
+        (report.target.defaultAgent === null ||
+          !repairAgents.includes(report.target.defaultAgent)))) {
+    invalid('Agent repair must preserve its workflow and every existing agent.');
+  }
   if (!['none', 'single-maintainer-gitflow', 'team-gitflow'].includes(
     report.governanceProfile
   )) {
@@ -2098,14 +2744,19 @@ function validatePlan(
   );
   validatePreparation(report.preparation, report.target);
   validateChecks(report.checks, report.target.workflow);
-  validateExecution(report.execution, report.source, report.target);
+  validateExecution(
+    report.execution,
+    report.source,
+    report.target,
+    report.operation
+  );
   if (report.execution.status === 'ready-for-file-approval' &&
       (report.target.workflow === 'manual'
         ? report.preparation.status !== 'not-required'
         : report.preparation.status !== 'ready')) {
     invalid('Workflow transition execution lacks its exact preparation state.');
   }
-  validateFingerprint(report);
+  validateFingerprint(value);
   const created = Date.parse(report.createdAt);
   const expires = Date.parse(report.expiresAt);
   if (!Number.isFinite(created) || !Number.isFinite(expires) ||
@@ -2114,7 +2765,9 @@ function validatePlan(
       !allowExpired && expires <= now.getTime()) {
     invalid('Workflow transition plan is future-dated, expired, or has an invalid lifetime.');
   }
-  return deepFreeze(structuredClone(report));
+  return legacy
+    ? deepFreeze(report)
+    : deepFreeze(structuredClone(report));
 }
 
 export async function prepareWorkflowTransitionPlan(
@@ -2131,6 +2784,7 @@ export async function prepareWorkflowTransitionPlan(
     readonly workstationNoProgressStore?: WorkstationNoProgressStore;
     readonly installTools?: boolean;
     readonly configureOpenSpecProfile?: boolean;
+    readonly agentRepair?: boolean;
     readonly streamOptions?: Pick<RunCommandOptions, 'stdout' | 'stderr'>;
     readonly authorizeTool?:
       WorkflowTransitionPreparationOptions['authorizeTool'];
@@ -2156,9 +2810,28 @@ export async function prepareWorkflowTransitionPlan(
   if (manifest.artifactVersion !== 8) {
     invalid('Workflow transitions require a current manifest-v8 project; run the supported update first.');
   }
+  const agentRepair = options.agentRepair === true;
+  if (agentRepair && target !== manifest.project.specWorkflow) {
+    invalid('Agent repair cannot change the recorded development workflow.');
+  }
   const selection = targetSelection(
-    manifest, target, options.agents, options.defaultAgent
+    manifest,
+    target,
+    options.agents,
+    options.defaultAgent,
+    agentRepair ? 'additive' : 'replace'
   );
+  const repairAgents = agentRepair
+    ? projectCatalog.canonicalizeCodingAgents([
+        ...(options.agents ?? []),
+        ...(options.defaultAgent ? [options.defaultAgent] : [])
+      ]).agents.map(agent => agent.id)
+    : [];
+  if (agentRepair && repairAgents.length === 0) {
+    invalid(
+      'Agent repair requires at least one explicit agent or Spec Kit default.'
+    );
+  }
   const source = Object.freeze({
     workflow: manifest.project.specWorkflow,
     agents: Object.freeze([...manifest.project.agents]),
@@ -2172,7 +2845,8 @@ export async function prepareWorkflowTransitionPlan(
     canonicalJson(source.agents) ===
       canonicalJson(selection.target.agents) &&
     source.defaultAgent === selection.target.defaultAgent;
-  if (!current &&
+  if (!agentRepair &&
+      !current &&
       source.workflow === selection.target.workflow &&
       selection.target.workflow !== 'manual') {
     invalid(
@@ -2192,7 +2866,15 @@ export async function prepareWorkflowTransitionPlan(
     : source.frameworkState === 'initialized'
       ? await inspectFrameworkInventory(projectRoot, source.workflow)
       : unavailableFrameworkInventory(source.workflow);
-  const targetFrameworkInventory = current
+  const targetFrameworkInventory = agentRepair
+    ? frameworkInventory.status === 'preserved' ||
+        frameworkInventory.status === 'not-applicable'
+      ? frameworkInventory
+      : await inspectTargetFrameworkInventory(
+          projectRoot,
+          selection.target.workflow
+        )
+    : current
     ? source.workflow === 'manual'
       ? await inspectTargetFrameworkInventory(
           projectRoot,
@@ -2208,7 +2890,8 @@ export async function prepareWorkflowTransitionPlan(
         projectRoot,
         selection.target.workflow
       );
-  if (!current &&
+  if (!agentRepair &&
+      !current &&
       selection.target.workflow !== 'manual' &&
       frameworkInventory.status === 'preserved' &&
       frameworkInventory.workflow !== selection.target.workflow &&
@@ -2218,7 +2901,7 @@ export async function prepareWorkflowTransitionPlan(
     );
   }
   const runner = options.runner ?? new NodeCommandRunner();
-  const preparationResult = current
+  const preparationResult = current && !agentRepair
     ? Object.freeze({
         report: Object.freeze({
           status: 'not-required' as const,
@@ -2278,9 +2961,30 @@ export async function prepareWorkflowTransitionPlan(
       status: 'required' as const
     })
   ]);
-  const execution = current
-    ? Object.freeze({ status: 'not-required' as const })
-    : source.workflow !== 'manual' &&
+  const execution = agentRepair
+    ? preparationResult.report.status === 'ready' ||
+        selection.target.workflow === 'manual'
+      ? (await buildAgentRepairExecution(
+          projectRoot,
+          manifest,
+          manifestSnapshot,
+          configSnapshot,
+          selection,
+          source,
+          targetFrameworkInventory,
+          repairAgents,
+          {
+            runner,
+            env: options.env,
+            streamOptions: options.streamOptions,
+            onCommand: options.onCommand
+          }
+        ))?.report ??
+          Object.freeze({ status: 'not-required' as const })
+      : Object.freeze({ status: 'unavailable' as const })
+    : current
+      ? Object.freeze({ status: 'not-required' as const })
+      : source.workflow !== 'manual' &&
         source.frameworkState === 'initialized' &&
         selection.target.workflow === 'manual'
       ? (await buildManualExecution(
@@ -2311,6 +3015,10 @@ export async function prepareWorkflowTransitionPlan(
   const unsigned = {
     schemaVersion: workflowTransitionPlanSchemaVersion,
     kind: 'liftoff-workflow-transition-plan' as const,
+    operation: agentRepair
+      ? 'agent-repair' as const
+      : 'workflow-transition' as const,
+    repairAgents: Object.freeze([...repairAgents]),
     projectRoot,
     source,
     target: selection.target,
@@ -2354,6 +3062,31 @@ export async function readWorkflowTransitionPlan(
   const plan = validatePlan(stored.value, stored.projectRoot, now);
   if (plan.fingerprint !== fingerprint) {
     invalid('Workflow transition plan storage key does not match its fingerprint.');
+  }
+  return plan;
+}
+
+export async function readWorkflowTransitionPlanIfPresent(
+  projectRoot: string,
+  fingerprint: string,
+  now: Date,
+  storage?: UpdatePreviewOptions,
+  allowExpired = false
+): Promise<WorkflowTransitionPlanReport | undefined> {
+  const stored = await createScopedUserLocalRecordStore(
+    projectRoot, 'workflow-transition-plan', storage
+  ).read(fingerprint);
+  if (!stored) return undefined;
+  const plan = validatePlan(
+    stored.value,
+    stored.projectRoot,
+    now,
+    allowExpired
+  );
+  if (plan.fingerprint !== fingerprint) {
+    invalid(
+      'Workflow transition plan storage key does not match its fingerprint.'
+    );
   }
   return plan;
 }
@@ -2539,7 +3272,24 @@ export async function rebuildWorkflowTransitionExecution(
     plan.target.agents,
     plan.target.defaultAgent ?? undefined
   );
-  const rebuilt = plan.target.workflow === 'manual'
+  const rebuilt = plan.operation === 'agent-repair'
+    ? await buildAgentRepairExecution(
+        plan.projectRoot,
+        manifest,
+        manifestSnapshot,
+        configSnapshot,
+        selection,
+        plan.source,
+        plan.targetFrameworkInventory,
+        plan.repairAgents,
+        {
+          runner: options.runner ?? new NodeCommandRunner(),
+          env: options.env,
+          streamOptions: options.streamOptions,
+          onCommand: options.onCommand
+        }
+      )
+    : plan.target.workflow === 'manual'
     ? await buildManualExecution(
         plan.projectRoot,
         manifest,
@@ -2562,7 +3312,8 @@ export async function rebuildWorkflowTransitionExecution(
           onCommand: options.onCommand
         }
       );
-  if (canonicalJson(rebuilt.report) !== canonicalJson(plan.execution)) {
+  if (!rebuilt ||
+      canonicalJson(rebuilt.report) !== canonicalJson(plan.execution)) {
     invalid(
       'Workflow transition effects or physical preconditions changed after preview.'
     );
@@ -2578,6 +3329,7 @@ export function workflowSelectionMatches(
     readonly defaultAgent?: string;
   }
 ): boolean {
+  if (plan.operation !== 'workflow-transition') return false;
   const agents = input.agents === undefined
     ? undefined
     : projectCatalog.canonicalizeCodingAgents([...input.agents]).agents.map(
@@ -2592,6 +3344,27 @@ export function workflowSelectionMatches(
     (input.defaultAgent === undefined ||
       defaultAgent !== undefined &&
       plan.target.defaultAgent === defaultAgent);
+}
+
+export function agentRepairSelectionMatches(
+  plan: WorkflowTransitionPlanReport,
+  input: {
+    readonly agents?: readonly string[];
+    readonly defaultAgent?: string;
+  }
+): boolean {
+  if (plan.operation !== 'agent-repair') return false;
+  if (input.agents === undefined && input.defaultAgent === undefined) {
+    return true;
+  }
+  const requested = projectCatalog.canonicalizeCodingAgents([
+    ...(input.agents ?? []),
+    ...(input.defaultAgent ? [input.defaultAgent] : [])
+  ]).agents.map(agent => agent.id);
+  return canonicalJson(requested) === canonicalJson(plan.repairAgents) &&
+    (input.defaultAgent === undefined ||
+      projectCatalog.getCodingAgent(input.defaultAgent)?.id ===
+        plan.target.defaultAgent);
 }
 
 export function isCurrentWorkflowSelection(

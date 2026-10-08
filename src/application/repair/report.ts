@@ -11,11 +11,18 @@ import type {
 } from './active-binding-publication.js';
 import type { RepairWorkspaceInspection, RepairWorkspaceRecoveryResult } from './workspaces-types.js';
 import { repairCapabilities } from './capabilities.js';
+import type {
+  WorkflowTransitionExecutionOutcome
+} from '../workflow-transition/execution.js';
+import type {
+  WorkflowTransitionPlanReport
+} from '../workflow-transition/plan.js';
 
 export type RepairScope =
   | 'local-infrastructure'
   | 'application-layout'
   | 'active-binding-publication'
+  | 'agent-integration'
   | 'repair-recovery';
 
 interface RepairActionBase {
@@ -85,6 +92,9 @@ export interface RepairReport {
   recovery?: { schemaVersion?: number; identity?: RepairExecutionIdentity };
   privateWorkspaces?: RepairWorkspaceInspection;
   privateWorkspaceRecovery?: RepairWorkspaceRecoveryResult;
+  agentPlan?: WorkflowTransitionPlanReport;
+  agentTransaction?: WorkflowTransitionExecutionOutcome;
+  machineChanges?: readonly string[];
 }
 
 export function emitRepairReport(context: ExecutionContext, json: boolean, report: RepairReport): void {
@@ -101,6 +111,7 @@ export function emitRepairReport(context: ExecutionContext, json: boolean, repor
     { label: 'Project', value: report.projectRoot },
     { label: 'Scope', value: report.requestedScope === 'application-layout' ? 'Reviewed application files' :
       report.requestedScope === 'active-binding-publication' ? 'Reviewed active bindings' :
+      report.requestedScope === 'agent-integration' ? 'Additive agent integrations' :
       report.requestedScope === 'repair-recovery' ? 'Recorded interrupted repair' : 'Local Azure infrastructure layout' },
     ...(report.layout ? [{ label: 'Layout', value: report.layout }] : []),
     ...(report.eligibility ? [{ label: 'Eligibility', value: report.eligibility.status }] : []),
@@ -113,6 +124,21 @@ export function emitRepairReport(context: ExecutionContext, json: boolean, repor
   if (report.operations?.length) context.presentation.bullets('Exact project file changes',
     report.operations.map((entry) =>
       `${entry.type} ${entry.pathParts.join('/')}${entry.digest ? ` (SHA-256 ${entry.digest})` : ''}`));
+  if (report.agentPlan?.execution.status === 'ready-for-file-approval') {
+    context.presentation.bullets(
+      'Exact additive agent changes',
+      report.agentPlan.execution.effects.map(effect =>
+        `${effect.operation} ${effect.pathParts.join('/')} ` +
+        `(SHA-256 ${effect.contentDigest ?? 'deleted'})`
+      )
+    );
+  }
+  if (report.machineChanges?.length) {
+    context.presentation.bullets(
+      'Separately authorized machine changes',
+      [...report.machineChanges]
+    );
+  }
   if (report.applicationSummary?.length) context.presentation.bullets('Application review', report.applicationSummary);
   if (report.validationSummary?.length) context.presentation.bullets('Separate validation effects', report.validationSummary);
   if (report.bindingPublication) context.presentation.definitions('Active-binding publication', [

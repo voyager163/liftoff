@@ -64,6 +64,18 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
             'replacement, or implicit telemetry enrollment is authorized. Exit 2: safe preview or ' +
             'existing-project route needs further review; 1: invalid/unsafe/unavailable approval or recovery.'
         }
+      : command === 'repair'
+      ? {
+          ...commandDefinitions.repair,
+          description:
+            'Reviewed project repair with independent infrastructure, application and additive-agent scopes. ' +
+            'Use --agents to add selections without removing existing agents; --default-agent explicitly changes only a current Spec Kit default. ' +
+            'Manual writes only requested Liftoff-native integrations. OpenSpec and Spec Kit use pinned official operations in isolated staging, ' +
+            'preserve existing framework history/defaults unless explicitly changed, and reject unknown output or occupied differing destinations. ' +
+            '--check and JSON preview without project writes. Workstation tools, the OpenSpec global profile and exact project files require separate ' +
+            'permissions. --approve-plan applies one current saved plan; --recover --approve-plan addresses only its authenticated additive-agent transaction. ' +
+            'Agent repair remains independently eligible while unrelated application or infrastructure work is incomplete and never claims broader readiness.'
+        }
       : command === 'workflow'
       ? {
           ...commandDefinitions.workflow,

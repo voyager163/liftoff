@@ -544,7 +544,19 @@ Option  Description
 
 exports[`complete help screens > snapshots compact repair command help 1`] = `
 "LIFTOFF / REPAIR
-Review and repair supported project files with separate default-No approval
+Reviewed project repair with independent infrastructure, application and
+additive-agent scopes. Use --agents to add selections without removing existing
+agents; --default-agent explicitly changes only a current Spec Kit default.
+Manual writes only requested Liftoff-native integrations. OpenSpec and Spec Kit
+use pinned official operations in isolated staging, preserve existing framework
+history/defaults unless explicitly changed, and reject unknown output or
+occupied differing destinations. --check and JSON preview without project
+writes. Workstation tools, the OpenSpec global profile and exact project files
+require separate permissions. --approve-plan applies one current saved plan;
+--recover --approve-plan addresses only its authenticated additive-agent
+transaction. Agent repair remains independently eligible while unrelated
+application or infrastructure work is incomplete and never claims broader
+readiness.
 
 Usage
 ─────
@@ -566,6 +578,15 @@ Option                            Description
 --subscription <id>               Exact Azure subscription ID for live absence
                                   checks
 
+Framework options
+─────────────────
+Option                   Description
+───────────────────────  ───────────────────────────────────────────────────────
+--agents <list>          Comma-separated agents to add without removing existing
+                         selections; none is invalid (default: codex)
+--default-agent <agent>  Explicit new Spec Kit default; the agent is also added
+                         when absent
+
 Command options
 ───────────────
 Option            Description
@@ -577,8 +598,8 @@ Option            Description
                   and modes without a project or tool probes
 --inspect-layout  Inventory actual application paths and current targets without
                   scripts or writes
---recover         Recover only eligible recorded repair effects; live, uncertain
-                  or changed private workspace identities stay blocked
+--recover         Recover only eligible recorded repair effects; additive-agent
+                  recovery also requires its exact --approve-plan fingerprint
 
 Consent options
 ───────────────
@@ -586,9 +607,10 @@ Option                          Description
 ──────────────────────────────  ────────────────────────────────────────────────
 --live                          Allow bounded Azure metadata reads with existing
                                 authentication; never read state
---approve-plan <fingerprint>    Optional automation: approve the exact saved
-                                application or follow-up binding plan; ordinary
-                                TTY repair asks instead
+--approve-plan <fingerprint>    Optional automation: approve one exact saved
+                                application, binding, infrastructure, or
+                                additive-agent plan; ordinary TTY repair asks
+                                instead
 --verify-plan <fingerprint>     Optional automation: run exact staged checks;
                                 declared preparation/network require separate
                                 permissions, never file commit
@@ -597,6 +619,11 @@ Option                          Description
                                 or file writes
 --allow-network                 Additionally authorize declared network effects
                                 for exact --verify-plan checks
+--install-tools                 Separately authorize pinned framework-tool
+                                preparation for an additive agent request
+--configure-openspec-profile    Separately authorize the required global
+                                OpenSpec profile for an additive OpenSpec agent
+                                request
 
 Output options
 ──────────────
@@ -1019,7 +1046,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain repair command help 1`] = `
-"LIFTOFF / REPAIR - Review and repair supported project files with separate default-No approval
+"LIFTOFF / REPAIR - Reviewed project repair with independent infrastructure, application and additive-agent scopes. Use --agents to add selections without removing existing agents; --default-agent explicitly changes only a current Spec Kit default. Manual writes only requested Liftoff-native integrations. OpenSpec and Spec Kit use pinned official operations in isolated staging, preserve existing framework history/defaults unless explicitly changed, and reject unknown output or occupied differing destinations. --check and JSON preview without project writes. Workstation tools, the OpenSpec global profile and exact project files require separate permissions. --approve-plan applies one current saved plan; --recover --approve-plan addresses only its authenticated additive-agent transaction. Agent repair remains independently eligible while unrelated application or infrastructure work is incomplete and never claims broader readiness.
 
 Usage
 Usage: liftoff repair [project-path]
@@ -1032,18 +1059,24 @@ Option: --project <path> | Description: Exact Liftoff project path
 Option: --application-patch <patch.json> | Description: Review an exact application patch authored in external staging, not a starter replacement
 Option: --subscription <id> | Description: Exact Azure subscription ID for live absence checks
 
+Framework options
+Option: --agents <list> | Description: Comma-separated agents to add without removing existing selections; none is invalid (default: codex)
+Option: --default-agent <agent> | Description: Explicit new Spec Kit default; the agent is also added when absent
+
 Command options
 Option: --check | Description: Preview only; explicit dependency preparation previews include bounded installed-tool identity probes, never project scripts or installs
 Option: --capabilities | Description: List repair contracts, recipes, preparation support, schemas and modes without a project or tool probes
 Option: --inspect-layout | Description: Inventory actual application paths and current targets without scripts or writes
-Option: --recover | Description: Recover only eligible recorded repair effects; live, uncertain or changed private workspace identities stay blocked
+Option: --recover | Description: Recover only eligible recorded repair effects; additive-agent recovery also requires its exact --approve-plan fingerprint
 
 Consent options
 Option: --live | Description: Allow bounded Azure metadata reads with existing authentication; never read state
-Option: --approve-plan <fingerprint> | Description: Optional automation: approve the exact saved application or follow-up binding plan; ordinary TTY repair asks instead
+Option: --approve-plan <fingerprint> | Description: Optional automation: approve one exact saved application, binding, infrastructure, or additive-agent plan; ordinary TTY repair asks instead
 Option: --verify-plan <fingerprint> | Description: Optional automation: run exact staged checks; declared preparation/network require separate permissions, never file commit
 Option: --allow-dependency-preparation | Description: Separately permit only declared locked private preparation with --verify-plan; not global tools or file writes
 Option: --allow-network | Description: Additionally authorize declared network effects for exact --verify-plan checks
+Option: --install-tools | Description: Separately authorize pinned framework-tool preparation for an additive agent request
+Option: --configure-openspec-profile | Description: Separately authorize the required global OpenSpec profile for an additive OpenSpec agent request
 
 Output options
 Option: --json | Description: Emit one schema-2 result (capabilities schema 1); never prompt or implicitly execute
@@ -1577,7 +1610,17 @@ exports[`complete help screens > snapshots rich regions command help 1`] = `
 
 exports[`complete help screens > snapshots rich repair command help 1`] = `
 "┌─ LIFTOFF / REPAIR ───────────────────────────────────────────────────────────────────────────┐
-│ Review and repair supported project files with separate default-No approval                  │
+│ Reviewed project repair with independent infrastructure, application and additive-agent      │
+│ scopes. Use --agents to add selections without removing existing agents; --default-agent     │
+│ explicitly changes only a current Spec Kit default. Manual writes only requested             │
+│ Liftoff-native integrations. OpenSpec and Spec Kit use pinned official operations in         │
+│ isolated staging, preserve existing framework history/defaults unless explicitly changed,    │
+│ and reject unknown output or occupied differing destinations. --check and JSON preview       │
+│ without project writes. Workstation tools, the OpenSpec global profile and exact project     │
+│ files require separate permissions. --approve-plan applies one current saved plan; --recover │
+│ --approve-plan addresses only its authenticated additive-agent transaction. Agent repair     │
+│ remains independently eligible while unrelated application or infrastructure work is         │
+│ incomplete and never claims broader readiness.                                               │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
 │ liftoff repair [project-path]                                                                │
@@ -1595,6 +1638,13 @@ exports[`complete help screens > snapshots rich repair command help 1`] = `
 │                                   staging, not a starter replacement                         │
 │ --subscription <id>               Exact Azure subscription ID for live absence checks        │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Framework options ──────────────────────────────────────────────────────────────────────────┐
+│ Option                   Description                                                         │
+│ ───────────────────────  ─────────────────────────────────────────────────────────────────── │
+│ --agents <list>          Comma-separated agents to add without removing existing selections; │
+│                          none is invalid (default: codex)                                    │
+│ --default-agent <agent>  Explicit new Spec Kit default; the agent is also added when absent  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
 │ Option            Description                                                                │
 │ ────────────────  ────────────────────────────────────────────────────────────────────────── │
@@ -1604,16 +1654,17 @@ exports[`complete help screens > snapshots rich repair command help 1`] = `
 │                   without a project or tool probes                                           │
 │ --inspect-layout  Inventory actual application paths and current targets without scripts or  │
 │                   writes                                                                     │
-│ --recover         Recover only eligible recorded repair effects; live, uncertain or changed  │
-│                   private workspace identities stay blocked                                  │
+│ --recover         Recover only eligible recorded repair effects; additive-agent recovery     │
+│                   also requires its exact --approve-plan fingerprint                         │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
 │ Option                          Description                                                  │
 │ ──────────────────────────────  ──────────────────────────────────────────────────────────── │
 │ --live                          Allow bounded Azure metadata reads with existing             │
 │                                 authentication; never read state                             │
-│ --approve-plan <fingerprint>    Optional automation: approve the exact saved application or  │
-│                                 follow-up binding plan; ordinary TTY repair asks instead     │
+│ --approve-plan <fingerprint>    Optional automation: approve one exact saved application,    │
+│                                 binding, infrastructure, or additive-agent plan; ordinary    │
+│                                 TTY repair asks instead                                      │
 │ --verify-plan <fingerprint>     Optional automation: run exact staged checks; declared       │
 │                                 preparation/network require separate permissions, never file │
 │                                 commit                                                       │
@@ -1621,6 +1672,10 @@ exports[`complete help screens > snapshots rich repair command help 1`] = `
 │                                 with --verify-plan; not global tools or file writes          │
 │ --allow-network                 Additionally authorize declared network effects for exact    │
 │                                 --verify-plan checks                                         │
+│ --install-tools                 Separately authorize pinned framework-tool preparation for   │
+│                                 an additive agent request                                    │
+│ --configure-openspec-profile    Separately authorize the required global OpenSpec profile    │
+│                                 for an additive OpenSpec agent request                       │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │

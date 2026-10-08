@@ -212,8 +212,9 @@ requires explicitly requested `--check --live --subscription <UUID>` discovery
 with existing authentication, authoritatively absent resource groups, and no
 local state/backend metadata. Missing state files alone do not establish safety.
 Deployed, unknown, and unsupported cases remain plan-only, with source and state
-untouched. Agent installation and the public stateful migration coordinator are
-not implemented.
+untouched. Additive agent integration is available only through a separate exact
+`liftoff repair --agents` plan; agent removal remains unsupported. The public
+stateful migration coordinator is not implemented.
 
 After an eligible, separately approved repair, run `liftoff update --check --project
 "path/to/existing project"` and resume native setup. Interrupted repair writes

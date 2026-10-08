@@ -55,10 +55,13 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | `liftoff repair --capabilities --json` | Lists packaged repair contracts, recipes, schemas and real command modes without needing a project |
 | `liftoff repair [project-path] --inspect-layout` | Inventories actual application paths, target identities, references and unresolved mappings without execution |
 | `liftoff repair [project-path] --application-patch <patch.json>` | Reviews external staged application mappings; interactive verification/network/file consents remain separate |
+| `liftoff repair [project-path] --agents <list> --check` | Saves an additive-only agent integration plan; existing agents and the Spec Kit default are preserved unless an exact default change is requested |
+| `liftoff repair [project-path] --agents <list> [--default-agent <agent>]` | Uses Liftoff-native Manual output or pinned official OpenSpec/Spec Kit staging, then requests default-No approval of the exact project effects |
 | `liftoff repair [project-path] --check --live --subscription <UUID>` | Explicitly requests bounded Azure metadata discovery with existing authentication and one selected subscription |
 | `liftoff repair [project-path] --verify-plan <fingerprint>` | Optional automation for exact staged application checks; declared preparation requires `--allow-dependency-preparation` and declared network requires `--allow-network` |
 | `liftoff repair [project-path] --approve-plan <fingerprint>` | Optional automation for an eligible separately approved exact file plan; application patches need fresh verified checks |
 | `liftoff repair [project-path] --recover` | Recovers the recorded interrupted repair transaction without starting a new repair |
+| `liftoff repair [project-path] --recover --approve-plan <fingerprint>` | Recovers only the authenticated additive-agent transaction attributable to that saved plan |
 | `liftoff dev` | Prints workload-appropriate local development commands; it does not execute them |
 | `liftoff infra` | Prints OpenTofu guidance for supported API/GenAI workloads without executing it |
 | `liftoff patterns` | Lists GenAI patterns |
@@ -1011,7 +1014,10 @@ liftoff repair --capabilities --json
 liftoff repair [project-path] --inspect-layout [--json]
 liftoff repair [project-path] --application-patch <external-patch.json>
 liftoff repair [project-path] --check --application-patch <external-patch.json> [--json]
+liftoff repair [project-path] --agents <copilot,claude,codex> --check [--json]
+liftoff repair [project-path] --agents <list> [--default-agent <agent>] [--install-tools] [--configure-openspec-profile]
 liftoff repair [project-path] --recover [--json]
+liftoff repair [project-path] --recover --approve-plan <fingerprint> [--json]
 ```
 
 **Normal terminal use does not require copying a fingerprint.** Bare current-v8
@@ -1024,6 +1030,28 @@ prompt or execute implicitly; piped yes, autopilot and generic confirmation are
 not consent. No, cancellation or EOF before any effect approval leaves the
 project unchanged. A later cancelled file approval prevents the file transaction,
 but reports any earlier separately authorized verifier effects.
+
+Additive agent repair is a separate current-v8 scope. `--agents` names only
+agents to add or whose missing managed/native integration should be repaired;
+`none` and removals are rejected. Existing selections remain in order.
+For Spec Kit, omission of `--default-agent` preserves the recorded default;
+an explicit selected default is the only authority to change it. Manual writes
+only the requested agent's applicable Liftoff-native managed integrations.
+OpenSpec and Spec Kit rerun only registered pinned official
+integration operations in isolated staging, require the existing initialized
+framework seeds, and reject output outside the requested integration paths.
+Occupied differing destinations, stale tools/profile, changed framework
+history and plan expiry fail closed. Missing output for an already recorded
+requested agent remains a real executable repair rather than being treated as
+current from metadata alone.
+
+`--check` never prepares tools or the global OpenSpec profile. A non-check
+agent request may separately authorize `--install-tools` and, only for
+OpenSpec, `--configure-openspec-profile`; neither permission authorizes project
+files. Exact automation uses the returned `--approve-plan` fingerprint without
+repeating machine-consent flags. The agent scope may complete while application
+or infrastructure work remains incomplete, and its report never claims broader
+project readiness.
 
 Use a positional project path to select another project, or run inside the
 project (including a subdirectory). Commands in structured `nextActions` retain
@@ -1188,17 +1216,22 @@ Recovery accepts only externally sealed legacy schema-1 repair journals or
 schema-2 journals with exact supported contract/recipe/layout identities.
 Unknown future identities block without rewriting the journal.
 
-`--force`, `--yes`, and `--add-agents` are not supported. Agent installation,
-framework-default changes, and the public stateful migration coordinator are
-**not implemented**. An existing internal stateful engine does not make a public
-command executable. Deployed, unknown, ambiguous, or unsupported cases remain
-plan-only with source and state untouched. Do not edit metadata, copy a fresh
-init scaffold over the project, or use manual state moves to bypass the blocker.
+`--force`, `--yes`, and `--add-agents` are not supported. Additive agent
+installation uses `--agents`; removal remains unsupported, and Spec Kit default
+changes require exact `--default-agent` selection. The public stateful migration
+coordinator remains **not implemented**. An existing internal stateful engine
+does not make a public command executable. Deployed, unknown, ambiguous, or
+unsupported cases remain plan-only with source and state untouched. Do not edit
+metadata, copy a fresh init scaffold over the project, or use manual state moves
+to bypass the blocker.
 
-If writes were interrupted, use only the reported
-`liftoff repair [project-path] --recover` action. Update cannot recover repair
-authority; both lanes exclude overlapping pending transactions and preserve
-concurrent edits. After repair, run `liftoff update --check --project <project-path>`,
+If writes were interrupted, use only the reported recovery action.
+Infrastructure/application repair uses `liftoff repair [project-path] --recover`;
+additive agent repair uses
+`liftoff repair [project-path] --recover --approve-plan <fingerprint>`.
+Update cannot recover repair authority; all lanes exclude overlapping pending
+transactions and preserve concurrent edits. After repair, run
+`liftoff update --check --project <project-path>`,
 review any separately approved update work, then inspect
 `liftoff governance status <project-path> --scope local --json` and
 `liftoff governance resume <project-path> --scope local --json` for governed

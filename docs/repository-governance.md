@@ -420,9 +420,10 @@ Keep the selected project in every command; repair takes a
 positional project path. Recover interrupted repair through
 `liftoff repair [project-path] --recover`, not update authority.
 
-Repair does not accept `--force`, `--yes`, or `--add-agents`. Agent installation
-and the public stateful migration coordinator are not implemented; an internal
-stateful engine does not make the public command executable. Deployed, unknown,
+Repair does not accept `--force`, `--yes`, or `--add-agents`. Additive agent
+integration uses a separate exact `liftoff repair --agents` plan and cannot
+remove existing selections. The public stateful migration coordinator is not
+implemented; an internal stateful engine does not make the public command executable. Deployed, unknown,
 ambiguous, and unsupported cases stay plan-only with their source and state
 untouched. Do not edit manifest provenance, copy a fresh init scaffold over the
 project, or recommend manual state moves. A repaired infrastructure layout does

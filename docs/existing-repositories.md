@@ -111,6 +111,25 @@ committed effects and preserves them; rerunning the original application
 fingerprint reconstructs only pending manifest binding work and cannot repeat
 the move or claim new generation/activation history.
 
+To add or repair coding-agent integrations without changing the workflow, start
+with an exact additive preview:
+
+```bash
+liftoff repair . --agents codex --check --json
+liftoff repair . --agents codex
+```
+
+Existing agents are never removed. Manual installs only requested
+Liftoff-native integrations. OpenSpec and Spec Kit use pinned official
+integration operations in isolated staging and preserve framework history,
+active work and unrelated files. A Spec Kit default remains unchanged unless
+the request explicitly includes, for example, `--default-agent codex`.
+Missing integration output for an already recorded requested agent is repaired
+as real file work; metadata alone is not installation proof. Tool installation
+and OpenSpec global-profile configuration require their separate permissions,
+and an agent-only repair does not claim that application or infrastructure work
+is complete.
+
 ### CLI-only and agent-assisted repair
 
 Both paths use the same deterministic inventory, external staging, verification
@@ -154,10 +173,12 @@ Select both delivery modes and every workflow in the profile picker. Plain
 hosted Copilot agent later, update `githubCopilot.cloudAgent` through OpenSpec
 and run `openspec update`.
 
-Liftoff's own repair integrations instead use exact managed-core update
-identities. A supported older manifest can acquire the selected-agent repair
-files through the reviewed update above, including when governance is disabled.
-Unowned custom integrations and neighboring skills are not overwritten by force.
+Liftoff's own repair integrations use exact managed identities. A supported
+older manifest first acquires its current manifest through the reviewed update
+above. A current v8 project then uses additive `liftoff repair --agents` to add
+or restore the requested native and framework integrations, including when
+governance is disabled. Unowned custom integrations and neighboring skills are
+not overwritten by repair or force.
 
 Supported historical projects preview a manifest-v8 managed-core successor.
 After a matching check and explicit approval, update adopts safe policy,

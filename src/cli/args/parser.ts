@@ -220,7 +220,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
       capabilities: flags.capabilities === true, inspectLayout: flags['inspect-layout'] === true,
       applicationPatch: readStringFlag(flags, 'application-patch'), verifyPlan: readStringFlag(flags, 'verify-plan'),
       allowNetwork: flags['allow-network'] === true,
-      allowDependencyPreparation: flags['allow-dependency-preparation'] === true
+      allowDependencyPreparation: flags['allow-dependency-preparation'] === true,
+      agents: readStringFlag(flags, 'agents')?.split(',')
+        .map(value => value.trim()).filter(Boolean),
+      defaultAgent: readStringFlag(flags, 'default-agent'),
+      installTools: flags['install-tools'] === true,
+      configureOpenSpecProfile:
+        flags['configure-openspec-profile'] === true
     }, flags.help === true);
     if (issue) throw new UsageError(issue);
   }

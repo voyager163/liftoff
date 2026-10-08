@@ -1,5 +1,5 @@
 import {
-  mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile
+  mkdir, mkdtemp, readFile, readdir, realpath, rm, unlink, writeFile
 } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -11,6 +11,12 @@ import { runCommand } from '../src/commands.js';
 import {
   projectMutationLockPath
 } from '../src/adapters/filesystem/project-lock.js';
+import {
+  createScopedUserLocalRecordStore
+} from '../src/adapters/filesystem/update-previews.js';
+import {
+  canonicalSha256
+} from '../src/domain/governance/activation/canonical-json.js';
 import { buildCurrentProjectPlan } from '../src/application/project/planning.js';
 import {
   assertWorkflowTransitionTargetFrameworkCommitted,
@@ -48,7 +54,8 @@ async function directory(prefix: string): Promise<string> {
 }
 
 async function fixture(
-  specWorkflow: 'openspec' | 'spec-kit' | 'manual' = 'manual'
+  specWorkflow: 'openspec' | 'spec-kit' | 'manual' = 'manual',
+  agents: readonly ('copilot' | 'claude' | 'codex')[] = ['copilot']
 ) {
   const root = await directory('liftoff workflow project with spaces ');
   const home = await directory('liftoff workflow home with spaces ');
@@ -61,14 +68,57 @@ async function fixture(
     includeFrontend: false,
     environments: ['dev'],
     specWorkflow,
-    agents: ['copilot'],
-    ...(specWorkflow === 'spec-kit' ? { defaultAgent: 'copilot' } : {}),
+    agents,
+    ...(specWorkflow === 'spec-kit'
+      ? { defaultAgent: agents[0]! }
+      : {}),
     governanceProfile: 'none'
   }, { requireProjectName: true });
   for (const artifact of buildCurrentArtifacts(plan)) {
     const target = path.join(root, ...artifact.pathParts);
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, artifact.content);
+  }
+  if (specWorkflow !== 'manual') {
+    const runner = new WorkflowFrameworkRunner();
+    const options = { cwd: root };
+    if (specWorkflow === 'openspec') {
+      const integrations = agents.map(agent =>
+        agent === 'copilot' ? 'github-copilot' : agent
+      );
+      await runner.run({
+        executable: 'openspec',
+        args: [
+          'init',
+          '--tools',
+          integrations.join(','),
+          '--profile',
+          'custom'
+        ]
+      }, options);
+    } else {
+      await runner.run({
+        executable: 'specify',
+        args: [
+          'init',
+          '.',
+          '--integration',
+          agents[0]!,
+          '--here',
+          '--force'
+        ]
+      }, options);
+      for (const agent of agents.slice(1)) {
+        await runner.run({
+          executable: 'specify',
+          args: ['integration', 'install', agent, '--force']
+        }, options);
+      }
+      await runner.run({
+        executable: 'specify',
+        args: ['integration', 'use', agents[0]!]
+      }, options);
+    }
   }
   return { root, home };
 }
@@ -94,6 +144,14 @@ async function snapshot(root: string) {
 async function write(file: string, content: string): Promise<void> {
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, content);
+}
+
+async function writeIfMissing(file: string, content: string): Promise<void> {
+  try {
+    await readFile(file);
+  } catch {
+    await write(file, content);
+  }
 }
 
 function commandResult(
@@ -124,7 +182,8 @@ class WorkflowFrameworkRunner implements CommandRunner {
       workflows: [...OPEN_SPEC_WORKFLOW_IDS]
     },
     private openspecReady = true,
-    private invalidOpenSpecOutput = false
+    private invalidOpenSpecOutput = false,
+    private unknownOpenSpecOutput = false
   ) {}
 
   setOpenSpecReady(value: boolean): void {
@@ -211,12 +270,18 @@ class WorkflowFrameworkRunner implements CommandRunner {
           'schema: spec-driven\n'
         );
       }
+      if (this.unknownOpenSpecOutput) {
+        await write(
+          path.join(options.cwd, 'openspec', 'unexpected.txt'),
+          'unexpected\n'
+        );
+      }
       for (const agent of [
         'github-copilot', 'claude', 'codex'
       ] as const) {
         if (!tools.includes(agent)) continue;
         for (const parts of openSpecIntegrationPaths(agent)) {
-          await write(
+          await writeIfMissing(
             path.join(options.cwd, ...parts),
             `${agent}\n`
           );
@@ -253,8 +318,27 @@ class WorkflowFrameworkRunner implements CommandRunner {
           'official plan\n'
         );
       } else {
+        try {
+          const state = JSON.parse(
+            await readFile(
+              path.join(options.cwd, '.specify', 'integration.json'),
+              'utf8'
+            )
+          ) as {
+            default_integration?: string;
+            installed_integrations?: string[];
+          };
+          this.defaultIntegration =
+            state.default_integration ?? this.defaultIntegration;
+          this.installedIntegrations =
+            state.installed_integrations ?? this.installedIntegrations;
+        } catch {
+          // A missing state file remains invalid framework output.
+        }
         const integration = command.args[2]!;
-        if (!this.installedIntegrations.includes(integration)) {
+        if (command.args[1] === 'use') {
+          this.defaultIntegration = integration;
+        } else if (!this.installedIntegrations.includes(integration)) {
           this.installedIntegrations.push(integration);
         }
       }
@@ -266,7 +350,7 @@ class WorkflowFrameworkRunner implements CommandRunner {
       for (const integration of this.installedIntegrations) {
         const agent = agents[integration as keyof typeof agents];
         for (const parts of specKitIntegrationPaths(agent)) {
-          await write(
+          await writeIfMissing(
             path.join(options.cwd, ...parts),
             `${integration}\n`
           );
@@ -315,7 +399,8 @@ async function invoke(
     ...(approval
       ? {
           stdin,
-          approveWorkflowTransitionPlan: approval
+          approveWorkflowTransitionPlan: approval,
+          approveRepairPlan: approval
         }
       : {}),
     ...(runner ? { runner } : {}),
@@ -537,8 +622,10 @@ describe('reviewed workflow transition command', () => {
       projectWrites: false,
       transaction: 'not-started',
       plan: {
-        schemaVersion: 2,
+        schemaVersion: 3,
         kind: 'liftoff-workflow-transition-plan',
+        operation: 'workflow-transition',
+        repairAgents: [],
         projectRoot: project.root,
         source: {
           workflow: 'manual',
@@ -608,6 +695,48 @@ describe('reviewed workflow transition command', () => {
     expect(await snapshot(project.root)).toEqual(before);
   });
 
+  it('retains strict read support for saved schema-2 workflow plans', async () => {
+    const project = await fixture();
+    const report = JSON.parse((await invoke([
+      'workflow', 'set', 'openspec', project.root, '--check', '--json'
+    ], project.root, project.home)).stdout);
+    const {
+      operation: _operation,
+      repairAgents: _repairAgents,
+      fingerprint: _fingerprint,
+      ...current
+    } = report.plan;
+    const unsigned = { ...current, schemaVersion: 2 };
+    const legacy = {
+      ...unsigned,
+      fingerprint: canonicalSha256(unsigned)
+    };
+    await createScopedUserLocalRecordStore(
+      project.root,
+      'workflow-transition-plan',
+      {
+        homedir: project.home,
+        env: {},
+        clock: () => now
+      }
+    ).write(legacy.fingerprint, legacy);
+    await expect(readWorkflowTransitionPlan(
+      project.root,
+      legacy.fingerprint,
+      now,
+      {
+        homedir: project.home,
+        env: {},
+        clock: () => now
+      }
+    )).resolves.toMatchObject({
+      schemaVersion: 2,
+      operation: 'workflow-transition',
+      repairAgents: [],
+      fingerprint: legacy.fingerprint
+    });
+  });
+
   for (const target of ['openspec', 'spec-kit'] as const) {
     it(`initializes a Manual project into ${target} through exact official staging`, async () => {
       const project = await fixture();
@@ -635,7 +764,7 @@ describe('reviewed workflow transition command', () => {
         status: 'review-required',
         machineWrites: false,
         plan: {
-          schemaVersion: 2,
+          schemaVersion: 3,
           source: { workflow: 'manual' },
           target: {
             workflow: target,
@@ -1631,6 +1760,371 @@ describe('reviewed workflow transition command', () => {
     ))).toMatchObject({
       project: { specWorkflow: 'openspec' },
       framework: { state: 'initialized', adapter: 'openspec' }
+    });
+  });
+
+  it('adds Manual agent integrations without replacing existing agents or unrelated files', async () => {
+    const project = await fixture('manual');
+    await write(path.join(project.root, 'src', 'owned.ts'), 'keep\n');
+    const previewResult = await invoke([
+      'repair', project.root, '--agents', 'codex', '--check', '--json'
+    ], project.root, project.home);
+    expect(previewResult.code, previewResult.stdout).toBe(2);
+    const preview = JSON.parse(previewResult.stdout);
+    expect(preview).toMatchObject({
+      requestedScope: 'agent-integration',
+      status: 'available',
+      committed: false,
+      agentPlan: {
+        operation: 'agent-repair',
+        repairAgents: ['codex'],
+        source: {
+          workflow: 'manual',
+          agents: ['github-copilot']
+        },
+        target: {
+          workflow: 'manual',
+          agents: ['github-copilot', 'codex']
+        },
+        execution: {
+          status: 'ready-for-file-approval',
+          transition: 'agent-integration-repair',
+          officialStage: null
+        }
+      }
+    });
+    const applied = await invoke([
+      'repair', project.root,
+      '--approve-plan', preview.fingerprint, '--json'
+    ], project.root, project.home);
+    expect(applied.code, applied.stdout).toBe(0);
+    expect(JSON.parse(applied.stdout)).toMatchObject({
+      requestedScope: 'agent-integration',
+      status: 'applied',
+      committed: true,
+      repairScopeComplete: true,
+      verification: 'passed'
+    });
+    expect(JSON.parse(await readFile(
+      path.join(project.root, 'liftoff.manifest.json'),
+      'utf8'
+    ))).toMatchObject({
+      project: {
+        specWorkflow: 'manual',
+        agents: ['github-copilot', 'codex']
+      }
+    });
+    expect(await readFile(
+      path.join(
+        project.root,
+        '.agents',
+        'skills',
+        'liftoff-repair',
+        'SKILL.md'
+      ),
+      'utf8'
+    )).toContain('liftoff-repair');
+    expect(await readFile(
+      path.join(project.root, 'src', 'owned.ts'),
+      'utf8'
+    )).toBe('keep\n');
+  });
+
+  it('uses genuine default-No repair approval without fingerprint entry', async () => {
+    const project = await fixture('manual');
+    let prompt: { message: string; default: false } | undefined;
+    const result = await invoke([
+      'repair', project.root, '--agents', 'codex'
+    ], project.root, project.home, now, async value => {
+      prompt = value;
+      return true;
+    });
+    expect(result.code, result.stdout).toBe(0);
+    expect(prompt).toMatchObject({
+      default: false,
+      message: expect.stringContaining('additive agent repair')
+    });
+    expect(JSON.parse(await readFile(
+      path.join(project.root, 'liftoff.manifest.json'),
+      'utf8'
+    ))).toMatchObject({
+      project: { agents: ['github-copilot', 'codex'] }
+    });
+  });
+
+  it('uses official OpenSpec staging for additive repair while preserving active work', async () => {
+    const project = await fixture('openspec');
+    const runner = new WorkflowFrameworkRunner();
+    const active = path.join(
+      project.root,
+      'openspec',
+      'changes',
+      'active-feature',
+      'proposal.md'
+    );
+    await write(active, '# Keep active work\n');
+    const previewResult = await invoke([
+      'repair', project.root, '--agents', 'codex', '--check', '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(previewResult.code, previewResult.stdout).toBe(2);
+    const preview = JSON.parse(previewResult.stdout);
+    expect(preview.agentPlan).toMatchObject({
+      operation: 'agent-repair',
+      source: { workflow: 'openspec' },
+      target: {
+        workflow: 'openspec',
+        agents: ['github-copilot', 'codex']
+      },
+      execution: {
+        status: 'ready-for-file-approval',
+        transition: 'agent-integration-repair',
+        frameworkDocuments:
+          'official-integration-staged-with-history-preserved',
+        officialStage: {
+          commands: [
+            expect.stringContaining('openspec init --tools')
+          ]
+        }
+      }
+    });
+    const applied = await invoke([
+      'repair', project.root,
+      '--approve-plan', preview.fingerprint, '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(applied.code, applied.stdout).toBe(0);
+    expect(await readFile(active, 'utf8')).toBe('# Keep active work\n');
+    for (const parts of openSpecIntegrationPaths('codex')) {
+      expect(await readFile(
+        path.join(project.root, ...parts),
+        'utf8'
+      )).toBe('codex\n');
+    }
+  });
+
+  it('adds a Spec Kit agent and changes the default only when explicitly requested', async () => {
+    const project = await fixture('spec-kit');
+    const runner = new WorkflowFrameworkRunner();
+    const previewResult = await invoke([
+      'repair', project.root, '--agents', 'codex',
+      '--default-agent', 'codex', '--check', '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(previewResult.code, previewResult.stdout).toBe(2);
+    const preview = JSON.parse(previewResult.stdout);
+    expect(preview.agentPlan).toMatchObject({
+      operation: 'agent-repair',
+      source: {
+        workflow: 'spec-kit',
+        defaultAgent: 'github-copilot'
+      },
+      target: {
+        workflow: 'spec-kit',
+        agents: ['github-copilot', 'codex'],
+        defaultAgent: 'codex'
+      },
+      execution: {
+        officialStage: {
+          commands: [
+            expect.stringContaining(
+              'specify integration install codex'
+            ),
+            expect.stringContaining(
+              'specify integration use codex'
+            )
+          ]
+        }
+      }
+    });
+    const applied = await invoke([
+      'repair', project.root,
+      '--approve-plan', preview.fingerprint, '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(applied.code, applied.stdout).toBe(0);
+    expect(JSON.parse(await readFile(
+      path.join(project.root, '.specify', 'integration.json'),
+      'utf8'
+    ))).toMatchObject({
+      default_integration: 'codex',
+      installed_integrations: ['copilot', 'codex']
+    });
+    expect(JSON.parse(await readFile(
+      path.join(project.root, 'liftoff.manifest.json'),
+      'utf8'
+    ))).toMatchObject({
+      project: {
+        agents: ['github-copilot', 'codex'],
+        defaultAgent: 'codex'
+      }
+    });
+  });
+
+  it('preserves the Spec Kit default when additive repair omits an exact default change', async () => {
+    const project = await fixture('spec-kit');
+    const runner = new WorkflowFrameworkRunner();
+    const preview = JSON.parse((await invoke([
+      'repair', project.root, '--agents', 'codex', '--check', '--json'
+    ], project.root, project.home, now, undefined, runner)).stdout);
+    expect(preview.agentPlan).toMatchObject({
+      source: { defaultAgent: 'github-copilot' },
+      target: {
+        agents: ['github-copilot', 'codex'],
+        defaultAgent: 'github-copilot'
+      }
+    });
+  });
+
+  it('repairs a missing native integration even when the requested agent is already recorded', async () => {
+    const project = await fixture('manual', ['codex']);
+    const missing = path.join(
+      project.root,
+      '.agents',
+      'skills',
+      'liftoff-repair',
+      'SKILL.md'
+    );
+    await unlink(missing);
+    const previewResult = await invoke([
+      'repair', project.root, '--agents', 'codex', '--check', '--json'
+    ], project.root, project.home);
+    expect(previewResult.code, previewResult.stdout).toBe(2);
+    const preview = JSON.parse(previewResult.stdout);
+    expect(preview.agentPlan).toMatchObject({
+      source: { agents: ['codex'] },
+      target: { agents: ['codex'] },
+      execution: {
+        status: 'ready-for-file-approval',
+        effects: expect.arrayContaining([
+          expect.objectContaining({
+            logicalName: 'liftoff-repair-codex',
+            operation: 'write'
+          })
+        ])
+      }
+    });
+    const applied = await invoke([
+      'repair', project.root,
+      '--approve-plan', preview.fingerprint, '--json'
+    ], project.root, project.home);
+    expect(applied.code, applied.stdout).toBe(0);
+    expect(await readFile(missing, 'utf8')).toContain('liftoff-repair');
+  });
+
+  it('recovers only the authenticated additive agent transaction', async () => {
+    const project = await fixture('manual');
+    const before = await snapshot(project.root);
+    const preview = JSON.parse((await invoke([
+      'repair', project.root, '--agents', 'codex', '--check', '--json'
+    ], project.root, project.home)).stdout);
+    await interruptTransition(
+      project,
+      preview.agentPlan.fingerprint,
+      'after-mutation',
+      0
+    );
+    const recovered = await invoke([
+      'repair', project.root, '--recover',
+      '--approve-plan', preview.agentPlan.fingerprint, '--json'
+    ], project.root, project.home);
+    expect(recovered.code, recovered.stdout).toBe(0);
+    expect(JSON.parse(recovered.stdout)).toMatchObject({
+      requestedScope: 'agent-integration',
+      status: 'recovered',
+      committed: false,
+      agentTransaction: {
+        operation: 'recover',
+        status: 'rolled-back',
+        committed: false
+      }
+    });
+    expect(await snapshot(project.root)).toEqual(before);
+  });
+
+  it('rejects agent removal and occupied additive integration destinations', async () => {
+    const project = await fixture('manual');
+    expect(() => parseArgs([
+      'repair', project.root, '--agents', 'none', '--check', '--json'
+    ])).toThrow(/cannot select none or remove agents/u);
+
+    const occupied = path.join(
+      project.root,
+      '.agents',
+      'skills',
+      'liftoff-repair',
+      'SKILL.md'
+    );
+    await write(occupied, 'custom\n');
+    const collision = await invoke([
+      'repair', project.root, '--agents', 'codex', '--check', '--json'
+    ], project.root, project.home);
+    expect(collision.code).toBe(1);
+    expect(JSON.parse(collision.stdout)).toMatchObject({
+      requestedScope: 'agent-integration',
+      status: 'failed',
+      committed: false,
+      blockers: [
+        expect.stringContaining('occupied by different bytes')
+      ]
+    });
+    expect(await readFile(occupied, 'utf8')).toBe('custom\n');
+  });
+
+  it('rejects a recomputed saved plan that removes an existing agent', async () => {
+    const project = await fixture('manual');
+    const preview = JSON.parse((await invoke([
+      'repair', project.root, '--agents', 'codex', '--check', '--json'
+    ], project.root, project.home)).stdout);
+    const {
+      fingerprint: _fingerprint,
+      ...unsigned
+    } = preview.agentPlan;
+    const tamperedUnsigned = {
+      ...unsigned,
+      target: {
+        ...unsigned.target,
+        agents: ['codex']
+      }
+    };
+    const tampered = {
+      ...tamperedUnsigned,
+      fingerprint: canonicalSha256(tamperedUnsigned)
+    };
+    await createScopedUserLocalRecordStore(
+      project.root,
+      'workflow-transition-plan',
+      {
+        homedir: project.home,
+        env: {},
+        clock: () => now
+      }
+    ).write(tampered.fingerprint, tampered);
+    const result = await invoke([
+      'repair', project.root,
+      '--approve-plan', tampered.fingerprint, '--json'
+    ], project.root, project.home);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout).blockers.join(' ')).toContain(
+      'preserve its workflow and every existing agent'
+    );
+  });
+
+  it('rejects unknown official output from additive framework repair', async () => {
+    const project = await fixture('openspec');
+    const runner = new WorkflowFrameworkRunner(
+      undefined,
+      true,
+      false,
+      true
+    );
+    const result = await invoke([
+      'repair', project.root, '--agents', 'codex', '--check', '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      requestedScope: 'agent-integration',
+      status: 'failed',
+      committed: false,
+      blockers: [
+        expect.stringMatching(/unexpected|inventoried/u)
+      ]
     });
   });
 });

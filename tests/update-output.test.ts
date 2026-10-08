@@ -179,7 +179,7 @@ describe('project-bound update command guidance', () => {
 });
 
 describe('human reviewed scope', () => {
-  it('reports agent installation as unimplemented without recommending unsupported commands', async () => {
+  it('routes agent installation to additive repair without recommending removed commands', async () => {
     const root = await createReviewedUpdateFixture({
       projectName: 'Agent Guidance', projectType: 'standard', apiStack: 'node',
       agents: ['copilot'], environments: ['dev']
@@ -190,20 +190,21 @@ describe('human reviewed scope', () => {
       recordedAgents: ['github-copilot'], requestedAgents: ['github-copilot', 'codex'],
       addAgents: ['codex'], recordedDefaultAgent: null, requestedDefaultAgent: null,
       changesDefault: false, executable: false,
-      limitation: 'Agent installation and framework default changes are not implemented by the public repair coordinator.'
+      limitation: 'Use the separate additive liftoff repair --agents plan.'
     };
     const report = buildUpdateReport({
       mode: 'check', status: 'partial', reasonCode: 'agent-repair-required', projectRoot: root
     }, inspection);
     expect(report.deferredAgentRepair).toMatchObject({
-      executable: false, limitation: expect.stringContaining('not implemented')
+      executable: false,
+      limitation: expect.stringContaining('liftoff repair --agents')
     });
     expect(report.deferredAgentRepair).not.toHaveProperty('command');
     const stdout = new CaptureStream();
     renderDeferredAgentRepair(new PresentationSession({
       stdout, stderr: new CaptureStream(), layout: 'plain', color: false
     }), inspection);
-    expect(stdout.text()).toContain('not implemented');
+    expect(stdout.text()).toContain('liftoff repair --agents');
     expect(stdout.text()).not.toContain('--add-agents');
     expect(JSON.stringify(report)).not.toContain('--add-agents');
   });

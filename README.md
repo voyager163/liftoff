@@ -61,10 +61,9 @@ Power Apps is retired; it is not an available creation or conversion path.
 
 ## Work with an existing project
 
-Use `liftoff init` only at the exact current Git root of a new or intentionally empty target. For an existing non-Liftoff
-application, start with read-only `liftoff assess --project <path> --json`, then choose
-reviewed in-place `liftoff adopt` or a fresh sibling `liftoff migrate`. For an existing
-Liftoff project, use `liftoff update --check` or separately scoped `liftoff repair --check`.
+Use `liftoff init` only at the exact current Git root of a new or intentionally empty target.
+For an existing non-Liftoff application, start with read-only `liftoff assess --project <path> --json`, then choose reviewed in-place `liftoff adopt` or a fresh sibling `liftoff migrate`.
+For an existing Liftoff project, use `liftoff update --check`, separately scoped `liftoff repair --check`, or additive-only `liftoff repair --agents <list> --check`; existing agents and the Spec Kit default are preserved unless an exact default change is requested.
 Do not initialize over an application or reinitialize a project to fix a blocker.
 
 For maintenance, `liftoff upgrade --check` previews a CLI upgrade; `liftoff update --check` previews managed project changes before explicit approval.

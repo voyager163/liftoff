@@ -117,7 +117,9 @@ async function readback(
       mode: snapshot.mode ?? null
     });
   }
-  await assertWorkflowTransitionFrameworkPreserved(plan);
+  if (plan.operation === 'workflow-transition') {
+    await assertWorkflowTransitionFrameworkPreserved(plan);
+  }
   if (plan.target.workflow !== 'manual') {
     await assertWorkflowTransitionTargetFrameworkCommitted(plan);
     const issues = await validateFrameworkInstallation(
@@ -144,7 +146,9 @@ async function readback(
       frameworkInventory: plan.frameworkInventory,
       targetFrameworkInventory: plan.targetFrameworkInventory,
       targetLocalReadiness: {
-        mode: 'official-framework-initialized',
+        mode: plan.operation === 'agent-repair'
+          ? 'official-agent-integrations-verified'
+          : 'official-framework-initialized',
         workflow: plan.target.workflow,
         agents: plan.target.agents,
         defaultAgent: plan.target.defaultAgent
@@ -181,7 +185,9 @@ async function readback(
     effects: observations,
     frameworkInventory: plan.frameworkInventory,
     targetLocalReadiness: {
-      mode: 'manual-native',
+      mode: plan.operation === 'agent-repair'
+        ? 'manual-agent-integrations-verified'
+        : 'manual-native',
       planStatus: readiness.status,
       observationDigest: readiness.observationDigest,
       physicalDigest: readiness.physicalDigest,

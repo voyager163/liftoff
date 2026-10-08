@@ -441,7 +441,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
         ...base,
         status: hasWork ? 'update-available' : agentRepairPending ? 'partial' : 'current',
         reasonCode: hasWork ? 'review-required' : agentRepairPending ? 'agent-repair-required' : 'no-update',
-        ...(agentRepairPending && !hasWork ? { message: 'Managed-core metadata is current; agent installation and framework default changes are not implemented by the public repair coordinator.' } : {}),
+        ...(agentRepairPending && !hasWork ? { message: 'Managed-core metadata is current; add agents or explicitly change a Spec Kit default through the separate liftoff repair --agents plan.' } : {}),
         receipt: stored ? { status: 'issued', path: stored.location.receiptPath } : { status: 'not-required' }
       }, inspection, selected);
       context.outcome?.record(hasWork || agentRepairPending ? 'attention-required' : 'success');
@@ -457,7 +457,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
         ...base, status: selected.writePlan.skipped.length || agentRepairPending ? 'partial' : 'current',
         reasonCode: agentRepairPending ? 'agent-repair-required' : 'no-update',
         message: agentRepairPending
-          ? 'Liftoff core is current; recorded integrations and requested configuration were preserved. Agent installation and framework default changes are not implemented by the public repair coordinator.'
+          ? 'Liftoff core is current; recorded integrations and requested configuration were preserved. Use the separate additive liftoff repair --agents plan for agent integration or an explicit Spec Kit default change.'
           : selected.writePlan.skipped.length
           ? 'No safe update writes are required; listed conflicts remain protected.'
           : 'Liftoff core is current; project files were not changed.'

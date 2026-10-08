@@ -36,6 +36,10 @@ import {
   prepareActiveBindingPublication, publishActiveBindingPlan,
   readActiveBindingPublicationPlan
 } from './active-binding-publication.js';
+import {
+  readWorkflowTransitionPlanIfPresent
+} from '../workflow-transition/plan.js';
+import { repairAgentIntegrations } from './agent-integrations.js';
 export type { RepairRequest } from './request.js';
 
 interface RepairInspection {
@@ -121,12 +125,15 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
   let selectedManifest: SupportedProjectManifest | undefined;
   let approval: UpdateApprovalResult | undefined;
   let validationAttempted = false;
+  let agentScope =
+    request.agents !== undefined || request.defaultAgent !== undefined;
   const now = () => context.updateNow?.() ?? new Date();
   const storage = { ...context.updatePreview, env: context.updatePreview?.env ?? context.env };
   const base = (): RepairReport => ({
     schemaVersion: repairSchemaVersions.report,
     operationKind: request.recover ? 'recover' : request.verifyPlan ? 'verify' : request.inspectLayout ? 'inspect-layout' : request.approvePlan ? 'apply' : 'check',
-    requestedScope: request.recover ? 'repair-recovery' :
+    requestedScope: agentScope ? 'agent-integration' :
+      request.recover ? 'repair-recovery' :
       request.inspectLayout || request.applicationPatch || request.verifyPlan ? 'application-layout' : 'local-infrastructure',
     projectRoot: root, status: 'blocked', committed, capabilities: repairCapabilities,
     repairScopeComplete: false, verification: 'not-run', message: '', blockers: [], nextActions: [],
@@ -178,7 +185,47 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
         ] });
       return 2;
     }
-    const pending = await inspectReviewedUpdateTransaction(root, { transactionKind: 'repair', approvalStore });
+    const pending = await inspectReviewedUpdateTransaction(root, {
+      transactionKind: 'repair',
+      approvalStore
+    });
+    const savedWorkflowPlan = request.approvePlan
+      ? await readWorkflowTransitionPlanIfPresent(
+          root,
+          request.approvePlan,
+          now(),
+          storage,
+          request.recover
+        )
+      : undefined;
+    agentScope ||= savedWorkflowPlan?.operation === 'agent-repair';
+    if (request.agents !== undefined ||
+        request.defaultAgent !== undefined ||
+        savedWorkflowPlan?.operation === 'agent-repair') {
+      if (pending.status !== 'absent') {
+        throw new Error(
+          'An interrupted application or infrastructure repair must be recovered before additive agent repair.'
+        );
+      }
+      return await repairAgentIntegrations({
+        root,
+        request,
+        context,
+        storage,
+        now: now(),
+        ...(savedWorkflowPlan ? { savedPlan: savedWorkflowPlan } : {})
+      });
+    }
+    if (savedWorkflowPlan) {
+      throw new Error(
+        'This saved fingerprint belongs to `liftoff workflow set`, not additive repair.'
+      );
+    }
+    if (request.recover && request.approvePlan) {
+      throw new Error(
+        'No saved additive agent repair plan matches this recovery fingerprint.'
+      );
+    }
     const pendingWorkspaces = await inspectRepairVerificationWorkspaces(root, storage);
     if (request.recover) {
       const result = await recoverReviewedUpdateTransaction(root, { transactionKind: 'repair', approvalStore });
@@ -550,7 +597,13 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
     context.outcome?.record('failure');
     emit({
       ...base(), status: committed ? 'partial' : 'failed', verification: committed ? 'incomplete' : 'not-run',
-      message: committed ? 'Infrastructure repair committed, but follow-up verification or cleanup is incomplete.' : 'Local repair stopped; no successful commit was reported.',
+      message: agentScope
+        ? committed
+          ? 'Additive agent repair committed, but follow-up verification or cleanup is incomplete.'
+          : 'Additive agent repair stopped; no successful commit was reported.'
+        : committed
+          ? 'Infrastructure repair committed, but follow-up verification or cleanup is incomplete.'
+          : 'Local repair stopped; no successful commit was reported.',
       blockers: [error instanceof Error ? error.message : 'Unexpected repair failure.'],
       ...(validationAttempted ? { validationSummary: ['Previously approved isolated OpenTofu validation was attempted; no application-script, state or deployment authority was granted.'] } : {}),
       nextActions: [repairCheckAction(root), ...(selectedManifest ? repairAgentActions(root, selectedManifest) : [])]

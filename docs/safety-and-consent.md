@@ -21,6 +21,21 @@ For `liftoff workflow set`, `--check` rejects both machine-consent flags.
 Machine preparation can be performed before a new exact plan is returned, but
 `--approve-plan` and recovery reject those flags so one invocation cannot
 conflate workstation/global-profile authority with project-file authority.
+Additive `liftoff repair --agents` uses the same split. `repair --check` rejects
+machine preparation; a non-check request may separately prepare pinned tools
+and, for OpenSpec only, the required global profile before returning a new
+project plan. Exact `--approve-plan` and
+`--recover --approve-plan <fingerprint>` invocations reject those machine flags.
+No tool/profile permission adds agents, changes a Spec Kit default, or writes an
+integration.
+
+Agent-file authority is additive-only. `--agents none`, removal, and implicit
+default replacement are rejected. Existing agent selections and the Spec Kit
+default remain unchanged unless the saved plan contains an explicit selected
+`--default-agent`. Official framework staging may change only requested
+integration paths and exact framework-owned selection state; custom neighboring
+files and unrelated project/application/infrastructure bytes remain outside the
+transaction.
 
 Selecting repository governance or passing `--yes` authorizes only deterministic
 local handoff files. It never authorizes agent execution, Git mutation, GitHub
