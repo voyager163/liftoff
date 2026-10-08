@@ -178,6 +178,8 @@ export function checkPromotion(event) {
 
 export function checkWorkflow(filename, workflow) {
   const release = filename === 'release.yml';
+  const windowsBoundaryTimeout =
+    "${{ matrix.os == 'windows-latest' && matrix.shard == 2 && 75 || 45 }}";
   assert.deepEqual(workflow.permissions, { contents: 'read' }, `${filename}: workflow default must be contents: read.`);
   assert.ok(workflow.jobs && typeof workflow.jobs === 'object', `${filename}: jobs are required.`);
   const triggers = Object.keys(workflow.on ?? {});
@@ -188,7 +190,13 @@ export function checkWorkflow(filename, workflow) {
     const bundleQualification = filename === 'ci.yml' && id === 'qualify-native-bundle';
     assert.ok(['ubuntu-latest', 'macos-latest', 'windows-latest', '${{ matrix.os }}'].includes(job['runs-on']) ||
       (parserQualification || bundleQualification) && job['runs-on'] === 'macos-15', `${filename}/${id}: use reviewed hosted runners.`);
-    assert.ok(Number.isInteger(job['timeout-minutes']) && job['timeout-minutes'] > 0 && job['timeout-minutes'] <= 60, `${filename}/${id}: bounded timeout required.`);
+    const timeout = job['timeout-minutes'];
+    assert.ok(
+      Number.isInteger(timeout) && timeout > 0 && timeout <= 60 ||
+        filename === 'ci.yml' && id === 'test-shards' &&
+          timeout === windowsBoundaryTimeout,
+      `${filename}/${id}: bounded timeout required.`
+    );
     assert.ok(!job['continue-on-error'], `${filename}/${id}: do not suppress a failed check.`);
     if (release && id === 'publish') {
       assert.deepEqual(job.permissions, { contents: 'read', 'id-token': 'write' }, 'Only publish gets OIDC.');

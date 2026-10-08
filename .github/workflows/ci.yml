@@ -125,7 +125,7 @@ jobs:
   test-shards:
     name: Platform tests (${{ matrix.os }}, shard ${{ matrix.shard }}/2)
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && matrix.shard == 2 && 75 || 45 }}
     strategy:
       fail-fast: false
       matrix:

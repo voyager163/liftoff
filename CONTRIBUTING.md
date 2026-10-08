@@ -72,16 +72,17 @@ timeouts are unchanged, including the migration inspection suite's 90-second
 limit. Use these defaults for CI qualification rather than increasing timeouts
 or excluding slow cases.
 
-Hosted CI partitions the complete root suite into two shards per platform while
-retaining the 45-minute job limit. Both shards run the package's supported-stack
-check and build; native integration and packaging checks run on shard 1, except
-the intact Windows project/packaging boundary suite runs on shard 2. That named
-boundary suite includes repair and adoption path-with-spaces, junction,
-mode/readback, and interrupted-transaction cases. Windows shard 1 separately
-runs real repair and adoption child commands through the packaged Job Object
-controller so a mock settlement result cannot qualify either lane. This keeps
-the extra boundary suite off the longer first Windows shard without dropping
-selectors or increasing the job deadline.
+Hosted CI partitions the complete root suite into two shards per platform.
+Both shards run the package's supported-stack check and build; native integration
+and packaging checks run on shard 1, except the intact Windows project/packaging
+boundary suite runs on shard 2. That named boundary suite includes repair and
+adoption path-with-spaces, junction, mode/readback, and interrupted-transaction
+cases. Windows shard 1 separately runs real repair and adoption child commands
+through the packaged Job Object controller so a mock settlement result cannot
+qualify either lane. All jobs retain the 45-minute limit except Windows shard 2,
+which has a 75-minute limit because it must complete both the named boundary
+suite and its source-complete package shard without dropping or filtering either
+set of tests.
 Each shard uploads its complete test report, including failures. The existing
 required `Test (...)` checks are fail-closed aggregators: all six platform shards
 must succeed, so a failed, cancelled or skipped shard cannot produce a green
