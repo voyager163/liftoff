@@ -191,9 +191,13 @@ describe('Windows test-project execution and filters', () => {
   it('preserves every existing Windows boundary CLI file selector exactly once', async () => {
     const command = (await ciCommand('Run Windows project and packaging boundary coverage')).split(/\s+/);
     expect(command.slice(0, 3)).toEqual(['npx', 'vitest', 'run']);
-    const files = command.slice(3);
+    const selection = command.slice(3);
+    const files = selection.filter((value) =>
+      /^tests\/(?:[\w-]+\/)*[\w-]+\.test\.ts$/.test(value)
+    );
+    expect(selection.filter((value) => !files.includes(value)))
+      .toEqual(['--maxWorkers=1', '--no-file-parallelism']);
     expect(files).toContain(migrationFile);
-    expect(files.every((file) => /^tests\/(?:[\w-]+\/)*[\w-]+\.test\.ts$/.test(file))).toBe(true);
     const current = await fixture(files);
     const selected: unknown = JSON.parse(await runCli(current.root, 'list', ['--filesOnly', ...files, '--json']));
     if (!Array.isArray(selected)) throw new Error('Expected the Vitest file-selection inventory.');

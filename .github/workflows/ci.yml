@@ -244,6 +244,7 @@ jobs:
           tests/repair-identity.test.ts tests/repair-approval.test.ts tests/repair-application-command.test.ts
           tests/repair-application.test.ts tests/repair-integrations.test.ts
           tests/repair-workspaces.test.ts tests/repair-framework.test.ts
+          tests/current-project-repair.test.ts
           tests/adoption-inventory.test.ts tests/adoption-publication.test.ts
           tests/adoption-transaction.test.ts tests/adopt-command.test.ts
           tests/windows-job-protocol.test.ts tests/windows-job-runner.test.ts
@@ -256,6 +257,7 @@ jobs:
           tests/documentation.test.ts tests/repository-policy.test.ts tests/release-artifact.test.ts
           tests/telemetry-contract.test.ts tests/telemetry-config.test.ts tests/telemetry.test.ts
           tests/cli-telemetry.test.ts tests/telemetry-infrastructure.test.ts
+          --maxWorkers=1 --no-file-parallelism
 
       - name: Validate local repair with native OpenTofu
         if: matrix.shard == 1
@@ -279,6 +281,7 @@ jobs:
         run: >-
           npm run check:supported-stack && npm run build &&
           npx vitest run --shard=${{ matrix.shard }}/2 --allowOnly=false
+          --maxWorkers=2
           --reporter=default --reporter=json --outputFile.json=qualification/platform-tests.json
 
       - name: Store platform test evidence

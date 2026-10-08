@@ -267,35 +267,51 @@ async function interruptPublication(
       : { content: snapshot.content.toString('base64') }),
     ...(snapshot.mode === undefined ? {} : { mode: snapshot.mode })
   }));
+  const inputPath = path.join(
+    project.home,
+    `interrupted-adoption-${publication.plan.report.fingerprint}.json`
+  );
+  await writeFile(inputPath, JSON.stringify({
+    projectRoot: project.root,
+    home: project.home,
+    now: now.toISOString(),
+    fingerprint: publication.plan.report.fingerprint,
+    transactionCandidateBinding:
+      publication.plan.report.transactionCandidateBinding,
+    mutations,
+    preconditions
+  }));
   const child = spawnSync(
     process.execPath,
     ['--import', loaderUrl, '--input-type=module', '-e', `
+      const { readFile } = await import('node:fs/promises');
       const { applyAdoptionTransaction } = await import(${JSON.stringify(transactionUrl)});
       const { createAdoptionTransactionAuthorityStore } = await import(${JSON.stringify(authorityUrl)});
-      const mutations = ${JSON.stringify(mutations)}.map(entry => entry.type === 'write'
+      const input = JSON.parse(await readFile(process.argv[1], 'utf8'));
+      const mutations = input.mutations.map(entry => entry.type === 'write'
         ? { ...entry, content: Buffer.from(entry.content, 'base64') }
         : entry);
-      const preconditions = ${JSON.stringify(preconditions)}.map(entry => ({
+      const preconditions = input.preconditions.map(entry => ({
         ...entry,
         ...(entry.content === undefined
           ? {}
           : { content: Buffer.from(entry.content, 'base64') })
       }));
       await applyAdoptionTransaction(
-        ${JSON.stringify(project.root)},
+        input.projectRoot,
         mutations,
         {
-          planFingerprint: ${JSON.stringify(publication.plan.report.fingerprint)},
+          planFingerprint: input.fingerprint,
           authorityStore: createAdoptionTransactionAuthorityStore(
-            ${JSON.stringify(project.root)},
+            input.projectRoot,
             {
-              homedir: ${JSON.stringify(project.home)},
+              homedir: input.home,
               env: {},
-              clock: () => new Date(${JSON.stringify(now.toISOString())})
+              clock: () => new Date(input.now)
             }
           ),
           preconditions,
-          expectedCandidateBinding: ${JSON.stringify(publication.plan.report.transactionCandidateBinding)},
+          expectedCandidateBinding: input.transactionCandidateBinding,
           validateCurrentInputs: async () => {},
           onCheckpoint: async checkpoint => {
             if (checkpoint.phase === 'prepared') process.exit(73);
@@ -303,7 +319,7 @@ async function interruptPublication(
         }
       );
       process.exitCode = 9;
-    `],
+    `, inputPath],
     {
       encoding: 'utf8',
       timeout: 20_000,

@@ -4,7 +4,7 @@ import {
 } from '../../adapters/filesystem/project-transaction.js';
 import {
   applyReviewedUpdateTransaction, inspectRepairTransactionCandidate,
-  type ReviewedUpdateTransactionOutcome
+  reviewedUpdateTargetMode, type ReviewedUpdateTransactionOutcome
 } from '../../adapters/filesystem/reviewed-update-transaction.js';
 import {
   createScopedUserLocalRecordStore, type UpdatePreviewOptions
@@ -850,7 +850,7 @@ function validatePlanReport(
       effects[0]?.kind !== 'repair-history' ||
       canonicalSha256(effects[0].pathParts) !==
         canonicalSha256(expectedReceiptPath) ||
-      effects[0].mode !== 0o600 ||
+      effects[0].mode !== reviewedUpdateTargetMode(0o600) ||
       effects[1]?.kind !== 'manifest' ||
       effects[1].pathParts.length !== 1 ||
       effects[1].pathParts[0] !== 'liftoff.manifest.json' ||
