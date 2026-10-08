@@ -25,9 +25,21 @@ function render(report: AdoptionCommandReport, presentation: PresentationSession
     { label: 'Boundary', value: report.projectKind },
     { label: 'Operation', value: report.operation },
     { label: 'Status', value: report.status },
+    { label: 'Layout plan', value: report.layoutPlan?.fingerprint ?? 'unavailable' },
     { label: 'Review fingerprint', value: report.review?.fingerprint ?? 'unavailable' },
     { label: 'Destination plan', value: report.destinationPlan?.fingerprint ?? 'unavailable' }
   ]);
+  if (report.layoutPlan) {
+    presentation.table(
+      'Compatible binding observations',
+      ['Identity', 'Status', 'Path'],
+      report.layoutPlan.bindings.map(binding => [
+        binding.logicalName,
+        binding.status,
+        binding.pathParts.join('/')
+      ])
+    );
+  }
   presentation.status(
     report.exitCode === 1 ? 'error' : 'warning',
     report.status,

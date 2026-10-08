@@ -184,12 +184,15 @@ liftoff adopt ../legacy-app --type standard --api node --spec manual --agents no
 ```
 
 The schema-1 preview observes one exact Git boundary or explicitly selected
-non-Git root and saves only expiring review metadata outside the repository.
+non-Git root. When supported application binding evidence exists, it saves only
+expiring review metadata outside the repository.
 It does not run project scripts, install dependencies, access credentials or
 network, write a manifest, move application files, change Git history, infer
-deployment absence, or approve later work. Missing target bindings, protected
-infrastructure, destination conflicts, unresolved references, and unsupported
-conversion remain explicit blockers.
+deployment absence, or approve later work. Static planning retains observed
+application bindings at their current paths, omits unobserved starter bindings,
+and leaves protected infrastructure uninspected and planning-only. A missing
+supported application-component binding, destination conflict, unresolved
+reference, or unsupported conversion remains an explicit blocker.
 
 The registered `--approve-plan` and fingerprint-selected `--recover` surfaces
 fail closed until a complete public compatibility/file plan and authenticated

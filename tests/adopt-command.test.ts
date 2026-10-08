@@ -36,6 +36,7 @@ async function fixture(options: { manifest?: boolean } = {}) {
   const root = await directory('liftoff-adopt-command-');
   const home = await directory('liftoff-adopt-home-');
   await mkdir(path.join(root, '.git'));
+  await writeFile(path.join(root, '.git', 'HEAD'), 'ref: refs/heads/main\n');
   const plan = buildCurrentProjectPlan({
     projectName: path.basename(root),
     projectType: 'standard',
@@ -107,8 +108,16 @@ describe('public reviewed adoption command', () => {
       readOnly: true,
       projectRoot: project.root,
       projectKind: 'git',
-      status: 'blocked',
+      status: 'compatibility-review-required',
       exitCode: 2,
+      layoutPlan: {
+        schemaVersion: 1,
+        kind: 'liftoff-adoption-layout-plan',
+        status: 'ready-for-candidate-inspection',
+        compatibility: 'not-verified',
+        deployment: 'planning-only',
+        gitHistory: 'not-read-or-modified'
+      },
       review: {
         schemaVersion: 1,
         kind: 'liftoff-adoption-preview',
@@ -119,7 +128,7 @@ describe('public reviewed adoption command', () => {
       destinationPlan: {
         schemaVersion: 1,
         kind: 'liftoff-adoption-destination-plan',
-        status: 'blocked',
+        status: 'ready-for-independent-verification',
         verification: 'not-performed',
         approval: 'not-requested',
         publication: 'not-authorized'
@@ -127,8 +136,12 @@ describe('public reviewed adoption command', () => {
       approval: { requestedFingerprint: null, status: 'not-requested' },
       recovery: { requested: false, status: 'not-requested' }
     });
-    expect(report.candidate.status).toBe('blocked');
-    expect(report.destinationPlan.blockers).not.toEqual([]);
+    expect(report.candidate.status).toBe('candidate-observed-unverified');
+    expect(report.destinationPlan.blockers).toEqual([]);
+    expect(report.layoutPlan.bindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: 'observed-preserved' }),
+      expect.objectContaining({ status: 'planning-only-excluded' })
+    ]));
     expect(await snapshot(project.root)).toEqual(before);
     expect(await readdir(project.home, { recursive: true })).not.toEqual([]);
   });
@@ -144,7 +157,7 @@ describe('public reviewed adoption command', () => {
     expect(result.code).toBe(2);
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('Reviewed in-place adoption');
-    expect(result.stdout).toContain('blocked');
+    expect(result.stdout).toContain('compatibility-review-required');
     expect(result.stdout).toContain('grants no verification, file approval');
     expect(await snapshot(project.root)).toEqual(before);
   });
@@ -219,7 +232,14 @@ describe('public reviewed adoption command', () => {
     expect(JSON.parse(explicit.stdout)).toMatchObject({
       projectRoot: root,
       projectKind: 'explicit-non-git',
-      status: 'blocked'
+      status: 'blocked',
+      layoutPlan: {
+        status: 'blocked',
+        blockers: [{ code: 'supported-application-binding-unobserved' }]
+      },
+      review: null,
+      candidate: null,
+      destinationPlan: null
     });
   });
 

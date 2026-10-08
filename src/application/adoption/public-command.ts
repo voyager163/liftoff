@@ -19,6 +19,10 @@ import {
   type AdoptionPreview
 } from './preview.js';
 import type { AdoptionCandidateReport } from './candidate.js';
+import {
+  prepareAdoptionLayoutPlan,
+  type AdoptionLayoutPlanReport
+} from './layout-plan.js';
 
 export const adoptionCommandReportSchemaVersion = 1 as const;
 
@@ -58,6 +62,7 @@ export interface AdoptionCommandReport {
     readonly activeLayoutDigest: string;
     readonly targetLayoutDigest: string;
   } | null;
+  readonly layoutPlan: AdoptionLayoutPlanReport | null;
   readonly review: AdoptionPreview | null;
   readonly candidate: AdoptionCandidateReport | null;
   readonly destinationPlan: AdoptionDestinationPlanReport | null;
@@ -173,6 +178,7 @@ function unavailableReport(
     status,
     exitCode: 1,
     target: null,
+    layoutPlan: null,
     review: null,
     candidate: null,
     destinationPlan: null,
@@ -266,10 +272,40 @@ export async function previewAdoptionProject(
       ]
     };
   }
-  const inspection = await createAdoptionReview(boundary.projectRoot, source, now);
+  const layout = await prepareAdoptionLayoutPlan(boundary.projectRoot, source);
+  const plannedSource = layout.source;
+  if (plannedSource === null) {
+    return {
+      schemaVersion: adoptionCommandReportSchemaVersion,
+      kind: 'liftoff-adoption',
+      command: 'adopt',
+      operation: 'preview',
+      readOnly: true,
+      projectRoot: boundary.projectRoot,
+      projectKind: boundary.kind,
+      status: 'blocked',
+      exitCode: 2,
+      target: null,
+      layoutPlan: layout.report,
+      review: null,
+      candidate: null,
+      destinationPlan: null,
+      approval: { requestedFingerprint: null, status: 'not-requested' },
+      recovery: { requested: false, status: 'not-requested' },
+      nextActions: [{
+        command: ['liftoff', 'adopt', '--project', boundary.projectRoot, '--check'],
+        purpose: 'Select a supported target with at least one observed application-component binding, then request a fresh preview.'
+      }],
+      diagnostics: [
+        'No supported application-component binding was observed at the selected current paths; no candidate manifest or destination plan was created.'
+      ],
+      limitations
+    };
+  }
+  const inspection = await createAdoptionReview(boundary.projectRoot, plannedSource, now);
   const destination = await prepareAdoptionDestinationPlan(
     inspection.preview,
-    source,
+    plannedSource,
     now
   );
   await saveAdoptionPreview(inspection.preview, now, storage);
@@ -277,7 +313,7 @@ export async function previewAdoptionProject(
     await saveAdoptionDestinationPlan(
       boundary.projectRoot,
       inspection.preview.fingerprint,
-      source,
+      plannedSource,
       now,
       storage
     );
@@ -300,6 +336,7 @@ export async function previewAdoptionProject(
       activeLayoutDigest: inspection.report.inventory.activeLayoutDigest,
       targetLayoutDigest: inspection.report.inventory.target.digest
     },
+    layoutPlan: layout.report,
     review: inspection.preview,
     candidate: inspection.report,
     destinationPlan: destination.report,

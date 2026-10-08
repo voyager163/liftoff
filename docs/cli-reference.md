@@ -764,11 +764,15 @@ liftoff adopt "./existing application" --type standard --api node --spec manual 
 
 The current schema-1 public surface resolves one exact Git boundary, or an
 explicitly selected non-Git root, and compares it with the installed target
-selection. It saves the expiring adoption review outside the repository.
-Candidate and destination reports retain missing bindings, excluded protected
-infrastructure, destination conflicts, literal-reference limits, and
-deployment/state uncertainty as blockers. Project files, Git history, commands,
-dependencies, network, credentials, state, and cloud resources are unchanged.
+selection. When supported application binding evidence exists, it saves the
+expiring adoption review outside the repository.
+Its static layout plan preserves observed application bindings at their current
+paths, omits unobserved starter bindings, and leaves protected infrastructure
+uninspected and planning-only. At least one selected application-component
+binding must be observed before candidate and destination review. Destination
+conflicts, literal-reference limits, and deployment/state uncertainty remain
+explicit. Project files, Git history, commands, dependencies, network,
+credentials, state, and cloud resources are unchanged.
 
 `--approve-plan <fingerprint>` and
 `--recover --approve-plan <fingerprint>` are registered exact-authority
