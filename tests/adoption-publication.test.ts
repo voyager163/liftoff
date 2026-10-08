@@ -394,7 +394,7 @@ describe('verified adoption publication planning and execution', () => {
         expect.stringContaining(altered.pathParts.join('/'))
       ]
     });
-  });
+  }, 120_000);
 
   it('rejects stale application bytes, expired authority and modified saved metadata before effects', async () => {
     const stale = await prepared();

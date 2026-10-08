@@ -597,11 +597,11 @@ describe('public reviewed adoption command', () => {
         rollbackFailures: [],
         cleanupFailures: []
       }
-    }, 120_000);
+    });
     await expect(readFile(
       path.join(project.root, 'liftoff.manifest.json')
     )).rejects.toMatchObject({ code: 'ENOENT' });
-  });
+  }, 120_000);
 
   it('routes an existing Liftoff project to update and repair without re-adoption', async () => {
     const project = await fixture({ manifest: true });

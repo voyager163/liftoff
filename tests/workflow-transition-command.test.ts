@@ -57,11 +57,16 @@ async function fixture(
 }
 
 async function snapshot(root: string) {
-  const entries = (await readdir(root, { recursive: true })).sort();
+  const observed = await readdir(root, { recursive: true });
+  const entries = observed.map(entry =>
+    entry.split(path.sep).join('/')
+  ).sort();
   const files: Record<string, string> = {};
-  for (const entry of entries) {
+  for (const entry of observed) {
     try {
-      files[entry] = (await readFile(path.join(root, entry))).toString('base64');
+      files[entry.split(path.sep).join('/')] = (await readFile(
+        path.join(root, entry)
+      )).toString('base64');
     } catch {
       // Directories are represented by the recursive entry list.
     }
