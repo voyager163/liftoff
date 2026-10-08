@@ -238,6 +238,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
       check: flags.check === true,
       approvePlan: readStringFlag(flags, 'approve-plan'),
       recover: flags.recover === true,
+      installTools: flags['install-tools'] === true,
+      configureOpenSpecProfile:
+        flags['configure-openspec-profile'] === true,
       json: flags.json === true
     }, flags.help === true);
     if (issue) throw new UsageError(issue);

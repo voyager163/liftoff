@@ -20,6 +20,13 @@ export function workflowCommand(
     check: readBooleanFlag(parsed.flags, 'check') === true,
     approvePlan: readStringFlag(parsed.flags, 'approve-plan'),
     recover: readBooleanFlag(parsed.flags, 'recover') === true,
+    installTools:
+      readBooleanFlag(parsed.flags, 'install-tools') === true,
+    configureOpenSpecProfile:
+      readBooleanFlag(
+        parsed.flags,
+        'configure-openspec-profile'
+      ) === true,
     json: readBooleanFlag(parsed.flags, 'json') === true
   }, context);
 }

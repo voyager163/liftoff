@@ -428,6 +428,17 @@ Framework files remain owned by the official initializer. Liftoff validates
 them but excludes framework-owned output from durable artifact hashes so a
 framework can manage its own lifecycle.
 
+The same official ownership applies when `liftoff workflow set` selects
+OpenSpec or Spec Kit for an existing current project. Liftoff runs the pinned
+initializer only in isolated staging, validates its complete output, rejects
+occupied differing destinations and active overlapping work, then places only
+the exact staged files into the separately approved transition transaction.
+If Spec Kit produces no tracked file under `specs/`, the same reviewed
+transaction adds Liftoff's empty `specs/.gitkeep` repository placeholder so the
+required history root survives version control. Existing inactive framework
+history remains outside managed-core ownership, and the expected complete
+target inventory is rechecked at commit and readback.
+
 To align an existing OpenSpec project, configure both delivery and all workflows:
 
 ```bash

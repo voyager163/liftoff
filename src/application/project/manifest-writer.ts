@@ -367,15 +367,19 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
       );
     }
     profile = selection.profile as 'none' | ModernGovernanceProfile;
-    if (source.framework.state !== 'initialized' ||
-        source.project.specWorkflow === 'manual' ||
-        leaf.project.specWorkflow !== 'manual' ||
-        leaf.framework.state !== 'not-required' ||
+    const sourceEligible = source.project.specWorkflow === 'manual'
+      ? source.framework.state === 'not-required'
+      : source.framework.state === 'initialized';
+    const targetEligible = leaf.project.specWorkflow === 'manual'
+      ? leaf.framework.state === 'not-required'
+      : leaf.framework.state === 'initialized';
+    if (!sourceEligible ||
+        !targetEligible ||
         canonicalJson(source.project.workload) !==
           canonicalJson(leaf.project.workload) ||
         source.project.name !== leaf.project.name) {
       throw new FileSystemError(
-        'Workflow transition currently supports only an initialized external framework to Manual without changing project identity.'
+        'Workflow transition requires a current Manual or initialized external source and a Manual or initialized external target without changing project identity.'
       );
     }
     originalReference = source.sourceManifestHistory;

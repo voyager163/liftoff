@@ -111,6 +111,12 @@ Machine-level remediation requires `--install-tools` or separate per-tool
 interactive approval. Project repair approval, `--yes`, and dependency/profile
 permissions do not substitute for tool consent.
 
+`liftoff workflow set` uses the same boundary before an external target can be
+reviewed. Its `--check` mode never installs tools. A separate
+`--install-tools` preparation may make the pinned OpenSpec or Spec Kit
+runtime/package-manager/framework chain ready, but it still does not approve
+the resulting project-file plan.
+
 - macOS recipes use Homebrew, npm, or `uv`.
 - Windows recipes use WinGet, npm, or `uv`.
 - Linux system packages are never installed with automatic elevation. Liftoff
@@ -168,6 +174,11 @@ commands before asking. Noninteractive runs stop unless
 The authorized change is verified before project staging. Because it is a
 machine-wide user preference, Liftoff reports it separately and does not restore
 an older profile if a later project phase fails.
+
+An OpenSpec workflow transition follows the same rule:
+`--configure-openspec-profile` may prepare and verify the global profile before
+official isolated staging, while `--approve-plan` remains the only automation
+authority for the exact project files. Neither flag implies the other.
 
 ## Project dependency consent
 

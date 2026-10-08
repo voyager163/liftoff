@@ -9,6 +9,8 @@ export interface WorkflowTransitionRequest {
   readonly check: boolean;
   readonly approvePlan?: string;
   readonly recover: boolean;
+  readonly installTools: boolean;
+  readonly configureOpenSpecProfile: boolean;
   readonly json: boolean;
 }
 
@@ -48,11 +50,24 @@ export function workflowTransitionRequestIssue(
     return 'Workflow --approve-plan requires exactly 64 lowercase hexadecimal characters.';
   }
   if (request.check &&
-      (request.approvePlan !== undefined || request.recover)) {
-    return 'Workflow --check cannot be combined with --approve-plan or --recover.';
+      (request.approvePlan !== undefined || request.recover ||
+        request.installTools || request.configureOpenSpecProfile)) {
+    return 'Workflow --check cannot be combined with approval, recovery, tool installation or global-profile configuration.';
   }
   if (request.recover && request.approvePlan === undefined) {
     return 'Workflow --recover requires --approve-plan <saved-fingerprint>.';
+  }
+  if ((request.approvePlan !== undefined || request.recover) &&
+      (request.installTools || request.configureOpenSpecProfile)) {
+    return 'Workflow project-file approval or recovery cannot also authorize machine tools or global-profile changes.';
+  }
+  if (request.target === 'manual' &&
+      (request.installTools || request.configureOpenSpecProfile)) {
+    return 'Manual workflow transitions require no framework tool installation or OpenSpec global-profile configuration.';
+  }
+  if (request.target !== 'openspec' &&
+      request.configureOpenSpecProfile) {
+    return 'Workflow --configure-openspec-profile is supported only for an OpenSpec target.';
   }
   return undefined;
 }

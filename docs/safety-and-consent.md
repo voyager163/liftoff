@@ -17,6 +17,10 @@ dependencies. No one permission implies another.
 | `liftoff governance apply-next --execute` | Execute at most one reviewed, graph-ready, evidence-ready governance transition | Earlier or later phases, broader resources, credentials outside the envelope, live plan/apply during baseline, force-push, reset, rebase, or unknown-file deletion |
 
 Interactive sessions ask separately at the point each permission is needed.
+For `liftoff workflow set`, `--check` rejects both machine-consent flags.
+Machine preparation can be performed before a new exact plan is returned, but
+`--approve-plan` and recovery reject those flags so one invocation cannot
+conflate workstation/global-profile authority with project-file authority.
 
 Selecting repository governance or passing `--yes` authorizes only deterministic
 local handoff files. It never authorizes agent execution, Git mutation, GitHub

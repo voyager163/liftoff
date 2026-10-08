@@ -47,8 +47,8 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | `liftoff update [project]` | Applies an exactly approved v8 successor or managed-core maintenance plan |
 | `liftoff update --check` | Reports eligible v8 plans without project mutation; exits 0 when clean and 2 when actionable |
 | `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; project-owned files remain unreachable |
-| `liftoff workflow set <openspec\|spec-kit\|manual> [project] --check` | Saves an exact external workflow-transition plan binding source, target, agents, current identity files, checks and expiry without project writes |
-| `liftoff workflow set manual [project] --approve-plan <fingerprint>` | Applies an exact current initialized OpenSpec/Spec Kit-to-Manual plan through the dedicated transition transaction |
+| `liftoff workflow set <openspec\|spec-kit\|manual> [project] --check` | Saves an exact workflow-transition plan binding source/target history, pinned tool/profile identity, official staged output, agents, current identity files, checks and expiry without project or machine writes |
+| `liftoff workflow set <openspec\|spec-kit\|manual> [project] --approve-plan <fingerprint>` | Applies an exact current plan through the dedicated transition transaction; this approval never authorizes machine tools or global-profile changes |
 | `liftoff workflow set <target> [project] --recover --approve-plan <fingerprint>` | Recovers only the authenticated transition attributable to that exact plan and observed transaction digest |
 | `liftoff repair [project-path]` | Displays an exact plan and offers action-specific default-No approval on a genuine terminal; no fingerprint entry |
 | `liftoff repair [project-path] --check` | Inventories current-v8 application bindings or previews historical infrastructure repair without cloud calls, application scripts or project writes |
@@ -815,6 +815,7 @@ planning-only.
 liftoff workflow set manual . --check --json
 liftoff workflow set openspec . --agents copilot --check --json
 liftoff workflow set spec-kit . --agents copilot --default-agent copilot --check --json
+liftoff workflow set openspec . --agents copilot --install-tools --configure-openspec-profile --json
 ```
 
 The schema-1 surface supports current manifest-v8 projects and binds
@@ -826,35 +827,56 @@ Changed inputs, a mismatched target/agent selection, aliases that do not resolve
 to the same canonical selection, unknown fields, tampering, future dates and
 expiry all reject the saved plan.
 
-Initialized OpenSpec and Spec Kit projects can transition to Manual. The saved
-plan includes exact managed-integration/config/manifest effects, physical
-preconditions, transaction measurement, final-manifest ordering and the
-dedicated recovery identity. Exact `--approve-plan` automation or genuine
-interactive default-No consent can apply that plan. JSON, non-TTY input,
-generic yes, force, an agent, or a saved plan alone never grants authority.
+Current Manual and initialized external projects can transition among Manual,
+OpenSpec and Spec Kit. The saved plan includes exact
+managed-integration/config/manifest effects, validated official framework
+effects where applicable, physical preconditions, transaction measurement,
+final-manifest ordering and the dedicated recovery identity. Exact
+`--approve-plan` automation or genuine interactive default-No consent can apply
+that project plan. JSON, non-TTY input, generic yes, force, an agent,
+machine-tool permission, global-profile permission, or a saved plan alone never
+grants project-file authority.
 
-The dedicated transaction may rewrite or retire only exact recorded Liftoff
-managed integrations, write `liftoff.config.json`, and publish the manifest
-last. It never deletes OpenSpec/Spec Kit trees, specifications or history,
-uninstalls shared tools, changes application/Git bytes, touches deployment
-state, changes shared profiles, or enrolls telemetry. Managed drift, occupied
-new integration paths, stale inputs, changed plugin resolution, expiry, and
-mismatched target/agents fail closed. Recovery requires the same plan
-fingerprint and the authenticated observed transaction digest.
+For Manual targets, the dedicated transaction may rewrite or retire only exact
+recorded Liftoff managed integrations, write `liftoff.config.json`, and publish
+the manifest last. For OpenSpec or Spec Kit targets, it may additionally create only the exact
+validated files emitted by the pinned official initializer in an isolated
+staging tree. When official Spec Kit output contains no tracked file under
+`specs/`, the reviewed effects also include the empty `specs/.gitkeep`
+repository placeholder used throughout Liftoff projects. Existing differing
+files or modes are collisions; force cannot replace them. The transaction never
+deletes OpenSpec/Spec Kit trees,
+specifications or history, uninstalls shared tools, changes application/Git
+bytes, touches deployment state, changes shared profiles, or enrolls telemetry.
+Managed drift, occupied new integration/framework paths, stale inputs, changed
+plugin/tool/profile resolution, expiry, and mismatched target/agents fail
+closed. Recovery requires the same plan fingerprint and the authenticated
+observed transaction digest.
 
-The plan also records a bounded digest inventory of the complete source
-framework trees. Recognized active OpenSpec changes or Spec Kit specification
-directories are explicitly reconciled as preserved-on-disk,
-non-authoritative Manual history; their identifiers and bytes are part of the
-fingerprint. Links, special entries, unknown active-work shapes, or any
-framework-byte change after preview block the transition. Committed readback
-rechecks that inventory and verifies the native Manual local-readiness contract
-reports the external-framework check as inapplicable; unrelated local
-infrastructure blockers remain separate readiness work.
+The plan records bounded digest inventories for the complete source framework
+trees and any pre-existing target history. Recognized active OpenSpec changes
+or Spec Kit specification directories may be preserved as non-authoritative
+history only when moving to Manual. A transition into an external framework
+blocks on active source work, active target work, partial target roots, unknown
+history shapes, links, special entries, case/Unicode aliases, or changed
+framework bytes after preview. Inactive target history may remain only when
+every official staged file is absent or byte-and-mode identical.
 
-Transitions into OpenSpec or Spec Kit remain `execution-unavailable` until
-their official pinned isolated staging and separate machine/global-profile
-consent are qualified.
+External targets first bind compatible pinned runtime/package-manager/framework
+identities. `--install-tools` is separate allowlisted machine consent and cannot
+approve project files or a reviewed version/channel replacement.
+`--configure-openspec-profile` separately authorizes only the required custom,
+both-delivery, complete-workflow OpenSpec fields. `--check` permits neither.
+After preparation, Liftoff reruns the official initializer with literal
+arguments under isolated `HOME`, `USERPROFILE`, XDG, Git, agent and temporary
+paths, rejects incomplete/invalid output or `.git` metadata, and fingerprints
+the complete staged file inventory. Apply revalidates the tool/profile identity
+and reproduces the same official output before starting the reviewed
+transaction. Committed readback rechecks source preservation and either native
+Manual readiness or the selected official framework installation. External
+commit validation also binds the complete expected target framework inventory,
+so concurrent history, active-work, file, mode, or directory-shape changes
+cannot be reported as a successful transition.
 
 ## Read-only governance assessment
 

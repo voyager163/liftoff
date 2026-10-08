@@ -71,16 +71,16 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
             'Schema-1 exact workflow transition planning for current manifest-v8 projects. ' +
             'The preview binds source workflow/framework identity, target workflow, canonical agents/default, ' +
             'raw manifest/config digests and modes, installed target plugin resolution, required checks and expiry. ' +
-            'Plans are project-bound user-local metadata outside the repository. An initialized OpenSpec or Spec Kit ' +
-            'project can transition to Manual after exact fingerprint approval or genuine terminal default-No consent. ' +
-            'The dedicated transaction changes only selected managed integrations, liftoff.config.json and the manifest; ' +
-            'framework documents/history, application/Git bytes, shared tools/profiles, deployment/state and telemetry ' +
-            'remain unchanged. A bounded framework inventory reconciles recognized active work as preserved non-authoritative ' +
-            'history and committed readback verifies native Manual framework readiness. Fingerprint-selected recovery addresses ' +
-            'only the authenticated transaction. Changed inputs/framework bytes, unknown active-work shapes, managed drift, ' +
-            'target collisions, mismatched selection, tampering and expiry fail closed. Transitions into ' +
-            'OpenSpec/Spec Kit still require separately qualified official isolated staging. Generic yes, force, JSON, an ' +
-            'agent, or a saved plan is not transition authority.'
+            'Plans are project-bound user-local metadata outside the repository. Current Manual and initialized external ' +
+            'projects can transition among Manual, OpenSpec and Spec Kit after exact fingerprint approval or genuine terminal ' +
+            'default-No consent. External targets require compatible pinned tools, separate --install-tools and OpenSpec ' +
+            '--configure-openspec-profile permission when applicable, and complete official initialization in an isolated ' +
+            'home/staging tree. The dedicated transaction changes only validated official framework output, selected managed ' +
+            'integrations, liftoff.config.json and the final manifest. Existing framework documents/history, application/Git ' +
+            'bytes, deployment/state and unrelated integrations remain unchanged. Active overlapping work, unsupported history, ' +
+            'changed inputs/tool/profile/framework identity, invalid official output, managed drift, target collisions, ' +
+            'mismatched selection, tampering and expiry fail closed. Fingerprint-selected recovery addresses only the ' +
+            'authenticated transaction. Generic yes, force, JSON, an agent, machine permission, or a saved plan is not project-file authority.'
         }
       : command === 'update'
       ? {

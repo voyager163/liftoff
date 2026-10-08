@@ -16,12 +16,21 @@ import {
   canonicalSha256
 } from '../../domain/governance/activation/canonical-json.js';
 import {
+  validateFrameworkInstallation
+} from '../../framework-validation.js';
+import type {
+  CommandRunner,
+  RunCommandOptions
+} from '../../process-runner.js';
+import type { WorkstationProbeOptions } from '../../workstation.js';
+import {
   inspectModernLocalVerification,
   planModernLocalVerification
 } from '../governance/modern-local-inputs.js';
 import {
   assertWorkflowTransitionFrameworkPreserved,
   assertWorkflowTransitionPlanCurrent,
+  assertWorkflowTransitionTargetFrameworkCommitted,
   readWorkflowTransitionPlan,
   readWorkflowTransitionPlanForRecovery,
   rebuildWorkflowTransitionExecution,
@@ -35,6 +44,11 @@ import {
 export interface WorkflowTransitionExecutionOptions {
   readonly storage?: UpdatePreviewOptions;
   readonly now: Date;
+  readonly runner?: CommandRunner;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly workstationProbe?: WorkstationProbeOptions;
+  readonly streamOptions?: Pick<RunCommandOptions, 'stdout' | 'stderr'>;
+  readonly onCommand?: (command: string) => void;
 }
 
 export interface WorkflowTransitionExecutionOutcome {
@@ -104,6 +118,39 @@ async function readback(
     });
   }
   await assertWorkflowTransitionFrameworkPreserved(plan);
+  if (plan.target.workflow !== 'manual') {
+    await assertWorkflowTransitionTargetFrameworkCommitted(plan);
+    const issues = await validateFrameworkInstallation(
+      plan.projectRoot,
+      {
+        workflow: plan.target.workflow,
+        agents: [...plan.target.agents],
+        ...(plan.target.defaultAgent
+          ? { defaultAgent: plan.target.defaultAgent }
+          : {})
+      }
+    );
+    if (issues.length > 0) {
+      throw new Error(
+        `Committed workflow transition did not produce the official ${plan.target.workflow} contract:\n${issues.join('\n')}`
+      );
+    }
+    return canonicalSha256({
+      schemaVersion: 1,
+      kind: 'liftoff-workflow-transition-readback',
+      projectRoot: plan.projectRoot,
+      planFingerprint: plan.fingerprint,
+      effects: observations,
+      frameworkInventory: plan.frameworkInventory,
+      targetFrameworkInventory: plan.targetFrameworkInventory,
+      targetLocalReadiness: {
+        mode: 'official-framework-initialized',
+        workflow: plan.target.workflow,
+        agents: plan.target.agents,
+        defaultAgent: plan.target.defaultAgent
+      }
+    });
+  }
   const inspection = await inspectModernLocalVerification(plan.projectRoot);
   if (inspection.status !== 'modern-observed') {
     throw new Error(
@@ -187,7 +234,17 @@ export async function applyWorkflowTransitionPlan(
   if (plan.execution.status !== 'ready-for-file-approval') {
     throw new Error('The selected workflow transition is not executable.');
   }
-  const candidate = await rebuildWorkflowTransitionExecution(plan);
+  await assertWorkflowTransitionPlanCurrent(plan, {
+    runner: options.runner,
+    env: options.env,
+    workstationProbe: options.workstationProbe
+  });
+  const candidate = await rebuildWorkflowTransitionExecution(plan, {
+    runner: options.runner,
+    env: options.env,
+    streamOptions: options.streamOptions,
+    onCommand: options.onCommand
+  });
   const authorityStore = createWorkflowTransitionTransactionAuthorityStore(
     plan.projectRoot,
     options.storage
@@ -208,10 +265,19 @@ export async function applyWorkflowTransitionPlan(
           plan.execution.transactionCandidateBinding,
         validateCurrentInputs: async stage => {
           if (stage !== 'before-commit') {
-            await assertWorkflowTransitionPlanCurrent(plan);
+            await assertWorkflowTransitionPlanCurrent(plan, {
+              runner: options.runner,
+              env: options.env,
+              workstationProbe: options.workstationProbe
+            });
             sameExecution(
               candidate,
-              await rebuildWorkflowTransitionExecution(plan)
+              await rebuildWorkflowTransitionExecution(plan, {
+                runner: options.runner,
+                env: options.env,
+                streamOptions: options.streamOptions,
+                onCommand: options.onCommand
+              })
             );
             return;
           }
@@ -226,6 +292,7 @@ export async function applyWorkflowTransitionPlan(
               'Workflow transition approval expired or changed before commit.'
             );
           }
+          await assertWorkflowTransitionTargetFrameworkCommitted(plan);
           const observed = await inspectWorkflowTransitionTransaction(
             plan.projectRoot,
             { authorityStore }

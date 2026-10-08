@@ -4,6 +4,14 @@ import { findProjectRoot } from '../../adapters/filesystem/project-discovery.js'
 import type { UpdatePreviewOptions } from '../../adapters/filesystem/update-previews.js';
 import type { ExecutionContext } from '../context.js';
 import {
+  formatRequirementVersion
+} from '../../domain/workstation/constraints.js';
+import {
+  InteractivePrompter,
+  isInteractiveTerminal
+} from '../../interactive.js';
+import { NodeCommandRunner } from '../../process-runner.js';
+import {
   requestUpdateApproval
 } from '../update/approval.js';
 import {
@@ -47,12 +55,14 @@ export interface WorkflowTransitionCommandReport {
   readonly exitCode: 0 | 1 | 2;
   readonly readOnly: boolean;
   readonly projectWrites: boolean;
+  readonly machineWrites: boolean;
   readonly transaction:
     | 'not-started'
     | WorkflowTransitionExecutionOutcome;
   readonly plan: WorkflowTransitionPlanReport | null;
   readonly planStoragePath: string | null;
   readonly diagnostics: readonly string[];
+  readonly machineChanges: readonly string[];
   readonly limitations: readonly string[];
 }
 
@@ -101,10 +111,11 @@ export async function setProjectWorkflow(
     ? 'recover' as const
     : request.approvePlan ? 'apply' as const : 'check' as const;
   let projectRoot = path.resolve(context.cwd, request.project ?? '.');
+  const observedMachineActions: string[] = [];
   const limitations = Object.freeze([
-    'Only an initialized OpenSpec or Spec Kit project can currently execute an exact transition to Manual.',
-    'Application files, Git history, framework specifications/history, deployment/state, global tools and shared profiles are preserved.',
-    'OpenSpec/Spec Kit target staging and other workflow directions remain unavailable until separately qualified.'
+    'Manual transitions preserve external framework history; external targets use only pinned official isolated staging.',
+    'Application files, Git history, framework specifications/history, deployment/state and unrelated integrations are preserved.',
+    'Machine-tool and OpenSpec global-profile changes require permission separate from the exact project-file plan.'
   ]);
   const report = (
     status: WorkflowTransitionCommandReport['status'],
@@ -114,7 +125,8 @@ export async function setProjectWorkflow(
     diagnostics: readonly string[],
     transaction:
       | 'not-started'
-      | WorkflowTransitionExecutionOutcome = 'not-started'
+      | WorkflowTransitionExecutionOutcome = 'not-started',
+    machineChanges: readonly string[] = []
   ): WorkflowTransitionCommandReport => Object.freeze({
     schemaVersion: workflowTransitionReportSchemaVersion,
     kind: 'liftoff-workflow-transition',
@@ -123,12 +135,14 @@ export async function setProjectWorkflow(
     projectRoot,
     status,
     exitCode,
-    readOnly: operation === 'check',
+    readOnly: operation === 'check' && machineChanges.length === 0,
     projectWrites: transaction !== 'not-started' && transaction.committed,
+    machineWrites: machineChanges.length > 0,
     transaction,
     plan,
     planStoragePath,
     diagnostics: Object.freeze([...diagnostics]),
+    machineChanges: Object.freeze([...machineChanges]),
     limitations
   });
   try {
@@ -154,6 +168,7 @@ export async function setProjectWorkflow(
       clock: context.updatePreview?.clock ?? context.updateNow
     };
     const now = context.updateNow?.() ?? new Date();
+    const runner = context.runner ?? new NodeCommandRunner();
     const target = request.target as WorkflowTransitionTarget;
     if (request.recover) {
       const selected = await readWorkflowTransitionPlanForRecovery(
@@ -213,33 +228,114 @@ export async function setProjectWorkflow(
       ), context, request.json);
     }
     if (!request.approvePlan) {
-      const prepared = await prepareWorkflowTransitionPlan(
-        projectRoot,
-        target,
-        {
-          agents: request.agents,
-          defaultAgent: request.defaultAgent,
-          now,
-          storage
-        }
-      );
+      const interactive = !request.check &&
+        !request.json &&
+        isInteractiveTerminal(context.stdin, context.stderr);
+      const prompter = interactive
+        ? new InteractivePrompter({
+            input: context.stdin,
+            output: context.stderr,
+            presentation: context.presentation,
+            cwd: projectRoot,
+            configuredRoot: projectRoot,
+            runner
+          })
+        : undefined;
+      let prepared: Awaited<
+        ReturnType<typeof prepareWorkflowTransitionPlan>
+      >;
+      try {
+        prepared = await prepareWorkflowTransitionPlan(
+          projectRoot,
+          target,
+          {
+            agents: request.agents,
+            defaultAgent: request.defaultAgent,
+            now,
+            storage,
+            runner,
+            env: context.env,
+            workstationProbe: context.workstationProbe,
+            workstationNoProgressStore:
+              context.workstationNoProgressStore,
+            installTools: request.installTools,
+            configureOpenSpecProfile:
+              request.configureOpenSpecProfile,
+            streamOptions: context.presentation.childStreams(),
+            authorizeTool: prompter
+              ? async (probe, command, requiresExplicitReview) =>
+                  await prompter.confirmToolInstallation({
+                    label: probe.requirement.definition.label,
+                    severity: probe.requirement.severity,
+                    purpose: requiresExplicitReview
+                      ? 'Separate review of a version or channel replacement; project-file approval does not authorize it.'
+                      : probe.requirement.reasons.join('; '),
+                    requirement:
+                      `required ${formatRequirementVersion(probe.requirement)}`,
+                    observed: `${probe.reasonCode} - ${probe.detail}`,
+                    ...(command ? { command } : {}),
+                    ...(command ? {} : { remedy: probe.remedy })
+                  })
+              : undefined,
+            authorizeOpenSpecProfile: prompter
+              ? async input =>
+                  await prompter.confirmOpenSpecProfileConfiguration({
+                    observed: [
+                      { label: 'Profile', value: input.observed.profile },
+                      { label: 'Delivery', value: input.observed.delivery },
+                      {
+                        label: 'Workflows',
+                        value: input.observed.workflows.length > 0
+                          ? input.observed.workflows.join(', ')
+                          : '(none)'
+                      }
+                    ],
+                    required: [
+                      { label: 'Profile', value: 'custom' },
+                      { label: 'Delivery', value: 'both' },
+                      {
+                        label: 'Workflows',
+                        value: 'complete packaged workflow inventory'
+                      }
+                    ],
+                    differences: [...input.differences],
+                    commands: [...input.commands]
+                  })
+              : undefined,
+            onCommand: command => context.presentation.command(command),
+            onMachineCommand: command => {
+              observedMachineActions.push(command);
+            }
+          }
+        );
+      } finally {
+        prompter?.close();
+      }
       if (isCurrentWorkflowSelection(prepared.plan)) {
         return render(report(
           'current', 0, prepared.plan, prepared.path,
-          ['The recorded workflow and selected agents already match the exact target.']
+          ['The recorded workflow and selected agents already match the exact target.'],
+          'not-started',
+          prepared.machineChanges
         ), context, request.json);
       }
       if (request.check || request.json) {
         return render(report(
           'review-required', 2, prepared.plan, prepared.path,
-          ['Review the exact source, target, agent selection, current inputs, checks, effects and expiry. No transition effects are authorized.']
+          ['Review the exact source, target, agent selection, machine preparation, current inputs, checks, effects and expiry. No project transition effects are authorized.'],
+          'not-started',
+          prepared.machineChanges
         ), context, request.json);
       }
       if (prepared.plan.execution.status !==
           'ready-for-file-approval') {
         return render(report(
           'execution-unavailable', 2, prepared.plan, prepared.path,
-          ['This workflow direction has no qualified transition executor; no project write was attempted.']
+          [prepared.plan.preparation.status === 'required'
+            ? 'The pinned framework tools or OpenSpec global profile still require separate preparation; no project write was attempted.'
+            : 'This workflow direction has no qualified transition executor; no project write was attempted.'],
+          'not-started',
+          prepared.machineChanges
         ), context, request.json);
       }
       const approval = await requestUpdateApproval({
@@ -259,13 +355,23 @@ export async function setProjectWorkflow(
           prepared.path,
           [approval.status === 'declined'
             ? 'Workflow transition declined; no project write was attempted.'
-            : 'Exact approval is required; non-interactive and non-TTY execution only preview.']
+            : 'Exact approval is required; non-interactive and non-TTY execution only preview.'],
+          'not-started',
+          prepared.machineChanges
         ), context, request.json);
       }
       operation = 'apply';
       const transaction = await applyWorkflowTransitionPlan(
         prepared.plan,
-        { now, storage }
+        {
+          now,
+          storage,
+          runner,
+          env: context.env,
+          workstationProbe: context.workstationProbe,
+          streamOptions: context.presentation.childStreams(),
+          onCommand: command => context.presentation.command(command)
+        }
       );
       return render(report(
         transaction.committed ? 'applied' : 'blocked',
@@ -277,9 +383,10 @@ export async function setProjectWorkflow(
         prepared.plan,
         prepared.path,
         transaction.committed
-          ? ['The exact Manual workflow transition committed.']
+          ? [`The exact ${target} workflow transition committed.`]
           : transaction.rollbackFailures,
-        transaction
+        transaction,
+        prepared.machineChanges
       ), context, request.json);
     }
     const plan = await readWorkflowTransitionPlan(
@@ -297,7 +404,11 @@ export async function setProjectWorkflow(
         'The requested workflow or agent selection does not match the saved plan.'
       ]), context, request.json);
     }
-    await assertWorkflowTransitionPlanCurrent(plan);
+    await assertWorkflowTransitionPlanCurrent(plan, {
+      runner,
+      env: context.env,
+      workstationProbe: context.workstationProbe
+    });
     if (plan.execution.status !== 'ready-for-file-approval') {
       return render(report('execution-unavailable', 2, plan, null, [
         'The exact plan is current, but this workflow direction has no qualified transition executor.'
@@ -305,7 +416,15 @@ export async function setProjectWorkflow(
     }
     const transaction = await applyWorkflowTransitionPlan(
       plan,
-      { now, storage }
+      {
+        now,
+        storage,
+        runner,
+        env: context.env,
+        workstationProbe: context.workstationProbe,
+        streamOptions: context.presentation.childStreams(),
+        onCommand: command => context.presentation.command(command)
+      }
     );
     return render(report(
       transaction.committed ? 'applied' : 'blocked',
@@ -317,13 +436,13 @@ export async function setProjectWorkflow(
       plan,
       null,
       transaction.committed
-        ? ['The exact Manual workflow transition committed.']
+        ? [`The exact ${target} workflow transition committed.`]
         : transaction.rollbackFailures,
       transaction
     ), context, request.json);
   } catch (error) {
     return render(report('blocked', 1, null, null, [
       workflowTransitionPlanError(error)
-    ]), context, request.json);
+    ], 'not-started', observedMachineActions), context, request.json);
   }
 }

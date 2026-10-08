@@ -133,8 +133,15 @@ describe('project-independent capability discovery', () => {
       previewAvailable: true,
       executableTransitions: [
         'openspec-to-manual',
-        'spec-kit-to-manual'
+        'spec-kit-to-manual',
+        'manual-to-openspec',
+        'manual-to-spec-kit',
+        'openspec-to-spec-kit',
+        'spec-kit-to-openspec'
       ],
+      officialIsolatedStaging: true,
+      separateMachineToolPermission: true,
+      separateOpenSpecProfilePermission: true,
       exactSourceTargetAgentsInputsChecksAndExpiry: true,
       applicationWrites: false,
       projectMetadataWrites: true,

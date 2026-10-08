@@ -31,12 +31,17 @@ const retained = (candidate: ManifestV8Candidate): ManagedManifestDecision[] =>
 
 function workflowTransition(
   profile: (typeof profiles)[number] = 'none',
-  sourceWorkflow: 'openspec' | 'spec-kit' = 'openspec'
+  sourceWorkflow: (typeof workflows)[number] = 'openspec',
+  targetWorkflow: (typeof workflows)[number] = 'manual'
 ) {
   const initial = createManifestV8Candidate(
     fresh(profile, sourceWorkflow, ['github-copilot'])
   );
-  const target = selection(profile, 'manual', ['github-copilot']);
+  const target = selection(
+    profile,
+    targetWorkflow,
+    ['github-copilot']
+  );
   const targetManaged = suppliedArtifacts(target, profile)
     .filter(artifact => artifact.lifecycle === 'managed-core');
   const targetNames = new Set(
@@ -489,7 +494,7 @@ describe('same-contract maintenance has no origin overrides', () => {
   });
 });
 
-describe('workflow transition origin has a closed external-to-Manual boundary', () => {
+describe('workflow transition origin has a closed workflow identity boundary', () => {
   it.each(['openspec', 'spec-kit'] as const)(
     'changes initialized %s identity while preserving provenance and history',
     sourceWorkflow => {
@@ -527,23 +532,25 @@ describe('workflow transition origin has a closed external-to-Manual boundary', 
     }
   );
 
-  it('rejects unsupported direction, project identity and retirement changes', () => {
-    const manual = createManifestV8Candidate(
-      fresh('none', 'manual', ['github-copilot'])
-    );
-    const manualInput = workflowTransition();
-    manualInput.source = manual.manifest;
-    expect(() => createManifestV8Candidate(manualInput))
-      .toThrow('initialized external framework to Manual');
-
-    const externalTarget = workflowTransition();
-    externalTarget.selection = selection(
-      'none',
-      'spec-kit',
-      ['github-copilot']
-    );
-    expect(() => createManifestV8Candidate(externalTarget))
-      .toThrow('initialized external framework to Manual');
+  it('supports external targets and rejects project identity or retirement changes', () => {
+    for (const [sourceWorkflow, targetWorkflow] of [
+      ['manual', 'openspec'],
+      ['openspec', 'spec-kit']
+    ] as const) {
+      const input = workflowTransition(
+        'none',
+        sourceWorkflow,
+        targetWorkflow
+      );
+      const candidate = createManifestV8Candidate(input);
+      expect(candidate.manifest).toMatchObject({
+        project: { specWorkflow: targetWorkflow },
+        framework: {
+          state: 'initialized',
+          adapter: targetWorkflow
+        }
+      });
+    }
 
     const renamed = workflowTransition();
     renamed.selection.project.name = 'Different project';

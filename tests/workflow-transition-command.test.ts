@@ -12,7 +12,24 @@ import {
   projectMutationLockPath
 } from '../src/adapters/filesystem/project-lock.js';
 import { buildCurrentProjectPlan } from '../src/application/project/planning.js';
+import {
+  assertWorkflowTransitionTargetFrameworkCommitted,
+  readWorkflowTransitionPlan
+} from '../src/application/workflow-transition/plan.js';
+import {
+  specKitIntegrationPaths
+} from '../src/framework-validation.js';
+import {
+  OPEN_SPEC_WORKFLOW_IDS,
+  openSpecIntegrationPaths
+} from '../src/openspec-profile.js';
+import type {
+  CommandResult,
+  CommandRunner,
+  RunCommandOptions
+} from '../src/process-runner.js';
 import { buildCurrentArtifacts } from '../src/templates.js';
+import { workstationRequirementCatalog } from '../src/workstation-catalog.js';
 import { CaptureStream } from './helpers.js';
 
 const roots: string[] = [];
@@ -74,6 +91,206 @@ async function snapshot(root: string) {
   return { entries, files };
 }
 
+async function write(file: string, content: string): Promise<void> {
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, content);
+}
+
+function commandResult(
+  command: Parameters<CommandRunner['run']>[0],
+  values: Partial<CommandResult> = {}
+): CommandResult {
+  return {
+    command,
+    displayCommand: [command.executable, ...command.args].join(' '),
+    status: 0,
+    signal: null,
+    stdout: '',
+    stderr: '',
+    timedOut: false,
+    ...values
+  };
+}
+
+class WorkflowFrameworkRunner implements CommandRunner {
+  readonly calls: string[] = [];
+  private defaultIntegration?: string;
+  private installedIntegrations: string[] = [];
+
+  constructor(
+    private profile = {
+      profile: 'custom',
+      delivery: 'both',
+      workflows: [...OPEN_SPEC_WORKFLOW_IDS]
+    },
+    private openspecReady = true,
+    private invalidOpenSpecOutput = false
+  ) {}
+
+  setOpenSpecReady(value: boolean): void {
+    this.openspecReady = value;
+  }
+
+  setProfile(value: {
+    profile: string;
+    delivery: string;
+    workflows: string[];
+  }): void {
+    this.profile = value;
+  }
+
+  async run(
+    command: Parameters<CommandRunner['run']>[0],
+    options?: RunCommandOptions
+  ): Promise<CommandResult> {
+    const display = [command.executable, ...command.args].join(' ');
+    this.calls.push(display);
+    if (display === 'node --version') {
+      return commandResult(command, { stdout: 'v24.21.0\n' });
+    }
+    if (display === 'npm --version') {
+      return commandResult(command, { stdout: '12.0.2\n' });
+    }
+    if (display === 'python3 --version') {
+      return commandResult(command, { stdout: 'Python 3.14.0\n' });
+    }
+    if (display === 'uv --version') {
+      return commandResult(command, { stdout: 'uv 0.12.7\n' });
+    }
+    if (display === 'openspec --version') {
+      if (!this.openspecReady) {
+        return commandResult(command, {
+          status: null,
+          errorCode: 'ENOENT',
+          errorMessage: 'openspec not found'
+        });
+      }
+      return commandResult(command, {
+        stdout:
+          `OpenSpec CLI version ${workstationRequirementCatalog.openspec.exactVersion}\n`
+      });
+    }
+    if (display ===
+        `npm install -g @fission-ai/openspec@${workstationRequirementCatalog.openspec.exactVersion}`) {
+      this.openspecReady = true;
+      return commandResult(command);
+    }
+    if (display === 'specify --version') {
+      return commandResult(command, {
+        stdout:
+          `specify-cli version ${workstationRequirementCatalog['spec-kit'].exactVersion}\n`
+      });
+    }
+    if (display === 'openspec config list --json') {
+      return commandResult(command, {
+        stdout: `${JSON.stringify(this.profile)}\n`
+      });
+    }
+    if (command.executable === 'openspec' &&
+        command.args[0] === 'config' &&
+        command.args[1] === 'set') {
+      const field = command.args[2] as keyof typeof this.profile;
+      const raw = command.args[3]!;
+      this.profile = {
+        ...this.profile,
+        [field]: field === 'workflows'
+          ? JSON.parse(raw) as string[]
+          : raw
+      };
+      return commandResult(command);
+    }
+    if (!options?.cwd) return commandResult(command);
+    if (command.executable === 'openspec' &&
+        command.args[0] === 'init') {
+      const tools = command.args[
+        command.args.indexOf('--tools') + 1
+      ]?.split(',') ?? [];
+      if (!this.invalidOpenSpecOutput) {
+        await write(
+          path.join(options.cwd, 'openspec', 'config.yaml'),
+          'schema: spec-driven\n'
+        );
+      }
+      for (const agent of [
+        'github-copilot', 'claude', 'codex'
+      ] as const) {
+        if (!tools.includes(agent)) continue;
+        for (const parts of openSpecIntegrationPaths(agent)) {
+          await write(
+            path.join(options.cwd, ...parts),
+            `${agent}\n`
+          );
+        }
+      }
+      return commandResult(command);
+    }
+    if (command.executable === 'specify') {
+      if (command.args[0] === 'init') {
+        this.defaultIntegration = command.args[
+          command.args.indexOf('--integration') + 1
+        ];
+        this.installedIntegrations = [this.defaultIntegration!];
+        await write(
+          path.join(options.cwd, '.specify', 'init-options.json'),
+          '{}\n'
+        );
+        await write(
+          path.join(
+            options.cwd,
+            '.specify',
+            'templates',
+            'spec-template.md'
+          ),
+          'official spec\n'
+        );
+        await write(
+          path.join(
+            options.cwd,
+            '.specify',
+            'templates',
+            'plan-template.md'
+          ),
+          'official plan\n'
+        );
+      } else {
+        const integration = command.args[2]!;
+        if (!this.installedIntegrations.includes(integration)) {
+          this.installedIntegrations.push(integration);
+        }
+      }
+      const agents = {
+        copilot: 'github-copilot',
+        claude: 'claude',
+        codex: 'codex'
+      } as const;
+      for (const integration of this.installedIntegrations) {
+        const agent = agents[integration as keyof typeof agents];
+        for (const parts of specKitIntegrationPaths(agent)) {
+          await write(
+            path.join(options.cwd, ...parts),
+            `${integration}\n`
+          );
+        }
+      }
+      await write(
+        path.join(options.cwd, '.specify', 'integration.json'),
+        `${JSON.stringify({
+          integration_state_schema: 1,
+          integration: this.defaultIntegration,
+          default_integration: this.defaultIntegration,
+          installed_integrations: this.installedIntegrations,
+          integration_settings: {}
+        }, null, 2)}\n`
+      );
+      return commandResult(command);
+    }
+    return commandResult(command, {
+      status: 1,
+      stderr: `unexpected command: ${display}`
+    });
+  }
+}
+
 async function invoke(
   argv: string[],
   cwd: string,
@@ -81,7 +298,8 @@ async function invoke(
   clock = now,
   approval?: (
     config: { message: string; default: false }
-  ) => Promise<boolean>
+  ) => Promise<boolean>,
+  runner?: CommandRunner
 ) {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
@@ -100,6 +318,7 @@ async function invoke(
           approveWorkflowTransitionPlan: approval
         }
       : {}),
+    ...(runner ? { runner } : {}),
     updateNow: () => clock,
     updatePreview: { homedir: home, env: {}, clock: () => clock }
   });
@@ -131,6 +350,8 @@ async function interruptTransition(
   const child = spawnSync(
     process.execPath,
     ['--import', loaderUrl, '--input-type=module', '-e', `
+      const { mkdir, writeFile } = await import('node:fs/promises');
+      const path = await import('node:path');
       const {
         assertWorkflowTransitionPlanCurrent,
         readWorkflowTransitionPlan,
@@ -148,13 +369,64 @@ async function interruptTransition(
         env: {},
         clock: () => now
       };
+      const openSpecPaths = ${JSON.stringify(
+        openSpecIntegrationPaths('github-copilot')
+      )};
+      const runner = {
+        async run(command, options) {
+          const displayCommand = [command.executable, ...command.args].join(' ');
+          const base = {
+            command, displayCommand, status: 0, signal: null,
+            stdout: '', stderr: '', timedOut: false
+          };
+          if (displayCommand === 'node --version') {
+            return { ...base, stdout: 'v24.21.0\\n' };
+          }
+          if (displayCommand === 'npm --version') {
+            return { ...base, stdout: '12.0.2\\n' };
+          }
+          if (displayCommand === 'openspec --version') {
+            return {
+              ...base,
+              stdout: 'OpenSpec CLI version ${workstationRequirementCatalog.openspec.exactVersion}\\n'
+            };
+          }
+          if (displayCommand === 'openspec config list --json') {
+            return {
+              ...base,
+              stdout: JSON.stringify({
+                profile: 'custom',
+                delivery: 'both',
+                workflows: ${JSON.stringify(OPEN_SPEC_WORKFLOW_IDS)}
+              }) + '\\n'
+            };
+          }
+          if (command.executable === 'openspec' &&
+              command.args[0] === 'init' &&
+              options?.cwd) {
+            const files = [
+              [['openspec', 'config.yaml'], 'schema: spec-driven\\n'],
+              ...openSpecPaths.map(parts => [parts, 'github-copilot\\n'])
+            ];
+            for (const [parts, content] of files) {
+              const target = path.join(options.cwd, ...parts);
+              await mkdir(path.dirname(target), { recursive: true });
+              await writeFile(target, content);
+            }
+          }
+          return base;
+        }
+      };
       const plan = await readWorkflowTransitionPlan(
         ${JSON.stringify(project.root)},
         ${JSON.stringify(fingerprint)},
         now,
         storage
       );
-      const candidate = await rebuildWorkflowTransitionExecution(plan);
+      const candidate = await rebuildWorkflowTransitionExecution(
+        plan,
+        { runner }
+      );
       const authorityStore =
         createWorkflowTransitionTransactionAuthorityStore(
           plan.projectRoot,
@@ -171,7 +443,10 @@ async function interruptTransition(
             plan.execution.transactionCandidateBinding,
           validateCurrentInputs: async stage => {
             if (stage !== 'before-commit') {
-              await assertWorkflowTransitionPlanCurrent(plan);
+              await assertWorkflowTransitionPlanCurrent(
+                plan,
+                { runner }
+              );
             }
           },
           onCheckpoint: async checkpoint => {
@@ -207,6 +482,8 @@ describe('reviewed workflow transition command', () => {
     expect(result.stdout).toContain('workflow set');
     expect(result.stdout).toContain('--approve-plan');
     expect(result.stdout).toContain('--recover');
+    expect(result.stdout).toContain('--install-tools');
+    expect(result.stdout).toContain('--configure-openspec-profile');
     expect(result.stdout).not.toContain('--force');
     expect(result.stdout).not.toContain('--yes');
   });
@@ -226,6 +503,10 @@ describe('reviewed workflow transition command', () => {
       ['workflow', 'set'],
       ['workflow', 'set', 'unknown'],
       ['workflow', 'set', 'openspec', '--check', '--approve-plan', fingerprint],
+      ['workflow', 'set', 'openspec', '--check', '--install-tools'],
+      ['workflow', 'set', 'openspec', '--approve-plan', fingerprint, '--install-tools'],
+      ['workflow', 'set', 'manual', '--install-tools'],
+      ['workflow', 'set', 'spec-kit', '--configure-openspec-profile'],
       ['workflow', 'set', 'openspec', '--recover'],
       ['workflow', 'set', 'openspec', '--approve-plan', 'short'],
       ['workflow', 'set', 'openspec', 'one', '--project', 'two'],
@@ -256,7 +537,7 @@ describe('reviewed workflow transition command', () => {
       projectWrites: false,
       transaction: 'not-started',
       plan: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         kind: 'liftoff-workflow-transition-plan',
         projectRoot: project.root,
         source: {
@@ -306,7 +587,7 @@ describe('reviewed workflow transition command', () => {
     expect(await readdir(project.home, { recursive: true })).not.toEqual([]);
   });
 
-  it('keeps transitions into external frameworks unavailable', async () => {
+  it('keeps external transitions unavailable while pinned preparation is incomplete', async () => {
     const project = await fixture();
     const before = await snapshot(project.root);
     const preview = JSON.parse((await invoke([
@@ -325,6 +606,538 @@ describe('reviewed workflow transition command', () => {
       plan: { fingerprint: preview.plan.fingerprint }
     });
     expect(await snapshot(project.root)).toEqual(before);
+  });
+
+  for (const target of ['openspec', 'spec-kit'] as const) {
+    it(`initializes a Manual project into ${target} through exact official staging`, async () => {
+      const project = await fixture();
+      const before = await snapshot(project.root);
+      const runner = new WorkflowFrameworkRunner();
+      const args = [
+        'workflow', 'set', target, project.root,
+        '--agents', 'copilot',
+        ...(target === 'spec-kit'
+          ? ['--default-agent', 'copilot']
+          : []),
+        '--check', '--json'
+      ];
+      const preview = await invoke(
+        args,
+        project.root,
+        project.home,
+        now,
+        undefined,
+        runner
+      );
+      expect(preview).toMatchObject({ code: 2, stderr: '' });
+      const reviewed = JSON.parse(preview.stdout);
+      expect(reviewed).toMatchObject({
+        status: 'review-required',
+        machineWrites: false,
+        plan: {
+          schemaVersion: 2,
+          source: { workflow: 'manual' },
+          target: {
+            workflow: target,
+            frameworkState: 'initialization-required'
+          },
+          targetFrameworkInventory: {
+            status: 'absent',
+            workflow: target,
+            activeWork: {
+              identifiers: [],
+              reconciliation: 'no-existing-history'
+            }
+          },
+          preparation: {
+            status: 'ready',
+            tools: expect.any(Array)
+          },
+          execution: {
+            status: 'ready-for-file-approval',
+            transition: 'manual-to-external-framework',
+            frameworkDocuments:
+              'official-staged-with-existing-history-preserved',
+            targetLocalReadiness: 'official-framework-initialized',
+            officialStage: {
+              commands: expect.any(Array),
+              fileCount: expect.any(Number),
+              totalBytes: expect.any(Number),
+              digest: expect.stringMatching(/^[a-f0-9]{64}$/u)
+            },
+            manifestPublishedLast: true,
+            effects: expect.arrayContaining([
+              expect.objectContaining({
+                kind: 'framework',
+                operation: 'write'
+              }),
+              expect.objectContaining({
+                kind: 'manifest',
+                pathParts: ['liftoff.manifest.json']
+              })
+            ])
+          }
+        }
+      });
+      const applied = await invoke([
+        'workflow', 'set', target, project.root,
+        '--agents', 'copilot',
+        ...(target === 'spec-kit'
+          ? ['--default-agent', 'copilot']
+          : []),
+        '--approve-plan', reviewed.plan.fingerprint,
+        '--json'
+      ], project.root, project.home, now, undefined, runner);
+      expect(applied, applied.stdout).toMatchObject({
+        code: 0,
+        stderr: ''
+      });
+      expect(JSON.parse(applied.stdout)).toMatchObject({
+        status: 'applied',
+        projectWrites: true,
+        machineWrites: false,
+        transaction: {
+          status: 'committed',
+          committed: true,
+          readbackDigest: expect.stringMatching(/^[a-f0-9]{64}$/u)
+        }
+      });
+      const manifest = JSON.parse(await readFile(
+        path.join(project.root, 'liftoff.manifest.json'),
+        'utf8'
+      ));
+      expect(manifest).toMatchObject({
+        project: {
+          specWorkflow: target,
+          agents: ['github-copilot'],
+          ...(target === 'spec-kit'
+            ? { defaultAgent: 'github-copilot' }
+            : {})
+        },
+        framework: {
+          state: 'initialized',
+          adapter: target
+        }
+      });
+      const effects = reviewed.plan.execution.effects as Array<{
+        pathParts: string[];
+      }>;
+      const changed = new Set(
+        effects.map(effect => effect.pathParts.join('/'))
+      );
+      const after = await snapshot(project.root);
+      for (const [file, bytes] of Object.entries(before.files)) {
+        if (!changed.has(file)) {
+          expect(after.files[file], file).toBe(bytes);
+        }
+      }
+    });
+  }
+
+  it('binds the complete external target inventory at commit', async () => {
+    const project = await fixture();
+    const runner = new WorkflowFrameworkRunner();
+    const reviewed = JSON.parse((await invoke([
+      'workflow', 'set', 'openspec', project.root,
+      '--agents', 'copilot', '--check', '--json'
+    ], project.root, project.home, now, undefined, runner)).stdout);
+    const storage = {
+      homedir: project.home,
+      env: {},
+      clock: () => now
+    };
+    const plan = await readWorkflowTransitionPlan(
+      project.root,
+      reviewed.plan.fingerprint,
+      now,
+      storage
+    );
+    const applied = await invoke([
+      'workflow', 'set', 'openspec', project.root,
+      '--agents', 'copilot',
+      '--approve-plan', reviewed.plan.fingerprint, '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(applied.code, applied.stdout).toBe(0);
+    await expect(
+      assertWorkflowTransitionTargetFrameworkCommitted(plan)
+    ).resolves.toBeUndefined();
+    await write(
+      path.join(project.root, 'openspec', 'changes', 'concurrent', 'proposal.md'),
+      '# Concurrent\n'
+    );
+    await expect(
+      assertWorkflowTransitionTargetFrameworkCommitted(plan)
+    ).rejects.toThrow(
+      'Target framework history or committed output changed during transition'
+    );
+  });
+
+  it('keeps OpenSpec global-profile permission separate from project approval', async () => {
+    const project = await fixture();
+    const runner = new WorkflowFrameworkRunner({
+      profile: 'minimal',
+      delivery: 'skills',
+      workflows: []
+    });
+    const unavailable = JSON.parse((await invoke([
+      'workflow', 'set', 'openspec', project.root,
+      '--agents', 'copilot', '--check', '--json'
+    ], project.root, project.home, now, undefined, runner)).stdout);
+    expect(unavailable.plan).toMatchObject({
+      preparation: {
+        status: 'required',
+        openSpecProfile: {
+          status: 'configuration-required'
+        }
+      },
+      execution: { status: 'unavailable' }
+    });
+    expect(runner.calls.some(call =>
+      call.startsWith('openspec config set '))).toBe(false);
+
+    const prepared = await invoke([
+      'workflow', 'set', 'openspec', project.root,
+      '--agents', 'copilot',
+      '--configure-openspec-profile', '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(prepared.code).toBe(2);
+    const report = JSON.parse(prepared.stdout);
+    expect(report).toMatchObject({
+      status: 'review-required',
+      readOnly: false,
+      projectWrites: false,
+      machineWrites: true,
+      machineChanges: [expect.stringContaining('OpenSpec global profile')],
+      plan: {
+        preparation: {
+          status: 'ready',
+          openSpecProfile: { status: 'ready' }
+        },
+        execution: { status: 'ready-for-file-approval' }
+      }
+    });
+    expect(runner.calls.some(call =>
+      call.startsWith('openspec config set '))).toBe(true);
+    expect(await readFile(
+      path.join(project.root, 'liftoff.manifest.json'),
+      'utf8'
+    )).toContain('"specWorkflow": "manual"');
+  });
+
+  it('keeps pinned framework installation separate from project-file approval', async () => {
+    const project = await fixture();
+    const runner = new WorkflowFrameworkRunner(undefined, false);
+    const unavailable = JSON.parse((await invoke([
+      'workflow', 'set', 'openspec', project.root,
+      '--agents', 'copilot', '--check', '--json'
+    ], project.root, project.home, now, undefined, runner)).stdout);
+    expect(unavailable.plan).toMatchObject({
+      preparation: {
+        status: 'required',
+        tools: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'openspec',
+            state: 'missing',
+            reasonCode: 'missing-executable',
+            installCommand: expect.stringContaining('npm install -g')
+          })
+        ])
+      },
+      execution: { status: 'unavailable' }
+    });
+    expect(runner.calls.some(call =>
+      call.startsWith('npm install -g @fission-ai/openspec@'))).toBe(false);
+
+    const prepared = await invoke([
+      'workflow', 'set', 'openspec', project.root,
+      '--agents', 'copilot', '--install-tools', '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(prepared.code).toBe(2);
+    expect(JSON.parse(prepared.stdout)).toMatchObject({
+      status: 'review-required',
+      readOnly: false,
+      projectWrites: false,
+      machineWrites: true,
+      machineChanges: [expect.stringContaining('OpenSpec')],
+      plan: {
+        preparation: {
+          status: 'ready',
+          tools: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'openspec',
+              state: 'ready',
+              reasonCode: 'compatible'
+            })
+          ])
+        },
+        execution: { status: 'ready-for-file-approval' }
+      }
+    });
+    expect(runner.calls.some(call =>
+      call.startsWith('npm install -g @fission-ai/openspec@'))).toBe(true);
+    expect(await readFile(
+      path.join(project.root, 'liftoff.manifest.json'),
+      'utf8'
+    )).toContain('"specWorkflow": "manual"');
+  });
+
+  it('moves between reconciled external frameworks while preserving the source tree', async () => {
+    const project = await fixture('openspec');
+    const changesRoot = path.join(project.root, 'openspec', 'changes');
+    for (const entry of await readdir(changesRoot, {
+      withFileTypes: true
+    })) {
+      if (entry.isDirectory() && entry.name !== 'archive') {
+        await rm(path.join(changesRoot, entry.name), {
+          recursive: true,
+          force: true
+        });
+      }
+    }
+    const sourceBefore = await snapshot(
+      path.join(project.root, 'openspec')
+    );
+    const runner = new WorkflowFrameworkRunner();
+    const preview = await invoke([
+      'workflow', 'set', 'spec-kit', project.root,
+      '--agents', 'copilot', '--default-agent', 'copilot',
+      '--check', '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(preview.code).toBe(2);
+    const reviewed = JSON.parse(preview.stdout);
+    expect(reviewed.plan).toMatchObject({
+      source: { workflow: 'openspec' },
+      target: { workflow: 'spec-kit' },
+      frameworkInventory: {
+        status: 'preserved',
+        activeWork: { identifiers: [] }
+      },
+      execution: {
+        status: 'ready-for-file-approval',
+        transition: 'external-framework-to-external-framework'
+      }
+    });
+    const applied = await invoke([
+      'workflow', 'set', 'spec-kit', project.root,
+      '--agents', 'copilot', '--default-agent', 'copilot',
+      '--approve-plan', reviewed.plan.fingerprint, '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(applied.code, applied.stdout).toBe(0);
+    expect(await snapshot(path.join(project.root, 'openspec')))
+      .toEqual(sourceBefore);
+    expect(JSON.parse(await readFile(
+      path.join(project.root, 'liftoff.manifest.json'),
+      'utf8'
+    ))).toMatchObject({
+      project: { specWorkflow: 'spec-kit' },
+      framework: { state: 'initialized', adapter: 'spec-kit' }
+    });
+  });
+
+  it('round-trips official Spec Kit installation with a durable specs root', async () => {
+    const project = await fixture();
+    const runner = new WorkflowFrameworkRunner();
+    const specKitPreview = JSON.parse((await invoke([
+      'workflow', 'set', 'spec-kit', project.root,
+      '--agents', 'copilot', '--default-agent', 'copilot',
+      '--check', '--json'
+    ], project.root, project.home, now, undefined, runner)).stdout);
+    const specKitApplied = await invoke([
+      'workflow', 'set', 'spec-kit', project.root,
+      '--agents', 'copilot', '--default-agent', 'copilot',
+      '--approve-plan', specKitPreview.plan.fingerprint, '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(specKitApplied.code, specKitApplied.stdout).toBe(0);
+    expect(await readFile(
+      path.join(project.root, 'specs', '.gitkeep')
+    )).toEqual(Buffer.alloc(0));
+    const specKitBefore = {
+      specify: await snapshot(path.join(project.root, '.specify')),
+      specs: await snapshot(path.join(project.root, 'specs'))
+    };
+
+    const openSpecPreview = JSON.parse((await invoke([
+      'workflow', 'set', 'openspec', project.root,
+      '--agents', 'copilot', '--check', '--json'
+    ], project.root, project.home, now, undefined, runner)).stdout);
+    expect(openSpecPreview.plan).toMatchObject({
+      source: { workflow: 'spec-kit' },
+      frameworkInventory: {
+        status: 'preserved',
+        activeWork: { identifiers: [] }
+      },
+      execution: {
+        status: 'ready-for-file-approval',
+        transition: 'external-framework-to-external-framework'
+      }
+    });
+    const openSpecApplied = await invoke([
+      'workflow', 'set', 'openspec', project.root,
+      '--agents', 'copilot',
+      '--approve-plan', openSpecPreview.plan.fingerprint, '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(openSpecApplied.code, openSpecApplied.stdout).toBe(0);
+    expect(await snapshot(path.join(project.root, '.specify')))
+      .toEqual(specKitBefore.specify);
+    expect(await snapshot(path.join(project.root, 'specs')))
+      .toEqual(specKitBefore.specs);
+
+    const roundTrip = await invoke([
+      'workflow', 'set', 'spec-kit', project.root,
+      '--agents', 'copilot', '--default-agent', 'copilot',
+      '--check', '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(roundTrip.code, roundTrip.stdout).toBe(2);
+    expect(JSON.parse(roundTrip.stdout).plan).toMatchObject({
+      targetFrameworkInventory: {
+        status: 'preserved',
+        activeWork: { identifiers: [] }
+      },
+      execution: { status: 'ready-for-file-approval' }
+    });
+  });
+
+  it('preserves the generated Spec Kit bootstrap as inactive source history', async () => {
+    const project = await fixture('spec-kit');
+    const sourceBefore = {
+      specify: await snapshot(path.join(project.root, '.specify')),
+      specs: await snapshot(path.join(project.root, 'specs'))
+    };
+    const runner = new WorkflowFrameworkRunner();
+    const preview = await invoke([
+      'workflow', 'set', 'openspec', project.root,
+      '--agents', 'copilot', '--check', '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(preview.code, preview.stdout).toBe(2);
+    const reviewed = JSON.parse(preview.stdout);
+    expect(reviewed.plan).toMatchObject({
+      source: { workflow: 'spec-kit' },
+      frameworkInventory: {
+        status: 'preserved',
+        activeWork: { identifiers: [] }
+      },
+      execution: {
+        status: 'ready-for-file-approval',
+        transition: 'external-framework-to-external-framework'
+      }
+    });
+    const applied = await invoke([
+      'workflow', 'set', 'openspec', project.root,
+      '--agents', 'copilot',
+      '--approve-plan', reviewed.plan.fingerprint, '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(applied.code, applied.stdout).toBe(0);
+    expect(await snapshot(path.join(project.root, '.specify')))
+      .toEqual(sourceBefore.specify);
+    expect(await snapshot(path.join(project.root, 'specs')))
+      .toEqual(sourceBefore.specs);
+  });
+
+  it('blocks occupied output and active preserved target work before project effects', async () => {
+    const collision = await fixture();
+    const collisionRunner = new WorkflowFrameworkRunner();
+    await write(
+      path.join(collision.root, 'openspec', 'config.yaml'),
+      'developer-owned\n'
+    );
+    const collided = await invoke([
+      'workflow', 'set', 'openspec', collision.root,
+      '--agents', 'copilot', '--check', '--json'
+    ], collision.root, collision.home, now, undefined, collisionRunner);
+    expect(collided.code).toBe(1);
+    expect(JSON.parse(collided.stdout).diagnostics.join(' '))
+      .toContain('collides with existing bytes');
+
+    const active = await fixture();
+    const activeRunner = new WorkflowFrameworkRunner();
+    await write(
+      path.join(
+        active.root,
+        'openspec',
+        'changes',
+        'in-progress',
+        'proposal.md'
+      ),
+      '# In progress\n'
+    );
+    const blocked = await invoke([
+      'workflow', 'set', 'openspec', active.root,
+      '--agents', 'copilot', '--check', '--json'
+    ], active.root, active.home, now, undefined, activeRunner);
+    expect(blocked.code).toBe(1);
+    expect(JSON.parse(blocked.stdout).diagnostics.join(' '))
+      .toContain('Active openspec work overlaps');
+
+    const partial = await fixture();
+    const partialRunner = new WorkflowFrameworkRunner();
+    await write(
+      path.join(partial.root, '.specify', 'history.md'),
+      'partial history\n'
+    );
+    const unsupported = await invoke([
+      'workflow', 'set', 'spec-kit', partial.root,
+      '--agents', 'copilot', '--default-agent', 'copilot',
+      '--check', '--json'
+    ], partial.root, partial.home, now, undefined, partialRunner);
+    expect(unsupported.code).toBe(1);
+    expect(JSON.parse(unsupported.stdout).diagnostics.join(' '))
+      .toContain('every framework root must be present or absent');
+  });
+
+  it('rejects incomplete official staged output without a project write', async () => {
+    const project = await fixture();
+    const before = await snapshot(project.root);
+    const runner = new WorkflowFrameworkRunner(undefined, true, true);
+    const result = await invoke([
+      'workflow', 'set', 'openspec', project.root,
+      '--agents', 'copilot', '--check', '--json'
+    ], project.root, project.home, now, undefined, runner);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      status: 'blocked',
+      projectWrites: false
+    });
+    expect(JSON.parse(result.stdout).diagnostics.join(' '))
+      .toContain('did not produce the tested contract');
+    expect(await snapshot(project.root)).toEqual(before);
+  });
+
+  it('rejects changed pinned tools or global profile after exact preview', async () => {
+    const toolProject = await fixture();
+    const toolRunner = new WorkflowFrameworkRunner();
+    const toolPreview = JSON.parse((await invoke([
+      'workflow', 'set', 'openspec', toolProject.root,
+      '--agents', 'copilot', '--check', '--json'
+    ], toolProject.root, toolProject.home, now, undefined, toolRunner)).stdout);
+    toolRunner.setOpenSpecReady(false);
+    const changedTool = await invoke([
+      'workflow', 'set', 'openspec', toolProject.root,
+      '--agents', 'copilot',
+      '--approve-plan', toolPreview.plan.fingerprint, '--json'
+    ], toolProject.root, toolProject.home, now, undefined, toolRunner);
+    expect(changedTool.code).toBe(1);
+    expect(JSON.parse(changedTool.stdout).diagnostics.join(' '))
+      .toContain('tool or global-profile preparation changed');
+
+    const profileProject = await fixture();
+    const profileRunner = new WorkflowFrameworkRunner();
+    const profilePreview = JSON.parse((await invoke([
+      'workflow', 'set', 'openspec', profileProject.root,
+      '--agents', 'copilot', '--check', '--json'
+    ], profileProject.root, profileProject.home, now, undefined, profileRunner)).stdout);
+    profileRunner.setProfile({
+      profile: 'minimal',
+      delivery: 'skills',
+      workflows: []
+    });
+    const changedProfile = await invoke([
+      'workflow', 'set', 'openspec', profileProject.root,
+      '--agents', 'copilot',
+      '--approve-plan', profilePreview.plan.fingerprint, '--json'
+    ], profileProject.root, profileProject.home, now, undefined, profileRunner);
+    expect(changedProfile.code).toBe(1);
+    expect(JSON.parse(changedProfile.stdout).diagnostics.join(' '))
+      .toContain('tool or global-profile preparation changed');
   });
 
   it('rejects stale inputs and mismatched target selection before any effect', async () => {
@@ -498,19 +1311,21 @@ describe('reviewed workflow transition command', () => {
         ['openspec', '.specify', 'specs'].includes(
           effect.pathParts[0] ?? ''
         ))).toBe(false);
-        expect(reviewed.plan.frameworkInventory).toMatchObject({
-          status: 'preserved',
-          workflow: source,
-          activeWork: {
-            identifiers: [expect.any(String)],
-            reconciliation:
-              'preserve-on-disk-as-non-authoritative'
-          },
-          fileCount: expect.any(Number),
-          directoryCount: expect.any(Number),
-          totalBytes: expect.any(Number),
-          digest: expect.stringMatching(/^[a-f0-9]{64}$/u)
-        });
+      expect(reviewed.plan.frameworkInventory).toMatchObject({
+        status: 'preserved',
+        workflow: source,
+        activeWork: {
+          identifiers: source === 'spec-kit'
+            ? []
+            : [expect.any(String)],
+          reconciliation:
+            'preserve-on-disk-as-non-authoritative'
+        },
+        fileCount: expect.any(Number),
+        directoryCount: expect.any(Number),
+        totalBytes: expect.any(Number),
+        digest: expect.stringMatching(/^[a-f0-9]{64}$/u)
+      });
 
       const applied = await invoke([
         'workflow', 'set', 'manual', project.root,
@@ -749,6 +1564,73 @@ describe('reviewed workflow transition command', () => {
     ))).toMatchObject({
       project: { specWorkflow: 'manual' },
       framework: { state: 'not-required' }
+    });
+  });
+
+  it('recovers interrupted and committed official external transitions through the same authenticated lane', async () => {
+    const interrupted = await fixture();
+    const interruptedBefore = await snapshot(interrupted.root);
+    const interruptedRunner = new WorkflowFrameworkRunner();
+    const interruptedPreview = JSON.parse((await invoke([
+      'workflow', 'set', 'openspec', interrupted.root,
+      '--agents', 'copilot', '--check', '--json'
+    ], interrupted.root, interrupted.home, now, undefined, interruptedRunner)).stdout);
+    await interruptTransition(
+      interrupted,
+      interruptedPreview.plan.fingerprint,
+      'after-mutation',
+      0
+    );
+    const rolledBack = await invoke([
+      'workflow', 'set', 'openspec', interrupted.root,
+      '--agents', 'copilot', '--recover',
+      '--approve-plan', interruptedPreview.plan.fingerprint, '--json'
+    ], interrupted.root, interrupted.home, now, undefined, interruptedRunner);
+    expect(rolledBack.code).toBe(0);
+    expect(JSON.parse(rolledBack.stdout)).toMatchObject({
+      status: 'recovered',
+      projectWrites: false,
+      transaction: {
+        status: 'rolled-back',
+        committed: false
+      }
+    });
+    expect(await snapshot(interrupted.root)).toEqual(interruptedBefore);
+
+    const committed = await fixture();
+    const committedRunner = new WorkflowFrameworkRunner();
+    const committedPreview = JSON.parse((await invoke([
+      'workflow', 'set', 'openspec', committed.root,
+      '--agents', 'copilot', '--check', '--json'
+    ], committed.root, committed.home, now, undefined, committedRunner)).stdout);
+    await interruptTransition(
+      committed,
+      committedPreview.plan.fingerprint,
+      'committed'
+    );
+    const finalized = await invoke([
+      'workflow', 'set', 'openspec', committed.root,
+      '--agents', 'copilot', '--recover',
+      '--approve-plan', committedPreview.plan.fingerprint, '--json'
+    ], committed.root, committed.home, now, undefined, committedRunner);
+    expect(finalized.code, finalized.stdout).toBe(0);
+    expect(JSON.parse(finalized.stdout)).toMatchObject({
+      status: 'recovered',
+      projectWrites: true,
+      transaction: {
+        status: 'committed',
+        committed: true,
+        readbackDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        cleanupFailures: [],
+        readbackFailures: []
+      }
+    });
+    expect(JSON.parse(await readFile(
+      path.join(committed.root, 'liftoff.manifest.json'),
+      'utf8'
+    ))).toMatchObject({
+      project: { specWorkflow: 'openspec' },
+      framework: { state: 'initialized', adapter: 'openspec' }
     });
   });
 });

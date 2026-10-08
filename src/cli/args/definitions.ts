@@ -187,6 +187,8 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
       check: booleanFlag('Create or refresh the exact external transition plan without project writes', 'Command'),
       'approve-plan': valueFlag('Select one exact saved transition plan by its full lowercase 64-hex SHA-256 fingerprint', 'Consent', 'fingerprint'),
       recover: booleanFlag('Inspect only recovery attributable to the exact selected transition plan', 'Consent'),
+      'install-tools': booleanFlag('Separately authorize allowlisted pinned framework-tool preparation before project review', 'Consent'),
+      'configure-openspec-profile': booleanFlag('Separately authorize the exact required OpenSpec global-profile fields before project review', 'Consent'),
       json: booleanFlag('Emit one schema-1 workflow-transition report', 'Output'),
       ...helpFlag
     },

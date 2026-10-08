@@ -93,7 +93,7 @@ export function installedCapabilities() {
         explicitNonGitRoot: true, liveMetadata: true, liveProviders: ['github'], liveConformance: false,
         credentialEnrollment: false, projectExecution: false, projectWrites: false, telemetry: false,
         scope: 'Bounded local metadata, declaration names and exact current managed-byte comparisons. Runtime constraints, references, agent behavior, effective governance and deployment proof remain unobserved. Team policy metadata comparison is not public team generation or enforcement support.',
-        recommendations: 'Advisory separate lanes only. Non-Liftoff projects may receive the read-only adopt preview; current v8 workflow changes may receive the exact workflow set preview. Workflow execution, profile/plugin transitions, provider activation and deployed-state migration remain unavailable.',
+        recommendations: 'Advisory separate lanes only. Non-Liftoff projects may receive the read-only adopt preview; current v8 workflow changes may use the separately advertised exact workflow transition executor. Governance profile/plugin transitions, provider activation and deployed-state migration remain unavailable.',
         liveScope: 'Explicit bounded GitHub metadata reads for the verified local repository binding, applicable main/develop/release/hotfix refs and declared current environments, plus fixed GitHub Actions app metadata. No account/runner/Azure discovery; observed metadata is not current-profile conformance or activation proof.'
       },
       projectAdoption: {
@@ -119,14 +119,21 @@ export function installedCapabilities() {
         previewAvailable: true,
         executableTransitions: [
           'openspec-to-manual',
-          'spec-kit-to-manual'
+          'spec-kit-to-manual',
+          'manual-to-openspec',
+          'manual-to-spec-kit',
+          'openspec-to-spec-kit',
+          'spec-kit-to-openspec'
         ],
+        officialIsolatedStaging: true,
+        separateMachineToolPermission: true,
+        separateOpenSpecProfilePermission: true,
         exactSourceTargetAgentsInputsChecksAndExpiry: true,
         applicationWrites: false,
         projectMetadataWrites: true,
         frameworkHistoryDeletion: false,
         providerOperations: false,
-        scope: 'Initialized OpenSpec or Spec Kit projects can execute an exact approved transition to Manual through a dedicated project-attributed transaction. The executor changes only selected managed integrations, liftoff.config.json, and the manifest; application/Git/framework/history bytes and shared tools remain untouched. Transitions into external frameworks remain unavailable pending official isolated staging qualification.'
+        scope: 'Current Manual and initialized external projects can execute exact approved transitions among Manual, OpenSpec and Spec Kit through a dedicated project-attributed transaction. External targets require compatible pinned tools, separately authorized machine/global-profile preparation, complete official isolated staging and collision-free validated output. The executor changes only exact staged framework files, selected managed integrations, liftoff.config.json and the final manifest; application/Git/framework history, deployment/state and unrelated integrations remain untouched.'
       },
       reports: {
         capabilities: 1, validate: 1, doctor: 1, upgrade: 1,

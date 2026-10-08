@@ -1,5 +1,12 @@
 import { createHash } from 'node:crypto';
-import { lstat, readdir } from 'node:fs/promises';
+import {
+  chmod,
+  cp,
+  lstat,
+  mkdir,
+  readdir,
+  writeFile
+} from 'node:fs/promises';
 import path from 'node:path';
 import {
   assertBoundProjectPath,
@@ -14,6 +21,10 @@ import {
   createScopedUserLocalRecordStore,
   type UpdatePreviewOptions
 } from '../../adapters/filesystem/update-previews.js';
+import {
+  validateStagedTree,
+  withStagingArea
+} from '../../init-filesystem.js';
 import type {
   ProjectFileMutation,
   ProjectFileSnapshot
@@ -23,14 +34,33 @@ import {
   canonicalSha256,
   isRecord
 } from '../../domain/governance/activation/canonical-json.js';
-import type { CodingAgentId } from '../../domain/project/contracts.js';
+import {
+  specKitBootstrapId
+} from '../../domain/governance/activation/local-check-values.js';
+import type {
+  CodingAgentId,
+  CurrentProjectPlan,
+  ProjectPlan
+} from '../../domain/project/contracts.js';
 import { FileSystemError } from '../../domain/project/errors.js';
 import {
   readManifestPluginMetadata
 } from '../../domain/project/manifest/plugins.js';
 import type { LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import { PlanValidationError } from '../../domain/project/planning.js';
+import {
+  initializeFramework
+} from '../../framework-adapters.js';
 import { renderLiftoffConfig } from '../../generators/common/base.js';
+import {
+  NodeCommandRunner,
+  type CommandRunner,
+  type RunCommandOptions
+} from '../../process-runner.js';
+import type {
+  WorkstationNoProgressStore,
+  WorkstationProbeOptions
+} from '../../workstation.js';
 import { projectCatalog } from '../project/catalog.js';
 import { buildCurrentProjectPlan } from '../project/planning.js';
 import {
@@ -44,8 +74,13 @@ import {
   parseProjectManifest
 } from '../project/manifest.js';
 import { composeModernManifestPlugins } from '../project/plugins.js';
+import {
+  prepareWorkflowTransitionEnvironment,
+  type WorkflowTransitionPreparationOptions,
+  type WorkflowTransitionPreparationReport
+} from './preparation.js';
 
-export const workflowTransitionPlanSchemaVersion = 1 as const;
+export const workflowTransitionPlanSchemaVersion = 2 as const;
 export const workflowTransitionPlanLifetimeMs = 30 * 60 * 1000;
 
 export type WorkflowTransitionTarget = 'openspec' | 'spec-kit' | 'manual';
@@ -58,8 +93,69 @@ export interface WorkflowTransitionInput {
   readonly mode: number | null;
 }
 
+export type WorkflowTransitionFrameworkInventory =
+  | {
+      readonly status: 'not-applicable';
+      readonly workflow: 'manual';
+      readonly roots: readonly (readonly string[])[];
+      readonly activeWork: {
+        readonly identifiers: readonly string[];
+        readonly reconciliation: 'not-applicable';
+      };
+      readonly fileCount: 0;
+      readonly directoryCount: 0;
+      readonly totalBytes: 0;
+      readonly digest: null;
+    }
+  | {
+      readonly status: 'preserved';
+      readonly workflow: 'openspec' | 'spec-kit';
+      readonly roots: readonly (readonly string[])[];
+      readonly activeWork: {
+        readonly identifiers: readonly string[];
+        readonly reconciliation:
+          'preserve-on-disk-as-non-authoritative';
+      };
+      readonly fileCount: number;
+      readonly directoryCount: number;
+      readonly totalBytes: number;
+      readonly digest: string;
+    }
+  | {
+      readonly status: 'unavailable';
+      readonly workflow: 'openspec' | 'spec-kit';
+      readonly roots: readonly (readonly string[])[];
+      readonly activeWork: {
+        readonly identifiers: readonly string[];
+        readonly reconciliation: 'unavailable';
+      };
+      readonly fileCount: 0;
+      readonly directoryCount: 0;
+      readonly totalBytes: 0;
+      readonly digest: null;
+    };
+
+export type WorkflowTransitionTargetFrameworkInventory =
+  | Extract<
+      WorkflowTransitionFrameworkInventory,
+      { readonly status: 'not-applicable' | 'preserved' }
+    >
+  | {
+      readonly status: 'absent';
+      readonly workflow: 'openspec' | 'spec-kit';
+      readonly roots: readonly (readonly string[])[];
+      readonly activeWork: {
+        readonly identifiers: readonly string[];
+        readonly reconciliation: 'no-existing-history';
+      };
+      readonly fileCount: 0;
+      readonly directoryCount: 0;
+      readonly totalBytes: 0;
+      readonly digest: null;
+    };
+
 export interface WorkflowTransitionPlanReport {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly kind: 'liftoff-workflow-transition-plan';
   readonly projectRoot: string;
   readonly source: {
@@ -81,47 +177,10 @@ export interface WorkflowTransitionPlanReport {
     | 'single-maintainer-gitflow'
     | 'team-gitflow';
   readonly inputs: readonly WorkflowTransitionInput[];
-  readonly frameworkInventory:
-    | {
-        readonly status: 'not-applicable';
-        readonly workflow: 'manual';
-        readonly roots: readonly (readonly string[])[];
-        readonly activeWork: {
-          readonly identifiers: readonly string[];
-          readonly reconciliation: 'not-applicable';
-        };
-        readonly fileCount: 0;
-        readonly directoryCount: 0;
-        readonly totalBytes: 0;
-        readonly digest: null;
-      }
-    | {
-        readonly status: 'preserved';
-        readonly workflow: 'openspec' | 'spec-kit';
-        readonly roots: readonly (readonly string[])[];
-        readonly activeWork: {
-          readonly identifiers: readonly string[];
-          readonly reconciliation:
-            'preserve-on-disk-as-non-authoritative';
-        };
-        readonly fileCount: number;
-        readonly directoryCount: number;
-        readonly totalBytes: number;
-        readonly digest: string;
-      }
-    | {
-        readonly status: 'unavailable';
-        readonly workflow: 'openspec' | 'spec-kit';
-        readonly roots: readonly (readonly string[])[];
-        readonly activeWork: {
-          readonly identifiers: readonly string[];
-          readonly reconciliation: 'unavailable';
-        };
-        readonly fileCount: 0;
-        readonly directoryCount: 0;
-        readonly totalBytes: 0;
-        readonly digest: null;
-      };
+  readonly frameworkInventory: WorkflowTransitionFrameworkInventory;
+  readonly targetFrameworkInventory:
+    WorkflowTransitionTargetFrameworkInventory;
+  readonly preparation: WorkflowTransitionPreparationReport;
   readonly checks: readonly {
     readonly id:
       | 'source-inputs-current'
@@ -146,7 +205,12 @@ export interface WorkflowTransitionPlanReport {
 
 export interface WorkflowTransitionEffect {
   readonly logicalName: string;
-  readonly kind: 'managed-core' | 'desired-state' | 'manifest';
+  readonly kind:
+    | 'managed-core'
+    | 'desired-state'
+    | 'framework'
+    | 'repository-placeholder'
+    | 'manifest';
   readonly operation: 'write' | 'delete';
   readonly pathParts: readonly string[];
   readonly contentDigest: string | null;
@@ -156,7 +220,10 @@ export interface WorkflowTransitionEffect {
 
 export interface WorkflowTransitionExecutionReport {
   readonly status: 'ready-for-file-approval';
-  readonly transition: 'external-framework-to-manual';
+  readonly transition:
+    | 'external-framework-to-manual'
+    | 'manual-to-external-framework'
+    | 'external-framework-to-external-framework';
   readonly preconditionDigest: string;
   readonly preconditionCount: number;
   readonly transactionCandidateBinding: string;
@@ -169,10 +236,21 @@ export interface WorkflowTransitionExecutionReport {
   };
   readonly effects: readonly WorkflowTransitionEffect[];
   readonly manifestPublishedLast: true;
-  readonly frameworkDocuments: 'preserved-on-disk';
+  readonly frameworkDocuments:
+    | 'preserved-on-disk'
+    | 'official-staged-with-existing-history-preserved';
   readonly sharedTools: 'unchanged';
   readonly targetLocalReadiness:
-    'manual-native-framework-inapplicable';
+    | 'manual-native-framework-inapplicable'
+    | 'official-framework-initialized';
+  readonly officialStage: null | {
+    readonly commands: readonly string[];
+    readonly fileCount: number;
+    readonly totalBytes: number;
+    readonly digest: string;
+  };
+  readonly targetFrameworkCommitInventory:
+    WorkflowTransitionFrameworkInventory | null;
   readonly recovery: {
     readonly transactionKind: 'workflow-transition';
     readonly journalPathParts: readonly string[];
@@ -242,7 +320,7 @@ function unavailableFrameworkInventory(
 async function inspectFrameworkInventory(
   projectRoot: string,
   workflow: WorkflowTransitionTarget
-): Promise<WorkflowTransitionPlanReport['frameworkInventory']> {
+): Promise<WorkflowTransitionFrameworkInventory> {
   if (workflow === 'manual') {
     return Object.freeze({
       status: 'not-applicable',
@@ -348,8 +426,12 @@ async function inspectFrameworkInventory(
     if (workflow === 'spec-kit' && key === 'specs') {
       for (const entry of entries) {
         if (entry.kind === 'directory') {
-          activeWork.push(entry.name);
-        } else if (entry.name !== '.gitkeep') {
+          if (entry.name !== specKitBootstrapId) {
+            activeWork.push(entry.name);
+          }
+          continue;
+        }
+        if (entry.name !== '.gitkeep') {
           invalid(
             `Unknown Spec Kit work entry ${entry.name} requires explicit reconciliation.`
           );
@@ -431,6 +513,72 @@ async function inspectFrameworkInventory(
       files
     })
   });
+}
+
+async function inspectTargetFrameworkInventory(
+  projectRoot: string,
+  workflow: WorkflowTransitionTarget
+): Promise<WorkflowTransitionTargetFrameworkInventory> {
+  if (workflow === 'manual') {
+    const inventory = await inspectFrameworkInventory(
+      projectRoot,
+      workflow
+    );
+    if (inventory.status !== 'not-applicable') {
+      invalid('Manual target framework inventory must be inapplicable.');
+    }
+    return inventory;
+  }
+  const roots = frameworkRoots(workflow);
+  const present: boolean[] = [];
+  for (const pathParts of roots) {
+    await assertBoundProjectPath(projectRoot, pathParts, {
+      pathLabel: `workflow target framework root ${pathParts.join('/')}`,
+      invalid
+    });
+    try {
+      const details = await lstat(path.join(projectRoot, ...pathParts));
+      if (!details.isDirectory() || details.isSymbolicLink()) {
+        invalid(
+          `Target framework root ${pathParts.join('/')} must be a regular directory when present.`
+        );
+      }
+      present.push(true);
+    } catch (error) {
+      if (fileSystemCode(error) !== 'ENOENT') throw error;
+      present.push(false);
+    }
+  }
+  if (present.every(value => !value)) {
+    return Object.freeze({
+      status: 'absent',
+      workflow,
+      roots,
+      activeWork: Object.freeze({
+        identifiers: Object.freeze([]),
+        reconciliation: 'no-existing-history'
+      }),
+      fileCount: 0,
+      directoryCount: 0,
+      totalBytes: 0,
+      digest: null
+    });
+  }
+  if (present.some(value => !value)) {
+    invalid(
+      `Existing ${workflow} history is incomplete; every framework root must be present or absent before transition.`
+    );
+  }
+  const inventory = await inspectFrameworkInventory(projectRoot, workflow);
+  if (inventory.status !== 'preserved') {
+    invalid('Target framework history inventory is unavailable.');
+  }
+  if (inventory.activeWork.identifiers.length > 0) {
+    invalid(
+      `Active ${workflow} work overlaps the requested workflow transition: ${inventory.activeWork.identifiers.join(', ')}. Reconcile it before creating a new plan.`
+    );
+  }
+  return inventory;
 }
 
 function invalid(message: string): never {
@@ -784,6 +932,8 @@ async function buildManualExecution(
     frameworkDocuments: 'preserved-on-disk',
     sharedTools: 'unchanged',
     targetLocalReadiness: 'manual-native-framework-inapplicable',
+    officialStage: null,
+    targetFrameworkCommitInventory: null,
     recovery: Object.freeze({
       transactionKind: 'workflow-transition',
       journalPathParts: Object.freeze([
@@ -798,6 +948,466 @@ async function buildManualExecution(
     mutations: Object.freeze(mutations),
     preconditions: Object.freeze(preconditions)
   });
+}
+
+async function readFrameworkInput(
+  projectRoot: string,
+  pathParts: readonly string[]
+): Promise<ProjectFileSnapshot> {
+  return await readBoundProjectFileSnapshot(projectRoot, pathParts, {
+    maximumBytes: maximumFrameworkFileBytes,
+    linkPolicy: 'single-link',
+    diagnostics: {
+      pathLabel: `workflow target framework file ${pathParts.join('/')}`,
+      invalid
+    }
+  });
+}
+
+interface TransitionFrameworkFile {
+  readonly pathParts: readonly string[];
+  readonly relativePath: string;
+  readonly content: Buffer;
+  readonly contentHash: string;
+  readonly mode: number;
+  readonly origin: 'official' | 'repository-placeholder';
+}
+
+function specKitRepositoryPlaceholder(
+  workflow: WorkflowTransitionTarget,
+  stagedFiles: readonly TransitionFrameworkFile[]
+): TransitionFrameworkFile | null {
+  if (workflow !== 'spec-kit' ||
+      stagedFiles.some(file => file.pathParts[0] === 'specs')) {
+    return null;
+  }
+  const content = Buffer.alloc(0);
+  return Object.freeze({
+    pathParts: Object.freeze(['specs', '.gitkeep']),
+    relativePath: 'specs/.gitkeep',
+    content,
+    contentHash: digest(content),
+    mode: 0o644,
+    origin: 'repository-placeholder'
+  });
+}
+
+async function buildTargetFrameworkCommitInventory(
+  projectRoot: string,
+  workflow: Exclude<WorkflowTransitionTarget, 'manual'>,
+  targetInventory: WorkflowTransitionTargetFrameworkInventory,
+  files: readonly TransitionFrameworkFile[]
+): Promise<WorkflowTransitionFrameworkInventory> {
+  return await withStagingArea(async area => {
+    if (targetInventory.status === 'preserved') {
+      for (const pathParts of targetInventory.roots) {
+        const destination = path.join(area.root, ...pathParts);
+        await mkdir(path.dirname(destination), { recursive: true });
+        await cp(
+          path.join(projectRoot, ...pathParts),
+          destination,
+          {
+            recursive: true,
+            dereference: false,
+            errorOnExist: true,
+            force: false,
+            preserveTimestamps: true,
+            verbatimSymlinks: true
+          }
+        );
+      }
+      const copied = await inspectFrameworkInventory(area.root, workflow);
+      if (canonicalJson(copied) !== canonicalJson(targetInventory)) {
+        invalid(
+          'Target framework history changed while preparing its commit inventory.'
+        );
+      }
+    } else if (targetInventory.status !== 'absent') {
+      invalid('External target commit inventory requires preserved or absent history.');
+    }
+    for (const file of files) {
+      const destination = path.join(area.root, ...file.pathParts);
+      await mkdir(path.dirname(destination), {
+        recursive: true,
+        mode: 0o700
+      });
+      await writeFile(destination, file.content);
+      await chmod(destination, file.mode);
+    }
+    const expected = await inspectFrameworkInventory(area.root, workflow);
+    if (expected.status !== 'preserved' ||
+        expected.activeWork.identifiers.length > 0) {
+      invalid(
+        'Expected external target commit inventory is incomplete or contains active work.'
+      );
+    }
+    return expected;
+  });
+}
+
+async function buildExternalExecution(
+  projectRoot: string,
+  manifest: LiftoffManifestV8,
+  manifestSnapshot: ProjectFileSnapshot,
+  configSnapshot: ProjectFileSnapshot,
+  selected: ReturnType<typeof targetSelection>,
+  sourceInventory: WorkflowTransitionFrameworkInventory,
+  targetInventory: WorkflowTransitionTargetFrameworkInventory,
+  options: {
+    readonly runner: CommandRunner;
+    readonly env?: NodeJS.ProcessEnv;
+    readonly streamOptions?: Pick<RunCommandOptions, 'stdout' | 'stderr'>;
+    readonly onCommand?: (command: string) => void;
+  }
+): Promise<WorkflowTransitionExecutionCandidate> {
+  if (!isExternalProjectPlan(selected.plan) ||
+      selected.target.workflow === 'manual' ||
+      selected.target.frameworkState !== 'initialization-required') {
+    invalid('External workflow execution requires an exact initialized framework target.');
+  }
+  const externalPlan = selected.plan;
+  if (manifest.project.specWorkflow !== 'manual' &&
+      sourceInventory.status === 'preserved' &&
+      sourceInventory.activeWork.identifiers.length > 0) {
+    invalid(
+      `Active ${sourceInventory.workflow} work overlaps the requested workflow transition: ${sourceInventory.activeWork.identifiers.join(', ')}. Reconcile it before selecting another external framework.`
+    );
+  }
+  if (targetInventory.status === 'preserved' &&
+      targetInventory.activeWork.identifiers.length > 0) {
+    invalid('Target framework active work must be reconciled before initialization.');
+  }
+
+  const staged = await withStagingArea(async area => {
+    const initialized = await initializeFramework(
+      area,
+      externalPlan,
+      options.runner,
+      {
+        env: options.env,
+        ...options.streamOptions,
+        onCommand: options.onCommand
+      }
+    );
+    const files: TransitionFrameworkFile[] = (await validateStagedTree(area))
+      .filter(file => file.origin === 'framework')
+      .map(file => Object.freeze({
+        pathParts: Object.freeze([...file.pathParts]),
+        relativePath: file.relativePath,
+        content: Buffer.from(file.content),
+        contentHash: file.contentHash,
+        mode: file.mode,
+        origin: 'official' as const
+      }));
+    const totalBytes = files.reduce(
+      (total, file) => total + file.content.length,
+      0
+    );
+    if (files.length === 0 ||
+        files.length > maximumFrameworkFiles ||
+        totalBytes > maximumFrameworkBytes) {
+      invalid('Official framework staging output exceeds its bounded file inventory.');
+    }
+    return Object.freeze({
+      commands: Object.freeze([...initialized.commands]),
+      files: Object.freeze(files),
+      totalBytes,
+      digest: canonicalSha256(files.map(file => ({
+        pathParts: file.pathParts,
+        contentHash: file.contentHash,
+        bytes: file.content.length,
+        mode: file.mode
+      })))
+    });
+  });
+  const placeholder = specKitRepositoryPlaceholder(
+    selected.target.workflow,
+    staged.files
+  );
+  const frameworkFiles = Object.freeze([
+    ...staged.files,
+    ...(placeholder ? [placeholder] : [])
+  ]);
+  const targetFrameworkCommitInventory =
+    await buildTargetFrameworkCommitInventory(
+      projectRoot,
+      selected.target.workflow,
+      targetInventory,
+      frameworkFiles
+    );
+
+  const activeLayout = manifest.activeLayout;
+  const managed = buildModernManagedCore({
+    selection: selected.selection,
+    plugins: selected.plugins,
+    activeLayout
+  });
+  const targetNames = new Set(managed.map(artifact => artifact.logicalName));
+  const decisions: ManagedManifestDecision[] = [
+    ...managed.map(artifact => ({
+      kind: 'bytes' as const,
+      logicalName: artifact.logicalName,
+      category: artifact.category,
+      pathParts: [...artifact.pathParts],
+      content: artifact.content
+    })),
+    ...manifest.managedArtifacts
+      .filter(artifact => !targetNames.has(artifact.logicalName))
+      .map(artifact => ({
+        kind: 'retire' as const,
+        logicalName: artifact.logicalName
+      }))
+  ];
+  const candidateManifest = createManifestV8Candidate({
+    origin: 'workflow-transition',
+    source: manifest,
+    selection: selected.selection,
+    activeLayout,
+    managed: decisions
+  });
+  const configContent = `${renderLiftoffConfig(selected.plan)}\n`;
+  const sourceByPath = new Map(
+    manifest.managedArtifacts.map(artifact => [
+      artifact.pathParts.join('/'),
+      artifact
+    ])
+  );
+  const targetByPath = new Map(
+    managed.map(artifact => [artifact.pathParts.join('/'), artifact])
+  );
+  const stagedByPath = new Map(
+    frameworkFiles.map(file => [file.relativePath, file])
+  );
+  for (const key of targetByPath.keys()) {
+    if (stagedByPath.has(key)) {
+      invalid(
+        `Official framework output overlaps a Liftoff managed integration: ${key}.`
+      );
+    }
+  }
+  const managedPaths = new Map<string, readonly string[]>();
+  for (const artifact of [
+    ...manifest.managedArtifacts,
+    ...managed
+  ]) {
+    managedPaths.set(artifact.pathParts.join('/'), artifact.pathParts);
+  }
+  const snapshots = new Map<string, ProjectFileSnapshot>([
+    ['liftoff.manifest.json', manifestSnapshot],
+    ['liftoff.config.json', configSnapshot]
+  ]);
+  for (const [key, pathParts] of managedPaths) {
+    snapshots.set(key, await readInput(projectRoot, pathParts, false));
+  }
+  for (const file of frameworkFiles) {
+    snapshots.set(
+      file.relativePath,
+      await readFrameworkInput(projectRoot, file.pathParts)
+    );
+  }
+  for (const artifact of manifest.managedArtifacts) {
+    const snapshot = snapshots.get(artifact.pathParts.join('/'));
+    if (!snapshot?.content ||
+        `sha256:${digest(snapshot.content)}` !== artifact.contentHash) {
+      invalid(
+        `Managed workflow integration ${artifact.pathParts.join('/')} differs from its recorded Liftoff bytes; reconcile it before transition.`
+      );
+    }
+  }
+  for (const artifact of managed) {
+    const key = artifact.pathParts.join('/');
+    const snapshot = snapshots.get(key);
+    if (!sourceByPath.has(key) && snapshot?.content !== undefined) {
+      invalid(
+        `Target workflow integration ${key} is occupied by a non-source file.`
+      );
+    }
+  }
+  for (const file of frameworkFiles) {
+    const snapshot = snapshots.get(file.relativePath);
+    if (snapshot?.content !== undefined &&
+        (!snapshot.content.equals(file.content) ||
+          snapshot.mode !== file.mode)) {
+      invalid(
+        `Target ${selected.target.workflow} framework output collides with existing bytes or mode at ${file.relativePath}.`
+      );
+    }
+  }
+
+  const mutations: ProjectFileMutation[] = [];
+  const identities: Array<Pick<
+    WorkflowTransitionEffect,
+    'logicalName' | 'kind' | 'operation' | 'pathParts'
+  >> = [];
+  for (const artifact of manifest.managedArtifacts
+    .filter(source => !targetByPath.has(source.pathParts.join('/')))
+    .sort((left, right) =>
+      left.pathParts.join('/').localeCompare(right.pathParts.join('/')))) {
+    mutations.push({
+      type: 'delete',
+      pathParts: [...artifact.pathParts]
+    });
+    identities.push({
+      logicalName: artifact.logicalName,
+      kind: 'managed-core',
+      operation: 'delete',
+      pathParts: [...artifact.pathParts]
+    });
+  }
+  for (const artifact of [...managed].sort((left, right) =>
+    left.pathParts.join('/').localeCompare(right.pathParts.join('/')))) {
+    const snapshot = snapshots.get(artifact.pathParts.join('/'));
+    if (snapshot?.content?.toString('utf8') === artifact.content) continue;
+    mutations.push({
+      type: 'write',
+      pathParts: [...artifact.pathParts],
+      content: artifact.content
+    });
+    identities.push({
+      logicalName: artifact.logicalName,
+      kind: 'managed-core',
+      operation: 'write',
+      pathParts: [...artifact.pathParts]
+    });
+  }
+  for (const file of frameworkFiles) {
+    const snapshot = snapshots.get(file.relativePath);
+    if (snapshot?.content !== undefined) continue;
+    mutations.push({
+      type: 'write',
+      pathParts: [...file.pathParts],
+      content: file.content,
+      mode: file.mode
+    });
+    identities.push({
+      logicalName: file.origin === 'official'
+        ? `framework:${file.relativePath}`
+        : 'specs-placeholder',
+      kind: file.origin === 'official'
+        ? 'framework'
+        : 'repository-placeholder',
+      operation: 'write',
+      pathParts: [...file.pathParts]
+    });
+  }
+  if (configSnapshot.content?.toString('utf8') !== configContent) {
+    mutations.push({
+      type: 'write',
+      pathParts: ['liftoff.config.json'],
+      content: configContent
+    });
+    identities.push({
+      logicalName: 'liftoff-config',
+      kind: 'desired-state',
+      operation: 'write',
+      pathParts: ['liftoff.config.json']
+    });
+  }
+  if (manifestSnapshot.content?.toString('utf8') !==
+      candidateManifest.content) {
+    mutations.push({
+      type: 'write',
+      pathParts: ['liftoff.manifest.json'],
+      content: candidateManifest.content
+    });
+    identities.push({
+      logicalName: 'manifest',
+      kind: 'manifest',
+      operation: 'write',
+      pathParts: ['liftoff.manifest.json']
+    });
+  }
+  if (mutations.length === 0 ||
+      identities.at(-1)?.kind !== 'manifest' ||
+      !samePath(mutations.at(-1)!.pathParts, ['liftoff.manifest.json'])) {
+    invalid(
+      'Executable external workflow transition requires one exact final manifest mutation.'
+    );
+  }
+  const preconditions = [...snapshots.values()];
+  const transaction = await inspectWorkflowTransitionTransactionCandidate(
+    projectRoot,
+    mutations,
+    preconditions
+  );
+  if (transaction.size.kind !== 'journal' ||
+      transaction.payload.mutations.length !== mutations.length ||
+      identities.length !== mutations.length) {
+    invalid('Workflow transition transaction measurement is incomplete.');
+  }
+  const effects = identities.map((identity, index) => {
+    const measured = transaction.payload.mutations[index]?.target;
+    if (!measured) invalid('Workflow transition effect measurement is missing.');
+    const write = identity.operation === 'write';
+    if (write !== (measured.kind === 'file')) {
+      invalid('Workflow transition effect operation differs from its measured target.');
+    }
+    return Object.freeze({
+      ...identity,
+      pathParts: Object.freeze([...identity.pathParts]),
+      contentDigest: measured.kind === 'file' ? measured.sha256 : null,
+      contentBytes: measured.kind === 'file'
+        ? Buffer.byteLength(
+            (mutations[index] as Extract<
+              ProjectFileMutation, { type: 'write' }
+            >).content
+          )
+        : null,
+      mode: measured.kind === 'file' ? measured.mode : null
+    });
+  });
+  const report: WorkflowTransitionExecutionReport = Object.freeze({
+    status: 'ready-for-file-approval',
+    transition: manifest.project.specWorkflow === 'manual'
+      ? 'manual-to-external-framework'
+      : 'external-framework-to-external-framework',
+    preconditionDigest: canonicalSha256(
+      preconditions.map(snapshotDescriptor)
+    ),
+    preconditionCount: preconditions.length,
+    transactionCandidateBinding: transaction.binding,
+    transactionCandidateDigest: canonicalSha256(transaction.payload),
+    transactionSize: Object.freeze({
+      mutationCount: transaction.size.mutationCount,
+      suppliedPreconditionCount:
+        transaction.size.suppliedPreconditionCount,
+      snapshotBytes: transaction.size.snapshotBytes,
+      completeJournalBytes: transaction.size.completeJournalBytes
+    }),
+    effects: Object.freeze(effects),
+    manifestPublishedLast: true,
+    frameworkDocuments:
+      'official-staged-with-existing-history-preserved',
+    sharedTools: 'unchanged',
+    targetLocalReadiness: 'official-framework-initialized',
+    officialStage: Object.freeze({
+      commands: staged.commands,
+      fileCount: staged.files.length,
+      totalBytes: staged.totalBytes,
+      digest: staged.digest
+    }),
+    targetFrameworkCommitInventory,
+    recovery: Object.freeze({
+      transactionKind: 'workflow-transition',
+      journalPathParts: Object.freeze([
+        ...workflowTransitionTransactionPathParts
+      ]),
+      selectedBy:
+        'plan-fingerprint-and-observed-transaction-digest'
+    })
+  });
+  return Object.freeze({
+    report,
+    mutations: Object.freeze(mutations),
+    preconditions: Object.freeze(preconditions)
+  });
+}
+
+function isExternalProjectPlan(
+  plan: CurrentProjectPlan
+): plan is ProjectPlan {
+  return plan.specWorkflow.id === 'openspec' ||
+    plan.specWorkflow.id === 'spec-kit';
 }
 
 function validateFingerprint(report: WorkflowTransitionPlanReport): void {
@@ -1031,6 +1641,201 @@ function validateFrameworkInventory(
   sha256(inventory.digest, 'Workflow transition framework inventory digest');
 }
 
+function validateTargetFrameworkInventory(
+  value: unknown,
+  target: WorkflowTransitionPlanReport['target']
+): void {
+  const inventory = exactRecord(value, [
+    'status', 'workflow', 'roots', 'activeWork', 'fileCount',
+    'directoryCount', 'totalBytes', 'digest'
+  ], 'Workflow transition target framework inventory');
+  const roots = denseArray(
+    inventory.roots,
+    2,
+    'Workflow transition target framework inventory roots'
+  );
+  const active = exactRecord(inventory.activeWork, [
+    'identifiers', 'reconciliation'
+  ], 'Workflow transition target active work');
+  const identifiers = denseArray(
+    active.identifiers,
+    maximumFrameworkDirectories,
+    'Workflow transition target active work identifiers'
+  );
+  const zero = inventory.fileCount === 0 &&
+    inventory.directoryCount === 0 &&
+    inventory.totalBytes === 0 &&
+    inventory.digest === null;
+  if (target.workflow === 'manual') {
+    if (inventory.status !== 'not-applicable' ||
+        inventory.workflow !== 'manual' ||
+        roots.length !== 0 ||
+        identifiers.length !== 0 ||
+        active.reconciliation !== 'not-applicable' ||
+        !zero) {
+      invalid('Manual target framework inventory must be inapplicable.');
+    }
+    return;
+  }
+  if (inventory.workflow !== target.workflow ||
+      canonicalJson(roots) !==
+        canonicalJson(frameworkRoots(target.workflow))) {
+    invalid('Target framework inventory workflow or roots are invalid.');
+  }
+  if (inventory.status === 'absent') {
+    if (identifiers.length !== 0 ||
+        active.reconciliation !== 'no-existing-history' ||
+        !zero) {
+      invalid('Absent target framework inventory is invalid.');
+    }
+    return;
+  }
+  if (inventory.status !== 'preserved' ||
+      active.reconciliation !==
+        'preserve-on-disk-as-non-authoritative') {
+    invalid(
+      'Existing target framework history must use the preserved reconciliation contract.'
+    );
+  }
+  let prior = '';
+  for (const identifier of identifiers) {
+    if (typeof identifier !== 'string' ||
+        !identifier ||
+        identifier.length > 255 ||
+        /[\/\\\u0000-\u001f\u007f]/u.test(identifier) ||
+        identifier.localeCompare(prior, 'en') <= 0) {
+      invalid(
+        'Workflow transition target active work identifiers must be unique sorted safe names.'
+      );
+    }
+    prior = identifier;
+  }
+  if (!Number.isSafeInteger(inventory.fileCount) ||
+      Number(inventory.fileCount) < 0 ||
+      Number(inventory.fileCount) > maximumFrameworkFiles ||
+      !Number.isSafeInteger(inventory.directoryCount) ||
+      Number(inventory.directoryCount) <= 0 ||
+      Number(inventory.directoryCount) > maximumFrameworkDirectories ||
+      !Number.isSafeInteger(inventory.totalBytes) ||
+      Number(inventory.totalBytes) < 0 ||
+      Number(inventory.totalBytes) > maximumFrameworkBytes) {
+    invalid('Target framework inventory bounds are invalid.');
+  }
+  sha256(
+    inventory.digest,
+    'Workflow transition target framework inventory digest'
+  );
+}
+
+function validatePreparation(
+  value: unknown,
+  target: WorkflowTransitionPlanReport['target']
+): void {
+  const preparation = exactRecord(value, [
+    'status', 'tools', 'openSpecProfile'
+  ], 'Workflow transition preparation');
+  const tools = denseArray(
+    preparation.tools,
+    6,
+    'Workflow transition preparation tools'
+  );
+  const profile = exactRecord(preparation.openSpecProfile, [
+    'status', 'profile', 'delivery', 'workflows', 'differences', 'commands'
+  ], 'Workflow transition OpenSpec profile preparation');
+  const workflows = denseArray(
+    profile.workflows,
+    64,
+    'Workflow transition OpenSpec profile workflows'
+  );
+  const differences = denseArray(
+    profile.differences,
+    64,
+    'Workflow transition OpenSpec profile differences'
+  );
+  const commands = denseArray(
+    profile.commands,
+    8,
+    'Workflow transition OpenSpec profile commands'
+  );
+  if (workflows.some(entry => typeof entry !== 'string') ||
+      differences.some(entry => typeof entry !== 'string') ||
+      commands.some(entry => typeof entry !== 'string')) {
+    invalid('Workflow transition OpenSpec profile preparation arrays are invalid.');
+  }
+  const toolIds = new Set<string>();
+  for (const [index, entry] of tools.entries()) {
+    const tool = exactRecord(entry, [
+      'id', 'state', 'reasonCode', 'detectedVersion', 'executable',
+      'resolution', 'resolvedPath', 'realPath', 'kind', 'origin',
+      'evidence', 'minimumVersion', 'exactVersion', 'releaseLine',
+      'installCommand'
+    ], `Workflow transition preparation tool ${index}`);
+    if (typeof tool.id !== 'string' || !tool.id ||
+        toolIds.has(tool.id) ||
+        typeof tool.executable !== 'string' || !tool.executable ||
+        !['ready', 'missing', 'outdated', 'unhealthy', 'not-observable'].includes(String(tool.state)) ||
+        typeof tool.reasonCode !== 'string' ||
+        !['resolved', 'missing', 'not-observable'].includes(String(tool.resolution)) ||
+        !['brew', 'winget', 'npm', 'uv', 'standalone', 'unknown'].includes(String(tool.origin)) ||
+        !['path-search', 'version-probe', 'documented-location', 'unavailable'].includes(String(tool.evidence))) {
+      invalid(`Workflow transition preparation tool ${index} is invalid.`);
+    }
+    for (const field of [
+      tool.detectedVersion, tool.resolvedPath, tool.realPath, tool.kind,
+      tool.minimumVersion, tool.exactVersion, tool.releaseLine,
+      tool.installCommand
+    ]) {
+      if (field !== null && typeof field !== 'string') {
+        invalid(`Workflow transition preparation tool ${index} metadata is invalid.`);
+      }
+    }
+    toolIds.add(tool.id);
+  }
+  if (target.workflow === 'manual') {
+    if (preparation.status !== 'not-required' ||
+        tools.length !== 0 ||
+        profile.status !== 'not-applicable' ||
+        profile.profile !== null ||
+        profile.delivery !== null ||
+        workflows.length !== 0 ||
+        differences.length !== 0 ||
+        commands.length !== 0) {
+      invalid('Manual workflow transition preparation must be inapplicable.');
+    }
+    return;
+  }
+  if (preparation.status === 'not-required') {
+    if (tools.length !== 0 ||
+        profile.status !== 'not-applicable' ||
+        profile.profile !== null ||
+        profile.delivery !== null ||
+        workflows.length !== 0 ||
+        differences.length !== 0 ||
+        commands.length !== 0) {
+      invalid('No-op workflow transition preparation is invalid.');
+    }
+    return;
+  }
+  if (!['ready', 'required'].includes(String(preparation.status)) ||
+      tools.length === 0) {
+    invalid('External workflow transition preparation is incomplete.');
+  }
+  const toolsReady = tools.every(entry => {
+    const tool = entry as Record<string, unknown>;
+    return tool.state === 'ready' && tool.reasonCode === 'compatible';
+  });
+  const expectedProfile = target.workflow === 'openspec'
+    ? ['ready', 'configuration-required', 'unavailable']
+    : ['not-applicable'];
+  if (!expectedProfile.includes(String(profile.status)) ||
+      (preparation.status === 'ready') !==
+        (toolsReady &&
+          (profile.status === 'ready' ||
+            profile.status === 'not-applicable'))) {
+    invalid('Workflow transition preparation readiness is invalid.');
+  }
+}
+
 function validateChecks(
   value: unknown,
   target: WorkflowTransitionTarget
@@ -1077,18 +1882,69 @@ function validateExecution(
     'status', 'transition', 'preconditionDigest', 'preconditionCount',
     'transactionCandidateBinding', 'transactionCandidateDigest',
     'transactionSize', 'effects', 'manifestPublishedLast',
-    'frameworkDocuments', 'sharedTools', 'targetLocalReadiness', 'recovery'
+    'frameworkDocuments', 'sharedTools', 'targetLocalReadiness',
+    'officialStage', 'targetFrameworkCommitInventory', 'recovery'
   ], 'Workflow transition execution');
+  const manual = target.workflow === 'manual';
   if (execution.status !== 'ready-for-file-approval' ||
-      execution.transition !== 'external-framework-to-manual' ||
-      source.workflow === 'manual' || source.frameworkState !== 'initialized' ||
-      target.workflow !== 'manual' ||
       execution.manifestPublishedLast !== true ||
-      execution.frameworkDocuments !== 'preserved-on-disk' ||
-      execution.sharedTools !== 'unchanged' ||
-      execution.targetLocalReadiness !==
-        'manual-native-framework-inapplicable') {
+      execution.sharedTools !== 'unchanged') {
     invalid('Workflow transition executable identity is invalid.');
+  }
+  if (manual) {
+    if (execution.transition !== 'external-framework-to-manual' ||
+        source.workflow === 'manual' ||
+        source.frameworkState !== 'initialized' ||
+        execution.frameworkDocuments !== 'preserved-on-disk' ||
+        execution.targetLocalReadiness !==
+          'manual-native-framework-inapplicable' ||
+        execution.officialStage !== null ||
+        execution.targetFrameworkCommitInventory !== null) {
+      invalid('Manual workflow transition executable identity is invalid.');
+    }
+  } else {
+    const expected = source.workflow === 'manual'
+      ? 'manual-to-external-framework'
+      : 'external-framework-to-external-framework';
+    if (execution.transition !== expected ||
+        execution.frameworkDocuments !==
+          'official-staged-with-existing-history-preserved' ||
+        execution.targetLocalReadiness !==
+          'official-framework-initialized') {
+      invalid('External workflow transition executable identity is invalid.');
+    }
+    const stage = exactRecord(execution.officialStage, [
+      'commands', 'fileCount', 'totalBytes', 'digest'
+    ], 'Workflow transition official stage');
+    const stageCommands = denseArray(
+      stage.commands,
+      16,
+      'Workflow transition official stage commands'
+    );
+    if (stageCommands.length === 0 ||
+        stageCommands.some(command => typeof command !== 'string' || !command) ||
+        !Number.isSafeInteger(stage.fileCount) ||
+        Number(stage.fileCount) <= 0 ||
+        Number(stage.fileCount) > maximumFrameworkFiles ||
+        !Number.isSafeInteger(stage.totalBytes) ||
+        Number(stage.totalBytes) < 0 ||
+        Number(stage.totalBytes) > maximumFrameworkBytes) {
+      invalid('Workflow transition official stage inventory is invalid.');
+    }
+    sha256(stage.digest, 'Workflow transition official stage digest');
+    validateTargetFrameworkInventory(
+      execution.targetFrameworkCommitInventory,
+      target
+    );
+    const commitInventory = execution.targetFrameworkCommitInventory as {
+      status?: unknown;
+      activeWork?: unknown;
+    };
+    if (commitInventory.status !== 'preserved') {
+      invalid(
+        'External workflow transition commit inventory must be preserved.'
+      );
+    }
   }
   sha256(
     execution.preconditionDigest,
@@ -1137,7 +1993,13 @@ function validateExecution(
       `Workflow transition effect ${index} path`
     );
     if (typeof effect.logicalName !== 'string' ||
-        !['managed-core', 'desired-state', 'manifest'].includes(
+        ![
+          'managed-core',
+          'desired-state',
+          'framework',
+          'repository-placeholder',
+          'manifest'
+        ].includes(
           String(effect.kind)
         ) ||
         !['write', 'delete'].includes(String(effect.operation)) ||
@@ -1203,7 +2065,8 @@ function validatePlan(
   if (!isRecord(value)) invalid('Workflow transition plan must be an object.');
   const exact = [
     'schemaVersion', 'kind', 'projectRoot', 'source', 'target',
-    'governanceProfile', 'inputs', 'frameworkInventory', 'checks',
+    'governanceProfile', 'inputs', 'frameworkInventory',
+    'targetFrameworkInventory', 'preparation', 'checks',
     'applicationFiles', 'gitHistory', 'frameworkHistory', 'execution',
     'createdAt', 'expiresAt', 'fingerprint'
   ];
@@ -1229,8 +2092,19 @@ function validatePlan(
   }
   validateInputs(report.inputs);
   validateFrameworkInventory(report.frameworkInventory, report.source);
+  validateTargetFrameworkInventory(
+    report.targetFrameworkInventory,
+    report.target
+  );
+  validatePreparation(report.preparation, report.target);
   validateChecks(report.checks, report.target.workflow);
   validateExecution(report.execution, report.source, report.target);
+  if (report.execution.status === 'ready-for-file-approval' &&
+      (report.target.workflow === 'manual'
+        ? report.preparation.status !== 'not-required'
+        : report.preparation.status !== 'ready')) {
+    invalid('Workflow transition execution lacks its exact preparation state.');
+  }
   validateFingerprint(report);
   const created = Date.parse(report.createdAt);
   const expires = Date.parse(report.expiresAt);
@@ -1251,10 +2125,24 @@ export async function prepareWorkflowTransitionPlan(
     readonly defaultAgent?: string;
     readonly now: Date;
     readonly storage?: UpdatePreviewOptions;
+    readonly runner?: CommandRunner;
+    readonly env?: NodeJS.ProcessEnv;
+    readonly workstationProbe?: WorkstationProbeOptions;
+    readonly workstationNoProgressStore?: WorkstationNoProgressStore;
+    readonly installTools?: boolean;
+    readonly configureOpenSpecProfile?: boolean;
+    readonly streamOptions?: Pick<RunCommandOptions, 'stdout' | 'stderr'>;
+    readonly authorizeTool?:
+      WorkflowTransitionPreparationOptions['authorizeTool'];
+    readonly authorizeOpenSpecProfile?:
+      WorkflowTransitionPreparationOptions['authorizeOpenSpecProfile'];
+    readonly onCommand?: (command: string) => void;
+    readonly onMachineCommand?: (command: string) => void;
   }
 ): Promise<{
   readonly plan: WorkflowTransitionPlanReport;
   readonly path: string;
+  readonly machineChanges: readonly string[];
 }> {
   const manifestSnapshot = await readInput(
     projectRoot, ['liftoff.manifest.json'], true
@@ -1280,6 +2168,17 @@ export async function prepareWorkflowTransitionPlan(
       ? manifest.framework.contractVersion
       : null
   });
+  const current = source.workflow === selection.target.workflow &&
+    canonicalJson(source.agents) ===
+      canonicalJson(selection.target.agents) &&
+    source.defaultAgent === selection.target.defaultAgent;
+  if (!current &&
+      source.workflow === selection.target.workflow &&
+      selection.target.workflow !== 'manual') {
+    invalid(
+      'Changing agents within the same external framework is not a workflow transition; reconcile that framework through its reviewed lifecycle.'
+    );
+  }
   const createdAt = options.now.toISOString();
   const expiresAt = new Date(
     options.now.getTime() + workflowTransitionPlanLifetimeMs
@@ -1293,6 +2192,68 @@ export async function prepareWorkflowTransitionPlan(
     : source.frameworkState === 'initialized'
       ? await inspectFrameworkInventory(projectRoot, source.workflow)
       : unavailableFrameworkInventory(source.workflow);
+  const targetFrameworkInventory = current
+    ? source.workflow === 'manual'
+      ? await inspectTargetFrameworkInventory(
+          projectRoot,
+          selection.target.workflow
+        )
+      : frameworkInventory.status === 'preserved'
+        ? frameworkInventory
+        : await inspectTargetFrameworkInventory(
+            projectRoot,
+            selection.target.workflow
+          )
+    : await inspectTargetFrameworkInventory(
+        projectRoot,
+        selection.target.workflow
+      );
+  if (!current &&
+      selection.target.workflow !== 'manual' &&
+      frameworkInventory.status === 'preserved' &&
+      frameworkInventory.workflow !== selection.target.workflow &&
+      frameworkInventory.activeWork.identifiers.length > 0) {
+    invalid(
+      `Active ${frameworkInventory.workflow} work overlaps the requested workflow transition: ${frameworkInventory.activeWork.identifiers.join(', ')}. Reconcile it before preparing another framework.`
+    );
+  }
+  const runner = options.runner ?? new NodeCommandRunner();
+  const preparationResult = current
+    ? Object.freeze({
+        report: Object.freeze({
+          status: 'not-required' as const,
+          tools: Object.freeze([]),
+          openSpecProfile: Object.freeze({
+            status: 'not-applicable' as const,
+            profile: null,
+            delivery: null,
+            workflows: Object.freeze([]),
+            differences: Object.freeze([]),
+            commands: Object.freeze([])
+          })
+        }),
+        machineChanges: Object.freeze([])
+      })
+    : await prepareWorkflowTransitionEnvironment(
+        selection.plan,
+        {
+          runner,
+          cwd: projectRoot,
+          env: options.env,
+          workstationProbe: options.workstationProbe,
+          workstationNoProgressStore:
+            options.workstationNoProgressStore,
+          installTools: options.installTools,
+          configureOpenSpecProfile:
+            options.configureOpenSpecProfile,
+          streamOptions: options.streamOptions,
+          authorizeTool: options.authorizeTool,
+          authorizeOpenSpecProfile:
+            options.authorizeOpenSpecProfile,
+          onCommand: options.onCommand,
+          onMachineCommand: options.onMachineCommand
+        }
+      );
   const checks = Object.freeze([
     Object.freeze({
       id: 'source-inputs-current' as const,
@@ -1317,10 +2278,6 @@ export async function prepareWorkflowTransitionPlan(
       status: 'required' as const
     })
   ]);
-  const current = source.workflow === selection.target.workflow &&
-    canonicalJson(source.agents) ===
-      canonicalJson(selection.target.agents) &&
-    source.defaultAgent === selection.target.defaultAgent;
   const execution = current
     ? Object.freeze({ status: 'not-required' as const })
     : source.workflow !== 'manual' &&
@@ -1333,6 +2290,23 @@ export async function prepareWorkflowTransitionPlan(
           configSnapshot,
           selection
         )).report
+      : selection.target.workflow !== 'manual' &&
+          preparationResult.report.status === 'ready'
+        ? (await buildExternalExecution(
+            projectRoot,
+            manifest,
+            manifestSnapshot,
+            configSnapshot,
+            selection,
+            frameworkInventory,
+            targetFrameworkInventory,
+            {
+              runner,
+              env: options.env,
+              streamOptions: options.streamOptions,
+              onCommand: options.onCommand
+            }
+          )).report
       : Object.freeze({ status: 'unavailable' as const });
   const unsigned = {
     schemaVersion: workflowTransitionPlanSchemaVersion,
@@ -1343,6 +2317,8 @@ export async function prepareWorkflowTransitionPlan(
     governanceProfile: manifest.governance.profile,
     inputs,
     frameworkInventory,
+    targetFrameworkInventory,
+    preparation: preparationResult.report,
     checks,
     applicationFiles: 'preserved' as const,
     gitHistory: 'preserved' as const,
@@ -1358,7 +2334,11 @@ export async function prepareWorkflowTransitionPlan(
   const stored = await createScopedUserLocalRecordStore(
     projectRoot, 'workflow-transition-plan', options.storage
   ).write(plan.fingerprint, plan);
-  return { plan, path: stored.path };
+  return {
+    plan,
+    path: stored.path,
+    machineChanges: preparationResult.machineChanges
+  };
 }
 
 export async function readWorkflowTransitionPlan(
@@ -1400,7 +2380,12 @@ export async function readWorkflowTransitionPlanForRecovery(
 }
 
 export async function assertWorkflowTransitionPlanCurrent(
-  plan: WorkflowTransitionPlanReport
+  plan: WorkflowTransitionPlanReport,
+  options: {
+    readonly runner?: CommandRunner;
+    readonly env?: NodeJS.ProcessEnv;
+    readonly workstationProbe?: WorkstationProbeOptions;
+  } = {}
 ): Promise<void> {
   const snapshots: ProjectFileSnapshot[] = [];
   for (const input of plan.inputs) {
@@ -1425,14 +2410,33 @@ export async function assertWorkflowTransitionPlanCurrent(
     invalid('Workflow transition manifest changed to an unsupported version after preview.');
   }
   await assertWorkflowTransitionFrameworkPreserved(plan);
-  const currentTarget = targetSelection(
+  await assertWorkflowTransitionTargetFrameworkCurrent(plan);
+  const selected = targetSelection(
     manifest,
     plan.target.workflow,
     plan.target.agents,
     plan.target.defaultAgent ?? undefined
-  ).target;
+  );
+  const currentTarget = selected.target;
   if (canonicalJson(currentTarget) !== canonicalJson(plan.target)) {
     invalid('Workflow transition target plugin resolution changed after preview.');
+  }
+  if (plan.preparation.status !== 'not-required') {
+    const currentPreparation = await prepareWorkflowTransitionEnvironment(
+      selected.plan,
+      {
+        runner: options.runner ?? new NodeCommandRunner(),
+        cwd: plan.projectRoot,
+        env: options.env,
+        workstationProbe: options.workstationProbe
+      }
+    );
+    if (canonicalJson(currentPreparation.report) !==
+        canonicalJson(plan.preparation)) {
+      invalid(
+        'Workflow transition tool or global-profile preparation changed after preview.'
+      );
+    }
   }
 }
 
@@ -1452,8 +2456,63 @@ export async function assertWorkflowTransitionFrameworkPreserved(
   }
 }
 
-export async function rebuildWorkflowTransitionExecution(
+export async function assertWorkflowTransitionTargetFrameworkCurrent(
   plan: WorkflowTransitionPlanReport
+): Promise<void> {
+  const current = plan.targetFrameworkInventory.status === 'preserved'
+    ? await inspectFrameworkInventory(
+        plan.projectRoot,
+        plan.targetFrameworkInventory.workflow
+      )
+    : await inspectTargetFrameworkInventory(
+        plan.projectRoot,
+        plan.target.workflow
+      );
+  if (canonicalJson(current) !==
+      canonicalJson(plan.targetFrameworkInventory)) {
+    invalid(
+      'Target framework history changed after preview; reconcile and create a new plan.'
+    );
+  }
+}
+
+export async function assertWorkflowTransitionTargetFrameworkCommitted(
+  plan: WorkflowTransitionPlanReport
+): Promise<void> {
+  if (plan.target.workflow === 'manual') {
+    if (plan.execution.status === 'ready-for-file-approval' &&
+        plan.execution.targetFrameworkCommitInventory !== null) {
+      invalid('Manual target cannot have a committed framework inventory.');
+    }
+    return;
+  }
+  if (plan.execution.status !== 'ready-for-file-approval' ||
+      plan.execution.targetFrameworkCommitInventory === null) {
+    invalid('External target commit inventory is unavailable.');
+  }
+  const current = await inspectFrameworkInventory(
+    plan.projectRoot,
+    plan.target.workflow
+  );
+  if (canonicalJson(current) !== canonicalJson(
+    plan.execution.targetFrameworkCommitInventory
+  )) {
+    invalid(
+      'Target framework history or committed output changed during transition. ' +
+      `Expected ${canonicalJson(plan.execution.targetFrameworkCommitInventory)} ` +
+      `but observed ${canonicalJson(current)}.`
+    );
+  }
+}
+
+export async function rebuildWorkflowTransitionExecution(
+  plan: WorkflowTransitionPlanReport,
+  options: {
+    readonly runner?: CommandRunner;
+    readonly env?: NodeJS.ProcessEnv;
+    readonly streamOptions?: Pick<RunCommandOptions, 'stdout' | 'stderr'>;
+    readonly onCommand?: (command: string) => void;
+  } = {}
 ): Promise<WorkflowTransitionExecutionCandidate> {
   if (plan.execution.status !== 'ready-for-file-approval') {
     invalid('The selected workflow transition has no executable file plan.');
@@ -1480,13 +2539,29 @@ export async function rebuildWorkflowTransitionExecution(
     plan.target.agents,
     plan.target.defaultAgent ?? undefined
   );
-  const rebuilt = await buildManualExecution(
-    plan.projectRoot,
-    manifest,
-    manifestSnapshot,
-    configSnapshot,
-    selection
-  );
+  const rebuilt = plan.target.workflow === 'manual'
+    ? await buildManualExecution(
+        plan.projectRoot,
+        manifest,
+        manifestSnapshot,
+        configSnapshot,
+        selection
+      )
+    : await buildExternalExecution(
+        plan.projectRoot,
+        manifest,
+        manifestSnapshot,
+        configSnapshot,
+        selection,
+        plan.frameworkInventory,
+        plan.targetFrameworkInventory,
+        {
+          runner: options.runner ?? new NodeCommandRunner(),
+          env: options.env,
+          streamOptions: options.streamOptions,
+          onCommand: options.onCommand
+        }
+      );
   if (canonicalJson(rebuilt.report) !== canonicalJson(plan.execution)) {
     invalid(
       'Workflow transition effects or physical preconditions changed after preview.'
