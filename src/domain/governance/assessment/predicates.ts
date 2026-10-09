@@ -39,6 +39,15 @@ function zeroReviewers(rule: Record<string, unknown>): boolean | null {
     values.require_code_owner_review === false && values.require_last_push_approval === false &&
     values.dismiss_stale_reviews_on_push === true;
 }
+function currentTeamReview(rule: Record<string, unknown>): boolean | null {
+  const values = parameters(rule);
+  if (!values || typeof values.required_approving_review_count !== 'number' ||
+      typeof values.require_code_owner_review !== 'boolean' ||
+      typeof values.require_last_push_approval !== 'boolean' ||
+      typeof values.dismiss_stale_reviews_on_push !== 'boolean') return null;
+  return values.required_approving_review_count >= 1 &&
+    values.dismiss_stale_reviews_on_push === true;
+}
 
 function refMatches(pattern: string, ref: string, defaultBranch: string | null): boolean | null {
   if (pattern === '~ALL' || pattern === ref) return true;
@@ -197,6 +206,31 @@ export function singleMaintainer(value: unknown): PredicateResult {
   const results = reviews.map(zeroReviewers);
   if (results.includes(false)) return result(false, 'A pull request rule requires a human or code-owner approval.');
   return result(results.includes(null) ? null : true, results.includes(null) ? 'Review settings are incomplete.' : 'Observed pull request rules use zero required human reviewers.');
+}
+
+export function teamReview(value: unknown): PredicateResult {
+  const rulesets = records(value);
+  if (!rulesets) return result(null, 'Pull request rules are not observable.');
+  const reviews: Record<string, unknown>[] = [];
+  for (const ruleset of rulesets.filter((entry) => entry.target === 'branch' && entry.enforcement === 'active')) {
+    const rules = ruleList(ruleset);
+    if (!rules) return result(null, 'Ruleset rule details are missing.');
+    reviews.push(...rules.filter((rule) => rule.type === 'pull_request'));
+  }
+  if (!reviews.length) return { ...result(false, 'No active pull request rule was observed.'), absent: true };
+  const results = reviews.map(currentTeamReview);
+  if (results.includes(true)) {
+    return result(
+      true,
+      'An active pull request rule requires at least one current approval; stronger approval, code-owner, and last-push controls remain acceptable.'
+    );
+  }
+  return result(
+    results.includes(null) ? null : false,
+    results.includes(null)
+      ? 'Review settings are incomplete.'
+      : 'No active pull request rule requires both at least one approval and stale-review dismissal.'
+  );
 }
 
 export function tagControls(value: unknown, actionsAppId?: number): PredicateResult {

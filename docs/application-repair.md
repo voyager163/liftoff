@@ -26,6 +26,14 @@ relocation instructions. Missing bindings are not filled in from templates or
 component roots. Unresolved layouts, layouts with no editable artifact bindings,
 and team-profile repair are unsupported.
 
+Changing governance profile is not application repair. Use
+`liftoff update --check` to review the distinct local policy plan; exact approval
+preserves application bindings and bytes, this repair's history, CODEOWNERS,
+stronger controls, workflow, and old proof. Changing workflow uses
+`liftoff workflow set`. Adding agents without removing existing selections uses
+the separately advertised additive `liftoff repair --agents` lane. `--force`
+cannot substitute one lane for another.
+
 The current recipe can edit an existing bound artifact in place, review eligible
 custom-component files, or move a bound artifact while retaining its exact
 logical identity. A verified move commits application and affected reference

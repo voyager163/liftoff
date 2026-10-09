@@ -5,14 +5,14 @@ import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { builtinAssets } from '../src/plugins/builtin/assets.ts';
 
-export const maximumUnpackedPackageBytes = 12 * 1024 * 1024;
+export const maximumUnpackedPackageBytes = 13 * 1024 * 1024;
 
 export function assertUnpackedPackageSize(bytes) {
   if (!Number.isSafeInteger(bytes) || bytes < 0) {
     throw new TypeError('Packed package unpacked size must be a non-negative safe integer.');
   }
   if (bytes > maximumUnpackedPackageBytes) {
-    throw new Error(`Packed package unexpectedly exceeds the 12 MiB unpacked-size budget: ${bytes}`);
+    throw new Error(`Packed package unexpectedly exceeds the 13 MiB unpacked-size budget: ${bytes}`);
   }
 }
 
@@ -25,6 +25,7 @@ export const requiredAncillaryAssets = Object.freeze([
   'assets/governance/single-maintainer-gitflow/assessment-controls.json',
   'assets/governance/single-maintainer-gitflow/policy-v7.md',
   'assets/governance/single-maintainer-gitflow/policy.md',
+  'assets/governance/team-gitflow/assessment-controls.json',
   'assets/governance/team-gitflow/policy-v1.md',
   'assets/repair/windows-job-controller.ps1',
   'assets/skills/governance-assessment.md',

@@ -376,8 +376,15 @@ ownership of application files, directories or unrelated integrations.
 
 Update maintains the declared managed core and preserves original generation
 and transition history. Application source, dependencies, locks, runtime,
-infrastructure and documentation remain project-owned. Configuration changes
-do not silently add components, change workflows/profiles or enroll telemetry.
+infrastructure and documentation remain project-owned. An explicit governance
+profile change receives a separately labeled immutable local policy plan from
+the same check; exact approval preserves workflow, CODEOWNERS, stronger controls,
+application/Git history and old proof, while selecting \`none\` leaves
+source-only governance files as unmanaged orphans only after the separately
+approved deactivation workflow has removed active governance state. Workflow changes route to
+\`liftoff workflow set\`; agent/plugin changes use separately advertised
+additive repair or remain blocked. \`--force\` cannot cross those lanes.
+Configuration changes never enroll telemetry.
 Use capability-negotiated assessment and separately approved repair for
 application changes, not reinitialization or a template overwrite.
 
@@ -406,7 +413,7 @@ retag proof or restore an older manifest to simulate completion.
 
 ${governance}
 
-\`liftoff update\` maintains explicit Liftoff core files, currently the repository-governance policy, context, guide, phase graph, compatibility metadata, credential-policy schema, and selected-agent native \`liftoff-setup\` and \`liftoff-governance-assess\` integrations. Start with \`liftoff update --check\` for the human compatibility and migration preview. Check changes no project bytes and discloses a preview receipt stored outside the repository; this receipt is not approval. Plain update requires the matching preview and explicit approval. Automation can use \`liftoff update --check --json\` and approve the exact effective fingerprint with \`liftoff update --approve-plan <fingerprint> --json\`.
+\`liftoff update\` maintains explicit Liftoff core files, currently the repository-governance policy, context, guide, phase graph, compatibility metadata, credential-policy schema, and selected-agent native \`liftoff-setup\` and \`liftoff-governance-assess\` integrations. Start with \`liftoff update --check\` for the human compatibility and migration preview. Check changes no project bytes and discloses a preview receipt stored outside the repository; this receipt is not approval. Plain update requires the matching preview and explicit approval. Automation can use \`liftoff update --check --json\` and approve the exact effective fingerprint with \`liftoff update --approve-plan <fingerprint> --json\`. After a current v8 successor exists, an explicit governance-profile change uses a separately labeled immutable local policy plan from the same check; selecting \`none\` leaves source-only governance files as unmanaged orphans only after separately approved deactivation removes active governance state. Workflow changes use \`liftoff workflow set\`, and force cannot substitute either authority.
 
 Application source, tests, dependencies and locks, schemas, containers, environment files, documentation, and infrastructure become project-owned after generation. No update mode, including \`--force\`, can restore or replace them. Enabling a previously absent frontend or environment in \`liftoff.config.json\` may provision that component once at absent destinations; a collision blocks the whole component and cannot be forced.
 
@@ -415,12 +422,12 @@ Project template modernization is a separately reviewed production change and is
 Activation migration is a separate explicitly approved write set. A supported v1/v2 source retains original state, evidence, plans, approvals, and source metadata in \`governance/history\` before a linked v${activationContractVersion} successor is created. History never becomes managed core or current execution proof. Revalidation uses only the finite reviewed local operations and stops before provider access, publication, or independent authority gates. Failure after migration commits leaves v${activationContractVersion} blocked and resumable; repair the named cause, run check again, and approve the remaining work. History is not automatically committed, pushed, or removed with preview receipts. Force never bypasses preview, approval, compatibility, or ownership checks.
 
 Project repair is a separate scope: use \`liftoff repair --check\` for its exact
-project-bound preview, or \`liftoff repair --check --add-agents codex\` for additive
+project-bound preview, or \`liftoff repair --check --agents codex\` for additive
 integration work. Apply only the current reviewed fingerprint. Sensitive-state
 inspection, backend migration, credentials, resources, and recovery retain
 independent authorities. Do not reinitialize the project or hand-edit provenance.
 
-Update JSON uses schema 3. Exit 0 means clean state or completion of the approved scope, 2 means differences or committed migration with incomplete revalidation, and 1 means a rejected or failed operation. Local migration completion does not establish live governance.
+Update JSON uses schema 4. Exit 0 means clean state or completion of the approved scope, 2 means differences or committed migration with incomplete revalidation, and 1 means a rejected or failed operation. Local migration completion does not establish live governance.
 
 Liftoff rejects malformed, traversal, absolute, drive-qualified, UNC, separator-containing, or symlink-escaping manifest paths before artifact access. If the manifest is unsafe or malformed, restore \`liftoff.manifest.json\` from version control or regenerate the project with a matching Liftoff version; do not hand-edit unsafe paths. Run \`liftoff <command> --help\` for command-specific syntax because unknown flags, subcommands, values, and extra arguments fail before any write.
 

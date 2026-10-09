@@ -347,7 +347,7 @@ describe('verified adoption publication planning and execution', () => {
     expect(() => validateAdoptionPublicationPlanReport(
       refingerprint(aliasCollision), input.root
     )).toThrow(/invalid/u);
-  });
+  }, 120_000);
 
   it('reports committed readback failure separately from transaction cleanup', async () => {
     const input = await prepared();

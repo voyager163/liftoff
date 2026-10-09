@@ -11,6 +11,8 @@ import type { ModernGovernanceProfile } from '../../domain/governance/activation
 import { assertModernRecordData } from '../../domain/governance/activation/source-values.js';
 import { projectCatalog } from './catalog.js';
 import { resolveModernManifestV8SourceContract } from './manifest.js';
+import { composeModernManifestPlugins } from './plugins.js';
+import { toSafeProjectName } from '../../domain/project/planning.js';
 
 export interface ModernProjectSourceInput {
   readonly selection: ManifestV8ProjectLeaf & { readonly profile: 'none' | ModernGovernanceProfile };
@@ -57,6 +59,41 @@ export function modernProjectSourceInput(manifest: LiftoffManifestV8): ModernPro
 
 export function resolveModernManifestSourceContext(manifest: LiftoffManifestV8): ModernProjectSourceContext {
   return resolveModernProjectSourceContext(modernProjectSourceInput(manifest));
+}
+
+export function resolveModernComparisonContext(
+  source: ModernProjectSourceContext,
+  profile: ModernProjectSourceInput['selection']['profile']
+): ModernProjectSourceContext {
+  const workload = source.selection.project.workload;
+  const composition = composeModernManifestPlugins({
+    workload: workload.kind,
+    stack: workload.apiStack,
+    cloud: workload.cloud,
+    ...(workload.kind === 'genai' ? { variant: workload.pattern } : {}),
+    workflow: source.selection.project.specWorkflow,
+    agents: source.selection.project.agents,
+    frontend: workload.frontend ? 'included' : 'omitted',
+    governanceProfile: profile,
+    environments: workload.environments
+  }, {
+    safeProjectName: toSafeProjectName(source.selection.project.name)
+  });
+  const plugins = readManifestPluginMetadata({
+    schemaVersion: 1,
+    resolutionDigest: composition.resolution.digest,
+    selections: composition.resolution.plugins
+  }, {
+    stack: workload.apiStack,
+    cloud: workload.cloud,
+    workflow: source.selection.project.specWorkflow,
+    agents: source.selection.project.agents
+  });
+  return resolveModernProjectSourceContext({
+    selection: { ...source.selection, profile },
+    plugins,
+    activeLayout: source.activeLayout
+  });
 }
 
 export function findModernActiveComponentBinding(
