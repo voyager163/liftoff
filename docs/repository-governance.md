@@ -704,8 +704,36 @@ retention, proves the named container is privately reachable and available for
 Azure blob-lease locking, and runs only an exact target-blob existence read.
 The target key must be absent. If it exists, Liftoff refuses to download, read,
 import, relocate, or adopt that state and leaves the scope planning-only.
-`bootstrap-local`, hosted-runner networking, and any same-operation state
-handover remain separate later phases.
+The alternate bounded bootstrap is described below; hosted-runner establishment
+and any same-operation state handover remain separate later phases.
+
+## Bounded backend network bootstrap
+
+Task 13.2 supports `bootstrap-local` only when the reviewed
+`state-path-selected` input names `bootstrap-local` and the existing protected
+backend cannot yet be reached from an approved private execution path. The
+separate `bootstrap-local` configuration must select one declared environment,
+one virtual-network CIDR, distinct non-overlapping runner and private-endpoint
+subnet CIDRs, the exact private Blob DNS zone for the selected Azure cloud, and
+`nat-gateway` as the only qualified egress mode. The activation budget must
+include explicit nonzero fixed and usage monthly ceilings.
+
+Before any billable deployment, Liftoff rechecks the exact subscription,
+tenant, principal, backend protection, qualified host, effective Azure
+deployment/network/private-endpoint permissions, deterministic resource names,
+deployment ownership, and absence of the deterministic subscription deployment
+name. It then dispatches one bounded subscription-scoped ARM deployment for the
+environment resource group, virtual network, delegated runner subnet, separate
+private-endpoint subnet, Standard NAT gateway/public IP, private Blob endpoint,
+private DNS zone/link, and DNS zone group.
+
+An asynchronous deployment persists one immutable provider handle and the exact
+planned resource IDs. Resume polls that deployment without redispatch. Success
+requires terminal deployment state and exact resource readback. An occupied
+name, unapproved cost, missing permission, overlapping address range,
+pre-existing scope, or terminal deployment failure blocks without adoption.
+This phase does not create a GitHub runner, initialize/read/import backend state,
+or provision application resources; those remain separate reviewed phases.
 
 ## Evidence authority and active changes
 

@@ -302,12 +302,17 @@ For an approved existing path, provide exact `state-path-selected` inputs for
 then verifies OAuth-only private reachability, versioning, soft delete,
 blob-lease availability, and an absent exact target key. If the target key
 exists, Liftoff refuses to read or adopt it. If no approved existing private path
-is reachable, the target policy requires a separately approved minimum
-`bootstrap-local` phase, declarative import from the private runner, identity
-parity, locking/versioning, and a clean no-change plan, followed by 30-day
-read-only retention before secure deletion. That bootstrap production adapter
-is not implemented by this release; stop at the capability blocker and plan
-separately reviewed platform work.
+is reachable, the separately approved `bootstrap-local` phase can create only
+the deterministic Azure network foundation for one declared environment: a
+delegated runner subnet, separate private-endpoint subnet, Standard NAT
+gateway/public IP, and the private Blob endpoint/DNS binding. It requires
+nonzero reviewed cost ceilings, effective exact permissions, absent or
+same-operation-owned scope, and one immutable deployment handle before it can
+report success. It does not create the GitHub runner or touch backend state.
+Continue only through the later runner, private-backend proof, declarative
+import, identity parity, locking/versioning, and clean no-change phases, followed
+by 30-day read-only retention before secure deletion. If any later production
+adapter is unavailable, stop at that capability blocker.
 
 If an Azure bootstrap fails with a namespace-not-registered error while
 `resource_provider_registrations = "none"` is configured, do not retry the same

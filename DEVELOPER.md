@@ -2221,12 +2221,12 @@ other-platform qualification remain separate gates.
 ## Activation completeness and separate follow-up plan
 
 The activation engine is not yet an end-to-end production provisioning engine.
-Of its 29 declared phases, 14 have built-in handler paths, 2 require an injected
-GitHub ruleset adapter that the public CLI does not currently supply, and 13
+Of its 29 declared phases, 15 have built-in handler paths, 2 require an injected
+GitHub ruleset adapter that the public CLI does not currently supply, and 12
 fall back to an explicit missing-production-adapter blocker.
 
 The missing production phase handlers are `bootstrap-workflow-source-ready`,
-`bootstrap-local`, `runner-ready`, `private-backend-proof`, `remote-import-verified`,
+`runner-ready`, `private-backend-proof`, `remote-import-verified`,
 `application-prerequisites-ready`, `application-artifact-ready`,
 `application-foundation`, `workflow-source-ready`, `dev-proof`,
 `staging-qualified`, `production-rehearsed`, and `green-red-proof`.
@@ -2283,8 +2283,23 @@ shared-key access disabled, verifies blob versioning and soft-delete retention,
 proves the container is privately reachable and available for Azure blob-lease
 locking, and requires the exact target blob key to be absent. It calls only the
 bounded existence readback and never downloads, imports, relocates, or adopts an
-existing state object. An occupied target remains planning-only. `bootstrap-local`
-and hosted/private runner establishment remain separate unavailable phases.
+existing state object. An occupied target remains planning-only.
+
+The separately approved `bootstrap-local` path now qualifies one bounded
+new-environment network foundation for the exact selected backend. Reviewed
+inputs bind one declared environment, non-overlapping virtual-network, delegated
+runner, and private-endpoint CIDRs, the Azure-cloud-specific private Blob DNS
+zone, and exactly one egress mode: `nat-gateway`. The infrastructure-cost
+approval must carry nonzero fixed and usage ceilings. Execution revalidates the
+exact Azure identity, backend account, qualified OpenTofu host, effective
+deployment/network/private-endpoint permissions, absent deterministic
+subscription deployment name, and deployment ownership before dispatching one
+subscription-scoped ARM deployment. Pending work persists the immutable Azure
+deployment handle and exact planned resource IDs; resume reads that deployment
+without redispatch. Terminal success independently reads every scoped resource
+back. The phase does not create a GitHub runner, import or read state, provision
+application resources, or adopt an occupied deployment. Runner establishment,
+private backend proof, and protected state handover remain later phases.
 
 `credential-ready` is now a
 built-in production phase. Its reviewed public configuration selects an existing

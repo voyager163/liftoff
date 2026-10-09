@@ -61,6 +61,7 @@ const builtInExecutors: Partial<Record<PhaseId, PhaseExecutor>> = {
   'provider-ready': executeAzurePhase,
   'state-path-selected': executeAzurePhase,
   'existing-private-path': executeAzurePhase,
+  'bootstrap-local': executeAzurePhase,
   'remote-ready': remoteImportRetention,
   'bootstrap-state-disposed': executeBootstrapStateDisposal,
   'rulesets-applied': executeRulesetPhase,

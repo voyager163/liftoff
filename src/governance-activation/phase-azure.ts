@@ -13,8 +13,12 @@ import { planAzureDeploymentOwnership } from './azure-deployment-ownership.js';
 import {
   executeAzureStatePathSelection,
   executeExistingPrivateBackendReadiness,
+  backendSelectionPlanInputs,
   existingPrivateBackendPlanInputs
 } from './azure-backend-readiness.js';
+import {
+  bootstrapPlanInputs, executeAzureBackendBootstrap
+} from './azure-backend-bootstrap.js';
 
 function azureSubscriptionId(input: PhasePlanningInput | PhaseAdapterExecutionInput): string | null {
   return input.inspection.activationInputs?.azure?.subscriptionId ??
@@ -73,7 +77,7 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
             input.phase.id,
             'azure.state-path.select',
             'azure-read',
-            existingPrivateBackendPlanInputs(input),
+            backendSelectionPlanInputs(input),
             subId
           )
         ]
@@ -91,7 +95,7 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
       return {
         operations: [
           planAzureDeploymentOwnership(input, subId),
-          azureOperation(input.phase.id, 'azure.bootstrap-local.apply', 'azure-network-provision', { boundedLocalBootstrap: true }, subId, [
+          azureOperation(input.phase.id, 'azure.bootstrap-local.apply', 'azure-network-provision', bootstrapPlanInputs(input), subId, [
             { mutationClass: 'azure-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
           ])
         ]
@@ -256,6 +260,8 @@ export async function executeAzurePhase(input: PhaseAdapterExecutionInput): Prom
       return executeAzureStatePathSelection(input);
     case 'existing-private-path':
       return executeExistingPrivateBackendReadiness(input);
+    case 'bootstrap-local':
+      return executeAzureBackendBootstrap(input);
     case 'remote-ready':
       return remoteImportRetention(input);
     case 'bootstrap-state-disposed':

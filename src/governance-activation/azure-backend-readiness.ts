@@ -14,15 +14,24 @@ const guidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{1
 const resourceGroupPattern = /^(?!.*\.$)[\p{L}\p{N}_.()\-]{1,90}$/u;
 const storageAccountPattern = /^[a-z0-9]{3,24}$/u;
 const containerPattern = /^[a-z0-9](?!.*--)[a-z0-9-]{1,61}[a-z0-9]$/u;
-const expectedPath = 'existing-private' as const;
-const azureBlobHostSuffixes = [
-  '.blob.core.windows.net',
-  '.blob.core.usgovcloudapi.net',
-  '.blob.core.chinacloudapi.cn'
-] as const;
+export type AzureBackendStatePath = 'existing-private' | 'bootstrap-local';
+const azureBlobClouds = {
+  AzureCloud: {
+    hostSuffix: '.blob.core.windows.net',
+    privateDnsZone: 'privatelink.blob.core.windows.net'
+  },
+  AzureUSGovernment: {
+    hostSuffix: '.blob.core.usgovcloudapi.net',
+    privateDnsZone: 'privatelink.blob.core.usgovcloudapi.net'
+  },
+  AzureChinaCloud: {
+    hostSuffix: '.blob.core.chinacloudapi.cn',
+    privateDnsZone: 'privatelink.blob.core.chinacloudapi.cn'
+  }
+} as const;
 
-interface ExistingPrivateBackendConfiguration {
-  statePath: typeof expectedPath;
+interface AzureBackendConfiguration {
+  statePath: AzureBackendStatePath;
   resourceGroup: string;
   storageAccount: string;
   container: string;
@@ -30,7 +39,7 @@ interface ExistingPrivateBackendConfiguration {
   principalId: string;
 }
 
-interface BackendPlanBinding extends ExistingPrivateBackendConfiguration {
+export interface BackendPlanBinding extends AzureBackendConfiguration {
   subscriptionId: string;
   tenantId: string;
   executionHostId: string;
@@ -63,8 +72,9 @@ function stateKey(value: unknown): string {
   return value;
 }
 
-export function existingPrivateBackendConfiguration(
-  input: PhasePlanningInput | PhaseAdapterExecutionInput
+export function azureBackendConfiguration(
+  input: PhasePlanningInput | PhaseAdapterExecutionInput,
+  expectedPath?: AzureBackendStatePath
 ): BackendPlanBinding {
   const source = configurationSource(input);
   const value = source?.phases['state-path-selected'];
@@ -81,10 +91,13 @@ export function existingPrivateBackendConfiguration(
       'Existing-private backend inputs contain unsupported fields; commands, credentials, and inferred targets are forbidden.'
     );
   }
-  if (value.statePath !== expectedPath) {
+  if (value.statePath !== 'existing-private' && value.statePath !== 'bootstrap-local') {
     return configurationError(
-      'Task 13.1 supports only the explicitly reviewed existing-private state path; bootstrap-local remains unavailable.'
+      'Backend readiness requires an explicitly reviewed existing-private or bootstrap-local state path.'
     );
+  }
+  if (expectedPath !== undefined && value.statePath !== expectedPath) {
+    return configurationError(`Backend readiness requires the reviewed ${expectedPath} state path.`);
   }
   const azure = source.azure;
   if (!azure) {
@@ -92,8 +105,8 @@ export function existingPrivateBackendConfiguration(
       'Existing-private backend readiness requires exact reviewed Azure subscription and tenant inputs.'
     );
   }
-  const configuration: ExistingPrivateBackendConfiguration = {
-    statePath: expectedPath,
+  const configuration: AzureBackendConfiguration = {
+    statePath: value.statePath,
     resourceGroup: exactText(value.resourceGroup, 'Azure backend resource group', resourceGroupPattern),
     storageAccount: exactText(value.storageAccount, 'Azure backend storage account', storageAccountPattern),
     container: exactText(value.container, 'Azure backend container', containerPattern),
@@ -126,10 +139,13 @@ export function existingPrivateBackendConfiguration(
   };
 }
 
-export function existingPrivateBackendPlanInputs(
+export function existingPrivateBackendConfiguration(
   input: PhasePlanningInput | PhaseAdapterExecutionInput
-): Record<string, unknown> {
-  const binding = existingPrivateBackendConfiguration(input);
+): BackendPlanBinding {
+  return azureBackendConfiguration(input, 'existing-private');
+}
+
+function backendPlanInputs(binding: BackendPlanBinding): Record<string, unknown> {
   return {
     statePath: binding.statePath,
     resourceGroup: binding.resourceGroup,
@@ -145,13 +161,28 @@ export function existingPrivateBackendPlanInputs(
   };
 }
 
+export function existingPrivateBackendPlanInputs(
+  input: PhasePlanningInput | PhaseAdapterExecutionInput
+): Record<string, unknown> {
+  return backendPlanInputs(existingPrivateBackendConfiguration(input));
+}
+
+export function backendSelectionPlanInputs(
+  input: PhasePlanningInput | PhaseAdapterExecutionInput
+): Record<string, unknown> {
+  return backendPlanInputs(azureBackendConfiguration(input));
+}
+
 function operationFor(input: PhaseAdapterExecutionInput): TransitionOperation {
   const actionId = input.phase.id === 'state-path-selected'
     ? 'azure.state-path.select'
     : 'azure.existing-private-path.verify';
   const operation = input.plan.operations.find((candidate) => candidate.actionId === actionId);
+  const expectedInputs = input.phase.id === 'state-path-selected'
+    ? backendSelectionPlanInputs(input)
+    : existingPrivateBackendPlanInputs(input);
   if (!operation ||
-    canonicalSha256(operation.inputs) !== canonicalSha256(existingPrivateBackendPlanInputs(input))) {
+    canonicalSha256(operation.inputs) !== canonicalSha256(expectedInputs)) {
     throw new AzureDiscoveryError(
       'backend-plan-stale',
       'The approved backend operation no longer matches the exact reviewed private backend and execution path.'
@@ -166,7 +197,7 @@ function expectedTofuPlatform(): string {
   return `${os}_${arch}`;
 }
 
-async function observeOpenTofuExecution(input: PhaseAdapterExecutionInput): Promise<{
+export async function observeOpenTofuExecution(input: PhaseAdapterExecutionInput): Promise<{
   version: string;
   platform: string;
   hostId: string;
@@ -210,10 +241,18 @@ async function observeOpenTofuExecution(input: PhaseAdapterExecutionInput): Prom
   return { version, platform, hostId: nativeStateHostId() };
 }
 
-async function observeStorageAccount(
+export async function observeStorageAccount(
   input: PhaseAdapterExecutionInput,
-  binding: BackendPlanBinding
+  binding: BackendPlanBinding,
+  cloudName: string
 ) {
+  const cloud = azureBlobClouds[cloudName as keyof typeof azureBlobClouds];
+  if (!cloud) {
+    throw new AzureDiscoveryError(
+      'backend-protection',
+      'The selected Azure cloud is not qualified for private Blob backend readiness.'
+    );
+  }
   const value = azureObject(await runAzureJson(input, [
     'storage', 'account', 'show',
     '--subscription', binding.subscriptionId,
@@ -250,7 +289,7 @@ async function observeStorageAccount(
     blobEndpoint.protocol !== 'https:' ||
     blobEndpoint.username || blobEndpoint.password || blobEndpoint.search || blobEndpoint.hash ||
     blobEndpoint.port || blobEndpoint.pathname !== '/' ||
-    !azureBlobHostSuffixes.some((suffix) => blobEndpoint.hostname === `${binding.storageAccount}${suffix}`)) {
+    blobEndpoint.hostname !== `${binding.storageAccount}${cloud.hostSuffix}`) {
     throw new AzureDiscoveryError(
       'backend-protection',
       'The exact Azure backend account does not satisfy private OAuth-only HTTPS protection requirements.'
@@ -351,7 +390,7 @@ async function observeTargetAbsence(
   return { exists: false as const, keyDigest: canonicalSha256(binding.key) };
 }
 
-async function observeBackendIdentity(
+export async function observeBackendIdentity(
   input: PhaseAdapterExecutionInput,
   binding: BackendPlanBinding
 ) {
@@ -374,7 +413,7 @@ async function observeBackendIdentity(
   return { identity, execution };
 }
 
-function backendOutputs(binding: BackendPlanBinding, execution: {
+export function backendOutputs(binding: BackendPlanBinding, execution: {
   version: string;
   platform: string;
   hostId: string;
@@ -410,18 +449,18 @@ export async function executeAzureStatePathSelection(
   if (input.phase.id !== 'state-path-selected') return null;
   try {
     const operation = operationFor(input);
-    const binding = existingPrivateBackendConfiguration(input);
+    const binding = azureBackendConfiguration(input);
     const { identity, execution } = await observeBackendIdentity(input, binding);
-    const account = await observeStorageAccount(input, binding);
+    const account = await observeStorageAccount(input, binding, identity.cloud.name);
     const state = cloneState(input.inspection.state);
-    state.applicability = { ...state.applicability, statePath: expectedPath };
+    state.applicability = { ...state.applicability, statePath: binding.statePath };
     return {
       status: 'completed',
       resultState: 'verified',
       stateOverride: state,
       evidencePayload: {
         kind: 'state-path-selected.v1',
-        statePath: expectedPath,
+        statePath: binding.statePath,
         backendBindingDigest: binding.bindingDigest,
         backendKeyDigest: canonicalSha256(binding.key),
         execution,
@@ -459,14 +498,14 @@ export async function executeExistingPrivateBackendReadiness(
   try {
     const operation = operationFor(input);
     const binding = existingPrivateBackendConfiguration(input);
-    if (input.inspection.state.applicability.statePath !== expectedPath) {
+    if (input.inspection.state.applicability.statePath !== 'existing-private') {
       throw new AzureDiscoveryError(
         'backend-selection',
         'The activation state does not select the reviewed existing-private backend path.'
       );
     }
     const { identity, execution } = await observeBackendIdentity(input, binding);
-    const account = await observeStorageAccount(input, binding);
+    const account = await observeStorageAccount(input, binding, identity.cloud.name);
     const protection = await observeBlobProtection(input, binding);
     const container = await observeContainerReachability(input, binding);
     const target = await observeTargetAbsence(input, binding);
@@ -514,4 +553,15 @@ export async function executeExistingPrivateBackendReadiness(
       completedOperations: []
     };
   }
+}
+
+export function privateBlobDnsZoneForAzureCloud(cloudName: string): string {
+  const cloud = azureBlobClouds[cloudName as keyof typeof azureBlobClouds];
+  if (!cloud) {
+    throw new AzureDiscoveryError(
+      'backend-protection',
+      'The selected Azure cloud is not qualified for private Blob backend readiness.'
+    );
+  }
+  return cloud.privateDnsZone;
 }

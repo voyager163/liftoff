@@ -92,6 +92,9 @@ class BackendReadinessRunner implements CommandRunner {
   };
   targetExists = false;
   principalId = coveragePrincipal;
+  cloudName: 'AzureCloud' | 'AzureUSGovernment' | 'AzureChinaCloud' = 'AzureCloud';
+  resourceManager = 'https://management.azure.com/';
+  resourceManagerAudience = 'https://management.core.windows.net/';
   tofu: Record<string, unknown> = {
     terraform_version: '1.12.6',
     platform: process.platform === 'win32'
@@ -108,6 +111,22 @@ class BackendReadinessRunner implements CommandRunner {
     if (command.executable === 'tofu') return success(command, this.tofu);
     if (command.executable !== 'az') return this.base.run(command, options);
     const key = command.args.join(' ');
+    if (key.startsWith('account show ')) {
+      return success(command, {
+        id: coverageSubscription,
+        tenantId: coverageTenant,
+        state: 'Enabled',
+        environmentName: this.cloudName,
+        user: { type: 'user', name: 'developer@example.test' }
+      });
+    }
+    if (key.startsWith('cloud show ')) {
+      return success(command, {
+        name: this.cloudName,
+        resourceManager: this.resourceManager,
+        resourceManagerAudience: this.resourceManagerAudience
+      });
+    }
     if (key.startsWith('ad signed-in-user show ')) {
       return success(command, {
         id: this.principalId,
@@ -220,7 +239,6 @@ describe('approved existing-private backend selection', () => {
   });
 
   it.each([
-    ['a bootstrap path not implemented by task 13.1', { statePath: 'bootstrap-local' }],
     ['an unknown input field', { command: 'az storage blob download' }],
     ['an unsafe state key', { key: '../shared.tfstate' }],
     ['a non-provider principal identity', { principalId: 'current-user' }]
@@ -240,12 +258,25 @@ describe('approved existing-private backend selection', () => {
   });
 
   it.each([
-    'https://stliftoffstate.blob.core.usgovcloudapi.net/',
-    'https://stliftoffstate.blob.core.chinacloudapi.cn/'
-  ])('accepts the exact qualified sovereign-cloud blob endpoint %s', async (blobEndpoint) => {
+    {
+      cloudName: 'AzureUSGovernment' as const,
+      resourceManager: 'https://management.usgovcloudapi.net/',
+      resourceManagerAudience: 'https://management.core.usgovcloudapi.net/',
+      blobEndpoint: 'https://stliftoffstate.blob.core.usgovcloudapi.net/'
+    },
+    {
+      cloudName: 'AzureChinaCloud' as const,
+      resourceManager: 'https://management.chinacloudapi.cn/',
+      resourceManagerAudience: 'https://management.core.chinacloudapi.cn/',
+      blobEndpoint: 'https://stliftoffstate.blob.core.chinacloudapi.cn/'
+    }
+  ])('accepts the exact qualified sovereign-cloud blob endpoint $blobEndpoint', async (cloud) => {
     const root = await project('sovereign-endpoint');
     const runner = new BackendReadinessRunner();
-    runner.account.blobEndpoint = blobEndpoint;
+    runner.cloudName = cloud.cloudName;
+    runner.resourceManager = cloud.resourceManager;
+    runner.resourceManagerAudience = cloud.resourceManagerAudience;
+    runner.account.blobEndpoint = cloud.blobEndpoint;
     const activationInputs = inputs();
     const state = coverageState({ activationInputs });
     const preview = await coverageInspection({
@@ -272,6 +303,43 @@ describe('approved existing-private backend selection', () => {
     });
 
     expect(result).toMatchObject({ applied: true, executedPhase: 'state-path-selected' });
+  });
+
+  it('selects bootstrap-local after control-plane backend protection without data-plane state access', async () => {
+    const root = await project('bootstrap-selection');
+    const runner = new BackendReadinessRunner();
+    const activationInputs = inputs({ statePath: 'bootstrap-local' });
+    const state = coverageState({ activationInputs });
+    const preview = await coverageInspection({
+      root,
+      phaseId: 'state-path-selected',
+      state,
+      activationInputs
+    });
+    const plan = (await buildSavedTransitionPlan({ inspection: preview, runner, now: coverageNow }))!;
+    const approval = await issuePriorApproval(root, state, plan);
+    const inspection = await coverageInspection({
+      root,
+      phaseId: 'state-path-selected',
+      state,
+      approvals: [approval],
+      activationInputs
+    });
+
+    const result = await executeApplyNext({
+      inspection,
+      reinspect: async () => inspection,
+      runner,
+      now: coverageNow
+    });
+
+    expect(result).toMatchObject({ applied: true, executedPhase: 'state-path-selected' });
+    expect((await readState(root))?.applicability.statePath).toBe('bootstrap-local');
+    expect(runner.calls.some((call) =>
+      call.executable === 'az' &&
+      call.args[0] === 'storage' &&
+      ['container', 'blob'].includes(call.args[1] ?? '')
+    )).toBe(false);
   });
 });
 
@@ -366,6 +434,9 @@ describe('existing-private backend production readiness', () => {
     }, 'returned an invalid blob endpoint'],
     ['an inexact backend endpoint origin', (runner: BackendReadinessRunner) => {
       runner.account.blobEndpoint = 'https://stliftoffstate.blob.core.windows.net:444/private';
+    }, 'private OAuth-only HTTPS protection'],
+    ['an endpoint from a different Azure cloud', (runner: BackendReadinessRunner) => {
+      runner.account.blobEndpoint = 'https://stliftoffstate.blob.core.usgovcloudapi.net/';
     }, 'private OAuth-only HTTPS protection'],
     ['missing versioning', (runner: BackendReadinessRunner) => {
       runner.protection.isVersioningEnabled = false;

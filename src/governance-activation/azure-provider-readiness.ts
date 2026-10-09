@@ -6,11 +6,13 @@ import type {
 import {
   AzureDiscoveryError, azureObject, azureText, observeAzureIdentity, runAzureJson
 } from './azure-discovery.js';
+import {
+  azurePermits, observeAzureEffectivePermissions
+} from './azure-permissions.js';
 import { readbackProof } from './transition-records.js';
 
 const providerAction = 'Microsoft.Resources/subscriptions/providers/register/action';
 const featureAction = 'Microsoft.Features/providers/features/register/action';
-const permissionApiVersion = '2022-04-01';
 const pollIntervalMs = 5_000;
 const pollLimit = 60;
 const namespacePattern = /^[A-Z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)+$/u;
@@ -247,58 +249,18 @@ async function observeRequirement(
     : observeFeature(input, subscriptionId, requirement);
 }
 
-function wildcardMatches(pattern: string, action: string): boolean {
-  if (!pattern || pattern.length > 512 || /[\u0000-\u001f\u007f]/u.test(pattern)) return false;
-  const expression = pattern
-    .replace(/[\\^$.*+?()[\]{}|]/gu, '\\$&')
-    .replace(/\\\*/gu, '.*');
-  return new RegExp(`^${expression}$`, 'iu').test(action);
-}
-
-function permissionEntries(value: unknown): readonly Record<string, unknown>[] {
-  const response = azureObject(value, 'Azure effective permissions');
-  if (response.nextLink !== undefined && response.nextLink !== null) {
-    return readinessError('permission-bound',
-      'Azure effective permissions were paginated; complete permission proof is required before provider writes.');
-  }
-  if (!Array.isArray(response.value) || response.value.length > 1_000) {
-    return readinessError('permission-bound',
-      'Azure effective permissions are invalid or exceed the 1,000-entry qualification bound.');
-  }
-  return response.value.map((entry) => azureObject(entry, 'Azure effective permission'));
-}
-
-function stringList(value: unknown, label: string): readonly string[] {
-  if (!Array.isArray(value) || value.length > 1_000 ||
-    value.some((entry) => typeof entry !== 'string' || entry.length > 512)) {
-    return readinessError('permission-invalid', `${label} is invalid or exceeds its qualification bound.`);
-  }
-  return value as string[];
-}
-
-function permits(entries: readonly Record<string, unknown>[], action: string): boolean {
-  return entries.some((entry) => {
-    const actions = stringList(entry.actions, 'Azure effective permission actions');
-    const notActions = stringList(entry.notActions ?? [], 'Azure effective permission exclusions');
-    return actions.some((candidate) => wildcardMatches(candidate, action)) &&
-      !notActions.some((candidate) => wildcardMatches(candidate, action));
-  });
-}
-
 async function observePermissions(
   input: PhasePlanningInput | PhaseAdapterExecutionInput,
   identity: Awaited<ReturnType<typeof observeAzureIdentity>>
 ): Promise<PermissionObservation> {
-  const url = new URL(
-    `subscriptions/${identity.subscription.id}/providers/Microsoft.Authorization/permissions?api-version=${permissionApiVersion}`,
-    identity.cloud.resourceManager
-  ).toString();
-  const entries = permissionEntries(await runAzureJson(input, [
-    'rest', '--method', 'GET', '--url', url, '--resource', identity.cloud.resourceManagerAudience
-  ], 'Azure provider registration permission discovery'));
+  const entries = await observeAzureEffectivePermissions(input, {
+    subscriptionId: identity.subscription.id,
+    resourceManager: identity.cloud.resourceManager,
+    resourceManagerAudience: identity.cloud.resourceManagerAudience
+  }, 'Azure provider registration permission discovery');
   return {
-    providerRegistration: permits(entries, providerAction),
-    featureRegistration: permits(entries, featureAction)
+    providerRegistration: azurePermits(entries, providerAction),
+    featureRegistration: azurePermits(entries, featureAction)
   };
 }
 

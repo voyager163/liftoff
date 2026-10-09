@@ -92,13 +92,15 @@ describe('developer activation-completeness guidance', () => {
       '`liftoff governance approve` persists exact approval envelopes, but it refuses a\nphase whose capability is unavailable or blocked',
       '`governance apply-next --execute` likewise stops before\nany saved plan, intent, or producer effect',
       '`provider-ready` now derives its exact namespace and supported\nfeature prerequisites from reviewed resource types',
-      '`state-path-selected` and `existing-private-path` now provide the first narrow\nproduction backend-readiness path'
+      '`state-path-selected` and `existing-private-path` now provide the first narrow\nproduction backend-readiness path',
+      'The separately approved `bootstrap-local` path now qualifies one bounded\nnew-environment network foundation'
     ]) {
       expect(completeness).toContain(phrase);
     }
     expect(phaseCapabilities['provider-ready'].executor).toBe('built-in');
     expect(phaseCapabilities['state-path-selected'].executor).toBe('built-in');
     expect(phaseCapabilities['existing-private-path'].executor).toBe('built-in');
+    expect(phaseCapabilities['bootstrap-local'].executor).toBe('built-in');
   });
 
   it('documents protected credential readiness and independent readback', () => {

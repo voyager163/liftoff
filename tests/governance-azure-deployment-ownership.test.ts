@@ -172,11 +172,31 @@ function expectReadOnlyAzure(calls: readonly string[][]): void {
 describe('Azure deployment ownership planning', () => {
   it.each(protectedPhases)('prepends exact ownership classification for %s', async (phaseId) => {
     const root = await writeCoverageProject(path.join(scratch, `plan-${phaseId}-${++counter}`), 'coverage');
+    const activationInputs = coverageActivationInputs();
+    if (phaseId === 'bootstrap-local') {
+      activationInputs.phases['state-path-selected'] = {
+        ...activationInputs.phases['state-path-selected'],
+        statePath: 'bootstrap-local'
+      };
+      activationInputs.phases['bootstrap-local'] = {
+        environment: 'dev',
+        egressMode: 'nat-gateway',
+        virtualNetworkCidr: '10.42.0.0/24',
+        runnerSubnetCidr: '10.42.0.0/27',
+        privateEndpointSubnetCidr: '10.42.0.32/27',
+        privateDnsZone: 'privatelink.blob.core.windows.net'
+      };
+      activationInputs.budget = {
+        currency: 'USD',
+        fixedMonthlyCents: 20_000,
+        usageMonthlyCents: 10_000
+      };
+    }
     const inspection = await coverageInspection({
       root,
       phaseId,
       state: coverageState(),
-      activationInputs: coverageActivationInputs()
+      activationInputs
     });
     const runner = new OwnershipRunner(false);
     const phase = canonicalPhaseGraph.phases.find((candidate) => candidate.id === phaseId)!;
