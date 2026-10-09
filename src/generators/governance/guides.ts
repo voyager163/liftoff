@@ -116,6 +116,26 @@ ${plan.agents.some((agent) => agent.id === 'codex')
   ? 'Codex skills use their dollar-prefixed names or the `/skills` picker, not global custom prompts.\n'
   : ''}
 
+The recorded \`${plan.governanceProfile.id}\` profile is bound into plans and proof.
+${plan.governanceProfile.id === 'team-gitflow'
+    ? 'Team GitFlow requires one current independent human PR approval; self, bot-only, and stale approval do not satisfy it.'
+    : 'Single-maintainer GitFlow requires zero additional human PR approvals.'}
+Neither profile invents a deployment reviewer. Local completion requires no
+GitHub/Azure credential, provider registration, deployment, or live enforcement.
+
+Treat \`liftoff capabilities --json\` phase
+\`productionExecutorAvailable\` and blocker fields as the exact producer limit.
+Never substitute direct GitHub, Azure, OpenTofu, registry, state, or ruleset
+commands for unavailable or injected-only work. Activation uses bounded exact
+GitHub/Azure identity and resource reads, private \`credential-enroll\` after
+approval, provider prerequisites derived from approved resource types, and
+deployment-ownership classification before protected effects. Pre-existing or
+unknown deployment/state scope remains planning-only. A pending external
+operation resumes only its immutable freshly reobserved handle; changed, stale,
+missing-readback, over-age, or terminal handles require explicit reviewed
+recovery after current ownership is reverified. Never claim local rollback
+removed retained cloud effects.
+
 Before publication and activation, setup verifies the deterministic baseline seed:
 \`liftoff validate\`, applicable backend tests, frontend build,
 \`docker compose config -q\`, \`tofu fmt -check -recursive\`,

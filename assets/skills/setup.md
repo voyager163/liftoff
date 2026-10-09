@@ -31,6 +31,15 @@ phase, native receipt or `operationComplete` into `localComplete`.
 OpenSpec finalization, provider execution and workflow/profile transitions are
 not granted by core-update approval. Do not manufacture their missing support.
 
+Activation phase capabilities are exact; never bypass unavailable/injected-only
+producers. Profile binding remains: single-maintainer needs zero human approvals,
+team needs one independent approval, and neither invents a deployment reviewer.
+Local completion needs no GitHub/Azure credential or cloud effect.
+Protected activation needs exact identity, private `credential-enroll`, derived
+providers, deployment ownership, and fresh exact handles. Brownfield stays
+plan-only; stale/terminal handles require reviewed recovery, never redispatch or
+claim local rollback removed cloud effects.
+
 For supported historical projects only:
 
 Use the Liftoff governance engine; read `.liftoff/governance/README.md`, `policy.md`, `context.json`.

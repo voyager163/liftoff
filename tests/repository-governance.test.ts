@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildProjectPlan } from '../src/planner.js';
+import { buildCurrentProjectPlan, buildProjectPlan } from '../src/planner.js';
 import { expectBoundedCapabilitySkill } from './fixtures/reviewed-rendering.js';
 import {
   assertGovernanceContentSafe,
@@ -17,6 +17,7 @@ import {
   validateGovernancePolicy
 } from '../src/repository-governance.js';
 import { buildArtifacts } from '../src/templates.js';
+import { renderGovernanceGuide } from '../src/generators/governance/guides.js';
 import { liftoffVersion } from '../src/version.js';
 import { managedCoreLogicalNames } from '../src/artifact-lifecycle.js';
 import {
@@ -517,6 +518,14 @@ describe('repository governance artifacts', () => {
       expect(launcher.content).toContain('liftoff governance verify --scope activation --json');
       expect(launcher.content).toContain('Never automatically approve a plan');
       expect(launcher.content).toContain('nextActions');
+      expect(launcher.content).toContain('Activation phase capabilities are exact');
+      expect(launcher.content).toContain('single-maintainer needs zero human approvals');
+      expect(launcher.content).toContain('team needs one independent approval');
+      expect(launcher.content).toContain('Local completion needs no GitHub/Azure credential');
+      expect(launcher.content).toContain('private `credential-enroll`');
+      expect(launcher.content).toContain('deployment ownership');
+      expect(launcher.content).toContain('Brownfield stays\nplan-only');
+      expect(launcher.content).toContain('never redispatch');
       expect(launcher.content).toMatch(
         /Credential enrollment is currently unavailable pending independently verified\s+provider wiring; approve\/apply-next refuse unavailable capabilities\./
       );
@@ -593,6 +602,12 @@ describe('repository governance artifacts', () => {
     expect(guide).toContain('`--protected-stdin` is allowed only for an explicitly selected');
     expect(guide).toContain('Plain `apply-next --execute` does not');
     expect(guide).not.toContain('private operator channel');
+    expect(guide).toContain('productionExecutorAvailable');
+    expect(guide).toContain('exact producer limit');
+    expect(guide).toContain('Local completion requires no');
+    expect(guide).toContain('deployment-ownership classification');
+    expect(guide).toContain('Pre-existing or\nunknown deployment/state scope remains planning-only');
+    expect(guide).toContain('immutable freshly reobserved handle');
     expect(guide).toContain('not the end of a requested full journey');
     expect(guide).not.toContain('No masked credential-input channel');
     expect(guide).toContain('adoption; update, force, and assessment never create it');
@@ -655,6 +670,18 @@ describe('repository governance artifacts', () => {
       '`--force` cannot cross these boundaries or authorize live enforcement'
     );
     expect(guide).toContain('Historical proof cannot satisfy another profile');
+    expect(guide).toContain('Single-maintainer GitFlow requires zero additional human PR approvals');
+
+    const teamGuide = renderGovernanceGuide(buildCurrentProjectPlan({
+      projectName: 'Governed App',
+      pattern: 'rag',
+      cloud: 'azure',
+      agents: ['copilot', 'claude'],
+      governanceProfile: 'team-gitflow'
+    }, { requireProjectName: true }));
+    expect(teamGuide).toContain('Team GitFlow requires one current independent human PR approval');
+    expect(teamGuide).toContain('self, bot-only, and stale approval do not satisfy it');
+    expect(teamGuide).toContain('Neither profile invents a deployment reviewer');
   });
 
   it('renders identical bytes and path identities repeatedly', () => {

@@ -151,7 +151,7 @@ Depends on 3-8. References: design D10-D11; liftoff-governance-activation-engine
 - [x] 12.3 Implement exact approval persistence, expiry/source binding and protected credential enrollment/use proof; verify no credential in chat/argv/source/public receipts and a policy file alone cannot establish readiness.
 - [x] 12.4 Enforce new-environment versus same-operation-owned versus pre-existing deployment classification before every effect; verify unknown/occupied/brownfield cases remain planning-only without duplicate resources or sensitive state reads.
 - [x] 12.5 Implement bounded asynchronous handles, current reobservation and sanitized partial-failure records; verify retry observes existing operations without redispatch and stale ownership blocks compensation.
-- [ ] 12.6 Update Azure/governance/setup guidance with real prerequisites, profile differences and exact producer limits; verify no unsupported public stateful command is advertised and no credentials are needed for local completion.
+- [x] 12.6 Update Azure/governance/setup guidance with real prerequisites, profile differences and exact producer limits; verify no unsupported public stateful command is advertised and no credentials are needed for local completion.
 
 ## 13. Qualify protected new-environment backend and execution prerequisites
 
