@@ -7,6 +7,7 @@ import { runCommand } from '../src/commands.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
 import { loadManifest } from '../src/application/project/manifest.js';
+import { liftoffVersion } from '../src/version.js';
 import { repairManagedCoreLogicalNames } from '../src/domain/project/artifact-lifecycle.js';
 import { writeArtifacts } from '../src/adapters/filesystem/project-files.js';
 import {
@@ -545,7 +546,8 @@ describe('read-only assessment command', () => {
     await writeFile(file, `${await readFile(file, 'utf8')}\nProject customization\n`);
     const before = await tree(root);
     const report = await assessGovernance(root, { runner: noCommands, now });
-    expect(report.projectIdentity.cliVersion).not.toBe(report.target?.cliVersion);
+    expect(report.target?.cliVersion).toBe(liftoffVersion);
+    expect(report.projectIdentity.recordedActivationIdentity).not.toEqual(report.target?.activationIdentity);
     expect(report.findings.find((item) => item.controlId === 'identity.managed-core' && item.scope.resource === '.liftoff/governance/policy.md')?.classification)
       .toBe('conflicting');
     expect(await tree(root)).toBe(before);
