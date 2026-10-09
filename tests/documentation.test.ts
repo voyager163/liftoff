@@ -626,6 +626,67 @@ describe('public documentation', () => {
     }
   });
 
+  it('documents distinct workflow, profile, plugin and repair authority across public guides', async () => {
+    const [
+      readme,
+      cli,
+      governance,
+      workflow,
+      repair,
+      configuration,
+      safety,
+      existing,
+      troubleshooting
+    ] = await Promise.all([
+      repositoryFile('README.md'),
+      repositoryFile('docs/cli-reference.md'),
+      repositoryFile('docs/repository-governance.md'),
+      repositoryFile('docs/spec-workflows-and-agents.md'),
+      repositoryFile('docs/application-repair.md'),
+      repositoryFile('docs/configuration-and-manifests.md'),
+      repositoryFile('docs/safety-and-consent.md'),
+      repositoryFile('docs/existing-repositories.md'),
+      repositoryFile('docs/troubleshooting.md')
+    ]);
+    const combined = [
+      readme,
+      cli,
+      governance,
+      workflow,
+      repair,
+      configuration,
+      safety,
+      existing,
+      troubleshooting
+    ].join('\n').replace(/\s+/gu, ' ');
+    for (const phrase of [
+      'profile-transition',
+      'single-maintainer-gitflow',
+      'team-gitflow',
+      'preserved orphans',
+      'old proof',
+      'CODEOWNERS',
+      'stronger controls',
+      'liftoff workflow set',
+      'plugin-transition-unsupported',
+      'CLI-only',
+      'PowerShell',
+      'Invoke-Expression'
+    ]) {
+      expect(combined).toContain(phrase);
+    }
+    expect(workflow).toContain('All six workflow directions are explicit');
+    expect(governance).toContain(
+      'liftoff governance assess --governance team-gitflow --json'
+    );
+    expect(safety).toContain(
+      '.liftoff/profile-transition-transaction.json'
+    );
+    for (const source of [readme, cli, governance, workflow, repair, configuration, safety, existing]) {
+      expect(source).toMatch(/--force.*(?:cannot|never)/isu);
+    }
+  });
+
   it('documents non-executing Git reads, telemetry exclusion, and validated assessment bindings', async () => {
     const [cli, governance, developer, telemetry] = await Promise.all([
       repositoryFile('docs/cli-reference.md'),

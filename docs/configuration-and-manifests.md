@@ -19,8 +19,17 @@ Supported edits are reconciled by `liftoff update`:
 - Removing or re-enabling a previously provisioned component never deletes,
   restores, or overwrites its project-owned files.
 
-Workload kind, API stack, GenAI pattern, spec workflow, and selected agents are
-not ordinary updates.
+Workload kind, API stack, GenAI pattern, spec workflow, selected agents, and
+governance profile are not ordinary maintenance. A current v8
+`governanceProfile` change is eligible only for the separately labeled local
+policy plan returned by `liftoff update --check`; exact approval changes managed
+policy/integration identity and the manifest while preserving configuration,
+workflow, CODEOWNERS, stronger controls, application files, Git history, and old
+proof. Selecting `none` leaves source-only governance bytes as unmanaged
+preserved orphans. A `specWorkflow` change routes to `liftoff workflow set`.
+Same-workflow agent/plugin selection changes use separately advertised additive
+repair or remain explicitly unsupported; `--force` cannot convert any of these
+identity changes into maintenance.
 
 An undecided GenAI project records an explicit generic identity rather than
 omitting the pattern:
@@ -351,8 +360,10 @@ create no such copy. Active maintenance returns `committed-incomplete`, not
 revalidated success. Public `update` selects all four scopes using recorded
 project intent and actual captured configuration. Its optional config bytes,
 mode and absence are bound to the preview without replacing historical source
-identity. Configured identity changes remain explicit blockers/deferred work,
-not automatic application/template, profile or workflow transitions.
+identity. Configured workflow/plugin identity changes remain explicit routed
+blockers/deferred work. An explicit governance-profile change receives its own
+immutable profile-transition plan and dedicated recovery journal; it is never
+folded into ordinary maintenance.
 
 Normal public apply cannot recover implicitly. Selected
 `update <project> --recover --approve-plan <saved-fingerprint>` checks the

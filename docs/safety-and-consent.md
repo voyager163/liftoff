@@ -218,8 +218,10 @@ Update mode is selected explicitly rather than from terminal interactivity:
   documentation, and infrastructure cannot be restored or overwritten by any
   update mode.
 - Adding frontend/environments and changing workflow/profile/established agents
-  are separate operations. Current core update refuses those configured changes
-  without moving state or rewriting project-owned infrastructure.
+  are separate operations. A current-v8 profile selection receives a distinct
+  immutable local policy plan under `update --check`; workflow changes route to
+  `workflow set`, and unsupported plugin changes remain blocked. None can be
+  executed through ordinary maintenance or `--force`.
 - Configuration presence, content and permissions are preview preconditions.
   Missing configuration is not created, and desired agents on an uncertain
   legacy framework are explicitly deferred rather than initialized.
@@ -231,6 +233,17 @@ Update mode is selected explicitly rather than from terminal interactivity:
 
 `--force` cannot be combined with `--check` and cannot weaken preview, approval,
 compatibility, project-boundary, symlink, collision, manifest, or transaction guards.
+
+An approved profile-transition plan has its own external plan namespace,
+project-bound transaction authority, and `.liftoff/profile-transition-transaction.json`
+journal. It can write only reviewed target managed-core policy/integration bytes
+and the final manifest. CODEOWNERS, existing local rulesets, deployment
+safeguards, configuration, application files, Git history, activation state,
+evidence, approvals, and history are preconditions or preserved bytes, never
+implicit targets. Old proof remains on disk but is not reusable for the target.
+Selecting governance `none` preserves source-only managed files as unmanaged
+orphans instead of deleting them. Live enforcement changes require separate
+governance authority.
 
 Power Apps support is retired. Its manifests are rejected without fetching
 starter source, changing application files, or treating force as conversion

@@ -133,7 +133,11 @@ describe('frozen public CLI surfaces', () => {
       const change = (review.changes as Change[]).find(entry => entry.surface === 'cli-json' && entry.key === key);
       if (change?.addedVolatilePointers) {
         expect(key).toBe('update --check --json');
-        expect(change.task).toBe('3.7');
+        let origin: Change & { priorChange?: Change } | undefined = change;
+        while (origin && origin.task !== '3.7') {
+          origin = origin.priorChange;
+        }
+        expect(origin?.task).toBe('3.7');
         expect(value.json.schemaVersion).toBe(3);
         expect(current[key].json.schemaVersion).toBe(4);
       }

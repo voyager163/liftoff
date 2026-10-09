@@ -920,6 +920,7 @@ export function createScopedUserLocalRecordStore(
     'adoption-verification-result' | 'adoption-publication-plan' |
     'adoption-transaction-authority' |
     'workflow-transition-plan' | 'workflow-transition-transaction-authority' |
+    'profile-transition-plan' | 'profile-transition-transaction-authority' |
     'repair-workspace-authority' | 'local-execution-preview' | 'local-execution-consent' |
     'local-execution-result' | 'local-execution-workspace-authority' |
     'local-finalization-preview' | 'local-finalization-consent' | 'local-finalization-result' |

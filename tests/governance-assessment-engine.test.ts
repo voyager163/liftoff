@@ -41,6 +41,10 @@ import { remoteBindingDigest } from '../src/domain/governance/activation/inputs.
 import type { EvidenceFreshnessContext } from '../src/domain/governance/activation/evidence.js';
 import { historicalActivationIdentities } from '../src/domain/governance/policy/identity.js';
 import {
+  freshManifestFixture,
+  inventory as manifestInventory
+} from './fixtures/manifest-update.js';
+import {
   activationEvidenceContexts,
   readActivationInputSnapshot
 } from '../src/governance-activation/read-only.js';
@@ -213,6 +217,48 @@ function state() {
 }
 
 describe('read-only assessment command', () => {
+  it('compares a current v8 project against an explicit team profile without changing recorded state', async () => {
+    const project = await freshManifestFixture(
+      'single-maintainer-gitflow',
+      'openspec'
+    );
+    const before = await manifestInventory(project.root);
+    const report = await assessGovernance(project.root, {
+      profile: 'team-gitflow',
+      runner: noCommands,
+      now
+    });
+    expect(report.target).toMatchObject({
+      profile: 'team-gitflow',
+      policyVersion: '1'
+    });
+    expect(report.projectIdentity, JSON.stringify(report.diagnostics)).toMatchObject({
+      availability: 'known',
+      manifestVersion: 8,
+      profile: 'single-maintainer-gitflow'
+    });
+    expect(report.findings.some(finding =>
+      finding.controlId === 'governance.team-review'
+    )).toBe(true);
+    expect(report.findings.some(finding =>
+      finding.controlId === 'governance.single-maintainer'
+    )).toBe(false);
+    expect(report.findings.find(finding =>
+      finding.controlId === 'governance.codeowners-preserved'
+    )).toMatchObject({
+      classification: 'not-observed',
+      observations: expect.objectContaining({
+        declared: expect.objectContaining({
+          facts: { present: false }
+        })
+      })
+    });
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({
+      code: 'modern-proof-not-reused'
+    }));
+    expect(await manifestInventory(project.root)).toEqual(before);
+  });
+
   it('assesses the nearest ordinary unborn Git boundary without initialization or invented identity', async () => {
     const root = await temporaryRoot('ordinary-git-assessment ');
     await mkdir(path.join(root, '.git'));
@@ -493,13 +539,13 @@ describe('read-only assessment command', () => {
     expect(await tree(root)).toBe(before);
   });
 
-  it('distinguishes conflicting managed content from unchanged CLI versions', async () => {
+  it('retains conflicting managed content across an installed CLI successor', async () => {
     const root = await fixture();
     const file = path.join(root, '.liftoff', 'governance', 'policy.md');
     await writeFile(file, `${await readFile(file, 'utf8')}\nProject customization\n`);
     const before = await tree(root);
     const report = await assessGovernance(root, { runner: noCommands, now });
-    expect(report.projectIdentity.cliVersion).toBe(report.target?.cliVersion);
+    expect(report.projectIdentity.cliVersion).not.toBe(report.target?.cliVersion);
     expect(report.findings.find((item) => item.controlId === 'identity.managed-core' && item.scope.resource === '.liftoff/governance/policy.md')?.classification)
       .toBe('conflicting');
     expect(await tree(root)).toBe(before);

@@ -392,11 +392,13 @@ Subcommands
 
 Project options
 ───────────────
-Option            Description
-────────────────  ──────────────────────────────────────────────────────────────
---project <path>  Liftoff project path
---inputs <file>   Public activation configuration or explicit local
-                  request/consent JSON; never credentials or state
+Option                  Description
+──────────────────────  ────────────────────────────────────────────────────────
+--project <path>        Liftoff project path
+--inputs <file>         Public activation configuration or explicit local
+                        request/consent JSON; never credentials or state
+--governance <profile>  Assess only: compare against single-maintainer-gitflow
+                        or team-gitflow without changing the project
 
 Command options
 ───────────────
@@ -964,6 +966,7 @@ Subcommands
 Project options
 Option: --project <path> | Description: Liftoff project path
 Option: --inputs <file> | Description: Public activation configuration or explicit local request/consent JSON; never credentials or state
+Option: --governance <profile> | Description: Assess only: compare against single-maintainer-gitflow or team-gitflow without changing the project
 
 Command options
 Option: --scope <scope> | Description: Execution/verification boundary: local, activation, or lifecycle (default: activation)
@@ -1484,11 +1487,13 @@ exports[`complete help screens > snapshots rich governance command help 1`] = `
 │ • assess                                                                                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
-│ Option            Description                                                                │
-│ ────────────────  ────────────────────────────────────────────────────────────────────────── │
-│ --project <path>  Liftoff project path                                                       │
-│ --inputs <file>   Public activation configuration or explicit local request/consent JSON;    │
-│                   never credentials or state                                                 │
+│ Option                  Description                                                          │
+│ ──────────────────────  ──────────────────────────────────────────────────────────────────── │
+│ --project <path>        Liftoff project path                                                 │
+│ --inputs <file>         Public activation configuration or explicit local request/consent    │
+│                         JSON; never credentials or state                                     │
+│ --governance <profile>  Assess only: compare against single-maintainer-gitflow or            │
+│                         team-gitflow without changing the project                            │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
 │ Option                                    Description                                        │

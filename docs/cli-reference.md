@@ -41,12 +41,13 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | `liftoff governance recover [project] --plan <fingerprint>` | Previews an explicitly planned recovery; `--execute` runs only its approved scope |
 | `liftoff governance resume [project]` | Rechecks external blockers and readiness descendants without rerunning verified operations |
 | `liftoff governance verify [project]` | Read-only validation of graph, state, evidence, task projection, policy identity, active-change identity, and live readback; reports consistency separately from setup completion and reports completion as indeterminate when inspection fails |
-| `liftoff governance assess [project]` | Read-only comparison against the installed CLI's packaged governance target; local-only unless `--live` is explicitly requested |
+| `liftoff governance assess [project] [--governance <profile>]` | Read-only comparison against the recorded or explicitly selected installed packaged governance target; local-only unless `--live` is explicitly requested |
 | `liftoff upgrade` | Replaces a verified global npm installation with the exact canonical stable release exposed by the configured registry |
 | `liftoff upgrade --check` | Checks installation origin and registry parity without installing; exits 2 when an installable update exists |
-| `liftoff update [project]` | Applies an exactly approved v8 successor or managed-core maintenance plan |
-| `liftoff update --check` | Reports eligible v8 plans without project mutation; exits 0 when clean and 2 when actionable |
-| `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; project-owned files remain unreachable |
+| `liftoff update [project]` | Applies an exactly approved v8 successor, managed-core maintenance, or separately labeled local governance-profile plan |
+| `liftoff update --check` | Reports eligible v8 maintenance or explicit governance-profile plans without project mutation; exits 0 when clean and 2 when actionable |
+| `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; it cannot select profile, workflow, plugin, application, or provider authority |
+| `liftoff update --recover --approve-plan <fingerprint>` | Routes the exact saved fingerprint to its authenticated ordinary-update or profile-transition journal; authenticated rollback/cleanup remains available if the external preview record is missing, and recovery never starts a new plan |
 | `liftoff workflow set <openspec\|spec-kit\|manual> [project] --check` | Saves an exact workflow-transition plan binding source/target history, pinned tool/profile identity, official staged output, agents, current identity files, checks and expiry without project or machine writes |
 | `liftoff workflow set <openspec\|spec-kit\|manual> [project] --approve-plan <fingerprint>` | Applies an exact current plan through the dedicated transition transaction; this approval never authorizes machine tools or global-profile changes |
 | `liftoff workflow set <target> [project] --recover --approve-plan <fingerprint>` | Recovers only the authenticated transition attributable to that exact plan and observed transaction digest |
@@ -256,8 +257,8 @@ scope), 2 for consistent incomplete work, and 1 for inspection failure.
 does not establish activation or lifecycle completion. Modern local verification
 has the separate explicit interface below. `schemas.modernLocalCompletion`
 separately advertises the admitted Manual/Spec Kit finalization, publication and
-attributed recovery interface. Modern governance assessment remains unavailable;
-historical plans cannot execute v8 work.
+attributed recovery interface. Modern governance assessment uses its exact
+profile/workflow catalog, while historical plans still cannot execute v8 work.
 
 ### Modern local verification
 

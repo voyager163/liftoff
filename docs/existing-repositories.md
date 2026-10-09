@@ -189,8 +189,15 @@ recorded opt-out remains disabled. Configuration is never rewritten to
 materialize a default. A required unowned conflict blocks the complete successor
 rather than claiming a partially installed v8 contract; force cannot take
 ownership of that destination. Resolve the conflict and run a fresh check.
-Profile changes are a separate operation. No update mode runs an agent or
-activates GitHub settings.
+For a current v8 project, an explicit `governanceProfile` change is represented
+by a separately labeled local policy plan under `liftoff update --check`.
+Exact approval updates only reviewed managed policy/integration identity and the
+manifest. It preserves stronger controls, CODEOWNERS, workflow, application/Git
+history, and old proof; selecting `none` leaves source-only governance files as
+unmanaged orphans only after the separately approved governance workflow has
+removed active `governance/activation-state.json`. It does not activate or
+deactivate GitHub settings. Workflow changes use `liftoff workflow set`;
+ordinary update and force cannot execute either lane.
 
 Review the exact profile/workflow contract and actual operation descriptors in
 the preview, including history preservation. Supported activation-v1/v2/v3

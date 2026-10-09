@@ -265,10 +265,17 @@ ${entryPoint}
 
 \`\`\`bash
 liftoff governance assess --json
+liftoff governance assess --governance team-gitflow --json
 \`\`\`
 
 The pinned target is the installed CLI's packaged policy, activation identity,
 phase graph, and assessment control catalog, never registry latest. The report
+uses a supported current project's recorded profile by default. The optional
+\`--governance single-maintainer-gitflow|team-gitflow|none\` comparison is
+read-only and changes no project or provider identity. Team assessment preserves
+stronger approval counts, code-owner review, and last-push approval rather than
+recommending a downgrade. Historical proof cannot satisfy another profile.
+The report
 separates that target from the recorded baseline, declared project configuration,
 and observed enforcement. It includes expected and observed values, provenance,
 scope, impact, and ownership-aware advisory remediation.
@@ -335,9 +342,17 @@ to that journey; an assessment recommendation authorizes none of them.
 For compatible older inventories, restore an already selected Liftoff integration
 through \`liftoff update --check\`, then \`liftoff update\` with explicit approval
 of the matching plan. Check discloses its external preview receipt; it is not approval.
-Adding another agent or changing the framework default is not implemented by the
-public repair coordinator; ordinary update does not install framework integrations.
-Report this limitation without recommending an unsupported repair command.
+Adding another agent or explicitly changing the framework default uses the
+separate additive \`liftoff repair --agents <list>\` plan when the installed
+capability catalog advertises it. Workflow changes use
+\`liftoff workflow set\`. An explicit current-v8 governance-profile change uses
+the separately labeled plan returned by \`liftoff update --check\`; exact approval
+preserves workflow, application/Git history, CODEOWNERS, stronger controls and
+old proof, while \`none\` leaves source-only governance bytes as unmanaged
+orphans. \`--force\` cannot cross these boundaries or authorize live enforcement.
+CLI-only users run the same commands and exact recovery; on Windows preserve each
+reported executable and argument literally rather than translating through a
+POSIX shell or \`Invoke-Expression\`.
 Unowned collisions stay unowned even with \`--force\`; modified managed entries
 retain the existing reviewed force rules. Neither installation nor assessment
 activates governance. Unsupported mappings remain diagnostic: no migration is

@@ -67,10 +67,11 @@ For an existing Liftoff project, use `liftoff update --check`, separately scoped
 Do not initialize over an application or reinitialize a project to fix a blocker.
 
 For maintenance, `liftoff upgrade --check` previews a CLI upgrade; `liftoff update --check` previews managed project changes before explicit approval.
-An upgrade replaces the CLI only; generated projects use `liftoff update` separately
-for reviewed project maintenance. Application files remain project-owned.
-Builds advertising `schemas.currentUpdate` preview v8 successors or maintenance,
-preserving workflow, profile, plugins and layout. Recovery requires
+An upgrade replaces the CLI only; generated projects use `liftoff update` separately for reviewed project maintenance. Application files remain project-owned.
+Builds advertising `schemas.currentUpdate` preview v8 successors or maintenance.
+For an explicit current-v8 governance change, `liftoff update --check` reports a
+separate exact profile plan; `--force` cannot apply it. Workflow changes route to
+`liftoff workflow set`, while unsupported plugin changes remain blocked. Recovery requires
 `liftoff update <project> --recover --approve-plan <saved-fingerprint>`; local verification stays separate.
 
 On builds that provide it, `liftoff capabilities --json` lists installed public

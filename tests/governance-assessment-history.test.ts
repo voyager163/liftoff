@@ -7,6 +7,7 @@ import { runCommand } from '../src/commands.js';
 import * as updateStorage from '../src/adapters/filesystem/update-previews.js';
 import { formatUpdateCommand } from '../src/application/update/command-guidance.js';
 import { currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
+import { loadAssessmentCatalog } from '../src/governance-assessment/catalog.js';
 import { inspectCurrentActivationEvidence } from '../src/governance-activation/read-only.js';
 import * as migrationHistory from '../src/governance-activation/migration-history.js';
 import { assessGovernance } from '../src/governance-assessment/engine.js';
@@ -19,6 +20,8 @@ import { CaptureStream } from './helpers.js';
 
 const roots: string[] = [];
 const now = () => new Date('2026-09-09T00:00:00.000Z');
+const currentAssessmentIdentity =
+  loadAssessmentCatalog().target.activationIdentity;
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -113,7 +116,7 @@ describe('historical activation assessment eligibility', () => {
             cliVersion: maintainedSchema ? '0.11.1' : '0.10.0',
             recordedActivationIdentity: historicalFixtureIdentity
           },
-          target: { activationIdentity: currentActivationIdentity },
+          target: { activationIdentity: currentAssessmentIdentity },
           snapshot: { repository: null, inputsStable: true }
         });
         const eligibility = report.diagnostics.find((entry) => entry.code === 'activation-migration-eligible');

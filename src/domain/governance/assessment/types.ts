@@ -1,4 +1,5 @@
 import type { ActivationIdentity, PhaseId } from '../activation/types.js';
+import type { StaticModernActivationIdentity } from '../activation/modern-record-contracts.js';
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export const classifications = [
@@ -9,6 +10,7 @@ export type Severity = 'info' | 'warning' | 'error';
 export type Layer = 'recorded' | 'declared' | 'live' | 'evidence';
 export type Ownership = 'managed-core' | 'project-owned' | 'remote' | 'external-authority';
 export type Outcome = 'aligned' | 'differences' | 'partial' | 'not-applicable' | 'error';
+export type AssessmentProfile = 'single-maintainer-gitflow' | 'team-gitflow';
 
 export interface ObservationSource {
   kind: 'package' | 'file' | 'git' | 'evidence' | 'github' | 'azure';
@@ -52,7 +54,7 @@ export interface ControlDefinition {
 
 export interface AssessmentCatalog {
   schemaVersion: 1;
-  profile: 'single-maintainer-gitflow';
+  profile: AssessmentProfile;
   policyVersion: string;
   policyDigest: string;
   families: string[];
@@ -61,10 +63,10 @@ export interface AssessmentCatalog {
 
 export interface AssessmentTarget {
   cliVersion: string;
-  profile: 'single-maintainer-gitflow';
+  profile: AssessmentProfile;
   policyVersion: string;
   policyDigest: string;
-  activationIdentity: ActivationIdentity;
+  activationIdentity: ActivationIdentity | StaticModernActivationIdentity;
   phaseGraphHash: string;
   catalogSchemaVersion: 1;
   catalogDigest: string;

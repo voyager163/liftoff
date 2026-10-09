@@ -84,8 +84,8 @@ describe('public CLI delivery flows', () => {
     expect(assessed.code, assessed.out + assessed.err).toBe(2);
     expect(JSON.parse(assessed.out)).toMatchObject({
       schemaVersion: 1, readOnly: true, outcome: 'partial',
-      projectIdentity: { availability: 'unsupported', manifestVersion: 8, policyVersion: '7', stateSource: 'unsupported' },
-      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'unsupported-current-assessment' })])
+      projectIdentity: { availability: 'known', manifestVersion: 8, policyVersion: '7', stateSource: 'unsupported' },
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'modern-proof-not-reused' })])
     });
     expect(telemetry.beforeCommand).not.toHaveBeenCalled();
     expect(telemetry.afterCommand).not.toHaveBeenCalled();

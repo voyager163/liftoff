@@ -3,10 +3,19 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseProjectConfigOptions } from '../src/adapters/filesystem/project-config.js';
 import { projectCatalog } from '../src/application/project/catalog.js';
-import { readRecordedModernUpdateSelection } from '../src/application/update/modern-update-selection.js';
+import {
+  readConfiguredModernUpdateRoute,
+  readRecordedModernUpdateSelection
+} from '../src/application/update/modern-update-selection.js';
 import { inspectModernSuccessorUpdate } from '../src/application/update/inspection.js';
 import { applyModernSuccessorUpdate, previewModernSuccessorUpdate, recoverModernSuccessorUpdate } from '../src/application/update/use-case.js';
-import { approval, fixture, inventory, write } from './fixtures/manifest-update.js';
+import {
+  approval,
+  fixture,
+  freshManifestFixture,
+  inventory,
+  write
+} from './fixtures/manifest-update.js';
 
 const selected = { kind: 'recorded-project-intent' } as const;
 
@@ -144,6 +153,35 @@ describe('recorded project intent for current update', () => {
     expect(recorded.source.sourceBinding).toBe(explicit.source.sourceBinding);
     expect(recorded.successorPlan.semanticTransitionDigest).toBe(explicit.successorPlan.semanticTransitionDigest);
     expect(recorded.snapshots.length).toBe(explicit.snapshots.length + 1);
+  });
+
+  it('classifies workflow and same-workflow plugin changes before ordinary maintenance', async () => {
+    const workflow = await freshManifestFixture(
+      'single-maintainer-gitflow',
+      'openspec'
+    );
+    await write(workflow.root, ['liftoff.config.json'], JSON.stringify({
+      specWorkflow: 'manual',
+      agents: []
+    }));
+    expect(await readConfiguredModernUpdateRoute(workflow.root)).toEqual({
+      kind: 'workflow-transition',
+      target: 'manual',
+      agents: [],
+      defaultAgent: undefined
+    });
+
+    const plugins = await freshManifestFixture(
+      'single-maintainer-gitflow',
+      'openspec'
+    );
+    await write(plugins.root, ['liftoff.config.json'], JSON.stringify({
+      agents: ['codex']
+    }));
+    expect(await readConfiguredModernUpdateRoute(plugins.root)).toEqual({
+      kind: 'plugin-transition',
+      fields: ['agents']
+    });
   });
 
   it('never interprets a malformed manifest to inspect selected recovery', async () => {

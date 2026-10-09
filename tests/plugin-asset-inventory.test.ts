@@ -22,6 +22,7 @@ const coreAncillaryAssets = [
   'assets/governance/single-maintainer-gitflow/assessment-controls.json',
   'assets/governance/single-maintainer-gitflow/policy-v7.md',
   'assets/governance/single-maintainer-gitflow/policy.md',
+  'assets/governance/team-gitflow/assessment-controls.json',
   'assets/governance/team-gitflow/policy-v1.md',
   'assets/repair/windows-job-controller.ps1',
   'assets/skills/assessment.md',
