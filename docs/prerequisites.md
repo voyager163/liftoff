@@ -20,6 +20,15 @@ framework such as Spec Kit can require Python for its own tooling.
 - Selected agents: GitHub Copilot, Claude Code, OpenAI Codex, or any nonempty
   combination of the three for external workflows. Manual also permits none.
 
+The contributor-only runtime-inclusive development bundle has a separate qualified
+host boundary: native Apple Silicon on macOS 13.5 or newer. Its pinned Node.js
+24.21.0 executable declares that floor in `LC_BUILD_VERSION`; production npm
+dependencies contain no native addons, and the executable links only to macOS system
+libraries/frameworks. Intel Macs, Rosetta/translated processes, older macOS releases,
+and unobservable host identity are refused before bundle output or installation
+changes. This qualification does not advertise a signed, notarized, Homebrew-owned,
+or public native installation.
+
 Current generation and doctor distinguish the running CLI runtime from commands
 on PATH. A Manual Go project without a frontend or agents does not probe external
 Node/npm, Python/uv, OpenSpec, Spec Kit, or coding-agent executables. Selecting a

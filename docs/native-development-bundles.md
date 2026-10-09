@@ -4,7 +4,14 @@ The contributor-only native builder assembles the existing CLI, its locked produ
 dependencies, packaged assets and notices with an official standalone Node runtime.
 It currently runs on native Apple Silicon macOS. It is **not a Homebrew cask or a
 published installation channel**. Windows/Linux installers, signing, notarization,
-installation ownership and the minimum supported OS remain separate qualification.
+and installation ownership remain separate qualification.
+
+The qualified development-bundle host floor is **macOS 13.5 on native Apple
+Silicon**. The floor comes from the pinned Node.js 24.21.0 executable's
+`LC_BUILD_VERSION`, not from the contributor workstation or the current GitHub
+runner image. Intel processes, Rosetta/translated execution, macOS releases below
+13.5, and hosts whose version or translation state cannot be observed are refused
+before an output directory or installation is changed.
 
 The build requires contributor Node/npm and network access for locked npm dependencies
 and checksum-pinned original license notices. The resulting launcher does not require
@@ -26,13 +33,20 @@ The output must not exist. The builder verifies the official archive checksum be
 using it, rebuilds the CLI, checks the packed asset inventory, and installs production
 dependencies using the committed lock with lifecycle scripts disabled. It refuses
 Homebrew-linked runtime libraries rather than copying the contributor's Node executable.
+The runtime must be a thin ARM64 Mach-O executable whose recorded minimum is macOS
+13.5 and whose dynamic dependencies resolve only from `/usr/lib` or
+`/System/Library/Frameworks`. The locked production npm closure must contain no
+native `.node`, dynamic-library, DLL, or executable payload; the isolated HCL
+implementation remains platform-neutral WASM.
 Successful builds remove only their recorded scratch directory; failed outputs and
 reported scratch are retained for diagnosis. No global installation is modified.
 Builder inputs and every packed source file are rechecked before completion, including
 files already dirty when the build began.
 
-`bundle.json` records source identity, packed input, runtime, dependencies, original
-license notices and a bounded file/link inventory. `verify` checks local consistency;
+`bundle.json` records source identity, the qualified build host and macOS floor, the
+runtime's Mach-O and system-library evidence, packed input, dependencies, original
+license notices and a bounded file/link inventory. `verify` re-observes the current
+host and executable before checking local consistency;
 **an unsigned, editable manifest is not proof of authenticity or release approval**.
 The development artifact always reports `releaseReady: false`. Its public capability
 catalog deliberately retains the existing npm distribution advertisement.
@@ -55,7 +69,7 @@ npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts
 node scripts/native-bundle.mjs verify-report qualification/native-bundle.json
 ```
 
-The report gate requires all nine installed cases to pass; an unset bundle variable
+The report gate requires every listed installed case to pass; an unset bundle variable
 skips the opt-in suite and cannot qualify a bundle. Startup and planning use an empty
 PATH outside the checkout. Real Manual Go initialization uses the explicitly selected
 Go toolchain. Failing executable sentinels record forbidden prerequisite probes; they
@@ -63,8 +77,9 @@ are not evidence that those tools are installed. The suite also exercises instal
 HCL and controller resolution, missing assets, changed metadata and changed runtime
 bytes. It isolates HOME, disables Go telemetry only in that owned test home, and
 retains failed fixture roots. It does not change global installations or user settings.
-These checks do not qualify Windows controller execution, OS minimums or public
-distribution.
+These checks qualify only the native Apple Silicon/macOS 13.5 development-bundle
+runtime boundary. They do not qualify Windows controller execution, signing,
+notarization, Homebrew ownership, or public distribution.
 
 The pinned HCL npm package omits standalone license notices. The builder supplies its
 upstream MPL notice and the notices for the seven modules recorded in the original WASM,

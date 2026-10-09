@@ -75,6 +75,24 @@ function contrast(left: string, right: string): number {
 }
 
 describe('public documentation', () => {
+  it('documents the qualified native macOS floor without claiming public packaging', async () => {
+    const [native, prerequisites] = await Promise.all([
+      repositoryFile('docs/native-development-bundles.md'),
+      repositoryFile('docs/prerequisites.md')
+    ]);
+    for (const content of [native, prerequisites]) {
+      expect(content).toContain('macOS 13.5');
+      expect(content).toContain('LC_BUILD_VERSION');
+      expect(content).toMatch(/Rosetta|translated/);
+      expect(content).toMatch(/Intel/);
+      expect(content).toMatch(/signing|signed/);
+      expect(content).toMatch(/notarization|notarized/);
+    }
+    expect(native).toContain('releaseReady: false');
+    expect(native.replace(/\s+/g, ' ')).toContain('no native `.node`');
+    expect(prerequisites).toContain('does not advertise');
+  });
+
   it('states public-input read bounds, platform limits and credential-pattern false positives', async () => {
     const cli = await repositoryFile('docs/cli-reference.md');
     expect(cli).toContain('at most 65,537 bytes');

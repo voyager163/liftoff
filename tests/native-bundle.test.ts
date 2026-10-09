@@ -5,8 +5,10 @@ import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  assertDependencyClosure, assertNativeBundleReport, assertSystemRuntimeLibraries, bundleFile, bundleInventory,
-  bundlePath, nativeBundleCases, nativeBundleHost, nativeBundleLimits
+  assertDependencyClosure, assertNativeBundleReport, assertNativeRuntimeArchitectures,
+  assertNativeRuntimeBuildVersion, assertPortableProductionDependencies, assertSystemRuntimeLibraries,
+  bundleFile, bundleInventory, bundlePath, minimumNativeMacosVersion, nativeBundleCases, nativeBundleHost,
+  nativeBundleLimits
 } from '../scripts/native-bundle-contract.mjs';
 import { buildNativeBundle, fetchNativeInput, nativeBundleArguments } from '../scripts/native-bundle.mjs';
 
@@ -35,11 +37,35 @@ function dependencyLock() {
 }
 
 describe('native development bundle contracts', () => {
-  it('keeps native Apple Silicon build admission distinct from other unqualified hosts', () => {
-    expect(nativeBundleHost('darwin', 'arm64')).toEqual({ platform: 'darwin', architecture: 'arm64' });
-    for (const [platform, architecture] of [['darwin', 'x64'], ['linux', 'arm64'], ['linux', 'x64'], ['win32', 'x64']] as const) {
-      expect(() => nativeBundleHost(platform, architecture)).toThrow();
-    }
+  it('qualifies native Apple Silicon at the runtime-derived macOS floor', () => {
+    expect(nativeBundleHost({
+      platform: 'darwin', architecture: 'arm64', operatingSystemVersion: '13.5', translated: false
+    })).toEqual({
+      platform: 'darwin', architecture: 'arm64', operatingSystemVersion: '13.5',
+      translated: false, minimumOperatingSystemVersion: minimumNativeMacosVersion
+    });
+    expect(nativeBundleHost({
+      platform: 'darwin', architecture: 'arm64', operatingSystemVersion: '13.5.1', translated: false
+    }).operatingSystemVersion).toBe('13.5.1');
+    expect(nativeBundleHost({
+      platform: 'darwin', architecture: 'arm64', operatingSystemVersion: '14.0', translated: false
+    }).operatingSystemVersion).toBe('14.0');
+  });
+
+  it('refuses Intel, translated, below-floor and unqualified hosts before native work', () => {
+    const supported = {
+      platform: 'darwin', architecture: 'arm64', operatingSystemVersion: '13.5', translated: false
+    };
+    for (const changed of [
+      { platform: 'linux' },
+      { platform: 'win32' },
+      { architecture: 'x64' },
+      { architecture: 'x64', translated: true },
+      { translated: true },
+      { translated: undefined },
+      { operatingSystemVersion: '13.4.9' },
+      { operatingSystemVersion: 'unobserved' }
+    ]) expect(() => nativeBundleHost({ ...supported, ...changed })).toThrow();
   });
 
   it('requires explicit build inputs and rejects duplicate, extra and release-like authority options', () => {
@@ -180,6 +206,52 @@ describe('native development bundle contracts', () => {
       expect(() => assertSystemRuntimeLibraries(header + system + extra)).toThrow();
     }
     expect(() => assertSystemRuntimeLibraries(header)).toThrow('incomplete');
+  });
+
+  it('binds the private runtime to thin ARM64 Mach-O and its macOS build floor', () => {
+    expect(assertNativeRuntimeArchitectures('arm64\n')).toEqual(['arm64']);
+    for (const output of ['x86_64\n', 'arm64 x86_64\n', '', 'arm64\narm64\n']) {
+      expect(() => assertNativeRuntimeArchitectures(output)).toThrow();
+    }
+    const build = [
+      'Load command 9',
+      '      cmd LC_BUILD_VERSION',
+      '  cmdsize 32',
+      ' platform 1',
+      '    minos 13.5',
+      '      sdk 15.0',
+      '   ntools 1',
+      ''
+    ].join('\n');
+    expect(assertNativeRuntimeBuildVersion(build)).toEqual({
+      format: 'Mach-O', architectures: ['arm64'], platform: 'macos', platformCode: 1,
+      minimumMacosVersion: '13.5', sdkVersion: '15.0'
+    });
+    for (const changed of [
+      build.replace('LC_BUILD_VERSION', 'LC_VERSION_MIN_MACOSX'),
+      build.replace('platform 1', 'platform 2'),
+      build.replace('minos 13.5', 'minos 13.4'),
+      build.replace('sdk 15.0', 'sdk unknown'),
+      `${build}Load command 10\n      cmd LC_BUILD_VERSION\n platform 1\n minos 13.5\n sdk 15.0\n`
+    ]) expect(() => assertNativeRuntimeBuildVersion(changed)).toThrow();
+  });
+
+  it('requires a platform-neutral production dependency closure', () => {
+    expect(assertPortableProductionDependencies([
+      '@cdktf/hcl2json/main.wasm.gz', 'commander/index.js', '.bin/liftoff'
+    ])).toEqual({ nativeAddons: [] });
+    for (const name of ['package/native.node', 'package/lib.dylib', 'package/lib.so',
+      'package/lib.so.1', 'package/helper.dll', 'package/helper.exe']) {
+      expect(() => assertPortableProductionDependencies(['portable.js', name])).toThrow();
+    }
+    for (const header of ['cffaedfe', 'cafebabe', '7f454c46', '4d5a9000']) {
+      expect(() => assertPortableProductionDependencies([
+        { path: 'extensionless-helper', header }
+      ])).toThrow();
+    }
+    expect(() => assertPortableProductionDependencies([
+      { path: 'invalid-evidence', header: 'not-hex' }
+    ])).toThrow();
   });
 
   it('requires exact locked production dependencies, while allowing an omitted optional package', () => {

@@ -17,6 +17,7 @@ const forbidden = ['node', 'npm', 'npm.cmd', 'npx', 'openspec', 'specify', 'copi
 let fixtureRoot: string;
 let fixtureIdentity: { dev: number; ino: number };
 let bundle: string;
+let bundleManifest: Awaited<ReturnType<typeof verifyNativeBundle>>;
 let bundleVersion: string;
 let cli: string;
 let runtime: string;
@@ -67,11 +68,11 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
     assert.ok(suppliedBundle && path.isAbsolute(suppliedBundle), 'An explicit native bundle path is required.');
     assert.ok(suppliedGo && path.isAbsolute(suppliedGo), 'An explicit actual external Go executable is required.');
     bundle = await realpath(suppliedBundle);
-    const manifest = await verifyNativeBundle(bundle);
-    bundleVersion = manifest.package.version;
-    expect(manifest.source.sourceDigest).toBe(sourceInventory(coveragePackage('cli')).digest);
-    expect(manifest.source.configurationDigest).toBe(configurationInventory(coveragePackage('cli')).digest);
-    expect(manifest.runtime.observed).toEqual({ version: '24.21.0', platform: 'darwin', architecture: 'arm64' });
+    bundleManifest = await verifyNativeBundle(bundle);
+    bundleVersion = bundleManifest.package.version;
+    expect(bundleManifest.source.sourceDigest).toBe(sourceInventory(coveragePackage('cli')).digest);
+    expect(bundleManifest.source.configurationDigest).toBe(configurationInventory(coveragePackage('cli')).digest);
+    expect(bundleManifest.runtime.observed).toEqual({ version: '24.21.0', platform: 'darwin', architecture: 'arm64' });
     fixtureRoot = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff native installed ')));
     fixtureIdentity = await lstat(fixtureRoot);
     console.info(`Native installed qualification fixture: ${fixtureRoot}`);
@@ -124,6 +125,28 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
     expect({ dev: current.dev, ino: current.ino }).toEqual({ dev: fixtureIdentity.dev, ino: fixtureIdentity.ino });
     await verifyNativeBundle(bundle);
     await rm(fixtureRoot, { recursive: true });
+  });
+
+  it('binds native Apple Silicon and minimum macOS qualification before installed behavior', () => {
+    expect(bundleManifest.boundaries).toMatchObject({
+      minimumOsQualified: true,
+      signed: false,
+      notarized: false,
+      installerOwnershipQualified: false,
+      publicNativeDistributionAdvertised: false
+    });
+    expect(bundleManifest.hostQualification).toEqual(nativeBundleHost(bundleManifest.hostQualification, '13.5'));
+    expect(bundleManifest.runtime).toMatchObject({
+      minimumMacosVersion: '13.5',
+      machO: {
+        format: 'Mach-O',
+        architectures: ['arm64'],
+        platform: 'macos',
+        platformCode: 1,
+        minimumMacosVersion: '13.5'
+      },
+      productionDependencies: { nativeAddons: [] }
+    });
   });
 
   it('runs actual help, version and capabilities through direct and linked launchers with an empty PATH', async () => {
@@ -297,9 +320,18 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
     for (const changed of [
       { ...original, releaseReady: true },
       { ...original, boundaries: { ...original.boundaries, signed: true } },
+      { ...original, boundaries: { ...original.boundaries, minimumOsQualified: false } },
+      { ...original, hostQualification: { ...original.hostQualification, translated: true } },
+      { ...original, hostQualification: { ...original.hostQualification, operatingSystemVersion: '13.4' } },
       { ...original, source: { ...original.source, builderInputs: [] } },
       { ...original, source: { ...original.source, sourceDigest: '0'.repeat(64) } },
       { ...original, runtime: { ...original.runtime, version: '0.0.0' } },
+      { ...original, runtime: { ...original.runtime, minimumMacosVersion: '13.4' } },
+      { ...original, runtime: {
+        ...original.runtime, machO: { ...original.runtime.machO, architectures: ['arm64', 'x86_64'] }
+      } },
+      { ...original, runtime: { ...original.runtime, libraries: ['/usr/lib/libSystem.B.dylib'] } },
+      { ...original, runtime: { ...original.runtime, productionDependencies: { nativeAddons: ['foreign.node'] } } },
       { ...original, package: { ...original.package, name: 'foreign-package' } },
       { ...original, package: { ...original.package, lockSha256: '0'.repeat(64) } },
       { ...original, package: { ...original.package, sourceFiles: [] } },

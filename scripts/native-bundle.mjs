@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -12,8 +12,9 @@ import {
   assertUnpackedPackageSize, installedAssetByteIssues, packagedAssetIssues, requiredPackagedAssets
 } from './package-smoke-contract.mjs';
 import {
-  assertDependencyClosure, assertNativeBundleReport, assertSystemRuntimeLibraries,
-  bundleFile, bundleInventory, bundlePath, nativeBundleHost
+  assertDependencyClosure, assertNativeBundleReport, assertNativeRuntimeArchitectures,
+  assertNativeRuntimeBuildVersion, assertPortableProductionDependencies, assertSystemRuntimeLibraries,
+  bundleFile, bundleInventory, bundlePath, minimumNativeMacosVersion, nativeBundleHost
 } from './native-bundle-contract.mjs';
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL('../', import.meta.url)));
@@ -24,7 +25,7 @@ const builderPaths = [
   'scripts/package-smoke-contract.mjs', 'scripts/coverage-gate.mjs', 'scripts/clean-build.mjs'
 ];
 const boundaries = Object.freeze({
-  signed: false, notarized: false, installerOwnershipQualified: false, minimumOsQualified: false,
+  signed: false, notarized: false, installerOwnershipQualified: false, minimumOsQualified: true,
   upstreamHclReproducibilityQualified: false, publicNativeDistributionAdvertised: false
 });
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -144,6 +145,22 @@ async function dependencyNotices(application, dependencies) {
   return records;
 }
 
+async function portableProductionDependencies(root, inventory) {
+  const files = [];
+  for (const entry of inventory.entries.filter(candidate => candidate.kind === 'file')) {
+    const file = path.join(root, entry.path);
+    const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    try {
+      const header = Buffer.alloc(4);
+      const { bytesRead } = await handle.read(header, 0, header.length, 0);
+      files.push({ path: entry.path, header: header.subarray(0, bytesRead).toString('hex') });
+    } finally {
+      await handle.close();
+    }
+  }
+  return assertPortableProductionDependencies(files);
+}
+
 async function assertHclInputs(application, lock, inputs) {
   const hcl = lock.packages['node_modules/@cdktf/hcl2json'];
   assert.equal(hcl.version, inputs.hcl.version);
@@ -181,6 +198,8 @@ export async function buildNativeBundle({ output, runtimeArchive, npmCli = proce
   assert.equal(inputs.schemaVersion, 1);
   assert.equal(inputs.runtime.platform, host.platform);
   assert.equal(inputs.runtime.architecture, host.architecture);
+  assert.equal(inputs.runtime.minimumMacosVersion, minimumNativeMacosVersion);
+  assert.equal(inputs.runtime.minimumMacosVersion, host.minimumOperatingSystemVersion);
   assert.equal(inputs.runtime.archiveRoot, `node-v${inputs.runtime.version}-darwin-arm64`);
   const archiveIdentity = await bundleFile(runtimeArchive);
   assert.equal(archiveIdentity.sha256, inputs.runtime.sha256, 'Official Node archive checksum differs.');
@@ -226,6 +245,9 @@ export async function buildNativeBundle({ output, runtimeArchive, npmCli = proce
     '--cache', path.join(scratch, 'npm-cache')], { cwd: application });
   assert.equal(digest(await readFile(path.join(application, 'package-lock.json'))), digest(lockBytes));
   const dependencies = assertDependencyClosure(await json(path.join(application, 'node_modules/.package-lock.json')), lock);
+  const productionDependencyInventory = await bundleInventory(path.join(application, 'node_modules'));
+  const productionDependencies = await portableProductionDependencies(
+    path.join(application, 'node_modules'), productionDependencyInventory);
   await assertHclInputs(application, lock, inputs);
   const notices = await installNotices(bundle, scratch, inputs);
   const licenses = await dependencyNotices(application, dependencies);
@@ -243,6 +265,9 @@ export async function buildNativeBundle({ output, runtimeArchive, npmCli = proce
   await chmod(path.join(runtime, 'node'), 0o755);
   assert.equal((await bundleFile(path.join(runtime, 'node'))).sha256, inputs.runtime.executableSha256);
   assert.equal((await bundleFile(path.join(runtime, 'LICENSE'))).sha256, inputs.runtime.licenseSha256);
+  const architectures = assertNativeRuntimeArchitectures(run('/usr/bin/lipo', ['-archs', path.join(runtime, 'node')]));
+  const machO = assertNativeRuntimeBuildVersion(run('/usr/bin/otool', ['-l', path.join(runtime, 'node')]),
+    inputs.runtime.minimumMacosVersion);
   const libraries = assertSystemRuntimeLibraries(run('/usr/bin/otool', ['-L', path.join(runtime, 'node')]));
   const emptyPath = path.join(scratch, 'empty-path');
   await mkdir(emptyPath);
@@ -250,7 +275,11 @@ export async function buildNativeBundle({ output, runtimeArchive, npmCli = proce
   const observed = JSON.parse(run(path.join(runtime, 'node'), ['-p',
     'JSON.stringify({version:process.versions.node,platform:process.platform,architecture:process.arch})'],
   { cwd: scratch, env: runtimeEnvironment }));
-  assert.deepEqual(observed, { version: inputs.runtime.version, ...host });
+  assert.deepEqual(observed, {
+    version: inputs.runtime.version,
+    platform: host.platform,
+    architecture: host.architecture
+  });
   await mkdir(path.join(bundle, 'bin'));
   await copyFile(path.join(repositoryRoot, 'distribution/native/launcher.sh'), path.join(bundle, 'bin/liftoff'), constants.COPYFILE_EXCL);
   await chmod(path.join(bundle, 'bin/liftoff'), 0o755);
@@ -263,12 +292,14 @@ export async function buildNativeBundle({ output, runtimeArchive, npmCli = proce
   const inventory = await bundleInventory(bundle);
   const manifest = {
     schemaVersion: 1, kind: 'liftoff-native-development-bundle', releaseReady: false,
-    platform: host,
+    platform: { platform: host.platform, architecture: host.architecture },
     source: { repository: 'voyager163/liftoff', commit: before.revision.commit, dirty: Boolean(dirty),
       sourceDigest: before.source.digest, configurationDigest: before.configuration.digest, builderInputs },
+    hostQualification: host,
     package: { name: pkg.name, version: pkg.version, archive: packageIdentity,
       lockSha256: digest(lockBytes), sourceFiles: packageSources },
-    runtime: { ...inputs.runtime, executable: 'runtime/node', libraries, observed },
+    runtime: { ...inputs.runtime, executable: 'runtime/node', machO: { ...machO, architectures },
+      libraries, productionDependencies, observed },
     launcher: 'bin/liftoff', assets: requiredPackagedAssets,
     dependencies: licenses, supplementalNotices: notices, hclSource: inputs.hcl,
     inputSha256: digest(await readFile(inputsPath)), inventory,
@@ -299,8 +330,12 @@ export async function verifyNativeBundle(directory) {
   }
   assert.deepEqual(manifest.source.builderInputs, await sourceFiles(builderPaths), 'Native builder input inventory differs.');
   const inputs = await json(inputsPath);
+  assert.equal(inputs.runtime.minimumMacosVersion, minimumNativeMacosVersion);
+  nativeBundleHost(undefined, inputs.runtime.minimumMacosVersion);
+  assert.deepEqual(nativeBundleHost(manifest.hostQualification, inputs.runtime.minimumMacosVersion),
+    manifest.hostQualification, 'Native build host qualification differs.');
   assert.equal(manifest.inputSha256, digest(await readFile(inputsPath)), 'Native build input policy differs.');
-  const { executable, libraries: _libraries, observed, ...runtimeInput } = manifest.runtime;
+  const { executable, machO, libraries, productionDependencies, observed, ...runtimeInput } = manifest.runtime;
   assert.deepEqual(runtimeInput, inputs.runtime, 'Runtime input differs from the pinned archive.');
   assert.deepEqual(observed, { version: inputs.runtime.version, platform: 'darwin', architecture: 'arm64' });
   assert.deepEqual(manifest.assets, requiredPackagedAssets, 'Required asset inventory differs.');
@@ -316,6 +351,14 @@ export async function verifyNativeBundle(directory) {
   assert.equal((await bundleFile(path.join(root, 'runtime/node'))).sha256, inputs.runtime.executableSha256,
     'Private runtime bytes differ from the official input.');
   assert.equal((await bundleFile(path.join(root, 'runtime/LICENSE'))).sha256, inputs.runtime.licenseSha256);
+  const runtimePath = path.join(root, 'runtime/node');
+  const inspectedArchitectures = assertNativeRuntimeArchitectures(run('/usr/bin/lipo', ['-archs', runtimePath]));
+  assert.deepEqual(machO, {
+    ...assertNativeRuntimeBuildVersion(run('/usr/bin/otool', ['-l', runtimePath]), inputs.runtime.minimumMacosVersion),
+    architectures: inspectedArchitectures
+  }, 'Private runtime Mach-O qualification differs.');
+  assert.deepEqual(libraries, assertSystemRuntimeLibraries(run('/usr/bin/otool', ['-L', runtimePath])),
+    'Private runtime system-library qualification differs.');
   assert.equal((await bundleFile(path.join(root, 'bin/liftoff'))).sha256,
     (await bundleFile(path.join(repositoryRoot, 'distribution/native/launcher.sh'))).sha256, 'Launcher bytes differ.');
   const paths = new Set(manifest.inventory.entries.filter(entry => entry.kind === 'file').map(entry => entry.path));
@@ -333,6 +376,10 @@ export async function verifyNativeBundle(directory) {
   assert.equal(lock.name, pkg.name);
   assert.equal(lock.version, pkg.version);
   const dependencies = assertDependencyClosure(await json(path.join(root, 'application/node_modules/.package-lock.json')), lock);
+  const productionDependencyInventory = await bundleInventory(path.join(root, 'application/node_modules'));
+  assert.deepEqual(productionDependencies, await portableProductionDependencies(
+    path.join(root, 'application/node_modules'), productionDependencyInventory),
+  'Production native dependency qualification differs.');
   assert.deepEqual(await dependencyNotices(path.join(root, 'application'), dependencies), manifest.dependencies,
     'Dependency license inventory differs from installed packages.');
   assert.ok(Array.isArray(manifest.package.sourceFiles) && manifest.package.sourceFiles.length > 0,
