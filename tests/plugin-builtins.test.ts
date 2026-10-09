@@ -329,7 +329,7 @@ describe('built-in plugin descriptors', () => {
     expect(builtinSelectionSpace).toEqual({
       workloads: [{ id: 'genai', variants: catalog.patterns.map((pattern) => pattern.id) }, { id: 'standard', variants: [] }],
       environments: catalog.environments.map((environment) => environment.id),
-      governanceProfiles: catalog.governanceProfiles.map((profile) => profile.id)
+      governanceProfiles: ['single-maintainer-gitflow', 'none']
     });
     expect(catalog.patterns.map((pattern) => [pattern.id, pattern.scaffoldStatus])).toEqual(
       ['generic', 'rag', 'chatbot', 'agent', 'prompt', 'multi-agent', 'fine-tuned', 'streaming', 'workflow']

@@ -21,7 +21,8 @@ import { canonicalJson } from '../src/domain/governance/activation/canonical-jso
 import { rawHistoryDigest } from '../src/governance-activation/history-contracts.js';
 import { projectMutationLockPath } from '../src/adapters/filesystem/project-lock.js';
 import {
-  reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts, localVerificationTransactionPathParts
+  reviewedAdoptionTransactionPathParts, reviewedUpdateTransactionPathParts,
+  reviewedRepairTransactionPathParts, localVerificationTransactionPathParts
 } from '../src/domain/project/reviewed-update-artifacts.js';
 import { approval, auditFor, fixture, inventory, now, write } from './fixtures/manifest-update.js';
 import { selected, writeModernSuccessor, writePriorRepairOriginalTarget, localInputsPlanFixture } from './fixtures/modern-installed-project.js';
@@ -129,7 +130,12 @@ describe('actual reviewed active-v8 maintenance', () => {
     const review = await prepareModernSuccessorReview(await inspectModernSuccessorUpdate(project.root, project.selection),
       false, preview.receipt.publication.preparation, now);
     expect(review.mutations.map(entry => entry.pathParts)).toEqual([file.pathParts]);
-    for (const parts of [reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts, localVerificationTransactionPathParts]) {
+    for (const parts of [
+      reviewedUpdateTransactionPathParts,
+      reviewedRepairTransactionPathParts,
+      reviewedAdoptionTransactionPathParts,
+      localVerificationTransactionPathParts
+    ]) {
       expect(review.preconditions.some(entry => entry.pathParts.join('/') === parts.join('/'))).toBe(false);
     }
     expect(await apply(project, preview)).toMatchObject({
@@ -385,7 +391,11 @@ describe('actual reviewed active-v8 maintenance', () => {
     }
   });
 
-  it.each([reviewedRepairTransactionPathParts, localVerificationTransactionPathParts].map(parts => ({ parts })))(
+  it.each([
+    reviewedRepairTransactionPathParts,
+    reviewedAdoptionTransactionPathParts,
+    localVerificationTransactionPathParts
+  ].map(parts => ({ parts })))(
     'preserves a competing $parts journal and rolls back only its own writes', async ({ parts }) => {
       const project = await active(3, true), preview = await previewModernSuccessorUpdate(project.root, project.selection, project.options);
       const before = await inventory(project.root);

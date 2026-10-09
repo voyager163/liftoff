@@ -4,6 +4,9 @@ import { repairSchemaVersions } from '../../domain/repair/identity.js';
 import {
   mutationDescriptors, repairHistoryRoot, snapshotDescriptors, type RepairPreview
 } from './preview.js';
+import type {
+  ActiveBindingPublicationIntent
+} from './active-binding-publication.js';
 
 export function repairHistoryMutations(input: {
   preview: RepairPreview;
@@ -12,6 +15,7 @@ export function repairHistoryMutations(input: {
   mutations: readonly ProjectFileMutation[];
   verificationPolicy: unknown;
   backupIndexKey?: string;
+  activeBindingPublication?: ActiveBindingPublicationIntent;
 }): ProjectFileMutation[] {
   const { preview } = input;
   if (canonicalSha256(input.verificationPolicy) !== preview.verificationDigest) {
@@ -25,6 +29,9 @@ export function repairHistoryMutations(input: {
     source: snapshotDescriptors(input.snapshots), target: mutationDescriptors(input.mutations),
     verification: { policy: input.verificationPolicy, digest: preview.verificationDigest, result: 'declared-staged-checks-passed' },
     ...(input.backupIndexKey ? { backup: { namespace: 'repair-backup', indexKey: input.backupIndexKey } } : {}),
+    ...(input.activeBindingPublication
+      ? { activeBindingPublication: input.activeBindingPublication }
+      : {}),
     activationEvidence: 'not-issued'
   };
   return [

@@ -182,10 +182,13 @@ export const governanceArtifactPaths = {
 export interface ProjectCatalogContext {
   frameworkVersions: Record<SpecWorkflowId, string>;
   governancePolicyVersion: string;
+  teamGovernancePolicyVersion?: string;
 }
 
 export function createProjectCatalog(context: ProjectCatalogContext) {
   const governancePolicyVersion = context.governancePolicyVersion;
+  const teamGovernancePolicyVersion =
+    context.teamGovernancePolicyVersion ?? governancePolicyVersion;
   const approvedStack = [
     'FastAPI',
     'PydanticAI',
@@ -471,9 +474,16 @@ export function createProjectCatalog(context: ProjectCatalogContext) {
     {
       id: 'single-maintainer-gitflow',
       label: 'Single-maintainer GitFlow',
-      description: 'Generate the versioned local repository-governance handoff; live activation is deferred.',
+      description: 'Generate the versioned local handoff with zero additional human pull request approvals; live activation is deferred.',
       default: true,
       policyVersion: governancePolicyVersion
+    },
+    {
+      id: 'team-gitflow',
+      label: 'Team GitFlow',
+      description: 'Generate the versioned local handoff requiring one independent human pull request approval; live activation is deferred.',
+      default: false,
+      policyVersion: teamGovernancePolicyVersion
     },
     {
       id: 'none',

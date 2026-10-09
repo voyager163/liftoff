@@ -109,6 +109,7 @@ describe('catalogs', () => {
   it('keeps append-only repository governance profiles with the enabled default', () => {
     expect(governanceProfiles.map((profile) => profile.id)).toEqual([
       'single-maintainer-gitflow',
+      'team-gitflow',
       'none'
     ]);
     expect(governanceProfiles.find((profile) => profile.default)).toMatchObject({
@@ -117,6 +118,11 @@ describe('catalogs', () => {
     });
     expect(getGovernanceProfile('Single Maintainer GitFlow')?.id)
       .toBe('single-maintainer-gitflow');
+    expect(getGovernanceProfile('Team GitFlow')).toMatchObject({
+      id: 'team-gitflow',
+      policyVersion: '1',
+      default: false
+    });
     expect(getGovernanceProfile('none')?.id).toBe('none');
   });
 

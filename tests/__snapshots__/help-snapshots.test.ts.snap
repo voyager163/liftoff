@@ -1,5 +1,105 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`complete help screens > snapshots compact adopt command help 1`] = `
+"LIFTOFF / ADOPT
+Start with \`liftoff adopt --project <path> --check\`. Bare JSON and non-TTY
+invocations also preview only. Preview records are stored outside the repository
+and are observations, not verification, file approval, transaction ownership,
+active-binding publication, deployment authority, or recovery proof. The target
+workload, workflow, agents, profile, plugins, and layout come from the installed
+release plus explicit target flags/configuration. Existing Liftoff projects use
+\`liftoff update --check\` and separately authorized \`liftoff repair --check\`,
+never re-adoption. A complete later public plan requires exact \`--approve-plan
+<fingerprint>\`; registration of the flag cannot approve discovery or a blocked
+compatibility review. Recovery requires \`--recover --approve-plan <fingerprint>\`
+and may address only that authenticated transaction. Bare interactive execution
+can prompt only after displaying a complete current executable plan and defaults
+to no; blocked or incomplete previews never prompt. JSON, piped answers,
+manifest absence, process age, PID, generic yes, and force are not consent.
+Unresolved mappings, dynamic behavior, missing checks, unsupported conversions,
+collisions, existing deployment/state, and unsafe boundaries remain blockers. No
+commit, branch switch, stash/reset, push, database/cloud mutation, starter
+replacement, or implicit telemetry enrollment is authorized. Exit 2: safe
+preview or existing-project route needs further review; 1:
+invalid/unsafe/unavailable approval or recovery.
+
+Usage
+─────
+liftoff adopt [project-path]
+
+Arguments
+─────────
+Argument      Description
+────────────  ──────────────────────────────────────────────────────────────────
+project-path  Supported non-Liftoff Git project or explicitly identified non-Git
+              application
+
+Project options
+───────────────
+Option                      Description
+──────────────────────────  ────────────────────────────────────────────────────
+--type <workload>           Project workload type
+--genai / --no-genai        Create a GenAI project; use --no-genai for a
+                            standard API
+--api <stack>               Backend API stack
+--pattern <pattern>         GenAI application pattern
+--cloud <provider>          Cloud provider (default: azure)
+--region <region>           Cloud deployment region (default: eastus)
+--frontend / --no-frontend  Include the Vue frontend starter (default: false)
+--environments <list>       Comma-separated environments (default:
+                            dev,staging,prod)
+--config <file>             Load deterministic project options from JSON
+--project <path>            Exact project path; explicitly select non-Git
+                            applications
+
+Framework options
+─────────────────
+Option                                Description
+────────────────────────────────────  ──────────────────────────────────────────
+--spec <workflow>                     Development workflow: openspec, spec-kit,
+                                      or manual (default: openspec)
+--agents <list>                       Comma-separated AI coding agents; none is
+                                      valid only for Manual (default: copilot;
+                                      none for Manual)
+--default-agent <agent>               Primary agent for Spec Kit when multiple
+                                      agents are selected
+--governance <profile>                Repository-governance profile:
+                                      single-maintainer-gitflow, team-gitflow,
+                                      or none (default:
+                                      single-maintainer-gitflow)
+--copilot-cloud / --no-copilot-cloud  Set up the GitHub-hosted Copilot coding
+                                      agent for OpenSpec (default: false)
+
+Command options
+───────────────
+Option   Description
+───────  ───────────────────────────────────────────────────────────────────
+--check  Preview only and save bounded review records outside the repository
+
+Consent options
+───────────────
+Option                        Description
+────────────────────────────  ──────────────────────────────────────────────────
+--approve-plan <fingerprint>  Approve one complete current public adoption plan
+                              by its full lowercase 64-hex SHA-256 fingerprint
+--recover                     Inspect or continue only the authenticated
+                              recovery owned by --approve-plan
+
+Output options
+──────────────
+Option  Description
+──────  ──────────────────────────────────────────────────────────────────────
+--json  Emit one schema-1 adoption result on stdout; bare JSON always previews
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
 exports[`complete help screens > snapshots compact assess command help 1`] = `
 "LIFTOFF / ASSESS
 Read-only whole-project comparison against the installed CLI, selected policy
@@ -152,6 +252,9 @@ Command   Description
 ────────  ──────────────────────────────────────────────────────────────────────
 assess    Read-only whole-project comparison against explicitly displayed
           installed targets
+adopt     Preview reviewed in-place adoption for a supported non-Liftoff
+          application
+workflow  Review an explicit development-workflow transition
 validate  Validate a generated project manifest
 update    Preview and explicitly approve scoped project updates
 repair    Review and repair supported project files with separate default-No
@@ -380,7 +483,9 @@ Option                                Description
                                       none for Manual)
 --default-agent <agent>               Primary agent for Spec Kit when multiple
                                       agents are selected
---governance <profile>                Repository-governance profile (default:
+--governance <profile>                Repository-governance profile:
+                                      single-maintainer-gitflow, team-gitflow,
+                                      or none (default:
                                       single-maintainer-gitflow)
 --copilot-cloud / --no-copilot-cloud  Set up the GitHub-hosted Copilot coding
                                       agent for OpenSpec (default: false)
@@ -443,7 +548,19 @@ Option  Description
 
 exports[`complete help screens > snapshots compact repair command help 1`] = `
 "LIFTOFF / REPAIR
-Review and repair supported project files with separate default-No approval
+Reviewed project repair with independent infrastructure, application and
+additive-agent scopes. Use --agents to add selections without removing existing
+agents; --default-agent explicitly changes only a current Spec Kit default.
+Manual writes only requested Liftoff-native integrations. OpenSpec and Spec Kit
+use pinned official operations in isolated staging, preserve existing framework
+history/defaults unless explicitly changed, and reject unknown output or
+occupied differing destinations. --check and JSON preview without project
+writes. Workstation tools, the OpenSpec global profile and exact project files
+require separate permissions. --approve-plan applies one current saved plan;
+--recover --approve-plan addresses only its authenticated additive-agent
+transaction. Agent repair remains independently eligible while unrelated
+application or infrastructure work is incomplete and never claims broader
+readiness.
 
 Usage
 ─────
@@ -465,6 +582,15 @@ Option                            Description
 --subscription <id>               Exact Azure subscription ID for live absence
                                   checks
 
+Framework options
+─────────────────
+Option                   Description
+───────────────────────  ───────────────────────────────────────────────────────
+--agents <list>          Comma-separated agents to add without removing existing
+                         selections; none is invalid (default: codex)
+--default-agent <agent>  Explicit new Spec Kit default; the agent is also added
+                         when absent
+
 Command options
 ───────────────
 Option            Description
@@ -476,8 +602,8 @@ Option            Description
                   and modes without a project or tool probes
 --inspect-layout  Inventory actual application paths and current targets without
                   scripts or writes
---recover         Recover only eligible recorded repair effects; live, uncertain
-                  or changed private workspace identities stay blocked
+--recover         Recover only eligible recorded repair effects; additive-agent
+                  recovery also requires its exact --approve-plan fingerprint
 
 Consent options
 ───────────────
@@ -485,8 +611,10 @@ Option                          Description
 ──────────────────────────────  ────────────────────────────────────────────────
 --live                          Allow bounded Azure metadata reads with existing
                                 authentication; never read state
---approve-plan <fingerprint>    Optional automation: approve the exact saved
-                                plan; ordinary TTY repair asks instead
+--approve-plan <fingerprint>    Optional automation: approve one exact saved
+                                application, binding, infrastructure, or
+                                additive-agent plan; ordinary TTY repair asks
+                                instead
 --verify-plan <fingerprint>     Optional automation: run exact staged checks;
                                 declared preparation/network require separate
                                 permissions, never file commit
@@ -495,6 +623,11 @@ Option                          Description
                                 or file writes
 --allow-network                 Additionally authorize declared network effects
                                 for exact --verify-plan checks
+--install-tools                 Separately authorize pinned framework-tool
+                                preparation for an additive agent request
+--configure-openspec-profile    Separately authorize the required global
+                                OpenSpec profile for an additive OpenSpec agent
+                                request
 
 Output options
 ──────────────
@@ -635,6 +768,50 @@ Option  Description
 "
 `;
 
+exports[`complete help screens > snapshots plain adopt command help 1`] = `
+"LIFTOFF / ADOPT - Start with \`liftoff adopt --project <path> --check\`. Bare JSON and non-TTY invocations also preview only. Preview records are stored outside the repository and are observations, not verification, file approval, transaction ownership, active-binding publication, deployment authority, or recovery proof. The target workload, workflow, agents, profile, plugins, and layout come from the installed release plus explicit target flags/configuration. Existing Liftoff projects use \`liftoff update --check\` and separately authorized \`liftoff repair --check\`, never re-adoption. A complete later public plan requires exact \`--approve-plan <fingerprint>\`; registration of the flag cannot approve discovery or a blocked compatibility review. Recovery requires \`--recover --approve-plan <fingerprint>\` and may address only that authenticated transaction. Bare interactive execution can prompt only after displaying a complete current executable plan and defaults to no; blocked or incomplete previews never prompt. JSON, piped answers, manifest absence, process age, PID, generic yes, and force are not consent. Unresolved mappings, dynamic behavior, missing checks, unsupported conversions, collisions, existing deployment/state, and unsafe boundaries remain blockers. No commit, branch switch, stash/reset, push, database/cloud mutation, starter replacement, or implicit telemetry enrollment is authorized. Exit 2: safe preview or existing-project route needs further review; 1: invalid/unsafe/unavailable approval or recovery.
+
+Usage
+Usage: liftoff adopt [project-path]
+
+Arguments
+Argument: project-path | Description: Supported non-Liftoff Git project or explicitly identified non-Git application
+
+Project options
+Option: --type <workload> | Description: Project workload type
+Option: --genai / --no-genai | Description: Create a GenAI project; use --no-genai for a standard API
+Option: --api <stack> | Description: Backend API stack
+Option: --pattern <pattern> | Description: GenAI application pattern
+Option: --cloud <provider> | Description: Cloud provider (default: azure)
+Option: --region <region> | Description: Cloud deployment region (default: eastus)
+Option: --frontend / --no-frontend | Description: Include the Vue frontend starter (default: false)
+Option: --environments <list> | Description: Comma-separated environments (default: dev,staging,prod)
+Option: --config <file> | Description: Load deterministic project options from JSON
+Option: --project <path> | Description: Exact project path; explicitly select non-Git applications
+
+Framework options
+Option: --spec <workflow> | Description: Development workflow: openspec, spec-kit, or manual (default: openspec)
+Option: --agents <list> | Description: Comma-separated AI coding agents; none is valid only for Manual (default: copilot; none for Manual)
+Option: --default-agent <agent> | Description: Primary agent for Spec Kit when multiple agents are selected
+Option: --governance <profile> | Description: Repository-governance profile: single-maintainer-gitflow, team-gitflow, or none (default: single-maintainer-gitflow)
+Option: --copilot-cloud / --no-copilot-cloud | Description: Set up the GitHub-hosted Copilot coding agent for OpenSpec (default: false)
+
+Command options
+Option: --check | Description: Preview only and save bounded review records outside the repository
+
+Consent options
+Option: --approve-plan <fingerprint> | Description: Approve one complete current public adoption plan by its full lowercase 64-hex SHA-256 fingerprint
+Option: --recover | Description: Inspect or continue only the authenticated recovery owned by --approve-plan
+
+Output options
+Option: --json | Description: Emit one schema-1 adoption result on stdout; bare JSON always previews
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
 exports[`complete help screens > snapshots plain assess command help 1`] = `
 "LIFTOFF / ASSESS - Read-only whole-project comparison against the installed CLI, selected policy and bundled plugin/layout contracts; no registry latest, project scripts, tool probes, network, enrollment, telemetry/disclosure, receipts or writes. Omitted --governance preserves a supported recorded profile, or displays the single-maintainer baseline for an unrecorded project. An explicit profile is advisory, never a profile change. Select an exact path for a non-Git application; unsafe or malformed inner boundaries never fall through to an outer project. Static names, path presence and matching managed bytes do not prove runtime, references, agent behavior, effective governance or deployed-state conformance. These gaps remain visible. Exit 0 requires complete applicable alignment or explicitly inapplicable scope; 2 means differences or partial coverage; 1 means invalid/unsafe input or unavailable scope. Current whole-project reports remain partial because unsupported proof is not inferred. --live is unavailable and fails without contacting accounts. The narrower governance assess contract and its independently supported live mode are unchanged.
 
@@ -716,6 +893,8 @@ Command: migrate | Description: Adopt an existing project
 
 Maintenance
 Command: assess | Description: Read-only whole-project comparison against explicitly displayed installed targets
+Command: adopt | Description: Preview reviewed in-place adoption for a supported non-Liftoff application
+Command: workflow | Description: Review an explicit development-workflow transition
 Command: validate | Description: Validate a generated project manifest
 Command: update | Description: Preview and explicitly approve scoped project updates
 Command: repair | Description: Review and repair supported project files with separate default-No approval
@@ -832,7 +1011,7 @@ Framework options
 Option: --spec <workflow> | Description: Development workflow: openspec, spec-kit, or manual (default: openspec)
 Option: --agents <list> | Description: Comma-separated AI coding agents; none is valid only for Manual (default: copilot; none for Manual)
 Option: --default-agent <agent> | Description: Primary agent for Spec Kit when multiple agents are selected
-Option: --governance <profile> | Description: Repository-governance profile (default: single-maintainer-gitflow)
+Option: --governance <profile> | Description: Repository-governance profile: single-maintainer-gitflow, team-gitflow, or none (default: single-maintainer-gitflow)
 Option: --copilot-cloud / --no-copilot-cloud | Description: Set up the GitHub-hosted Copilot coding agent for OpenSpec (default: false)
 
 Consent options
@@ -871,7 +1050,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain repair command help 1`] = `
-"LIFTOFF / REPAIR - Review and repair supported project files with separate default-No approval
+"LIFTOFF / REPAIR - Reviewed project repair with independent infrastructure, application and additive-agent scopes. Use --agents to add selections without removing existing agents; --default-agent explicitly changes only a current Spec Kit default. Manual writes only requested Liftoff-native integrations. OpenSpec and Spec Kit use pinned official operations in isolated staging, preserve existing framework history/defaults unless explicitly changed, and reject unknown output or occupied differing destinations. --check and JSON preview without project writes. Workstation tools, the OpenSpec global profile and exact project files require separate permissions. --approve-plan applies one current saved plan; --recover --approve-plan addresses only its authenticated additive-agent transaction. Agent repair remains independently eligible while unrelated application or infrastructure work is incomplete and never claims broader readiness.
 
 Usage
 Usage: liftoff repair [project-path]
@@ -884,18 +1063,24 @@ Option: --project <path> | Description: Exact Liftoff project path
 Option: --application-patch <patch.json> | Description: Review an exact application patch authored in external staging, not a starter replacement
 Option: --subscription <id> | Description: Exact Azure subscription ID for live absence checks
 
+Framework options
+Option: --agents <list> | Description: Comma-separated agents to add without removing existing selections; none is invalid (default: codex)
+Option: --default-agent <agent> | Description: Explicit new Spec Kit default; the agent is also added when absent
+
 Command options
 Option: --check | Description: Preview only; explicit dependency preparation previews include bounded installed-tool identity probes, never project scripts or installs
 Option: --capabilities | Description: List repair contracts, recipes, preparation support, schemas and modes without a project or tool probes
 Option: --inspect-layout | Description: Inventory actual application paths and current targets without scripts or writes
-Option: --recover | Description: Recover only eligible recorded repair effects; live, uncertain or changed private workspace identities stay blocked
+Option: --recover | Description: Recover only eligible recorded repair effects; additive-agent recovery also requires its exact --approve-plan fingerprint
 
 Consent options
 Option: --live | Description: Allow bounded Azure metadata reads with existing authentication; never read state
-Option: --approve-plan <fingerprint> | Description: Optional automation: approve the exact saved plan; ordinary TTY repair asks instead
+Option: --approve-plan <fingerprint> | Description: Optional automation: approve one exact saved application, binding, infrastructure, or additive-agent plan; ordinary TTY repair asks instead
 Option: --verify-plan <fingerprint> | Description: Optional automation: run exact staged checks; declared preparation/network require separate permissions, never file commit
 Option: --allow-dependency-preparation | Description: Separately permit only declared locked private preparation with --verify-plan; not global tools or file writes
 Option: --allow-network | Description: Additionally authorize declared network effects for exact --verify-plan checks
+Option: --install-tools | Description: Separately authorize pinned framework-tool preparation for an additive agent request
+Option: --configure-openspec-profile | Description: Separately authorize the required global OpenSpec profile for an additive OpenSpec agent request
 
 Output options
 Option: --json | Description: Emit one schema-2 result (capabilities schema 1); never prompt or implicitly execute
@@ -959,6 +1144,89 @@ Option: --json | Description: Emit one machine-readable result object
 General options
 Option: --help | Description: Show command-specific help
 
+"
+`;
+
+exports[`complete help screens > snapshots rich adopt command help 1`] = `
+"┌─ LIFTOFF / ADOPT ────────────────────────────────────────────────────────────────────────────┐
+│ Start with \`liftoff adopt --project <path> --check\`. Bare JSON and non-TTY invocations also  │
+│ preview only. Preview records are stored outside the repository and are observations, not    │
+│ verification, file approval, transaction ownership, active-binding publication, deployment   │
+│ authority, or recovery proof. The target workload, workflow, agents, profile, plugins, and   │
+│ layout come from the installed release plus explicit target flags/configuration. Existing    │
+│ Liftoff projects use \`liftoff update --check\` and separately authorized \`liftoff repair      │
+│ --check\`, never re-adoption. A complete later public plan requires exact \`--approve-plan     │
+│ <fingerprint>\`; registration of the flag cannot approve discovery or a blocked compatibility │
+│ review. Recovery requires \`--recover --approve-plan <fingerprint>\` and may address only that │
+│ authenticated transaction. Bare interactive execution can prompt only after displaying a     │
+│ complete current executable plan and defaults to no; blocked or incomplete previews never    │
+│ prompt. JSON, piped answers, manifest absence, process age, PID, generic yes, and force are  │
+│ not consent. Unresolved mappings, dynamic behavior, missing checks, unsupported conversions, │
+│ collisions, existing deployment/state, and unsafe boundaries remain blockers. No commit,     │
+│ branch switch, stash/reset, push, database/cloud mutation, starter replacement, or implicit  │
+│ telemetry enrollment is authorized. Exit 2: safe preview or existing-project route needs     │
+│ further review; 1: invalid/unsafe/unavailable approval or recovery.                          │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff adopt [project-path]                                                                 │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Arguments ──────────────────────────────────────────────────────────────────────────────────┐
+│ Argument      Description                                                                    │
+│ ────────────  ────────────────────────────────────────────────────────────────────────────── │
+│ project-path  Supported non-Liftoff Git project or explicitly identified non-Git application │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                      Description                                                      │
+│ ──────────────────────────  ──────────────────────────────────────────────────────────       │
+│ --type <workload>           Project workload type                                            │
+│ --genai / --no-genai        Create a GenAI project; use --no-genai for a standard API        │
+│ --api <stack>               Backend API stack                                                │
+│ --pattern <pattern>         GenAI application pattern                                        │
+│ --cloud <provider>          Cloud provider (default: azure)                                  │
+│ --region <region>           Cloud deployment region (default: eastus)                        │
+│ --frontend / --no-frontend  Include the Vue frontend starter (default: false)                │
+│ --environments <list>       Comma-separated environments (default: dev,staging,prod)         │
+│ --config <file>             Load deterministic project options from JSON                     │
+│ --project <path>            Exact project path; explicitly select non-Git applications       │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Framework options ──────────────────────────────────────────────────────────────────────────┐
+│ Option                                Description                                            │
+│ ────────────────────────────────────  ────────────────────────────────────────────────────── │
+│ --spec <workflow>                     Development workflow: openspec, spec-kit, or manual    │
+│                                       (default: openspec)                                    │
+│ --agents <list>                       Comma-separated AI coding agents; none is valid only   │
+│                                       for Manual (default: copilot; none for Manual)         │
+│ --default-agent <agent>               Primary agent for Spec Kit when multiple agents are    │
+│                                       selected                                               │
+│ --governance <profile>                Repository-governance profile:                         │
+│                                       single-maintainer-gitflow, team-gitflow, or none       │
+│                                       (default: single-maintainer-gitflow)                   │
+│ --copilot-cloud / --no-copilot-cloud  Set up the GitHub-hosted Copilot coding agent for      │
+│                                       OpenSpec (default: false)                              │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option   Description                                                                         │
+│ ───────  ───────────────────────────────────────────────────────────────────                 │
+│ --check  Preview only and save bounded review records outside the repository                 │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                        Description                                                    │
+│ ────────────────────────────  ────────────────────────────────────────────────────────────── │
+│ --approve-plan <fingerprint>  Approve one complete current public adoption plan by its full  │
+│                               lowercase 64-hex SHA-256 fingerprint                           │
+│ --recover                     Inspect or continue only the authenticated recovery owned by   │
+│                               --approve-plan                                                 │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────────────────────────────────────────────────               │
+│ --json  Emit one schema-1 adoption result on stdout; bare JSON always previews               │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
 "
 `;
 
@@ -1095,6 +1363,8 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ Command   Description                                                                        │
 │ ────────  ────────────────────────────────────────────────────────────────────────────────── │
 │ assess    Read-only whole-project comparison against explicitly displayed installed targets  │
+│ adopt     Preview reviewed in-place adoption for a supported non-Liftoff application         │
+│ workflow  Review an explicit development-workflow transition                                 │
 │ validate  Validate a generated project manifest                                              │
 │ update    Preview and explicitly approve scoped project updates                              │
 │ repair    Review and repair supported project files with separate default-No approval        │
@@ -1292,8 +1562,9 @@ exports[`complete help screens > snapshots rich init command help 1`] = `
 │                                       for Manual (default: copilot; none for Manual)         │
 │ --default-agent <agent>               Primary agent for Spec Kit when multiple agents are    │
 │                                       selected                                               │
-│ --governance <profile>                Repository-governance profile (default:                │
-│                                       single-maintainer-gitflow)                             │
+│ --governance <profile>                Repository-governance profile:                         │
+│                                       single-maintainer-gitflow, team-gitflow, or none       │
+│                                       (default: single-maintainer-gitflow)                   │
 │ --copilot-cloud / --no-copilot-cloud  Set up the GitHub-hosted Copilot coding agent for      │
 │                                       OpenSpec (default: false)                              │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -1345,7 +1616,17 @@ exports[`complete help screens > snapshots rich regions command help 1`] = `
 
 exports[`complete help screens > snapshots rich repair command help 1`] = `
 "┌─ LIFTOFF / REPAIR ───────────────────────────────────────────────────────────────────────────┐
-│ Review and repair supported project files with separate default-No approval                  │
+│ Reviewed project repair with independent infrastructure, application and additive-agent      │
+│ scopes. Use --agents to add selections without removing existing agents; --default-agent     │
+│ explicitly changes only a current Spec Kit default. Manual writes only requested             │
+│ Liftoff-native integrations. OpenSpec and Spec Kit use pinned official operations in         │
+│ isolated staging, preserve existing framework history/defaults unless explicitly changed,    │
+│ and reject unknown output or occupied differing destinations. --check and JSON preview       │
+│ without project writes. Workstation tools, the OpenSpec global profile and exact project     │
+│ files require separate permissions. --approve-plan applies one current saved plan; --recover │
+│ --approve-plan addresses only its authenticated additive-agent transaction. Agent repair     │
+│ remains independently eligible while unrelated application or infrastructure work is         │
+│ incomplete and never claims broader readiness.                                               │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
 │ liftoff repair [project-path]                                                                │
@@ -1363,6 +1644,13 @@ exports[`complete help screens > snapshots rich repair command help 1`] = `
 │                                   staging, not a starter replacement                         │
 │ --subscription <id>               Exact Azure subscription ID for live absence checks        │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Framework options ──────────────────────────────────────────────────────────────────────────┐
+│ Option                   Description                                                         │
+│ ───────────────────────  ─────────────────────────────────────────────────────────────────── │
+│ --agents <list>          Comma-separated agents to add without removing existing selections; │
+│                          none is invalid (default: codex)                                    │
+│ --default-agent <agent>  Explicit new Spec Kit default; the agent is also added when absent  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
 │ Option            Description                                                                │
 │ ────────────────  ────────────────────────────────────────────────────────────────────────── │
@@ -1372,15 +1660,16 @@ exports[`complete help screens > snapshots rich repair command help 1`] = `
 │                   without a project or tool probes                                           │
 │ --inspect-layout  Inventory actual application paths and current targets without scripts or  │
 │                   writes                                                                     │
-│ --recover         Recover only eligible recorded repair effects; live, uncertain or changed  │
-│                   private workspace identities stay blocked                                  │
+│ --recover         Recover only eligible recorded repair effects; additive-agent recovery     │
+│                   also requires its exact --approve-plan fingerprint                         │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
 │ Option                          Description                                                  │
 │ ──────────────────────────────  ──────────────────────────────────────────────────────────── │
 │ --live                          Allow bounded Azure metadata reads with existing             │
 │                                 authentication; never read state                             │
-│ --approve-plan <fingerprint>    Optional automation: approve the exact saved plan; ordinary  │
+│ --approve-plan <fingerprint>    Optional automation: approve one exact saved application,    │
+│                                 binding, infrastructure, or additive-agent plan; ordinary    │
 │                                 TTY repair asks instead                                      │
 │ --verify-plan <fingerprint>     Optional automation: run exact staged checks; declared       │
 │                                 preparation/network require separate permissions, never file │
@@ -1389,6 +1678,10 @@ exports[`complete help screens > snapshots rich repair command help 1`] = `
 │                                 with --verify-plan; not global tools or file writes          │
 │ --allow-network                 Additionally authorize declared network effects for exact    │
 │                                 --verify-plan checks                                         │
+│ --install-tools                 Separately authorize pinned framework-tool preparation for   │
+│                                 an additive agent request                                    │
+│ --configure-openspec-profile    Separately authorize the required global OpenSpec profile    │
+│                                 for an additive OpenSpec agent request                       │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │

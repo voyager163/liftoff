@@ -125,7 +125,7 @@ jobs:
   test-shards:
     name: Platform tests (${{ matrix.os }}, shard ${{ matrix.shard }}/2)
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && matrix.shard == 2 && 75 || 45 }}
     strategy:
       fail-fast: false
       matrix:
@@ -224,9 +224,13 @@ jobs:
           LIFTOFF_FRAMEWORK_SMOKE: "1"
         run: npx vitest run tests/framework-smoke.test.ts
 
-      - name: Verify native Windows controller admission
+      - name: Verify native Windows process settlement
         if: runner.os == 'Windows' && matrix.shard == 1
-        run: npx vitest run tests/windows-job-runner.test.ts tests/repair-preparation.test.ts -t "settles a real native Node command|detects unref descendant"
+        run: >-
+          npx vitest run
+          tests/windows-job-runner.test.ts tests/repair-preparation.test.ts
+          tests/adoption-verification-execution.test.ts
+          -t "settles a real native Node command|detects unref descendant|runs exact checks in a disposable copy"
 
       - name: Run Windows project and packaging boundary coverage
         if: runner.os == 'Windows' && matrix.shard == 2
@@ -240,6 +244,9 @@ jobs:
           tests/repair-identity.test.ts tests/repair-approval.test.ts tests/repair-application-command.test.ts
           tests/repair-application.test.ts tests/repair-integrations.test.ts
           tests/repair-workspaces.test.ts tests/repair-framework.test.ts
+          tests/current-project-repair.test.ts
+          tests/adoption-inventory.test.ts tests/adoption-publication.test.ts
+          tests/adoption-transaction.test.ts tests/adopt-command.test.ts
           tests/windows-job-protocol.test.ts tests/windows-job-runner.test.ts
           tests/activation-history.test.ts tests/migration-revalidation.test.ts tests/migration-inspection.test.ts tests/reviewed-update.test.ts
           tests/import-boundaries.test.ts tests/contract.test.ts tests/infrastructure-layout.test.ts
@@ -250,6 +257,7 @@ jobs:
           tests/documentation.test.ts tests/repository-policy.test.ts tests/release-artifact.test.ts
           tests/telemetry-contract.test.ts tests/telemetry-config.test.ts tests/telemetry.test.ts
           tests/cli-telemetry.test.ts tests/telemetry-infrastructure.test.ts
+          --maxWorkers=1 --no-file-parallelism
 
       - name: Validate local repair with native OpenTofu
         if: matrix.shard == 1
@@ -273,6 +281,7 @@ jobs:
         run: >-
           npm run check:supported-stack && npm run build &&
           npx vitest run --shard=${{ matrix.shard }}/2 --allowOnly=false
+          --maxWorkers=2
           --reporter=default --reporter=json --outputFile.json=qualification/platform-tests.json
 
       - name: Store platform test evidence

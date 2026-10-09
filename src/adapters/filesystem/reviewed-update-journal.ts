@@ -3,7 +3,8 @@ import { canonicalJson, canonicalSha256, isRecord } from '../../domain/governanc
 import { FileSystemError } from '../../domain/project/errors.js';
 import { validateArtifactPathParts } from '../../domain/project/paths.js';
 import {
-  reviewedRepairTransactionPathParts, reviewedUpdateTransactionPathParts,
+  reviewedAdoptionTransactionPathParts, reviewedRepairTransactionPathParts,
+  reviewedUpdateTransactionPathParts,
   localVerificationTransactionPathParts, localVerificationTransactionSchemaVersion,
   type ReviewedTransactionKind
 } from '../../domain/project/reviewed-update-artifacts.js';
@@ -229,7 +230,13 @@ export function captureJournalRepairIdentity(value: unknown): RepairExecutionIde
 export function validateJournalPaths(paths: readonly string[][]): void {
   const files = new Set<string>();
   const spelling = new Map<string, string>();
-  for (const parts of [...paths, reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts, localVerificationTransactionPathParts]) {
+  for (const parts of [
+    ...paths,
+    reviewedUpdateTransactionPathParts,
+    reviewedRepairTransactionPathParts,
+    reviewedAdoptionTransactionPathParts,
+    localVerificationTransactionPathParts
+  ]) {
     for (let count = 1; count <= parts.length; count++) {
       const prefix = key(parts.slice(0, count));
       const identity = folded(prefix);
@@ -265,7 +272,9 @@ function parsePayload(value: unknown, platform: NodeJS.Platform): JournalPayload
   exactJournalKeys(value, payloadFields(value));
   const hasKind = Object.hasOwn(value, 'transactionKind');
   const kind = hasKind ? value.transactionKind : 'update';
-  if (kind !== 'update' && kind !== 'repair' && kind !== 'local-verification') fail('unregistered transaction kind.');
+  if (kind !== 'update' && kind !== 'repair' && kind !== 'adoption' &&
+      kind !== 'workflow-transition' &&
+      kind !== 'local-verification') fail('unregistered transaction kind.');
   const hasRepairIdentity = Object.hasOwn(value, 'repairIdentity');
   let repairIdentity: RepairExecutionIdentity | undefined;
   if (kind === 'local-verification') {
@@ -275,7 +284,7 @@ function parsePayload(value: unknown, platform: NodeJS.Platform): JournalPayload
   } else if (kind === 'repair' && value.schemaVersion === repairSchemaVersions.journal) {
     repairIdentity = captureJournalRepairIdentity(value.repairIdentity);
   } else if (value.schemaVersion !== 1 || hasRepairIdentity) {
-    fail(`unsupported ${kind} journal schema/identity; supported ${kind === 'repair' ? 'sealed legacy schema 1 or repair schema 2 with contract 1 and a registered recipe' : 'update schema 1 without repair identity'}. Use a CLI supporting the original record; do not rewrite it.`);
+    fail(`unsupported ${kind} journal schema/identity; supported ${kind === 'repair' ? 'sealed legacy schema 1 or repair schema 2 with contract 1 and a registered recipe' : `${kind} schema 1 without repair identity`}. Use a CLI supporting the original record; do not rewrite it.`);
   }
   if (typeof value.projectRoot !== 'string' || value.projectRoot.length === 0) fail('unsupported, wrong-project, or oversized recovery journal.');
   const mutations = array(value.mutations, reviewedJournalLimits.mutations, 'unsupported, wrong-project, or oversized recovery journal.').map((raw): StoredMutation => {

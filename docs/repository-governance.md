@@ -1,10 +1,13 @@
 # Repository governance and deterministic setup
 
 Repository governance is enabled by default through the
-`single-maintainer-gitflow` profile; `--governance none` opts out. Initialization
-writes local managed-core artifacts only. It does not run an agent, mutate Git,
-contact GitHub or Azure, configure rulesets, provision runners, deploy, or start
-monitoring.
+`single-maintainer-gitflow` profile. `--governance team-gitflow` selects the
+local team handoff, while `--governance none` opts out. Single-maintainer uses
+automated checks with zero additional human approvals; team requires one current
+independent human pull request approval. Neither profile adds deployment
+reviewers. Initialization writes local managed-core artifacts only. It does not
+run an agent, mutate Git, contact GitHub or Azure, configure rulesets, provision
+runners, deploy, or start monitoring.
 
 Primary path after initialization:
 
@@ -80,6 +83,9 @@ The complete policy is packaged at
 [`assets/governance/single-maintainer-gitflow/policy.md`](../assets/governance/single-maintainer-gitflow/policy.md).
 Policy version 6 treats numbered policy sections as capability chapters, not
 execution order. The managed phase graph is the sole execution-order authority.
+Current team generation uses
+[`assets/governance/team-gitflow/policy-v1.md`](../assets/governance/team-gitflow/policy-v1.md)
+and remains a local handoff until separately authorized live activation exists.
 
 ## Read-only governance assessment
 
@@ -420,9 +426,10 @@ Keep the selected project in every command; repair takes a
 positional project path. Recover interrupted repair through
 `liftoff repair [project-path] --recover`, not update authority.
 
-Repair does not accept `--force`, `--yes`, or `--add-agents`. Agent installation
-and the public stateful migration coordinator are not implemented; an internal
-stateful engine does not make the public command executable. Deployed, unknown,
+Repair does not accept `--force`, `--yes`, or `--add-agents`. Additive agent
+integration uses a separate exact `liftoff repair --agents` plan and cannot
+remove existing selections. The public stateful migration coordinator is not
+implemented; an internal stateful engine does not make the public command executable. Deployed, unknown,
 ambiguous, and unsupported cases stay plan-only with their source and state
 untouched. Do not edit manifest provenance, copy a fresh init scaffold over the
 project, or recommend manual state moves. A repaired infrastructure layout does

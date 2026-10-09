@@ -276,6 +276,14 @@ describe('historical policy validation is independent of current release policy'
     }, version)).toThrow(/policyVersion.*7/);
   });
 
+  it('rejects fabricated team governance before interpreting historical proof', () => {
+    expect(() => createManifestGovernanceReader(context()).normalizeManifestGovernance({
+      profile: 'team-gitflow',
+      state: 'handoff-generated',
+      policyVersion: '1'
+    }, 7)).toThrow(/requires manifest v8/u);
+  });
+
   it('rejects v7 policy 7 before an injected future identity validator can admit it', () => {
     const raw = fixture('0.12.3-standard-go');
     const originalIdentity = enabled(raw).activationIdentity!;

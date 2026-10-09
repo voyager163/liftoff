@@ -217,7 +217,11 @@ describe('bounded installed-target whole-project producer', () => {
     expect(nonGit.project.kind).toBe('non-git');
     expect(nonGit.target?.selectedPlugins).toBeNull();
     expect(find(nonGit, 'project.manifest')).toMatchObject({ classification: 'missing',
-      remediation: { category: 'adoption', available: false, previewCommand: null } });
+      remediation: {
+        category: 'adoption',
+        available: true,
+        previewCommand: ['liftoff', 'adopt', '--project', root, '--check', '--governance', 'single-maintainer-gitflow']
+      } });
     await mkdir(path.join(root, '.git'));
     expect((await assessProject({ start: root, explicitRoot: false })).project.kind).toBe('git');
   });

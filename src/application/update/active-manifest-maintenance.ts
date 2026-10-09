@@ -9,7 +9,8 @@ import { FileSystemError } from '../../domain/project/errors.js';
 import { activationTargetHistoryPathParts, validateActivationTargetHistoryReference } from '../../domain/project/manifest/activation-target-history.js';
 import type { LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import {
-  reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts, localVerificationTransactionPathParts
+  reviewedAdoptionTransactionPathParts, reviewedUpdateTransactionPathParts,
+  reviewedRepairTransactionPathParts, localVerificationTransactionPathParts
 } from '../../domain/project/reviewed-update-artifacts.js';
 import { rawHistoryDigest } from '../../governance-activation/history-contracts.js';
 import { isSensitiveActivationPath } from '../../governance-activation/inputs.js';
@@ -20,7 +21,11 @@ import type { ModernManagedCoreInput } from '../project/modern-managed-core.js';
 import { prepareManifestMaintenanceCandidate } from './manifest-maintenance.js';
 import { readPreservedActivationTargetManifest } from './activation-target-history.js';
 
-const competingTransactionPaths = [reviewedRepairTransactionPathParts, localVerificationTransactionPathParts];
+const competingTransactionPaths = [
+  reviewedRepairTransactionPathParts,
+  reviewedAdoptionTransactionPathParts,
+  localVerificationTransactionPathParts
+];
 const transactionPaths = [reviewedUpdateTransactionPathParts, ...competingTransactionPaths];
 export function activeMaintenanceFilePreconditions(source: ModernMaintenanceSource) {
   // Reserved journals are owned by their codecs, never supplied as ordinary project-data preconditions.

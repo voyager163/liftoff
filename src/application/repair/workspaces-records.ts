@@ -1,12 +1,14 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
+import { types } from 'node:util';
 import { canonicalJson, canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
 import { validateRepairExecutionIdentity } from '../../domain/repair/identity.js';
 import { liftoffVersion } from '../../version.js';
 import {
   RepairWorkspaceError, repairWorkspaceRoleNames,
-  type CreateRepairVerificationWorkspaceOptions, type RepairWorkspaceActivity,
-  type RepairWorkspaceFileIdentity, type RepairWorkspaceRecord
+  type AdoptionVerificationWorkspaceIdentity, type CreateVerificationWorkspaceOptions,
+  type RepairWorkspaceActivity, type RepairWorkspaceFileIdentity,
+  type VerificationWorkspaceRecord
 } from './workspaces-types.js';
 
 export const repairWorkspaceIndexKey = canonicalSha256('liftoff-repair-workspace-index-v1');
@@ -32,12 +34,54 @@ export function workspaceDigest(value: unknown): asserts value is string {
   }
 }
 
+function ownData(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value) || types.isProxy(value) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(value))) {
+    return null;
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Reflect.ownKeys(descriptors);
+  if (keys.some(key => typeof key !== 'string')) return null;
+  const captured: Record<string, unknown> = {};
+  for (const key of keys as string[]) {
+    const descriptor = descriptors[key];
+    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return null;
+    captured[key] = descriptor.value;
+  }
+  return captured;
+}
+
 function exact(value: unknown, fields: readonly string[]): Record<string, unknown> {
-  if (!isRecord(value) || Object.keys(value).length !== fields.length ||
-    fields.some((field) => !Object.hasOwn(value, field))) {
+  const captured = ownData(value);
+  if (captured === null || Object.keys(captured).length !== fields.length ||
+    fields.some((field) => !Object.hasOwn(captured, field))) {
     throw new RepairWorkspaceError('registry-invalid', 'Workspace metadata has missing or unsupported fields.');
   }
-  return value;
+  return captured;
+}
+
+function ownDataArray(value: unknown, maximum: number): unknown[] {
+  if (typeof value !== 'object' || value === null || types.isProxy(value) ||
+      !Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      value.length > maximum) {
+    throw new RepairWorkspaceError('limits-exceeded', 'Workspace metadata has an invalid bounded inventory.');
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Reflect.ownKeys(descriptors);
+  if (keys.some(key => typeof key !== 'string') ||
+      keys.length !== value.length + 1 ||
+      !Object.hasOwn(descriptors, 'length')) {
+    throw new RepairWorkspaceError('registry-invalid', 'Workspace metadata inventory must be dense own data.');
+  }
+  const captured: unknown[] = [];
+  for (let index = 0; index < value.length; index++) {
+    const descriptor = descriptors[String(index)];
+    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
+      throw new RepairWorkspaceError('registry-invalid', 'Workspace metadata inventory must be dense own data.');
+    }
+    captured.push(descriptor.value);
+  }
+  return captured;
 }
 
 function integer(value: unknown, minimum = 0): asserts value is number {
@@ -73,15 +117,45 @@ export function sameWorkspaceFileIdentity(left: RepairWorkspaceFileIdentity, rig
   return left.device === right.device && left.inode === right.inode && left.birthtime === right.birthtime;
 }
 
-export function validateWorkspaceRequest(value: unknown): CreateRepairVerificationWorkspaceOptions {
-  const request = exact(value, ['planFingerprint', 'repairIdentity', 'patchStagingRoot', 'bindings', 'approvedScopes']);
+function validateAdoptionIdentity(value: unknown): AdoptionVerificationWorkspaceIdentity {
+  const identity = exact(value, [
+    'schemaVersion', 'kind', 'cliVersion', 'adoptionVerificationContractVersion'
+  ]);
+  if (identity.schemaVersion !== 1 ||
+      identity.kind !== 'liftoff-adoption-verification-execution' ||
+      identity.cliVersion !== liftoffVersion ||
+      identity.adoptionVerificationContractVersion !== 1) {
+    throw new RepairWorkspaceError(
+      'unsupported-record',
+      'Workspace adoption-verification identity is not supported by this CLI.'
+    );
+  }
+  return structuredClone(identity) as unknown as AdoptionVerificationWorkspaceIdentity;
+}
+
+export function validateWorkspaceRequest(value: unknown): CreateVerificationWorkspaceOptions {
+  const captured = ownData(value);
+  if (captured === null) {
+    throw new RepairWorkspaceError('registry-invalid', 'Workspace metadata has missing or unsupported fields.');
+  }
+  const adoption = Object.hasOwn(captured, 'adoptionIdentity');
+  const request = exact(captured, [
+    'planFingerprint', adoption ? 'adoptionIdentity' : 'repairIdentity',
+    'patchStagingRoot', 'bindings', 'approvedScopes'
+  ]);
   workspaceDigest(request.planFingerprint);
   nativePath(request.patchStagingRoot);
-  let identity;
-  try { identity = validateRepairExecutionIdentity(request.repairIdentity); }
-  catch { throw new RepairWorkspaceError('unsupported-record', 'Workspace repair identity is not supported by this CLI.'); }
-  if (identity.cliVersion !== liftoffVersion) {
-    throw new RepairWorkspaceError('unsupported-record', 'Workspace CLI identity is not supported by this implementation.');
+  if (adoption) {
+    validateAdoptionIdentity(request.adoptionIdentity);
+  } else {
+    let identity;
+    try { identity = validateRepairExecutionIdentity(request.repairIdentity); }
+    catch {
+      throw new RepairWorkspaceError('unsupported-record', 'Workspace repair identity is not supported by this CLI.');
+    }
+    if (identity.cliVersion !== liftoffVersion) {
+      throw new RepairWorkspaceError('unsupported-record', 'Workspace CLI identity is not supported by this implementation.');
+    }
   }
   const bindings = exact(request.bindings, ['inputDigest', 'verificationPolicyDigest', 'providerDigest', 'toolchainDigest']);
   for (const digest of Object.values(bindings)) workspaceDigest(digest);
@@ -89,10 +163,10 @@ export function validateWorkspaceRequest(value: unknown): CreateRepairVerificati
   if (Object.values(scopes).some((value) => typeof value !== 'boolean') || scopes.projectCode !== true) {
     throw new RepairWorkspaceError('permission-denied', 'Private verification requires explicit project-code scope and separate declared effect permissions.');
   }
-  return structuredClone(request) as unknown as CreateRepairVerificationWorkspaceOptions;
+  return structuredClone(request) as unknown as CreateVerificationWorkspaceOptions;
 }
 
-export function validateWorkspaceActivity(value: unknown, record: RepairWorkspaceRecord): RepairWorkspaceActivity {
+export function validateWorkspaceActivity(value: unknown, record: VerificationWorkspaceRecord): RepairWorkspaceActivity {
   const activity = exact(value, ['kind', 'commandDigest', 'network', 'lifecycle']);
   workspaceDigest(activity.commandDigest);
   if (!['preparation', 'verification'].includes(String(activity.kind)) ||
@@ -116,34 +190,49 @@ export function validateWorkspaceIndex(value: unknown, projectRoot: string): Rep
     throw new RepairWorkspaceError('scope-mismatch', 'Private workspace index belongs to another project.');
   }
   integer(index.revision, 1);
-  if (!Array.isArray(index.workspaces) || index.workspaces.length > maximumRepairWorkspaces) {
-    throw new RepairWorkspaceError('limits-exceeded', 'The bounded private workspace index is full or invalid.');
-  }
-  for (const id of index.workspaces) workspaceDigest(id);
-  if (new Set(index.workspaces).size !== index.workspaces.length) {
+  const workspaces = ownDataArray(index.workspaces, maximumRepairWorkspaces);
+  for (const id of workspaces) workspaceDigest(id);
+  if (new Set(workspaces).size !== workspaces.length) {
     throw new RepairWorkspaceError('registry-invalid', 'Private workspace index contains duplicate identities.');
   }
-  return structuredClone(index) as unknown as RepairWorkspaceIndex;
+  return structuredClone({ ...index, workspaces }) as unknown as RepairWorkspaceIndex;
 }
 
 export function validateWorkspaceRecord(
   value: unknown,
   expected: { projectRoot: string; directory: (workspaceId: string) => string }
-): RepairWorkspaceRecord {
-  const record = exact(value, [
+): VerificationWorkspaceRecord {
+  const captured = ownData(value);
+  if (captured === null) {
+    throw new RepairWorkspaceError('registry-invalid', 'Workspace metadata has missing or unsupported fields.');
+  }
+  const adoption = captured.kind === 'liftoff-adoption-verification-workspace';
+  const record = exact(captured, [
     'schemaVersion', 'kind', 'workspaceId', 'revision', 'projectRoot', 'projectIdentity',
-    'patchStagingRoot', 'patchStagingIdentity', 'planFingerprint', 'repairIdentity',
+    'patchStagingRoot', 'patchStagingIdentity', 'planFingerprint',
+    adoption ? 'adoptionIdentity' : 'repairIdentity',
     'bindings', 'approvedScopes', 'directory', 'creationIdentity', 'roles', 'owner',
     'phase', 'lastCheckpoint', 'activities', 'cleanup', 'createdAt', 'updatedAt'
   ]);
-  if (record.schemaVersion !== 1 || record.kind !== 'liftoff-repair-workspace') {
+  if (record.schemaVersion !== 1 ||
+      !['liftoff-repair-workspace', 'liftoff-adoption-verification-workspace']
+        .includes(String(record.kind))) {
     throw new RepairWorkspaceError('unsupported-record', 'Private workspace record schema is unsupported; no cleanup was authorized.');
   }
   workspaceDigest(record.workspaceId);
   integer(record.revision, 1);
-  validateWorkspaceRequest({
-    planFingerprint: record.planFingerprint, repairIdentity: record.repairIdentity,
-    patchStagingRoot: record.patchStagingRoot, bindings: record.bindings, approvedScopes: record.approvedScopes
+  validateWorkspaceRequest(adoption ? {
+    planFingerprint: record.planFingerprint,
+    adoptionIdentity: record.adoptionIdentity,
+    patchStagingRoot: record.patchStagingRoot,
+    bindings: record.bindings,
+    approvedScopes: record.approvedScopes
+  } : {
+    planFingerprint: record.planFingerprint,
+    repairIdentity: record.repairIdentity,
+    patchStagingRoot: record.patchStagingRoot,
+    bindings: record.bindings,
+    approvedScopes: record.approvedScopes
   });
   if (record.projectRoot !== expected.projectRoot || record.directory !== expected.directory(record.workspaceId)) {
     throw new RepairWorkspaceError('scope-mismatch', 'Private workspace location is not the exact registered project-bound location.');
@@ -183,25 +272,23 @@ export function validateWorkspaceRecord(
   }
   const activities = exact(record.activities, ['started', 'settled', 'uncertain', 'inFlight']);
   for (const value of [activities.started, activities.settled, activities.uncertain]) integer(value);
-  if (!Array.isArray(activities.inFlight) || activities.inFlight.length > 32) {
-    throw new RepairWorkspaceError('limits-exceeded', 'Workspace activity inventory exceeds its bound.');
-  }
+  const inFlight = ownDataArray(activities.inFlight, 32);
   const ids = new Set<string>();
-  for (const value of activities.inFlight) {
+  for (const value of inFlight) {
     const activity = exact(value, ['id', 'kind', 'commandDigest', 'network', 'lifecycle']);
     workspaceDigest(activity.id);
     if (ids.has(activity.id)) throw new RepairWorkspaceError('registry-invalid', 'Duplicate workspace activity identity.');
     ids.add(activity.id);
     const { id: _id, ...request } = activity;
-    validateWorkspaceActivity(request, record as unknown as RepairWorkspaceRecord);
+    validateWorkspaceActivity(request, record as unknown as VerificationWorkspaceRecord);
   }
-  if ((activities.settled as number) + (activities.uncertain as number) + activities.inFlight.length !== activities.started) {
+  if ((activities.settled as number) + (activities.uncertain as number) + inFlight.length !== activities.started) {
     throw new RepairWorkspaceError('registry-invalid', 'Workspace activity counts do not match their registered inventory.');
   }
   if (owner.state === 'released') {
     const release = exact(owner.release, ['releasedAt', 'allKnownCommandsSettled']);
     timestamp(release.releasedAt);
-    if (release.allKnownCommandsSettled !== true || activities.inFlight.length || activities.uncertain !== 0) {
+    if (release.allKnownCommandsSettled !== true || inFlight.length || activities.uncertain !== 0) {
       throw new RepairWorkspaceError('owner-uncertain', 'Workspace release does not prove all known commands settled.');
     }
   } else if (owner.release !== null) {
@@ -216,7 +303,7 @@ export function validateWorkspaceRecord(
   timestamp(record.createdAt);
   timestamp(record.updatedAt);
   if (record.updatedAt < record.createdAt) throw new RepairWorkspaceError('registry-invalid', 'Workspace progress predates its creation.');
-  return structuredClone(record) as unknown as RepairWorkspaceRecord;
+  return structuredClone(record) as unknown as VerificationWorkspaceRecord;
 }
 
 export function workspaceSeal(payload: unknown, key: string): unknown {
@@ -227,6 +314,58 @@ export function workspaceSeal(payload: unknown, key: string): unknown {
     payload,
     mac: createHmac('sha256', Buffer.from(key, 'hex')).update(canonicalJson(payload)).digest('hex')
   };
+}
+
+export function adoptionWorkspaceResultSeal(
+  payload: unknown, key: string, workspaceId: string, planFingerprint: string
+): unknown {
+  workspaceDigest(key);
+  workspaceDigest(workspaceId);
+  workspaceDigest(planFingerprint);
+  const authenticated = { workspaceId, planFingerprint, payload };
+  return {
+    schemaVersion: 1,
+    kind: 'liftoff-adoption-verification-result-seal',
+    ...authenticated,
+    mac: createHmac('sha256', Buffer.from(key, 'hex'))
+      .update(canonicalJson(authenticated)).digest('hex')
+  };
+}
+
+export function openAdoptionWorkspaceResultSeal(
+  value: unknown, key: string, workspaceId: string, planFingerprint: string
+): unknown {
+  workspaceDigest(key);
+  workspaceDigest(workspaceId);
+  workspaceDigest(planFingerprint);
+  const envelope = exact(value, [
+    'schemaVersion', 'kind', 'workspaceId', 'planFingerprint', 'payload', 'mac'
+  ]);
+  if (envelope.schemaVersion !== 1 ||
+      envelope.kind !== 'liftoff-adoption-verification-result-seal') {
+    throw new RepairWorkspaceError(
+      'unsupported-record',
+      'Adoption verification result authentication schema is unsupported.'
+    );
+  }
+  if (envelope.workspaceId !== workspaceId ||
+      envelope.planFingerprint !== planFingerprint) {
+    throw new RepairWorkspaceError(
+      'scope-mismatch',
+      'Adoption verification result belongs to another workspace or plan.'
+    );
+  }
+  workspaceDigest(envelope.mac);
+  const expected = createHmac('sha256', Buffer.from(key, 'hex')).update(canonicalJson({
+    workspaceId, planFingerprint, payload: envelope.payload
+  })).digest();
+  if (!timingSafeEqual(expected, Buffer.from(envelope.mac, 'hex'))) {
+    throw new RepairWorkspaceError(
+      'unauthenticated-record',
+      'Adoption verification result authentication failed.'
+    );
+  }
+  return envelope.payload;
 }
 
 export function openWorkspaceSeal(value: unknown, key: string): unknown {

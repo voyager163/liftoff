@@ -320,7 +320,7 @@ function deferredAgentRepair(
     requestedDefaultAgent: plan.defaultAgent?.id ?? null,
     changesDefault,
     executable: false,
-    limitation: 'Agent installation and framework default changes are not implemented by the public repair coordinator. Update preserves recorded integrations and the requested configuration.'
+    limitation: 'Update cannot add agents or change framework defaults. Use the separate additive liftoff repair --agents plan; update preserves recorded integrations and the requested configuration.'
   };
 }
 

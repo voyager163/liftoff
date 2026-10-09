@@ -168,8 +168,14 @@ describe('planner', () => {
       cloud: 'azure',
       governanceProfile: 'enterprise-theatre'
     }, { requireProjectName: true })).toThrow(
-      /Unknown repository governance profile.*single-maintainer-gitflow, none/
+      /Unknown repository governance profile.*single-maintainer-gitflow, team-gitflow, none/
     );
+    expect(() => buildProjectPlan({
+      projectName: 'Historical Team Governance',
+      pattern: 'rag',
+      cloud: 'azure',
+      governanceProfile: 'team-gitflow'
+    }, { requireProjectName: true })).toThrow(/current manifest-v8/u);
   });
 
   it('merges governance configuration only when an override is defined', () => {

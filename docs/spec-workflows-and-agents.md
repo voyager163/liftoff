@@ -287,8 +287,10 @@ invokes it, inventories application source, or stages a patch.
 All three native integrations have the same repair body, differing only in native
 headers. They first run `liftoff repair --capabilities --json`, which needs no
 project. Before accessing project files, they require repair contract 1 and the
-exact advertised recipe, layout identities, modes and document schemas needed
-for the requested operation. Missing support stops that operation and offers
+exact advertised recipe/layout identities for recipe-backed work, or the
+advertised `currentApplication.additiveAgentRepair` boundary for agent
+integration work, plus the required modes and document schemas. Missing support
+stops that operation and offers
 `liftoff upgrade --check --json`; an upgrade requires separate permission.
 An older CLI is never worked around by directly editing the application.
 
@@ -428,6 +430,17 @@ Framework files remain owned by the official initializer. Liftoff validates
 them but excludes framework-owned output from durable artifact hashes so a
 framework can manage its own lifecycle.
 
+The same official ownership applies when `liftoff workflow set` selects
+OpenSpec or Spec Kit for an existing current project. Liftoff runs the pinned
+initializer only in isolated staging, validates its complete output, rejects
+occupied differing destinations and active overlapping work, then places only
+the exact staged files into the separately approved transition transaction.
+If Spec Kit produces no tracked file under `specs/`, the same reviewed
+transaction adds Liftoff's empty `specs/.gitkeep` repository placeholder so the
+required history root survives version control. Existing inactive framework
+history remains outside managed-core ownership, and the expected complete
+target inventory is rechecked at commit and readback.
+
 To align an existing OpenSpec project, configure both delivery and all workflows:
 
 ```bash
@@ -448,17 +461,37 @@ does not invent an active change, approval, or execution proof.
 
 ### Agent installation is separate
 
-The public repair coordinator does **not** implement agent installation,
-framework default changes or stateful migration execution. It does not accept
-`--add-agents`, `--force` or `--yes`. Do not reinitialize an existing application,
-edit its manifest to claim another agent, or invent an installation command.
-Ordinary update can restore managed Liftoff wrappers for already-recorded agents;
-it does not initialize or repair official framework integrations. Unselected
-agents, custom neighboring skills and framework defaults stay untouched.
+The public repair coordinator implements **additive-only** agent integration
+through `liftoff repair --agents <list>`. It does not accept `--add-agents`,
+`--force`, `--yes`, `none`, or any removal request. Existing selections survive.
+For Spec Kit, the recorded default also survives unless the exact plan was
+requested with `--default-agent`; that selected default is added when absent.
+Do not reinitialize an existing application or edit its manifest to claim an
+installation.
 
-Tool/dependency installation and global OpenSpec profile configuration retain
-separate permissions. Missing framework markers require a separately supported,
-reviewed framework workflow; a repair integration is not proof of installation.
+Manual repair writes only the explicitly requested agent's applicable
+Liftoff-native managed integrations. OpenSpec and Spec Kit use their pinned
+official integration operations in an isolated home and staging tree. Liftoff
+seeds only observed initialized framework output, permits
+changes only under the requested integration paths (plus exact Spec Kit
+integration state when applicable), validates the complete framework contract,
+and commits only the approved bytes. Existing framework history, active work,
+unselected integrations, custom neighboring skills and unrelated files remain
+unchanged. An occupied differing destination or unknown official output blocks.
+
+A requested agent that is already recorded is not assumed installed: missing
+managed or official integration output produces an executable repair plan.
+Conversely, metadata-only changes without real applicable output are rejected.
+Agent repair is independently scoped, so unrelated application or
+infrastructure limitations remain visible without blocking an otherwise
+eligible integration repair or becoming a broader readiness claim.
+
+Tool installation and global OpenSpec profile configuration retain separate
+permissions. `--check` grants neither. `--install-tools` and
+`--configure-openspec-profile` may prepare a new plan only on their applicable
+external workflow; `--approve-plan` and fingerprint-selected recovery reject
+those machine permissions. Missing or unknown framework seeds are not
+fabricated and remain blockers.
 
 Install the exact selected framework release with its supported package manager:
 

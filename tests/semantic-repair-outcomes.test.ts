@@ -74,6 +74,12 @@ vi.mock('../src/application/repair/verification-receipt.js',()=>({
 }));
 vi.mock('../src/application/repair/backup.js',()=>({preserveRepairOriginals:vi.fn(async()=>{f.calls.push('backup');return {path:'/injected/backup',indexKey:'injected'};})}));
 vi.mock('../src/application/repair/history.js',()=>({repairHistoryMutations:()=>[]}));
+vi.mock('../src/application/repair/active-binding-publication.js',()=>({
+  createActiveBindingPublicationIntent:()=>null,
+  prepareActiveBindingPublication:vi.fn(async()=>null),
+  publishActiveBindingPlan:vi.fn(),
+  readActiveBindingPublicationPlan:vi.fn(async()=>null)
+}));
 vi.mock('../src/application/repair/readback.js',()=>({assertRepairReadback:vi.fn(async()=>{f.calls.push('readback');if(f.throwReadback)throw new Error('injected readback failure');})}));
 vi.mock('../src/application/repair/guidance.js',async original=>({...await original<typeof import('../src/application/repair/guidance.js')>(),repairAgentActions:()=>[],repairResumeActions:()=>[]}));
 vi.mock('../src/application/repair/report.js',async original=>({...await original<typeof import('../src/application/repair/report.js')>(),emitRepairReport:(_ctx:unknown,_json:unknown,report:unknown)=>{f.reports.push(report);}}));

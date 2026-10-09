@@ -22,6 +22,7 @@ export interface CommandContext {
   updatePreview?: Parameters<typeof resolveUpdatePreviewLocation>[1];
   approveUpdatePlan?: UpdateApprovalPrompt;
   approveRepairPlan?: UpdateApprovalPrompt;
+  approveWorkflowTransitionPlan?: UpdateApprovalPrompt;
   updateNow?: () => Date;
   workstationProbe?: WorkstationProbeOptions;
   workstationNoProgressStore?: WorkstationNoProgressStore;

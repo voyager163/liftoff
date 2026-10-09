@@ -6,10 +6,24 @@ import type { RepairDiscovery } from './discovery.js';
 import type { mutationDescriptors } from './preview.js';
 import type { RepairVerificationReceipt } from './verification-receipt.js';
 import type { ApplicationVerificationResult } from './application-types.js';
+import type {
+  ActiveBindingCommittedEffect
+} from './active-binding-publication.js';
 import type { RepairWorkspaceInspection, RepairWorkspaceRecoveryResult } from './workspaces-types.js';
 import { repairCapabilities } from './capabilities.js';
+import type {
+  WorkflowTransitionExecutionOutcome
+} from '../workflow-transition/execution.js';
+import type {
+  WorkflowTransitionPlanReport
+} from '../workflow-transition/plan.js';
 
-export type RepairScope = 'local-infrastructure' | 'application-layout' | 'repair-recovery';
+export type RepairScope =
+  | 'local-infrastructure'
+  | 'application-layout'
+  | 'active-binding-publication'
+  | 'agent-integration'
+  | 'repair-recovery';
 
 interface RepairActionBase {
   id: string;
@@ -55,6 +69,19 @@ export interface RepairReport {
   applicationSummary?: string[];
   verificationReceipt?: RepairVerificationReceipt;
   verificationResult?: ApplicationVerificationResult;
+  bindingPublication?: {
+    status: string;
+    applicationPlanFingerprint: string;
+    publicationPlanFingerprint?: string;
+    targetActiveLayoutDigest: string;
+    receiptPath?: string;
+    transactionDigest?: string | null;
+    cleanupFailures?: readonly string[];
+    rollbackFailures?: readonly string[];
+    transactionCommitted?: boolean;
+    committedApplicationEffects?:
+      readonly ActiveBindingCommittedEffect[];
+  };
   verificationEffects?: {
     attempted: boolean;
     networkAuthorized: boolean;
@@ -65,6 +92,9 @@ export interface RepairReport {
   recovery?: { schemaVersion?: number; identity?: RepairExecutionIdentity };
   privateWorkspaces?: RepairWorkspaceInspection;
   privateWorkspaceRecovery?: RepairWorkspaceRecoveryResult;
+  agentPlan?: WorkflowTransitionPlanReport;
+  agentTransaction?: WorkflowTransitionExecutionOutcome;
+  machineChanges?: readonly string[];
 }
 
 export function emitRepairReport(context: ExecutionContext, json: boolean, report: RepairReport): void {
@@ -80,6 +110,8 @@ export function emitRepairReport(context: ExecutionContext, json: boolean, repor
   context.presentation.definitions('Selected repair scope', [
     { label: 'Project', value: report.projectRoot },
     { label: 'Scope', value: report.requestedScope === 'application-layout' ? 'Reviewed application files' :
+      report.requestedScope === 'active-binding-publication' ? 'Reviewed active bindings' :
+      report.requestedScope === 'agent-integration' ? 'Additive agent integrations' :
       report.requestedScope === 'repair-recovery' ? 'Recorded interrupted repair' : 'Local Azure infrastructure layout' },
     ...(report.layout ? [{ label: 'Layout', value: report.layout }] : []),
     ...(report.eligibility ? [{ label: 'Eligibility', value: report.eligibility.status }] : []),
@@ -92,8 +124,42 @@ export function emitRepairReport(context: ExecutionContext, json: boolean, repor
   if (report.operations?.length) context.presentation.bullets('Exact project file changes',
     report.operations.map((entry) =>
       `${entry.type} ${entry.pathParts.join('/')}${entry.digest ? ` (SHA-256 ${entry.digest})` : ''}`));
+  if (report.agentPlan?.execution.status === 'ready-for-file-approval') {
+    context.presentation.bullets(
+      'Exact additive agent changes',
+      report.agentPlan.execution.effects.map(effect =>
+        `${effect.operation} ${effect.pathParts.join('/')} ` +
+        `(SHA-256 ${effect.contentDigest ?? 'deleted'})`
+      )
+    );
+  }
+  if (report.machineChanges?.length) {
+    context.presentation.bullets(
+      'Separately authorized machine changes',
+      [...report.machineChanges]
+    );
+  }
   if (report.applicationSummary?.length) context.presentation.bullets('Application review', report.applicationSummary);
   if (report.validationSummary?.length) context.presentation.bullets('Separate validation effects', report.validationSummary);
+  if (report.bindingPublication) context.presentation.definitions('Active-binding publication', [
+    { label: 'Status', value: report.bindingPublication.status },
+    { label: 'Application plan', value: report.bindingPublication.applicationPlanFingerprint },
+    ...(report.bindingPublication.publicationPlanFingerprint
+      ? [{ label: 'Binding plan', value: report.bindingPublication.publicationPlanFingerprint }]
+      : []),
+    { label: 'Target layout', value: report.bindingPublication.targetActiveLayoutDigest },
+    ...(report.bindingPublication.committedApplicationEffects
+      ? [{
+          label: 'Committed application effects',
+          value: report.bindingPublication.committedApplicationEffects.map(
+            effect => `${effect.type} ${effect.pathParts.join('/')}`
+          ).join(', ')
+        }]
+      : []),
+    ...(report.bindingPublication.receiptPath
+      ? [{ label: 'External plan receipt', value: report.bindingPublication.receiptPath }]
+      : [])
+  ]);
   if (report.verificationEffects?.attempted) context.presentation.bullets('Previously authorized effects', [
     `Staged verification ${report.verificationEffects.outcome === 'passed' ? 'passed its declared checks' : 'ran or was attempted without complete verification'}.`,
     ...(report.verificationEffects.dependencyPreparationAuthorized ? ['Locked dependency preparation was separately authorized in a private environment.'] : []),

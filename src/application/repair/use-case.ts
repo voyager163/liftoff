@@ -32,6 +32,14 @@ import { repairAgentActions, repairCheckAction, repairCommandAction, repairResum
 import { repairHistoryMutations } from './history.js';
 import { assertRepairReadback } from './readback.js';
 import { inspectRepairVerificationWorkspaces, recoverRepairVerificationWorkspaces } from './workspaces.js';
+import {
+  prepareActiveBindingPublication, publishActiveBindingPlan,
+  readActiveBindingPublicationPlan
+} from './active-binding-publication.js';
+import {
+  readWorkflowTransitionPlanIfPresent
+} from '../workflow-transition/plan.js';
+import { repairAgentIntegrations } from './agent-integrations.js';
 export type { RepairRequest } from './request.js';
 
 interface RepairInspection {
@@ -117,12 +125,15 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
   let selectedManifest: SupportedProjectManifest | undefined;
   let approval: UpdateApprovalResult | undefined;
   let validationAttempted = false;
+  let agentScope =
+    request.agents !== undefined || request.defaultAgent !== undefined;
   const now = () => context.updateNow?.() ?? new Date();
   const storage = { ...context.updatePreview, env: context.updatePreview?.env ?? context.env };
   const base = (): RepairReport => ({
     schemaVersion: repairSchemaVersions.report,
     operationKind: request.recover ? 'recover' : request.verifyPlan ? 'verify' : request.inspectLayout ? 'inspect-layout' : request.approvePlan ? 'apply' : 'check',
-    requestedScope: request.recover ? 'repair-recovery' :
+    requestedScope: agentScope ? 'agent-integration' :
+      request.recover ? 'repair-recovery' :
       request.inspectLayout || request.applicationPatch || request.verifyPlan ? 'application-layout' : 'local-infrastructure',
     projectRoot: root, status: 'blocked', committed, capabilities: repairCapabilities,
     repairScopeComplete: false, verification: 'not-run', message: '', blockers: [], nextActions: [],
@@ -174,7 +185,47 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
         ] });
       return 2;
     }
-    const pending = await inspectReviewedUpdateTransaction(root, { transactionKind: 'repair', approvalStore });
+    const pending = await inspectReviewedUpdateTransaction(root, {
+      transactionKind: 'repair',
+      approvalStore
+    });
+    const savedWorkflowPlan = request.approvePlan
+      ? await readWorkflowTransitionPlanIfPresent(
+          root,
+          request.approvePlan,
+          now(),
+          storage,
+          request.recover
+        )
+      : undefined;
+    agentScope ||= savedWorkflowPlan?.operation === 'agent-repair';
+    if (request.agents !== undefined ||
+        request.defaultAgent !== undefined ||
+        savedWorkflowPlan?.operation === 'agent-repair') {
+      if (pending.status !== 'absent') {
+        throw new Error(
+          'An interrupted application or infrastructure repair must be recovered before additive agent repair.'
+        );
+      }
+      return await repairAgentIntegrations({
+        root,
+        request,
+        context,
+        storage,
+        now: now(),
+        ...(savedWorkflowPlan ? { savedPlan: savedWorkflowPlan } : {})
+      });
+    }
+    if (savedWorkflowPlan) {
+      throw new Error(
+        'This saved fingerprint belongs to `liftoff workflow set`, not additive repair.'
+      );
+    }
+    if (request.recover && request.approvePlan) {
+      throw new Error(
+        'No saved additive agent repair plan matches this recovery fingerprint.'
+      );
+    }
     const pendingWorkspaces = await inspectRepairVerificationWorkspaces(root, storage);
     if (request.recover) {
       const result = await recoverReviewedUpdateTransaction(root, { transactionKind: 'repair', approvalStore });
@@ -220,6 +271,178 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
         nextActions: [recoverAction()]
       });
       return 2;
+    }
+    if (request.approvePlan) {
+      const bindingPlan = await readActiveBindingPublicationPlan(
+        root, request.approvePlan, now(), storage
+      );
+      if (bindingPlan) {
+        committed = true;
+        const identity = repairExecutionIdentity(
+          liftoffVersion, 'application-active-binding-publication'
+        );
+        try {
+          const result = await publishActiveBindingPlan(
+            root, request.approvePlan, now(), storage
+          );
+          const incomplete = result.status === 'partial';
+          emit({
+            ...base(),
+            requestedScope: 'active-binding-publication',
+            operationKind: 'apply',
+            identity,
+            status: incomplete ? 'partial' : 'applied',
+            committed: true,
+            repairScopeComplete: !incomplete,
+            verification: 'passed',
+            message: incomplete
+              ? 'Application files remain committed, but active-binding transaction cleanup or publication is incomplete. The file move was not replayed.'
+              : result.status === 'complete'
+                ? 'The separately approved active bindings were already published. The committed application move was not replayed.'
+                : 'The separately approved active bindings committed and were read back. Original generation provenance and activation evidence remain unchanged.',
+            blockers: [
+              ...result.rollbackFailures,
+              ...result.cleanupFailures
+            ],
+            bindingPublication: {
+              status: result.status,
+              applicationPlanFingerprint:
+                result.applicationPlanFingerprint,
+              publicationPlanFingerprint:
+                result.publicationPlanFingerprint,
+              targetActiveLayoutDigest:
+                result.targetActiveLayoutDigest,
+              transactionDigest: result.transactionDigest,
+              transactionCommitted: result.committed,
+              committedApplicationEffects:
+                result.committedApplicationEffects,
+              cleanupFailures: result.cleanupFailures,
+              rollbackFailures: result.rollbackFailures
+            },
+            nextActions: incomplete
+              ? [recoverAction()]
+              : [repairCommandAction(root, ['--inspect-layout'], {
+                  id: 'application-inventory',
+                  label: 'Inspect the published active layout',
+                  scope: 'application-layout',
+                  description: 'Read back current application files and exact active bindings without scripts or writes.'
+                })]
+          });
+          context.outcome?.record(incomplete ? 'failure' : 'success');
+          return incomplete ? 2 : 0;
+        } catch (error) {
+          emit({
+            ...base(),
+            requestedScope: 'active-binding-publication',
+            operationKind: 'apply',
+            identity,
+            status: 'partial',
+            committed: true,
+            repairScopeComplete: false,
+            verification: 'passed',
+            message: 'The verified application file move remains committed, but its separate active-binding publication failed. No move was replayed and no provenance was invented.',
+            blockers: [
+              error instanceof Error
+                ? error.message
+                : 'Unexpected active-binding publication failure.'
+            ],
+            bindingPublication: {
+              status: 'blocked',
+              applicationPlanFingerprint:
+                bindingPlan.applicationPlanFingerprint,
+              publicationPlanFingerprint: bindingPlan.fingerprint,
+              targetActiveLayoutDigest:
+                bindingPlan.targetActiveLayoutDigest,
+              committedApplicationEffects:
+                bindingPlan.committedApplicationEffects
+            },
+            nextActions: [repairCommandAction(
+              root,
+              ['--approve-plan', bindingPlan.applicationPlanFingerprint],
+              {
+                id: 'application-binding-resume',
+                label: 'Rebuild a current binding plan from committed history',
+                scope: 'active-binding-publication',
+                description: 'This reconstructs only manifest binding work and cannot replay the committed application move.'
+              }
+            )]
+          });
+          context.outcome?.record('failure');
+          return 2;
+        }
+      }
+      const pendingBinding = await prepareActiveBindingPublication(
+        root, request.approvePlan, now(), storage
+      );
+      if (pendingBinding) {
+        committed = true;
+        const identity = repairExecutionIdentity(
+          liftoffVersion, 'application-active-binding-publication'
+        );
+        if (pendingBinding.status === 'complete') {
+          emit({
+            ...base(),
+            requestedScope: 'active-binding-publication',
+            operationKind: 'apply',
+            identity,
+            status: 'applied',
+            committed: true,
+            repairScopeComplete: true,
+            verification: 'passed',
+            message: 'The application move and its separately reviewed active bindings are already committed. Nothing was replayed.',
+            blockers: [],
+            bindingPublication: {
+              status: 'complete',
+              applicationPlanFingerprint:
+                pendingBinding.applicationPlanFingerprint,
+              targetActiveLayoutDigest:
+                pendingBinding.targetActiveLayoutDigest,
+              committedApplicationEffects:
+                pendingBinding.committedApplicationEffects
+            },
+            nextActions: []
+          });
+          context.outcome?.record('success');
+          return 0;
+        }
+        const plan = pendingBinding.plan!;
+        emit({
+          ...base(),
+          requestedScope: 'active-binding-publication',
+          operationKind: 'apply',
+          identity,
+          status: 'partial',
+          committed: true,
+          repairScopeComplete: false,
+          verification: 'passed',
+          message: 'The application file move is already committed. Review and separately approve the exact manifest-only active-binding plan; the move cannot be repeated.',
+          blockers: [],
+          bindingPublication: {
+            status: 'available',
+            applicationPlanFingerprint:
+              pendingBinding.applicationPlanFingerprint,
+            publicationPlanFingerprint: plan.report.fingerprint,
+            targetActiveLayoutDigest:
+              plan.report.targetActiveLayoutDigest,
+            receiptPath: pendingBinding.path,
+            committedApplicationEffects:
+              plan.report.committedApplicationEffects
+          },
+          nextActions: [repairCommandAction(
+            root,
+            ['--approve-plan', plan.report.fingerprint],
+            {
+              id: 'application-binding-apply',
+              label: 'Publish the exact active bindings',
+              scope: 'active-binding-publication',
+              approvalRequired: true,
+              description: 'This second approval writes only immutable repair history and the manifest active layout.'
+            }
+          )]
+        });
+        context.outcome?.record('attention-required');
+        return 2;
+      }
     }
     selectedManifest = await loadProjectManifest(root);
     const fingerprint = request.approvePlan ?? request.verifyPlan;
@@ -374,7 +597,13 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
     context.outcome?.record('failure');
     emit({
       ...base(), status: committed ? 'partial' : 'failed', verification: committed ? 'incomplete' : 'not-run',
-      message: committed ? 'Infrastructure repair committed, but follow-up verification or cleanup is incomplete.' : 'Local repair stopped; no successful commit was reported.',
+      message: agentScope
+        ? committed
+          ? 'Additive agent repair committed, but follow-up verification or cleanup is incomplete.'
+          : 'Additive agent repair stopped; no successful commit was reported.'
+        : committed
+          ? 'Infrastructure repair committed, but follow-up verification or cleanup is incomplete.'
+          : 'Local repair stopped; no successful commit was reported.',
       blockers: [error instanceof Error ? error.message : 'Unexpected repair failure.'],
       ...(validationAttempted ? { validationSummary: ['Previously approved isolated OpenTofu validation was attempted; no application-script, state or deployment authority was granted.'] } : {}),
       nextActions: [repairCheckAction(root), ...(selectedManifest ? repairAgentActions(root, selectedManifest) : [])]

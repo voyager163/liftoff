@@ -279,6 +279,17 @@ describe('terminal renderer', () => {
     expect(stdout.text()).toContain('raw-out\r\n');
     expect(stderr.text()).toBe('raw-err\r\n');
   });
+
+  it('keeps child command output out of JSON stdout', () => {
+    const stdout = new CaptureStream();
+    const stderr = new CaptureStream();
+    const session = new PresentationSession({ stdout, stderr, json: true });
+
+    expect(session.childStreams()).toEqual({
+      stdout: stderr,
+      stderr
+    });
+  });
 });
 
 describe('generated help metadata', () => {

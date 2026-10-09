@@ -81,26 +81,26 @@ Depends on 3-5. References: design D8; liftoff-project-assessment, liftoff-gover
 
 Depends on 3-6. References: design D8-D9; liftoff-project-migration, liftoff-project-repair, liftoff-template-ownership.
 
-- [ ] 7.1 Register adopt parsing/help/JSON/preview/approval/recovery surfaces with separate schema-1 identity; verify bare non-TTY/JSON previews only and invalid authority flags fail before effects.
-- [ ] 7.2 Build supported in-place plans from static evidence and explicit compatible bindings; verify existing application paths and Git history remain unchanged when already compliant.
-- [ ] 7.3 Implement necessary per-file mapping/reference review across imports, build/tests, Docker/Compose, CI and docs; verify unresolved mappings and unsupported language/framework conversion remain blocked rather than replaced with starters.
-- [ ] 7.4 Extend external preparation/check staging to non-Liftoff adoption candidates while retaining exact independent preparation/script/network permissions; verify failed or declined checks cannot authorize a file transaction.
-- [ ] 7.5 Implement exact adoption metadata/core/application publication with authenticated external transaction ownership; verify rollback/resume works even when the final manifest was never written and concurrent edits survive.
-- [ ] 7.6 Add separately reviewed active-binding publication after verified application moves without allowing patches to write provenance; verify partial binding failure reports committed file effects and cannot repeat the move or invent generation history.
+- [x] 7.1 Register adopt parsing/help/JSON/preview/approval/recovery surfaces with separate schema-1 identity; verify bare non-TTY/JSON previews only and invalid authority flags fail before effects.
+- [x] 7.2 Build supported in-place plans from static evidence and explicit compatible bindings; verify existing application paths and Git history remain unchanged when already compliant.
+- [x] 7.3 Implement necessary per-file mapping/reference review across imports, build/tests, Docker/Compose, CI and docs; verify unresolved mappings and unsupported language/framework conversion remain blocked rather than replaced with starters.
+- [x] 7.4 Extend external preparation/check staging to non-Liftoff adoption candidates while retaining exact independent preparation/script/network permissions; verify failed or declined checks cannot authorize a file transaction.
+- [x] 7.5 Implement exact adoption metadata/core/application publication with authenticated external transaction ownership; verify rollback/resume works even when the final manifest was never written and concurrent edits survive.
+- [x] 7.6 Add separately reviewed active-binding publication after verified application moves without allowing patches to write provenance; verify partial binding failure reports committed file effects and cannot repeat the move or invent generation history.
 - [x] 7.7 Preserve sibling migrate safety and add its Manual/current-manifest output; verify source snapshots, filtered staging, strict OpenSpec plans, non-OpenSpec checklist and verification-before-cleanup.
-- [ ] 7.8 Enforce existing-deployment/state planning-only boundaries in adopt and repair; verify absence of local state or an approved local patch never enables resource/state mutation.
-- [ ] 7.9 Qualify Windows paths, junctions, modes, spaces, process settlement and interrupted transaction handling alongside macOS/Linux; verify exact ownership without broad cleanup.
-- [ ] 7.10 Update existing-repository, migration and application-repair guides plus generated migration instructions; verify complete developer/agent/CLI-only journeys and honest partial completion.
+- [x] 7.8 Enforce existing-deployment/state planning-only boundaries in adopt and repair; verify absence of local state or an approved local patch never enables resource/state mutation.
+- [x] 7.9 Qualify Windows paths, junctions, modes, spaces, process settlement and interrupted transaction handling alongside macOS/Linux; verify exact ownership without broad cleanup.
+- [x] 7.10 Update existing-repository, migration and application-repair guides plus generated migration instructions; verify complete developer/agent/CLI-only journeys and honest partial completion.
 
 ## 8. Implement workflow and profile transitions with integration repair
 
 Depends on 3-7. References: design D7-D10; liftoff-project-migration, liftoff-project-update, liftoff-repository-governance-profile.
 
-- [ ] 8.1 Implement reviewed workflow-set plans and exact check/apply/recovery interfaces; verify source workflow, target, agent selection, current files, checks and expiry bind one immutable plan.
-- [ ] 8.2 Implement external-framework-to-Manual transition without deleting framework documents/history or uninstalling shared tools; verify preserved bytes and correct native local readiness.
-- [ ] 8.3 Implement transitions into pinned OpenSpec/Spec Kit using official isolated staging and separate tool/global-profile consent; verify collisions, active overlapping changes and invalid framework output block safely.
-- [ ] 8.4 Complete additive agent/default repair for external workflows and Manual; verify existing integrations/defaults are preserved unless the exact requested change authorizes them.
-- [ ] 8.5 Add team profile assets, identity, input selection and one-independent-human-review rules while retaining single-maintainer defaults; verify self/bot/stale approvals fail and no deployment-reviewer requirement is added implicitly.
+- [x] 8.1 Implement reviewed workflow-set plans and exact check/apply/recovery interfaces; verify source workflow, target, agent selection, current files, checks and expiry bind one immutable plan.
+- [x] 8.2 Implement external-framework-to-Manual transition without deleting framework documents/history or uninstalling shared tools; verify preserved bytes and correct native local readiness.
+- [x] 8.3 Implement transitions into pinned OpenSpec/Spec Kit using official isolated staging and separate tool/global-profile consent; verify collisions, active overlapping changes and invalid framework output block safely.
+- [x] 8.4 Complete additive agent/default repair for external workflows and Manual; verify existing integrations/defaults are preserved unless the exact requested change authorizes them.
+- [x] 8.5 Add team profile assets, identity, input selection and one-independent-human-review rules while retaining single-maintainer defaults; verify self/bot/stale approvals fail and no deployment-reviewer requirement is added implicitly.
 - [ ] 8.6 Implement profile-specific assessment and a distinct local policy/successor update plan for explicit profile changes; verify stronger existing controls, CODEOWNERS and old proof are not silently weakened/reused.
 - [ ] 8.7 Extend update routing and shared output contracts for workflow/profile/plugin incompatibility; verify ordinary update and force cannot execute another lane or enroll telemetry.
 - [ ] 8.8 Update all affected workflow/governance/repair guides and generated governance README sources; verify both profiles, all workflow directions, CLI-only use and Windows literal command rendering.

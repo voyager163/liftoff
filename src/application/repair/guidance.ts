@@ -92,6 +92,6 @@ export function infrastructureRepairGuidance(
     interactiveCommand,
     resumeCommand,
     nextAction: `Review ${checkCommand}; run ${interactiveCommand} in a terminal for default-No approval of an eligible exact repair plan. No fingerprint copying is required. After repair, run ${resumeCommand} and review remaining local work.`,
-    boundary: 'Update approval and --force do not authorize project-owned infrastructure repair. Ordinary repair check makes no cloud calls. Explicit live metadata checks require a selected subscription and existing authentication. Deployed, unknown, or unsupported transformations remain plan-only; the public stateful migration coordinator and agent installation are not implemented.'
+    boundary: 'Update approval and --force do not authorize project-owned infrastructure repair. Ordinary repair check makes no cloud calls. Explicit live metadata checks require a selected subscription and existing authentication. Deployed, unknown, or unsupported transformations remain plan-only; the public stateful migration coordinator is not implemented. Additive agent integration is a separate exact repair scope.'
   };
 }

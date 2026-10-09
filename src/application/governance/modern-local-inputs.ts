@@ -18,7 +18,10 @@ import { manifestActiveLayoutDigest } from '../../domain/project/manifest/layout
 import { exactRecord, isRecord } from '../../domain/project/manifest/fields.js';
 import { toSafeProjectName } from '../../domain/project/planning.js';
 import type { ManifestLayoutBinding, ManifestLayoutComponentId } from '../../domain/project/contracts.js';
-import { reviewedRepairTransactionPathParts, reviewedUpdateTransactionPathParts } from '../../domain/project/reviewed-update-artifacts.js';
+import {
+  reviewedAdoptionTransactionPathParts, reviewedRepairTransactionPathParts,
+  reviewedUpdateTransactionPathParts
+} from '../../domain/project/reviewed-update-artifacts.js';
 import { canonicalJson, canonicalSha256, sha256Hex } from '../../domain/governance/activation/canonical-json.js';
 import { normalizedSeedInput } from '../../domain/governance/activation/inputs.js';
 import {
@@ -49,7 +52,11 @@ const rootReader = createManifestV8Reader({ catalog: projectCatalog, resolveSour
 const key = (parts: readonly string[]) => parts.join('/');
 const under = (parent: string, child: string) => child === parent || child.startsWith(`${parent}/`);
 const compare = (left: string, right: string) => left < right ? -1 : left > right ? 1 : 0;
-const journalPaths = [reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts];
+const journalPaths = [
+  reviewedUpdateTransactionPathParts,
+  reviewedRepairTransactionPathParts,
+  reviewedAdoptionTransactionPathParts
+];
 const installedBoundaryPaths = [['governance', 'activation-state.json'], ['governance', 'migration-state.json']] as const;
 function safeFailure(error: unknown): string {
   return error instanceof ModernLocalInputError || error instanceof ApplicationInspectionError ||

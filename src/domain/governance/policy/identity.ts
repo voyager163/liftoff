@@ -236,6 +236,10 @@ const modernPolicySources = [
     pathParts: ['assets', 'governance', 'team-gitflow', 'policy-v1.md']
   }
 ] as const;
+export const modernGovernancePolicyVersions = Object.freeze({
+  'single-maintainer-gitflow': modernPolicySources[0].identity.policyVersion,
+  'team-gitflow': modernPolicySources[1].identity.policyVersion
+});
 const modernWorkflows: readonly ModernWorkflow[] = ['openspec', 'spec-kit', 'manual'];
 let modernSources: readonly ModernActivationSourceContract[] | undefined;
 

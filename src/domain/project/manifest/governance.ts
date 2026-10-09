@@ -48,6 +48,11 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
         `Manifest governance profile ${JSON.stringify(profileValue)} is invalid.`
       );
     }
+    if (profile.id === 'team-gitflow') {
+      throw new FileSystemError(
+        'Historical manifests cannot claim the team-gitflow profile; it requires manifest v8.'
+      );
+    }
     const state = requiredString(value, 'state', 'Manifest.governance');
     if (profile.id === 'none') {
       assertOnlyFields(value, ['profile', 'state'], 'Manifest.governance');

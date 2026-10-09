@@ -111,6 +111,20 @@ Machine-level remediation requires `--install-tools` or separate per-tool
 interactive approval. Project repair approval, `--yes`, and dependency/profile
 permissions do not substitute for tool consent.
 
+`liftoff workflow set` uses the same boundary before an external target can be
+reviewed. Its `--check` mode never installs tools. A separate
+`--install-tools` preparation may make the pinned OpenSpec or Spec Kit
+runtime/package-manager/framework chain ready, but it still does not approve
+the resulting project-file plan.
+
+Additive `liftoff repair --agents` uses that same separation. Manual agent
+repair needs no external framework tool. OpenSpec and Spec Kit agent repair
+require the exact pinned framework and package-manager chain before official
+isolated integration staging. `repair --check` never installs it; an explicit
+non-check `--install-tools` request can prepare tools but cannot approve the
+saved agent-file plan. Exact apply and recovery reject machine-preparation
+flags.
+
 - macOS recipes use Homebrew, npm, or `uv`.
 - Windows recipes use WinGet, npm, or `uv`.
 - Linux system packages are never installed with automatic elevation. Liftoff
@@ -168,6 +182,17 @@ commands before asking. Noninteractive runs stop unless
 The authorized change is verified before project staging. Because it is a
 machine-wide user preference, Liftoff reports it separately and does not restore
 an older profile if a later project phase fails.
+
+An OpenSpec workflow transition follows the same rule:
+`--configure-openspec-profile` may prepare and verify the global profile before
+official isolated staging, while `--approve-plan` remains the only automation
+authority for the exact project files. Neither flag implies the other.
+
+OpenSpec additive agent repair follows the identical boundary. Profile
+configuration may be separately authorized while preparing a fresh agent plan,
+but `repair --check`, `--approve-plan`, and recovery cannot combine that
+machine-wide permission with project-file authority. Spec Kit and Manual reject
+the OpenSpec profile flag.
 
 ## Project dependency consent
 

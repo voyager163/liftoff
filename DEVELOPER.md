@@ -121,6 +121,7 @@ capability contract and preparation matrix directly rather than fabricating a re
 | Azure local transformation | recipe `azure-local-layout`, version 1; sources `azure-flat-root-v1` / `azure-partial-independent-v1`, target `azure-independent-roots-v1` |
 | Historical-manifest application-file patch | recipe `application-layout-patch`, version 1; source `explicit-project-file-mapping-v1`, target `liftoff-application-artifacts-v1` plus exact workload/artifact-inventory digest |
 | Current-manifest application-file patch | recipe `application-active-layout-patch`, version 1; source `explicit-active-file-mapping-v1`, target `liftoff-active-application-artifacts-v1` plus exact workload/active-target digest |
+| Current active-binding publication | recipe `application-active-binding-publication`, version 1; source/target `liftoff-active-application-artifacts-v1`; separately approved manifest-last metadata publication after a committed verified move |
 | Shared update transaction | schema 1, unchanged |
 
 The application target is derived from current explicit generator declarations,
@@ -129,8 +130,15 @@ Generation hashes do not authorize moving or replacing application files.
 For v8, explicit artifact and component bindings select current paths; missing
 bindings are not inferred from generator placement. The current recipe supports
 none/single-maintainer profiles, excludes bound infrastructure/control trees,
-and refuses bound-artifact moves pending separate binding publication. Bare
-current repair is read-only inventory, including Manual/no-agent projects.
+and admits a bound-artifact move only when the exact logical identity is retained
+and every affected reference has its own reviewed mapping. The verified
+application transaction commits first and records immutable binding intent.
+`application-active-binding-publication` then reconstructs a second exact plan
+from the preserved manifest, committed repair receipt, current target bytes/modes
+and source absences. Its repair-lane transaction writes the publication receipt
+before `liftoff.manifest.json`; it cannot contain or repeat application moves,
+change generation/adoption provenance, or issue activation evidence. Bare current
+repair is read-only inventory, including Manual/no-agent projects.
 It cannot transform current infrastructure or manufacture governance state.
 Both application recipes share the same separately approved verification and
 file-transaction boundaries; exact recipe/source/target identities cannot be
@@ -386,8 +394,10 @@ boundaries; instruction assertions do not claim actual LLM behavioral qualificat
 one private observation source for the bounded public `liftoff assess` producer
 in `application/assessment/engine.ts`. Inventory alone is not conformance,
 adoption or execution support. The existing `governance assess` contract is
-unchanged; in-place adoption is unavailable, and the local engine does not
-perform provider collection. Explicit live metadata uses a separate coordinator.
+unchanged. A missing manifest may now recommend the separately registered,
+read-only `liftoff adopt --check` surface; this does not change assessment
+authority or make compatibility/publication available. The local engine does
+not perform provider collection. Explicit live metadata uses a separate coordinator.
 
 The caller selects one explicit real root. The inventory reuses `ApplicationFiles`
 for confined, sorted directory observations, portable alias checks, bounded
@@ -470,8 +480,9 @@ signal and unsettled results with a zero exit are unobserved, not passes.
 All assessment/help paths bypass disclosure and every telemetry hook.
 Recommendations identify only real preview routes and their separate consent;
 their argument arrays bind the selected project rather than the caller's cwd.
-Unavailable adoption, workflow/profile/plugin transitions, provider activation
-and deployed-state work have no executable recommendation.
+Non-Liftoff projects may receive the read-only adoption preview. Unavailable
+workflow/profile/plugin transitions, provider activation and deployed-state
+work have no executable recommendation.
 
 ```bash
 npx vitest run tests/project-assessment-report.test.ts tests/project-assessment-engine.test.ts tests/project-assessment-command.test.ts tests/project-assessment-live.test.ts --maxWorkers=1
@@ -984,7 +995,9 @@ bytes/modes remain unchanged and candidate bytes/snapshots are excluded from JSO
 The report retains compatibility/deployment limits and names the outstanding
 semantic, core-destination, integration, permission, ownership, staged-check and
 lock/recovery obligations. This is not a saved preview, consent or public adopt
-capability, and it does not publish metadata or prepare/execute project code.
+approval capability, and it does not publish metadata or prepare/execute project
+code. The later public command may serialize this report only as bounded
+discovery.
 The shared modern own-data boundary rejects root, nested, array and revoked
 proxies before reflection; legitimate plain JSON record bytes and identities
 are unchanged. Source observation cannot execute a proxy hook as validation.
@@ -999,7 +1012,7 @@ Saved and successfully re-observed comparisons remain unverified and grant no
 preparation, project-code, network, file-write or recovery authority. Excluded
 payloads and dynamic references remain unobserved, not silently verified;
 source hashes still do not observe managed-core destinations. There is no
-public command or advertised adoption capability from this private contract.
+approval or execution capability from this private contract.
 The inherited inventory eligibility remains governance `none` or
 `single-maintainer-gitflow`; a valid team-profile metadata identity does not
 enable team adoption or repair before its distinct implementation qualifies.
@@ -1033,6 +1046,72 @@ project-code or network effect and still reports compatibility as
 source bytes remain non-serializable. The plan has no file approval,
 transaction, binding-publication, recovery, deployment or public-command
 authority.
+Only a current ready report can be stored in the private
+`adoption-compatibility-plan` namespace. Loading requires the same saved
+adoption review and destination plan, then rebuilds the review and private
+source snapshots from current project/source bytes before accepting the exact
+stored report. Saved compatibility metadata supplies no preparation,
+project-code, network, verification, approval, transaction, recovery,
+deployment, binding-publication or public-command authority.
+`application/adoption/verification-plan.ts` reloads that saved compatibility
+identity, re-observes the same private source snapshots, resolves registered
+preparation inputs and exact installed tool identities, and repeats current
+input/tool checks before saving a private verification-plan report. Tool
+metadata probes require proven process settlement, but no candidate preparation
+or project check runs. The stored report contains only digests and declared
+permissions, not source bytes, executable paths or the private resolved policy.
+Its ready status requests later independent dependency-preparation,
+project-code and declared-network permission as applicable; it is not
+compatibility success, file approval, transaction/recovery authority,
+active-binding publication, deployment permission or a public command.
+`application/adoption/verification-consent.ts` records only an exact,
+same-plan, expiring grant for the displayed dependency-preparation,
+project-code and declared-network scopes. Missing required scope and unused
+extra scope are both rejected. Consent reloads the current verification plan
+and adoption review before use; it does not run a command or assert check
+success, compatibility, file approval, transaction/recovery authority,
+publication or deployment.
+`application/adoption/public-command.ts` and `cli/commands/adopt.ts` expose the
+separate schema-1 public discovery coordinator. It resolves the nearest exact
+Git/Liftoff boundary unless a non-Git root is explicitly selected, routes an
+existing manifest to update/repair, derives an installed target selection from
+the ordinary project flags, saves only current review/destination records
+outside the repository, and preserves all candidate/destination blockers.
+Bare JSON and non-TTY use remain preview-only. Exact approval and recovery
+syntax is registered but fails before project/receipt access until later tasks
+produce a complete public plan and authenticated transaction. Do not bridge
+that boundary by treating a private plan/consent/result fingerprint as the
+public file-plan identity.
+`createAdoptionVerificationWorkspace` allocates the later executor a distinct
+authenticated `liftoff-adoption-verification-workspace` record with the current
+CLI and adoption-verification contract identity. It reuses the repair
+workspace's fixed private roles, owner settlement, bounded activity inventory,
+identity-pinned cleanup and recovery machinery without accepting a repair
+identity or changing existing repair records. Exact project-code,
+dependency-preparation, network and lifecycle scopes are checked before an
+operation callback runs. The workspace is disposable execution confinement,
+not a sandbox, consent record, successful verification result, file approval
+or transaction authority; this constructor alone runs no adoption checks.
+`executeAdoptionVerification` reloads the exact current plan and consent,
+re-observes compatibility inputs and installed tool file identities before
+each effect, copies bounded source snapshots into that workspace, and runs only
+the resolved registered preparation and check commands. An authenticated
+compare-and-exchange claim admits only one attempt for the exact plan; a
+concurrent or later caller never dispatches the commands again. Every process
+requires process-tree settlement; uncertain scope is retained rather than
+cleaned or reported as success. A non-authoritative verified draft is saved
+before owner release and cleanup. If final receipt storage is interrupted, a
+later caller may only finish identity-pinned workspace/staging cleanup and seal
+that exact draft; it cannot rerun checks or invent success from elapsed time,
+PID state or an incomplete workspace. A passed result is persisted only after
+every declared check passes, protected inputs remain current, the owner is
+released and authenticated cleanup completes. Its receipt is HMAC-bound to the
+settled `verified` adoption workspace record and is revalidated against current
+plan, consent, source, destination and tool identities on read. Failed,
+expired, changed or uncertain work stores no success receipt. Even a current
+receipt is only declared-check compatibility evidence: file approval,
+transaction, recovery, active-binding publication and deployment remain
+unauthorized.
 `createModernActivationRecordContract` provides independent state4, evidence4,
 approval4, plan3, credential2 and supersession2 readers and supplied-value
 constructors. These share the current/released decoder engine without changing

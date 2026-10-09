@@ -11,6 +11,7 @@ import {
   getProjectType,
   getProvider,
   getDevelopmentWorkflow,
+  governanceProfiles,
   patterns,
   currentProjectInputCatalog,
   projectTypes,
@@ -217,13 +218,14 @@ export class InteractivePrompter {
     const includeFrontend = initial.includeFrontend ??
       await this.confirm('Include frontend? (Vue 3 + Tailwind)', false);
     const selectedEnvironments = initial.environments ?? await this.askEnvironments();
-    const governanceProfile = initial.governanceProfile ?? (
-      await this.confirm(
-        'Generate the single-maintainer GitFlow governance handoff?',
-        true
-      )
-        ? 'single-maintainer-gitflow'
-        : 'none'
+    const governanceProfile = initial.governanceProfile ?? await this.choose(
+      'Select repository governance profile',
+      governanceProfiles.map((profile) => ({
+        value: profile.id,
+        label: `${profile.label} - ${profile.description}`,
+        disabled: false
+      })),
+      governanceProfiles.find((profile) => profile.default)?.id
     );
     const specWorkflow = initial.specWorkflow ?? await this.choose(
       'Select development workflow',

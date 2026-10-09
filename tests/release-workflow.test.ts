@@ -63,7 +63,9 @@ describe('release workflow', () => {
       os: ['ubuntu-latest', 'macos-latest', 'windows-latest'], shard: [1, 2]
     });
     expect(shards['runs-on']).toBe('${{ matrix.os }}');
-    expect(shards['timeout-minutes']).toBe(45);
+    expect(shards['timeout-minutes']).toBe(
+      "${{ matrix.os == 'windows-latest' && matrix.shard == 2 && 75 || 45 }}"
+    );
     expect(shards.strategy['fail-fast']).toBe(false);
     const boundaries = shards.steps.filter((step: { name?: string }) => step.name === 'Run Windows project and packaging boundary coverage');
     expect(boundaries).toHaveLength(1);

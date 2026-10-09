@@ -63,6 +63,40 @@ function specKitIntegrationArgs(agent: ProjectPlan['agents'][number]): string[] 
   return agent.id === 'github-copilot' ? ['--integration-options=--skills'] : [];
 }
 
+export function buildSpecKitIntegrationInstallCommand(
+  plan: ProjectPlan,
+  agent: ProjectPlan['agents'][number]
+): ExternalCommand {
+  return {
+    executable: plan.framework.executable,
+    args: [
+      'integration',
+      'install',
+      agent.integrationIds['spec-kit'],
+      '--force',
+      ...specKitIntegrationArgs(agent)
+    ]
+  };
+}
+
+export function buildSpecKitDefaultCommand(
+  plan: ProjectPlan
+): ExternalCommand {
+  if (!plan.defaultAgent) {
+    throw new InitFileSystemError(
+      'Spec Kit default selection requires one selected agent.'
+    );
+  }
+  return {
+    executable: plan.framework.executable,
+    args: [
+      'integration',
+      'use',
+      plan.defaultAgent.integrationIds['spec-kit']
+    ]
+  };
+}
+
 export function buildSpecKitInitCommands(plan: ProjectPlan): ExternalCommand[] {
   if (!plan.defaultAgent) {
     throw new InitFileSystemError('Spec Kit initialization requires a default agent.');
@@ -85,16 +119,7 @@ export function buildSpecKitInitCommands(plan: ProjectPlan): ExternalCommand[] {
     if (agent.id === primary.id) {
       continue;
     }
-    commands.push({
-      executable: plan.framework.executable,
-      args: [
-        'integration',
-        'install',
-        agent.integrationIds['spec-kit'],
-        '--force',
-        ...specKitIntegrationArgs(agent)
-      ]
-    });
+    commands.push(buildSpecKitIntegrationInstallCommand(plan, agent));
   }
   return commands;
 }
@@ -113,14 +138,10 @@ export const frameworkAdapters: Record<ProjectPlan['specWorkflow']['id'], Framew
 function assertRegisteredFrameworkCommands(plan: ProjectPlan, commands: readonly ExternalCommand[]): void {
   const registered = frameworkAdapters[plan.specWorkflow.id].buildCommands(plan);
   if (plan.specWorkflow.id === 'spec-kit') {
-    registered.push(...plan.agents.map((agent) => ({
-      executable: plan.framework.executable,
-      args: ['integration', 'install', agent.integrationIds['spec-kit'], '--force', ...specKitIntegrationArgs(agent)]
-    })));
-    registered.push({
-      executable: plan.framework.executable,
-      args: ['integration', 'use', plan.defaultAgent!.integrationIds['spec-kit']]
-    });
+    registered.push(...plan.agents.map((agent) =>
+      buildSpecKitIntegrationInstallCommand(plan, agent)
+    ));
+    registered.push(buildSpecKitDefaultCommand(plan));
   }
   for (const command of commands) {
     if (!registered.some((expected) => expected.executable === command.executable &&

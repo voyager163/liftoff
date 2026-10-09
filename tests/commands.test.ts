@@ -153,7 +153,9 @@ describe('strict update approval arguments', () => {
     expect(() => parseArgs(['update', ...flags])).toThrow(/--check and --approve-plan cannot be combined/);
   });
 
-  it.each(Object.keys(commandDefinitions).filter((command) => command !== 'update' && command !== 'repair'))(
+  it.each(Object.keys(commandDefinitions).filter((command) =>
+    command !== 'update' && command !== 'repair' && command !== 'adopt' &&
+    command !== 'workflow'))(
     'does not accept update approval on %s',
     (command) => {
       expect(() => parseArgs([command, '--approve-plan', fingerprint])).toThrow(/Unknown flag/);
@@ -340,6 +342,10 @@ describe('commands', () => {
       'plan',
       '--governance=none'
     ]).flags.governance).toBe('none');
+    expect(parseArgs([
+      'plan',
+      '--governance=team-gitflow'
+    ]).flags.governance).toBe('team-gitflow');
   });
 
   it('rejects unknown flags, options, subcommands, and extra positionals', () => {

@@ -1,7 +1,9 @@
 import path from 'node:path';
 import { types } from 'node:util';
 import type { ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
-import type { UpdatePreviewOptions } from '../../adapters/filesystem/update-previews.js';
+import {
+  createScopedUserLocalRecordStore, type UpdatePreviewOptions
+} from '../../adapters/filesystem/update-previews.js';
 import { canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
 import {
   ApplicationInspectionError, applicationExclusion, applicationParts, applicationPathFold,
@@ -51,7 +53,8 @@ export interface AdoptionCompatibilityReview {
     readonly reason:
       | 'mapping-decision-required'
       | 'dynamic-reference-review-required'
-      | 'unsupported-language-conversion';
+      | 'unsupported-language-conversion'
+      | 'unsupported-framework-conversion';
   }[];
   readonly files: readonly AdoptionCompatibilityFileReview[];
   readonly references: readonly AdoptionCompatibilityReferenceReview[];
@@ -103,6 +106,11 @@ export interface AdoptionCompatibilityPlanReport {
 export interface AdoptionCompatibilityPlan {
   readonly report: AdoptionCompatibilityPlanReport;
   readonly snapshots: readonly ProjectFileSnapshot[];
+}
+
+export interface SavedAdoptionCompatibilityPlan {
+  readonly path: string;
+  readonly plan: AdoptionCompatibilityPlan;
 }
 
 function invalid(message: string): never {
@@ -221,7 +229,12 @@ export function validateAdoptionCompatibilityReview(value: unknown): AdoptionCom
     review.unresolvedMappings, applicationBounds.files, 'Unresolved compatibility mappings'
   ).map(value => {
     const item = exact(value, ['pathParts', 'reason'], 'Unresolved compatibility mapping');
-    if (!['mapping-decision-required', 'dynamic-reference-review-required', 'unsupported-language-conversion']
+    if (![
+      'mapping-decision-required',
+      'dynamic-reference-review-required',
+      'unsupported-language-conversion',
+      'unsupported-framework-conversion'
+    ]
       .includes(String(item.reason))) {
       invalid('Unresolved compatibility mappings require a supported explicit reason.');
     }
@@ -461,6 +474,118 @@ export async function prepareAdoptionCompatibilityPlan(
     { ...body, fingerprint: canonicalSha256(body) },
     inspection.snapshots
   );
+}
+
+/** Persists only a complete current review; storage remains separate from effect consent. */
+export async function saveAdoptionCompatibilityPlan(
+  value: unknown,
+  source: unknown,
+  now: Date,
+  storage?: UpdatePreviewOptions
+): Promise<SavedAdoptionCompatibilityPlan> {
+  const plan = await prepareAdoptionCompatibilityPlan(value, source, now, storage);
+  if (plan.report.status !== 'ready-for-independent-verification-staging') {
+    throw new Error('Blocked adoption compatibility review cannot become a saved verification-staging input.');
+  }
+  const stored = await createScopedUserLocalRecordStore(
+    plan.report.projectRoot, 'adoption-compatibility-plan', storage
+  ).write(plan.report.fingerprint, plan.report);
+  if (stored.projectRoot !== plan.report.projectRoot) {
+    throw new Error('Adoption compatibility-plan storage resolved a different canonical project root.');
+  }
+  return { path: stored.path, plan };
+}
+
+function storedReview(
+  value: unknown,
+  expected: {
+    projectRoot: string;
+    reviewFingerprint: string;
+    destinationPlanFingerprint: string;
+    planFingerprint: string;
+  }
+): AdoptionCompatibilityReview {
+  assertPlainData(value, 'Saved adoption compatibility plan');
+  const fields = exact(value, [
+    'schemaVersion', 'kind', 'readOnly', 'projectRoot', 'reviewFingerprint',
+    'destinationPlanFingerprint', 'inventoryDigest', 'targetLayoutDigest', 'status',
+    'compatibility', 'deployment', 'fileMappings', 'referenceReviews',
+    'unresolvedMappings', 'verification', 'blockers',
+    'requiredPermissions', 'preparation', 'checkExecution', 'approval', 'publication',
+    'limitations', 'fingerprint'
+  ], 'Saved adoption compatibility plan');
+  const fingerprint = digest(fields.fingerprint, 'Saved adoption compatibility plan');
+  const { fingerprint: _fingerprint, ...body } = fields;
+  if (fields.schemaVersion !== adoptionCompatibilityPlanSchemaVersion ||
+      fields.kind !== 'liftoff-adoption-compatibility-plan' ||
+      fields.readOnly !== true ||
+      fields.projectRoot !== expected.projectRoot ||
+      fields.reviewFingerprint !== expected.reviewFingerprint ||
+      fields.destinationPlanFingerprint !== expected.destinationPlanFingerprint ||
+      fingerprint !== expected.planFingerprint ||
+      fingerprint !== canonicalSha256(body) ||
+      fields.status !== 'ready-for-independent-verification-staging' ||
+      fields.compatibility !== 'not-verified' ||
+      fields.deployment !== 'planning-only' ||
+      !Array.isArray(fields.blockers) || fields.blockers.length !== 0 ||
+      !Array.isArray(fields.unresolvedMappings) || fields.unresolvedMappings.length !== 0 ||
+      fields.preparation !== 'not-performed' ||
+      fields.checkExecution !== 'not-performed' ||
+      fields.approval !== 'not-requested' ||
+      fields.publication !== 'not-authorized') {
+    invalid('Saved adoption compatibility plan is invalid, blocked or bound to different identities.');
+  }
+  return validateAdoptionCompatibilityReview({
+    schemaVersion: adoptionCompatibilityPlanSchemaVersion,
+    kind: 'liftoff-adoption-compatibility-review',
+    projectRoot: fields.projectRoot,
+    reviewFingerprint: fields.reviewFingerprint,
+    destinationPlanFingerprint: fields.destinationPlanFingerprint,
+    inventoryDigest: fields.inventoryDigest,
+    targetLayoutDigest: fields.targetLayoutDigest,
+    dynamicReferencesReviewed: true,
+    unresolvedMappings: fields.unresolvedMappings,
+    files: fields.fileMappings,
+    references: fields.referenceReviews,
+    verification: fields.verification
+  });
+}
+
+/** Rebuilds the review against current bytes; a saved report supplies no old source or effect bytes. */
+export async function loadAdoptionCompatibilityPlan(
+  projectRoot: string,
+  reviewFingerprint: string,
+  destinationPlanFingerprint: string,
+  planFingerprint: string,
+  source: unknown,
+  now: Date,
+  storage?: UpdatePreviewOptions
+): Promise<AdoptionCompatibilityPlan> {
+  for (const [value, label] of [
+    [reviewFingerprint, 'Adoption review'],
+    [destinationPlanFingerprint, 'Adoption destination plan'],
+    [planFingerprint, 'Adoption compatibility plan']
+  ] as const) digest(value, label);
+  const store = createScopedUserLocalRecordStore(
+    projectRoot, 'adoption-compatibility-plan', storage
+  );
+  const stored = await store.read(planFingerprint);
+  if (!stored) {
+    throw new Error('No matching same-project adoption compatibility plan exists; request a new review.');
+  }
+  const review = storedReview(stored.value, {
+    projectRoot: stored.projectRoot,
+    reviewFingerprint,
+    destinationPlanFingerprint,
+    planFingerprint
+  });
+  const plan = await prepareAdoptionCompatibilityPlan(review, source, now, storage);
+  if (plan.report.projectRoot !== stored.projectRoot ||
+      plan.report.fingerprint !== planFingerprint ||
+      canonicalSha256(stored.value) !== canonicalSha256(plan.report)) {
+    throw new Error('Adoption compatibility plan is invalid, stale or bound to different observations; request a new review.');
+  }
+  return plan;
 }
 
 function privatePlan(

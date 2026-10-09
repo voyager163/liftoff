@@ -36,7 +36,8 @@ describe('separate agent intent during metadata update', () => {
     expect(inspection.render.some((artifact) => artifact.logicalName === 'liftoff-setup-codex')).toBe(false);
     expect(inspection.deferredAgentRepair).toMatchObject({
       status: 'separate-repair-required', addAgents: ['codex'], changesDefault: false,
-      executable: false, limitation: expect.stringContaining('not implemented')
+      executable: false,
+      limitation: expect.stringContaining('liftoff repair --agents')
     });
     expect(inspection.deferredAgentRepair).not.toHaveProperty('command');
     expect(await readFile(path.join(root, 'liftoff.config.json'), 'utf8')).toBe(desired);
@@ -58,7 +59,8 @@ describe('separate agent intent during metadata update', () => {
     expect(inspection.renderPlan.defaultAgent?.id).toBe('github-copilot');
     expect(inspection.deferredAgentRepair).toMatchObject({
       addAgents: [], recordedDefaultAgent: 'github-copilot', requestedDefaultAgent: 'claude', changesDefault: true,
-      executable: false, limitation: expect.stringContaining('framework default changes are not implemented')
+      executable: false,
+      limitation: expect.stringContaining('liftoff repair --agents')
     });
     expect(inspection.deferredAgentRepair).not.toHaveProperty('command');
     expect(await readFile(path.join(root, 'liftoff.config.json'), 'utf8')).toBe(desired);

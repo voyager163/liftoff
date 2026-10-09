@@ -16,6 +16,9 @@ import { createManifestV8ProjectReader } from '../src/domain/project/manifest/v8
 import { createModernGovernanceContextContract } from '../src/domain/governance/policy/modern-context.js';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { reservedLocalVerificationJournalPath } from '../src/domain/governance/activation/modern-local-runtime.js';
+import {
+  reviewedAdoptionTransactionPathParts
+} from '../src/domain/project/reviewed-update-artifacts.js';
 import { createManifestHistoryIndex, encodeManifestHistoryIndex, manifestHistoryPaths } from '../src/domain/project/manifest/history.js';
 import { activationTargetHistoryPathParts, validateActivationTargetHistoryReference } from '../src/domain/project/manifest/activation-target-history.js';
 import { readPreservedActivationTargetManifest } from '../src/application/update/activation-target-history.js';
@@ -302,7 +305,10 @@ describe('actual read-only installed activation classification',()=>{
     }
   );
   it.each([
-    ['.liftoff','reviewed-update-transaction.json'],['.liftoff','reviewed-repair-transaction.json'],[...reservedLocalVerificationJournalPath]
+    ['.liftoff','reviewed-update-transaction.json'],
+    ['.liftoff','reviewed-repair-transaction.json'],
+    [...reviewedAdoptionTransactionPathParts],
+    [...reservedLocalVerificationJournalPath]
   ].map(parts=>[parts]))('blocks pending %j before opening manifest or record payload',async parts=>{
     const f=await fixture();await f.write(parts,'no codec authority');io.opens=[];
     expect((await inspectModernInstalledActivation(f.root)).status).toBe('blocked');

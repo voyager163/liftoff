@@ -75,7 +75,8 @@ describe('source repository setup policy', () => {
   });
   it.each([
     'missing-shard', 'excluded-shard', 'fail-fast', 'conditional-suite', 'filtered-suite',
-    'success-only-aggregate', 'missing-dependency', 'ignored-result', 'missing-test-report', 'success-only-test-report'
+    'success-only-aggregate', 'missing-dependency', 'ignored-result', 'missing-test-report',
+    'success-only-test-report', 'unbounded-timeout'
   ])('rejects incomplete full-suite sharding: %s', async fault => {
     const workflow = await readWorkflow('ci.yml'), shards = workflow.jobs['test-shards'];
     const run = shards.steps.find((step: { name?: string }) => step.name === 'Run package check');
@@ -90,6 +91,10 @@ describe('source repository setup policy', () => {
     if (fault === 'ignored-result') workflow.jobs.test.steps[0].run = 'true';
     if (fault === 'missing-test-report') shards.steps.splice(shards.steps.indexOf(upload), 1);
     if (fault === 'success-only-test-report') upload.if = '${{ success() }}';
+    if (fault === 'unbounded-timeout') {
+      shards['timeout-minutes'] =
+        "${{ matrix.os == 'windows-latest' && matrix.shard == 2 && 120 || 45 }}";
+    }
     expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
   });
   function pluginReport(platform: string) {

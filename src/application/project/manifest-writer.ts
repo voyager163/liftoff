@@ -28,6 +28,7 @@ export type ManagedManifestDecision =
       readonly content: string;
     }
   | { readonly kind: 'retain'; readonly logicalName: string }
+  | { readonly kind: 'retire'; readonly logicalName: string }
   | { readonly kind: 'retire-alias'; readonly logicalName: string };
 
 export type ManifestV8WriteRequest =
@@ -55,6 +56,15 @@ export type ManifestV8WriteRequest =
   | {
       readonly origin: 'maintenance'; readonly source: unknown; readonly managed: readonly ManagedManifestDecision[];
       readonly activationTargetHistory?: ActivationTargetHistoryReference;
+    }
+  | {
+      readonly origin: 'workflow-transition';
+      readonly source: unknown;
+      readonly selection: ManifestV8ProjectLeaf & {
+        readonly profile: 'none' | ModernGovernanceProfile;
+      };
+      readonly activeLayout: ManifestActiveLayout;
+      readonly managed: readonly ManagedManifestDecision[];
     };
 
 export interface ManifestV8Candidate {
@@ -194,7 +204,11 @@ function generatedInput(value: unknown, expected: readonly ExpectedArtifact[]): 
 
 function managedInput(
   value: unknown,
-  origin: 'adoption' | 'historical-successor' | 'maintenance',
+  origin:
+    | 'adoption'
+    | 'historical-successor'
+    | 'maintenance'
+    | 'workflow-transition',
   source: HistoricalLiftoffManifest | LiftoffManifestV8 | undefined,
   target: ReturnType<typeof targetFor>
 ) {
@@ -211,6 +225,14 @@ function managedInput(
     if (names.has(name)) throw new FileSystemError('Managed manifest decisions contain a duplicate identity.');
     names.add(name);
     const old = previous.get(name);
+    if (record.kind === 'retire') {
+      if (origin !== 'workflow-transition' || !old || declared.has(name)) {
+        throw new FileSystemError(
+          'Workflow transition retirement requires an exact source-only managed identity.'
+        );
+      }
+      return [];
+    }
     if (record.kind === 'retire-alias') {
       if (origin !== 'historical-successor' || !old ||
         !isRetiredManagedCoreArtifactIdentity(name, old.category, old.pathParts)) {
@@ -270,15 +292,21 @@ function assertAdoptionBindings(manifest: LiftoffManifestV8): void {
 export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
   if (types.isProxy(input)) throw new FileSystemError('Manifest writer request cannot be a proxy.');
   const origin = isRecord(input) ? Object.getOwnPropertyDescriptor(input, 'origin')?.value : undefined;
-  if (origin !== 'fresh' && origin !== 'adoption' && origin !== 'historical-successor' && origin !== 'maintenance') {
-    throw new FileSystemError('Manifest writer requires explicit fresh, adoption, historical-successor or maintenance origin.');
+  if (origin !== 'fresh' && origin !== 'adoption' &&
+      origin !== 'historical-successor' && origin !== 'maintenance' &&
+      origin !== 'workflow-transition') {
+    throw new FileSystemError(
+      'Manifest writer requires explicit fresh, adoption, historical-successor, maintenance or workflow-transition origin.'
+    );
   }
   const request = exactRecord(input, origin === 'fresh' ? [
     'origin', 'selection', 'generatedArtifacts',
     ...(isRecord(input) && Object.hasOwn(input, 'activeLayout') ? ['activeLayout'] : [])
   ] : origin === 'adoption' ? ['origin', 'selection', 'activeLayout', 'managed', 'adoptionObservations'] :
     origin === 'historical-successor' ? ['origin', 'source', 'profile', 'activeLayout', 'sourceManifestHistory', 'managed'] :
-      ['origin', 'source', 'managed',
+      origin === 'workflow-transition'
+        ? ['origin', 'source', 'selection', 'activeLayout', 'managed']
+        : ['origin', 'source', 'managed',
         ...(isRecord(input) && Object.hasOwn(input, 'activationTargetHistory') ? ['activationTargetHistory'] : [])
       ], 'Manifest writer request');
   let leaf: ManifestV8ProjectLeaf;
@@ -295,7 +323,7 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
     if (selection.profile !== 'none' && selection.profile !== 'single-maintainer-gitflow' && selection.profile !== 'team-gitflow') {
       throw new FileSystemError(`${label} manifest requires an explicit supported profile.`);
     }
-    profile = selection.profile;
+    profile = selection.profile as 'none' | ModernGovernanceProfile;
   } else if (origin === 'historical-successor') {
     const raw = sourceData(request.source);
     if (!isRecord(raw) || ![2, 3, 4, 5, 6, 7].some((version) => version === raw.artifactVersion)) {
@@ -309,7 +337,7 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
     profile = request.profile;
     leaf = projectReader.validateManifestV8Project({ project: source.project, framework: source.framework });
     originalReference = validateManifestSourceHistoryReference(request.sourceManifestHistory);
-  } else {
+  } else if (origin === 'maintenance') {
     source = rootReader.parseManifestV8(sourceData(request.source));
     profile = source.governance.profile;
     leaf = projectReader.validateManifestV8Project({ project: source.project, framework: source.framework });
@@ -322,15 +350,57 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
       }
       activationTargetHistory = requested;
     }
+  } else {
+    source = rootReader.parseManifestV8(sourceData(request.source));
+    const selection = exactRecord(
+      sourceData(request.selection),
+      ['project', 'framework', 'profile'],
+      'Workflow transition manifest selection'
+    );
+    leaf = projectReader.validateManifestV8Project({
+      project: selection.project,
+      framework: selection.framework
+    });
+    if (selection.profile !== source.governance.profile) {
+      throw new FileSystemError(
+        'Workflow transition cannot change the governance profile.'
+      );
+    }
+    profile = selection.profile as 'none' | ModernGovernanceProfile;
+    const sourceEligible = source.project.specWorkflow === 'manual'
+      ? source.framework.state === 'not-required'
+      : source.framework.state === 'initialized';
+    const targetEligible = leaf.project.specWorkflow === 'manual'
+      ? leaf.framework.state === 'not-required'
+      : leaf.framework.state === 'initialized';
+    if (!sourceEligible ||
+        !targetEligible ||
+        canonicalJson(source.project.workload) !==
+          canonicalJson(leaf.project.workload) ||
+        source.project.name !== leaf.project.name) {
+      throw new FileSystemError(
+        'Workflow transition requires a current Manual or initialized external source and a Manual or initialized external target without changing project identity.'
+      );
+    }
+    originalReference = source.sourceManifestHistory;
+    activationTargetHistory = source.activationTargetHistory;
   }
-  const target = targetFor(leaf, profile, origin === 'maintenance' && source?.artifactVersion === 8 ? source.plugins : undefined);
+  const target = targetFor(
+    leaf,
+    profile,
+    origin === 'maintenance' && source?.artifactVersion === 8
+      ? source.plugins
+      : undefined
+  );
   const generated = origin === 'fresh' ? generatedInput(request.generatedArtifacts, target.composition.expected) : undefined;
   const managedArtifacts = generated ? generated.filter((entry) => entry.lifecycle === 'managed-core').map((entry) => {
     const contentHash = `sha256:${hash(entry.content)}`;
     assertStaticHash(entry.logicalName, contentHash, target.staticHashes);
     return { logicalName: entry.logicalName, category: entry.category, pathParts: [...entry.pathParts], contentHash };
   }) : managedInput(origin === 'adoption' ? sourceData(request.managed) : request.managed,
-    origin === 'adoption' || origin === 'historical-successor' ? origin : 'maintenance', source, target);
+    origin === 'adoption' || origin === 'historical-successor' ||
+      origin === 'workflow-transition' ? origin : 'maintenance',
+    source, target);
   const projectArtifacts = generated ? generated.flatMap((entry) => entry.lifecycle === 'project' ? [{
     logicalName: entry.logicalName, category: entry.category, pathParts: [...entry.pathParts],
     generatedBy: liftoffVersion, generationHash: `sha256:${hash(entry.content)}`, provisioningGroup: entry.provisioningGroup
@@ -338,7 +408,8 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
   let activeLayout = generated ? {
     schemaVersion: 1, state: 'bound',
     bindings: projectArtifacts.map((entry) => ({ kind: 'artifact', logicalName: entry.logicalName, pathParts: entry.pathParts }))
-  } : origin === 'historical-successor' || origin === 'adoption' ? sourceData(request.activeLayout) :
+  } : origin === 'historical-successor' || origin === 'adoption' ||
+      origin === 'workflow-transition' ? sourceData(request.activeLayout) :
     source?.artifactVersion === 8 ? source.activeLayout : undefined;
   if (generated && Object.hasOwn(request, 'activeLayout')) {
     const requested = validateManifestActiveLayout(sourceData(request.activeLayout), target.source.layoutDescriptor);
@@ -373,10 +444,24 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
   if (origin === 'adoption') assertAdoptionBindings(manifest);
   if (source) {
     for (const [name, previous, next] of [
-      ['project', source.project, manifest.project], ['framework', source.framework, manifest.framework],
-      ['project provenance', source.projectArtifacts, manifest.projectArtifacts]
+      ['project provenance', source.projectArtifacts, manifest.projectArtifacts],
+      ...(source.artifactVersion === 8 ? [[
+        'adoption observations',
+        source.adoptionObservations,
+        manifest.adoptionObservations
+      ]] : [])
     ]) {
       if (canonicalJson(previous) !== canonicalJson(next)) throw new FileSystemError(`Manifest writer cannot alter source ${name}.`);
+    }
+    if (origin !== 'workflow-transition') {
+      for (const [name, previous, next] of [
+        ['project', source.project, manifest.project],
+        ['framework', source.framework, manifest.framework]
+      ]) {
+        if (canonicalJson(previous) !== canonicalJson(next)) {
+          throw new FileSystemError(`Manifest writer cannot alter source ${name}.`);
+        }
+      }
     }
     if (origin === 'maintenance' && source.artifactVersion === 8) {
       const sourceIdentity = source.governance.profile === 'none' ? null : source.governance.activationIdentity;

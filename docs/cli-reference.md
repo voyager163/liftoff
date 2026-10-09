@@ -8,6 +8,7 @@ liftoff migrate --help
 liftoff governance --help
 liftoff governance assess --help
 liftoff assess --help
+liftoff adopt --help
 liftoff upgrade --help
 liftoff update --help
 liftoff repair --help
@@ -26,6 +27,7 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | --- | --- |
 | `liftoff capabilities --json` | Returns the schema-1 installed command, schema, plugin, profile, recipe and limitation catalog without project discovery, tool probes, telemetry or state writes |
 | `liftoff assess [project] [--governance <profile>] [--json] [--live]` | Bounded read-only comparison against installed targets; optional scoped GitHub metadata is not conformance or activation proof |
+| `liftoff adopt [project] [--check] [--json]` | Creates a schema-1 read-only non-Liftoff discovery/destination preview; bare JSON and non-TTY invocations never infer approval |
 | `liftoff plan` | Resolves decisions and previews artifacts and requirements without side effects |
 | `liftoff init [project-name]` | Initializes a named child or the exact current Git root through staged readiness and framework setup |
 | `liftoff migrate <source>` | Creates a new sibling scaffold and filtered source copy without changing the source |
@@ -45,15 +47,21 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | `liftoff update [project]` | Applies an exactly approved v8 successor or managed-core maintenance plan |
 | `liftoff update --check` | Reports eligible v8 plans without project mutation; exits 0 when clean and 2 when actionable |
 | `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; project-owned files remain unreachable |
+| `liftoff workflow set <openspec\|spec-kit\|manual> [project] --check` | Saves an exact workflow-transition plan binding source/target history, pinned tool/profile identity, official staged output, agents, current identity files, checks and expiry without project or machine writes |
+| `liftoff workflow set <openspec\|spec-kit\|manual> [project] --approve-plan <fingerprint>` | Applies an exact current plan through the dedicated transition transaction; this approval never authorizes machine tools or global-profile changes |
+| `liftoff workflow set <target> [project] --recover --approve-plan <fingerprint>` | Recovers only the authenticated transition attributable to that exact plan and observed transaction digest |
 | `liftoff repair [project-path]` | Displays an exact plan and offers action-specific default-No approval on a genuine terminal; no fingerprint entry |
 | `liftoff repair [project-path] --check` | Inventories current-v8 application bindings or previews historical infrastructure repair without cloud calls, application scripts or project writes |
 | `liftoff repair --capabilities --json` | Lists packaged repair contracts, recipes, schemas and real command modes without needing a project |
 | `liftoff repair [project-path] --inspect-layout` | Inventories actual application paths, target identities, references and unresolved mappings without execution |
 | `liftoff repair [project-path] --application-patch <patch.json>` | Reviews external staged application mappings; interactive verification/network/file consents remain separate |
+| `liftoff repair [project-path] --agents <list> --check` | Saves an additive-only agent integration plan; existing agents and the Spec Kit default are preserved unless an exact default change is requested |
+| `liftoff repair [project-path] --agents <list> [--default-agent <agent>]` | Uses Liftoff-native Manual output or pinned official OpenSpec/Spec Kit staging, then requests default-No approval of the exact project effects |
 | `liftoff repair [project-path] --check --live --subscription <UUID>` | Explicitly requests bounded Azure metadata discovery with existing authentication and one selected subscription |
 | `liftoff repair [project-path] --verify-plan <fingerprint>` | Optional automation for exact staged application checks; declared preparation requires `--allow-dependency-preparation` and declared network requires `--allow-network` |
 | `liftoff repair [project-path] --approve-plan <fingerprint>` | Optional automation for an eligible separately approved exact file plan; application patches need fresh verified checks |
 | `liftoff repair [project-path] --recover` | Recovers the recorded interrupted repair transaction without starting a new repair |
+| `liftoff repair [project-path] --recover --approve-plan <fingerprint>` | Recovers only the authenticated additive-agent transaction attributable to that saved plan |
 | `liftoff dev` | Prints workload-appropriate local development commands; it does not execute them |
 | `liftoff infra` | Prints OpenTofu guidance for supported API/GenAI workloads without executing it |
 | `liftoff patterns` | Lists GenAI patterns |
@@ -108,15 +116,19 @@ current directory or load project plugins. Registered syntax is distinguished
 from governance executor availability: `unavailable`, `injected-only`, and
 explicit blockers are not usable production execution. Plugin host declarations
 do not prove local tool readiness or native-package qualification. The current
-public catalog lists OpenSpec/Spec Kit/Manual, single-maintainer/none, historical
+public catalog lists OpenSpec/Spec Kit/Manual, single-maintainer/team/none, historical
 manifest readers 2-7, and v8 reading/writing. Its plugin inventory is the exact
 current generation source family. `schemas.currentGeneration` covers `plan`,
 `init`, and sibling `migrate`, not arbitrary source conversion.
 `schemas.modernReadOnly` separately lists the v8 source/helper and
 governance inspection routes. `schemas.modernLocalVerification` separately lists
-the explicit local request, approval and execution boundary below. This
-does not enable team generation, arbitrary writer access, or automatic local
-completion. An older
+the explicit local request, approval and execution boundary below. Team profile
+generation belongs only to `schemas.currentGeneration`; verification does not
+enable arbitrary writer access or automatic local
+completion. `schemas.workflowTransition` advertises the exact schema-1 planning
+and authority-selection interface separately from its empty
+`executableTransitions` list; command registration does not imply a transition
+executor. An older
 installed release may not have this command; use its documented help rather
 than assuming a missing interface or inventing receipts.
 
@@ -135,7 +147,7 @@ Common noninteractive inputs include:
 --spec openspec|spec-kit|manual
 --agents copilot,claude,codex | --agents none
 --default-agent copilot|claude|codex
---governance single-maintainer-gitflow|none
+--governance single-maintainer-gitflow|team-gitflow|none
 --copilot-cloud | --no-copilot-cloud
 --configure-openspec-profile
 ```
@@ -159,8 +171,10 @@ For `init` and `migrate`, case or NFC-normalization aliases in staged destinatio
 paths are blocking conflicts, not forceable replacements. Existing destination
 ancestors must be listable; see [overwrite boundaries](safety-and-consent.md#overwrite-boundaries).
 
-Repository governance defaults to `single-maintainer-gitflow`. It generates a
-local deterministic setup integrations; initialization does not run activation.
+Repository governance defaults to `single-maintainer-gitflow`, whose local
+handoff requires zero additional human approvals. `team-gitflow` selects the
+local handoff requiring one current independent human pull request approval.
+Neither profile adds deployment reviewers or activates live enforcement.
 The setup integration coordinates local readiness and separately approved
 publication, cloud, and governance work. `none` omits it. See
 [repository governance](repository-governance.md).
@@ -393,7 +407,7 @@ for review; project command stdout/stderr is represented by digests, not echoed.
 
 Existing admitted fresh/current v8 Manual and Spec Kit projects can finalize
 successful local verification, review exact publication files, and independently
-approve their publication. This does not enable Manual/team generation, project
+approve their publication. This completion interface does not enable project
 conversion, successor revalidation, OpenSpec finalization, providers or automatic
 whole-directory rollback. Historical, retained, changed-baseline and nonlocal
 progression require their separately supported reconciliation paths.
@@ -751,6 +765,125 @@ and managed contents. Ordinary update does not silently add this new integration
 or retag an older plugin family. Use the advertised CLI assessment until a
 separately reviewed contribution transition is available.
 
+## Reviewed in-place adoption
+
+Use `adopt` only for a supported application without a Liftoff manifest:
+
+```bash
+liftoff adopt --project "./existing application" --check
+liftoff adopt "./existing application" --type standard --api node --spec manual --agents none --governance none --json
+```
+
+The current schema-1 public surface resolves one exact Git boundary, or an
+explicitly selected non-Git root, and compares it with the installed target
+selection. When supported application binding evidence exists, it saves the
+expiring adoption review outside the repository.
+Its static layout plan preserves observed application bindings at their current
+paths, omits unobserved starter bindings, and leaves protected infrastructure
+uninspected and planning-only. At least one selected application-component
+binding must be observed before candidate and destination review. The mapping
+review draft then enumerates every bounded file and reference across source,
+build/tests, Docker/Compose, CI, and documentation without approving its
+suggestions. Custom mappings and incompatible backend-language evidence remain
+blocked instead of being replaced with starter bytes. Destination conflicts,
+literal-reference limits, and deployment/state uncertainty remain explicit.
+Project files, Git history, commands, dependencies, network, credentials,
+state, and cloud resources are unchanged.
+
+`--approve-plan <fingerprint>` and
+`--recover --approve-plan <fingerprint>` are registered exact-authority
+surfaces. Approval accepts only an expiring saved publication fingerprint
+created after complete compatibility review, exact preparation/script/network
+permission, successful isolated verification, unchanged-input confirmation and
+fresh transaction measurement. It writes only the listed absent managed-core
+and manifest files, keeps every application byte/mode/path as a precondition,
+and publishes the manifest last. The project journal and root-bound user-local
+authority record must agree throughout the transaction.
+
+Recovery requires the same publication fingerprint and the transaction digest
+observed from that authenticated journal. It restores only attributable writes
+that still equal the transaction target, preserves concurrent edits, reports
+partial cleanup honestly and blocks new update/repair/verification/adoption
+work until recovery is settled. Manifest absence, JSON, piped input,
+PID/process age, generic yes, and force never create authority. Active-binding
+publication after reviewed application moves remains a separate stage.
+
+If the selected root already contains `liftoff.manifest.json`, adoption returns
+an existing-project route instead of reinitializing it. Use
+`liftoff update --project <path> --check` for supported control-plane/schema
+maintenance and `liftoff repair <path> --check` for separately
+authorized application work. Existing deployment/state adoption remains
+planning-only.
+
+## Reviewed workflow transition planning
+
+```bash
+liftoff workflow set manual . --check --json
+liftoff workflow set openspec . --agents copilot --check --json
+liftoff workflow set spec-kit . --agents copilot --default-agent copilot --check --json
+liftoff workflow set openspec . --agents copilot --install-tools --configure-openspec-profile --json
+```
+
+The schema-1 surface supports current manifest-v8 projects and binds
+the exact project root, source workflow/framework identity, target workflow,
+selected agents/default, raw manifest/config digests and modes, required checks,
+installed target plugin resolution, creation time, expiry and fingerprint.
+Plans are saved in project-bound user-local metadata outside the repository.
+Changed inputs, a mismatched target/agent selection, aliases that do not resolve
+to the same canonical selection, unknown fields, tampering, future dates and
+expiry all reject the saved plan.
+
+Current Manual and initialized external projects can transition among Manual,
+OpenSpec and Spec Kit. The saved plan includes exact
+managed-integration/config/manifest effects, validated official framework
+effects where applicable, physical preconditions, transaction measurement,
+final-manifest ordering and the dedicated recovery identity. Exact
+`--approve-plan` automation or genuine interactive default-No consent can apply
+that project plan. JSON, non-TTY input, generic yes, force, an agent,
+machine-tool permission, global-profile permission, or a saved plan alone never
+grants project-file authority.
+
+For Manual targets, the dedicated transaction may rewrite or retire only exact
+recorded Liftoff managed integrations, write `liftoff.config.json`, and publish
+the manifest last. For OpenSpec or Spec Kit targets, it may additionally create only the exact
+validated files emitted by the pinned official initializer in an isolated
+staging tree. When official Spec Kit output contains no tracked file under
+`specs/`, the reviewed effects also include the empty `specs/.gitkeep`
+repository placeholder used throughout Liftoff projects. Existing differing
+files or modes are collisions; force cannot replace them. The transaction never
+deletes OpenSpec/Spec Kit trees,
+specifications or history, uninstalls shared tools, changes application/Git
+bytes, touches deployment state, changes shared profiles, or enrolls telemetry.
+Managed drift, occupied new integration/framework paths, stale inputs, changed
+plugin/tool/profile resolution, expiry, and mismatched target/agents fail
+closed. Recovery requires the same plan fingerprint and the authenticated
+observed transaction digest.
+
+The plan records bounded digest inventories for the complete source framework
+trees and any pre-existing target history. Recognized active OpenSpec changes
+or Spec Kit specification directories may be preserved as non-authoritative
+history only when moving to Manual. A transition into an external framework
+blocks on active source work, active target work, partial target roots, unknown
+history shapes, links, special entries, case/Unicode aliases, or changed
+framework bytes after preview. Inactive target history may remain only when
+every official staged file is absent or byte-and-mode identical.
+
+External targets first bind compatible pinned runtime/package-manager/framework
+identities. `--install-tools` is separate allowlisted machine consent and cannot
+approve project files or a reviewed version/channel replacement.
+`--configure-openspec-profile` separately authorizes only the required custom,
+both-delivery, complete-workflow OpenSpec fields. `--check` permits neither.
+After preparation, Liftoff reruns the official initializer with literal
+arguments under isolated `HOME`, `USERPROFILE`, XDG, Git, agent and temporary
+paths, rejects incomplete/invalid output or `.git` metadata, and fingerprints
+the complete staged file inventory. Apply revalidates the tool/profile identity
+and reproduces the same official output before starting the reviewed
+transaction. Committed readback rechecks source preservation and either native
+Manual readiness or the selected official framework installation. External
+commit validation also binds the complete expected target framework inventory,
+so concurrent history, active-work, file, mode, or directory-shape changes
+cannot be reported as a successful transition.
+
 ## Read-only governance assessment
 
 ```bash
@@ -884,7 +1017,10 @@ liftoff repair --capabilities --json
 liftoff repair [project-path] --inspect-layout [--json]
 liftoff repair [project-path] --application-patch <external-patch.json>
 liftoff repair [project-path] --check --application-patch <external-patch.json> [--json]
+liftoff repair [project-path] --agents <copilot,claude,codex> --check [--json]
+liftoff repair [project-path] --agents <list> [--default-agent <agent>] [--install-tools] [--configure-openspec-profile]
 liftoff repair [project-path] --recover [--json]
+liftoff repair [project-path] --recover --approve-plan <fingerprint> [--json]
 ```
 
 **Normal terminal use does not require copying a fingerprint.** Bare current-v8
@@ -897,6 +1033,28 @@ prompt or execute implicitly; piped yes, autopilot and generic confirmation are
 not consent. No, cancellation or EOF before any effect approval leaves the
 project unchanged. A later cancelled file approval prevents the file transaction,
 but reports any earlier separately authorized verifier effects.
+
+Additive agent repair is a separate current-v8 scope. `--agents` names only
+agents to add or whose missing managed/native integration should be repaired;
+`none` and removals are rejected. Existing selections remain in order.
+For Spec Kit, omission of `--default-agent` preserves the recorded default;
+an explicit selected default is the only authority to change it. Manual writes
+only the requested agent's applicable Liftoff-native managed integrations.
+OpenSpec and Spec Kit rerun only registered pinned official
+integration operations in isolated staging, require the existing initialized
+framework seeds, and reject output outside the requested integration paths.
+Occupied differing destinations, stale tools/profile, changed framework
+history and plan expiry fail closed. Missing output for an already recorded
+requested agent remains a real executable repair rather than being treated as
+current from metadata alone.
+
+`--check` never prepares tools or the global OpenSpec profile. A non-check
+agent request may separately authorize `--install-tools` and, only for
+OpenSpec, `--configure-openspec-profile`; neither permission authorizes project
+files. Exact automation uses the returned `--approve-plan` fingerprint without
+repeating machine-consent flags. The agent scope may complete while application
+or infrastructure work remains incomplete, and its report never claims broader
+project readiness.
 
 Use a positional project path to select another project, or run inside the
 project (including a subdirectory). Commands in structured `nextActions` retain
@@ -967,9 +1125,17 @@ the selected version-1 recipe: historical `application-layout-patch` or current
 Current-v8 repair supports governance `none` and `single-maintainer-gitflow`,
 including Manual/no-agent projects. It uses explicit active artifact bindings
 and component roots, including compatible custom paths; generation history does
-not select current locations. Missing bindings are not inferred. Moving an
-actively bound artifact requires separately reviewed binding publication, which
-is not yet available. Current infrastructure and team-profile repair remain
+not select current locations. Missing bindings are not inferred. A verified
+actively bound artifact move commits application and affected reference files
+first, leaving the manifest unchanged. The CLI then emits a distinct
+`application-active-binding-publication` plan whose second
+`--approve-plan <fingerprint>` transaction writes only immutable repair history
+and the final manifest active-layout update. For governed projects it also
+updates the bound active-layout digest. Generation hashes, adoption observations,
+and activation evidence remain unchanged. If publication is blocked, the report
+lists the committed application effects and preserves concurrent bytes; the
+original application fingerprint reconstructs only pending binding work and
+cannot replay the move. Current infrastructure and team-profile repair remain
 unsupported. Inspect `currentApplication` in the repair capabilities document
 instead of assuming historical recipes also authorize current sources.
 
@@ -1011,6 +1177,10 @@ never runs application verification on the caller's behalf: a fresh matching
 successful receipt is required first. Flags cannot select a different patch,
 discovery subscription, command set or recipe. Repeated matching verification
 can reuse its recorded result without claiming another command ran.
+For an already committed active-artifact move, the separately displayed binding
+fingerprint selects only manifest publication; passing the original application
+fingerprint resumes or rebuilds that binding plan without repeating application
+effects.
 
 Do not chain check and apply with `&&`: exit 2 can mean an available plan or a
 blocked/plan-only result. Schema-2 results distinguish `inspected`, `current`,
@@ -1049,17 +1219,22 @@ Recovery accepts only externally sealed legacy schema-1 repair journals or
 schema-2 journals with exact supported contract/recipe/layout identities.
 Unknown future identities block without rewriting the journal.
 
-`--force`, `--yes`, and `--add-agents` are not supported. Agent installation,
-framework-default changes, and the public stateful migration coordinator are
-**not implemented**. An existing internal stateful engine does not make a public
-command executable. Deployed, unknown, ambiguous, or unsupported cases remain
-plan-only with source and state untouched. Do not edit metadata, copy a fresh
-init scaffold over the project, or use manual state moves to bypass the blocker.
+`--force`, `--yes`, and `--add-agents` are not supported. Additive agent
+installation uses `--agents`; removal remains unsupported, and Spec Kit default
+changes require exact `--default-agent` selection. The public stateful migration
+coordinator remains **not implemented**. An existing internal stateful engine
+does not make a public command executable. Deployed, unknown, ambiguous, or
+unsupported cases remain plan-only with source and state untouched. Do not edit
+metadata, copy a fresh init scaffold over the project, or use manual state moves
+to bypass the blocker.
 
-If writes were interrupted, use only the reported
-`liftoff repair [project-path] --recover` action. Update cannot recover repair
-authority; both lanes exclude overlapping pending transactions and preserve
-concurrent edits. After repair, run `liftoff update --check --project <project-path>`,
+If writes were interrupted, use only the reported recovery action.
+Infrastructure/application repair uses `liftoff repair [project-path] --recover`;
+additive agent repair uses
+`liftoff repair [project-path] --recover --approve-plan <fingerprint>`.
+Update cannot recover repair authority; all lanes exclude overlapping pending
+transactions and preserve concurrent edits. After repair, run
+`liftoff update --check --project <project-path>`,
 review any separately approved update work, then inspect
 `liftoff governance status <project-path> --scope local --json` and
 `liftoff governance resume <project-path> --scope local --json` for governed

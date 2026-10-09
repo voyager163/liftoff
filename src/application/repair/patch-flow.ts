@@ -28,6 +28,11 @@ import { emitRepairReport, type RepairNextAction, type RepairReport } from './re
 import { repairAgentActions, repairCommandAction, repairResumeActions } from './guidance.js';
 import { requestRepairApproval } from './approval.js';
 import type { RepairRequest } from './request.js';
+import {
+  createActiveBindingPublicationIntent,
+  prepareActiveBindingPublication,
+  type ActiveBindingPublicationIntent
+} from './active-binding-publication.js';
 
 interface BoundPatch {
   candidate: ApplicationPatchCandidate;
@@ -84,6 +89,10 @@ export async function repairApplicationProject(input: {
   let verificationResult: ApplicationVerificationResult | undefined;
   let backupPath: string | undefined;
   let historyPath: string | undefined;
+  let bindingIntent: ActiveBindingPublicationIntent | null = null;
+  let applicationPlanFingerprint: string | undefined;
+  let committedApplicationEffects:
+    ReturnType<typeof mutationDescriptors> | undefined;
   let effects: NonNullable<RepairReport['verificationEffects']> = {
     attempted: false, networkAuthorized: false, dependencyPreparationAuthorized: false, outcome: 'not-run',
     boundary: 'Approved project verification is not sandboxed. Earlier verifier/host effects are not undone by cancelling file approval; no planned application file transaction runs without its separate consent.'
@@ -144,6 +153,7 @@ export async function repairApplicationProject(input: {
       return 2;
     }
     const preview = previewFor(root, inspected, input.saved ? new Date(input.saved.createdAt) : now());
+    applicationPlanFingerprint = preview.fingerprint;
     if (input.saved && preview.fingerprint !== input.saved.fingerprint) {
       throw new Error('Application inputs, modes, directories, staging, references or verification changed after preview. Request a fresh inspection and patch review.');
     }
@@ -331,12 +341,21 @@ export async function repairApplicationProject(input: {
     const mutatedPaths = new Set(candidate.mutations.map((entry) => entry.pathParts.join('/')));
     const backup = await preserveRepairOriginals(preview, inspected.snapshots.filter((entry) => mutatedPaths.has(entry.pathParts.join('/'))), storage);
     backupPath = backup.path;
+    bindingIntent = createActiveBindingPublicationIntent(
+      manifest, inspected.metadata[0].content!, candidate, preview
+    );
     const historyMutations = repairHistoryMutations({
       preview, sourceManifest: inspected.metadata[0].content!, snapshots: inspected.snapshots,
-      mutations: candidate.mutations, verificationPolicy: candidate.verificationPolicy, backupIndexKey: backup.indexKey
+      mutations: candidate.mutations, verificationPolicy: candidate.verificationPolicy,
+      backupIndexKey: backup.indexKey,
+      ...(bindingIntent
+        ? { activeBindingPublication: bindingIntent }
+        : {})
     });
     historyPath = path.join(root, ...repairHistoryRoot, preview.fingerprint);
     const mutations = [...historyMutations, ...candidate.mutations];
+    committedApplicationEffects =
+      mutationDescriptors(candidate.mutations);
     const originals = [...inspected.snapshots, ...historySnapshots];
     const outcome = await applyReviewedUpdateTransaction(root, mutations, {
       transactionKind: 'repair', repairIdentity: identity, planFingerprint: preview.fingerprint,
@@ -364,6 +383,82 @@ export async function repairApplicationProject(input: {
         throw new Error('Application patch committed, but protected manifest/configuration changed during final inspection.');
       }
     }
+    if (bindingIntent) {
+      if (outcome.cleanupFailures.length) {
+        emit({
+          ...base(), ...detail(), operationKind: 'apply',
+          status: 'partial', verification: 'passed',
+          repairScopeComplete: false,
+          message: 'The exact reviewed application file move committed, but its transaction cleanup is incomplete. Recover that recorded transaction before rebuilding the separate binding plan; the move will not be replayed.',
+          blockers: outcome.cleanupFailures,
+          bindingPublication: {
+            status: 'blocked',
+            applicationPlanFingerprint: preview.fingerprint,
+            targetActiveLayoutDigest:
+              bindingIntent.targetActiveLayoutDigest,
+            transactionCommitted: true,
+            committedApplicationEffects:
+              committedApplicationEffects
+          },
+          nextActions: [
+            recoverAction(),
+            repairCommandAction(
+              root,
+              ['--approve-plan', preview.fingerprint],
+              {
+                id: 'application-binding-resume',
+                label: 'Rebuild binding work after recovery',
+                scope: 'active-binding-publication',
+                description: 'After recovery removes the committed journal, immutable repair history reconstructs only the pending binding plan.'
+              }
+            )
+          ]
+        });
+        context.outcome?.record('failure');
+        return 2;
+      }
+      const binding = await prepareActiveBindingPublication(
+        root, preview.fingerprint, now(), storage
+      );
+      if (!binding || binding.status !== 'available' || !binding.plan) {
+        throw new Error(
+          'Application moves committed, but their separate active-binding plan is unavailable.'
+        );
+      }
+      const bindingAction = repairCommandAction(
+        root,
+        ['--approve-plan', binding.plan.report.fingerprint],
+        {
+          id: 'application-binding-apply',
+          label: 'Review and publish the exact active bindings',
+          scope: 'active-binding-publication',
+          approvalRequired: true,
+          description: 'This second exact plan changes only repair history and the manifest active layout; it never replays the committed file move or rewrites generation provenance.'
+        }
+      );
+      emit({
+        ...base(), ...detail(), operationKind: 'apply', status: 'partial',
+        verification: 'passed', repairScopeComplete: false,
+        message: 'The exact reviewed application file move committed and was read back. Active bindings remain unchanged until the separate manifest-only plan is approved.',
+        bindingPublication: {
+          status: binding.status,
+          applicationPlanFingerprint: preview.fingerprint,
+          publicationPlanFingerprint: binding.plan.report.fingerprint,
+          targetActiveLayoutDigest:
+            binding.plan.report.targetActiveLayoutDigest,
+          receiptPath: binding.path,
+          committedApplicationEffects:
+            binding.plan.report.committedApplicationEffects
+        },
+        nextActions: [
+          bindingAction, inventoryAction(),
+          ...repairResumeActions(root, manifest),
+          ...repairAgentActions(root, manifest)
+        ]
+      });
+      context.outcome?.record('attention-required');
+      return 2;
+    }
     emit({
       ...base(), ...detail(), operationKind: 'apply', status: outcome.cleanupFailures.length ? 'partial' : 'applied',
       verification: 'passed', repairScopeComplete: outcome.cleanupFailures.length === 0,
@@ -380,10 +475,39 @@ export async function repairApplicationProject(input: {
       ...base(), status: committed || effects.attempted ? 'partial' : 'failed',
       verification: committed || effects.attempted ? 'incomplete' : 'not-run',
       message: committed
-        ? 'The application patch committed, but current verification/readback or cleanup is incomplete. No blind restoration was attempted.'
+        ? bindingIntent
+          ? 'The application file move committed, but its separate active-binding publication is incomplete. The move will not be replayed and no generation history was invented.'
+          : 'The application patch committed, but current verification/readback or cleanup is incomplete. No blind restoration was attempted.'
         : 'The application file transaction did not complete. Any earlier approved verification effects and retained private backups are reported separately.',
       blockers: [error instanceof Error ? error.message : 'Unexpected application repair failure.'],
-      nextActions: [inventoryAction(), ...repairAgentActions(root, manifest)]
+      ...(committed && bindingIntent && applicationPlanFingerprint &&
+          committedApplicationEffects
+        ? {
+            bindingPublication: {
+              status: 'blocked',
+              applicationPlanFingerprint,
+              targetActiveLayoutDigest:
+                bindingIntent.targetActiveLayoutDigest,
+              committedApplicationEffects
+            }
+          }
+        : {}),
+      nextActions: [
+        ...(committed && bindingIntent && applicationPlanFingerprint
+          ? [repairCommandAction(
+              root,
+              ['--approve-plan', applicationPlanFingerprint],
+              {
+                id: 'application-binding-resume',
+                label: 'Resume separate active-binding planning',
+                scope: 'active-binding-publication',
+                approvalRequired: false,
+                description: 'The immutable committed repair history reconstructs only the pending binding plan; it cannot replay the file move.'
+              }
+            )]
+          : []),
+        inventoryAction(), ...repairAgentActions(root, manifest)
+      ]
     });
     return committed || effects.attempted ? 2 : 1;
   }

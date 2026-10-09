@@ -132,7 +132,8 @@ describe('recorded project intent for current update', () => {
     expect(() => parseProjectConfigOptions({ agents: [] }, projectCatalog)).toThrow(/non-empty string array/u);
     expect(parseProjectConfigOptions({ agents: [] }, projectCatalog, { allowEmptyAgents: true }).agents).toEqual([]);
     expect(() => parseProjectConfigOptions({ specWorkflow: 'manual' }, projectCatalog)).toThrow(/unsupported/u);
-    expect(() => parseProjectConfigOptions({ governanceProfile: 'team-gitflow' }, projectCatalog)).toThrow(/unsupported/u);
+    expect(parseProjectConfigOptions({ governanceProfile: 'team-gitflow' }, projectCatalog).governanceProfile)
+      .toBe('team-gitflow');
   });
 
   it('binds observed configuration without replacing original source-history identity', async () => {

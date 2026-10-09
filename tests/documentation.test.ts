@@ -129,7 +129,7 @@ describe('public documentation', () => {
     expect(bashExamples).not.toContain('liftoff create');
   });
 
-  it('documents the executable local repair lane without claiming agent installation or public stateful execution', async () => {
+  it('documents executable scoped repair without claiming public stateful execution', async () => {
     const docs = await Promise.all([
       repositoryFile('docs/getting-started.md'), repositoryFile('docs/cli-reference.md'),
       repositoryFile('docs/repository-governance.md')
@@ -142,7 +142,10 @@ describe('public documentation', () => {
       expect(text).toContain('--subscription <UUID>');
       expect(text).toContain('state/backend metadata');
       expect(text).toContain('plan-only');
-      expect(text).toMatch(/Agent installation[\s\S]*public stateful migration coordinator[\s\S]*not implemented|public stateful migration coordinator[\s\S]*\*\*not implemented\*\*/);
+      expect(text).toMatch(
+        /liftoff repair(?: \[project-path\]| \.)? --agents/u
+      );
+      expect(text).toMatch(/public stateful migration coordinator[\s\S]*not implemented/u);
       expect(text).toContain('liftoff setup');
       expect(content).not.toMatch(/liftoff repair[^`\n]*--(?:force|yes|add-agents|project)/);
     }
@@ -443,7 +446,7 @@ describe('public documentation', () => {
     expect(readme).toContain('Repository governance');
     expect(gettingStarted).toContain('local files only');
     expect(workloads).toContain('repository-governance');
-    expect(cli).toContain('--governance single-maintainer-gitflow|none');
+    expect(cli).toContain('--governance single-maintainer-gitflow|team-gitflow|none');
     expect(existing).toContain('manifest-v8 managed-core successor');
     expect(prerequisites).toMatch(/no additional initialization\s+prerequisite/);
     expect(safety).toMatch(/never authorizes agent execution/);

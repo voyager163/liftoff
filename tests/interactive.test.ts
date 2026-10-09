@@ -163,7 +163,7 @@ describe('interactive presentation', () => {
   });
 
   it('allows an explicit interactive governance opt-out after architecture choices', async () => {
-    const { prompter, output } = scriptedPrompter('n\n\n');
+    const { prompter, output } = scriptedPrompter('none\n\n');
     try {
       const options = await prompter.promptForInitOptions({
         projectName: 'opt-out',
@@ -179,8 +179,9 @@ describe('interactive presentation', () => {
       expect(options.governanceProfile).toBe('none');
       expect(options.copilotCloud).toBe(false);
       expect(output.text()).toContain(
-        'Generate the single-maintainer GitFlow governance handoff?'
+        'Select repository governance profile'
       );
+      expect(output.text()).toContain('Team GitFlow');
     } finally {
       prompter.close();
     }

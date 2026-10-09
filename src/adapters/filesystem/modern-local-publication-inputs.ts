@@ -9,7 +9,10 @@ import {completionDigest,completionRecord,snapshotControl,nativeCompletionPath,t
   type CompletionSnapshot,type CompletionTarget} from '../../domain/governance/activation/modern-local-completion.js';
 import {validateManifestPathParts} from '../../domain/project/manifest/layout.js';
 import {exactRecord} from '../../domain/project/manifest/fields.js';
-import {reviewedUpdateTransactionPathParts,reviewedRepairTransactionPathParts} from '../../domain/project/reviewed-update-artifacts.js';
+import {
+  reviewedAdoptionTransactionPathParts, reviewedUpdateTransactionPathParts,
+  reviewedRepairTransactionPathParts
+} from '../../domain/project/reviewed-update-artifacts.js';
 
 const key=(parts:readonly string[])=>parts.join('/');
 const sort=(a:string,b:string)=>a<b?-1:a>b?1:0;
@@ -150,9 +153,14 @@ export async function completionPreconditions(index:CompletionProtectedIndex,tar
   const parts=new Map([...index.files.map(f=>[key(f.pathParts),f.pathParts] as const),...targets.map(t=>[key(t.pathParts),t.pathParts] as const)]);
   const result:ProjectFileSnapshot[]=[];
   for(const p of parts.values()){
-    // The codec reserves all three journal paths itself. Their absence remains
+    // The codecs reserve all transaction journal paths. Their absence remains
     // in the protected index and the engine's pending-transaction admission.
-    if(![reservedLocalVerificationJournalPath,reviewedUpdateTransactionPathParts,reviewedRepairTransactionPathParts].some(parts=>key(parts)===key(p))){
+    if(![
+      reservedLocalVerificationJournalPath,
+      reviewedUpdateTransactionPathParts,
+      reviewedRepairTransactionPathParts,
+      reviewedAdoptionTransactionPathParts
+    ].some(parts=>key(parts)===key(p))){
       result.push(await readCompletionFile(index.projectRoot,p));
     }
   }

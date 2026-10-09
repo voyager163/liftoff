@@ -1,5 +1,6 @@
 import { packagedSupportedStack } from '../../adapters/packaged-assets/supported-stack.js';
 import { createProjectCatalog } from '../../domain/project/catalog.js';
+import { modernGovernancePolicyVersions } from '../../domain/governance/policy/identity.js';
 import { governancePolicyVersion } from '../../repository-governance.js';
 
 export type { RegionResolution } from '../../domain/project/contracts.js';
@@ -13,7 +14,9 @@ export const projectCatalog = createProjectCatalog({
     openspec: packagedSupportedStack.frameworks.openspec.version,
     'spec-kit': packagedSupportedStack.frameworks['spec-kit'].version
   },
-  governancePolicyVersion
+  governancePolicyVersion,
+  teamGovernancePolicyVersion:
+    modernGovernancePolicyVersions['team-gitflow']
 });
 
 export const {

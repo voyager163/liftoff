@@ -26,13 +26,20 @@ relocation instructions. Missing bindings are not filled in from templates or
 component roots. Unresolved layouts, layouts with no editable artifact bindings,
 and team-profile repair are unsupported.
 
-The current recipe can edit an existing bound artifact in place or review
-eligible custom-component files. Moving a bound artifact is refused because
-separately reviewed binding publication is not yet available. Bound control and
-infrastructure trees remain excluded even at custom paths. Current infrastructure
-transformation and `--live` discovery are not implemented; historical Azure
-approvals cannot authorize them. Successful file repair is not setup, local
-readiness, activation, or deployment completion.
+The current recipe can edit an existing bound artifact in place, review eligible
+custom-component files, or move a bound artifact while retaining its exact
+logical identity. A verified move commits application and affected reference
+files first. The manifest remains unchanged until a second, separately reviewed
+`application-active-binding-publication` version-1 plan is approved. That second
+transaction writes only an immutable publication receipt and
+`liftoff.manifest.json`, with the manifest final. It updates the active layout
+and, for governed projects, the matching active-layout digest; it does not alter
+project-artifact generation hashes, adoption observations, or activation
+evidence. Bound control and infrastructure trees remain excluded even at custom
+paths. Current infrastructure transformation and `--live` discovery are not
+implemented; historical Azure approvals cannot authorize them. Successful file
+repair or binding publication is not setup, local readiness, activation, or
+deployment completion.
 
 Older generated v8 repair guidance remains managed content: inspect its actual
 capabilities, then review a normal managed-core update rather than overwriting
@@ -57,6 +64,33 @@ the guide or retagging its recorded content hash.
    uses the displayed plan's internal fingerprint, without asking a human to copy
    `--verify-plan` or `--approve-plan` hashes. File approval does **not** grant
    project-code or network authority.
+5. If the approved patch moved an actively bound artifact, the CLI reports the
+   committed application effects and an incomplete repair scope. Review the
+   separately stored binding plan, then approve its distinct fingerprint. A
+   binding failure preserves the committed move and any concurrent file or
+   manifest edit; it cannot replay the move. Supplying the original application
+   fingerprint again reconstructs only current binding work from immutable
+   repair history.
+
+## CLI-only and agent-assisted authoring
+
+The CLI-only path is complete for registered deterministic repair recipes:
+
+1. inventory with `--inspect-layout --json`;
+2. author the strict patch document and staged replacement files outside the
+   project;
+3. run the normal interactive flow above; and
+4. use only the reported fingerprint-selected automation or recovery commands
+   when noninteractive operation is required.
+
+An installed `/liftoff-repair` integration (`$liftoff-repair` in Codex) may
+help explain findings, inspect references, and author the same external patch.
+It does not receive broader authority: it cannot infer unresolved mappings,
+mint consent, approve its own verification, move project files before review,
+publish active bindings, recover an unrelated transaction, or turn successful
+checks into deployment/state approval. Agent-assisted and CLI-only paths
+therefore produce the same inspectable plans, receipts, transactions, and
+partial-failure reports.
 
 No, Ctrl-C, or EOF never grants authority and leaves repair's project-file
 transaction unapplied. If the later file-write question is canceled after
@@ -85,7 +119,11 @@ primary human workflow:
   staged verification; declared network effects additionally need
   `--allow-network`.
 - `liftoff repair <project> --approve-plan <fingerprint>` authorizes only the exact
-  file transaction after fresh matching successful verification.
+  selected transaction. The first application fingerprint requires fresh
+  matching successful verification and can commit application files. A second
+  binding fingerprint authorizes only the manifest-last binding publication.
+  After a move has committed, reusing the original application fingerprint
+  rebuilds or reports the pending binding plan and never repeats the file move.
 
 A native repair agent should guide humans through the normal interactive flow.
 Before using either optional automation command on the user's behalf, the agent

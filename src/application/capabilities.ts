@@ -13,6 +13,8 @@ import { modernLocalCompletionReportSchemaVersion } from './governance/modern-lo
 import { modernRevalidationCommandReportSchemaVersion } from './update/modern-revalidation-request.js';
 import { manualInfrastructurePolicy } from '../domain/governance/activation/modern-manual-infrastructure.js';
 import { protectedCompletionIndexEncoding } from '../domain/governance/activation/modern-local-completion.js';
+import { adoptionCommandReportSchemaVersion } from './adoption/public-command.js';
+import { workflowTransitionReportSchemaVersion } from './workflow-transition/use-case.js';
 
 export function installedCapabilities() {
   const registry = modernSourceRegistry();
@@ -28,10 +30,11 @@ export function installedCapabilities() {
         manifestWrite: 8,
         commands: ['plan', 'init', 'migrate'],
         workflows: projectCatalog.developmentWorkflows.map(({ id }) => id),
+        profiles: projectCatalog.governanceProfiles.map(({ id }) => id),
         defaultWorkflow: 'openspec',
         manualAgentsOptional: true,
         frameworkInitialization: 'Official initialization is required only for OpenSpec and Spec Kit.',
-        scope: 'Fresh project generation and sibling migration scaffolding. No automatic source adoption, local verification/finalization, provider operations, or live governance activation.'
+        scope: 'Fresh project generation and sibling migration scaffolding, including local single-maintainer and team governance handoffs. No automatic source adoption, local verification/finalization, provider operations, or live governance activation.'
       },
       modernReadOnly: {
         manifestRead: [8],
@@ -90,13 +93,54 @@ export function installedCapabilities() {
         comparisonProfiles: ['none', 'single-maintainer-gitflow', 'team-gitflow'],
         explicitNonGitRoot: true, liveMetadata: true, liveProviders: ['github'], liveConformance: false,
         credentialEnrollment: false, projectExecution: false, projectWrites: false, telemetry: false,
-        scope: 'Bounded local metadata, declaration names and exact current managed-byte comparisons. Runtime constraints, references, agent behavior, effective governance and deployment proof remain unobserved. Team policy metadata comparison is not public team generation or enforcement support.',
-        recommendations: 'Advisory separate lanes only. Unavailable adoption, workflow/profile/plugin transitions, provider activation and deployed-state migration have no executable recommendation.',
+        scope: 'Bounded local metadata, declaration names and exact current managed-byte comparisons. Runtime constraints, references, agent behavior, effective governance and deployment proof remain unobserved. Team generation produces only the selected local handoff; it is not live enforcement support.',
+        recommendations: 'Advisory separate lanes only. Non-Liftoff projects may receive the read-only adopt preview; current v8 workflow changes may use the separately advertised exact workflow transition executor. Governance profile/plugin transitions, provider activation and deployed-state migration remain unavailable.',
         liveScope: 'Explicit bounded GitHub metadata reads for the verified local repository binding, applicable main/develop/release/hotfix refs and declared current environments, plus fixed GitHub Actions app metadata. No account/runner/Azure discovery; observed metadata is not current-profile conformance or activation proof.'
+      },
+      projectAdoption: {
+        command: 'adopt',
+        report: adoptionCommandReportSchemaVersion,
+        preview: 'adopt <project> --check',
+        approval: 'adopt <project> --approve-plan <fingerprint>',
+        recovery: 'adopt <project> --recover --approve-plan <fingerprint>',
+        previewAvailable: true,
+        executablePlanAvailable: true,
+        separateVerificationPermission: true,
+        separateFileApproval: true,
+        activeBindingPublication: false,
+        providerOperations: false,
+        scope: 'Bounded non-Liftoff discovery remains preview-only. A separately completed compatibility review, exact verification permission and successful receipt can produce an expiring exact-file publication plan. Explicit fingerprint approval publishes only absent managed-core/manifest effects through the dedicated adoption transaction; recovery requires the same plan fingerprint plus its observed authenticated transaction digest. Active-binding and provider operations remain separate.'
+      },
+      workflowTransition: {
+        command: 'workflow set',
+        report: workflowTransitionReportSchemaVersion,
+        preview: 'workflow set <openspec|spec-kit|manual> <project> --check',
+        approval: 'workflow set <target> <project> --approve-plan <fingerprint>',
+        recovery: 'workflow set <target> <project> --recover --approve-plan <fingerprint>',
+        previewAvailable: true,
+        executableTransitions: [
+          'openspec-to-manual',
+          'spec-kit-to-manual',
+          'manual-to-openspec',
+          'manual-to-spec-kit',
+          'openspec-to-spec-kit',
+          'spec-kit-to-openspec'
+        ],
+        officialIsolatedStaging: true,
+        separateMachineToolPermission: true,
+        separateOpenSpecProfilePermission: true,
+        exactSourceTargetAgentsInputsChecksAndExpiry: true,
+        applicationWrites: false,
+        projectMetadataWrites: true,
+        frameworkHistoryDeletion: false,
+        providerOperations: false,
+        scope: 'Current Manual and initialized external projects can execute exact approved transitions among Manual, OpenSpec and Spec Kit through a dedicated project-attributed transaction. External targets require compatible pinned tools, separately authorized machine/global-profile preparation, complete official isolated staging and collision-free validated output. The executor changes only exact staged framework files, selected managed integrations, liftoff.config.json and the final manifest; application/Git/framework history, deployment/state and unrelated integrations remain untouched.'
       },
       reports: {
         capabilities: 1, validate: 1, doctor: 1, upgrade: 1,
-        update: currentUpdateReportSchemaVersion, governance: 2, governanceAssessment: 1, projectAssessment: 1
+        update: currentUpdateReportSchemaVersion, governance: 2, governanceAssessment: 1,
+        projectAssessment: 1, projectAdoption: adoptionCommandReportSchemaVersion,
+        workflowTransition: workflowTransitionReportSchemaVersion
       },
       repair: { ...repairCapabilities.schemas }
     },
@@ -135,7 +179,7 @@ export function installedCapabilities() {
       publicStatefulMigration: false,
       projectTelemetryEnrollment: false,
       capabilityIsApproval: false,
-      privateApis: 'OpenSpec finalization, team generation and arbitrary v8 project writer APIs are not public CLI support. Fresh generation is limited to currentGeneration. Historical successor creation is limited to the separately advertised currentUpdate scope.',
+      privateApis: 'OpenSpec finalization and arbitrary v8 project writer APIs are not public CLI support. Fresh Manual and team-profile generation is limited to currentGeneration. Historical successor creation is limited to the separately advertised currentUpdate scope.',
       registration: 'Command syntax does not imply that every option combination is valid or an executor is available.'
     }
   };

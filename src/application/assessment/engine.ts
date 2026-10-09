@@ -139,10 +139,19 @@ export async function assessProject(input: {
   });
   const remediation = (category: ProjectRemediationCategory): ProjectAssessmentFinding['remediation'] => {
     const supported = category === 'managed-update' && manifest !== null ||
-      category === 'application-repair' && source !== null && source.selection.profile !== 'team-gitflow';
+      category === 'application-repair' && source !== null && source.selection.profile !== 'team-gitflow' ||
+      category === 'adoption' && manifest === null && selectedProfile !== 'team-gitflow';
+    const command = category === 'managed-update' ? 'update'
+      : category === 'application-repair' ? 'repair'
+        : category === 'adoption' ? 'adopt' : null;
     return {
       category, available: supported, separateConsent: true,
-      previewCommand: supported ? ['liftoff', category === 'managed-update' ? 'update' : 'repair', '--project', root, '--check'] : null
+      previewCommand: supported && command
+        ? [
+            'liftoff', command, '--project', root, '--check',
+            ...(category === 'adoption' ? ['--governance', selectedProfile] : [])
+          ]
+        : null
     };
   };
   const add = (

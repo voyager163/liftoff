@@ -7,11 +7,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { repairExecutionIdentity } from '../src/domain/repair/identity.js';
 import {
+  applyAdoptionTransaction,
   applyLocalVerificationTransaction, inspectLocalVerificationCandidate, inspectLocalVerificationTransaction,
+  inspectAdoptionTransactionCandidate,
   recoverLocalVerificationTransaction, applyReviewedUpdateTransaction, inspectReviewedUpdateCandidate,
   inspectReviewedUpdateTransaction, recoverReviewedUpdateTransaction,
-  reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts, localVerificationTransactionPathParts,
-  type LocalVerificationInputStage, type LocalVerificationTransactionOptions,
+  reviewedAdoptionTransactionPathParts, reviewedUpdateTransactionPathParts,
+  reviewedRepairTransactionPathParts, localVerificationTransactionPathParts,
+  type ReviewedPublicationInputStage, type LocalVerificationTransactionOptions,
   type ReviewedTransactionKind, type ReviewedUpdateTransactionCheckpoint
 } from '../src/adapters/filesystem/reviewed-update-transaction.js';
 import type { LocalVerificationTransactionAuthorityStore } from '../src/application/update/transaction-approval.js';
@@ -25,6 +28,9 @@ import { projectMutationLockPath } from '../src/adapters/filesystem/project-lock
 import {
   createLocalVerificationTransactionAuthorityStore, createUpdateTransactionApprovalStore
 } from '../src/adapters/filesystem/update-previews.js';
+import {
+  createAdoptionTransactionAuthorityStore
+} from '../src/application/adoption/transaction-authority.js';
 import { repairApprovalStore } from '../src/application/repair/preview.js';
 import type { ReviewedRecoveryExpectation } from '../src/adapters/filesystem/reviewed-update-transaction.js';
 
@@ -40,9 +46,17 @@ vi.mock('node:fs/promises', async importOriginal => {
 const roots: string[] = [];
 const fingerprint = 'a'.repeat(64);
 const nonce = '12345678-1234-4234-8234-123456789abc';
-const kinds = ['update', 'repair', 'local-verification'] as const;
+const kinds = ['update', 'repair', 'adoption', 'local-verification'] as const;
+const reservedJournalPaths = [
+  reviewedUpdateTransactionPathParts,
+  reviewedRepairTransactionPathParts,
+  reviewedAdoptionTransactionPathParts,
+  localVerificationTransactionPathParts
+] as const;
 const journalParts = (kind: ReviewedTransactionKind) => kind === 'update' ? reviewedUpdateTransactionPathParts :
-  kind === 'repair' ? reviewedRepairTransactionPathParts : localVerificationTransactionPathParts;
+  kind === 'repair' ? reviewedRepairTransactionPathParts :
+    kind === 'adoption' ? reviewedAdoptionTransactionPathParts :
+      localVerificationTransactionPathParts;
 const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
 
 async function tree(root: string): Promise<Record<string, { bytes: string; mode: number }>> {
@@ -74,14 +88,25 @@ async function fixture() {
     { type: 'write', pathParts: ['control'], content: 'approved target control\n' }
   ];
   const options = { env: { XDG_STATE_HOME: state, LOCALAPPDATA: state }, homedir: home };
+  const adoptionAuthority = createAdoptionTransactionAuthorityStore(root, options);
   const stores = {
     update: createUpdateTransactionApprovalStore(root, options),
     repair: repairApprovalStore(root, options),
+    adoption: {
+      transactionKind: 'adoption' as const,
+      projectRoot: root,
+      write: (...args: Parameters<typeof adoptionAuthority.write>) =>
+        adoptionAuthority.write(...args),
+      verify: (...args: Parameters<typeof adoptionAuthority.verify>) =>
+        adoptionAuthority.verify(...args),
+      remove: (...args: Parameters<typeof adoptionAuthority.remove>) =>
+        adoptionAuthority.remove(...args)
+    },
     'local-verification': createLocalVerificationTransactionAuthorityStore(root, options)
   };
   const candidate = await inspectLocalVerificationCandidate(root, mutations, preconditions);
-  const stages: LocalVerificationInputStage[] = [];
-  const validateCurrentInputs = async (stage: LocalVerificationInputStage) => {
+  const stages: ReviewedPublicationInputStage[] = [];
+  const validateCurrentInputs = async (stage: ReviewedPublicationInputStage) => {
     stages.push(stage);
     expect(await fs.readFile(await projectMutationLockPath(root), 'utf8')).toContain('"pid"');
     expect(await fs.readFile(path.join(root, 'source'), 'utf8')).toBe('protected source\r\n');
@@ -142,6 +167,17 @@ async function interrupted(kind: ReviewedTransactionKind, phase: ReviewedUpdateT
           if (readFileSync(root + '/source', 'utf8') !== 'protected source\\r\\n') throw new Error('changed protected source');
         }, onCheckpoint: checkpoint
       });
+    } else if (kind === 'adoption') {
+      const authorityStore = (await import(${JSON.stringify(new URL('../src/application/adoption/transaction-authority.ts', import.meta.url).href)}))
+        .createAdoptionTransactionAuthorityStore(root, options);
+      const candidate = await tx.inspectAdoptionTransactionCandidate(root, mutations, preconditions);
+      await tx.applyAdoptionTransaction(root, mutations, {
+        planFingerprint: ${JSON.stringify(fingerprint)}, authorityStore, preconditions,
+        expectedCandidateBinding: candidate.binding,
+        validateCurrentInputs: async () => {
+          if (readFileSync(root + '/source', 'utf8') !== 'protected source\\r\\n') throw new Error('changed protected source');
+        }, onCheckpoint: checkpoint
+      });
     } else {
       await tx.applyReviewedUpdateTransaction(root, mutations, {
         transactionKind: kind, ...(kind === 'repair' ? { repairIdentity: repairExecutionIdentity('0.12.3', 'azure-local-layout') } : {}),
@@ -196,15 +232,15 @@ describe('dedicated local-verification wire and exact admission', () => {
     expect(() => encodeReviewedJournalHeader({ ...body(localPayload()), ...patch } as JournalBody, process.platform)).toThrow();
   });
 
-  it.each(kinds)('reserves all three journal paths against %s mutations and conditions', kind => {
+  it.each(kinds)('reserves all four journal paths against %s mutations and conditions', kind => {
     const payload = localPayload();
     payload.transactionKind = kind;
     payload.schemaVersion = kind === 'local-verification' ? 3 : 1;
-    for (const reserved of kinds) {
-      payload.mutations[0].pathParts = [...journalParts(reserved)];
+    for (const reserved of reservedJournalPaths) {
+      payload.mutations[0].pathParts = [...reserved];
       expect(() => measureReviewedJournal(payload, [], process.platform)).toThrow(/overlap|duplicate/);
       payload.mutations[0].pathParts = ['proof'];
-      expect(() => measureReviewedJournal(payload, captureJournalPreconditions([{ pathParts: [...journalParts(reserved)] }]), process.platform))
+      expect(() => measureReviewedJournal(payload, captureJournalPreconditions([{ pathParts: [...reserved] }]), process.platform))
         .toThrow(/overlap|duplicate/);
     }
   });
@@ -492,7 +528,7 @@ describe('real local-verification process interruption and recovery', () => {
   });
 });
 
-describe('three-kind exclusion', () => {
+describe('four-kind exclusion', () => {
   it.each(kinds.flatMap(kind => (['prepared', 'committed'] as const).map(phase => ({ kind, phase }))))(
     'blocks every new kind for pending $kind/$phase before callbacks/seals', async ({ kind, phase }) => {
       const f = await interrupted(kind, phase);
@@ -502,7 +538,19 @@ describe('three-kind exclusion', () => {
         const checked = vi.fn(async () => {}), store = f.stores[incoming], write = vi.spyOn(store, 'write');
         const result = incoming === 'local-verification'
           ? applyLocalVerificationTransaction(f.root, f.mutations, { ...f.applyOptions, validateCurrentInputs: checked })
-          : applyReviewedUpdateTransaction(f.root, f.mutations, {
+          : incoming === 'adoption'
+            ? inspectAdoptionTransactionCandidate(
+                f.root, f.mutations, f.preconditions
+              ).then(candidate => applyAdoptionTransaction(
+                f.root, f.mutations, {
+                  planFingerprint: fingerprint,
+                  authorityStore: f.stores.adoption,
+                  preconditions: f.preconditions,
+                  expectedCandidateBinding: candidate.binding,
+                  validateCurrentInputs: checked
+                }
+              ))
+            : applyReviewedUpdateTransaction(f.root, f.mutations, {
             transactionKind: incoming, ...(incoming === 'repair' ? { repairIdentity: repairExecutionIdentity('0.12.3', 'azure-local-layout') } : {}),
             planFingerprint: fingerprint, approvalStore: store, validatePlan: checked
           });
@@ -525,8 +573,21 @@ describe('three-kind exclusion', () => {
     await entered.promise;
     try {
       for (const kind of kinds) {
-        const attempt = kind === 'local-verification' ? applyLocalVerificationTransaction(f.root, f.mutations, f.applyOptions) :
-          applyReviewedUpdateTransaction(f.root, f.mutations, {
+        const attempt = kind === 'local-verification'
+          ? applyLocalVerificationTransaction(f.root, f.mutations, f.applyOptions)
+          : kind === 'adoption'
+            ? inspectAdoptionTransactionCandidate(
+                f.root, f.mutations, f.preconditions
+              ).then(candidate => applyAdoptionTransaction(
+                f.root, f.mutations, {
+                  planFingerprint: fingerprint,
+                  authorityStore: f.stores.adoption,
+                  preconditions: f.preconditions,
+                  expectedCandidateBinding: candidate.binding,
+                  validateCurrentInputs: async () => {}
+                }
+              ))
+            : applyReviewedUpdateTransaction(f.root, f.mutations, {
             transactionKind: kind, ...(kind === 'repair' ? { repairIdentity: repairExecutionIdentity('0.12.3', 'azure-local-layout') } : {}),
             planFingerprint: fingerprint, approvalStore: f.stores[kind]
           });

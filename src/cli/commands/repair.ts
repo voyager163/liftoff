@@ -1,7 +1,11 @@
 import type { ParsedArgs } from '../../domain/project/contracts.js';
 import type { ExecutionContext } from '../../application/context.js';
 import { repairProject } from '../../application/repair/use-case.js';
-import { readBooleanFlag, readStringFlag } from '../args/readers.js';
+import {
+  readBooleanFlag,
+  readListFlag,
+  readStringFlag
+} from '../args/readers.js';
 
 export async function repairCommand(parsed: ParsedArgs, context: ExecutionContext): Promise<number> {
   return repairProject({
@@ -16,6 +20,14 @@ export async function repairCommand(parsed: ParsedArgs, context: ExecutionContex
     verifyPlan: readStringFlag(parsed.flags, 'verify-plan'),
     allowNetwork: readBooleanFlag(parsed.flags, 'allow-network') === true,
     allowDependencyPreparation: readBooleanFlag(parsed.flags, 'allow-dependency-preparation') === true,
+    agents: readListFlag(parsed.flags, 'agents'),
+    defaultAgent: readStringFlag(parsed.flags, 'default-agent'),
+    installTools: readBooleanFlag(parsed.flags, 'install-tools') === true,
+    configureOpenSpecProfile:
+      readBooleanFlag(
+        parsed.flags,
+        'configure-openspec-profile'
+      ) === true,
     recover: readBooleanFlag(parsed.flags, 'recover') === true,
     json: readBooleanFlag(parsed.flags, 'json') === true
   }, context);

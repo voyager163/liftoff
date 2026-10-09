@@ -6,6 +6,7 @@ import { phaseIds } from '../../domain/governance/activation/types.js';
 import { repairRequestIssue } from '../../application/repair/request.js';
 import { readStringFlag } from './readers.js';
 import { modernLocalOperationIssue } from './governance-local.js';
+import { workflowTransitionRequestIssue } from '../../application/workflow-transition/request.js';
 
 export class UsageError extends Error {
   constructor(message: string) {
@@ -181,6 +182,26 @@ export function parseArgs(argv: string[]): ParsedArgs {
     if (issue) throw new UsageError(issue);
   }
 
+  if (command === 'adopt') {
+    if (positional.length && Object.hasOwn(flags, 'project')) {
+      throw new UsageError('Provide an adoption project path either positionally or with --project, not both.');
+    }
+    if (Object.hasOwn(flags, 'approve-plan') &&
+        !isUpdatePlanFingerprint(flags['approve-plan'])) {
+      throw new UsageError(
+        'Flag --approve-plan expects the complete fingerprint from a current public adoption plan: ' +
+          'exactly 64 lowercase hexadecimal characters.'
+      );
+    }
+    if (flags.check === true &&
+        (Object.hasOwn(flags, 'approve-plan') || flags.recover === true)) {
+      throw new UsageError('Adoption --check cannot be combined with --approve-plan or --recover.');
+    }
+    if (flags.recover === true && !Object.hasOwn(flags, 'approve-plan')) {
+      throw new UsageError('Adoption --recover requires --approve-plan <saved-fingerprint>.');
+    }
+  }
+
   if (command === 'repair') {
     if (positional.length && Object.hasOwn(flags, 'project')) {
       throw new UsageError('Provide a project path either positionally or with --project, not both.');
@@ -199,7 +220,34 @@ export function parseArgs(argv: string[]): ParsedArgs {
       capabilities: flags.capabilities === true, inspectLayout: flags['inspect-layout'] === true,
       applicationPatch: readStringFlag(flags, 'application-patch'), verifyPlan: readStringFlag(flags, 'verify-plan'),
       allowNetwork: flags['allow-network'] === true,
-      allowDependencyPreparation: flags['allow-dependency-preparation'] === true
+      allowDependencyPreparation: flags['allow-dependency-preparation'] === true,
+      agents: readStringFlag(flags, 'agents')?.split(',')
+        .map(value => value.trim()).filter(Boolean),
+      defaultAgent: readStringFlag(flags, 'default-agent'),
+      installTools: flags['install-tools'] === true,
+      configureOpenSpecProfile:
+        flags['configure-openspec-profile'] === true
+    }, flags.help === true);
+    if (issue) throw new UsageError(issue);
+  }
+
+  if (command === 'workflow') {
+    if (positional.length > 1 && Object.hasOwn(flags, 'project')) {
+      throw new UsageError('Provide a workflow project path either positionally or with --project, not both.');
+    }
+    const issue = workflowTransitionRequestIssue({
+      subcommand,
+      target: positional[0],
+      project: readStringFlag(flags, 'project') ?? positional[1],
+      agents: readStringFlag(flags, 'agents')?.split(',').map(value => value.trim()).filter(Boolean),
+      defaultAgent: readStringFlag(flags, 'default-agent'),
+      check: flags.check === true,
+      approvePlan: readStringFlag(flags, 'approve-plan'),
+      recover: flags.recover === true,
+      installTools: flags['install-tools'] === true,
+      configureOpenSpecProfile:
+        flags['configure-openspec-profile'] === true,
+      json: flags.json === true
     }, flags.help === true);
     if (issue) throw new UsageError(issue);
   }

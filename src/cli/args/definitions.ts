@@ -29,7 +29,7 @@ const projectFlags = {
   agents: valueFlag('Comma-separated AI coding agents; none is valid only for Manual', 'Framework', 'list', 'copilot; none for Manual'),
   'default-agent': valueFlag('Primary agent for Spec Kit when multiple agents are selected', 'Framework', 'agent'),
   governance: valueFlag(
-    'Repository-governance profile',
+    'Repository-governance profile: single-maintainer-gitflow, team-gitflow, or none',
     'Framework',
     'profile',
     'single-maintainer-gitflow'
@@ -127,6 +127,79 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     arguments: [{ syntax: 'project-path', description: 'Selected Liftoff, Git or explicitly identified non-Git project boundary' }],
     defaultMaxPositionals: 1
   },
+  adopt: {
+    description: 'Preview reviewed in-place adoption for a supported non-Liftoff application',
+    usage: '[project-path]',
+    group: 'Maintenance',
+    flags: {
+      type: projectFlags.type,
+      genai: projectFlags.genai,
+      api: projectFlags.api,
+      pattern: projectFlags.pattern,
+      cloud: projectFlags.cloud,
+      region: projectFlags.region,
+      frontend: projectFlags.frontend,
+      environments: projectFlags.environments,
+      spec: projectFlags.spec,
+      agents: projectFlags.agents,
+      'default-agent': projectFlags['default-agent'],
+      governance: projectFlags.governance,
+      'copilot-cloud': projectFlags['copilot-cloud'],
+      config: projectFlags.config,
+      project: valueFlag(
+        'Exact project path; explicitly select non-Git applications',
+        'Project',
+        'path'
+      ),
+      check: booleanFlag(
+        'Preview only and save bounded review records outside the repository',
+        'Command'
+      ),
+      'approve-plan': valueFlag(
+        'Approve one complete current public adoption plan by its full lowercase 64-hex SHA-256 fingerprint',
+        'Consent',
+        'fingerprint'
+      ),
+      recover: booleanFlag(
+        'Inspect or continue only the authenticated recovery owned by --approve-plan',
+        'Consent'
+      ),
+      json: booleanFlag(
+        'Emit one schema-1 adoption result on stdout; bare JSON always previews',
+        'Output'
+      ),
+      ...helpFlag
+    },
+    arguments: [{
+      syntax: 'project-path',
+      description: 'Supported non-Liftoff Git project or explicitly identified non-Git application'
+    }],
+    defaultMaxPositionals: 1
+  },
+  workflow: {
+    description: 'Review an explicit development-workflow transition',
+    usage: 'set <openspec|spec-kit|manual> [project-path]',
+    group: 'Maintenance',
+    flags: {
+      project: valueFlag('Exact current Liftoff project path', 'Project', 'path'),
+      agents: projectFlags.agents,
+      'default-agent': projectFlags['default-agent'],
+      check: booleanFlag('Create or refresh the exact external transition plan without project writes', 'Command'),
+      'approve-plan': valueFlag('Select one exact saved transition plan by its full lowercase 64-hex SHA-256 fingerprint', 'Consent', 'fingerprint'),
+      recover: booleanFlag('Inspect only recovery attributable to the exact selected transition plan', 'Consent'),
+      'install-tools': booleanFlag('Separately authorize allowlisted pinned framework-tool preparation before project review', 'Consent'),
+      'configure-openspec-profile': booleanFlag('Separately authorize the exact required OpenSpec global-profile fields before project review', 'Consent'),
+      json: booleanFlag('Emit one schema-1 workflow-transition report', 'Output'),
+      ...helpFlag
+    },
+    subcommands: ['set'],
+    arguments: [
+      { syntax: 'openspec|spec-kit|manual', description: 'Explicit target development workflow' },
+      { syntax: 'project-path', description: 'Current manifest-v8 Liftoff project' }
+    ],
+    defaultMaxPositionals: 0,
+    subcommandMaxPositionals: { set: 2 }
+  },
   validate: {
     description: 'Validate a generated project manifest',
     usage: '[project-path]',
@@ -177,17 +250,21 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     group: 'Maintenance',
     flags: {
       project: valueFlag('Exact Liftoff project path', 'Project', 'path'),
+      agents: valueFlag('Comma-separated agents to add without removing existing selections; none is invalid', 'Framework', 'list', 'codex'),
+      'default-agent': valueFlag('Explicit new Spec Kit default; the agent is also added when absent', 'Framework', 'agent'),
       check: booleanFlag('Preview only; explicit dependency preparation previews include bounded installed-tool identity probes, never project scripts or installs', 'Command'),
       capabilities: booleanFlag('List repair contracts, recipes, preparation support, schemas and modes without a project or tool probes', 'Command'),
       'inspect-layout': booleanFlag('Inventory actual application paths and current targets without scripts or writes', 'Command'),
       'application-patch': valueFlag('Review an exact application patch authored in external staging, not a starter replacement', 'Project', 'patch.json'),
       live: booleanFlag('Allow bounded Azure metadata reads with existing authentication; never read state', 'Consent'),
       subscription: valueFlag('Exact Azure subscription ID for live absence checks', 'Project', 'id'),
-      'approve-plan': valueFlag('Optional automation: approve the exact saved plan; ordinary TTY repair asks instead', 'Consent', 'fingerprint'),
+      'approve-plan': valueFlag('Optional automation: approve one exact saved application, binding, infrastructure, or additive-agent plan; ordinary TTY repair asks instead', 'Consent', 'fingerprint'),
       'verify-plan': valueFlag('Optional automation: run exact staged checks; declared preparation/network require separate permissions, never file commit', 'Consent', 'fingerprint'),
       'allow-dependency-preparation': booleanFlag('Separately permit only declared locked private preparation with --verify-plan; not global tools or file writes', 'Consent'),
       'allow-network': booleanFlag('Additionally authorize declared network effects for exact --verify-plan checks', 'Consent'),
-      recover: booleanFlag('Recover only eligible recorded repair effects; live, uncertain or changed private workspace identities stay blocked', 'Command'),
+      'install-tools': booleanFlag('Separately authorize pinned framework-tool preparation for an additive agent request', 'Consent'),
+      'configure-openspec-profile': booleanFlag('Separately authorize the required global OpenSpec profile for an additive OpenSpec agent request', 'Consent'),
+      recover: booleanFlag('Recover only eligible recorded repair effects; additive-agent recovery also requires its exact --approve-plan fingerprint', 'Command'),
       json: booleanFlag('Emit one schema-2 result (capabilities schema 1); never prompt or implicitly execute', 'Output'),
       ...helpFlag
     },

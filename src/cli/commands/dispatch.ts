@@ -60,6 +60,8 @@ import {
 import { repairCommand } from './repair.js';
 import { capabilitiesCommand } from './capabilities.js';
 import { assessCommand } from './assess.js';
+import { adoptCommand } from './adopt.js';
+import { workflowCommand } from './workflow.js';
 
 export async function runCommand(parsed: ParsedArgs, context: CommandContext): Promise<number> {
   const helpRequested = parsed.command !== undefined && readBooleanFlag(parsed.flags, 'help') === true;
@@ -67,6 +69,8 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
     parsed.command === 'doctor' ||
     parsed.command === 'capabilities' ||
     parsed.command === 'assess' ||
+    parsed.command === 'adopt' ||
+    parsed.command === 'workflow' ||
     parsed.command === 'update' ||
     parsed.command === 'repair' ||
     parsed.command === 'governance' ||
@@ -109,6 +113,10 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
         return capabilitiesCommand(parsed, executionContext);
       case 'assess':
         return await assessCommand(parsed, executionContext);
+      case 'adopt':
+        return await adoptCommand(parsed, executionContext);
+      case 'workflow':
+        return await workflowCommand(parsed, executionContext);
       case 'providers':
         return providersCommand(executionContext);
       case 'regions':

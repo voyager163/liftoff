@@ -30,7 +30,27 @@ export function addBaseArtifacts(
   add('root-readme', 'documentation', ['README.md'], renderRootReadme(plan, context.current === true));
   add('root-gitignore', 'project', ['.gitignore'], renderGeneratedGitignore());
   add('root-dockerignore', 'runtime', ['.dockerignore'], renderDockerignore());
-  addDesiredState('liftoff-config', 'project', ['liftoff.config.json'], JSON.stringify({
+  addDesiredState(
+    'liftoff-config',
+    'project',
+    ['liftoff.config.json'],
+    renderLiftoffConfig(plan)
+  );
+  add('env-example', 'configuration', ['.env.example'], renderEnvExample(plan)
+    .replaceAll('@postgres:', '@localhost:')
+    .replaceAll('redis://redis:', 'redis://localhost:')
+    .replaceAll('http://azurite:', 'http://localhost:')
+    .replaceAll('http://langfuse:', 'http://localhost:'));
+  add(
+    'backend-dockerfile',
+    'runtime',
+    ['Dockerfile'],
+    plan.workload === 'genai' ? renderBackendDockerfile(context) : renderStandardDockerfile(plan, context)
+  );
+}
+
+export function renderLiftoffConfig(plan: ApiProjectPlan): string {
+  return JSON.stringify({
     projectName: plan.projectName,
     projectType: plan.projectType.id,
     apiStack: plan.apiStack.id,
@@ -43,18 +63,7 @@ export function addBaseArtifacts(
     agents: plan.agents.map((agent) => agent.id),
     ...(plan.defaultAgent ? { defaultAgent: plan.defaultAgent.id } : {}),
     governanceProfile: plan.governanceProfile.id
-  }, null, 2));
-  add('env-example', 'configuration', ['.env.example'], renderEnvExample(plan)
-    .replaceAll('@postgres:', '@localhost:')
-    .replaceAll('redis://redis:', 'redis://localhost:')
-    .replaceAll('http://azurite:', 'http://localhost:')
-    .replaceAll('http://langfuse:', 'http://localhost:'));
-  add(
-    'backend-dockerfile',
-    'runtime',
-    ['Dockerfile'],
-    plan.workload === 'genai' ? renderBackendDockerfile(context) : renderStandardDockerfile(plan, context)
-  );
+  }, null, 2);
 }
 
 export function renderDirectBuildAndTestGuide(plan: ApiProjectPlan): string {

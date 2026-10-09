@@ -106,7 +106,9 @@ describe('retained schema-3 activation successor integration', { timeout: 60_000
     });
     expect(checked.output.deferredAgentRepair.command).toBeUndefined();
     expect(checked.output.deferredAgentRepair.executable).toBe(false);
-    expect(checked.output.deferredAgentRepair.limitation).toContain('not implemented');
+    expect(checked.output.deferredAgentRepair.limitation).toContain(
+      'liftoff repair --agents'
+    );
     expect(await readFile(configPath)).toEqual(requestedBytes);
     expect(await readFile(path.join(f.projectRoot, 'governance', 'activation-state.json'))).toEqual(f.source.files.get('governance/activation-state.json'));
     expect(f.calls.every((call) => call.startsWith('git '))).toBe(true);

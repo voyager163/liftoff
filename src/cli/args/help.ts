@@ -42,6 +42,58 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
             '--live is unavailable and fails without contacting accounts. The narrower governance assess ' +
             'contract and its independently supported live mode are unchanged.'
         }
+      : command === 'adopt'
+      ? {
+          ...commandDefinitions.adopt,
+          description:
+            'Start with `liftoff adopt --project <path> --check`. Bare JSON and non-TTY invocations ' +
+            'also preview only. Preview records are stored outside the repository and are observations, ' +
+            'not verification, file approval, transaction ownership, active-binding publication, ' +
+            'deployment authority, or recovery proof. The target workload, workflow, agents, profile, ' +
+            'plugins, and layout come from the installed release plus explicit target flags/configuration. ' +
+            'Existing Liftoff projects use `liftoff update --check` and separately authorized ' +
+            '`liftoff repair --check`, never re-adoption. A complete later public plan requires exact ' +
+            '`--approve-plan <fingerprint>`; registration of the flag cannot approve discovery or a ' +
+            'blocked compatibility review. Recovery requires `--recover --approve-plan <fingerprint>` ' +
+            'and may address only that authenticated transaction. Bare interactive execution can prompt ' +
+            'only after displaying a complete current executable plan and defaults to no; blocked or ' +
+            'incomplete previews never prompt. JSON, piped answers, manifest absence, process age, PID, ' +
+            'generic yes, and force are not consent. Unresolved mappings, dynamic behavior, missing checks, ' +
+            'unsupported conversions, collisions, existing deployment/state, and unsafe boundaries remain ' +
+            'blockers. No commit, branch switch, stash/reset, push, database/cloud mutation, starter ' +
+            'replacement, or implicit telemetry enrollment is authorized. Exit 2: safe preview or ' +
+            'existing-project route needs further review; 1: invalid/unsafe/unavailable approval or recovery.'
+        }
+      : command === 'repair'
+      ? {
+          ...commandDefinitions.repair,
+          description:
+            'Reviewed project repair with independent infrastructure, application and additive-agent scopes. ' +
+            'Use --agents to add selections without removing existing agents; --default-agent explicitly changes only a current Spec Kit default. ' +
+            'Manual writes only requested Liftoff-native integrations. OpenSpec and Spec Kit use pinned official operations in isolated staging, ' +
+            'preserve existing framework history/defaults unless explicitly changed, and reject unknown output or occupied differing destinations. ' +
+            '--check and JSON preview without project writes. Workstation tools, the OpenSpec global profile and exact project files require separate ' +
+            'permissions. --approve-plan applies one current saved plan; --recover --approve-plan addresses only its authenticated additive-agent transaction. ' +
+            'Agent repair remains independently eligible while unrelated application or infrastructure work is incomplete and never claims broader readiness.'
+        }
+      : command === 'workflow'
+      ? {
+          ...commandDefinitions.workflow,
+          description:
+            'Schema-1 exact workflow transition planning for current manifest-v8 projects. ' +
+            'The preview binds source workflow/framework identity, target workflow, canonical agents/default, ' +
+            'raw manifest/config digests and modes, installed target plugin resolution, required checks and expiry. ' +
+            'Plans are project-bound user-local metadata outside the repository. Current Manual and initialized external ' +
+            'projects can transition among Manual, OpenSpec and Spec Kit after exact fingerprint approval or genuine terminal ' +
+            'default-No consent. External targets require compatible pinned tools, separate --install-tools and OpenSpec ' +
+            '--configure-openspec-profile permission when applicable, and complete official initialization in an isolated ' +
+            'home/staging tree. The dedicated transaction changes only validated official framework output, selected managed ' +
+            'integrations, liftoff.config.json and the final manifest. Existing framework documents/history, application/Git ' +
+            'bytes, deployment/state and unrelated integrations remain unchanged. Active overlapping work, unsupported history, ' +
+            'changed inputs/tool/profile/framework identity, invalid official output, managed drift, target collisions, ' +
+            'mismatched selection, tampering and expiry fail closed. Fingerprint-selected recovery addresses only the ' +
+            'authenticated transaction. Generic yes, force, JSON, an agent, machine permission, or a saved plan is not project-file authority.'
+        }
       : command === 'update'
       ? {
           ...commandDefinitions.update,
