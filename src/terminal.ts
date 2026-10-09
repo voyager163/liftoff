@@ -665,10 +665,12 @@ export class PresentationSession {
   readonly stderr: TerminalRenderer;
   private readonly stdoutStream: NodeJS.WritableStream;
   private readonly stderrStream: NodeJS.WritableStream;
+  private readonly jsonMode: boolean;
 
   constructor(options: PresentationSessionOptions) {
     this.stdoutStream = options.stdout;
     this.stderrStream = options.stderr;
+    this.jsonMode = options.json === true;
     const rendererOptions = {
       columns: options.columns,
       color: options.color,
@@ -770,7 +772,7 @@ export class PresentationSession {
 
   childStreams(): { stdout: NodeJS.WritableStream; stderr: NodeJS.WritableStream } {
     return {
-      stdout: this.stdoutStream,
+      stdout: this.jsonMode ? this.stderrStream : this.stdoutStream,
       stderr: this.stderrStream
     };
   }

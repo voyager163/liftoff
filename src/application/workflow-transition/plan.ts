@@ -1035,7 +1035,7 @@ function specKitRepositoryPlaceholder(
     relativePath: 'specs/.gitkeep',
     content,
     contentHash: digest(content),
-    mode: 0o644,
+    mode: process.platform === 'win32' ? 0o666 : 0o644,
     origin: 'repository-placeholder'
   });
 }
