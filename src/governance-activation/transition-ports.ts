@@ -141,6 +141,11 @@ export interface GovernanceTransitionAdapters {
   phases?: Partial<Record<PhaseId, GovernancePhaseAdapter>>;
   githubRulesets?: GitHubRulesetAdapter;
   githubActivation?: GitHubActivationPorts;
+  azureOperationPolling?: {
+    maxAttempts: number;
+    intervalMs: number;
+    sleep(milliseconds: number): Promise<void>;
+  };
 }
 
 export interface ApplyNextPreview {

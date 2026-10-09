@@ -40,6 +40,7 @@ import {
 } from './task-writes.js';
 import type { ActivationInputSnapshot } from '../domain/governance/activation/inputs.js';
 import { inspectAzureDeploymentOwnership } from './azure-deployment-ownership.js';
+import { validateExternalOperationCheckpoint } from './external-operations.js';
 
 export type * from './transition-ports.js';
 export { governancePlanDirectoryPathParts, transitionPlanPathParts } from './transition-records.js';
@@ -265,6 +266,9 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   }
   const pendingOperation = input.inspection.state.phases[phase.id].operation;
   if (pendingOperation) {
+    if (pendingOperation.status !== 'running' && !input.recovery) {
+      throw new Error('A terminal external operation requires explicit recovery after current ownership is reverified; ordinary retry cannot dispatch compensation.');
+    }
     const checkpointDigest = pendingOperation.planDigest ?? input.inspection.state.phases[phase.id].executionPlanDigest;
     const dispatched = input.inspection.contexts[phase.id].reviewedPlans?.find((plan) => plan.planDigest === checkpointDigest);
     if (!dispatched || dispatched.phaseId !== phase.id || dispatched.scope !== initialPlan.scope ||
@@ -358,8 +362,29 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   const effectiveLiveReadback = ownership?.liveReadback || outcome.liveReadback
     ? [...(ownership?.liveReadback ?? []), ...(outcome.liveReadback ?? [])]
     : undefined;
-  if (outcome.operation && !initialPlan.operations.some((operation) => operation.actionId === outcome.operation!.actionId)) {
-    throw new Error('The reported external operation has no corresponding action in the reviewed plan.');
+  if (pendingOperation && !outcome.operation) {
+    throw new Error('A resumed external operation must return the exact freshly reobserved provider handle.');
+  }
+  if (outcome.status === 'pending' && (!outcome.operation || outcome.operation.status !== 'running')) {
+    throw new Error('A pending phase must provide a concrete resumable external operation handle.');
+  }
+  if (outcome.status === 'blocked' && outcome.retryableWithoutStateMutation && outcome.operation) {
+    throw new Error('A producer cannot request a state-free retry after reporting remote writes or an external operation handle.');
+  }
+  const validatedOperation = outcome.operation
+    ? validateExternalOperationCheckpoint({
+      plan: initialPlan,
+      operation: outcome.operation,
+      ...(pendingOperation ? { previous: pendingOperation } : {}),
+      liveReadback: effectiveLiveReadback,
+      observedAt: clock()
+    })
+    : undefined;
+  if (outcome.status === 'completed' && validatedOperation?.status === 'running') {
+    throw new Error('A completed phase cannot retain a running external operation handle.');
+  }
+  if (outcome.status === 'blocked' && validatedOperation?.status === 'running') {
+    throw new Error('A running external operation must remain pending rather than being reported as a terminal blocker.');
   }
   for (const completed of completedOperations) {
     if (completed.actionId === governanceTaskProjectionAction) throw new Error('Adapters cannot claim the engine-owned post-outcome task projection.');
@@ -391,12 +416,10 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   const effectiveSnapshot = snapshotWithPlannedWrites(postSnapshot, outcome.fileMutations ?? []);
   const afterInputDigest = phaseInputDigest(phase.id, effectiveSnapshot, freshInspection.state);
   if (outcome.status === 'pending') {
-    if (!outcome.operation || outcome.operation.status !== 'running') {
-      throw new Error('A pending phase must provide a concrete resumable external operation handle.');
-    }
     const nextState = nextStateForOutcome({
       inspection: freshInspection, phase, plan: initialPlan, resultState: 'running', now: clock(),
-      operation: { ...outcome.operation, planDigest: pendingOperation?.planDigest ?? initialPlan.planDigest }
+      operation: validatedOperation,
+      outputs: outcome.outputs
     });
     const write = await persistWithTaskProjection({
       inspection: freshInspection, plan: initialPlan, nextState, source: taskSource, snapshot: postSnapshot, now: clock(),
@@ -404,7 +427,7 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     });
     return {
       ...executionBlockedResult(freshInspection, initialPlan, saved,
-        outcome.blocker ?? `External operation ${outcome.operation.operationId} is running; resume polls this operation without redispatch.`,
+        outcome.blocker ?? `External operation ${validatedOperation!.operationId} is running; resume polls this operation without redispatch.`,
         [...completedOperations, ...taskSource?.contract.source === 'existing' && !write.projectionFailure
           ? initialPlan.operations.filter((operation) => operation.actionId === governanceTaskProjectionAction) : []],
         write.stateHash, [...outcome.cleanupWarnings ?? [], ...(write.projectionFailure ? [write.projectionFailure] : [])]),
@@ -415,7 +438,7 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   if (outcome.status === 'blocked') {
     const blocker = outcome.blocker ?? `Phase ${phase.id} blocked.`;
     if (outcome.retryableWithoutStateMutation) {
-      if (outcome.operation || completedOperations.some((operation) =>
+      if (validatedOperation || completedOperations.some((operation) =>
         operation.remote && !readOnlyMutations.has(operation.mutationClass) ||
         operation.effects?.some((effect) => effect.remote && !readOnlyMutations.has(effect.mutationClass)))) {
         throw new Error('A producer cannot request a state-free retry after reporting remote writes or an external operation handle.');
@@ -428,10 +451,113 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
         : executionStateHash ?? activationStateContentHash(canonicalJson(freshInspection.state));
       return executionBlockedResult(freshInspection, initialPlan, saved, blocker, completedOperations, stateHash, outcome.cleanupWarnings ?? [], executionStarted);
     }
+    const completedRemoteEffects = completedOperations.filter((operation) =>
+      operation.remote && !readOnlyMutations.has(operation.mutationClass) ||
+      operation.effects?.some((effect) => effect.remote && !readOnlyMutations.has(effect.mutationClass)));
+    if (validatedOperation || completedRemoteEffects.length > 0) {
+      const failureNow = clock();
+      const failurePayload = {
+        kind: 'partial-failure.v1',
+        phaseId: phase.id,
+        planDigest: initialPlan.planDigest,
+        savedPlanDigest: canonicalSha256(initialPlan),
+        blockerDigest: canonicalSha256(blocker),
+        providerPayloadDigest: canonicalSha256(effectiveEvidencePayload ?? null),
+        completedOperations: completedRemoteEffects.map((operation) => ({
+          actionId: operation.actionId,
+          mutationClass: operation.mutationClass,
+          operationDigest: canonicalSha256(operation)
+        })),
+        ...(validatedOperation ? { operation: validatedOperation } : {}),
+        ...(outcome.outputs ? { outputBindings: outcome.outputs } : {}),
+        cleanupWarningDigests: (outcome.cleanupWarnings ?? []).map((warning) => canonicalSha256(warning))
+      };
+      const evidenceId = `${phase.id}-partial-failure-${safeTimestamp(failureNow.toISOString())}`;
+      const header = evidenceHeaderFor({
+        inspection: freshInspection,
+        phase,
+        plan: initialPlan,
+        result: 'failed',
+        now: failureNow,
+        payload: failurePayload,
+        liveReadback: effectiveLiveReadback,
+        afterInputDigest,
+        gitBinding
+      });
+      const evidenceRecord: PhaseEvidenceRecord = {
+        evidenceId,
+        header,
+        payload: failurePayload,
+        ...(effectiveLiveReadback ? { liveReadback: effectiveLiveReadback } : {})
+      };
+      const evidenceReference = {
+        phaseId: phase.id,
+        evidenceId,
+        headerDigest: evidenceHeaderDigest(header),
+        result: header.result
+      };
+      const validation = validateEvidenceFreshness(evidenceRecord, {
+        ...freshInspection.contexts[phase.id],
+        inputDigest: (initialPlan.fileChanges?.length || gitBinding) ? afterInputDigest : initialPlan.inputDigest,
+        remoteBindingDigest: remoteBindingDigest(freshInspection.state.remoteBinding),
+        evidenceReferences: [evidenceReference],
+        reviewedPlans: [initialPlan],
+        now: failureNow
+      });
+      if (!validation.valid) {
+        throw new Error(`Partial failure evidence was rejected: ${validation.issues.map((issue) => issue.message).join(' ')}`);
+      }
+      const nextState = blockedState({
+        inspection: freshInspection,
+        phase,
+        plan: initialPlan,
+        blocker,
+        now: failureNow,
+        executionStarted,
+        evidenceReference,
+        ...(validatedOperation ? { operation: validatedOperation } : {}),
+        ...(outcome.outputs ? { outputs: outcome.outputs } : {})
+      });
+      const write = await persistWithTaskProjection({
+        inspection: freshInspection,
+        plan: initialPlan,
+        nextState,
+        source: taskSource,
+        snapshot: postSnapshot,
+        now: failureNow,
+        evidenceRecord,
+        evidencePathParts: evidencePathParts(evidenceId),
+        expectedStateHash: executionStateHash,
+        projectCreation: false,
+        fallbackState: nextState
+      });
+      const projectionOperations = taskSource?.contract.source === 'existing' && !write.projectionFailure
+        ? initialPlan.operations.filter((operation) => operation.actionId === governanceTaskProjectionAction)
+        : [];
+      const recordedOperations = [...completedOperations, ...projectionOperations];
+      const result = executionBlockedResult(
+        freshInspection,
+        initialPlan,
+        saved,
+        blocker,
+        recordedOperations,
+        write.stateHash,
+        [...outcome.cleanupWarnings ?? [], ...(write.projectionFailure ? [write.projectionFailure] : [])]
+      );
+      return {
+        ...result,
+        executedOperations: [
+          ...recordedOperations,
+          evidenceWriteOperation(phase, evidencePathParts(evidenceId)),
+          stateWriteOperation(phase)
+        ],
+        evidence: write.evidence
+      };
+    }
     const nextState = blockedState({
       inspection: freshInspection, phase, plan: initialPlan, blocker, now,
-      executionStarted, ...(outcome.operation ? {
-        operation: { ...outcome.operation, planDigest: pendingOperation?.planDigest ?? initialPlan.planDigest }
+      executionStarted, ...(validatedOperation ? {
+        operation: validatedOperation
       } : {})
     });
     const write = await persistWithTaskProjection({
@@ -447,7 +573,10 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   await assertPlannedFilesAfter(freshInspection.projectRoot, initialPlan, outcome.fileMutations ?? []);
   if (!(phase.terminalStates as readonly string[]).includes(resultState)) {
     const blocker = `Phase adapter returned ${resultState}, which is not an allowed terminal state for ${phase.id}.`;
-    const nextState = blockedState({ inspection: freshInspection, phase, plan: initialPlan, blocker, now, executionStarted, operation: outcome.operation });
+    const nextState = blockedState({
+      inspection: freshInspection, phase, plan: initialPlan, blocker, now, executionStarted,
+      ...(validatedOperation ? { operation: validatedOperation } : {})
+    });
     const write = await writeOutcomeTransaction({ projectRoot: freshInspection.projectRoot, plan: initialPlan, nextState, expectedStateHash: executionStateHash });
     return executionBlockedResult(freshInspection, initialPlan, saved, blocker, completedOperations, write.stateHash, outcome.cleanupWarnings ?? []);
   }
@@ -517,7 +646,8 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   }
   const nextState = nextStateForOutcome({
     inspection: freshInspection, phase, plan: initialPlan, resultState,
-    evidenceReference, override: outcome.stateOverride, now: outcomeNow, outputs: outcome.outputs
+    evidenceReference, override: outcome.stateOverride, now: outcomeNow,
+    outputs: outcome.outputs, operation: validatedOperation
   });
   await input.assertProtectedInputs?.();
   const write = await persistWithTaskProjection({
@@ -526,7 +656,7 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     expectedStateHash: executionStateHash, projectCreation: true,
     fallbackState: blockedState({
       inspection: freshInspection, phase, plan: initialPlan, blocker: 'Current task projection did not commit.',
-      now: outcomeNow, executionStarted, operation: outcome.operation
+      now: outcomeNow, executionStarted, operation: validatedOperation
     })
   });
   if (write.projectionFailure) {
@@ -585,11 +715,18 @@ async function persistWithTaskProjection(input: {
         }
       }
     };
+    const preserveEvidence = input.evidenceRecord && input.evidencePathParts &&
+      fallback.phases[input.plan.phaseId].evidence.some((reference) =>
+        reference.evidenceId === input.evidenceRecord!.evidenceId);
     try {
       return {
         ...await writeOutcomeTransaction({
           projectRoot: input.inspection.projectRoot, plan: input.plan,
-          nextState: fallback, expectedStateHash: input.expectedStateHash
+          nextState: fallback, expectedStateHash: input.expectedStateHash,
+          ...(preserveEvidence ? {
+            evidenceRecord: input.evidenceRecord,
+            evidencePathParts: input.evidencePathParts
+          } : {})
         }), projectionFailure
       };
     } catch (checkpointError) {

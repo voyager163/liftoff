@@ -359,6 +359,102 @@ describe('source-of-truth and adapter integrity boundaries', () => {
     expect(await exists(path.join(root, 'governance', 'evidence'))).toBe(false);
     expect(runner.providerCalls).toEqual([]);
   });
+
+  it('persists sanitized failed evidence and owned outputs when a remote effect precedes failure', async () => {
+    const root = await project('partial-remote-failure');
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
+    const state = coverageState({ activationInputs });
+    const planned = await buildSavedTransitionPlan({
+      inspection: await coverageInspection({
+        root,
+        phaseId: 'application-prerequisites-ready',
+        state,
+        activationInputs
+      }),
+      runner,
+      now: coverageNow
+    });
+    const approval = await issuePriorApproval(root, state, planned!);
+    const inspection = await coverageInspection({
+      root,
+      phaseId: 'application-prerequisites-ready',
+      state,
+      approvals: [approval],
+      activationInputs
+    });
+    const completedResource = `/subscriptions/${coverageSubscription}/resourceGroups/rg-partial/providers/Microsoft.ManagedIdentity/userAssignedIdentities/app`;
+    const blocker = 'Azure apply stopped after the managed identity committed; inspect current ownership before recovery.';
+    const { adapters } = injected('application-prerequisites-ready', (input) => ({
+      status: 'blocked',
+      resultState: 'failed',
+      blocker,
+      evidencePayload: { kind: 'application-prerequisites-ready.v1', privateDetail: 'withheld' },
+      liveReadback: [readbackProof(input, 'azure', 'Microsoft.ManagedIdentity/userAssignedIdentities', completedResource, {
+        id: completedResource,
+        provisioningState: 'Succeeded'
+      })],
+      outputs: {
+        values: { committedResourceCount: 1 },
+        resources: [{
+          provider: 'azure',
+          resourceType: 'Microsoft.ManagedIdentity/userAssignedIdentities',
+          resourceId: completedResource
+        }]
+      },
+      completedOperations: [
+        input.plan.operations.find((operation) => operation.actionId === 'azure.prerequisites.apply')!
+      ],
+      cleanupWarnings: ['The committed managed identity was retained for ownership-reviewed recovery.']
+    }));
+
+    const result = await executeApplyNext({
+      inspection,
+      reinspect: async () => inspection,
+      runner,
+      now: coverageNow,
+      adapters
+    });
+
+    expect(result).toMatchObject({
+      applied: false,
+      reason: 'blocked',
+      blockers: [blocker],
+      evidence: { result: 'failed' }
+    });
+    expect(result.executedOperations.map((operation) => operation.actionId)).toEqual(expect.arrayContaining([
+      'azure.deployment.classify-ownership',
+      'azure.prerequisites.apply',
+      'governance.evidence.write',
+      'governance.activation-state.write'
+    ]));
+    const evidence = JSON.parse(await readFile(path.join(root, ...result.evidence!.pathParts), 'utf8'));
+    expect(evidence.payload).toMatchObject({
+      kind: 'partial-failure.v1',
+      phaseId: 'application-prerequisites-ready',
+      blockerDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      providerPayloadDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      completedOperations: [{
+        actionId: 'azure.prerequisites.apply',
+        mutationClass: 'azure-resource-provision',
+        operationDigest: expect.stringMatching(/^[a-f0-9]{64}$/u)
+      }],
+      outputBindings: {
+        values: { committedResourceCount: 1 },
+        resources: [{ resourceId: completedResource }]
+      }
+    });
+    expect(JSON.stringify(evidence.payload)).not.toContain(blocker);
+    expect(JSON.stringify(evidence.payload)).not.toContain('privateDetail');
+    const savedState = (await readState(root))!;
+    expect(savedState.phases['application-prerequisites-ready']).toMatchObject({
+      state: 'blocked',
+      evidence: [{ evidenceId: result.evidence!.evidenceId, result: 'failed' }],
+      blockers: [blocker]
+    });
+    expect(savedState.phaseOutputs?.['application-prerequisites-ready']).toMatchObject({
+      resources: [{ resourceId: completedResource }]
+    });
+  });
 });
 
 describe('transition record persistence boundaries', () => {

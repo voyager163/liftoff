@@ -13,6 +13,7 @@ import {
 import { executeAzurePhase } from '../src/governance-activation/phase-azure.js';
 import { executeGitHubPhase } from '../src/governance-activation/phase-github.js';
 import { approveGovernancePreview, saveGovernancePreview } from '../src/governance-activation/public-plans.js';
+import { readbackProof } from '../src/governance-activation/transition-records.js';
 import {
   AbsentAzureEnvironmentRunner, LocalOnlyRunner, coverageActivationInputs, coverageInspection, coverageNow, coverageState, coverageSubscription,
   isolateUserLocalStorage, isolatedGitEnvironment, issuePriorApproval, readState, resetDirectory, scratchDirectory,
@@ -302,14 +303,17 @@ describe('pending external operations', () => {
     startedAt: coverageNow.toISOString(), observedAt: coverageNow.toISOString(), status: 'running'
   };
 
-  function adapter(outcomes: PhaseAdapterOutcome[], seen: Array<ExternalOperationState | null>): GovernancePhaseAdapter {
+  function adapter(
+    outcomes: Array<PhaseAdapterOutcome | ((input: Parameters<GovernancePhaseAdapter['execute']>[0]) => PhaseAdapterOutcome)>,
+    seen: Array<ExternalOperationState | null>
+  ): GovernancePhaseAdapter {
     return {
       phaseId: 'existing-private-path',
       async execute(input) {
         seen.push(input.inspection.state.phases['existing-private-path'].operation ?? null);
         const next = outcomes.shift();
         if (!next) throw new Error('The injected producer was invoked more often than reviewed.');
-        return next;
+        return typeof next === 'function' ? next(input) : next;
       }
     };
   }
@@ -318,10 +322,24 @@ describe('pending external operations', () => {
     const root = await project('pending-resume');
     const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const seen: Array<ExternalOperationState | null> = [];
-    const failed = { ...handle, status: 'failed' as const, observedAt: new Date(coverageNow.getTime() + 120_000).toISOString() };
+    const failed = { ...handle, status: 'failed' as const, observedAt: new Date(coverageNow.getTime() + 60_000).toISOString() };
     const adapters = { phases: { 'existing-private-path': adapter([
-      { status: 'pending', operation: handle, completedOperations: [] },
-      { status: 'blocked', blocker: 'Provider operation op-123 failed; inspect the owned resource before recovery.', operation: failed, completedOperations: [] }
+      {
+        status: 'pending',
+        operation: handle,
+        outputs: {
+          values: { observedResourceCount: 1 },
+          resources: [{ provider: 'azure', resourceType: 'resource-group', resourceId: handle.resourceId }]
+        },
+        completedOperations: []
+      },
+      (input) => ({
+        status: 'blocked',
+        blocker: 'Provider operation op-123 failed; inspect the owned resource before recovery.',
+        operation: failed,
+        liveReadback: [readbackProof(input, 'azure', 'external-operation', failed.resourceId, failed)],
+        completedOperations: []
+      })
     ], seen) } };
     const inspection = await coverageInspection({ root, phaseId: 'existing-private-path', state: coverageState({ activationInputs }), activationInputs });
 
@@ -338,6 +356,10 @@ describe('pending external operations', () => {
     const savedPlan = validateSavedTransitionPlan(JSON.parse(await readFile(path.join(root, ...pending.savedPlan!.pathParts), 'utf8')));
     const running = (await readState(root))!.phases['existing-private-path'];
     expect(running).toMatchObject({ state: 'running', executionPlanDigest: savedPlan.planDigest, operation: { ...handle, planDigest: savedPlan.planDigest } });
+    expect((await readState(root))!.phaseOutputs?.['existing-private-path']).toMatchObject({
+      values: { observedResourceCount: 1 },
+      resources: [{ resourceId: handle.resourceId }]
+    });
     expect(await exists(path.join(root, 'governance', 'evidence'))).toBe(false);
 
     const loaded = (await loadActivationState(root))!;
@@ -360,19 +382,157 @@ describe('pending external operations', () => {
 
     expect(seen[1]).toMatchObject({ operationId: 'op-123', status: 'running', planDigest: savedPlan.planDigest });
     expect(resumed).toMatchObject({
-      applied: false, reason: 'blocked', evidence: null,
+      applied: false, reason: 'blocked', evidence: { result: 'failed' },
       blockers: ['Provider operation op-123 failed; inspect the owned resource before recovery.']
     });
     expect((await readState(root))!.phases['existing-private-path']).toMatchObject({
-      state: 'blocked', evidence: [], operation: { operationId: 'op-123', status: 'failed', planDigest: savedPlan.planDigest }
+      state: 'blocked', evidence: [{ result: 'failed' }],
+      operation: { operationId: 'op-123', status: 'failed', planDigest: savedPlan.planDigest }
     });
     expect(runner.providerCalls).toEqual([]);
+
+    const terminalLoaded = (await loadActivationState(root))!;
+    const terminal = await coverageInspection({
+      root,
+      phaseId: 'existing-private-path',
+      state: terminalLoaded.state,
+      reviewedPlans: [savedPlan],
+      activationInputs
+    });
+    terminal.loadedState = terminalLoaded;
+    await expect(executeApplyNext({
+      inspection: terminal,
+      reinspect: async () => terminal,
+      runner,
+      now: new Date(coverageNow.getTime() + 120_000),
+      adapters: { phases: { 'existing-private-path': adapter([], []) } }
+    })).rejects.toThrow(/terminal external operation requires explicit recovery/u);
+    expect(runner.providerCalls).toEqual([]);
+  });
+
+  it.each([
+    ['a replaced provider handle', (stored: ExternalOperationState, input: Parameters<GovernancePhaseAdapter['execute']>[0]) => {
+      const changed = {
+        ...stored,
+        operationId: 'op-replaced',
+        observedAt: new Date(coverageNow.getTime() + 60_000).toISOString(),
+        status: 'failed' as const
+      };
+      return {
+        status: 'blocked' as const,
+        blocker: 'Provider operation failed.',
+        operation: changed,
+        liveReadback: [readbackProof(input, 'azure', 'external-operation', changed.resourceId, changed)],
+        completedOperations: []
+      };
+    }, /does not match the exact recorded provider handle/u],
+    ['a stale observation', (stored: ExternalOperationState, input: Parameters<GovernancePhaseAdapter['execute']>[0]) => {
+      const stale = { ...stored, status: 'failed' as const };
+      return {
+        status: 'blocked' as const,
+        blocker: 'Provider operation failed.',
+        operation: stale,
+        liveReadback: [readbackProof(input, 'azure', 'external-operation', stale.resourceId, stale)],
+        completedOperations: []
+      };
+    }, /was not freshly reobserved/u],
+    ['no current provider readback', (stored: ExternalOperationState) => ({
+      status: 'blocked' as const,
+      blocker: 'Provider operation failed.',
+      operation: {
+        ...stored,
+        observedAt: new Date(coverageNow.getTime() + 60_000).toISOString(),
+        status: 'failed' as const
+      },
+      completedOperations: []
+    }), /requires a current matching provider readback/u],
+    ['a future-dated provider readback', (stored: ExternalOperationState, input: Parameters<GovernancePhaseAdapter['execute']>[0]) => {
+      const failed = {
+        ...stored,
+        observedAt: new Date(coverageNow.getTime() + 60_000).toISOString(),
+        status: 'failed' as const
+      };
+      return {
+        status: 'blocked' as const,
+        blocker: 'Provider operation failed.',
+        operation: failed,
+        liveReadback: [{
+          ...readbackProof(input, 'azure', 'external-operation', failed.resourceId, failed),
+          observedAt: new Date(coverageNow.getTime() + 180_001).toISOString()
+        }],
+        completedOperations: []
+      };
+    }, /requires a current matching provider readback/u]
+  ] as const)('rejects resume with %s before changing the checkpoint', async (_label, resumedOutcome, expected) => {
+    const root = await project('pending-continuity');
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
+    const initialInspection = await coverageInspection({
+      root,
+      phaseId: 'existing-private-path',
+      state: coverageState({ activationInputs }),
+      activationInputs
+    });
+    const initialAdapters = {
+      phases: {
+        'existing-private-path': adapter([{
+          status: 'pending',
+          operation: handle,
+          completedOperations: []
+        }], [])
+      }
+    };
+    const pending = await executeApplyNext({
+      inspection: initialInspection,
+      reinspect: async () => initialInspection,
+      runner,
+      now: coverageNow,
+      adapters: initialAdapters
+    });
+    const savedPlan = validateSavedTransitionPlan(
+      JSON.parse(await readFile(path.join(root, ...pending.savedPlan!.pathParts), 'utf8'))
+    );
+    const loaded = (await loadActivationState(root))!;
+    const resumable = await coverageInspection({
+      root,
+      phaseId: 'existing-private-path',
+      state: loaded.state,
+      reviewedPlans: [savedPlan],
+      activationInputs
+    });
+    resumable.loadedState = loaded;
+    const stored = loaded.state.phases['existing-private-path'].operation!;
+    const adapters = {
+      phases: {
+        'existing-private-path': adapter([
+          (input) => resumedOutcome(stored, input)
+        ], [])
+      }
+    };
+    const stateBytes = await readFile(path.join(root, 'governance', 'activation-state.json'));
+
+    await expect(executeApplyNext({
+      inspection: resumable,
+      reinspect: async () => resumable,
+      runner,
+      now: new Date(coverageNow.getTime() + 60_000),
+      adapters
+    })).rejects.toThrow(expected);
+
+    expect(await readFile(path.join(root, 'governance', 'activation-state.json'))).toEqual(stateBytes);
   });
 
   it.each([
     ['without a concrete handle', { status: 'pending', completedOperations: [] } satisfies PhaseAdapterOutcome, /concrete resumable external operation handle/],
     ['with a non-running handle', { status: 'pending', operation: { ...handle, status: 'completed' }, completedOperations: [] } satisfies PhaseAdapterOutcome,
       /concrete resumable external operation handle/],
+    ['with an over-age handle', {
+      status: 'pending',
+      operation: {
+        ...handle,
+        startedAt: new Date(coverageNow.getTime() - (25 * 60 * 60 * 1_000)).toISOString()
+      },
+      completedOperations: []
+    } satisfies PhaseAdapterOutcome, /handle is stale/u],
     ['for an unreviewed action', { status: 'pending', operation: { ...handle, actionId: 'azure.bootstrap-local.apply' }, completedOperations: [] } satisfies PhaseAdapterOutcome,
       /no corresponding action in the reviewed plan/],
     ['with a state-free retry after an external handle',

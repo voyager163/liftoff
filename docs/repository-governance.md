@@ -653,6 +653,23 @@ success is reported without raw provider diagnostics, and successful
 registrations remain retained shared subscription capabilities; rollback never
 unregisters them.
 
+Registration polling is bounded to 60 observations at intervals of at most five
+seconds. If Azure is still `Registering`, Liftoff saves the exact credential-free
+Resource Manager handle, current sanitized readback, and partial resource
+bindings as a running checkpoint instead of redispatching registration. Resume
+accepts only the same reviewed provider, action, operation, resource, start time,
+and poll URL; the operation must be no older than 24 hours and its matching
+provider readback must be strictly newer and no more than ten minutes old.
+
+A terminal provider operation is not an ordinary retry. If a remote write
+completed before a later blocker, the phase remains `blocked` and records
+`partial-failure.v1` evidence containing only digests, exact sanitized operation
+identity, live readback, and owned output bindings. Blocker text, provider
+payloads, credentials, and cleanup text are not copied into evidence. Continue
+only through an explicitly reviewed recovery plan after current deployment
+ownership is reverified; local rollback never claims retained cloud effects were
+undone.
+
 ## Evidence authority and active changes
 
 Task checkboxes are a projection of phase state, not authority. Evidence
@@ -755,7 +772,10 @@ Apply-next reports `selectedPhase` for the attempted transition and
 `executedPhase` separately from recomputed post-transition `nextReadyPhase`.
 Schema-2 results also identify `nextPlannablePhase`, separate milestone progress,
 and structured registered `nextActions`. A pending external operation is not
-completed evidence. For failed or interrupted work, obtain a fresh
+completed evidence. Its exact running handle and partial output bindings are
+retained for fresh provider observation; ordinary apply refuses a changed,
+stale, missing-readback, over-age, or terminal handle. For failed or interrupted
+work, obtain a fresh
 `governance plan --recover-phase <phase>` and explicitly execute its reviewed
 `governance recover --plan <fingerprint> --execute` action. OpenSpec failures include bounded
 diagnostics with terminal controls removed; credential-shaped output is

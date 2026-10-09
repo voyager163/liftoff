@@ -47,6 +47,9 @@ interface FeatureObservation extends FeatureRequirement {
 }
 
 type RequirementObservation = ProviderObservation | FeatureObservation;
+type RegistrationPollResult =
+  | { status: 'registered'; observation: RequirementObservation }
+  | { status: 'pending'; observation: RequirementObservation };
 
 interface PermissionObservation {
   providerRegistration: boolean;
@@ -451,26 +454,134 @@ async function waitForRegistered(
   input: PhaseAdapterExecutionInput,
   subscriptionId: string,
   requirement: Requirement
-): Promise<RequirementObservation> {
-  for (let attempt = 0; attempt < pollLimit; attempt += 1) {
+): Promise<RegistrationPollResult> {
+  const configured = input.adapters.azureOperationPolling;
+  const maxAttempts = configured?.maxAttempts ?? pollLimit;
+  const intervalMs = configured?.intervalMs ?? pollIntervalMs;
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > pollLimit ||
+    !Number.isInteger(intervalMs) || intervalMs < 0 || intervalMs > pollIntervalMs) {
+    return readinessError('polling-policy-invalid',
+      'Azure operation polling must remain within the qualified 60-attempt, five-second interval bounds.');
+  }
+  const sleep = configured?.sleep ?? ((milliseconds: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  let lastObservation: RequirementObservation | undefined;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const observation = await observeRequirement(input, subscriptionId, requirement);
-    if (observation.registrationState === 'Registered') return observation;
+    lastObservation = observation;
+    if (observation.registrationState === 'Registered') return { status: 'registered', observation };
     if (observation.registrationState === 'Unregistering') {
       return readinessError('registration-conflict',
         `Azure ${requirement.kind} ${requirement.namespace} entered Unregistering before readiness was established.`);
     }
-    if (attempt + 1 < pollLimit) {
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    if (attempt + 1 < maxAttempts) {
+      await sleep(intervalMs);
     }
   }
-  return readinessError('registration-timeout',
-    `Azure ${requirement.kind} ${requirement.namespace} did not reach terminal Registered state within five minutes.`);
+  return { status: 'pending', observation: lastObservation! };
 }
 
 function registrationLabel(requirement: Requirement): string {
   return requirement.kind === 'provider'
     ? requirement.namespace
     : `${requirement.namespace}/${requirement.name}`;
+}
+
+function operationTime(input: PhaseAdapterExecutionInput): Date {
+  return input.clock?.() ?? input.now;
+}
+
+function operationPollUrl(
+  input: PhaseAdapterExecutionInput,
+  observation: RequirementObservation,
+  resourceManager: string
+): string {
+  const apiVersion = observation.kind === 'provider' ? '2021-04-01' : '2021-07-01';
+  return new URL(`${observation.id}?api-version=${apiVersion}`, resourceManager).toString();
+}
+
+function operationReadbacks(
+  input: PhaseAdapterExecutionInput,
+  observations: readonly RequirementObservation[]
+) {
+  return observations.map((observation) =>
+    readbackProof(
+      input,
+      'azure',
+      observation.kind === 'provider' ? 'provider-registration' : 'subscription-feature',
+      observation.id,
+      observation
+    ));
+}
+
+function operationOutputs(
+  subscriptionId: string,
+  registrationMode: RegistrationMode,
+  resourceTypeCount: number,
+  permissions: PermissionObservation,
+  observations: readonly RequirementObservation[]
+) {
+  return {
+    values: {
+      subscriptionId,
+      registrationMode,
+      resourceTypeCount,
+      namespaceCount: observations.filter((entry) => entry.kind === 'provider').length,
+      featureCount: observations.filter((entry) => entry.kind === 'feature').length,
+      providerRegistrationPermitted: permissions.providerRegistration,
+      featureRegistrationPermitted: permissions.featureRegistration
+    },
+    resources: observations.map((observation) => ({
+      provider: 'azure' as const,
+      resourceType: observation.kind === 'provider' ? 'provider-registration' : 'subscription-feature',
+      resourceId: observation.id
+    }))
+  };
+}
+
+function pendingRegistrationOutcome(input: {
+  execution: PhaseAdapterExecutionInput;
+  operation: TransitionOperation;
+  requirement: Requirement;
+  observation: RequirementObservation;
+  observations: readonly RequirementObservation[];
+  subscriptionId: string;
+  resourceManager: string;
+  registrationMode: RegistrationMode;
+  resourceTypeCount: number;
+  permissions: PermissionObservation;
+  completedOperations: readonly TransitionOperation[];
+  retained: readonly string[];
+}): PhaseAdapterOutcome {
+  const observedAt = operationTime(input.execution).toISOString();
+  const previous = input.execution.inspection.state.phases['provider-ready'].operation;
+  return {
+    status: 'pending',
+    blocker: `Azure prerequisite ${registrationLabel(input.requirement)} is still Registering after bounded polling; resume reobserves the same resource without redispatch.`,
+    operation: {
+      provider: 'azure',
+      actionId: input.operation.actionId,
+      operationId: `azure-registration:${input.observation.id.toLowerCase()}`,
+      resourceId: input.observation.id,
+      startedAt: previous?.resourceId.toLowerCase() === input.observation.id.toLowerCase()
+        ? previous.startedAt
+        : observedAt,
+      observedAt,
+      status: 'running',
+      pollUrl: operationPollUrl(input.execution, input.observation, input.resourceManager)
+    },
+    liveReadback: operationReadbacks(input.execution, input.observations),
+    outputs: operationOutputs(
+      input.subscriptionId,
+      input.registrationMode,
+      input.resourceTypeCount,
+      input.permissions,
+      input.observations
+    ),
+    completedOperations: input.completedOperations,
+    cleanupWarnings: input.retained.map((entry) =>
+      `Retained Azure registration ${entry}; subscription capabilities are never unregistered by repository rollback.`)
+  };
 }
 
 export async function executeAzureProviderReadiness(
@@ -486,6 +597,7 @@ export async function executeAzureProviderReadiness(
   }
   const completedOperations: TransitionOperation[] = [];
   const retained: string[] = [];
+  const observations: RequirementObservation[] = [];
   try {
     const configuration = readinessConfiguration(input);
     const identity = await observeAzureIdentity(input);
@@ -509,7 +621,6 @@ export async function executeAzureProviderReadiness(
       return readinessError('plan-stale',
         'The approved provider-ready operations no longer match the reviewed resource-type prerequisites.');
     }
-    const observations: RequirementObservation[] = [];
     for (let index = 0; index < operations.length; index += 1) {
       const approvedOperation = operations[index]!;
       const approved = planned[index]!;
@@ -523,7 +634,17 @@ export async function executeAzureProviderReadiness(
         }
         if (!plannedRegistration) {
           if (observation.registrationState === 'Registering') {
-            observation = await waitForRegistered(input, identity.subscription.id, requirement);
+            const poll = await waitForRegistered(input, identity.subscription.id, requirement);
+            if (poll.status === 'pending') {
+              const pendingObservations = [...observations, poll.observation];
+              return pendingRegistrationOutcome({
+                execution: input, operation: approvedOperation, requirement, observation: poll.observation,
+                observations: pendingObservations, subscriptionId: identity.subscription.id,
+                resourceManager: identity.cloud.resourceManager, registrationMode: configuration.registrationMode,
+                resourceTypeCount: configuration.resourceTypes.length, permissions, completedOperations, retained
+              });
+            }
+            observation = poll.observation;
           } else {
             return readinessError('plan-stale',
               `Azure prerequisite ${registrationLabel(requirement)} now requires an unapproved registration write.`);
@@ -546,11 +667,31 @@ export async function executeAzureProviderReadiness(
             retained.push(registrationLabel(requirement));
           } else if (observation.registrationState === 'Registering' &&
             requirement.kind === 'provider' && approved.refreshAfterFeature) {
-            observation = await waitForRegistered(input, identity.subscription.id, requirement);
+            const poll = await waitForRegistered(input, identity.subscription.id, requirement);
+            if (poll.status === 'pending') {
+              const pendingObservations = [...observations, poll.observation];
+              return pendingRegistrationOutcome({
+                execution: input, operation: approvedOperation, requirement, observation: poll.observation,
+                observations: pendingObservations, subscriptionId: identity.subscription.id,
+                resourceManager: identity.cloud.resourceManager, registrationMode: configuration.registrationMode,
+                resourceTypeCount: configuration.resourceTypes.length, permissions, completedOperations, retained
+              });
+            }
+            observation = poll.observation;
             await registerRequirement(input, identity.subscription.id, requirement);
             retained.push(registrationLabel(requirement));
           }
-          observation = await waitForRegistered(input, identity.subscription.id, requirement);
+          const poll = await waitForRegistered(input, identity.subscription.id, requirement);
+          if (poll.status === 'pending') {
+            const pendingObservations = [...observations, poll.observation];
+            return pendingRegistrationOutcome({
+              execution: input, operation: approvedOperation, requirement, observation: poll.observation,
+              observations: pendingObservations, subscriptionId: identity.subscription.id,
+              resourceManager: identity.cloud.resourceManager, registrationMode: configuration.registrationMode,
+              resourceTypeCount: configuration.resourceTypes.length, permissions, completedOperations, retained
+            });
+          }
+          observation = poll.observation;
         }
       } else if (plannedRegistration && approved.refreshAfterFeature) {
         if (!permissions.providerRegistration) {
@@ -559,19 +700,24 @@ export async function executeAzureProviderReadiness(
         }
         await registerRequirement(input, identity.subscription.id, requirement);
         retained.push(registrationLabel(requirement));
-        observation = await waitForRegistered(input, identity.subscription.id, requirement);
+        const poll = await waitForRegistered(input, identity.subscription.id, requirement);
+        if (poll.status === 'pending') {
+          const pendingObservations = [...observations, poll.observation];
+          return pendingRegistrationOutcome({
+            execution: input, operation: approvedOperation, requirement, observation: poll.observation,
+            observations: pendingObservations, subscriptionId: identity.subscription.id,
+            resourceManager: identity.cloud.resourceManager, registrationMode: configuration.registrationMode,
+            resourceTypeCount: configuration.resourceTypes.length, permissions, completedOperations, retained
+          });
+        }
+        observation = poll.observation;
       }
       observations.push(observation);
       completedOperations.push(approvedOperation);
     }
-    const liveReadback = observations.map((observation) =>
-      readbackProof(
-        input,
-        'azure',
-        observation.kind === 'provider' ? 'provider-registration' : 'subscription-feature',
-        observation.id,
-        observation
-      ));
+    const liveReadback = operationReadbacks(input, observations);
+    const priorOperation = input.inspection.state.phases['provider-ready'].operation;
+    const completedAt = operationTime(input).toISOString();
     return {
       status: 'completed',
       resultState: 'verified',
@@ -585,33 +731,27 @@ export async function executeAzureProviderReadiness(
         prerequisites: observations
       },
       liveReadback,
-      outputs: {
-        values: {
-          subscriptionId: identity.subscription.id,
-          registrationMode: configuration.registrationMode,
-          resourceTypeCount: configuration.resourceTypes.length,
-          namespaceCount: observations.filter((entry) => entry.kind === 'provider').length,
-          featureCount: observations.filter((entry) => entry.kind === 'feature').length,
-          providerRegistrationPermitted: permissions.providerRegistration,
-          featureRegistrationPermitted: permissions.featureRegistration
-        },
-        resources: observations.map((observation) => ({
-          provider: 'azure' as const,
-          resourceType: observation.kind === 'provider' ? 'provider-registration' : 'subscription-feature',
-          resourceId: observation.id
-        }))
-      },
+      outputs: operationOutputs(
+        identity.subscription.id,
+        configuration.registrationMode,
+        configuration.resourceTypes.length,
+        permissions,
+        observations
+      ),
+      ...(priorOperation ? {
+        operation: { ...priorOperation, observedAt: completedAt, status: 'completed' as const }
+      } : {}),
       completedOperations,
       cleanupWarnings: retained.map((entry) =>
         `Retained Azure registration ${entry}; subscription capabilities are never unregistered by repository rollback.`)
     };
   } catch (error) {
+    if (!(error instanceof AzureDiscoveryError)) throw error;
     return {
       status: 'blocked',
       resultState: 'failed',
-      blocker: error instanceof AzureDiscoveryError
-        ? error.message
-        : 'Azure provider readiness failed unexpectedly; provider diagnostics were withheld.',
+      blocker: error.message,
+      ...(observations.length ? { liveReadback: operationReadbacks(input, observations) } : {}),
       completedOperations,
       cleanupWarnings: retained.map((entry) =>
         `Retained Azure registration ${entry}; subscription capabilities are never unregistered by repository rollback.`)

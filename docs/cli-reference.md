@@ -246,7 +246,22 @@ channel.
 Apply-next JSON names the attempted phase in `selectedPhase` and reports
 `executedPhase` separately. `nextReadyPhase` is recomputed after execution;
 `nextPlannablePhase` can identify work awaiting approval. A pending external
-operation retains its provider handle and is polled, not dispatched twice.
+operation retains its exact provider handle and partial output bindings and is
+polled, not dispatched twice. Azure registration polling stops after at most 60
+observations with intervals no greater than five seconds; a still-running
+operation becomes a durable checkpoint rather than a generic timeout.
+Resume requires the unchanged reviewed provider, action, operation, resource,
+start time, and credential-free poll URL plus a strictly newer matching provider
+readback. Handles older than 24 hours and observations older than ten minutes
+are refused.
+
+If a completed remote effect is followed by a blocker, JSON returns
+`reason: "blocked"` with failed `partial-failure.v1` evidence and retained owned
+outputs. The evidence uses digests for blocker, provider payload, completed
+operations, and cleanup warnings; it does not persist raw diagnostics or
+credentials. A terminal handle cannot be retried through ordinary `apply-next`.
+Create and approve an explicit recovery plan, which must reverify current
+deployment ownership before any compensation or continuation.
 Status/resume preserve `storedState` and `storedBlockers` when
 an archived baseline is `retryable`; only explicit execution may replace that
 failure with verified evidence.

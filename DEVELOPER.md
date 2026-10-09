@@ -2245,7 +2245,20 @@ qualification. `provider-ready` now derives its exact namespace and supported
 feature prerequisites from reviewed resource types, proves live registration
 permissions, registers only authorized missing prerequisites, and requires terminal
 `Registered` readback. Successful registrations are retained subscription
-capabilities and are never unregistered by repository rollback.
+capabilities and are never unregistered by repository rollback. Registration
+polling is capped at 60 observations and five-second intervals. A nonterminal
+result saves one exact external-operation handle, sanitized readback, and partial
+outputs; resume must present the immutable handle identity with a strictly newer
+matching provider observation, does not redispatch registration, and rejects
+operations older than 24 hours or observations older than ten minutes.
+
+Blocked execution after a validated external operation or completed remote write
+persists `partial-failure.v1` evidence while leaving the phase blocked. The
+record stores digests instead of raw blocker, provider payload, completed
+operation, or cleanup text and preserves owned outputs for later classification.
+Terminal handles cannot enter ordinary retry. Explicit recovery remains bound to
+the reviewed recovery plan and current deployment-ownership proof; state rollback
+must never claim retained cloud effects were reversed.
 
 Protected deployment/state plans now prepend the built-in read-only
 `azure.deployment.classify-ownership` guard. The engine executes it after plan

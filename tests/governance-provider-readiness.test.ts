@@ -52,6 +52,7 @@ class ProviderRunner implements CommandRunner {
   readonly calls: string[][] = [];
   readonly providerStates = new Map<string, string>();
   readonly featureStates = new Map<string, string>();
+  readonly heldRegistrations = new Set<string>();
   providerPermission = true;
   featurePermission = true;
   resourceManager = 'https://management.azure.com/';
@@ -112,7 +113,7 @@ class ProviderRunner implements CommandRunner {
       if (this.failRegistration === namespace) {
         return result(command, { status: 1, stderr: 'secret provider diagnostic' });
       }
-      this.providerStates.set(namespace, 'Registered');
+      this.providerStates.set(namespace, this.heldRegistrations.has(namespace) ? 'Registering' : 'Registered');
       return json({ namespace, registrationState: 'Registering' });
     }
     if (key.startsWith('feature register ')) {
@@ -122,7 +123,7 @@ class ProviderRunner implements CommandRunner {
       if (this.failRegistration === identity) {
         return result(command, { status: 1, stderr: 'secret feature diagnostic' });
       }
-      this.featureStates.set(identity, 'Registered');
+      this.featureStates.set(identity, this.heldRegistrations.has(identity) ? 'Registering' : 'Registered');
       return json({ name, properties: { state: 'Registering' } });
     }
     throw new Error(`Unexpected Azure command: ${key}`);
@@ -367,6 +368,74 @@ describe('Azure provider readiness', () => {
     expect(planned?.operations[0]?.mutationClass).toBe('azure-read');
     expect(outcome?.status).toBe('completed');
     expect(commandNames(runner.calls.slice(planningCallCount))).not.toContain('provider register');
+  });
+
+  it('returns a bounded resumable handle and completes by reobserving without redispatch', async () => {
+    const runner = new ProviderRunner();
+    runner.providerStates.set('GitHub.Network', 'NotRegistered');
+    runner.heldRegistrations.add('GitHub.Network');
+    const { execution } = await fixture(
+      'pending-registration',
+      runner,
+      ['GitHub.Network/networkSettings'],
+      'none'
+    );
+    execution.plan = { ...execution.plan, planDigest: 'a'.repeat(64) };
+    execution.adapters = {
+      azureOperationPolling: {
+        maxAttempts: 2,
+        intervalMs: 0,
+        async sleep() {}
+      }
+    };
+
+    const pending = await executeAzurePhase(execution);
+
+    expect(pending).toMatchObject({
+      status: 'pending',
+      blocker: expect.stringContaining('resume reobserves the same resource without redispatch'),
+      operation: {
+        provider: 'azure',
+        actionId: 'azure.provider.ensure-ready',
+        operationId: expect.stringContaining('azure-registration:/subscriptions/'),
+        resourceId: `/subscriptions/${coverageSubscription}/providers/GitHub.Network`,
+        status: 'running',
+        pollUrl: expect.stringContaining('management.azure.com/subscriptions/')
+      },
+      outputs: {
+        resources: [{
+          provider: 'azure',
+          resourceType: 'provider-registration',
+          resourceId: `/subscriptions/${coverageSubscription}/providers/GitHub.Network`
+        }]
+      },
+      completedOperations: []
+    });
+    expect(commandNames(runner.calls).filter((command) => command === 'provider register')).toHaveLength(1);
+
+    runner.providerStates.set('GitHub.Network', 'Registered');
+    execution.inspection.state.phases['provider-ready'] = {
+      ...execution.inspection.state.phases['provider-ready'],
+      state: 'running',
+      executionPlanDigest: execution.plan.planDigest,
+      operation: { ...pending!.operation!, planDigest: execution.plan.planDigest }
+    };
+    execution.inspection.state.phaseOutputs = { 'provider-ready': pending!.outputs! };
+    execution.now = new Date(coverageNow.getTime() + 60_000);
+    const resumed = await executeAzurePhase(execution);
+
+    expect(resumed).toMatchObject({
+      status: 'completed',
+      resultState: 'verified',
+      operation: {
+        operationId: pending!.operation!.operationId,
+        resourceId: pending!.operation!.resourceId,
+        startedAt: pending!.operation!.startedAt,
+        observedAt: execution.now.toISOString(),
+        status: 'completed'
+      }
+    });
+    expect(commandNames(runner.calls).filter((command) => command === 'provider register')).toHaveLength(1);
   });
 
   it('records completed shared registrations as retained when a later registration fails', async () => {

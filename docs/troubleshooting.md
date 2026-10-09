@@ -350,6 +350,21 @@ recorded output IDs cover every freshly observed Azure resource. Other existing
 deployment/state scope is intentionally planning-only; no backend read or
 duplicate provisioning was attempted.
 
+If provider registration remains pending after bounded polling, keep the saved
+checkpoint intact. Resume reobserves the same credential-free Azure operation
+handle and never sends a second registration request. A changed operation or
+resource ID, changed poll URL, missing provider readback, observation older than
+ten minutes, or operation older than 24 hours is an integrity blocker; do not
+edit timestamps or IDs to bypass it.
+
+If the phase is blocked after a remote write, failed `partial-failure.v1`
+evidence and owned output bindings preserve what Liftoff can safely prove without
+copying raw Azure diagnostics. Do not interpret the blocked state as cloud
+rollback, and do not rerun ordinary apply after a terminal handle. Generate the
+reported recovery plan, review its exact scope, and execute it only after fresh
+deployment-ownership verification. Successfully registered namespaces and
+features are shared subscription capabilities and remain retained.
+
 `liftoff doctor` and `liftoff governance status --json` use precise states:
 
 | State | Remedy |

@@ -394,7 +394,12 @@ function createRecordValidators<I extends Records.ActivationIdentityFieldsV1, P 
     if (pollUrl !== undefined) {
       publicJson(pollUrl, `${path}.pollUrl`);
       const url = new URL(pollUrl);
-      if (url.protocol !== 'https:' || !['api.github.com', 'management.azure.com'].includes(url.hostname) ||
+      if (pollUrl.length > 2_048 || url.protocol !== 'https:' || ![
+        'api.github.com',
+        'management.azure.com',
+        'management.usgovcloudapi.net',
+        'management.chinacloudapi.cn'
+      ].includes(url.hostname) ||
         url.username || url.password || url.port) throw new Error(`${path}.pollUrl must be a credential-free supported provider URL.`);
     }
     const startedAt = isoTimestamp(item.startedAt, `${path}.startedAt`);
