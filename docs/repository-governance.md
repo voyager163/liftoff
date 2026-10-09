@@ -670,6 +670,43 @@ only through an explicitly reviewed recovery plan after current deployment
 ownership is reverified; local rollback never claims retained cloud effects were
 undone.
 
+## Existing private backend readiness
+
+Task 13.1 supports one narrow reusable backend path without adopting deployed
+state. The reviewed activation inputs must select `existing-private` and name
+the exact resource group, storage account, container, blob key, and Azure
+principal object ID:
+
+```json
+{
+  "phases": {
+    "state-path-selected": {
+      "statePath": "existing-private",
+      "resourceGroup": "rg-opentofu-state",
+      "storageAccount": "stliftoffstate",
+      "container": "tfstate",
+      "key": "project-id/dev/terraform.tfstate",
+      "principalId": "00000000-0000-4000-8000-000000000000"
+    }
+  }
+}
+```
+
+The approved selection plan binds those values plus the current opaque
+execution-host identity. Execution independently revalidates the configured
+subscription, tenant, and principal, requires the packaged OpenTofu
+version/platform, and verifies the exact storage account is HTTPS-only,
+OAuth-default, private-network-only, and has shared-key and blob-public access
+disabled.
+
+The `existing-private-path` phase then reobserves blob versioning and soft-delete
+retention, proves the named container is privately reachable and available for
+Azure blob-lease locking, and runs only an exact target-blob existence read.
+The target key must be absent. If it exists, Liftoff refuses to download, read,
+import, relocate, or adopt that state and leaves the scope planning-only.
+`bootstrap-local`, hosted-runner networking, and any same-operation state
+handover remain separate later phases.
+
 ## Evidence authority and active changes
 
 Task checkboxes are a projection of phase state, not authority. Evidence

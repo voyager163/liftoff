@@ -286,21 +286,28 @@ policy's repository-dedicated provisioning exception, but it must stop for
 explicit approval before creating any Azure or GitHub resource. Do not replace
 missing capability with duplicate scanners, partial provisioning, or
 placeholder success.
-These are target-policy requirements; production phases still lack executors and
-two ruleset phases require an injected adapter absent from the public CLI.
-Exact approval persistence, provider readiness, and protected credential
-enrollment are built in, but they do not authorize the remaining phases.
+These are target-policy requirements; production phases still have explicit
+capability gaps and two ruleset phases require an injected adapter absent from
+the public CLI. Exact approval persistence, provider readiness, protected
+credential enrollment, and approved existing-private backend readiness are
+built in, but they do not authorize the remaining phases.
 An unavailable executor or authority entry point is a blocker, not an instruction
 to run its provider commands directly.
 
 If a private ZRS state backend cannot be reached because public network access
-is disabled and no approved private management path exists, do not enable
-public access or upload local state to GitHub. The target policy requires an
-explicitly approved minimum `bootstrap-local` phase, adoption through declarative
-imports from the private runner, verify identity parity, locking, versioning,
-and a clean no-change plan, then retain the frozen local state read-only for 30
-days before secure deletion. That production adapter is not implemented by this
-release; stop at the capability blocker and plan separately reviewed platform work.
+is disabled, do not enable public access or upload local state to GitHub.
+For an approved existing path, provide exact `state-path-selected` inputs for
+`statePath`, `resourceGroup`, `storageAccount`, `container`, `key`, and
+`principalId`. Liftoff binds the current execution host and qualified OpenTofu,
+then verifies OAuth-only private reachability, versioning, soft delete,
+blob-lease availability, and an absent exact target key. If the target key
+exists, Liftoff refuses to read or adopt it. If no approved existing private path
+is reachable, the target policy requires a separately approved minimum
+`bootstrap-local` phase, declarative import from the private runner, identity
+parity, locking/versioning, and a clean no-change plan, followed by 30-day
+read-only retention before secure deletion. That bootstrap production adapter
+is not implemented by this release; stop at the capability blocker and plan
+separately reviewed platform work.
 
 If an Azure bootstrap fails with a namespace-not-registered error while
 `resource_provider_registrations = "none"` is configured, do not retry the same

@@ -2221,13 +2221,12 @@ other-platform qualification remain separate gates.
 ## Activation completeness and separate follow-up plan
 
 The activation engine is not yet an end-to-end production provisioning engine.
-Of its 29 declared phases, 12 have built-in handler paths, 2 require an injected
-GitHub ruleset adapter that the public CLI does not currently supply, and 15
+Of its 29 declared phases, 14 have built-in handler paths, 2 require an injected
+GitHub ruleset adapter that the public CLI does not currently supply, and 13
 fall back to an explicit missing-production-adapter blocker.
 
 The missing production phase handlers are `bootstrap-workflow-source-ready`,
-`state-path-selected`, `existing-private-path`, `bootstrap-local`,
-`runner-ready`, `private-backend-proof`, `remote-import-verified`,
+`bootstrap-local`, `runner-ready`, `private-backend-proof`, `remote-import-verified`,
 `application-prerequisites-ready`, `application-artifact-ready`,
 `application-foundation`, `workflow-source-ready`, `dev-proof`,
 `staging-qualified`, `production-rehearsed`, and `green-red-proof`.
@@ -2272,9 +2271,22 @@ without writing activation state or invoking backend-state, import, registry, or
 provisioning effects. The successful classification operation, sanitized
 payload, and Azure readback are merged into final phase evidence.
 
-In contrast,
-`state-path-selected` still cannot report a synthetic selected state path and
-remains blocked as a missing production adapter. `credential-ready` is now a
+`state-path-selected` and `existing-private-path` now provide the first narrow
+production backend-readiness path. Reviewed `state-path-selected` inputs must
+name only `existing-private`, the exact resource group, storage account,
+container, blob key, and Azure principal object ID. The approved plan also binds
+the current opaque execution-host identity. Selection verifies that exact
+subscription, tenant, principal, host, packaged OpenTofu version/platform, and
+private OAuth-only storage account before persisting the branch choice.
+`existing-private-path` reobserves those bindings, requires HTTPS with public and
+shared-key access disabled, verifies blob versioning and soft-delete retention,
+proves the container is privately reachable and available for Azure blob-lease
+locking, and requires the exact target blob key to be absent. It calls only the
+bounded existence readback and never downloads, imports, relocates, or adopts an
+existing state object. An occupied target remains planning-only. `bootstrap-local`
+and hosted/private runner establishment remain separate unavailable phases.
+
+`credential-ready` is now a
 built-in production phase. Its reviewed public configuration selects an existing
 approved selected-repository GitHub App or a justified fine-grained PAT fallback;
 the credential value is read only from a private non-echoing TTY or explicitly

@@ -5,12 +5,16 @@ import { readbackProof } from './transition-records.js';
 import { executeBootstrapStateDisposal, remoteImportRetention } from './phase-bootstrap-state.js';
 import { runCommand, commandSucceeded } from './transition-process.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
-import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
 import { AzureDiscoveryError, observeAzurePhase0 } from './azure-discovery.js';
 import {
   executeAzureProviderReadiness, planAzureProviderReadiness
 } from './azure-provider-readiness.js';
 import { planAzureDeploymentOwnership } from './azure-deployment-ownership.js';
+import {
+  executeAzureStatePathSelection,
+  executeExistingPrivateBackendReadiness,
+  existingPrivateBackendPlanInputs
+} from './azure-backend-readiness.js';
 
 function azureSubscriptionId(input: PhasePlanningInput | PhaseAdapterExecutionInput): string | null {
   return input.inspection.activationInputs?.azure?.subscriptionId ??
@@ -65,14 +69,20 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
     case 'state-path-selected':
       return {
         operations: [
-          azureOperation(input.phase.id, 'azure.state-path.select', 'azure-read', { allowed: ['existing-private', 'bootstrap-local'] }, subId)
+          azureOperation(
+            input.phase.id,
+            'azure.state-path.select',
+            'azure-read',
+            existingPrivateBackendPlanInputs(input),
+            subId
+          )
         ]
       };
     case 'existing-private-path':
       return {
         operations: [
           planAzureDeploymentOwnership(input, subId),
-          azureOperation(input.phase.id, 'azure.existing-private-path.verify', 'azure-read', { statePath: 'existing-private' }, subId, [
+          azureOperation(input.phase.id, 'azure.existing-private-path.verify', 'azure-read', existingPrivateBackendPlanInputs(input), subId, [
             { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
           ])
         ]
@@ -243,12 +253,9 @@ export async function executeAzurePhase(input: PhaseAdapterExecutionInput): Prom
     case 'provider-ready':
       return executeAzureProviderReadiness(input);
     case 'state-path-selected':
-      // No production executor exists yet; never synthesize state-path readback.
-      return {
-        status: 'blocked',
-        blocker: phaseCapabilities[input.phase.id].blocker ?? 'No production executor is available.',
-        completedOperations: []
-      };
+      return executeAzureStatePathSelection(input);
+    case 'existing-private-path':
+      return executeExistingPrivateBackendReadiness(input);
     case 'remote-ready':
       return remoteImportRetention(input);
     case 'bootstrap-state-disposed':

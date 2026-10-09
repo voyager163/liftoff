@@ -157,7 +157,7 @@ Depends on 3-8. References: design D10-D11; liftoff-governance-activation-engine
 
 Depends on 12. References: design D11; liftoff-governance-activation-engine, liftoff-infrastructure-governance.
 
-- [ ] 13.1 Implement verified reuse of an approved private backend/execution path without adopting unknown deployment state; verify identity, reachability, locking/versioning and readback conditions with positive/negative tests.
+- [x] 13.1 Implement verified reuse of an approved private backend/execution path without adopting unknown deployment state; verify identity, reachability, locking/versioning and readback conditions with positive/negative tests.
 - [ ] 13.2 Implement only the minimal separately approved new-environment bootstrap when reachability requires it; verify scoped names, cost, permissions and owned operation records before billable writes.
 - [ ] 13.3 Complete applicable repository-dedicated hosted-runner/network prerequisites with exact labels, routing, DNS and one approved egress mode; verify real reachability and keep unavailable org/account capabilities explicit blockers.
 - [ ] 13.4 Qualify protected state handling/handover only for resources created by the same approved bootstrap, with backups, exact mapping/concurrency, no-change verification and retention; verify the public API still rejects arbitrary pre-existing state import/partition/relocation.

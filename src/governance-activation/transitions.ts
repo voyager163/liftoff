@@ -59,6 +59,8 @@ const builtInExecutors: Partial<Record<PhaseId, PhaseExecutor>> = {
   'credential-ready': executeGitHubPhase,
   'enforcement-approved': () => ({ status: 'completed', resultState: 'approved', completedOperations: [] }),
   'provider-ready': executeAzurePhase,
+  'state-path-selected': executeAzurePhase,
+  'existing-private-path': executeAzurePhase,
   'remote-ready': remoteImportRetention,
   'bootstrap-state-disposed': executeBootstrapStateDisposal,
   'rulesets-applied': executeRulesetPhase,

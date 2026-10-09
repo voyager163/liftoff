@@ -12,12 +12,11 @@ import {
 } from '../src/governance-activation/index.js';
 import { executeAzurePhase } from '../src/governance-activation/phase-azure.js';
 import { executeGitHubPhase } from '../src/governance-activation/phase-github.js';
-import { approveGovernancePreview, saveGovernancePreview } from '../src/governance-activation/public-plans.js';
 import { readbackProof } from '../src/governance-activation/transition-records.js';
 import {
   AbsentAzureEnvironmentRunner, LocalOnlyRunner, coverageActivationInputs, coverageInspection, coverageNow, coverageState, coverageSubscription,
   isolateUserLocalStorage, isolatedGitEnvironment, issuePriorApproval, readState, resetDirectory, scratchDirectory,
-  treeFingerprint, userLocalRecordNames, writeCoverageProject
+  treeFingerprint, writeCoverageProject
 } from './fixtures/governance-coverage/transition-project.js';
 
 const scratch = scratchDirectory('provider-denial');
@@ -139,33 +138,8 @@ describe('public capability table', () => {
   });
 });
 
-describe('public approval refuses unsupported capabilities', () => {
-  it.each(['state-path-selected'] as const)(
-    'saves an external preview for %s but issues no approval, authority record, or project file',
-    async (phaseId) => {
-      const root = await project(`approve-${phaseId}`);
-      const runner = new LocalOnlyRunner(gitEnvironment);
-      const state = coverageState();
-      const inspection = await coverageInspection({ root, phaseId, state, activationInputs });
-      const saved = await saveGovernancePreview(inspection, { runner, now: coverageNow });
-      expect(saved?.preview.plan).toMatchObject({ phaseId, approval: { evaluation: { approvalRequired: true } } });
-      const before = await treeFingerprint(root);
-      const recordsBefore = await userLocalRecordNames(storage.root);
-
-      await expect(approveGovernancePreview({
-        projectRoot: root, fingerprint: saved!.preview.fingerprint, inspect: async () => inspection, runner, now: coverageNow
-      })).rejects.toThrow(phaseCapabilities[phaseId].blocker!);
-
-      expect(await treeFingerprint(root)).toBe(before);
-      expect(await userLocalRecordNames(storage.root)).toEqual(recordsBefore);
-      expect(recordsBefore.some((name) => name.startsWith('governance-approval-'))).toBe(false);
-      expect(runner.providerCalls).toEqual([]);
-    }
-  );
-});
-
 describe('execution guard for phases without a real executor', () => {
-  it.each(['state-path-selected', 'runner-ready', 'rulesets-applied', 'live-readback'] as const)(
+  it.each(['runner-ready', 'rulesets-applied', 'live-readback'] as const)(
     'blocks %s even with previously issued authority before saving a plan, writing intent, or invoking a producer',
     async (phaseId) => {
       const root = await project(`execute-${phaseId}`);
@@ -258,21 +232,6 @@ describe('execution guard for phases without a real executor', () => {
 });
 
 describe('producers cannot manufacture provider proof when invoked directly', () => {
-  it('returns an explicit blocked outcome from the Azure state-path-selected producer', async () => {
-    const phaseId = 'state-path-selected' as const;
-    const root = await project(`azure-${phaseId}`);
-    const runner = new LocalOnlyRunner(gitEnvironment);
-    const inspection = await coverageInspection({ root, phaseId, state: coverageState({ activationInputs }), activationInputs });
-    const plan = (await buildSavedTransitionPlan({ inspection, runner, now: coverageNow }))!;
-    const before = await treeFingerprint(root);
-
-    const outcome = await executeAzurePhase({ inspection, plan, phase: phase(phaseId), runner, adapters: {}, now: coverageNow });
-
-    expect(outcome).toEqual({ status: 'blocked', blocker: phaseCapabilities[phaseId].blocker, completedOperations: [] });
-    expect(await treeFingerprint(root)).toBe(before);
-    expect(runner.providerCalls).toEqual([]);
-  });
-
   it('refuses direct credential enrollment before selecting or reading any input channel', async () => {
     const root = await project('credential-direct');
     const runner = new LocalOnlyRunner(gitEnvironment);

@@ -19,6 +19,7 @@ import { writeIndependentInfrastructureFixture } from '../../governance-activati
 export const coverageNow = new Date('2026-09-04T00:00:00.000Z');
 export const coverageSubscription = '00000000-0000-4000-8000-000000000001';
 export const coverageTenant = '00000000-0000-4000-8000-000000000002';
+export const coveragePrincipal = '00000000-0000-4000-8000-000000000003';
 export const coverageRemoteBinding = {
   id: 'R_REMOTE', name: 'owner/repo', defaultBranch: 'develop', pushUrl: 'https://github.com/owner/repo.git',
   verifiedAt: '2026-09-03T00:00:00.000Z'
@@ -155,7 +156,7 @@ export class AbsentAzureEnvironmentRunner implements CommandRunner {
       state: 'Enabled'
     });
     if (key.startsWith('ad signed-in-user show ')) return success({
-      id: '00000000-0000-4000-8000-000000000003',
+      id: coveragePrincipal,
       userPrincipalName: 'developer@example.test'
     });
     if (key.startsWith('group exists ')) return success(false);
@@ -220,7 +221,17 @@ export async function writeCoverageProject(root: string, projectName = 'coverage
 
 export function coverageActivationInputs(): ActivationConfiguration {
   return {
-    schemaVersion: 1, phases: {},
+    schemaVersion: 1,
+    phases: {
+      'state-path-selected': {
+        statePath: 'existing-private',
+        resourceGroup: 'rg-liftoff-state',
+        storageAccount: 'stliftoffstate',
+        container: 'tfstate',
+        key: 'coverage/dev/terraform.tfstate',
+        principalId: coveragePrincipal
+      }
+    },
     azure: { subscriptionId: coverageSubscription, tenantId: coverageTenant, region: 'eastus' }
   };
 }
