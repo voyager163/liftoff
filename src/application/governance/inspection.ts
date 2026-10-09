@@ -278,7 +278,7 @@ async function inspectCredentialPolicy(projectRoot: string, state: UserActivatio
       ready: false,
       guidance,
       policy: null,
-      issues: [`${pathLabel} is missing. Public credential readiness and enrollment are currently unavailable pending independently verified provider wiring; approve and apply-next refuse the blocked credential-ready capability.`]
+      issues: [`${pathLabel} is missing. Review and approve a credential-ready plan, then use governance credential-enroll with a private TTY or explicitly selected protected stdin.`]
     };
   }
   const text = bytes.toString('utf8');
@@ -451,7 +451,15 @@ export async function inspectGovernance(
   const evidenceFreshness = buildEvidenceFreshness(graph.graph, evidence, contexts);
   if (credential.policy && credential.status === 'valid') {
     const proof = selectLatestPhaseEvidence(evidence.filter((entry) => entry.header.phaseId === 'credential-ready'), contexts['credential-ready']).selected;
-    credential.ready = !!proof && isRecord(proof.payload) && proof.payload.policyDigest === canonicalSha256(credential.policy);
+    const payload = proof && isRecord(proof.payload) ? proof.payload : null;
+    const usageDigest = payload?.usageDigest;
+    credential.ready = !!proof && !!payload &&
+      payload.policyDigest === canonicalSha256(credential.policy) &&
+      usageDigest === credential.policy.proof.readbackDigest &&
+      typeof usageDigest === 'string' &&
+      (proof.liveReadback ?? []).some((readback) =>
+        readback.provider === 'github' && readback.matches && readback.readbackDigest === usageDigest
+      );
     if (!credential.ready) credential.issues = ['Independent credential readback and current verification are required; a policy file alone is not proof.'];
   }
   const infrastructureBlocker = seedInfrastructureBaselineBlocker(manifest);

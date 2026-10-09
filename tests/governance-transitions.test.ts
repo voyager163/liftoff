@@ -29,6 +29,7 @@ import {
   transitionPlanForPhase,
   validateSavedTransitionPlan,
   type ApprovalEnvelope,
+  type ActivationConfiguration,
   type EvidenceHeader,
   type GovernancePhaseAdapter,
   type GovernanceSourceOfTruthInspection,
@@ -243,10 +244,16 @@ function defaultTestRunner(): CommandRunner {
   };
 }
 
-async function writeApproval(root: string, state: UserActivationState, phaseId: PhaseId, runner?: CommandRunner): Promise<ApprovalEnvelope> {
+async function writeApproval(
+  root: string,
+  state: UserActivationState,
+  phaseId: PhaseId,
+  runner?: CommandRunner,
+  activationInputs?: ActivationConfiguration
+): Promise<ApprovalEnvelope> {
   const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === phaseId)!;
   const manifest = await loadManifest(root);
-  const inspection = await inspectionFor({ root, phaseId, state });
+  const inspection = await inspectionFor({ root, phaseId, state, activationInputs });
   const planned = await buildSavedTransitionPlan({ inspection, runner: runner ?? defaultTestRunner(), now });
   const context = activationEvidenceContexts(canonicalPhaseGraph, state, await readActivationInputSnapshot(root, manifest), now)[phaseId];
   const plan = planned
@@ -416,6 +423,7 @@ async function inspectionFor(input: {
   evidence?: readonly PhaseEvidenceRecord[];
   approvals?: readonly ApprovalEnvelope[];
   source?: GovernanceSourceOfTruthInspection;
+  activationInputs?: ActivationConfiguration;
 }): Promise<GovernanceTransitionInspection> {
   const state = input.state ?? validState();
   const manifest = await loadManifest(input.root);
@@ -438,6 +446,7 @@ async function inspectionFor(input: {
     manifest,
     graph: canonicalPhaseGraph,
     graphHash: canonicalPhaseGraphHash,
+    ...(input.activationInputs ? { activationInputs: input.activationInputs } : {}),
     state,
     approvals: input.approvals ?? [],
     evidence,
@@ -901,7 +910,7 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
     expect(blocked.message).toContain('Skipped, cancelled, and neutral');
   });
 
-  it.each([false, true])('keeps unavailable credential enrollment/readback blocked even with policy metadata present=%s', async (policyPresent) => {
+  it.each([false, true])('keeps a policy file alone from establishing credential readiness present=%s', async (policyPresent) => {
     const root = await writeProject(`credential-${policyPresent}`);
     if (policyPresent) {
       const policy = buildFineGrainedPatCredentialPolicy({
@@ -918,14 +927,30 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
         statePath: 'none',
         privateStagingDast: false,
         credentialRequired: true
-      }
+      },
+      phaseOutputs: { 'phase-0-complete': { values: { repositoryId: 555 }, resources: [] } }
     });
-    const approval = await writeApproval(root, state, 'credential-ready');
+    state.phases['phase-0-complete'] = {
+      state: 'verified', updatedAt: now.toISOString(), evidence: [], approvals: [], blockers: []
+    };
+    const activationInputs: ActivationConfiguration = {
+      schemaVersion: 1,
+      phases: {
+        'credential-ready': {
+          kind: 'fine-grained-pat',
+          tokenId: 4242,
+          owner: 'octo-owner',
+          appUnavailableReason: 'The organization has no approved preflight App.'
+        }
+      }
+    };
+    const approval = await writeApproval(root, state, 'credential-ready', undefined, activationInputs);
     const inspection = await inspectionFor({
       root,
       phaseId: 'credential-ready',
       state,
-      approvals: [approval]
+      approvals: [approval],
+      activationInputs
     });
     const module = await import('../src/governance-activation/transitions.js');
     const result = await module.executeApplyNext({
@@ -934,8 +959,7 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
       now
     });
     expect(result.applied).toBe(false);
-    expect(result.message).toMatch(/credential (?:enrollment|readback).*unavailable/i);
-    expect(result.message).not.toContain('secure masked input channel');
+    expect(result.message).toMatch(/explicitly invoked with governance credential-enroll/i);
     expect(result.evidence).toBeNull();
     expect(JSON.stringify(result)).not.toMatch(/github_pat_|gh[pousr]_/);
   });

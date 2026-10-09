@@ -100,10 +100,11 @@ describe('developer activation-completeness guidance', () => {
     expect(phaseCapabilities['state-path-selected'].executor).toBe('unavailable');
   });
 
-  it('keeps credential readiness unavailable until independent readback exists', () => {
-    expect(phaseCapabilities['credential-ready'].blocker).toMatch(/Independent credential readback/);
-    expect(completeness).toContain('`credential-ready` and the public\n`governance credential-enroll` path remain unavailable pending independent\ncredential readback');
-    expect(completeness).toContain('Implement secure credential enrollment with independent readback before\n   `credential-ready` can be approved or executed');
+  it('documents protected credential readiness and independent readback', () => {
+    expect(phaseCapabilities['credential-ready']).toEqual({ executor: 'built-in', retry: 'none' });
+    expect(completeness).toContain('`credential-ready` is now a\nbuilt-in production phase');
+    expect(completeness).toContain('private non-echoing TTY or explicitly\nselected non-TTY `--protected-stdin`');
+    expect(completeness).toContain('A policy file alone\nnever establishes readiness');
   });
 
   it('distinguishes private modern observation from execution and public migration', () => {

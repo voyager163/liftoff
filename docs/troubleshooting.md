@@ -286,9 +286,10 @@ policy's repository-dedicated provisioning exception, but it must stop for
 explicit approval before creating any Azure or GitHub resource. Do not replace
 missing capability with duplicate scanners, partial provisioning, or
 placeholder success.
-These are target-policy requirements; 14 production phases lack executors and
+These are target-policy requirements; production phases still lack executors and
 two ruleset phases require an injected adapter absent from the public CLI.
-Public approval persistence and credential enrollment also remain unavailable.
+Exact approval persistence, provider readiness, and protected credential
+enrollment are built in, but they do not authorize the remaining phases.
 An unavailable executor or authority entry point is a blocker, not an instruction
 to run its provider commands directly.
 
@@ -356,7 +357,7 @@ user-controlled history recovery. See [repair modes](cli-reference.md#repair-mod
 Do not hand-edit task checkboxes to clear these states. Tasks are projections of
 validated phase evidence.
 
-## Runner-preflight credential setup is blocked
+## Runner-preflight credential setup
 
 The policy prefers an existing verified selected-repository GitHub App with the
 required read permissions. Its fallback contract describes a fine-grained PAT
@@ -369,12 +370,19 @@ network-configuration read, no writes, and the recorded workflow/job allowlist
 `private-dast-preflight` unless the generated policy records a narrower
 applicable set).
 
-This release does not expose public credential enrollment or masked input.
-Do not create or submit a credential through an invented setup channel, and do
-not hand-write state or receipts to bypass the capability blocker. Never paste
-or show the value in chat, argv, command arguments, logs, evidence, files, or
-screenshots. Revoke and rotate leaked credentials through their owner-controlled
-system. A payload-free policy file alone is not independent readback evidence.
+Create public activation inputs containing only the selected App installation
+IDs or the justified fine-grained PAT grant metadata. Run `governance plan`, then
+approve the exact unexpired fingerprint. Enroll with
+`liftoff governance credential-enroll --plan <fingerprint>` for a private
+non-echoing TTY, or add `--protected-stdin` only when an owner-controlled
+non-TTY secret channel supplies stdin. If protected stdin is a TTY, absent,
+empty, oversized, interrupted, or times out, enrollment stops.
+
+Never paste or show the value in chat, argv, command arguments, `--inputs`, logs,
+evidence, policy, source files, or screenshots. Revoke and rotate leaked
+credentials through their owner-controlled system. A payload-free policy file
+alone is not independent readback evidence; readiness also requires matching
+current credential-ready evidence and GitHub secret metadata readback.
 
 ## Governance identity or manifest migration is blocked
 

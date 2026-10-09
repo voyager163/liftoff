@@ -311,7 +311,10 @@ export function assertTaskMarkers(markdown: string, mappings: readonly { taskId:
   }
 }
 
-export function validatePhasePayloadValues<I extends R.ActivationIdentityFieldsV1, P extends string>(record: R.PhaseEvidenceRecordFieldsV3<I, P>): string[] {
+export function validatePhasePayloadValues<I extends R.ActivationIdentityFieldsV1, P extends string>(
+  record: R.PhaseEvidenceRecordFieldsV3<I, P>,
+  options: { allowLegacyCredentialPolicyOnly?: boolean } = {}
+): string[] {
   if (record.header.result === 'failed' || record.header.result === 'inapplicable') return [];
   const payload = record.payload;
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -358,8 +361,18 @@ export function validatePhasePayloadValues<I extends R.ActivationIdentityFieldsV
   if (record.header.phaseId === 'workflow-source-ready' && (typeof value.rulesetSourceDigest !== 'string' || !/^[a-f0-9]{64}$/.test(value.rulesetSourceDigest))) {
     issues.push('Workflow-source evidence must bind the reviewed ruleset source digest.');
   }
-  if (record.header.phaseId === 'credential-ready' && (typeof value.policyDigest !== 'string' || !/^[a-f0-9]{64}$/.test(value.policyDigest))) {
-    issues.push('Credential evidence must bind the public credential policy and independent readback.');
+  if (record.header.phaseId === 'credential-ready') {
+    const validPolicyDigest = typeof value.policyDigest === 'string' && /^[a-f0-9]{64}$/.test(value.policyDigest);
+    const validUsageDigest = typeof value.usageDigest === 'string' && /^[a-f0-9]{64}$/.test(value.usageDigest);
+    const matchingReadback = validUsageDigest && (record.liveReadback ?? []).some((proof) =>
+      proof.provider === 'github' && proof.matches && proof.readbackDigest === value.usageDigest
+    );
+    const legacyPolicyOnly = options.allowLegacyCredentialPolicyOnly === true &&
+      value.usageDigest === undefined &&
+      !(record.liveReadback ?? []).some((proof) => proof.provider === 'github');
+    if (!validPolicyDigest || (!legacyPolicyOnly && (!validUsageDigest || !matchingReadback))) {
+      issues.push('Credential evidence must bind the public credential policy and matching independent GitHub readback.');
+    }
   }
   const scope = typeof value.assessmentScope === 'object' && value.assessmentScope !== null
     ? value.assessmentScope as Record<string, unknown> : undefined;

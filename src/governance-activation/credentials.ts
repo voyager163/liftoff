@@ -28,6 +28,10 @@ import {
 import { validateCredentialPolicy } from '../domain/governance/activation/validators.js';
 
 export const credentialPolicyPathParts = ['governance', 'credentials', 'preflight-policy.json'] as const;
+export const runnerPreflightWorkflowAllowlist = [
+  { path: '.github/workflows/bootstrap-import-preflight.yml', jobs: ['bootstrap-import-preflight'] },
+  { path: '.github/workflows/private-dast-preflight.yml', jobs: ['private-dast-preflight'] }
+] as const satisfies readonly CredentialWorkflowAllowlistEntry[];
 
 export interface CredentialRepositoryInput {
   id?: string;

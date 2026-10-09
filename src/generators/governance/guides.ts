@@ -230,13 +230,16 @@ Use the CLI-provided \`liftoff governance approve --plan <fingerprint>\` only
 after the developer explicitly approves the exact displayed plan; never
 automatically approve it. Approval persists authority but does not execute.
 Approve and apply-next refuse blocked or unavailable capabilities.
-Public credential readiness and enrollment are currently unavailable pending
-independently verified provider wiring: approve refuses the credential-ready plan,
-and \`liftoff governance credential-enroll --plan <fingerprint>\` refuses before
-reading any input or writing a secret, policy, or evidence. A secret name or
-policy file alone never establishes readiness. Never paste or show a credential in chat, argv,
-command arguments, logs, evidence, source files, or screenshots. A leaked value must be
-revoked and rotated through its owner-controlled system, not fabricated state.
+For credential readiness, approval still does not read or write a value. Only
+\`liftoff governance credential-enroll --plan <fingerprint>\` may select a private
+non-echoing TTY; \`--protected-stdin\` is allowed only for an explicitly selected
+owner-controlled non-TTY secret channel. Plain \`apply-next --execute\` does not
+select that channel. A secret name or policy file alone never establishes
+readiness: matching current evidence and independent GitHub secret metadata
+readback are required. Never paste or show a credential in chat, argv,
+\`--inputs\`, command arguments, logs, evidence, policy, source files, or
+screenshots. A leaked value must be revoked and rotated through its
+owner-controlled system, not fabricated state.
 
 Live status must be proven from user-owned activation evidence and GitHub
 read-back, never inferred from these local files.

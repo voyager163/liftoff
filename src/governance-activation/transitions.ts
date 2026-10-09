@@ -4,7 +4,7 @@ import type {
 } from './transition-ports.js';
 import { executeSeedOperations } from './seed-lifecycle.js';
 import { executeGitOperations } from './phase-publication.js';
-import { executeActivationApproval, executeCredentialReady, executeRulesetPhase } from './phase-governance.js';
+import { executeActivationApproval, executeRulesetPhase } from './phase-governance.js';
 import { remoteImportRetention, executeBootstrapStateDisposal } from './phase-bootstrap-state.js';
 import type { PhaseId, PhaseEvidenceRecord, UserActivationState, SavedTransitionPlan, TransitionOperation } from '../domain/governance/activation/types.js';
 import { phaseScope } from '../domain/governance/activation/types.js';
@@ -54,8 +54,8 @@ const builtInExecutors: Partial<Record<PhaseId, PhaseExecutor>> = {
   committed: executeGitOperations,
   pushed: executeGitOperations,
   'activation-approved': executeActivationApproval,
+  'credential-ready': executeGitHubPhase,
   'enforcement-approved': () => ({ status: 'completed', resultState: 'approved', completedOperations: [] }),
-  'credential-ready': executeCredentialReady,
   'provider-ready': executeAzurePhase,
   'remote-ready': remoteImportRetention,
   'bootstrap-state-disposed': executeBootstrapStateDisposal,
@@ -96,11 +96,18 @@ async function executeBuiltInPhase(input: PhaseAdapterExecutionInput, localReval
  * Phases without an unblocked built-in production executor run only through a trusted injected seam; public
  * execution stops before any plan, intent, or producer effect. Previously issued approvals do not change this.
  */
-function executionCapabilityBlocker(phaseId: PhaseId, adapters: GovernanceTransitionAdapters): string | null {
+function executionCapabilityBlocker(
+  phaseId: PhaseId,
+  adapters: GovernanceTransitionAdapters,
+  credentialEnrollment?: { protectedStdin: boolean }
+): string | null {
   const capability = phaseCapabilities[phaseId];
   if (adapters.phases?.[phaseId]) return null;
   if (capability.executor === 'injected-only' && adapters.githubRulesets &&
     (phaseId === 'rulesets-applied' || phaseId === 'live-readback')) return null;
+  if (phaseId === 'credential-ready' && !credentialEnrollment) {
+    return 'Credential enrollment must be explicitly invoked with governance credential-enroll after reviewing and approving the credential-ready plan. No protected input was read.';
+  }
   if (capability.executor === 'built-in' && !capability.blocker) return null;
   return capability.blocker ?? `No production executor is available for ${phaseId}.`;
 }
@@ -248,7 +255,7 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   }
   const phase = phaseById(input.inspection.graph, initialPlan.phaseId);
   assertPlanOperationsAllowed(initialPlan, phase);
-  const capabilityBlocker = executionCapabilityBlocker(phase.id, adapters);
+  const capabilityBlocker = executionCapabilityBlocker(phase.id, adapters, input.credentialEnrollment);
   if (capabilityBlocker) return capabilityBlockedResult(input.inspection, initialPlan, capabilityBlocker);
   if (input.reviewedPlan && (input.reviewedPlan.planDigest !== initialPlan.planDigest ||
     input.reviewedPlan.stateHash !== initialPlan.stateHash ||

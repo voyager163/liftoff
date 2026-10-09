@@ -2247,11 +2247,18 @@ permissions, registers only authorized missing prerequisites, and requires termi
 `Registered` readback. Successful registrations are retained subscription
 capabilities and are never unregistered by repository rollback. In contrast,
 `state-path-selected` still cannot report a synthetic selected state path and
-remains blocked as a missing production adapter. `credential-ready` and the public
-`governance credential-enroll` path remain unavailable pending independent
-credential readback: they refuse before reading a credential or writing a remote
-secret or secret-derived credential policy. The enrollment adapter revokes only the
-ephemeral token it minted and reports when that revocation cannot be confirmed.
+remains blocked as a missing production adapter. `credential-ready` is now a
+built-in production phase. Its reviewed public configuration selects an existing
+approved selected-repository GitHub App or a justified fine-grained PAT fallback;
+the credential value is read only from a private non-echoing TTY or explicitly
+selected non-TTY `--protected-stdin`. Execution rechecks the exact unexpired
+approval before input, token minting, and the Actions secret write, verifies exact
+repository/permission/expiry/use scope plus independent secret metadata readback,
+and persists only a payload-free policy and matching evidence. Plain
+`apply-next --execute` does not select the protected channel; use the dedicated
+`governance credential-enroll --plan <fingerprint>` command. A policy file alone
+never establishes readiness. The enrollment adapter revokes only the ephemeral
+installation token it minted and reports when that revocation cannot be confirmed.
 Current activation inspection now binds real
 baseline/input snapshots, reviewed plans, state references, and evidence bodies.
 Historical placeholder-bound records remain diagnostic-only, never current
@@ -2259,19 +2266,16 @@ proof. Do not fabricate state, approvals, or evidence to get past capability gap
 
 Complete this work separately from the read-only assessment feature:
 
-1. Implement secure credential enrollment with independent readback before
-   `credential-ready` can be approved or executed, with narrow consent and
-   selected-agent command contracts.
-2. Define a separately reviewed reconciliation workflow for historical activation
+1. Define a separately reviewed reconciliation workflow for historical activation
    identities and placeholder-bound history
    without rewriting immutable evidence or inventing completion.
-3. Supply production implementations for the missing phase adapters and the
+2. Supply production implementations for the missing phase adapters and the
    GitHub ruleset adapter, enforcing resource, permission, cost, and destructive
    bounds at execution.
-4. Design phase-specific production retry/rollback behavior without blanket
+3. Design phase-specific production retry/rollback behavior without blanket
    remote or destructive retries. Explicit local seed/baseline/finalization
    recovery and cooperating-writer locking are already implemented.
-5. Prove the entire activation and upgrade/reconciliation path with
+4. Prove the entire activation and upgrade/reconciliation path with
    end-to-end positive and negative cases, then gated live readback where
    explicitly authorized.
 

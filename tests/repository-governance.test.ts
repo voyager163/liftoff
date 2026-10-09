@@ -581,7 +581,7 @@ describe('repository governance artifacts', () => {
     }
   });
 
-  it('describes Spec Kit local finalization and currently unavailable credential enrollment', () => {
+  it('describes Spec Kit local finalization and protected credential enrollment', () => {
     const artifacts = buildRepositoryGovernanceArtifacts(plan({
       specWorkflow: 'spec-kit', defaultAgent: 'copilot'
     }));
@@ -589,10 +589,10 @@ describe('repository governance artifacts', () => {
     expect(guide).toContain('specs/000-liftoff-bootstrap/');
     expect(guide).toContain('without an OpenSpec archive or new Git branch');
     expect(guide).toContain('Approve and apply-next refuse blocked or unavailable capabilities.');
-    expect(guide).toMatch(/Public credential readiness and enrollment are currently unavailable pending\s+independently verified provider wiring: approve refuses the credential-ready plan/);
-    expect(guide).toMatch(/`liftoff governance credential-enroll --plan <fingerprint>` refuses before\s+reading any input or writing a secret, policy, or evidence/);
+    expect(guide).toMatch(/Only\s+`liftoff governance credential-enroll --plan <fingerprint>` may select a private\s+non-echoing TTY/);
+    expect(guide).toContain('`--protected-stdin` is allowed only for an explicitly selected');
+    expect(guide).toContain('Plain `apply-next --execute` does not');
     expect(guide).not.toContain('private operator channel');
-    expect(guide).not.toContain('--protected-stdin');
     expect(guide).toContain('not the end of a requested full journey');
     expect(guide).not.toContain('No masked credential-input channel');
     expect(guide).toContain('adoption; update, force, and assessment never create it');

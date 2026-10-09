@@ -35,9 +35,9 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | `liftoff doctor [project]` | Runs read-only workload-derived project and workstation diagnostics |
 | `liftoff governance status [project]` | Reports deterministic setup state, activation identity, phase states, blockers, approvals, and evidence freshness |
 | `liftoff governance plan [project]` | Previews dependency-ready work before approval and saves a disclosed project-bound receipt outside the repository; no project/provider mutations |
-| `liftoff governance approve [project] --plan <fingerprint>` | Approves only the exact unexpired preview; does not execute its operations; refuses blocked or unavailable capabilities such as credential-ready |
+| `liftoff governance approve [project] --plan <fingerprint>` | Approves only the exact unexpired preview; does not execute its operations; refuses blocked or unavailable capabilities |
 | `liftoff governance apply-next [project]` | Previews the next graph-ready transition; add `--execute` to execute at most one approved mutation; refuses blocked or unavailable capabilities before saving a plan |
-| `liftoff governance credential-enroll [project] --plan <fingerprint>` | Currently refuses: public credential readiness and enrollment are unavailable pending independently verified provider wiring; reads no input, writes nothing, and never accepts a token argument |
+| `liftoff governance credential-enroll [project] --plan <fingerprint> [--protected-stdin]` | Executes only an exact approved credential-ready plan; reads the value from a private non-echoing TTY or explicitly selected non-TTY protected stdin, verifies exact provider scope/use and independent secret metadata, then persists payload-free policy/evidence |
 | `liftoff governance recover [project] --plan <fingerprint>` | Previews an explicitly planned recovery; `--execute` runs only its approved scope |
 | `liftoff governance resume [project]` | Rechecks external blockers and readiness descendants without rerunning verified operations |
 | `liftoff governance verify [project]` | Read-only validation of graph, state, evidence, task projection, policy identity, active-change identity, and live readback; reports consistency separately from setup completion and reports completion as indeterminate when inspection fails |
@@ -209,6 +209,29 @@ phase whose production capability is blocked or unavailable in the installed
 release, before writing a plan, approval, authority record, or state; an earlier
 approval does not override that refusal. `resume` rechecks blockers and downstream
 readiness without repeating verified operations.
+
+Credential planning accepts metadata only in
+`activationInputs.phases["credential-ready"]`; never put the value in the public
+input file:
+
+```json
+{ "kind": "github-app", "appId": 12, "installationId": 77 }
+```
+
+or the explicitly justified fallback:
+
+```json
+{
+  "kind": "fine-grained-pat",
+  "tokenId": 4242,
+  "owner": "octo-owner",
+  "appUnavailableReason": "No approved selected-repository preflight App is available."
+}
+```
+
+The IDs and fallback reason are source-bound into the reviewed plan. The App
+private key or PAT value is supplied only later through the protected enrollment
+channel.
 
 Apply-next JSON names the attempted phase in `selectedPhase` and reports
 `executedPhase` separately. `nextReadyPhase` is recomputed after execution;
@@ -625,10 +648,16 @@ be refused. Persisted configuration acceptance is unchanged. Input-validation
 diagnostics use trusted schema labels rather than supplied keys or values, and
 malformed approval-JSON diagnostics omit parser payload snippets.
 
-`credential-enroll` currently refuses before selecting a private TTY or
-`--protected-stdin` channel: public credential readiness and enrollment are
-unavailable pending independently verified provider wiring. A fingerprint is not a
-token, and approval alone neither enrolls a credential nor provisions resources.
+`credential-enroll` requires an exact unexpired approved `credential-ready`
+preview. By default it selects a private non-echoing TTY. `--protected-stdin`
+must be explicitly selected and must be supplied by an owner-controlled non-TTY
+secret channel; ordinary TTY stdin is refused. The value is never accepted in
+argv, `--inputs`, the fingerprint, chat, source, plans, evidence, or output.
+Approval alone neither enrolls a credential nor provisions resources, and
+plain `apply-next --execute` does not select a protected credential channel.
+Successful execution verifies exact repository, principal, permissions, provider
+expiry, real API use, encrypted Actions secret write, and independent current
+secret metadata before writing a payload-free policy and matching evidence.
 Interrupted writes require a fresh `plan --recover-phase` before `recover`;
 unsupported or ambiguous external outcomes remain visible blockers.
 

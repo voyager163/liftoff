@@ -21,6 +21,17 @@ import {
 
 const scratch = scratchDirectory('provider-denial');
 const activationInputs = coverageActivationInputs();
+const credentialActivationInputs = {
+  ...activationInputs,
+  phases: {
+    'credential-ready': {
+      kind: 'fine-grained-pat',
+      tokenId: 4242,
+      owner: 'octo-owner',
+      appUnavailableReason: 'The organization has no approved preflight App.'
+    }
+  }
+} as const;
 const fineGrainedPat = ['github', 'pat', 'SYNTHETIC', 'DENIAL', 'VALUE', 'FOR', 'TESTS', 'ONLY', '0123456789ABCDEF0123'].join('_');
 let storage: Awaited<ReturnType<typeof isolateUserLocalStorage>>;
 let gitEnvironment: NodeJS.ProcessEnv;
@@ -76,16 +87,24 @@ function phase(phaseId: PhaseId) {
 }
 
 function credentialState(): UserActivationState {
-  return coverageState({ applicability: { statePath: 'none', privateStagingDast: false, credentialRequired: true } });
+  const state = coverageState({
+    applicability: { statePath: 'none', privateStagingDast: false, credentialRequired: true },
+    phaseOutputs: { 'phase-0-complete': { values: { repositoryId: 555 }, resources: [] } }
+  });
+  state.phases['phase-0-complete'] = {
+    state: 'verified', updatedAt: coverageNow.toISOString(), evidence: [], approvals: [], blockers: []
+  };
+  return state;
 }
 
 async function approvedInspection(root: string, phaseId: PhaseId, state: UserActivationState, runner: LocalOnlyRunner) {
+  const inputs = phaseId === 'credential-ready' ? credentialActivationInputs : activationInputs;
   const planned = await buildSavedTransitionPlan({
-    inspection: await coverageInspection({ root, phaseId, state, activationInputs }), runner, now: coverageNow
+    inspection: await coverageInspection({ root, phaseId, state, activationInputs: inputs }), runner, now: coverageNow
   });
   expect(planned?.phaseId).toBe(phaseId);
   const approvals = phase(phaseId).approvalGate.required ? [await issuePriorApproval(root, state, planned!)] : [];
-  return coverageInspection({ root, phaseId, state, approvals, activationInputs });
+  return coverageInspection({ root, phaseId, state, approvals, activationInputs: inputs });
 }
 
 describe('public capability table', () => {
@@ -98,7 +117,7 @@ describe('public capability table', () => {
     }
     expect(phaseCapabilities['provider-ready'].executor).toBe('built-in');
     expect(phaseCapabilities['rulesets-applied'].executor).toBe('injected-only');
-    expect(phaseCapabilities['credential-ready'].blocker).toMatch(/public credential enrollment are unavailable/u);
+    expect(phaseCapabilities['credential-ready']).toEqual({ executor: 'built-in', retry: 'none' });
   });
 
   it('keeps provider preview fail-closed when reviewed provider inputs are absent', async () => {
@@ -120,12 +139,12 @@ describe('public capability table', () => {
 });
 
 describe('public approval refuses unsupported capabilities', () => {
-  it.each(['state-path-selected', 'credential-ready'] as const)(
+  it.each(['state-path-selected'] as const)(
     'saves an external preview for %s but issues no approval, authority record, or project file',
     async (phaseId) => {
       const root = await project(`approve-${phaseId}`);
       const runner = new LocalOnlyRunner(gitEnvironment);
-      const state = phaseId === 'credential-ready' ? credentialState() : coverageState();
+      const state = coverageState();
       const inspection = await coverageInspection({ root, phaseId, state, activationInputs });
       const saved = await saveGovernancePreview(inspection, { runner, now: coverageNow });
       expect(saved?.preview.plan).toMatchObject({ phaseId, approval: { evaluation: { approvalRequired: true } } });
@@ -190,26 +209,23 @@ describe('execution guard for phases without a real executor', () => {
     }
   );
 
-  it('blocks credential enrollment with prior authority before any plan, intent, state, input, secret, policy, or evidence effect', async () => {
+  it('requires the dedicated credential enrollment command before any plan, intent, state, input, secret, policy, or evidence effect', async () => {
     const root = await project('credential-enroll');
     const runner = new LocalOnlyRunner(gitEnvironment);
     const inspection = await approvedInspection(root, 'credential-ready', credentialState(), runner);
     privateTerminal();
     const before = await treeFingerprint(root);
 
-    for (const credentialEnrollment of [{ protectedStdin: false }, { protectedStdin: true }, undefined]) {
-      const result = await executeApplyNext({
-        inspection, reinspect: async () => inspection, runner, now: coverageNow,
-        ...(credentialEnrollment ? { credentialEnrollment } : {})
-      });
+    const result = await executeApplyNext({
+      inspection, reinspect: async () => inspection, runner, now: coverageNow
+    });
 
-      const blocker = phaseCapabilities['credential-ready'].blocker!;
-      expect(result).toMatchObject({
-        applied: false, authorized: false, reason: 'blocked', message: blocker, blockers: [blocker],
-        executedPhase: null, savedPlan: null, evidence: null, stateHash: null, executedOperations: []
-      });
-      expect(JSON.stringify(result)).not.toContain(fineGrainedPat);
-    }
+    const blocker = 'Credential enrollment must be explicitly invoked with governance credential-enroll after reviewing and approving the credential-ready plan. No protected input was read.';
+    expect(result).toMatchObject({
+      applied: false, authorized: false, reason: 'blocked', message: blocker, blockers: [blocker],
+      executedPhase: null, savedPlan: null, evidence: null, stateHash: null, executedOperations: []
+    });
+    expect(JSON.stringify(result)).not.toContain(fineGrainedPat);
     expect(await treeFingerprint(root)).toBe(before);
     expect(await readState(root)).toBeUndefined();
     expect(await exists(path.join(root, 'governance', 'plans'))).toBe(false);
@@ -259,20 +275,20 @@ describe('producers cannot manufacture provider proof when invoked directly', ()
   it('refuses direct credential enrollment before selecting or reading any input channel', async () => {
     const root = await project('credential-direct');
     const runner = new LocalOnlyRunner(gitEnvironment);
-    const inspection = await coverageInspection({ root, phaseId: 'credential-ready', state: credentialState() });
+    const inspection = await coverageInspection({
+      root, phaseId: 'credential-ready', state: credentialState(), activationInputs: credentialActivationInputs
+    });
     const plan = (await buildSavedTransitionPlan({ inspection, runner, now: coverageNow }))!;
     privateTerminal();
     const before = await treeFingerprint(root);
 
-    for (const protectedStdin of [false, true]) {
-      const outcome = await executeGitHubPhase({
-        inspection, plan, phase: phase('credential-ready'), runner, adapters: {}, now: coverageNow, credentialEnrollment: { protectedStdin }
-      });
-      expect(outcome).toEqual({
-        status: 'blocked', completedOperations: [],
-        blocker: expect.stringContaining(phaseCapabilities['credential-ready'].blocker!)
-      });
-    }
+    const outcome = await executeGitHubPhase({
+      inspection, plan, phase: phase('credential-ready'), runner, adapters: {}, now: coverageNow
+    });
+    expect(outcome).toEqual({
+      status: 'blocked', completedOperations: [],
+      blocker: 'Credential enrollment must be explicitly invoked with governance credential-enroll after reviewing and approving the credential-ready plan. No protected input was read.'
+    });
     expect(password).not.toHaveBeenCalled();
     expect(runner.providerCalls).toEqual([]);
     expect(await treeFingerprint(root)).toBe(before);

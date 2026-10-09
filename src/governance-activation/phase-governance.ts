@@ -3,7 +3,6 @@ import { cloneState, evidenceHeaderFor } from './transition-records.js';
 import type { ProjectFileMutation } from '../adapters/filesystem/project-transaction.js';
 import { buildApprovedPhase0FactsFromState, renderGovernanceChangeWritePlan } from './source-of-truth.js';
 import { readProjectFile } from '../adapters/filesystem/project-files.js';
-import { credentialPolicyPathParts, detectCredentialLeaks } from './credentials.js';
 import type { PhaseEvidenceRecord, TransitionOperation, LiveReadbackProof } from '../domain/governance/activation/types.js';
 import { latestRecordWithPayload, rulesetSourceDigestFromEvidence, selectLatestPhaseEvidence } from '../domain/governance/activation/evidence.js';
 import { isRecord } from '../domain/governance/activation/canonical-json.js';
@@ -51,25 +50,6 @@ export async function executeActivationApproval(input: PhaseAdapterExecutionInpu
     status: 'completed', resultState: 'approved', stateOverride: state, fileMutations,
     filePreconditions: fileMutations.map((mutation) => ({ pathParts: [...mutation.pathParts] })),
     completedOperations: input.plan.operations.filter((op) => op.actionId.endsWith('governance.create-change'))
-  };
-}
-
-export async function executeCredentialReady(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
-  if (input.phase.id !== 'credential-ready') return null;
-  const policy = await readProjectFile(input.inspection.projectRoot, [...credentialPolicyPathParts]);
-  if (policy === undefined) {
-    return {
-      status: 'blocked',
-      blocker: 'Public credential enrollment and independent credential readback are unavailable; no credential policy is present. Do not supply a token through setup or fabricate policy proof.',
-      completedOperations: []
-    };
-  }
-  const scan = detectCredentialLeaks([{ source: 'imported-evidence', label: credentialPolicyPathParts.join('/'), text: policy.toString('utf8') }]);
-  if (scan.status === 'compromised') return { status: 'blocked', blocker: scan.guidance.join(' '), completedOperations: [] };
-  return {
-    status: 'blocked',
-    blocker: 'Independent credential readback and public credential enrollment are unavailable; a policy file cannot establish credential readiness.',
-    completedOperations: []
   };
 }
 

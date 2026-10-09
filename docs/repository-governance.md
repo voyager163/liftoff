@@ -542,12 +542,21 @@ If no approved App is available, the narrowly scoped fallback is:
 | Writes | none |
 | Workflow/job allowlist | `.github/workflows/bootstrap-import-preflight.yml` job `bootstrap-import-preflight`; `.github/workflows/private-dast-preflight.yml` job `private-dast-preflight` |
 
-Public credential readiness and enrollment are currently unavailable pending
-independently verified provider wiring. `governance approve` refuses the
-credential-ready plan, and `liftoff governance credential-enroll --plan <fingerprint>`
-remains registered but refuses before selecting or reading any input channel; it
-writes no Actions secret, credential policy, or evidence. A secret name or a
-policy file alone cannot establish readiness.
+Public activation inputs contain only either
+`{"kind":"github-app","appId":12,"installationId":77}` or the justified fallback
+`{"kind":"fine-grained-pat","tokenId":4242,"owner":"octo-owner","appUnavailableReason":"..."}`.
+The secret value never belongs in that file.
+
+Credential readiness uses an exact reviewed `credential-ready` plan and separate
+approval. Run `liftoff governance credential-enroll --plan <fingerprint>` for a
+private non-echoing TTY, or add `--protected-stdin` only for an explicitly
+selected owner-controlled non-TTY secret channel. The value is never accepted in
+chat, argv, `--inputs`, plans, evidence, policy, source, logs, or screenshots.
+The producer rechecks approval immediately before protected input and provider
+mutation, verifies exact repository/permission/expiry/use scope, writes only the
+fixed Actions secret, independently reads current secret metadata, and persists
+only the payload-free policy and matching proof. A secret name or a policy file
+alone cannot establish readiness.
 Never paste or show the value in chat, argv, command arguments,
 logs, evidence, files, or screenshots. A disclosed value is
 compromised and must be revoked and rotated through its owner-controlled system.

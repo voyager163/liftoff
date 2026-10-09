@@ -11,6 +11,7 @@ import type { ProjectFileMutation, ProjectFileSnapshot } from '../adapters/files
 import type { CommandRunner } from '../process-runner.js';
 import type { ProjectMutationLease } from '../adapters/filesystem/project-lock.js';
 import type { HistoricalLifecycleObligation } from './migration-history.js';
+import type { GitHubActivationPorts } from './github-ports.js';
 
 export interface GovernanceTransitionInspection {
   projectRoot: string;
@@ -139,6 +140,7 @@ export interface PhaseAdapterExecutionInput {
 export interface GovernanceTransitionAdapters {
   phases?: Partial<Record<PhaseId, GovernancePhaseAdapter>>;
   githubRulesets?: GitHubRulesetAdapter;
+  githubActivation?: GitHubActivationPorts;
 }
 
 export interface ApplyNextPreview {

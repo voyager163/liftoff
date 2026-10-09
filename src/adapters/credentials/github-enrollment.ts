@@ -1,10 +1,11 @@
 import { createPrivateKey, sign } from 'node:crypto';
 import type { CommandRunner } from '../../process-runner.js';
 import type { ActivationIdentity, CredentialPolicy } from '../../domain/governance/activation/types.js';
-import { runnerPreflightSecretName } from '../../domain/governance/activation/types.js';
+import { runnerPreflightRotationLeadDays, runnerPreflightSecretName } from '../../domain/governance/activation/types.js';
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
 import {
-  buildFineGrainedPatCredentialPolicy, buildGitHubAppCredentialPolicy, canonicalCredentialRepository
+  buildFineGrainedPatCredentialPolicy, buildGitHubAppCredentialPolicy, canonicalCredentialRepository,
+  runnerPreflightWorkflowAllowlist
 } from '../../governance-activation/credentials.js';
 import type { ProtectedCredentialChannel } from './protected-input.js';
 import {
@@ -215,12 +216,16 @@ export async function enrollGitHubCredential(input: {
       const headerExpiry = ownerResponse.headers['github-authentication-token-expiration'] ??
         ownerResponse.headers['x-github-authentication-token-expiration'];
       const createdAt = Date.parse(text(pat.created_at, 'PAT creation'));
+      const expiry = Date.parse(tokenExpiresAt);
+      if (!Number.isFinite(createdAt) || !Number.isFinite(expiry) || expiry <= input.now.getTime() ||
+        expiry - input.now.getTime() <= runnerPreflightRotationLeadDays * 24 * 60 * 60 * 1000) {
+        throw new GitHubActivationError('credential-expiry', 'The fine-grained PAT is expired or already inside the required rotation lead window.');
+      }
       if (pat.repository_selection !== 'subset' || pat.token_expired !== false || object(pat.owner).login !== config.owner ||
         canonicalSha256(permissions) !== canonicalSha256(requiredPermissions) ||
         pat.token_name !== `${name.toLowerCase()}-runner-preflight-read` ||
         !headerExpiry || Date.parse(headerExpiry) !== Date.parse(tokenExpiresAt) ||
-        Date.parse(tokenExpiresAt) - createdAt !== 30 * 24 * 60 * 60 * 1000 ||
-        Date.parse(tokenExpiresAt) <= input.now.getTime() ||
+        expiry - createdAt !== 30 * 24 * 60 * 60 * 1000 ||
         grants.filter((grant) => object(grant.owner).login === config.owner && grant.token_expires_at === tokenExpiresAt).length !== 1) {
         throw new GitHubActivationError('credential-scope', 'PAT grant/identity/unique provider expiry does not match the exact selected-repository, read-only, 30-day fallback policy.');
       }
@@ -249,12 +254,9 @@ export async function enrollGitHubCredential(input: {
       repositoryId: input.repositoryId, repository, principal, installationId: config.kind === 'github-app' ? config.installationId : null,
       probeEndpoints, permissionsDigest: canonicalSha256(credentialApiPermissions), secretUpdatedAt
     };
-    const allowedWorkflows = [
-      { path: '.github/workflows/liftoff-bootstrap.yml', jobs: ['credential-use'] },
-      { path: '.github/workflows/liftoff-runner.yml', jobs: ['runner-preflight'] }
-    ];
     const policy = config.kind === 'github-app' ? buildGitHubAppCredentialPolicy({
-      repository: repoIdentity, identity: input.identity, createdAt: input.now, allowedWorkflows,
+      repository: repoIdentity, identity: input.identity, createdAt: input.now,
+      allowedWorkflows: runnerPreflightWorkflowAllowlist,
       installation: {
         installationId: config.installationId, appSlug: text(installation!.app_slug, 'App slug'),
         approved: true, verified: true, selection: 'selected-repository', repositories: [repoIdentity],
@@ -263,7 +265,8 @@ export async function enrollGitHubCredential(input: {
         token: { canGenerate: true, ttlSeconds: Math.floor((Date.parse(tokenExpiresAt) - input.now.getTime()) / 1000) }
       }
     }) : buildFineGrainedPatCredentialPolicy({
-      repository: repoIdentity, identity: input.identity, createdAt: new Date(String(pat!.created_at)), allowedWorkflows,
+      repository: repoIdentity, identity: input.identity, createdAt: new Date(String(pat!.created_at)),
+      allowedWorkflows: runnerPreflightWorkflowAllowlist,
       proof: { verifiedAt: input.now.toISOString(), readbackDigest: canonicalSha256(usage), readbackProvider: 'github-api', payloadFree: true }
     });
     enrolled = { policy, usage, cleanupWarnings: [] };

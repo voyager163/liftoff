@@ -994,7 +994,9 @@ async function readHistoricalInventory(
         const record = validateAt(file, (value) => state.schemaVersion === 3 ? validateHistoricalV3EvidenceRecord(value) : state.schemaVersion === 2
           ? validateHistoricalV2EvidenceRecord(value) : validateHistoricalEvidenceRecord(value, parts[2].slice(0, -5)));
         if (record.header.schemaVersion === 3) {
-          const issues = validatePhasePayloadValues(validateHistoricalV3EvidenceRecord(record));
+          const issues = validatePhasePayloadValues(validateHistoricalV3EvidenceRecord(record), {
+            allowLegacyCredentialPolicyOnly: true
+          });
           if (issues.length) historyFail(historyPathKey(parts), issues.join(' '), 'invalid-historical-reference');
         }
         if (record.header.repositoryId !== state.repository.id) historyFail(historyPathKey(parts), 'historical evidence belongs to another repository.', 'invalid-historical-reference');

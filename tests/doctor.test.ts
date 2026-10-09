@@ -360,7 +360,7 @@ describe('doctor command', () => {
     const expiring = JSON.parse((await run(['doctor', '--json'], expiringRoot)).out);
     expect(projectCheck(expiring, 'governance-credential-expiring')).toMatchObject({
       state: 'credential-expiring',
-      remedy: expect.stringContaining('no public credential enrollment/readback workflow')
+      remedy: expect.stringContaining('governance credential-enroll')
     });
 
     const incompatibleRoot = await fixtureProject();

@@ -172,9 +172,10 @@ describe('project-independent capability discovery', () => {
         productionExecutorAvailable: capability.executor === 'built-in' && capability.blocker === undefined
       });
     }
-    for (const phase of ['credential-ready', 'rulesets-applied', 'live-readback']) {
+    for (const phase of ['rulesets-applied', 'live-readback']) {
       expect(report.governance.phases.find((row) => row.phase === phase)?.productionExecutorAvailable).toBe(false);
     }
+    expect(report.governance.phases.find((row) => row.phase === 'credential-ready')?.productionExecutorAvailable).toBe(true);
     expect(report.governance.phases.find((row) => row.phase === 'provider-ready')?.productionExecutorAvailable).toBe(true);
     expect(report.runtime.hostSupport).toContain('not installed tools or native-package qualification');
     expect(report.boundaries.registration).toContain('executor is available');

@@ -45,9 +45,11 @@ dependencies. `/liftoff-setup` first verifies and archives the OpenSpec bootstra
 or finalizes the real Spec Kit bundle locally, then stops at authority gates.
 Live activation requires explicit
 commit/push approval, read-only Phase 0, and activation-plan approval.
-Missing public approval persistence, secure credential enrollment, or production
-executors remain blockers; this sequence does not promise a complete production
-activation workflow.
+Approval persistence and protected credential enrollment are separate explicit
+steps: credential values may be read only by the dedicated approved
+`governance credential-enroll` route through a private TTY or explicitly selected
+non-TTY protected stdin. Missing production executors remain blockers; this
+sequence does not promise a complete production activation workflow.
 
 An approved downstream local-state bootstrap remains encrypted, gitignored, and
 single-writer. It is never transferred through GitHub artifacts or secrets,
