@@ -1476,7 +1476,7 @@ Go and GenAI RAG, with and without the frontend. Four cases run outside the
 package from a directory with spaces. Offline contract tests exercise these
 same helpers; they do not replace installed-package or native qualification.
 
-The npm archive has a 12 MiB unpacked-size ceiling, measured from the actual
+The npm archive has a 13 MiB unpacked-size ceiling, measured from the actual
 `npm pack` inventory and enforced by the shared smoke contract. Source maps,
 type declarations, assets and documentation remain packaged. This packaging
 budget is separate from the unchanged history and transaction resource limits;

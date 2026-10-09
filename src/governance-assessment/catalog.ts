@@ -11,6 +11,7 @@ import type {
   AssessmentProfile,
   AssessmentTarget
 } from './types.js';
+import { liftoffVersion } from '../version.js';
 
 export {
   assessmentInventoryContract,
@@ -65,7 +66,7 @@ export function loadAssessmentCatalog(
   return {
     catalog,
     target: {
-      cliVersion: source.identity.liftoffVersion,
+      cliVersion: liftoffVersion,
       profile,
       policyVersion: source.identity.policyVersion,
       policyDigest,
