@@ -146,7 +146,7 @@ Depends on 9-10. References: design D5; liftoff-native-distribution, liftoff-npm
 
 Depends on 3-8. References: design D10-D11; liftoff-governance-activation-engine, liftoff-infrastructure-governance, liftoff-repository-governance-profile.
 
-- [ ] 12.1 Replace placeholder/injected-only advertised discovery paths with bounded actual GitHub/Azure reads; verify exact repository, tenant, subscription, principal, environment and resource binding rather than trusting default account or matching names.
+- [x] 12.1 Replace placeholder/injected-only advertised discovery paths with bounded actual GitHub/Azure reads; verify exact repository, tenant, subscription, principal, environment and resource binding rather than trusting default account or matching names.
 - [ ] 12.2 Derive minimal provider namespaces/features from approved resource types and inspect/register only authorized prerequisites; verify terminal Registered readback precedes dependent writes and shared registrations survive rollback.
 - [ ] 12.3 Implement exact approval persistence, expiry/source binding and protected credential enrollment/use proof; verify no credential in chat/argv/source/public receipts and a policy file alone cannot establish readiness.
 - [ ] 12.4 Enforce new-environment versus same-operation-owned versus pre-existing deployment classification before every effect; verify unknown/occupied/brownfield cases remain planning-only without duplicate resources or sensitive state reads.

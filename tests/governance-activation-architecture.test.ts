@@ -24,7 +24,7 @@ describe('activation orchestration boundaries', () => {
     const functions = declarations.filter((node: any) => node.type === 'FunctionDeclaration').map((node: any) => node.id.name);
     for (const handler of [
       'executeSeedOperations', 'gitCommitOperations', 'gitPushOperations', 'executeGitOperations',
-      'discoverPhase0', 'executeActivationApproval', 'executeCredentialReady', 'executeRulesetPhase',
+      'executeGitHubDiscovery', 'observeAzurePhase0', 'executeActivationApproval', 'executeCredentialReady', 'executeRulesetPhase',
       'remoteImportRetention', 'executeBootstrapStateDisposal', 'saveTransitionPlan', 'writeOutcomeTransaction'
     ]) expect(functions).not.toContain(handler);
     const imports = ast.body.filter((node: any) => node.type === 'ImportDeclaration').map((node: any) => node.source.value);
@@ -34,14 +34,17 @@ describe('activation orchestration boundaries', () => {
       .find((node: any) => node.id.name === 'builtInExecutors');
     const registered = registry.init.properties.map((entry: any) => entry.key.name ?? entry.key.value).sort();
     const declared = Object.entries(phaseCapabilities).filter(([, capability]) => capability.executor !== 'unavailable')
-      .map(([phase]) => phase).sort();
+      .map(([phase]) => phase).filter((phase) => phase !== 'phase-0-complete').sort();
     expect(registered).toEqual(declared);
+    expect(source).toContain("phaseUsesProvider(input.phase, 'github')");
+    expect(source).toContain("phaseUsesProvider(input.phase, 'azure')");
   });
 
   it('keeps actual handler families independent of the orchestration module', async () => {
     for (const [file, definitions] of [
       ['phase-publication', ['gitCommitOperations', 'gitPushOperations', 'executeGitOperations']],
-      ['phase-discovery', ['discoverPhase0']],
+      ['github-discovery', ['executeGitHubDiscovery']],
+      ['azure-discovery', ['observeAzurePhase0']],
       ['phase-governance', ['executeActivationApproval', 'executeCredentialReady', 'executeRulesetPhase']],
       ['phase-bootstrap-state', ['remoteImportRetention', 'executeBootstrapStateDisposal']],
       ['seed-lifecycle', ['executeSeedOperations', 'runSeedBaselineChecks', 'archiveGeneratedSeedForPhase']]

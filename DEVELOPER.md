@@ -733,7 +733,7 @@ engines.
 | Exact infrastructure inventory/layout | `src/domain/project/infrastructure-layout.ts` |
 | Current activation observations | `src/governance-activation/inputs.ts`, `src/governance-activation/read-only.ts` |
 | Activation planning/execution ports | `src/governance-activation/transition-planning.ts`, `src/governance-activation/transition-ports.ts`, locked coordinator `src/governance-activation/transitions.ts` |
-| Concrete phase handlers and persistence | `src/governance-activation/seed-lifecycle.ts`, `src/governance-activation/phase-publication.ts`, `src/governance-activation/phase-discovery.ts`, `src/governance-activation/phase-governance.ts`, `src/governance-activation/phase-bootstrap-state.ts`, `src/governance-activation/transition-records.ts` |
+| Concrete phase handlers and persistence | `src/governance-activation/seed-lifecycle.ts`, `src/governance-activation/phase-publication.ts`, `src/governance-activation/github-discovery.ts`, `src/governance-activation/azure-discovery.ts`, `src/governance-activation/phase-governance.ts`, `src/governance-activation/phase-bootstrap-state.ts`, `src/governance-activation/transition-records.ts` |
 | Pure evidence/availability contracts | `src/domain/governance/activation/evidence.ts`, `src/domain/governance/activation/capabilities.ts` |
 | Read-only assessment | `src/governance-assessment/project.ts`, `src/domain/governance/assessment/`, `src/adapters/git/governance-assessment.ts`, `src/adapters/github/governance-assessment.ts`, `src/adapters/azure/governance-assessment.ts` |
 

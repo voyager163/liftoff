@@ -299,7 +299,10 @@ export function validateEvidenceFreshness(
             destination.repository === proof.resourceId ||
             (destination.repository && (proof.resourceId.startsWith(`/repos/${destination.repository}/`) ||
               proof.resourceId.startsWith(`https://api.github.com/repos/${destination.repository}/`))) ||
-            (destination.subscriptionId && proof.resourceId.toLowerCase().startsWith(`/subscriptions/${destination.subscriptionId.toLowerCase()}/`));
+            (destination.subscriptionId && (
+              proof.resourceId.toLowerCase() === `/subscriptions/${destination.subscriptionId.toLowerCase()}` ||
+              proof.resourceId.toLowerCase().startsWith(`/subscriptions/${destination.subscriptionId.toLowerCase()}/`)
+            ));
           return scopeMatches && (operation.inputs.sourceDigest === undefined || operation.inputs.sourceDigest === proof.sourceDigest);
         })) {
           issues.push(issue('liveReadback.destination', 'Readback resource or source is outside the reviewed plan destinations.', undefined, undefined, record.evidenceId));
