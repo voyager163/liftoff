@@ -164,7 +164,7 @@ describe('project-independent capability discovery', () => {
     expect(report.boundaries.privateApis).toContain('Historical successor creation is limited to the separately advertised currentUpdate scope');
   });
 
-  it('retains unavailable/injected-only/blocker distinctions instead of treating registration as execution support', () => {
+  it('retains unavailable/injected-only/blocker distinctions while advertising qualified registration support', () => {
     const report = installedCapabilities();
     for (const [phase, capability] of Object.entries(phaseCapabilities)) {
       expect(report.governance.phases.find((row) => row.phase === phase)).toEqual({
@@ -172,9 +172,10 @@ describe('project-independent capability discovery', () => {
         productionExecutorAvailable: capability.executor === 'built-in' && capability.blocker === undefined
       });
     }
-    for (const phase of ['credential-ready', 'provider-ready', 'rulesets-applied', 'live-readback']) {
+    for (const phase of ['credential-ready', 'rulesets-applied', 'live-readback']) {
       expect(report.governance.phases.find((row) => row.phase === phase)?.productionExecutorAvailable).toBe(false);
     }
+    expect(report.governance.phases.find((row) => row.phase === 'provider-ready')?.productionExecutorAvailable).toBe(true);
     expect(report.runtime.hostSupport).toContain('not installed tools or native-package qualification');
     expect(report.boundaries.registration).toContain('executor is available');
   });

@@ -13,14 +13,14 @@ export class AzureDiscoveryError extends Error {
   }
 }
 
-function object(value: unknown, label: string): Record<string, unknown> {
+export function azureObject(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new AzureDiscoveryError('invalid-response', `${label} did not return a JSON object.`);
   }
   return value as Record<string, unknown>;
 }
 
-function text(value: unknown, label: string): string {
+export function azureText(value: unknown, label: string): string {
   if (typeof value !== 'string' || !value || value.length > 2048 || /[\u0000-\u001f\u007f]/u.test(value)) {
     throw new AzureDiscoveryError('invalid-response', `${label} is absent or invalid.`);
   }
@@ -28,7 +28,7 @@ function text(value: unknown, label: string): string {
 }
 
 function guid(value: unknown, label: string): string {
-  const result = text(value, label);
+  const result = azureText(value, label);
   if (!uuid.test(result)) throw new AzureDiscoveryError('invalid-response', `${label} is not a provider GUID.`);
   return result.toLowerCase();
 }
@@ -38,7 +38,7 @@ function sameGuid(left: unknown, right: string): boolean {
 }
 
 function httpsEndpoint(value: unknown, label: string): string {
-  const endpoint = new URL(text(value, label));
+  const endpoint = new URL(azureText(value, label));
   if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
     throw new AzureDiscoveryError('invalid-response', `${label} is not a credential-free HTTPS origin.`);
   }
@@ -46,10 +46,11 @@ function httpsEndpoint(value: unknown, label: string): string {
   return endpoint.toString();
 }
 
-async function azureJson(
+export async function runAzureJson(
   input: PhasePlanningInput | PhaseAdapterExecutionInput,
   args: readonly string[],
-  label: string
+  label: string,
+  timeoutMs = requestTimeoutMs
 ): Promise<unknown> {
   const command = {
     executable: 'az',
@@ -57,7 +58,7 @@ async function azureJson(
   };
   const result = await input.runner.run(command, {
     cwd: input.inspection.projectRoot,
-    timeoutMs: requestTimeoutMs,
+    timeoutMs,
     maxOutputBytes: maxResponseBytes,
     stream: false,
     env: { AZURE_CORE_ONLY_SHOW_ERRORS: 'true' }
@@ -79,14 +80,14 @@ async function observePrincipal(
   input: PhasePlanningInput | PhaseAdapterExecutionInput,
   account: Record<string, unknown>
 ): Promise<{ type: 'user' | 'service-principal' | 'managed-identity'; objectId: string; appId?: string }> {
-  const user = object(account.user, 'Azure account principal');
-  const type = text(user.type, 'Azure account principal type').toLowerCase();
+  const user = azureObject(account.user, 'Azure account principal');
+  const type = azureText(user.type, 'Azure account principal type').toLowerCase();
   if (type === 'user') {
-    const accountName = text(user.name, 'Azure user account name');
-    const observed = object(await azureJson(input, [
+    const accountName = azureText(user.name, 'Azure user account name');
+    const observed = azureObject(await runAzureJson(input, [
       'ad', 'signed-in-user', 'show', '--query', '{id:id,userPrincipalName:userPrincipalName}'
     ], 'Azure signed-in user discovery'), 'Azure signed-in user');
-    if (text(observed.userPrincipalName, 'Azure signed-in user principal name').toLowerCase() !== accountName.toLowerCase()) {
+    if (azureText(observed.userPrincipalName, 'Azure signed-in user principal name').toLowerCase() !== accountName.toLowerCase()) {
       throw new AzureDiscoveryError('principal-binding',
         'Azure signed-in user readback differs from the exact selected account principal.');
     }
@@ -94,7 +95,7 @@ async function observePrincipal(
   }
   if (type === 'serviceprincipal') {
     const accountName = guid(user.name, 'Azure service principal application id');
-    const observed = object(await azureJson(input, [
+    const observed = azureObject(await runAzureJson(input, [
       'ad', 'sp', 'show', '--id', accountName,
       '--query', '{id:id,appId:appId,servicePrincipalType:servicePrincipalType,accountEnabled:accountEnabled}'
     ], 'Azure service principal discovery'), 'Azure service principal');
@@ -139,7 +140,7 @@ async function observeEnvironmentBindings(
   const bindings = [];
   for (const expected of expectedEnvironmentBindings(input)) {
     const name = expected.resources.resourceGroup;
-    const exists = await azureJson(input, [
+    const exists = await runAzureJson(input, [
       'group', 'exists', '--subscription', subscriptionId, '--name', name
     ], `Azure resource group existence discovery for ${expected.environment}`);
     if (typeof exists !== 'boolean') {
@@ -149,17 +150,17 @@ async function observeEnvironmentBindings(
       bindings.push({ ...expected, status: 'observed-absent', resourceGroup: null, observedResources: [] });
       continue;
     }
-    const group = object(await azureJson(input, [
+    const group = azureObject(await runAzureJson(input, [
       'group', 'show', '--subscription', subscriptionId, '--name', name,
       '--query', '{id:id,name:name,location:location,managedBy:managedBy,provisioningState:properties.provisioningState,tags:tags}'
     ], `Azure resource group discovery for ${expected.environment}`), 'Azure resource group');
-    const resourceId = text(group.id, 'Azure resource group id');
+    const resourceId = azureText(group.id, 'Azure resource group id');
     const expectedId = `/subscriptions/${subscriptionId}/resourceGroups/${name}`;
     if (resourceId.toLowerCase() !== expectedId.toLowerCase() || group.name !== name) {
       throw new AzureDiscoveryError('resource-binding',
         `Azure returned a resource group identity that differs from the exact ${expected.environment} binding.`);
     }
-    const resources = await azureJson(input, [
+    const resources = await runAzureJson(input, [
       'resource', 'list', '--subscription', subscriptionId, '--resource-group', name,
       '--query', '[].{id:id,name:name,type:type,location:location,kind:kind,managedBy:managedBy}'
     ], `Azure resource inventory discovery for ${expected.environment}`);
@@ -169,16 +170,16 @@ async function observeEnvironmentBindings(
     }
     const prefix = `${expectedId}/providers/`.toLowerCase();
     const observedResources = resources.map((value) => {
-      const resource = object(value, 'Azure resource');
-      const id = text(resource.id, 'Azure resource id');
+      const resource = azureObject(value, 'Azure resource');
+      const id = azureText(resource.id, 'Azure resource id');
       if (!id.toLowerCase().startsWith(prefix)) {
         throw new AzureDiscoveryError('resource-binding',
           `Azure returned a resource outside the exact ${expected.environment} resource group.`);
       }
       return {
         id,
-        name: text(resource.name, 'Azure resource name'),
-        type: text(resource.type, 'Azure resource type'),
+        name: azureText(resource.name, 'Azure resource name'),
+        type: azureText(resource.type, 'Azure resource type'),
         location: typeof resource.location === 'string' ? resource.location : null,
         kind: typeof resource.kind === 'string' ? resource.kind : null,
         managedBy: typeof resource.managedBy === 'string' ? resource.managedBy : null
@@ -190,11 +191,11 @@ async function observeEnvironmentBindings(
       resourceGroup: {
         id: resourceId,
         name,
-        location: text(group.location, 'Azure resource group location'),
+        location: azureText(group.location, 'Azure resource group location'),
         managedBy: typeof group.managedBy === 'string' ? group.managedBy : null,
-        provisioningState: text(group.provisioningState, 'Azure resource group provisioning state'),
-        tagKeys: Object.keys(object(group.tags ?? {}, 'Azure resource group tags'))
-          .map((key) => text(key, 'Azure resource group tag key'))
+        provisioningState: azureText(group.provisioningState, 'Azure resource group provisioning state'),
+        tagKeys: Object.keys(azureObject(group.tags ?? {}, 'Azure resource group tags'))
+          .map((key) => azureText(key, 'Azure resource group tag key'))
           .sort((left, right) => left.localeCompare(right, 'en'))
       },
       observedResources
@@ -203,7 +204,7 @@ async function observeEnvironmentBindings(
   return bindings;
 }
 
-export async function observeAzurePhase0(input: PhasePlanningInput | PhaseAdapterExecutionInput) {
+export async function observeAzureIdentity(input: PhasePlanningInput | PhaseAdapterExecutionInput) {
   const configuration = input.inspection.activationInputs?.azure ??
     input.inspection.state.activationInputs?.azure;
   if (!configuration) throw new AzureDiscoveryError('configuration-required',
@@ -214,15 +215,15 @@ export async function observeAzurePhase0(input: PhasePlanningInput | PhaseAdapte
     throw new AzureDiscoveryError('region-binding',
       'Configured Azure region differs from the project workload region; review activation configuration before discovery.');
   }
-  const account = object(await azureJson(input, [
+  const account = azureObject(await runAzureJson(input, [
     'account', 'show', '--subscription', subscriptionId
   ], 'Azure account discovery'), 'Azure account');
   if (!sameGuid(account.id, subscriptionId) || !sameGuid(account.tenantId, tenantId) || account.state !== 'Enabled') {
     throw new AzureDiscoveryError('account-binding',
       'Azure account discovery differs from the exact configured enabled subscription and tenant.');
   }
-  const cloudName = text(account.environmentName, 'Azure cloud environment');
-  const cloud = object(await azureJson(input, [
+  const cloudName = azureText(account.environmentName, 'Azure cloud environment');
+  const cloud = azureObject(await runAzureJson(input, [
     'cloud', 'show', '--name', cloudName,
     '--query', '{name:name,resourceManager:endpoints.resourceManager,resourceManagerAudience:endpoints.activeDirectoryResourceId}'
   ], 'Azure cloud discovery'), 'Azure cloud');
@@ -232,7 +233,7 @@ export async function observeAzurePhase0(input: PhasePlanningInput | PhaseAdapte
   const resourceManager = httpsEndpoint(cloud.resourceManager, 'Azure Resource Manager endpoint');
   const resourceManagerAudience = httpsEndpoint(cloud.resourceManagerAudience, 'Azure Resource Manager audience');
   const subscriptionUrl = new URL(`subscriptions/${subscriptionId}?api-version=2022-12-01`, resourceManager).toString();
-  const subscription = object(await azureJson(input, [
+  const subscription = azureObject(await runAzureJson(input, [
     'rest', '--method', 'GET', '--url', subscriptionUrl, '--resource', resourceManagerAudience
   ], 'Azure live subscription discovery'), 'Azure live subscription');
   if (!sameGuid(subscription.subscriptionId, subscriptionId) ||
@@ -241,12 +242,19 @@ export async function observeAzurePhase0(input: PhasePlanningInput | PhaseAdapte
       'Azure live subscription readback differs from the exact configured enabled subscription and tenant.');
   }
   const principal = await observePrincipal(input, account);
-  const environments = await observeEnvironmentBindings(input, subscriptionId);
   return {
     subscription: { id: subscriptionId, tenantId, state: 'Enabled' as const },
     principal,
     cloud: { name: cloudName, resourceManager, resourceManagerAudience },
-    region: configuration.region,
+    region: configuration.region
+  };
+}
+
+export async function observeAzurePhase0(input: PhasePlanningInput | PhaseAdapterExecutionInput) {
+  const identity = await observeAzureIdentity(input);
+  const environments = await observeEnvironmentBindings(input, identity.subscription.id);
+  return {
+    ...identity,
     environments
   };
 }

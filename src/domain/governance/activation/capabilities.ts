@@ -21,7 +21,7 @@ export const phaseCapabilities: Readonly<Record<PhaseId, PhaseCapability>> = {
   'activation-approved': builtIn,
   'bootstrap-workflow-source-ready': unavailable,
   'credential-ready': { ...builtIn, blocker: 'Independent credential readback and public credential enrollment are unavailable.' },
-  'provider-ready': unavailable,
+  'provider-ready': builtIn,
   'state-path-selected': unavailable,
   'existing-private-path': unavailable,
   'bootstrap-local': unavailable,

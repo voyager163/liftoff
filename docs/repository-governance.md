@@ -585,6 +585,51 @@ sanitized identity, endpoint, status, environment, and resource bindings. Raw
 CLI output, credentials, account email addresses, and provider diagnostics are
 not persisted. Phase 0 performs no GitHub or Azure mutation.
 
+## Azure provider readiness
+
+`provider-ready` requires reviewed activation inputs containing the exact Azure
+resource types used by the approved design and the AzureRM registration mode:
+`automatic` or `none`. Liftoff validates and deduplicates those types, derives
+only their provider namespaces, and derives a subscription feature only for a
+supported resource type that intentionally requires it. Ordinary public IP,
+Firewall, or NAT resources do not authorize the BYOIP feature; an approved
+`Microsoft.Network/customIPPrefixes` resource is required.
+
+```json
+{
+  "phases": {
+    "provider-ready": {
+      "azureRmRegistrationMode": "none",
+      "resourceTypes": [
+        "Microsoft.Storage/storageAccounts",
+        "Microsoft.Network/virtualNetworks",
+        "GitHub.Network/networkSettings"
+      ]
+    }
+  }
+}
+```
+
+Planning revalidates the configured subscription, tenant, principal, cloud, and
+sovereign-cloud Resource Manager endpoint. It reads every derived provider and
+feature plus the current identity's effective subscription permissions. With
+automatic AzureRM registration, every provider must already be terminal
+`Registered`; Liftoff does not add duplicate explicit registrations. With
+registration mode `none`, only approved missing namespaces are registered and
+only when live permission includes
+`Microsoft.Resources/subscriptions/providers/register/action`. Feature writes
+independently require
+`Microsoft.Features/providers/features/register/action`.
+
+Execution reobserves identity, permission, and registration state before each
+effect. A namespace already `Registering` is polled without redispatch. Missing,
+unauthorized, stale, `Unregistering`, malformed, or timed-out prerequisites block
+the phase and every dependent resource write. Completion requires independent
+terminal `Registered` readback for every planned provider and feature. Partial
+success is reported without raw provider diagnostics, and successful
+registrations remain retained shared subscription capabilities; rollback never
+unregisters them.
+
 ## Evidence authority and active changes
 
 Task checkboxes are a projection of phase state, not authority. Evidence

@@ -91,11 +91,13 @@ describe('developer activation-completeness guidance', () => {
     for (const phrase of [
       '`liftoff governance approve` persists exact approval envelopes, but it refuses a\nphase whose capability is unavailable or blocked',
       '`governance apply-next --execute` likewise stops before\nany saved plan, intent, or producer effect',
-      '`provider-ready` and `state-path-selected` no longer report\nsynthetic verified success'
+      '`provider-ready` now derives its exact namespace and supported\nfeature prerequisites from reviewed resource types',
+      '`state-path-selected` still cannot report a synthetic selected state path'
     ]) {
       expect(completeness).toContain(phrase);
     }
-    for (const phase of ['provider-ready', 'state-path-selected'] as const) expect(phaseCapabilities[phase].executor).toBe('unavailable');
+    expect(phaseCapabilities['provider-ready'].executor).toBe('built-in');
+    expect(phaseCapabilities['state-path-selected'].executor).toBe('unavailable');
   });
 
   it('keeps credential readiness unavailable until independent readback exists', () => {

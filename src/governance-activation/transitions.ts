@@ -56,6 +56,7 @@ const builtInExecutors: Partial<Record<PhaseId, PhaseExecutor>> = {
   'activation-approved': executeActivationApproval,
   'enforcement-approved': () => ({ status: 'completed', resultState: 'approved', completedOperations: [] }),
   'credential-ready': executeCredentialReady,
+  'provider-ready': executeAzurePhase,
   'remote-ready': remoteImportRetention,
   'bootstrap-state-disposed': executeBootstrapStateDisposal,
   'rulesets-applied': executeRulesetPhase,

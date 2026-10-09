@@ -2221,12 +2221,12 @@ other-platform qualification remain separate gates.
 ## Activation completeness and separate follow-up plan
 
 The activation engine is not yet an end-to-end production provisioning engine.
-Of its 29 declared phases, 11 have built-in handler paths, 2 require an injected
-GitHub ruleset adapter that the public CLI does not currently supply, and 16
+Of its 29 declared phases, 12 have built-in handler paths, 2 require an injected
+GitHub ruleset adapter that the public CLI does not currently supply, and 15
 fall back to an explicit missing-production-adapter blocker.
 
 The missing production phase handlers are `bootstrap-workflow-source-ready`,
-`provider-ready`, `state-path-selected`, `existing-private-path`, `bootstrap-local`,
+`state-path-selected`, `existing-private-path`, `bootstrap-local`,
 `runner-ready`, `private-backend-proof`, `remote-import-verified`,
 `application-prerequisites-ready`, `application-artifact-ready`,
 `application-foundation`, `workflow-source-ready`, `dev-proof`,
@@ -2241,9 +2241,13 @@ any saved plan, intent, or producer effect for such a phase and reports its
 blocker; an earlier approval does not change that. Only an explicitly injected
 trusted phase adapter, or the GitHub ruleset adapter for `rulesets-applied` and
 `live-readback`, can execute those phases, and that test seam is not production
-qualification. `provider-ready` and `state-path-selected` no longer report
-synthetic verified success, provider registration, or a selected state path; they
-stay blocked as missing production adapters. `credential-ready` and the public
+qualification. `provider-ready` now derives its exact namespace and supported
+feature prerequisites from reviewed resource types, proves live registration
+permissions, registers only authorized missing prerequisites, and requires terminal
+`Registered` readback. Successful registrations are retained subscription
+capabilities and are never unregistered by repository rollback. In contrast,
+`state-path-selected` still cannot report a synthetic selected state path and
+remains blocked as a missing production adapter. `credential-ready` and the public
 `governance credential-enroll` path remain unavailable pending independent
 credential readback: they refuse before reading a credential or writing a remote
 secret or secret-derived credential policy. The enrollment adapter revokes only the

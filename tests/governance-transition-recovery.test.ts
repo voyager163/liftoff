@@ -315,14 +315,16 @@ describe('source-of-truth and adapter integrity boundaries', () => {
     const runner = new LocalOnlyRunner(gitEnvironment);
     const state = coverageState({ activationInputs });
     const planned = await buildSavedTransitionPlan({
-      inspection: await coverageInspection({ root, phaseId: 'provider-ready', state, activationInputs }), runner, now: coverageNow
+      inspection: await coverageInspection({ root, phaseId: 'application-prerequisites-ready', state, activationInputs }), runner, now: coverageNow
     });
     const approval = await issuePriorApproval(root, state, planned!);
-    const approved = await coverageInspection({ root, phaseId: 'provider-ready', state, approvals: [approval], activationInputs });
-    const revoked = await coverageInspection({ root, phaseId: 'provider-ready', state, approvals: [], activationInputs });
+    const approved = await coverageInspection({ root, phaseId: 'application-prerequisites-ready', state, approvals: [approval], activationInputs });
+    const revoked = await coverageInspection({ root, phaseId: 'application-prerequisites-ready', state, approvals: [], activationInputs });
     let reinspections = 0;
-    const { calls, adapters } = injected('provider-ready', () => ({
-      status: 'completed', resultState: 'verified', evidencePayload: { kind: 'provider-ready.v1' }, completedOperations: []
+    const { calls, adapters } = injected('application-prerequisites-ready', (input) => ({
+      status: 'completed', resultState: 'verified', evidencePayload: { kind: 'application-prerequisites-ready.v1' },
+      liveReadback: [readbackProof(input, 'azure', 'subscription', `/subscriptions/${coverageSubscription}`, { reachable: true })],
+      completedOperations: []
     }));
 
     const result = await executeApplyNext({
@@ -335,7 +337,7 @@ describe('source-of-truth and adapter integrity boundaries', () => {
       blockers: ['Approval changed or expired before outcome persistence; no successful outcome was recorded.']
     });
     const statePath = path.join(root, 'governance', 'activation-state.json');
-    expect((await readState(root))!.phases['provider-ready']).toMatchObject({ state: 'running', evidence: [], approvals: [approval.id] });
+    expect((await readState(root))!.phases['application-prerequisites-ready']).toMatchObject({ state: 'running', evidence: [], approvals: [approval.id] });
     expect(result.stateHash).toBe(activationStateContentHash(await readFile(statePath)));
     expect(await exists(path.join(root, 'governance', 'evidence'))).toBe(false);
     expect(runner.providerCalls).toEqual([]);

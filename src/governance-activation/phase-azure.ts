@@ -7,6 +7,9 @@ import { runCommand, commandSucceeded } from './transition-process.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
 import { AzureDiscoveryError, observeAzurePhase0 } from './azure-discovery.js';
+import {
+  executeAzureProviderReadiness, planAzureProviderReadiness
+} from './azure-provider-readiness.js';
 
 function azureSubscriptionId(input: PhasePlanningInput | PhaseAdapterExecutionInput): string | null {
   return input.inspection.activationInputs?.azure?.subscriptionId ??
@@ -57,13 +60,7 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
       };
     }
     case 'provider-ready':
-      return {
-        operations: [
-          azureOperation(input.phase.id, 'azure.provider.ensure-ready', 'azure-provider-register', {
-            providers: ['Microsoft.Resources', 'Microsoft.Storage', 'Microsoft.Network', 'Microsoft.ContainerRegistry', 'Microsoft.ManagedIdentity']
-          }, subId)
-        ]
-      };
+      return planAzureProviderReadiness(input);
     case 'state-path-selected':
       return {
         operations: [
@@ -233,8 +230,9 @@ export async function executeAzurePhase(input: PhaseAdapterExecutionInput): Prom
       }
     }
     case 'provider-ready':
+      return executeAzureProviderReadiness(input);
     case 'state-path-selected':
-      // No production executor exists yet; never synthesize provider registration or state-path readback.
+      // No production executor exists yet; never synthesize state-path readback.
       return {
         status: 'blocked',
         blocker: phaseCapabilities[input.phase.id].blocker ?? 'No production executor is available.',

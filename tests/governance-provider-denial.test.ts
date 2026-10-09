@@ -96,12 +96,12 @@ describe('public capability table', () => {
       expect(capability.blocker, phaseId).toMatch(/\S/u);
       expect(capability.retry, phaseId).toBe('none');
     }
-    expect(phaseCapabilities['provider-ready'].executor).toBe('unavailable');
+    expect(phaseCapabilities['provider-ready'].executor).toBe('built-in');
     expect(phaseCapabilities['rulesets-applied'].executor).toBe('injected-only');
     expect(phaseCapabilities['credential-ready'].blocker).toMatch(/public credential enrollment are unavailable/u);
   });
 
-  it('keeps read-only preview usable while surfacing the capability blocker without writes', async () => {
+  it('keeps provider preview fail-closed when reviewed provider inputs are absent', async () => {
     const root = await project('preview');
     const runner = new LocalOnlyRunner(gitEnvironment);
     const before = await treeFingerprint(root);
@@ -111,16 +111,16 @@ describe('public capability table', () => {
     });
     expect(preview).toMatchObject({
       reason: 'blocked', selectedPhase: 'provider-ready', noWrites: true, savedPlan: null,
-      blockers: [phaseCapabilities['provider-ready'].blocker]
+      blockers: ['Provider readiness requires reviewed provider-ready inputs with resourceTypes and azureRmRegistrationMode.']
     });
-    expect(preview.proposedMutations.operations.map((operation) => operation.actionId)).toContain('azure.provider.ensure-ready');
+    expect(preview.proposedMutations.operations).toEqual([]);
     expect(await treeFingerprint(root)).toBe(before);
     expect(runner.providerCalls).toEqual([]);
   });
 });
 
 describe('public approval refuses unsupported capabilities', () => {
-  it.each(['provider-ready', 'state-path-selected', 'credential-ready'] as const)(
+  it.each(['state-path-selected', 'credential-ready'] as const)(
     'saves an external preview for %s but issues no approval, authority record, or project file',
     async (phaseId) => {
       const root = await project(`approve-${phaseId}`);
@@ -145,7 +145,7 @@ describe('public approval refuses unsupported capabilities', () => {
 });
 
 describe('execution guard for phases without a real executor', () => {
-  it.each(['provider-ready', 'state-path-selected', 'runner-ready', 'rulesets-applied', 'live-readback'] as const)(
+  it.each(['state-path-selected', 'runner-ready', 'rulesets-applied', 'live-readback'] as const)(
     'blocks %s even with previously issued authority before saving a plan, writing intent, or invoking a producer',
     async (phaseId) => {
       const root = await project(`execute-${phaseId}`);
@@ -241,7 +241,8 @@ describe('execution guard for phases without a real executor', () => {
 });
 
 describe('producers cannot manufacture provider proof when invoked directly', () => {
-  it.each(['provider-ready', 'state-path-selected'] as const)('returns an explicit blocked outcome from the Azure %s producer', async (phaseId) => {
+  it('returns an explicit blocked outcome from the Azure state-path-selected producer', async () => {
+    const phaseId = 'state-path-selected' as const;
     const root = await project(`azure-${phaseId}`);
     const runner = new LocalOnlyRunner(gitEnvironment);
     const inspection = await coverageInspection({ root, phaseId, state: coverageState({ activationInputs }), activationInputs });
