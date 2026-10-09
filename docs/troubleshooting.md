@@ -341,6 +341,15 @@ An interrupted approved transaction uses `liftoff repair "path/to/project" --rec
 a committed patch with a later problem requires a new reviewed correction or
 user-controlled history recovery. See [repair modes](cli-reference.md#repair-modes).
 
+If activation reports deployment ownership as pre-existing or uncertain, do not
+delete local state, edit an operation record, add a Liftoff tag, or rerun with a
+broader approval. Those actions cannot establish ownership. The current release
+executes protected deployment/state effects only for an independently absent
+expected resource group or an exact same-operation resume whose current plan and
+recorded output IDs cover every freshly observed Azure resource. Other existing
+deployment/state scope is intentionally planning-only; no backend read or
+duplicate provisioning was attempted.
+
 `liftoff doctor` and `liftoff governance status --json` use precise states:
 
 | State | Remedy |

@@ -594,6 +594,20 @@ sanitized identity, endpoint, status, environment, and resource bindings. Raw
 CLI output, credentials, account email addresses, and provider diagnostics are
 not persisted. Phase 0 performs no GitHub or Azure mutation.
 
+Before any later reviewed plan can read deployment state, import state, publish
+an image, or provision Azure resources, it includes
+`azure.deployment.classify-ownership`. Execution repeats the bounded account,
+subscription, cloud, principal, resource-group, and resource metadata reads
+without reading backend state. An absent expected resource group is
+`new-environment`. An occupied group is `same-operation-owned` only when the
+current phase has the exact non-failed operation and plan digest and its recorded
+outputs cover the group plus every observed resource ID. Missing local state,
+matching names/tags, an older phase output, or broad approval is not proof.
+Anything else is `pre-existing-or-unknown`: the reviewed plan is retained for
+planning, but the phase adapter, backend-state access, import, publish, and
+resource writes do not run. Provider registration is a retained subscription
+prerequisite and is not deployment ownership.
+
 ## Azure provider readiness
 
 `provider-ready` requires reviewed activation inputs containing the exact Azure
@@ -694,6 +708,12 @@ path is approved, the bounded `bootstrap-local` branch may create only the
 access-establishing resources needed to reach the backend. Local bootstrap state
 is encrypted, gitignored, single-writer, never uploaded or copied through GitHub
 artifacts or secrets, and cannot authorize application provisioning.
+
+The bootstrap/private-path branch still passes the deployment-ownership gate.
+An occupied deterministic resource group cannot be treated as a bootstrap
+resume unless the current phase's exact operation and output IDs cover every
+resource observed during the fresh bounded read. Otherwise it remains
+planning-only; Liftoff does not inspect the backend to try to infer ownership.
 
 After verified declarative import, backend identity parity, state locking, Blob
 versioning, and a clean-checkout no-change plan, local state becomes read-only

@@ -2245,7 +2245,21 @@ qualification. `provider-ready` now derives its exact namespace and supported
 feature prerequisites from reviewed resource types, proves live registration
 permissions, registers only authorized missing prerequisites, and requires terminal
 `Registered` readback. Successful registrations are retained subscription
-capabilities and are never unregistered by repository rollback. In contrast,
+capabilities and are never unregistered by repository rollback.
+
+Protected deployment/state plans now prepend the built-in read-only
+`azure.deployment.classify-ownership` guard. The engine executes it after plan
+freshness and source checks but before execution intent or an injected/built-in
+phase adapter. Fresh bounded Azure observation classifies each expected
+environment as absent/new, exact same-operation-owned, or pre-existing/unknown.
+Same-operation proof requires the current phase's non-failed Azure operation,
+both current plan digests, and recorded output IDs covering the resource group
+and every observed resource. Pre-existing/unknown scope returns the saved plan
+without writing activation state or invoking backend-state, import, registry, or
+provisioning effects. The successful classification operation, sanitized
+payload, and Azure readback are merged into final phase evidence.
+
+In contrast,
 `state-path-selected` still cannot report a synthetic selected state path and
 remains blocked as a missing production adapter. `credential-ready` is now a
 built-in production phase. Its reviewed public configuration selects an existing

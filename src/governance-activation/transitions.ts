@@ -39,6 +39,7 @@ import {
   type CapturedGovernanceTaskSource
 } from './task-writes.js';
 import type { ActivationInputSnapshot } from '../domain/governance/activation/inputs.js';
+import { inspectAzureDeploymentOwnership } from './azure-deployment-ownership.js';
 
 export type * from './transition-ports.js';
 export { governancePlanDirectoryPathParts, transitionPlanPathParts } from './transition-records.js';
@@ -303,7 +304,6 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   }
   if (freshPlan) await input.assertReviewedPlan?.(freshPlan);
   await input.assertProtectedInputs?.();
-  const taskSource = localRevalidation ? undefined : await captureGovernanceTaskSource(freshInspection, initialPlan);
   const sourceBlocker = sourceOfTruthAllowsPhase(freshInspection, initialPlan.phaseId);
   if (sourceBlocker) {
     const nextState = blockedState({ inspection: freshInspection, phase, plan: initialPlan, blocker: sourceBlocker, now });
@@ -313,6 +313,24 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   await lease.assertHeld();
   const inputOptions = { sensitivePathExclusions: freshInspection.sensitivePathExclusions };
   const beforeSnapshot = await readActivationInputSnapshot(freshInspection.projectRoot, freshInspection.manifest, runner, inputOptions);
+  const adapterInput = {
+    inspection: freshInspection, plan: initialPlan, phase, runner, adapters, now,
+    clock, lease, recovery: input.recovery, credentialEnrollment: input.credentialEnrollment
+  };
+  const ownership = await inspectAzureDeploymentOwnership(adapterInput);
+  if (ownership?.blocker) {
+    return executionBlockedResult(
+      freshInspection,
+      initialPlan,
+      saved,
+      ownership.blocker,
+      ownership.completedOperations,
+      initialPlan.stateHash,
+      [],
+      false
+    );
+  }
+  const taskSource = localRevalidation ? undefined : await captureGovernanceTaskSource(freshInspection, initialPlan);
   let executionStateHash = initialPlan.stateHash;
   const readOnlyMutations = new Set(['none', 'read-worktree', 'github-read', 'azure-read', 'backend-state-read', 'write-evidence', 'write-activation-state', 'project-governance-tasks']);
   const executionStarted = phaseScope(phase.id) !== 'local' && initialPlan.operations.some((operation) =>
@@ -328,12 +346,18 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     })).stateHash;
     await lease.assertHeld();
   }
-  const outcome = await executeBuiltInPhase({
-    inspection: freshInspection, plan: initialPlan, phase, runner, adapters, now,
-    clock, lease, recovery: input.recovery, credentialEnrollment: input.credentialEnrollment
-  }, localRevalidation);
+  const outcome = await executeBuiltInPhase(adapterInput, localRevalidation);
   await input.assertProtectedInputs?.();
-  const completedOperations = outcome.completedOperations ?? [];
+  const completedOperations = [
+    ...(ownership?.completedOperations ?? []),
+    ...(outcome.completedOperations ?? [])
+  ];
+  const effectiveEvidencePayload = ownership?.payload && isRecord(outcome.evidencePayload)
+    ? { ...outcome.evidencePayload, deploymentOwnership: ownership.payload }
+    : outcome.evidencePayload;
+  const effectiveLiveReadback = ownership?.liveReadback || outcome.liveReadback
+    ? [...(ownership?.liveReadback ?? []), ...(outcome.liveReadback ?? [])]
+    : undefined;
   if (outcome.operation && !initialPlan.operations.some((operation) => operation.actionId === outcome.operation!.actionId)) {
     throw new Error('The reported external operation has no corresponding action in the reviewed plan.');
   }
@@ -456,10 +480,10 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     }
   }
   const outcomeInspection = { ...freshInspection, state: outcome.stateOverride ?? freshInspection.state };
-  const boundPayload = isRecord(outcome.evidencePayload)
-    ? { ...outcome.evidencePayload, planDigest: initialPlan.planDigest, savedPlanDigest: canonicalSha256(initialPlan),
+  const boundPayload = isRecord(effectiveEvidencePayload)
+    ? { ...effectiveEvidencePayload, planDigest: initialPlan.planDigest, savedPlanDigest: canonicalSha256(initialPlan),
       ...(outcome.outputs ? { outputBindings: outcome.outputs } : {}) }
-    : outcome.evidencePayload;
+    : effectiveEvidencePayload;
   const outcomeNow = clock();
   let evidenceRecord: PhaseEvidenceRecord | undefined;
   let evidenceParts: readonly string[] | undefined;
@@ -468,11 +492,11 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     const evidenceId = `${phase.id}-${safeTimestamp(now.toISOString())}`;
     const header = evidenceHeaderFor({
       inspection: outcomeInspection, phase, plan: initialPlan, result: resultState, now: outcomeNow,
-      payload: boundPayload, liveReadback: outcome.liveReadback, afterInputDigest, gitBinding
+      payload: boundPayload, liveReadback: effectiveLiveReadback, afterInputDigest, gitBinding
     });
     evidenceRecord = {
       evidenceId, header,
-      ...(outcome.liveReadback ? { liveReadback: outcome.liveReadback } : {}),
+      ...(effectiveLiveReadback ? { liveReadback: effectiveLiveReadback } : {}),
       ...(boundPayload !== undefined ? { payload: boundPayload } : {})
     };
     evidenceParts = evidencePathParts(evidenceId);
@@ -580,7 +604,7 @@ function executionBlockedResult(
   saved: { pathParts: readonly string[]; digest: string },
   blocker: string,
   completedOperations: readonly TransitionOperation[],
-  stateHashValue: string,
+  stateHashValue: string | null,
   cleanupWarnings: readonly string[] = [],
   stateWritten = true
 ): ApplyNextExecutionResult {

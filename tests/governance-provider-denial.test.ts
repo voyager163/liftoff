@@ -14,7 +14,7 @@ import { executeAzurePhase } from '../src/governance-activation/phase-azure.js';
 import { executeGitHubPhase } from '../src/governance-activation/phase-github.js';
 import { approveGovernancePreview, saveGovernancePreview } from '../src/governance-activation/public-plans.js';
 import {
-  LocalOnlyRunner, coverageActivationInputs, coverageInspection, coverageNow, coverageState, coverageSubscription,
+  AbsentAzureEnvironmentRunner, LocalOnlyRunner, coverageActivationInputs, coverageInspection, coverageNow, coverageState, coverageSubscription,
   isolateUserLocalStorage, isolatedGitEnvironment, issuePriorApproval, readState, resetDirectory, scratchDirectory,
   treeFingerprint, userLocalRecordNames, writeCoverageProject
 } from './fixtures/governance-coverage/transition-project.js';
@@ -316,7 +316,7 @@ describe('pending external operations', () => {
 
   it('records a running provider operation for resume and resumes only the exact reviewed operation set', async () => {
     const root = await project('pending-resume');
-    const runner = new LocalOnlyRunner(gitEnvironment);
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const seen: Array<ExternalOperationState | null> = [];
     const failed = { ...handle, status: 'failed' as const, observedAt: new Date(coverageNow.getTime() + 120_000).toISOString() };
     const adapters = { phases: { 'existing-private-path': adapter([
@@ -332,7 +332,9 @@ describe('pending external operations', () => {
       nextReadyPhase: 'existing-private-path', evidence: null
     });
     expect(pending.blockers[0]).toContain('op-123 is running; resume polls this operation without redispatch');
-    expect(pending.executedOperations.map((operation) => operation.actionId)).toEqual(['governance.activation-state.write']);
+    expect(pending.executedOperations.map((operation) => operation.actionId)).toEqual([
+      'azure.deployment.classify-ownership', 'governance.activation-state.write'
+    ]);
     const savedPlan = validateSavedTransitionPlan(JSON.parse(await readFile(path.join(root, ...pending.savedPlan!.pathParts), 'utf8')));
     const running = (await readState(root))!.phases['existing-private-path'];
     expect(running).toMatchObject({ state: 'running', executionPlanDigest: savedPlan.planDigest, operation: { ...handle, planDigest: savedPlan.planDigest } });
@@ -378,7 +380,7 @@ describe('pending external operations', () => {
       /cannot request a state-free retry/]
   ])('refuses a pending outcome %s without persisting fabricated progress', async (_label, outcome, expected) => {
     const root = await project('pending-invalid');
-    const runner = new LocalOnlyRunner(gitEnvironment);
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const inspection = await coverageInspection({ root, phaseId: 'existing-private-path', state: coverageState({ activationInputs }), activationInputs });
     const adapters = { phases: { 'existing-private-path': adapter([outcome as PhaseAdapterOutcome], []) } };
 

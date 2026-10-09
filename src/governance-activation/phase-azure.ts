@@ -10,6 +10,7 @@ import { AzureDiscoveryError, observeAzurePhase0 } from './azure-discovery.js';
 import {
   executeAzureProviderReadiness, planAzureProviderReadiness
 } from './azure-provider-readiness.js';
+import { planAzureDeploymentOwnership } from './azure-deployment-ownership.js';
 
 function azureSubscriptionId(input: PhasePlanningInput | PhaseAdapterExecutionInput): string | null {
   return input.inspection.activationInputs?.azure?.subscriptionId ??
@@ -70,6 +71,7 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
     case 'existing-private-path':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.existing-private-path.verify', 'azure-read', { statePath: 'existing-private' }, subId, [
             { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
           ])
@@ -78,6 +80,7 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
     case 'bootstrap-local':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.bootstrap-local.apply', 'azure-network-provision', { boundedLocalBootstrap: true }, subId, [
             { mutationClass: 'azure-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
           ])
@@ -86,6 +89,7 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
     case 'private-backend-proof':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.remote-state.read', 'azure-read', { verifyAccess: true }, subId, [
             { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
           ])
@@ -94,6 +98,7 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
     case 'remote-import-verified':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.remote-import.verify', 'azure-state-import', { noChangePlanRequired: true }, subId, [
             { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
             { mutationClass: 'backend-state-write', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
@@ -104,6 +109,7 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
     case 'remote-ready':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.remote-ready.verify', 'azure-read', { retainBootstrapStateForDays: 30 }, subId, [
             { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
           ])
@@ -112,6 +118,7 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
     case 'application-prerequisites-ready':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.prerequisites.apply', 'azure-resource-provision', { acr: true, managedIdentity: true }, subId, [
             { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
             { mutationClass: 'backend-state-write', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
@@ -123,12 +130,14 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
     case 'application-artifact-ready':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.artifact.readback', 'azure-read', { verifyDigest: true }, subId)
         ]
       };
     case 'application-foundation':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.application-foundation.apply', 'azure-resource-provision', { opentofu: true }, subId, [
             { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
             { mutationClass: 'backend-state-write', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
@@ -139,12 +148,14 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
     case 'staging-qualified':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.staging.readback', 'azure-read', { environment: 'staging' }, subId)
         ]
       };
     case 'production-rehearsed':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.production-readback', 'azure-read', { environment: 'prod' }, subId)
         ]
       };

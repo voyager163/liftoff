@@ -111,6 +111,58 @@ export class LocalOnlyRunner implements CommandRunner {
   }
 }
 
+/** Local runner plus the bounded Azure identity/resource reads for an independently absent environment. */
+export class AbsentAzureEnvironmentRunner implements CommandRunner {
+  readonly azureCalls: ExternalCommand[] = [];
+  readonly local: LocalOnlyRunner;
+
+  constructor(gitEnvironment: NodeJS.ProcessEnv) {
+    this.local = new LocalOnlyRunner(gitEnvironment);
+  }
+
+  get providerCalls(): readonly ExternalCommand[] {
+    return this.local.providerCalls;
+  }
+
+  async run(command: ExternalCommand, options?: RunCommandOptions): Promise<CommandResult> {
+    if (command.executable !== 'az') return this.local.run(command, options);
+    this.azureCalls.push(command);
+    const key = command.args.join(' ');
+    const success = (value: unknown): CommandResult => ({
+      command,
+      displayCommand: [command.executable, ...command.args].join(' '),
+      status: 0,
+      signal: null,
+      stdout: JSON.stringify(value),
+      stderr: '',
+      timedOut: false
+    });
+    if (key.startsWith('account show ')) return success({
+      id: coverageSubscription,
+      tenantId: coverageTenant,
+      state: 'Enabled',
+      environmentName: 'AzureCloud',
+      user: { type: 'user', name: 'developer@example.test' }
+    });
+    if (key.startsWith('cloud show ')) return success({
+      name: 'AzureCloud',
+      resourceManager: 'https://management.azure.com/',
+      resourceManagerAudience: 'https://management.core.windows.net/'
+    });
+    if (key.startsWith('rest --method GET ')) return success({
+      subscriptionId: coverageSubscription,
+      tenantId: coverageTenant,
+      state: 'Enabled'
+    });
+    if (key.startsWith('ad signed-in-user show ')) return success({
+      id: '00000000-0000-4000-8000-000000000003',
+      userPrincipalName: 'developer@example.test'
+    });
+    if (key.startsWith('group exists ')) return success(false);
+    throw new Error(`Unexpected Azure ownership command: ${key}`);
+  }
+}
+
 export async function isolatedGitEnvironment(root: string): Promise<NodeJS.ProcessEnv> {
   const config = path.join(root, 'empty.gitconfig');
   await mkdir(root, { recursive: true });

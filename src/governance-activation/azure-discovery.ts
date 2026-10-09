@@ -118,7 +118,7 @@ async function observePrincipal(
     'The selected Azure account principal type is unsupported; use an explicit user, service principal, or managed identity.');
 }
 
-function expectedEnvironmentBindings(input: PhasePlanningInput | PhaseAdapterExecutionInput) {
+export function expectedAzureEnvironmentBindings(input: PhasePlanningInput | PhaseAdapterExecutionInput) {
   const project = {
     projectName: input.inspection.manifest.project.name,
     safeProjectName: toSafeProjectName(input.inspection.manifest.project.name)
@@ -138,7 +138,7 @@ async function observeEnvironmentBindings(
   subscriptionId: string
 ) {
   const bindings = [];
-  for (const expected of expectedEnvironmentBindings(input)) {
+  for (const expected of expectedAzureEnvironmentBindings(input)) {
     const name = expected.resources.resourceGroup;
     const exists = await runAzureJson(input, [
       'group', 'exists', '--subscription', subscriptionId, '--name', name

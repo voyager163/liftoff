@@ -210,6 +210,16 @@ release, before writing a plan, approval, authority record, or state; an earlier
 approval does not override that refusal. `resume` rechecks blockers and downstream
 readiness without repeating verified operations.
 
+Plans containing backend-state access, state import, registry publication,
+network provisioning, or Azure resource provisioning also contain the exact
+read-only `azure.deployment.classify-ownership` operation. Immediately before
+the phase adapter runs, `apply-next --execute` reobserves the selected Azure
+identity and bounded resource metadata. It proceeds only for independently
+absent expected environments or an exact same-operation resume whose current
+plan, operation, resource-group ID, and every observed resource ID match recorded
+outputs. Pre-existing or uncertain scope returns a saved planning result and
+performs no backend-state read, import, publication, or resource write.
+
 Credential planning accepts metadata only in
 `activationInputs.phases["credential-ready"]`; never put the value in the public
 input file:
