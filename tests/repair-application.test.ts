@@ -213,7 +213,7 @@ describe('bounded application inventory and executable staged patch', () => {
       expect(command.executable).toBe('node');
       expect(options?.cwd).not.toBe(root);
       expect(path.relative(root, options!.cwd!).startsWith('..')).toBe(true);
-      expect(options).toMatchObject({ stream: false, timeoutMs: 10_000, maxOutputBytes: 16_384 });
+      expect(options).toMatchObject({ stream: false, timeoutMs: 30_000, maxOutputBytes: 16_384 });
       expect(options?.env?.APPLICATION_FIXTURE_SECRET).toBeUndefined();
     }
     expect(JSON.stringify(verified)).not.toContain('PRIVATE_');

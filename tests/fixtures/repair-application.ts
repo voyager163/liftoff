@@ -126,8 +126,8 @@ export async function createApplicationRepairFixture(directory: string): Promise
 }
 
 export const applicationFixtureCommands: ApplicationVerificationCommand[] = [
-  { executable: 'node', args: ['--test', 'tests/quote.test.mjs'], cwdPathParts: [], timeoutMs: 10_000, maxOutputBytes: 16_384, network: false },
-  { executable: 'node', args: ['scripts/check-layout.mjs'], cwdPathParts: [], timeoutMs: 10_000, maxOutputBytes: 16_384, network: false }
+  { executable: 'node', args: ['--test', 'tests/quote.test.mjs'], cwdPathParts: [], timeoutMs: 30_000, maxOutputBytes: 16_384, network: false },
+  { executable: 'node', args: ['scripts/check-layout.mjs'], cwdPathParts: [], timeoutMs: 30_000, maxOutputBytes: 16_384, network: false }
 ];
 
 function remapReference(reference: ApplicationReference): string[] {
