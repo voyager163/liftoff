@@ -234,12 +234,22 @@ describe('modern source declarations', () => {
         expect(JSON.parse(buildArtifacts(plan).find((artifact) => artifact.logicalName === 'manifest')!.content).artifactVersion).toBe(7);
       });
 
-      it('does not turn modern schema interpretation into public Manual/team planner or default-registry support', () => {
+      it('keeps current Manual/team support out of the historical planner and default registry', () => {
         const manual = fixture('manual', 'team-gitflow');
         expect(resolveModernManifestV8SourceContract(manual.request).plugins).toEqual(manual.request.recordedPlugins);
         expect(() => resolveManifestV8SourceContract(manual.request)).toThrow(/unknown|unsupported|invalid/i);
         expect(projectCatalog.getSpecWorkflow('manual')).toBeUndefined();
-        expect(projectCatalog.getGovernanceProfile('team-gitflow')).toBeUndefined();
+        expect(projectCatalog.getGovernanceProfile('team-gitflow')).toMatchObject({
+          id: 'team-gitflow',
+          policyVersion: '1'
+        });
+        expect(() => buildProjectPlan({
+          projectName: 'Historical Team',
+          projectType: 'standard',
+          apiStack: 'go-huma',
+          cloud: 'azure',
+          governanceProfile: 'team-gitflow'
+        }, { requireProjectName: true })).toThrow(/current manifest-v8/u);
         expect(() => builtinPluginRegistry().resolveSelection(manual.selection, { platform: 'darwin/arm64' })).toThrow();
       });
     });

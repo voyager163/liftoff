@@ -10,7 +10,16 @@ exports[`complete onboarding screens > snapshots the compact conflict consent an
 Initialize the project and prepare its workstation
 ◆: Discover project context
 ◆: Configure project
-? Generate the single-maintainer GitFlow governance handoff? [Y/n]: ? Set up the GitHub-hosted Copilot coding agent? This writes .github/workflows/copilot-setup-steps.yml and .github/agents/openspec.agent.md. [y/N]: ◆: Review resolved plan
+Select repository governance profile
+────────────────────────────────────
+1. Single-maintainer GitFlow - Generate the versioned local handoff with zero
+additional human pull request approvals; live activation is deferred.
+(single-maintainer-gitflow) [default]
+2. Team GitFlow - Generate the versioned local handoff requiring one independent
+human pull request approval; live activation is deferred. (team-gitflow)
+3. None - Do not generate repository-governance handoff artifacts. (none)
+
+? Select option [single-maintainer-gitflow]: ? Set up the GitHub-hosted Copilot coding agent? This writes .github/workflows/copilot-setup-steps.yml and .github/agents/openspec.agent.md. [y/N]: ◆: Review resolved plan
 Resolved project plan
 ─────────────────────
 Project                   snapshot-app
@@ -476,7 +485,12 @@ exports[`complete onboarding screens > snapshots the plain conflict consent and 
 
 Stage: Discover project context
 Stage: Configure project
-? Generate the single-maintainer GitFlow governance handoff? [Y/n]: ? Set up the GitHub-hosted Copilot coding agent? This writes .github/workflows/copilot-setup-steps.yml and .github/agents/openspec.agent.md. [y/N]: Stage: Review resolved plan
+Select repository governance profile
+1. Single-maintainer GitFlow - Generate the versioned local handoff with zero additional human pull request approvals; live activation is deferred. (single-maintainer-gitflow) [default]
+2. Team GitFlow - Generate the versioned local handoff requiring one independent human pull request approval; live activation is deferred. (team-gitflow)
+3. None - Do not generate repository-governance handoff artifacts. (none)
+
+? Select option [single-maintainer-gitflow]: ? Set up the GitHub-hosted Copilot coding agent? This writes .github/workflows/copilot-setup-steps.yml and .github/agents/openspec.agent.md. [y/N]: Stage: Review resolved plan
 Resolved project plan
 Project: snapshot-app
 Project type: Standard application
@@ -829,7 +843,15 @@ exports[`complete onboarding screens > snapshots the rich conflict consent and c
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Discover project context
 ◆: Configure project
-? Generate the single-maintainer GitFlow governance handoff? [Y/n]: ? Set up the GitHub-hosted Copilot coding agent? This writes .github/workflows/copilot-setup-steps.yml and .github/agents/openspec.agent.md. [y/N]: ◆: Review resolved plan
+┌─ Select repository governance profile ───────────────────────────────────────────────────────┐
+│ ○ 1. Single-maintainer GitFlow - Generate the versioned local handoff with zero additional   │
+│ human pull request approvals; live activation is deferred. (single-maintainer-gitflow)       │
+│ [default]                                                                                    │
+│ ○ 2. Team GitFlow - Generate the versioned local handoff requiring one independent human     │
+│ pull request approval; live activation is deferred. (team-gitflow)                           │
+│ ○ 3. None - Do not generate repository-governance handoff artifacts. (none)                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+? Select option [single-maintainer-gitflow]: ? Set up the GitHub-hosted Copilot coding agent? This writes .github/workflows/copilot-setup-steps.yml and .github/agents/openspec.agent.md. [y/N]: ◆: Review resolved plan
 ┌─ Resolved project plan ──────────────────────────────────────────────────────────────────────┐
 │ Project                   snapshot-app                                                       │
 │ Project type              Standard application                                               │

@@ -446,7 +446,7 @@ describe('public documentation', () => {
     expect(readme).toContain('Repository governance');
     expect(gettingStarted).toContain('local files only');
     expect(workloads).toContain('repository-governance');
-    expect(cli).toContain('--governance single-maintainer-gitflow|none');
+    expect(cli).toContain('--governance single-maintainer-gitflow|team-gitflow|none');
     expect(existing).toContain('manifest-v8 managed-core successor');
     expect(prerequisites).toMatch(/no additional initialization\s+prerequisite/);
     expect(safety).toMatch(/never authorizes agent execution/);

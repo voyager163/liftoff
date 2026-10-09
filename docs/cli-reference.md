@@ -116,14 +116,15 @@ current directory or load project plugins. Registered syntax is distinguished
 from governance executor availability: `unavailable`, `injected-only`, and
 explicit blockers are not usable production execution. Plugin host declarations
 do not prove local tool readiness or native-package qualification. The current
-public catalog lists OpenSpec/Spec Kit/Manual, single-maintainer/none, historical
+public catalog lists OpenSpec/Spec Kit/Manual, single-maintainer/team/none, historical
 manifest readers 2-7, and v8 reading/writing. Its plugin inventory is the exact
 current generation source family. `schemas.currentGeneration` covers `plan`,
 `init`, and sibling `migrate`, not arbitrary source conversion.
 `schemas.modernReadOnly` separately lists the v8 source/helper and
 governance inspection routes. `schemas.modernLocalVerification` separately lists
-the explicit local request, approval and execution boundary below. This
-does not enable team generation, arbitrary writer access, or automatic local
+the explicit local request, approval and execution boundary below. Team profile
+generation belongs only to `schemas.currentGeneration`; verification does not
+enable arbitrary writer access or automatic local
 completion. `schemas.workflowTransition` advertises the exact schema-1 planning
 and authority-selection interface separately from its empty
 `executableTransitions` list; command registration does not imply a transition
@@ -146,7 +147,7 @@ Common noninteractive inputs include:
 --spec openspec|spec-kit|manual
 --agents copilot,claude,codex | --agents none
 --default-agent copilot|claude|codex
---governance single-maintainer-gitflow|none
+--governance single-maintainer-gitflow|team-gitflow|none
 --copilot-cloud | --no-copilot-cloud
 --configure-openspec-profile
 ```
@@ -170,8 +171,10 @@ For `init` and `migrate`, case or NFC-normalization aliases in staged destinatio
 paths are blocking conflicts, not forceable replacements. Existing destination
 ancestors must be listable; see [overwrite boundaries](safety-and-consent.md#overwrite-boundaries).
 
-Repository governance defaults to `single-maintainer-gitflow`. It generates a
-local deterministic setup integrations; initialization does not run activation.
+Repository governance defaults to `single-maintainer-gitflow`, whose local
+handoff requires zero additional human approvals. `team-gitflow` selects the
+local handoff requiring one current independent human pull request approval.
+Neither profile adds deployment reviewers or activates live enforcement.
 The setup integration coordinates local readiness and separately approved
 publication, cloud, and governance work. `none` omits it. See
 [repository governance](repository-governance.md).
@@ -404,7 +407,7 @@ for review; project command stdout/stderr is represented by digests, not echoed.
 
 Existing admitted fresh/current v8 Manual and Spec Kit projects can finalize
 successful local verification, review exact publication files, and independently
-approve their publication. This does not enable Manual/team generation, project
+approve their publication. This completion interface does not enable project
 conversion, successor revalidation, OpenSpec finalization, providers or automatic
 whole-directory rollback. Historical, retained, changed-baseline and nonlocal
 progression require their separately supported reconciliation paths.

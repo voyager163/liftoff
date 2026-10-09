@@ -29,7 +29,7 @@ const projectFlags = {
   agents: valueFlag('Comma-separated AI coding agents; none is valid only for Manual', 'Framework', 'list', 'copilot; none for Manual'),
   'default-agent': valueFlag('Primary agent for Spec Kit when multiple agents are selected', 'Framework', 'agent'),
   governance: valueFlag(
-    'Repository-governance profile',
+    'Repository-governance profile: single-maintainer-gitflow, team-gitflow, or none',
     'Framework',
     'profile',
     'single-maintainer-gitflow'

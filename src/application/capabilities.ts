@@ -30,10 +30,11 @@ export function installedCapabilities() {
         manifestWrite: 8,
         commands: ['plan', 'init', 'migrate'],
         workflows: projectCatalog.developmentWorkflows.map(({ id }) => id),
+        profiles: projectCatalog.governanceProfiles.map(({ id }) => id),
         defaultWorkflow: 'openspec',
         manualAgentsOptional: true,
         frameworkInitialization: 'Official initialization is required only for OpenSpec and Spec Kit.',
-        scope: 'Fresh project generation and sibling migration scaffolding. No automatic source adoption, local verification/finalization, provider operations, or live governance activation.'
+        scope: 'Fresh project generation and sibling migration scaffolding, including local single-maintainer and team governance handoffs. No automatic source adoption, local verification/finalization, provider operations, or live governance activation.'
       },
       modernReadOnly: {
         manifestRead: [8],
@@ -92,7 +93,7 @@ export function installedCapabilities() {
         comparisonProfiles: ['none', 'single-maintainer-gitflow', 'team-gitflow'],
         explicitNonGitRoot: true, liveMetadata: true, liveProviders: ['github'], liveConformance: false,
         credentialEnrollment: false, projectExecution: false, projectWrites: false, telemetry: false,
-        scope: 'Bounded local metadata, declaration names and exact current managed-byte comparisons. Runtime constraints, references, agent behavior, effective governance and deployment proof remain unobserved. Team policy metadata comparison is not public team generation or enforcement support.',
+        scope: 'Bounded local metadata, declaration names and exact current managed-byte comparisons. Runtime constraints, references, agent behavior, effective governance and deployment proof remain unobserved. Team generation produces only the selected local handoff; it is not live enforcement support.',
         recommendations: 'Advisory separate lanes only. Non-Liftoff projects may receive the read-only adopt preview; current v8 workflow changes may use the separately advertised exact workflow transition executor. Governance profile/plugin transitions, provider activation and deployed-state migration remain unavailable.',
         liveScope: 'Explicit bounded GitHub metadata reads for the verified local repository binding, applicable main/develop/release/hotfix refs and declared current environments, plus fixed GitHub Actions app metadata. No account/runner/Azure discovery; observed metadata is not current-profile conformance or activation proof.'
       },
@@ -178,7 +179,7 @@ export function installedCapabilities() {
       publicStatefulMigration: false,
       projectTelemetryEnrollment: false,
       capabilityIsApproval: false,
-      privateApis: 'OpenSpec finalization, team generation and arbitrary v8 project writer APIs are not public CLI support. Fresh generation is limited to currentGeneration. Historical successor creation is limited to the separately advertised currentUpdate scope.',
+      privateApis: 'OpenSpec finalization and arbitrary v8 project writer APIs are not public CLI support. Fresh Manual and team-profile generation is limited to currentGeneration. Historical successor creation is limited to the separately advertised currentUpdate scope.',
       registration: 'Command syntax does not imply that every option combination is valid or an executor is available.'
     }
   };

@@ -20,7 +20,10 @@ export type EnvironmentId = 'dev' | 'staging' | 'prod';
 export type ScaffoldStatus = 'full' | 'foundation' | 'integration-shell';
 export type ProjectTypeId = 'genai' | 'standard';
 export type ApiStackId = 'python-fastapi' | 'node-fastify' | 'go-huma';
-export type GovernanceProfileId = 'single-maintainer-gitflow' | 'none';
+export type GovernanceProfileId =
+  | 'single-maintainer-gitflow'
+  | 'team-gitflow'
+  | 'none';
 export type ManifestGovernanceProfileId = GovernanceProfileId | 'unspecified';
 
 export interface ProjectTypeDefinition {

@@ -342,6 +342,10 @@ describe('commands', () => {
       'plan',
       '--governance=none'
     ]).flags.governance).toBe('none');
+    expect(parseArgs([
+      'plan',
+      '--governance=team-gitflow'
+    ]).flags.governance).toBe('team-gitflow');
   });
 
   it('rejects unknown flags, options, subcommands, and extra positionals', () => {

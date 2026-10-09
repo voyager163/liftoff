@@ -169,6 +169,10 @@ function resolveProjectPlan(
       `Unknown repository governance profile: ${input.governanceProfile}. ` +
       `Use one of: ${governanceProfiles.map((profile) => profile.id).join(', ')}.`
     );
+  } else if (!current && governanceProfile.id === 'team-gitflow') {
+    issues.push(
+      'Team GitFlow requires current manifest-v8 project generation.'
+    );
   }
 
   const manual = specWorkflow?.id === 'manual';

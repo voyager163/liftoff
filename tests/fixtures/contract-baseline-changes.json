@@ -44,35 +44,71 @@
     {
       "surface": "cli-text",
       "key": "init --help",
-      "task": "4.1",
-      "reason": "Advertise the implemented Manual development workflow and optional agents, preserving OpenSpec omission defaults and the untouched historical capture.",
+      "task": "8.5",
+      "reason": "Advertise the selectable team-gitflow profile alongside the unchanged single-maintainer default and none. The team profile binds one independent human PR approval without adding deployment-reviewer authority.",
       "baselineSha256": "d0990e06b38dbc55af30130b629aa95df1e149d63e213e9870c0958b1ad16354",
-      "currentSha256": "bc33f95ec4b84500959acd4034f9b44ba91d2250068e12ec6f72664c5d8a9841",
+      "currentSha256": "505f63ef5e68a1aa57a2b98a0770a0ff5bad52ef7d6ce7f6a2d49bac0d84d5b9",
+      "priorCurrentSha256": "bc33f95ec4b84500959acd4034f9b44ba91d2250068e12ec6f72664c5d8a9841",
       "changed": [
         "/stdout"
-      ]
+      ],
+      "priorChange": {
+        "surface": "cli-text",
+        "key": "init --help",
+        "task": "4.1",
+        "reason": "Advertise the implemented Manual development workflow and optional agents, preserving OpenSpec omission defaults and the untouched historical capture.",
+        "baselineSha256": "d0990e06b38dbc55af30130b629aa95df1e149d63e213e9870c0958b1ad16354",
+        "currentSha256": "bc33f95ec4b84500959acd4034f9b44ba91d2250068e12ec6f72664c5d8a9841",
+        "changed": [
+          "/stdout"
+        ]
+      }
     },
     {
       "surface": "cli-text",
       "key": "plan --help",
-      "task": "4.1",
-      "reason": "Advertise the implemented Manual development workflow and optional agents, preserving OpenSpec omission defaults and the untouched historical capture.",
+      "task": "8.5",
+      "reason": "Advertise the selectable team-gitflow profile alongside the unchanged single-maintainer default and none. The team profile binds one independent human PR approval without adding deployment-reviewer authority.",
       "baselineSha256": "28d485286ef0ada7003175a765a232d18e23e1ff01c55277cf4f76eb4309fc6a",
-      "currentSha256": "3445e443f37239623fa83153cbe96670aec6e7fc900d2cf7458564fdda89bcb3",
+      "currentSha256": "7c00cc4aa2f276f3185361870abc09cf7c773015d0bcc2f9a7889e32d4d29696",
+      "priorCurrentSha256": "3445e443f37239623fa83153cbe96670aec6e7fc900d2cf7458564fdda89bcb3",
       "changed": [
         "/stdout"
-      ]
+      ],
+      "priorChange": {
+        "surface": "cli-text",
+        "key": "plan --help",
+        "task": "4.1",
+        "reason": "Advertise the implemented Manual development workflow and optional agents, preserving OpenSpec omission defaults and the untouched historical capture.",
+        "baselineSha256": "28d485286ef0ada7003175a765a232d18e23e1ff01c55277cf4f76eb4309fc6a",
+        "currentSha256": "3445e443f37239623fa83153cbe96670aec6e7fc900d2cf7458564fdda89bcb3",
+        "changed": [
+          "/stdout"
+        ]
+      }
     },
     {
       "surface": "cli-text",
       "key": "migrate --help",
-      "task": "4.1",
-      "reason": "Advertise the implemented Manual development workflow and optional agents, preserving OpenSpec omission defaults and the untouched historical capture.",
+      "task": "8.5",
+      "reason": "Advertise the selectable team-gitflow profile alongside the unchanged single-maintainer default and none. The team profile binds one independent human PR approval without adding deployment-reviewer authority.",
       "baselineSha256": "7ae121662786a7ece6083da323c8d8314c1c5b2064916f1a461ff75f7a9defc8",
-      "currentSha256": "9d8d5b90682edd667dea0e6dc01563f41e57055d436349a668979deb54fdd246",
+      "currentSha256": "b14a55e132f0311c4c80be65f1e1b70e9e36679a50891f4599ea81e50b6ef619",
+      "priorCurrentSha256": "9d8d5b90682edd667dea0e6dc01563f41e57055d436349a668979deb54fdd246",
       "changed": [
         "/stdout"
-      ]
+      ],
+      "priorChange": {
+        "surface": "cli-text",
+        "key": "migrate --help",
+        "task": "4.1",
+        "reason": "Advertise the implemented Manual development workflow and optional agents, preserving OpenSpec omission defaults and the untouched historical capture.",
+        "baselineSha256": "7ae121662786a7ece6083da323c8d8314c1c5b2064916f1a461ff75f7a9defc8",
+        "currentSha256": "9d8d5b90682edd667dea0e6dc01563f41e57055d436349a668979deb54fdd246",
+        "changed": [
+          "/stdout"
+        ]
+      }
     },
     {
       "surface": "cli-text",

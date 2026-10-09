@@ -140,7 +140,7 @@ describe('complete onboarding screens', () => {
         standardInit,
         workspace,
         layout.columns,
-        { input: 'y\nn\n' }
+        { input: '\nn\n' }
       );
       expect(result.code).toBe(0);
       expect(result).toMatchSnapshot();

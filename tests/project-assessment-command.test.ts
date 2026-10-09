@@ -128,6 +128,10 @@ describe('actual public read-only project assessment route', () => {
     });
     expect(capabilities.schemas.reports.governanceAssessment).toBe(1);
     expect(capabilities.boundaries.publicStatefulMigration).toBe(false);
-    expect(capabilities.profiles.map(profile => profile.id)).toEqual(['single-maintainer-gitflow', 'none']);
+    expect(capabilities.profiles.map(profile => profile.id)).toEqual([
+      'single-maintainer-gitflow',
+      'team-gitflow',
+      'none'
+    ]);
   });
 });

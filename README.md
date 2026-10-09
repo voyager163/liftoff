@@ -79,7 +79,7 @@ before following newer guidance; planned features are not installed support.
 
 | Advertised schema | Separate public interface |
 | --- | --- |
-| `schemas.currentGeneration` | Fresh v8 `plan`, `init`, and sibling `migrate`, including framework-free Manual and optional agents. |
+| `schemas.currentGeneration` | Fresh v8 `plan`, `init`, and sibling `migrate`, including framework-free Manual, optional agents, and single-maintainer/team/none governance profiles. |
 | `schemas.currentUpdate` | [V8 project update](docs/cli-reference.md#update-modes): exact preview/approval, preserved configuration and history, and fingerprint-selected recovery. |
 | `schemas.projectAssessment` | [Read-only project assessment](docs/cli-reference.md#read-only-whole-project-assessment): bounded local observations and explicitly requested scoped GitHub metadata; fresh selected hosts receive `/liftoff-assess` (Copilot/Claude) or `$liftoff-assess` (Codex). Installed comparison targets and unobserved conformance remain distinct. |
 | `schemas.projectAdoption` | [Reviewed in-place adoption](docs/cli-reference.md#reviewed-in-place-adoption): schema-1 non-Liftoff discovery, explicit compatibility review, separately consented verification, exact publication approval, manifest-last transaction, and fingerprint-selected recovery. Application bytes remain preconditions; active-binding publication after later moves and deployment/state operations remain separate. |
@@ -87,7 +87,7 @@ before following newer guidance; planned features are not installed support.
 | `schemas.modernLocalCompletion` | [Manual/Spec Kit completion](docs/cli-reference.md#modern-local-completion): workflow-specific finalization, exact-file review and independent publication consent. |
 | `schemas.modernSuccessorRevalidation` | [Existing-successor revalidation](docs/cli-reference.md#modern-successor-revalidation): fresh verification and separate exact-byte publication approval. Incomplete commit exits 2, preserving the active successor and history without downgrade. |
 
-Recovery is explicit; saved progress is not current proof. These interfaces do not grant team generation, fresh OpenSpec finalization, cloud operations or whole-directory rollback.
+Recovery is explicit; saved progress is not current proof. Team generation writes only the selected local handoff and does not activate live enforcement. These interfaces do not grant fresh OpenSpec finalization, cloud operations or whole-directory rollback.
 
 [Existing repositories](docs/existing-repositories.md) ·
 [Safety and consent](docs/safety-and-consent.md) ·

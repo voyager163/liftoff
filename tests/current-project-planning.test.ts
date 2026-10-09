@@ -159,9 +159,24 @@ describe('current development planning', () => {
     expect(plan.framework).toBeUndefined();
   });
 
+  it('selects the packaged team policy only for current generation', () => {
+    const plan = buildCurrentProjectPlan({
+      ...input,
+      specWorkflow: 'manual',
+      governanceProfile: 'team-gitflow'
+    }, options);
+    expect(plan.governanceProfile).toMatchObject({
+      id: 'team-gitflow',
+      policyVersion: '1'
+    });
+    expect(() => buildProjectPlan({
+      ...input,
+      governanceProfile: 'team-gitflow'
+    }, options)).toThrow(/current manifest-v8/u);
+  });
+
   it.each([
     { specWorkflow: 'unknown' },
-    { governanceProfile: 'team-gitflow' },
     { projectType: 'power-apps-code-app' }
   ])('does not expose deferred or retired selections %j', extra => {
     expect(() => buildCurrentProjectPlan({ ...input, specWorkflow: 'manual', ...extra }, options))

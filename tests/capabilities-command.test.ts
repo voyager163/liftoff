@@ -64,12 +64,18 @@ describe('project-independent capability discovery', () => {
     expect(report.plugins.inventory.map(({ id }) => id)).toEqual(registry.inventory.map(({ id }) => id));
     expect(report.workflows.map(({ id }) => id)).toEqual(projectCatalog.developmentWorkflows.map(({ id }) => id));
     expect(report.workflows.map(({ id }) => id)).toEqual(['openspec', 'spec-kit', 'manual']);
-    expect(report.profiles.map(({ id }) => id)).toEqual(['single-maintainer-gitflow', 'none']);
+    expect(report.profiles.map(({ id }) => id)).toEqual([
+      'single-maintainer-gitflow',
+      'team-gitflow',
+      'none'
+    ]);
     expect(report.agents.map(({ id }) => id)).toEqual(projectCatalog.codingAgents.map(({ id }) => id));
     expect(report.schemas.manifestRead).toEqual([...SUPPORTED_MANIFEST_VERSIONS, 8]);
     expect(report.schemas.currentGeneration).toMatchObject({
       manifestWrite: 8, commands: ['plan', 'init', 'migrate'],
-      workflows: ['openspec', 'spec-kit', 'manual'], defaultWorkflow: 'openspec', manualAgentsOptional: true
+      workflows: ['openspec', 'spec-kit', 'manual'],
+      profiles: ['single-maintainer-gitflow', 'team-gitflow', 'none'],
+      defaultWorkflow: 'openspec', manualAgentsOptional: true
     });
     expect(report.schemas.modernReadOnly).toMatchObject({
       manifestRead: [8], governanceReport: 3, execution: false,
@@ -285,6 +291,8 @@ describe('project-independent capability discovery', () => {
     expect(reference).toContain('schemas.modernReadOnly');
     expect(reference).toContain('schemas.modernLocalCompletion');
     expect(reference).toContain('schemas.modernSuccessorRevalidation');
-    expect(reference).toContain('does not enable Manual/team generation');
+    expect(reference).toMatch(
+      /Team profile\s+generation belongs only to `schemas\.currentGeneration`/u
+    );
   });
 });

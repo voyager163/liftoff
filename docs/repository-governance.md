@@ -1,10 +1,13 @@
 # Repository governance and deterministic setup
 
 Repository governance is enabled by default through the
-`single-maintainer-gitflow` profile; `--governance none` opts out. Initialization
-writes local managed-core artifacts only. It does not run an agent, mutate Git,
-contact GitHub or Azure, configure rulesets, provision runners, deploy, or start
-monitoring.
+`single-maintainer-gitflow` profile. `--governance team-gitflow` selects the
+local team handoff, while `--governance none` opts out. Single-maintainer uses
+automated checks with zero additional human approvals; team requires one current
+independent human pull request approval. Neither profile adds deployment
+reviewers. Initialization writes local managed-core artifacts only. It does not
+run an agent, mutate Git, contact GitHub or Azure, configure rulesets, provision
+runners, deploy, or start monitoring.
 
 Primary path after initialization:
 
@@ -80,6 +83,9 @@ The complete policy is packaged at
 [`assets/governance/single-maintainer-gitflow/policy.md`](../assets/governance/single-maintainer-gitflow/policy.md).
 Policy version 6 treats numbered policy sections as capability chapters, not
 execution order. The managed phase graph is the sole execution-order authority.
+Current team generation uses
+[`assets/governance/team-gitflow/policy-v1.md`](../assets/governance/team-gitflow/policy-v1.md)
+and remains a local handoff until separately authorized live activation exists.
 
 ## Read-only governance assessment
 

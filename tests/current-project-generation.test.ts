@@ -40,7 +40,7 @@ const selection = {
 };
 
 describe('current real-project generation', () => {
-  for (const governanceProfile of ['none', 'single-maintainer-gitflow']) {
+  for (const governanceProfile of ['none', 'single-maintainer-gitflow', 'team-gitflow']) {
     it.each(subsets.map(selected => [selected] as const))(
       `renders exact Manual integrations with ${governanceProfile} and agents %j`,
       selected => {
@@ -73,6 +73,10 @@ describe('current real-project generation', () => {
         }
         const config = artifacts.find(artifact => artifact.logicalName === 'liftoff-config');
         expect(JSON.parse(config!.content)).toMatchObject({ specWorkflow: 'manual', agents: selected, governanceProfile });
+        if (governanceProfile === 'team-gitflow') {
+          expect(artifacts.find(artifact => artifact.logicalName === 'repository-governance-policy')?.content)
+            .toContain('one independent human PR approval');
+        }
         const readme = artifacts.find(artifact => artifact.logicalName === 'root-readme')!.content;
         expect(readme).toContain('Update JSON uses schema 4.');
         expect(readme).toContain('Manual has no external specification framework');
@@ -199,7 +203,7 @@ describe('current real-project generation', () => {
       .toBe(false);
   });
 
-  it.each(['none', 'single-maintainer-gitflow'])('writes a valid Manual tree with spaces and %s governance', async governanceProfile => {
+  it.each(['none', 'single-maintainer-gitflow', 'team-gitflow'])('writes a valid Manual tree with spaces and %s governance', async governanceProfile => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff manual generation '));
     roots.push(root);
     const artifacts = buildCurrentArtifacts(buildCurrentProjectPlan({
