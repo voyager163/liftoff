@@ -68,6 +68,6 @@ describe('reviewed activation successor compatibility', () => {
       evidenceHeaderSchemaVersion: 3,
       approvalEnvelopeSchemaVersion: 3
     });
-    expect(canonicalPhaseGraphHash).toBe('24b2c47952b012fd38a6ceb0fb1d68981b2a123c97bf8c4b6b7f1adb503a2345');
+    expect(canonicalPhaseGraphHash).toBe('243c2df5b113d59183287f2dac0091389a64c3798670f11ee064547ceea7a97b');
   });
 });

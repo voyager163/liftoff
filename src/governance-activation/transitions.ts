@@ -115,9 +115,10 @@ function executionCapabilityBlocker(
   const capability = phaseCapabilities[phaseId];
   if (adapters.phases?.[phaseId]) return null;
   if ((phaseId === 'private-backend-proof' || phaseId === 'remote-import-verified') &&
-    adapters.protectedStateHandover) {
+    adapters.protectedStateHandover && adapters.protectedStateCustody) {
     return null;
   }
+  if (phaseId === 'bootstrap-state-disposed' && adapters.protectedStateCustody) return null;
   if (capability.executor === 'injected-only' && adapters.githubRulesets &&
     (phaseId === 'rulesets-applied' || phaseId === 'live-readback')) return null;
   if (phaseId === 'credential-ready' && !credentialEnrollment) {

@@ -53,11 +53,17 @@ export interface ProtectedStateOperationRequest {
     targetState: 'absent';
     locking: 'azure-blob-lease';
     backup: 'authenticated-encrypted';
+    protectedStorage: 'encrypted-private';
+    keyCustody: 'external-nonexporting';
+    writerQuiescence: true;
+    plaintextFallback: false;
+    disposal: 'same-qualified-custody';
     completeMapping: true;
     noChangePlan: true;
     retentionDays: 30;
     preExistingStateMigration: false;
   };
+  custody: ProtectedStateCustodyProof;
   previousOperation: ExternalOperationState | null;
 }
 
@@ -93,13 +99,14 @@ export interface ProtectedBackendProof {
   backendBindingDigest: string;
   targetStateExists: false;
   locking: 'azure-blob-lease';
+  custody: ProtectedStateCustodyProof;
   observationDigest: string;
 }
 
 export interface ProtectedStateBackup {
   artifactDigest: string;
-  encryptedStatePathParts: readonly string[];
-  encryptionKeyPathParts: readonly string[];
+  encryptedStateRef: string;
+  encryptionKeyRef: string;
 }
 
 export interface ProtectedStateHandoverProof {
@@ -124,6 +131,7 @@ export interface ProtectedStateHandoverProof {
   };
   mappings: readonly ProtectedStateResourceMapping[];
   backups: readonly ProtectedStateBackup[];
+  custody: ProtectedStateCustodyProof;
 }
 
 export type ProtectedBackendProofResult =
@@ -147,6 +155,88 @@ export type ProtectedStateHandoverResult =
 export interface ProtectedStateHandoverPort {
   proveBackend(request: ProtectedStateOperationRequest): Promise<ProtectedBackendProofResult>;
   handover(request: ProtectedStateOperationRequest): Promise<ProtectedStateHandoverResult>;
+}
+
+export interface ProtectedStateCustodyProof {
+  kind: 'protected-state-custody.v1';
+  bindingDigest: string;
+  runnerId: number;
+  runnerLabel: string;
+  runnerGroupId: number;
+  networkConfigurationId: string;
+  hostId: string;
+  workspaceRef: string;
+  storageRef: string;
+  keyProviderRef: string;
+  protectedStorage: 'encrypted-private';
+  keyCustody: 'external-nonexporting';
+  locking: 'azure-blob-lease';
+  writerQuiesced: true;
+  plaintextFallback: false;
+  disposalSupported: true;
+  observedAt: string;
+  expiresAt: string;
+  qualificationDigest: string;
+}
+
+export interface ProtectedStateCustodyRequest {
+  schemaVersion: 1;
+  bindingDigest: string;
+  repository: string;
+  runner: ProtectedStateOperationRequest['runner'];
+  backendBindingDigest: string;
+  bootstrapBindingDigest: string;
+  retentionDays: 30;
+}
+
+export type ProtectedStateCustodyFailureReason =
+  | 'capability-unavailable'
+  | 'unsupported-host'
+  | 'protected-storage-unavailable'
+  | 'key-unavailable'
+  | 'locking-unavailable'
+  | 'writer-active'
+  | 'disposal-unavailable'
+  | 'stale-binding'
+  | 'artifact-missing'
+  | 'verification-failed';
+
+export type ProtectedStateCustodyResult =
+  | { status: 'blocked'; reason: ProtectedStateCustodyFailureReason }
+  | { status: 'qualified'; proof: ProtectedStateCustodyProof };
+
+export interface ProtectedStateDisposalRequest {
+  schemaVersion: 1;
+  repository: string;
+  remoteImportEvidenceId: string;
+  remoteImportEvidenceDigest: string;
+  remoteBackendDigest: string;
+  noChangePlanDigest: string;
+  disposeAfter: string;
+  requestedAt: string;
+  custody: ProtectedStateCustodyProof;
+  backups: readonly ProtectedStateBackup[];
+}
+
+export interface ProtectedStateDisposalProof {
+  kind: 'protected-state-disposal.v1';
+  remoteImportEvidenceId: string;
+  remoteImportEvidenceDigest: string;
+  custodyQualificationDigest: string;
+  disposedAt: string;
+  deletedArtifactRefs: readonly string[];
+  deletedKeyRefs: readonly string[];
+  payloadFree: true;
+  disposalDigest: string;
+}
+
+export type ProtectedStateDisposalResult =
+  | { status: 'blocked'; reason: ProtectedStateCustodyFailureReason }
+  | { status: 'completed'; proof: ProtectedStateDisposalProof };
+
+export interface ProtectedStateCustodyPort {
+  qualify(request: ProtectedStateCustodyRequest): Promise<ProtectedStateCustodyResult>;
+  dispose(request: ProtectedStateDisposalRequest): Promise<ProtectedStateDisposalResult>;
 }
 
 export interface GovernanceTransitionInspection {
@@ -278,6 +368,7 @@ export interface GovernanceTransitionAdapters {
   githubRulesets?: GitHubRulesetAdapter;
   githubActivation?: GitHubActivationPorts;
   protectedStateHandover?: ProtectedStateHandoverPort;
+  protectedStateCustody?: ProtectedStateCustodyPort;
   azureOperationPolling?: {
     maxAttempts: number;
     intervalMs: number;

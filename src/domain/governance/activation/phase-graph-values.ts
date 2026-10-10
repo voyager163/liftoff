@@ -477,7 +477,7 @@ export function buildPhaseDefinitions(versions: {
       },
       {
         id: 'bootstrap-state-disposed',
-        label: 'Retained local bootstrap state is disposed after day 30',
+        label: 'Retained protected bootstrap state is disposed after day 30',
         dependencies: [dep(['live-readback'], 'Disposal is scheduled only after live enforcement readback.')],
         applicability: {
           kind: 'conditional',
@@ -490,7 +490,7 @@ export function buildPhaseDefinitions(versions: {
         evidence: evidence('bootstrap-state-disposed.v1'),
         approvalGate: approval('destructive-disposal', true),
         invalidationInputs: ['remote-state', 'approval-envelope'],
-        rollback: rollback('dispose', null, 'Deletion destroys only the local encryption key and records no payload.'),
+        rollback: rollback('dispose', null, 'Deletion destroys only the exact protected artifacts and non-exporting key reference under the qualified custody authority and records no payload.'),
         terminalStates: ['disposed', 'failed', 'inapplicable']
       }
     ] as const;

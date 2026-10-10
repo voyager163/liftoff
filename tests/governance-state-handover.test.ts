@@ -1,4 +1,4 @@
-import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -16,12 +16,20 @@ import {
   executeProtectedStatePhase,
   privateBackendProofPlanInputs
 } from '../src/governance-activation/protected-state-handover.js';
+import {
+  protectedStateCustodyIdentityDigest
+} from '../src/governance-activation/protected-state-custody.js';
 import { bootstrapBinding } from '../src/governance-activation/azure-backend-bootstrap.js';
 import { runnerBinding } from '../src/governance-activation/runner-readiness.js';
 import type {
   PhaseAdapterExecutionInput,
   PhasePlanningInput,
   ProtectedBackendProofResult,
+  ProtectedStateCustodyPort,
+  ProtectedStateCustodyRequest,
+  ProtectedStateCustodyResult,
+  ProtectedStateDisposalRequest,
+  ProtectedStateDisposalResult,
   ProtectedStateHandoverPort,
   ProtectedStateHandoverResult,
   ProtectedStateOperationRequest
@@ -263,6 +271,20 @@ async function fixture(
     now: coverageNow
   });
   if (phaseId === 'remote-import-verified') {
+    const priorCustody = custodyProof({
+      schemaVersion: 1,
+      bindingDigest: privateInputs.stateHandoverBindingDigest as string,
+      repository: 'owner/repo',
+      runner: {
+        id: 444,
+        label: runnerPlanBinding.label,
+        groupId: 333,
+        networkConfigurationId: 'NC_fixture'
+      },
+      backendBindingDigest: bootstrap.backend.bindingDigest,
+      bootstrapBindingDigest: bootstrap.bindingDigest,
+      retentionDays: 30
+    });
     state = {
       ...state,
       phases: {
@@ -282,7 +304,8 @@ async function fixture(
             runnerId: 444,
             runnerLabel: runnerPlanBinding.label,
             targetStateExists: false,
-            locking: 'azure-blob-lease'
+            locking: 'azure-blob-lease',
+            custodyIdentityDigest: protectedStateCustodyIdentityDigest(priorCustody)
           },
           resources: [{
             provider: 'azure',
@@ -341,11 +364,88 @@ function operation(
   };
 }
 
-class StatePort implements ProtectedStateHandoverPort {
-  readonly requests: ProtectedStateOperationRequest[] = [];
-  mode: 'completed' | 'pending' | 'occupied' | 'mapping-drift' = 'completed';
+function custodyProof(request: ProtectedStateCustodyRequest) {
+  const body = {
+    kind: 'protected-state-custody.v1' as const,
+    bindingDigest: request.bindingDigest,
+    runnerId: request.runner.id,
+    runnerLabel: request.runner.label,
+    runnerGroupId: request.runner.groupId,
+    networkConfigurationId: request.runner.networkConfigurationId,
+    hostId: `github-hosted-runner:${request.runner.id}`,
+    workspaceRef: 'state-workspace:fixture',
+    storageRef: 'protected-storage:fixture',
+    keyProviderRef: 'key-provider:fixture',
+    protectedStorage: 'encrypted-private' as const,
+    keyCustody: 'external-nonexporting' as const,
+    locking: 'azure-blob-lease' as const,
+    writerQuiesced: true as const,
+    plaintextFallback: false as const,
+    disposalSupported: true as const,
+    observedAt: coverageNow.toISOString(),
+    expiresAt: new Date(coverageNow.getTime() + 40 * 24 * 60 * 60 * 1000).toISOString()
+  };
+  return { ...body, qualificationDigest: canonicalSha256(body) };
+}
 
-  constructor(private readonly root: string) {}
+class StatePort implements ProtectedStateHandoverPort, ProtectedStateCustodyPort {
+  readonly requests: ProtectedStateOperationRequest[] = [];
+  readonly custodyRequests: ProtectedStateCustodyRequest[] = [];
+  mode: 'completed' | 'pending' | 'occupied' | 'mapping-drift' | 'shared-key' = 'completed';
+  custodyMode:
+    | 'qualified'
+    | 'unsupported-host'
+    | 'protected-storage-unavailable'
+    | 'key-unavailable'
+    | 'locking-unavailable'
+    | 'writer-active' = 'qualified';
+  custodyHostId: string | undefined;
+
+  constructor(_root: string) {}
+
+  async qualify(
+    request: ProtectedStateCustodyRequest
+  ): Promise<ProtectedStateCustodyResult> {
+    this.custodyRequests.push(request);
+    if (this.custodyMode !== 'qualified') {
+      return { status: 'blocked', reason: this.custodyMode };
+    }
+    const proof = custodyProof(request);
+    if (!this.custodyHostId) return { status: 'qualified', proof };
+    const changed = {
+      ...proof,
+      hostId: this.custodyHostId
+    };
+    return {
+      status: 'qualified',
+      proof: {
+        ...changed,
+        qualificationDigest: canonicalSha256(
+          Object.fromEntries(Object.entries(changed).filter(([key]) =>
+            key !== 'qualificationDigest'))
+        )
+      }
+    };
+  }
+
+  async dispose(
+    request: ProtectedStateDisposalRequest
+  ): Promise<ProtectedStateDisposalResult> {
+    const body = {
+      kind: 'protected-state-disposal.v1' as const,
+      remoteImportEvidenceId: request.remoteImportEvidenceId,
+      remoteImportEvidenceDigest: request.remoteImportEvidenceDigest,
+      custodyQualificationDigest: request.custody.qualificationDigest,
+      disposedAt: request.requestedAt,
+      deletedArtifactRefs: request.backups.map((backup) => backup.encryptedStateRef),
+      deletedKeyRefs: [...new Set(request.backups.map((backup) => backup.encryptionKeyRef))],
+      payloadFree: true as const
+    };
+    return {
+      status: 'completed',
+      proof: { ...body, disposalDigest: canonicalSha256(body) }
+    };
+  }
 
   async proveBackend(
     request: ProtectedStateOperationRequest
@@ -371,6 +471,7 @@ class StatePort implements ProtectedStateHandoverPort {
         backendBindingDigest: request.backend.bindingDigest,
         targetStateExists: false,
         locking: 'azure-blob-lease',
+        custody: request.custody,
         observationDigest: 'b'.repeat(64)
       }
     };
@@ -386,25 +487,18 @@ class StatePort implements ProtectedStateHandoverPort {
     if (this.mode === 'pending') {
       return { status: 'pending', operation: operation(request, 'running') };
     }
-    const stateParts = ['governance', 'protected-state', 'bootstrap.tfstate.enc'];
-    const keyParts = ['governance', 'protected-state', 'bootstrap.key'];
-    await mkdir(path.join(this.root, 'governance', 'protected-state'), {
-      recursive: true,
-      mode: 0o700
-    });
-    await writeFile(path.join(this.root, ...stateParts), 'encrypted-state\n', {
-      encoding: 'utf8',
-      mode: 0o600
-    });
-    await writeFile(path.join(this.root, ...keyParts), 'wrapped-key\n', {
-      encoding: 'utf8',
-      mode: 0o600
-    });
-    await chmod(path.join(this.root, ...stateParts), 0o600);
-    await chmod(path.join(this.root, ...keyParts), 0o600);
     const mappings = this.mode === 'mapping-drift'
       ? request.resources.slice(1)
       : request.resources;
+    const backups = [{
+      artifactDigest: '1'.repeat(64),
+      encryptedStateRef: `${request.custody.workspaceRef}/bootstrap.tfstate.enc`,
+      encryptionKeyRef: request.custody.keyProviderRef
+    }, ...(this.mode === 'shared-key' ? [{
+      artifactDigest: '2'.repeat(64),
+      encryptedStateRef: `${request.custody.workspaceRef}/bootstrap.tfstate.previous.enc`,
+      encryptionKeyRef: request.custody.keyProviderRef
+    }] : [])];
     return {
       status: 'completed',
       operation: operation(request, 'completed'),
@@ -429,11 +523,8 @@ class StatePort implements ProtectedStateHandoverPort {
           destroy: 0
         },
         mappings,
-        backups: [{
-          artifactDigest: '1'.repeat(64),
-          encryptedStatePathParts: stateParts,
-          encryptionKeyPathParts: keyParts
-        }]
+        backups,
+        custody: request.custody
       }
     };
   }
@@ -441,7 +532,7 @@ class StatePort implements ProtectedStateHandoverPort {
 
 function execution(
   value: Fixture,
-  port: ProtectedStateHandoverPort
+  port: ProtectedStateHandoverPort & ProtectedStateCustodyPort
 ): PhaseAdapterExecutionInput {
   return {
     inspection: value.inspection,
@@ -449,7 +540,8 @@ function execution(
     plan: value.plan,
     runner: value.runner,
     adapters: {
-      protectedStateHandover: port
+      protectedStateHandover: port,
+      protectedStateCustody: port
     },
     now: coverageNow
   };
@@ -514,12 +606,21 @@ describe('protected bootstrap-owned state handover', () => {
       },
       requirements: {
         targetState: 'absent',
+        protectedStorage: 'encrypted-private',
+        keyCustody: 'external-nonexporting',
+        plaintextFallback: false,
         preExistingStateMigration: false
+      },
+      custody: {
+        kind: 'protected-state-custody.v1',
+        writerQuiesced: true,
+        disposalSupported: true
       }
     });
+    expect(port.custodyRequests).toHaveLength(1);
   });
 
-  it('accepts only complete bootstrap mappings, owner-only encrypted backups, exact concurrency, and a zero-change plan', async () => {
+  it('accepts only complete bootstrap mappings, protected-custody backups, exact concurrency, and a zero-change plan', async () => {
     const value = await fixture('remote-import-verified');
     const port = new StatePort(value.root);
     const result = await executeProtectedStatePhase(execution(value, port));
@@ -538,15 +639,23 @@ describe('protected bootstrap-owned state handover', () => {
           destroy: 0
         },
         encryptedStatePathParts: [[
-          'governance',
-          'protected-state',
-          'bootstrap.tfstate.enc'
+          'protected-custody',
+          canonicalSha256('state-workspace:fixture/bootstrap.tfstate.enc')
         ]],
         encryptionKeyPathParts: [[
-          'governance',
-          'protected-state',
-          'bootstrap.key'
-        ]]
+          'protected-custody',
+          canonicalSha256('key-provider:fixture')
+        ]],
+        custody: {
+          protectedStorage: 'encrypted-private',
+          keyCustody: 'external-nonexporting',
+          plaintextFallback: false,
+          writerQuiesced: true
+        },
+        backups: [{
+          encryptedStateRef: 'state-workspace:fixture/bootstrap.tfstate.enc',
+          encryptionKeyRef: 'key-provider:fixture'
+        }]
       },
       outputs: {
         values: {
@@ -561,6 +670,26 @@ describe('protected bootstrap-owned state handover', () => {
     expect(request.resources.filter((entry) => entry.disposition === 'embedded')).toHaveLength(1);
     expect(request.resources.filter((entry) =>
       entry.disposition === 'retain-operation-record')).toHaveLength(2);
+  });
+
+  it('retains one qualified non-exporting key inventory when bounded encrypted artifacts share it', async () => {
+    const value = await fixture('remote-import-verified');
+    const port = new StatePort(value.root);
+    port.mode = 'shared-key';
+    const result = await executeProtectedStatePhase(execution(value, port));
+
+    expect(result).toMatchObject({
+      status: 'completed',
+      evidencePayload: {
+        encryptedStatePathParts: [
+          ['protected-custody', canonicalSha256('state-workspace:fixture/bootstrap.tfstate.enc')],
+          ['protected-custody', canonicalSha256('state-workspace:fixture/bootstrap.tfstate.previous.enc')]
+        ],
+        encryptionKeyPathParts: [
+          ['protected-custody', canonicalSha256('key-provider:fixture')]
+        ]
+      }
+    });
   });
 
   it('persists one immutable workflow handle and supplies it to resume without redispatch authority expansion', async () => {
@@ -620,6 +749,32 @@ describe('protected bootstrap-owned state handover', () => {
     });
   });
 
+  it.each([
+    ['unsupported-host', 'not approved'],
+    ['protected-storage-unavailable', 'plaintext project-file fallback is prohibited'],
+    ['key-unavailable', 'key provider is unavailable'],
+    ['locking-unavailable', 'locking capability is unavailable'],
+    ['writer-active', 'another writer may still be active']
+  ] as const)('blocks %s custody admission without dispatching protected state work', async (mode, message) => {
+    const value = await fixture('private-backend-proof');
+    const port = new StatePort(value.root);
+    port.custodyMode = mode;
+    const result = await executeProtectedStatePhase(execution(value, port));
+    expect(result).toMatchObject({ status: 'blocked', resultState: 'failed' });
+    expect(result?.blocker).toContain(message);
+    expect(port.requests).toHaveLength(0);
+  });
+
+  it('blocks handover when current custody changes from private backend proof', async () => {
+    const value = await fixture('remote-import-verified');
+    const port = new StatePort(value.root);
+    port.custodyHostId = 'github-hosted-runner:999';
+    const result = await executeProtectedStatePhase(execution(value, port));
+    expect(result).toMatchObject({ status: 'blocked', resultState: 'failed' });
+    expect(result?.blocker).toContain('changed the host, storage, key, locking, or writer custody');
+    expect(port.requests).toHaveLength(0);
+  });
+
   it('rejects brownfield claims and incomplete provider readback as current authoritative evidence', async () => {
     const value = await fixture('remote-import-verified');
     const result = await executeProtectedStatePhase(execution(value, new StatePort(value.root)));
@@ -664,7 +819,7 @@ describe('protected bootstrap-owned state handover', () => {
       authorized: false,
       reason: 'blocked'
     });
-    expect(result.message).toContain('public existing-state migration remains disabled');
+    expect(result.message).toContain('public existing-state migration and plaintext fallback remain disabled');
     expect(value.runner.azureCalls).toHaveLength(0);
   });
 });

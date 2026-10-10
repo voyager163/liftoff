@@ -82,9 +82,15 @@ Approved new-environment activation now exposes a separate injected-only
 bootstrap/handover capability for resources created by the same recorded operation.
 It binds exact ownership, locking, complete fixed mappings,
 authenticated encrypted backups, concurrency and zero-change verification.
-The default public CLI does not register that capability, and protected-host,
-key-custody and due-time disposal qualification remain separate. This narrow
-exception does not authorize arbitrary brownfield state access.
+It must be paired with a custody capability that attests the exact runner/host,
+opaque protected workspace and storage, non-exporting external key reference,
+Azure blob-lease locking, writer quiescence, disposal support, and refusal of
+plaintext fallback. Retention records only digests of opaque artifact/key
+references. Day-30 disposal is also injected-only and succeeds only after the
+same custody identity is freshly requalified and returns exact payload-free
+deletion proof. The default public CLI registers neither capability. This narrow
+exception does not authorize arbitrary brownfield state access and does not
+expose this module's generic state-migration API.
 
 ## Coordinator integration
 

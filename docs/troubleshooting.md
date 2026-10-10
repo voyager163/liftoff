@@ -287,8 +287,9 @@ explicit approval before creating any Azure or GitHub resource. Do not replace
 missing capability with duplicate scanners, partial provisioning, or
 placeholder success.
 These are target-policy requirements; production phases still have explicit
-capability gaps. Two ruleset phases and the two protected-state phases require
-explicit injected capabilities absent from the default public CLI. Exact
+capability gaps. Two ruleset phases and the protected proof, handover, and
+due-time disposal phases require explicit injected capabilities absent from the
+default public CLI. Exact
 approval persistence, provider readiness, protected credential enrollment, and
 approved existing-private backend readiness are built in. The bounded
 new-environment path can also provision and verify its repository-dedicated
@@ -296,6 +297,17 @@ larger runner, but that does not by itself authorize private backend proof,
 state handover, application provisioning, deployment, or enforcement phases.
 An unavailable executor or authority entry point is a blocker, not an instruction
 to run its provider commands directly.
+
+For protected state work, do not copy backups or key material into the project
+when custody admission fails. The required private adapter must report the exact
+runner/host, protected workspace/storage, non-exporting key reference, Azure
+blob-lease lock, writer quiescence, and disposal support with plaintext fallback
+disabled. `remote-import-verified` must keep the custody identity established by
+`private-backend-proof`. Day-30 disposal must use the same custody identity and
+exact retained opaque artifact/key references; it cannot run early, treat
+already-missing material as success, or fall back to ordinary filesystem
+deletion. Reconnect the approved protected host/storage/key capability and
+resume the saved phase rather than moving material to an unsupported host.
 
 If a private ZRS state backend cannot be reached because public network access
 is disabled, do not enable public access or upload local state to GitHub.
@@ -330,8 +342,9 @@ must remain blocked.
 Continue only through the injected `private-backend-proof` and
 `remote-import-verified` capability. It must use the exact recorded runner and
 same bootstrap-owned inventory, an absent target, Azure blob-lease locking,
-complete fixed mappings, owner-only encrypted backups, and a
-zero-add/change/destroy plan. While its GitHub Actions run is pending, use
+complete fixed mappings, opaque encrypted artifact references under qualified
+protected custody, and a zero-add/change/destroy plan. While its GitHub Actions
+run is pending, use
 `liftoff governance resume --scope activation --json`; do not redispatch, edit,
 or replace the recorded workflow handle. An occupied target, changed run/job,
 runner/backend/bootstrap drift, incomplete or extra mapping, nonzero plan, or

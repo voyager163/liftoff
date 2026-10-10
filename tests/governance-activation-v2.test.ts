@@ -118,8 +118,8 @@ describe('activation-v2 authoritative contracts', () => {
 
   it('declares the 26-phase production capability inventory honestly', () => {
     expect(Object.keys(phaseCapabilities)).toHaveLength(29);
-    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'built-in')).toHaveLength(16);
-    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'injected-only')).toHaveLength(4);
+    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'built-in')).toHaveLength(15);
+    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'injected-only')).toHaveLength(5);
     expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'unavailable')).toHaveLength(9);
     expect(canonicalPhaseGraph.phases.find((phase) => phase.id === 'activation-approved')!.allowedMutations.local)
       .toContain('write-openspec-governance');

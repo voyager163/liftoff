@@ -817,14 +817,19 @@ embedded child, and the two ARM deployment records retained outside state.
 Every resource must have exactly one reviewed disposition and fixed address.
 
 The handover persists one immutable GitHub Actions operation handle while
-pending. Completion requires exact mapping, concurrency, backend, and no-change
-digests; a zero-add/change/destroy plan; at least one nonempty owner-only
-encrypted backup/key pair; independent GitHub workflow and Azure backend
-readback; and explicit proof that the target did not previously exist. A changed
-operation ID, runner, backend, bootstrap inventory, resource mapping, occupied
-target, extra or missing resource, nonzero plan, or missing backup blocks. The
-default CLI supplies no protected-state adapter, so both phases remain
-fail-closed until a qualified private host is injected. Existing-state adoption,
+pending. Before dispatch, a separate custody capability must attest the exact
+runner and host, opaque protected workspace/storage references, one
+non-exporting external key reference, Azure blob-lease locking, writer
+quiescence, due-time disposal support, and no plaintext fallback. Completion
+requires exact mapping, concurrency, backend, and no-change digests; a
+zero-add/change/destroy plan; at least one encrypted artifact reference under
+that workspace; independent GitHub workflow and Azure backend readback; and
+explicit proof that the target did not previously exist. The handover custody
+identity must equal the identity established by `private-backend-proof`. A
+changed operation ID, runner, host, workspace, storage, key, lock, bootstrap
+inventory, resource mapping, occupied target, extra or missing resource,
+nonzero plan, or missing backup blocks. The default CLI supplies neither private
+capability, so both phases remain fail-closed. Existing-state adoption,
 partition, relocation, and address migration remain unavailable through the
 public governance API.
 
@@ -841,9 +846,16 @@ resource observed during the fresh bounded read. Otherwise it remains
 planning-only; Liftoff does not inspect the backend to try to infer ownership.
 
 After verified declarative import, backend identity parity, state locking, Blob
-versioning, and a clean-checkout no-change plan, local state becomes read-only
-evidence for exactly 30 days. Disposal deletes the encryption key and approved
-temporary copies and records a dated non-secret outcome. Provider registrations
+versioning, and a clean-checkout no-change plan, protected bootstrap artifacts
+become read-only evidence for exactly 30 days. Retention stores only digests of
+opaque protected artifact and key references; they are not project-relative
+files. Disposal cannot run early or through the built-in filesystem mutation
+path. The same injected custody capability must requalify the retained host,
+workspace/storage, key provider, lock, runner, and writer-quiescence identity,
+then return payload-free proof that every artifact and unique key reference was
+deleted at or after the due time. Missing material before verified disposal,
+unsupported hosts, changed/expired custody, unavailable keys or storage, lost
+locking, and active writers remain explicit blockers. Provider registrations
 remain retained subscription capabilities and are not unregistered during
 teardown.
 

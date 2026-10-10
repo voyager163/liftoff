@@ -888,7 +888,7 @@ describe('public documentation', () => {
       expect(developer).toContain(`\`${phase}\``);
     }
     expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'unavailable')).toHaveLength(9);
-    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'injected-only')).toHaveLength(4);
+    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'injected-only')).toHaveLength(5);
     expect(developer).not.toContain('activation inspection still uses');
     expect(developer).not.toContain('finish RAG publisher configuration');
     expect(developer).not.toContain('strengthen shared mutation locking');

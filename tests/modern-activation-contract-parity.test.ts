@@ -19,7 +19,7 @@ describe('current/released contracts stay separate from modern source allocation
     expect(hash(bytes)).toBe('2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703');
     const released = historicalV3PhaseGraph();
     expect(JSON.parse(bytes.toString('utf8'))).toEqual(released);
-    expect(canonicalPhaseGraphHash).toBe('24b2c47952b012fd38a6ceb0fb1d68981b2a123c97bf8c4b6b7f1adb503a2345');
+    expect(canonicalPhaseGraphHash).toBe('243c2df5b113d59183287f2dac0091389a64c3798670f11ee064547ceea7a97b');
     expect(canonicalPhaseGraphJson).not.toBe(bytes.toString('utf8'));
     const releasedRunner = released.phases.find((phase) => phase.id === 'runner-ready')!;
     const currentRunner = canonicalPhaseGraph.phases.find((phase) => phase.id === 'runner-ready')!;
@@ -54,11 +54,21 @@ describe('current/released contracts stay separate from modern source allocation
         liveReadbackProviders: ['github', 'azure']
       }
     });
+    const releasedDisposal = released.phases.find((phase) => phase.id === 'bootstrap-state-disposed')!;
+    const currentDisposal = canonicalPhaseGraph.phases.find((phase) => phase.id === 'bootstrap-state-disposed')!;
+    expect(currentDisposal).toMatchObject({
+      label: 'Retained protected bootstrap state is disposed after day 30',
+      rollback: {
+        kind: 'dispose',
+        target: null
+      }
+    });
     expect({
       ...canonicalPhaseGraph,
       phases: canonicalPhaseGraph.phases.map((phase) =>
         phase.id === 'runner-ready' ? releasedRunner :
-          phase.id === 'remote-import-verified' ? releasedImport : phase)
+          phase.id === 'remote-import-verified' ? releasedImport :
+            phase.id === 'bootstrap-state-disposed' ? releasedDisposal : phase)
     }).toEqual(released);
     for (const { label: _label, ...behavior } of canonicalPhaseGraph.phases) {
       expect(canonicalPhaseContractDigests[behavior.id]).toBe(canonicalSha256(behavior));

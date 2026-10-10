@@ -61,7 +61,7 @@ Current deterministic setup contract, published by Liftoff 0.12.0:
   "policyVersion": "6",
   "activationContractVersion": 3,
   "phaseGraphSchemaVersion": 2,
-  "phaseGraphHash": "24b2c47952b012fd38a6ceb0fb1d68981b2a123c97bf8c4b6b7f1adb503a2345",
+  "phaseGraphHash": "243c2df5b113d59183287f2dac0091389a64c3798670f11ee064547ceea7a97b",
   "activationStateSchemaVersion": 3,
   "evidenceHeaderSchemaVersion": 3,
   "approvalEnvelopeSchemaVersion": 3,
@@ -2221,7 +2221,7 @@ other-platform qualification remain separate gates.
 ## Activation completeness and separate follow-up plan
 
 The activation engine is not yet an end-to-end production provisioning engine.
-Of its 29 declared phases, 16 have built-in handler paths, 4 require an explicit injected capability
+Of its 29 declared phases, 15 have built-in handler paths, 5 require an explicit injected capability
 that the public CLI does not currently supply, and 9
 fall back to an explicit missing-production-adapter blocker.
 
@@ -2230,19 +2230,20 @@ The missing production phase handlers are `bootstrap-workflow-source-ready`,
 `application-foundation`, `workflow-source-ready`, `dev-proof`,
 `staging-qualified`, `production-rehearsed`, and `green-red-proof`.
 `rulesets-applied` and `live-readback` require the GitHub ruleset adapter.
-`private-backend-proof` and `remote-import-verified` require the private protected-state
-handover capability until task 13.5 binds a qualified host, protected workspace,
-key provider, writer quiescence, and lock implementation.
+`private-backend-proof`, `remote-import-verified`, and
+`bootstrap-state-disposed` require private protected-state capabilities. Handover
+must be paired with qualified custody; due-time disposal must requalify the same
+host, protected workspace/storage, non-exporting key reference, Azure blob-lease
+locking, and writer-quiescence identity.
 
 Built-in handler presence does not establish a complete user journey.
 `liftoff governance approve` persists exact approval envelopes, but it refuses a
 phase whose capability is unavailable or blocked before writing any approval,
 authority record, or plan. `governance apply-next --execute` likewise stops before
 any saved plan, intent, or producer effect for such a phase and reports its
-blocker; an earlier approval does not change that. Only an explicitly injected
-trusted phase adapter, the GitHub ruleset adapter for `rulesets-applied` and
-`live-readback`, or the private protected-state capability for
-`private-backend-proof` and `remote-import-verified` can execute those phases.
+blocker; an earlier approval does not change that. Only an explicitly injected trusted phase adapter, the GitHub ruleset adapter
+for `rulesets-applied` and `live-readback`, or the paired private
+protected-state handover/custody capabilities can execute those phases.
 Those injected seams are not public production qualification. `provider-ready` now derives its exact namespace and supported
 feature prerequisites from reviewed resource types, proves live registration
 permissions, registers only authorized missing prerequisites, and requires terminal
@@ -2329,14 +2330,34 @@ producer contract for the bootstrap-owned path. The producer request is derived
 only from current verified `bootstrap-local` and `runner-ready` outputs: the exact
 repository and runner IDs, private backend binding, twelve bootstrap resource
 dispositions, absent target requirement, Azure blob-lease locking, authenticated
-encrypted backups, zero-change planning, and 30-day retention. The mapping admits
+encrypted backups, zero-change planning, and 30-day retention. Before either
+phase can dispatch, the custody adapter must attest the exact runner and host,
+an opaque protected workspace and storage reference, a non-exporting external
+key reference, Azure blob-lease locking, writer quiescence, disposal support,
+and explicit refusal of plaintext fallback. The mapping admits
 nine imported resources, one private-endpoint embedded child, and two retained
 ARM deployment records; unknown, duplicate, extra, or pre-existing scope blocks.
 Pending execution persists one immutable GitHub Actions run handle and resume
 cannot change it. Completion requires exact runner/job/source bindings, an absent
-target, concurrency and backend digests, owner-only encrypted backup/key records,
-the complete mapping, and a zero-add/change/destroy plan. The default public CLI
-still blocks both phases without the private capability and exposes no arbitrary
+target, concurrency and backend digests, opaque encrypted artifact/key references under
+that custody, the complete mapping, and a zero-add/change/destroy plan.
+`remote-import-verified` must retain the same custody identity established by
+`private-backend-proof`; a refreshed observation may advance its timestamp but
+cannot change host, workspace, storage, key, lock, runner, or quiescence.
+
+`remote-ready` retains only digests of those opaque references for exactly 30
+days. `bootstrap-state-disposed` is injected-only: it cannot delete project
+files, cannot run early, and cannot infer success from missing material. It
+revalidates the immutable import evidence, exact retained artifact/key
+references, and a current attestation for the same custody identity before
+calling the protected disposal capability. Success requires payload-free proof
+that every retained artifact and unique key reference was deleted at or after
+the due time. Unsupported hosts, expired or changed custody, missing protected
+storage or keys, lost locking, active writers, and incomplete deletion remain
+blocked and recoverable.
+
+The default public CLI still blocks these phases without the private capabilities
+and exposes no arbitrary
 existing-state import, partition, relocation, or address-migration command.
 
 `credential-ready` is now a

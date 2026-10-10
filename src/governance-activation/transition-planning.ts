@@ -191,7 +191,7 @@ async function phaseOperations(
       const destinations = [...paths.encryptedStatePathParts, ...paths.encryptionKeyPathParts];
       return [
         ...destinations.map((destination) => localStep('local.bootstrap-state.dispose', 'delete-local-state', paths,
-          transitionDestination('local', destination.join('/'), { pathParts: destination }), 'local-state', true)),
+          transitionDestination('external', destination.join('/')), 'local-state', true)),
         ...writeOps()
       ];
     }

@@ -13,7 +13,12 @@ const injected = { executor: 'injected-only', retry: 'none', blocker: 'An explic
 const protectedState = {
   executor: 'injected-only',
   retry: 'none',
-  blocker: 'An explicit protected state handover capability is required; public existing-state migration remains disabled.'
+  blocker: 'Explicit protected state handover and qualified custody capabilities are required; public existing-state migration and plaintext fallback remain disabled.'
+} as const;
+const protectedDisposal = {
+  executor: 'injected-only',
+  retry: 'none',
+  blocker: 'The same qualified protected custody capability is required for due-time bootstrap disposal.'
 } as const;
 
 export const phaseCapabilities: Readonly<Record<PhaseId, PhaseCapability>> = {
@@ -45,5 +50,5 @@ export const phaseCapabilities: Readonly<Record<PhaseId, PhaseCapability>> = {
   'enforcement-approved': builtIn,
   'rulesets-applied': injected,
   'live-readback': injected,
-  'bootstrap-state-disposed': builtIn
+  'bootstrap-state-disposed': protectedDisposal
 };

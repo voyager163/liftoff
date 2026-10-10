@@ -1,12 +1,9 @@
-import { stat } from 'node:fs/promises';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import type {
   ExternalOperationState,
   LiveReadbackProof,
   TransitionOperation
 } from '../domain/governance/activation/types.js';
-import { validateArtifactPathParts } from '../domain/project/paths.js';
-import { resolveProjectPath } from '../adapters/filesystem/project-paths.js';
 import {
   GitHubActivationError,
   safeGitHubFailure
@@ -16,10 +13,18 @@ import type {
   PhaseAdapterOutcome,
   PhasePlanningInput,
   ProtectedBackendProof,
+  ProtectedStateCustodyProof,
+  ProtectedStateCustodyRequest,
   ProtectedStateHandoverProof,
   ProtectedStateOperationRequest,
   ProtectedStateResourceMapping
 } from './transition-ports.js';
+import {
+  assertMatchingProtectedStateCustody,
+  assertProtectedStateCustodyProof,
+  protectedStateBackupInventory,
+  protectedStateCustodyIdentityDigest
+} from './protected-state-custody.js';
 import {
   azureBackendConfiguration,
   type BackendPlanBinding
@@ -44,7 +49,10 @@ const stateAddressPattern =
   /^(?:azurerm_[a-z0-9_]+\.[a-z0-9_]+)(?:\.[a-z0-9_]+\[[0-9]+\])?$/u;
 
 interface ProtectedStateBinding {
-  request: Omit<ProtectedStateOperationRequest, 'phaseId' | 'previousOperation'>;
+  request: Omit<
+    ProtectedStateOperationRequest,
+    'phaseId' | 'previousOperation' | 'custody'
+  >;
   backend: BackendPlanBinding;
   bootstrap: BootstrapBinding;
 }
@@ -249,6 +257,11 @@ function bindingFor(
       targetState: 'absent' as const,
       locking: 'azure-blob-lease' as const,
       backup: 'authenticated-encrypted' as const,
+      protectedStorage: 'encrypted-private' as const,
+      keyCustody: 'external-nonexporting' as const,
+      writerQuiescence: true as const,
+      plaintextFallback: false as const,
+      disposal: 'same-qualified-custody' as const,
       completeMapping: true as const,
       noChangePlan: true as const,
       retentionDays: 30 as const,
@@ -293,7 +306,11 @@ export function privateBackendProofPlanInputs(
     bootstrapBindingDigest: binding.request.bootstrap.bindingDigest,
     targetState: binding.request.requirements.targetState,
     locking: binding.request.requirements.locking,
-    publicExistingStateMigration: false
+    publicExistingStateMigration: false,
+    protectedStorage: binding.request.requirements.protectedStorage,
+    keyCustody: binding.request.requirements.keyCustody,
+    writerQuiescence: binding.request.requirements.writerQuiescence,
+    plaintextFallback: binding.request.requirements.plaintextFallback
   };
 }
 
@@ -311,6 +328,11 @@ export function stateHandoverPlanInputs(
     mappingDigest: canonicalSha256(binding.request.resources),
     locking: binding.request.requirements.locking,
     backup: binding.request.requirements.backup,
+    protectedStorage: binding.request.requirements.protectedStorage,
+    keyCustody: binding.request.requirements.keyCustody,
+    writerQuiescence: binding.request.requirements.writerQuiescence,
+    plaintextFallback: binding.request.requirements.plaintextFallback,
+    disposal: binding.request.requirements.disposal,
     noChangePlanRequired: true,
     retentionDays: binding.request.requirements.retentionDays,
     publicExistingStateMigration: false
@@ -397,7 +419,8 @@ function validateCommonProof(
   input: PhaseAdapterExecutionInput,
   proof: ProtectedBackendProof | ProtectedStateHandoverProof,
   operation: ExternalOperationState,
-  binding: ProtectedStateBinding
+  binding: ProtectedStateBinding,
+  custody: ProtectedStateCustodyProof
 ): void {
   const runId = Number(operation.resourceId.split('/').at(-1));
   if (proof.bindingDigest !== binding.request.bindingDigest ||
@@ -413,64 +436,37 @@ function validateCommonProof(
       'Protected state proof differs from the exact reviewed workflow, runner, or backend binding.'
     );
   }
+  assertMatchingProtectedStateCustody(proof.custody, custody);
 }
 
-async function validateBackups(
-  input: PhaseAdapterExecutionInput,
+function validateBackups(
   proof: ProtectedStateHandoverProof
 ): Promise<{
   encryptedStatePathParts: string[][];
   encryptionKeyPathParts: string[][];
 }> {
-  if (proof.backups.length < 1 || proof.backups.length > 8) {
-    return handoverError(
-      'state-backup',
-      'Protected state handover requires a bounded nonempty encrypted backup inventory.'
-    );
-  }
-  const encryptedStatePathParts: string[][] = [];
-  const encryptionKeyPathParts: string[][] = [];
-  const seen = new Set<string>();
-  for (const [index, backup] of proof.backups.entries()) {
-    if (!digestPattern.test(backup.artifactDigest)) {
-      return handoverError('state-backup', 'Protected state backup digest is invalid.');
-    }
-    const stateParts = validateArtifactPathParts(
-      [...backup.encryptedStatePathParts],
-      `Protected state backup ${index}`
-    );
-    const keyParts = validateArtifactPathParts(
-      [...backup.encryptionKeyPathParts],
-      `Protected state key ${index}`
-    );
-    for (const parts of [stateParts, keyParts]) {
-      const key = parts.join('/');
-      if (seen.has(key)) {
-        return handoverError(
-          'state-backup',
-          'Protected state backup and key paths must be distinct.'
-        );
-      }
-      seen.add(key);
-      const target = await resolveProjectPath(input.inspection.projectRoot, parts);
-      const details = await stat(target);
-      if (!details.isFile() || details.size < 1 || (details.mode & 0o077) !== 0) {
-        return handoverError(
-          'state-backup',
-          'Protected state backup material must already exist as nonempty owner-only regular files.'
-        );
-      }
-    }
-    encryptedStatePathParts.push(stateParts);
-    encryptionKeyPathParts.push(keyParts);
-  }
-  return { encryptedStatePathParts, encryptionKeyPathParts };
+  return Promise.resolve(protectedStateBackupInventory(proof.backups, proof.custody));
 }
 
 function blockedMessage(reason: string): string {
-  return reason === 'capability-unavailable'
-    ? 'The selected execution host has no approved protected state handover capability.'
-    : 'Protected state work did not satisfy exact ownership, locking, backup, concurrency, mapping, or no-change verification; provider diagnostics were withheld.';
+  switch (reason) {
+    case 'capability-unavailable':
+      return 'The selected execution host has no approved protected state handover capability.';
+    case 'unsupported-host':
+      return 'The selected execution host is not approved for protected state custody.';
+    case 'protected-storage-unavailable':
+      return 'Protected encrypted storage is unavailable; plaintext project-file fallback is prohibited.';
+    case 'key-unavailable':
+      return 'The non-exporting protected state key provider is unavailable.';
+    case 'locking-unavailable':
+      return 'The exact Azure blob-lease locking capability is unavailable.';
+    case 'writer-active':
+      return 'Protected state custody cannot proceed while another writer may still be active.';
+    case 'disposal-unavailable':
+      return 'The selected custody capability cannot preserve the required due-time disposal obligation.';
+    default:
+      return 'Protected state work did not satisfy exact ownership, custody, locking, backup, concurrency, mapping, or no-change verification; provider diagnostics were withheld.';
+  }
 }
 
 export async function executeProtectedStatePhase(
@@ -481,10 +477,11 @@ export async function executeProtectedStatePhase(
     return null;
   }
   const port = input.adapters.protectedStateHandover;
-  if (!port) {
+  const custodyPort = input.adapters.protectedStateCustody;
+  if (!port || !custodyPort) {
     return {
       status: 'blocked',
-      blocker: 'Protected state execution requires an explicitly registered private capability; the public CLI does not enable arbitrary existing-state migration.',
+      blocker: 'Protected state execution requires explicitly registered handover and qualified custody capabilities; the public CLI does not enable arbitrary existing-state migration or plaintext fallback.',
       completedOperations: []
     };
   }
@@ -502,9 +499,43 @@ export async function executeProtectedStatePhase(
     );
     await assertGitHubAuthorized(input, operation);
     const previousOperation = input.inspection.state.phases[input.phase.id].operation;
+    const custodyRequest: ProtectedStateCustodyRequest = {
+      schemaVersion: 1,
+      bindingDigest: binding.request.bindingDigest,
+      repository: binding.request.repository,
+      runner: binding.request.runner,
+      backendBindingDigest: binding.backend.bindingDigest,
+      bootstrapBindingDigest: binding.bootstrap.bindingDigest,
+      retentionDays: 30
+    };
+    const custody = await custodyPort.qualify(custodyRequest);
+    if (custody.status === 'blocked') {
+      return {
+        status: 'blocked',
+        resultState: 'failed',
+        blocker: blockedMessage(custody.reason),
+        completedOperations: []
+      };
+    }
+    assertProtectedStateCustodyProof(custody.proof, binding.request, input.now);
+    if (input.phase.id === 'remote-import-verified') {
+      const expectedCustodyIdentity =
+        input.inspection.state.phaseOutputs?.['private-backend-proof']
+          ?.values.custodyIdentityDigest;
+      if (expectedCustodyIdentity !==
+        protectedStateCustodyIdentityDigest(custody.proof)) {
+        return {
+          status: 'blocked',
+          resultState: 'failed',
+          blocker: 'State handover changed the host, storage, key, locking, or writer custody established by private-backend-proof.',
+          completedOperations: []
+        };
+      }
+    }
     const request: ProtectedStateOperationRequest = {
       ...binding.request,
       phaseId: input.phase.id,
+      custody: custody.proof,
       previousOperation: previousOperation ?? null
     };
     const result = input.phase.id === 'private-backend-proof'
@@ -540,7 +571,7 @@ export async function executeProtectedStatePhase(
       previousOperation,
       'completed'
     );
-    validateCommonProof(input, result.proof, result.operation, binding);
+    validateCommonProof(input, result.proof, result.operation, binding, custody.proof);
     if (input.phase.id === 'private-backend-proof') {
       const proof = result.proof as ProtectedBackendProof;
       if (proof.kind !== 'private-backend-proof.v1' ||
@@ -565,7 +596,14 @@ export async function executeProtectedStatePhase(
             runnerId: binding.request.runner.id,
             runnerLabel: binding.request.runner.label,
             targetStateExists: false,
-            locking: proof.locking
+            locking: proof.locking,
+            custodyIdentityDigest: protectedStateCustodyIdentityDigest(proof.custody),
+            custodyQualificationDigest: proof.custody.qualificationDigest,
+            protectedHostId: proof.custody.hostId,
+            protectedWorkspaceRef: proof.custody.workspaceRef,
+            keyProviderRef: proof.custody.keyProviderRef,
+            writerQuiesced: proof.custody.writerQuiesced,
+            plaintextFallback: proof.custody.plaintextFallback
           },
           resources: [{
             provider: 'azure',
@@ -591,7 +629,7 @@ export async function executeProtectedStatePhase(
         'State handover proof must preserve the complete mapping, absent target, exact concurrency, and zero-change plan.'
       );
     }
-    const backupPaths = await validateBackups(input, proof);
+    const backupPaths = await validateBackups(proof);
     return {
       status: 'completed',
       resultState: 'verified',
@@ -612,6 +650,13 @@ export async function executeProtectedStatePhase(
           concurrencyDigest: proof.concurrencyDigest,
           remoteBackendDigest: proof.remoteBackendDigest,
           noChangePlanDigest: proof.noChangePlanDigest,
+          custodyIdentityDigest: protectedStateCustodyIdentityDigest(proof.custody),
+          custodyQualificationDigest: proof.custody.qualificationDigest,
+          protectedHostId: proof.custody.hostId,
+          protectedWorkspaceRef: proof.custody.workspaceRef,
+          keyProviderRef: proof.custody.keyProviderRef,
+          writerQuiesced: proof.custody.writerQuiesced,
+          plaintextFallback: proof.custody.plaintextFallback,
           retentionDays: 30,
           publicExistingStateMigration: false
         },
