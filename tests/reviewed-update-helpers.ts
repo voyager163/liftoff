@@ -16,6 +16,7 @@ import { updateProject } from '../src/application/update/use-case.js';
 import { runCommand } from '../src/commands.js';
 import { readBooleanFlag, readStringFlag } from '../src/cli/args/readers.js';
 import { PresentationSession } from '../src/terminal.js';
+import { capturedV3Successor } from './fixtures/activation-v3/fixture.js';
 
 export interface UpdateTestResult {
   code: number;
@@ -107,6 +108,26 @@ export async function createReviewedUpdateFixture(options: ProjectOptions): Prom
     await writeProjectFile(target, marker, content);
   }
   return target;
+}
+
+export async function installReleasedV3ManagedGovernance(root: string): Promise<void> {
+  const captured = capturedV3Successor(1);
+  const manifestPath = path.join(root, 'liftoff.manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  for (const logicalName of [
+    'repository-governance-phase-graph',
+    'repository-governance-compatibility',
+    'repository-governance-credential-policy-schema'
+  ]) {
+    const artifact = manifest.managedArtifacts.find((entry: { logicalName: string }) => entry.logicalName === logicalName);
+    assert.ok(artifact, `Missing managed artifact ${logicalName}.`);
+    const key = artifact.pathParts.join('/');
+    const bytes = captured.files.get(key);
+    assert.ok(bytes, `Missing released v3 bytes for ${key}.`);
+    await writeProjectFile(root, artifact.pathParts, bytes);
+    artifact.contentHash = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+  }
+  await writeProjectFile(root, ['liftoff.manifest.json'], `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
 export async function reviewedUpdateArguments(

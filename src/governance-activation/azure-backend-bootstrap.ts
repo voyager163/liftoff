@@ -53,7 +53,7 @@ interface Ipv4Cidr {
   prefix: number;
 }
 
-interface BootstrapBinding {
+export interface BootstrapBinding {
   backend: BackendPlanBinding;
   environment: string;
   region: string;

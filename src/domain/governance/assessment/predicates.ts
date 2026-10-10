@@ -506,7 +506,7 @@ export function runnerAlignment(value: unknown, repository: string | null): Pred
   }
   if (value.repositoryAssigned !== true || typeof value.runnerId !== 'number' ||
       typeof value.groupId !== 'number' || typeof value.networkConfigurationId !== 'string' ||
-      typeof value.repository !== 'string' || !repository ||
+      typeof value.repository !== 'string' || typeof value.expectedLabel !== 'string' || !repository ||
       value.repository.toLowerCase() !== repository.toLowerCase()) {
     return result(null, 'Exact runner, group, network, and repository assignment is incomplete.');
   }
@@ -530,7 +530,7 @@ export function runnerAlignment(value: unknown, repository: string | null): Pred
     return result(null, 'Runner labels, capacity, status, restrictions, or network facts are incomplete.');
   }
   const aligned = ['ready', 'online', 'idle'].includes(runner.status.toLowerCase()) &&
-    labels.includes('private-staging') &&
+    labels.includes(value.expectedLabel) &&
     runner.maximumRunners === 1 &&
     runner.publicIpEnabled === false &&
     size.cpuCores >= 4 &&

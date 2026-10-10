@@ -290,7 +290,9 @@ These are target-policy requirements; production phases still have explicit
 capability gaps and two ruleset phases require an injected adapter absent from
 the public CLI. Exact approval persistence, provider readiness, protected
 credential enrollment, and approved existing-private backend readiness are
-built in, but they do not authorize the remaining phases.
+built in. The bounded new-environment path can also provision and verify its
+repository-dedicated larger runner, but that does not authorize private backend
+proof, import, application provisioning, deployment, or enforcement phases.
 An unavailable executor or authority entry point is a blocker, not an instruction
 to run its provider commands directly.
 
@@ -309,10 +311,26 @@ gateway/public IP, and the private Blob endpoint/DNS binding. It requires
 nonzero reviewed cost ceilings, effective exact permissions, absent or
 same-operation-owned scope, and one immutable deployment handle before it can
 report success. It does not create the GitHub runner or touch backend state.
-Continue only through the later runner, private-backend proof, declarative
-import, identity parity, locking/versioning, and clean no-change phases, followed
-by 30-day read-only retention before secure deletion. If any later production
-adapter is unavailable, stop at that capability blocker.
+
+The separately approved `runner-ready` phase then requires the exact verified
+subnet, NAT gateway, private DNS link and endpoint zone group, current
+`GitHub.Network` registration proof, an exact private repository and organization
+identity, available `ubuntu-latest`/`4-core` larger-runner capacity, packaged
+preflight workflows, and nonzero fixed and usage cost ceilings. It creates one
+Azure network-settings resource, one Actions network configuration, one
+repository-selected workflow-restricted runner group, and one maximum-concurrency
+runner with static public IP disabled. If GitHub reports `Provisioning`, rerun
+`liftoff governance resume --scope activation --json`; Liftoff polls the same
+recorded runner and does not repeat the provider writes. Do not rename, recreate,
+or manually adopt an occupied deterministic resource. Missing licensing,
+permissions, repository assignment, exact routing/DNS, or matching resume IDs
+must remain blocked.
+
+Continue only through private-backend proof, declarative import, identity parity,
+locking/versioning, and clean no-change phases, followed by 30-day read-only
+retention before secure deletion. `runner-ready` does not dispatch a workflow or
+prove backend access. If any later production adapter is unavailable, stop at
+that capability blocker.
 
 If an Azure bootstrap fails with a namespace-not-registered error while
 `resource_provider_registrations = "none"` is configured, do not retry the same

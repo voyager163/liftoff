@@ -11,6 +11,8 @@ import {
 import { taskProjectionContract, planDigestFor } from '../src/domain/governance/activation/operations.js';
 import { validateGovernanceTaskProjectionContract } from '../src/domain/governance/activation/validators.js';
 import { governanceTaskLayoutHash } from '../src/governance-activation/task-projection.js';
+import { projectTaskCheckboxValues } from '../src/domain/governance/activation/source-values.js';
+import { releasedV3Values } from '../src/domain/governance/activation/record-contracts.js';
 import {
   historicalV3PhaseGraph, historicalV3ApprovalEnvelopeHash,
   validateHistoricalV3ApprovalEnvelope, validateHistoricalV3SavedTransitionPlan
@@ -151,11 +153,19 @@ describe('closed shared projection decoder and retained layout', () => {
     const metadata = historyRecord(capturedV3Records().metadata, 'metadata');
     const mappings = historyArray(metadata.phaseTaskMapping, 'mappings').map(item => historyRecord(item, 'mapping'));
     const template = mappings.map(mapping => `- [x] ${mapping.taskId} ${mapping.marker}\r\n`).join('');
+    const releasedIds = historicalV3PhaseGraph().phases.map(node => node.id);
+    const layoutHash = sha256Hex(projectTaskCheckboxValues(
+      template,
+      mappings,
+      Object.fromEntries(releasedIds.map(id => [id, 'pending' as const])),
+      releasedIds,
+      releasedV3Values.phaseStates
+    ).markdown);
     const creation: TaskProjectionSourceFieldsV1 = {
       ...contract(), changeId: String(metadata.changeId), source: 'create', template, metadataText: JSON.stringify(metadata),
       taskPathParts: ['openspec', 'changes', String(metadata.changeId), 'tasks.md'],
       metadataPathParts: ['openspec', 'changes', String(metadata.changeId), 'liftoff-governance.json'],
-      metadataHash: sha256Hex(JSON.stringify(metadata)), layoutHash: governanceTaskLayoutHash(template, metadata)
+      metadataHash: sha256Hex(JSON.stringify(metadata)), layoutHash
     };
     const operation: Current.TransitionOperation = {
       phaseId: 'provider-ready', actionId: 'governance.tasks.project', adapter: 'local-evidence', mutationClass: 'project-governance-tasks',

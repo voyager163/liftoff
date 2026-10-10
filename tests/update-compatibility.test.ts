@@ -58,7 +58,7 @@ describe('reviewed activation successor compatibility', () => {
     expect(() => validateGovernanceCompatibilityMetadata({ ...metadata, schemaVersion: 5 })).toThrow(/schemaVersion/);
   });
 
-  it('does not alter current phase graph or execution schema identities', () => {
+  it('records the reviewed runner graph successor without changing execution schema versions', () => {
     expect(currentActivationIdentity).toMatchObject({
       liftoffVersion: '0.12.0',
       manifestArtifactVersion: 7,
@@ -68,6 +68,6 @@ describe('reviewed activation successor compatibility', () => {
       evidenceHeaderSchemaVersion: 3,
       approvalEnvelopeSchemaVersion: 3
     });
-    expect(canonicalPhaseGraphHash).toBe('2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703');
+    expect(canonicalPhaseGraphHash).toBe('f8122e15e69b9e7425096ea7d8e8624d2b4c3041074e534ce582486331deadba');
   });
 });

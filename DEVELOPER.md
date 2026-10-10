@@ -61,7 +61,7 @@ Current deterministic setup contract, published by Liftoff 0.12.0:
   "policyVersion": "6",
   "activationContractVersion": 3,
   "phaseGraphSchemaVersion": 2,
-  "phaseGraphHash": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703",
+  "phaseGraphHash": "f8122e15e69b9e7425096ea7d8e8624d2b4c3041074e534ce582486331deadba",
   "activationStateSchemaVersion": 3,
   "evidenceHeaderSchemaVersion": 3,
   "approvalEnvelopeSchemaVersion": 3,
@@ -2221,12 +2221,12 @@ other-platform qualification remain separate gates.
 ## Activation completeness and separate follow-up plan
 
 The activation engine is not yet an end-to-end production provisioning engine.
-Of its 29 declared phases, 15 have built-in handler paths, 2 require an injected
-GitHub ruleset adapter that the public CLI does not currently supply, and 12
+Of its 29 declared phases, 16 have built-in handler paths, 2 require an injected
+GitHub ruleset adapter that the public CLI does not currently supply, and 11
 fall back to an explicit missing-production-adapter blocker.
 
 The missing production phase handlers are `bootstrap-workflow-source-ready`,
-`runner-ready`, `private-backend-proof`, `remote-import-verified`,
+`private-backend-proof`, `remote-import-verified`,
 `application-prerequisites-ready`, `application-artifact-ready`,
 `application-foundation`, `workflow-source-ready`, `dev-proof`,
 `staging-qualified`, `production-rehearsed`, and `green-red-proof`.
@@ -2300,6 +2300,26 @@ without redispatch. Terminal success independently reads every scoped resource
 back. The phase does not create a GitHub runner, import or read state, provision
 application resources, or adopt an occupied deployment. Runner establishment,
 private backend proof, and protected state handover remain later phases.
+
+`runner-ready` now provides the bounded production successor to that network
+foundation. Its reviewed inputs fix the GitHub organization database ID,
+environment, `ubuntu-latest` GitHub-owned image, `4-core` size, NAT-gateway
+egress, and maximum concurrency of one; the existing infrastructure-cost
+approval supplies nonzero fixed and usage ceilings. Execution requires current
+`GitHub.Network` registration proof, exact Azure permissions, the verified
+delegated subnet/NAT/private-DNS bindings, an exact private repository identity,
+available larger-runner licensing and machine capacity, and both packaged
+preflight workflows on the verified default branch. It creates one Azure
+`GitHub.Network/networkSettings` resource, one Actions network configuration,
+one repository-selected workflow-restricted runner group, and one larger runner
+with static public IP disabled. Deterministic occupied names are never adopted.
+Every Azure and GitHub resource is independently read back, including repository
+assignment. A `Provisioning` runner persists one immutable GitHub operation
+handle with an absolute provider poll URL; resume reobserves the exact recorded
+network, group, and runner IDs without repeating POST or PUT. Terminal
+non-ready, contradictory, unsupported, or identity-drifted observations block
+instead of establishing readiness. This phase does not dispatch a workflow or
+claim private backend reachability; `private-backend-proof` remains separate.
 
 `credential-ready` is now a
 built-in production phase. Its reviewed public configuration selects an existing

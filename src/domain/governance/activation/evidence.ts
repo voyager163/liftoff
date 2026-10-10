@@ -296,6 +296,8 @@ export function validateEvidenceFreshness(
         if (!operations.some((operation) => {
           const destination = operation.destination;
           const scopeMatches = destination.identity === proof.resourceId ||
+            (destination.type === 'external' &&
+              proof.resourceId.startsWith(`${destination.identity}/`)) ||
             destination.repository === proof.resourceId ||
             (destination.repository && (proof.resourceId.startsWith(`/repos/${destination.repository}/`) ||
               proof.resourceId.startsWith(`https://api.github.com/repos/${destination.repository}/`))) ||

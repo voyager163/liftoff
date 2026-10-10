@@ -116,6 +116,7 @@ describe('public capability table', () => {
       expect(capability.retry, phaseId).toBe('none');
     }
     expect(phaseCapabilities['provider-ready'].executor).toBe('built-in');
+    expect(phaseCapabilities['runner-ready'].executor).toBe('built-in');
     expect(phaseCapabilities['rulesets-applied'].executor).toBe('injected-only');
     expect(phaseCapabilities['credential-ready']).toEqual({ executor: 'built-in', retry: 'none' });
   });
@@ -139,7 +140,7 @@ describe('public capability table', () => {
 });
 
 describe('execution guard for phases without a real executor', () => {
-  it.each(['runner-ready', 'rulesets-applied', 'live-readback'] as const)(
+  it.each(['rulesets-applied', 'live-readback'] as const)(
     'blocks %s even with previously issued authority before saving a plan, writing intent, or invoking a producer',
     async (phaseId) => {
       const root = await project(`execute-${phaseId}`);

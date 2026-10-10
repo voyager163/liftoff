@@ -399,6 +399,7 @@ jobs:
       runnerId: 7,
       groupId: 9,
       networkConfigurationId: 'NC_bound',
+      expectedLabel: 'private-staging',
       runner: {
         status: 'Ready',
         labels: ['private-staging'],

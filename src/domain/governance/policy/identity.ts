@@ -91,7 +91,8 @@ export type HistoricalV1ActivationIdentity = typeof historicalV1ActivationIdenti
 export type HistoricalV2ActivationIdentity = typeof historicalV2ActivationIdentity;
 
 export type HistoricalActivationIdentity = typeof historicalActivationIdentities[number];
-export type ReadableActivationIdentity = CurrentActivationIdentity | HistoricalActivationIdentity;
+export type ReadableActivationIdentity =
+  CurrentActivationIdentity | HistoricalActivationIdentity | ReleasedV3ActivationIdentity;
 
 // Frozen released contract; it remains the current executable family until an
 // explicitly allocated successor replaces it. This is not a diagnostic selector.

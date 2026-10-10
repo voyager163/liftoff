@@ -785,6 +785,27 @@ facts read-only. DAST inapplicability does not bypass provider registration or
 the private execution path required for state operations. Existing suitable
 private paths are reused rather than replaced with public access.
 
+After the bounded `bootstrap-local` network foundation is verified,
+`runner-ready` can create exactly one repository-dedicated hosted-runner path:
+an Azure `GitHub.Network/networkSettings` resource on the verified delegated
+subnet, one GitHub Actions network configuration, one selected-repository and
+selected-workflow runner group, and one GitHub-owned `ubuntu-latest` `4-core`
+larger runner with maximum concurrency one and static public IP disabled. The
+reviewed organization and repository database IDs, deterministic resource
+names, NAT route, private DNS bindings, packaged preflight workflow paths, and
+nonzero cost ceilings are immutable plan inputs. Occupied names, missing
+licenses or permissions, unsupported status, identity drift, or contradictory
+resume outputs block rather than being adopted or treated as ready.
+
+The phase independently reads Azure and GitHub resources back and requires the
+runner group to be authoritatively visible to the exact private repository.
+While GitHub reports `Provisioning`, Liftoff stores one immutable hosted-runner
+operation handle and resumes by GET without repeating provider writes. The
+runner's deterministic name is its workflow label when the larger-runner API
+does not expose a separate labels array. `runner-ready` does not dispatch the
+runner or prove backend access; that remains the later
+`private-backend-proof` boundary.
+
 When a private ZRS backend cannot be reached and no existing private management
 path is approved, the bounded `bootstrap-local` branch may create only the
 access-establishing resources needed to reach the backend. Local bootstrap state

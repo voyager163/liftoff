@@ -334,8 +334,8 @@ describe('real W1/CP1 and credential2 integration', () => {
       expect(() => renderModernCredentialPolicySchema(projectCatalog, { ...correlated, recordedIdentity: currentActivationIdentity })).toThrow();
     });
 
-  it('keeps the old schema1 bytes pinned to the immutable published artifact', () => {
-    expect(sha(renderCredentialPolicySchema())).toBe('cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce');
+  it('pins current schema1 bytes to the reviewed graph successor', () => {
+    expect(sha(renderCredentialPolicySchema())).toBe('47a34c1e7da4b299029ba406082e718b388b8f3887e865a6d1f98d7dd59ab859');
     const schema = JSON.parse(renderCredentialPolicySchema());
     expect(schema.properties.schemaVersion).toEqual({ const: 1 });
     expect(schema.properties.identity.required).toHaveLength(11);

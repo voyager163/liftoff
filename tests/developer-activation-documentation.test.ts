@@ -101,6 +101,9 @@ describe('developer activation-completeness guidance', () => {
     expect(phaseCapabilities['state-path-selected'].executor).toBe('built-in');
     expect(phaseCapabilities['existing-private-path'].executor).toBe('built-in');
     expect(phaseCapabilities['bootstrap-local'].executor).toBe('built-in');
+    expect(phaseCapabilities['runner-ready'].executor).toBe('built-in');
+    expect(completeness).toContain('`runner-ready` now provides the bounded production successor');
+    expect(completeness).toContain('does not dispatch a workflow or\nclaim private backend reachability');
   });
 
   it('documents protected credential readiness and independent readback', () => {

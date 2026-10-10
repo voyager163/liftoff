@@ -59,6 +59,7 @@ import {
   createReviewedUpdateFixture as createFixtureProject,
   createUpdateTestRoot,
   fingerprintUpdateTestProject,
+  installReleasedV3ManagedGovernance,
   reviewedUpdateArguments,
   runLegacyUpdateContract,
   updateTestPreviewOptions
@@ -472,6 +473,7 @@ async function installDiagnosticActivationV1(
     manifest.governance.activationIdentity = identity;
     if (governanceState) manifest.governance.state = governanceState;
   });
+  await installReleasedV3ManagedGovernance(root);
   const statePath = path.join(root, 'governance', 'activation-state.json');
   const historical = buildHistoricalV1Fixture();
   const evidencePath = path.join(root, 'governance', 'evidence', `${historical.records[0].evidenceId}.json`);

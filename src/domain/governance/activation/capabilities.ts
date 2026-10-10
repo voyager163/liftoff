@@ -25,7 +25,7 @@ export const phaseCapabilities: Readonly<Record<PhaseId, PhaseCapability>> = {
   'state-path-selected': builtIn,
   'existing-private-path': builtIn,
   'bootstrap-local': builtIn,
-  'runner-ready': unavailable,
+  'runner-ready': builtIn,
   'private-backend-proof': unavailable,
   'remote-import-verified': unavailable,
   'remote-ready': builtIn,

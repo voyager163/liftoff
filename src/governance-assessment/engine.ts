@@ -377,11 +377,13 @@ export function resolveAssessmentLiveScope(project: AssessmentProject, git: Asse
       isRecord(rawRunner) && rawRunner.kind === 'runner-ready.v1' &&
       rawRunner.organization === repository.owner && Number.isInteger(rawRunner.runnerId) && Number(rawRunner.runnerId) > 0 &&
       (rawRunner.groupId === null || Number.isInteger(rawRunner.groupId)) &&
-      (rawRunner.networkConfigurationId === null || typeof rawRunner.networkConfigurationId === 'string')) {
+      (rawRunner.networkConfigurationId === null || typeof rawRunner.networkConfigurationId === 'string') &&
+      typeof rawRunner.label === 'string') {
     scope.runner = {
       organization: repository.owner, runnerId: Number(rawRunner.runnerId),
       groupId: rawRunner.groupId === null ? null : Number(rawRunner.groupId),
-      networkConfigurationId: typeof rawRunner.networkConfigurationId === 'string' ? rawRunner.networkConfigurationId : null
+      networkConfigurationId: typeof rawRunner.networkConfigurationId === 'string' ? rawRunner.networkConfigurationId : null,
+      label: rawRunner.label
     };
   }
   scope.azure = [...azureBindings.values()]

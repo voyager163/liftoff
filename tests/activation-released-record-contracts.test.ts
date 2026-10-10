@@ -11,6 +11,7 @@ import {
 import {
   currentActivationRecordValidators, releasedV3RecordValidators
 } from '../src/domain/governance/activation/record-validation.js';
+import { currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
 import {
   historicalV3PhaseGraph, validateHistoricalV3ActivationState, validateHistoricalV3EvidenceHeader,
   validateHistoricalV3LiveReadback, validateHistoricalV3ApprovalEnvelope, validateHistoricalV3SavedTransitionPlan,
@@ -38,6 +39,14 @@ const bytes = readFileSync(new URL('./fixtures/activation-v3/records.json', impo
 const frozen = historyRecord(parseHistoryJson(bytes, 'frozen records'), 'frozen records');
 function raw(name: string) { return historyRecord(structuredClone(frozen[name]), name); }
 function first(name: string) { return historyRecord(structuredClone(historyArray(frozen[name], name)[0]), name); }
+function currentIdentityRecord(value: Record<string, unknown>) {
+  return {
+    ...value,
+    identity: currentActivationIdentity,
+    ...('phaseGraphHash' in value ? { phaseGraphHash: currentActivationIdentity.phaseGraphHash } : {}),
+    ...('graphHash' in value ? { graphHash: currentActivationIdentity.phaseGraphHash } : {})
+  };
+}
 function nested(value: Record<string, unknown>, ...keys: string[]) {
   return keys.reduce((item, key) => historyRecord(item[key], key), value);
 }
@@ -176,8 +185,8 @@ describe('genuinely versioned released record types', () => {
     expectTypeOf<Extract<keyof HistoricalV3ActivationState['identity'], 'testOnlyRequired'>>().toEqualTypeOf<never>();
     expect(value.identity.testOnlyRequired).toBe('compile-boundary-only');
     expect(() => validateHistoricalV3ActivationState(value)).toThrow(/not allowed/);
-    const current: Current.UserActivationState = typedV3State();
-    expect(current.identity).toBe(releasedV3ActivationIdentity);
+    const current: Current.UserActivationState = { ...typedV3State(), identity: currentActivationIdentity };
+    expect(current.identity).toBe(currentActivationIdentity);
     const readers = currentActivationRecordValidators();
     expectTypeOf<ReturnType<typeof readers.validateUserActivationState>>().toEqualTypeOf<Current.UserActivationState>();
     expectTypeOf<ReturnType<typeof readers.validateEvidenceHeader>>().toEqualTypeOf<Current.EvidenceHeader>();
@@ -187,10 +196,12 @@ describe('genuinely versioned released record types', () => {
     expectTypeOf<Parameters<typeof readers.validateGraphReconciliationRecord>>().toEqualTypeOf<
       [value: unknown, recognizedGraphHashes?: ReadonlySet<string>]
     >();
-    const state: Current.UserActivationState = readers.validateUserActivationState(typedV3State());
-    const evidence: Current.EvidenceHeader = readers.validateEvidenceHeader(first('evidence').header);
-    const plan: Current.SavedTransitionPlan = readers.validateSavedTransitionPlan(first('plans'));
-    const credential: Current.CredentialPolicy = readers.validateCredentialPolicy(raw('credential'));
+    const state: Current.UserActivationState = readers.validateUserActivationState(current);
+    const evidence: Current.EvidenceHeader = readers.validateEvidenceHeader(
+      currentIdentityRecord(historyRecord(first('evidence').header, 'evidence.header'))
+    );
+    const plan: Current.SavedTransitionPlan = readers.validateSavedTransitionPlan(currentIdentityRecord(first('plans')));
+    const credential: Current.CredentialPolicy = readers.validateCredentialPolicy(currentIdentityRecord(raw('credential')));
     expect(state.schemaVersion).toBe(3);
     expect(evidence.schemaVersion).toBe(3);
     expect(plan.schemaVersion).toBe(2);
@@ -219,7 +230,7 @@ describe('genuinely versioned released record types', () => {
 });
 
 describe('released/current parser behavioral parity', () => {
-  it('keeps frozen capture bytes, graphs, optional records and current outputs unchanged', () => {
+  it('keeps frozen capture bytes and graphs while current readers require the successor identity', () => {
     expect(rawHistoryDigest(bytes)).toBe('cb9a4768b30e031d9d4b802528223679efa28259b50713221cdfc7a71d6eda46');
     expect(canonicalSha256(historicalV3PhaseGraph())).toBe(releasedV3ActivationIdentity.phaseGraphHash);
     const current = currentActivationRecordValidators();
@@ -232,7 +243,9 @@ describe('released/current parser behavioral parity', () => {
     ] as const;
     for (const [value, releasedReader, currentReader] of pairs) {
       expect(releasedReader(value)).toEqual(value);
-      expect(JSON.stringify(releasedReader(value))).toBe(JSON.stringify(currentReader(value)));
+      expect(() => currentReader(value)).toThrow(/compatibility map/);
+      const currentValue = currentIdentityRecord(value);
+      expect(currentReader(currentValue)).toEqual(currentValue);
     }
     expect(validateHistoricalV3GovernanceChangeMetadata(raw('metadata'))).toEqual(raw('metadata'));
     for (const kind of ['supersession', 'reconciliation', 'credential-policy'] as const) {

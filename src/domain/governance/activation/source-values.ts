@@ -345,7 +345,8 @@ export function validatePhasePayloadValues<I extends R.ActivationIdentityFieldsV
     issues.push('Publication evidence must match the independently observed resulting Git object ID.');
   }
   if (record.header.phaseId === 'runner-ready') {
-    if (typeof value.organization !== 'string' || !Number.isInteger(value.runnerId) || Number(value.runnerId) <= 0 ||
+    if (typeof value.organization !== 'string' || typeof value.label !== 'string' ||
+      !Number.isInteger(value.runnerId) || Number(value.runnerId) <= 0 ||
       !(value.groupId === null || Number.isInteger(value.groupId)) ||
       !(value.networkConfigurationId === null || typeof value.networkConfigurationId === 'string')) {
       issues.push('Runner proof requires an explicit organization, runner ID, group, and network-configuration binding.');

@@ -41,6 +41,7 @@ import {
 import type { ActivationInputSnapshot } from '../domain/governance/activation/inputs.js';
 import { inspectAzureDeploymentOwnership } from './azure-deployment-ownership.js';
 import { validateExternalOperationCheckpoint } from './external-operations.js';
+import { executeRunnerReadiness } from './runner-readiness.js';
 
 export type * from './transition-ports.js';
 export { governancePlanDirectoryPathParts, transitionPlanPathParts } from './transition-records.js';
@@ -62,6 +63,7 @@ const builtInExecutors: Partial<Record<PhaseId, PhaseExecutor>> = {
   'state-path-selected': executeAzurePhase,
   'existing-private-path': executeAzurePhase,
   'bootstrap-local': executeAzurePhase,
+  'runner-ready': executeRunnerReadiness,
   'remote-ready': remoteImportRetention,
   'bootstrap-state-disposed': executeBootstrapStateDisposal,
   'rulesets-applied': executeRulesetPhase,
@@ -76,6 +78,7 @@ async function executeBuiltInPhase(input: PhaseAdapterExecutionInput, localReval
   }
   const custom = input.adapters.phases?.[input.phase.id];
   if (custom) return await custom.execute(input);
+  if (input.phase.id === 'runner-ready') return executeRunnerReadiness(input);
   if (phaseScope(input.phase.id) === 'local') {
     const outcome = await executeSeedOperations(input);
     if (!outcome) throw new Error(`The local scope has no executor for ${input.phase.id}.`);

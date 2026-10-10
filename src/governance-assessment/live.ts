@@ -80,11 +80,13 @@ function runnerScope(
   }
   const organization = text(value.organization);
   const networkConfigurationId = text(value.networkConfigurationId);
+  const label = text(value.label);
   if (organization.toLowerCase() !== repository.owner.toLowerCase() ||
-      !/^[A-Za-z0-9_-]{1,128}$/u.test(networkConfigurationId)) {
+      !/^[A-Za-z0-9_-]{1,128}$/u.test(networkConfigurationId) ||
+      !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/u.test(label)) {
     throw new LiveFailure('unsafe-runner-scope', 'The runner organization or network binding did not match the verified repository scope.');
   }
-  return { organization, runnerId: id(value.runnerId), groupId: id(value.groupId), networkConfigurationId };
+  return { organization, runnerId: id(value.runnerId), groupId: id(value.groupId), networkConfigurationId, label };
 }
 
 class Observations {
@@ -582,11 +584,12 @@ export async function collectLiveAssessment(
       return {
         organization: repository.owner, repository: repositoryValue.fullName,
         runnerId: bound.runnerId, groupId: bound.groupId, networkConfigurationId: bound.networkConfigurationId,
+        expectedLabel: bound.label,
         repositoryAssigned: assignedGroups.includes(bound.groupId!),
         runner: {
           id: bound.runnerId, name: text(rawRunner.name), status: text(rawRunner.status),
           runnerGroupId: bound.groupId, networkConfigurationId: bound.networkConfigurationId,
-          labels: rawRunner.labels === undefined ? null
+          labels: rawRunner.labels === undefined ? [text(rawRunner.name)]
             : sorted(list(rawRunner.labels).map((entry) => text(typeof entry === 'string' ? entry : record(entry).name))),
           maximumRunners: rawRunner.maximum_runners === undefined ? null : numeric(rawRunner.maximum_runners),
           publicIpEnabled: rawRunner.public_ip_enabled === undefined ? null : boolean(rawRunner.public_ip_enabled),

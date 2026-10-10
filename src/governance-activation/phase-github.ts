@@ -19,6 +19,9 @@ import { canonicalJson, canonicalSha256 } from '../domain/governance/activation/
 import { captureProjectFileSnapshot } from '../adapters/filesystem/project-transaction.js';
 import { readbackProof } from './transition-records.js';
 import { runnerPreflightSecretName } from '../domain/governance/activation/types.js';
+import {
+  runnerGitHubPlanInputs
+} from './runner-readiness.js';
 
 export async function planGitHubPhase(input: PhasePlanningInput): Promise<PhasePlanBuild | null> {
   const repository = repositoryConfiguration(input.inspection).name;
@@ -83,11 +86,20 @@ export async function planGitHubPhase(input: PhasePlanningInput): Promise<PhaseP
         };
       }
     case 'runner-ready':
+      {
+        const plan = runnerGitHubPlanInputs(input);
       return {
         operations: [
-          githubOperation(input, 'github.runner.ensure-ready', 'github-write', { repository })
+          githubOperation(
+            input,
+            'github.runner.ensure-ready',
+            'github-write',
+            plan,
+            { type: 'external', identity: `/orgs/${plan.organization}` }
+          )
         ]
       };
+      }
     case 'private-backend-proof':
       return {
         operations: [

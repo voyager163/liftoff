@@ -1049,7 +1049,10 @@ describe('live limits, failure normalization and secret suppression', () => {
 });
 
 describe('bound hosted-runner metadata', () => {
-  const runnerScope = { organization: 'octo-org', runnerId: 77, groupId: 9, networkConfigurationId: 'NC_fixture' };
+  const runnerScope = {
+    organization: 'octo-org', runnerId: 77, groupId: 9,
+    networkConfigurationId: 'NC_fixture', label: 'private-staging'
+  };
   const runnerUrl = 'https://api.github.com/orgs/octo-org/actions/hosted-runners/77';
   const groupUrl = 'https://api.github.com/orgs/octo-org/actions/runner-groups/9';
   const networkUrl = 'https://api.github.com/orgs/octo-org/settings/network-configurations/NC_fixture';

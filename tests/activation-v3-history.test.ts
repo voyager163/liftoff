@@ -9,7 +9,9 @@ import {
   historicalActivationIdentities, isHistoricalActivationIdentity, isReleasedV3ActivationIdentity,
   releasedV3ActivationIdentity
 } from '../src/domain/governance/policy/identity.js';
-import { validateActivationIdentity, validateApprovalEnvelope } from '../src/domain/governance/activation/validators.js';
+import {
+  validateActivationIdentity, validateApprovalEnvelope, validateReadableActivationIdentity
+} from '../src/domain/governance/activation/validators.js';
 import {
   historicalV3PhaseGraph, historicalV3PhaseContractDigest, historicalV3EvidenceBodyDigest,
   validateHistoricalV3ActivationState, validateHistoricalV3EvidenceHeader, validateHistoricalV3EvidenceRecord,
@@ -41,14 +43,15 @@ function raw(key: string) { return historyRecord(capturedV3Records()[key], key);
 function first(key: string) { return historyRecord(historyArray(capturedV3Records()[key], key)[0], key); }
 
 describe('frozen released-v3 structural contracts', () => {
-  it('keeps the exact captured graph, identity and current eligibility unchanged', async () => {
+  it('keeps the exact captured graph and identity readable but separate from current execution', async () => {
     const fixture = capturedV3Records();
     const bytes = await readFile('assets/governance/single-maintainer-gitflow/activation-v3-graph.json');
     expect(rawHistoryDigest(bytes)).toBe(fixture.graphRawSha256);
     expect(canonicalSha256(historicalV3PhaseGraph())).toBe(releasedV3GraphSha256);
-    expect(historicalV3PhaseGraph()).toEqual(canonicalPhaseGraph);
-    expect(releasedV3ActivationIdentity).toEqual(currentActivationIdentity);
-    expect(validateActivationIdentity(fixture.identity)).toEqual(currentActivationIdentity);
+    expect(historicalV3PhaseGraph()).not.toEqual(canonicalPhaseGraph);
+    expect(releasedV3ActivationIdentity).not.toEqual(currentActivationIdentity);
+    expect(validateReadableActivationIdentity(fixture.identity)).toEqual(releasedV3ActivationIdentity);
+    expect(() => validateActivationIdentity(fixture.identity)).toThrow(/compatibility map/);
     expect(isHistoricalActivationIdentity(fixture.identity)).toBe(false);
     expect(historicalActivationIdentities).toHaveLength(2);
     const changed = historicalV3PhaseGraph();
@@ -73,7 +76,10 @@ describe('frozen released-v3 structural contracts', () => {
   it('does not turn expired readable approval into executable consent', () => {
     const approval = first('approvals');
     expect(validateHistoricalV3ApprovalEnvelope(approval)).toEqual(approval);
-    expect(() => validateApprovalEnvelope(approval, { requireUnexpired: true, now: new Date('2026-09-27T00:00:00.000Z') })).toThrow(/expiresAt must be in the future/);
+    expect(() => validateApprovalEnvelope(
+      { ...approval, identity: currentActivationIdentity },
+      { requireUnexpired: true, now: new Date('2026-09-27T00:00:00.000Z') }
+    )).toThrow(/expiresAt must be in the future/);
   });
 
   it.each(Object.keys(releasedV3ActivationIdentity))('rejects mixed or future identity field %s', (field) => {

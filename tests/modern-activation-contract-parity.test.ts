@@ -14,19 +14,41 @@ import { currentActivationRecordValidators } from '../src/domain/governance/acti
 
 const hash = (bytes: string | Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 describe('current/released contracts stay separate from modern source allocation', () => {
-  it('preserves every current graph byte and behavior hash through shared definitions', () => {
+  it('preserves released graph bytes while limiting the reviewed current successor to runner-ready', () => {
     const bytes = readFileSync('assets/governance/single-maintainer-gitflow/activation-v3-graph.json');
     expect(hash(bytes)).toBe('2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703');
-    expect(canonicalPhaseGraphJson).toBe(bytes.toString('utf8'));
-    expect(canonicalPhaseGraph).toEqual(historicalV3PhaseGraph());
-    expect(canonicalPhaseGraphHash).toBe(identities.releasedV3ActivationIdentity.phaseGraphHash);
-    for (const { label: _label, ...behavior } of historicalV3PhaseGraph().phases) {
+    const released = historicalV3PhaseGraph();
+    expect(JSON.parse(bytes.toString('utf8'))).toEqual(released);
+    expect(canonicalPhaseGraphHash).toBe('f8122e15e69b9e7425096ea7d8e8624d2b4c3041074e534ce582486331deadba');
+    expect(canonicalPhaseGraphJson).not.toBe(bytes.toString('utf8'));
+    const releasedRunner = released.phases.find((phase) => phase.id === 'runner-ready')!;
+    const currentRunner = canonicalPhaseGraph.phases.find((phase) => phase.id === 'runner-ready')!;
+    expect(currentRunner).toMatchObject({
+      allowedMutations: {
+        local: ['write-evidence', 'write-activation-state'],
+        remote: ['azure-network-provision', 'azure-read', 'github-read', 'github-write']
+      },
+      evidence: {
+        schema: 'runner-ready.v1',
+        required: true,
+        liveReadbackProviders: ['azure', 'github']
+      }
+    });
+    expect({
+      ...canonicalPhaseGraph,
+      phases: canonicalPhaseGraph.phases.map((phase) =>
+        phase.id === 'runner-ready' ? releasedRunner : phase)
+    }).toEqual(released);
+    for (const { label: _label, ...behavior } of canonicalPhaseGraph.phases) {
       expect(canonicalPhaseContractDigests[behavior.id]).toBe(canonicalSha256(behavior));
     }
   });
 
-  it('does not advance current versions, publish a version, widen legacy selectors or change policy6', () => {
-    expect(identities.createActivationIdentity(canonicalPhaseGraphHash)).toEqual(identities.releasedV3ActivationIdentity);
+  it('does not rewrite the released identity, advance schema versions, widen legacy selectors or change policy6', () => {
+    expect(identities.createActivationIdentity(canonicalPhaseGraphHash))
+      .not.toEqual(identities.releasedV3ActivationIdentity);
+    expect(identities.releasedV3ActivationIdentity.phaseGraphHash)
+      .toBe('2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703');
     expect(identities.liftoffActivationPackageVersion).toBe('0.12.0');
     expect(identities.liftoffManifestArtifactVersion).toBe(7);
     expect(identities.activationContractVersion).toBe(3);

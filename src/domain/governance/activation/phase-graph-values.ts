@@ -10,7 +10,7 @@ type TerminalPhaseState = ReleasedTerminalPhaseStateV3;
 /** Shared definitions only; the caller owns source versions and execution compatibility. */
 export function buildPhaseDefinitions(versions: {
   evidenceHeaderSchemaVersion: number; approvalEnvelopeSchemaVersion: number;
-}): readonly PhaseGraphNode[] {
+}, contract: 'current' | 'released-v3' = 'current'): readonly PhaseGraphNode[] {
   const { evidenceHeaderSchemaVersion, approvalEnvelopeSchemaVersion } = versions;
   const terminalVerified = ['verified', 'failed'] as const satisfies readonly TerminalPhaseState[];
   const terminalApproved = ['approved', 'failed'] as const satisfies readonly TerminalPhaseState[];
@@ -257,8 +257,17 @@ export function buildPhaseDefinitions(versions: {
           inapplicableWhen: 'statePath!=bootstrap-local',
           exclusiveWith: []
         },
-        allowedMutations: mutations(['write-evidence'], ['github-read', 'github-write', 'github-workflow-dispatch']),
-        evidence: evidence('runner-ready.v1', true, ['github']),
+        allowedMutations: mutations(
+          ['write-evidence'],
+          contract === 'released-v3'
+            ? ['github-read', 'github-write', 'github-workflow-dispatch']
+            : ['azure-network-provision', 'azure-read', 'github-read', 'github-write']
+        ),
+        evidence: evidence(
+          'runner-ready.v1',
+          true,
+          contract === 'released-v3' ? ['github'] : ['azure', 'github']
+        ),
         approvalGate: approval('infrastructure-cost', true),
         invalidationInputs: ['runner-inventory', 'approval-envelope'],
         rollback: rollback('reverse-to', 'bootstrap-local', 'Remove repository runner assignment before network resources.'),

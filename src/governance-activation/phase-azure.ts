@@ -19,6 +19,9 @@ import {
 import {
   bootstrapPlanInputs, executeAzureBackendBootstrap
 } from './azure-backend-bootstrap.js';
+import {
+  runnerNetworkPlanInputs
+} from './runner-readiness.js';
 
 function azureSubscriptionId(input: PhasePlanningInput | PhaseAdapterExecutionInput): string | null {
   return input.inspection.activationInputs?.azure?.subscriptionId ??
@@ -98,6 +101,25 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
           azureOperation(input.phase.id, 'azure.bootstrap-local.apply', 'azure-network-provision', bootstrapPlanInputs(input), subId, [
             { mutationClass: 'azure-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
           ])
+        ]
+      };
+    case 'runner-ready':
+      return {
+        operations: [
+          planAzureDeploymentOwnership(input, subId),
+          azureOperation(
+            input.phase.id,
+            'azure.runner-network.ensure',
+            'azure-network-provision',
+            runnerNetworkPlanInputs(input),
+            subId,
+            [{
+              mutationClass: 'azure-read',
+              destination: transitionDestination('subscription', subId, { subscriptionId: subId }),
+              remote: true,
+              destructive: false
+            }]
+          )
         ]
       };
     case 'private-backend-proof':

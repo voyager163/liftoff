@@ -79,7 +79,7 @@ export function buildModernPhaseGraph(
   versions: ModernStaticVersions, profile: ModernProfileContract, workflow: ModernWorkflow
 ): ModernPhaseGraph {
   const contract = workflowContract(workflow);
-  const phases = buildPhaseDefinitions(versions).map((original): ModernPhaseGraphNode => {
+  const phases = buildPhaseDefinitions(versions, 'released-v3').map((original): ModernPhaseGraphNode => {
     const id = phaseId(original.id);
     const local = original.id.startsWith('seed-');
     const mapMutation = (mutation: ModernMutationClass): readonly ModernMutationClass[] => {
