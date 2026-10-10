@@ -557,6 +557,34 @@ name, secret name, owner, repository, expiry, rotation lead, permissions,
 allowed workflows/jobs, non-forwarding rules, and readback evidence, never the
 secret value.
 
+## Phase 0 provider discovery
+
+Post-publication Phase 0 uses bounded read-only GitHub REST and Azure CLI reads;
+it does not rely on the old minimal `gh repo view` path or an injected success
+adapter. GitHub discovery re-reads the local Git push destination at execution
+time and requires it, the verified publication binding, and the provider
+repository ID to identify the same repository. It inventories source and branch
+contexts, workflows, rulesets, releases, environments, deployments, Actions
+permissions, security signals, authenticated identity, and optional
+runner/network controls. A denied mandatory inventory remains `unknown` and
+blocks completion; it is never treated as absent.
+
+Azure discovery is planned only when activation inputs contain an exact
+subscription UUID, tenant UUID, and region. Every subscription-scoped command
+passes `--subscription`; no CLI default account is trusted. Phase 0 compares
+`az account show` with a live Resource Manager subscription readback, resolves
+the actual user or service-principal object, and uses the selected cloud's
+Resource Manager endpoint, including sovereign clouds. Each manifest-selected
+environment is mapped to its deterministic resource-group and resource-name
+bindings and inventoried by full provider resource ID. Existing matching names
+are recorded as `occupied-unverified-ownership`, even when their tags mention
+Liftoff; names and tags do not grant ownership or write authority.
+
+Provider reads have fixed time and response-size bounds. Evidence retains only
+sanitized identity, endpoint, status, environment, and resource bindings. Raw
+CLI output, credentials, account email addresses, and provider diagnostics are
+not persisted. Phase 0 performs no GitHub or Azure mutation.
+
 ## Evidence authority and active changes
 
 Task checkboxes are a projection of phase state, not authority. Evidence

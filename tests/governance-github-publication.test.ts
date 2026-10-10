@@ -17,7 +17,6 @@ import {
 } from '../src/governance-activation/github-config.js';
 import { executeGitHubPublication, planGitHubPublication } from '../src/governance-activation/github-publication.js';
 import { classifyGitHubWorkload, executeGitHubDiscovery, observeGitHubPhase0, planGitHubDiscovery } from '../src/governance-activation/github-discovery.js';
-import { discoverPhase0 } from '../src/governance-activation/phase-discovery.js';
 import type { CommandResult, CommandRunner } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/types.js';
 import { fixtureContext } from './governance-activation-fixtures.js';
@@ -348,64 +347,6 @@ describe('publication execution', () => {
   });
 });
 
-describe('Phase 0 discovery refusals', () => {
-  class Phase0Runner extends FakeGitRunner {
-    ghResult: Partial<CommandResult> = { status: 0, stdout: '' };
-    override async run(command: ExternalCommand, options?: Parameters<CommandRunner['run']>[1]): Promise<CommandResult> {
-      if (command.executable === 'gh') {
-        this.calls.push([command.executable, ...command.args]);
-        return { command, displayCommand: 'gh repo view', status: 0, signal: null, stdout: '', stderr: '', timedOut: false, ...this.ghResult };
-      }
-      return super.run(command, options);
-    }
-  }
-
-  async function discovery(label: string, ghResult: Partial<CommandResult>) {
-    const root = await project(label);
-    const runner = new Phase0Runner(root);
-    runner.remotes = [{ name: 'origin', url: origin, pushUrls: [origin] }];
-    runner.ghResult = ghResult;
-    const inspection = await coverageInspection({ root, phaseId: 'phase-0-complete', state: unpublishedState() });
-    const operation = { adapter: 'github', actionId: 'github.phase0.discover', mutationClass: 'github-read', phaseId: 'phase-0-complete',
-      inputs: { repository: 'owner/repo' }, remote: true, destructive: false,
-      destination: { type: 'repository', identity: 'owner/repo', repository: 'owner/repo' } } as TransitionOperation;
-    const plan = { phaseId: 'phase-0-complete', baselineDigest: 'f'.repeat(64), operations: [operation] } as unknown as SavedTransitionPlan;
-    return { runner, input: { inspection, plan, phase: phase('phase-0-complete'), runner, adapters: {}, now: coverageNow } as PhaseAdapterExecutionInput };
-  }
-
-  it.each([
-    ['a failed read', { status: 1, stderr: `HTTP 403 ${sentinel}` }, /^Phase 0 GitHub read-only discovery failed: GitHub CLI did not confirm read access\./u],
-    ['an unstartable CLI', { status: null, errorCode: 'ENOENT', errorMessage: `spawn gh ${sentinel}` },
-      /^Phase 0 GitHub read-only discovery failed: GitHub CLI could not be started\./u],
-    ['a timed-out read', { status: null, timedOut: true, stderr: sentinel }, /^Phase 0 GitHub read-only discovery failed: the bounded read timed out\./u],
-    ['invalid JSON', { stdout: `raw ${sentinel} response` }, /^Phase 0 GitHub discovery returned invalid JSON; response bytes were withheld\.$/u],
-    ['incomplete identity', { stdout: JSON.stringify({ id: 'R_1', nameWithOwner: 'owner/repo' }) }, /did not return repository id, nameWithOwner, and default branch/u],
-    ['a different push destination', { stdout: JSON.stringify({ id: 'R_1', nameWithOwner: 'owner/other', defaultBranchRef: { name: 'develop' } }) },
-      /readback differs from the actual reviewed Git push destination/u]
-  ] satisfies Array<[string, Partial<CommandResult>, RegExp]>)('blocks %s without binding a repository or claiming readback', async (_label, ghResult, expected) => {
-    const { input, runner } = await discovery('phase0', ghResult);
-    const outcome = await discoverPhase0(input);
-    expect(outcome).toMatchObject({ status: 'blocked', completedOperations: [] });
-    expect(outcome!.blocker).toMatch(expected);
-    expect(outcome!.blocker).not.toContain(sentinel);
-    expect(outcome!.blocker).not.toMatch(/HTTP 403|spawn gh|Unexpected token/u);
-    expect(outcome).not.toHaveProperty('stateOverride');
-    expect(outcome).not.toHaveProperty('liveReadback');
-    expect(runner.calls[0]).toEqual(['gh', 'repo', 'view', 'owner/repo', '--json', 'id,nameWithOwner,defaultBranchRef,isPrivate']);
-  });
-
-  it('binds only a verified repository readback that matches the reviewed push destination', async () => {
-    const { input } = await discovery('phase0-verified', {
-      stdout: JSON.stringify({ id: 'R_1', nameWithOwner: 'Owner/Repo', defaultBranchRef: { name: 'develop' }, isPrivate: true })
-    });
-    const outcome = await discoverPhase0(input);
-    expect(outcome).toMatchObject({ status: 'completed', resultState: 'verified' });
-    expect(outcome!.stateOverride!.remoteBinding).toMatchObject({ id: 'R_1', name: 'Owner/Repo', pushUrl: origin, defaultBranch: 'develop' });
-    expect(outcome!.stateOverride!.applicability).toEqual({ statePath: 'none', privateStagingDast: 'unknown', credentialRequired: 'unknown' });
-    expect(await discoverPhase0({ ...input, phase: phase('pushed') })).toBeNull();
-  });
-});
-
 describe('REST Phase 0 observation', () => {
   const sha = 'b'.repeat(40);
   const workflow = Buffer.from('name: CI\non: push\njobs:\n  test:\n    name: Unit tests\n    runs-on: ubuntu-latest\n    steps: []\n').toString('base64');
@@ -456,17 +397,50 @@ describe('REST Phase 0 observation', () => {
         { id: 11, name: 'CI', status: 'completed', conclusion: 'success', head_sha: sha, app: { id: 15368, slug: 'github-actions' } }
       ] });
     }
-    const operation = githubOperation(planning(inspection, new FakeGitRunner(root), github, 'phase-0-complete'), 'github.phase0.discover', 'github-read', {});
+    const runner = new FakeGitRunner(root);
+    runner.remotes = [{ name: 'origin', url: origin, pushUrls: [origin] }];
+    const operation = githubOperation(planning(inspection, runner, github, 'phase-0-complete'), 'github.phase0.discover', 'github-read', {});
     const plan = { phaseId: 'phase-0-complete', operations: [operation] } as unknown as SavedTransitionPlan;
     return {
       github,
-      input: { inspection, plan, phase: phase('phase-0-complete'), runner: new FakeGitRunner(root), adapters: adapters(github), now: coverageNow } as PhaseAdapterExecutionInput
+      input: { inspection, plan, phase: phase('phase-0-complete'), runner, adapters: adapters(github), now: coverageNow } as PhaseAdapterExecutionInput
     };
   }
 
   it('refuses a repository whose identity differs from the verified publication binding', async () => {
     const { input } = await observationFixture('observe-drift', false);
     await rejectedWith(observeGitHubPhase0({ ...input, inspection: { ...input.inspection, state: coverageState() } }), 'phase0-binding');
+  });
+
+  it('establishes the remote binding only from a verified push and matching provider identity', async () => {
+    const { input } = await observationFixture('observe-initial-binding', true);
+    delete input.inspection.state.remoteBinding;
+    input.inspection.state.phases.pushed.state = 'verified';
+    const outcome = await executeGitHubDiscovery(input);
+    expect(outcome).toMatchObject({
+      status: 'completed',
+      stateOverride: {
+        remoteBinding: {
+          id: '7',
+          name: 'owner/repo',
+          defaultBranch: 'develop',
+          pushUrl: origin,
+          verifiedAt: coverageNow.toISOString()
+        }
+      }
+    });
+    input.inspection.state.phases.pushed.state = 'pending';
+    await rejectedWith(observeGitHubPhase0(input), 'phase0-binding');
+  });
+
+  it('refuses when the execution-time Git push destination differs from the verified publication binding', async () => {
+    const { input } = await observationFixture('observe-push-drift', false);
+    (input.runner as FakeGitRunner).remotes = [{
+      name: 'origin',
+      url: 'https://github.com/owner/other.git',
+      pushUrls: ['https://github.com/owner/other.git']
+    }];
+    await rejectedWith(observeGitHubPhase0(input), 'phase0-binding');
   });
 
   it('keeps denied or unavailable inventories unknown instead of absent and blocks mandatory gaps', async () => {
@@ -503,7 +477,7 @@ describe('REST Phase 0 observation', () => {
     expect(JSON.stringify(outcome)).not.toContain('hidden');
     expect(JSON.stringify(outcome)).not.toContain('withheld');
     expect((outcome.evidencePayload as { github: { repository: unknown } }).github.repository).toEqual({
-      id: 7, name: 'owner/repo', defaultBranch: 'develop', private: true, owner: { login: 'owner', type: 'User', id: 1 },
+      id: 7, name: 'owner/repo', pushUrl: origin, defaultBranch: 'develop', private: true, owner: { login: 'owner', type: 'User', id: 1 },
       permissions: { admin: true, push: true, pull: true, maintain: true }, security: { secret_scanning: { status: 'enabled' } }
     });
     expect(github.writes()).toEqual([]);
@@ -651,19 +625,43 @@ describe('publication through the transition engine', () => {
 
 describe('Phase 0 diagnostics withheld through the transition engine', () => {
   it.each([
-    ['a failed read', { status: 1, stderr: `gh: HTTP 401 ${sentinel}` }],
-    ['invalid JSON', { status: 0, stdout: `raw ${sentinel} response` }]
-  ] as const)('persists a fixed blocker for %s without raw provider text', async (_label, repoView) => {
+    ['a failed read', 'failed'],
+    ['invalid JSON', 'malformed']
+  ] as const)('persists a fixed blocker for %s without raw provider text', async (_label, failure) => {
     const root = await project('engine-phase0');
-    const runner = new FakeProviderRunner(root, new FakeGitHub());
+    const github = new FakeGitHub();
+    github.repository('owner/repo', { id: 7 });
+    if (failure === 'failed') {
+      github.overrides.set('GET /repos/owner/repo', {
+        status: 401,
+        headers: {},
+        data: { message: sentinel }
+      });
+    }
+    const runner = new FakeProviderRunner(root, github);
     runner.remotes = [{ name: 'origin', url: origin, pushUrls: [origin] }];
-    runner.repoView = repoView;
-    const inspection = await coverageInspection({ root, phaseId: 'phase-0-complete', state: unpublishedState() });
+    if (failure === 'malformed') {
+      const run = runner.run.bind(runner);
+      runner.run = async (command, options) => command.executable === 'gh'
+        ? {
+          command,
+          displayCommand: 'gh api',
+          status: 0,
+          signal: null,
+          stdout: `raw ${sentinel} response`,
+          stderr: '',
+          timedOut: false
+        }
+        : run(command, options);
+    }
+    const state = coverageState();
+    state.remoteBinding = { ...state.remoteBinding!, id: '7' };
+    const inspection = await coverageInspection({ root, phaseId: 'phase-0-complete', state });
 
     const result = await executeApplyNext({ inspection, reinspect: async () => inspection, runner, now: coverageNow });
 
     expect(result).toMatchObject({ applied: false, reason: 'blocked', evidence: null });
-    expect(result.message).toMatch(/^Phase 0 GitHub (?:read-only discovery failed|discovery returned invalid JSON)/u);
+    expect(result.message).toMatch(/^Phase 0 GitHub discovery failed:/u);
     const persisted = await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8');
     expect(JSON.parse(persisted).phases['phase-0-complete']).toMatchObject({ state: 'blocked', blockers: [result.message] });
     for (const text of [JSON.stringify(result), persisted]) {

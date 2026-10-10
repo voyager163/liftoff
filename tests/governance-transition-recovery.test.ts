@@ -250,7 +250,8 @@ describe('source-of-truth and adapter integrity boundaries', () => {
     const inspection = await existingPrivatePath(root);
     const { adapters } = injected('existing-private-path', (input) => ({
       status: 'completed', resultState: 'verified', evidencePayload: { kind: 'existing-private-path.v1' },
-      liveReadback: [readbackProof(input, 'azure', 'subscription', `/subscriptions/${coverageSubscription}`, { reachable: true })],
+      liveReadback: [readbackProof(input, 'azure', 'subscription',
+        '/subscriptions/00000000-0000-4000-8000-000000000099', { reachable: true })],
       completedOperations: [verifyOperation(input.plan)]
     }));
 

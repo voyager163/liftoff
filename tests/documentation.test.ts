@@ -774,7 +774,8 @@ describe('public documentation', () => {
       'src/governance-activation/transition-planning.ts',
       'src/governance-activation/transition-ports.ts',
       'src/governance-activation/phase-publication.ts',
-      'src/governance-activation/phase-discovery.ts',
+      'src/governance-activation/github-discovery.ts',
+      'src/governance-activation/azure-discovery.ts',
       'src/governance-activation/phase-governance.ts',
       'src/governance-activation/phase-bootstrap-state.ts',
       'src/governance-activation/transition-records.ts'

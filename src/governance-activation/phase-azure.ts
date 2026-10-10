@@ -6,6 +6,7 @@ import { executeBootstrapStateDisposal, remoteImportRetention } from './phase-bo
 import { runCommand, commandSucceeded } from './transition-process.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
+import { AzureDiscoveryError, observeAzurePhase0 } from './azure-discovery.js';
 
 function azureSubscriptionId(input: PhasePlanningInput | PhaseAdapterExecutionInput): string | null {
   return input.inspection.activationInputs?.azure?.subscriptionId ??
@@ -36,17 +37,25 @@ function azureOperation(
 
 export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePlanBuild | null> {
   const subscriptionId = azureSubscriptionId(input);
-  if (!subscriptionId && input.phase.id !== 'phase-0-complete' && input.phase.id !== 'bootstrap-state-disposed') {
+  if (!subscriptionId && input.phase.id !== 'bootstrap-state-disposed') {
     return null;
   }
   const subId = subscriptionId ?? '00000000-0000-0000-0000-000000000000';
   switch (input.phase.id) {
     case 'phase-0-complete':
+    {
+      const azure = input.inspection.activationInputs?.azure ?? input.inspection.state.activationInputs?.azure;
+      if (!azure) return null;
       return {
         operations: [
-          azureOperation(input.phase.id, 'azure.phase0.discover', 'azure-read', { subscriptionId: subId }, subId)
+          azureOperation(input.phase.id, 'azure.phase0.discover', 'azure-read', {
+            subscriptionId: azure.subscriptionId,
+            tenantId: azure.tenantId,
+            region: azure.region
+          }, subId)
         ]
       };
+    }
     case 'provider-ready':
       return {
         operations: [
@@ -151,28 +160,77 @@ export async function executeAzurePhase(input: PhaseAdapterExecutionInput): Prom
   const subscriptionId = azureSubscriptionId(input);
   switch (input.phase.id) {
     case 'phase-0-complete': {
-      if (!subscriptionId) {
+      const operation = input.plan.operations.find((entry) => entry.actionId === 'azure.phase0.discover');
+      if (!subscriptionId || !operation) {
         return null;
       }
-      const accountResult = await input.runner.run({ executable: 'az', args: ['account', 'show', '--output', 'json'] }, { cwd: input.inspection.projectRoot });
-      if (accountResult.status !== 0 || !accountResult.stdout) {
+      try {
+        const report = await observeAzurePhase0(input);
+        const subscriptionResource = `/subscriptions/${report.subscription.id}`;
+        const environmentResources = report.environments.flatMap((environment) => [
+          ...(environment.resourceGroup ? [{
+            provider: 'azure' as const,
+            resourceType: 'resource-group',
+            resourceId: environment.resourceGroup.id
+          }] : []),
+          ...environment.observedResources.map((resource) => ({
+            provider: 'azure' as const,
+            resourceType: resource.type,
+            resourceId: resource.id
+          }))
+        ]);
+        const environmentReadbacks = report.environments.flatMap((environment) => [
+          ...(environment.resourceGroup ? [
+            readbackProof(input, 'azure', 'resource-group', environment.resourceGroup.id, environment.resourceGroup)
+          ] : []),
+          ...environment.observedResources.map((resource) =>
+            readbackProof(input, 'azure', resource.type, resource.id, resource))
+        ]);
+        return {
+          status: 'completed',
+          resultState: 'verified',
+          evidencePayload: {
+            kind: 'phase-0-discovery.v1',
+            azure: report
+          },
+          liveReadback: [
+            readbackProof(input, 'azure', 'subscription', subscriptionResource, report),
+            ...environmentReadbacks
+          ],
+          outputs: {
+            values: {
+              subscriptionId: report.subscription.id,
+              tenantId: report.subscription.tenantId,
+              subscriptionState: report.subscription.state,
+              principalType: report.principal.type,
+              principalObjectId: report.principal.objectId,
+              principalAppId: report.principal.appId ?? null,
+              cloudName: report.cloud.name,
+              resourceManagerEndpoint: report.cloud.resourceManager,
+              resourceManagerAudience: report.cloud.resourceManagerAudience,
+              region: report.region,
+              environmentCount: report.environments.length,
+              occupiedEnvironmentCount: report.environments
+                .filter((environment) => environment.status === 'occupied-unverified-ownership').length
+            },
+            resources: [{
+              provider: 'azure',
+              resourceType: 'subscription',
+              resourceId: subscriptionResource
+            }, ...environmentResources]
+          },
+          completedOperations: [operation]
+        };
+      } catch (error) {
         return {
           status: 'blocked',
-          blocker: `Azure Phase 0 discovery could not verify subscription ${subscriptionId}: ${accountResult.stderr || 'Azure CLI not authenticated'}`,
+          resultState: 'failed',
+          blocker: error instanceof AzureDiscoveryError
+            ? error.message
+            : 'Azure Phase 0 discovery failed unexpectedly; provider diagnostics were withheld.',
           completedOperations: []
         };
       }
-      const resourceId = `/subscriptions/${subscriptionId}`;
-      return {
-        status: 'completed',
-        resultState: 'verified',
-        evidencePayload: {
-          kind: 'phase-0-discovery.v1',
-          azure: { subscriptionId, observed: true }
-        },
-        liveReadback: [readbackProof(input, 'azure', 'subscription', resourceId, { subscriptionId })],
-        completedOperations: input.plan.operations.filter((op) => op.actionId === 'azure.phase0.discover')
-      };
     }
     case 'provider-ready':
     case 'state-path-selected':
