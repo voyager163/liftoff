@@ -440,3 +440,118 @@ They were not source and are not included in the handoff.
 
 At handoff creation there were no active background test processes. Run
 `git status --short` after checkout; expected state is clean.
+
+## Latest continuation checkpoint: Windows qualification, 2026-10-11
+
+The continuation session fetched `origin/feature/state-custody-readiness` and
+fast-forwarded its app-managed branch, `voyager163-liftoff-modernization`, to
+`2914f0f1395e46abfe0ad045535e424c7a1d3ad9`. Both required commits were verified
+as ancestors, including full implementation SHA
+`c23d18427b0bd1cebd81905b6c9b11619e26e1eb`. All qualification below ran before
+this documentation update, with a clean working tree and unchanged source,
+tests, assets, baselines, and configuration.
+
+OpenSpec reported the `spec-driven` schema, ready to apply, with 78/136 tasks
+complete. The complete proposal, design, tasks, and all 24 delta specifications
+were read. **Task 13.5 remains unchecked. Qualification failed; tasks 13.6 and
+13.7 were not advanced.**
+
+### Exact toolchain and completed runs
+
+Node 24.21.0 and OpenTofu 1.12.6 were downloaded into session-local storage and
+checked against their release SHA-256 inventories. npm 12.0.2 and OpenSpec
+1.11.0 were installed there without changing the system installation. Locked
+repository dependencies were restored using that toolchain. On this Windows
+host, `npm.cmd` and `openspec.cmd` avoid the system's disabled PowerShell script
+execution policy; the policy itself was not changed.
+
+| Command | Actual result on committed revision `2914f0f` |
+| --- | --- |
+| `npm run check:supported-stack` | Passed; deterministic baseline was not refreshed |
+| `npm run build -- --pretty false` | Passed |
+| `npm test -- --maxWorkers=1 --no-file-parallelism --reporter=dot` | Failed: 108 failed files, 194 passed files, 7 skipped files; 1,783 failed tests, 7,994 passed tests, 508 skipped tests |
+| `npm run coverage:cli -- --max-workers 1` | Failed: 1,782 failed tests, 7,990 passed tests, 513 skipped tests across 309 files |
+| `node scripts/coverage-gate.mjs verify cli` | Failed; independently rejected the failed evidence and missing coverage reports |
+| `npx vitest run tests/governance-state-handover.test.ts --maxWorkers=1 --no-file-parallelism --reporter=dot` | Passed: 14/14 tests |
+| The eleven-file focused invocation recorded under "Validation already completed" | Failed: 2 files failed, 9 passed; 6 failed tests, 277 passed tests, 4 skipped tests |
+| `npm run smoke:package` | Failed during isolated package installation: npm `EALLOWREMOTE` for an existing Microsoft-feed dependency URL |
+| `npm run check:repository` | Passed named-file policy; no hosted-settings qualification implied |
+| `openspec validate modernize-liftoff-platform --strict` | Passed |
+| `git diff --check` | Passed |
+
+The coverage evidence recorded:
+
+- `revision.commit`: `2914f0f1395e46abfe0ad045535e424c7a1d3ad9`;
+- `revision.dirty`: `false`, with zero changed paths;
+- source inventory: 506 executable files,
+  `sha256:279011126b38568d0361768167d2a0f1b30821d9afaf56539098b199c9cc4cab`;
+- Node `v24.21.0`, npm `12.0.2`, Vitest and V8 coverage provider `5.0.0`,
+  Vite `8.2.2`, Windows x64, and the unfiltered one-worker invocation;
+- failed process exit with no termination signal.
+
+Because tests failed and the existing configuration has `reportOnFailure: false`,
+neither `coverage-summary.json` nor `coverage-final.json` was emitted. The
+evidence's metrics object is empty. **No statements, branches, functions, or
+lines percentage is available, and none may be claimed to exceed 80%.**
+
+### Reproduced host blockers, not custody-layer fixes
+
+A standalone disposable-file probe reproduced the main failure independently
+of Liftoff: opening an unchanged file for reading changes its `ctimeMs` on this
+host. This occurred both in the system temporary directory and session artifact
+storage, while inode/device, size, and `mtimeMs` remained unchanged. Existing
+strict readers consequently report `file changed before inspection` or
+`Preview file changed while reading`. The preview check at
+`src/adapters/filesystem/update-previews.ts:453-455` was traced to pre-custody
+commit `c865dbf6`; the custody implementation did not change it. The six focused
+suite failures also stop at this existing preview integrity guard, including
+the disposal transition test.
+
+The same independent probe established that native file-symlink creation is
+denied with `EPERM`. Installed-tool and historical/path tests therefore cannot
+qualify their native link cases here. Full runs also reported Windows controller
+admission failures and obsolete snapshots after unsuccessful fixture setup.
+These are not permission to weaken freshness checks, fabricate native
+capabilities, skip failing files, increase acceptance thresholds, or regenerate
+historical fixtures.
+
+WSL has no installed distribution, and the committed hosted CI uses Node
+24.20.0 for its full-suite and CLI-coverage lanes. Those lanes cannot substitute
+for the explicitly requested Node 24.21.0 qualification without a separately
+reviewed toolchain change. No cloud credentials or customer resources were used,
+no host security policy was changed, and no Azure/native/cloud success was
+inferred from the injected custody tests. The required next input is a
+qualification host with stable read metadata and the native capabilities
+required by the unchanged tests, using the exact toolchain above.
+
+The package-smoke failure is separate: npm 12 refused a dependency tarball URL
+on the already configured Microsoft feed. No registry was replaced and no
+remote-source policy bypass was applied. Review that existing package-install
+prerequisite in its own scope rather than changing locks or mirrors to pass
+task 13.5.
+
+### Retained evidence and stack state
+
+Full logs and the copied coverage evidence remain in this session's artifact
+storage as `custody-full-suite.log`, `custody-cli-coverage.log`,
+`custody-coverage-evidence.json`, `custody-focused-suite.log`,
+`custody-package-smoke.log`, and `custody-coverage-verification.log`. They are
+not package assets, source changes, or portable qualification for another
+revision.
+
+Live GitHub readback still found PR #154 and PR #155 open. Filtered native-stack
+membership was empty for both; the dependent PR chain exists but is not yet
+registered as a native stack. PR #154's head is now
+`1fef0d2ff7187a02b1d03bbeef4bcdaf6a028d85`, with passing reported checks.
+PR #155 remains at `46ae082bb9f2ff30b7a151965900424cf9f11f48` with failed
+reported platform and CLI-coverage checks. The newer #154 head contains
+separate versions of installed-package and bounded-collision corrections
+already represented in the handoff ancestry. Do not rewrite either owner branch,
+drop those commits, merge failing work, or claim stack registration occurred.
+
+No implementation or task checkbox was changed in this continuation. The next
+session must rerun full-suite, source-complete coverage, focused and package
+qualification on a capable host before completing task 13.5. Private handover
+and custody production ports remain unregistered by the public CLI; task 13.6
+still needs actual approved disposable host/cloud evidence, not this failed
+Windows run or success-shaped test injections.
