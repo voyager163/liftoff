@@ -42,6 +42,7 @@ import type { ActivationInputSnapshot } from '../domain/governance/activation/in
 import { inspectAzureDeploymentOwnership } from './azure-deployment-ownership.js';
 import { validateExternalOperationCheckpoint } from './external-operations.js';
 import { executeRunnerReadiness } from './runner-readiness.js';
+import { executeProtectedStatePhase } from './protected-state-handover.js';
 
 export type * from './transition-ports.js';
 export { governancePlanDirectoryPathParts, transitionPlanPathParts } from './transition-records.js';
@@ -64,6 +65,8 @@ const builtInExecutors: Partial<Record<PhaseId, PhaseExecutor>> = {
   'existing-private-path': executeAzurePhase,
   'bootstrap-local': executeAzurePhase,
   'runner-ready': executeRunnerReadiness,
+  'private-backend-proof': executeProtectedStatePhase,
+  'remote-import-verified': executeProtectedStatePhase,
   'remote-ready': remoteImportRetention,
   'bootstrap-state-disposed': executeBootstrapStateDisposal,
   'rulesets-applied': executeRulesetPhase,
@@ -111,6 +114,10 @@ function executionCapabilityBlocker(
 ): string | null {
   const capability = phaseCapabilities[phaseId];
   if (adapters.phases?.[phaseId]) return null;
+  if ((phaseId === 'private-backend-proof' || phaseId === 'remote-import-verified') &&
+    adapters.protectedStateHandover) {
+    return null;
+  }
   if (capability.executor === 'injected-only' && adapters.githubRulesets &&
     (phaseId === 'rulesets-applied' || phaseId === 'live-readback')) return null;
   if (phaseId === 'credential-ready' && !credentialEnrollment) {

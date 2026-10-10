@@ -10,6 +10,11 @@ const builtIn = { executor: 'built-in', retry: 'none' } as const;
 const local = { executor: 'built-in', retry: 'explicit-local' } as const;
 const unavailable = { executor: 'unavailable', retry: 'none', blocker: 'No production executor is available.' } as const;
 const injected = { executor: 'injected-only', retry: 'none', blocker: 'An explicit GitHub ruleset adapter is required; no production adapter is configured.' } as const;
+const protectedState = {
+  executor: 'injected-only',
+  retry: 'none',
+  blocker: 'An explicit protected state handover capability is required; public existing-state migration remains disabled.'
+} as const;
 
 export const phaseCapabilities: Readonly<Record<PhaseId, PhaseCapability>> = {
   'seed-valid': local,
@@ -26,8 +31,8 @@ export const phaseCapabilities: Readonly<Record<PhaseId, PhaseCapability>> = {
   'existing-private-path': builtIn,
   'bootstrap-local': builtIn,
   'runner-ready': builtIn,
-  'private-backend-proof': unavailable,
-  'remote-import-verified': unavailable,
+  'private-backend-proof': protectedState,
+  'remote-import-verified': protectedState,
   'remote-ready': builtIn,
   'application-prerequisites-ready': unavailable,
   'application-artifact-ready': unavailable,

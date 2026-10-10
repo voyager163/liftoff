@@ -302,8 +302,24 @@ export function buildPhaseDefinitions(versions: {
           inapplicableWhen: 'statePath!=bootstrap-local',
           exclusiveWith: []
         },
-        allowedMutations: mutations(['write-evidence'], ['azure-state-import', 'azure-read', 'backend-state-read', 'backend-state-write']),
-        evidence: evidence('remote-import-verified.v1', true, ['azure']),
+        allowedMutations: mutations(
+          ['write-evidence'],
+          contract === 'released-v3'
+            ? ['azure-state-import', 'azure-read', 'backend-state-read', 'backend-state-write']
+            : [
+              'github-read',
+              'github-workflow-dispatch',
+              'azure-state-import',
+              'azure-read',
+              'backend-state-read',
+              'backend-state-write'
+            ]
+        ),
+        evidence: evidence(
+          'remote-import-verified.v1',
+          true,
+          contract === 'released-v3' ? ['azure'] : ['github', 'azure']
+        ),
         approvalGate: approval('infrastructure-cost', true),
         invalidationInputs: ['remote-state', 'approval-envelope'],
         rollback: rollback('reverse-to', 'private-backend-proof', 'Failed import leaves local state retained for remediation.'),

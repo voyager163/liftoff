@@ -76,7 +76,7 @@ describe('developer activation-completeness guidance', () => {
 
   it('states the actual executor counts from the release-owned capability table', () => {
     expect(completeness).toContain(`Of its ${phases.length} declared phases, ${byExecutor('built-in').length} have built-in handler paths, ` +
-      `${byExecutor('injected-only').length} require an injected\nGitHub ruleset adapter`);
+      `${byExecutor('injected-only').length} require an explicit injected capability`);
     expect(completeness).toContain(`and ${byExecutor('unavailable').length}\nfall back to an explicit missing-production-adapter blocker`);
   });
 

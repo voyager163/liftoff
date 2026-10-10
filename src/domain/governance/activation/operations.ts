@@ -138,7 +138,12 @@ const actions: Readonly<Record<PhaseId, readonly string[]>> = {
   'bootstrap-local': ['azure.deployment.classify-ownership', 'azure.bootstrap-local.apply', 'github.bootstrap-local.configure', ...persistence],
   'runner-ready': ['azure.deployment.classify-ownership', 'azure.runner-network.ensure', 'github.runner.ensure-ready', ...persistence],
   'private-backend-proof': ['azure.deployment.classify-ownership', 'github.runner.backend-proof', 'azure.remote-state.read', ...persistence],
-  'remote-import-verified': ['azure.deployment.classify-ownership', 'azure.remote-import.verify', ...persistence],
+  'remote-import-verified': [
+    'azure.deployment.classify-ownership',
+    'azure.remote-import.verify',
+    'github.runner.state-handover',
+    ...persistence
+  ],
   'remote-ready': ['azure.deployment.classify-ownership', 'azure.remote-ready.verify', ...persistence],
   'application-prerequisites-ready': ['azure.deployment.classify-ownership', 'azure.prerequisites.apply', 'azure.prerequisites.verify', ...persistence],
   'application-artifact-ready': ['azure.deployment.classify-ownership', 'github.artifact.build-dispatch', 'azure.artifact.readback', ...persistence],
@@ -194,6 +199,12 @@ function operationContract(action: string): OperationContract {
     'github.bootstrap-local.configure': { adapter: 'github', remote: true, mutations: ['github-write'] },
     'github.runner.ensure-ready': { adapter: 'github', remote: true, mutations: ['github-write', 'github-read'] },
     'github.runner.backend-proof': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['backend-state-read', 'azure-read'] },
+    'github.runner.state-handover': {
+      adapter: 'github',
+      remote: true,
+      mutations: ['github-workflow-dispatch'],
+      effects: ['azure-state-import', 'backend-state-read', 'backend-state-write', 'azure-read']
+    },
     'azure.remote-state.read': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read', 'backend-state-read'] },
     'azure.remote-import.verify': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-state-import'], effects: ['backend-state-read', 'backend-state-write', 'azure-read'] },
     'azure.remote-ready.verify': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'], effects: ['backend-state-read'] },

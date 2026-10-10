@@ -995,7 +995,8 @@ async function readHistoricalInventory(
           ? validateHistoricalV2EvidenceRecord(value) : validateHistoricalEvidenceRecord(value, parts[2].slice(0, -5)));
         if (record.header.schemaVersion === 3) {
           const issues = validatePhasePayloadValues(validateHistoricalV3EvidenceRecord(record), {
-            allowLegacyCredentialPolicyOnly: true
+            allowLegacyCredentialPolicyOnly: true,
+            allowLegacyProtectedStateProof: true
           });
           if (issues.length) historyFail(historyPathKey(parts), issues.join(' '), 'invalid-historical-reference');
         }

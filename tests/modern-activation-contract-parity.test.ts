@@ -14,12 +14,12 @@ import { currentActivationRecordValidators } from '../src/domain/governance/acti
 
 const hash = (bytes: string | Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 describe('current/released contracts stay separate from modern source allocation', () => {
-  it('preserves released graph bytes while limiting the reviewed current successor to runner-ready', () => {
+  it('preserves released graph bytes while extending the reviewed current successor through protected handover', () => {
     const bytes = readFileSync('assets/governance/single-maintainer-gitflow/activation-v3-graph.json');
     expect(hash(bytes)).toBe('2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703');
     const released = historicalV3PhaseGraph();
     expect(JSON.parse(bytes.toString('utf8'))).toEqual(released);
-    expect(canonicalPhaseGraphHash).toBe('f8122e15e69b9e7425096ea7d8e8624d2b4c3041074e534ce582486331deadba');
+    expect(canonicalPhaseGraphHash).toBe('24b2c47952b012fd38a6ceb0fb1d68981b2a123c97bf8c4b6b7f1adb503a2345');
     expect(canonicalPhaseGraphJson).not.toBe(bytes.toString('utf8'));
     const releasedRunner = released.phases.find((phase) => phase.id === 'runner-ready')!;
     const currentRunner = canonicalPhaseGraph.phases.find((phase) => phase.id === 'runner-ready')!;
@@ -34,10 +34,31 @@ describe('current/released contracts stay separate from modern source allocation
         liveReadbackProviders: ['azure', 'github']
       }
     });
+    const releasedImport = released.phases.find((phase) => phase.id === 'remote-import-verified')!;
+    const currentImport = canonicalPhaseGraph.phases.find((phase) => phase.id === 'remote-import-verified')!;
+    expect(currentImport).toMatchObject({
+      allowedMutations: {
+        local: ['write-evidence', 'write-activation-state'],
+        remote: [
+          'github-read',
+          'github-workflow-dispatch',
+          'azure-state-import',
+          'azure-read',
+          'backend-state-read',
+          'backend-state-write'
+        ]
+      },
+      evidence: {
+        schema: 'remote-import-verified.v1',
+        required: true,
+        liveReadbackProviders: ['github', 'azure']
+      }
+    });
     expect({
       ...canonicalPhaseGraph,
       phases: canonicalPhaseGraph.phases.map((phase) =>
-        phase.id === 'runner-ready' ? releasedRunner : phase)
+        phase.id === 'runner-ready' ? releasedRunner :
+          phase.id === 'remote-import-verified' ? releasedImport : phase)
     }).toEqual(released);
     for (const { label: _label, ...behavior } of canonicalPhaseGraph.phases) {
       expect(canonicalPhaseContractDigests[behavior.id]).toBe(canonicalSha256(behavior));

@@ -335,7 +335,7 @@ describe('real W1/CP1 and credential2 integration', () => {
     });
 
   it('pins current schema1 bytes to the reviewed graph successor', () => {
-    expect(sha(renderCredentialPolicySchema())).toBe('47a34c1e7da4b299029ba406082e718b388b8f3887e865a6d1f98d7dd59ab859');
+    expect(sha(renderCredentialPolicySchema())).toBe('33700536d2dd57c2c9de723e09b660a9610c15080d27bd5db5a3fe4414357acf');
     const schema = JSON.parse(renderCredentialPolicySchema());
     expect(schema.properties.schemaVersion).toEqual({ const: 1 });
     expect(schema.properties.identity.required).toHaveLength(11);

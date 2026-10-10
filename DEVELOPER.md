@@ -61,7 +61,7 @@ Current deterministic setup contract, published by Liftoff 0.12.0:
   "policyVersion": "6",
   "activationContractVersion": 3,
   "phaseGraphSchemaVersion": 2,
-  "phaseGraphHash": "f8122e15e69b9e7425096ea7d8e8624d2b4c3041074e534ce582486331deadba",
+  "phaseGraphHash": "24b2c47952b012fd38a6ceb0fb1d68981b2a123c97bf8c4b6b7f1adb503a2345",
   "activationStateSchemaVersion": 3,
   "evidenceHeaderSchemaVersion": 3,
   "approvalEnvelopeSchemaVersion": 3,
@@ -2221,16 +2221,18 @@ other-platform qualification remain separate gates.
 ## Activation completeness and separate follow-up plan
 
 The activation engine is not yet an end-to-end production provisioning engine.
-Of its 29 declared phases, 16 have built-in handler paths, 2 require an injected
-GitHub ruleset adapter that the public CLI does not currently supply, and 11
+Of its 29 declared phases, 16 have built-in handler paths, 4 require an explicit injected capability
+that the public CLI does not currently supply, and 9
 fall back to an explicit missing-production-adapter blocker.
 
 The missing production phase handlers are `bootstrap-workflow-source-ready`,
-`private-backend-proof`, `remote-import-verified`,
 `application-prerequisites-ready`, `application-artifact-ready`,
 `application-foundation`, `workflow-source-ready`, `dev-proof`,
 `staging-qualified`, `production-rehearsed`, and `green-red-proof`.
-`rulesets-applied` and `live-readback` have adapter contracts but need production wiring.
+`rulesets-applied` and `live-readback` require the GitHub ruleset adapter.
+`private-backend-proof` and `remote-import-verified` require the private protected-state
+handover capability until task 13.5 binds a qualified host, protected workspace,
+key provider, writer quiescence, and lock implementation.
 
 Built-in handler presence does not establish a complete user journey.
 `liftoff governance approve` persists exact approval envelopes, but it refuses a
@@ -2238,9 +2240,10 @@ phase whose capability is unavailable or blocked before writing any approval,
 authority record, or plan. `governance apply-next --execute` likewise stops before
 any saved plan, intent, or producer effect for such a phase and reports its
 blocker; an earlier approval does not change that. Only an explicitly injected
-trusted phase adapter, or the GitHub ruleset adapter for `rulesets-applied` and
-`live-readback`, can execute those phases, and that test seam is not production
-qualification. `provider-ready` now derives its exact namespace and supported
+trusted phase adapter, the GitHub ruleset adapter for `rulesets-applied` and
+`live-readback`, or the private protected-state capability for
+`private-backend-proof` and `remote-import-verified` can execute those phases.
+Those injected seams are not public production qualification. `provider-ready` now derives its exact namespace and supported
 feature prerequisites from reviewed resource types, proves live registration
 permissions, registers only authorized missing prerequisites, and requires terminal
 `Registered` readback. Successful registrations are retained subscription
@@ -2320,6 +2323,21 @@ network, group, and runner IDs without repeating POST or PUT. Terminal
 non-ready, contradictory, unsupported, or identity-drifted observations block
 instead of establishing readiness. This phase does not dispatch a workflow or
 claim private backend reachability; `private-backend-proof` remains separate.
+
+`private-backend-proof` and `remote-import-verified` now have one narrow private
+producer contract for the bootstrap-owned path. The producer request is derived
+only from current verified `bootstrap-local` and `runner-ready` outputs: the exact
+repository and runner IDs, private backend binding, twelve bootstrap resource
+dispositions, absent target requirement, Azure blob-lease locking, authenticated
+encrypted backups, zero-change planning, and 30-day retention. The mapping admits
+nine imported resources, one private-endpoint embedded child, and two retained
+ARM deployment records; unknown, duplicate, extra, or pre-existing scope blocks.
+Pending execution persists one immutable GitHub Actions run handle and resume
+cannot change it. Completion requires exact runner/job/source bindings, an absent
+target, concurrency and backend digests, owner-only encrypted backup/key records,
+the complete mapping, and a zero-add/change/destroy plan. The default public CLI
+still blocks both phases without the private capability and exposes no arbitrary
+existing-state import, partition, relocation, or address-migration command.
 
 `credential-ready` is now a
 built-in production phase. Its reviewed public configuration selects an existing

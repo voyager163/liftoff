@@ -95,8 +95,18 @@ export async function writeBootstrapFixture(root: string, name: string, archived
 
 export function fixturePlan(context: EvidenceFreshnessContext, state: UserActivationState, producedAt: string, payload: Record<string, unknown>, root: string): SavedTransitionPlan {
   const phase = canonicalPhaseGraph.phases.find((node) => node.id === context.phaseId)!;
-  const operation = (actionId: string, mutationClass: TransitionOperation['mutationClass'], adapter: TransitionOperation['adapter'], destination: TransitionOperation['destination'], inputs: Record<string, unknown> = {}, remote = false, destructive = false): TransitionOperation =>
-    ({ actionId, mutationClass, adapter, destination, inputs, remote, destructive, phaseId: phase.id });
+  const operation = (
+    actionId: string,
+    mutationClass: TransitionOperation['mutationClass'],
+    adapter: TransitionOperation['adapter'],
+    destination: TransitionOperation['destination'],
+    inputs: Record<string, unknown> = {},
+    remote = false,
+    destructive = false,
+    effects?: TransitionOperation['effects']
+  ): TransitionOperation =>
+    ({ actionId, mutationClass, adapter, destination, inputs, remote, destructive, phaseId: phase.id,
+      ...(effects ? { effects } : {}) });
   const local = (identity: string) => ({ type: 'local' as const, identity, ...(!path.isAbsolute(identity) ? { pathParts: identity.split('/') } : {}) });
   const repository = { type: 'repository' as const, identity: 'owner/repo', repository: 'owner/repo' };
   const subscription = { type: 'subscription' as const, identity: fixtureSubscription, subscriptionId: fixtureSubscription };
@@ -112,7 +122,21 @@ export function fixturePlan(context: EvidenceFreshnessContext, state: UserActiva
     case 'phase-0-complete': operations.push(operation('github.phase0.discover', 'github-read', 'github', repository, {}, true)); break;
     case 'credential-ready': operations.push(operation('github.credential.verify-policy', 'github-read', 'github', repository, {}, true)); break;
     case 'state-path-selected': operations.push(operation('azure.state-path.select', 'azure-read', 'azure-opentofu', subscription, {}, true)); break;
-    case 'remote-import-verified': operations.push(operation('azure.remote-import.verify', 'azure-state-import', 'azure-opentofu', subscription, {}, true)); break;
+    case 'remote-import-verified': operations.push(operation(
+      'github.runner.state-handover',
+      'github-workflow-dispatch',
+      'github',
+      repository,
+      {},
+      true,
+      false,
+      [
+        { mutationClass: 'azure-state-import', destination: subscription, remote: true, destructive: false },
+        { mutationClass: 'backend-state-read', destination: subscription, remote: true, destructive: false },
+        { mutationClass: 'backend-state-write', destination: subscription, remote: true, destructive: false },
+        { mutationClass: 'azure-read', destination: subscription, remote: true, destructive: false }
+      ]
+    )); break;
     case 'remote-ready': operations.push(operation('azure.remote-ready.verify', 'azure-read', 'azure-opentofu', subscription, {}, true)); break;
     case 'workflow-source-ready':
       operations.push(operation('local.workflow-source.write', 'write-workflows', 'local-state', local('.github/workflows')));

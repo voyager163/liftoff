@@ -78,11 +78,13 @@ See
 [configuration and manifests](../../../docs/configuration-and-manifests.md#private-modernization-contracts)
 for the separate source contracts and versioned public interfaces.
 
-Approved new-environment activation may eventually reuse these primitives only
-for a separately qualified protected bootstrap/handover whose resources were
-created by that same recorded operation. It must retain exact ownership,
-locking, backups, no-change verification and due-time custody/disposal proof.
-This narrow exception does not authorize arbitrary brownfield state access.
+Approved new-environment activation now exposes a separate injected-only
+bootstrap/handover capability for resources created by the same recorded operation.
+It binds exact ownership, locking, complete fixed mappings,
+authenticated encrypted backups, concurrency and zero-change verification.
+The default public CLI does not register that capability, and protected-host,
+key-custody and due-time disposal qualification remain separate. This narrow
+exception does not authorize arbitrary brownfield state access.
 
 ## Coordinator integration
 

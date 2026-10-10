@@ -313,7 +313,10 @@ export function assertTaskMarkers(markdown: string, mappings: readonly { taskId:
 
 export function validatePhasePayloadValues<I extends R.ActivationIdentityFieldsV1, P extends string>(
   record: R.PhaseEvidenceRecordFieldsV3<I, P>,
-  options: { allowLegacyCredentialPolicyOnly?: boolean } = {}
+  options: {
+    allowLegacyCredentialPolicyOnly?: boolean;
+    allowLegacyProtectedStateProof?: boolean;
+  } = {}
 ): string[] {
   if (record.header.result === 'failed' || record.header.result === 'inapplicable') return [];
   const payload = record.payload;
@@ -354,6 +357,68 @@ export function validatePhasePayloadValues<I extends R.ActivationIdentityFieldsV
     if (!(record.liveReadback ?? []).some((proof) => proof.provider === 'github' &&
       (proof.resourceId === String(value.runnerId) || proof.resourceId.endsWith(`/hosted-runners/${value.runnerId}`)))) {
       issues.push('Runner payload ID has no matching independent runner resource readback.');
+    }
+  }
+  if (record.header.phaseId === 'private-backend-proof' &&
+    options.allowLegacyProtectedStateProof !== true) {
+    if (typeof value.bindingDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/u.test(value.bindingDigest) ||
+      !Number.isInteger(value.workflowRunId) || Number(value.workflowRunId) <= 0 ||
+      !Number.isInteger(value.workflowJobId) || Number(value.workflowJobId) <= 0 ||
+      typeof value.headSha !== 'string' || !/^[a-f0-9]{40}$/u.test(value.headSha) ||
+      !Number.isInteger(value.runnerId) || Number(value.runnerId) <= 0 ||
+      typeof value.runnerLabel !== 'string' ||
+      typeof value.backendBindingDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/u.test(value.backendBindingDigest) ||
+      value.targetStateExists !== false ||
+      value.locking !== 'azure-blob-lease' ||
+      typeof value.observationDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/u.test(value.observationDigest)) {
+      issues.push('Private backend proof requires exact workflow, runner, absent target, locking, and payload-free observation bindings.');
+    }
+    if (!(record.liveReadback ?? []).some((proof) =>
+      proof.provider === 'github' &&
+      proof.resourceId.endsWith(`/actions/runs/${value.workflowRunId}`)) ||
+      !(record.liveReadback ?? []).some((proof) =>
+        proof.provider === 'azure' && proof.resourceType === 'private-state-backend')) {
+      issues.push('Private backend proof requires matching GitHub workflow and Azure backend readback.');
+    }
+  }
+  if (record.header.phaseId === 'remote-import-verified' &&
+    options.allowLegacyProtectedStateProof !== true) {
+    const digests = [
+      value.bindingDigest,
+      value.backendBindingDigest,
+      value.mappingDigest,
+      value.concurrencyDigest,
+      value.remoteBackendDigest,
+      value.noChangePlanDigest
+    ];
+    const plan = typeof value.plan === 'object' && value.plan !== null && !Array.isArray(value.plan)
+      ? value.plan as Record<string, unknown>
+      : undefined;
+    if (digests.some((digest) => typeof digest !== 'string' || !/^[a-f0-9]{64}$/u.test(digest)) ||
+      !Number.isInteger(value.workflowRunId) || Number(value.workflowRunId) <= 0 ||
+      !Number.isInteger(value.workflowJobId) || Number(value.workflowJobId) <= 0 ||
+      typeof value.headSha !== 'string' || !/^[a-f0-9]{40}$/u.test(value.headSha) ||
+      !Number.isInteger(value.runnerId) || Number(value.runnerId) <= 0 ||
+      typeof value.runnerLabel !== 'string' ||
+      value.locking !== 'azure-blob-lease' ||
+      value.targetStatePreviouslyExisted !== false ||
+      plan?.add !== 0 || plan.change !== 0 || plan.destroy !== 0 ||
+      !Array.isArray(value.mappings) || value.mappings.length === 0 ||
+      !Array.isArray(value.backups) || value.backups.length === 0 ||
+      !Array.isArray(value.encryptedStatePathParts) ||
+      !Array.isArray(value.encryptionKeyPathParts) ||
+      value.publicExistingStateMigration !== false) {
+      issues.push('Remote import proof requires exact complete mapping, concurrency, encrypted backups, zero-change planning, and disabled brownfield migration.');
+    }
+    if (!(record.liveReadback ?? []).some((proof) =>
+      proof.provider === 'github' &&
+      proof.resourceId.endsWith(`/actions/runs/${value.workflowRunId}`)) ||
+      !(record.liveReadback ?? []).some((proof) =>
+        proof.provider === 'azure' && proof.resourceType === 'private-state-backend')) {
+      issues.push('Remote import proof requires matching GitHub workflow and Azure backend readback.');
     }
   }
   if (record.header.phaseId === 'state-path-selected' && !['existing-private', 'bootstrap-local'].includes(String(value.statePath))) {

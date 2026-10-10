@@ -806,6 +806,28 @@ does not expose a separate labels array. `runner-ready` does not dispatch the
 runner or prove backend access; that remains the later
 `private-backend-proof` boundary.
 
+The next two phases expose a private injected capability rather than a public
+brownfield migration command. `private-backend-proof` dispatches only the
+reviewed preflight on that exact runner and requires the same repository,
+workflow run/job, full source SHA, runner/group/network IDs, backend binding,
+absent target key, and Azure blob-lease support. `remote-import-verified` then
+admits only the resources created by the same verified `bootstrap-local`
+operation: nine direct imports, the private-endpoint DNS-zone group as one
+embedded child, and the two ARM deployment records retained outside state.
+Every resource must have exactly one reviewed disposition and fixed address.
+
+The handover persists one immutable GitHub Actions operation handle while
+pending. Completion requires exact mapping, concurrency, backend, and no-change
+digests; a zero-add/change/destroy plan; at least one nonempty owner-only
+encrypted backup/key pair; independent GitHub workflow and Azure backend
+readback; and explicit proof that the target did not previously exist. A changed
+operation ID, runner, backend, bootstrap inventory, resource mapping, occupied
+target, extra or missing resource, nonzero plan, or missing backup blocks. The
+default CLI supplies no protected-state adapter, so both phases remain
+fail-closed until a qualified private host is injected. Existing-state adoption,
+partition, relocation, and address migration remain unavailable through the
+public governance API.
+
 When a private ZRS backend cannot be reached and no existing private management
 path is approved, the bounded `bootstrap-local` branch may create only the
 access-establishing resources needed to reach the backend. Local bootstrap state

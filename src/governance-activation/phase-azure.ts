@@ -125,21 +125,13 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
     case 'private-backend-proof':
       return {
         operations: [
-          planAzureDeploymentOwnership(input, subId),
-          azureOperation(input.phase.id, 'azure.remote-state.read', 'azure-read', { verifyAccess: true }, subId, [
-            { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
-          ])
+          planAzureDeploymentOwnership(input, subId)
         ]
       };
     case 'remote-import-verified':
       return {
         operations: [
-          planAzureDeploymentOwnership(input, subId),
-          azureOperation(input.phase.id, 'azure.remote-import.verify', 'azure-state-import', { noChangePlanRequired: true }, subId, [
-            { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
-            { mutationClass: 'backend-state-write', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
-            { mutationClass: 'azure-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
-          ])
+          planAzureDeploymentOwnership(input, subId)
         ]
       };
     case 'remote-ready':

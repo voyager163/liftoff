@@ -287,12 +287,13 @@ explicit approval before creating any Azure or GitHub resource. Do not replace
 missing capability with duplicate scanners, partial provisioning, or
 placeholder success.
 These are target-policy requirements; production phases still have explicit
-capability gaps and two ruleset phases require an injected adapter absent from
-the public CLI. Exact approval persistence, provider readiness, protected
-credential enrollment, and approved existing-private backend readiness are
-built in. The bounded new-environment path can also provision and verify its
-repository-dedicated larger runner, but that does not authorize private backend
-proof, import, application provisioning, deployment, or enforcement phases.
+capability gaps. Two ruleset phases and the two protected-state phases require
+explicit injected capabilities absent from the default public CLI. Exact
+approval persistence, provider readiness, protected credential enrollment, and
+approved existing-private backend readiness are built in. The bounded
+new-environment path can also provision and verify its repository-dedicated
+larger runner, but that does not by itself authorize private backend proof,
+state handover, application provisioning, deployment, or enforcement phases.
 An unavailable executor or authority entry point is a blocker, not an instruction
 to run its provider commands directly.
 
@@ -326,11 +327,18 @@ or manually adopt an occupied deterministic resource. Missing licensing,
 permissions, repository assignment, exact routing/DNS, or matching resume IDs
 must remain blocked.
 
-Continue only through private-backend proof, declarative import, identity parity,
-locking/versioning, and clean no-change phases, followed by 30-day read-only
-retention before secure deletion. `runner-ready` does not dispatch a workflow or
-prove backend access. If any later production adapter is unavailable, stop at
-that capability blocker.
+Continue only through the injected `private-backend-proof` and
+`remote-import-verified` capability. It must use the exact recorded runner and
+same bootstrap-owned inventory, an absent target, Azure blob-lease locking,
+complete fixed mappings, owner-only encrypted backups, and a
+zero-add/change/destroy plan. While its GitHub Actions run is pending, use
+`liftoff governance resume --scope activation --json`; do not redispatch, edit,
+or replace the recorded workflow handle. An occupied target, changed run/job,
+runner/backend/bootstrap drift, incomplete or extra mapping, nonzero plan, or
+missing backup is a hard blocker. `runner-ready` does not dispatch this workflow
+or prove backend access. If the protected-state capability is not registered on
+the selected host, stop at that blocker; do not substitute direct OpenTofu
+import, state push, relocation, partitioning, or manual record edits.
 
 If an Azure bootstrap fails with a namespace-not-registered error while
 `resource_provider_registrations = "none"` is configured, do not retry the same

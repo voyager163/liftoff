@@ -22,6 +22,13 @@ import { runnerPreflightSecretName } from '../domain/governance/activation/types
 import {
   runnerGitHubPlanInputs
 } from './runner-readiness.js';
+import { transitionDestination } from '../domain/governance/activation/operations.js';
+import { azureBackendConfiguration } from './azure-backend-readiness.js';
+import {
+  executeProtectedStatePhase,
+  privateBackendProofPlanInputs,
+  stateHandoverPlanInputs
+} from './protected-state-handover.js';
 
 export async function planGitHubPhase(input: PhasePlanningInput): Promise<PhasePlanBuild | null> {
   const repository = repositoryConfiguration(input.inspection).name;
@@ -101,11 +108,87 @@ export async function planGitHubPhase(input: PhasePlanningInput): Promise<PhaseP
       };
       }
     case 'private-backend-proof':
+      {
+        const backend = azureBackendConfiguration(input, 'bootstrap-local');
       return {
         operations: [
-          githubOperation(input, 'github.runner.backend-proof', 'github-workflow-dispatch', { repository })
+          githubOperation(
+            input,
+            'github.runner.backend-proof',
+            'github-workflow-dispatch',
+            privateBackendProofPlanInputs(input),
+            undefined,
+            [
+              {
+                mutationClass: 'backend-state-read',
+                destination: transitionDestination('subscription', backend.subscriptionId, {
+                  subscriptionId: backend.subscriptionId
+                }),
+                remote: true,
+                destructive: false
+              },
+              {
+                mutationClass: 'azure-read',
+                destination: transitionDestination('subscription', backend.subscriptionId, {
+                  subscriptionId: backend.subscriptionId
+                }),
+                remote: true,
+                destructive: false
+              }
+            ]
+          )
         ]
       };
+      }
+    case 'remote-import-verified':
+      {
+        const backend = azureBackendConfiguration(input, 'bootstrap-local');
+        return {
+          operations: [
+            githubOperation(
+              input,
+              'github.runner.state-handover',
+              'github-workflow-dispatch',
+              stateHandoverPlanInputs(input),
+              undefined,
+              [
+                {
+                  mutationClass: 'azure-state-import',
+                  destination: transitionDestination('subscription', backend.subscriptionId, {
+                    subscriptionId: backend.subscriptionId
+                  }),
+                  remote: true,
+                  destructive: false
+                },
+                {
+                  mutationClass: 'backend-state-read',
+                  destination: transitionDestination('subscription', backend.subscriptionId, {
+                    subscriptionId: backend.subscriptionId
+                  }),
+                  remote: true,
+                  destructive: false
+                },
+                {
+                  mutationClass: 'backend-state-write',
+                  destination: transitionDestination('subscription', backend.subscriptionId, {
+                    subscriptionId: backend.subscriptionId
+                  }),
+                  remote: true,
+                  destructive: false
+                },
+                {
+                  mutationClass: 'azure-read',
+                  destination: transitionDestination('subscription', backend.subscriptionId, {
+                    subscriptionId: backend.subscriptionId
+                  }),
+                  remote: true,
+                  destructive: false
+                }
+              ]
+            )
+          ]
+        };
+      }
     case 'application-artifact-ready':
       return {
         operations: [
@@ -184,6 +267,9 @@ export async function executeGitHubPhase(input: PhaseAdapterExecutionInput): Pro
       return executeGitHubDiscovery(input);
     case 'credential-ready':
       return executeCredentialEnrollment(input);
+    case 'private-backend-proof':
+    case 'remote-import-verified':
+      return executeProtectedStatePhase(input);
     case 'rulesets-applied':
     case 'live-readback':
       return executeRulesetPhase(input);

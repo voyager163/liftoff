@@ -13,6 +13,142 @@ import type { ProjectMutationLease } from '../adapters/filesystem/project-lock.j
 import type { HistoricalLifecycleObligation } from './migration-history.js';
 import type { GitHubActivationPorts } from './github-ports.js';
 
+export interface ProtectedStateResourceMapping {
+  resourceType: string;
+  resourceId: string;
+  disposition: 'import' | 'embedded' | 'retain-operation-record';
+  stateAddress: string | null;
+}
+
+export interface ProtectedStateOperationRequest {
+  schemaVersion: 1;
+  phaseId: 'private-backend-proof' | 'remote-import-verified';
+  bindingDigest: string;
+  repository: string;
+  defaultBranch: string;
+  runner: {
+    id: number;
+    label: string;
+    groupId: number;
+    networkConfigurationId: string;
+  };
+  backend: {
+    bindingDigest: string;
+    subscriptionId: string;
+    tenantId: string;
+    resourceGroup: string;
+    storageAccount: string;
+    container: string;
+    keyDigest: string;
+    principalId: string;
+  };
+  bootstrap: {
+    bindingDigest: string;
+    deploymentResourceId: string;
+    environment: string;
+    egressMode: 'nat-gateway';
+  };
+  resources: readonly ProtectedStateResourceMapping[];
+  requirements: {
+    targetState: 'absent';
+    locking: 'azure-blob-lease';
+    backup: 'authenticated-encrypted';
+    completeMapping: true;
+    noChangePlan: true;
+    retentionDays: 30;
+    preExistingStateMigration: false;
+  };
+  previousOperation: ExternalOperationState | null;
+}
+
+export interface ProtectedStateOperationProgress {
+  status: 'pending';
+  operation: ExternalOperationState;
+}
+
+export interface ProtectedStateOperationFailure {
+  status: 'blocked';
+  reason:
+    | 'capability-unavailable'
+    | 'stale-binding'
+    | 'ownership-unverified'
+    | 'target-occupied'
+    | 'locking-unavailable'
+    | 'backup-unverified'
+    | 'mapping-incomplete'
+    | 'concurrency-conflict'
+    | 'resource-change'
+    | 'verification-failed'
+    | 'operation-failed';
+}
+
+export interface ProtectedBackendProof {
+  kind: 'private-backend-proof.v1';
+  bindingDigest: string;
+  workflowRunId: number;
+  workflowJobId: number;
+  headSha: string;
+  runnerId: number;
+  runnerLabel: string;
+  backendBindingDigest: string;
+  targetStateExists: false;
+  locking: 'azure-blob-lease';
+  observationDigest: string;
+}
+
+export interface ProtectedStateBackup {
+  artifactDigest: string;
+  encryptedStatePathParts: readonly string[];
+  encryptionKeyPathParts: readonly string[];
+}
+
+export interface ProtectedStateHandoverProof {
+  kind: 'remote-import-verified.v1';
+  bindingDigest: string;
+  workflowRunId: number;
+  workflowJobId: number;
+  headSha: string;
+  runnerId: number;
+  runnerLabel: string;
+  backendBindingDigest: string;
+  mappingDigest: string;
+  concurrencyDigest: string;
+  remoteBackendDigest: string;
+  noChangePlanDigest: string;
+  locking: 'azure-blob-lease';
+  targetStatePreviouslyExisted: false;
+  plan: {
+    add: 0;
+    change: 0;
+    destroy: 0;
+  };
+  mappings: readonly ProtectedStateResourceMapping[];
+  backups: readonly ProtectedStateBackup[];
+}
+
+export type ProtectedBackendProofResult =
+  | ProtectedStateOperationProgress
+  | ProtectedStateOperationFailure
+  | {
+    status: 'completed';
+    operation: ExternalOperationState;
+    proof: ProtectedBackendProof;
+  };
+
+export type ProtectedStateHandoverResult =
+  | ProtectedStateOperationProgress
+  | ProtectedStateOperationFailure
+  | {
+    status: 'completed';
+    operation: ExternalOperationState;
+    proof: ProtectedStateHandoverProof;
+  };
+
+export interface ProtectedStateHandoverPort {
+  proveBackend(request: ProtectedStateOperationRequest): Promise<ProtectedBackendProofResult>;
+  handover(request: ProtectedStateOperationRequest): Promise<ProtectedStateHandoverResult>;
+}
+
 export interface GovernanceTransitionInspection {
   projectRoot: string;
   manifest: LiftoffManifest;
@@ -141,6 +277,7 @@ export interface GovernanceTransitionAdapters {
   phases?: Partial<Record<PhaseId, GovernancePhaseAdapter>>;
   githubRulesets?: GitHubRulesetAdapter;
   githubActivation?: GitHubActivationPorts;
+  protectedStateHandover?: ProtectedStateHandoverPort;
   azureOperationPolling?: {
     maxAttempts: number;
     intervalMs: number;

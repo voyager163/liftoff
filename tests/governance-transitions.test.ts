@@ -990,11 +990,33 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
     });
     const remoteImport = evidenceRecord('remote-import-verified', state, 'verified', {
       kind: 'remote-import-verified.v1',
+      bindingDigest: 'a'.repeat(64),
+      backendBindingDigest: 'b'.repeat(64),
+      mappingDigest: '3'.repeat(64),
+      concurrencyDigest: '4'.repeat(64),
       encryptedStatePathParts: [['infrastructure', 'bootstrap.tfstate.enc']],
       encryptionKeyPathParts: [['infrastructure', 'bootstrap.key']],
       remoteBackendDigest: 'c'.repeat(64),
-      noChangePlanDigest: 'd'.repeat(64)
-    }, [liveProof('remote-import-verified', 'azure', state)]);
+      noChangePlanDigest: 'd'.repeat(64),
+      workflowRunId: 9002,
+      workflowJobId: 9102,
+      headSha: 'e'.repeat(40),
+      runnerId: 444,
+      runnerLabel: 'liftoff-runner',
+      locking: 'azure-blob-lease',
+      targetStatePreviouslyExisted: false,
+      plan: { add: 0, change: 0, destroy: 0 },
+      mappings: [{ resourceType: 'Microsoft.Network/virtualNetworks', resourceId: '/subscriptions/000/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet', disposition: 'import', stateAddress: 'azurerm_virtual_network.bootstrap' }],
+      backups: [{ artifactDigest: 'f'.repeat(64), encryptedStatePathParts: ['infrastructure', 'bootstrap.tfstate.enc'], encryptionKeyPathParts: ['infrastructure', 'bootstrap.key'] }],
+      publicExistingStateMigration: false
+    }, [{
+      ...liveProof('remote-import-verified', 'github', state),
+      resourceType: 'actions-workflow-run',
+      resourceId: '/repos/owner/repo/actions/runs/9002'
+    }, {
+      ...liveProof('remote-import-verified', 'azure', state),
+      resourceType: 'private-state-backend'
+    }]);
     const remoteReady = await inspectionFor({
       root,
       phaseId: 'remote-ready',
@@ -1031,11 +1053,33 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
     });
     const retainedImport = evidenceRecord('remote-import-verified', retainedForDisposal, 'verified', {
       kind: 'remote-import-verified.v1',
+      bindingDigest: 'a'.repeat(64),
+      backendBindingDigest: 'b'.repeat(64),
+      mappingDigest: '3'.repeat(64),
+      concurrencyDigest: '4'.repeat(64),
       encryptedStatePathParts: [['infrastructure', 'bootstrap.tfstate.enc']],
       encryptionKeyPathParts: [['infrastructure', 'bootstrap.key']],
       remoteBackendDigest: 'c'.repeat(64),
-      noChangePlanDigest: 'd'.repeat(64)
-    }, [liveProof('remote-import-verified', 'azure', retainedForDisposal)]);
+      noChangePlanDigest: 'd'.repeat(64),
+      workflowRunId: 9002,
+      workflowJobId: 9102,
+      headSha: 'e'.repeat(40),
+      runnerId: 444,
+      runnerLabel: 'liftoff-runner',
+      locking: 'azure-blob-lease',
+      targetStatePreviouslyExisted: false,
+      plan: { add: 0, change: 0, destroy: 0 },
+      mappings: [{ resourceType: 'Microsoft.Network/virtualNetworks', resourceId: '/subscriptions/000/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet', disposition: 'import', stateAddress: 'azurerm_virtual_network.bootstrap' }],
+      backups: [{ artifactDigest: 'f'.repeat(64), encryptedStatePathParts: ['infrastructure', 'bootstrap.tfstate.enc'], encryptionKeyPathParts: ['infrastructure', 'bootstrap.key'] }],
+      publicExistingStateMigration: false
+    }, [{
+      ...liveProof('remote-import-verified', 'github', retainedForDisposal),
+      resourceType: 'actions-workflow-run',
+      resourceId: '/repos/owner/repo/actions/runs/9002'
+    }, {
+      ...liveProof('remote-import-verified', 'azure', retainedForDisposal),
+      resourceType: 'private-state-backend'
+    }]);
     retainedForDisposal.bootstrapState = {
       status: 'retained',
       remoteImportEvidenceId: retainedImport.evidenceId,
