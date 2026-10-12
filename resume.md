@@ -9,28 +9,48 @@ remaining work, and cautions needed to continue the OpenSpec change
 
 - Repository: `voyager163/liftoff`
 - OpenSpec change: `modernize-liftoff-platform`
-- Working branch: `feature/state-custody-readiness`
+- Latest continuation branch: `voyager163-liftoff-modernization`
+- Original implementation branch: `feature/state-custody-readiness`, preserved
+  at `2914f0f1395e46abfe0ad045535e424c7a1d3ad9`.
 - Ultimate base: `develop`
 - Base commit used by this branch:
   `48609df1954221c296ab4bd8bfe0c382a27f01ef`
 - Protected-custody implementation commit:
   `c23d1842` (`feat(governance): implement protected state custody`)
+- Original handoff commit:
+  `2914f0f1395e46abfe0ad045535e424c7a1d3ad9`.
+- Windows qualification checkpoint:
+  `d6222b30d66751857634b5fbb8a8cbf6a95d8dbc`, now pushed to the continuation
+  branch. The tip containing this MacBook-return update is a later handoff commit.
 - The branch tip containing this file is the handoff commit. After fetching,
   run `git rev-parse HEAD` to record its full SHA.
-- OpenSpec progress before checking task 13.5: 78/136 tasks complete.
-- Task 13.5 intentionally remains unchecked until full source-complete
-  qualification is rerun on the committed bytes.
+- OpenSpec progress remains 78/136 tasks complete; 58 remain.
+- Task 13.5 remains unchecked after failed Windows full-suite/coverage
+  qualification. Tasks 13.6 and 13.7 are also unchecked.
+- Read "MacBook return checkpoint, 2026-10-12" below first for the latest
+  transfer status and next actions; earlier sections retain the original
+  architecture and qualification history.
 
-Recommended checkout on the new machine:
+Recommended checkout on the MacBook, in a new unowned checkout/worktree:
 
 ```bash
 git fetch origin
-git switch --track origin/feature/state-custody-readiness
+git switch --track origin/voyager163-liftoff-modernization
 git status --short
 git log --oneline -5
+git merge-base --is-ancestor c23d1842 HEAD
+git merge-base --is-ancestor 2914f0f1395e46abfe0ad045535e424c7a1d3ad9 HEAD
+git merge-base --is-ancestor d6222b30d66751857634b5fbb8a8cbf6a95d8dbc HEAD
 openspec status --change modernize-liftoff-platform --json
 openspec instructions apply --change modernize-liftoff-platform --json
 ```
+
+If that local branch already exists or another app session owns it, do not force
+checkout/reset it. Use the app's isolated continuation session based on the
+explicit continuation branch, or fast-forward only an unowned clean checkout.
+Fetching only `feature/state-custody-readiness` omits both Windows handoff
+updates. The continuation branch is a documentation successor, not a new
+implementation layer or a registered native-stack member.
 
 Do not squash, rebase, reset, regenerate baselines, or mark task 13.5 complete
 before reading this file and the OpenSpec artifacts.
@@ -222,7 +242,7 @@ incomplete cleanup, or contradictory deletion evidence remain blocked.
 - The public CLI still exposes no arbitrary brownfield state import,
   partition, relocation, or address migration.
 - The frozen released-v3 graph asset remains unchanged:
-  `2e214353fe73edeea246dac49aa5126c3d1e50afb853703`.
+  `2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703`.
 - The current graph hash is:
   `243c2df5b113d59183287f2dac0091389a64c3798670f11ee064547ceea7a97b`.
 - The current modern source-contract asset digest is:
@@ -359,7 +379,9 @@ Earlier full-suite attempts are not qualification evidence:
   `tests/governance-task-writes.test.ts`.
 - That test then passed independently: 7/7.
 - Later full runs were stopped when source changed or when the user paused.
-- No final full-suite or source-complete coverage result exists for `c23d1842`.
+- No successful full-suite or source-complete coverage result exists for this
+  custody layer. The later completed Windows runs failed on clean `2914f0f`;
+  their exact results are recorded in the Windows checkpoint below.
 
 The network-dependent command below failed twice during an internet outage and
 Docker Hub anonymous rate limiting:
@@ -394,8 +416,12 @@ approved disposable native/cloud qualification begins.
 
 ## Immediate continuation order
 
-1. Fetch and check out `origin/feature/state-custody-readiness`.
-2. Confirm the implementation commit `c23d1842` is an ancestor of `HEAD`.
+1. Fetch the latest `origin/voyager163-liftoff-modernization` handoff into an
+   isolated or unowned clean checkout. Preserve the original implementation
+   branch and all existing PR owner branches.
+2. Confirm `c23d1842`, `2914f0f1395e46abfe0ad045535e424c7a1d3ad9`, and
+   `d6222b30d66751857634b5fbb8a8cbf6a95d8dbc` are ancestors of `HEAD`, then
+   read this file in full and the complete OpenSpec context.
 3. Run `npm ci` if dependencies are not already installed.
 4. Verify the exact toolchain versions above.
 5. Run the full suite and source-complete CLI coverage.
@@ -555,3 +581,104 @@ qualification on a capable host before completing task 13.5. Private handover
 and custody production ports remain unregistered by the public CLI; task 13.6
 still needs actual approved disposable host/cloud evidence, not this failed
 Windows run or success-shaped test injections.
+
+## MacBook return checkpoint, 2026-10-12
+
+The user requested a complete committed handoff before returning to the
+MacBook. This update changes only `resume.md`; it does not implement another
+OpenSpec task or reinterpret failed qualification as success.
+
+### Work done and work not done
+
+| Area | Done | Not done / next gate |
+| --- | --- | --- |
+| Source and planning context | Fetched the custody branch, verified both required commits, read the complete handoff and all OpenSpec artifacts, and invoked `openspec-apply-change` for the named change | No implementation code, frozen baseline, contract chain, or OpenSpec task checkbox changed during the Windows continuation |
+| Toolchain | Isolated and verified Node 24.21.0, npm 12.0.2, OpenTofu 1.12.6, and OpenSpec 1.11.0; restored locked dependencies | Windows binaries and session-local installations do not transfer to macOS; verify the exact native MacBook tools rather than accepting earlier global versions |
+| Qualification | Completed the full suite, source-complete CLI coverage, focused tests, package smoke, policy, build, and strict OpenSpec checks; retained their actual results in the Windows checkpoint | Full suite, focused suite, package smoke, and coverage did not qualify; every coverage metric still needs a fresh measured result strictly above 80% |
+| Root-cause investigation | Reproduced read-induced `ctimeMs` drift and denied file symlinks outside Liftoff, and traced representative failures to pre-custody integrity readers | No host security setting, integrity guard, registry policy, lockfile, fixture, timeout, or coverage scope was weakened to make this host pass |
+| Protected custody and cloud | Preserved strict current records, frozen released-v3 history, opaque retained inventories, and injected-only handover/disposal boundaries | No production custody/handover ports supplied, no cloud resources or credentials used, and no disposable native/cloud qualification or live disposal performed |
+| Remaining modernization | Kept the existing dependency order and truthful 78/136 progress | Tasks 13.5-13.7, remaining native distribution/upgrade/migration, application activation, client reporting, Grafana/deployment, and integrated release tasks remain as recorded in `tasks.md` |
+| Git and PRs | Committed the first Windows checkpoint as `d6222b3`; successfully pushed and verified it on `origin/voyager163-liftoff-modernization` on 2026-10-12 | No PR created, retargeted, registered in a native stack, or merged; app-native GitHub account linkage was not requalified |
+
+### Decisions carried forward
+
+The Windows failure is not a reason to broaden this layer into unrelated
+filesystem/platform repair. Rerun the committed bytes on the MacBook first.
+The independent host probe explains representative freshness failures but does
+not establish that every failed test has the same cause or that macOS will pass.
+If failures persist, diagnose them against the custody-layer diff and fix only
+its root causes within the approved scope. Preserve historical contracts and
+the complete reviewed `priorChange` chains; do not update snapshots to bless
+failed execution.
+
+The following settled custody decisions remain unchanged:
+
+- No public brownfield state migration and no sensitive-state authority from
+  local metadata update, repair, a setup request, or generic approval.
+- No plaintext, project-file, local-key, different-host, or missing-material
+  success fallback for protected custody.
+- Current proof is strict; released-v3 history retains its isolated frozen
+  interpretation without becoming current execution authority.
+- Multiple distinct encrypted artifacts may share the exact qualified
+  non-exporting key; key inventory and deletion evidence deduplicate that key.
+- Due-time disposal is injected-only, occurs no earlier than the exact retained
+  due time, requalifies the same stable custody identity, and never deletes local
+  project files.
+- Native, cloud, signing, publication, deployment, telemetry, and Grafana
+  qualification each require their real evidence and applicable exact
+  authorization; synthetic tests or a checked task cannot substitute.
+
+### Transfer and PR ancestry
+
+The previous three failed HTTPS push attempts were a transport blocker, not an
+uncommitted-work problem. On 2026-10-12, a normal `git push --set-upstream origin
+HEAD` succeeded and remote readback matched the exact `d6222b3` commit. The
+original `feature/state-custody-readiness` still points to `2914f0f`. Carry this
+newer documentation checkpoint through the continuation branch, without
+force-pushing the original layer or creating a duplicate custody PR.
+
+Fresh GitHub readback on 2026-10-12 still shows PR #154 and PR #155 open,
+unmerged, and non-draft, with empty filtered native-stack membership:
+
+- PR #154: `develop <- feature/governance-profile-transitions`, head
+  `1fef0d2ff7187a02b1d03bbeef4bcdaf6a028d85`, reported mergeable state `clean`.
+- PR #155:
+  `feature/governance-profile-transitions <- feature/production-discovery-identity`,
+  head `46ae082bb9f2ff30b7a151965900424cf9f11f48`, reported mergeable state
+  `unstable`.
+
+These API states are not fresh reruns of their checks. Re-read exact heads,
+checks, bases, and membership before any stack mutation or merge. The
+`pr-stack` workflow was loaded during the Windows continuation, but no stack
+operation was performed. Keep PR creation app-native and dependency-ordered;
+do not substitute `gh pr create` or individually merge a registered stack.
+
+The detailed Windows logs and tool binaries remain in session-local artifact
+storage on the Windows machine, not Git and not the npm package. The portable
+results, revision, source-inventory digest, and limitations are recorded here.
+They cannot replace a new macOS evidence file naming the exact measured
+committed revision and complete source inventory.
+
+### MacBook continuation order
+
+1. Fetch the continuation handoff, verify the required ancestry and clean
+   status, and read this full file plus the complete OpenSpec change context.
+2. Use `openspec-apply-change` for `modernize-liftoff-platform`; verify native
+   Node 24.21.0, npm 12.0.2, OpenTofu 1.12.6, and OpenSpec 1.11.0. Do not reuse
+   Windows executable paths or assume the older MacBook globals are current.
+3. Run the full-suite and source-complete CLI-coverage commands under
+   "Validation still required" before changing source. Inspect the new evidence
+   for a clean exact revision, all 506 expected source files unless reviewed
+   implementation changes alter that inventory, and all four raw metrics
+   strictly above 80%. Failed tests or missing reports remain a failed gate.
+4. Rerun focused custody/history/contracts, package smoke, policy, strict
+   OpenSpec, and diff checks. Reobserve the Microsoft-feed package prerequisite
+   rather than bypassing registry policy. If a custody-layer correction is
+   needed, commit it and rerun qualification on its clean committed bytes.
+5. Only after qualification passes, mark 13.5 complete, commit, and push. Then
+   proceed to real explicitly approved disposable qualification for 13.6 and
+   evidence-backed narrow generated guidance for 13.7.
+6. Continue remaining dependency-ordered actionable tasks and app-native PR
+   layers, stopping honestly at external capability or authorization blockers.
+   Do not archive the change or claim all modernization delivered while
+   mandatory tasks remain unchecked.
