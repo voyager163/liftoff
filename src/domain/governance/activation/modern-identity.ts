@@ -1,4 +1,7 @@
-import { modernActivationSourceContracts } from '../policy/identity.js';
+import {
+  modernActivationSourceContracts,
+  preCustodyModernActivationSourceContracts
+} from '../policy/identity.js';
 import { canonicalSha256 } from './canonical-json.js';
 import { exactRecord } from '../../project/manifest/fields.js';
 import { createManifestV8ProjectReader } from '../../project/manifest/v8-project.js';
@@ -23,17 +26,24 @@ function digest(value: unknown, label: string): ModernDigest {
 /** Trusted catalog values select the actual M6 reader, never an arbitrary caller parser or current default. */
 export function createModernActivationIdentityReader(catalog: ManifestContractContext['catalog']) {
   const projectReader = createManifestV8ProjectReader(catalog);
-  const sources = modernActivationSourceContracts();
+  const currentSources = modernActivationSourceContracts();
+  const readableSources = [...currentSources, ...preCustodyModernActivationSourceContracts()];
   const contextFields = ['profile', 'policyVersion', 'selection', 'pluginResolutionDigest', 'activeLayoutDigest'] as const;
-  const identityFields = [...Object.keys(sources[0].identity), 'sourceSelectionDigest', 'pluginResolutionDigest', 'activeLayoutDigest'];
+  const identityFields = [...Object.keys(currentSources[0].identity), 'sourceSelectionDigest', 'pluginResolutionDigest', 'activeLayoutDigest'];
 
-  function identityFromContext(request: Record<string, unknown>, sourceVersion: unknown): ReadableModernActivationIdentity {
+  function identityFromContext(
+    request: Record<string, unknown>,
+    sourceVersion: unknown,
+    sources: readonly ReturnType<typeof modernActivationSourceContracts>[number][],
+    phaseGraphHash?: unknown
+  ): ReadableModernActivationIdentity {
     const selection = exactRecord(request.selection, ['project', 'framework', 'profile'], 'Modern activation selection');
     if (selection.profile !== request.profile) throw new Error('Modern activation selection and governance profile disagree.');
     const leaf = projectReader.validateManifestV8Project({ project: selection.project, framework: selection.framework });
     const source = sources.find(source => source.identity.liftoffVersion === sourceVersion &&
       source.identity.profile === request.profile && source.identity.policyVersion === request.policyVersion &&
-      source.identity.workflow === leaf.project.specWorkflow);
+      source.identity.workflow === leaf.project.specWorkflow &&
+      (phaseGraphHash === undefined || source.identity.phaseGraphHash === phaseGraphHash));
     if (!source) throw new Error('Modern activation requires an exact declared source version, profile, policy and workflow.');
     const pluginResolutionDigest = digest(request.pluginResolutionDigest, 'Modern activation plugin resolution');
     const activeLayoutDigest = digest(request.activeLayoutDigest, 'Modern activation active layout');
@@ -47,7 +57,7 @@ export function createModernActivationIdentityReader(catalog: ManifestContractCo
   function validateReadableModernActivationIdentity(input: ModernActivationSourceInput): ReadableModernActivationIdentity {
     const request = exactRecord(input, ['recordedIdentity', ...contextFields], 'Modern activation source input');
     const recorded = exactRecord(request.recordedIdentity, identityFields, 'Modern activation identity');
-    const expected = identityFromContext(request, recorded.liftoffVersion);
+    const expected = identityFromContext(request, recorded.liftoffVersion, readableSources, recorded.phaseGraphHash);
     if (Object.entries(expected).some(([key, value]) => recorded[key] !== value)) {
       throw new Error('Modern activation identity does not match its complete source contract and independently supplied context.');
     }
@@ -56,8 +66,23 @@ export function createModernActivationIdentityReader(catalog: ManifestContractCo
 
   function identityForSource(input: ModernIdentityCreationInput): ReadableModernActivationIdentity {
     const request = exactRecord(input, ['sourceVersion', ...contextFields], 'Modern activation source construction');
-    return identityFromContext(request, request.sourceVersion);
+    return identityFromContext(request, request.sourceVersion, currentSources);
   }
 
-  return Object.freeze({ validateReadableModernActivationIdentity, identityForSource });
+  function identityForReadableSource(
+    input: ModernIdentityCreationInput & { readonly phaseGraphHash: string }
+  ): ReadableModernActivationIdentity {
+    const request = exactRecord(
+      input,
+      ['sourceVersion', 'phaseGraphHash', ...contextFields],
+      'Readable modern activation source construction'
+    );
+    return identityFromContext(request, request.sourceVersion, readableSources, request.phaseGraphHash);
+  }
+
+  return Object.freeze({
+    validateReadableModernActivationIdentity,
+    identityForSource,
+    identityForReadableSource
+  });
 }

@@ -243,11 +243,13 @@ export const modernGovernancePolicyVersions = Object.freeze({
 });
 const modernWorkflows: readonly ModernWorkflow[] = ['openspec', 'spec-kit', 'manual'];
 let modernSources: readonly ModernActivationSourceContract[] | undefined;
+let preCustodyModernSources: readonly ModernActivationSourceContract[] | undefined;
 
-/** Static source data only: excludes all per-project, registry-resolution and approval digests. */
-export function modernActivationSourceContracts(): readonly ModernActivationSourceContract[] {
-  modernSources ??= modernPolicySources.flatMap(policy => modernWorkflows.map((workflow): ModernActivationSourceContract => {
-    const graph = buildModernPhaseGraph(modernSourceVersions, policy.identity, workflow);
+function buildModernSources(
+  disposalContract: 'protected-custody' | 'local-bootstrap'
+): readonly ModernActivationSourceContract[] {
+  return modernPolicySources.flatMap(policy => modernWorkflows.map((workflow): ModernActivationSourceContract => {
+    const graph = buildModernPhaseGraph(modernSourceVersions, policy.identity, workflow, disposalContract);
     return {
       identity: {
         ...modernSourceVersions, ...policy.identity, workflow, phaseGraphHash: canonicalSha256(graph)
@@ -256,5 +258,16 @@ export function modernActivationSourceContracts(): readonly ModernActivationSour
       policyPathParts: [...policy.pathParts], graph
     };
   }));
+}
+
+/** Static source data only: excludes all per-project, registry-resolution and approval digests. */
+export function modernActivationSourceContracts(): readonly ModernActivationSourceContract[] {
+  modernSources ??= buildModernSources('protected-custody');
   return freezeModernValue(structuredClone(modernSources));
+}
+
+/** Frozen readable source family from before protected custody changed the modern graph bytes. */
+export function preCustodyModernActivationSourceContracts(): readonly ModernActivationSourceContract[] {
+  preCustodyModernSources ??= buildModernSources('local-bootstrap');
+  return freezeModernValue(structuredClone(preCustodyModernSources));
 }

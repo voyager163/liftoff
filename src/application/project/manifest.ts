@@ -17,7 +17,10 @@ import { exactRecord, isRecord } from '../../domain/project/manifest/fields.js';
 import { FileSystemError } from '../../domain/project/errors.js';
 import { toSafeProjectName } from '../../domain/project/planning.js';
 import { retiredFlatRootInfrastructureIdentities } from '../../domain/project/infrastructure-layout.js';
-import { modernActivationSourceContracts } from '../../domain/governance/policy/identity.js';
+import {
+  modernActivationSourceContracts,
+  preCustodyModernActivationSourceContracts
+} from '../../domain/governance/policy/identity.js';
 import { createManifestV8Reader, type LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import { canonicalJson } from '../../domain/governance/activation/canonical-json.js';
 import { capturedFileBytes } from '../../domain/governance/activation/modern-local-inputs.js';
@@ -111,11 +114,12 @@ export function resolveManifestV8SourceContract(input: unknown) {
 }
 
 export function resolveModernManifestV8SourceContract(input: unknown) {
-  const { contract, profile, workflow } = resolveSourceContract(input, composeModernManifestPlugins);
+  const { contract, profile, workflow, current } = resolveSourceContract(input, composeModernManifestPlugins);
   if (profile === 'none') {
     return Object.freeze({ ...contract, governanceSource: Object.freeze({ profile: 'none' as const }) });
   }
-  const source = modernActivationSourceContracts().find((source) =>
+  const sources = current ? modernActivationSourceContracts() : preCustodyModernActivationSourceContracts();
+  const source = sources.find((source) =>
     source.identity.profile === profile && source.identity.workflow === workflow);
   if (!source) throw new FileSystemError('No authoritative modern governance source matches the selected profile and workflow.');
   return Object.freeze({ ...contract, governanceSource: source });
@@ -174,7 +178,7 @@ function resolveSourceContract(input: unknown, compose: typeof composeManifestPl
     requiredHandoffLogicalNames: Object.freeze(requiredHandoffLogicalNames),
     readableProjectLogicalNames: Object.freeze(readableProjectLogicalNames)
   });
-  return { contract, profile, workflow: project.specWorkflow };
+  return { contract, profile, workflow: project.specWorkflow, current };
 }
 
 function componentRootsForComposition({ resolution }: ProjectPluginComposition): readonly {

@@ -461,11 +461,14 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
     return {
       profile, policyVersion: staticIdentity.policyVersion,
       state: target.source.requiredHandoffLogicalNames.every((name) => owned.has(name)) ? 'handoff-generated' : 'handoff-partial',
-      activationIdentity: identityReader.identityForSource({
-        sourceVersion: staticIdentity.liftoffVersion, profile, policyVersion: staticIdentity.policyVersion,
-        selection: { ...leaf, profile }, pluginResolutionDigest: target.plugins.resolutionDigest,
-        activeLayoutDigest: manifestActiveLayoutDigest(activeLayout, target.source.layoutDescriptor)
-      })
+      activationIdentity: origin === 'maintenance' && source?.artifactVersion === 8 &&
+        source.governance.profile !== 'none'
+        ? source.governance.activationIdentity
+        : identityReader.identityForSource({
+            sourceVersion: staticIdentity.liftoffVersion, profile, policyVersion: staticIdentity.policyVersion,
+            selection: { ...leaf, profile }, pluginResolutionDigest: target.plugins.resolutionDigest,
+            activeLayoutDigest: manifestActiveLayoutDigest(activeLayout, target.source.layoutDescriptor)
+          })
     };
   })();
   const manifest = rootReader.parseManifestV8({

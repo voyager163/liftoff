@@ -6,7 +6,11 @@ import { modernAssets, modernGovernanceAssets, modernRegistryInput } from '../..
 import { modernRelease } from '../../plugins/builtin/modern-release.js';
 import { modernHistoricalRelease } from '../../plugins/builtin/modern-historical-release.js';
 import { modernPreviousRelease } from '../../plugins/builtin/modern-previous-release.js';
-import { modernPreAssessmentDeclarationsDigest, modernPreAssessmentSource } from '../../plugins/builtin/modern-pre-assessment.js';
+import {
+  modernPreAssessmentDeclarationsDigest,
+  modernPreAssessmentGovernanceSourceContracts,
+  modernPreAssessmentSource
+} from '../../plugins/builtin/modern-pre-assessment.js';
 import { pluginRegistryLimits, type PackagedAssetBytes, type PluginRegistry, type PluginResolution } from '../../plugins/contracts.js';
 import { createPluginRegistry, pluginResolutionDigest } from '../../plugins/registry.js';
 import { manifestPluginMetadataMatches, readManifestPluginMetadata, type ManifestPluginMetadata } from '../../domain/project/manifest/plugins.js';
@@ -58,13 +62,25 @@ export function createModernSourceRegistry(read: ModernAssetReader = readDeclare
 
 let registry: PluginRegistry | undefined;
 let preAssessmentRegistry: PluginRegistry | undefined;
+const historicalSourceContractsId = 'modern-governance-source-contracts';
 
 export function modernSourceRegistry(): PluginRegistry {
   registry ??= createModernSourceRegistry();
   return registry;
 }
 
-export function createModernPreAssessmentRegistry(read: ModernAssetReader = readDeclaredAssetBytes): PluginRegistry {
+const readModernPreAssessmentAssets: ModernAssetReader = (declarations, bounds) => {
+  const assets = readDeclaredAssetBytes(declarations, bounds);
+  const sourceContracts = declarations.find((asset) =>
+    asset.owner.kind === 'core' && asset.id === historicalSourceContractsId);
+  if (!sourceContracts) return assets;
+  const sourcePath = sourceContracts.pathParts.join('/');
+  return assets.map((asset) => asset.pathParts.join('/') === sourcePath
+    ? { ...asset, bytes: Buffer.from(modernPreAssessmentGovernanceSourceContracts, 'utf8') }
+    : asset);
+};
+
+export function createModernPreAssessmentRegistry(read: ModernAssetReader = readModernPreAssessmentAssets): PluginRegistry {
   const declarations = [
     ...modernPreAssessmentSource.core.sharedAssets.map(asset => ({ ...asset, owner: { kind: 'core' as const } })),
     ...modernPreAssessmentSource.descriptors.flatMap(descriptor => descriptor.assets.map(asset => ({

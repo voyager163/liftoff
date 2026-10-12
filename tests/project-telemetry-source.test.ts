@@ -17,7 +17,7 @@ import * as telemetryContract from '../src/telemetry/contract.js';
 
 const profiles = ['none', 'single-maintainer-gitflow', 'team-gitflow'] as const;
 const workflows = ['manual', 'openspec', 'spec-kit'] as const;
-const registryDigest = 'sha256:2c55904621a03f20fc3b10ea2352b5d0f328b3038f3f867f8e25525c13d6f995';
+const registryDigest = 'sha256:1e9632b5200f945536955f1078ca4194c4f9a56bd712d810ec69f8faac7d61b0';
 
 function fixture(options: {
   profile?: (typeof profiles)[number];

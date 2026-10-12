@@ -96,7 +96,12 @@ export function createModernCompatibilityContract(context: ManifestV8ReaderConte
       pluginResolutionDigest: plugins.resolutionDigest, activeLayoutDigest: manifestActiveLayoutDigest(activeLayout, source.layoutDescriptor)
     };
     const identity = reader.validateReadableModernActivationIdentity({
-      ...input, recordedIdentity: reader.identityForSource({ ...input, sourceVersion: staticIdentity.liftoffVersion })
+      ...input,
+      recordedIdentity: reader.identityForReadableSource({
+        ...input,
+        sourceVersion: staticIdentity.liftoffVersion,
+        phaseGraphHash: staticIdentity.phaseGraphHash
+      })
     });
     if (Object.entries(staticIdentity).some(([key, value]) => !Object.hasOwn(identity, key) || Reflect.get(identity, key) !== value) ||
       canonicalSha256(source.governanceSource.graph) !== identity.phaseGraphHash) {

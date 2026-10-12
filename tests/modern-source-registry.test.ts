@@ -102,8 +102,8 @@ describe('modern source declarations', () => {
       it('matches independently derived literal registry identities and keeps the default registry unchanged', () => {
         const modern = createModernSourceRegistry();
         expect(modern.pluginSetDigest).toBe('sha256:16942ffaa2ee9ec4459e91935f550fce39ec97f5cfe146331713b3bd06ba4113');
-        expect(modern.coreContributionDigest).toBe('sha256:49a59408342ef7e770c5fca5b494f9089a2c8c24a28ebb484d5fd528b81389a0');
-        expect(modern.registryDigest).toBe('sha256:2c55904621a03f20fc3b10ea2352b5d0f328b3038f3f867f8e25525c13d6f995');
+        expect(modern.coreContributionDigest).toBe('sha256:6ad4e1c51410ecc5f9f8189482dc36f258c0125b272f60bf4a46f06410da547c');
+        expect(modern.registryDigest).toBe('sha256:1e9632b5200f945536955f1078ca4194c4f9a56bd712d810ec69f8faac7d61b0');
         const original = builtinPluginRegistry();
         expect(original).not.toBe(modernSourceRegistry());
         expect(modernSourceRegistry()).toBe(modernSourceRegistry());
@@ -124,7 +124,7 @@ describe('modern source declarations', () => {
             ({ identity, savedPlanSchemaVersion, compatibilityMetadataSchemaVersion }))
         });
         expect(packagedTable().equals(Buffer.from(expected, 'utf8'))).toBe(true);
-        expect(rawDigest(packagedTable())).toBe('sha256:b336953323f1099a429e35cb22a39c9dda48e884bc5e610bfa44424db914bcf6');
+        expect(rawDigest(packagedTable())).toBe('sha256:74023432198c9eed026a3600a9f37cc1bb39dcda373a16929dd72b1f1b49731f');
         for (const source of sources) {
           expect(rawDigest(readFileSync(path.join(...source.policyPathParts)))).toBe(source.identity.policyDigest);
           expect(canonicalSha256(source.graph)).toBe(source.identity.phaseGraphHash);

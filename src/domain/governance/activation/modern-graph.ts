@@ -76,10 +76,13 @@ function workflowContract(workflow: ModernWorkflow): ModernWorkflowContract {
 
 /** Pure source graph construction; registration and concrete schema allocation belong to identity.ts. */
 export function buildModernPhaseGraph(
-  versions: ModernStaticVersions, profile: ModernProfileContract, workflow: ModernWorkflow
+  versions: ModernStaticVersions,
+  profile: ModernProfileContract,
+  workflow: ModernWorkflow,
+  disposalContract: 'protected-custody' | 'local-bootstrap' = 'protected-custody'
 ): ModernPhaseGraph {
   const contract = workflowContract(workflow);
-  const phases = buildPhaseDefinitions(versions, 'released-v3').map((original): ModernPhaseGraphNode => {
+  const phases = buildPhaseDefinitions(versions, 'released-v3', disposalContract).map((original): ModernPhaseGraphNode => {
     const id = phaseId(original.id);
     const local = original.id.startsWith('seed-');
     const mapMutation = (mutation: ModernMutationClass): readonly ModernMutationClass[] => {

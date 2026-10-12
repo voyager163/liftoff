@@ -10,7 +10,8 @@ type TerminalPhaseState = ReleasedTerminalPhaseStateV3;
 /** Shared definitions only; the caller owns source versions and execution compatibility. */
 export function buildPhaseDefinitions(versions: {
   evidenceHeaderSchemaVersion: number; approvalEnvelopeSchemaVersion: number;
-}, contract: 'current' | 'released-v3' = 'current'): readonly PhaseGraphNode[] {
+}, contract: 'current' | 'released-v3' = 'current',
+disposalContract: 'protected-custody' | 'local-bootstrap' = 'protected-custody'): readonly PhaseGraphNode[] {
   const { evidenceHeaderSchemaVersion, approvalEnvelopeSchemaVersion } = versions;
   const terminalVerified = ['verified', 'failed'] as const satisfies readonly TerminalPhaseState[];
   const terminalApproved = ['approved', 'failed'] as const satisfies readonly TerminalPhaseState[];
@@ -477,7 +478,9 @@ export function buildPhaseDefinitions(versions: {
       },
       {
         id: 'bootstrap-state-disposed',
-        label: 'Retained protected bootstrap state is disposed after day 30',
+        label: disposalContract === 'protected-custody'
+          ? 'Retained protected bootstrap state is disposed after day 30'
+          : 'Retained local bootstrap state is disposed after day 30',
         dependencies: [dep(['live-readback'], 'Disposal is scheduled only after live enforcement readback.')],
         applicability: {
           kind: 'conditional',
@@ -490,7 +493,9 @@ export function buildPhaseDefinitions(versions: {
         evidence: evidence('bootstrap-state-disposed.v1'),
         approvalGate: approval('destructive-disposal', true),
         invalidationInputs: ['remote-state', 'approval-envelope'],
-        rollback: rollback('dispose', null, 'Deletion destroys only the exact protected artifacts and non-exporting key reference under the qualified custody authority and records no payload.'),
+        rollback: rollback('dispose', null, disposalContract === 'protected-custody'
+          ? 'Deletion destroys only the exact protected artifacts and non-exporting key reference under the qualified custody authority and records no payload.'
+          : 'Deletion destroys only the local encryption key and records no payload.'),
         terminalStates: ['disposed', 'failed', 'inapplicable']
       }
     ] as const;
