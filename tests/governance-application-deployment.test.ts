@@ -23,9 +23,12 @@ import {
   validateProtectedApplicationWriteResult,
   type ApplicationDeploymentBinding,
   type ApplicationOriginalInvocation,
+  type ApplicationOriginalStateAuthority,
   type ApplicationStateMappingProof,
+  type FreshApplicationHealthObservation,
   type ObservedApplicationDeploymentSource,
   type ProtectedApplicationCompletionProof,
+  type ProtectedApplicationExecutionAuthority,
   type ProtectedApplicationExecutionProvenance,
   type ProtectedApplicationPlanProof
 } from '../src/governance-activation/application-deployment.js';
@@ -295,6 +298,8 @@ function planProof(
   binding: ApplicationDeploymentBinding,
   source: ObservedApplicationDeploymentSource
 ): ProtectedApplicationPlanProof {
+  const authority = stateAuthority(binding);
+  const state = mappingState(binding, authority);
   const body = {
     schemaVersion: 1 as const,
     kind: 'protected-application-plan.v1' as const,
@@ -313,6 +318,14 @@ function planProof(
       stateAddress: resource.stateAddress,
       configurationDigest: resource.configurationDigest
     })),
+    state: {
+      originalAuthorityDigest: authority.authorityDigest,
+      mappingBatchDigest: state.mappingBatchDigest,
+      lineage: state.after.stateLineage,
+      serial: state.after.stateSerial,
+      stateDigest: state.after.stateDigest,
+      unmappedStateDigest: state.unmappedStateDigest
+    },
     cost: {
       currency: binding.budget.currency,
       fixedMonthlyCents: binding.budget.fixedMonthlyCents - 1,
@@ -334,6 +347,70 @@ function planProof(
     }
   };
   return { ...body, planDigest: canonicalSha256(body) };
+}
+
+function stateAuthority(
+  binding: ApplicationDeploymentBinding
+): ApplicationOriginalStateAuthority {
+  const value = {
+    kind: 'protected-application-original-state.v1' as const,
+    backendBindingDigest: binding.backendBindingDigest,
+    remoteBackendDigest: '0'.repeat(64),
+    handoverEvidenceId: 'remote-import-verified-fixture',
+    handoverHeaderDigest: '7'.repeat(64),
+    stateLineage: 'fixture-lineage',
+    stateSerial: 1,
+    stateDigest: '1'.repeat(64),
+    unmappedStateDigest: '9'.repeat(64),
+    observedAt: coverageNow.toISOString()
+  };
+  return { ...value, authorityDigest: canonicalSha256(value) };
+}
+
+function mappingState(
+  binding: ApplicationDeploymentBinding,
+  authority: ApplicationOriginalStateAuthority
+) {
+  const before = {
+    stateLineage: authority.stateLineage,
+    stateSerial: authority.stateSerial,
+    stateDigest: authority.stateDigest,
+    backupArtifactDigest: '2'.repeat(64),
+    backupKeyRefDigest: '3'.repeat(64),
+    lockProofDigest: '4'.repeat(64),
+    writerQuiescenceDigest: '5'.repeat(64)
+  };
+  const after = {
+    stateLineage: authority.stateLineage,
+    stateSerial: authority.stateSerial + 1,
+    stateDigest: '6'.repeat(64),
+    lockProofDigest: '7'.repeat(64),
+    writerQuiescenceDigest: '8'.repeat(64)
+  };
+  const mappings = binding.ownedResourceConfigurations.map((configuration) => {
+    const transition = binding.stateTransitions.find((entry) =>
+      entry.resourceId === configuration.resourceId)!;
+    return {
+      resourceId: configuration.resourceId,
+      fromAddress: transition.fromAddress,
+      toAddress: transition.toAddress,
+      configurationDigest: configuration.configurationDigest
+    };
+  });
+  const mappingBatchDigest = canonicalSha256({
+    originalStateAuthorityDigest: authority.authorityDigest,
+    before,
+    after,
+    unmappedStateDigestBefore: authority.unmappedStateDigest,
+    unmappedStateDigestAfter: authority.unmappedStateDigest,
+    mappings
+  });
+  return {
+    before,
+    after,
+    unmappedStateDigest: authority.unmappedStateDigest,
+    mappingBatchDigest
+  };
 }
 
 function completionProof(
@@ -358,8 +435,13 @@ function completionProof(
       status: 'completed',
       planDigest: plan.planDigest
     },
-    stateLineage: 'fixture-state-lineage',
-    stateSerial: 2,
+    originalStateAuthorityDigest: plan.state.originalAuthorityDigest,
+    mappingBatchDigest: plan.state.mappingBatchDigest,
+    stateLineage: plan.state.lineage,
+    stateSerial: plan.state.serial + 1,
+    preApplyStateDigest: plan.state.stateDigest,
+    stateDigest: 'a'.repeat(64),
+    unmappedStateDigest: plan.state.unmappedStateDigest,
     appliedResourceIds: [...plan.resourceIds],
     outputs: {
       backendUrl: `https://${fqdn}`,
@@ -389,11 +471,12 @@ function completionProof(
   };
 }
 
-function executionProvenance(
+function executionAuthority(
   binding: ApplicationDeploymentBinding
-): ProtectedApplicationExecutionProvenance {
+): ProtectedApplicationExecutionAuthority {
+  const executionRef = `liftoff-execution-${binding.sourceSha}`;
   const value = {
-    executionHostId: 'qualified-host-fixture',
+    hostId: 'qualified-host-fixture',
     runnerId: 444,
     runnerLabel: 'liftoff-fixture',
     runnerGroupId: 333,
@@ -403,13 +486,51 @@ function executionProvenance(
     custodyIdentityDigest: binding.custodyIdentityDigest,
     custodyQualificationDigest: binding.custodyQualificationDigest,
     workflow: {
+      repositoryId: 1234,
       repository: 'owner/repo',
       path: '.github/workflows/application-execution.yml',
-      ref: 'refs/heads/develop',
+      executionRef,
+      ref: `refs/tags/${executionRef}`,
       sourceSha: binding.sourceSha,
+      treeSha: 'e'.repeat(40),
+      tagObjectType: 'commit' as const,
       workflowDigest: '3'.repeat(64),
-      executionSourceDigest: '4'.repeat(64)
+      executionSourceDigest: '4'.repeat(64),
+      barrierStatus: 'active-update-deletion-no-bypass' as const,
+      barrierBindingDigest: '5'.repeat(64),
+      providerTagObservationDigest: '6'.repeat(64),
+      providerAdmissionStatus: 'current' as const,
+      providerAdmissionDigest: '7'.repeat(64)
     }
+  };
+  return { ...value, authorityDigest: canonicalSha256(value) };
+}
+
+function executionProvenance(
+  authority: ProtectedApplicationExecutionAuthority
+): ProtectedApplicationExecutionProvenance {
+  const value = {
+    executionHostId: authority.hostId,
+    runnerId: authority.runnerId,
+    runnerLabel: authority.runnerLabel,
+    runnerGroupId: authority.runnerGroupId,
+    networkConfigurationId: authority.networkConfigurationId,
+    runnerQualificationDigest: authority.runnerQualificationDigest,
+    networkQualificationDigest: authority.networkQualificationDigest,
+    custodyIdentityDigest: authority.custodyIdentityDigest,
+    custodyQualificationDigest: authority.custodyQualificationDigest,
+    workflow: {
+      repositoryId: authority.workflow.repositoryId,
+      repository: authority.workflow.repository,
+      path: authority.workflow.path,
+      executionRef: authority.workflow.executionRef,
+      ref: authority.workflow.ref,
+      sourceSha: authority.workflow.sourceSha,
+      treeSha: authority.workflow.treeSha,
+      workflowDigest: authority.workflow.workflowDigest,
+      executionSourceDigest: authority.workflow.executionSourceDigest
+    },
+    authorityDigest: authority.authorityDigest
   };
   return { ...value, provenanceDigest: canonicalSha256(value) };
 }
@@ -435,8 +556,11 @@ function invocation(
 }
 
 function mappingProofs(
-  binding: ApplicationDeploymentBinding
+  binding: ApplicationDeploymentBinding,
+  authority: ApplicationOriginalStateAuthority,
+  plan: ProtectedApplicationPlanProof
 ): ApplicationStateMappingProof[] {
+  const state = mappingState(binding, authority);
   return binding.ownedResourceConfigurations.map((configuration, index) => {
     const transition = binding.stateTransitions.find((entry) =>
       entry.resourceId === configuration.resourceId)!;
@@ -451,24 +575,14 @@ function mappingProofs(
       toAddress: transition.toAddress,
       authoritativeRecord: configuration.authoritativeRecord,
       expectedConfigurationDigest: configuration.configurationDigest,
-      before: {
-        stateLineage: 'fixture-lineage',
-        stateSerial: 1 + index * 2,
-        stateDigest: '1'.repeat(64),
-        backupArtifactDigest: '2'.repeat(64),
-        backupKeyRefDigest: '3'.repeat(64),
-        lockProofDigest: '4'.repeat(64),
-        writerQuiescenceDigest: '5'.repeat(64)
-      },
-      after: {
-        stateLineage: 'fixture-lineage',
-        stateSerial: 2 + index * 2,
-        stateDigest: '6'.repeat(64),
-        lockProofDigest: '7'.repeat(64),
-        writerQuiescenceDigest: '8'.repeat(64)
-      },
-      unmappedStateDigestBefore: '9'.repeat(64),
-      unmappedStateDigestAfter: '9'.repeat(64),
+      originalStateAuthorityDigest: authority.authorityDigest,
+      mappingBatchDigest: state.mappingBatchDigest,
+      mappingIndex: index,
+      mappingCount: binding.ownedResourceConfigurations.length,
+      before: state.before,
+      after: state.after,
+      unmappedStateDigestBefore: state.unmappedStateDigest,
+      unmappedStateDigestAfter: state.unmappedStateDigest,
       observedConfigurationDigest: configuration.configurationDigest,
       resourceMutationPerformed: false as const,
       custodyIdentityDigest: binding.custodyIdentityDigest,
@@ -477,6 +591,38 @@ function mappingProofs(
     };
     return { ...value, proofDigest: canonicalSha256(value) };
   });
+}
+
+function freshHealth(
+  binding: ApplicationDeploymentBinding,
+  source: ObservedApplicationDeploymentSource,
+  completion: ProtectedApplicationCompletionProof,
+  provenance: ProtectedApplicationExecutionProvenance,
+  authority: ProtectedApplicationExecutionAuthority,
+  status = 200,
+  parsedBodyDigest = binding.healthTargets[0]!.parsedBodyDigest
+): FreshApplicationHealthObservation {
+  const value = {
+    kind: 'protected-application-health.v1' as const,
+    bindingDigest: binding.bindingDigest,
+    sourceInventoryDigest: source.sourceInventoryDigest,
+    executionAuthorityDigest: authority.authorityDigest,
+    provenanceDigest: provenance.provenanceDigest,
+    operationId: completion.operation.operationId,
+    component: 'backend' as const,
+    method: 'GET' as const,
+    path: '/health' as const,
+    endpoint: `${completion.outputs.backendUrl}/health`,
+    revision: 'backend--qualified',
+    immutableImage: binding.immutableImage,
+    status,
+    mediaType: 'application/json',
+    bodyBytes: 15,
+    bodySha256: 'b'.repeat(64),
+    parsedBodyDigest,
+    observedAt: new Date(Date.parse(completion.completedAt) + 1_000).toISOString()
+  };
+  return { ...value, observationDigest: canonicalSha256(value) };
 }
 
 describe('protected application deployment source contracts', () => {
@@ -581,12 +727,17 @@ describe('protected application deployment source contracts', () => {
 
   it('accepts only a bounded no-destroy plan under the exact resource and cost bindings', async () => {
     const f = await fixture();
+    const authority = stateAuthority(f.binding);
     const proof = planProof(f.binding, f.source);
-    expect(validateProtectedApplicationPlanProof(f.binding, f.source, proof)).toBe(proof);
+    expect(validateProtectedApplicationPlanProof(
+      f.binding, f.source, authority, proof
+    )).toBe(proof);
 
     const destructive = structuredClone(proof);
     Reflect.set(destructive.changes, 'destroy', 1);
-    expect(() => validateProtectedApplicationPlanProof(f.binding, f.source, destructive))
+    expect(() => validateProtectedApplicationPlanProof(
+      f.binding, f.source, authority, destructive
+    ))
       .toThrow(/no apply is permitted/u);
 
     const outside = structuredClone(proof);
@@ -594,7 +745,9 @@ describe('protected application deployment source contracts', () => {
     const { planDigest: ignored, ...outsideBody } = outside;
     void ignored;
     outside.planDigest = canonicalSha256(outsideBody);
-    expect(() => validateProtectedApplicationPlanProof(f.binding, f.source, outside))
+    expect(() => validateProtectedApplicationPlanProof(
+      f.binding, f.source, authority, outside
+    ))
       .toThrow(/resource scope/u);
 
     const expensive = structuredClone(proof);
@@ -602,7 +755,9 @@ describe('protected application deployment source contracts', () => {
     const { planDigest: oldDigest, ...expensiveBody } = expensive;
     void oldDigest;
     expensive.planDigest = canonicalSha256(expensiveBody);
-    expect(() => validateProtectedApplicationPlanProof(f.binding, f.source, expensive))
+    expect(() => validateProtectedApplicationPlanProof(
+      f.binding, f.source, authority, expensive
+    ))
       .toThrow(/cost/u);
 
     const changedOwnedResource = structuredClone(proof);
@@ -612,35 +767,42 @@ describe('protected application deployment source contracts', () => {
     void staleDigest;
     changedOwnedResource.planDigest = canonicalSha256(changedBody);
     expect(() => validateProtectedApplicationPlanProof(
-      f.binding, f.source, changedOwnedResource
+      f.binding, f.source, authority, changedOwnedResource
     )).toThrow(/state mapping/u);
   });
 
   it('binds protected execution provenance, original approval and fixed state mappings without broad authority', async () => {
     const f = await fixture();
+    const state = stateAuthority(f.binding);
     const plan = planProof(f.binding, f.source);
     const completion = completionProof(f.binding, f.source, plan);
-    const provenance = executionProvenance(f.binding);
+    const authority = executionAuthority(f.binding);
+    const provenance = executionProvenance(authority);
     const writeInvocation = invocation('application-foundation');
     const readInvocation = invocation('staging-qualified');
-    const mappings = mappingProofs(f.binding);
+    const mappings = mappingProofs(f.binding, state, plan);
 
     expect(validateProtectedApplicationExecutionProvenance(
-      f.binding, provenance
+      f.binding, provenance, authority
     )).toBe(provenance);
     expect(validateApplicationOriginalInvocation(writeInvocation)).toBe(writeInvocation);
-    expect(validateApplicationStateMappingProofs(f.binding, mappings)).toBe(mappings);
+    expect(validateApplicationStateMappingProofs(
+      f.binding, state, plan, mappings
+    )).toBe(mappings);
 
     const intent = protectedApplicationExecutionIntent(
       f.binding,
       f.source,
       plan,
       provenance,
+      authority,
+      state,
       writeInvocation,
       coverageNow.toISOString()
     );
     expect(protectedApplicationDispatchRequest(
-      f.binding, f.source, plan, provenance, writeInvocation, intent
+      f.binding, f.source, plan, provenance, authority, state,
+      writeInvocation, intent
     )).toMatchObject({
       mode: 'write',
       action: 'application-foundation',
@@ -658,6 +820,8 @@ describe('protected application deployment source contracts', () => {
       plan,
       completion,
       provenance,
+      authority,
+      state,
       readInvocation
     )).toMatchObject({
       mode: 'read-only',
@@ -676,32 +840,62 @@ describe('protected application deployment source contracts', () => {
     const changedUnmappedState = structuredClone(mappings);
     changedUnmappedState[0]!.unmappedStateDigestAfter = '0'.repeat(64);
     expect(() => validateApplicationStateMappingProofs(
-      f.binding, changedUnmappedState
+      f.binding, state, plan, changedUnmappedState
     )).toThrow(/unmapped state/u);
 
     const staleProvenance = structuredClone(provenance);
-    staleProvenance.workflow.sourceSha = '0'.repeat(40);
+    staleProvenance.workflow.ref = 'main';
+    const { provenanceDigest: ignoredDigest, ...staleBody } = staleProvenance;
+    void ignoredDigest;
+    staleProvenance.provenanceDigest = canonicalSha256(staleBody);
     expect(() => validateProtectedApplicationExecutionProvenance(
-      f.binding, staleProvenance
+      f.binding, staleProvenance, authority
     )).toThrow(/immutable current workflow source/u);
+
+    const annotatedAuthority = structuredClone(authority);
+    Reflect.set(annotatedAuthority.workflow, 'tagObjectType', 'tag');
+    const { authorityDigest, ...annotatedBody } = annotatedAuthority;
+    void authorityDigest;
+    annotatedAuthority.authorityDigest = canonicalSha256(annotatedBody);
+    const annotatedProvenance = executionProvenance(annotatedAuthority);
+    expect(() => validateProtectedApplicationExecutionProvenance(
+      f.binding, annotatedProvenance, annotatedAuthority
+    )).toThrow(/immutable current workflow source/u);
+
+    const disconnectedMappings = structuredClone(mappings);
+    for (const [index, proof] of disconnectedMappings.entries()) {
+      proof.before.stateLineage = `disconnected-${index}`;
+      proof.after.stateLineage = `disconnected-${index}`;
+      const { proofDigest, ...body } = proof;
+      void proofDigest;
+      proof.proofDigest = canonicalSha256(body);
+    }
+    expect(() => validateApplicationStateMappingProofs(
+      f.binding, state, plan, disconnectedMappings
+    )).toThrow(/state mapping/u);
   });
 
   it('durably separates no-effect blocking, accepted operations, terminal checkpoints and read-only observation', async () => {
     const f = await fixture();
+    const state = stateAuthority(f.binding);
     const plan = planProof(f.binding, f.source);
     const completion = completionProof(f.binding, f.source, plan);
-    const provenance = executionProvenance(f.binding);
+    const authority = executionAuthority(f.binding);
+    const provenance = executionProvenance(authority);
     const writeInvocation = invocation('application-foundation');
     const intent = protectedApplicationExecutionIntent(
       f.binding,
       f.source,
       plan,
       provenance,
+      authority,
+      state,
       writeInvocation,
       coverageNow.toISOString()
     );
     const dispatch = protectedApplicationDispatchRequest(
-      f.binding, f.source, plan, provenance, writeInvocation, intent
+      f.binding, f.source, plan, provenance, authority, state,
+      writeInvocation, intent
     );
     const runningOperation = {
       ...completion.operation,
@@ -713,9 +907,35 @@ describe('protected application deployment source contracts', () => {
       runningOperation,
       new Date(coverageNow.getTime() + 1_000).toISOString()
     );
+    const retainedIntent = { intent, accepted: null, terminal: null };
+    expect(validateProtectedApplicationWriteResult(dispatch, {
+      status: 'uncertain',
+      effect: 'intent',
+      reason: 'checkpoint-failed',
+      intent
+    }, retainedIntent)).toMatchObject({
+      status: 'uncertain',
+      effect: 'intent'
+    });
+    const firstRetry = protectedApplicationWriteObservationRequest(
+      f.binding,
+      f.source,
+      plan,
+      provenance,
+      authority,
+      state,
+      writeInvocation,
+      retainedIntent
+    );
+    expect(firstRetry).toMatchObject({
+      execution: 'observe',
+      observationReason: 'intent-without-handle',
+      previousOperation: null
+    });
     expect(validateProtectedApplicationAcceptedCheckpoint(
       dispatch, accepted
     )).toBe(accepted);
+    const retainedAccepted = { intent, accepted, terminal: null };
     expect(validateProtectedApplicationWriteResult(dispatch, {
       status: 'failed',
       effect: 'accepted',
@@ -723,7 +943,7 @@ describe('protected application deployment source contracts', () => {
       operation: runningOperation,
       intent,
       accepted
-    })).toMatchObject({
+    }, retainedAccepted)).toMatchObject({
       status: 'failed',
       effect: 'accepted',
       operation: { operationId: runningOperation.operationId }
@@ -743,6 +963,7 @@ describe('protected application deployment source contracts', () => {
     expect(validateProtectedApplicationTerminalCheckpoint(
       dispatch, accepted, terminal
     )).toBe(terminal);
+    const retainedTerminal = { intent, accepted, terminal };
     expect(validateProtectedApplicationWriteResult(dispatch, {
       status: 'failed',
       effect: 'terminal',
@@ -751,7 +972,7 @@ describe('protected application deployment source contracts', () => {
       intent,
       accepted,
       terminal
-    })).toMatchObject({
+    }, retainedTerminal)).toMatchObject({
       status: 'failed',
       effect: 'terminal',
       operation: { status: 'completed' }
@@ -771,9 +992,9 @@ describe('protected application deployment source contracts', () => {
       terminal,
       provenance,
       plan,
-      mappings: mappingProofs(f.binding),
+      mappings: mappingProofs(f.binding, state, plan),
       completion: completedProof
-    })).toMatchObject({
+    }, retainedTerminal)).toMatchObject({
       status: 'completed',
       effect: 'terminal'
     });
@@ -788,12 +1009,12 @@ describe('protected application deployment source contracts', () => {
       terminal,
       provenance,
       plan,
-      mappings: mappingProofs(f.binding),
+      mappings: mappingProofs(f.binding, state, plan),
       completion: completedProof
     } as const;
     Reflect.deleteProperty(withoutTerminal, 'terminal');
     expect(() => validateProtectedApplicationWriteResult(
-      dispatch, withoutTerminal
+      dispatch, withoutTerminal, retainedTerminal
     )).toThrow(/terminal-before-readback/u);
 
     const uncertain = protectedApplicationWriteObservationRequest(
@@ -801,16 +1022,17 @@ describe('protected application deployment source contracts', () => {
       f.source,
       plan,
       provenance,
+      authority,
+      state,
       writeInvocation,
-      intent,
-      null
+      retainedIntent
     );
     expect(validateProtectedApplicationWriteResult(uncertain, {
       status: 'uncertain',
       effect: 'intent',
       reason: 'verification-failed',
       intent
-    })).toMatchObject({
+    }, retainedIntent)).toMatchObject({
       status: 'uncertain',
       effect: 'intent'
     });
@@ -818,7 +1040,53 @@ describe('protected application deployment source contracts', () => {
       status: 'blocked',
       effect: 'none',
       reason: 'verification-failed'
-    })).toThrow(/before the first dispatch effect/u);
+    }, retainedIntent)).toThrow(/before the first dispatch effect/u);
+
+    const observeAccepted = protectedApplicationWriteObservationRequest(
+      f.binding,
+      f.source,
+      plan,
+      provenance,
+      authority,
+      state,
+      writeInvocation,
+      retainedAccepted
+    );
+    const differentOperation = {
+      ...runningOperation,
+      operationId: 'protected-application:different',
+      startedAt: new Date(coverageNow.getTime() + 500).toISOString()
+    };
+    const rebuiltAccepted = protectedApplicationAcceptedCheckpoint(
+      dispatch,
+      differentOperation,
+      accepted.acceptedAt
+    );
+    expect(() => validateProtectedApplicationWriteResult(observeAccepted, {
+      status: 'accepted',
+      effect: 'accepted',
+      operation: differentOperation,
+      intent,
+      accepted: rebuiltAccepted
+    }, retainedAccepted)).toThrow(/independently retained/u);
+
+    const observeTerminal = protectedApplicationWriteObservationRequest(
+      f.binding,
+      f.source,
+      plan,
+      provenance,
+      authority,
+      state,
+      writeInvocation,
+      retainedTerminal
+    );
+    expect(() => validateProtectedApplicationWriteResult(observeTerminal, {
+      status: 'accepted',
+      effect: 'accepted',
+      operation: runningOperation,
+      intent,
+      accepted
+    }, retainedTerminal)).toThrow(/running provider handle/u);
 
     const readRequest = protectedApplicationReadRequest(
       'staging-qualified',
@@ -827,11 +1095,14 @@ describe('protected application deployment source contracts', () => {
       plan,
       completedProof,
       provenance,
+      authority,
+      state,
       invocation('staging-qualified')
     );
     f.runner.completion = completedProof;
     const observed = await observeApplicationDeploymentReadback(
-      f.input, f.source, plan, completedProof
+      f.input, f.source, state, plan, completedProof, provenance, authority,
+      freshHealth(f.binding, f.source, completedProof, provenance, authority)
     );
     const readResult = {
       status: 'completed' as const,
@@ -854,32 +1125,39 @@ describe('protected application deployment source contracts', () => {
 
   it('requires exact applied state, no-change proof and successful bounded workload health', async () => {
     const f = await fixture();
+    const state = stateAuthority(f.binding);
     const plan = planProof(f.binding, f.source);
     const completion = completionProof(f.binding, f.source, plan);
     expect(validateProtectedApplicationCompletionProof(
-      f.binding, f.source, plan, completion
+      f.binding, f.source, state, plan, completion
     )).toBe(completion);
 
     const unhealthy = structuredClone(completion);
     Reflect.set(unhealthy.health[0]!, 'healthy', false);
     expect(() => validateProtectedApplicationCompletionProof(
-      f.binding, f.source, plan, unhealthy
+      f.binding, f.source, state, plan, unhealthy
     )).toThrow(/workload health/u);
 
     const incomplete = structuredClone(completion);
     incomplete.appliedResourceIds = incomplete.appliedResourceIds.slice(1);
     expect(() => validateProtectedApplicationCompletionProof(
-      f.binding, f.source, plan, incomplete
+      f.binding, f.source, state, plan, incomplete
     )).toThrow(/resource inventory/u);
   });
 
   it('independently reobserves exact Azure resources, immutable image, revision health and inventory', async () => {
     const f = await fixture();
+    const state = stateAuthority(f.binding);
     const plan = planProof(f.binding, f.source);
     const completion = completionProof(f.binding, f.source, plan);
+    const authority = executionAuthority(f.binding);
+    const provenance = executionProvenance(authority);
+    const health = freshHealth(
+      f.binding, f.source, completion, provenance, authority
+    );
     f.runner.completion = completion;
     const result = await observeApplicationDeploymentReadback(
-      f.input, f.source, plan, completion
+      f.input, f.source, state, plan, completion, provenance, authority, health
     );
     expect(result.observed).toMatchObject({
       kind: 'application-foundation-readback.v1',
@@ -891,13 +1169,31 @@ describe('protected application deployment source contracts', () => {
 
     f.runner.imageDrift = true;
     await expect(observeApplicationDeploymentReadback(
-      f.input, f.source, plan, completion
+      f.input, f.source, state, plan, completion, provenance, authority, health
     )).rejects.toThrow(/immutable image/u);
     f.runner.imageDrift = false;
     f.runner.unhealthyRevision = true;
     await expect(observeApplicationDeploymentReadback(
-      f.input, f.source, plan, completion
+      f.input, f.source, state, plan, completion, provenance, authority, health
     )).rejects.toThrow(/revision health/u);
+    f.runner.unhealthyRevision = false;
+
+    const currentFailure = freshHealth(
+      f.binding, f.source, completion, provenance, authority, 500
+    );
+    await expect(observeApplicationDeploymentReadback(
+      f.input, f.source, state, plan, completion, provenance, authority,
+      currentFailure
+    )).rejects.toThrow(/Fresh application health/u);
+
+    const malformedSuccess = freshHealth(
+      f.binding, f.source, completion, provenance, authority, 200,
+      '0'.repeat(64)
+    );
+    await expect(observeApplicationDeploymentReadback(
+      f.input, f.source, state, plan, completion, provenance, authority,
+      malformedSuccess
+    )).rejects.toThrow(/Fresh application health/u);
   });
 
   it('never redispatches recorded uncertain or mismatched application operations', async () => {

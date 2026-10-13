@@ -103,6 +103,8 @@ export interface ApplicationDeploymentBinding {
     component: 'backend';
     method: 'GET';
     path: '/health';
+    mediaType: 'application/json';
+    parsedBodyDigest: string;
   }[];
   budget: {
     currency: string;
@@ -176,6 +178,14 @@ export interface ProtectedApplicationPlanProof {
     stateAddress: string;
     configurationDigest: string;
   }[];
+  state: {
+    originalAuthorityDigest: string;
+    mappingBatchDigest: string;
+    lineage: string;
+    serial: number;
+    stateDigest: string;
+    unmappedStateDigest: string;
+  };
   cost: {
     currency: string;
     fixedMonthlyCents: number;
@@ -204,8 +214,13 @@ export interface ProtectedApplicationCompletionProof {
   planDigest: string;
   sourceInventoryDigest: string;
   operation: ExternalOperationState;
+  originalStateAuthorityDigest: string;
+  mappingBatchDigest: string;
   stateLineage: string;
   stateSerial: number;
+  preApplyStateDigest: string;
+  stateDigest: string;
+  unmappedStateDigest: string;
   appliedResourceIds: readonly string[];
   outputs: {
     backendUrl: string;
@@ -249,8 +264,10 @@ export interface ApplicationDeploymentReadback {
     health: {
       endpoint: string;
       status: 200;
+      mediaType: 'application/json';
       bodyBytes: number;
       bodySha256: string;
+      parsedBodyDigest: string;
       observedAt: string;
     };
     noChangePlanDigest: string;
@@ -270,14 +287,84 @@ export interface ProtectedApplicationExecutionProvenance {
   custodyIdentityDigest: string;
   custodyQualificationDigest: string;
   workflow: {
+    repositoryId: number;
     repository: string;
     path: string;
+    executionRef: string;
     ref: string;
     sourceSha: string;
+    treeSha: string;
     workflowDigest: string;
     executionSourceDigest: string;
   };
+  authorityDigest: string;
   provenanceDigest: string;
+}
+
+export interface ProtectedApplicationExecutionAuthority {
+  hostId: string;
+  runnerId: number;
+  runnerLabel: string;
+  runnerGroupId: number;
+  networkConfigurationId: string;
+  runnerQualificationDigest: string;
+  networkQualificationDigest: string;
+  custodyIdentityDigest: string;
+  custodyQualificationDigest: string;
+  workflow: {
+    repositoryId: number;
+    repository: string;
+    path: string;
+    executionRef: string;
+    ref: string;
+    sourceSha: string;
+    treeSha: string;
+    tagObjectType: 'commit';
+    workflowDigest: string;
+    executionSourceDigest: string;
+    barrierStatus: 'active-update-deletion-no-bypass';
+    barrierBindingDigest: string;
+    providerTagObservationDigest: string;
+    providerAdmissionStatus: 'current';
+    providerAdmissionDigest: string;
+  };
+  authorityDigest: string;
+}
+
+export interface ApplicationOriginalStateAuthority {
+  kind: 'protected-application-original-state.v1';
+  backendBindingDigest: string;
+  remoteBackendDigest: string;
+  handoverEvidenceId: string;
+  handoverHeaderDigest: string;
+  stateLineage: string;
+  stateSerial: number;
+  stateDigest: string;
+  unmappedStateDigest: string;
+  observedAt: string;
+  authorityDigest: string;
+}
+
+export interface FreshApplicationHealthObservation {
+  kind: 'protected-application-health.v1';
+  bindingDigest: string;
+  sourceInventoryDigest: string;
+  executionAuthorityDigest: string;
+  provenanceDigest: string;
+  operationId: string;
+  component: 'backend';
+  method: 'GET';
+  path: '/health';
+  endpoint: string;
+  revision: string;
+  immutableImage: string;
+  status: number;
+  mediaType: string;
+  bodyBytes: number;
+  bodySha256: string;
+  parsedBodyDigest: string;
+  observedAt: string;
+  observationDigest: string;
 }
 
 export interface ApplicationOriginalInvocation {
@@ -304,6 +391,10 @@ export interface ApplicationStateMappingProof {
   toAddress: string;
   authoritativeRecord: ApplicationAuthoritativeRecord;
   expectedConfigurationDigest: string;
+  originalStateAuthorityDigest: string;
+  mappingBatchDigest: string;
+  mappingIndex: number;
+  mappingCount: number;
   before: {
     stateLineage: string;
     stateSerial: number;
@@ -335,6 +426,7 @@ interface ProtectedApplicationExecutionBase {
   binding: ApplicationDeploymentBinding;
   source: ObservedApplicationDeploymentSource;
   provenance: ProtectedApplicationExecutionProvenance;
+  executionAuthority: ProtectedApplicationExecutionAuthority;
   invocation: ApplicationOriginalInvocation;
 }
 
@@ -342,6 +434,7 @@ interface ProtectedApplicationWriteBase extends ProtectedApplicationExecutionBas
   mode: 'write';
   action: 'application-foundation';
   plan: ProtectedApplicationPlanProof;
+  stateAuthority: ApplicationOriginalStateAuthority;
   intent: ProtectedApplicationExecutionIntent;
   effects: {
     azureResourceProvision: true;
@@ -366,6 +459,7 @@ export interface ProtectedApplicationWriteObservationRequest
   execution: 'observe';
   previousOperation: ExternalOperationState | null;
   observationReason: 'accepted-handle' | 'intent-without-handle';
+  retainedCheckpoints: ProtectedApplicationRetainedCheckpoints;
 }
 
 export type ProtectedApplicationWriteRequest =
@@ -397,6 +491,8 @@ export interface ProtectedApplicationExecutionIntent {
   requestDigest: string;
   invocationDigest: string;
   provenanceDigest: string;
+  executionAuthorityDigest: string;
+  stateAuthorityDigest: string;
   bindingDigest: string;
   sourceInventoryDigest: string;
   protectedPlanDigest: string;
@@ -430,6 +526,12 @@ export interface ProtectedApplicationExecutionCheckpoints {
   recordTerminal(checkpoint: ProtectedApplicationTerminalCheckpoint): Promise<void>;
 }
 
+export interface ProtectedApplicationRetainedCheckpoints {
+  intent: ProtectedApplicationExecutionIntent | null;
+  accepted: ProtectedApplicationAcceptedCheckpoint | null;
+  terminal: ProtectedApplicationTerminalCheckpoint | null;
+}
+
 export type ProtectedApplicationExecutionFailureReason =
   | 'capability-unavailable'
   | 'stale-binding'
@@ -441,6 +543,7 @@ export type ProtectedApplicationExecutionFailureReason =
   | 'mapping-unverified'
   | 'configuration-mismatch'
   | 'concurrency-conflict'
+  | 'checkpoint-failed'
   | 'cost-exceeded'
   | 'health-unverified'
   | 'verification-failed'
@@ -833,7 +936,9 @@ export function bindApplicationDeployment(
     healthTargets: [{
       component: 'backend' as const,
       method: 'GET' as const,
-      path: '/health' as const
+      path: '/health' as const,
+      mediaType: 'application/json' as const,
+      parsedBodyDigest: canonicalSha256({ status: 'ok' })
     }],
     budget,
     requirements: {
@@ -1082,18 +1187,57 @@ function exactKeys(value: object, keys: readonly string[]): boolean {
 
 export function validateProtectedApplicationExecutionProvenance(
   binding: ApplicationDeploymentBinding,
-  provenance: ProtectedApplicationExecutionProvenance
+  provenance: ProtectedApplicationExecutionProvenance,
+  authority: ProtectedApplicationExecutionAuthority
 ): ProtectedApplicationExecutionProvenance {
   const { provenanceDigest, ...digestInput } = provenance;
+  const { authorityDigest, ...authorityInput } = authority;
+  const authorityTuple = {
+    executionHostId: authority.hostId,
+    runnerId: authority.runnerId,
+    runnerLabel: authority.runnerLabel,
+    runnerGroupId: authority.runnerGroupId,
+    networkConfigurationId: authority.networkConfigurationId,
+    runnerQualificationDigest: authority.runnerQualificationDigest,
+    networkQualificationDigest: authority.networkQualificationDigest,
+    custodyIdentityDigest: authority.custodyIdentityDigest,
+    custodyQualificationDigest: authority.custodyQualificationDigest,
+    workflow: {
+      repositoryId: authority.workflow.repositoryId,
+      repository: authority.workflow.repository,
+      path: authority.workflow.path,
+      executionRef: authority.workflow.executionRef,
+      ref: authority.workflow.ref,
+      sourceSha: authority.workflow.sourceSha,
+      treeSha: authority.workflow.treeSha,
+      workflowDigest: authority.workflow.workflowDigest,
+      executionSourceDigest: authority.workflow.executionSourceDigest
+    },
+    authorityDigest
+  };
   if (!exactKeys(provenance, [
     'executionHostId', 'runnerId', 'runnerLabel', 'runnerGroupId',
     'networkConfigurationId', 'runnerQualificationDigest',
     'networkQualificationDigest', 'custodyIdentityDigest',
-    'custodyQualificationDigest', 'workflow', 'provenanceDigest'
+    'custodyQualificationDigest', 'workflow', 'authorityDigest',
+    'provenanceDigest'
   ]) ||
     !exactKeys(provenance.workflow, [
-      'repository', 'path', 'ref', 'sourceSha', 'workflowDigest',
-      'executionSourceDigest'
+      'repositoryId', 'repository', 'path', 'executionRef', 'ref',
+      'sourceSha', 'treeSha', 'workflowDigest', 'executionSourceDigest'
+    ]) ||
+    !exactKeys(authority, [
+      'hostId', 'runnerId', 'runnerLabel', 'runnerGroupId',
+      'networkConfigurationId', 'runnerQualificationDigest',
+      'networkQualificationDigest', 'custodyIdentityDigest',
+      'custodyQualificationDigest', 'workflow', 'authorityDigest'
+    ]) ||
+    !exactKeys(authority.workflow, [
+        'repositoryId', 'repository', 'path', 'executionRef', 'ref',
+        'sourceSha', 'treeSha', 'tagObjectType', 'workflowDigest',
+        'executionSourceDigest', 'barrierStatus', 'barrierBindingDigest',
+        'providerTagObservationDigest', 'providerAdmissionStatus',
+        'providerAdmissionDigest'
     ]) ||
     !provenance.executionHostId || provenance.executionHostId.length > 512 ||
     !Number.isSafeInteger(provenance.runnerId) || provenance.runnerId <= 0 ||
@@ -1105,12 +1249,32 @@ export function validateProtectedApplicationExecutionProvenance(
     !digestPattern.test(provenance.networkQualificationDigest) ||
     provenance.custodyIdentityDigest !== binding.custodyIdentityDigest ||
     provenance.custodyQualificationDigest !== binding.custodyQualificationDigest ||
+    !Number.isSafeInteger(provenance.workflow.repositoryId) ||
+    provenance.workflow.repositoryId <= 0 ||
     !provenance.workflow.repository || provenance.workflow.repository.length > 256 ||
     !/^\.github\/workflows\/[A-Za-z0-9_.-]+\.ya?ml$/u.test(provenance.workflow.path) ||
-    !provenance.workflow.ref || provenance.workflow.ref.length > 256 ||
+    provenance.workflow.executionRef !==
+      `liftoff-execution-${provenance.workflow.sourceSha}` ||
+    provenance.workflow.ref !== authority.workflow.ref ||
+    provenance.workflow.ref !==
+      `refs/tags/liftoff-execution-${provenance.workflow.sourceSha}` ||
+    !/^refs\/tags\/liftoff-execution-[a-f0-9]{40}$/u.test(provenance.workflow.ref) ||
     provenance.workflow.sourceSha !== binding.sourceSha ||
+    !/^[a-f0-9]{40}$/u.test(provenance.workflow.treeSha) ||
+    authority.workflow.tagObjectType !== 'commit' ||
+    authority.workflow.barrierStatus !== 'active-update-deletion-no-bypass' ||
+    authority.workflow.providerAdmissionStatus !== 'current' ||
     !digestPattern.test(provenance.workflow.workflowDigest) ||
     !digestPattern.test(provenance.workflow.executionSourceDigest) ||
+    !digestPattern.test(authority.workflow.barrierBindingDigest) ||
+    !digestPattern.test(authority.workflow.providerTagObservationDigest) ||
+    !digestPattern.test(authority.workflow.providerAdmissionDigest) ||
+    canonicalSha256(authorityInput) !== authorityDigest ||
+    canonicalSha256(provenance) !== canonicalSha256({
+      ...authorityTuple,
+      provenanceDigest
+    }) ||
+    provenance.authorityDigest !== authorityDigest ||
     canonicalSha256(digestInput) !== provenanceDigest) {
     return applicationError(
       'application-deployment-provenance',
@@ -1152,11 +1316,43 @@ export function validateApplicationOriginalInvocation(
   return invocation;
 }
 
+export function validateApplicationOriginalStateAuthority(
+  binding: ApplicationDeploymentBinding,
+  authority: ApplicationOriginalStateAuthority
+): ApplicationOriginalStateAuthority {
+  const { authorityDigest, ...digestInput } = authority;
+  if (!exactKeys(authority, [
+    'kind', 'backendBindingDigest', 'remoteBackendDigest',
+    'handoverEvidenceId', 'handoverHeaderDigest', 'stateLineage',
+    'stateSerial', 'stateDigest', 'unmappedStateDigest', 'observedAt',
+    'authorityDigest'
+  ]) ||
+    authority.kind !== 'protected-application-original-state.v1' ||
+    authority.backendBindingDigest !== binding.backendBindingDigest ||
+    !digestPattern.test(authority.remoteBackendDigest) ||
+    !authority.handoverEvidenceId || authority.handoverEvidenceId.length > 256 ||
+    !digestPattern.test(authority.handoverHeaderDigest) ||
+    !authority.stateLineage || authority.stateLineage.length > 256 ||
+    !Number.isSafeInteger(authority.stateSerial) || authority.stateSerial <= 0 ||
+    !digestPattern.test(authority.stateDigest) ||
+    !digestPattern.test(authority.unmappedStateDigest) ||
+    !Number.isFinite(Date.parse(authority.observedAt)) ||
+    canonicalSha256(digestInput) !== authorityDigest) {
+    return applicationError(
+      'application-deployment-state',
+      'Application state mapping is not bound to the authoritative imported backend state identity.'
+    );
+  }
+  return authority;
+}
+
 export function validateProtectedApplicationPlanProof(
   binding: ApplicationDeploymentBinding,
   source: ObservedApplicationDeploymentSource,
+  stateAuthority: ApplicationOriginalStateAuthority,
   proof: ProtectedApplicationPlanProof
 ): ProtectedApplicationPlanProof {
+  validateApplicationOriginalStateAuthority(binding, stateAuthority);
   const { planDigest, ...digestInput } = proof;
   const resourceIds = new Set(proof.resourceIds.map((resourceId) => resourceId.toLowerCase()));
   const groupPrefix = `${binding.resourceGroupId}/`.toLowerCase();
@@ -1164,10 +1360,15 @@ export function validateProtectedApplicationPlanProof(
     'schemaVersion', 'kind', 'bindingDigest', 'sourceInventoryDigest',
     'executionInventoryDigest', 'providerLockDigest', 'backendOverlaySha256',
     'variableOverlayDigest', 'planDigest', 'plannedAt', 'changes', 'resourceIds',
-    'stateTransitions', 'ownedResourceConfigurations', 'cost', 'protectedInputs', 'checks'
+    'stateTransitions', 'ownedResourceConfigurations', 'state', 'cost',
+    'protectedInputs', 'checks'
   ]) ||
     !exactKeys(proof.changes, ['add', 'change', 'destroy']) ||
     !exactKeys(proof.cost, ['currency', 'fixedMonthlyCents', 'usageMonthlyCents']) ||
+    !exactKeys(proof.state, [
+      'originalAuthorityDigest', 'mappingBatchDigest', 'lineage', 'serial',
+      'stateDigest', 'unmappedStateDigest'
+    ]) ||
     !exactKeys(proof.checks, [
       'initializedProtectedBackend', 'validatedConfiguration', 'providerLockVerified',
       'artifactDigestBound', 'sourceUnchanged', 'plaintextStateAbsent',
@@ -1190,6 +1391,13 @@ export function validateProtectedApplicationPlanProof(
     !Number.isSafeInteger(proof.changes.add) || proof.changes.add <= 0 ||
     proof.changes.change !== 0 || proof.changes.destroy !== 0 ||
     !exactTransitions(proof.stateTransitions, binding.stateTransitions) ||
+    proof.state.originalAuthorityDigest !== stateAuthority.authorityDigest ||
+    !digestPattern.test(proof.state.mappingBatchDigest) ||
+    proof.state.lineage !== stateAuthority.stateLineage ||
+    !Number.isSafeInteger(proof.state.serial) ||
+    proof.state.serial <= stateAuthority.stateSerial ||
+    !digestPattern.test(proof.state.stateDigest) ||
+    proof.state.unmappedStateDigest !== stateAuthority.unmappedStateDigest ||
     canonicalSha256(proof.ownedResourceConfigurations) !== canonicalSha256(
       binding.ownedResourceConfigurations.map((resource) => ({
         resourceId: resource.resourceId,
@@ -1230,8 +1438,11 @@ export function validateProtectedApplicationPlanProof(
 
 export function validateApplicationStateMappingProofs(
   binding: ApplicationDeploymentBinding,
+  stateAuthority: ApplicationOriginalStateAuthority,
+  plan: ProtectedApplicationPlanProof,
   proofs: readonly ApplicationStateMappingProof[]
 ): readonly ApplicationStateMappingProof[] {
+  validateApplicationOriginalStateAuthority(binding, stateAuthority);
   const expected = binding.ownedResourceConfigurations.map((configuration) => {
     const transition = binding.stateTransitions.find((candidate) =>
       candidate.resourceId.toLowerCase() === configuration.resourceId.toLowerCase());
@@ -1250,7 +1461,21 @@ export function validateApplicationStateMappingProofs(
       'Protected application state proof omitted or added an owned state mapping.'
     );
   }
-  for (const { configuration, transition } of expected) {
+  const first = proofs[0]!;
+  const expectedBatchDigest = canonicalSha256({
+    originalStateAuthorityDigest: stateAuthority.authorityDigest,
+    before: first.before,
+    after: first.after,
+    unmappedStateDigestBefore: first.unmappedStateDigestBefore,
+    unmappedStateDigestAfter: first.unmappedStateDigestAfter,
+    mappings: expected.map(({ configuration, transition }) => ({
+      resourceId: configuration.resourceId,
+      fromAddress: transition.fromAddress,
+      toAddress: transition.toAddress,
+      configurationDigest: configuration.configurationDigest
+    }))
+  });
+  for (const [index, { configuration, transition }] of expected.entries()) {
     const proof = proofs.find((candidate) =>
       candidate.resourceId.toLowerCase() === configuration.resourceId.toLowerCase());
     if (!proof) {
@@ -1262,7 +1487,9 @@ export function validateApplicationStateMappingProofs(
     const { proofDigest, ...digestInput } = proof;
     if (!exactKeys(proof, [
       'resourceType', 'resourceId', 'disposition', 'fromAddress', 'toAddress',
-      'authoritativeRecord', 'expectedConfigurationDigest', 'before', 'after',
+      'authoritativeRecord', 'expectedConfigurationDigest',
+      'originalStateAuthorityDigest', 'mappingBatchDigest', 'mappingIndex',
+      'mappingCount', 'before', 'after',
       'unmappedStateDigestBefore', 'unmappedStateDigestAfter',
       'observedConfigurationDigest', 'resourceMutationPerformed',
       'custodyIdentityDigest', 'custodyQualificationDigest',
@@ -1288,6 +1515,21 @@ export function validateApplicationStateMappingProofs(
         canonicalSha256(configuration.authoritativeRecord) ||
       proof.expectedConfigurationDigest !== configuration.configurationDigest ||
       proof.observedConfigurationDigest !== configuration.configurationDigest ||
+      proof.originalStateAuthorityDigest !== stateAuthority.authorityDigest ||
+      proof.mappingBatchDigest !== plan.state.mappingBatchDigest ||
+      proof.mappingBatchDigest !== expectedBatchDigest ||
+      proof.mappingIndex !== index ||
+      proof.mappingCount !== expected.length ||
+      canonicalSha256(proof.before) !== canonicalSha256(first.before) ||
+      canonicalSha256(proof.after) !== canonicalSha256(first.after) ||
+      proof.before.stateLineage !== stateAuthority.stateLineage ||
+      proof.before.stateSerial !== stateAuthority.stateSerial ||
+      proof.before.stateDigest !== stateAuthority.stateDigest ||
+      proof.unmappedStateDigestBefore !== stateAuthority.unmappedStateDigest ||
+      proof.after.stateLineage !== plan.state.lineage ||
+      proof.after.stateSerial !== plan.state.serial ||
+      proof.after.stateDigest !== plan.state.stateDigest ||
+      proof.unmappedStateDigestAfter !== plan.state.unmappedStateDigest ||
       !proof.before.stateLineage ||
       proof.before.stateLineage !== proof.after.stateLineage ||
       !Number.isSafeInteger(proof.before.stateSerial) || proof.before.stateSerial <= 0 ||
@@ -1355,6 +1597,8 @@ function executionRequestDigest(
   source: ObservedApplicationDeploymentSource,
   plan: ProtectedApplicationPlanProof,
   provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  stateAuthority: ApplicationOriginalStateAuthority,
   invocation: ApplicationOriginalInvocation
 ): string {
   return canonicalSha256({
@@ -1364,6 +1608,8 @@ function executionRequestDigest(
     executionInventoryDigest: source.executionInventoryDigest,
     protectedPlanDigest: plan.planDigest,
     provenanceDigest: provenance.provenanceDigest,
+    executionAuthorityDigest: executionAuthority.authorityDigest,
+    stateAuthorityDigest: stateAuthority.authorityDigest,
     invocationDigest: invocation.invocationDigest,
     effects: writeEffects(binding)
   });
@@ -1374,11 +1620,15 @@ export function protectedApplicationExecutionIntent(
   source: ObservedApplicationDeploymentSource,
   plan: ProtectedApplicationPlanProof,
   provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  stateAuthority: ApplicationOriginalStateAuthority,
   invocation: ApplicationOriginalInvocation,
   recordedAt: string
 ): ProtectedApplicationExecutionIntent {
-  validateProtectedApplicationPlanProof(binding, source, plan);
-  validateProtectedApplicationExecutionProvenance(binding, provenance);
+  validateProtectedApplicationPlanProof(binding, source, stateAuthority, plan);
+  validateProtectedApplicationExecutionProvenance(
+    binding, provenance, executionAuthority
+  );
   validateApplicationOriginalInvocation(invocation);
   if (invocation.phaseId !== 'application-foundation' ||
     !Number.isFinite(Date.parse(recordedAt))) {
@@ -1388,13 +1638,16 @@ export function protectedApplicationExecutionIntent(
     );
   }
   const requestDigest = executionRequestDigest(
-    binding, source, plan, provenance, invocation
+    binding, source, plan, provenance, executionAuthority, stateAuthority,
+    invocation
   );
   const value = {
     kind: 'protected-application-intent.v1' as const,
     requestDigest,
     invocationDigest: invocation.invocationDigest,
     provenanceDigest: provenance.provenanceDigest,
+    executionAuthorityDigest: executionAuthority.authorityDigest,
+    stateAuthorityDigest: stateAuthority.authorityDigest,
     bindingDigest: binding.bindingDigest,
     sourceInventoryDigest: source.sourceInventoryDigest,
     protectedPlanDigest: plan.planDigest,
@@ -1409,14 +1662,18 @@ export function validateProtectedApplicationExecutionIntent(
   source: ObservedApplicationDeploymentSource,
   plan: ProtectedApplicationPlanProof,
   provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  stateAuthority: ApplicationOriginalStateAuthority,
   invocation: ApplicationOriginalInvocation,
   intent: ProtectedApplicationExecutionIntent
 ): ProtectedApplicationExecutionIntent {
   const expected = protectedApplicationExecutionIntent(
-    binding, source, plan, provenance, invocation, intent.recordedAt
+    binding, source, plan, provenance, executionAuthority, stateAuthority,
+    invocation, intent.recordedAt
   );
   if (!exactKeys(intent, [
     'kind', 'requestDigest', 'invocationDigest', 'provenanceDigest',
+    'executionAuthorityDigest', 'stateAuthorityDigest',
     'bindingDigest', 'sourceInventoryDigest', 'protectedPlanDigest',
     'intentId', 'recordedAt', 'checkpointDigest'
   ]) || canonicalSha256(intent) !== canonicalSha256(expected)) {
@@ -1433,11 +1690,14 @@ export function protectedApplicationDispatchRequest(
   source: ObservedApplicationDeploymentSource,
   plan: ProtectedApplicationPlanProof,
   provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  stateAuthority: ApplicationOriginalStateAuthority,
   invocation: ApplicationOriginalInvocation,
   intent: ProtectedApplicationExecutionIntent
 ): ProtectedApplicationWriteDispatchRequest {
   validateProtectedApplicationExecutionIntent(
-    binding, source, plan, provenance, invocation, intent
+    binding, source, plan, provenance, executionAuthority, stateAuthority,
+    invocation, intent
   );
   return {
     schemaVersion: 1,
@@ -1447,9 +1707,11 @@ export function protectedApplicationDispatchRequest(
     binding,
     source,
     provenance,
+    executionAuthority,
     invocation,
     previousOperation: null,
     plan,
+    stateAuthority,
     intent,
     effects: writeEffects(binding)
   };
@@ -1460,13 +1722,77 @@ export function protectedApplicationWriteObservationRequest(
   source: ObservedApplicationDeploymentSource,
   plan: ProtectedApplicationPlanProof,
   provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  stateAuthority: ApplicationOriginalStateAuthority,
   invocation: ApplicationOriginalInvocation,
-  intent: ProtectedApplicationExecutionIntent,
-  previousOperation: ExternalOperationState | null
+  retainedCheckpoints: ProtectedApplicationRetainedCheckpoints
 ): ProtectedApplicationWriteObservationRequest {
+  const intent = retainedCheckpoints.intent;
+  if (!intent) {
+    return applicationError(
+      'application-deployment-checkpoint',
+      'Application observation requires the independently retained pre-effect intent.'
+    );
+  }
   validateProtectedApplicationExecutionIntent(
-    binding, source, plan, provenance, invocation, intent
+    binding, source, plan, provenance, executionAuthority, stateAuthority,
+    invocation, intent
   );
+  if (retainedCheckpoints.accepted) {
+    validateProtectedApplicationAcceptedCheckpoint(
+      {
+        schemaVersion: 1,
+        mode: 'write',
+        action: 'application-foundation',
+        execution: 'observe',
+        binding,
+        source,
+        provenance,
+        executionAuthority,
+        invocation,
+        previousOperation: retainedCheckpoints.accepted.operation,
+        observationReason: 'accepted-handle',
+        retainedCheckpoints,
+        plan,
+        stateAuthority,
+        intent,
+        effects: writeEffects(binding)
+      },
+      retainedCheckpoints.accepted
+    );
+  }
+  if (retainedCheckpoints.terminal) {
+    if (!retainedCheckpoints.accepted) {
+      return applicationError(
+        'application-deployment-checkpoint',
+        'Application terminal recovery requires its independently retained accepted-handle checkpoint.'
+      );
+    }
+    validateProtectedApplicationTerminalCheckpoint(
+      {
+        schemaVersion: 1,
+        mode: 'write',
+        action: 'application-foundation',
+        execution: 'observe',
+        binding,
+        source,
+        provenance,
+        executionAuthority,
+        invocation,
+        previousOperation: retainedCheckpoints.terminal.operation,
+        observationReason: 'accepted-handle',
+        retainedCheckpoints,
+        plan,
+        stateAuthority,
+        intent,
+        effects: writeEffects(binding)
+      },
+      retainedCheckpoints.accepted,
+      retainedCheckpoints.terminal
+    );
+  }
+  const previousOperation = retainedCheckpoints.terminal?.operation ??
+    retainedCheckpoints.accepted?.operation ?? null;
   if (previousOperation && !exactApplicationOperation(
     binding, previousOperation, invocation.planDigest
   )) {
@@ -1483,12 +1809,15 @@ export function protectedApplicationWriteObservationRequest(
     binding,
     source,
     provenance,
+    executionAuthority,
     invocation,
     previousOperation,
     observationReason: previousOperation
       ? 'accepted-handle'
       : 'intent-without-handle',
+    retainedCheckpoints,
     plan,
+    stateAuthority,
     intent,
     effects: writeEffects(binding)
   };
@@ -1501,10 +1830,16 @@ export function protectedApplicationReadRequest(
   plan: ProtectedApplicationPlanProof,
   completion: ProtectedApplicationCompletionProof,
   provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  stateAuthority: ApplicationOriginalStateAuthority,
   invocation: ApplicationOriginalInvocation
 ): ProtectedApplicationReadRequest {
-  validateProtectedApplicationCompletionProof(binding, source, plan, completion);
-  validateProtectedApplicationExecutionProvenance(binding, provenance);
+  validateProtectedApplicationCompletionProof(
+    binding, source, stateAuthority, plan, completion
+  );
+  validateProtectedApplicationExecutionProvenance(
+    binding, provenance, executionAuthority
+  );
   validateApplicationOriginalInvocation(invocation);
   if (invocation.phaseId !== action ||
     !exactApplicationOperation(binding, completion.operation)) {
@@ -1521,12 +1856,13 @@ export function protectedApplicationReadRequest(
     binding,
     source,
     provenance,
+    executionAuthority,
     invocation,
     previousOperation: completion.operation,
     admittedOperation: completion.operation,
     admittedCompletionDigest: canonicalSha256(completion),
     expectedPlanDigest: plan.planDigest,
-    expectedHealthDigest: canonicalSha256(completion.health),
+    expectedHealthDigest: canonicalSha256(binding.healthTargets),
     permissions: {
       azureRead: true,
       stateRead: false,
@@ -1639,12 +1975,66 @@ export function validateProtectedApplicationTerminalCheckpoint(
   return checkpoint;
 }
 
+function validateRetainedApplicationCheckpoints(
+  request: ProtectedApplicationWriteRequest,
+  retained: ProtectedApplicationRetainedCheckpoints
+): ProtectedApplicationRetainedCheckpoints {
+  if (!exactKeys(retained, ['intent', 'accepted', 'terminal']) ||
+    retained.intent && canonicalSha256(retained.intent) !==
+      canonicalSha256(request.intent) ||
+    retained.accepted && !retained.intent ||
+    retained.terminal && !retained.accepted) {
+    return applicationError(
+      'application-deployment-checkpoint',
+      'Retained application checkpoints are incomplete or differ from the original write intent.'
+    );
+  }
+  if (retained.intent) {
+    validateProtectedApplicationExecutionIntent(
+      request.binding,
+      request.source,
+      request.plan,
+      request.provenance,
+      request.executionAuthority,
+      request.stateAuthority,
+      request.invocation,
+      retained.intent
+    );
+  }
+  if (retained.accepted) {
+    validateProtectedApplicationAcceptedCheckpoint(request, retained.accepted);
+  }
+  if (retained.terminal) {
+    validateProtectedApplicationTerminalCheckpoint(
+      request, retained.accepted!, retained.terminal
+    );
+  }
+  if (request.execution === 'observe') {
+    const expectedOperation = retained.terminal?.operation ??
+      retained.accepted?.operation ?? null;
+    if (canonicalSha256(request.retainedCheckpoints) !== canonicalSha256(retained) ||
+      request.previousOperation === null !== (expectedOperation === null) ||
+      request.previousOperation && expectedOperation &&
+        canonicalSha256(request.previousOperation) !==
+          canonicalSha256(expectedOperation)) {
+      return applicationError(
+        'application-deployment-checkpoint',
+        'Application observation is not bound to the independently retained original handle and terminal truth.'
+      );
+    }
+  }
+  return retained;
+}
+
 export function validateProtectedApplicationWriteResult(
   request: ProtectedApplicationWriteRequest,
-  result: ProtectedApplicationWriteResult
+  result: ProtectedApplicationWriteResult,
+  retainedCheckpoints: ProtectedApplicationRetainedCheckpoints
 ): ProtectedApplicationWriteResult {
+  validateRetainedApplicationCheckpoints(request, retainedCheckpoints);
   if (result.status === 'blocked') {
-    if (request.execution !== 'dispatch' || result.effect !== 'none' ||
+    if (request.execution !== 'dispatch' || retainedCheckpoints.intent !== null ||
+      result.effect !== 'none' ||
       !exactKeys(result, ['status', 'effect', 'reason'])) {
       return applicationError(
         'application-deployment-result',
@@ -1654,9 +2044,11 @@ export function validateProtectedApplicationWriteResult(
     return result;
   }
   if (result.status === 'uncertain') {
-    if (request.execution !== 'observe' || request.previousOperation !== null ||
+    if (retainedCheckpoints.intent === null ||
+      retainedCheckpoints.accepted !== null ||
+      request.execution === 'observe' && request.previousOperation !== null ||
       result.effect !== 'intent' ||
-      canonicalSha256(result.intent) !== canonicalSha256(request.intent) ||
+      canonicalSha256(result.intent) !== canonicalSha256(retainedCheckpoints.intent) ||
       !exactKeys(result, ['status', 'effect', 'reason', 'intent'])) {
       return applicationError(
         'application-deployment-result',
@@ -1671,6 +2063,16 @@ export function validateProtectedApplicationWriteResult(
       'Application effects require the durable original intent and accepted provider handle.'
     );
   }
+  if (!retainedCheckpoints.accepted ||
+    canonicalSha256(result.accepted) !==
+      canonicalSha256(retainedCheckpoints.accepted) ||
+    canonicalSha256(result.intent) !==
+      canonicalSha256(retainedCheckpoints.intent)) {
+    return applicationError(
+      'application-deployment-result',
+      'Application effect results must use independently retained intent and accepted-handle checkpoints.'
+    );
+  }
   validateProtectedApplicationAcceptedCheckpoint(request, result.accepted);
   if (!sameOperationIdentity(result.operation, result.accepted.operation) ||
     canonicalSha256(result.intent) !== canonicalSha256(request.intent)) {
@@ -1680,7 +2082,8 @@ export function validateProtectedApplicationWriteResult(
     );
   }
   if (result.status === 'accepted') {
-    if (result.effect !== 'accepted' || result.operation.status !== 'running' ||
+    if (retainedCheckpoints.terminal !== null ||
+      result.effect !== 'accepted' || result.operation.status !== 'running' ||
       !exactKeys(result, ['status', 'effect', 'operation', 'intent', 'accepted'])) {
       return applicationError(
         'application-deployment-result',
@@ -1696,15 +2099,24 @@ export function validateProtectedApplicationWriteResult(
       ...(terminal ? ['terminal'] : [])
     ]) ||
       result.effect === 'accepted' && (terminal !== undefined ||
-        result.operation.status !== 'running') ||
+        result.operation.status !== 'running' ||
+        retainedCheckpoints.terminal !== null) ||
       result.effect === 'terminal' && (!terminal ||
-        !['completed', 'failed'].includes(result.operation.status))) {
+        !['completed', 'failed'].includes(result.operation.status) ||
+        !retainedCheckpoints.terminal)) {
       return applicationError(
         'application-deployment-result',
         'Post-acceptance failure must preserve either the running handle or its durable terminal checkpoint.'
       );
     }
     if (terminal) {
+      if (canonicalSha256(terminal) !==
+        canonicalSha256(retainedCheckpoints.terminal)) {
+        return applicationError(
+          'application-deployment-result',
+          'Post-terminal failure must use the independently retained original terminal checkpoint.'
+        );
+      }
       validateProtectedApplicationTerminalCheckpoint(request, result.accepted, terminal);
       if (!sameOperationIdentity(result.operation, terminal.operation) ||
         result.operation.status !== terminal.operation.status) {
@@ -1723,18 +2135,29 @@ export function validateProtectedApplicationWriteResult(
       'Completed application execution requires terminal-before-readback durability and complete proof.'
     );
   }
+  if (!retainedCheckpoints.terminal ||
+    canonicalSha256(result.terminal) !==
+      canonicalSha256(retainedCheckpoints.terminal)) {
+    return applicationError(
+      'application-deployment-result',
+      'Completed application execution must use the independently retained original terminal checkpoint.'
+    );
+  }
   validateProtectedApplicationTerminalCheckpoint(
     request, result.accepted, result.terminal
   );
   validateProtectedApplicationExecutionProvenance(
-    request.binding, result.provenance
+    request.binding, result.provenance, request.executionAuthority
   );
   validateProtectedApplicationPlanProof(
-    request.binding, request.source, result.plan
+    request.binding, request.source, request.stateAuthority, result.plan
   );
-  validateApplicationStateMappingProofs(request.binding, result.mappings);
+  validateApplicationStateMappingProofs(
+    request.binding, request.stateAuthority, request.plan, result.mappings
+  );
   validateProtectedApplicationCompletionProof(
-    request.binding, request.source, result.plan, result.completion
+    request.binding, request.source, request.stateAuthority, result.plan,
+    result.completion
   );
   if (result.effect !== 'terminal' ||
     result.action !== 'application-foundation' ||
@@ -1807,10 +2230,11 @@ function httpsUrl(value: string, label: string): URL {
 export function validateProtectedApplicationCompletionProof(
   binding: ApplicationDeploymentBinding,
   source: ObservedApplicationDeploymentSource,
+  stateAuthority: ApplicationOriginalStateAuthority,
   plan: ProtectedApplicationPlanProof,
   proof: ProtectedApplicationCompletionProof
 ): ProtectedApplicationCompletionProof {
-  validateProtectedApplicationPlanProof(binding, source, plan);
+  validateProtectedApplicationPlanProof(binding, source, stateAuthority, plan);
   const operation = proof.operation;
   const health = proof.health[0];
   const backend = httpsUrl(proof.outputs.backendUrl, 'Application backend output');
@@ -1818,7 +2242,9 @@ export function validateProtectedApplicationCompletionProof(
   const applied = new Set(proof.appliedResourceIds.map((resourceId) => resourceId.toLowerCase()));
   if (!exactKeys(proof, [
     'schemaVersion', 'kind', 'bindingDigest', 'planDigest',
-    'sourceInventoryDigest', 'operation', 'stateLineage', 'stateSerial',
+    'sourceInventoryDigest', 'operation', 'originalStateAuthorityDigest',
+    'mappingBatchDigest', 'stateLineage', 'stateSerial',
+    'preApplyStateDigest', 'stateDigest', 'unmappedStateDigest',
     'appliedResourceIds', 'outputs', 'health', 'noChangePlanDigest',
     'completedAt', 'checks'
   ]) ||
@@ -1841,8 +2267,14 @@ export function validateProtectedApplicationCompletionProof(
     operation.resourceId.toLowerCase() !== binding.resourceGroupId.toLowerCase() ||
     typeof operation.planDigest !== 'string' ||
     !digestPattern.test(operation.planDigest) ||
-    !proof.stateLineage || proof.stateLineage.length > 256 ||
-    !Number.isSafeInteger(proof.stateSerial) || proof.stateSerial <= 0 ||
+    proof.originalStateAuthorityDigest !== stateAuthority.authorityDigest ||
+    proof.mappingBatchDigest !== plan.state.mappingBatchDigest ||
+    proof.stateLineage !== plan.state.lineage ||
+    !Number.isSafeInteger(proof.stateSerial) ||
+    proof.stateSerial <= plan.state.serial ||
+    proof.preApplyStateDigest !== plan.state.stateDigest ||
+    !digestPattern.test(proof.stateDigest) ||
+    proof.unmappedStateDigest !== plan.state.unmappedStateDigest ||
     proof.appliedResourceIds.length > 256 ||
     proof.appliedResourceIds.length !== applied.size ||
     plan.resourceIds.some((resourceId) => !applied.has(resourceId.toLowerCase())) ||
@@ -1881,14 +2313,71 @@ function isTopLevelResource(groupId: string, resourceId: string): boolean {
   return resourceId.slice(prefix.length).split('/').length === 3;
 }
 
+function validateFreshApplicationHealthObservation(
+  binding: ApplicationDeploymentBinding,
+  source: ObservedApplicationDeploymentSource,
+  completion: ProtectedApplicationCompletionProof,
+  provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  expectedEndpoint: string,
+  expectedRevision: string,
+  health: FreshApplicationHealthObservation
+): FreshApplicationHealthObservation {
+  validateProtectedApplicationExecutionProvenance(
+    binding, provenance, executionAuthority
+  );
+  const target = binding.healthTargets[0]!;
+  const { observationDigest, ...digestInput } = health;
+  if (!exactKeys(health, [
+    'kind', 'bindingDigest', 'sourceInventoryDigest',
+    'executionAuthorityDigest', 'provenanceDigest', 'operationId',
+    'component', 'method', 'path', 'endpoint', 'revision', 'immutableImage',
+    'status', 'mediaType', 'bodyBytes', 'bodySha256', 'parsedBodyDigest',
+    'observedAt', 'observationDigest'
+  ]) ||
+    health.kind !== 'protected-application-health.v1' ||
+    health.bindingDigest !== binding.bindingDigest ||
+    health.sourceInventoryDigest !== source.sourceInventoryDigest ||
+    health.provenanceDigest !== provenance.provenanceDigest ||
+    health.executionAuthorityDigest !== executionAuthority.authorityDigest ||
+    health.operationId !== completion.operation.operationId ||
+    health.component !== target.component ||
+    health.method !== target.method ||
+    health.path !== target.path ||
+    health.endpoint !== expectedEndpoint ||
+    health.revision !== expectedRevision ||
+    health.immutableImage !== binding.immutableImage ||
+    health.status !== 200 ||
+    health.mediaType !== target.mediaType ||
+    health.parsedBodyDigest !== target.parsedBodyDigest ||
+    !Number.isSafeInteger(health.bodyBytes) || health.bodyBytes <= 0 ||
+    health.bodyBytes > maximumHealthBodyBytes ||
+    !digestPattern.test(health.bodySha256) ||
+    !Number.isFinite(Date.parse(health.observedAt)) ||
+    Date.parse(health.observedAt) <= Date.parse(completion.completedAt) ||
+    canonicalSha256(digestInput) !== observationDigest) {
+    return applicationError(
+      'application-deployment-health',
+      'Fresh application health is not a bounded current HTTP observation of the exact source-declared response contract.'
+    );
+  }
+  return health;
+}
+
 export async function observeApplicationDeploymentReadback(
   input: PhaseAdapterExecutionInput,
   source: ObservedApplicationDeploymentSource,
+  stateAuthority: ApplicationOriginalStateAuthority,
   plan: ProtectedApplicationPlanProof,
-  completion: ProtectedApplicationCompletionProof
+  completion: ProtectedApplicationCompletionProof,
+  provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  freshHealth: FreshApplicationHealthObservation
 ): Promise<ApplicationDeploymentReadback> {
   const binding = source.binding;
-  validateProtectedApplicationCompletionProof(binding, source, plan, completion);
+  validateProtectedApplicationCompletionProof(
+    binding, source, stateAuthority, plan, completion
+  );
   const group = azureObject(await runAzureJson(input, [
     'group', 'show',
     '--subscription', binding.subscriptionId,
@@ -1927,15 +2416,22 @@ export async function observeApplicationDeploymentReadback(
   const containers = Array.isArray(template.containers) ? template.containers : [];
   const backendContainer = containers.find((container) =>
     isRecord(container) && container.name === 'backend');
+  const latestRevision = text(
+    app.latestRevisionName, 'Application latest revision name'
+  );
   const currentRevision = Array.isArray(revisions)
     ? revisions.find((revision) => isRecord(revision) &&
-      revision.name === app.latestRevisionName) : null;
+      revision.name === latestRevision) : null;
   const revisionContainers = isRecord(currentRevision) &&
     Array.isArray(currentRevision.containers) ? currentRevision.containers : [];
   const inventoryIds = Array.isArray(inventory) ? inventory.map((entry) =>
     isRecord(entry) ? text(entry.id, 'Application inventory resource ID') : '') : [];
   const fqdn = text(ingress.fqdn, 'Application ingress FQDN');
-  const health = completion.health[0]!;
+  const expectedHealthEndpoint = `https://${fqdn}/health`;
+  const health = validateFreshApplicationHealthObservation(
+    binding, source, completion, provenance, executionAuthority,
+    expectedHealthEndpoint, latestRevision, freshHealth
+  );
   if (text(group.id, 'Application resource group ID').toLowerCase() !== binding.resourceGroupId.toLowerCase() ||
     group.name !== binding.resourceGroup || group.location !== binding.region ||
     group.provisioningState !== 'Succeeded' ||
@@ -1961,7 +2457,7 @@ export async function observeApplicationDeploymentReadback(
       .some((resourceId) =>
       !inventoryIds.some((observed) => observed.toLowerCase() === resourceId.toLowerCase())) ||
     completion.outputs.backendUrl !== `https://${fqdn}` ||
-    health.endpoint !== `https://${fqdn}/health`) {
+    health.endpoint !== expectedHealthEndpoint) {
     return applicationError(
       'application-deployment-readback',
       'Azure application readback changed resource identity, region, immutable image, managed identity, active traffic, revision health or complete applied inventory.'
@@ -1977,12 +2473,14 @@ export async function observeApplicationDeploymentReadback(
     backendResourceId: appId,
     backendUrl: completion.outputs.backendUrl,
     immutableImage: binding.immutableImage,
-    revision: app.latestRevisionName,
+    revision: latestRevision,
     health: {
       endpoint: health.endpoint,
-      status: health.status,
+      status: 200 as const,
+      mediaType: 'application/json' as const,
       bodyBytes: health.bodyBytes,
       bodySha256: health.bodySha256,
+      parsedBodyDigest: health.parsedBodyDigest,
       observedAt: health.observedAt
     },
     noChangePlanDigest: completion.noChangePlanDigest,
