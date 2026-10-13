@@ -1047,7 +1047,7 @@ describe('immutable application publication and independent readback', () => {
           f.runner.attestationRun = '999';
         }
         if (replacement === 'tag') {
-          f.inputs.phases['application-artifact-ready']!.imageRepository = 'application/replacement';
+          Object.assign(f.inputs.phases['application-artifact-ready']!, { imageRepository: 'application/replacement' });
           f.runner.artifact = { ...binding, tag: `${binding.tag}-replacement` };
         }
         if (replacement === 'digest') {
@@ -1056,7 +1056,7 @@ describe('immutable application publication and independent readback', () => {
         }
         if (replacement === 'source') {
           values.sourceSha = 'f'.repeat(40);
-          f.inputs.phases['application-artifact-ready']!.sourceSha = values.sourceSha;
+          Object.assign(f.inputs.phases['application-artifact-ready']!, { sourceSha: values.sourceSha });
           f.runner.attestationSource = values.sourceSha;
         }
       } finally { release.resolve(); }
