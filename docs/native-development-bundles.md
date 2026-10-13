@@ -154,6 +154,10 @@ does not import a builder, inspect Git or execute a release operation.
 The npm package also carries the inert module and adjacent JSON under
 `distribution/native/`; installed runtime-only foreign-directory smoke checks
 exercise signer/source/inventory binding without builder or checkout imports.
+CLI admission defers loading through one exact literal package-relative edge.
+The architectural guard admits only that importer/target, checks the helper's
+fixed pure builtin/data dependency closure and packaged presence, and continues
+to reject computed, escaping, URL, evaluation and unrelated external edges.
 
 The existing canonical prefix must belong to the invoking user and be private.
 Version directories are `versions/<package-version>-<bundle-manifest-sha256>`;
