@@ -70,6 +70,8 @@ const builtInExecutors: Partial<Record<PhaseId, PhaseExecutor>> = {
   'runner-ready': executeRunnerReadiness,
   'private-backend-proof': executeProtectedStatePhase,
   'remote-import-verified': executeProtectedStatePhase,
+  'application-prerequisites-ready': executeAzurePhase,
+  'application-artifact-ready': executeGitHubPhase,
   'remote-ready': remoteImportRetention,
   'bootstrap-state-disposed': executeBootstrapStateDisposal,
   'rulesets-applied': executeRulesetPhase,
