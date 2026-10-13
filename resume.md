@@ -24,9 +24,10 @@ remaining work, and cautions needed to continue the OpenSpec change
   branch. The tip containing this MacBook-return update is a later handoff commit.
 - The branch tip containing this file is the handoff commit. After fetching,
   run `git rev-parse HEAD` to record its full SHA.
-- OpenSpec progress remains 81/136 tasks complete; 55 remain.
-- Task 13.5 remains unchecked after failed Windows full-suite/coverage
-  qualification. Task 13.6 also remains unchecked; task 13.7 is complete.
+- OpenSpec progress is 82/136 tasks complete; 54 remain.
+- Task 13.5 is complete after exact hosted-native qualification and independent
+  artifact re-judgment on clean revision `94f0d63e`. Task 13.6 remains
+  unchecked; task 13.7 is complete.
 - Read "MacBook return checkpoint, 2026-10-12" below first for the latest
   transfer status and next actions; earlier sections retain the original
   architecture and qualification history.
@@ -52,8 +53,9 @@ Fetching only `feature/state-custody-readiness` omits both Windows handoff
 updates. The continuation branch is a documentation successor, not a new
 implementation layer or a registered native-stack member.
 
-Do not squash, rebase, reset, regenerate baselines, or mark task 13.5 complete
-before reading this file and the OpenSpec artifacts.
+Do not squash, rebase, reset, regenerate baselines, or reinterpret task 13.5's
+passing hosted-native evidence before reading this file and the OpenSpec
+artifacts.
 
 ## Original modernization objective
 
@@ -128,7 +130,7 @@ Live GitHub state last verified on 2026-10-11:
   app-native PR, bottom to top; do not replace that with ordinary `gh pr create`
   merely because linkage is unavailable.
 
-## Current focus: OpenSpec task 13.5
+## Completed milestone: OpenSpec task 13.5
 
 Task 13.5:
 
@@ -136,9 +138,12 @@ Task 13.5:
 > admission; verify absent protected storage/keys/locking blocks rather than
 > falling back to plaintext or an unapproved execution host.
 
-The implementation is complete enough for focused validation, but repository
-qualification and source-complete coverage remain pending. Therefore the task
-checkbox is still open.
+The implementation and exact hosted-native qualification are complete. Run
+`38359670554`, attempt 1, passed on clean revision `94f0d63e`; the independent
+audit described in the latest checkpoint below re-judged the raw reports
+against a fresh archive of those committed bytes. Task 13.5 is checked. Task
+13.6 remains a distinct authorization/capability gate and is not implied by
+this result.
 
 ### Implemented custody model
 
@@ -1620,3 +1625,100 @@ Downstream ownership remains separate:
   application-artifact owner. It has its own concrete producer/adapter tests
   and must ordinary-forward-merge this continuation's final corrected parent
   before its own qualification. Do not duplicate or import that source here.
+
+## Hosted native custody qualification passed, 2026-10-13
+
+The setup correction was committed and pushed as
+`94f0d63e4294a809bf7e3592d6434f0dc1f33e57`
+(`fix: correct hosted native qualification profile`). The remote
+`origin/voyager163-liftoff-modernization` read back that exact SHA and the
+worktree was clean. Required ancestry through `c23d1842`, `2914f0f`,
+`d6222b3`, and `2785087c` remained intact. No task checkbox changed in that
+source-repair commit.
+
+Exactly one replacement `Repository setup` workflow was dispatched:
+
+- Run: `38359670554`, attempt 1, `workflow_dispatch`.
+- Exact head:
+  `94f0d63e4294a809bf7e3592d6434f0dc1f33e57`.
+- Native job: `115170628167`, completed `SUCCESS`.
+- Repository-policy job: `115170628289`, completed `SUCCESS`.
+- Artifact: `11804615717`,
+  `liftoff-native-custody-38359670554-1`, 4,982,748 bytes.
+
+The native job ran from `2026-10-13T06:57:18Z` through
+`2026-10-13T10:18:30Z`. Every named gate recorded `success`: exact toolchain,
+clean start, supported stack, build, unfiltered full suite, source-complete
+coverage, independent coverage verification, focused custody/history checks,
+package smoke, repository policy, strict OpenSpec validation, and clean finish.
+The evidence records darwin/arm64 with Node 24.21.0, npm 12.0.2, OpenTofu
+1.12.6, OpenSpec 1.11.0, Go 1.27.0, Python 3.14.7, uv 0.12.7, Docker 29.8.2
+build `7fc2dff`, Compose 5.5.1, and the exact complete OpenSpec content profile
+`sha256:05d52efd0875c1ff0c1bd0aec13f7128a4baab787ea6b31f33fa7360cd53bde2`.
+
+The raw unfiltered full suite passed 305 files and skipped five intentional
+host/profile files, for 310 result files total: 10,206 tests passed, zero
+failed, and 117 were explicitly skipped. The source-complete coverage run
+recorded the same zero-failure test totals and a complete clean inventory:
+
+- 506 runtime source files,
+  `sha256:8d71186fbe98052b903b46db90751c103b5553390527adb73f41dca081b6f50e`.
+- 404 test/input files,
+  `sha256:5a4202929c20f2ab9c54a77778ef22d712af353eb24d196c6fbda25947266e38`,
+  including all 310 executable `.test.ts` files.
+- Five configuration/gate files,
+  `sha256:63b6e933a0e58b7a551e8e0794067fa29130736bb48b31d27bbcad935b13f2f8`.
+- Statements: 39,911/44,525, **89.6372%**.
+- Branches: 35,103/41,036, **85.5419%**.
+- Functions: 7,503/7,904, **94.9266%**.
+- Lines: 35,322/38,459, **91.8432%**.
+
+All four integer ratios are strictly greater than 80%; no source exclusion,
+threshold change, deadline change, snapshot refresh, baseline regeneration, or
+failed-evidence reuse was used. The focused custody/history selection also
+passed 15/15 files, 472 tests passed, one intentional case skipped, and zero
+failed. Package smoke, repository policy, strict OpenSpec validation, and both
+clean-tree gates passed on the same committed revision.
+
+The complete raw run metadata, jobs metadata, artifact, job log, extracted
+reports, and independent receipt are retained outside the repository under
+`files/native-custody-38359670554/`. Immutable hashes include:
+
+- Artifact ZIP:
+  `c5aa44ae885f2e21162f067cda731f07aadb9a42a106bc808b1afaafc2e9d444`.
+- Native job log:
+  `749601857a76162852671c0d934e85f23129b8dc5a6770d7b3c2646c6976e311`.
+- Native evidence:
+  `2c09ba7b6fb91837339aaeb8a5317823449a7967ec556b2ec98e47ab678b7889`.
+- Coverage evidence:
+  `db0422656b4d2257db3f36a1f8384685be3ee43830b0af85cee315b23c68fa8e`.
+- Full-suite log:
+  `1b42f050fb329e1fedbe6d268936db76cc99fd489d1e49321de60478a2c7ee1b`.
+- Coverage log:
+  `31ab26ca9a33aa87e56efd6c767993932e5181a875d5000d6564802e407b463d`.
+- Independent audit receipt:
+  `6bb8ab8c24348e5f50ce534bf6a1cc78391270013d5a7e471785d66022ec7c69`.
+
+The independent audit did not trust the stored passing verdict. It reconstructed
+the exact committed tree with `git archive`, recomputed source, test, and
+configuration inventories, verified every raw report used the uniform hosted
+runner root, relocated only that absolute path prefix into the fresh archive,
+and ran the repository's verifier again. Re-judgment returned `passed` with an
+empty failure list and the exact raw integer metrics above.
+
+Task 13.5 is therefore complete and OpenSpec progress is 82/136. Task 13.6
+remains unchecked: no approved disposable cloud scope, production
+custody/handover ports, or authorized real-cloud operation was supplied. The
+existing Korea Central telemetry and state resources remain explicitly outside
+task-13.6 scope and must not be borrowed for writes or qualification.
+
+Downstream source ownership remains separate. Task-14.1 owner session
+`68be53ea-3101-4b13-b2a8-e520cecb7a48` explicitly admitted `94f0d63e` as its
+source parent and now owns source head
+`efa749cf9276db76bc27c4e42d1c78c0b6bad80b` in draft PR 164, with 546 selected
+tests and no real/native qualification flag. Task-14.3 owner session
+`e1389524-41f1-47aa-8c43-4bf14b14cf20` alone owns the current-only protected
+execution contract proposal from schema family 4 to 5. Released-v3,
+pre-custody, current-family-4, and v7 history remain readable and immutable;
+there is no implicit migration or cloud effect. Do not duplicate either
+owner's source in this continuation.
