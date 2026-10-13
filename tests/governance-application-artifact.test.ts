@@ -667,10 +667,11 @@ describe('immutable application publication and independent readback', () => {
       operation: { operationId: operation.operationId, startedAt: operation.startedAt, planDigest: operation.planDigest } });
     expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
   });
-  it.each(['success', 'failure'] as const)(
+  it.each(['success', 'failure', 'cancelled', 'timed_out', 'action_required', 'neutral', 'skipped', 'stale'] as const)(
     'checkpoints actual terminal %s run status before a failing job read and recovers without dispatch', async (conclusion) => {
       const f = await fixture(true);
       f.transport.conclusion = conclusion;
+      const terminalStatus = conclusion === 'success' ? 'completed' : 'failed';
       let checkpointDuringJobs: Awaited<ReturnType<typeof readState>> | undefined;
       f.transport.onJobsRead = async () => {
         checkpointDuringJobs = await readState(f.root);
@@ -681,12 +682,12 @@ describe('immutable application publication and independent readback', () => {
       expect(first).toMatchObject({ applied: false, reason: 'blocked',
         blockers: [expect.stringMatching(/job observation is unavailable/)] });
       expect(checkpointDuringJobs?.phases[f.phase.id]).toMatchObject({
-        state: 'running', operation: { operationId: 'github-actions:901', status: 'completed' }
+        state: 'running', operation: { operationId: 'github-actions:901', status: terminalStatus }
       });
       const saved = (await readState(f.root))!;
       const operation = saved.phases[f.phase.id].operation!;
       expect(saved.phases[f.phase.id]).toMatchObject({ state: 'blocked',
-        operation: { operationId: 'github-actions:901', status: 'completed' } });
+        operation: { operationId: 'github-actions:901', status: terminalStatus } });
       expect(saved.phaseOutputs?.[f.phase.id]?.values.artifactDigest).toBeUndefined();
       expect(saved.phaseOutputs?.[f.phase.id]?.values.immutableImage).toBeUndefined();
       expect(saved.phases[f.phase.id].evidence).toEqual([
@@ -707,11 +708,25 @@ describe('immutable application publication and independent readback', () => {
       expect(next, JSON.stringify(next)).toMatchObject({ applied: conclusion === 'success' });
       expect((await readState(f.root))!.phases[f.phase.id].operation).toMatchObject({
         operationId: operation.operationId, startedAt: operation.startedAt, planDigest: operation.planDigest,
-        status: conclusion === 'success' ? 'completed' : 'failed'
+        status: terminalStatus
       });
       expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
     }
   );
+  it.each(['', 'unknown'] as const)('refuses unsupported terminal conclusion %j without inferring publication success', async (conclusion) => {
+    const f = await fixture(true);
+    f.transport.conclusion = conclusion;
+    const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
+      runner: f.runner, now: coverageNow, adapters: f.input.adapters });
+    expect(outcome).toMatchObject({ applied: false, reason: 'blocked',
+      blockers: [expect.stringMatching(/unknown conclusion/)] });
+    const saved = (await readState(f.root))!;
+    expect(saved.phases[f.phase.id].state).toBe('blocked');
+    expect(saved.phaseOutputs?.[f.phase.id]?.values.immutableImage).toBeUndefined();
+    expect(saved.phases[f.phase.id].evidence.some((entry) => entry.result === 'verified')).toBe(false);
+    expect(f.transport.calls.some((entry) => entry.path.includes('/jobs'))).toBe(false);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+  });
   it('retains actual terminal run progress when source changes during a later failed job observation', async () => {
     const f = await fixture(true);
     f.transport.onJobsRead = async () => {

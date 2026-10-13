@@ -384,8 +384,14 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
       return { status: 'pending', operation: handle, outputs, liveReadback, completedOperations: [],
         blocker: 'Application build/publication is pending; retry only observes the exact dispatched workflow.' };
     }
-    handle = { ...handle, status: 'completed' };
+    const failedConclusion = ['action_required', 'cancelled', 'failure', 'neutral', 'skipped', 'stale', 'timed_out']
+      .includes(String(run.conclusion));
+    handle = { ...handle, status: failedConclusion ? 'failed' : 'completed' };
     await input.recordApplicationProgress?.({ operation: handle, outputs, liveReadback });
+    if (!failedConclusion && run.conclusion !== 'success') {
+      return applicationError('application-run-conclusion',
+        'The finished artifact workflow has an unknown conclusion; provider completion cannot qualify publication.');
+    }
     const jobs = await client.list(`${handle.resourceId}/jobs?filter=all`, 'jobs');
     if (jobs.length !== 1) return applicationError('application-job-scope', 'Artifact run has an unexpected job/attempt inventory.');
     const job = jobs[0]!;

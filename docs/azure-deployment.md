@@ -242,6 +242,9 @@ independent run discovery; malformed or cross-scope acceptance never invents a
 handle or permits redispatch. Unexpected response fields are not retained.
 Actual terminal run status is checkpointed before the fallible job inventory
 read, including when source changes prevent a later outcome from being saved.
+Known unsuccessful conclusions (including failure, cancellation and timeout)
+checkpoint a failed handle even if job readback is unavailable; unknown terminal
+conclusions explicitly block publication rather than implying success.
 Provider completion alone does not verify publication: unavailable job readback
 blocks artifact readiness. The existing explicit terminal-operation recovery
 gate remains required; recovery observes the same handle without dispatch.
