@@ -13,7 +13,7 @@ import {
 } from './package-smoke-contract.mjs';
 import {
   assertDependencyClosure, assertNativeBundleReport, assertSystemRuntimeLibraries, assertLinuxRuntimeLibraries,
-  bundleFile, bundleInventory, bundlePath, nativeArchiveTool, nativeBundleHost, nativeRuntimeInput
+  bundleFile, bundleInventory, bundlePath, nativeArchiveMembers, nativeArchiveTool, nativeBundleHost, nativeRuntimeInput
 } from './native-bundle-contract.mjs';
 import { assertNativeHost, observeNativeHost } from '../distribution/native/host.mjs';
 
@@ -227,7 +227,7 @@ export async function buildNativeBundle({ output, runtimeArchive, windowsLaunche
   assert.equal(new Set(packedPaths.map(name => name.normalize('NFC').toLowerCase())).size, packedPaths.length);
   const tarball = path.join(scratch, bundlePath(packed.filename));
   const packageIdentity = await bundleFile(tarball, 12 * 1024 * 1024);
-  const members = run(tar, ['-tzf', tarball]).trim().split('\n').sort();
+  const members = nativeArchiveMembers(run(tar, ['-tzf', tarball]));
   assert.deepEqual(members, packedPaths.map(name => `package/${name}`).sort(), 'Packed archive contains unexpected members.');
   run(tar, ['-xzf', tarball, '-C', application, '--strip-components', '1']);
   for (const source of packageSources) {

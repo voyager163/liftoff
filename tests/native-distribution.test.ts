@@ -5,7 +5,7 @@ import { chmod, link, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rm, s
 import os from 'node:os';
 import path from 'node:path';
 import { assertNativeHost, atLeastVersion } from '../distribution/native/host.mjs';
-import { assertLinuxRuntimeLibraries, bundleFile, bundleInventory, nativeArchiveTool, nativeRuntimeInput, readBundleFile } from '../scripts/native-bundle-contract.mjs';
+import { assertLinuxRuntimeLibraries, bundleFile, bundleInventory, nativeArchiveMembers, nativeArchiveTool, nativeRuntimeInput, readBundleFile } from '../scripts/native-bundle-contract.mjs';
 import { nativeMaterials, nativePackageDefinitions, assertNativePublicationEvidence, verifyNativeEvidenceSignature, verifyNativeArchive } from '../scripts/native-release.mjs';
 import { parse } from 'yaml';
 import { pathToFileURL } from 'node:url';
@@ -80,6 +80,13 @@ describe('native runtime floors and unsupported-host admission', () => {
     expect(nativeArchiveTool('linux')).toBe('/usr/bin/tar');
     for (const root of ['', 'Windows', 'C:Windows', '\\\\server\\Windows', 'C:\\Windows\\..\\foreign']) {
       expect(() => nativeArchiveTool('win32', root)).toThrow();
+    }
+  });
+  it('normalizes native archive listing line endings without relaxing portable member validation', () => {
+    expect(nativeArchiveMembers('package/z\r\npackage/a\r\n')).toEqual(['package/a', 'package/z']);
+    expect(nativeArchiveMembers('package/z\npackage/a\n')).toEqual(['package/a', 'package/z']);
+    for (const output of ['', 'package/../outside\n', 'package/a\rhidden\n', 'package/a \r\n', 'package/a\n\n']) {
+      expect(() => nativeArchiveMembers(output)).toThrow();
     }
   });
   it('parses the same bounded regular-file bytes whose digest was reviewed', async () => {

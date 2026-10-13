@@ -66,6 +66,11 @@ export function nativeArchiveTool(platform = process.platform, windowsRoot = pro
   return path.win32.join(windowsRoot, 'System32', 'tar.exe');
 }
 
+export function nativeArchiveMembers(output) {
+  assert.equal(typeof output, 'string', 'Native archive member output must be text.');
+  return output.replace(/\r?\n$/, '').split(/\r?\n/).map(bundlePath).sort();
+}
+
 export function bundlePath(value) {
   assert.equal(typeof value, 'string', 'Bundle path must be a string.');
   assert.ok(value.length > 0 && value.length <= 1024, 'Bundle path is empty or oversized.');
