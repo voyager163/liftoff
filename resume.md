@@ -1028,7 +1028,7 @@ registered `repository.yml` workflow behind
 events retain only their prior repository-policy job; manual dispatch runs
 that short check plus the native lane, not the broad CI workflow.
 
-The registered lane was dispatched as run
+The registered lane was first dispatched as run
 `https://github.com/voyager163/liftoff/actions/runs/38340698042` on exact clean
 revision `322351775f343267ed94bb91dfde08e6fc1c41f5`. It pins Node 24.21.0,
 npm 12.0.2, OpenTofu 1.12.6, OpenSpec 1.11.0, Go 1.27.0, Python 3.14.7, and
@@ -1038,10 +1038,148 @@ focused custody/history checks, package smoke, repository policy, strict
 OpenSpec validation, and clean-tree verification; and uploads its logs,
 coverage directory, and a revision/toolchain/metric-bound evidence record.
 
-Run `38340698042` is a retained workflow qualification attempt only because the
-Windows assertion correction changes the candidate after dispatch. Even if it
-passes, rerun the native lane on the exact corrected clean revision before
-checking task 13.5. Task 13.5 remains unchecked, and task 13.6 remains
-unchecked without production custody/handover adapters, authorized disposable
-scope, and real cloud evidence. The Ubuntu coverage result is separate hosted
-evidence and does not replace the dedicated hosted macOS ARM64 run.
+Run `38340698042` ended cancelled at `2026-10-13T04:06:47Z` after the unfiltered
+full-suite step failed and the evidence-preserving coverage step began. The
+coverage step was cancelled before a final summary, evidence file, or artifact
+could be produced, so this run has no qualifying test count, inventory, or
+coverage metrics. Its retained console log showed failures in
+`modern-revalidation-records` (13), `modern-spec-kit-completion` (16),
+`modern-local-publication` (22), `modern-manual-execution` (13),
+`modern-local-execution` (13), `modern-manual-controls` (6),
+`coverage-gate` (1), a generated Compose binding case (1), and
+`modern-openspec-tool-identity` collection before any test ran. These are
+diagnostic occurrences in the interrupted coverage invocation, not a complete
+final failure count.
+
+Focused reproduction identified three lane-contract causes:
+
+- Global `npm install --global npm@12.0.2` did not reliably expose the selected
+  launcher's exact package identity to Liftoff's file-bound npm admission.
+  Prepending an isolated `npm@12.0.2` package `.bin` directory removed that
+  identity failure.
+- The job omitted the documented native execution/initialization opt-ins and
+  finite identity budgets:
+  `LIFTOFF_OPENSPEC_B_TESTS=1`, `OB1_VERSION_REMAINING=2`,
+  `OB1_SUPPORT_REMAINING=10`, and `LIFTOFF_OI_TESTS=1`.
+- Hosted macOS supplied the separately bound Compose plugin at 5.6.0 while two
+  tests froze the prior incidental 5.5.1 host version. The correction retains
+  5.5.1 as the minimum on release line 5, enforces that policy in production
+  tool admission, and verifies the actual plugin identity/version rather than
+  replacing one exact runner snapshot with another.
+
+With isolated npm and the required budgets, the npm and missing-budget failures
+disappeared locally. The laptop's ambient OpenTofu 1.13.1 still cannot execute
+the exact 1.12.6 native cases, so that focused local result is not hosted-native
+qualification. The ordinary focused `coverage-gate.test.ts` invocation passed;
+its single interrupted-coverage occurrence has not reproduced as an independent
+contract failure.
+
+Before committing the lane correction, the following local gates passed:
+
+- `npm run build -- --pretty false`.
+- A forced-portable workflow/policy/Compose/coverage/documentation selection:
+  5 files, 263 passed, 1 skipped, 0 failed.
+- The exact focused custody/history selection retained by the workflow:
+  15 files, 472 passed, 1 skipped, 0 failed.
+- `npm run smoke:package` for `@msn-control/liftoff@0.12.3`.
+- `npm run check:repository`.
+- `openspec validate modernize-liftoff-platform --strict --no-interactive`.
+- `git diff --check`.
+
+The workflow's exact isolated npm installation command was also reproduced in
+a disposable local prefix. The selected launcher resolved to that prefix's
+`node_modules/npm/bin/npm-cli.js`, its owning package was exactly
+`npm@12.0.2`, and both direct Node launcher execution and the ordinary npm
+probe returned `12.0.2`; the disposable prefix was then removed. These local
+checks validate the correction but do not replace a clean hosted native full
+suite or source-complete coverage run.
+
+Run `38340698042` is retained failed diagnostic evidence only. Task 13.5 remains
+unchecked, and task 13.6 remains unchecked without production
+custody/handover adapters, authorized disposable scope, and real cloud
+evidence. The Ubuntu coverage result is separate hosted evidence and does not
+replace the dedicated hosted macOS ARM64 run.
+
+The Windows metadata portability correction and this hosted-evidence checkpoint
+were published as
+`028134f2ad4ca705f0b02091c99ec3c4a8678868` on
+`origin/voyager163-liftoff-modernization`; local and remote readback matched and
+the tree was clean before the next dispatches. The exact corrected native
+candidate is:
+
+- Workflow file: `.github/workflows/repository.yml`.
+- Registered workflow name: `Repository setup`.
+- Event: `workflow_dispatch`.
+- Run:
+  `https://github.com/voyager163/liftoff/actions/runs/38342935457`.
+- Head revision:
+  `028134f2ad4ca705f0b02091c99ec3c4a8678868`.
+- Created at `2026-10-13T03:41:57Z`. It was queued behind run `38340698042`
+  under the workflow's same-ref non-cancelling concurrency group. After the
+  older run exposed the lane defects above, cancellation was requested for
+  this known-nonqualifying candidate before it consumed a second full run.
+  GitHub records the native job as cancelled at `2026-10-13T04:15:01Z` with
+  zero recorded steps; the repository-policy job passed. It produced no native
+  evidence and must not qualify `028134f2`.
+
+The existing cross-platform workflow was also dispatched on the same exact
+corrected candidate to prove the Windows assertion on a real Windows host:
+
+- Workflow file: `.github/workflows/ci.yml`.
+- Registered workflow name: `CI`.
+- Event: `workflow_dispatch`.
+- Run:
+  `https://github.com/voyager163/liftoff/actions/runs/38342935367`.
+- Head revision:
+  `028134f2ad4ca705f0b02091c99ec3c4a8678868`.
+- Created at `2026-10-13T03:41:57Z`; status was `in_progress` at the latest
+  readback with no completed job failure observed.
+
+Do not qualify task 13.5 from either run until the native artifact and
+cross-platform results have been independently inspected against this exact
+revision. The existing telemetry 15.4/15.5 contribution remains preserved, but
+no further telemetry transport or enrollment work belongs to this continuation.
+The owning `voyager163-telemetry-delivery-budget` layer is reconciling only
+those telemetry commits/contracts onto its independent `develop`-based branch;
+it does not import this continuation's custody, resume, or workflow changes.
+
+### Completed lower delivery chain
+
+The existing lower implementation chain is now fully delivered. Native stack
+156 was registered with the exact ordered membership `[154, 155]` and landed
+only through top member 155 by merge-async operation
+`c0374310-6a6b-427c-a1e0-11e786dfafb3`. The reviewed merge settings were
+`direct_merge`, viewer-default `SQUASH`, and `bypass_rules=false`; no member was
+merged independently.
+
+The verified postcondition is:
+
+- PR 154 merged as `072b1c20d40ae78292065dc130904ba4dffbead6`.
+- PR 155 merged into `develop` as
+  `692088e953801adef9d055856df523bbc83ebbf9`.
+- Stack 156 is closed and retains both merged members. Do not unstack or
+  recreate it.
+
+GitHub automatic branch cleanup deleted both owning refs after the stack
+landed. Their respective owning sessions restored only the exact prior
+published refs under absence leases:
+
+- `feature/governance-profile-transitions` at
+  `1fef0d2ff7187a02b1d03bbeef4bcdaf6a028d85`.
+- `feature/production-discovery-identity` at
+  `a740b6f396e6999a85b8979b29172d19162d9ac0`.
+
+Shared repository settings and the main checkout were unchanged. Preserve
+those upstream implementation branches and their source history. Future
+native successors start from the recorded ultimate base `develop` once every
+older stack member is merged; they do not reuse, unstack, or recreate stack
+156.
+
+An isolated owning session
+`c199f3bf-8e36-4d4d-807e-b915b0ccd9d6` is implementing independent telemetry
+tasks 15.4 and 15.5 from qualified `develop`
+`692088e953801adef9d055856df523bbc83ebbf9`, where task-15 dependencies 1 and 3
+are met. Do not duplicate that telemetry transport work or mutate its branch.
+The current continuation remains limited to custody/native qualification and
+the Windows metadata-mode correction. The stack landing does not waive tasks
+13.5 or 13.6 and does not convert hosted Ubuntu coverage into native evidence.

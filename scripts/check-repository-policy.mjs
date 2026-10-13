@@ -167,7 +167,11 @@ export function checkNativeCustodyQualificationJob(job) {
     CI: 'true',
     DO_NOT_TRACK: '1',
     LIFTOFF_TELEMETRY: '0',
-    LIFTOFF_HCL_TEST_LANE: 'native'
+    LIFTOFF_HCL_TEST_LANE: 'native',
+    LIFTOFF_OPENSPEC_B_TESTS: '1',
+    OB1_VERSION_REMAINING: '2',
+    OB1_SUPPORT_REMAINING: '10',
+    LIFTOFF_OI_TESTS: '1'
   });
   assert.equal(job.steps[0].uses, 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1');
   assert.deepEqual(job.steps[0].with, { 'persist-credentials': false });
@@ -183,7 +187,12 @@ export function checkNativeCustodyQualificationJob(job) {
   assert.equal(job.steps[4].uses, 'opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4');
   assert.deepEqual(job.steps[4].with, { tofu_version: '1.12.6', tofu_wrapper: false });
   assert.equal(namedStep(job, 'Install uv').run, 'python -m pip install uv==0.12.7');
-  assert.equal(namedStep(job, 'Select supported npm').run, 'npm install --global "npm@12.0.2"');
+  const npmInstall = namedStep(job, 'Select supported npm');
+  assert.equal(npmInstall.shell, 'bash');
+  assert.equal(npmInstall.run.trim(), [
+    'npm install --prefix "$RUNNER_TEMP/liftoff-npm" --no-package-lock --ignore-scripts --no-audit --no-fund "npm@12.0.2"',
+    'echo "$RUNNER_TEMP/liftoff-npm/node_modules/.bin" >> "$GITHUB_PATH"'
+  ].join('\n'));
   const openspecInstall = namedStep(job, 'Install pinned OpenSpec');
   assert.equal(openspecInstall.shell, 'bash');
   assert.ok(openspecInstall.run.includes('@fission-ai/openspec@1.11.0'));
@@ -194,7 +203,12 @@ export function checkNativeCustodyQualificationJob(job) {
   for (const required of [
     "platform: 'darwin'", "architecture: 'arm64'", "node: '24.21.0'",
     "'12.0.2'", 'OpenTofu v1\\.12\\.6', "'1.11.0'", 'go1.27.0 darwin/arm64',
-    'Python 3.14.7', 'uv 0\\.12\\.7'
+    'Python 3.14.7', 'uv 0\\.12\\.7',
+    "realpathSync(run('/usr/bin/which', ['npm']))",
+    "path.basename(npmLauncher), 'npm-cli.js'",
+    "{ name: npmPackage.name, version: npmPackage.version }, { name: 'npm', version: '12.0.2' }",
+    "run(process.execPath, [npmLauncher, '--version'])",
+    'LIFTOFF_OPENSPEC_B_TESTS', 'OB1_VERSION_REMAINING', 'OB1_SUPPORT_REMAINING', 'LIFTOFF_OI_TESTS'
   ]) assert.ok(toolchain.run.includes(required), `Native toolchain check is missing ${required}.`);
   const cleanStart = namedStep(job, 'Verify exact clean candidate');
   assert.equal(cleanStart.id, 'clean-start');

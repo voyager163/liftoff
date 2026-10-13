@@ -2,7 +2,7 @@ import {mkdtemp,mkdir,writeFile,readFile,rm,realpath,lstat,rename,symlink,unlink
 import os from 'node:os';
 import path from 'node:path';
 import {afterAll,afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-import {observeModernLocalTools} from '../src/adapters/process/modern-local-tools.js';
+import {isModernComposePluginVersionSupported,observeModernLocalTools} from '../src/adapters/process/modern-local-tools.js';
 import {createApplicationEnvironment} from '../src/application/repair/application-environment.js';
 import {NodeCommandRunner} from '../src/process-runner.js';
 import {createLocalExecutionRecordStore} from '../src/adapters/filesystem/update-previews.js';
@@ -99,7 +99,10 @@ describe('actual local execution prerequisites and bounded effects',()=>{
     console.info('MR2_B_ACTUAL_TOOL_AVAILABILITY '+JSON.stringify(outcome));
     expect(outcome.error).toBeNull();
     expect(outcome.tools?.map(tool=>tool.id)).toEqual(expect.arrayContaining(['node','npm','tofu','docker']));
-    expect(outcome.tools?.find(tool=>tool.id==='docker')?.versions.compose).toBe('5.5.1');
+    const docker=outcome.tools?.find(tool=>tool.id==='docker')!,composeVersion=docker.versions.compose!;
+    expect(docker.version).toBe(composeVersion);
+    expect(isModernComposePluginVersionSupported(composeVersion)).toBe(true);
+    expect(path.basename(docker.executablePath)).toBe('docker-compose');
   },60000);
   nativeIt('retains changed workspace identity rather than deleting a replacement or granting verified',async()=>{
     const f=await completeFixture(),preview=await prepareModernLocalExecution(f.project,{kind:'verify-local',preparation:[]});

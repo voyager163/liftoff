@@ -36,7 +36,7 @@ describe('source repository setup policy', () => {
     expect((await readWorkflow('ci.yml')).jobs['qualify-native-custody']).toBeUndefined();
   });
   it.each([
-    'trigger', 'runner', 'timeout', 'node', 'architecture', 'npm', 'opentofu',
+    'trigger', 'runner', 'timeout', 'node', 'architecture', 'npm', 'npm-identity', 'native-budget', 'opentofu',
     'openspec', 'full-suite-filter', 'coverage-workers', 'coverage-verifier',
     'focused-file', 'package', 'policy', 'clean', 'missing-evidence'
   ])('rejects incomplete hosted native custody qualification: %s', async fault => {
@@ -49,6 +49,13 @@ describe('source repository setup policy', () => {
     if (fault === 'node') job.steps[1].with['node-version'] = '24.20.0';
     if (fault === 'architecture') job.steps[1].with.architecture = 'x64';
     if (fault === 'npm') step('Select supported npm').run = 'npm install --global npm@latest';
+    if (fault === 'npm-identity') {
+      step('Verify native toolchain').run = step('Verify native toolchain').run.replace(
+        "assert.equal(path.basename(npmLauncher), 'npm-cli.js');",
+        ''
+      );
+    }
+    if (fault === 'native-budget') delete job.env.OB1_SUPPORT_REMAINING;
     if (fault === 'opentofu') job.steps[4].with.tofu_version = '1.13.1';
     if (fault === 'openspec') step('Install pinned OpenSpec').run = 'npm install @fission-ai/openspec@latest';
     if (fault === 'full-suite-filter') step('Run unfiltered full suite').run += ' -t custody';

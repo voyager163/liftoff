@@ -303,6 +303,17 @@ timeout is a bounded allowance for the measured native full and coverage runs;
 it does not change any test timeout, source inventory, threshold, baseline, or
 test selection.
 
+The job installs npm 12.0.2 into an isolated runner-temp prefix and prepends only
+that package's `.bin` directory. Before tests it proves that the selected launcher
+resolves to `npm-cli.js`, its owning package is exactly `npm@12.0.2`, and direct
+Node execution of that launcher agrees with the ordinary npm probe. It also
+enables the native OpenSpec execution and initialization lanes with the reviewed
+finite identity budgets:
+`LIFTOFF_OPENSPEC_B_TESTS=1 OB1_VERSION_REMAINING=2
+OB1_SUPPORT_REMAINING=10 LIFTOFF_OI_TESTS=1`. The actual separately bound
+Compose plugin must remain on release line 5 at version 5.5.1 or later; Docker
+CLI identity alone is not Compose qualification.
+
 Non-cancelled runs retain full-suite, coverage, focused, and
 `coverage/cli/` evidence in one artifact. The final native evidence record
 requires the dispatched SHA, clean source inventory, zero coverage-test
