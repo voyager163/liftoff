@@ -770,10 +770,10 @@
     {
       "surface": "cli-json",
       "key": "governance assess --json",
-      "task": "8.7",
-      "reason": "Task 8.7 adds separately labeled current-v8 profile-transition routing, exact approval and journal-selected recovery without expanding ordinary update or force authority.",
+      "task": "12.2",
+      "reason": "The installed-package assessment now reports the running CLI package version independently from the activation source identity, and the reviewed package-smoke contract raises only the unpacked npm archive ceiling to 13 MiB. Assessment findings, classifications, provenance locations, schemas, exit codes, and frozen historical captures remain unchanged.",
       "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-      "currentSha256": "2fcd3963cb5a77617f0d014e79ac1256dcbf8ab6aac806efedb7b41d127dd4b4",
+      "currentSha256": "49d4214775cd9839a4654a2cba1cd3329b1b8f534f2a63047d21214085d61c9b",
       "changed": [
         "/json/findings/15/expected",
         "/json/findings/15/observations/declared/source/digest",
@@ -795,10 +795,10 @@
       "priorChange": {
         "surface": "cli-json",
         "key": "governance assess --json",
-        "task": "3.7",
-        "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged.",
+        "task": "8.7",
+        "reason": "Task 8.7 adds separately labeled current-v8 profile-transition routing, exact approval and journal-selected recovery without expanding ordinary update or force authority.",
         "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-        "currentSha256": "a01c95b46d4d7176d43db54b1cf150eab2a1add6e13e8a7841739c1446dc3321",
+        "currentSha256": "2fcd3963cb5a77617f0d014e79ac1256dcbf8ab6aac806efedb7b41d127dd4b4",
         "changed": [
           "/json/findings/15/expected",
           "/json/findings/15/observations/declared/source/digest",
@@ -820,10 +820,10 @@
         "priorChange": {
           "surface": "cli-json",
           "key": "governance assess --json",
-          "task": "5.4",
-          "reason": "Retain task1.5 guide correction and record actual capability-first setup/assessment hashes and the fixture worktree digest. All report semantics, classifications, provenance locations, exit codes, schemas and volatile pointers remain unchanged.",
+          "task": "3.7",
+          "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged.",
           "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-          "currentSha256": "3f1f14d5195255bc540ba08142644f2177c492b03c39008ba58d225bf8857561",
+          "currentSha256": "a01c95b46d4d7176d43db54b1cf150eab2a1add6e13e8a7841739c1446dc3321",
           "changed": [
             "/json/findings/15/expected",
             "/json/findings/15/observations/declared/source/digest",
@@ -845,27 +845,54 @@
           "priorChange": {
             "surface": "cli-json",
             "key": "governance assess --json",
-            "task": "1.5",
-            "reason": "Reviewed credential-capability safety correction: the managed-core governance guide and setup-launcher text now state that credential enrollment is unavailable, so the managed-core hashes recorded in the fixture manifest and the fixture worktree digest change. Findings remain aligned (expected equals recorded).",
+            "task": "5.4",
+            "reason": "Retain task1.5 guide correction and record actual capability-first setup/assessment hashes and the fixture worktree digest. All report semantics, classifications, provenance locations, exit codes, schemas and volatile pointers remain unchanged.",
             "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-            "currentSha256": "701188b9b7de72bea1c78eaefa82bcbdb4eafe9254a2fcfc6f1693cb3cda9409",
+            "currentSha256": "3f1f14d5195255bc540ba08142644f2177c492b03c39008ba58d225bf8857561",
             "changed": [
-              "/json/snapshot/worktreeDigest",
+              "/json/findings/15/expected",
+              "/json/findings/15/observations/declared/source/digest",
+              "/json/findings/15/observations/declared/value",
+              "/json/findings/15/observations/recorded/source/digest",
+              "/json/findings/15/observations/recorded/value",
               "/json/findings/17/expected",
-              "/json/findings/17/observations/recorded/value",
-              "/json/findings/17/observations/recorded/source/digest",
-              "/json/findings/17/observations/declared/value",
               "/json/findings/17/observations/declared/source/digest",
+              "/json/findings/17/observations/declared/value",
+              "/json/findings/17/observations/recorded/source/digest",
+              "/json/findings/17/observations/recorded/value",
               "/json/findings/23/expected",
-              "/json/findings/23/observations/recorded/value",
-              "/json/findings/23/observations/recorded/source/digest",
+              "/json/findings/23/observations/declared/source/digest",
               "/json/findings/23/observations/declared/value",
-              "/json/findings/23/observations/declared/source/digest"
-            ]
+              "/json/findings/23/observations/recorded/source/digest",
+              "/json/findings/23/observations/recorded/value",
+              "/json/snapshot/worktreeDigest"
+            ],
+            "priorChange": {
+              "surface": "cli-json",
+              "key": "governance assess --json",
+              "task": "1.5",
+              "reason": "Reviewed credential-capability safety correction: the managed-core governance guide and setup-launcher text now state that credential enrollment is unavailable, so the managed-core hashes recorded in the fixture manifest and the fixture worktree digest change. Findings remain aligned (expected equals recorded).",
+              "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
+              "currentSha256": "701188b9b7de72bea1c78eaefa82bcbdb4eafe9254a2fcfc6f1693cb3cda9409",
+              "changed": [
+                "/json/snapshot/worktreeDigest",
+                "/json/findings/17/expected",
+                "/json/findings/17/observations/recorded/value",
+                "/json/findings/17/observations/recorded/source/digest",
+                "/json/findings/17/observations/declared/value",
+                "/json/findings/17/observations/declared/source/digest",
+                "/json/findings/23/expected",
+                "/json/findings/23/observations/recorded/value",
+                "/json/findings/23/observations/recorded/source/digest",
+                "/json/findings/23/observations/declared/value",
+                "/json/findings/23/observations/declared/source/digest"
+              ]
+            }
           }
-        }
+        },
+        "priorCurrentSha256": "a01c95b46d4d7176d43db54b1cf150eab2a1add6e13e8a7841739c1446dc3321"
       },
-      "priorCurrentSha256": "a01c95b46d4d7176d43db54b1cf150eab2a1add6e13e8a7841739c1446dc3321"
+      "priorCurrentSha256": "2fcd3963cb5a77617f0d014e79ac1256dcbf8ab6aac806efedb7b41d127dd4b4"
     },
     {
       "surface": "rendered-artifacts",
