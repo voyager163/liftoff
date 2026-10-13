@@ -110,16 +110,17 @@ export function nativeBundleQualificationJob() {
       { name: 'Assemble the development bundle', run: 'npm run build:native -- build ' +
         '--runtime-archive "$RUNNER_TEMP/liftoff-node-runtime.tgz" --output "$RUNNER_TEMP/liftoff-native-bundle"' },
       { name: 'Qualify actual installed behavior', shell: 'bash', run: [
+        'node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-native-bundle" "$RUNNER_TEMP/liftoff-native-archive"',
         'LIFTOFF_NATIVE_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
         'LIFTOFF_NATIVE_GO_EXECUTABLE="$(command -v go)" \\',
         'LIFTOFF_NATIVE_PACKAGE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
+        'LIFTOFF_NATIVE_ARCHIVE_ROOT="$RUNNER_TEMP/liftoff-native-archive" \\',
         'npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \\',
         '  tests/native-distribution.test.ts tests/native-package-installed.test.ts \\',
         '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
         '  --reporter=default --reporter=json --outputFile.json=qualification/native-bundle.json',
         'node scripts/native-bundle.mjs verify-report qualification/native-bundle.json',
-        'node scripts/native-package-report.mjs qualification/native-bundle.json "$RUNNER_TEMP/liftoff-native-bundle"',
-        'node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-native-bundle" "$RUNNER_TEMP/liftoff-native-archive"', ''
+        'node scripts/native-package-report.mjs qualification/native-bundle.json "$RUNNER_TEMP/liftoff-native-bundle"', ''
       ].join('\n') },
       { name: 'Store development qualification evidence', if: independentStepCondition,
         uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
@@ -159,12 +160,13 @@ export function nativePlatformQualificationJob() {
         'if [ "$RUNNER_OS" = Windows ]; then launcher=(--windows-launcher "$RUNNER_TEMP/liftoff-launcher.exe"); fi',
         'npm run build:native -- build --runtime-archive "$RUNNER_TEMP/liftoff-platform-runtime" \\',
         '  --output "$RUNNER_TEMP/liftoff-native-bundle" "${launcher[@]}"',
+        'node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-native-bundle" "$RUNNER_TEMP/liftoff-native-archive"',
         'LIFTOFF_NATIVE_PACKAGE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
+        'LIFTOFF_NATIVE_ARCHIVE_ROOT="$RUNNER_TEMP/liftoff-native-archive" \\',
         'npx vitest run tests/native-bundle.test.ts tests/native-distribution.test.ts tests/native-package-installed.test.ts \\',
         '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
         '  --reporter=default --reporter=json --outputFile.json=qualification/native-platform-package.json',
-        'node scripts/native-package-report.mjs qualification/native-platform-package.json "$RUNNER_TEMP/liftoff-native-bundle"',
-        'node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-native-bundle" "$RUNNER_TEMP/liftoff-native-archive"', ''
+        'node scripts/native-package-report.mjs qualification/native-platform-package.json "$RUNNER_TEMP/liftoff-native-bundle"', ''
       ].join('\n') },
       { name: 'Store exact-source native development artifacts', if: independentStepCondition,
         uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',

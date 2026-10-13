@@ -108,7 +108,16 @@ distribution. Windows/Linux use `LIFTOFF_NATIVE_PACKAGE_ROOT` with
 tests/native-package-installed.test.ts` and the cross-platform report gate.
 Windows cases run the real installed controller and running-image locking.
 Linux cases exercise the actual bundle's isolated owned installation/recovery and
-test-only Ed25519 bootstrap authentication. Only explicitly named foreign-host
+test-only Ed25519 bootstrap authentication. Every target also extracts its exact
+native archive with the absolute native archive tool into a new private fixture,
+reverifies the unchanged complete inventory (including native filesystem modes),
+runs the extracted launcher outside the checkout with no global tools, and refuses
+an altered extracted-file mode. CI creates the retained handoff before the suite
+and selects it with `LIFTOFF_NATIVE_ARCHIVE_ROOT`, so the tested archive is the
+uploaded artifact; local runs without this variable create a fixture-only handoff.
+Windows Node `lstat` modes and raw POSIX tar permission fields are not interchangeable.
+This roundtrip proves the native filesystem inventory, not Windows ACL security,
+installer behavior or minimum-host qualification. Only explicitly named foreign-host
 cases are unrun; no failed applicable case can qualify by skipping.
 Clean-source hosted reports and development archives are retained for 14 days by
 the existing CI workflow. Native package and independent coverage jobs select the

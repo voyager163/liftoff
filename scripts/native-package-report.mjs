@@ -11,7 +11,8 @@ export const nativePackageCommonCases = [
   'resolves packaged templates and the exact controller from the installed boundary',
   'refuses missing template, controller, HCL and host-policy material without checkout fallback',
   'rejects changed runtime and installer bytes even with a recomputed local inventory',
-  'binds archived bytes, SBOM, notices and provenance to the exact clean source'
+  'binds archived bytes, SBOM, notices and provenance to the exact clean source',
+  'extracts the exact native archive and reverifies every filesystem entry without mode normalization'
 ];
 export const nativePackagePlatformCases = {
   linux: ['installs and recovers the actual Linux bundle within an isolated private prefix',
