@@ -32,6 +32,13 @@ const requiredDocs = [
   'docs/troubleshooting.md'
 ] as const;
 
+const maintainedReadmes = [
+  'README.md',
+  'infrastructure/opentofu/bootstrap/README.md',
+  'infrastructure/opentofu/telemetry/README.md',
+  'src/application/state-migration/README.md'
+] as const;
+
 async function repositoryFile(name: string): Promise<string> {
   return (await readFile(path.join(repositoryRoot, name), 'utf8')).replace(/\r\n/g, '\n');
 }
@@ -183,8 +190,8 @@ describe('public documentation', () => {
     expect(contrast('#b1bac4', '#0d1117')).toBeGreaterThan(4.5);
   });
 
-  it('ships every progressive guide and resolves all local Markdown links', async () => {
-    for (const file of ['README.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SECURITY.md', 'GOVERNANCE.md', 'SUPPORT.md', 'DEVELOPER.md', ...requiredDocs]) {
+  it('ships every progressive guide and resolves maintained local Markdown links', async () => {
+    for (const file of [...maintainedReadmes, 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SECURITY.md', 'GOVERNANCE.md', 'SUPPORT.md', 'DEVELOPER.md', ...requiredDocs]) {
       await access(path.join(repositoryRoot, file));
       await expectLocalLinksToResolve(file);
     }

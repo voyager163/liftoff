@@ -32,7 +32,7 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | `liftoff init [project-name]` | Initializes a named child or the exact current Git root through staged readiness and framework setup |
 | `liftoff migrate <source>` | Creates a new sibling scaffold and filtered source copy without changing the source |
 | `liftoff validate [project]` | Validates manifest identity, managed-core hashes, project provenance, workload metadata, and framework markers |
-| `liftoff doctor [project]` | Runs read-only workload-derived project and workstation diagnostics |
+| `liftoff doctor` | Runs read-only workload-derived diagnostics for the current directory and workstation |
 | `liftoff governance status [project]` | Reports deterministic setup state, activation identity, phase states, blockers, approvals, and evidence freshness |
 | `liftoff governance plan [project]` | Previews dependency-ready work before approval and saves a disclosed project-bound receipt outside the repository; no project/provider mutations |
 | `liftoff governance approve [project] --plan <fingerprint>` | Approves only the exact unexpired preview; does not execute its operations; refuses blocked or unavailable capabilities |
@@ -1488,10 +1488,14 @@ not current syntax:
 Invoking removed syntax fails during argument parsing, before project discovery
 or filesystem access.
 
-Current readers support manifest artifact versions v2, v3, v4, v5, v6, and v7.
-All current writes use v7. Supported historical reads are normalized through an
-explicit compatibility map; future versions, individually known but unsupported
-tuples, and unknown phase-graph hashes block and report an upgrade or
+Historical manifest artifact versions v2 through v7 remain supported through an
+explicit compatibility map. The independent v8 source format is also
+read-supported by its advertised interfaces.
+Fresh project generation writes manifest v8 for `plan`, `init`, and sibling `migrate`,
+as declared by `schemas.currentGeneration`; the historical commands above are
+not that writer contract.
+Future versions, individually known but unsupported tuples, and unknown
+phase-graph hashes block and report an upgrade or
 reconciliation remedy instead of downgrading or fabricating evidence.
 Exact known activation-v1 identity remains non-executable. The explicitly
 supported reviewed successor lane preserves that original history while

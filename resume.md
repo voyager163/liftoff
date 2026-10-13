@@ -2541,3 +2541,204 @@ Commit this narrow successor, then rerun the complete clean committed
 qualification sequence and its focused/package/policy/OpenSpec follow-ups.
 Native9 and all later SOURCE intake remain held before every shared-file
 resolution pending root review and sole-allocator per-file disposition.
+
+### Qualified and published HCL ownership milestone, 2026-10-14
+
+The test-only ownership correction was committed as
+`12d2f4715d8f1901093676baa875f1422c5c5a90`, tree
+`610e05452993b4fdafaad28cbe9a704cb55a4fc9`, with direct parent
+`841eddac4d7c91f78673ca8cd8295194210f507c`. It was fast-forward pushed to
+`origin/voyager163-liftoff-modernization`, and GitHub readback confirmed that
+exact commit, tree and parent. The four required continuation ancestors remain
+ancestors of the published head.
+
+The first clean committed qualification attempt preserved the exact source and
+failed after 4,031.10 seconds in two
+`tests/modern-openspec-initialization.test.ts` cases. The shared complete
+OpenSpec distribution scan exceeded its unchanged 30-second custody deadline;
+the second selected test never reached its injected command because the same
+scan failed first. The attempt reported 306 passed files, five skipped files
+and one failed file; 10,305 tests passed, 117 were skipped and two failed.
+The immutable log is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/hcl-ownership-12d2f471/clean-qualification.log`
+
+Its SHA-256 is
+`7817e22d4e9279b4a39368ef4058f6858aeea971f92ac580e6adb2d172d9ba37`
+and its byte length is 2,261,131. An initial focused reproduction omitted the
+ambient Docker and Go paths and failed before the OpenSpec scan; that was an
+environment setup error, not a source defect. Both exact failing selectors
+passed unchanged with the complete native tool path. The 30-second deadline,
+custody policy, thresholds and source behavior were not weakened.
+
+The second clean attempt on the same exact commit and tree passed:
+
+- supported-stack and build passed;
+- the unfiltered suite passed 307 files with five intentional skipped files;
+- 10,307 tests passed, zero failed and 117 were skipped in 4,225.59 seconds;
+- source-complete CLI coverage included 511 source files with inventory digest
+  `sha256:77942f49cc57f9da92b06b09e81b412af754cb7ca36510e37cd0b224ddc6cbdd`;
+- statements were 40,883/45,607, 89.6419%;
+- branches were 36,463/42,533, 85.7287%;
+- functions were 7,700/8,105, 95.0030%; and
+- lines were 36,256/39,493, 91.8036%.
+
+The successful raw log is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/hcl-ownership-12d2f471-retry/clean-qualification.log`
+
+Its SHA-256 is
+`4cd8748adeb4db63ada4465c9cae67fe182275493416bef21ee107912ca047c1`
+and its byte length is 5,406,073. Coverage verification, seven focused files
+with 353 passes and two existing skips, package smoke, repository policy,
+strict OpenSpec validation, `git diff --check` and the final clean status also
+passed. Their log is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/hcl-ownership-12d2f471-retry/follow-up-validation.log`
+
+with SHA-256
+`3706d14e6e838c17a68502dc9e43ce07aad98fe29bc695d910e31ec761b1eddc`.
+
+Before later coverage could replace `coverage/cli/`, the exact successful
+`12d2f471` raw coverage-final, coverage-summary, text report, test-results,
+complete coverage evidence, and both successful logs were copied byte-for-byte
+into a read-only session artifact:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/hcl-ownership-12d2f471-raw-qualification-sealed/manifest.json`
+
+The manifest SHA-256 is
+`fb7096ed188abecb9d9d4cbce75fb1693653c96a2043182c15ffb6b9bba7f7f4`.
+It records each original subject path, copied path, byte length and SHA-256.
+`coverage-evidence.json` contains the complete 511-source, 407-test and
+five-configuration-file inventories plus exact revision, command, host/tool,
+limits, test counts and integer coverage metrics. The copied bytes were
+compared before the directory was made read-only.
+
+Independent actual-output review remains retained separately:
+
+- `hcl-independent-audit/comparison.json`,
+  SHA-256
+  `c3290feb7351b2ecd2b3dd35f18639433d5bdaf6a8bac405f8e1b85eeee2e5bc`;
+  and
+- `hcl-independent-audit/extraction-comparison.json`,
+  SHA-256
+  `b87cf61835c9678efb40085dc1bc6b4c1b8895718fac66e5721bee41ff16bb3f`.
+
+Those receipts prove the bounded 181 generation and four generic CLI changes,
+the unchanged frozen extraction harness streams, and the complete predecessor
+chains. They do not admit native9, shared identities, task 14.2, provider
+execution, publication or landing.
+
+### Bounded documentation successor, 2026-10-14
+
+After the exact `12d2f471` qualification was sealed, three independently
+reviewed patches were integrated without editing their retained evidence:
+
+- CLI reference correction patch
+  `87abb6c20abfdd7a3e1d8972839a4bd72ce666057f4559848031f1d1480b2979`,
+  handoff
+  `3632f62d5181db1634b83fa7a04abbca2b27af82d4be2448f0e01b23773dce6e`;
+- packaged fragment regression patch
+  `f48d2ea2add1f0090115b654cc03a5f819a3624da2b9ce9653a7c860d932ee15`,
+  handoff
+  `d83fdbc36aad878557f908e277234409503cc7cb08f6306aa14929c4aeaaed2a`;
+  and
+- lifecycle synopsis regression patch
+  `6ca9b18551b470ee37fba89223c5c52b49a8a52f8e2490b301bdad36c4e88777`,
+  handoff
+  `e38c4d4751dd0449041fc679b912c4fefdba4665a7a68620a9b151fa72c01503`.
+
+The separately retained physical macOS spaces-path supplement is
+`ae89aa93571b53727716003b672eee845e07fa5fe074beff95c83cde94b1cce6`.
+These receipts are supporting evidence only; this checkout still had to
+integrate and qualify one coherent successor.
+
+The successor corrects the following bounded documentation contracts:
+
+- `docs/cli-reference.md` no longer advertises an unsupported positional
+  argument for `liftoff doctor`; it documents current-directory diagnostics;
+- the same reference now states that current plan/init/migrate generation
+  writes manifest v8 and reads v2-v8 while preserving the exact historical,
+  unknown-tuple, phase-graph and activation-v1 restrictions;
+- current generated modern governance guidance names the registered
+  project-independent `liftoff capabilities --json` catalog as read-only
+  installed-CLI metadata, while preserving no project acceptance, execution,
+  repair-support or invented `supported-manifest` field claim;
+- the packaged configuration guide now links to the packaged private staging
+  and bootstrap retention section instead of an unpackaged source README; and
+- maintained local-link tests cover all four maintained README files.
+
+The generated guidance correction initially changed both current and frozen
+pre-assessment source rendering. The broadened focused gate correctly rejected
+21 historical managed-body hashes. The source resolver now retains the
+already-determined release classification as `current` or `pre-assessment`;
+managed rendering uses the truthful capability catalog only for current source
+and reproduces the exact former guidance for genuine historical source. The
+immutable `pre-assessment-guidance-source.json`, historical declarations and
+all old captured bodies remain unchanged. No current plugin identity, public
+schema, manifest format, graph, policy, parser, command behavior, provider
+surface or historical source bytes were retagged.
+
+Three executable regressions were added:
+
+- `tests/documented-command-contracts.test.ts` checks the actual doctor parser
+  contract and current public manifest-generation capability;
+- `tests/documentation-fragment-links.test.ts` validates the closed plain-ASCII
+  ATX fragment grammar and every declared packaged same-page/cross-page
+  fragment without claiming general GFM, HTML, setext, Unicode or custom-ID
+  support; and
+- `tests/documented-command-synopses.test.ts` expands the lifecycle table's
+  closed optional/value/enumerated notation, feeds every expansion to the
+  actual parser, and compares documented commands/subcommands with the
+  registered definitions.
+
+The first focused documentation run passed 526 tests and failed two expected
+review controls: the old negative capability assertion and the missing current
+contract-baseline successor. After correcting both, the first broader run
+passed 559 tests and failed the 21 historical source-body checks described
+above. The final build and 13-file gate passed 580/580 with no skips, including
+the frozen baseline, current managed rendering, complete pre-assessment source,
+current-project repair, generated infrastructure, plugin-generation parity,
+repository governance and all documentation regressions.
+
+Exactly one frozen top-level contract record changes:
+`cli-json` / `update --check --json`. A structural check with an increased
+child-process buffer proved all 235 unrelated records are identical, the new
+task-18.4 `priorChange` is byte-for-byte the complete former record, its
+`priorCurrentSha256` is the predecessor's
+`557a862cc73b531448ee43c88cb71cc45721787d6dd77ae34de2d714c0f85c0c`,
+and the new current digest is
+`d8891c94656d0206e0c0bef1af1e8fb679c77674b51b552c0ff6698b43ef9105`.
+The initial structural helper failed only because `git show` exceeded its
+default child-process buffer; no ledger assertion failed.
+
+Actual predecessor/current normalized CLI captures were then run through the
+unchanged contract-baseline harness. All other JSON records were byte-equal.
+Both normal and force plans changed only:
+
+- `.github/prompts/liftoff-governance-assess.prompt.md`;
+- `.github/prompts/liftoff-repair.prompt.md`;
+- `.github/prompts/liftoff-setup.prompt.md`;
+- `.liftoff/governance/README.md`; and
+- the resulting `liftoff.manifest.json` content digest.
+
+Exit codes, stderr, volatility, plan eligibility, blockers, operation ordering,
+paths, modes and unrelated operations remained unchanged. The immutable
+receipt is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/docs-successor-cli-delta-12d2/manifest.json`
+
+with SHA-256
+`96b630a52e848335e38cdd0c36c4b78e97a2da021d207bbd7be21fb4c713b166`.
+Its `comparison.json` contains both complete normalized records and every
+before/after changed leaf; `before-all.json` and `current-all.json` retain all
+captured JSON surfaces.
+
+Package smoke passed for `@msn-control/liftoff@0.12.3`; repository named-file
+policy passed; supported-stack remained current; strict noninteractive OpenSpec
+validation passed; and `git diff --check` passed. OpenSpec apply remains
+`ready`, schema `spec-driven`, at 82/136 complete. Task 18.4 remains unchecked
+because this is only the bounded documentation-contract slice, not complete
+generated/native/installed/public documentation qualification. Task 14.2,
+native9 and later SOURCE intake, shared allocation, activation-6, provider
+effects, PR-stack mutation, landing and public claims remain held.
