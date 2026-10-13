@@ -14,7 +14,7 @@ import {
 import {
   captureMigrationTree, copyMigrationTree, MacMigrationJournalStore, migrationAbsent, migrationLauncher,
   migrationParentIdentities as parentIdentities, restoreMigrationTree, syncMigrationDirectory,
-  type MigrationJournal, type MigrationTree
+  assertMigrationRecoveryJournalBudget, migrationJournalUnsettled, type MigrationJournal, type MigrationTree
 } from '../../adapters/distribution/mac-migration-state.js';
 import { commandFailed } from '../../domain/distribution/liftoff-npm-installation.js';
 import { SelfUpgradeFailure } from '../../domain/distribution/liftoff-upgrade.js';
@@ -252,6 +252,7 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
       channelIdentity: channel.identity, policyIdentity, destination, parentIdentities: parents, tree,
       recoveryPhysical: backup.physical, launcher, phase: 'prepared' };
     await store.save(journal);
+    assertMigrationRecoveryJournalBudget(journal);
     if ((await inspectMacNpmOwner(request.selection ?? owner, dependencies.upgrade, scratch)).identity !== owner.identity ||
       (await captureMigrationTree(owner.packageRoot)).physical !== tree.physical ||
       (await brewObservation(request.brew, owner, dependencies.upgrade, scratch)).identity !== brew.identity ||
@@ -326,8 +327,7 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
       error instanceof SelfUpgradeFailure ? `native-${error.reasonCode}` : 'migration-observation-or-operation-failed');
     return report;
   } finally {
-    const unsettled = journal && (['npm-intent', 'link-intent', 'cask-intent', 'uncertain'].includes(journal.phase) ||
-      journal.restoration?.pending !== undefined || journal.restoration?.launcherPending);
+    const unsettled = store?.hasUnsettledOperation || journal && migrationJournalUnsettled(journal);
     if (store && journal) {
       try { report.journal = await store.descriptor(); }
       catch { report.blockers.push('journal-readback-failed'); report.status = 'partial'; }

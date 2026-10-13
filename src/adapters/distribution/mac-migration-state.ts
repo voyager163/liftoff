@@ -130,6 +130,33 @@ export interface MigrationJournal {
 
 const encoded = (value: unknown) => Buffer.from(JSON.stringify(value));
 const sign = (bytes: Buffer, key: Buffer) => createHmac('sha256', key).update(bytes).digest();
+export const migrationJournalByteLimit = 4 * 1024 * 1024;
+const envelope = (journal: MigrationJournal, mac: string) => encoded({ journal, mac });
+
+export function migrationJournalUnsettled(journal: MigrationJournal): boolean {
+  return ['npm-intent', 'link-intent', 'cask-intent', 'uncertain'].includes(journal.phase) ||
+    journal.restoration?.pending !== undefined || journal.restoration?.launcherPending === true;
+}
+
+export function assertMigrationRecoveryJournalBudget(journal: MigrationJournal): void {
+  const numbers = (count: number) => Array<string>(count).fill('0'.repeat(64));
+  const launcher = (target: string) => ({ target, physical: JSON.stringify([...numbers(5), target]) });
+  // Reserve the full ledger, including JSON escaping and bounded numeric identity fields, before uninstall.
+  const completed = journal.tree.entries.map(entry => {
+    const file = path.join(journal.owner.packageRoot, entry.path);
+    const identity = entry.kind === 'directory' ? JSON.stringify([file, ...numbers(4)]) :
+      entry.kind === 'link' ? JSON.stringify(launcher(entry.target!)) :
+        JSON.stringify([file, ...numbers(7), '0'.repeat(64)]);
+    return { path: entry.path, identity };
+  });
+  const pending = journal.tree.entries.reduce((longest, entry) =>
+    encoded(entry.path).length > encoded(longest).length ? entry.path : longest, '');
+  const projected: MigrationJournal = { ...journal, phase: 'restore-intent',
+    restoration: { completed, pending, launcherPending: true, launcher: launcher(journal.launcher.target) } };
+  if (envelope(projected, '0'.repeat(64)).length > migrationJournalByteLimit) {
+    throw new MacMigrationFailure('recovery-journal-limit');
+  }
+}
 
 export class MacMigrationJournalStore {
   private key?: Buffer;
@@ -137,7 +164,10 @@ export class MacMigrationJournalStore {
   private lockIdentity?: string;
   private keyIdentity?: string;
   private journalSha256?: string;
+  private durableUnsettled = false;
   constructor(readonly root: string) {}
+
+  get hasUnsettledOperation(): boolean { return this.durableUnsettled; }
 
   async initialize(): Promise<void> {
     await migrationDirectory(path.dirname(this.root), true);
@@ -190,18 +220,19 @@ export class MacMigrationJournalStore {
     const current = path.join(this.root, 'journal.json');
     if (this.journalSha256) {
       await this.privateMember('journal.json');
-      if (macMigrationHash(await readUpgradeBytes(current, 4 * 1024 * 1024)) !== this.journalSha256) {
+      if (macMigrationHash(await readUpgradeBytes(current, migrationJournalByteLimit)) !== this.journalSha256) {
         throw new MacMigrationFailure('journal-changed');
       }
     } else if (!await migrationAbsent(current)) throw new MacMigrationFailure('journal-changed');
     const bytes = encoded(journal);
-    if (bytes.length > 4 * 1024 * 1024) throw new MacMigrationFailure('journal-limit');
+    const sealed = envelope(journal, sign(bytes, this.key).toString('hex'));
+    if (sealed.length > migrationJournalByteLimit) throw new MacMigrationFailure('journal-limit');
     const temporary = path.join(this.root, `journal-${randomBytes(16).toString('hex')}.tmp`);
-    const sealed = encoded({ journal, mac: sign(bytes, this.key).toString('hex') });
     await durableMigrationFile(temporary, sealed);
     await rename(temporary, current);
     await syncMigrationDirectory(this.root);
     this.journalSha256 = macMigrationHash(sealed);
+    this.durableUnsettled = migrationJournalUnsettled(journal);
   }
 
   async read(expectedSha256: string): Promise<MigrationJournal> {
@@ -209,7 +240,7 @@ export class MacMigrationJournalStore {
     this.rootIdentity = await this.privateRoot();
     await this.privateMember('journal.json');
     await this.privateMember('authority.key');
-    const bytes = await readUpgradeBytes(path.join(this.root, 'journal.json'), 4 * 1024 * 1024);
+    const bytes = await readUpgradeBytes(path.join(this.root, 'journal.json'), migrationJournalByteLimit);
     if (macMigrationHash(bytes) !== expectedSha256) throw new MacMigrationFailure('journal-changed');
     this.journalSha256 = expectedSha256;
     this.key = await readUpgradeBytes(path.join(this.root, 'authority.key'), 32);
@@ -227,6 +258,7 @@ export class MacMigrationJournalStore {
       journal.owner.packageRoot !== path.join(journal.owner.prefix, 'lib/node_modules/@msn-control/liftoff') ||
       journal.owner.launcher !== path.join(journal.owner.prefix, 'bin/liftoff') ||
       !/^[a-f0-9]{64}$/.test(journal.review)) throw new MacMigrationFailure('foreign-journal');
+    this.durableUnsettled = migrationJournalUnsettled(journal);
     return journal;
   }
 
@@ -252,7 +284,7 @@ export class MacMigrationJournalStore {
   async descriptor(): Promise<{ path: string; sha256: string }> {
     await this.privateMember('journal.json');
     const file = path.join(this.root, 'journal.json');
-    const sha256 = macMigrationHash(await readUpgradeBytes(file, 4 * 1024 * 1024));
+    const sha256 = macMigrationHash(await readUpgradeBytes(file, migrationJournalByteLimit));
     if (this.journalSha256 && sha256 !== this.journalSha256) throw new MacMigrationFailure('journal-changed');
     return { path: file, sha256 };
   }

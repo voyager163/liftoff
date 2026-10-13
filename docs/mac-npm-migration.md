@@ -122,6 +122,10 @@ unqualified fallback command.
 Each external operation has a durable intent and settlement checkpoint. The
 mode-0700 independent journal holds verified offline material, a mode-0600
 authority key, an authenticated bounded journal and an exclusive owner lock.
+The 4 MiB limit covers the complete authenticated envelope. Before uninstall,
+preflight also reserves full recovery-ledger growth; an insufficient journal
+budget blocks migration without increasing the limit. Rejected saves preserve
+the prior durable bytes, digest and unresolved-operation state.
 It does not borrow Linux receipt recovery authority.
 
 Unknown npm/cask settlement, concurrent edits, changed lock/key or failed final

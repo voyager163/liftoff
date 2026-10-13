@@ -4,11 +4,13 @@ import path from 'node:path';
 import { runMacMigration, defaultMacMigrationDependencies } from '../src/application/upgrade/mac-migration.js';
 import { parseMacMigration, macMigrationHelp, macMigrationMain } from '../src/cli/mac-migration.js';
 import { captureMigrationTree, MacMigrationJournalStore, migrationAbsent, migrationLauncher,
-  restoreMigrationTree, type MigrationJournal } from '../src/adapters/distribution/mac-migration-state.js';
+  restoreMigrationTree, migrationJournalByteLimit, assertMigrationRecoveryJournalBudget,
+  type MigrationJournal } from '../src/adapters/distribution/mac-migration-state.js';
+import * as migrationState from '../src/adapters/distribution/mac-migration-state.js';
 import { discoverMacNpmSelections, inspectMacNpmOwner, macMigrationHash as hash,
   migrationDirectory, migrationEnvironment, migrationNames } from '../src/adapters/distribution/mac-npm-owner.js';
 import { macMigrationFixture } from './fixtures/mac-migration.js';
-import type { MacNpmManager } from '../src/domain/distribution/mac-migration.js';
+import { MacMigrationFailure, type MacNpmManager } from '../src/domain/distribution/mac-migration.js';
 import { macMigrationBridge } from '../src/domain/distribution/mac-migration-bridge.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
 
@@ -306,6 +308,100 @@ describe.skipIf(process.platform === 'win32')('private SOURCE-only Mac migration
     await writeFile(path.join(store.root, 'lock/owner.json'), JSON.stringify({ pid: process.pid, token: 'a'.repeat(64) }));
     await expect(store.save(data)).rejects.toMatchObject({ code: 'journal-authority-changed' });
     await expect(store.release()).rejects.toMatchObject({ code: 'migration-lock-changed' });
+  }, 30_000);
+
+  it.each([-1, 0, 1])('bounds the complete authenticated journal envelope at limit %i bytes', async difference => {
+    const value = await fixture();
+    value.dependencies.cask!.installExact = async () => ({ settled: true, installed: false });
+    await apply(value);
+    const selected = await journal(value);
+    const store = new MacMigrationJournalStore(selected.root);
+    const data = await store.read(selected.digest); await store.lock();
+    data.phase = 'cask-intent'; await store.save(data);
+    const before = await store.descriptor();
+    const file = path.join(store.root, 'journal.json');
+    const previous = await readFile(file);
+    const members = await readdir(store.root);
+    data.phase = 'cask-settled';
+    data.tree.entries[0].physical = '';
+    const base = Buffer.byteLength(JSON.stringify({ journal: data, mac: '0'.repeat(64) }));
+    data.tree.entries[0].physical = 'x'.repeat(migrationJournalByteLimit + difference - base);
+    expect(Buffer.byteLength(JSON.stringify(data))).toBeLessThan(migrationJournalByteLimit);
+    if (difference > 0) {
+      await expect(store.save(data)).rejects.toMatchObject({ code: 'journal-limit' });
+      expect(await store.descriptor()).toEqual(before);
+      expect(await readFile(file)).toEqual(previous);
+      expect(await readdir(store.root)).toEqual(members);
+      expect(store.hasUnsettledOperation).toBe(true);
+      const reader = new MacMigrationJournalStore(store.root);
+      expect((await reader.read(before.sha256)).phase).toBe('cask-intent');
+      expect(reader.hasUnsettledOperation).toBe(true);
+    } else {
+      await store.save(data);
+      expect((await readFile(file)).length).toBe(migrationJournalByteLimit + difference);
+      const descriptor = await store.descriptor();
+      expect((await new MacMigrationJournalStore(store.root).read(descriptor.sha256)).phase).toBe('cask-settled');
+      expect(store.hasUnsettledOperation).toBe(false);
+    }
+    await store.release();
+  }, 30_000);
+
+  it('reserves full recovery-ledger growth separately from a writable current envelope', async () => {
+    const value = await fixture();
+    value.dependencies.cask!.installExact = async () => ({ settled: true, installed: false });
+    await apply(value);
+    const selected = await journal(value);
+    const data = structuredClone(selected.data);
+    data.tree.entries[0].physical = '';
+    const base = Buffer.byteLength(JSON.stringify({ journal: data, mac: '0'.repeat(64) }));
+    data.tree.entries[0].physical = 'x'.repeat(migrationJournalByteLimit - 256 - base);
+    expect(Buffer.byteLength(JSON.stringify({ journal: data, mac: '0'.repeat(64) }))).toBeLessThan(migrationJournalByteLimit);
+    expect(() => assertMigrationRecoveryJournalBudget(data)).toThrow('recovery-journal-limit');
+    const next = await fixture();
+    const nextRun = vi.spyOn(next.dependencies.upgrade.runner, 'run');
+    vi.spyOn(migrationState, 'assertMigrationRecoveryJournalBudget').mockImplementation(() => {
+      throw new MacMigrationFailure('recovery-journal-limit');
+    });
+    const result = await apply(next);
+    expect(result).toMatchObject({ status: 'blocked', effects: 'none', blockers: ['recovery-journal-limit'] });
+    expect(nextRun.mock.calls.some(([command]) => command.args.includes('uninstall'))).toBe(false);
+    expect((await journal(next)).data.phase).toBe('prepared');
+    expect(await migrationAbsent(next.oldPackage)).toBe(false);
+  }, 30_000);
+
+  it('reserves and restores confined internal dependency links without adopting external material', async () => {
+    const value = await fixture();
+    for (const root of [value.oldPackage, value.recovery]) {
+      await symlink('dependency.js', path.join(root, 'dist/dependency-link.js'));
+    }
+    value.dependencies.cask!.installExact = async () => ({ settled: true, installed: false });
+    expect((await apply(value)).status).toBe('partial');
+    expect((await recover(value)).status).toBe('restored');
+    expect(await readlink(path.join(value.oldPackage, 'dist/dependency-link.js'))).toBe('dependency.js');
+    expect((await captureMigrationTree(value.oldPackage)).content).toBe((await captureMigrationTree(value.recovery)).content);
+  }, 30_000);
+
+  it('retains the durable recovery intent, lock and scratch when completion exceeds the journal envelope', async () => {
+    const value = await fixture();
+    value.dependencies.cask!.installExact = async () => ({ settled: true, installed: false });
+    await apply(value);
+    const save = MacMigrationJournalStore.prototype.save;
+    vi.spyOn(MacMigrationJournalStore.prototype, 'save').mockImplementation(async function (
+      this: MacMigrationJournalStore, data: MigrationJournal
+    ) {
+      if (data.restoration?.completed.length === 1 && data.restoration.pending === undefined) {
+        data.tree.entries[0].physical += 'x'.repeat(migrationJournalByteLimit);
+      }
+      await save.call(this, data);
+    });
+    const result = await recover(value);
+    expect(result).toMatchObject({ status: 'partial' });
+    expect(result.blockers).toContain('journal-limit');
+    expect(result.blockers).toContain('migration-lock-retained');
+    expect(result.retainedScratch).toBeDefined();
+    expect(await migrationAbsent(path.join(value.root, 'private journal/lock'))).toBe(false);
+    expect((await journal(value)).data).toMatchObject({ phase: 'restore-intent', restoration: { completed: [], pending: '' } });
+    expect(await readdir(value.oldPackage)).toEqual([]);
   }, 30_000);
 
   it.each(['first-save', 'replacement', 'removed'])('never replaces concurrently changed journal bytes: %s', async change => {
