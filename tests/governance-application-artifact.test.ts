@@ -635,6 +635,27 @@ describe('immutable application publication and independent readback', () => {
     saved.phaseOutputs!['application-artifact-ready']!.values.artifactDigest = 'latest';
     expect(() => readVerifiedApplicationArtifact(inspection)).toThrow(/authoritative/);
   });
+  it('refuses an earlier verified artifact after independently inspecting changed recipe or transmission consent', async () => {
+    const f = await fixture(true);
+    const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
+      runner: f.runner, now: coverageNow, adapters: f.input.adapters });
+    expect(outcome).toMatchObject({ applied: true });
+    const saved = (await readState(f.root))!;
+    const receipt = JSON.parse(await readFile(path.join(f.root, ...outcome.evidence!.pathParts), 'utf8'));
+    for (const change of [
+      { contextPath: 'backend/changed' },
+      { dockerfilePath: 'backend/Custom.Dockerfile' },
+      { sourceTransmissionApproved: false }
+    ]) {
+      const changed = { ...f.inputs, phases: { ...f.inputs.phases,
+        'application-artifact-ready': { ...f.inputs.phases['application-artifact-ready'], ...change } } };
+      const inspection = await coverageInspection({ root: f.root, phaseId: f.phase.id,
+        state: { ...saved, activationInputs: changed }, activationInputs: changed,
+        evidence: [receipt], reviewedPlans: [f.input.plan] });
+      expect(() => readVerifiedApplicationArtifact(inspection)).toThrow(/authoritative/);
+    }
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+  });
   it('observes a real pending run without issuing a second dispatch', async () => {
     const f = await fixture(true); f.transport.runStatus = 'in_progress';
     const first = await executeApplicationArtifactPublication(f.input);
