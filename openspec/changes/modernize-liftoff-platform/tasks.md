@@ -186,8 +186,8 @@ Depends on 1 and 3. References: design D12; liftoff-cli-telemetry.
 - [x] 15.1 Define command schema 2 semantic outcomes and exact project_observed schema 2/dimension allowlists; verify expected exit-2 drift, cancellation and actual partial failures are classified correctly while v1 records retain old semantics.
 - [x] 15.2 Extend strict endpoint parsing and managed-identity upload for separate command/project records under the 1-KiB streamed limit; verify unknown fields/versions, raw metadata and malformed/oversized bodies are rejected without logging.
 - [x] 15.3 Add project table/DCR declarations with 180-day analytics/total retention, preserving existing command table/data and logging exclusions; verify static OpenTofu and privacy-contract tests on supported hosts.
-- [ ] 15.4 Implement shared one-second ordinary-command telemetry delivery budget, at most one request per channel, no queue/retry and verification-probe exclusions; verify unreachable endpoints do not alter ordinary output/exit.
-- [ ] 15.5 Add explicit reporting-result behavior without recursive aggregate emission; verify status/disabled/failure delivery results and strict telemetry-free assessment/capability/help paths.
+- [x] 15.4 Implement shared one-second ordinary-command telemetry delivery budget, at most one request per channel, no queue/retry and verification-probe exclusions; verify unreachable endpoints do not alter ordinary output/exit.
+- [x] 15.5 Add explicit reporting-result behavior without recursive aggregate emission; verify status/disabled/failure delivery results and strict telemetry-free assessment/capability/help paths.
 - [x] 15.6 Update service/operator/privacy documentation with schema rollout and historical semantics; verify package links and independent gateway coverage remain above the floor.
 
 ## 16. Add explicit project enrollment and optional monthly CI reporting
