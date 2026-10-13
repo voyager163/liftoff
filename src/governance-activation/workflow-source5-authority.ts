@@ -12,6 +12,7 @@ import type { ProjectMutationLease } from '../adapters/filesystem/project-lock.j
 import { withProjectMutationLock } from '../adapters/filesystem/project-lock.js';
 import { captureWorkflowBinding, workflowFailure } from './workflow-binding.js';
 import { source5WorkflowPlanInventory } from './workflow-source5-operations.js';
+import { inspectModernInstalledActivation } from '../application/governance/modern-installed-preflight.js';
 
 export const source5WorkflowPhases = Object.freeze([
   'bootstrap-workflow-source-ready', 'workflow-source-ready', 'dev-proof',
@@ -87,12 +88,13 @@ function validateBinding(binding: AuthorityBinding, now: Date, write: boolean): 
   assertSource5WorkflowContext(binding.context);
   const { plan, approval, context } = binding;
   context.records.readPlan(plan, { approvals: [approval] });
-  source5WorkflowPlanInventory(plan);
+  const { control } = source5WorkflowPlanInventory(plan);
   if (!source5WorkflowPhases.includes(plan.phaseId as Source5WorkflowPhase) || plan.scope !== 'activation' ||
     !plan.approval.required || plan.approval.evaluation.status !== 'reused' ||
     plan.approval.envelopeId !== approval.id || plan.approval.envelopeHash !== source5ApprovalHash(context, approval) ||
     !/^[a-f0-9]{64}$/u.test(binding.previewFingerprint) ||
     binding.previewFingerprint !== source5PreviewFingerprint(binding.projectRoot, plan) ||
+    control.repositoryAnchor !== binding.repositoryAnchor ||
     !/^local:[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(binding.repositoryAnchor) ||
     leaseRoots.get(binding.lease) !== binding.projectRoot ||
     !Number.isFinite(now.getTime()) || Date.parse(approval.approvedAt) > now.getTime() ||
@@ -100,14 +102,26 @@ function validateBinding(binding: AuthorityBinding, now: Date, write: boolean): 
     workflowFailure('workflow-source5-approval', 'Workflow effects require exact original current5 plan and independently issued unexpired approval; recorded observation never refreshes write authority.');
   }
 }
+async function assertObservedAuthorityScope(binding: AuthorityBinding): Promise<void> {
+  await binding.lease.assertHeld();
+  const location = await resolveUpdatePreviewLocation(binding.projectRoot, binding.storage);
+  const observed = await inspectModernInstalledActivation(binding.projectRoot);
+  const { control } = source5WorkflowPlanInventory(binding.plan);
+  if (location.projectRoot !== binding.projectRoot || control.projectKey !== location.projectKey ||
+    observed.status !== 'observed' || observed.snapshot.root !== location.projectRoot || !observed.current ||
+    observed.current.state.repository.id !== binding.repositoryAnchor ||
+    observed.current.state.repository.id !== control.repositoryAnchor ||
+    canonicalSha256(observed.current.state) !== binding.plan.stateHash ||
+    canonicalSha256(observed.current.state.identity) !== canonicalSha256(binding.context.records.identity)) {
+    workflowFailure('workflow-source5-scope', 'Workflow authority requires independently read existing current5 state with the exact canonical root, project key, state digest and original local repository anchor. Missing or changed state cannot create or refresh permission.');
+  }
+}
 
 export async function issueSource5WorkflowApproval(
   binding: AuthorityBinding, now: Date
 ): Promise<void> {
   validateBinding(binding, now, true);
-  await binding.lease.assertHeld();
-  const location = await resolveUpdatePreviewLocation(binding.projectRoot, binding.storage);
-  if (location.projectRoot !== binding.projectRoot) workflowFailure('workflow-source5-root', 'Authority requires the exact canonical project root.');
+  await assertObservedAuthorityScope(binding);
   const value = authorityValue(binding);
   await createWorkflowSource5ControlStore(binding.projectRoot, binding.storage)
     .save('approval', canonicalSha256(value), value, null);
@@ -117,7 +131,7 @@ export async function restoreSource5WorkflowAuthority(
   binding: AuthorityBinding, now: Date
 ): Promise<Source5WorkflowAuthority> {
   validateBinding(binding, now, false);
-  await binding.lease.assertHeld();
+  await assertObservedAuthorityScope(binding);
   const value = authorityValue(binding);
   const stored = await createWorkflowSource5ControlStore(binding.projectRoot, binding.storage).read('approval', canonicalSha256(value));
   if (!stored || stored.projectRoot !== binding.projectRoot || !isRecord(stored.value) ||
@@ -141,7 +155,7 @@ export async function assertSource5WorkflowAuthority(input: {
     return workflowFailure('workflow-source5-authority', 'Workflow capability is not the engine-issued exact root/plan/operation authority.');
   }
   validateBinding(binding, input.now, input.write);
-  await binding.lease.assertHeld();
+  await assertObservedAuthorityScope(binding);
   const phase = binding.context.records.graph.phases.find(phase => phase.id === binding.plan.phaseId)!;
   if ([input.operation, ...(input.operation.effects ?? [])].some(effect =>
     !phase.allowedMutations[effect.remote ? 'remote' : 'local'].includes(effect.mutationClass))) {

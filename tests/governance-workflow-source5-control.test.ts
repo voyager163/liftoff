@@ -128,8 +128,9 @@ describe('closed sealed workflow source5 controls', () => {
   });
 });
 
-async function authorityFixture() {
+async function authorityFixture(scope: { controlAnchor?: string; bindingAnchor?: string; controlProjectKey?: string } = {}) {
   const fixtureValue = await fixture(), installed = await writeModernInstalledProject(fixtureValue.project);
+  await installed.write(['governance', 'activation-state.json'], canonicalJson(installed.state));
   const identity = installed.api!.identity;
   const context = createSource5WorkflowContext(projectCatalog, {
     recordedIdentity: identity, profile: 'single-maintainer-gitflow', policyVersion: identity.policyVersion,
@@ -142,7 +143,8 @@ async function authorityFixture() {
     executionRef: `liftoff-execution-${'a'.repeat(40)}`
   });
   const keyInput = { executionId: '11111111-1111-4111-8111-111111111111', phaseId: 'dev-proof' as const,
-    repositoryAnchor: installed.state!.repository.id, projectKey: (await resolveUpdatePreviewLocation(fixtureValue.project, fixtureValue.options)).projectKey };
+    repositoryAnchor: scope.controlAnchor ?? installed.state!.repository.id,
+    projectKey: scope.controlProjectKey ?? (await resolveUpdatePreviewLocation(fixtureValue.project, fixtureValue.options)).projectKey };
   const checkpoint = source5WorkflowCheckpointOperation({
     ...keyInput, schemaVersion: 1, kind: 'workflow-source5-control.v1', controlKey: source5WorkflowControlKey(keyInput),
     reviewKind: 'bound-source', remainingFrom: null,
@@ -151,7 +153,7 @@ async function authorityFixture() {
   });
   const operations = [operation, checkpoint], effects = operations.flatMap(operation => [operation, ...(operation.effects ?? [])]);
   const input: ModernPlanInput = {
-    phaseId: id, createdAt: '2026-09-01T12:00:00.000Z', expiresAt: '2026-09-01T13:00:00.000Z', stateHash: null,
+    phaseId: id, createdAt: '2026-09-01T12:00:00.000Z', expiresAt: '2026-09-01T13:00:00.000Z', stateHash: canonicalSha256(installed.state),
     baselineDigest: 'a'.repeat(64), inputDigest: 'b'.repeat(64), transitionDigest: 'c'.repeat(64),
     operations, noSecrets: true,
     configuration: { schemaVersion: 1, phases: {}, budget: { currency: 'USD', fixedMonthlyCents: 0, usageMonthlyCents: 0 } },
@@ -170,8 +172,8 @@ async function authorityFixture() {
     evaluation: { ...input.approval.evaluation, status: 'reused', envelopeId: approval.id, envelopeHash: hash } } },
   { approvals: [approval] });
   return { ...fixtureValue, context, plan, approval, operation,
-    now: new Date('2026-09-01T12:05:00.000Z'), repositoryAnchor: installed.state!.repository.id,
-    previewFingerprint: source5PreviewFingerprint(fixtureValue.project, plan) };
+    now: new Date('2026-09-01T12:05:00.000Z'), repositoryAnchor: scope.bindingAnchor ?? installed.state!.repository.id,
+    previewFingerprint: source5PreviewFingerprint(fixtureValue.project, plan), state: installed.state!, write: installed.write };
 }
 
 describe('independently issued modern source5 workflow authority', () => {
@@ -227,5 +229,59 @@ describe('independently issued modern source5 workflow authority', () => {
     });
     await expect(assertSource5WorkflowAuthority({ authority: token!, projectRoot: value.project,
       plan: value.plan, operation: value.operation, now: value.now, write: true })).rejects.toThrow();
+  });
+
+  it.each(['control-anchor', 'control-project-key', 'coherent-foreign-anchor'] as const)(
+    'rejects coherently rebuilt plan/approval/preview scope for %s', async variant => {
+      const foreign = 'local:22222222-2222-4222-8222-222222222222';
+      const value = await authorityFixture(variant === 'control-anchor' ? { controlAnchor: foreign } :
+        variant === 'control-project-key' ? { controlProjectKey: 'f'.repeat(64) } :
+          { controlAnchor: foreign, bindingAnchor: foreign });
+      value.context.records.readPlan(value.plan, { approvals: [value.approval] });
+      expect(source5PreviewFingerprint(value.project, value.plan)).toBe(value.previewFingerprint);
+      await withSource5WorkflowLease(value.project, async lease => {
+        const binding = { ...value, projectRoot: value.project, lease, storage: value.options };
+        await expect(issueSource5WorkflowApproval(binding, value.now)).rejects.toThrow(/approval|scope|anchor|current5/);
+        await expect(restoreSource5WorkflowAuthority(binding, value.now)).rejects.toThrow(/approval|scope|anchor|current5/);
+      });
+    });
+
+  it.each(['changed-anchor', 'missing-state', 'same-anchor-state-drift'] as const)('blocks %s at both restore and assertion without rewriting original authority', async variant => {
+    const value = await authorityFixture();
+    await withSource5WorkflowLease(value.project, async lease => {
+      const binding = { ...value, projectRoot: value.project, lease, storage: value.options };
+      await issueSource5WorkflowApproval(binding, value.now);
+      const token = await restoreSource5WorkflowAuthority(binding, value.now);
+      const store = createWorkflowSource5ControlStore(value.project, value.options);
+      const authorityBefore = await store.read('approval', canonicalSha256({
+        schemaVersion: 1, kind: 'liftoff-source5-workflow-approval', projectRoot: value.project,
+        repositoryAnchor: value.repositoryAnchor, identity: value.context.records.identity, phaseId: value.plan.phaseId,
+        graphHash: value.plan.graphHash, previewFingerprint: value.previewFingerprint,
+        envelopeHash: source5ApprovalHash(value.context, value.approval), envelope: value.approval,
+        operationDigests: value.plan.operations.map(operation => canonicalSha256(operation)),
+        savedPlanDigest: canonicalSha256(value.plan), planDigest: value.plan.planDigest
+      }));
+      expect(authorityBefore).not.toBeNull();
+      if (variant === 'changed-anchor') await value.write(['governance', 'activation-state.json'],
+        canonicalJson(value.context.records.createInitialState({
+          repository: { ...value.state.repository, id: 'local:22222222-2222-4222-8222-222222222222' },
+          applicability: value.state.applicability, createdAt: value.state.createdAt
+        })));
+      else if (variant === 'missing-state') await unlink(path.join(value.project, 'governance', 'activation-state.json'));
+      else await value.write(['governance', 'activation-state.json'], canonicalJson(value.context.records.createInitialState({
+        repository: value.state.repository, applicability: value.state.applicability, createdAt: '2026-09-01T12:01:00.000Z'
+      })));
+      await expect(issueSource5WorkflowApproval(binding, value.now)).rejects.toThrow(/scope|anchor/);
+      await expect(restoreSource5WorkflowAuthority(binding, value.now)).rejects.toThrow(/scope|anchor/);
+      await expect(assertSource5WorkflowAuthority({ authority: token, projectRoot: value.project, plan: value.plan,
+        operation: value.operation, now: value.now, write: true })).rejects.toThrow(/scope|anchor/);
+      await expect(assertSource5WorkflowAuthority({ authority: token, projectRoot: value.project, plan: value.plan,
+        operation: value.operation, now: value.now, write: false })).rejects.toThrow(/scope|anchor/);
+      expect(canonicalSha256(JSON.parse((await readFile(authorityBefore!.path)).toString('utf8')))).toBe(authorityBefore!.rawDigest);
+      await value.write(['governance', 'activation-state.json'], canonicalJson(value.state));
+      const resumed = await restoreSource5WorkflowAuthority(binding, value.now);
+      await assertSource5WorkflowAuthority({ authority: resumed, projectRoot: value.project, plan: value.plan,
+        operation: value.operation, now: value.now, write: true });
+    });
   });
 });

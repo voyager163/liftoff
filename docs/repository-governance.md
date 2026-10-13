@@ -130,6 +130,11 @@ HMAC-sealed objects; restart validates the exact original issuance, not imported
 project approvals or structurally similar runtime objects. The private local
 issuer and operating-system user remain a trust boundary, not an attestation of
 a qualified host. A live engine-issued lease/capability is also required.
+Issuance, restart and each capability assertion independently read the existing
+installed current5 state under that lease. Its local repository anchor and state
+digest, the canonical root and resolved project key must exactly match the
+reviewed plan, checkpoint inventory and authority. Missing or changed state
+blocks; callers cannot create an anchor or substitute a scope assertion.
 Index, approval and operation objects are limited to64KiB; original plan/proof
 objects to16MiB, counting the **complete encoded sealed disk object**. Existing
 preview/consent stores keep their64KiB limit. Failed saves throw and preserve
