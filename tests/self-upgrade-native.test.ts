@@ -66,7 +66,8 @@ function signedMaterial() {
   const material: NativeStableMaterial = {
     record: json(record), qualification: json(qualification), signature: sign(null, json(qualification), key.privateKey),
     publicKey: Buffer.from(key.publicKey.export({ type: 'spki', format: 'pem' })), assets, platformEvidence,
-    stableTag: 'v0.13.0', draft: false, prerelease: false, bundleRoot: '/fixture/downloaded'
+    stableTag: 'v0.13.0', draft: false, prerelease: false,
+    bundleRoot: path.resolve(os.tmpdir(), 'liftoff-virtual-candidate')
   };
   const resign = () => {
     material.record = json(record);
@@ -122,7 +123,7 @@ describe('independently signed native candidate admission', () => {
     const fixture = signedMaterial();
     expect(await admitNativeStableMaterial(fixture.material, installation, fixture.policy)).toEqual({
       version: '0.13.0', target: 'linux-x64', sourceCommit: 'd'.repeat(40), manifestSha256: 'f'.repeat(64),
-      inventorySha256: 'e'.repeat(64), identity: expect.stringMatching(/^[a-f0-9]{64}$/), bundleRoot: '/fixture/downloaded',
+      inventorySha256: 'e'.repeat(64), identity: expect.stringMatching(/^[a-f0-9]{64}$/), bundleRoot: fixture.material.bundleRoot,
       archiveSha256: hash(fixture.assets.get('liftoff-0.13.0-linux-x64.tar.gz')!)
     });
   });
