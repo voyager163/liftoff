@@ -228,6 +228,15 @@ Depends on 9 and 15-16 for qualified candidate artifacts and client contracts, n
 - [ ] 17.7 After explicit operator approval, deploy backward-compatible gateway/table/DCR changes first, then Grafana; verify real identity access, synthetic ingestion/query, 180-day retention and continued absence of request/IP/console logging.
 - [ ] 17.8 Exercise approved feature disablement/dashboard rollback without destroying the protected group, workspace/data, backend or perimeter; verify existing anonymous ingestion remains operational and records survive.
 
+Tasks 17.2-17.6 have a bounded source-preparation layer: separate pinned
+OpenTofu resource/dashboard roots, workspace-scoped Logs identity, native
+Grafana panels/KQL, registered synthetic exclusions, paused query-availability
+and explicit monthly-expectation rules, portable offline tests and operator
+runbooks. All 17.x flags remain unchecked: qualified task-9/16 candidate
+prerequisites, actual SKU/provider/quota/cost and state ownership, verified
+ingestion-fault signal, real identity/query/UI scenarios and approved live
+deployment/rollback are unmet. Static source is not deployment qualification.
+
 ## 18. Qualify the integrated release and complete the change
 
 Depends on all prior stages. This group is integration verification, not a substitute for earlier tests/documentation.

@@ -438,7 +438,20 @@ jobs:
         run: tofu -chdir=infrastructure/opentofu/telemetry validate
 
       - name: Check telemetry infrastructure privacy contract
-        run: npx vitest run tests/telemetry-infrastructure.test.ts
+        run: |
+          npm run check:telemetry-dashboards
+          npx vitest run tests/telemetry-infrastructure.test.ts tests/telemetry-dashboard.test.ts tests/telemetry-bootstrap.test.ts
+
+      - name: Validate Grafana roots without credentials or backends
+        run: |
+          tofu -chdir=infrastructure/opentofu/telemetry/grafana fmt -check
+          tofu -chdir=infrastructure/opentofu/telemetry/grafana init -backend=false -input=false -lockfile=readonly
+          tofu -chdir=infrastructure/opentofu/telemetry/grafana validate
+          tofu -chdir=infrastructure/opentofu/telemetry/grafana test -no-color
+          tofu -chdir=infrastructure/opentofu/telemetry/dashboards fmt -check
+          tofu -chdir=infrastructure/opentofu/telemetry/dashboards init -backend=false -input=false -lockfile=readonly
+          tofu -chdir=infrastructure/opentofu/telemetry/dashboards validate
+          tofu -chdir=infrastructure/opentofu/telemetry/dashboards test -no-color
 
   standard-node-templates:
     name: ${{ matrix.check-name }}

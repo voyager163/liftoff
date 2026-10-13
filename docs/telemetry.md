@@ -457,3 +457,45 @@ resource group.
 
 Normal `liftoff` commands never authenticate to Azure, read OpenTofu state, or
 deploy telemetry infrastructure.
+
+## Grafana adoption dashboard (source only)
+
+Reviewed source now lives in `infrastructure/opentofu/telemetry/grafana` and
+`infrastructure/opentofu/telemetry/dashboards`; it is **not deployed**. See the
+[operator runbook](../infrastructure/opentofu/telemetry/README.md#managed-grafana-source-preparation-not-deployed)
+in a source checkout. Infrastructure is operator-owned, not part of the CLI
+package or something normal commands apply.
+
+The authenticated native Grafana view shows approximate opted-in distinct
+projects over **30/90/180 days**, first-observed projects **within retained
+data**, latest observed CLI/policy/complete registry distributions, CLI versus
+heartbeat sources, last-observed data and explicitly configured monthly
+expectations. A clone/worktree shares its enrolled ID; independent monorepo
+roots differ. `dcount(..., 2)` is approximate (nominal 0.4% standard error).
+Source counts overlap; a heartbeat is not a daily active developer, healthy
+deployment or compliance proof. The public ingestion endpoint permits forged
+events, so these are directional observations, not a census or lifetime total.
+
+Query/permission/table errors stay **unavailable**, never zero projects.
+A successful empty query means no retained observations; older records may
+have expired. Operator-configured disabled reporting is shown separately from
+unknown configuration, never inferred per project from silence. Explicit
+monthly expectations use **31 days plus 9 days grace (40 days)**, followed by
+a 15-minute alert pending period; late/missing observations mean stale/unknown
+reporting, not abandonment. Query availability does not establish ingestion
+health. Verified ingestion-fault alerting is unavailable without a real
+privacy-safe signal; no low daily CLI-volume alert is used.
+
+Schema-2 semantic success/attention-required/cancelled/failure has its own panel.
+Schema-1 zero/nonzero history is labeled separately and never reinterpreted.
+Operator-registered synthetic UUIDs are excluded from every project query,
+including freshness; no extra payload field is added. No embedded secrets,
+public sharing, request/IP/console logging or new backend is introduced.
+
+Provider registration, Standard size/region/quota/actual recurring cost,
+protected state ownership, real datasource access, project ingestion,
+published heartbeat tooling and native UI/live query scenarios remain external
+qualification gates. Pausing alerts or rolling back dashboard JSON preserves
+workspace/tables, history, command ingress and backend/perimeter; it does not
+delete records or stop Managed Grafana service charges. Source tests are not
+production deployment or an exercised rollback.
