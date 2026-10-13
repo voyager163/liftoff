@@ -230,6 +230,14 @@ their repository/run scope and checkpoints that handle before metadata polling,
 even if run-list discovery is delayed. A legacy empty response requires exact
 independent run discovery; malformed or cross-scope acceptance never invents a
 handle or permits redispatch. Unexpected response fields are not retained.
+Actual terminal run status is checkpointed before the fallible job inventory
+read, including when source changes prevent a later outcome from being saved.
+Provider completion alone does not verify publication: unavailable job readback
+blocks artifact readiness. The existing explicit terminal-operation recovery
+gate remains required; recovery observes the same handle without dispatch.
+Prerequisite deployment success/failure is likewise checkpointed before recipe
+export or final local freshness checks; deployment completion does not invent
+registry, identity or role verification.
 Native processes, registered network reads
 and custody qualification have 30-second calls within one shared three-minute
 observation deadline; a timed-out dispatch is never automatically repeated.
@@ -237,7 +245,8 @@ Pending retries retain the original dispatch plan/time/handle while checking
 exact current reviewed authority, rather than retagging history to a newly
 timestamped observation plan. Actual completed provider operations remain
 completed even if immutable publication qualification is refused.
-Pending retries observe them without redispatch; uncertain dispatch
+Pending retries and explicitly approved terminal observation recovery do not
+redispatch; uncertain dispatch
 acceptance, multiple matching runs, mutable/changed tags, expired/revoked
 authority and failed jobs remain explicit blockers with retained partial-effect
 warnings. Workflow publication, deployment, health/release checks and recovery

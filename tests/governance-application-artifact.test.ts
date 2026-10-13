@@ -72,6 +72,9 @@ class ApplicationRunner implements CommandRunner {
   occupied = false;
   failPoll = false;
   onValidation: (() => void) | undefined;
+  onDeploymentRead: (() => Promise<void>) | undefined;
+  onExport: (() => Promise<void>) | undefined;
+  failExport = false;
   onManifestRead: (() => void) | undefined;
   actualDigest = imageDigest;
   tagMutable = false;
@@ -122,7 +125,11 @@ class ApplicationRunner implements CommandRunner {
       namespace: argument(command, '--namespace'), registrationState: this.providerRegistered ? 'Registered' : 'NotRegistered'
     });
     if (key.startsWith('deployment sub list ')) return result(command, this.occupied ? [{ id: this.prerequisite!.deploymentId }] : []);
-    if (key.startsWith('deployment sub export ')) return result(command, this.deployedTemplate);
+    if (key.startsWith('deployment sub export ')) {
+      await this.onExport?.();
+      if (this.failExport) return { ...result(command, null), status: 1, stderr: 'secret-provider-diagnostics' };
+      return result(command, this.deployedTemplate);
+    }
     if (key.startsWith('rest --method POST ') && key.includes('/validate?')) {
       this.onValidation?.();
       return result(command, { properties: { provisioningState: this.validationState } });
@@ -132,6 +139,7 @@ class ApplicationRunner implements CommandRunner {
       return result(command, { id: this.prerequisite!.deploymentId });
     }
     if (key.startsWith('rest --method GET ') && key.includes('/deployments/')) {
+      await this.onDeploymentRead?.();
       if (this.failPoll) return { ...result(command, null), status: 1, stderr: 'secret-provider-diagnostics' };
       return result(command, { id: this.prerequisite!.deploymentId, name: this.prerequisite!.deploymentName,
         properties: { provisioningState: this.deploymentState } });
@@ -183,6 +191,7 @@ class ArtifactTransport implements GitHubActivationTransport {
   movedSource = false;
   dispatchResponse: Record<string, unknown> | null = null;
   onRunRead: (() => Promise<void>) | undefined;
+  onJobsRead: (() => Promise<void>) | undefined;
   async request(request: GitHubRequest) {
     this.calls.push(request);
     let data: unknown;
@@ -197,10 +206,13 @@ class ArtifactTransport implements GitHubActivationTransport {
     else if (request.method === 'POST') {
       this.dispatched = true;
       return { status: this.dispatchResponse ? 200 : 204, headers: {}, data: this.dispatchResponse };
-    } else if (request.path.includes('/jobs')) data = { total_count: 1, jobs: [{
-      id: 902, name: 'Liftoff application artifact', runner_id: 444, runner_group_id: 333,
-      conclusion: this.conclusion, steps: [{ name: `Liftoff artifact ${imageDigest} run ca1`, conclusion: 'success' }]
-    }] };
+    } else if (request.path.includes('/jobs')) {
+      await this.onJobsRead?.();
+      data = { total_count: 1, jobs: [{
+        id: 902, name: 'Liftoff application artifact', runner_id: 444, runner_group_id: 333,
+        conclusion: this.conclusion, steps: [{ name: `Liftoff artifact ${imageDigest} run ca1`, conclusion: 'success' }]
+      }] };
+    }
     else if (request.path.includes('/workflows/')) {
       const runs = this.dispatched && !this.invisible ? [this.run()] : [];
       if (this.duplicate && runs.length) runs.push(this.run());
@@ -473,6 +485,73 @@ describe('application source producers behind real prerequisites', () => {
     expect(outcome).toMatchObject({ status: 'pending', operation: { resourceId: f.prerequisite.deploymentId } });
     expect(JSON.stringify(outcome)).not.toContain('secret-provider-diagnostics');
   });
+  it.each(['read-failure', 'source-change'] as const)(
+    'checkpoints completed prerequisite dispatch before %s during recipe export without inventing resource proof', async (kind) => {
+      const f = await fixture();
+      let checkpointDuringExport: Awaited<ReturnType<typeof readState>> | undefined;
+      const policyPath = path.join(f.root, '.liftoff', 'governance', 'policy.md');
+      const policy = await readFile(policyPath, 'utf8');
+      f.runner.failExport = true;
+      f.runner.onExport = async () => {
+        checkpointDuringExport = await readState(f.root);
+        if (kind === 'source-change') await writeFile(policyPath, `${policy}\n`);
+      };
+      const first = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
+        runner: f.runner, now: coverageNow, adapters: f.input.adapters });
+      expect(first).toMatchObject({ applied: false, reason: 'blocked' });
+      expect(checkpointDuringExport?.phases[f.phase.id]).toMatchObject({
+        state: 'running', operation: { resourceId: f.prerequisite.deploymentId, status: 'completed' }
+      });
+      const saved = (await readState(f.root))!;
+      const operation = saved.phases[f.phase.id].operation!;
+      expect(operation.status).toBe('completed');
+      expect(saved.phaseOutputs?.[f.phase.id]?.resources).toEqual([{
+        provider: 'azure', resourceType: 'Microsoft.Resources/deployments', resourceId: f.prerequisite.deploymentId
+      }]);
+      expect(saved.phaseOutputs?.[f.phase.id]?.values.workloadPrincipalId).toBeUndefined();
+      expect(saved.phases[f.phase.id].evidence.some((entry) => entry.result === 'verified')).toBe(false);
+      expect(JSON.stringify(first)).not.toContain('secret-provider-diagnostics');
+      if (kind === 'source-change') {
+        expect(first.blockers).toEqual(['Relevant project inputs changed during execution; no outcome was persisted.']);
+        expect(await readFile(policyPath, 'utf8')).toBe(`${policy}\n`);
+      } else {
+        f.runner.failExport = false;
+        f.runner.onExport = undefined;
+        const inspection = await coverageInspection({ root: f.root, phaseId: f.phase.id, state: saved,
+          activationInputs: f.inputs, approvals: f.input.inspection.approvals, evidence: f.input.inspection.evidence,
+          reviewedPlans: [f.input.plan] });
+        inspection.loadedState = await loadActivationState(f.root);
+        for (const id of ['bootstrap-local', 'remote-import-verified'] as const) {
+          inspection.contexts[id].reviewedPlans = f.input.inspection.contexts[id].reviewedPlans;
+        }
+        await expect(executeApplyNext({ inspection, reinspect: async () => inspection, runner: f.runner,
+          now: new Date(coverageNow.getTime() + 1000), adapters: f.input.adapters })).rejects.toThrow(/terminal external operation requires explicit recovery/);
+        const next = await executeApplyNext({ inspection, reinspect: async () => inspection, runner: f.runner,
+          now: new Date(coverageNow.getTime() + 1000), adapters: f.input.adapters, recovery: true });
+        expect(next, JSON.stringify(next)).toMatchObject({ applied: true });
+        expect((await readState(f.root))!.phases[f.phase.id].operation).toMatchObject({
+          operationId: operation.operationId, startedAt: operation.startedAt, planDigest: operation.planDigest, status: 'completed'
+        });
+      }
+      expect(f.runner.writes).toHaveLength(1);
+    }
+  );
+  it('preserves actual failed prerequisite status when concurrent source changes refuse the final outcome', async () => {
+    const f = await fixture();
+    const policyPath = path.join(f.root, '.liftoff', 'governance', 'policy.md');
+    const policy = await readFile(policyPath, 'utf8');
+    f.runner.deploymentState = 'Failed';
+    f.runner.onDeploymentRead = async () => { await writeFile(policyPath, `${policy}\n`); };
+    const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
+      runner: f.runner, now: coverageNow, adapters: f.input.adapters });
+    expect(outcome).toMatchObject({ applied: false, reason: 'blocked',
+      blockers: ['Relevant project inputs changed during execution; no outcome was persisted.'] });
+    expect((await readState(f.root))!.phases[f.phase.id]).toMatchObject({
+      state: 'running', operation: { resourceId: f.prerequisite.deploymentId, status: 'failed' }
+    });
+    expect(await readFile(policyPath, 'utf8')).toBe(`${policy}\n`);
+    expect(f.runner.writes).toHaveLength(1);
+  });
   it('checkpoints only the actual accepted operation, never future resources', async () => {
     const f = await fixture(); f.runner.deploymentState = 'Running';
     const checkpoints: Parameters<NonNullable<PhaseAdapterExecutionInput['recordApplicationProgress']>>[0][] = [];
@@ -545,10 +624,13 @@ describe('immutable application publication and independent readback', () => {
     const outcome = await executeApplicationArtifactPublication(f.input);
     expect(outcome).toMatchObject({ status: 'completed', resultState: 'verified',
       operation: { operationId: 'github-actions:901' } });
-    expect(progress).toHaveBeenCalledOnce();
+    expect(progress).toHaveBeenCalledTimes(2);
     expect(progress.mock.calls[0]![0]).toMatchObject({
       operation: { operationId: 'github-actions:901', resourceId: '/repos/owner/repo/actions/runs/901' },
       liveReadback: [{ provider: 'github', resourceId: '/repos/owner/repo/actions/runs/901' }]
+    });
+    expect(progress.mock.calls[1]![0]).toMatchObject({
+      operation: { operationId: 'github-actions:901', status: 'completed' }
     });
     expect(f.transport.calls.filter((entry) => entry.method === 'GET' && entry.path.includes('/actions/workflows/'))).toHaveLength(1);
     expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
@@ -583,6 +665,70 @@ describe('immutable application publication and independent readback', () => {
     const next = await executeApplicationArtifactPublication({ ...f.input, now: new Date(coverageNow.getTime() + 1000) });
     expect(next, JSON.stringify(next)).toMatchObject({ status: 'pending',
       operation: { operationId: operation.operationId, startedAt: operation.startedAt, planDigest: operation.planDigest } });
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+  });
+  it.each(['success', 'failure'] as const)(
+    'checkpoints actual terminal %s run status before a failing job read and recovers without dispatch', async (conclusion) => {
+      const f = await fixture(true);
+      f.transport.conclusion = conclusion;
+      let checkpointDuringJobs: Awaited<ReturnType<typeof readState>> | undefined;
+      f.transport.onJobsRead = async () => {
+        checkpointDuringJobs = await readState(f.root);
+        throw new GitHubActivationError('provider-response', 'Isolated job observation is unavailable.', 503);
+      };
+      const first = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
+        runner: f.runner, now: coverageNow, adapters: f.input.adapters });
+      expect(first).toMatchObject({ applied: false, reason: 'blocked',
+        blockers: [expect.stringMatching(/job observation is unavailable/)] });
+      expect(checkpointDuringJobs?.phases[f.phase.id]).toMatchObject({
+        state: 'running', operation: { operationId: 'github-actions:901', status: 'completed' }
+      });
+      const saved = (await readState(f.root))!;
+      const operation = saved.phases[f.phase.id].operation!;
+      expect(saved.phases[f.phase.id]).toMatchObject({ state: 'blocked',
+        operation: { operationId: 'github-actions:901', status: 'completed' } });
+      expect(saved.phaseOutputs?.[f.phase.id]?.values.artifactDigest).toBeUndefined();
+      expect(saved.phaseOutputs?.[f.phase.id]?.values.immutableImage).toBeUndefined();
+      expect(saved.phases[f.phase.id].evidence).toEqual([
+        expect.objectContaining({ phaseId: f.phase.id, result: 'failed' })
+      ]);
+      f.transport.onJobsRead = undefined;
+      const inspection = await coverageInspection({ root: f.root, phaseId: f.phase.id, state: saved,
+        activationInputs: f.inputs, approvals: f.input.inspection.approvals, evidence: f.input.inspection.evidence,
+        reviewedPlans: [f.input.plan] });
+      inspection.loadedState = await loadActivationState(f.root);
+      for (const id of ['bootstrap-local', 'remote-import-verified'] as const) {
+        inspection.contexts[id].reviewedPlans = f.input.inspection.contexts[id].reviewedPlans;
+      }
+      await expect(executeApplyNext({ inspection, reinspect: async () => inspection, runner: f.runner,
+        now: new Date(coverageNow.getTime() + 1000), adapters: f.input.adapters })).rejects.toThrow(/terminal external operation requires explicit recovery/);
+      const next = await executeApplyNext({ inspection, reinspect: async () => inspection, runner: f.runner,
+        now: new Date(coverageNow.getTime() + 1000), adapters: f.input.adapters, recovery: true });
+      expect(next, JSON.stringify(next)).toMatchObject({ applied: conclusion === 'success' });
+      expect((await readState(f.root))!.phases[f.phase.id].operation).toMatchObject({
+        operationId: operation.operationId, startedAt: operation.startedAt, planDigest: operation.planDigest,
+        status: conclusion === 'success' ? 'completed' : 'failed'
+      });
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    }
+  );
+  it('retains actual terminal run progress when source changes during a later failed job observation', async () => {
+    const f = await fixture(true);
+    f.transport.onJobsRead = async () => {
+      await writeFile(path.join(f.root, 'backend', 'Dockerfile'), 'FROM preserved-customization\n');
+      throw new GitHubActivationError('provider-response', 'Isolated job observation is unavailable.', 503);
+    };
+    const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
+      runner: f.runner, now: coverageNow, adapters: f.input.adapters });
+    expect(outcome).toMatchObject({ applied: false, reason: 'blocked',
+      blockers: ['Relevant project inputs changed during execution; no outcome was persisted.'] });
+    const saved = (await readState(f.root))!;
+    expect(saved.phases[f.phase.id]).toMatchObject({
+      state: 'running', operation: { operationId: 'github-actions:901', status: 'completed' }
+    });
+    expect(saved.phaseOutputs?.[f.phase.id]?.values.artifactDigest).toBeUndefined();
+    expect(saved.phases[f.phase.id].evidence).toEqual([]);
+    expect(await readFile(path.join(f.root, 'backend', 'Dockerfile'), 'utf8')).toBe('FROM preserved-customization\n');
     expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
   });
   it.each(['run-url', 'html-url', 'run-id', 'missing'] as const)(
