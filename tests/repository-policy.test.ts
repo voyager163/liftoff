@@ -37,7 +37,9 @@ describe('source repository setup policy', () => {
   });
   it.each([
     'trigger', 'runner', 'timeout', 'node', 'architecture', 'npm', 'npm-identity', 'native-budget', 'opentofu',
-    'openspec', 'full-suite-filter', 'coverage-workers', 'coverage-verifier',
+    'docker-download', 'docker-checksum', 'compose-download', 'compose-checksum', 'compose-layout', 'compose-evidence',
+    'openspec', 'openspec-cutoff', 'openspec-profile', 'gateway-install',
+    'full-suite-filter', 'coverage-workers', 'coverage-verifier',
     'focused-file', 'package', 'policy', 'clean', 'missing-evidence'
   ])('rejects incomplete hosted native custody qualification: %s', async fault => {
     const workflow = await readWorkflow(nativeCustodyWorkflowFile);
@@ -57,7 +59,40 @@ describe('source repository setup policy', () => {
     }
     if (fault === 'native-budget') delete job.env.OB1_SUPPORT_REMAINING;
     if (fault === 'opentofu') job.steps[4].with.tofu_version = '1.13.1';
+    if (fault === 'docker-download') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('docker-29.8.2.tgz', 'docker-latest.tgz');
+    }
+    if (fault === 'docker-checksum') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('5ffa2bafbabe0734', '0ffa2bafbabe0734');
+    }
+    if (fault === 'compose-download') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('v5.5.1', 'v5.6.0');
+    }
+    if (fault === 'compose-checksum') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('998735c9b6fe68a4', '098735c9b6fe68a4');
+    }
+    if (fault === 'compose-layout') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('cli-plugins/docker-compose', 'plugins/docker-compose');
+    }
+    if (fault === 'compose-evidence') delete step('Record hosted native qualification evidence').env.NATIVE_COMPOSE_EXECUTABLE;
     if (fault === 'openspec') step('Install pinned OpenSpec').run = 'npm install @fission-ai/openspec@latest';
+    if (fault === 'openspec-cutoff') {
+      step('Install pinned OpenSpec').run =
+        step('Install pinned OpenSpec').run.replace('2026-09-26T23:59:59Z', '2026-09-27T23:59:59Z');
+    }
+    if (fault === 'openspec-profile') {
+      step('Install pinned OpenSpec').run =
+        step('Install pinned OpenSpec').run.replace('node scripts/native-custody-qualification.mjs verify-openspec-profile \\\n', '');
+    }
+    if (fault === 'gateway-install') {
+      step('Install dependencies').run =
+        step('Install dependencies').run.replace('npm ci --prefix services/telemetry-ingest', '');
+    }
     if (fault === 'full-suite-filter') step('Run unfiltered full suite').run += ' -t custody';
     if (fault === 'coverage-workers') {
       step('Run source-complete CLI coverage').run =

@@ -307,8 +307,31 @@ The job installs npm 12.0.2 into an isolated runner-temp prefix and prepends onl
 that package's `.bin` directory. Before tests it proves that the selected launcher
 resolves to `npm-cli.js`, its owning package is exactly `npm@12.0.2`, and direct
 Node execution of that launcher agrees with the ordinary npm probe. It also
-enables the native OpenSpec execution and initialization lanes with the reviewed
-finite identity budgets:
+downloads the official Apple Silicon Docker 29.8.2 archive and Compose 5.5.1
+binary over HTTPS, verifies the reviewed archive/binary SHA-256 values, installs
+only `liftoff-docker/bin/docker` and the separately bound
+`liftoff-docker/cli-plugins/docker-compose`, and rechecks both installed binary
+digests and versions. The Docker archive digest is
+`5ffa2bafbabe073470f0333f4a129599230b73d1170bb61146b3d9b08e1d1325`,
+the installed Docker binary digest is
+`b95f15a2e7c6a13c17b8af361a2797981bc858a87a1537c38cfa117a0c5009e1`,
+and the Compose binary digest is
+`998735c9b6fe68a4f05895e6ea73d71ad06f9fc7046383ad89e47346781b6af5`.
+No Docker daemon is started.
+
+OpenSpec is installed with npm 12 in a global-style isolated prefix using the
+historical registry cutoff `2026-09-26T23:59:59Z`. Before the launcher enters
+`PATH`, the job scans the complete package tree twice and requires the qualified
+2,590-file, 299-directory, two-link, 11,862,860-byte content profile with digest
+`sha256:05d52efd0875c1ff0c1bd0aec13f7128a4baab787ea6b31f33fa7360cd53bde2`.
+This binds the historically qualified dependency graph instead of accepting
+current transitive resolution or refreshing the frozen expectation. The root
+and telemetry-ingest packages are then installed independently with their
+committed locks so source-complete coverage uses each package's own Vitest
+launcher.
+
+The job also enables the native OpenSpec execution and initialization lanes
+with the reviewed finite identity budgets:
 `LIFTOFF_OPENSPEC_B_TESTS=1 OB1_VERSION_REMAINING=2
 OB1_SUPPORT_REMAINING=10 LIFTOFF_OI_TESTS=1`. The actual separately bound
 Compose plugin must remain on release line 5 at version 5.5.1 or later; Docker

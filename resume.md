@@ -24,9 +24,9 @@ remaining work, and cautions needed to continue the OpenSpec change
   branch. The tip containing this MacBook-return update is a later handoff commit.
 - The branch tip containing this file is the handoff commit. After fetching,
   run `git rev-parse HEAD` to record its full SHA.
-- OpenSpec progress remains 78/136 tasks complete; 58 remain.
+- OpenSpec progress remains 81/136 tasks complete; 55 remain.
 - Task 13.5 remains unchecked after failed Windows full-suite/coverage
-  qualification. Tasks 13.6 and 13.7 are also unchecked.
+  qualification. Task 13.6 also remains unchecked; task 13.7 is complete.
 - Read "MacBook return checkpoint, 2026-10-12" below first for the latest
   transfer status and next actions; earlier sections retain the original
   architecture and qualification history.
@@ -1122,6 +1122,35 @@ candidate is:
   zero recorded steps; the repository-policy job passed. It produced no native
   evidence and must not qualify `028134f2`.
 
+The isolated npm/native-budget/Compose correction was committed and pushed as
+`be537bf1871b1ed4bba2e0a69bcd8e5072b3f94b`; local and
+`origin/voyager163-liftoff-modernization` readback matched and the tree was
+clean at dispatch. The single replacement native candidate is:
+
+- Workflow file: `.github/workflows/repository.yml`.
+- Registered workflow name: `Repository setup`.
+- Event: `workflow_dispatch`.
+- Run:
+  `https://github.com/voyager163/liftoff/actions/runs/38346014663`.
+- Head revision:
+  `be537bf1871b1ed4bba2e0a69bcd8e5072b3f94b`.
+- Created at `2026-10-13T04:21:03Z`; the native job acquired a runner at
+  `2026-10-13T04:25:53Z`. Repository policy, exact toolchain verification,
+  clean-candidate verification, supported-stack, and build passed. The
+  unfiltered full suite ran from `2026-10-13T04:26:32Z` through
+  `2026-10-13T05:12:37Z` (46 minutes 5 seconds) and failed. Source-complete
+  coverage then began and remains diagnostic only regardless of its result.
+  The Actions logs API does not expose the in-progress job log; retrieve and
+  retain the exact failed case/assertion, raw full-suite report, selected
+  npm/OpenSpec/Compose identities, and coverage evidence after the job
+  completes. Do not infer an environmental cause or dispatch another run
+  before that evidence is inspected.
+
+Do not dispatch a parallel duplicate. Qualification requires this run's
+uncancelled native job, exact-revision evidence artifact, zero full-suite and
+coverage failures, complete executable-source inventory, and every raw metric
+strictly above 80%.
+
 The existing cross-platform workflow was also dispatched on the same exact
 corrected candidate to prove the Windows assertion on a real Windows host:
 
@@ -1135,10 +1164,76 @@ corrected candidate to prove the Windows assertion on a real Windows host:
 - Created at `2026-10-13T03:41:57Z`; status was `in_progress` at the latest
   readback with no completed job failure observed.
 
-Do not qualify task 13.5 from either run until the native artifact and
-cross-platform results have been independently inspected against this exact
-revision. The existing telemetry 15.4/15.5 contribution remains preserved, but
-no further telemetry transport or enrollment work belongs to this continuation.
+An independent audit of this exact `028134f2` CI run verified the completed
+coverage gates without reclassifying them as native or as evidence for the
+later `be537bf1` candidate:
+
+- CLI coverage: 506 executable sources with digest
+  `sha256:29dc50e427a9f68330495d42dcbab87da672e363fe1467f90d4d970acad476e4`;
+  all 915 committed source/test/configuration inventory blobs verified; 9,940
+  passed, 0 failed, and 365 skipped tests.
+- CLI raw metrics: statements 85.1537%, branches 80.8861%, functions 91.0413%,
+  and lines 88.1084%. Six negative inferred-else hits remain uncovered.
+- Gateway coverage: 4 sources; all 20 committed inventory blobs verified; 211
+  passed and 0 failed tests; statements 94.1860%, branches 81.6143%, functions
+  94.1176%, and lines 95.1020%.
+
+These coverage jobs ran on Linux with Node 24.20/npm 12.0.2. Run
+`38342935367` attempt 1 completed successfully at `2026-10-13T04:36:31Z`.
+Both Linux shards, both macOS shards, both Windows shards, all standard-template
+jobs, both coverage gates, the isolated native parser, runtime-inclusive bundle,
+Telemetry OpenTofu, and all three aggregate `Test` jobs passed. In particular,
+the real Windows shard-1 regression proves the metadata-mode correction without
+weakening protected credential delivery or treating Windows mode bits as DACL
+evidence. The independent receipts are retained outside the repository under
+`files/custody-hosted-38342935367-coverage/`. This evidence freshens the
+cross-platform/coverage record for `028134f2` only; it does not qualify task
+13.5 for `be537bf1` and does not establish task 13.6 production custody.
+
+An additional independent platform-report audit verified all six raw shard
+reports against run `38342935367`, attempt 1, exact head `028134f2`, and each
+successful job's `head_sha`. On each operating system, the two shards formed an
+exact partition of all 310 tracked `.test.ts` files: 155 files per shard with
+no overlap or omission. Raw results were:
+
+- Linux shard 1: 4,982 passed, 0 failed, 188 skipped.
+- Linux shard 2: 4,962 passed, 0 failed, 173 skipped.
+- macOS shard 1: 4,978 passed, 0 failed, 192 skipped.
+- macOS shard 2: 4,962 passed, 0 failed, 173 skipped.
+- Windows shard 1: 4,889 passed, 0 failed, 281 skipped.
+- Windows shard 2: 4,922 passed, 0 failed, 213 skipped.
+
+The exact credential-enrollment regression passed in Windows shard-1 job
+`115117764571`, and installed-package smoke steps succeeded on each operating
+system's shard 1. All 20 jobs and all three aggregate jobs succeeded. The
+receipt and retained API metadata/raw reports are stored outside the repository
+under `files/custody-hosted-38342935367-platforms/`. This remains hosted
+Node-24.20 evidence for `028134f2`; it is not the exact-toolchain macOS ARM64
+qualification for `be537bf1` and is not production custody qualification.
+
+The independently audited native development-bundle/parser artifacts for the
+same CI run also passed against exact `028134f2`:
+
+- Source/config digest:
+  `sha256:29dc50e427a9f68330495d42dcbab87da672e363fe1467f90d4d970acad476e4`.
+- All seven builder Git blobs, package/lock binding, package
+  `@msn-control/liftoff@0.12.3`, and darwin/arm64 artifact identity verified.
+- Development installed bundle: 2 files, 42 passed, 0 failed, 1
+  case-sensitive-host skip; all 11 actual-installed cases passed.
+- Required native HCL: 3 files, 276 passed, 0 failed, 0 skipped.
+
+The artifact retains `releaseReady=false`. Its receipt is stored outside the
+repository under
+`files/custody-hosted-38342935367-native/independent-audit.json`. It is
+development bundle/parser evidence only, not the full exact-toolchain
+`be537bf1` native custody run, production execution, or signed-release
+qualification.
+
+Neither cancelled native attempt on `3223517` or `028134f2`, nor the separate
+Linux coverage evidence above, can qualify task 13.5. Only the exact
+`be537bf1` replacement run can provide the required hosted native artifact.
+The existing telemetry 15.4/15.5 contribution remains preserved, but no
+further telemetry transport or enrollment work belongs to this continuation.
 The owning `voyager163-telemetry-delivery-budget` layer is reconciling only
 those telemetry commits/contracts onto its independent `develop`-based branch;
 it does not import this continuation's custody, resume, or workflow changes.
@@ -1183,3 +1278,345 @@ are met. Do not duplicate that telemetry transport work or mutate its branch.
 The current continuation remains limited to custody/native qualification and
 the Windows metadata-mode correction. The stack landing does not waive tasks
 13.5 or 13.6 and does not convert hosted Ubuntu coverage into native evidence.
+
+App-native PR 159 is open and non-draft for the separate group-16 owner:
+parent PR 158 branch `voyager163-telemetry-delivery-budget` at
+`2775077190df79ee5e8b81f8d04a6e12c0743249` to child branch
+`voyager163-project-telemetry-enrollment` at
+`abbdd7e27c007f505b77638d1126869d677a0120`. Session
+`48ac3104-697c-468e-8a00-3bcf0c860bdc` owns only tasks 16.1, 16.2, 16.7, and
+16.8; its branch-local state is 75/136 and does not change this continuation's
+global 81/136 state until scoped integration. Task 16.3 still requires a
+qualified installer migration. Tasks 16.4 through 16.6 lack a genuinely
+qualified published Linux heartbeat archive/digest and exact activation
+producer; public heartbeat/activation entry points correctly refuse. There is
+no active cron or production effect.
+
+Exact-head CI run `38348040097` and repository setup run `38348040104` had only
+just started at the ownership report and were not qualification evidence.
+Registration/landing remains pending until the owning session finishes or
+repairs hosted qualification. Do not duplicate this work, import its source or
+flags, mutate its refs, or infer production enrollment from a waitable run.
+
+Parent review subsequently reproduced a real old-head defect at `abbdd7e`: the
+project reporter nests observation plus transport inside the outer shared
+`withinBudget`. After the fetch starts and the deadline expires, the transport
+correctly returns `attempted: true`, but the outer race discards that result
+and reports `attempted: false`. An exact committed-control-flow reproduction
+observed one fake fetch, abort, `true` from the inner transport, and `false`
+from the outer reporter; it made no live request. The owning session has the
+repair and actual-report regression instructions. Treat `abbdd7e` and its CI
+as diagnosis only.
+
+Session `48ac3104-697c-468e-8a00-3bcf0c860bdc` completed and pushed the surgical
+repair as fresh PR-159 head
+`c09be2ecf18bca59878cc2f39427cc51a2e07a18`; parent PR-158 head
+`2775077190df79ee5e8b81f8d04a6e12c0743249` remains unchanged. Only
+observation/preparation remains inside the outer budget, while the existing
+bounded channel returns its truthful `attempted` result under the same
+1,000-millisecond deadline. Parent review covered the actual reporter and CLI
+regressions. The owner reported 17 files, 559 tests, build, installed-package
+smoke, repository policy, supported-stack, and strict OpenSpec validation
+passing. Fresh CI run `38349182167` and repository-setup run `38349182149`
+then exposed another real contract failure: Linux shard 2 failed
+`tests/telemetry-contract.test.ts:41` because the exhaustive anonymous
+exclusion set omitted six new management IDs. Treat `c09be2e` as diagnostic
+only. The owner fixed all six exclusions plus seven regressions without a
+schema or budget change and published replacement PR-159 head
+`2d87c0825488e3840253cae114408a20e550612a`. Fresh CI run `38350921935`
+and repository-setup run `38350921933` were pending at the latest report.
+Grafana's ordinary forward merge of `2d87c08` is approved. Registration/landing
+remains pending until the replacement head qualifies.
+Tasks 16.3 through 16.6 remain unchecked/refusing; source/schema/interfaces are
+unchanged, and no source or global task flag is copied into this continuation's
+81/136 state.
+
+PR 158 also already had direct-head workflow dispatch `38344594888`; no new
+dispatch was created. The run completed successfully with all 20 jobs on exact
+parent head `2775077190df79ee5e8b81f8d04a6e12c0743249`. All six raw platform
+reports formed exact 302-file partitions per operating system: 151 files per
+shard with no overlap or omission. Results were Linux 1 4,959/0/188, Linux 2
+4,907/0/173, macOS 1 4,955/0/192, macOS 2 4,907/0/173, Windows 1
+4,866/0/281, and Windows 2 4,867/0/213 passed/failed/skipped. Package smoke and
+aggregate gates passed.
+
+Independent direct-head coverage verification tied 497 CLI sources and all 898
+inventory blobs to source digest
+`sha256:870f502a6184f60d7f8566f1f127ad822946c2e3ac91c8b102dd66b0c5f74757`:
+9,862 passed, 0 failed, 365 skipped; statements 36,755/43,186 (85.1086%),
+branches 32,049/39,658 (80.8135%), functions 6,946/7,642 (90.8924%), and
+lines 32,766/37,174 (88.1422%). Six negative inferred-else hits remained
+uncovered. Gateway verification tied 4 sources and all 20 blobs to digest
+`sha256:3e32017987886b56fa30ecae1c890674c61f073b5d8b17bf1cfa43c9db8a2c8f`:
+211 passed, 0 failed; statements 243/258 (94.1860%), branches 182/223
+(81.6143%), functions 64/68 (94.1176%), and lines 233/245 (95.1020%).
+
+The direct native report audit verified all seven immutable builder blobs,
+package/lock binding, 497-source digest above, configuration digest
+`sha256:63b6e933a0e58b7a551e8e0794067fa29130736bb48b31d27bbcad935b13f2f8`,
+42 passed/0 failed/1 skipped bundle cases with all 11 actual-installed cases
+passing, and 276 passed/0 failed/0 skipped HCL cases. It retains
+`releaseReady=false`: the metadata/report artifact did not include installed
+bundle bytes for an independent binary rehash and does not prove physical
+minimum-host, signed release, reproducible HCL correspondence, production
+custody, publication, or Azure qualification.
+
+PR run `38344533020` remains separate merge-tree-equivalent evidence. PR 158 is
+hosted-qualified with all 21 required PR checks green, and direct manual run
+`38344594888` is globally complete. The platform helper now treats the Windows
+credential regression according to immutable-source applicability: exact
+`2775077` does not track that test. A separate re-audit of exact `028134f2`
+retains the mandatory Windows credential case and its passing 310-file-per-OS
+receipt without overwriting the earlier receipt. None of this is production
+telemetry or native custody qualification.
+
+A read-only named Azure telemetry re-observation found the existing Korea
+Central resource group/resources and a six-column `Command` table with
+180/180-day retention. The DCR exposes only the command stream. There is no
+`Project` table or Grafana resource; `Microsoft.Dashboard` is not registered
+although it advertises Korea Central. The observation performed no
+authentication, provider, resource, or production mutation and read no event
+or state payloads. It does not establish production ingestion readiness.
+This defect, repair, hosted evidence, and read-only observation do not change
+any 13.x source/flags or establish release support.
+
+The retained partial task-17.1 metadata receipt is
+`files/telemetry-production-readonly-20261013.json` in the coordinating
+session. Both named resource groups, `rg-liftoff-prod` and the separate
+`rg-liftoff-tfstate`, are in Korea Central. The exact existing state account is
+`stliftofftfstatef5be1618`, container `tfstate`: private, shared keys disabled,
+TLS 1.2, `SecuredByPerimeter`, with enforced state-storage association and
+profile `telemetry-storage`. The source
+`production.tfvars.example` still says `eastus`; an example/default must never
+be used as future region authority in place of the observed named resources.
+
+No state payload, key, record, or state-object lineage/ownership evidence was
+read, and no registration, ingestion, deployment, or resource change occurred.
+This existing production telemetry state is not an approved disposable task
+13.6 custody scope and must not be borrowed for writes or custody
+qualification. Task-17 flags remain unchanged; this is partial metadata only.
+The already-running PR-158 direct-head dispatch `38344594888` was not
+duplicated. Its independently audited exact-`2775077` CLI/gateway totals,
+digests, test counts, and metrics agree with the separate PR merge-tree proof.
+All 21 required PR checks and all 20 direct-manual jobs are now green.
+
+Separate session `9952c9a2-1fce-4bac-bb07-5b3c59ede0f4` owns native
+distribution qualification tasks 9.2 through 9.8 from exact qualified
+`develop` base `692088e953801adef9d055856df523bbc83ebbf9`. Its branch is
+`voyager163-native-distribution-qualification`, published head at the recorded
+milestone
+`e454f7fe41de7b9e0eac4d0cceaf57dd1cf8c263`, with CI run `38350526965`.
+Its schema-1 receipt owner is `liftoff-native` and records canonical prefix,
+version-manifest, inventory hashes, source/target/launcher/runtime, and local
+attribution only. No task-9 flag has advanced; namespaces and public install
+remain unqualified. The scope is source, packaging, platform proof, and
+directly related documentation only. It must not copy this continuation's
+custody, source-contract, workflow, or resume changes; import global task
+flags; invent signing, namespace, or support-floor claims; or publish. Do not
+duplicate its 9.x work or mutate its branch/PR. Stage 10/11 follow the
+committed interface that owner establishes. A later `ee0...` native-9 commit
+was explicitly intermediate. The task-9 owner now owns the unchanged pure
+admission extraction in
+`distribution/native/native-release-admission.mjs` plus inert bundle policy;
+group 10 must forward-merge the final task-9 parent without duplicating that
+logic.
+
+Session `68be53ea-3101-4b13-b2a8-e520cecb7a48` (`Application artifact
+readiness`) is the sole owner for task 14.1. Session metadata verifies branch
+`voyager163-application-artifact-readiness`, based explicitly on published
+continuation head `be537bf1871b1ed4bba2e0a69bcd8e5072b3f94b`. The source gap
+is concrete: Azure phase plans currently expose placeholder prerequisites
+`acr` and `managedIdentity` plus artifact `verifyDigest`, while execution
+implements only phase 0 and provider/backend/bootstrap/custody ports default to
+null. This child owns only actual bounded new-environment registry/identity,
+source-bound immutable application publication/readback, adapters, tests, and
+documentation with current authority, ownership, and protected-path guards.
+
+It does not own tasks 14.2 through 14.9; task-13 source, workflow, or resume;
+cloud writes; disposable qualification; or source copying from another owner.
+Its code/source contracts must ordinary-forward-merge this session's corrected
+parent before qualification. No task-13 or task-14 flag is currently claimed.
+Do not duplicate task-14.1 implementation; task-13 triage and authoritative
+resume ownership remain here.
+
+Session `82044f9c-ecbb-44ec-84a0-10f915b21c99` (`Owner-aware CLI upgrades`)
+owns group 10 only. Session metadata verifies branch
+`voyager163-owner-aware-cli-upgrades`; it starts explicitly from native
+distribution owner branch `voyager163-native-distribution-qualification` at
+`e454f7fe41de7b9e0eac4d0cceaf57dd1cf8c263`. Group 10 will reuse the
+local-attribution receipt interface without claiming task-9 qualification,
+fabricating published metadata, performing host installation effects, or
+starting group 11. The native owner has been informed. Preserve the separate
+future 9→10→11 coordinator chain; it is independent from the
+PR-158→PR-159→Grafana chain. Do not import its source or task flags into this
+continuation before scoped integration.
+
+Session `dd2469fb-1715-433c-9155-925eee7eee4d` is the source-only owner for
+Grafana telemetry tasks 17.2 through 17.6. Session metadata verifies branch
+`voyager163-grafana-telemetry-dashboards`. It intentionally starts from
+diagnostic PR-159 head `c09be2e` and owns static OpenTofu, KQL, dashboards,
+alerts, documentation, and tests only. It must perform an ordinary forward
+merge of the eventual repaired PR-159 head before qualification. It has no
+Azure effects or qualification claim. Keep all actual-cloud task-17 gates,
+task 13.5/13.6, and blocked task-16 subparts honest; do not import child flags
+wholesale.
+
+The Grafana owner has published app-native non-draft PR 161 at head
+`5e77876644637fb08c394a8018a84d44bf907a2b`, based on exact repaired PR-159
+head `2d87c0825488e3840253cae114408a20e550612a` through the required ordinary
+forward merge. All task-17 flags remain unchecked and live blockers remain
+explicit; PR publication is not Azure qualification.
+
+Native distribution owner PR 160 is draft at current head
+`33efcfdd4a07f2584734633bc96ad79060c90a77`. It contains source-admission
+extraction plus the Windows CRLF archive-parser correction. Earlier `b366...`
+and `e454...` evidence is diagnostic only; fresh hosted qualification was
+pending at the latest report.
+
+## Completed native failure triage and corrected profile, 2026-10-13
+
+Replacement native run
+`https://github.com/voyager163/liftoff/actions/runs/38346014663`, attempt 1,
+completed failed on exact clean revision
+`be537bf1871b1ed4bba2e0a69bcd8e5072b3f94b`. The macOS ARM64 full-suite and
+source-complete coverage job was `115127497967`; repository-policy job
+`115127498147` succeeded. The selected runtime/tool versions were darwin/arm64,
+Node 24.21.0, npm 12.0.2, OpenTofu 1.12.6, OpenSpec 1.11.0, Go 1.27.0,
+Python 3.14.7, and uv 0.12.7.
+
+The original completed API job log and complete artifact were retained before
+another source candidate was created:
+
+- API job log SHA-256:
+  `e6ac305af23f1c5d9055cf735f39a2826a67ec423542224bfd50c0ad1ba3cef2`.
+- Artifact `11791759677` ZIP SHA-256:
+  `98950fa0f7d8eee7794d585582b5fbba8e6eb59fc6bf3f96cd247345e34e4001`.
+- Artifact full-suite log SHA-256:
+  `3896e7ae88fd6896ab2bb7bc2385f848403896e5258a303caeb29de8e082401f`.
+- Artifact coverage log SHA-256:
+  `259cd2718c3d2ec42e9c1107fe7f512c19bb0c234fafde2a33e8835ea9aaa98e`.
+- Failed evidence-record SHA-256:
+  `63f47b77a62c3f2184f20f3906e343eebe390ce473944e3b929088aba5dc837f`.
+
+The retained originals and normalized audit are outside the repository under
+`files/native-custody-failure-38346014663/`; earlier copies also remain under
+`files/native-custody-38346014663-artifact/`. Do not overwrite either set.
+
+The unfiltered report records 10,097 passed, 99 failed, and 117 pending tests.
+The JSON reporter's 25 runner-suite count is labeled as failed test files in
+its aggregate fields; the `testResults` array contains exactly 11 failed file
+entries. These are two views of the same attempt, not different runs. All 99
+individual failed assertions reduce to three
+environment/setup roots rather than custody-source regressions:
+
+- 96 assertions require an independently installed Docker CLI and separately
+  bound Compose plugin. The candidate had neither. These failures span
+  Compose/manual/local/publication/revalidation/Spec Kit cases, including ten
+  OpenSpec execution/initialization cases whose first unmet prerequisite is
+  Docker.
+- Two read-only actual OpenSpec execution/initialization probes reject the
+  incomplete non-global npm layout because required dependency
+  `@inquirer/core` resolves outside the captured package tree.
+- The one coverage-gate assertion correctly expected
+  `services/telemetry-ingest/node_modules/vitest/vitest.mjs`, but the workflow
+  omitted the gateway's locked install and Node fell back to root
+  `node_modules/vitest/vitest.mjs`.
+
+Coverage repeated the same failures. The retained evidence is tied to the
+clean `be537bf1` source inventory of 506 files with digest
+`sha256:8d71186fbe98052b903b46db90751c103b5553390527adb73f41dca081b6f50e`
+and 404-test inventory digest
+`sha256:e8c447023b37d63d2d57ebf3d79573e06b3b93b8b0e562e3d8c815b993e39b7d`,
+but its metrics object is empty and its ZIP has no final coverage report.
+Full-suite, coverage, coverage verification, and final evidence gates failed.
+Later focused/package/policy/OpenSpec successes cannot convert it into native
+qualification.
+
+The next native candidate corrects only these setup roots under the unchanged
+240-minute job bound, test deadlines, source inventory, coverage floor,
+baselines, and production admission:
+
+- Download the official Docker 29.8.2 Apple Silicon archive and Compose 5.5.1
+  binary over HTTPS. Require archive SHA-256
+  `5ffa2bafbabe073470f0333f4a129599230b73d1170bb61146b3d9b08e1d1325`,
+  installed Docker binary SHA-256
+  `b95f15a2e7c6a13c17b8af361a2797981bc858a87a1537c38cfa117a0c5009e1`,
+  and Compose binary SHA-256
+  `998735c9b6fe68a4f05895e6ea73d71ad06f9fc7046383ad89e47346781b6af5`.
+  Install only `liftoff-docker/bin/docker` and
+  `liftoff-docker/cli-plugins/docker-compose`, prepend only the bin directory,
+  and recheck exact file identities and versions without starting a daemon.
+- Install OpenSpec 1.11.0 into a global-style isolated npm-12 prefix using
+  registry cutoff `2026-09-26T23:59:59Z`. Before adding its bin directory to
+  `PATH`, scan the complete tree twice and require 2,590 files, 299
+  directories, two internal links, 11,862,860 bytes, and content-profile digest
+  `sha256:05d52efd0875c1ff0c1bd0aec13f7128a4baab787ea6b31f33fa7360cd53bde2`.
+  This reproduces the frozen qualified graph; it does not refresh the
+  expectation to current registry resolution.
+- Run both root `npm ci` and
+  `npm ci --prefix services/telemetry-ingest` so the coverage gate selects the
+  package-local gateway launcher.
+- Record Docker and Compose versions plus the verified OpenSpec content profile
+  in the revision-bound native evidence.
+
+The official Docker archive and Compose binary execute as native arm64 Mach-O
+programs on the physical Mac profile and report
+`Docker version 29.8.2, build 7fc2dff` and `5.5.1`. The OpenSpec cutoff
+reproduces the exact frozen counts and content digest. Repository policy now
+rejects a changed download, checksum, layout, cutoff, profile verifier, or
+missing gateway install.
+
+The exact 11 file entries that failed in run `38346014663` were then rerun on
+the physical Apple Silicon Mac with one worker, the same native environment
+flags and deadlines, npm 12.0.2, OpenTofu 1.12.6, OpenSpec 1.11.0, Docker
+29.8.2, Compose 5.5.1, the complete qualified OpenSpec tree, and the
+telemetry-ingest locked install. All 11 files passed: 279 tests passed, 19
+intentional host/profile cases were skipped, and zero failed in 1,872.89
+seconds. The complete 2,440,034-byte raw log is retained outside the repository
+as `files/native-custody-corrected-profile/prior-failures-focused.log` with
+SHA-256
+`0909b44befdae3bfeee2b392fce9152f99935bb5808766e169a06fe3c2c5efc0`.
+`npm run smoke:package` also passed for `@msn-control/liftoff@0.12.3` on these
+source bytes. The final pre-commit source validation used npm 12.0.2 and
+OpenSpec 1.11.0: supported-stack and build passed; the native-evidence,
+repository-policy, and documentation selection passed 166/166 tests across
+three files; repository policy passed; strict noninteractive OpenSpec
+validation passed; and `git diff --check` passed.
+
+These focused and package checks are prerequisites only; task 13.5 remains
+unchecked until a new clean committed candidate completes the unfiltered native
+suite and source-complete coverage with zero failures and all four raw metrics
+strictly above 80%.
+
+Downstream ownership remains separate:
+
+- Draft PR 160 now supersedes earlier native-distribution heads at
+  `6279d55752836f88c9c3c29200bf68cf5cc9406d`. Its only new source is the
+  isolated-copy correction for the Windows installed-package running-image
+  fixture. The owner reported 220 focused passes; fresh actual Windows proof
+  remained pending. Task 9.7 alone is checked on that owning branch. Task 9.4
+  and the remaining production/public qualification gates are incomplete.
+  Do not import its task flags or source here.
+- PR 159's current repaired head is
+  `c477d24d50e906a98afd718682d6aa2466693515`, changing only three current
+  parser/UI test files while retaining all frozen released history. Actual
+  synthetic merge `71ee9796910fff333cfd929df73c0209bc326ebc` has fresh
+  source-complete CLI evidence for 503 sources, 9,951 passed/0 failed/365
+  explicitly unrun tests, and all four raw metrics above 80.01%; remaining
+  platform gates were still pending. Grafana PR 161 accepted the required
+  ordinary merge and is now at
+  `4945a9741fb4ecf7ccdc73f9b9109e28b7789b4c`; its fresh CI run
+  `38356008443` had both Windows shards and CLI coverage still in progress at
+  the latest direct read. Native successor stack 162 remains ordered
+  `[158, 159, 161]` with recorded source heads
+  `[2775077190df79ee5e8b81f8d04a6e12c0743249,
+  c477d24d50e906a98afd718682d6aa2466693515,
+  4945a9741fb4ecf7ccdc73f9b9109e28b7789b4c]`. The reported synthetic top is
+  abbreviated `96d7...`, recursively bridged through actual parent
+  `71ee9796910fff333cfd929df73c0209bc326ebc` and earlier root `452...`;
+  preserve exact measured commit/tree equivalence and never relabel an old
+  direct-head metric as fresh merge qualification.
+- Session `68be53ea-3101-4b13-b2a8-e520cecb7a48` remains the sole task-14.1
+  application-artifact owner. It has its own concrete producer/adapter tests
+  and must ordinary-forward-merge this continuation's final corrected parent
+  before its own qualification. Do not duplicate or import that source here.

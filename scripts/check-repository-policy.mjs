@@ -4,7 +4,11 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
-import { nativeCustodyQualificationCommands } from './native-custody-qualification.mjs';
+import {
+  nativeContainerToolProfile,
+  nativeCustodyQualificationCommands,
+  qualifiedOpenSpecProfile
+} from './native-custody-qualification.mjs';
 
 export const communityFiles = [
   'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SECURITY.md', 'GOVERNANCE.md', 'SUPPORT.md'
@@ -193,11 +197,41 @@ export function checkNativeCustodyQualificationJob(job) {
     'npm install --prefix "$RUNNER_TEMP/liftoff-npm" --no-package-lock --ignore-scripts --no-audit --no-fund "npm@12.0.2"',
     'echo "$RUNNER_TEMP/liftoff-npm/node_modules/.bin" >> "$GITHUB_PATH"'
   ].join('\n'));
+  const containerInstall = namedStep(job, 'Install qualified Docker and Compose');
+  assert.equal(containerInstall.shell, 'bash');
+  assert.equal(containerInstall.run.trim(), [
+    'set -euo pipefail',
+    'root="$RUNNER_TEMP/liftoff-docker"',
+    `archive="$RUNNER_TEMP/docker-${nativeContainerToolProfile.docker.version}.tgz"`,
+    'compose="$RUNNER_TEMP/docker-compose-darwin-aarch64"',
+    'mkdir -p "$root/bin" "$root/cli-plugins" "$RUNNER_TEMP/liftoff-docker-extract"',
+    "curl --fail --location --proto '=https' --tlsv1.2 \\",
+    '  --output "$archive" \\',
+    `  "${nativeContainerToolProfile.docker.archiveUrl}"`,
+    `echo "${nativeContainerToolProfile.docker.archiveSha256}  $archive" | shasum -a 256 --check`,
+    'tar -xzf "$archive" -C "$RUNNER_TEMP/liftoff-docker-extract"',
+    'install -m 0755 "$RUNNER_TEMP/liftoff-docker-extract/docker/docker" "$root/bin/docker"',
+    "curl --fail --location --proto '=https' --tlsv1.2 \\",
+    '  --output "$compose" \\',
+    `  "${nativeContainerToolProfile.compose.binaryUrl}"`,
+    `echo "${nativeContainerToolProfile.compose.binarySha256}  $compose" | shasum -a 256 --check`,
+    'install -m 0755 "$compose" "$root/cli-plugins/docker-compose"',
+    'echo "$root/bin" >> "$GITHUB_PATH"'
+  ].join('\n'));
   const openspecInstall = namedStep(job, 'Install pinned OpenSpec');
   assert.equal(openspecInstall.shell, 'bash');
-  assert.ok(openspecInstall.run.includes('@fission-ai/openspec@1.11.0'));
-  assert.ok(openspecInstall.run.includes('$RUNNER_TEMP/liftoff-openspec/node_modules/.bin'));
-  assert.equal(namedStep(job, 'Install dependencies').run, 'npm ci');
+  assert.equal(openspecInstall.run.trim(), [
+    'npm install --global --prefix "$RUNNER_TEMP/liftoff-openspec" \\',
+    `  --before=${qualifiedOpenSpecProfile.registryCutoff} --no-package-lock --ignore-scripts --no-audit --no-fund \\`,
+    `  ${qualifiedOpenSpecProfile.package}@${qualifiedOpenSpecProfile.version}`,
+    'node scripts/native-custody-qualification.mjs verify-openspec-profile \\',
+    '  "$RUNNER_TEMP/liftoff-openspec/lib/node_modules/@fission-ai/openspec"',
+    'echo "$RUNNER_TEMP/liftoff-openspec/bin" >> "$GITHUB_PATH"'
+  ].join('\n'));
+  assert.equal(namedStep(job, 'Install dependencies').run.trim(), [
+    'npm ci',
+    gatewayInstallCommand
+  ].join('\n'));
   const toolchain = namedStep(job, 'Verify native toolchain');
   assert.equal(toolchain.id, 'toolchain');
   for (const required of [
@@ -208,6 +242,13 @@ export function checkNativeCustodyQualificationJob(job) {
     "path.basename(npmLauncher), 'npm-cli.js'",
     "{ name: npmPackage.name, version: npmPackage.version }, { name: 'npm', version: '12.0.2' }",
     "run(process.execPath, [npmLauncher, '--version'])",
+    nativeContainerToolProfile.docker.binarySha256,
+    nativeContainerToolProfile.compose.binarySha256,
+    `Docker version ${nativeContainerToolProfile.docker.version}, build ${nativeContainerToolProfile.docker.build}`,
+    `['version', '--short']), '${nativeContainerToolProfile.compose.version}'`,
+    "'liftoff-docker', 'bin', 'docker'",
+    "'liftoff-docker', 'cli-plugins', 'docker-compose'",
+    "'liftoff-openspec', 'lib', 'node_modules', '@fission-ai', 'openspec', 'bin', 'openspec.js'",
     'LIFTOFF_OPENSPEC_B_TESTS', 'OB1_VERSION_REMAINING', 'OB1_SUPPORT_REMAINING', 'LIFTOFF_OI_TESTS'
   ]) assert.ok(toolchain.run.includes(required), `Native toolchain check is missing ${required}.`);
   const cleanStart = namedStep(job, 'Verify exact clean candidate');
@@ -267,6 +308,7 @@ export function checkNativeCustodyQualificationJob(job) {
   assert.equal(record.if, independentStepCondition);
   assert.equal(record.run, 'node scripts/native-custody-qualification.mjs record qualification/native-custody.json');
   assert.deepEqual(record.env, {
+    NATIVE_COMPOSE_EXECUTABLE: '${{ runner.temp }}/liftoff-docker/cli-plugins/docker-compose',
     NATIVE_TOOLCHAIN_OUTCOME: '${{ steps.toolchain.outcome }}',
     NATIVE_CLEAN_START_OUTCOME: '${{ steps.clean-start.outcome }}',
     NATIVE_SUPPORTED_STACK_OUTCOME: '${{ steps.supported-stack.outcome }}',
