@@ -20,7 +20,7 @@ export const modernRelease: PluginReleaseInventory = deepFrozen({
     {
       id: 'modern-governance-source-contracts',
       pathParts: ['assets', 'governance', 'modern', 'source-contracts.json'],
-      sha256: 'sha256:74023432198c9eed026a3600a9f37cc1bb39dcda373a16929dd72b1f1b49731f'
+      sha256: 'sha256:fce27df7e8485ef0847d71a20dfee950e55bbbc50509dc48f50bd4d306a19162'
     },
     {
       id: 'liftoff-project-assessment',

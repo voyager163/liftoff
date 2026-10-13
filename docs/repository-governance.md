@@ -32,6 +32,91 @@ unsupported account capabilities, unverified private access, and incomplete
 observations remain explicit blockers. Retained-state disposal is separate
 lifecycle work, not a 30-day delay before initial activation can complete.
 
+### Private workflow publication and context-proof source
+
+TASK14.3's private `workflow-publication.ts`, `workflow-execution-ref.ts`,
+`workflow-runner-admission.ts`, `workflow-context-proof.ts` and
+`workflow-requirements.ts` provide bounded literal Git/GitHub source interfaces.
+They are not a public activation command or evidence that a repository is ready.
+The legacy ungated local workflow write is not permission to commit, push,
+create execution refs, admit workflows, or dispatch checks. Current v8 public
+activation remains inspection-only; unsupported plans remain blocked.
+
+Publication binds one existing `ci/liftoff-workflows-*` review branch, one actual
+parent commit and exact regular per-file before/after byte digests. It commits
+only that inventory, never consumes unrelated developer-staged changes, never
+directly pushes protected branches, and independently reads the resulting
+commit/tree, ref and immutable file bytes. A source-review publication is not a
+protected-branch merge. Artifact production still requires its own immutable
+recipe readback after the separately authorized merge.
+
+GitHub documents workflow dispatch refs as branches or tags, not an immutable
+SHA fallback. A mutable branch precheck and an original workflow's SHA guard
+cannot prevent a replacement recipe from executing earlier effects. Dispatch
+therefore requires a separately approved `liftoff-execution-<full-commit-SHA>`
+tag and independently read active repository tag update/deletion protection
+with no bypass. Blocking all updates also blocks non-fast-forward changes; no
+unsupported extra tag rule is invented. A commit-named tag without that barrier is insufficient.
+The producer never installs or weakens protection. Exact private runner-group
+workflow admission preserves the repository-only assignment and existing
+workflow entries; it does not provision or broaden access.
+
+Current provider permission admission is deliberately narrow: independently
+observed classic OAuth `repo`/`workflow` grants and actual repository push access.
+Fine-grained, installation and workflow-token grants are not inferred from a
+repository role or caller annotation; unsupported credentials block before
+dispatch. Current barrier/provider admission is bound separately from the source
+tag and protected context. Administrator or policy changes are a separate trust
+boundary: repeated observations do not promise absolute immutability or atomic
+execution. Missing an independently qualified existing barrier/group during the
+early bootstrap phase is a prerequisite blocker, not permission to create one
+early, add a dependency cycle, or undermine rulesets-last sequencing.
+Inherited/organization rule admission remains unsupported by this narrow
+repository producer and blocks rather than silently omitting inherited policy.
+Runner-group PATCH additionally requires observed classic `admin:org` scope,
+active administrator membership and a non-inherited writable selected group.
+
+The engine must durably record original dispatch intent before POST and the
+actual accepted workflow/run ID before further observation. Uncertain acceptance,
+invisible runs, ambiguous runs and missing original authority never cause an
+automatic repeat dispatch. Explicit dispatch handles `GITHUB_TOKEN`-suppressed
+push triggers; inferred push-triggered success does not qualify.
+The pinned REST API2026-03-10 returns HTTP200 with `workflow_run_id`, `run_url`
+and `html_url`; all three must identify the exact approved repository. The accepted
+handle is checkpointed before metadata polling. Legacy empty HTTP204 is
+read-only discovery of the original intent, never permission to POST again.
+
+Proof binds real workflow jobs to their own GitHub Actions check-run URLs,
+application and check suite, complete SHA, immutable recipe, first attempt and
+actual protected ref family. Green requires success, not skipped/neutral/
+cancelled. Controlled red requires the unchanged recipe, one exact reviewed
+nonsensitive source violation and failure of the real required validator, with
+successful setup rather than an unrelated infrastructure failure.
+Every proof job starts with a pinned checkout of `inputs.source_sha`, a clean
+worktree and disabled credential persistence; extra unbound jobs cannot qualify.
+The complete matrix shares one three-minute observation deadline, and restored
+checkpoints preserve the original plan, dispatch time and actual accepted handle.
+Red runs use their own protected execution tag derived from the exact healthy
+protected commit; they do not move the protected branch to a failing commit.
+Each red parent/ref must match its corresponding independently current green.
+Every required context needs its own red proof on every applicable `develop`, `main`, `release/**`
+and `hotfix/**` family. Independent current readback checks the complete committed
+ruleset inventory; caller-selected contexts or old success annotations are not
+enforcement permission. No status or check is written to fabricate proof.
+
+These source interfaces do not qualify deployment, protected handover/custody,
+an authorized native host, release promotion, ruleset enforcement or package
+publication. Single-maintainer still means zero human PR reviews; team still
+means one current independent human PR approval, not self/bot/stale approval.
+No mandatory deployment reviewer is introduced. TASK14.3 remains incomplete
+without separately authorized live source and green/red qualification.
+The approved source5 allocation changes activation contract4 to5 and the six
+source graphs only; state/evidence-header/approval4 and all other listed wire
+versions are unchanged. Frozen releases, pre-custody source4 and custody source4
+remain readable diagnostic/planning families. Source5 does not enable public
+execution or automatic migration. The public/legacy executor now reports this
+explicit workflow prerequisite blocker instead of silently returning no producer.
+
 ## Managed files and user-owned state
 
 Enabled governance adds managed-core files:

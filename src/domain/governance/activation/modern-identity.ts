@@ -1,6 +1,6 @@
 import {
   modernActivationSourceContracts,
-  preCustodyModernActivationSourceContracts
+  readableModernActivationSourceContracts
 } from '../policy/identity.js';
 import { canonicalSha256 } from './canonical-json.js';
 import { exactRecord } from '../../project/manifest/fields.js';
@@ -27,7 +27,7 @@ function digest(value: unknown, label: string): ModernDigest {
 export function createModernActivationIdentityReader(catalog: ManifestContractContext['catalog']) {
   const projectReader = createManifestV8ProjectReader(catalog);
   const currentSources = modernActivationSourceContracts();
-  const readableSources = [...currentSources, ...preCustodyModernActivationSourceContracts()];
+  const readableSources = readableModernActivationSourceContracts();
   const contextFields = ['profile', 'policyVersion', 'selection', 'pluginResolutionDigest', 'activeLayoutDigest'] as const;
   const identityFields = [...Object.keys(currentSources[0].identity), 'sourceSelectionDigest', 'pluginResolutionDigest', 'activeLayoutDigest'];
 

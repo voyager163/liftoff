@@ -401,8 +401,60 @@ export function validatePhasePayloadValues<I extends R.ActivationIdentityFieldsV
   }
 
   const value = payload as Record<string, unknown>;
-  const expected = record.header.phaseId === 'phase-0-complete' ? 'phase-0-discovery.v1' : `${record.header.phaseId}.v1`;
+  const workflowSource5 = record.header.identity.activationContractVersion === 5 &&
+    ['bootstrap-workflow-source-ready', 'workflow-source-ready', 'dev-proof',
+      'staging-qualified', 'production-rehearsed', 'green-red-proof'].includes(record.header.phaseId);
+  const expected = record.header.phaseId === 'phase-0-complete' ? 'phase-0-discovery.v1' :
+    `${record.header.phaseId}.${workflowSource5 ? 'v2' : 'v1'}`;
   const issues = value.kind === expected ? [] : [`${record.header.phaseId} payload kind must be ${expected}.`];
+  if (workflowSource5) {
+    const hex = (digest: unknown) => typeof digest === 'string' && /^[a-f0-9]{64}$/u.test(digest);
+    const admission = (receipt: unknown) => isRecord(receipt) &&
+      receipt.kind === 'immutable-workflow-execution-ref.v1' && isRecord(receipt.binding) &&
+      typeof receipt.binding.sourceSha === 'string' && /^[a-f0-9]{40}$/u.test(receipt.binding.sourceSha) &&
+      receipt.binding.executionRef === `liftoff-execution-${receipt.binding.sourceSha}` &&
+      hex(receipt.barrierDigest) && hex(receipt.providerAdmissionDigest) && hex(receipt.observationDigest) &&
+      Array.isArray(receipt.protectingRulesetIds) && receipt.protectingRulesetIds.length > 0 &&
+      receipt.protectingRulesetIds.every(id => Number.isSafeInteger(id) && Number(id) > 0);
+    if (['bootstrap-workflow-source-ready', 'workflow-source-ready'].includes(record.header.phaseId)) {
+      const publication = value.publication, runner = value.runnerAdmission;
+      if (!isRecord(publication) || publication.kind !== 'workflow-source-publication.v1' ||
+        !hex(publication.bindingDigest) || !hex(publication.observationDigest) ||
+        typeof publication.commitSha !== 'string' || !/^[a-f0-9]{40}$/u.test(publication.commitSha) ||
+        !Array.isArray(publication.files) || publication.files.length === 0 ||
+        publication.files.some(file => !isRecord(file) || typeof file.path !== 'string' || !hex(file.digest)) ||
+        !admission(value.executionAdmission) || !isRecord(runner) ||
+        !hex(runner.bindingDigest) || !hex(runner.observationDigest)) {
+        issues.push('Source5 publication requires exact committed per-file readback and independently qualified existing execution-tag/provider and runner admission; missing early prerequisites cannot be borrowed from later phases.');
+      }
+    } else {
+      const proofs = value.workflowProofs;
+      if (!Array.isArray(proofs) || proofs.length === 0 || proofs.some(proof =>
+        !isRecord(proof) || proof.kind !== 'workflow-context-proof.v1' ||
+        !isRecord(proof.binding) || proof.bindingDigest !== canonicalSha256(proof.binding) ||
+        !hex(proof.planDigest) || !hex(proof.observationDigest) ||
+        !Number.isSafeInteger(proof.runId) || Number(proof.runId) <= 0 ||
+        !Number.isSafeInteger(proof.workflowId) || Number(proof.workflowId) <= 0 ||
+        proof.attempt !== 1 || !['success', 'failure'].includes(String(proof.conclusion)) ||
+        typeof proof.dispatchedAt !== 'string' || !Number.isFinite(Date.parse(proof.dispatchedAt)) ||
+        !admission(proof.executionAdmission) || !Array.isArray(proof.contexts) || proof.contexts.length === 0 ||
+        proof.contexts.some(context => !isRecord(context) ||
+          !['success', 'failure'].includes(String(context.conclusion)) ||
+          !Number.isSafeInteger(context.jobId) || Number(context.jobId) <= 0 ||
+          !Number.isSafeInteger(context.checkRunId) || Number(context.checkRunId) <= 0))) {
+        issues.push('Source5 requires real exact-run/job/check context proof with original dispatch time and separate current execution/provider admission; v1 summaries are not qualification.');
+      }
+      if (record.header.phaseId === 'green-red-proof') {
+        const matrix = value.matrix;
+        if (!isRecord(matrix) || matrix.kind !== 'green-red-required-contexts.v2' ||
+          !Array.isArray(matrix.proofDigests) || matrix.proofDigests.length < 8 ||
+          matrix.proofDigests.some(digest => !hex(digest)) ||
+          matrix.observationDigest !== canonicalSha256(matrix.proofDigests)) {
+          issues.push('Source5 green/red evidence requires independently current complete source-derived four-family coverage, not a synthetic green/failure pair.');
+        }
+      }
+    }
+  }
   if (record.header.phaseId === 'seed-verified') {
     if (!Array.isArray(value.checks) || value.checks.length === 0 || value.checks.some((check) =>
       typeof check !== 'object' || check === null || !['passed', 'inapplicable'].includes(String(check.status)))) {

@@ -271,6 +271,17 @@ export async function executeGitHubPhase(input: PhaseAdapterExecutionInput): Pro
   switch (input.phase.id) {
     case 'application-artifact-ready':
       return executeApplicationArtifactPublication(input);
+    case 'bootstrap-workflow-source-ready':
+    case 'workflow-source-ready':
+    case 'dev-proof':
+    case 'staging-qualified':
+    case 'production-rehearsed':
+    case 'green-red-proof':
+      return {
+        status: 'blocked',
+        blocker: 'Workflow publication and exact-run proof require the private source5 contract, explicit per-file/ref authority, engine-owned durable checkpoints, and independently qualified existing tag/provider/runner admission. This legacy/public executor cannot borrow that authority, create early protection, dispatch a mutable ref, or manufacture a proof.',
+        completedOperations: []
+      };
     case 'pushed':
       if (input.inspection.activationInputs?.repository?.create) {
         return executeGitHubPublication(input);

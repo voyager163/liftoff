@@ -1,7 +1,7 @@
 import type { ManifestContractContext } from '../../project/manifest/context.js';
 import { denseArray, exactRecord } from '../../project/manifest/fields.js';
 import { manifestPathAliasKey, validateManifestPathParts } from '../../project/manifest/layout.js';
-import { modernActivationSourceContracts, modernGovernanceSourceMetadataSchemaVersion } from '../policy/identity.js';
+import { readableModernActivationSourceContracts, modernGovernanceSourceMetadataSchemaVersion } from '../policy/identity.js';
 import { canonicalJson, sha256Hex } from './canonical-json.js';
 import { freezeModernValue } from './modern-graph.js';
 import { createModernActivationIdentityReader } from './modern-identity.js';
@@ -90,7 +90,7 @@ export function createModernGovernanceSourceContract(
   const selected = createModernActivationIdentityReader(catalog).validateReadableModernActivationIdentity(context);
   if (selected.workflow === 'manual') throw new Error('Manual has no external governance source metadata or task projection.');
   const identity = Object.freeze({ ...selected, workflow: selected.workflow });
-  const graph = modernActivationSourceContracts().find(source => source.identity.phaseGraphHash === identity.phaseGraphHash)!.graph;
+  const graph = readableModernActivationSourceContracts().find(source => source.identity.phaseGraphHash === identity.phaseGraphHash)!.graph;
   const phases = graph.phases.map(phase => phase.id);
   const phaseStates = [...releasedV3Values.phaseStates, 'identity-incompatible' as const];
 

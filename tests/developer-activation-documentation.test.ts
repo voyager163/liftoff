@@ -151,7 +151,8 @@ describe('developer activation-completeness guidance', () => {
       const identity = source.identity;
       expect(manifests).toContain(`\`${identity.liftoffVersion}\``);
       expect(manifests).toContain(`| Manifest | ${identity.manifestArtifactVersion} |`);
-      expect(manifests).toContain(`| Activation contract / state / evidence header / approval envelope | ${identity.activationContractVersion} |`);
+      expect(manifests).toContain(`| Activation contract | ${identity.activationContractVersion} |`);
+      expect(manifests).toContain(`| State / evidence header / approval envelope | ${identity.activationStateSchemaVersion} |`);
       expect(manifests).toContain(`| Phase graph / saved transition plan | ${source.savedPlanSchemaVersion} |`);
       expect(manifests).toContain(`| Compatibility metadata | ${source.compatibilityMetadataSchemaVersion} |`);
     }

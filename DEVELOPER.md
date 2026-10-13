@@ -2273,6 +2273,46 @@ from authoritative current source/registry/environment/digest receipts;
 These interfaces do not implement or authorize workflow source publication or
 application deployment.
 
+TASK14.3 supplies separate private source interfaces:
+`planWorkflowSourcePublication`/`executeWorkflowSourcePublication` bind exact
+per-file source and an existing non-protected review ref;
+`observeImmutableWorkflowExecutionRef`/`bindImmutableWorkflowExecutionRef`
+require an independently protected commit-named execution tag;
+`admitReviewedRunnerWorkflows` preserves exact repository-only private admission;
+`executeWorkflowContextProof` retains dispatch intent and actual accepted handles;
+`requiredWorkflowContextsFromSource`/`verifyProtectedWorkflowProofMatrix` derive
+the complete protected-family context inventory and independently read real
+green and validator-caused red jobs/checks. The transient checkpoint writers are
+not the application-scoped task-14.1 callbacks. Current legacy local authority
+and public v8 inspection cannot invoke them or manufacture their durable ports.
+The approved current-only source5 allocation advances activation contract4 to5
+and the six source graphs, not state/evidence-header/approval4 or the other wire
+versions. Exact custody source4 declarations/table/release are captured in
+`modern-pre-workflow.ts`; all frozen releases and pre-custody captures are
+unchanged. Source5 has no automatic migration lane or public execution path.
+The legacy/public workflow route returns an explicit prerequisite blocker;
+private checkpoints do not create an engine capability or substitute for
+protected handover/custody and current authorized native-host qualification.
+Reviewed execution bindings include repository ID, full commit and tree SHA,
+exact commit-named tag and immutable recipe. API2026-03-10 HTTP200 dispatch
+handles are scope-validated and persisted before polling; legacy204 retries
+remain read-only. Real qualification remains separate from these source values.
+
+These producers never use an undocumented SHA-dispatch fallback. Mutable branch
+readback plus a guard in the original recipe cannot prevent replacement workflow
+effects at dispatch. Missing active immutable tag update/deletion
+protection with no bypass is a blocker, not permission to install a ruleset.
+Blocking all tag updates covers non-fast-forward changes without assuming an
+unsupported tag rule. Barrier/provider admission is separate from the source
+binding; policy administration is a trust boundary, not atomicity guaranteed by
+two readbacks. Supported classic OAuth grants are observed independently;
+unsupported fine-grained, installation and workflow-token admission stays blocked.
+Pending/uncertain dispatch is observed without repeat POST; an unowned existing
+run is not adopted. No statuses or checks are written to manufacture proof.
+Source publication is a review-ref milestone, not a protected-branch merge,
+deployment, package/signing proof or final enforcement. See
+`docs/repository-governance.md` for the exact source-only boundaries.
+
 Actual committed workflow bytes, separate transmission/network/build consent,
 the admitted private-network hosted runner, ACR QuickBuild output image and
 locked tag/digest, plus `gh attestation verify` certificate signer/source/run

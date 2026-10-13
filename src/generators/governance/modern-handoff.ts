@@ -46,6 +46,15 @@ scope, approval requirements and disclosed effects. Missing producers remain
 blockers; nothing here authorizes execution, tool/dependency preparation, network
 access, publication, credentials, billed resources, enforcement or destructive work.
 
+Private workflow source/context-proof modules are not public execution support.
+Local workflow-write authority cannot authorize commit/push or dispatch. Exact
+publication and real green/controlled-red proof require separately allocated
+current authority and engine-owned durable checkpoints. A mutable branch SHA
+precheck cannot protect workflow selection at dispatch; require independent
+immutable execution-ref protection, not an undocumented SHA fallback. Missing
+protection or uncertain dispatch acceptance blocks; never install protections,
+repeat dispatch, or fabricate status/check success to make this handoff pass.
+
 ${frameworkMeaning(selection)}
 `;
 }

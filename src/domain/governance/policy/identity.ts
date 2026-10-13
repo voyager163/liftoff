@@ -212,7 +212,7 @@ export function resolveActivationCompatibility(
 const modernSourceVersions: ModernStaticVersions = Object.freeze({
   liftoffVersion: '0.13.0-dev.0',
   manifestArtifactVersion: 8,
-  activationContractVersion: 4,
+  activationContractVersion: 5,
   phaseGraphSchemaVersion: 3,
   activationStateSchemaVersion: 4,
   evidenceHeaderSchemaVersion: 4,
@@ -244,15 +244,20 @@ export const modernGovernancePolicyVersions = Object.freeze({
 const modernWorkflows: readonly ModernWorkflow[] = ['openspec', 'spec-kit', 'manual'];
 let modernSources: readonly ModernActivationSourceContract[] | undefined;
 let preCustodyModernSources: readonly ModernActivationSourceContract[] | undefined;
+let preWorkflowModernSources: readonly ModernActivationSourceContract[] | undefined;
+const preWorkflowSourceVersions: ModernStaticVersions = Object.freeze({
+  ...modernSourceVersions, activationContractVersion: 4
+});
 
 function buildModernSources(
-  disposalContract: 'protected-custody' | 'local-bootstrap'
+  disposalContract: 'protected-custody' | 'local-bootstrap',
+  versions: ModernStaticVersions = modernSourceVersions
 ): readonly ModernActivationSourceContract[] {
   return modernPolicySources.flatMap(policy => modernWorkflows.map((workflow): ModernActivationSourceContract => {
-    const graph = buildModernPhaseGraph(modernSourceVersions, policy.identity, workflow, disposalContract);
+    const graph = buildModernPhaseGraph(versions, policy.identity, workflow, disposalContract);
     return {
       identity: {
-        ...modernSourceVersions, ...policy.identity, workflow, phaseGraphHash: canonicalSha256(graph)
+        ...versions, ...policy.identity, workflow, phaseGraphHash: canonicalSha256(graph)
       },
       savedPlanSchemaVersion: 3, compatibilityMetadataSchemaVersion: 5,
       policyPathParts: [...policy.pathParts], graph
@@ -268,6 +273,20 @@ export function modernActivationSourceContracts(): readonly ModernActivationSour
 
 /** Frozen readable source family from before protected custody changed the modern graph bytes. */
 export function preCustodyModernActivationSourceContracts(): readonly ModernActivationSourceContract[] {
-  preCustodyModernSources ??= buildModernSources('local-bootstrap');
+  preCustodyModernSources ??= buildModernSources('local-bootstrap', preWorkflowSourceVersions);
   return freezeModernValue(structuredClone(preCustodyModernSources));
+}
+
+/** Exact admitted custody source4, retained for diagnostics and original-plan interpretation only. */
+export function preWorkflowModernActivationSourceContracts(): readonly ModernActivationSourceContract[] {
+  preWorkflowModernSources ??= buildModernSources('protected-custody', preWorkflowSourceVersions);
+  return freezeModernValue(structuredClone(preWorkflowModernSources));
+}
+
+export function readableModernActivationSourceContracts(): readonly ModernActivationSourceContract[] {
+  return freezeModernValue([
+    ...modernActivationSourceContracts(),
+    ...preWorkflowModernActivationSourceContracts(),
+    ...preCustodyModernActivationSourceContracts()
+  ]);
 }

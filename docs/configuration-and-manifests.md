@@ -292,11 +292,24 @@ times OpenSpec, Spec Kit and Manual, with six actual computed graph hashes.
 | Modern contract | Version |
 | --- | --- |
 | Manifest | 8 |
-| Activation contract / state / evidence header / approval envelope | 4 |
+| Activation contract | 5 |
+| State / evidence header / approval envelope | 4 |
 | Phase graph / saved transition plan | 3 |
 | Compatibility metadata | 5 |
 | Supersession / credential policy / migration journal | 2 |
 | Prepared successor preview / retained approval-only audit | 2 / 1 |
+
+Contract5 changes only current workflow publication authority and the six computed
+source graphs: publication requires explicit commit/push/readback/admission
+approval, and context proof uses phase-specific v2 payloads. The canonical packaged
+table has raw digest
+`sha256:fce27df7e8485ef0847d71a20dfee950e55bbbc50509dc48f50bd4d306a19162`.
+The prior custody source4 table remains byte-exact at
+`sha256:74023432198c9eed026a3600a9f37cc1bb39dcda373a16929dd72b1f1b49731f`
+in the captured `modern-pre-workflow.ts` registry; its graph, original records and
+plans remain readable alongside the frozen pre-custody family. Neither source4
+family is current execution permission. Source5 has no automatic migration lane
+or public activation support; changing an identity does not upgrade old consent.
 | Single-maintainer policy / team policy | 7 / 1 |
 
 `createManifestV8Reader` validates the complete source contract independently of
