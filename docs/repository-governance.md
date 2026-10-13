@@ -214,8 +214,21 @@ Expiry is re-evaluated after authority's asynchronous reads. These pre-effect
 checks do not add fallible installed-state or time checks when retaining already
 accepted/terminal truth.
 These isolated source/process/HTTP guards are not complete engine or live
-qualification. Independent current proof orchestration, phase prerequisite
-composition and exact-byte post-write restart handling remain engine obligations.
+qualification. A private component driver now derives observation-only versus
+first-effect mode from the original sealed entry, mints its own carrier, invokes
+the exact indexed producer and retains its component internally. It captures
+closed original runtime fields before asynchronous reads and rejects caller
+checkpoint callbacks, accessors, prototype/symbol fields and observation modes.
+Workflow
+components require a separate current run/jobs/checks/source reread after terminal
+observation. Restart preserves original proof bytes, IDs, dispatch time and plan;
+a fresh observation is reported separately, never written over the original.
+Read-only publication observation requires the already recorded commit handle
+and rechecks its parent, exact inventory and immutable bytes. It never adopts a
+target-shaped HEAD or repeats commit/push work. These isolated component guards
+do not compose phase prerequisites or finalize a phase. Full planner composition,
+complete independently current matrix orchestration and exact-byte post-write
+restart handling remain engine obligations.
 The private planner/engine remains unregistered and incomplete.
 Staging/production workflow components cannot
 finalize independent Azure peer obligations, and source5 controls cannot

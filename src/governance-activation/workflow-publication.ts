@@ -8,7 +8,7 @@ import { ownedPath, sourceSha } from './github-config.js';
 import type { PhasePlanningInput, PhasePlanBuild } from './transition-ports.js';
 import { repositoryConfiguration } from './github-config.js';
 import {
-  assertWorkflowAuthority, captureWorkflowBinding, readWorkflowBytes, workflowByteDigest, workflowDigest,
+  assertWorkflowAuthority, assertWorkflowObservationAuthority, captureWorkflowBinding, readWorkflowBytes, workflowByteDigest, workflowDigest,
   workflowFailure, workflowOperation, workflowPlannedOperation, workflowRuntime, recordWorkflowCheckpoint,
   workflowProjectRoot, type WorkflowEffectInput
 } from './workflow-runtime.js';
@@ -131,6 +131,45 @@ async function observePublished(
     observedAt: (input.clock?.() ?? input.now).toISOString(), observationDigest: canonicalSha256(observed) };
 }
 
+async function verifyPublicationCommit(
+  runtime: ReturnType<typeof workflowRuntime>, binding: WorkflowPublicationBinding, commitSha: string
+): Promise<void> {
+  const changed = (await runtime.git(['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', commitSha]))
+    .split('\0').filter(Boolean).sort();
+  if (canonicalSha256(changed) !== canonicalSha256(binding.files.map((file) => file.path).sort())) {
+    return workflowFailure('workflow-publication-inventory', 'The actual source commit changed files outside, or omitted files from, its exact reviewed inventory.');
+  }
+  for (const file of binding.files) {
+    if (workflowByteDigest(await runtime.git(['show', `${commitSha}:${file.path}`])) !== file.digest) {
+      return workflowFailure('workflow-publication-bytes', 'The actual committed bytes differ from the approved per-file recipe.');
+    }
+  }
+}
+
+export async function observeWorkflowSourcePublication(
+  input: WorkflowPublicationInput, request: WorkflowPublicationBinding
+): Promise<PublishedWorkflowSource> {
+  const binding = validateWorkflowPublication(request);
+  const operation = workflowOperation(input, 'git.workflow-source.publish-reviewed', binding);
+  await assertWorkflowObservationAuthority(input, operation);
+  const checkpoint = input.publicationCheckpoint;
+  if (!checkpoint || !('commitSha' in checkpoint) || checkpoint.bindingDigest !== canonicalSha256(binding) ||
+    checkpoint.planDigest !== input.plan.planDigest) {
+    return workflowFailure('workflow-publication-uncertain',
+      'Read-only publication reconciliation requires the original durably recorded exact commit; target-shaped HEAD bytes cannot invent acceptance.');
+  }
+  const commitSha = sourceSha(checkpoint.commitSha), runtime = workflowRuntime(input);
+  if ((await runtime.git(['rev-parse', '--verify', 'HEAD'])).trim() !== commitSha) {
+    return workflowFailure('workflow-publication-head', 'Original publication observation requires its unchanged exact local HEAD.');
+  }
+  const parents = (await runtime.git(['rev-list', '--parents', '-n', '1', commitSha])).trim();
+  if (parents !== `${commitSha} ${binding.parentSha}`) {
+    return workflowFailure('workflow-publication-parent', 'The actual source commit failed its immutable parent check; original acceptance remains retained.');
+  }
+  await verifyPublicationCommit(runtime, binding, commitSha);
+  return observePublished(input, binding, commitSha, runtime);
+}
+
 export async function executeWorkflowSourcePublication(
   input: WorkflowPublicationInput, request: WorkflowPublicationBinding
 ): Promise<PublishedWorkflowSource> {
@@ -225,16 +264,7 @@ export async function executeWorkflowSourcePublication(
       await recordWorkflowCheckpoint(recordPublication, { bindingDigest, planDigest, stage: 'committed', commitSha });
     }
   }
-  const changed = (await runtime.git(['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', commitSha]))
-    .split('\0').filter(Boolean).sort();
-  if (canonicalSha256(changed) !== canonicalSha256(binding.files.map((file) => file.path).sort())) {
-    return workflowFailure('workflow-publication-inventory', 'The actual source commit changed files outside, or omitted files from, its exact reviewed inventory.');
-  }
-  for (const file of binding.files) {
-    if (workflowByteDigest(await runtime.git(['show', `${commitSha}:${file.path}`])) !== file.digest) {
-      return workflowFailure('workflow-publication-bytes', 'The actual committed bytes differ from the approved per-file recipe.');
-    }
-  }
+  await verifyPublicationCommit(runtime, binding, commitSha);
   const remote = await runtime.client.get(`/repos/${binding.repository}/git/ref/heads/${binding.ref}`);
   if (!isRecord(remote.object) || remote.ref !== `refs/heads/${binding.ref}`) {
     return workflowFailure('workflow-publication-remote', 'The explicitly approved existing review ref cannot be independently observed.');

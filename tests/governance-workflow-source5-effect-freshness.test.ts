@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { existsSync } from 'node:fs';
 import { readFile, rm, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { canonicalSha256, isRecord } from '../src/domain/governance/activation/canonical-json.js';
@@ -16,6 +17,7 @@ import { openSource5WorkflowJournal } from '../src/governance-activation/workflo
 import { createSource5WorkflowEffectInput } from '../src/governance-activation/workflow-source5-ports.js';
 import { workflowRuntime } from '../src/governance-activation/workflow-runtime.js';
 import { executeWorkflowSourcePublication } from '../src/governance-activation/workflow-publication.js';
+import { workflowByteDigest } from '../src/governance-activation/workflow-binding.js';
 import { workflowSource5JournalFixture } from './fixtures/workflow-source5-journal.js';
 
 const roots: string[] = [];
@@ -93,8 +95,12 @@ function publicationServices(value: Review) {
     else if (args[0] === 'rev-list') stdout = `${commitSha} ${value.binding.parentSha}`;
     else if (args.includes('commit')) { commands.push(args); head = commitSha; }
     else if (args.includes('add')) commands.push(args);
-    else if (args[0] === 'diff-tree') stdout = `${value.binding.files[0]!.path}\0`;
-    else if (args[0] === 'show') stdout = await readFile(path.join(value.projectRoot, value.binding.files[0]!.path), 'utf8');
+    else if (args[0] === 'diff-tree') stdout = `${value.binding.files.map(file => file.path).join('\0')}\0`;
+    else if (args[0] === 'show') {
+      const file = value.binding.files.find(file => args[1] === `${commitSha}:${file.path}`);
+      if (!file) throw new Error('Unexpected isolated committed path.');
+      stdout = await readFile(path.join(value.projectRoot, file.path), 'utf8');
+    }
     else if (args[0] === 'push') { commands.push(args); pushed = true; stdout = 'isolated push acceptance'; }
     return { command, displayCommand: 'isolated literal Git fixture', status: 0, signal: null, stdout, stderr: '', timedOut: false };
   } };
@@ -106,8 +112,12 @@ function publicationServices(value: Review) {
       ref: `refs/heads/${value.binding.ref}`, object: { sha: pushed ? commitSha : value.binding.parentSha }
     };
     else if (request.path.includes('/git/commits/')) data = { sha: commitSha, tree: { sha: treeSha }, parents: [{ sha: value.binding.parentSha }] };
-    else if (request.path.includes('/contents/')) data = { type: 'file', path: value.binding.files[0]!.path,
-      encoding: 'base64', content: Buffer.from(value.binding.files[0]!.content).toString('base64') };
+    else if (request.path.includes('/contents/')) {
+      const file = value.binding.files.find(file =>
+        request.path.split('?')[0] === `/repos/owner/repo/contents/${file.path}`);
+      if (!file) throw new Error('Unexpected isolated publication path.');
+      data = { type: 'file', path: file.path, encoding: 'base64', content: Buffer.from(file.content).toString('base64') };
+    }
     else throw new Error('Unexpected isolated publication request.');
     return { status: 200, headers: {}, data };
   } };
@@ -137,6 +147,45 @@ async function refReview(f: Awaited<ReturnType<typeof fixture>>, lease: ProjectM
 }
 
 describe('source5 freshness at actual source and owned IO boundaries', () => {
+  it.each(['unchanged', 'expires-after-first-file'] as const)(
+    'guards both actual file mutations of one original publication after %s', async fault => {
+      const f = await fixture('unchanged'), first = f.value.binding.files[0]!;
+      const content = first.content.replace('Isolated source fixture', 'Isolated second source fixture');
+      const binding = { ...f.value.binding, files: [first, {
+        path: '.github/workflows/second-source-fixture.yml', beforeDigest: null,
+        digest: workflowByteDigest(content), content
+      }] };
+      const value = { ...f.configured(f.value.review({
+        effects: [{ action: 'git.workflow-source.publish-reviewed', binding }]
+      })), binding }, service = publicationServices(value);
+      const targets = binding.files.map(file => path.join(value.projectRoot, file.path));
+      let now = value.now, sawActualFirstWrite = false;
+      const clock = () => {
+        if (fault === 'expires-after-first-file' && existsSync(targets[0]!)) {
+          sawActualFirstWrite = true;
+          now = new Date(value.plan.expiresAt);
+        }
+        return now;
+      };
+      await withSource5WorkflowLease(value.projectRoot, async lease => {
+        const { input, journal } = await carrier(value, lease, service.runner, service.transport, clock);
+        const execution = executeWorkflowSourcePublication(input, binding);
+        if (fault === 'unchanged') {
+          await execution;
+          expect(await Promise.all(targets.map(target => readFile(target, 'utf8')))).toEqual(binding.files.map(file => file.content));
+          expect(service.commands).toHaveLength(3);
+        } else {
+          await expect(execution).rejects.toThrow(/unexpired approval/);
+          expect(sawActualFirstWrite).toBe(true);
+          expect(clock().getTime()).toBe(Date.parse(value.plan.expiresAt));
+          expect(targets.map(target => existsSync(target))).toEqual([false, false]);
+          expect(service.commands).toEqual([]);
+          expect((await journal.events(value.operation)).map(event => event.stage)).toEqual(['publication-writing']);
+        }
+        expect(service.requests.filter(request => request.method !== 'GET')).toEqual([]);
+      });
+    });
+
   it.each(['unchanged', 'approval-expired', 'issuance-lost'] as const)(
     'runs the actual publication producer without changing source after post-writing %s', async fault => {
       const f = await fixture(fault), value = f.value, service = publicationServices(value);
