@@ -284,6 +284,32 @@ before packing the release tarball; the gateway gate runs even when the CLI gate
 fails, and either failure blocks packing and publication. The repository policy
 rejects removing, conditioning, or reordering these gates.
 
+#### Dispatch-only hosted native custody qualification
+
+`.github/workflows/native-custody-qualification.yml` is an opt-in
+`workflow_dispatch` lane for task 13.5 qualification on actual GitHub-hosted
+macOS ARM64. It is deliberately separate from ordinary CI so pull requests,
+long-lived branch pushes, and their required checks do not acquire another
+multi-hour job.
+
+The single `macos-15` job pins Node 24.21.0, npm 12.0.2, OpenTofu 1.12.6,
+OpenSpec 1.11.0, Go 1.27.0, Python 3.14.7, and uv 0.12.7. On exact clean
+committed bytes it runs the supported-stack check, build, unfiltered one-worker
+suite, source-complete one-worker CLI coverage, independent coverage-evidence
+verification, focused custody/history checks, package smoke, repository policy,
+strict OpenSpec validation, and a final clean-tree check. Its 240-minute job
+timeout is a bounded allowance for the measured native full and coverage runs;
+it does not change any test timeout, source inventory, threshold, baseline, or
+test selection.
+
+Non-cancelled runs retain full-suite, coverage, focused, and
+`coverage/cli/` evidence in one artifact. The final native evidence record
+requires the dispatched SHA, clean source inventory, zero coverage-test
+failures, and statements, branches, functions, and lines each strictly above
+80%. It labels the result as hosted macOS ARM64 evidence only. It is not a
+retroactive MacBook result, production custody/handover qualification, or
+disposable Azure qualification.
+
 #### Isolated HCL qualification
 
 The private modern local verifier currently admits parser computation only on

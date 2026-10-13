@@ -7,7 +7,7 @@ import {
   checkIssueForm, checkPromotion, checkRepositoryPolicy, checkWorkflow,
   communityFiles, workflowFiles, checkIsolatedHclReport, checkIsolatedHclRuntime,
   isolatedHclQualificationJob, isolatedHclTestCommand, checkPluginPathReport, pluginPathTestCommand,
-  nativeBundleQualificationJob
+  nativeBundleQualificationJob, checkNativeCustodyQualificationJob, nativeCustodyWorkflowFile
 } from '../scripts/check-repository-policy.mjs';
 
 const root = process.cwd();
@@ -26,6 +26,46 @@ function pullRequest(base: string, head: string, owner = 'voyager163/liftoff') {
 }
 
 describe('source repository setup policy', () => {
+  it('pins a dispatch-only native custody qualification without changing ordinary CI', async () => {
+    const workflow = await readWorkflow(nativeCustodyWorkflowFile);
+    expect(workflow.on).toEqual({ workflow_dispatch: null });
+    expect(Object.keys(workflow.jobs)).toEqual(['qualify-native-custody']);
+    expect(() => checkNativeCustodyQualificationJob(workflow.jobs['qualify-native-custody'])).not.toThrow();
+    expect(() => checkWorkflow(nativeCustodyWorkflowFile, workflow)).not.toThrow();
+    expect((await readWorkflow('ci.yml')).jobs['qualify-native-custody']).toBeUndefined();
+  });
+  it.each([
+    'trigger', 'runner', 'timeout', 'node', 'architecture', 'npm', 'opentofu',
+    'openspec', 'full-suite-filter', 'coverage-workers', 'coverage-verifier',
+    'focused-file', 'package', 'policy', 'clean', 'missing-evidence'
+  ])('rejects incomplete hosted native custody qualification: %s', async fault => {
+    const workflow = await readWorkflow(nativeCustodyWorkflowFile);
+    const job = workflow.jobs['qualify-native-custody'];
+    const step = (name: string) => job.steps.find((candidate: { name?: string }) => candidate.name === name);
+    if (fault === 'trigger') workflow.on.push = { branches: ['develop'] };
+    if (fault === 'runner') job['runs-on'] = 'macos-latest';
+    if (fault === 'timeout') job['timeout-minutes'] = 60;
+    if (fault === 'node') job.steps[1].with['node-version'] = '24.20.0';
+    if (fault === 'architecture') job.steps[1].with.architecture = 'x64';
+    if (fault === 'npm') step('Select supported npm').run = 'npm install --global npm@latest';
+    if (fault === 'opentofu') job.steps[4].with.tofu_version = '1.13.1';
+    if (fault === 'openspec') step('Install pinned OpenSpec').run = 'npm install @fission-ai/openspec@latest';
+    if (fault === 'full-suite-filter') step('Run unfiltered full suite').run += ' -t custody';
+    if (fault === 'coverage-workers') {
+      step('Run source-complete CLI coverage').run =
+        step('Run source-complete CLI coverage').run.replace('--max-workers 1', '--max-workers 2');
+    }
+    if (fault === 'coverage-verifier') step('Verify source-complete coverage evidence').run = 'true';
+    if (fault === 'focused-file') {
+      step('Run focused custody and history checks').run =
+        step('Run focused custody and history checks').run.replace('tests/contract-baseline.test.ts \\\n', '');
+    }
+    if (fault === 'package') step('Run package smoke').run = 'npm pack';
+    if (fault === 'policy') step('Run repository policy').if = '${{ success() }}';
+    if (fault === 'clean') step('Verify final clean bytes').run = 'git diff --check';
+    if (fault === 'missing-evidence') job.steps.pop();
+    expect(() => checkWorkflow(nativeCustodyWorkflowFile, workflow)).toThrow();
+  });
   it('pins the complete runtime-inclusive development qualification without changing release publication', async () => {
     const workflow = await readWorkflow('ci.yml');
     expect(workflow.jobs['qualify-native-bundle']).toEqual(nativeBundleQualificationJob());
