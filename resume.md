@@ -682,3 +682,128 @@ committed revision and complete source inventory.
    layers, stopping honestly at external capability or authorization blockers.
    Do not archive the change or claim all modernization delivered while
    mandatory tasks remain unchecked.
+
+## MacBook custody qualification checkpoint, 2026-10-13
+
+This continuation used the exact native Apple Silicon toolchain required above:
+Node 24.21.0, npm 12.0.2, OpenTofu 1.12.6, and OpenSpec 1.11.0. The initial
+checkout was clean at `2785087c6eccb487017c75d50b36863627de5382`, and
+`c23d18427b0bd1cebd81905b6c9b11619e26e1eb`,
+`2914f0f1395e46abfe0ad045535e424c7a1d3ad9`,
+`d6222b30d66751857634b5fbb8a8cbf6a95d8dbc`, and `2785087c` were verified
+ancestors.
+
+### Current-versus-historical custody correction
+
+The clean initial full suite exposed the custody successor changing the current
+source-contract bytes to
+`sha256:74023432198c9eed026a3600a9f37cc1bb39dcda373a16929dd72b1f1b49731f`
+while historical v8 release records still correctly named frozen
+`sha256:b336953323f1099a429e35cb22a39c9dda48e884bc5e610bfa44424db914bcf6`
+bytes and pre-custody graph hashes. The correction was committed as
+`65501156334a780d6455d3332f31c583906a37a1`
+(`fix: preserve pre-custody source identity`) and changed exactly these 14
+files:
+
+- `src/application/project/manifest-writer.ts`
+- `src/application/project/manifest.ts`
+- `src/application/project/modern-plugins.ts`
+- `src/domain/governance/activation/modern-graph.ts`
+- `src/domain/governance/activation/modern-identity.ts`
+- `src/domain/governance/activation/phase-graph-values.ts`
+- `src/domain/governance/policy/identity.ts`
+- `src/domain/governance/policy/modern-context.ts`
+- `src/governance-activation/modern-compatibility.ts`
+- `src/plugins/builtin/modern-pre-assessment.ts`
+- `tests/modern-managed-core.test.ts`
+- `tests/modern-source-registry.test.ts`
+- `tests/pre-assessment-source-contract.test.ts`
+- `tests/project-telemetry-source.test.ts`
+
+The correction embeds the exact captured pre-custody source-contract bytes,
+reconstructs all six frozen historical phase-graph hashes, resolves historical
+v8 manifests against that read-only source family, and preserves a recorded
+historical identity only during ordinary maintenance. New identity creation
+remains current-only, so frozen history does not become current execution
+authority. The released-v3 records, historical `b336...` release declarations,
+contract baselines, and complete `priorChange` chains were not changed.
+
+Focused results after the correction:
+
+- The three previously failing historical compatibility files passed: 106/106.
+- Custody/history parity, contract baseline, governance extraction,
+  plugin-generation parity, generator parity, current registry, managed core,
+  and telemetry source checks passed: 12 files, 466 passed, 1 skipped.
+- `npm run check:supported-stack` and
+  `npm run build -- --pretty false` passed on clean `65501156`.
+- The required unfiltered suite passed on clean `65501156`: 304 files passed,
+  5 skipped; 10,154 tests passed, 131 skipped; duration 2719.15 seconds.
+- `npm run smoke:package` passed for `@msn-control/liftoff@0.12.3`.
+- `npm run check:repository` passed named-file policy; hosted settings still
+  require separate live readback.
+- `openspec validate modernize-liftoff-platform --strict` passed.
+- `git diff --check` passed and the tree remained clean for those gates.
+
+### Source-complete coverage remains unresolved
+
+The first clean `npm run coverage:cli -- --max-workers 1` attempt ended partway
+through the suite without a verdict or evidence file. It is retained only as
+incomplete diagnostic evidence.
+
+The completed retry ran from a clean tree at exact revision
+`65501156334a780d6455d3332f31c583906a37a1` and produced a failed qualifying
+evidence record:
+
+- Source inventory: 506 executable files,
+  `sha256:d224256c5587b23788bbe9a646b54d15134eeb10c134983465d1f6b8ddc89a98`.
+- Test result: 10,129 passed, 25 failed, 131 skipped, 0 todo across 309 files.
+- Vitest summary: 6 failed files, 298 passed files, 5 skipped files.
+- The evidence parser recorded `failedFiles: 15`; do not reinterpret that
+  field as a passing result or replace the actual Vitest summary.
+- No statements, branches, functions, or lines percentages were produced
+  because tests failed and `reportOnFailure` remains false.
+- Failed files and measured file durations were:
+  - `tests/isolated-hcl-parser.test.ts`: 14 failed tests, 173170 ms.
+  - `tests/local-verification-transaction.test.ts`: 1 failed test, 86194 ms.
+  - `tests/migrate.test.ts`: 2 failed tests, 328105 ms.
+  - `tests/modern-installed-preflight.test.ts`: 3 failed tests, 325149 ms.
+  - `tests/modern-successor-revalidation.test.ts`: 3 failed tests, 397354 ms.
+  - `tests/repair-workspaces.test.ts`: 2 failed tests, 1207296 ms.
+- Most failures were unchanged 30-second test deadlines reached under the
+  long instrumented run. One `v1/spec-kit` successor revalidation case reported
+  that its inputs changed; the neighboring `v3/spec-kit` case timed out.
+
+Those same six files were immediately rerun under V8 coverage, one worker, and
+the same telemetry-free CI environment. All 6 files and all 353 tests passed in
+147.78 seconds. That focused command was diagnostic only and exited nonzero
+because a partial test selection cannot satisfy source-complete 80.01% global
+thresholds. It does not qualify coverage or replace the required unfiltered
+gate.
+
+The completed failed evidence was recovered into session artifact storage as
+`macos-custody-cli-coverage-evidence-65501156-failed.json`, with artifact
+SHA-256
+`062ae8d896b3d606c515154485ce21b33ed77bb8fadb410acc687868761b36a8`.
+The full failed log is
+`macos-custody-cli-coverage-65501156-retry.log`; the incomplete first attempt
+is `macos-custody-cli-coverage-65501156.log`; and the focused diagnostic is
+`macos-custody-coverage-failures-focused-65501156.log`.
+
+Host readiness did not permit another honest retry. The Mac was on battery and
+fell from 66% to 62% during a bounded five-minute read-only check, with only
+51-73 minutes estimated remaining versus the completed coverage run's 5465.63
+seconds. Load averages remained 6.65-13.20, and a pre-existing Docker
+Virtualization process intermittently consumed up to 463.7% CPU. No unrelated
+process was terminated, no operating-system setting was changed, and no test
+deadline, source inventory, coverage threshold, or historical contract was
+weakened.
+
+Task 13.5 therefore remains unchecked. Do not commit this checkpoint as a
+qualification/task-state layer until a fresh clean source-complete run succeeds
+with zero failed tests, exact revision/inventory verification, and statements,
+branches, functions, and lines each strictly above 80%. A future retry should
+start only when AC power or adequate battery runtime is available and host load
+has materially subsided. Task 13.6 also remains unchecked: no explicit
+authorization, disposable cloud scope, production custody/handover ports, or
+real native/cloud evidence became available in this continuation. Synthetic
+tests remain distinct from real qualification.
