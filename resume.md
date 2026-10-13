@@ -2030,7 +2030,9 @@ health, or global effect occurred.
 The exact private source has a further narrowly coupled successor:
 `1c131a35279e628622c70bab1670baf60208e0c5`
 (`fix: bound application health freshness`), tree
-`ad07c5037afcf030d9d97a320a7218c9b1536c3e`, direct child of `a18bbbe3`.
+`ad07c5037afcf030d9d97a320a7218c9b1536c3e`. Its actual direct parent is the
+documentation successor `755f076bcd92c412d86b7a3b622f22ea6ab7f409`;
+`a18bbbe3` remains an ancestor. No source ancestry was lost.
 Audit after the first correction found that a health observation was required
 to occur after completion but was not bounded to the current protected
 readback clock. The successor adds a five-minute maximum age, rejects
@@ -2055,3 +2057,40 @@ Renewed exact-source validation passed:
 This successor supersedes `a18bbbe3` for private source audit and any future
 shared serialization. All task flags, real-effect blockers, ownership-tag
 mismatch, and no-shared-wiring constraints remain unchanged.
+
+Renewed private audit accepted the five original proof families in `1c131a35`
+and identified one final bounded runtime-union gap. The corrective source
+successor is `4c7efd104b26167125076c976cb34e3f143c1188`
+(`fix: close application result discriminants`), tree
+`17a3d25eaa9d690a2fccf92e9518de5bc7319550`, with actual direct parent
+`3e7ee56d98482c69e7428e1f87e50b2a3a88baee`.
+
+Write-result validation now accepts only the declared
+`blocked`/`uncertain`/`accepted`/`failed`/`completed` runtime statuses,
+explicitly requires the final proof branch to be `completed`, and accepts
+only `accepted` or `terminal` effects for failed results. Read-result
+validation accepts only `blocked` or `completed` and no longer treats an
+arbitrary nonblocked status as completion. The complete declared failure
+reason set is runtime-enforced for blocked, uncertain, and failed results.
+Focused controls use fully populated, internally coherent objects with an
+unknown write status, unknown read status, failed unknown effect, and unknown
+blocked/uncertain/failed reasons; missing-field or stale-hash proxies are not
+used for those cases.
+
+Renewed exact-source validation passed:
+
+- Qualified Node 24.21.0 plus npm 12.0.2 TypeScript build.
+- Ten focused deployment-source tests.
+- 121/121 adjacent deployment/artifact/ownership/environment tests.
+- Focused source coverage:
+  statements **317/356 (89.04%)**,
+  branches **586/634 (92.42%)**,
+  functions **78/79 (98.73%)**,
+  lines **311/350 (88.85%)**.
+- Package smoke, repository policy, supported-stack, strict OpenSpec, and
+  `git diff --check`.
+
+This exact source supersedes `1c131a35` for renewed private admission. It
+does not alter shared/current-family-5 contracts, generator/HCL, runtime
+wiring, production authority, task flags, or any real effect. The ownership
+tag mismatch remains fail-closed and task 14.2 remains unchecked.
