@@ -976,3 +976,72 @@ lower PR-owner branches, or dispatch another workflow. Continue with the next
 dependency-safe OpenSpec implementation independently of tasks 13.5/13.6;
 sections 14 and real section-16 project enrollment remain dependency-blocked
 until their prerequisites are met.
+
+## Hosted coverage and native-lane continuation checkpoint, 2026-10-13
+
+The independently dispatched existing CI workflow
+`https://github.com/voyager163/liftoff/actions/runs/38338242547` completed on
+clean revision `85846e7b74d72227fad6b77a7fae803343e267ef`. Its Ubuntu
+source-complete CLI coverage gate passed with the complete 506-source inventory
+digest
+`sha256:d224256c5587b23788bbe9a646b54d15134eeb10c134983465d1f6b8ddc89a98`,
+9,920 passed tests, 0 failed tests, and 365 host-gated skips. Independent
+verification reconstructed all 914 source/test/configuration Git blobs and the
+raw metrics:
+
+- Statements: 37,907/44,515 (85.1555%).
+- Branches: 33,179/41,022 (80.8809%).
+- Functions: 7,192/7,899 (91.0494%).
+- Lines: 33,877/38,449 (88.1089%).
+
+All four metrics are strictly above 80%. Six negative V8 inferred-else
+counters remain uncovered and were not excluded. The raw final report, summary,
+saved evidence, and independent audit agree. The independent audit is retained
+outside the repository in the coordinating session as
+`files/custody-hosted-38338242547-cli/independent-audit.json`.
+
+Both Linux shards, both macOS shards, and Windows shard 2 passed. Windows shard
+1 recorded 4,877 passed, 1 failed, and 281 skipped tests. The sole failed
+assertion was
+`tests/governance-credential-readiness.test.ts:249`: Windows synthesized file
+mode `0666` where the test unconditionally expected POSIX `0600`. Consequently
+all three aggregate `Test` jobs correctly remained failed; this was not waived.
+
+The implementation already requests `mode: 0o600` for the local credential
+policy transaction. Windows mode bits do not establish ACL protection, and the
+policy file is metadata rather than the protected PAT. The test correction
+does not skip the Windows enrollment scenario or treat Windows `chmod` as
+protection: it continues to verify protected input, exact secret write,
+in-memory secret zeroization, payload-free policy/readback, and provider
+isolation on every host; it now also proves the persisted policy contains
+neither the exact PAT nor any `github_pat_` value. Only the POSIX `0600`
+filesystem assertion is conditional on a non-Windows host, matching existing
+repository mode-testing patterns. Focused credential/state/repository policy
+validation passed: 3 files and 145 tests.
+
+The first attempt to dispatch the new standalone native workflow failed with
+GitHub HTTP 404 because a newly named `workflow_dispatch` file is not
+dispatchable until that workflow exists on the default branch. No run was
+created. The same exact read-only native job was moved into the already
+registered `repository.yml` workflow behind
+`${{ github.event_name == 'workflow_dispatch' }}`. PR and long-lived push
+events retain only their prior repository-policy job; manual dispatch runs
+that short check plus the native lane, not the broad CI workflow.
+
+The registered lane was dispatched as run
+`https://github.com/voyager163/liftoff/actions/runs/38340698042` on exact clean
+revision `322351775f343267ed94bb91dfde08e6fc1c41f5`. It pins Node 24.21.0,
+npm 12.0.2, OpenTofu 1.12.6, OpenSpec 1.11.0, Go 1.27.0, Python 3.14.7, and
+uv 0.12.7 on `macos-15` ARM64; runs supported-stack, build, unfiltered
+one-worker tests, source-complete one-worker coverage, evidence verification,
+focused custody/history checks, package smoke, repository policy, strict
+OpenSpec validation, and clean-tree verification; and uploads its logs,
+coverage directory, and a revision/toolchain/metric-bound evidence record.
+
+Run `38340698042` is a retained workflow qualification attempt only because the
+Windows assertion correction changes the candidate after dispatch. Even if it
+passes, rerun the native lane on the exact corrected clean revision before
+checking task 13.5. Task 13.5 remains unchecked, and task 13.6 remains
+unchecked without production custody/handover adapters, authorized disposable
+scope, and real cloud evidence. The Ubuntu coverage result is separate hosted
+evidence and does not replace the dedicated hosted macOS ARM64 run.

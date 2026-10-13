@@ -237,7 +237,10 @@ describe('production credential readiness', () => {
     expect(runner.providerCalls).toEqual([]);
 
     const policyFile = path.join(root, ...credentialPolicyPathParts);
-    const policy = validateCredentialPolicy(JSON.parse(await readFile(policyFile, 'utf8')));
+    const policyText = await readFile(policyFile, 'utf8');
+    expect(policyText).not.toContain(pat);
+    expect(policyText).not.toContain('github_pat_');
+    const policy = validateCredentialPolicy(JSON.parse(policyText));
     expect(policy).toMatchObject({
       authKind: 'fine-grained-pat',
       repository: { id: String(repositoryId), fullName: repository },
@@ -246,7 +249,9 @@ describe('production credential readiness', () => {
       allowedWorkflows: runnerPreflightWorkflowAllowlist,
       proof: { readbackProvider: 'github-api', payloadFree: true }
     });
-    expect((await stat(policyFile)).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') {
+      expect((await stat(policyFile)).mode & 0o777).toBe(0o600);
+    }
 
     const evidence = JSON.parse(await readFile(path.join(root, ...result.evidence!.pathParts), 'utf8')) as {
       payload: {
