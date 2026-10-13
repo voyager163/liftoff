@@ -64,9 +64,10 @@ Liftoff does **not** send:
   workload, region, or environment choices.
 - A source IP address or derived location in the event.
 
-Liftoff creates no telemetry queue and stores no event locally. Its only local
-telemetry state is a numeric disclosure version in the platform configuration
-directory.
+Liftoff creates no telemetry queue and stores no event locally. Anonymous
+disclosure uses a numeric notice version. Separately approved project reporting
+also records the project UUID and an external checkout-bound consent, as described
+below. None of these records is an installation, user or device identity.
 
 ## Versioned ingestion rollout
 
@@ -75,8 +76,9 @@ retains its original zero/nonzero meaning; schema 2 accepts `success`,
 `attention-required`, `cancelled`, and `failure` from the command's semantic
 result. Expected exit-2 drift is attention-required, while an actual partial
 execution failure is failure. A schema-1 event is never reinterpreted as schema
-2. The current default client sends schema 2; project enrollment remains
-separate and unavailable.
+2. The current default client sends schema 2. The candidate client exposes
+separate explicit project enrollment; this is not a claim that the latest
+published release or production ingestion has been qualified for it.
 
 Command producers also record an invocation-local semantic outcome. Expected
 update drift or an available CLI upgrade is `attention-required`; an explicit
@@ -139,7 +141,8 @@ bundle. This describes the installed bundle that understands the source, not a
 claim that application files match it, that it originally generated the project,
 or that an update ran. It does not identify a filesystem root, create an ID,
 establish consent, construct an event, or enable reporting. Those remain separate
-enrollment/reporting prerequisites; the default CLI does not call this reader.
+enrollment/reporting prerequisites. The candidate client calls this reader only
+for supported project reporting, never to grant project-file or provider authority.
 
 Project records contain exactly `TimeGenerated`, `EventName`, `SchemaVersion`,
 `ProjectId`, `CliVersion`, `PolicyProfile`, `PolicyVersion`, `TemplateSetDigest`,
@@ -167,6 +170,107 @@ An operator-reviewed deletion request needs independently verified authority;
 disabling delivery only stops future observations and does not claim historical
 deletion. The public endpoint can receive forged observations.
 
+## Explicit project consent (candidate client)
+
+Check `liftoff capabilities --json` in the installed CLI before using these
+commands. Installation, initialization, generated README/setup guidance, agent
+autonomy, generic `--yes`, a prior anonymous notice, and a copied tracked record
+never enroll a developer.
+
+```bash
+liftoff telemetry status ./project --json
+liftoff telemetry enroll ./project --check --json
+liftoff telemetry enroll ./project --approve-plan <full-review-fingerprint> --json
+liftoff telemetry report ./project --json
+liftoff telemetry disable ./project --check --json
+liftoff telemetry disable ./project --approve-plan <full-review-fingerprint> --json
+```
+
+Enrollment displays disclosure version 1, purpose, exact fields and exact writes.
+It creates a random UUIDv4 only after current approval, outside deterministic
+generation, in `.liftoff/telemetry/project.json`. It does not send an event during
+enrollment. Bare JSON/non-TTY mutation requests preview only (exit 2); a genuine
+terminal can approve the displayed exact plan with default-No consent. Automation
+must supply its complete current fingerprint. Status performs no network,
+disclosure, receipt, consent or project writes. All telemetry command/help routes
+avoid anonymous aggregate recursion.
+
+User-local `config.json` preserves unknown valid fields and adds only
+`telemetry.projectConsents` entries: canonical checkout root, project UUID and
+disclosure version. Storage uses `XDG_CONFIG_HOME/liftoff`, Windows
+`APPDATA/liftoff`, or `~/.config/liftoff`; relative configuration roots and
+project-local consent storage are refused. Invalid/read-only configuration or
+unsafe aliases block consent/reporting without overwriting the file.
+Configuration and project record writes use locking, exact snapshot review,
+atomic replacement and readback. They are not a cross-directory atomic
+transaction: an interrupted/failed final config write may leave an unenrolled
+project record. Inspect status and obtain a fresh review; no event is queued.
+Installer ownership changes must leave these preferences untouched, not
+reinterpret them as consent; the native installer migration remains unqualified.
+
+One identity represents one validated root/manifest, not its raw path, Git
+remote, repository name, machine or device. Commit the approved project record
+when intentionally sharing that project's identity. Each clone/worktree needs
+its own explicit `telemetry enroll --preserve-identity` review to establish local
+consent. A copied record alone cannot opt in another developer or checkout.
+For an independent fork/template copy use an explicitly approved
+`telemetry enroll --new-identity`; unrelated monorepo roots enroll separately
+and obtain different random IDs. Liftoff cannot infer whether a copy is a clone
+or an independent project. Moving a checkout preserves its tracked UUID but
+invalidates local consent and write-review fingerprints; review the new checkout
+with `--preserve-identity`. A telemetry fingerprint cannot select an update,
+repair, governance operation or deletion request.
+
+Explicit report returns schema 1 `delivered`, `disabled` or `failed` and whether
+a request was attempted. Failed delivery exits 1; disabled/delivered exits 0.
+Delivery proves only a successful endpoint response, not durable storage.
+Unsupported/missing project metadata or unavailable consent sends nothing.
+After an eligible ordinary project command, the candidate client can send one
+consented project observation alongside its one anonymous command event. Both
+use the parent's single one-second deadline, one request per channel and no
+retry/queue. Ordinary output and exit status are unchanged. Assessment (including
+live/help), capabilities, repair discovery, telemetry status, generic help and
+self-upgrade never collect a project observation.
+
+## Separately approved monthly heartbeat
+
+Project enrollment never installs a schedule or enables a CI exception.
+`liftoff telemetry heartbeat enable ./project --repository ./repository --check --json`
+currently reports a blocker: no qualified published heartbeat-capable Linux CLI
+archive/digest and repository-scoped enablement producer are registered.
+The latest release's presence, a syntactically valid URL/digest, a caller flag,
+or a test specimen is not artifact qualification. No invented archive URL,
+mutable `latest`/tag pin, automatic installation or active cron is installed.
+`telemetry report --heartbeat` therefore emits nothing. Ordinary `CI=true`
+continues disabling both channels; both global opt-outs always win.
+
+The candidate deterministic workflow contract inventories only selected roots
+in `.liftoff/telemetry/heartbeat.json` and exact entries in
+`.github/workflows/liftoff-project-heartbeat.yml`. It requires a qualified
+runtime-inclusive CLI archive/digest and immutable checkout action, monthly
+schedule and contents-read permission. It never scans/enrolls projects, runs
+application scripts, upgrades/repairs projects or deploys Azure resources.
+Syntax/rendering tests are not real artifact/publication/CI qualification.
+
+For an existing exact inventoried entry,
+`liftoff telemetry heartbeat disable ./project --repository ./repository --check --json`
+reviews separate repository-level writes. Exact fingerprint/default-No approval
+removes only that entry, preserving other roots, custom workflow bytes and LF or
+CRLF line endings. Modified/ambiguous owned blocks, identity mismatch, unsafe
+paths or changed inputs refuse rather than replace unrelated workflow content.
+Local project disablement also prevents future project delivery; removing a
+shared repository entry requires the separate repository review. Heartbeat
+activation/addition and the valid CI exception remain unqualified gates.
+
+An eventual heartbeat means only that the configured repository reported an
+enrolled project. It is not recent developer activity, deployment health,
+compliance or proof of ownership. Monthly schedules may be delayed or disabled
+by GitHub policy/inactivity; silence is stale/unknown reporting, not abandonment.
+Metrics are opted-in distinct projects over retained 30/90/180-day windows and
+first-observed projects **within retained data**, not lifetime totals or a census.
+Disablement is not deletion; privacy deletion remains operator-reviewed and
+requires independent authority, never possession of the public UUID.
+
 ## Disable telemetry
 
 Set either variable before running Liftoff:
@@ -184,12 +288,14 @@ $env:DO_NOT_TRACK = "1"
 ```
 
 Telemetry is also disabled when `CI=true`. Disabled runs do not show the notice,
-create telemetry state, or initialize network transport.
+create telemetry state, or initialize network transport, even with
+`telemetry report --heartbeat`. A future qualified explicit heartbeat producer
+must still obey both global opt-outs; no such producer is registered today.
 
 ## Delivery and failure behavior
 
-The CLI makes one HTTPS request after command completion with a maximum
-one-second delivery budget. It does not retry, buffer, read a response body, or
+The CLI makes at most one request per eligible channel after command completion,
+sharing a maximum one-second delivery budget. It does not retry, buffer, read a response body, or
 report telemetry failures. Offline use, command output, JSON stdout, and the
 original exit status remain unchanged when the service is unavailable.
 
@@ -206,9 +312,8 @@ blocked, or control arbitrary third-party code that ignores cancellation.
 The internal `deliverPreparedTelemetry` seam accepts at most one fixed command
 slot and one fixed project slot. Ready independent requests share the deadline
 and start concurrently. A command slot accepts schema 1 **or** schema 2, never
-both in one invocation. The default CLI supplies one schema-2 command slot; no
-project discovery, enrollment or public explicit report command is wired by
-this foundation.
+both in one invocation. The default CLI supplies one schema-2 command slot and,
+only with validated independent project consent, one project slot.
 
 Requested slots return a closed local result: `delivered`, `disabled`, or
 `failed`, plus whether transport was attempted and a fixed reason where
@@ -220,7 +325,7 @@ own output/exit. Unrequested slots are omitted, and a project-only private
 call cannot recursively emit a command aggregate.
 
 The internal `reportCommandEvent` API returns the command-slot result directly.
-This gives future explicit reporting operations the same `delivered`,
+This gives explicit reporting integrations the same `delivered`,
 `disabled`, or `failed` result without invoking the CLI lifecycle again and
 therefore without recursively emitting another command aggregate. Repeated
 reports using the same delivery object return `duplicate-channel` without
@@ -230,13 +335,12 @@ CLI intentionally discards delivery results after the shared deadline.
 
 The seam validates exact payload shapes, HTTPS and the 1-KiB body limit, but
 syntactically valid project input is **not** consent or release-ownership
-evidence. A future project caller must independently validate those contracts
+evidence. The project reporting caller independently validates those contracts
 before supplying an observation. Global opt-outs still win and ordinary
 `CI=true` disables both slots, even for a supplied `ci-heartbeat` payload.
-There is no CI exception, project ID creation, public report result/exit
-contract, or task-16 enrollment in this foundation. Public status/enrollment/
-disable/report operations and their consent-bound project transport remain
-task-16 work; no unwired public command is advertised here.
+The transport alone never creates IDs or consent. The separate public
+status/enrollment/disable/report layer supplies those boundaries; qualified
+heartbeat activation and its narrow CI exception remain unavailable.
 
 ## Azure processing and retention
 
