@@ -172,6 +172,13 @@ protected bootstrap must retain its original opaque custody references and exact
 30-day disposal obligation. Missing task13 production storage, non-exporting
 keys, locking, runner admission or disposable qualification still blocks.
 
+Read-only `governance status --json`, `governance status --scope local --json`
+and `governance resume --json` describe these two application executors as
+`injected-only`, with the exact protected-source blocker. This is not production
+readiness or approval to run the source adapters. CLI review history covers each
+scope separately; its frozen captures, normalization, prior records, exit codes
+and stderr are preserved.
+
 `application-prerequisites-ready` accepts only the selected declared environment,
 `registrySku: "Basic"` and explicit `assignRegistryRoles: true`, with nonzero
 fixed/usage cost ceilings. It creates the deterministic registry and workload
