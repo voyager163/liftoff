@@ -123,6 +123,19 @@ remain readable diagnostic/planning families. Source5 does not enable public
 execution or automatic migration. The public/legacy executor now reports this
 explicit workflow prerequisite blocker instead of silently returning no producer.
 
+The unregistered source5 bridge uses a separate private control schema1 and the
+closed `workflow-source5-{plan,approval,journal,operation,proof}` namespaces
+outside the project and repository. Controls are canonical, project-bound,
+HMAC-sealed objects; restart validates the exact original issuance, not imported
+project approvals or structurally similar runtime objects. The private local
+issuer and operating-system user remain a trust boundary, not an attestation of
+a qualified host. A live engine-issued lease/capability is also required.
+Index, approval and operation objects are limited to64KiB; original plan/proof
+objects to16MiB, counting the **complete encoded sealed disk object**. Existing
+preview/consent stores keep their64KiB limit. Failed saves throw and preserve
+unresolved progress; CAS refuses stale/concurrent replacement. These interfaces
+do not register a producer, qualify a host, or open public execution.
+
 ## Managed files and user-owned state
 
 Enabled governance adds managed-core files:
