@@ -94,6 +94,13 @@ describe('Windows Job Object controller asset integrity and host environment', (
     expect(hash).toBe(windowsJobControllerAssetDigest);
   });
 
+  it('loads only the built-in compiler cmdlet directly rather than the Utility manifest', async () => {
+    const controller = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+    expect(controller).toContain("Import-Module ([System.IO.Path]::Combine($PSHOME, 'Microsoft.PowerShell.Commands.Utility.dll')) -Cmdlet Add-Type -ErrorAction Stop");
+    expect(controller).toContain('Microsoft.PowerShell.Commands.Utility\\Add-Type -TypeDefinition $win32TypeDef -ErrorAction Stop');
+    expect(controller).not.toContain('Microsoft.PowerShell.Utility.psd1');
+  });
+
   it('rejects a corrupted controller asset before launching any process', async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'liftoff-bad-asset-'));
     tempDirs.push(tempDir);
@@ -226,6 +233,33 @@ describe('Windows Job Runner protocol execution and policy admission blockers', 
     expect(result.processSpawned).toBe(false);
     expect(result.errorCode).toBe('CONSTRAINED_LANGUAGE_MODE');
     expect(result.errorMessage).toContain('ConstrainedLanguage mode or restricted by AppLocker/WDAC');
+  });
+
+  it('fails closed before target dispatch when the built-in compiler bootstrap is unavailable', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-controller-bootstrap-'));
+    tempDirs.push(directory);
+    let launcher: WindowsJobRunnerOptions;
+    if (process.platform === 'win32') {
+      const controller = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+      const assetPath = path.join(directory, 'missing-compiler.ps1');
+      await writeFile(assetPath, controller.replace('Microsoft.PowerShell.Commands.Utility.dll', 'liftoff-missing-compiler-fixture.dll'));
+      launcher = { assetPath, skipAssetVerification: true };
+    } else {
+      const script = path.join(directory, 'missing-compiler.mjs');
+      await writeFile(script, 'process.stderr.write("Failed to load Win32 Job API definitions.\\n"); process.exitCode = 1;\n');
+      launcher = await mockControllerLauncher(directory, script);
+    }
+    const result = await runWindowsJobCommand({
+      executable: process.execPath, args: ['--eval', 'process.stdout.write("UNEXPECTED_TARGET_EXECUTION")']
+    }, { timeoutMs: 1000 }, launcher);
+    expect({
+      status: result.status, timedOut: result.timedOut, processSpawned: result.processSpawned,
+      processTreeSettled: result.processTreeSettled, errorCode: result.errorCode
+    }).toEqual({
+      status: null, timedOut: false, processSpawned: false, processTreeSettled: false, errorCode: 'CONTROLLER_LAUNCH_FAILED'
+    });
+    expect((result.errorMessage ?? '').includes('Failed to load Win32 Job API definitions')).toBe(true);
+    expect(result.stdout.includes('UNEXPECTED_TARGET_EXECUTION')).toBe(false);
   });
 
   it('coordinates execution via control pipe with matching ack and verified settlement', async () => {

@@ -418,6 +418,14 @@ provenance remains unchanged after the explicit new-output-only retirement.
 Do not move state or force new roots into place to clear the result; plan a
 separate reviewed migration.
 
+Approved historical infrastructure validation uses backend-disabled private
+staging and requires explicit process-tree settlement before deleting provider
+outputs. Unknown settlement retains staging and blocks the project transaction.
+A cleanup failure never authorizes repair or hides an earlier validation failure;
+both failures are retained internally, with only fixed validation diagnostics
+reported. Do not retry deletion, remove an active provider executable, or assume
+an `EBUSY` error identifies the process holding it.
+
 ## Native startup rejects configuration or appears to ignore the file
 
 Python and Node read root `.env`; Python backend-CWD startup still resolves that

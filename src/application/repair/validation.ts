@@ -24,6 +24,8 @@ export const repairValidationPolicy = {
   effects: 'Private staging and provider downloads only; no live plan, apply, backend initialization or project scripts.'
 } as const;
 
+class RepairValidationError extends Error {}
+
 export async function validateRepairCandidate(
   candidate: InfrastructureRepairCandidate,
   environments: readonly EnvironmentId[],
@@ -31,6 +33,8 @@ export async function validateRepairCandidate(
   inherited: NodeJS.ProcessEnv = process.env
 ): Promise<void> {
   const staging = await mkdtemp(path.join(os.tmpdir(), 'liftoff-repair-'));
+  let cleanupSafe = true;
+  let failure: { error: unknown } | undefined;
   try {
     for (const file of candidate.files) {
       const destination = path.join(staging, ...file.pathParts);
@@ -51,41 +55,65 @@ export async function validateRepairCandidate(
       HOME: home, USERPROFILE: home, APPDATA: home, XDG_CONFIG_HOME: home,
       TF_CLI_CONFIG_FILE: config, TF_IN_AUTOMATION: '1', TF_INPUT: '0'
     });
-    const versionResult = await runner.run({ executable: 'tofu', args: ['--version'] }, {
-      cwd: staging, env, timeoutMs: 30_000, maxOutputBytes: 16_384
-    });
+    const run = async (args: readonly string[], cwd: string, timeoutMs: number, maxOutputBytes: number) => {
+      cleanupSafe = false;
+      const result = await runner.run({ executable: 'tofu', args: [...args] }, {
+        cwd, env, timeoutMs, maxOutputBytes, ensureProcessTreeSettled: true
+      });
+      cleanupSafe = result.processTreeSettled === true &&
+        !['PROCESS_TREE_TERMINATION_FAILED', 'DESCENDANT_PROCESSES_ACTIVE', 'UNSUPPORTED_PROCESS_SETTLEMENT']
+          .includes(result.errorCode ?? '');
+      if (!cleanupSafe) {
+        throw new RepairValidationError('Isolated OpenTofu command settlement was not confirmed; private staging is retained and no project transaction is authorized.');
+      }
+      return result;
+    };
+    const versionResult = await run(['--version'], staging, 30_000, 16_384);
     const version = extractVersion(versionResult.stdout, 'opentofu');
     if (commandFailure(versionResult) || !version || isPrereleaseVersion(version) ||
         !version.startsWith(`${repairValidationPolicy.tool.releaseLine}.`) ||
         compareVersionCores(version, repairValidationPolicy.tool.minimumVersion) < 0) {
-      throw new Error(`Repair validation requires stable OpenTofu ${repairValidationPolicy.tool.minimumVersion}+ on the ${repairValidationPolicy.tool.releaseLine}.x release line. Prepare that executable separately; repair does not install tools.`);
+      throw new RepairValidationError(`Repair validation requires stable OpenTofu ${repairValidationPolicy.tool.minimumVersion}+ on the ${repairValidationPolicy.tool.releaseLine}.x release line. Prepare that executable separately; repair does not install tools.`);
     }
-    const formatting = await runner.run({ executable: 'tofu', args: [...repairValidationPolicy.formatCommand] }, {
-      cwd: path.join(staging, 'infrastructure', 'opentofu', 'azure'), env, timeoutMs: 30_000, maxOutputBytes: 65536
-    });
+    const formatting = await run(repairValidationPolicy.formatCommand,
+      path.join(staging, 'infrastructure', 'opentofu', 'azure'), 30_000, 65536);
     if (commandFailure(formatting)) {
-      throw new Error('The repair candidate does not pass OpenTofu formatting. Project files were preserved. Format the original infrastructure with tofu fmt -recursive, then request a fresh repair check; persistent generated-root formatting failures require a CLI fix.');
+      throw new RepairValidationError('The repair candidate does not pass OpenTofu formatting. Project files were preserved. Format the original infrastructure with tofu fmt -recursive, then request a fresh repair check; persistent generated-root formatting failures require a CLI fix.');
     }
     for (const environment of environments) {
       const cwd = path.join(staging, 'infrastructure', 'opentofu', 'azure', 'environments', environment);
       for (const args of repairValidationPolicy.commands) {
-        const result = await runner.run({ executable: 'tofu', args: [...args] }, {
-          cwd, env, timeoutMs: repairValidationPolicy.timeoutMs, maxOutputBytes: repairValidationPolicy.maxOutputBytes
-        });
+        const result = await run(args, cwd, repairValidationPolicy.timeoutMs, repairValidationPolicy.maxOutputBytes);
         const failure = commandFailure(result);
-        if (failure) throw new Error(`Isolated OpenTofu ${args[0]} for ${environment} ${failure}. Project files were not changed; resolve the tool or configuration problem and request a new repair preview.`);
+        if (failure) throw new RepairValidationError(`Isolated OpenTofu ${args[0]} for ${environment} ${failure}. Project files were not changed; resolve the tool or configuration problem and request a new repair preview.`);
         if (args[0] === 'validate') {
           let value: unknown;
           try { value = JSON.parse(result.stdout); }
-          catch { throw new Error(`OpenTofu validation for ${environment} did not return valid JSON; project files were preserved.`); }
+          catch { throw new RepairValidationError(`OpenTofu validation for ${environment} did not return valid JSON; project files were preserved.`); }
           if (typeof value !== 'object' || value === null || !('valid' in value) || value.valid !== true ||
               !('error_count' in value) || value.error_count !== 0) {
-            throw new Error(`OpenTofu validation for ${environment} did not confirm a valid candidate; project files were preserved. Configuration diagnostics may contain sensitive values and are not echoed.`);
+            throw new RepairValidationError(`OpenTofu validation for ${environment} did not confirm a valid candidate; project files were preserved. Configuration diagnostics may contain sensitive values and are not echoed.`);
           }
         }
       }
     }
-  } finally {
-    await rm(staging, { recursive: true, force: true });
+  } catch (error) {
+    failure = { error };
   }
+  if (!cleanupSafe) {
+    throw new Error('Isolated OpenTofu command settlement was not confirmed; private staging cleanup is blocked and no project transaction is authorized.',
+      { cause: failure?.error });
+  }
+  try {
+    await rm(staging, { recursive: true, force: true });
+  } catch (error) {
+    if (failure) {
+      const primary = failure.error instanceof RepairValidationError ? failure.error.message : 'Isolated OpenTofu validation failed.';
+      throw new AggregateError([failure.error, error],
+        `${primary} Private staging cleanup also failed; no project transaction is authorized.`,
+        { cause: failure.error });
+    }
+    throw new Error('Private OpenTofu staging cleanup failed; no project transaction is authorized.', { cause: error });
+  }
+  if (failure) throw failure.error;
 }
