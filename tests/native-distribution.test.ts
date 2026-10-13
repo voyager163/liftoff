@@ -5,7 +5,7 @@ import { chmod, link, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rm, s
 import os from 'node:os';
 import path from 'node:path';
 import { assertNativeHost, atLeastVersion } from '../distribution/native/host.mjs';
-import { assertLinuxRuntimeLibraries, bundleFile, bundleInventory, nativeRuntimeInput, readBundleFile } from '../scripts/native-bundle-contract.mjs';
+import { assertLinuxRuntimeLibraries, bundleFile, bundleInventory, nativeArchiveTool, nativeRuntimeInput, readBundleFile } from '../scripts/native-bundle-contract.mjs';
 import { nativeMaterials, nativePackageDefinitions, assertNativePublicationEvidence, verifyNativeEvidenceSignature, verifyNativeArchive } from '../scripts/native-release.mjs';
 import { parse } from 'yaml';
 import { installOwnedBundle, inspectOwnedInstallation, recoverOwnedInstallation } from '../scripts/native-install.mjs';
@@ -72,6 +72,13 @@ describe('native runtime floors and unsupported-host admission', () => {
     }
     for (const changed of ['', versions.replace('2.28', '2.29'), versions.replace('3.4.25', '3.4.26')]) {
       expect(() => assertLinuxRuntimeLibraries(linked, changed, floor)).toThrow();
+    }
+  });
+  it('uses the native Windows archive tool rather than a PATH-selected GNU tar interpreting drive letters as remote hosts', () => {
+    expect(nativeArchiveTool('win32', 'C:\\Windows')).toBe('C:\\Windows\\System32\\tar.exe');
+    expect(nativeArchiveTool('linux')).toBe('/usr/bin/tar');
+    for (const root of ['', 'Windows', 'C:Windows', '\\\\server\\Windows', 'C:\\Windows\\..\\foreign']) {
+      expect(() => nativeArchiveTool('win32', root)).toThrow();
     }
   });
   it('parses the same bounded regular-file bytes whose digest was reviewed', async () => {

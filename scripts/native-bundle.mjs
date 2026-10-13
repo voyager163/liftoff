@@ -13,7 +13,7 @@ import {
 } from './package-smoke-contract.mjs';
 import {
   assertDependencyClosure, assertNativeBundleReport, assertSystemRuntimeLibraries, assertLinuxRuntimeLibraries,
-  bundleFile, bundleInventory, bundlePath, nativeBundleHost, nativeRuntimeInput
+  bundleFile, bundleInventory, bundlePath, nativeArchiveTool, nativeBundleHost, nativeRuntimeInput
 } from './native-bundle-contract.mjs';
 import { assertNativeHost, observeNativeHost } from '../distribution/native/host.mjs';
 
@@ -36,7 +36,7 @@ const boundaries = Object.freeze({
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = async file => JSON.parse(await readFile(file, 'utf8'));
 const noticeName = /^(?:license|licence|copying|notice|copyright|patents)(?:[._-].*)?$/i;
-const tar = process.platform === 'win32' ? 'tar.exe' : '/usr/bin/tar';
+const tar = nativeArchiveTool();
 
 async function sourceFiles(names) {
   const records = [];

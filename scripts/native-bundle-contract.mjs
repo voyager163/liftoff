@@ -55,6 +55,17 @@ export function nativeRuntimeInput(inputs, host) {
   return matches[0];
 }
 
+export function nativeArchiveTool(platform = process.platform, windowsRoot = process.env.SystemRoot) {
+  if (platform !== 'win32') {
+    assert.ok(['linux', 'darwin'].includes(platform), 'Unsupported native archiving host.');
+    return '/usr/bin/tar';
+  }
+  assert.ok(typeof windowsRoot === 'string' && /^[A-Za-z]:\\/.test(windowsRoot) &&
+    path.win32.normalize(windowsRoot) === windowsRoot && !/[\u0000-\u001f]/.test(windowsRoot),
+  'Native Windows archiving requires the explicit local SystemRoot.');
+  return path.win32.join(windowsRoot, 'System32', 'tar.exe');
+}
+
 export function bundlePath(value) {
   assert.equal(typeof value, 'string', 'Bundle path must be a string.');
   assert.ok(value.length > 0 && value.length <= 1024, 'Bundle path is empty or oversized.');

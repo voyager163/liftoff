@@ -76,7 +76,7 @@ grep -q '^ED25519 Public-Key:' "$scratch/key.txt" || {
 openssl pkeyutl -verify -pubin -inkey "$scratch/archive.pub" -rawin -in "$scratch/archive.tar.gz" -sigfile "$scratch/archive.sig"
 mkdir "$scratch/bundle"
 tar --extract --gzip --file "$scratch/archive.tar.gz" --directory "$scratch/bundle" \
-  --no-same-owner --same-permissions --keep-old-files --no-overwrite-dir
+  --no-same-owner --same-permissions --keep-old-files
 unset NODE_OPTIONS NODE_PATH
 if ! "$scratch/bundle/runtime/node" "$scratch/bundle/installation/native-install.mjs" \
   install "$6" "$7" "$8"; then

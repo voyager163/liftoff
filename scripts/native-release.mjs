@@ -5,7 +5,7 @@ import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises'
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { bundleFile, bundlePath, readBundleFile } from './native-bundle-contract.mjs';
+import { bundleFile, bundlePath, nativeArchiveTool, readBundleFile } from './native-bundle-contract.mjs';
 import { verifyNativeBundle } from './native-bundle.mjs';
 import { releaseContext } from './release-artifact.mjs';
 import policy from '../distribution/native/release-policy.json' with { type: 'json' };
@@ -89,7 +89,7 @@ export async function archiveNativeBundle({ bundle, output, env = process.env })
   const filename = `liftoff-${manifest.package.version}-${target}.tar.gz`;
   bundlePath(filename);
   const archive = path.join(canonical, filename);
-  const tar = process.platform === 'win32' ? 'tar.exe' : '/usr/bin/tar';
+  const tar = nativeArchiveTool();
   const result = spawnSync(tar, ['-czf', archive, '-C', await realpath(bundle), '.'], {
     encoding: 'utf8', shell: false, timeout: 120_000, maxBuffer: 1024 * 1024
   });
