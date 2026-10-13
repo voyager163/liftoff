@@ -111,7 +111,10 @@ Linux cases exercise the actual bundle's isolated owned installation/recovery an
 test-only Ed25519 bootstrap authentication. Only explicitly named foreign-host
 cases are unrun; no failed applicable case can qualify by skipping.
 Clean-source hosted reports and development archives are retained for 14 days by
-the existing CI workflow. The repository-setup workflow is unchanged.
+the existing CI workflow. Native package and independent coverage jobs select the
+exact PR owning head (or dispatch/push SHA), not its synthetic merge revision.
+The full platform suites retain their existing integration checkout. The
+repository-setup workflow is unchanged.
 
 ## Linux installation ownership and recovery interface
 

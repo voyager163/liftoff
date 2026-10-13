@@ -20,6 +20,7 @@ export const coverageGateJobs = {
   'coverage-cli': 'npm run coverage:cli',
   'coverage-gateway': 'npm run coverage:gateway'
 };
+export const qualificationSourceRef = '${{ github.event.pull_request.head.sha || github.sha }}';
 export const gatewayInstallCommand = 'npm ci --prefix services/telemetry-ingest';
 export const independentStepCondition = '${{ !cancelled() }}';
 export const platformShardCheckCommand = 'npm run check:supported-stack && npm run build && ' +
@@ -93,7 +94,8 @@ export function nativeBundleQualificationJob() {
     name: 'Runtime-inclusive bundle (macOS ARM64)', 'runs-on': 'macos-15', 'timeout-minutes': 20,
     permissions: { contents: 'read' },
     steps: [
-      { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', with: { 'persist-credentials': false } },
+      { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+        with: { ref: qualificationSourceRef, 'persist-credentials': false } },
       { uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
         with: { 'node-version': '24.21.0', architecture: 'arm64', cache: 'npm' } },
       { uses: 'actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e',
@@ -137,7 +139,8 @@ export function nativePlatformQualificationJob() {
       { os: 'windows-2025', target: 'win32-x64' }
     ] } },
     steps: [
-      { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', with: { 'persist-credentials': false } },
+      { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+        with: { ref: qualificationSourceRef, 'persist-credentials': false } },
       { uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
         with: { 'node-version': '24.21.0', cache: 'npm' } },
       { name: 'Select supported npm', run: 'npm install --global "npm@12.0.2"' },
@@ -272,6 +275,10 @@ export function checkWorkflow(filename, workflow) {
     }
   }
   if (filename === 'ci.yml') {
+    for (const id of Object.keys(coverageGateJobs)) {
+      assert.equal(workflow.jobs[id]?.steps[0]?.with?.ref, qualificationSourceRef,
+        'Independent coverage must be bound to the exact owning head, not a synthetic PR merge revision.');
+    }
     assert.deepEqual(workflow.jobs['qualify-native-bundle'], nativeBundleQualificationJob(),
       'Native bundle qualification must retain its exact reviewed host, inputs, complete cases and report gate.');
     assert.deepEqual(workflow.jobs['qualify-native-platform-packages'], nativePlatformQualificationJob(),
