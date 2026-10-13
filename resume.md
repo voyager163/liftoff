@@ -916,3 +916,63 @@ Task 13.7 is complete because every maintained/current-generated guidance
 surface now uses only actual validated local commands and labels unavailable
 production combinations as unavailable. Tasks 13.5 and 13.6 remain pending
 until their distinct exact evidence requirements are met.
+
+## Tasks 15.4-15.5 semantic telemetry checkpoint, 2026-10-12
+
+This continuation completed the independent task 15.4 and 15.5 telemetry
+delivery layer without changing the blocked custody/cloud qualification state.
+OpenSpec progress advanced from 79/136 to 81/136. Tasks 13.5 and 13.6 remain
+unchecked.
+
+The production default CLI now sends exactly one schema-2 command event after
+an eligible ordinary command. The event uses the final invocation-local
+semantic outcome (`success`, `attention-required`, `cancelled`, or `failure`)
+rather than reconstructing meaning from the numeric exit code. It reuses the
+existing invocation-local delivery object and its single absolute one-second
+deadline; unreachable transport, timeout, rejection, opt-out, or duplicate
+delivery cannot change ordinary stdout, stderr, or exit status.
+
+The legacy `trackCommand()` API remains available and preserves exact schema-1
+zero/nonzero behavior for historical integrations. The default CLI does not
+send both schemas. The new internal `reportCommandEvent()` seam accepts either
+validated command schema, returns the fixed command-slot result (`delivered`,
+`disabled`, or `failed` with its fixed reason), and does not invoke the CLI
+lifecycle. Reusing one delivery object for a second command report returns
+`failed` / `duplicate-channel` without another network request, preventing
+recursive or repeated aggregate emission.
+
+The existing fixed command/project slots, concurrent ready-channel dispatch,
+HTTPS and 1-KiB validation, no-retry/no-queue/no-response-body behavior,
+global opt-outs, and ordinary `CI=true` disablement remain unchanged.
+Assessment, assessment help/live modes, capability discovery, repair
+capability/layout inventory, and self-upgrade replacement verification remain
+telemetry/disclosure-free. There is still no public project enrollment,
+project report, heartbeat, or telemetry report command; those remain section
+16 work.
+
+`docs/telemetry.md` now documents the schema-2 default, immutable schema-1
+history, schema-grouped operator queries during the 180-day overlap, and the
+internal explicit result contract. No frozen CLI baseline or released
+historical record changed.
+
+Validation used Node 24.21.0 and session-local npm 12.0.2:
+
+- `npm run build -- --pretty false`: passed.
+- Focused telemetry, semantic outcome, documentation, project-source,
+  telemetry infrastructure/bootstrap, and self-upgrade verification suite:
+  13 files passed, 340 tests passed.
+- Frozen/history/contract suite selected by `tests/*contract*.test.ts`:
+  12 files passed, 444 tests passed.
+- `npm run smoke:package`: passed for `@msn-control/liftoff@0.12.3`.
+- `npm run check:repository`: passed named-file policy; hosted settings still
+  require separate readback.
+- `openspec validate modernize-liftoff-platform --strict --no-interactive`:
+  passed.
+- `git diff --check`: passed.
+
+This checkpoint does not reuse hosted run `38338242547`, claim native
+source-complete coverage, qualify production custody/cloud behavior, mutate
+lower PR-owner branches, or dispatch another workflow. Continue with the next
+dependency-safe OpenSpec implementation independently of tasks 13.5/13.6;
+sections 14 and real section-16 project enrollment remain dependency-blocked
+until their prerequisites are met.

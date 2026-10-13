@@ -10,8 +10,8 @@ import { nodeRuntimeError } from './runtime.js';
 import {
   maybeShowTelemetryNotice,
   isTelemetryEnabled,
+  reportCommandEvent,
   telemetryCommandFor,
-  trackCommand
 } from './telemetry/index.js';
 import { PresentationSession } from './terminal.js';
 import type { ParsedArgs } from './domain/project/contracts.js';
@@ -42,11 +42,9 @@ export interface RunCliOptions {
 function createDefaultTelemetryHooks(delivery: () => TelemetryDelivery | undefined): CliTelemetryHooks {
   return {
     beforeCommand: (stderr, env) => maybeShowTelemetryNotice({ stderr, env }),
-    afterCommand: async (parsed, exitCode, env) => {
-      const command = telemetryCommandFor(parsed);
-      if (command) {
-        await trackCommand(command, liftoffVersion, exitCode, { env, delivery: delivery() });
-      }
+    afterCommand: async () => undefined,
+    afterSemanticCommand: async (event, env) => {
+      await reportCommandEvent(event, { env, delivery: delivery() });
     }
   };
 }

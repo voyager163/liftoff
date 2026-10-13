@@ -3,7 +3,8 @@ import {
   canonicalTelemetryCommand,
   createTelemetryEvent,
   telemetryNoticeVersion,
-  type TelemetryCommand
+  type TelemetryCommand,
+  type TelemetryCommandEvent
 } from './contract.js';
 import {
   readTelemetryNoticeVersion,
@@ -12,7 +13,7 @@ import {
 } from './config.js';
 import {
   createTelemetryDelivery, isTelemetryEnabled, maximumTelemetryDeliveryMs,
-  type TelemetryDelivery, type TelemetryFetch
+  type TelemetryDelivery, type TelemetryDeliveryResult, type TelemetryFetch
 } from './delivery.js';
 export { isTelemetryEnabled } from './delivery.js';
 export type { TelemetryFetch } from './delivery.js';
@@ -21,7 +22,7 @@ export const productionTelemetryEndpoint =
   'https://ca-liftoff-telemetry-f5be1618.politetree-7a65ae27.koreacentral.azurecontainerapps.io/api/events';
 export const telemetryRequestTimeoutMs = maximumTelemetryDeliveryMs;
 export const telemetryNotice =
-  'Telemetry: Liftoff sends command name, CLI version, and zero/nonzero outcome with no persistent identifier. ' +
+  'Telemetry: Liftoff sends command name, CLI version, and semantic outcome with no persistent identifier. ' +
   'Opt out with LIFTOFF_TELEMETRY=0 or DO_NOT_TRACK=1.\n';
 
 export interface TelemetryRuntimeOptions {
@@ -104,15 +105,23 @@ export async function trackCommand(
     return;
   }
 
+  await reportCommandEvent(createTelemetryEvent(command, cliVersion, exitCode), options).catch(() => undefined);
+}
+
+export async function reportCommandEvent(
+  event: TelemetryCommandEvent,
+  options: TelemetryRuntimeOptions = {}
+): Promise<TelemetryDeliveryResult> {
+  const endpoint = options.endpoint ?? productionTelemetryEndpoint;
   const delivery = options.delivery ?? createTelemetryDelivery({
     env: options.env, fetch: options.fetch, timeoutMs: options.timeoutMs
   });
   try {
-    await delivery.deliver({
-      command: { endpoint, event: createTelemetryEvent(command, cliVersion, exitCode) }
-    });
-  } catch {
-    // The legacy API deliberately discards delivery failures.
+    const result = await delivery.deliver({ command: { endpoint, event } });
+    if (!result.command) {
+      throw new Error('Command telemetry delivery did not return its requested result.');
+    }
+    return result.command;
   } finally {
     if (!options.delivery) delivery.close();
   }

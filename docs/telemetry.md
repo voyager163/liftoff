@@ -1,28 +1,34 @@
 # Telemetry and privacy
 
 Liftoff collects a small aggregate event to understand which CLI commands are
-useful and whether they exit with zero or nonzero status. Telemetry is enabled
-by default, disclosed before the first eligible command, and never required for
-the CLI to work. It creates no persistent installation or session identifier.
+useful and whether they complete, need operator attention, are cancelled, or
+fail. Telemetry is enabled by default, disclosed before the first eligible
+command, and never required for the CLI to work.
+It creates no persistent installation or session identifier.
 
 ## Event contract
 
-Each telemetry-eligible command can send at most one event after it finishes:
+Each telemetry-eligible command can send at most one current event after it
+finishes:
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "event": "command_executed",
   "command": "infra:plan",
-  "cliVersion": "0.6.1",
-  "outcome": "success"
+  "cliVersion": "0.12.3",
+  "outcome": "attention-required"
 }
 ```
 
-`outcome` is `success` for exit code zero and `failure` for every nonzero exit
-code. It is an exit-status class, not an error diagnosis. Help requests are
-recorded as `help`, except assessment help as described below. Rejected input
-that never resolves to a recognized command is not recorded.
+Schema-2 `outcome` is the invocation-local semantic result: `success`,
+`attention-required`, `cancelled`, or `failure`. Help requests are recorded as
+`help`, except assessment help as described below. Rejected input that never
+resolves to a recognized command is not recorded.
+
+Older released clients and the retained legacy `trackCommand` compatibility API
+send schema 1 records with the same field names. Schema 1 keeps its original
+zero-to-`success`, nonzero-to-`failure` meaning.
 
 `liftoff governance assess` skips telemetry and disclosure entirely, including
 `--live` and `--help`. It sends no telemetry event, displays no disclosure notice,
@@ -61,13 +67,13 @@ directory.
 
 ## Versioned ingestion rollout
 
-The candidate gateway accepts command schemas 1 and 2 independently. Schema 1
+The gateway accepts command schemas 1 and 2 independently. Schema 1
 retains its original zero/nonzero meaning; schema 2 accepts `success`,
 `attention-required`, `cancelled`, and `failure` from the command's semantic
 result. Expected exit-2 drift is attention-required, while an actual partial
 execution failure is failure. A schema-1 event is never reinterpreted as schema
-2. The currently wired client still sends schema 1; semantic client delivery and
-project enrollment are not enabled by this gateway change.
+2. The current default client sends schema 2; project enrollment remains
+separate and unavailable.
 
 Command producers also record an invocation-local semantic outcome. Expected
 update drift or an available CLI upgrade is `attention-required`; an explicit
@@ -76,13 +82,18 @@ partial execution, recovery or cleanup remains `failure`, even if its public
 exit is 2 or a later prompt is cancelled. An unclassified nonzero exit stays
 `failure`; numeric exit codes and command output are unchanged.
 
-Explicit local integrations may observe a schema-2 event through the optional
-`CliTelemetryHooks.afterSemanticCommand` hook. It uses the same command
+Explicit local integrations may also observe the schema-2 event through the
+optional `CliTelemetryHooks.afterSemanticCommand` hook. It uses the same command
 allowlist, disclosure readiness, global opt-outs and assessment/capability
 exclusions. Existing `afterCommand(parsed, exitCode, env)` hooks still receive
-their original arguments. The default client has no semantic hook and still
-emits only its existing schema-1 request and notice. This observation contract
-does not roll out schema-2 transport, enroll projects or create identifiers.
+their original arguments. The default client reports only the semantic event;
+it does not also send a schema-1 request. This hook contract does not enroll
+projects or create identifiers.
+
+Operator queries must group outcomes by schema until the oldest schema-1 records
+have aged past the published 180-day retention window. Combining the two
+schemas would falsely treat historical expected nonzero states as semantic
+failures.
 
 The candidate configuration is **not yet deployed**. Its separate
 `/api/projects` endpoint accepts only project schema 2:
@@ -192,9 +203,9 @@ blocked, or control arbitrary third-party code that ignores cancellation.
 The internal `deliverPreparedTelemetry` seam accepts at most one fixed command
 slot and one fixed project slot. Ready independent requests share the deadline
 and start concurrently. A command slot accepts schema 1 **or** schema 2, never
-both in one invocation. The default CLI still supplies only the existing
-schema-1 command slot; no project discovery, enrollment or explicit report
-command is wired by this foundation.
+both in one invocation. The default CLI supplies one schema-2 command slot; no
+project discovery, enrollment or public explicit report command is wired by
+this foundation.
 
 Requested slots return a closed local result: `delivered`, `disabled`, or
 `failed`, plus whether transport was attempted and a fixed reason where
@@ -205,13 +216,19 @@ uncertainty. Ordinary commands discard delivery results and preserve their
 own output/exit. Unrequested slots are omitted, and a project-only private
 call cannot recursively emit a command aggregate.
 
+The internal `reportCommandEvent` API returns the command-slot result directly.
+This gives future explicit reporting operations the same `delivered`,
+`disabled`, or `failed` result without invoking the CLI lifecycle again and
+therefore without recursively emitting another command aggregate. The ordinary
+CLI intentionally discards that result after the shared deadline.
+
 The seam validates exact payload shapes, HTTPS and the 1-KiB body limit, but
 syntactically valid project input is **not** consent or release-ownership
 evidence. A future project caller must independently validate those contracts
 before supplying an observation. Global opt-outs still win and ordinary
 `CI=true` disables both slots, even for a supplied `ci-heartbeat` payload.
 There is no CI exception, project ID creation, public report result/exit
-contract, production schema-2 switch, or task-16 enrollment in this foundation.
+contract, or task-16 enrollment in this foundation.
 
 ## Azure processing and retention
 

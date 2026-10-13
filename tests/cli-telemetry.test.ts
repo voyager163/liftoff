@@ -68,7 +68,7 @@ describe('CLI telemetry integration', () => {
     expect(await result).toBe(0); expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('keeps the default sender schema1-only and failure-isolated under the shared deadline', async () => {
+  it('sends one schema2 semantic event and remains failure-isolated under the shared deadline', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     const notice = vi.spyOn(telemetryConfig, 'readTelemetryNoticeVersion').mockResolvedValue(1);
     const record = vi.spyOn(telemetryConfig, 'recordTelemetryNotice').mockResolvedValue(false);
@@ -83,7 +83,8 @@ describe('CLI telemetry integration', () => {
     await vi.advanceTimersByTimeAsync(1_000);
     expect(await result).toBe(2); expect(fetch).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual({
-      schemaVersion: 1, event: 'command_executed', command: 'update', cliVersion: '0.12.3', outcome: 'failure'
+      schemaVersion: 2, event: 'command_executed', command: 'update',
+      cliVersion: '0.12.3', outcome: 'attention-required'
     });
     expect(notice).toHaveBeenCalledTimes(1); expect(record).not.toHaveBeenCalled();
     expect(stdout.text()).toBe('{"status":"update-available"}\n'); expect(stderr.text()).toBe('');
@@ -96,7 +97,9 @@ describe('CLI telemetry integration', () => {
     expect(await runCli({ argv, env: {}, stdout: new CaptureStream(), stderr: new CaptureStream(), execute: async () => 0 })).toBe(0);
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(String(fetch.mock.calls[0][0])).toMatch(/\/api\/events$/);
-    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({ schemaVersion: 1, command: argv[0] });
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toMatchObject({
+      schemaVersion: 2, command: argv[0], outcome: 'success'
+    });
   });
 
   it.each([
