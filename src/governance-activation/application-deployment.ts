@@ -550,6 +550,31 @@ export type ProtectedApplicationExecutionFailureReason =
   | 'verification-failed'
   | 'operation-failed';
 
+const protectedApplicationFailureReasons = new Set<string>([
+  'capability-unavailable',
+  'stale-binding',
+  'stale-invocation',
+  'stale-execution-source',
+  'ownership-unverified',
+  'protected-input-unavailable',
+  'backend-unavailable',
+  'mapping-unverified',
+  'configuration-mismatch',
+  'concurrency-conflict',
+  'checkpoint-failed',
+  'cost-exceeded',
+  'health-unverified',
+  'verification-failed',
+  'operation-failed'
+]);
+
+function isProtectedApplicationFailureReason(
+  value: unknown
+): value is ProtectedApplicationExecutionFailureReason {
+  return typeof value === 'string' &&
+    protectedApplicationFailureReasons.has(value);
+}
+
 export type ProtectedApplicationNoEffectResult = {
   status: 'blocked';
   effect: 'none';
@@ -2033,9 +2058,17 @@ export function validateProtectedApplicationWriteResult(
   retainedCheckpoints: ProtectedApplicationRetainedCheckpoints
 ): ProtectedApplicationWriteResult {
   validateRetainedApplicationCheckpoints(request, retainedCheckpoints);
+  if (!['blocked', 'uncertain', 'accepted', 'failed', 'completed']
+    .includes(result.status)) {
+    return applicationError(
+      'application-deployment-result',
+      'Application write result has an unknown runtime status discriminant.'
+    );
+  }
   if (result.status === 'blocked') {
     if (request.execution !== 'dispatch' || retainedCheckpoints.intent !== null ||
       result.effect !== 'none' ||
+      !isProtectedApplicationFailureReason(result.reason) ||
       !exactKeys(result, ['status', 'effect', 'reason'])) {
       return applicationError(
         'application-deployment-result',
@@ -2049,6 +2082,7 @@ export function validateProtectedApplicationWriteResult(
       retainedCheckpoints.accepted !== null ||
       request.execution === 'observe' && request.previousOperation !== null ||
       result.effect !== 'intent' ||
+      !isProtectedApplicationFailureReason(result.reason) ||
       canonicalSha256(result.intent) !== canonicalSha256(retainedCheckpoints.intent) ||
       !exactKeys(result, ['status', 'effect', 'reason', 'intent'])) {
       return applicationError(
@@ -2099,6 +2133,8 @@ export function validateProtectedApplicationWriteResult(
       'status', 'effect', 'reason', 'operation', 'intent', 'accepted',
       ...(terminal ? ['terminal'] : [])
     ]) ||
+      !['accepted', 'terminal'].includes(result.effect) ||
+      !isProtectedApplicationFailureReason(result.reason) ||
       result.effect === 'accepted' && (terminal !== undefined ||
         result.operation.status !== 'running' ||
         retainedCheckpoints.terminal !== null) ||
@@ -2128,6 +2164,12 @@ export function validateProtectedApplicationWriteResult(
       }
     }
     return result;
+  }
+  if (result.status !== 'completed') {
+    return applicationError(
+      'application-deployment-result',
+      'Application write result has an unknown runtime status discriminant.'
+    );
   }
   if (!result.terminal || !result.provenance || !result.plan ||
     !result.mappings || !result.completion) {
@@ -2185,8 +2227,15 @@ export function validateProtectedApplicationReadResult(
   result: ProtectedApplicationReadResult,
   expectedObservation: ApplicationDeploymentReadback
 ): ProtectedApplicationReadResult {
+  if (!['blocked', 'completed'].includes(result.status)) {
+    return applicationError(
+      'application-deployment-result',
+      'Application read result has an unknown runtime status discriminant.'
+    );
+  }
   if (result.status === 'blocked') {
     if (result.effect !== 'none' ||
+      !isProtectedApplicationFailureReason(result.reason) ||
       !exactKeys(result, ['status', 'effect', 'reason'])) {
       return applicationError(
         'application-deployment-result',
@@ -2195,7 +2244,8 @@ export function validateProtectedApplicationReadResult(
     }
     return result;
   }
-  if (result.effect !== 'none' ||
+  if (result.status !== 'completed' ||
+    result.effect !== 'none' ||
     result.action !== request.action ||
     !sameOperationIdentity(result.operation, request.admittedOperation) ||
     result.operation.status !== request.admittedOperation.status ||

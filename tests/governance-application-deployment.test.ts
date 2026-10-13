@@ -898,6 +898,20 @@ describe('protected application deployment source contracts', () => {
       f.binding, f.source, plan, provenance, authority, state,
       writeInvocation, intent
     );
+    const noEffectBlocked = {
+      status: 'blocked' as const,
+      effect: 'none' as const,
+      reason: 'capability-unavailable' as const
+    };
+    const noCheckpoints = { intent: null, accepted: null, terminal: null };
+    expect(validateProtectedApplicationWriteResult(
+      dispatch, noEffectBlocked, noCheckpoints
+    )).toBe(noEffectBlocked);
+    const unknownBlockedReason = { ...noEffectBlocked };
+    Reflect.set(unknownBlockedReason, 'reason', 'unknown-blocker');
+    expect(() => validateProtectedApplicationWriteResult(
+      dispatch, unknownBlockedReason, noCheckpoints
+    )).toThrow(/No-effect blocking/u);
     const runningOperation = {
       ...completion.operation,
       status: 'running' as const,
@@ -918,6 +932,16 @@ describe('protected application deployment source contracts', () => {
       status: 'uncertain',
       effect: 'intent'
     });
+    const unknownUncertainReason = {
+      status: 'uncertain' as const,
+      effect: 'intent' as const,
+      reason: 'checkpoint-failed' as const,
+      intent
+    };
+    Reflect.set(unknownUncertainReason, 'reason', 'unknown-checkpoint');
+    expect(() => validateProtectedApplicationWriteResult(
+      dispatch, unknownUncertainReason, retainedIntent
+    )).toThrow(/intent-only recovery/u);
     const firstRetry = protectedApplicationWriteObservationRequest(
       f.binding,
       f.source,
@@ -949,6 +973,26 @@ describe('protected application deployment source contracts', () => {
       effect: 'accepted',
       operation: { operationId: runningOperation.operationId }
     });
+    const unknownFailedEffect = {
+      status: 'failed' as const,
+      effect: 'accepted' as const,
+      reason: 'verification-failed' as const,
+      operation: runningOperation,
+      intent,
+      accepted
+    };
+    Reflect.set(unknownFailedEffect, 'effect', 'unknown-effect');
+    expect(() => validateProtectedApplicationWriteResult(
+      dispatch, unknownFailedEffect, retainedAccepted
+    )).toThrow(/Post-acceptance failure/u);
+    const unknownFailedReason = {
+      ...unknownFailedEffect,
+      effect: 'accepted' as const
+    };
+    Reflect.set(unknownFailedReason, 'reason', 'unknown-reason');
+    expect(() => validateProtectedApplicationWriteResult(
+      dispatch, unknownFailedReason, retainedAccepted
+    )).toThrow(/Post-acceptance failure/u);
 
     const terminalOperation = {
       ...runningOperation,
@@ -983,24 +1027,7 @@ describe('protected application deployment source contracts', () => {
       ...completion,
       operation: terminalOperation
     };
-    expect(validateProtectedApplicationWriteResult(dispatch, {
-      status: 'completed',
-      effect: 'terminal',
-      action: 'application-foundation',
-      operation: terminalOperation,
-      intent,
-      accepted,
-      terminal,
-      provenance,
-      plan,
-      mappings: mappingProofs(f.binding, state, plan),
-      completion: completedProof
-    }, retainedTerminal)).toMatchObject({
-      status: 'completed',
-      effect: 'terminal'
-    });
-
-    const withoutTerminal = {
+    const completedResult = {
       status: 'completed',
       effect: 'terminal',
       action: 'application-foundation',
@@ -1013,6 +1040,19 @@ describe('protected application deployment source contracts', () => {
       mappings: mappingProofs(f.binding, state, plan),
       completion: completedProof
     } as const;
+    expect(validateProtectedApplicationWriteResult(
+      dispatch, completedResult, retainedTerminal
+    )).toMatchObject({
+      status: 'completed',
+      effect: 'terminal'
+    });
+    const unknownWriteStatus = structuredClone(completedResult);
+    Reflect.set(unknownWriteStatus, 'status', 'succeeded');
+    expect(() => validateProtectedApplicationWriteResult(
+      dispatch, unknownWriteStatus, retainedTerminal
+    )).toThrow(/unknown runtime status/u);
+
+    const withoutTerminal = structuredClone(completedResult);
     Reflect.deleteProperty(withoutTerminal, 'terminal');
     expect(() => validateProtectedApplicationWriteResult(
       dispatch, withoutTerminal, retainedTerminal
@@ -1117,6 +1157,24 @@ describe('protected application deployment source contracts', () => {
     expect(validateProtectedApplicationReadResult(
       readRequest, readResult, observed
     )).toBe(readResult);
+    const unknownReadStatus = { ...readResult };
+    Reflect.set(unknownReadStatus, 'status', 'observed');
+    expect(() => validateProtectedApplicationReadResult(
+      readRequest, unknownReadStatus, observed
+    )).toThrow(/unknown runtime status/u);
+    const blockedRead = {
+      status: 'blocked' as const,
+      effect: 'none' as const,
+      reason: 'verification-failed' as const
+    };
+    expect(validateProtectedApplicationReadResult(
+      readRequest, blockedRead, observed
+    )).toBe(blockedRead);
+    const unknownReadReason = { ...blockedRead };
+    Reflect.set(unknownReadReason, 'reason', 'unknown-reason');
+    expect(() => validateProtectedApplicationReadResult(
+      readRequest, unknownReadReason, observed
+    )).toThrow(/Read-only blocking/u);
     const contradictoryRead = { ...readResult };
     Reflect.set(contradictoryRead, 'effect', 'terminal');
     expect(() => validateProtectedApplicationReadResult(
