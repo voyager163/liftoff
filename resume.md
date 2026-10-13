@@ -2216,3 +2216,51 @@ recovery meanings labelled current 5. The serialized coordinator must choose
 and authorize that allocation before any shared family, graph, payload,
 compatibility, phase, or runtime edit. Existing immutable-ref observers remain
 stable, and no generator/HCL intake is implied.
+
+### Native stack 162 post-repair CI boundary, 2026-10-13
+
+Read-only native-stack revalidation confirmed stack 162 remains open with
+exact membership `[158, 159, 161]`. PR 161 remained open, non-draft, without
+auto-merge, at exact live head
+`dec2d477925ef2b00c03dd71004ebd54740cdda0`; its live branch ref matched.
+Previously published Windows repair
+`f0fd79ae533749ad5bf922900abe10ff9f9cf336` is the direct ancestor of
+`dec2d477`, so the fresh result below is a genuine post-`f0fd79ae` failure,
+not an integration omission.
+
+Automatic whole-head run `38402156706` completed with successful Linux,
+macOS, coverage, package, HCL, telemetry, repository-policy, and Windows
+shard-1 gates. Windows shard 2 job `115312248354` failed one actual test:
+`tests/repair-application.test.ts:225`, “executes native Node tests and real
+reference checks against the candidate without applying the file
+transaction.” The aggregate Windows job failed only because that shard
+failed. Stack 162 must not land.
+
+Exact retained runner metadata was:
+
+- `exit: unknown`
+- `timedOut: true`
+- `errorCode: SUPERVISOR_TIMEOUT`
+- `processSpawned: true`
+- `processTreeSettled: false`
+- `supervisorPhase: startup`
+- `controllerStage: connected`
+
+The dedicated boundary artifact is retained outside the repository at
+`files/windows-boundary-38402156706/windows-boundary-tests.json`. It records
+the failed test duration as **16,735.8205 ms** despite the declared 30,000 ms
+target-command budget. Therefore the unchanged 15-second controller startup
+supervisor fired after pipe connection but before authenticated
+ready/ack/target dispatch; the target budget did not begin. The same shard's
+dedicated packaged-controller test passed in **686.4988 ms**, along with all
+startup-boundary controls. This narrows the post-`dec2d477` failure to the
+connected-to-ready handshake under whole-suite load. Neither deadline may be
+extended or back-attributed to target execution.
+
+Exact evidence and ancestry were sent to PR-161 owning session
+`dd2469fb-1715-433c-9155-925eee7eee4d`. That owner was asked to publish only
+a root-cause successor preserving the 15-second startup supervisor, declared
+30-second target budget, containment, settlement, grace, worker, skip, floor,
+protocol, and frozen-history contracts. No repair code was edited in this
+continuation, no CI rerun was requested, and no stack mutation or landing
+occurred.
