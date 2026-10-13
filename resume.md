@@ -1952,3 +1952,77 @@ module/command discovery path while preserving the existing timers, process
 settlement, error preservation, Win32/C# behavior, and frozen evidence. Its
 fresh exact-head whole CI remains required before stack 162 can land. OpenSpec
 progress remains 82/136.
+
+### Task 14.2 private proof correction, 2026-10-13
+
+The initial private source milestone has a validated corrective descendant:
+`a18bbbe37f962a61dbc979dd3d81489b4394b7d0`
+(`fix: harden protected application execution proofs`), tree
+`abae7841c76dcddaefa8815b1ab9a74e73a3bba0`. It changes only
+`src/governance-activation/application-deployment.ts` and
+`tests/governance-application-deployment.test.ts`; no shared transition port,
+current-family allocation, graph, phase, authority, schema, provider
+registration, generator, runtime wiring, or task checkbox changed.
+
+The private contract now retains independently engine-owned intent, accepted,
+and terminal checkpoints. A first dispatch whose pre-effect intent is durable
+but whose provider acceptance is unknown returns intent-only uncertainty
+rather than a false no-effect block. Observation can never redispatch that
+intent. Accepted and terminal results must byte-match the independently
+retained original checkpoints, so a producer cannot replace handle A with a
+coherently rebuilt handle B or regress a terminal handle to running.
+
+Execution provenance is now checked against an independently supplied source
+authority. The only accepted workflow ref is the full lightweight-tag ref
+`refs/tags/liftoff-execution-<sourceSha>`, where `sourceSha` is the exact
+lowercase 40-hex reviewed commit SHA. The bare execution ref, repository ID
+and name, workflow path, source commit, independently approved tree SHA,
+workflow and execution-source digests, qualified host/runner/group/network
+and custody identities, active update-and-deletion/no-bypass barrier evidence,
+lightweight commit object observation, and current provider admission are all
+bound. Branch refs, raw SHA refs, alternate tag namespaces, annotated-tag
+indirection, and digest-derived substitutions fail closed. This is an
+observer-only private source contract; it grants no tag writer or protection
+mutation authority and makes no public execution qualification claim.
+
+State mapping is now bound to one authoritative original protected-backend
+state identity and one reviewed mapping batch. Every fixed move/import proof
+must share the same original lineage, serial, state digest, encrypted backup,
+lock, writer-quiescence, unchanged-unmapped-state identity, batch digest, and
+single after-mapping state. The protected plan consumes that exact mapped
+state, and completion must preserve the lineage and unmapped identity while
+advancing from the mapped pre-apply state to a later final state. Independently
+rehashed but disconnected per-resource lineages are rejected.
+
+Read-only staging/production observation no longer recycles completion health.
+It requires a fresh bounded protected HTTP observation after completion,
+bound to the admitted operation, exact execution authority and provenance,
+current Azure Container App FQDN, active revision, immutable image, and the
+source-declared `GET /health` JSON contract. Only media type, byte count,
+raw-body SHA-256, parsed semantic digest, revision, immutable image, endpoint,
+status, and observation time cross the private port; no response body is
+exported. A prior HTTP 200 followed by a current 500, or an unknown/malformed
+HTTP-200 body, remains health-unverified.
+
+Validation on the exact corrective source bytes passed:
+
+- Qualified Node 24.21.0 plus npm 12.0.2 TypeScript build.
+- Ten focused deployment-source tests.
+- 121/121 adjacent deployment/artifact/ownership/environment tests.
+- Focused source coverage:
+  statements **300/344 (87.20%)**,
+  branches **557/615 (90.56%)**,
+  functions **77/78 (98.71%)**,
+  lines **294/338 (86.98%)**.
+- Package smoke with the exact qualified Node/npm execution paths.
+- Repository policy and supported-stack checks.
+- Strict OpenSpec validation.
+- `git diff --check`.
+
+No unfiltered whole-suite result is claimed for this corrective descendant.
+The private coordinator audit and shared current-family-5 serialization remain
+prerequisites before any shared insertion or fresh exact-commit whole-suite
+qualification. The canonical HCL ownership-tag mismatch remains
+`configuration-mismatch`; it was not mutated or waived. Task 14.2 remains
+unchecked, and no real GitHub, Azure, OpenTofu, state, registry, RBAC, cost,
+health, or global effect occurred.
