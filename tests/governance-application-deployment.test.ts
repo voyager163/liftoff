@@ -27,11 +27,22 @@ import {
   type ApplicationStateMappingProof,
   type FreshApplicationHealthObservation,
   type ObservedApplicationDeploymentSource,
+  type ProtectedApplicationAcceptedCheckpoint,
   type ProtectedApplicationCompletionProof,
+  type ProtectedApplicationExecutionIntent,
   type ProtectedApplicationExecutionAuthority,
   type ProtectedApplicationExecutionProvenance,
-  type ProtectedApplicationPlanProof
+  type ProtectedApplicationPlanProof,
+  type ProtectedApplicationRetainedCheckpoints,
+  type ProtectedApplicationTerminalCheckpoint,
+  type ProtectedApplicationWriteDispatchRequest
 } from '../src/governance-activation/application-deployment.js';
+import {
+  executeProtectedApplicationRead,
+  executeProtectedApplicationWrite,
+  type ProtectedApplicationCheckpointStore,
+  type ProtectedApplicationWriteExecutionPort
+} from '../src/governance-activation/application-deployment-engine.js';
 import type { VerifiedApplicationArtifact } from '../src/governance-activation/application-artifact.js';
 import {
   buildSavedTransitionPlan, canonicalSha256
@@ -626,6 +637,122 @@ function freshHealth(
   return { ...value, observationDigest: canonicalSha256(value) };
 }
 
+class ApplicationCheckpointStore implements ProtectedApplicationCheckpointStore {
+  readonly events: string[] = [];
+  retained: ProtectedApplicationRetainedCheckpoints = {
+    intent: null,
+    accepted: null,
+    terminal: null
+  };
+  failIntentOnce = false;
+  persistIntentBeforeFailure = false;
+  failAcceptedOnce = false;
+  failTerminalOnce = false;
+
+  constructor(private readonly timeline: string[] = []) {}
+
+  async load(): Promise<ProtectedApplicationRetainedCheckpoints> {
+    this.events.push('load');
+    this.timeline.push('load');
+    return structuredClone(this.retained);
+  }
+
+  async recordIntent(
+    checkpoint: ProtectedApplicationExecutionIntent
+  ): Promise<void> {
+    this.events.push('record-intent');
+    this.timeline.push('record-intent');
+    if (this.failIntentOnce) {
+      this.failIntentOnce = false;
+      if (this.persistIntentBeforeFailure) {
+        this.retained = {
+          intent: structuredClone(checkpoint),
+          accepted: null,
+          terminal: null
+        };
+      }
+      throw new Error('fixture intent checkpoint failure');
+    }
+    this.retained = { intent: structuredClone(checkpoint), accepted: null, terminal: null };
+  }
+
+  async recordAccepted(
+    checkpoint: ProtectedApplicationAcceptedCheckpoint
+  ): Promise<void> {
+    this.events.push('record-accepted');
+    this.timeline.push('record-accepted');
+    if (this.failAcceptedOnce) {
+      this.failAcceptedOnce = false;
+      throw new Error('fixture accepted checkpoint failure');
+    }
+    this.retained = {
+      ...this.retained,
+      accepted: structuredClone(checkpoint)
+    };
+  }
+
+  async recordTerminal(
+    checkpoint: ProtectedApplicationTerminalCheckpoint
+  ): Promise<void> {
+    this.events.push('record-terminal');
+    this.timeline.push('record-terminal');
+    if (this.failTerminalOnce) {
+      this.failTerminalOnce = false;
+      throw new Error('fixture terminal checkpoint failure');
+    }
+    this.retained = {
+      ...this.retained,
+      terminal: structuredClone(checkpoint)
+    };
+  }
+}
+
+function applicationExecutionPort(
+  request: ProtectedApplicationWriteDispatchRequest,
+  running: ProtectedApplicationCompletionProof['operation'],
+  terminal: ProtectedApplicationCompletionProof['operation'],
+  finalization: {
+    provenance: ProtectedApplicationExecutionProvenance;
+    plan: ProtectedApplicationPlanProof;
+    mappings: readonly ApplicationStateMappingProof[];
+    completion: ProtectedApplicationCompletionProof;
+  },
+  events: string[]
+): ProtectedApplicationWriteExecutionPort {
+  return {
+    async preflight(candidate) {
+      events.push('preflight');
+      return {
+        status: 'ready',
+        effect: 'none',
+        requestDigest: candidate.intent.requestDigest
+      };
+    },
+    async dispatch(candidate) {
+      events.push('dispatch');
+      expect(candidate.intent.requestDigest).toBe(request.intent.requestDigest);
+      return structuredClone(running);
+    },
+    async observe(candidate) {
+      events.push('observe');
+      expect(candidate.intent.requestDigest).toBe(request.intent.requestDigest);
+      return {
+        acceptedOperation: structuredClone(running),
+        currentOperation: structuredClone(terminal)
+      };
+    },
+    async finalize(candidate, checkpoint) {
+      events.push('finalize');
+      expect(candidate.intent.requestDigest).toBe(request.intent.requestDigest);
+      expect(checkpoint.operation.status).toBe('completed');
+      return {
+        status: 'completed',
+        ...structuredClone(finalization)
+      };
+    }
+  };
+}
+
 describe('protected application deployment source contracts', () => {
   it('binds the exact artifact, backend, custody, owned prerequisites and immutable state transition', async () => {
     const f = await fixture();
@@ -1180,6 +1307,472 @@ describe('protected application deployment source contracts', () => {
     expect(() => validateProtectedApplicationReadResult(
       readRequest, contradictoryRead, observed
     )).toThrow(/Read-only result/u);
+  });
+
+  it('orchestrates preflight, durable intent, acceptance and terminal-before-finalization without redispatch', async () => {
+    const f = await fixture();
+    const state = stateAuthority(f.binding);
+    const plan = planProof(f.binding, f.source);
+    const authority = executionAuthority(f.binding);
+    const provenance = executionProvenance(authority);
+    const writeInvocation = invocation('application-foundation');
+    const intent = protectedApplicationExecutionIntent(
+      f.binding, f.source, plan, provenance, authority, state,
+      writeInvocation, coverageNow.toISOString()
+    );
+    const request = protectedApplicationDispatchRequest(
+      f.binding, f.source, plan, provenance, authority, state,
+      writeInvocation, intent
+    );
+    const running = {
+      ...completionProof(f.binding, f.source, plan).operation,
+      status: 'running' as const,
+      planDigest: writeInvocation.planDigest
+    };
+    const terminal = {
+      ...running,
+      status: 'completed' as const,
+      observedAt: new Date(coverageNow.getTime() + 2_000).toISOString()
+    };
+    const completion = {
+      ...completionProof(f.binding, f.source, plan),
+      operation: terminal
+    };
+    const events: string[] = [];
+    const store = new ApplicationCheckpointStore(events);
+    const port = applicationExecutionPort(
+      request,
+      running,
+      terminal,
+      {
+        provenance,
+        plan,
+        mappings: mappingProofs(f.binding, state, plan),
+        completion
+      },
+      events
+    );
+    let tick = 0;
+    const now = () => new Date(coverageNow.getTime() + (++tick * 1_000));
+
+    const accepted = await executeProtectedApplicationWrite(
+      request, port, store, now
+    );
+    expect(accepted).toMatchObject({
+      status: 'accepted',
+      effect: 'accepted',
+      operation: { status: 'running' }
+    });
+    const completed = await executeProtectedApplicationWrite(
+      request, port, store, now
+    );
+    expect(completed).toMatchObject({
+      status: 'completed',
+      effect: 'terminal',
+      operation: { status: 'completed' }
+    });
+    expect(events.filter((event) => event === 'dispatch')).toHaveLength(1);
+    expect(events.filter((event) => event === 'preflight')).toHaveLength(1);
+    expect(events.indexOf('finalize')).toBeGreaterThan(
+      events.indexOf('record-terminal')
+    );
+    expect(store.retained.terminal?.operation.status).toBe('completed');
+  });
+
+  it('retains intent after accepted-checkpoint failure and reconciles without a second dispatch', async () => {
+    const f = await fixture();
+    const state = stateAuthority(f.binding);
+    const plan = planProof(f.binding, f.source);
+    const authority = executionAuthority(f.binding);
+    const provenance = executionProvenance(authority);
+    const writeInvocation = invocation('application-foundation');
+    const intent = protectedApplicationExecutionIntent(
+      f.binding, f.source, plan, provenance, authority, state,
+      writeInvocation, coverageNow.toISOString()
+    );
+    const request = protectedApplicationDispatchRequest(
+      f.binding, f.source, plan, provenance, authority, state,
+      writeInvocation, intent
+    );
+    const running = {
+      ...completionProof(f.binding, f.source, plan).operation,
+      status: 'running' as const,
+      planDigest: writeInvocation.planDigest
+    };
+    const events: string[] = [];
+    const store = new ApplicationCheckpointStore(events);
+    store.failAcceptedOnce = true;
+    const port = applicationExecutionPort(
+      request,
+      running,
+      running,
+      {
+        provenance,
+        plan,
+        mappings: mappingProofs(f.binding, state, plan),
+        completion: completionProof(f.binding, f.source, plan)
+      },
+      events
+    );
+    let tick = 0;
+    const now = () => new Date(coverageNow.getTime() + (++tick * 1_000));
+
+    const uncertain = await executeProtectedApplicationWrite(
+      request, port, store, now
+    );
+    expect(uncertain).toMatchObject({
+      status: 'uncertain',
+      effect: 'intent',
+      reason: 'checkpoint-failed'
+    });
+    expect(store.retained).toMatchObject({
+      intent: { requestDigest: request.intent.requestDigest },
+      accepted: null,
+      terminal: null
+    });
+    const reconciled = await executeProtectedApplicationWrite(
+      request, port, store, now
+    );
+    expect(reconciled).toMatchObject({
+      status: 'accepted',
+      effect: 'accepted',
+      operation: { status: 'running' }
+    });
+    expect(events.filter((event) => event === 'dispatch')).toHaveLength(1);
+    expect(events.filter((event) => event === 'observe')).toHaveLength(1);
+  });
+
+  it('does not finalize until a failed terminal checkpoint is durably recovered', async () => {
+    const f = await fixture();
+    const state = stateAuthority(f.binding);
+    const plan = planProof(f.binding, f.source);
+    const authority = executionAuthority(f.binding);
+    const provenance = executionProvenance(authority);
+    const writeInvocation = invocation('application-foundation');
+    const intent = protectedApplicationExecutionIntent(
+      f.binding, f.source, plan, provenance, authority, state,
+      writeInvocation, coverageNow.toISOString()
+    );
+    const request = protectedApplicationDispatchRequest(
+      f.binding, f.source, plan, provenance, authority, state,
+      writeInvocation, intent
+    );
+    const running = {
+      ...completionProof(f.binding, f.source, plan).operation,
+      status: 'running' as const,
+      planDigest: writeInvocation.planDigest
+    };
+    const terminal = {
+      ...running,
+      status: 'completed' as const,
+      observedAt: new Date(coverageNow.getTime() + 2_000).toISOString()
+    };
+    const completion = {
+      ...completionProof(f.binding, f.source, plan),
+      operation: terminal
+    };
+    const events: string[] = [];
+    const store = new ApplicationCheckpointStore(events);
+    const port = applicationExecutionPort(
+      request,
+      running,
+      terminal,
+      {
+        provenance,
+        plan,
+        mappings: mappingProofs(f.binding, state, plan),
+        completion
+      },
+      events
+    );
+    let tick = 0;
+    const now = () => new Date(coverageNow.getTime() + (++tick * 1_000));
+
+    await executeProtectedApplicationWrite(request, port, store, now);
+    store.failTerminalOnce = true;
+    const checkpointFailure = await executeProtectedApplicationWrite(
+      request, port, store, now
+    );
+    expect(checkpointFailure).toMatchObject({
+      status: 'failed',
+      effect: 'accepted',
+      reason: 'checkpoint-failed',
+      operation: { status: 'running' }
+    });
+    expect(events.filter((event) => event === 'finalize')).toHaveLength(0);
+
+    const completed = await executeProtectedApplicationWrite(
+      request, port, store, now
+    );
+    expect(completed).toMatchObject({
+      status: 'completed',
+      effect: 'terminal'
+    });
+    expect(events.filter((event) => event === 'dispatch')).toHaveLength(1);
+    expect(events.filter((event) => event === 'finalize')).toHaveLength(1);
+    expect(store.events.filter((event) => event === 'record-terminal')).toHaveLength(2);
+  });
+
+  it('fails closed for ambiguous intent, dispatch, observation and terminal outcomes', async () => {
+    const f = await fixture();
+    const state = stateAuthority(f.binding);
+    const plan = planProof(f.binding, f.source);
+    const authority = executionAuthority(f.binding);
+    const provenance = executionProvenance(authority);
+    const writeInvocation = invocation('application-foundation');
+    const intent = protectedApplicationExecutionIntent(
+      f.binding, f.source, plan, provenance, authority, state,
+      writeInvocation, coverageNow.toISOString()
+    );
+    const request = protectedApplicationDispatchRequest(
+      f.binding, f.source, plan, provenance, authority, state,
+      writeInvocation, intent
+    );
+    const running = {
+      ...completionProof(f.binding, f.source, plan).operation,
+      status: 'running' as const,
+      planDigest: writeInvocation.planDigest
+    };
+    const completed = {
+      ...running,
+      status: 'completed' as const,
+      observedAt: new Date(coverageNow.getTime() + 2_000).toISOString()
+    };
+    const failed = {
+      ...running,
+      status: 'failed' as const,
+      observedAt: new Date(coverageNow.getTime() + 2_000).toISOString()
+    };
+    const finalization = {
+      provenance,
+      plan,
+      mappings: mappingProofs(f.binding, state, plan),
+      completion: {
+        ...completionProof(f.binding, f.source, plan),
+        operation: completed
+      }
+    };
+    let tick = 0;
+    const now = () => new Date(coverageNow.getTime() + (++tick * 1_000));
+
+    const invalidReadyStore = new ApplicationCheckpointStore();
+    const invalidReadyPort = applicationExecutionPort(
+      request, running, completed, finalization, []
+    );
+    invalidReadyPort.preflight = async () => ({
+      status: 'ready',
+      effect: 'none',
+      requestDigest: 'wrong-request'
+    });
+    await expect(executeProtectedApplicationWrite(
+      request, invalidReadyPort, invalidReadyStore, now
+    )).rejects.toThrow(/exact no-effect write request/u);
+
+    const absentIntentStore = new ApplicationCheckpointStore();
+    absentIntentStore.failIntentOnce = true;
+    const absentIntentPort = applicationExecutionPort(
+      request, running, completed, finalization, []
+    );
+    expect(await executeProtectedApplicationWrite(
+      request, absentIntentPort, absentIntentStore, now
+    )).toEqual({
+      status: 'blocked',
+      effect: 'none',
+      reason: 'checkpoint-failed'
+    });
+
+    const ambiguousIntentEvents: string[] = [];
+    const ambiguousIntentStore = new ApplicationCheckpointStore(
+      ambiguousIntentEvents
+    );
+    ambiguousIntentStore.failIntentOnce = true;
+    ambiguousIntentStore.persistIntentBeforeFailure = true;
+    const ambiguousIntentPort = applicationExecutionPort(
+      request, running, completed, finalization, ambiguousIntentEvents
+    );
+    expect(await executeProtectedApplicationWrite(
+      request, ambiguousIntentPort, ambiguousIntentStore, now
+    )).toMatchObject({
+      status: 'uncertain',
+      effect: 'intent',
+      reason: 'checkpoint-failed'
+    });
+    expect(ambiguousIntentEvents).not.toContain('dispatch');
+
+    const dispatchFailureStore = new ApplicationCheckpointStore();
+    const dispatchFailurePort = applicationExecutionPort(
+      request, running, completed, finalization, []
+    );
+    dispatchFailurePort.dispatch = async () => {
+      throw new Error('fixture provider acceptance unknown');
+    };
+    expect(await executeProtectedApplicationWrite(
+      request, dispatchFailurePort, dispatchFailureStore, now
+    )).toMatchObject({
+      status: 'uncertain',
+      effect: 'intent',
+      reason: 'operation-failed'
+    });
+
+    const synchronousTerminalStore = new ApplicationCheckpointStore();
+    const synchronousTerminalPort = applicationExecutionPort(
+      request, running, completed, finalization, []
+    );
+    synchronousTerminalPort.dispatch = async () => completed;
+    await expect(executeProtectedApplicationWrite(
+      request, synchronousTerminalPort, synchronousTerminalStore, now
+    )).rejects.toThrow(/first running provider handle/u);
+
+    const malformedObservationStore = new ApplicationCheckpointStore();
+    const malformedObservationPort = applicationExecutionPort(
+      request, running, completed, finalization, []
+    );
+    await executeProtectedApplicationWrite(
+      request, malformedObservationPort, malformedObservationStore, now
+    );
+    malformedObservationPort.observe = async () => ({
+      acceptedOperation: running,
+      currentOperation: {
+        ...completed,
+        operationId: 'protected-application:substituted'
+      }
+    });
+    await expect(executeProtectedApplicationWrite(
+      request, malformedObservationPort, malformedObservationStore, now
+    )).rejects.toThrow(/changed the accepted provider identity/u);
+
+    const failedTerminalStore = new ApplicationCheckpointStore();
+    const failedTerminalPort = applicationExecutionPort(
+      request, running, failed, finalization, []
+    );
+    await executeProtectedApplicationWrite(
+      request, failedTerminalPort, failedTerminalStore, now
+    );
+    expect(await executeProtectedApplicationWrite(
+      request, failedTerminalPort, failedTerminalStore, now
+    )).toMatchObject({
+      status: 'failed',
+      effect: 'terminal',
+      reason: 'operation-failed',
+      operation: { status: 'failed' }
+    });
+
+    const failedFinalizationStore = new ApplicationCheckpointStore();
+    const failedFinalizationPort = applicationExecutionPort(
+      request, running, completed, finalization, []
+    );
+    failedFinalizationPort.finalize = async () => ({
+      status: 'failed',
+      reason: 'health-unverified'
+    });
+    await executeProtectedApplicationWrite(
+      request, failedFinalizationPort, failedFinalizationStore, now
+    );
+    expect(await executeProtectedApplicationWrite(
+      request, failedFinalizationPort, failedFinalizationStore, now
+    )).toMatchObject({
+      status: 'failed',
+      effect: 'terminal',
+      reason: 'health-unverified'
+    });
+  });
+
+  it('keeps preflight blocking no-effect and derives read completion from an actual observation', async () => {
+    const f = await fixture();
+    const state = stateAuthority(f.binding);
+    const plan = planProof(f.binding, f.source);
+    const authority = executionAuthority(f.binding);
+    const provenance = executionProvenance(authority);
+    const writeInvocation = invocation('application-foundation');
+    const intent = protectedApplicationExecutionIntent(
+      f.binding, f.source, plan, provenance, authority, state,
+      writeInvocation, coverageNow.toISOString()
+    );
+    const request = protectedApplicationDispatchRequest(
+      f.binding, f.source, plan, provenance, authority, state,
+      writeInvocation, intent
+    );
+    const store = new ApplicationCheckpointStore();
+    let dispatched = false;
+    const blocked = await executeProtectedApplicationWrite(request, {
+      async preflight() {
+        return {
+          status: 'blocked',
+          effect: 'none',
+          reason: 'configuration-mismatch'
+        };
+      },
+      async dispatch() {
+        dispatched = true;
+        throw new Error('dispatch must not run');
+      },
+      async observe() {
+        throw new Error('observe must not run');
+      },
+      async finalize() {
+        throw new Error('finalize must not run');
+      }
+    }, store, () => coverageNow);
+    expect(blocked).toEqual({
+      status: 'blocked',
+      effect: 'none',
+      reason: 'configuration-mismatch'
+    });
+    expect(dispatched).toBe(false);
+    expect(store.retained.intent).toBeNull();
+
+    const completion = completionProof(f.binding, f.source, plan);
+    const readRequest = protectedApplicationReadRequest(
+      'production-rehearsed',
+      f.binding,
+      f.source,
+      plan,
+      completion,
+      provenance,
+      authority,
+      state,
+      invocation('production-rehearsed')
+    );
+    f.runner.completion = completion;
+    const observation = await observeApplicationDeploymentReadback(
+      f.input,
+      f.source,
+      state,
+      plan,
+      completion,
+      provenance,
+      authority,
+      freshHealth(f.binding, f.source, completion, provenance, authority)
+    );
+    const read = await executeProtectedApplicationRead(readRequest, {
+      async observe(candidate) {
+        expect(candidate.permissions).toEqual({
+          azureRead: true,
+          stateRead: false,
+          stateWrite: false,
+          dispatch: false,
+          import: false,
+          move: false,
+          apply: false
+        });
+        return observation;
+      }
+    });
+    expect(read).toMatchObject({
+      status: 'completed',
+      effect: 'none',
+      action: 'production-rehearsed',
+      operation: { operationId: completion.operation.operationId },
+      observation: { observed: { health: { status: 200 } } }
+    });
+
+    const malformed = structuredClone(observation);
+    Reflect.set(malformed.observed.health, 'status', 500);
+    await expect(executeProtectedApplicationRead(readRequest, {
+      async observe() {
+        return malformed;
+      }
+    })).rejects.toThrow(/malformed or differently bound workload evidence/u);
   });
 
   it('requires exact applied state, no-change proof and successful bounded workload health', async () => {

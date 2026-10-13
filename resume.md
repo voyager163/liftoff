@@ -2250,12 +2250,22 @@ The dedicated boundary artifact is retained outside the repository at
 `files/windows-boundary-38402156706/windows-boundary-tests.json`. It records
 the failed test duration as **16,735.8205 ms** despite the declared 30,000 ms
 target-command budget. Therefore the unchanged 15-second controller startup
-supervisor fired after pipe connection but before authenticated
-ready/ack/target dispatch; the target budget did not begin. The same shard's
+supervisor fired after the controller connected, became ready, and received a
+spawn request, but before any valid acknowledgement proved `CreateProcess` or
+actual target start; the target budget did not begin. The same shard's
 dedicated packaged-controller test passed in **686.4988 ms**, along with all
-startup-boundary controls. This narrows the post-`dec2d477` failure to the
-connected-to-ready handshake under whole-suite load. Neither deadline may be
-extended or back-attributed to target execution.
+startup-boundary controls. Exact source tracing therefore remains bounded to
+the post-request, pre-ack environment/job/stdio/attributes/`CreateProcess`
+path under whole-suite load. Neither deadline may be extended or
+back-attributed to target execution.
+
+The owner independently retained the complete failing log with SHA-256
+`ea351d8e9b2915d51a4920fbb4e1b2e040d666e5bfd18ccee36be8027d99718f`
+and boundary ZIP `11819272407` with SHA-256
+`c16eb655d8fb62e9f95b62fe6e9dc38bf56b050dea6e32f08149ff02a47db2d6`,
+matching the Actions API artifact. The exact 55-file/1,937-test shard result
+was 1,911 passed, 1 failed, and 25 existing skips. Native 18, OpenTofu 21,
+and the complete Windows shard 1 all passed.
 
 Exact evidence and ancestry were sent to PR-161 owning session
 `dd2469fb-1715-433c-9155-925eee7eee4d`. That owner was asked to publish only
@@ -2264,3 +2274,91 @@ a root-cause successor preserving the 15-second startup supervisor, declared
 protocol, and frozen-history contracts. No repair code was edited in this
 continuation, no CI rerun was requested, and no stack mutation or landing
 occurred.
+
+### Activation 6 decision and bounded private engine source, 2026-10-13
+
+The serialized coordinator selected a separately authorized source-contract
+activation 6. Exact source 5, `fce27`, all six current graph identities,
+read-only original interpretation, and every historical family remain frozen
+and readable. Foundation `.v2` and combined staging/production `.v3` are the
+approved direction. Staging and production application authority is strictly
+Azure-read-only: backend state read, backend state write, provisioning,
+application dispatch, apply, import, and move are excluded. Retained GitHub
+workflow read/dispatch authority does not delegate any Azure write.
+
+The sole shared allocator remains
+`e1389524-41f1-47aa-8c43-4bf14b14cf20`. It must first preserve and publish the
+coherent approved 5-to-5 workflow bridge, then return the exact activation-6
+identity, graph, phase-contract, capture, and edit set for coordinator review.
+No shared identity, graph, phase, compatibility, runtime, issuer, namespace,
+callback, or public wiring was edited here.
+
+Within the separately allowed private scope, a version-neutral engine-owned
+protocol was added in
+`src/governance-activation/application-deployment-engine.ts`. It does not cast
+modern records to `PhaseAdapterExecutionInput` and does not allocate any
+activation identity. Its boundaries are:
+
+- an independently durable checkpoint store loaded by exact request digest;
+- no-effect preflight before any intent;
+- durable intent before the one permitted provider dispatch;
+- a first running accepted handle recorded by the engine;
+- observation-only recovery from retained intent or accepted handle;
+- terminal provider truth recorded before any fallible completion export,
+  mapping, readback, health, or evidence construction;
+- terminal and accepted checkpoint failure paths that retain the strongest
+  durable truth and never redispatch;
+- completed write construction only from separately supplied provenance,
+  plan, mapping, and completion proofs; and
+- read-only completion derived from a bounded actual observation object,
+  with runtime shape and exact binding checks rather than a producer boolean.
+
+Focused controls cover preflight blocking, one dispatch, ambiguous
+intent/accepted/terminal checkpoint writes, acceptance-then-later failure,
+intent-only observation, handle substitution, unsupported synchronous
+terminal dispatch, terminal-before-finalization ordering, finalization
+failure, malformed readback, and no second dispatch. This source remains a
+private protocol; no qualified protected application, state, checkpoint,
+HTTP, Azure, or OpenTofu producer is claimed.
+
+The coordinator also requested a separately scoped, proposal-only canonical
+HCL ownership-tag remedy. No generator bytes were changed. The proposal sent
+to the sole allocator is:
+
+- add required no-default module/root variables
+  `liftoff_bootstrap_binding_digest` and
+  `liftoff_prerequisite_binding_digest`, each restricted to lowercase
+  64-hex;
+- forward them through the environment root but never write them into
+  committed `<environment>.tfvars`;
+- supply them only in the protected ephemeral
+  `liftoff.auto.tfvars.json` overlay from the authoritative retained-bootstrap
+  and application-prerequisite records;
+- give the resource group exact tags
+  `liftoff-managed-by=liftoff`,
+  `liftoff-phase=bootstrap-local`,
+  `liftoff-environment=var.environment`, and
+  `liftoff-binding=var.liftoff_bootstrap_binding_digest`;
+- give the ACR and application identity exact tags
+  `liftoff-binding=var.liftoff_prerequisite_binding_digest` and
+  `liftoff-environment=var.environment`;
+- leave AcrPush externally owned and absent from HCL; and
+- semantically prove those exact generated/customized attributes and refuse
+  absent, extra, different, self-asserted, or caller-overridden predecessor
+  evidence as `configuration-mismatch`.
+
+If separately admitted, the bounded remedy surface is the Azure generator's
+module variables, root forwarding, and those three owned resources; the
+private deployment overlay/source validator; and exact generated-template
+tests. `renderTofuTfvars`, provider versions/lock assets, artifact logical
+identities/layout, unrelated custom files/resources, predecessor evidence
+bytes, state, and role ownership stay unchanged. Infrastructure repair may
+preserve and forward already present variables but must not inject them into
+old or customized projects. Every changed generated source requires a new
+reviewed commit, tree, immutable execution tag, source inventory, and
+activation-6 capture. The proposal is not apply authority, brownfield import,
+existing-resource mutation, or a configuration waiver.
+
+Task 14.2 remains unchecked pending the exact allocator readback, separately
+admitted HCL intake, qualified real producers, and genuine disposable
+qualification.
