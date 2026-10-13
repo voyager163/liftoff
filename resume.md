@@ -1850,3 +1850,105 @@ authorization. The autonomous safe decision is therefore to keep all cloud
 writes blocked and continue source/integration work only. Existing Korea
 Central production resources remain prohibited qualification scope. Task 13.6
 stays unchecked.
+
+## Task 14.2 protected application deployment source, 2026-10-13
+
+The continuation ordinary-merged the exact admitted task-14.1 source
+`6b8c0e90fcbdde0384955746825d2cfc1dab04e6` and its direct terminal-handle
+successor `5d51b79623548717e8c9c1eba147c67e6e713284`. The resulting local merge
+commits are `d76334c9853d58fa4128cd7de5fc944c6c5b2aaa` and
+`9161a36f509f409003f8689f050ecac7af80191d`; no rebase, squash, force update,
+owner task flag, or mutable branch guess was used.
+
+The bounded task-14.2 source milestone is commit
+`65aa8d66b08f8f2d186857b7d2c8a052ce2d26e2`
+(`feat: bind protected application deployment source`). It adds only
+`src/governance-activation/application-deployment.ts` and
+`tests/governance-application-deployment.test.ts`. Shared transition ports,
+phase graph/identity/schema/header/authority contracts, current-family-5
+assets, runtime registration, and production execution wiring were not
+changed.
+
+The private source contract now:
+
+- binds the exact current immutable artifact, application-prerequisite
+  registry/identity/RBAC records, protected backend/custody records, current
+  committed environment/module HCL inventory, provider lock, protected backend
+  overlay, variable overlay, subscription/tenant/environment/resource names,
+  fixed cost ceilings, and original approval/operation invocation;
+- preserves all tracked bounded application customizations, excludes only the
+  exact generated local backend from isolated protected execution staging,
+  rejects dirty/untracked/sensitive/state/plan/backend-overlay collisions, and
+  never writes a protected value to project source;
+- permits only the fixed same-operation mapping set: move the bootstrap
+  resource-group address, import the exact task-14.1 ACR, workload identity,
+  and AcrPull assignment, and retain the publisher AcrPush role externally;
+- requires provider-derived configuration digests for the exact owned
+  resource name/location/tags/SKU/admin/tenant/principal/client/scope/role
+  attributes, before/after lineage and state serials, encrypted backup and key
+  references, locking and writer-quiescence proofs, unchanged unmapped state,
+  retained custody/disposal obligations, zero resource mutation during
+  mapping, a zero-change/no-destroy bounded plan, and a post-apply no-change
+  plan;
+- requires exact immutable-image Container App readback, managed identity,
+  active 100% revision traffic, provider resource inventory, credential-free
+  HTTPS backend output, and bounded `/health` HTTP-200 evidence represented
+  only by byte count and SHA-256; and
+- blocks frontend and worker-bearing workloads because the admitted artifact
+  source proves only one backend image.
+
+The private provider surface is durability-split rather than a single
+ambiguous `execute` call. A write dispatch requires an engine-owned,
+digest-bound pre-effect intent and callbacks for accepted-handle and terminal
+checkpoints. Recovery/observation is a separate method and can start from
+either the exact accepted handle or an intent-without-handle state; neither
+path may redispatch. Read-only staging/production observation is separately
+typed with Azure read only and state-read/state-write/dispatch/import/move/apply
+all fixed false. Result states distinguish no-effect blocking from
+intent-only uncertainty, accepted effects, post-acceptance failure with the
+original handle, terminal failure with a durable terminal checkpoint, and
+fully completed proof. Terminal provider status must be checkpointed before
+fallible export, readback, health, or verification work, so a later failure
+cannot erase the original ID/status/time/plan or become a second dispatch.
+
+Validation on the exact source bytes passed:
+
+- Qualified Node 24.21.0 plus npm 12.0.2 TypeScript build.
+- Ten focused deployment-source tests.
+- 121/121 adjacent deployment/artifact/ownership/environment tests.
+- Focused source coverage:
+  statements **256/295 (86.77%)**,
+  branches **422/475 (88.84%)**,
+  functions **73/74 (98.64%)**,
+  lines **250/289 (86.50%)**.
+- Package smoke with the exact qualified Node/npm execution paths.
+- Repository policy.
+- Strict OpenSpec validation.
+- `git diff --check`.
+
+An earlier whole-suite run used the pre-durability draft and was deliberately
+stopped when contract review identified the missing accepted/terminal
+checkpoint channel. It is not qualification evidence and was not relabeled.
+The bounded focused/adjacent checks above cover the final committed source.
+
+Task 14.2 remains unchecked. There was no real Azure, GitHub, OpenTofu,
+registry, RBAC, state, cost, health, or global effect. No production provider
+is registered. The canonical generated HCL currently omits predecessor-owned
+resource-group/registry/identity tags, so a real protected plan must fail
+closed with `configuration-mismatch` rather than remove those tags or claim a
+no-change import. Coordinator review explicitly kept any generator/source
+inventory repair and shared-port insertion serialized behind the current-5
+owner audit. Current-5 owner source
+`d38d86c0f4f61d1e034cbc0d0b879ffdae371bcb` is published with admitted
+`5d51b796` as second parent but is not yet admitted for consumption.
+
+Downstream evidence remains separately owned. Group-10 PR 163 run
+`38392481282` completed successfully across all reported platform shards,
+native development packages, runtime bundle, HCL parser, coverage, telemetry,
+template, and aggregate jobs; this does not advance its real-manager,
+public-asset, identity, or minimum-host task flags. PR 161 repair head is now
+`f0fd79ae533749ad5bf922900abe10ff9f9cf336`, removing the still-failing Windows
+module/command discovery path while preserving the existing timers, process
+settlement, error preservation, Win32/C# behavior, and frozen evidence. Its
+fresh exact-head whole CI remains required before stack 162 can land. OpenSpec
+progress remains 82/136.
