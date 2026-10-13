@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { chmod, copyFile, link, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, link, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
@@ -85,11 +85,15 @@ describe('native development bundle contracts', () => {
     await mkdir(existing);
     await writeFile(path.join(existing, 'marker'), 'preserved');
     const inputs = { runtimeArchive: path.join(root, 'absent-runtime'), npmCli: process.execPath };
+    vi.stubGlobal('process', { ...process, versions: { ...process.versions, node: 'unqualified-test-runtime' } });
     await expect(buildNativeBundle({ ...inputs, output: existing })).rejects.toThrow('already exists');
     expect(await readFile(path.join(existing, 'marker'), 'utf8')).toBe('preserved');
     await symlink(process.cwd(), path.join(root, 'checkout-alias'));
     await expect(buildNativeBundle({ ...inputs, output: path.join(root, 'checkout-alias', path.basename(root)) }))
       .rejects.toThrow('outside the source checkout');
+    const fresh = path.join(root, 'fresh');
+    await expect(buildNativeBundle({ ...inputs, output: fresh })).rejects.toThrow('pinned runtime');
+    await expect(lstat(fresh)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it.each(['', '../outside', '/absolute', 'C:/drive', 'a\\b', 'a//b', 'a/./b', 'a/../b',

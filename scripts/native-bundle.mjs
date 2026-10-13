@@ -175,7 +175,6 @@ async function assertHclInputs(application, lock, inputs) {
 
 export async function buildNativeBundle({ output, runtimeArchive, windowsLauncher, npmCli = process.env.npm_execpath }) {
   const host = nativeBundleHost();
-  const hostAdmission = assertNativeHost(observeNativeHost());
   assert.ok(npmCli && path.isAbsolute(npmCli), 'Run the development build through npm; npm_execpath is required.');
   const requested = path.resolve(output);
   const bundle = path.join(await realpath(path.dirname(requested)), path.basename(requested));
@@ -188,6 +187,7 @@ export async function buildNativeBundle({ output, runtimeArchive, windowsLaunche
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
   }
+  const hostAdmission = assertNativeHost(observeNativeHost());
   const builderInputs = await sourceFiles(builderPaths);
   const inputs = await json(inputsPath);
   assert.equal(inputs.schemaVersion, 1);
