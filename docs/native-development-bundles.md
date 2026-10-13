@@ -2,9 +2,30 @@
 
 The contributor-only native builder assembles the existing CLI, its locked production
 dependencies, packaged assets and notices with an official standalone Node runtime.
-It currently runs on native Apple Silicon macOS. It is **not a Homebrew cask or a
-published installation channel**. Windows/Linux installers, signing, notarization,
-installation ownership and the minimum supported OS remain separate qualification.
+It assembles **unsigned development artifacts**, not published installations:
+native Apple Silicon macOS, Windows x64, and glibc Linux x64/arm64. npm remains
+the published installation channel. No Homebrew namespace, WinGet ID, production
+signing key, minimum-host result or public native installation is claimed.
+
+## Declared runtime requirements
+
+The pinned Node 24.21.0 upstream `BUILDING.md` is identified by URL and SHA-256
+in `distribution/native/platforms.json`. Its macOS executable actually reports a
+13.5 Mach-O deployment target. These declarations are **not results from running
+Liftoff on each minimum host**:
+
+| Development target | Declared runtime requirement | Remaining minimum-host qualification |
+| --- | --- | --- |
+| macOS arm64 | Native Apple Silicon, macOS 13.5 or newer | Actual minimum-host installation/CLI/asset execution |
+| Windows x64 | Native x64, Windows 10/Server 2016; conservatively declared build 14393 or newer | Minimum-host PE/runtime/installer and stock-policy execution |
+| Linux x64/arm64 | Kernel 4.18, glibc 2.28, libstdc++ providing GLIBCXX 3.4.25 or newer | Actual minimum-host loader/CLI/install/recovery execution on both architectures |
+
+Host admission refuses Intel macOS, Rosetta/foreign architecture, older declared
+hosts and unknown/musl libc before builder or installer destination changes.
+The launcher also admits its current native host. Linux assembly inspects actual
+system-library resolution and ELF version requirements; macOS rejects non-system
+dylibs. A hosted modern-OS run cannot establish these minimum-host requirements.
+`minimumHostQualified` and `publicDistributionQualified` remain false.
 
 The build requires contributor Node/npm and network access for locked npm dependencies
 and checksum-pinned original license notices. The resulting launcher does not require
@@ -12,7 +33,8 @@ global Node/npm. It invokes only `runtime/node`, clears `NODE_OPTIONS`/`NODE_PAT
 does not add the private runtime to `PATH`. Selected application/framework operations
 still require their own external tools.
 
-Download the exact archive identified by `distribution/native/inputs.json`, then run:
+Download the exact archive for the **native invoking target** identified by
+`distribution/native/inputs.json`, then run on macOS/Linux:
 
 ```sh
 npm run build:native -- build \
@@ -41,6 +63,17 @@ source correspondence, current builder inputs and the complete dependency/notice
 Rebuild development bundles after changing the builder or its pinned policy. It does not
 execute the bundle or authenticate the recorded Git revision.
 
+Windows uses the same builder, official pinned `win-x64.zip` and private
+`runtime/node.exe`. Compile `distribution/windows/launcher.c` in a native x64
+MSVC developer shell with `/W4 /WX /O2 /MT`, placing object/executable outputs
+outside the checkout. Supply `--windows-launcher <absolute-compiled-exe>` as well
+as the runtime/output arguments. The C launcher uses `CreateProcessW`, not a shell,
+preserves literal arguments, clears Node startup overrides and propagates child
+status. Its exact executable hash is recorded alongside the source inputs.
+The Inno Setup source requires an independently approved publisher/AppId and an
+actual configured signing tool. It is not a qualified install/uninstall or
+stable-command/PATH integration; it must not be distributed unsigned.
+
 ## Installed qualification
 
 On native Apple Silicon macOS, select an actual external Go executable and the newly
@@ -49,13 +82,19 @@ built bundle:
 ```sh
 LIFTOFF_NATIVE_BUNDLE_ROOT=/absolute/path/outside-the-checkout/new-liftoff-bundle \
 LIFTOFF_NATIVE_GO_EXECUTABLE="$(command -v go)" \
+LIFTOFF_NATIVE_PACKAGE_ROOT=/absolute/path/outside-the-checkout/new-liftoff-bundle \
 npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \
+  tests/native-distribution.test.ts tests/native-package-installed.test.ts \
   --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \
   --reporter=default --reporter=json --outputFile.json=qualification/native-bundle.json
 node scripts/native-bundle.mjs verify-report qualification/native-bundle.json
+node scripts/native-package-report.mjs qualification/native-bundle.json \
+  /absolute/path/outside-the-checkout/new-liftoff-bundle
 ```
 
-The report gate requires all nine installed cases to pass; an unset bundle variable
+The original report gate requires all eleven Apple Silicon installed cases to pass;
+the cross-platform report gate additionally requires every common/applicable case.
+An unset bundle variable
 skips the opt-in suite and cannot qualify a bundle. Startup and planning use an empty
 PATH outside the checkout. Real Manual Go initialization uses the explicitly selected
 Go toolchain. Failing executable sentinels record forbidden prerequisite probes; they
@@ -64,7 +103,89 @@ HCL and controller resolution, missing assets, changed metadata and changed runt
 bytes. It isolates HOME, disables Go telemetry only in that owned test home, and
 retains failed fixture roots. It does not change global installations or user settings.
 These checks do not qualify Windows controller execution, OS minimums or public
-distribution.
+distribution. Windows/Linux use `LIFTOFF_NATIVE_PACKAGE_ROOT` with
+`tests/native-bundle.test.ts tests/native-distribution.test.ts
+tests/native-package-installed.test.ts` and the cross-platform report gate.
+Windows cases run the real installed controller and running-image locking.
+Linux cases exercise the actual bundle's isolated owned installation/recovery and
+test-only Ed25519 bootstrap authentication. Only explicitly named foreign-host
+cases are unrun; no failed applicable case can qualify by skipping.
+Clean-source hosted reports and development archives are retained for 14 days by
+the existing CI workflow. The repository-setup workflow is unchanged.
+
+## Linux installation ownership and recovery interface
+
+The bundled `installation/native-install.mjs` is Linux-only. Its public CLI
+refuses all currently unqualified artifacts. Tests explicitly select development
+mode only through the library API and only within new private fixture prefixes.
+`distribution/linux/install.sh` accepts explicit local archive/signature/key,
+independently approved archive and SPKI fingerprints, private prefix, bundle
+manifest digest and reviewed current target. It authenticates bounded private
+snapshots with Ed25519 before extraction, uses the private runtime, and still
+refuses installation while public/minimum-host policy is false. It downloads
+nothing, enrolls no key and changes no shell profile or global launcher.
+
+The exported interfaces for later groups 10/11 are:
+
+```js
+installOwnedBundle({ source, prefix, expectedManifestSha256, expectedCurrent, admitHost })
+inspectOwnedInstallation(prefix)
+recoverOwnedInstallation({ prefix, expectedJournalSha256, expectedStaleLockSha256 })
+```
+
+The existing canonical prefix must belong to the invoking user and be private.
+Version directories are `versions/<package-version>-<bundle-manifest-sha256>`;
+`current` is an atomic relative link and `bin/liftoff` points through it.
+`receipts/<version-name>.json` records schema 1, owner `liftoff-native`, canonical
+prefix digest, package version, source commit, target, manifest/inventory digests
+and private runtime/launcher paths. The **package version** remains distinct
+from source development identity. Receipts establish local attribution, not
+independent publisher authenticity or permission to modify another manager.
+
+Recovery requires the exact selected `.native-install-transaction.json` digest,
+checks previous/current/retained inventory, restores only attributable pointers,
+and retains verified version material. Reinstallation can reuse only an identical
+verified version and receipt. A dead-process lock additionally requires the
+selected `.native-install-lock/owner.json` digest and positive process absence;
+active, reused-PID, unknown, changed or ownerless locks are retained. Partial-copy
+damage or missing receipts remain explicit incomplete recovery, not a success.
+No broad prefix sweep, version deletion, manager migration or upgrade is provided.
+
+## Exact artifact handoff and public release blockers
+
+On a clean committed source, reuse the existing builder output:
+
+```sh
+node scripts/native-release.mjs archive /absolute/verified-bundle /absolute/new-handoff
+node scripts/native-release.mjs verify /absolute/new-handoff \
+  <independently-reviewed-native-release-json-sha256> <exact-source-commit>
+```
+
+The tar.gz, CycloneDX 1.6 SBOM, original-notice index and unsigned
+in-toto/SLSA-shaped provenance are bound together in `native-release.json`:
+existing package version, target, source commit, run ID, bundle manifest/inventory
+and every sidecar's bytes/hash/mode. Unexpected files or changed source/version,
+subjects, notices or digests fail verification. These are unsigned inventory
+materials, **not signed attestations, reproducible-build claims or release approval**.
+
+`release-artifact.mjs verify-native` reuses the existing qualified tag/main
+ancestry gate and requires `EXPECTED_NATIVE_MANIFEST_SHA256` plus
+`LIFTOFF_NATIVE_EVIDENCE_DIRECTORY`. The separately authenticated qualification
+record binds exact artifacts, approved signing principal/channel and referenced
+minimum-host, signing, installation, namespace and HCL-source evidence. macOS
+also requires notarization. The gated `native-release.mjs definitions` renderer
+emits a cask or WinGet definition only after those same gates; Windows additionally
+requires exact signed installer and verified command metadata. It does not submit
+definitions or publish artifacts.
+
+The real `release-policy.json` has no approved key, Developer ID team, cask
+namespace or WinGet ID/publisher/AppId/certificate. No signing/notarization,
+cask install/uninstall, signed Windows installer/WinGet submission, public Linux
+signature, minimum-host qualification or publication has been performed.
+These require exact source-bound operator authority and real evidence; broad
+implementation consent does not authorize accounts, credentials, external taps,
+settings changes, release uploads or unsigned fallbacks. Current `liftoff upgrade`
+and npm-to-Homebrew migration are unchanged and remain separate groups 10/11.
 
 The pinned HCL npm package omits standalone license notices. The builder supplies its
 upstream MPL notice and the notices for the seven modules recorded in the original WASM,

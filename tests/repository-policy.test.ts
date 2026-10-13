@@ -7,7 +7,7 @@ import {
   checkIssueForm, checkPromotion, checkRepositoryPolicy, checkWorkflow,
   communityFiles, workflowFiles, checkIsolatedHclReport, checkIsolatedHclRuntime,
   isolatedHclQualificationJob, isolatedHclTestCommand, checkPluginPathReport, pluginPathTestCommand,
-  nativeBundleQualificationJob
+  nativeBundleQualificationJob, nativePlatformQualificationJob
 } from '../scripts/check-repository-policy.mjs';
 
 const root = process.cwd();
@@ -54,6 +54,26 @@ describe('source repository setup policy', () => {
     if (fault === 'ignored-report') job.steps[8].with['if-no-files-found'] = 'ignore';
     expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
   });
+  it('pins complete Linux x64/arm64 and Windows native package qualification without enabling publication', async () => {
+    const workflow = await readWorkflow('ci.yml');
+    expect(workflow.jobs['qualify-native-platform-packages']).toEqual(nativePlatformQualificationJob());
+    expect((await readWorkflow('release.yml')).jobs['qualify-native-platform-packages']).toBeUndefined();
+  });
+  it.each(['missing', 'matrix', 'runner', 'conditional', 'compiler', 'runtime', 'filtered', 'report', 'archive', 'upload'])(
+    'rejects incomplete native platform packaging: %s', async fault => {
+      const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-platform-packages'];
+      if (fault === 'missing') delete workflow.jobs['qualify-native-platform-packages'];
+      if (fault === 'matrix') job.strategy.matrix.include.pop();
+      if (fault === 'runner') job.strategy.matrix.include[0].os = 'ubuntu-latest';
+      if (fault === 'conditional') job.if = 'false';
+      if (fault === 'compiler') job.steps[4].run += ' || true';
+      if (fault === 'runtime') job.steps[1].with['node-version'] = 'latest';
+      if (fault === 'filtered') job.steps[6].run += ' -t skipped';
+      if (fault === 'report') job.steps[6].run = job.steps[6].run.replace(/^node scripts\/native-package-report.*\n/m, '');
+      if (fault === 'archive') job.steps[6].run = job.steps[6].run.replace(/^node scripts\/native-release.*\n/m, '');
+      if (fault === 'upload') job.steps[7].with['if-no-files-found'] = 'ignore';
+      expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
+    });
   it.each([
     'missing-platform', 'conditional-job', 'filtered-command', 'conditional-command',
     'missing-verifier', 'conditional-verifier', 'missing-upload', 'success-only-upload', 'ignored-report'

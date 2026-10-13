@@ -6,6 +6,12 @@ framework such as Spec Kit can require Python for its own tooling.
 
 ## Baseline
 
+Published npm installations require an external Node runtime. Contributor-only
+[native packages](native-development-bundles.md) carry private Node 24.21.0;
+their declared upstream OS/libc requirements are not qualified Liftoff support
+floors. Their private runtime never satisfies a selected workload's external
+Node/npm requirement.
+
 - CLI runtime: the running process is checked against Liftoff's minimum Node.js
   version. npm installations still need Node.js to launch; no native distribution
   is claimed by this readiness check.

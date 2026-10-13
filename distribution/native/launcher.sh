@@ -25,4 +25,5 @@ root=$(CDPATH= cd -P -- "${entry%/*}/.." && pwd)
 
 # Do not expose the private runtime on PATH or load ambient Node startup code.
 unset NODE_OPTIONS NODE_PATH
+"$root/runtime/node" "$root/installation/host.mjs"
 exec "$root/runtime/node" "$root/application/dist/cli.js" "$@"

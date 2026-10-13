@@ -17,7 +17,7 @@ One interactive CLI to give your next project a considered start.
 
 ## Quick start
 
-Use **Node.js 24 LTS, version 24.20.0 or newer within that line**; check [prerequisites](docs/prerequisites.md).
+Use **Node.js 24 LTS, version 24.20.0 or newer within that line**; check [prerequisites](docs/prerequisites.md). **npm remains the published channel**; Homebrew, WinGet and Linux archive releases are not yet qualified.
 
 ```bash
 npm install -g @msn-control/liftoff@latest

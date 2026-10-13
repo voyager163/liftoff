@@ -5,6 +5,11 @@ and standard APIs.
 
 ## 1. Install the CLI
 
+npm is currently the published channel on macOS, Windows and Linux. No Liftoff
+Homebrew cask, WinGet ID or authenticated Linux release installer is qualified
+for public use yet. The [native development guide](native-development-bundles.md)
+describes isolated contributor artifacts, not an alternative installation command.
+
 Workstation readiness requires stable Node.js 24 LTS at 24.20.0 or newer within
 that line, plus npm 12.x at 12.0.2 or newer when selected tools need it.
 Python workloads use Python 3.14.x with frozen `uv` dependency locks.

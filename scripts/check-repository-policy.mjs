@@ -110,15 +110,63 @@ export function nativeBundleQualificationJob() {
       { name: 'Qualify actual installed behavior', shell: 'bash', run: [
         'LIFTOFF_NATIVE_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
         'LIFTOFF_NATIVE_GO_EXECUTABLE="$(command -v go)" \\',
+        'LIFTOFF_NATIVE_PACKAGE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
         'npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \\',
+        '  tests/native-distribution.test.ts tests/native-package-installed.test.ts \\',
         '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
         '  --reporter=default --reporter=json --outputFile.json=qualification/native-bundle.json',
-        'node scripts/native-bundle.mjs verify-report qualification/native-bundle.json', ''
+        'node scripts/native-bundle.mjs verify-report qualification/native-bundle.json',
+        'node scripts/native-package-report.mjs qualification/native-bundle.json "$RUNNER_TEMP/liftoff-native-bundle"',
+        'node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-native-bundle" "$RUNNER_TEMP/liftoff-native-archive"', ''
       ].join('\n') },
       { name: 'Store development qualification evidence', if: independentStepCondition,
         uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
         with: { name: 'liftoff-native-bundle-ci-${{ github.run_id }}-${{ github.run_attempt }}',
-          path: 'qualification/native-bundle.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n',
+          path: 'qualification/native-bundle.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n${{ runner.temp }}/liftoff-native-archive/\n',
+          'if-no-files-found': 'error', 'retention-days': 14 } }
+    ]
+  };
+}
+export function nativePlatformQualificationJob() {
+  return {
+    name: 'Native development package (${{ matrix.target }})', 'runs-on': '${{ matrix.os }}',
+    'timeout-minutes': 20, permissions: { contents: 'read' },
+    strategy: { 'fail-fast': false, matrix: { include: [
+      { os: 'ubuntu-24.04', target: 'linux-x64' },
+      { os: 'ubuntu-24.04-arm', target: 'linux-arm64' },
+      { os: 'windows-2025', target: 'win32-x64' }
+    ] } },
+    steps: [
+      { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', with: { 'persist-credentials': false } },
+      { uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+        with: { 'node-version': '24.21.0', cache: 'npm' } },
+      { name: 'Select supported npm', run: 'npm install --global "npm@12.0.2"' },
+      { name: 'Install dependencies', run: 'npm ci' },
+      { name: 'Compile the native Windows launcher', if: "runner.os == 'Windows'", shell: 'cmd', run: [
+        'for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do call "%%i\\Common7\\Tools\\VsDevCmd.bat" -arch=x64 -host_arch=x64',
+        'cl /nologo /W4 /WX /O2 /MT /Fo:"%RUNNER_TEMP%\\liftoff-launcher.obj" /Fe:"%RUNNER_TEMP%\\liftoff-launcher.exe" distribution\\windows\\launcher.c /link /SUBSYSTEM:CONSOLE', ''
+      ].join('\n') },
+      { name: 'Retrieve the pinned platform runtime', shell: 'bash', run: [
+        'url="$(node --input-type=module -e \'import inputs from "./distribution/native/inputs.json" with { type: "json" }; import { nativeRuntimeInput } from "./scripts/native-bundle-contract.mjs"; console.log(nativeRuntimeInput(inputs, {platform:process.platform,architecture:process.arch}).url)\')"',
+        'curl --fail --location --proto \'=https\' --proto-redir \'=https\' --max-time 180 \\',
+        '  "$url" --output "$RUNNER_TEMP/liftoff-platform-runtime"', ''
+      ].join('\n') },
+      { name: 'Build and qualify the isolated native package', shell: 'bash', run: [
+        'launcher=()',
+        'if [ "$RUNNER_OS" = Windows ]; then launcher=(--windows-launcher "$RUNNER_TEMP/liftoff-launcher.exe"); fi',
+        'npm run build:native -- build --runtime-archive "$RUNNER_TEMP/liftoff-platform-runtime" \\',
+        '  --output "$RUNNER_TEMP/liftoff-native-bundle" "${launcher[@]}"',
+        'LIFTOFF_NATIVE_PACKAGE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
+        'npx vitest run tests/native-bundle.test.ts tests/native-distribution.test.ts tests/native-package-installed.test.ts \\',
+        '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
+        '  --reporter=default --reporter=json --outputFile.json=qualification/native-platform-package.json',
+        'node scripts/native-package-report.mjs qualification/native-platform-package.json "$RUNNER_TEMP/liftoff-native-bundle"',
+        'node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-native-bundle" "$RUNNER_TEMP/liftoff-native-archive"', ''
+      ].join('\n') },
+      { name: 'Store exact-source native development artifacts', if: independentStepCondition,
+        uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+        with: { name: 'liftoff-native-package-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}',
+          path: 'qualification/native-platform-package.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n${{ runner.temp }}/liftoff-native-archive/\n',
           'if-no-files-found': 'error', 'retention-days': 14 } }
     ]
   };
@@ -226,6 +274,8 @@ export function checkWorkflow(filename, workflow) {
   if (filename === 'ci.yml') {
     assert.deepEqual(workflow.jobs['qualify-native-bundle'], nativeBundleQualificationJob(),
       'Native bundle qualification must retain its exact reviewed host, inputs, complete cases and report gate.');
+    assert.deepEqual(workflow.jobs['qualify-native-platform-packages'], nativePlatformQualificationJob(),
+      'Native platform qualification must retain every reviewed target, native compiler, complete cases and exact artifact handoff.');
     const platforms = ['ubuntu-latest', 'macos-latest', 'windows-latest'];
     const required = workflow.jobs.test;
     assert.deepEqual(required, {

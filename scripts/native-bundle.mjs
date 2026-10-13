@@ -12,14 +12,20 @@ import {
   assertUnpackedPackageSize, installedAssetByteIssues, packagedAssetIssues, requiredPackagedAssets
 } from './package-smoke-contract.mjs';
 import {
-  assertDependencyClosure, assertNativeBundleReport, assertSystemRuntimeLibraries,
-  bundleFile, bundleInventory, bundlePath, nativeBundleHost
+  assertDependencyClosure, assertNativeBundleReport, assertSystemRuntimeLibraries, assertLinuxRuntimeLibraries,
+  bundleFile, bundleInventory, bundlePath, nativeBundleHost, nativeRuntimeInput
 } from './native-bundle-contract.mjs';
+import { assertNativeHost, observeNativeHost } from '../distribution/native/host.mjs';
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL('../', import.meta.url)));
 const inputsPath = path.join(repositoryRoot, 'distribution/native/inputs.json');
 const builderPaths = [
   'distribution/native/inputs.json', 'distribution/native/launcher.sh',
+  'distribution/native/platforms.json', 'distribution/native/host.mjs',
+  'distribution/windows/launcher.c',
+  'scripts/native-install.mjs', 'scripts/native-release.mjs',
+  'distribution/native/release-policy.json', 'distribution/windows/liftoff.iss',
+  'distribution/linux/install.sh',
   'scripts/native-bundle.mjs', 'scripts/native-bundle-contract.mjs',
   'scripts/package-smoke-contract.mjs', 'scripts/coverage-gate.mjs', 'scripts/clean-build.mjs'
 ];
@@ -30,6 +36,7 @@ const boundaries = Object.freeze({
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = async file => JSON.parse(await readFile(file, 'utf8'));
 const noticeName = /^(?:license|licence|copying|notice|copyright|patents)(?:[._-].*)?$/i;
+const tar = process.platform === 'win32' ? 'tar.exe' : '/usr/bin/tar';
 
 async function sourceFiles(names) {
   const records = [];
@@ -65,16 +72,17 @@ export function nativeBundleArguments(args) {
     return { operation, output: path.resolve(rest[0]) };
   }
   const options = {};
-  assert.equal(rest.length, 4, 'build needs --runtime-archive and --output.');
+  assert.ok(rest.length === 4 || rest.length === 6, 'build needs --runtime-archive and --output; Windows also needs --windows-launcher.');
   for (let i = 0; i < rest.length; i += 2) {
     const name = rest[i];
-    assert.ok(['--runtime-archive', '--output'].includes(name) && !options[name],
+    assert.ok(['--runtime-archive', '--output', '--windows-launcher'].includes(name) && !options[name],
       'Unknown or repeated native build option.');
     assert.ok(rest[i + 1] && !rest[i + 1].startsWith('-'), 'Native build option needs an explicit path.');
     options[name] = path.resolve(rest[i + 1]);
   }
   assert.ok(options['--output'] && options['--runtime-archive'], 'Native build inputs are incomplete.');
-  return { operation, output: options['--output'], runtimeArchive: options['--runtime-archive'] };
+  return { operation, output: options['--output'], runtimeArchive: options['--runtime-archive'],
+    ...(options['--windows-launcher'] ? { windowsLauncher: options['--windows-launcher'] } : {}) };
 }
 
 export async function fetchNativeInput(input, maximum = 20 * 1024 * 1024) {
@@ -111,7 +119,9 @@ async function installNotices(bundle, scratch, inputs) {
     for (const file of input.files) {
       assert.ok(bundlePath(file.path).split('/').length === 1, 'Notice output must be one filename.');
       const content = file.member
-        ? run('/usr/bin/tar', ['-xOf', source, bundlePath(file.member)], { encoding: 'buffer', maxBuffer: 65_536 })
+        ? (process.platform === 'linux'
+          ? run('/usr/bin/unzip', ['-p', source, bundlePath(file.member)], { encoding: 'buffer', maxBuffer: 65_536 })
+          : run(tar, ['-xOf', source, bundlePath(file.member)], { encoding: 'buffer', maxBuffer: 65_536 }))
         : bytes;
       assert.ok(content.length > 0 && content.length <= 65_536, 'Notice text is empty or oversized.');
       assert.equal(digest(content), file.sha256, `Original notice checksum differs: ${input.id}/${file.path}`);
@@ -162,8 +172,9 @@ async function assertHclInputs(application, lock, inputs) {
   assert.deepEqual(actual, expected, 'HCL embedded dependency inventory differs from its notice inventory.');
 }
 
-export async function buildNativeBundle({ output, runtimeArchive, npmCli = process.env.npm_execpath }) {
+export async function buildNativeBundle({ output, runtimeArchive, windowsLauncher, npmCli = process.env.npm_execpath }) {
   const host = nativeBundleHost();
+  const hostAdmission = assertNativeHost(observeNativeHost());
   assert.ok(npmCli && path.isAbsolute(npmCli), 'Run the development build through npm; npm_execpath is required.');
   const requested = path.resolve(output);
   const bundle = path.join(await realpath(path.dirname(requested)), path.basename(requested));
@@ -179,11 +190,12 @@ export async function buildNativeBundle({ output, runtimeArchive, npmCli = proce
   const builderInputs = await sourceFiles(builderPaths);
   const inputs = await json(inputsPath);
   assert.equal(inputs.schemaVersion, 1);
-  assert.equal(inputs.runtime.platform, host.platform);
-  assert.equal(inputs.runtime.architecture, host.architecture);
-  assert.equal(inputs.runtime.archiveRoot, `node-v${inputs.runtime.version}-darwin-arm64`);
+  const runtimeInput = nativeRuntimeInput(inputs, host);
+  assert.equal(runtimeInput.archiveRoot, `node-v${runtimeInput.version}-${host.platform === 'win32' ? 'win' : host.platform}-${host.architecture}`);
   const archiveIdentity = await bundleFile(runtimeArchive);
-  assert.equal(archiveIdentity.sha256, inputs.runtime.sha256, 'Official Node archive checksum differs.');
+  assert.equal(archiveIdentity.sha256, runtimeInput.sha256, 'Official Node archive checksum differs.');
+  const launcherInput = host.platform === 'win32' ? await bundleFile(windowsLauncher) : null;
+  assert.ok(host.platform === 'win32' || !windowsLauncher, 'A Windows launcher cannot be supplied on another host.');
   const pkg = await json(path.join(repositoryRoot, 'package.json'));
   const lockBytes = await readFile(path.join(repositoryRoot, 'package-lock.json'));
   const lock = JSON.parse(lockBytes);
@@ -214,9 +226,9 @@ export async function buildNativeBundle({ output, runtimeArchive, npmCli = proce
   assert.equal(new Set(packedPaths.map(name => name.normalize('NFC').toLowerCase())).size, packedPaths.length);
   const tarball = path.join(scratch, bundlePath(packed.filename));
   const packageIdentity = await bundleFile(tarball, 12 * 1024 * 1024);
-  const members = run('/usr/bin/tar', ['-tzf', tarball]).trim().split('\n').sort();
+  const members = run(tar, ['-tzf', tarball]).trim().split('\n').sort();
   assert.deepEqual(members, packedPaths.map(name => `package/${name}`).sort(), 'Packed archive contains unexpected members.');
-  run('/usr/bin/tar', ['-xzf', tarball, '-C', application, '--strip-components', '1']);
+  run(tar, ['-xzf', tarball, '-C', application, '--strip-components', '1']);
   for (const source of packageSources) {
     const installed = await bundleFile(path.join(application, source.path), 12 * 1024 * 1024);
     assert.equal(installed.sha256, source.sha256, `Packed source bytes differ: ${source.path}`);
@@ -231,29 +243,46 @@ export async function buildNativeBundle({ output, runtimeArchive, npmCli = proce
   const licenses = await dependencyNotices(application, dependencies);
   assert.deepEqual(await installedAssetByteIssues({ installedRoot: application, sourceRoot: repositoryRoot }), []);
 
-  const ownedArchive = path.join(scratch, 'node-runtime.tgz');
+  const ownedArchive = path.join(scratch, host.platform === 'win32' ? 'node-runtime.zip' : 'node-runtime.tgz');
   await copyFile(runtimeArchive, ownedArchive, constants.COPYFILE_EXCL);
-  assert.equal((await bundleFile(ownedArchive)).sha256, inputs.runtime.sha256);
-  run('/usr/bin/tar', ['-xzf', ownedArchive, '-C', scratch,
-    `${inputs.runtime.archiveRoot}/bin/node`, `${inputs.runtime.archiveRoot}/LICENSE`]);
+  assert.equal((await bundleFile(ownedArchive)).sha256, runtimeInput.sha256);
+  const executableName = host.platform === 'win32' ? 'node.exe' : 'node';
+  const executableMember = host.platform === 'win32' ? 'node.exe' : 'bin/node';
+  run(tar, ['-xf', ownedArchive, '-C', scratch,
+    `${runtimeInput.archiveRoot}/${executableMember}`, `${runtimeInput.archiveRoot}/LICENSE`]);
   const runtime = path.join(bundle, 'runtime');
   await mkdir(runtime);
-  await copyFile(path.join(scratch, inputs.runtime.archiveRoot, 'bin/node'), path.join(runtime, 'node'), constants.COPYFILE_EXCL);
-  await copyFile(path.join(scratch, inputs.runtime.archiveRoot, 'LICENSE'), path.join(runtime, 'LICENSE'), constants.COPYFILE_EXCL);
-  await chmod(path.join(runtime, 'node'), 0o755);
-  assert.equal((await bundleFile(path.join(runtime, 'node'))).sha256, inputs.runtime.executableSha256);
-  assert.equal((await bundleFile(path.join(runtime, 'LICENSE'))).sha256, inputs.runtime.licenseSha256);
-  const libraries = assertSystemRuntimeLibraries(run('/usr/bin/otool', ['-L', path.join(runtime, 'node')]));
+  await copyFile(path.join(scratch, runtimeInput.archiveRoot, executableMember), path.join(runtime, executableName), constants.COPYFILE_EXCL);
+  await copyFile(path.join(scratch, runtimeInput.archiveRoot, 'LICENSE'), path.join(runtime, 'LICENSE'), constants.COPYFILE_EXCL);
+  await chmod(path.join(runtime, executableName), 0o755);
+  assert.equal((await bundleFile(path.join(runtime, executableName))).sha256, runtimeInput.executableSha256);
+  assert.equal((await bundleFile(path.join(runtime, 'LICENSE'))).sha256, runtimeInput.licenseSha256);
+  const libraries = host.platform === 'darwin'
+    ? assertSystemRuntimeLibraries(run('/usr/bin/otool', ['-L', path.join(runtime, executableName)]))
+    : host.platform === 'linux'
+      ? assertLinuxRuntimeLibraries(run('/usr/bin/ldd', [path.join(runtime, executableName)]),
+        run('/usr/bin/readelf', ['--version-info', path.join(runtime, executableName)]), hostAdmission.floor)
+      : { inspection: 'Windows PE imports require separate native qualification.' };
   const emptyPath = path.join(scratch, 'empty-path');
   await mkdir(emptyPath);
   const runtimeEnvironment = { PATH: emptyPath, NODE_OPTIONS: '', NODE_PATH: '', LIFTOFF_TELEMETRY: '0', DO_NOT_TRACK: '1' };
-  const observed = JSON.parse(run(path.join(runtime, 'node'), ['-p',
+  const observed = JSON.parse(run(path.join(runtime, executableName), ['-p',
     'JSON.stringify({version:process.versions.node,platform:process.platform,architecture:process.arch})'],
   { cwd: scratch, env: runtimeEnvironment }));
-  assert.deepEqual(observed, { version: inputs.runtime.version, ...host });
+  assert.deepEqual(observed, { version: runtimeInput.version, ...host });
   await mkdir(path.join(bundle, 'bin'));
-  await copyFile(path.join(repositoryRoot, 'distribution/native/launcher.sh'), path.join(bundle, 'bin/liftoff'), constants.COPYFILE_EXCL);
-  await chmod(path.join(bundle, 'bin/liftoff'), 0o755);
+  const launcher = host.platform === 'win32' ? 'bin/liftoff.exe' : 'bin/liftoff';
+  await copyFile(host.platform === 'win32' ? windowsLauncher : path.join(repositoryRoot, 'distribution/native/launcher.sh'),
+    path.join(bundle, launcher), constants.COPYFILE_EXCL);
+  await chmod(path.join(bundle, launcher), 0o755);
+  if (launcherInput) assert.deepEqual(await bundleFile(windowsLauncher), launcherInput, 'Windows launcher changed during build.');
+  await mkdir(path.join(bundle, 'installation'));
+  for (const name of ['host.mjs', 'platforms.json']) {
+    await copyFile(path.join(repositoryRoot, 'distribution/native', name), path.join(bundle, 'installation', name), constants.COPYFILE_EXCL);
+  }
+  for (const name of ['native-install.mjs', 'native-bundle-contract.mjs']) {
+    await copyFile(path.join(repositoryRoot, 'scripts', name), path.join(bundle, 'installation', name), constants.COPYFILE_EXCL);
+  }
 
   const after = collectInputs(coveragePackage('cli'));
   assert.deepEqual(after, before, 'Source, test, dependency or configuration inputs changed during packaging.');
@@ -263,13 +292,13 @@ export async function buildNativeBundle({ output, runtimeArchive, npmCli = proce
   const inventory = await bundleInventory(bundle);
   const manifest = {
     schemaVersion: 1, kind: 'liftoff-native-development-bundle', releaseReady: false,
-    platform: host,
+    platform: host, hostAdmission,
     source: { repository: 'voyager163/liftoff', commit: before.revision.commit, dirty: Boolean(dirty),
       sourceDigest: before.source.digest, configurationDigest: before.configuration.digest, builderInputs },
     package: { name: pkg.name, version: pkg.version, archive: packageIdentity,
       lockSha256: digest(lockBytes), sourceFiles: packageSources },
-    runtime: { ...inputs.runtime, executable: 'runtime/node', libraries, observed },
-    launcher: 'bin/liftoff', assets: requiredPackagedAssets,
+    runtime: { ...runtimeInput, executable: `runtime/${executableName}`, libraries, observed },
+    launcher, launcherInput, assets: requiredPackagedAssets,
     dependencies: licenses, supplementalNotices: notices, hclSource: inputs.hcl,
     inputSha256: digest(await readFile(inputsPath)), inventory,
     boundaries
@@ -299,27 +328,42 @@ export async function verifyNativeBundle(directory) {
   }
   assert.deepEqual(manifest.source.builderInputs, await sourceFiles(builderPaths), 'Native builder input inventory differs.');
   const inputs = await json(inputsPath);
+  nativeBundleHost(manifest.platform.platform, manifest.platform.architecture);
+  const pinnedRuntime = nativeRuntimeInput(inputs, manifest.platform);
   assert.equal(manifest.inputSha256, digest(await readFile(inputsPath)), 'Native build input policy differs.');
   const { executable, libraries: _libraries, observed, ...runtimeInput } = manifest.runtime;
-  assert.deepEqual(runtimeInput, inputs.runtime, 'Runtime input differs from the pinned archive.');
-  assert.deepEqual(observed, { version: inputs.runtime.version, platform: 'darwin', architecture: 'arm64' });
+  assert.deepEqual(runtimeInput, pinnedRuntime, 'Runtime input differs from the pinned archive.');
+  assert.deepEqual(observed, { version: pinnedRuntime.version, ...manifest.platform });
+  const admission = assertNativeHost(manifest.hostAdmission.observed);
+  assert.deepEqual(manifest.hostAdmission, admission, 'Host admission policy differs.');
+  assert.equal(admission.target, `${manifest.platform.platform}-${manifest.platform.architecture}`);
   assert.deepEqual(manifest.assets, requiredPackagedAssets, 'Required asset inventory differs.');
   assert.deepEqual(manifest.hclSource, inputs.hcl, 'HCL provenance differs.');
   assert.deepEqual(manifest.supplementalNotices, supplementalNotices(inputs), 'Supplemental notice inventory differs.');
-  assert.deepEqual(manifest.platform, { platform: 'darwin', architecture: 'arm64' });
   assert.deepEqual(await bundleInventory(root), manifest.inventory, 'Native bundle inventory changed.');
-  assert.equal(manifest.launcher, 'bin/liftoff');
-  assert.equal(executable, 'runtime/node');
-  for (const name of ['bin/liftoff', 'runtime/node']) {
-    assert.equal((await bundleFile(path.join(root, name))).mode, 0o755, 'Native entrypoint is not executable.');
+  const windows = manifest.platform.platform === 'win32';
+  assert.equal(manifest.launcher, windows ? 'bin/liftoff.exe' : 'bin/liftoff');
+  assert.equal(executable, windows ? 'runtime/node.exe' : 'runtime/node');
+  for (const name of [manifest.launcher, executable]) {
+    const file = await bundleFile(path.join(root, name));
+    if (!windows) assert.equal(file.mode, 0o755, 'Native entrypoint is not executable.');
   }
-  assert.equal((await bundleFile(path.join(root, 'runtime/node'))).sha256, inputs.runtime.executableSha256,
+  assert.equal((await bundleFile(path.join(root, executable))).sha256, pinnedRuntime.executableSha256,
     'Private runtime bytes differ from the official input.');
-  assert.equal((await bundleFile(path.join(root, 'runtime/LICENSE'))).sha256, inputs.runtime.licenseSha256);
-  assert.equal((await bundleFile(path.join(root, 'bin/liftoff'))).sha256,
-    (await bundleFile(path.join(repositoryRoot, 'distribution/native/launcher.sh'))).sha256, 'Launcher bytes differ.');
+  assert.equal((await bundleFile(path.join(root, 'runtime/LICENSE'))).sha256, pinnedRuntime.licenseSha256);
+  assert.equal((await bundleFile(path.join(root, manifest.launcher))).sha256, windows
+    ? manifest.launcherInput.sha256
+    : (await bundleFile(path.join(repositoryRoot, 'distribution/native/launcher.sh'))).sha256, 'Launcher bytes differ.');
+  for (const name of ['host.mjs', 'platforms.json']) {
+    assert.equal((await bundleFile(path.join(root, 'installation', name))).sha256,
+      (await bundleFile(path.join(repositoryRoot, 'distribution/native', name))).sha256, 'Installed host admission differs.');
+  }
+  for (const name of ['native-install.mjs', 'native-bundle-contract.mjs']) {
+    assert.equal((await bundleFile(path.join(root, 'installation', name))).sha256,
+      (await bundleFile(path.join(repositoryRoot, 'scripts', name))).sha256, 'Installed ownership contract differs.');
+  }
   const paths = new Set(manifest.inventory.entries.filter(entry => entry.kind === 'file').map(entry => entry.path));
-  for (const name of ['bin/liftoff', 'runtime/node', 'runtime/LICENSE', 'application/LICENSE',
+  for (const name of [manifest.launcher, executable, 'runtime/LICENSE', 'application/LICENSE',
     'application/package.json', 'application/package-lock.json', 'application/dist/cli.js',
     'application/node_modules/@cdktf/hcl2json/main.wasm.gz', ...requiredPackagedAssets.map(asset => `application/${asset}`)]) {
     assert.ok(paths.has(name), `Native bundle is missing required material: ${name}`);

@@ -35,9 +35,11 @@ function dependencyLock() {
 }
 
 describe('native development bundle contracts', () => {
-  it('keeps native Apple Silicon build admission distinct from other unqualified hosts', () => {
-    expect(nativeBundleHost('darwin', 'arm64')).toEqual({ platform: 'darwin', architecture: 'arm64' });
-    for (const [platform, architecture] of [['darwin', 'x64'], ['linux', 'arm64'], ['linux', 'x64'], ['win32', 'x64']] as const) {
+  it('admits only the four development targets without claiming public platform qualification', () => {
+    for (const [platform, architecture] of [['darwin', 'arm64'], ['linux', 'arm64'], ['linux', 'x64'], ['win32', 'x64']] as const) {
+      expect(nativeBundleHost(platform, architecture)).toEqual({ platform, architecture });
+    }
+    for (const [platform, architecture] of [['darwin', 'x64'], ['linux', 'ia32'], ['linux', 'arm'], ['win32', 'arm64']] as const) {
       expect(() => nativeBundleHost(platform, architecture)).toThrow();
     }
   });
@@ -248,7 +250,7 @@ describe('native development bundle contracts', () => {
     await chmod(launcher, 0o755);
     const fakeRuntime = path.join(bundle, 'runtime/node');
     await writeFile(fakeRuntime,
-      '#!/bin/sh\nprintf "%s\\n" "$@" "${NODE_OPTIONS-unset}" "${NODE_PATH-unset}" "$PATH"\nexit 7\n',
+      '#!/bin/sh\ncase "$1" in */installation/host.mjs) exit 0 ;; esac\nprintf "%s\\n" "$@" "${NODE_OPTIONS-unset}" "${NODE_PATH-unset}" "$PATH"\nexit 7\n',
       { mode: 0o755 });
     await symlink('bundle with spaces/bin/liftoff', path.join(root, 'linked liftoff'));
     const result = spawnSync(path.join(root, 'linked liftoff'), ['space argument', '$literal', ';not-a-command'], {

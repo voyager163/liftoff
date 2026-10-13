@@ -87,11 +87,11 @@ async function outputs(record, env) {
 
 async function main() {
   const [operation, destination, ...extra] = process.argv.slice(2);
-  assert.ok(['check-ref', 'pack', 'verify'].includes(operation), 'Usage: release-artifact.mjs <check-ref|pack|verify> [directory]');
+  assert.ok(['check-ref', 'pack', 'verify', 'verify-native'].includes(operation), 'Usage: release-artifact.mjs <check-ref|pack|verify|verify-native> [directory]');
   assert.equal(extra.length, 0, 'Unexpected release artifact arguments.');
   const root = process.cwd();
   const env = process.env;
-  const context = await releaseContext(root, env, { allowDispatch: operation !== 'verify' });
+  const context = await releaseContext(root, env, { allowDispatch: !['verify', 'verify-native'].includes(operation) });
   if (operation === 'check-ref') {
     assert.equal(destination, undefined, 'check-ref does not take an artifact directory.');
     console.log(`Qualified ref ${env.GITHUB_REF} at ${context.commit}; ${context.event}.`);
@@ -99,6 +99,12 @@ async function main() {
   }
   assert.ok(destination, 'An explicit artifact directory is required.');
   const directory = path.resolve(destination);
+  if (operation === 'verify-native') {
+    const { verifyNativeReleaseForPublication } = await import('./native-release.mjs');
+    await verifyNativeReleaseForPublication(directory, env.EXPECTED_NATIVE_MANIFEST_SHA256, context.commit, env);
+    console.log(`Verified native evidence for ${context.name}@${context.version}; publication still needs independent operator approval.`);
+    return;
+  }
   if (operation === 'pack') {
     assert.ok(env.npm_execpath, 'Run packing through npm run prepare:release.');
     await mkdir(directory, { recursive: true });
