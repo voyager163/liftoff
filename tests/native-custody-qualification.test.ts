@@ -1,10 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import {
+  captureQualifiedOpenSpecProfile,
   createNativeCustodyQualificationEvidence,
-  nativeCustodyQualificationCommands
+  nativeContainerToolProfile,
+  nativeCustodyQualificationCommands,
+  qualifiedOpenSpecProfile,
+  verifyQualifiedOpenSpecProfile
 } from '../scripts/native-custody-qualification.mjs';
 
 const revision = '8'.repeat(40);
+const fixtures: string[] = [];
 const outcomeEnvironment = {
   NATIVE_TOOLCHAIN_OUTCOME: 'success',
   NATIVE_CLEAN_START_OUTCOME: 'success',
@@ -17,8 +25,13 @@ const outcomeEnvironment = {
   NATIVE_PACKAGE_OUTCOME: 'success',
   NATIVE_POLICY_OUTCOME: 'success',
   NATIVE_OPENSPEC_OUTCOME: 'success',
-  NATIVE_CLEAN_FINISH_OUTCOME: 'success'
+  NATIVE_CLEAN_FINISH_OUTCOME: 'success',
+  NATIVE_COMPOSE_EXECUTABLE: '/qualified/docker-compose'
 };
+
+afterEach(async () => {
+  await Promise.all(fixtures.splice(0).map(directory => rm(directory, { recursive: true, force: true })));
+});
 
 function coverageEvidence() {
   return {
@@ -42,7 +55,11 @@ function coverageEvidence() {
   };
 }
 
-function execute(executable: string): string {
+function execute(executable: string, args: string[] = []): string {
+  if (executable.endsWith('docker-compose')) return nativeContainerToolProfile.compose.version;
+  if (executable === 'docker') {
+    return `Docker version ${nativeContainerToolProfile.docker.version}, build ${nativeContainerToolProfile.docker.build}`;
+  }
   return {
     npm: '12.0.2',
     tofu: 'OpenTofu v1.12.6\non darwin_arm64',
@@ -65,6 +82,29 @@ function reader(evidence = coverageEvidence()) {
 }
 
 describe('hosted native custody qualification evidence', () => {
+  it('binds a complete stable OpenSpec package profile and rejects changed bytes', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-openspec-profile-'));
+    fixtures.push(root);
+    await mkdir(path.join(root, 'bin'));
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({
+      name: '@fission-ai/openspec',
+      version: '1.11.0'
+    }));
+    await writeFile(path.join(root, 'bin', 'openspec.js'), '#!/usr/bin/env node\n');
+    const captured = await captureQualifiedOpenSpecProfile(root, {
+      ...qualifiedOpenSpecProfile,
+      counts: { files: 2, directories: 2, symlinks: 0, totalBytes: 1000 }
+    });
+    const expected = {
+      ...captured,
+      registryCutoff: 'fixture'
+    };
+    expect(await verifyQualifiedOpenSpecProfile(root, expected)).toEqual(expected);
+    await writeFile(path.join(root, 'bin', 'openspec.js'), '#!/usr/bin/env nodE\n');
+    await expect(verifyQualifiedOpenSpecProfile(root, expected))
+      .rejects.toThrow('Qualified OpenSpec distribution content profile mismatch.');
+  });
+
   it('binds passing native gates, raw metrics, inventories, logs, and tool versions', async () => {
     const evidence = await createNativeCustodyQualificationEvidence({
       env: {
@@ -80,6 +120,7 @@ describe('hosted native custody qualification evidence', () => {
       execute,
       readText: reader(),
       verify: async () => ({ result: 'passed', failures: [], metrics: coverageEvidence().metrics }),
+      verifyOpenSpecProfile: async () => qualifiedOpenSpecProfile,
       generatedAt: () => '2026-10-13T00:00:00.000Z'
     });
     expect(evidence.result).toBe('passed');
@@ -95,7 +136,12 @@ describe('hosted native custody qualification evidence', () => {
     expect(evidence.tools).toMatchObject({
       npm: '12.0.2',
       openspec: '1.11.0',
-      go: 'go version go1.27.0 darwin/arm64'
+      go: 'go version go1.27.0 darwin/arm64',
+      docker: 'Docker version 29.8.2, build 7fc2dff',
+      compose: '5.5.1',
+      composeExecutable: '/qualified/docker-compose',
+      containerProfile: nativeContainerToolProfile,
+      openspecDistribution: qualifiedOpenSpecProfile
     });
     expect(evidence.commands).toEqual(nativeCustodyQualificationCommands);
     expect(evidence.claims).toEqual({
@@ -114,17 +160,20 @@ describe('hosted native custody qualification evidence', () => {
       env: {
         ...outcomeEnvironment,
         NATIVE_FULL_SUITE_OUTCOME: 'failure',
+        NATIVE_COMPOSE_EXECUTABLE: 'docker-compose',
         GITHUB_SHA: revision
       },
       runtime: { platform: 'darwin', architecture: 'x64', node: '24.21.0' },
       execute,
       readText: reader(coverage),
-      verify: async () => ({ result: 'failed', failures: ['stale'], metrics: coverage.metrics })
+      verify: async () => ({ result: 'failed', failures: ['stale'], metrics: coverage.metrics }),
+      verifyOpenSpecProfile: async () => qualifiedOpenSpecProfile
     });
     expect(evidence.result).toBe('failed');
     expect(evidence.failures).toEqual(expect.arrayContaining([
       'fullSuite gate outcome was failure, not success.',
       expect.stringContaining('expected darwin/arm64'),
+      'NATIVE_COMPOSE_EXECUTABLE is not an absolute path: "docker-compose".',
       'Coverage evidence is not bound to the exact clean dispatched revision.',
       'Coverage metric branches is not strictly above 80%.',
       'Independent coverage verification failed: stale'

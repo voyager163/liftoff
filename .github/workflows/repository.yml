@@ -83,13 +83,39 @@ jobs:
         run: |
           npm install --prefix "$RUNNER_TEMP/liftoff-npm" --no-package-lock --ignore-scripts --no-audit --no-fund "npm@12.0.2"
           echo "$RUNNER_TEMP/liftoff-npm/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Install qualified Docker and Compose
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/liftoff-docker"
+          archive="$RUNNER_TEMP/docker-29.8.2.tgz"
+          compose="$RUNNER_TEMP/docker-compose-darwin-aarch64"
+          mkdir -p "$root/bin" "$root/cli-plugins" "$RUNNER_TEMP/liftoff-docker-extract"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$archive" \
+            "https://download.docker.com/mac/static/stable/aarch64/docker-29.8.2.tgz"
+          echo "5ffa2bafbabe073470f0333f4a129599230b73d1170bb61146b3d9b08e1d1325  $archive" | shasum -a 256 --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP/liftoff-docker-extract"
+          install -m 0755 "$RUNNER_TEMP/liftoff-docker-extract/docker/docker" "$root/bin/docker"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            --output "$compose" \
+            "https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-darwin-aarch64"
+          echo "998735c9b6fe68a4f05895e6ea73d71ad06f9fc7046383ad89e47346781b6af5  $compose" | shasum -a 256 --check
+          install -m 0755 "$compose" "$root/cli-plugins/docker-compose"
+          echo "$root/bin" >> "$GITHUB_PATH"
       - name: Install pinned OpenSpec
         shell: bash
         run: |
-          npm install --prefix "$RUNNER_TEMP/liftoff-openspec" --no-package-lock --ignore-scripts --no-audit --no-fund @fission-ai/openspec@1.11.0
-          echo "$RUNNER_TEMP/liftoff-openspec/node_modules/.bin" >> "$GITHUB_PATH"
+          npm install --global --prefix "$RUNNER_TEMP/liftoff-openspec" \
+            --before=2026-09-26T23:59:59Z --no-package-lock --ignore-scripts --no-audit --no-fund \
+            @fission-ai/openspec@1.11.0
+          node scripts/native-custody-qualification.mjs verify-openspec-profile \
+            "$RUNNER_TEMP/liftoff-openspec/lib/node_modules/@fission-ai/openspec"
+          echo "$RUNNER_TEMP/liftoff-openspec/bin" >> "$GITHUB_PATH"
       - name: Install dependencies
-        run: npm ci
+        run: |
+          npm ci
+          npm ci --prefix services/telemetry-ingest
       - name: Verify native toolchain
         id: toolchain
         shell: bash
@@ -97,11 +123,16 @@ jobs:
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import { execFileSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
           import { readFileSync, realpathSync } from 'node:fs';
           import path from 'node:path';
           const run = (executable, args) => execFileSync(executable, args, { encoding: 'utf8', shell: false }).trim();
+          const digest = file => createHash('sha256').update(readFileSync(file)).digest('hex');
           const npmLauncher = realpathSync(run('/usr/bin/which', ['npm']));
           const npmPackage = JSON.parse(readFileSync(path.join(path.dirname(path.dirname(npmLauncher)), 'package.json'), 'utf8'));
+          const dockerLauncher = realpathSync(run('/usr/bin/which', ['docker']));
+          const composeLauncher = realpathSync(path.join(path.dirname(path.dirname(dockerLauncher)), 'cli-plugins', 'docker-compose'));
+          const openspecLauncher = realpathSync(run('/usr/bin/which', ['openspec']));
           assert.deepEqual(
             { platform: process.platform, architecture: process.arch, node: process.versions.node },
             { platform: 'darwin', architecture: 'arm64', node: '24.21.0' }
@@ -111,6 +142,13 @@ jobs:
           assert.equal(run(process.execPath, [npmLauncher, '--version']), '12.0.2');
           assert.equal(run('npm', ['--version']), '12.0.2');
           assert.match(run('tofu', ['version']), /^OpenTofu v1\.12\.6(?:\n|$)/);
+          assert.equal(dockerLauncher, realpathSync(path.join(process.env.RUNNER_TEMP, 'liftoff-docker', 'bin', 'docker')));
+          assert.equal(composeLauncher, realpathSync(path.join(process.env.RUNNER_TEMP, 'liftoff-docker', 'cli-plugins', 'docker-compose')));
+          assert.equal(digest(dockerLauncher), 'b95f15a2e7c6a13c17b8af361a2797981bc858a87a1537c38cfa117a0c5009e1');
+          assert.equal(digest(composeLauncher), '998735c9b6fe68a4f05895e6ea73d71ad06f9fc7046383ad89e47346781b6af5');
+          assert.equal(run(dockerLauncher, ['--version']), 'Docker version 29.8.2, build 7fc2dff');
+          assert.equal(run(composeLauncher, ['version', '--short']), '5.5.1');
+          assert.equal(openspecLauncher, realpathSync(path.join(process.env.RUNNER_TEMP, 'liftoff-openspec', 'lib', 'node_modules', '@fission-ai', 'openspec', 'bin', 'openspec.js')));
           assert.equal(run('openspec', ['--version']), '1.11.0');
           assert.equal(run('go', ['version']), 'go version go1.27.0 darwin/arm64');
           assert.equal(run('python', ['--version']), 'Python 3.14.7');
@@ -209,6 +247,7 @@ jobs:
       - name: Record hosted native qualification evidence
         if: ${{ !cancelled() }}
         env:
+          NATIVE_COMPOSE_EXECUTABLE: ${{ runner.temp }}/liftoff-docker/cli-plugins/docker-compose
           NATIVE_TOOLCHAIN_OUTCOME: ${{ steps.toolchain.outcome }}
           NATIVE_CLEAN_START_OUTCOME: ${{ steps.clean-start.outcome }}
           NATIVE_SUPPORTED_STACK_OUTCOME: ${{ steps.supported-stack.outcome }}
