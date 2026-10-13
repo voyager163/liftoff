@@ -173,7 +173,10 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
     expect(record.inventorySha256).toBe(manifest.inventory.sha256);
     const extracted = path.join(fixture, "extracted archive with spaces & apostrophe's");
     await mkdir(extracted, { mode: 0o700 });
-    const extraction = execute(nativeArchiveTool(), ['-xzpf', path.join(output, record.files[0].filename), '-C', extracted]);
+    const extraction = execute(nativeArchiveTool(), [
+      '-xpf', path.join(output, record.files[0].filename), '-C', extracted,
+      ...(process.platform === 'linux' ? ['--use-compress-program=/usr/bin/gzip'] : ['-z'])
+    ]);
     expect(extraction.status, extraction.stdout + extraction.stderr).toBe(0);
     expect(await bundleFile(path.join(extracted, 'bundle.json'))).toEqual(originalManifest);
     const extractedManifest = await verifyNativeBundle(extracted);
