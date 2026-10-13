@@ -384,6 +384,14 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
       return { status: 'pending', operation: handle, outputs, liveReadback, completedOperations: [],
         blocker: 'Application build/publication is pending; retry only observes the exact dispatched workflow.' };
     }
+    const failedConclusion = ['action_required', 'cancelled', 'failure', 'neutral', 'skipped', 'stale', 'timed_out']
+      .includes(String(run.conclusion));
+    handle = { ...handle, status: failedConclusion ? 'failed' : 'completed' };
+    await input.recordApplicationProgress?.({ operation: handle, outputs, liveReadback });
+    if (!failedConclusion && run.conclusion !== 'success') {
+      return applicationError('application-run-conclusion',
+        'The finished artifact workflow has an unknown conclusion; provider completion cannot qualify publication.');
+    }
     const jobs = await client.list(`${handle.resourceId}/jobs?filter=all`, 'jobs');
     if (jobs.length !== 1) return applicationError('application-job-scope', 'Artifact run has an unexpected job/attempt inventory.');
     const job = jobs[0]!;
@@ -400,7 +408,6 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
         blocker: 'Artifact publication failed or has no unique actual immutable receipt; partial registry effects require observation and separately scoped recovery, never rerun.',
         cleanupWarnings: ['A dispatched build may have published partial registry effects. No deployment, deletion or automatic rollback was attempted.'] };
     }
-    handle = { ...handle, status: 'completed' };
     const receipt = String(receipts[0].name).match(/^Liftoff artifact (sha256:[a-f0-9]{64}) run ([a-z0-9]{1,32})$/u)!;
     const imageDigest = digest(receipt[1]);
     const acrRunId = receipt[2]!;

@@ -942,6 +942,21 @@ describe('public documentation', () => {
     ]) expect(baseline).toContain(entry.version);
   });
 
+  it('keeps the unresolved execution-ref prerequisite explicit in application operator guidance', async () => {
+    const [azure, governance] = await Promise.all([
+      repositoryFile('docs/azure-deployment.md'), repositoryFile('docs/repository-governance.md')
+    ]);
+    for (const content of [azure, governance]) {
+      expect(content).toContain('mutable default-branch ref');
+      expect(content).toContain('execution-tag binding');
+      expect(content).toContain('unreviewed replacement workflow');
+    }
+    expect(azure).toContain('Execution-ref qualification remains blocked');
+    expect(azure).toContain('Do not enable real artifact dispatch');
+    expect(azure).toContain('policy administrators remain an external');
+    expect(governance).toContain('source tests do not establish that missing barrier');
+  });
+
   it('documents exact new-output-only infrastructure retirement without granting migration authority', async () => {
     const [azure, configuration, safety, existing] = await Promise.all([
       repositoryFile('docs/azure-deployment.md'),

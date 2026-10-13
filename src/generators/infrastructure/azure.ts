@@ -668,6 +668,12 @@ observation, not redispatch; changed source, tag/digest or authority blocks.
 Workflow publication and application deployment remain separate unavailable
 phases. Source fixtures do not satisfy real disposable task13/task14 qualification.
 
+The current artifact dispatch selects a mutable default-branch ref. Earlier
+readback/guards and later provenance refusal cannot prevent an unreviewed
+replacement workflow's earlier transmission. Do not enable real dispatch until
+the separately owned immutable execution-tag binding and admission interface
+is integrated and independently qualified; there is no safe mutable-ref fallback.
+
 ## Application bootstrap reference
 
 The first application apply uses a public bootstrap image so Azure Container

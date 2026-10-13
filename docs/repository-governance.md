@@ -970,6 +970,12 @@ placeholder, candidate tag or caller-supplied source annotation. Partial handles
 survive a later source/authority change; failed or uncertain effects are observed,
 not automatically repeated or undone.
 
+The current artifact route still selects a mutable default-branch ref at
+dispatch. Pre-dispatch readback and later proof refusal cannot prevent an
+unreviewed replacement workflow's earlier transmission. Real dispatch remains
+unqualified pending the separately owned immutable execution-tag binding and
+admission integration; source tests do not establish that missing barrier.
+
 See [Azure application readiness](azure-deployment.md#application-readiness-source-boundary)
 for declarative recipe inputs, operator boundaries and remaining real
 qualification blockers. The original exact 30-day protected retention/disposal

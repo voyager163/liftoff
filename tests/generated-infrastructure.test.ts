@@ -98,6 +98,7 @@ describe('independent generated infrastructure roots', () => {
     expect(readme).toContain('cd infrastructure/opentofu/azure/environments/prod');
     expect(readme).toContain('tofu plan -var-file=prod.tfvars');
     expect(readme).not.toContain('environments/dev');
+    expect(readme).not.toContain('immutable execution-tag binding');
   });
 
   it.skipIf(spawnSync('tofu', ['version'], { encoding: 'utf8' }).status !== 0)('formats every emitted HCL root and module without provider access', async () => {

@@ -2313,6 +2313,13 @@ Source publication is a review-ref milestone, not a protected-branch merge,
 deployment, package/signing proof or final enforcement. See
 `docs/repository-governance.md` for the exact source-only boundaries.
 
+The current artifact dispatch still selects a mutable default-branch ref.
+Pre-dispatch checks, a reviewed workflow guard and later provenance refusal
+do not close the ref-selection race. Do not enable real dispatch before the
+separately owned immutable execution-tag binding and admission interface is
+published, integrated and independently qualified; no mutable-ref fallback
+is production-safe.
+
 Actual committed workflow bytes, separate transmission/network/build consent,
 the admitted private-network hosted runner, ACR QuickBuild output image and
 locked tag/digest, plus `gh attestation verify` certificate signer/source/run

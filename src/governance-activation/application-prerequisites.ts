@@ -343,7 +343,9 @@ export async function executeApplicationPrerequisites(input: PhaseAdapterExecuti
         blocker: 'Application prerequisite deployment is pending; retry observes this exact deployment without redispatch.' };
     }
     if (state === 'Failed' || state === 'Canceled') {
-      return { status: 'blocked', operation: { ...handle, status: 'failed' }, outputs: output, liveReadback,
+      handle = { ...handle, status: 'failed' };
+      await input.recordApplicationProgress?.({ operation: handle, outputs: output, liveReadback });
+      return { status: 'blocked', operation: handle, outputs: output, liveReadback,
         resultState: 'failed', completedOperations,
         blocker: 'Application prerequisites reached terminal failure; retain owned partial effects for separately approved recovery.' };
     }
@@ -351,6 +353,7 @@ export async function executeApplicationPrerequisites(input: PhaseAdapterExecuti
       return applicationError('application-operation-status', 'Application deployment returned an unsupported provider status; no completion or failure was inferred.');
     }
     handle = { ...handle, status: 'completed' };
+    await input.recordApplicationProgress?.({ operation: handle, outputs: output, liveReadback });
     // Acceptance, names and tags are not ownership. Independently export the actual deployed recipe.
     const exported = await runAzureJson(input, [
       'deployment', 'sub', 'export', '--subscription', binding.subscriptionId, '--name', binding.deploymentName

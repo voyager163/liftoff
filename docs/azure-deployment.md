@@ -185,6 +185,16 @@ resource/role readback are required. Provider conditional creation and competing
 resource-creation scenarios still require real disposable qualification; source
 tests cannot qualify an Azure resource provider's concurrency behavior.
 
+**Execution-ref qualification remains blocked.** The current artifact route
+selects a mutable default-branch ref at dispatch. Earlier source/workflow checks,
+a reviewed job guard and later provenance refusal do not make that selection
+atomic or prevent an unreviewed replacement workflow's earlier transmission.
+Do not enable real artifact dispatch until the separately owned exact-commit
+execution-tag binding and admission interface is published, integrated and
+independently qualified. Missing or unknown tag update/delete/no-bypass protection
+cannot fall back to a mutable ref; policy administrators remain an external
+trust boundary. TASK14.1 source presence does not resolve this prerequisite.
+
 `application-artifact-ready` requires an existing separately reviewed/published
 workflow and private-network runner admission. Its exact plan binds the complete
 Git source SHA, raw workflow byte digest, one observed source context and
@@ -230,6 +240,17 @@ their repository/run scope and checkpoints that handle before metadata polling,
 even if run-list discovery is delayed. A legacy empty response requires exact
 independent run discovery; malformed or cross-scope acceptance never invents a
 handle or permits redispatch. Unexpected response fields are not retained.
+Actual terminal run status is checkpointed before the fallible job inventory
+read, including when source changes prevent a later outcome from being saved.
+Known unsuccessful conclusions (including failure, cancellation and timeout)
+checkpoint a failed handle even if job readback is unavailable; unknown terminal
+conclusions explicitly block publication rather than implying success.
+Provider completion alone does not verify publication: unavailable job readback
+blocks artifact readiness. The existing explicit terminal-operation recovery
+gate remains required; recovery observes the same handle without dispatch.
+Prerequisite deployment success/failure is likewise checkpointed before recipe
+export or final local freshness checks; deployment completion does not invent
+registry, identity or role verification.
 Native processes, registered network reads
 and custody qualification have 30-second calls within one shared three-minute
 observation deadline; a timed-out dispatch is never automatically repeated.
@@ -237,7 +258,8 @@ Pending retries retain the original dispatch plan/time/handle while checking
 exact current reviewed authority, rather than retagging history to a newly
 timestamped observation plan. Actual completed provider operations remain
 completed even if immutable publication qualification is refused.
-Pending retries observe them without redispatch; uncertain dispatch
+Pending retries and explicitly approved terminal observation recovery do not
+redispatch; uncertain dispatch
 acceptance, multiple matching runs, mutable/changed tags, expired/revoked
 authority and failed jobs remain explicit blockers with retained partial-effect
 warnings. Workflow publication, deployment, health/release checks and recovery
