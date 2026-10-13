@@ -8,6 +8,7 @@ import { assertNativeHost, atLeastVersion } from '../distribution/native/host.mj
 import { assertLinuxRuntimeLibraries, bundleFile, bundleInventory, nativeArchiveTool, nativeRuntimeInput, readBundleFile } from '../scripts/native-bundle-contract.mjs';
 import { nativeMaterials, nativePackageDefinitions, assertNativePublicationEvidence, verifyNativeEvidenceSignature, verifyNativeArchive } from '../scripts/native-release.mjs';
 import { parse } from 'yaml';
+import { pathToFileURL } from 'node:url';
 import { installOwnedBundle, inspectOwnedInstallation, recoverOwnedInstallation } from '../scripts/native-install.mjs';
 import inputs from '../distribution/native/inputs.json';
 import policy from '../distribution/native/release-policy.json';
@@ -112,6 +113,15 @@ describe('native exact-artifact and signing gates (synthetic contract data, not 
     expect(() => assertNativePublicationEvidence(record, evidence)).toThrow('No approved');
     expect(policy.homebrew.cask).toBeNull();
     expect(policy.winget.packageIdentifier).toBeNull();
+  });
+  it('imports inert shared admission without a builder checkout, global tools or release environment', async () => {
+    const cwd = await fixture();
+    const url = pathToFileURL(path.resolve('distribution/native/native-release-admission.mjs')).href;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `const admission = await import(${JSON.stringify(url)}); console.log(JSON.stringify(Object.keys(admission).sort()));`],
+    { cwd, env: { PATH: '', NODE_OPTIONS: '', NODE_PATH: '' }, shell: false, encoding: 'utf8', timeout: 10_000 });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(['assertNativePublicationEvidence', 'verifyNativeEvidenceSignature']);
   });
   it('binds synthetic evidence to exact source, version, every sidecar and approved channel', () => {
     expect(assertNativePublicationEvidence(record, evidence, approved)).toEqual(evidence);

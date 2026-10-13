@@ -136,6 +136,13 @@ inspectOwnedInstallation(prefix)
 recoverOwnedInstallation({ prefix, expectedJournalSha256, expectedStaleLockSha256 })
 ```
 
+`distribution/native/native-release-admission.mjs` supplies the unchanged pure
+`assertNativePublicationEvidence` and `verifyNativeEvidenceSignature` functions,
+re-exported by the release script. Native bundles carry this inert module and
+adjacent release-policy/platforms JSON in `installation/`; importing admission
+does not import a builder, inspect Git or execute a release operation. CLI-specific
+npm packaging/import integration remains separate owner-aware upgrade work.
+
 The existing canonical prefix must belong to the invoking user and be private.
 Version directories are `versions/<package-version>-<bundle-manifest-sha256>`;
 `current` is an atomic relative link and `bin/liftoff` points through it.
