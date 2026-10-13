@@ -3,7 +3,11 @@ import { readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { nodeUpdatePreviewFileSystem, workflowSource5ControlLimits } from '../src/adapters/filesystem/update-previews.js';
 import { openSource5WorkflowJournal } from '../src/governance-activation/workflow-source5-journal.js';
-import { issueSource5WorkflowApproval, withSource5WorkflowLease } from '../src/governance-activation/workflow-source5-authority.js';
+import {
+  issueSource5WorkflowApproval, restoreSource5WorkflowAuthority, source5WorkflowAuthorityValue,
+  source5WorkflowOriginalPlanValue, withSource5WorkflowLease
+} from '../src/governance-activation/workflow-source5-authority.js';
+import { source5WorkflowOwnership } from '../src/governance-activation/workflow-source5-ownership.js';
 import type { ProjectMutationLease } from '../src/adapters/filesystem/project-lock.js';
 import { measureSource5WorkflowStorageInventory, source5MaximumStorageKeys } from '../src/governance-activation/workflow-source5-storage-inventory.js';
 import { workflowSource5JournalFixture } from './fixtures/workflow-source5-journal.js';
@@ -11,7 +15,14 @@ import { workflowSource5JournalFixture } from './fixtures/workflow-source5-journ
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 async function fixture() {
-  const value = await workflowSource5JournalFixture(); roots.push(value.root); return value;
+  const value = await workflowSource5JournalFixture(); roots.push(value.root);
+  await sealReview(value);
+  return value;
+}
+async function sealReview(value: ReturnType<Awaited<ReturnType<typeof workflowSource5JournalFixture>>['review']>) {
+  await value.store.save('plan', value.control.controlKey,
+    source5WorkflowOriginalPlanValue(value.projectRoot, value.plan, value.approval), null);
+  return value;
 }
 const manifestKey = (key: string) => canonicalSha256({ kind: 'workflow-source5-storage-inventory-key.v1', controlKey: key });
 const opKey = (key: string, operation: unknown) => canonicalSha256({ controlKey: key, operationDigest: canonicalSha256(operation) });
@@ -45,6 +56,97 @@ function proofBinding(value: Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe('full closed source5 journal inventory and retained truth', () => {
+  it.each([true, false])('requires a separately sealed original review before opening with initialize=%s', async initialize => {
+    const value = await workflowSource5JournalFixture(); roots.push(value.root);
+    await withSource5WorkflowLease(value.projectRoot, async lease => {
+      await expect(openSource5WorkflowJournal({ ...value, lease, initialize })).rejects.toThrow(/separately sealed original/);
+      expect(await value.store.read('plan', value.control.controlKey)).toBeNull();
+      expect(await value.store.read('journal', value.control.controlKey)).toBeNull();
+      expect(await value.store.read('proof', manifestKey(value.control.controlKey))).toBeNull();
+    });
+  });
+
+  it.each([true, false])('cannot revive retained authority/ownership after only its original plan is lost, initialize=%s', async initialize => {
+    const value = await fixture();
+    await withSource5WorkflowLease(value.projectRoot, async lease => {
+      await issueSource5WorkflowApproval({ ...value, lease }, value.now);
+      await expect(restoreSource5WorkflowAuthority({ ...value, lease }, value.now)).resolves.toEqual({
+        kind: 'source5-workflow-issued-authority'
+      });
+      const owner = await source5WorkflowOwnership({ ...value, lease, operation: value.operation });
+      const entries = [
+        { namespace: 'approval' as const, key: canonicalSha256(source5WorkflowAuthorityValue({ ...value, lease })) },
+        { namespace: 'operation' as const, key: owner.entryKey },
+        { namespace: 'proof' as const, key: owner.inventory.manifestKey },
+        ...owner.inventory.proofKeys.map(key => ({ namespace: 'proof' as const, key }))
+      ];
+      const retained = await Promise.all(entries.map(async entry => {
+        const record = await value.store.read(entry.namespace, entry.key);
+        return { ...entry, bytes: record ? await readFile(record.path) : null };
+      }));
+      expect(retained.filter(entry => entry.bytes)).toHaveLength(4);
+      const original = (await value.store.read('plan', value.control.controlKey))!;
+      await unlink(original.path);
+      await expect(issueSource5WorkflowApproval({ ...value, lease }, value.now)).rejects.toThrow(/cannot create or recreate/);
+      await expect(openSource5WorkflowJournal({ ...value, lease, initialize })).rejects.toThrow(/separately sealed original/);
+      await expect(restoreSource5WorkflowAuthority({ ...value, lease }, value.now)).rejects.toThrow(/sealed exact original/);
+      expect(await value.store.read('plan', value.control.controlKey)).toBeNull();
+      expect(await value.store.read('journal', value.control.controlKey)).toBeNull();
+      expect(await value.store.read('proof', manifestKey(value.control.controlKey))).toBeNull();
+      for (const entry of retained) {
+        const record = await value.store.read(entry.namespace, entry.key);
+        expect(record ? await readFile(record.path) : null).toEqual(entry.bytes);
+      }
+    });
+  });
+
+  it('keeps legitimate separately sealed fresh review bytes unchanged across journal initialization and issuance', async () => {
+    const value = await fixture();
+    const original = (await value.store.read('plan', value.control.controlKey))!, bytes = await readFile(original.path);
+    await withSource5WorkflowLease(value.projectRoot, async lease => {
+      const journal = await openSource5WorkflowJournal({ ...value, lease, initialize: true });
+      await issueSource5WorkflowApproval({ ...value, lease }, value.now);
+      await expect(restoreSource5WorkflowAuthority({ ...value, lease }, value.now)).resolves.toEqual({
+        kind: 'source5-workflow-issued-authority'
+      });
+      await journal.assertInventory();
+      expect(await value.store.read('plan', value.control.controlKey)).toEqual(original);
+      expect(await readFile(original.path)).toEqual(bytes);
+    });
+  });
+
+  it('requires retained remaining-only original ancestry without resealing it or changing prior ownership', async () => {
+    const value = await fixture();
+    await withSource5WorkflowLease(value.projectRoot, async lease => {
+      const source = await publishedComponent(value, lease);
+      const binding = { repository: value.binding.repository, repositoryId: value.binding.repositoryId,
+        sourceSha: source.origin.commitSha, treeSha: source.origin.treeSha, executionRef: `liftoff-execution-${source.origin.commitSha}` };
+      const effects = [{ action: 'github.workflow-source.bind-execution-ref' as const, binding }];
+      const reviewed = await sealReview(value.review({ origin: source.origin, effects }));
+      const priorJournal = await openSource5WorkflowJournal({ ...reviewed, lease, initialize: true });
+      await issueSource5WorkflowApproval({ ...reviewed, lease }, reviewed.now);
+      const priorOwner = await source5WorkflowOwnership({ ...reviewed, lease, operation: reviewed.operation });
+      const pointer = (await value.store.read('operation', priorOwner.entryKey))!, pointerBytes = await readFile(pointer.path);
+      const continuation = await sealReview(value.review({ origin: source.origin, effects, remainingFrom: {
+        planKey: reviewed.control.controlKey, operationDigests: [canonicalSha256(reviewed.operation)]
+      } }));
+      const original = (await value.store.read('plan', reviewed.control.controlKey))!, originalBytes = await readFile(original.path);
+      await unlink(original.path);
+      await expect(openSource5WorkflowJournal({ ...continuation, lease, initialize: true })).rejects.toThrow(/independently sealed exact original/);
+      await expect(openSource5WorkflowJournal({ ...reviewed, lease, initialize: true })).rejects.toThrow(/separately sealed original/);
+      expect(await value.store.read('plan', reviewed.control.controlKey)).toBeNull();
+      expect(await value.store.read('journal', continuation.control.controlKey)).toBeNull();
+      expect(await value.store.read('proof', manifestKey(continuation.control.controlKey))).toBeNull();
+      expect(await readFile(pointer.path)).toEqual(pointerBytes);
+      await writeFile(original.path, originalBytes, { mode: 0o600 });
+      await priorJournal.assertInventory();
+      const next = await openSource5WorkflowJournal({ ...continuation, lease, initialize: true });
+      await next.assertInventory();
+      expect(await readFile(original.path)).toEqual(originalBytes);
+      expect(await readFile(pointer.path)).toEqual(pointerBytes);
+    });
+  });
+
   it('reserves original/issuer/authority/index/owner/event/recovery/finalization keys before an intent and restores exact immutable truth', async () => {
     const value = await fixture();
     await withSource5WorkflowLease(value.projectRoot, async lease => {
@@ -166,7 +268,7 @@ describe('full closed source5 journal inventory and retained truth', () => {
       const source = await publishedComponent(value, lease);
       const binding = { repository: value.binding.repository, repositoryId: value.binding.repositoryId,
         sourceSha: source.origin.commitSha, treeSha: source.origin.treeSha, executionRef: `liftoff-execution-${source.origin.commitSha}` };
-      const reviewed = value.review({ origin: source.origin, effects: [{ action: 'github.workflow-source.bind-execution-ref', binding }] });
+      const reviewed = await sealReview(value.review({ origin: source.origin, effects: [{ action: 'github.workflow-source.bind-execution-ref', binding }] }));
       const journal = await openSource5WorkflowJournal({ ...reviewed, lease, initialize: true });
       const full = (await value.store.read('proof', manifestKey(reviewed.control.controlKey)))!.value as {
         readDependencies: { namespace: 'plan' | 'proof' | 'operation' | 'journal'; key: string; rawDigest: string; encodedBytes: number }[] };
@@ -211,7 +313,7 @@ describe('full closed source5 journal inventory and retained truth', () => {
       const source = await publishedComponent(value, lease);
       const binding = { repository: value.binding.repository, repositoryId: value.binding.repositoryId,
         sourceSha: source.origin.commitSha, treeSha: source.origin.treeSha, executionRef: `liftoff-execution-${source.origin.commitSha}` };
-      const reviewed = value.review({ origin: source.origin, effects: [{ action: 'github.workflow-source.bind-execution-ref', binding }] });
+      const reviewed = await sealReview(value.review({ origin: source.origin, effects: [{ action: 'github.workflow-source.bind-execution-ref', binding }] }));
       const key = lost === 'manifest' ? manifestKey(value.control.controlKey) : lost === 'index' ? value.control.controlKey :
         canonicalSha256({ kind: 'workflow-source5-reservation-key.v1', controlKey: value.control.controlKey });
       await unlink((await value.store.read(lost === 'index' ? 'journal' : 'proof', key))!.path);
@@ -241,7 +343,7 @@ describe('full closed source5 journal inventory and retained truth', () => {
           [field]: 'f'.repeat(field.endsWith('Sha') ? 40 : 64) };
         const binding = { repository: value.binding.repository, repositoryId: value.binding.repositoryId,
           sourceSha: origin.commitSha, treeSha: origin.treeSha, executionRef: `liftoff-execution-${origin.commitSha}` };
-        const reviewed = value.review({ origin, effects: [{ action: 'github.workflow-source.bind-execution-ref', binding }] });
+        const reviewed = await sealReview(value.review({ origin, effects: [{ action: 'github.workflow-source.bind-execution-ref', binding }] }));
         await expect(openSource5WorkflowJournal({ ...reviewed, lease, initialize: true })).rejects.toThrow(/original immutable/);
         expect(await value.store.read('journal', reviewed.control.controlKey)).toBeNull();
         expect((await source.journal.events(value.operation)).at(-1)?.data.proof).toEqual(source.proof);
@@ -249,11 +351,11 @@ describe('full closed source5 journal inventory and retained truth', () => {
     });
 
   it('retains accepted/terminal provider identity across oversized completion rejection and restart', async () => {
-    const seed = await fixture(), value = { ...seed, ...seed.review({ phaseId: 'workflow-source-ready' }) };
+    const seed = await fixture(), value = { ...seed, ...await sealReview(seed.review({ phaseId: 'workflow-source-ready' })) };
     let reviewed: ReturnType<typeof value.review>;
     await withSource5WorkflowLease(value.projectRoot, async lease => {
       const source = await publishedComponent(value, lease), binding = proofBinding(value);
-      reviewed = value.review({ phaseId: 'dev-proof', origin: source.origin, effects: [{ action: 'github.checks.dev-proof', binding }] });
+      reviewed = await sealReview(value.review({ phaseId: 'dev-proof', origin: source.origin, effects: [{ action: 'github.checks.dev-proof', binding }] }));
       const journal = await openSource5WorkflowJournal({ ...reviewed, lease, initialize: true });
       const base = { bindingDigest: canonicalSha256(binding), planDigest: reviewed.plan.planDigest,
         workflowId: 19, dispatchedAt: reviewed.now.toISOString() };
@@ -284,10 +386,10 @@ describe('full closed source5 journal inventory and retained truth', () => {
   });
 
   it('closes original component fields and observation time before retaining a valid format-only proof', async () => {
-    const seed = await fixture(), value = { ...seed, ...seed.review({ phaseId: 'workflow-source-ready' }) };
+    const seed = await fixture(), value = { ...seed, ...await sealReview(seed.review({ phaseId: 'workflow-source-ready' })) };
     await withSource5WorkflowLease(value.projectRoot, async lease => {
       const source = await publishedComponent(value, lease), binding = proofBinding(value);
-      const reviewed = value.review({ phaseId: 'dev-proof', origin: source.origin, effects: [{ action: 'github.checks.dev-proof', binding }] });
+      const reviewed = await sealReview(value.review({ phaseId: 'dev-proof', origin: source.origin, effects: [{ action: 'github.checks.dev-proof', binding }] }));
       const journal = await openSource5WorkflowJournal({ ...reviewed, lease, initialize: true });
       const base = { bindingDigest: canonicalSha256(binding), planDigest: reviewed.plan.planDigest,
         workflowId: 19, dispatchedAt: reviewed.now.toISOString() };
@@ -331,8 +433,8 @@ describe('full closed source5 journal inventory and retained truth', () => {
       const runner = { repository: binding.repository, repositoryId: binding.repositoryId, groupId: 17,
         groupName: 'isolated-format-fixture', networkConfigurationId: 'isolated-format-network',
         beforeWorkflows: [], afterWorkflows: [`${binding.repository}/${value.binding.files[0]!.path}@refs/tags/${binding.executionRef}`] };
-      const reviewed = value.review({ origin: source.origin, effects: [
-        { action: 'github.workflow-source.bind-execution-ref', binding }, { action: 'github.workflow-source.admit-reviewed', binding: runner }] });
+      const reviewed = await sealReview(value.review({ origin: source.origin, effects: [
+        { action: 'github.workflow-source.bind-execution-ref', binding }, { action: 'github.workflow-source.admit-reviewed', binding: runner }] }));
       const journal = await openSource5WorkflowJournal({ ...reviewed, lease, initialize: true });
       const execution = { kind: 'immutable-workflow-execution-ref.v1', binding, protectingRulesetIds: [23],
         barrierDigest: canonicalSha256('format-only-barrier'), providerAdmissionDigest: canonicalSha256('format-only-admission'),

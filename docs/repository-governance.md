@@ -175,6 +175,9 @@ attestation. Its concrete key cardinality is independently bounded to 21,994
 caps. Oversized or unrepresentable inventories block rather than widening
 existing stores or hiding keys behind suffix/directory permissions.
 
+Opening or initializing a journal requires its exact separately sealed original
+review. Initialization never creates that plan or recreates missing history,
+even when old authority and ownership records remain.
 The journal requires exact independently sealed publication A provenance before
 a source-bound B review. Immutable intent/accepted/terminal/component receipts
 survive failed cursor CAS or lost confirmation. Missing or changed index,

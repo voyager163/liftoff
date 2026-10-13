@@ -38,13 +38,15 @@ export async function workflowSource5JournalFixture() {
   const binding = { repository: 'owner/repo', repositoryId: 123, ref: 'ci/liftoff-workflows-journal',
     parentSha: 'a'.repeat(40), sourceTransmissionApproved: true,
     files: [{ path: '.github/workflows/source-fixture.yml', beforeDigest: null, digest: workflowByteDigest(content), content }] };
-  function review(request: { phaseId?: Source5WorkflowPhase; origin?: Source5WorkflowOrigin; effects?:
+  function review(request: { phaseId?: Source5WorkflowPhase; origin?: Source5WorkflowOrigin;
+    remainingFrom?: Source5WorkflowControlBinding['remainingFrom']; effects?:
     readonly { action: Source5WorkflowAction; binding: unknown }[] } = {}) {
     const phaseId = request.phaseId ?? 'bootstrap-workflow-source-ready', phase = context.records.graph.phases.find(phase => phase.id === phaseId)!;
     const keyInput = { executionId: randomUUID(), repositoryAnchor: installed.state!.repository.id, phaseId, projectKey } as const;
     const control: Source5WorkflowControlBinding = { ...keyInput, schemaVersion: 1, kind: 'workflow-source5-control.v1',
-      controlKey: source5WorkflowControlKey(keyInput), reviewKind: request.origin ? 'bound-source' : 'publication',
-      remainingFrom: null, origin: request.origin ?? null };
+      controlKey: source5WorkflowControlKey(keyInput), reviewKind: request.remainingFrom ? 'remaining-only' :
+        request.origin ? 'bound-source' : 'publication',
+      remainingFrom: request.remainingFrom ?? null, origin: request.origin ?? null };
     const selected = request.effects ?? [{ action: 'git.workflow-source.publish-reviewed' as const, binding }];
     const operation = source5WorkflowOperation(phaseId, selected[0]!.action, selected[0]!.binding);
     const checkpoint = source5WorkflowCheckpointOperation(control);

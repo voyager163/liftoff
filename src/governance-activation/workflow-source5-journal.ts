@@ -94,10 +94,10 @@ export async function openSource5WorkflowJournal(input: {
   const original = source5WorkflowOriginalPlanValue(input.projectRoot, plan, approval);
   const originalStored = await store.read('plan', control.controlKey);
   const loadedIndex = await store.read('journal', control.controlKey);
-  if (originalStored && canonicalSha256(originalStored.value) !== canonicalSha256(original)) {
-    return workflowFailure('workflow-source5-original', 'Original workflow plan or issuance was changed; no intent can be retagged.');
+  if (!originalStored || canonicalSha256(originalStored.value) !== canonicalSha256(original)) {
+    return workflowFailure('workflow-source5-original',
+      'Opening a journal requires the exact separately sealed original review; missing or changed history cannot be created or recreated by initialization.');
   }
-  if (!originalStored && !input.initialize) return workflowFailure('workflow-source5-original', 'Recorded observation needs its sealed original workflow plan.');
   const reservationKey = canonicalSha256({ kind: 'workflow-source5-reservation-key.v1', controlKey: control.controlKey });
   const recoveryReservation = { ...common, kind: 'workflow-source5-reservation',
     operationKeys: effects.map(operationKey), stageDataBytes: maximumStageDataBytes,
@@ -185,8 +185,7 @@ export async function openSource5WorkflowJournal(input: {
     exactContents.set(`governance/approvals/source5-${control.origin.planKey}.json`, canonicalJson(originalApproval));
   }
   const storedReservation = await store.read('proof', reservationKey);
-  if (!originalStored && (storedReservation || loadedIndex || loadedManifest) ||
-    (storedReservation || loadedManifest) && !loadedIndex ||
+  if ((storedReservation || loadedManifest) && !loadedIndex ||
     loadedIndex && (!storedReservation || !loadedManifest)) {
     return workflowFailure('workflow-source5-journal', 'Partial or lost original control metadata cannot recreate execution permission; retain the unresolved original records.');
   }
@@ -274,7 +273,6 @@ export async function openSource5WorkflowJournal(input: {
   const reservedFinalizationBytes = await store.measure('proof', finalizationKey, reservationProjection);
   const completeReservation = { ...recoveryReservation, files: reservedFiles, reservedFinalizationBytes, baseline };
   const reservationBytes = await store.measure('proof', reservationKey, completeReservation);
-  if (!originalStored) await store.save('plan', control.controlKey, original, null);
   const authorityValue = source5WorkflowAuthorityValue({ context: input.context, projectRoot: input.projectRoot,
     repositoryAnchor: control.repositoryAnchor, plan, approval, previewFingerprint: common.previewFingerprint,
     lease: input.lease, storage: input.storage });
