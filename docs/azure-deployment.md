@@ -185,6 +185,16 @@ resource/role readback are required. Provider conditional creation and competing
 resource-creation scenarios still require real disposable qualification; source
 tests cannot qualify an Azure resource provider's concurrency behavior.
 
+**Execution-ref qualification remains blocked.** The current artifact route
+selects a mutable default-branch ref at dispatch. Earlier source/workflow checks,
+a reviewed job guard and later provenance refusal do not make that selection
+atomic or prevent an unreviewed replacement workflow's earlier transmission.
+Do not enable real artifact dispatch until the separately owned exact-commit
+execution-tag binding and admission interface is published, integrated and
+independently qualified. Missing or unknown tag update/delete/no-bypass protection
+cannot fall back to a mutable ref; policy administrators remain an external
+trust boundary. TASK14.1 source presence does not resolve this prerequisite.
+
 `application-artifact-ready` requires an existing separately reviewed/published
 workflow and private-network runner admission. Its exact plan binds the complete
 Git source SHA, raw workflow byte digest, one observed source context and
