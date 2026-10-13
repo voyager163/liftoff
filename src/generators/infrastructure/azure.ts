@@ -648,6 +648,26 @@ capability. The supported offline commands are \`tofu fmt -check -recursive\`,
 The live commands below are operator reference only until the exact execution
 combination has real disposable qualification and current scoped authority.
 
+## Immutable application preparation boundary
+
+The source producers for approved registry/identity prerequisites and application
+publication do not authorize a real operation. Both protected handover and
+custody capabilities, the actual qualified host, unchanged 30-day retention,
+current exact resource/role/cost approval and same-operation ownership are
+required before any registry write or source/build dispatch. The public CLI
+does not register the missing production protected-state wiring.
+
+Application publication separately requires approved source transmission,
+dependency/network access and build execution; exact committed source/workflow
+bytes and qualified runner admission; actual ACR build/run readback; locked tag
+and manifest; and cryptographically verified workflow/source/run provenance.
+Only independently verified \`<registry>/<repository>@sha256:<digest>\` is artifact
+readiness. A tag, job step name, placeholder/bootstrap image or caller annotation
+is never that proof. Confirmed partial operation handles are retained for
+observation, not redispatch; changed source, tag/digest or authority blocks.
+Workflow publication and application deployment remain separate unavailable
+phases. Source fixtures do not satisfy real disposable task13/task14 qualification.
+
 ## Application bootstrap reference
 
 The first application apply uses a public bootstrap image so Azure Container

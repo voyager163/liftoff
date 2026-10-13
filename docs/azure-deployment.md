@@ -161,3 +161,89 @@ Before applying infrastructure:
 5. Run plan through your normal review process.
 
 Liftoff never stores Azure credentials or signs in on your behalf.
+
+## Application readiness source boundary
+
+TASK14.1 now has bounded source producers, not production qualification or an
+enabled public provisioning command. Both protected handover and custody ports
+must be registered, independently requalified, and bound to the actual current
+execution host before any registry/identity write or build dispatch. The
+protected bootstrap must retain its original opaque custody references and exact
+30-day disposal obligation. Missing task13 production storage, non-exporting
+keys, locking, runner admission or disposable qualification still blocks.
+
+`application-prerequisites-ready` accepts only the selected declared environment,
+`registrySku: "Basic"` and explicit `assignRegistryRoles: true`, with nonzero
+fixed/usage cost ceilings. It creates the deterministic registry and workload
+identity inside the previously verified same-operation bootstrap group, disables
+registry admin credentials, and assigns only registry-scoped AcrPull to that
+workload identity and AcrPush to the existing verified tenant service principal.
+It does not create an account, federated credential, provider registration,
+broader role, application deployment or brownfield import. Permission/provider
+readback, collision inspection, independent deployed-recipe export and exact
+resource/role readback are required. Provider conditional creation and competing
+resource-creation scenarios still require real disposable qualification; source
+tests cannot qualify an Azure resource provider's concurrency behavior.
+
+`application-artifact-ready` requires an existing separately reviewed/published
+workflow and private-network runner admission. Its exact plan binds the complete
+Git source SHA, raw workflow byte digest, one observed source context and
+Dockerfile, image repository, canonical registry resource, environment, principal,
+backend/runner identity and cost. `sourceTransmissionApproved`,
+`dependencyNetworkApproved` and `buildExecutionApproved` must each be explicitly
+true; resource approval alone cannot authorize them. Changed or uncommitted
+customizations are preserved and block rather than being reset or uploaded.
+
+The reviewed workflow protocol is one `publish` job named
+`Liftoff application artifact`, with the exact qualified runner group/label, a
+1–20 minute timeout, immutable action references, and this pre-effect guard:
+`${{ github.sha == inputs.source_sha && github.run_attempt == 1 }}`.
+Its run name is `Liftoff application artifact ${{ inputs.binding_digest }}`.
+Workflow concurrency is exactly
+`liftoff-application-artifact-${{ inputs.binding_digest }}`, with
+`cancel-in-progress: false`; retries must not cancel an already dispatched build.
+Required string dispatch inputs are `binding_digest`, `source_sha`,
+`context_path`, `dockerfile_path`, `image_repository`, `image_tag`, `registry_id`,
+`client_id`, `subscription_id`, `tenant_id` and `environment`. Human review must
+verify that the actual committed recipe consumes these exact inputs, performs
+only the approved build/transmission, keeps credentials out of arguments/logs,
+publishes one ACR QuickBuild image, locks tag and manifest write/delete, and
+creates its GitHub build-provenance attestation. The successful final step name
+reports only `Liftoff artifact sha256:<actual-digest> run <actual-acr-run-id>`.
+That name is discovery, **not proof**.
+
+The producer independently observes the actual workflow run/job/runner, ACR run
+and output image, locked tag plus digest, then uses bounded
+`gh attestation verify` with exact repository, signer workflow, signer/source SHA
+and hosted-runner constraints. Certificate run-invocation/repository identity
+and the immutable subject digest must match; caller annotations and user-controlled
+predicate metadata cannot replace them. Existing protected OCI authentication is
+required; there is no token login or ambient credential fallback. Only verified
+`<registry>/<repository>@sha256:<digest>` output can become artifact readiness.
+
+Confirmed provider handles are checkpointed privately before subsequent
+observation. Engine-owned dispatch intent is written only after preflight and
+before the actual external dispatch; permission/validation refusals are not
+misreported as uncertain acceptance. Native processes, registered network reads
+and custody qualification have 30-second calls within one shared three-minute
+observation deadline; a timed-out dispatch is never automatically repeated.
+Pending retries retain the original dispatch plan/time/handle while checking
+exact current reviewed authority, rather than retagging history to a newly
+timestamped observation plan. Actual completed provider operations remain
+completed even if immutable publication qualification is refused.
+Pending retries observe them without redispatch; uncertain dispatch
+acceptance, multiple matching runs, mutable/changed tags, expired/revoked
+authority and failed jobs remain explicit blockers with retained partial-effect
+warnings. Workflow publication, deployment, health/release checks and recovery
+mutations are separate phases. TASK14.1 remains unchecked until real task13
+dependencies, scoped disposable authority, publication scenarios and exact-head
+qualification exist.
+
+Dependent source consumers can use `ApplicationPrerequisiteBinding` with
+`applicationPrerequisiteBinding`/`observeApplicationPrerequisites`, and
+`ApplicationArtifactBinding` with `executeApplicationArtifactPublication`.
+`readVerifiedApplicationArtifact` returns `VerifiedApplicationArtifact` only
+from current authoritative, resource-bound evidence, exact approved source and
+immutable digest; `observeImmutableApplicationArtifact` independently reobserves
+the actual publication. These are private preparation/readback interfaces, not
+deployment authority or a task14.3 workflow/source publication implementation.
