@@ -115,7 +115,7 @@ Depends on 2-5. References: design D3; liftoff-native-distribution, liftoff-npm-
 - [ ] 9.4 Produce a signed Windows x64 installer and WinGet manifests under a verified approved ID; verify stock policy behavior, executable locking, native paths and packaged controller assets in Windows CI.
 - [ ] 9.5 Produce verified Linux x64/arm64 archives and a user-local installer with declared glibc/runtime floors; verify signatures/checksums, atomic owned installation and refusal of unqualified musl/platform combinations.
 - [ ] 9.6 Extend immutable release manifests, exact-artifact handoff, SBOM/notices and provenance for every native asset; verify changed digests/source/version or absent signing evidence block publication without changing existing npm account settings.
-- [ ] 9.7 Add native package smoke tests and missing-asset/foreign-cwd fixtures on each advertised platform; verify tests never alter the developer's real global installation.
+- [x] 9.7 Add native package smoke tests and missing-asset/foreign-cwd fixtures on each advertised platform; verify tests never alter the developer's real global installation.
 - [ ] 9.8 Refresh installation/prerequisite/root README guidance and release-maintainer instructions as artifacts become qualified; verify actual package IDs/commands and no unqualified support claims.
 
 ## 10. Implement installation-owner-aware upgrade and doctor
