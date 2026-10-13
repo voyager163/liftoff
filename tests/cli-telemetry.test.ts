@@ -112,7 +112,9 @@ describe('CLI telemetry integration', () => {
 
   it.each([
     ['governance', 'assess', '--live', '--help'], ['repair', '--capabilities', '--help'],
-    ['repair', '--inspect-layout', '--help']
+    ['repair', '--inspect-layout', '--help'],
+    ['doctor'], ['doctor', '--json'], ['doctor', '--help'], ['help', 'doctor'],
+    ['upgrade', '--help'], ['help', 'upgrade']
   ].map(argv => ({ argv })))('preserves default telemetry-free discovery/help $argv', async ({ argv }) => {
     const notice = vi.spyOn(telemetryConfig, 'readTelemetryNoticeVersion').mockResolvedValue(1);
     const record = vi.spyOn(telemetryConfig, 'recordTelemetryNotice').mockResolvedValue(false);

@@ -61,10 +61,13 @@ subscription capability.
 
 ## CLI self-upgrade boundary
 
-`liftoff upgrade` is itself the narrow authorization to replace a supported
-global npm installation with one exact stable version. It accepts no project
+`liftoff upgrade` is itself the narrow authorization to replace only its verified
+owning installation with one exact stable version. It accepts no project
 path, `--yes`, `--force`, tool-install, or dependency-install permission.
-`liftoff upgrade --check` is read-only and invokes no npm installation.
+`liftoff upgrade --check` is read-only and invokes no installation. Ownership,
+publisher/selected-channel identity and freshness are rechecked before apply.
+No cross-manager migration, manager bootstrap, elevation or broad manager update
+is authorized. Unqualified native channels refuse replacement explicitly.
 
 Both modes operate from a temporary neutral directory so a project `.npmrc`
 cannot redirect machine-level discovery. Canonical npm selects the target while
@@ -78,6 +81,17 @@ the effective delivery registry.
 npm replacement is not a Liftoff file transaction. If npm or post-install
 verification fails, Liftoff reports an exact-version repair command and does not
 claim automatic rollback.
+
+Native source uses the existing Linux receipt and atomic version-link transaction;
+receipts never authenticate a publisher. Unknown or partial effects remain explicit.
+Recovery selects the exact journal digest, plus an explicitly selected lock-owner
+digest only for a positively dead process, and never sweeps version directories.
+Windows executable replacement requires an external exact manager handoff and
+a new-shell doctor/check; Homebrew has no safe version-bound cask upgrade command,
+so Liftoff does not run an unbound `brew upgrade`.
+Verification subprocesses disable anonymous/project telemetry and Node startup
+overrides. Doctor and upgrade help do not enroll configuration consent or deliver
+telemetry. An upgrade does not enable reporting.
 
 ## Staged initialization
 

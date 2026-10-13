@@ -63,6 +63,9 @@ function upgradeResult(
         registryKind: 'configured',
         reasonCode: 'npm_install_failed'
       };
+    case 'handoff-required':
+      return { schemaVersion: 2, mode, status, currentVersion: liftoffVersion, reasonCode: 'restart_required',
+        installationOwner: 'winget', effects: 'none', verification: 'not-run', restartRequired: true };
   }
 }
 
@@ -122,7 +125,7 @@ describe('upgrade command surface', () => {
     const selfUpgrade = vi.fn<SelfUpgradeExecutor>();
     const result = await execute(['upgrade', '--help'], selfUpgrade);
     expect(result).toMatchObject({ code: 0, err: '' });
-    expect(result.out).toContain('Replace the supported global npm Liftoff CLI');
+    expect(result.out).toContain('Upgrade only the verified owning CLI installation');
     expect(result.out).toContain('--check');
     expect(result.out).toContain('--json');
     expect(selfUpgrade).not.toHaveBeenCalled();
@@ -132,7 +135,7 @@ describe('upgrade command surface', () => {
     expect(maintenance).toEqual(expect.arrayContaining([
       expect.objectContaining({
         syntax: 'upgrade',
-        description: expect.stringContaining('global npm Liftoff CLI')
+        description: expect.stringContaining('verified owning CLI installation')
       }),
       expect.objectContaining({
         syntax: 'update',
@@ -146,7 +149,8 @@ describe('upgrade command surface', () => {
     ['upgraded', 0],
     ['update-available', 2],
     ['blocked', 1],
-    ['failed', 1]
+    ['failed', 1],
+    ['handoff-required', 1]
   ] as const)('maps %s to exit %i identically in human and JSON modes', async (
     status,
     expectedCode
@@ -264,11 +268,12 @@ describe('upgrade command surface', () => {
     );
     expect(result.code).toBe(1);
     expect(JSON.parse(result.out)).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       mode: 'apply',
       status: 'failed',
       currentVersion: liftoffVersion,
-      reasonCode: 'verification_failed'
+      reasonCode: 'verification_failed', installationOwner: 'unknown', upstream: { status: 'unknown' },
+      channel: { status: 'unknown' }, effects: 'possible', verification: 'not-run'
     });
     expect(`${result.out}${result.err}`).not.toMatch(/secret|private\/path/);
   });

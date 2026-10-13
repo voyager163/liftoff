@@ -30,6 +30,9 @@
   },
   "files": [
     "dist",
+    "distribution/native/native-release-admission.mjs",
+    "distribution/native/release-policy.json",
+    "distribution/native/platforms.json",
     "assets/governance/modern/source-contracts.json",
     "assets/governance/single-maintainer-gitflow/activation-v2-graph.json",
     "assets/governance/single-maintainer-gitflow/activation-v3-graph.json",

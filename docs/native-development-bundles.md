@@ -140,8 +140,10 @@ recoverOwnedInstallation({ prefix, expectedJournalSha256, expectedStaleLockSha25
 `assertNativePublicationEvidence` and `verifyNativeEvidenceSignature` functions,
 re-exported by the release script. Native bundles carry this inert module and
 adjacent release-policy/platforms JSON in `installation/`; importing admission
-does not import a builder, inspect Git or execute a release operation. CLI-specific
-npm packaging/import integration remains separate owner-aware upgrade work.
+does not import a builder, inspect Git or execute a release operation.
+The npm package also carries the inert module and adjacent JSON under
+`distribution/native/`; installed runtime-only foreign-directory smoke checks
+exercise signer/source/inventory binding without builder or checkout imports.
 
 The existing canonical prefix must belong to the invoking user and be private.
 Version directories are `versions/<package-version>-<bundle-manifest-sha256>`;
@@ -159,7 +161,9 @@ verified version and receipt. A dead-process lock additionally requires the
 selected `.native-install-lock/owner.json` digest and positive process absence;
 active, reused-PID, unknown, changed or ownerless locks are retained. Partial-copy
 damage or missing receipts remain explicit incomplete recovery, not a success.
-No broad prefix sweep, version deletion, manager migration or upgrade is provided.
+No broad prefix sweep, version deletion or manager migration is provided.
+Owner-aware upgrade source reuses these contracts for Linux replacement and
+digest-selected recovery, but refuses public apply while policy remains unqualified.
 
 ## Exact artifact handoff and public release blockers
 
@@ -194,8 +198,26 @@ cask install/uninstall, signed Windows installer/WinGet submission, public Linux
 signature, minimum-host qualification or publication has been performed.
 These require exact source-bound operator authority and real evidence; broad
 implementation consent does not authorize accounts, credentials, external taps,
-settings changes, release uploads or unsigned fallbacks. Current `liftoff upgrade`
-and npm-to-Homebrew migration are unchanged and remain separate groups 10/11.
+settings changes, release uploads or unsigned fallbacks. Group 10 adds owner-aware
+upgrade/doctor source, schema-2 availability/effects/verification and safe manager
+handoff interfaces; it does **not** qualify these public channels or complete
+real-manager/minimum-host tasks. Standalone npm-to-Homebrew migration remains
+unimplemented, separate Group 11 work.
+
+Reusable Group-10 contracts live in `src/domain/distribution/native-upgrade.ts`;
+`NativeBundleInventory` contains unattributed local facts, while
+`NativeInstallation` adds ownership only after receipt or manager validation.
+`native.ts` exposes strict policy/manager ownership assertions and
+`createNativeUpgradePort`, while `native-metadata.ts` admits independently signed
+material without release-builder imports. Cask/WinGet observations and owning
+channel reads are explicit abortable provider ports, bounded at the selected
+probe deadline. No production provider or deployed native stable endpoint is
+registered while the namespace/signing policy is null. A qualified provider must
+observe real manager receipts and source/certificate facts; returning fixture
+observations does not qualify it. WinGet source currently admits only observed
+user-scope ownership; machine-scope installs are not migrated or elevated.
+Linux recovery delegates unchanged to the installed receipt/journal API and
+requires exact selected digests; it is not a macOS cask recovery authority.
 
 The pinned HCL npm package omits standalone license notices. The builder supplies its
 upstream MPL notice and the notices for the seven modules recorded in the original WASM,

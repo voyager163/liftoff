@@ -360,74 +360,109 @@
     {
       "surface": "cli-text",
       "key": "help",
-      "task": "8.1",
-      "reason": "Register the schema-1 workflow set planning command in the Maintenance group. It advertises exact source/target/agent/input/check/expiry review and approval/recovery selection while explicitly reporting that no transition executor or project-write authority is available yet.",
+      "task": "10.6",
+      "reason": "Advertise owner-aware CLI upgrade rather than npm-only replacement. Source preparation does not qualify native public channels or implement manager migration; schema-2 availability/effects remain explicit. Retain the full prior review chain and original frozen capture.",
       "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-      "currentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
-      "priorCurrentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
+      "currentSha256": "5f9795c31b88a6f7ca94b9b5f7e3885bf7e2556ba1ac7f047dd5f5d3a4cd21f3",
+      "priorCurrentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "help",
-        "task": "7.1",
-        "reason": "Add the implemented schema-1 read-only adopt preview to the Maintenance group. Existing help, assessment, generation, update/repair authority and historical schemas remain unchanged; registration does not advertise executable adoption publication.",
+        "task": "8.1",
+        "reason": "Register the schema-1 workflow set planning command in the Maintenance group. It advertises exact source/target/agent/input/check/expiry review and approval/recovery selection while explicitly reporting that no transition executor or project-write authority is available yet.",
         "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-        "currentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
-        "priorCurrentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+        "currentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
+        "priorCurrentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
         "changed": [
           "/stdout"
         ],
         "priorChange": {
           "surface": "cli-text",
           "key": "help",
-          "task": "6.3",
-          "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
+          "task": "7.1",
+          "reason": "Add the implemented schema-1 read-only adopt preview to the Maintenance group. Existing help, assessment, generation, update/repair authority and historical schemas remain unchanged; registration does not advertise executable adoption publication.",
           "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-          "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
-          "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+          "currentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
+          "priorCurrentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
           "changed": [
             "/stdout"
-          ]
+          ],
+          "priorChange": {
+            "surface": "cli-text",
+            "key": "help",
+            "task": "6.3",
+            "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
+            "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
+            "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+            "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+            "changed": [
+              "/stdout"
+            ]
+          }
         }
       }
     },
     {
       "surface": "cli-text",
       "key": "--help",
-      "task": "8.1",
-      "reason": "Register the schema-1 workflow set planning command in the Maintenance group. It advertises exact source/target/agent/input/check/expiry review and approval/recovery selection while explicitly reporting that no transition executor or project-write authority is available yet.",
+      "task": "10.6",
+      "reason": "Advertise owner-aware CLI upgrade rather than npm-only replacement. Source preparation does not qualify native public channels or implement manager migration; schema-2 availability/effects remain explicit. Retain the full prior review chain and original frozen capture.",
       "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-      "currentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
-      "priorCurrentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
+      "currentSha256": "5f9795c31b88a6f7ca94b9b5f7e3885bf7e2556ba1ac7f047dd5f5d3a4cd21f3",
+      "priorCurrentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "--help",
-        "task": "7.1",
-        "reason": "Add the implemented schema-1 read-only adopt preview to the Maintenance group. Existing help, assessment, generation, update/repair authority and historical schemas remain unchanged; registration does not advertise executable adoption publication.",
+        "task": "8.1",
+        "reason": "Register the schema-1 workflow set planning command in the Maintenance group. It advertises exact source/target/agent/input/check/expiry review and approval/recovery selection while explicitly reporting that no transition executor or project-write authority is available yet.",
         "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-        "currentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
-        "priorCurrentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+        "currentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
+        "priorCurrentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
         "changed": [
           "/stdout"
         ],
         "priorChange": {
           "surface": "cli-text",
           "key": "--help",
-          "task": "6.3",
-          "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
+          "task": "7.1",
+          "reason": "Add the implemented schema-1 read-only adopt preview to the Maintenance group. Existing help, assessment, generation, update/repair authority and historical schemas remain unchanged; registration does not advertise executable adoption publication.",
           "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-          "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
-          "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+          "currentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
+          "priorCurrentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
           "changed": [
             "/stdout"
-          ]
+          ],
+          "priorChange": {
+            "surface": "cli-text",
+            "key": "--help",
+            "task": "6.3",
+            "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
+            "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
+            "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+            "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+            "changed": [
+              "/stdout"
+            ]
+          }
         }
       }
+    },
+    {
+      "surface": "cli-text",
+      "key": "upgrade --help",
+      "task": "10.6",
+      "reason": "Document schema-2 owner-aware upgrade/check output and same-owner authority instead of npm-only global replacement, without advertising qualified native distribution or changing project-update authority.",
+      "baselineSha256": "02cd45bf02165ca0b05a7be953960747e95c50c4deea62929371cb2b8790d594",
+      "currentSha256": "fe95abb098ab454ea52423fe0a22bc698f2152c204c471fbb118d7ee4ded4af0",
+      "changed": [
+        "/stdout"
+      ]
     },
     {
       "surface": "manifest-readers",

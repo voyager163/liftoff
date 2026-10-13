@@ -217,6 +217,8 @@ export function parseProjectTelemetryPolicy(
 }
 
 export function isTelemetryExcludedCommand(input: TelemetryCommandInput): boolean {
+  if (input.command === 'doctor' || input.command === 'upgrade' && input.flags.help === true ||
+    input.command === 'help' && ['upgrade', 'doctor'].includes(input.positional?.[0] ?? '')) return true;
   if (input.command === 'help' && ['capabilities', 'assess'].includes(input.positional?.[0] ?? '')) return true;
   if (input.command === 'repair' &&
       ['capabilities', 'inspect-layout'].some((flag) => input.flags[flag] === true)) return true;

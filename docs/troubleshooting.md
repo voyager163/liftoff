@@ -29,9 +29,12 @@ npm install -g @msn-control/liftoff@latest
 Automatic replacement supports the canonical package at npm's effective
 global package root or an independently verified standard Homebrew prefix on
 macOS. A local dependency, `npx` cache copy, linked checkout, or
-another package-manager installation is intentionally refused. Use the manual
-global npm command shown by Liftoff; do not try to make upgrade replace a
-different installation.
+unknown package-manager installation is intentionally refused. Identify the
+current owner and repair it through that owner; do not force replacement of
+a different installation or interpret an npm prefix under `/opt/homebrew` as a cask.
+Native public cask, WinGet and archive channels remain unqualified. Their
+`native_unqualified` refusal is not an invitation to bypass signing or migrate
+automatically to npm.
 
 ### Homebrew Node and npm report a different prefix
 
@@ -85,10 +88,26 @@ workstation process, then rerun the command.
 
 ## CLI replacement verification fails
 
-Liftoff reports `failed` even when npm exited zero unless installed metadata and
+Liftoff reports `failed` even when the owning installer exited zero unless installed metadata and
 `liftoff --version` both match the exact target. Run the exact-version global npm
 repair command printed in the result. Liftoff does not claim an automatic
 rollback after npm may have partially changed global state.
+
+Schema-2 `effects: possible` or `verification: failed` is not an upgraded completion.
+For native installations, use the owning manager and a new-shell `liftoff doctor`
+plus `liftoff upgrade --check`; an npm repair command is not native authority.
+Windows `restart_required` means close the running executable before the exact
+manager handoff. Homebrew cask source does not run an unpinned `brew upgrade`.
+For Linux `recovery_required`, retain the exact journal and immutable versions.
+The installed `installation/native-install.mjs recover` requires the selected
+`.native-install-transaction.json` SHA-256 and, only when required, the selected
+`.native-install-lock/owner.json` SHA-256 for a positively dead process. Active,
+unknown or changed locks and foreign/racing paths are retained. Do not delete
+version-manager directories or sweep the prefix.
+
+Offline/timeout, invalid metadata, selected-channel lag and channel absence are
+distinct from current. Doctor reports these explicitly without losing local
+project checks; restore approved metadata instead of changing registry policy.
 
 ## An installed tool is still reported missing
 
