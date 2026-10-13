@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { lstat, readdir, readFile } from 'node:fs/promises';
 import { isBuiltin } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1391,20 +1391,91 @@ interface ModuleLoadingContext {
   readonly present: ReadonlySet<string>;
   readonly dependencies: ReadonlySet<string>;
   readonly devDependencies: ReadonlySet<string>;
+  readonly nativeAdmission?: {
+    readonly source: string;
+    readonly packagedFiles: ReadonlySet<string>;
+  };
+}
+
+const nativeAdmissionImporter = 'adapters/distribution/native-metadata.ts';
+const nativeAdmissionSpecifier = '../../../distribution/native/native-release-admission.mjs';
+const nativeAdmissionFiles = [
+  'distribution/native/native-release-admission.mjs',
+  'distribution/native/native-release-admission.d.mts',
+  'distribution/native/release-policy.json'
+];
+
+function nativeAdmissionHelperViolations(source: string, file: string): string[] {
+  const body = recordsAt(parseProgram(source, file), 'body');
+  const imports = body.filter(node => node.type === 'ImportDeclaration').map(node => ({
+    source: stringLiteralValue(node.source),
+    bindings: recordsAt(node, 'specifiers').map(binding => binding.type === 'ImportDefaultSpecifier'
+      ? `default:${identifierName(binding.local)}`
+      : `${identifierName(binding.imported)}:${identifierName(binding.local)}`).sort(),
+    attributes: recordsAt(node, 'attributes').map(attribute =>
+      `${identifierName(attribute.key) ?? stringLiteralValue(attribute.key)}:${stringLiteralValue(attribute.value)}`)
+  }));
+  const expectedImports = [
+    { source: 'node:assert/strict', bindings: ['default:assert'], attributes: [] },
+    { source: 'node:crypto', bindings: ['createHash:createHash', 'createPublicKey:createPublicKey', 'verify:verify'], attributes: [] },
+    { source: './release-policy.json', bindings: ['default:policy'], attributes: ['type:json'] }
+  ];
+  const exports = body.filter(node => node.type !== 'ImportDeclaration');
+  return [
+    ...(JSON.stringify(imports) === JSON.stringify(expectedImports) ? [] : ['fixed admission dependency closure differs']),
+    ...(exports.length === 2 && exports.every(node => node.type === 'ExportNamedDeclaration' &&
+      isAstRecord(node.declaration) && node.declaration.type === 'FunctionDeclaration') &&
+      exports.map(node => isAstRecord(node.declaration) ? identifierName(node.declaration.id) : undefined).sort().join() ===
+      'assertNativePublicationEvidence,verifyNativeEvidenceSignature'
+      ? [] : ['admission has unexpected exports or top-level effects']),
+    ...pluginPurityViolations(source, file),
+    ...loaderReferenceViolations(source, file)
+  ];
 }
 
 async function moduleLoadingContext(modules: ReadonlyMap<string, string>): Promise<ModuleLoadingContext> {
-  const manifest = JSON.parse(await readFile(path.resolve('package.json'), 'utf8')) as Record<string, Record<string, string> | undefined>;
+  const manifest = JSON.parse(await readFile(path.resolve('package.json'), 'utf8')) as {
+    dependencies?: Record<string, string>;
+    optionalDependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+    files?: string[];
+  };
+  let nativeAdmission: ModuleLoadingContext['nativeAdmission'];
+  try {
+    const details = await Promise.all(nativeAdmissionFiles.map(file => lstat(path.resolve(file))));
+    if (details.every(detail => detail.isFile() && !detail.isSymbolicLink() && detail.nlink === 1)) {
+      nativeAdmission = {
+        source: await readFile(path.resolve(nativeAdmissionFiles[0]), 'utf8'),
+        packagedFiles: new Set(manifest.files ?? [])
+      };
+      JSON.parse(await readFile(path.resolve(nativeAdmissionFiles[2]), 'utf8'));
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
   return {
     root: sourceRoot,
     present: new Set(modules.keys()),
     dependencies: new Set([...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.optionalDependencies ?? {})]),
-    devDependencies: new Set(Object.keys(manifest.devDependencies ?? {}))
+    devDependencies: new Set(Object.keys(manifest.devDependencies ?? {})),
+    nativeAdmission
   };
 }
 
-/** Why a runtime specifier is not a fixed src module, `node:` builtin or declared runtime dependency. */
-function moduleSpecifierViolation(specifier: string, file: string, context: ModuleLoadingContext): string | undefined {
+/** Fixed src/builtin/dependency resolution, plus the one reviewed deferred packaged helper. */
+function moduleSpecifierViolation(
+  specifier: string, file: string, context: ModuleLoadingContext, dynamic = false
+): string | undefined {
+  if (specifier === nativeAdmissionSpecifier && relativeSource(file, context.root) === nativeAdmissionImporter) {
+    if (!dynamic) return 'admission edge must remain deferred';
+    const helper = context.nativeAdmission;
+    if (!helper) return 'packaged admission helper or data/declaration is missing';
+    if (!nativeAdmissionFiles.every(target => helper.packagedFiles.has(target))) return 'admission dependency is not packaged';
+    const target = path.resolve(path.dirname(file), specifier);
+    if (target !== path.resolve(context.root, '..', nativeAdmissionFiles[0])) return 'admission target differs';
+    return nativeAdmissionHelperViolations(helper.source, target).length === 0
+      ? undefined : 'admission helper is not the fixed pure dependency closure';
+  }
   if (specifier.startsWith('.')) {
     const target = resolveSourceImport(file, specifier, context.root);
     if (target === undefined) return 'relative specifier leaves src';
@@ -1494,17 +1565,62 @@ describe('bundled plugin purity and module loading (2.6-G)', () => {
     expect(pluginModuleViolations(await sourceModules())).toEqual([]);
   });
 
-  it('resolves every authored runtime specifier to a src module, node: builtin or declared runtime dependency', async () => {
+  it('resolves every authored runtime specifier to src, a builtin/dependency or the one reviewed packaged admission edge', async () => {
     const modules = await sourceModules();
     const context = await moduleLoadingContext(modules);
     const violations: string[] = [];
     for (const [file, source] of modules) {
       for (const dependency of runtimeDependenciesOf(source, file)) {
-        const problem = moduleSpecifierViolation(dependency.specifier, file, context);
+        const problem = moduleSpecifierViolation(dependency.specifier, file, context, dependency.dynamic === true);
         if (problem !== undefined) violations.push(`${relativeSource(file)} -> ${dependencyLabel(dependency)}: ${problem}`);
       }
     }
     expect(violations).toEqual([]);
+  });
+
+  it('admits only the exact native metadata edge to a present packaged pure helper and keeps all alternate edges closed', async () => {
+    const context = await moduleLoadingContext(await sourceModules());
+    const importer = sourcePath(nativeAdmissionImporter);
+    expect(runtimeDependenciesOf((await sourceModules()).get(importer)!, importer)
+      .filter(dependency => dependency.specifier === nativeAdmissionSpecifier))
+      .toEqual([{ specifier: nativeAdmissionSpecifier, target: undefined, dynamic: true }]);
+    const check = (current: ModuleLoadingContext) => moduleSpecifierViolation(nativeAdmissionSpecifier, importer, current, true);
+    expect(check(context)).toBeUndefined();
+    expect(moduleSpecifierViolation(nativeAdmissionSpecifier, importer, context)).toBe('admission edge must remain deferred');
+    expect(moduleSpecifierViolation(nativeAdmissionSpecifier, sourcePath('adapters/distribution/other.ts'), context))
+      .toBe('relative specifier leaves src');
+    for (const specifier of [
+      '../../../distribution/native/other.mjs',
+      '../../../scripts/native-release.mjs',
+      '../../../distribution/native/../native/native-release-admission.mjs'
+    ]) {
+      expect(moduleSpecifierViolation(specifier, importer, context)).toBe('relative specifier leaves src');
+    }
+    expect(check({ ...context, nativeAdmission: undefined }))
+      .toBe('packaged admission helper or data/declaration is missing');
+    expect(context.nativeAdmission).toBeDefined();
+    const helper = context.nativeAdmission!;
+    for (const missing of nativeAdmissionFiles) {
+      expect(check({
+        ...context, nativeAdmission: { ...helper, packagedFiles: new Set(nativeAdmissionFiles.filter(file => file !== missing)) }
+      })).toBe('admission dependency is not packaged');
+    }
+    for (const source of [
+      helper.source.replace('node:crypto', 'node:fs'),
+      helper.source.replace('createHash, createPublicKey, verify', 'createHash, createPublicKey, verify, randomBytes'),
+      `${helper.source}\nexport const sideEffect = process.cwd();`,
+      `${helper.source}\nimport './another-helper.mjs';`,
+      helper.source.replace('return evidence;', "return import('./another-helper.mjs');"),
+      helper.source.replace('return evidence;', 'return eval("evidence");')
+    ]) {
+      expect(check({
+        ...context, nativeAdmission: { ...helper, source }
+      })).toBe('admission helper is not the fixed pure dependency closure');
+    }
+    expect(loaderReferenceViolations(`const target = '${nativeAdmissionSpecifier}'; import(target);`, importer))
+      .toEqual(['line 1: computed import() specifier']);
+    expect(loaderReferenceViolations(`import(new URL('${nativeAdmissionSpecifier}', import.meta.url).href);`, importer))
+      .toEqual(['line 1: computed import() specifier']);
   });
 
   it('bans in-process code-loading and evaluation primitives in authored source', async () => {

@@ -244,6 +244,14 @@ describe('installed native report admission (synthetic report shapes)', () => {
       if (fault === 'duplicate-suite') selected.testResults.push(suite);
       expect(() => assertNativePackageReport(selected, 'win32')).toThrow();
     });
+  it.each(['missing', 'failed', 'skipped'])('requires the actual native archive roundtrip: %s', fault => {
+    const selected = report('win32'), suite = selected.testResults[0];
+    const title = 'extracts the exact native archive and reverifies every filesystem entry without mode normalization';
+    const roundtrip = suite.assertionResults.find(test => test.title === title)!;
+    if (fault === 'missing') suite.assertionResults = suite.assertionResults.filter(test => test !== roundtrip);
+    else roundtrip.status = fault;
+    expect(() => assertNativePackageReport(selected, 'win32')).toThrow();
+  });
 });
 
 describe.skipIf(process.platform === 'win32')('user-local owned installer transactions (synthetic files)', () => {

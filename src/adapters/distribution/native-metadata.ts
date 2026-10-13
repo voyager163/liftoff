@@ -1,15 +1,8 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { installedPackageRoot } from '../packaged-assets/package-root.js';
 import { SelfUpgradeFailure } from '../../domain/distribution/liftoff-upgrade.js';
 import type { NativeCandidate, NativeInstallation, NativeReleasePolicy } from '../../domain/distribution/native-upgrade.js';
 import { isStableSemver, stableReleaseLookupTimeoutMs } from '../../stable-release.js';
-
-interface ReleaseAdmission {
-  verifyNativeEvidenceSignature(bytes: Buffer, signature: Buffer, publicKey: Buffer, expectedKeySha256: string): unknown;
-  assertNativePublicationEvidence(record: unknown, evidence: unknown, policy: NativeReleasePolicy): unknown;
-}
 
 export interface NativeStableMaterial {
   record: Buffer;
@@ -53,8 +46,7 @@ export async function admitNativeStableMaterial(
       material.stableTag !== `v${record.version}` || material.draft || material.prerelease || !Array.isArray(record.files)) {
       throw new Error('Stable release identity differs.');
     }
-    const admission = await import(pathToFileURL(path.join(installedPackageRoot, 'distribution', 'native',
-      'native-release-admission.mjs')).href) as ReleaseAdmission;
+    const admission = await import('../../../distribution/native/native-release-admission.mjs');
     const evidence = object(admission.verifyNativeEvidenceSignature(material.qualification, material.signature,
       material.publicKey, policy.approvedSigningKeySha256));
     admission.assertNativePublicationEvidence(record, evidence, policy);
