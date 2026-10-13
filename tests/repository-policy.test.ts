@@ -28,8 +28,9 @@ function pullRequest(base: string, head: string, owner = 'voyager163/liftoff') {
 describe('source repository setup policy', () => {
   it('pins a dispatch-only native custody qualification without changing ordinary CI', async () => {
     const workflow = await readWorkflow(nativeCustodyWorkflowFile);
-    expect(workflow.on).toEqual({ workflow_dispatch: null });
-    expect(Object.keys(workflow.jobs)).toEqual(['qualify-native-custody']);
+    expect(workflow.on.workflow_dispatch).toBeNull();
+    expect(Object.keys(workflow.jobs)).toEqual(['policy', 'qualify-native-custody']);
+    expect(workflow.jobs['qualify-native-custody'].if).toBe("${{ github.event_name == 'workflow_dispatch' }}");
     expect(() => checkNativeCustodyQualificationJob(workflow.jobs['qualify-native-custody'])).not.toThrow();
     expect(() => checkWorkflow(nativeCustodyWorkflowFile, workflow)).not.toThrow();
     expect((await readWorkflow('ci.yml')).jobs['qualify-native-custody']).toBeUndefined();
@@ -42,7 +43,7 @@ describe('source repository setup policy', () => {
     const workflow = await readWorkflow(nativeCustodyWorkflowFile);
     const job = workflow.jobs['qualify-native-custody'];
     const step = (name: string) => job.steps.find((candidate: { name?: string }) => candidate.name === name);
-    if (fault === 'trigger') workflow.on.push = { branches: ['develop'] };
+    if (fault === 'trigger') job.if = "${{ github.event_name == 'push' }}";
     if (fault === 'runner') job['runs-on'] = 'macos-latest';
     if (fault === 'timeout') job['timeout-minutes'] = 60;
     if (fault === 'node') job.steps[1].with['node-version'] = '24.20.0';

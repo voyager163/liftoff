@@ -10,8 +10,7 @@ export const communityFiles = [
   'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SECURITY.md', 'GOVERNANCE.md', 'SUPPORT.md'
 ];
 export const workflowFiles = [
-  'ci.yml', 'native-custody-qualification.yml', 'repository.yml', 'release.yml',
-  'template-dependency-audit.yml', 'supported-stack-freshness.yml'
+  'ci.yml', 'repository.yml', 'release.yml', 'template-dependency-audit.yml', 'supported-stack-freshness.yml'
 ];
 export const allowedActions = [
   'actions/checkout', 'actions/setup-node', 'actions/setup-python', 'actions/setup-go',
@@ -24,7 +23,7 @@ export const coverageGateJobs = {
 };
 export const gatewayInstallCommand = 'npm ci --prefix services/telemetry-ingest';
 export const independentStepCondition = '${{ !cancelled() }}';
-export const nativeCustodyWorkflowFile = 'native-custody-qualification.yml';
+export const nativeCustodyWorkflowFile = 'repository.yml';
 export const nativeCustodyFocusedFiles = [
   'tests/governance-state-handover.test.ts',
   'tests/governance-transitions.test.ts',
@@ -454,16 +453,11 @@ export function checkWorkflow(filename, workflow) {
     assert.equal(workflow.jobs.policy?.name, 'Repository policy');
     assert.equal(workflow.jobs.policy?.if, undefined, 'Repository policy must not be skipped.');
     assert.ok(workflow.jobs.policy.steps.some(step => step.run === 'npm run check:repository'), 'Repository policy must run its checker.');
-  }
-  if (nativeCustodyWorkflow) {
-    assert.deepEqual(triggers, ['workflow_dispatch']);
-    assert.deepEqual(workflow.on.workflow_dispatch, null, 'Hosted native qualification must remain dispatch-only.');
-    assert.deepEqual(workflow.concurrency, {
-      group: 'native-custody-qualification-${{ github.ref }}',
-      'cancel-in-progress': false
-    });
-    assert.deepEqual(Object.keys(workflow.jobs), ['qualify-native-custody']);
-    checkNativeCustodyQualificationJob(workflow.jobs['qualify-native-custody']);
+    assert.deepEqual(Object.keys(workflow.jobs), ['policy', 'qualify-native-custody']);
+    const native = workflow.jobs['qualify-native-custody'];
+    assert.equal(native.if, "${{ github.event_name == 'workflow_dispatch' }}",
+      'Hosted native custody qualification must remain manual-only.');
+    checkNativeCustodyQualificationJob(native);
   }
   if (release) {
     assert.deepEqual(triggers.sort(), ['push', 'workflow_dispatch']);

@@ -286,11 +286,12 @@ rejects removing, conditioning, or reordering these gates.
 
 #### Dispatch-only hosted native custody qualification
 
-`.github/workflows/native-custody-qualification.yml` is an opt-in
-`workflow_dispatch` lane for task 13.5 qualification on actual GitHub-hosted
-macOS ARM64. It is deliberately separate from ordinary CI so pull requests,
-long-lived branch pushes, and their required checks do not acquire another
-multi-hour job.
+The existing `.github/workflows/repository.yml` workflow contains an opt-in
+`qualify-native-custody` job for task 13.5 qualification on actual GitHub-hosted
+macOS ARM64. The job is guarded by `workflow_dispatch`; pull requests and
+long-lived branch pushes retain only their existing repository-policy check and
+do not acquire another multi-hour required job. Manual dispatch also runs that
+short policy check, not the broad CI workflow.
 
 The single `macos-15` job pins Node 24.21.0, npm 12.0.2, OpenTofu 1.12.6,
 OpenSpec 1.11.0, Go 1.27.0, Python 3.14.7, and uv 0.12.7. On exact clean
