@@ -1,9 +1,12 @@
 import { phaseIds } from '../activation/types.js';
 import { isRecord, jsonValue } from './sanitize.js';
-import type { AssessmentCatalog, ControlDefinition, Layer, Ownership, Severity } from './types.js';
+import type {
+  AssessmentCatalog, AssessmentProfile, ControlDefinition, Layer, Ownership, Severity
+} from './types.js';
 
 export const evaluatorIds = [
-  'identity', 'managed-core', 'default-branch', 'protected-refs', 'single-maintainer', 'no-codeowners',
+  'identity', 'managed-core', 'default-branch', 'protected-refs', 'single-maintainer', 'team-review',
+  'no-codeowners', 'codeowners-preserved',
   'tag-controls', 'required-contexts', 'push-protection', 'workflow-permissions', 'action-pinning',
   'fail-open-flags', 'pipeline', 'environments', 'runner', 'providers', 'storage', 'network',
   'evidence', 'documentation', 'unsupported'
@@ -44,11 +47,11 @@ function list<T extends string>(value: unknown, values: readonly T[], label: str
 
 export function validateAssessmentCatalog(
   value: unknown,
-  expected: { policyVersion: string; policyDigest: string }
+  expected: { profile: AssessmentProfile; policyVersion: string; policyDigest: string }
 ): AssessmentCatalog {
   if (!isRecord(value)) throw new Error('Assessment catalog must be an object.');
   keys(value, ['schemaVersion', 'profile', 'policyVersion', 'policyDigest', 'families', 'controls'], 'Assessment catalog');
-  if (value.schemaVersion !== 1 || value.profile !== 'single-maintainer-gitflow' ||
+  if (value.schemaVersion !== 1 || value.profile !== expected.profile ||
       value.policyVersion !== expected.policyVersion || value.policyDigest !== expected.policyDigest) {
     throw new Error('Assessment catalog does not match the installed policy identity/digest.');
   }
@@ -98,7 +101,7 @@ export function validateAssessmentCatalog(
   }
   return {
     schemaVersion: 1,
-    profile: 'single-maintainer-gitflow',
+    profile: expected.profile,
     policyVersion: expected.policyVersion,
     policyDigest: expected.policyDigest,
     families,

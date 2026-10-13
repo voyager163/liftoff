@@ -6,6 +6,14 @@ import { runCli } from '../src/cli.js';
 import { runCommand } from '../src/commands.js';
 import { parseArgs } from '../src/cli/args/parser.js';
 import { applyModernSuccessorUpdate, previewModernSuccessorUpdate } from '../src/application/update/use-case.js';
+import {
+  assertProfileTransitionPlanCurrent,
+  prepareProfileTransitionPlan,
+  rebuildProfileTransitionCandidate
+} from '../src/application/profile-transition/plan.js';
+import {
+  createProfileTransitionTransactionAuthorityStore
+} from '../src/application/profile-transition/transaction-authority.js';
 import { buildModernManagedCore } from '../src/application/project/modern-managed-core.js';
 import { renderProjectAssessmentIntegration } from '../src/generators/governance/integrations.js';
 import { createModernGovernanceContextContract } from '../src/domain/governance/policy/modern-context.js';
@@ -17,7 +25,9 @@ import { planManagedCoreWrites } from '../src/application/update/write-plan.js';
 import type { SemanticTelemetryEvent } from '../src/telemetry/contract.js';
 import {
   reviewedAdoptionTransactionPathParts, reviewedUpdateTransactionPathParts,
-  reviewedRepairTransactionPathParts, localVerificationTransactionPathParts
+  reviewedRepairTransactionPathParts, localVerificationTransactionPathParts,
+  workflowTransitionTransactionPathParts,
+  profileTransitionTransactionPathParts
 } from '../src/adapters/filesystem/reviewed-update-transaction.js';
 import * as transactions from '../src/adapters/filesystem/reviewed-update-transaction.js';
 import { CaptureStream, ttyCaptureStream } from './helpers.js';
@@ -48,6 +58,45 @@ async function invoke(
     })
   });
   return { code, report: JSON.parse(stdout.text()), stderr: stderr.text(), outcome: events[0]?.outcome };
+}
+
+async function leaveCommittedProfileTransition(
+  project: Awaited<ReturnType<typeof freshManifestFixture>>
+) {
+  await write(project.root, ['liftoff.config.json'], JSON.stringify({
+    governanceProfile: 'team-gitflow'
+  }));
+  const prepared = await prepareProfileTransitionPlan(
+    project.root,
+    'team-gitflow',
+    { now: new Date(now), storage: project.options }
+  );
+  const candidate = await rebuildProfileTransitionCandidate(prepared.plan);
+  const transaction = await transactions.applyProfileTransitionTransaction(
+    project.root,
+    candidate.mutations,
+    {
+      planFingerprint: prepared.plan.fingerprint,
+      authorityStore: createProfileTransitionTransactionAuthorityStore(
+        project.root,
+        project.options
+      ),
+      preconditions: candidate.preconditions,
+      expectedCandidateBinding:
+        prepared.plan.execution.transactionCandidateBinding,
+      validateCurrentInputs: async stage => {
+        if (stage !== 'before-commit') {
+          await assertProfileTransitionPlanCurrent(prepared.plan);
+        }
+      },
+      onCheckpoint: async checkpoint => {
+        if (checkpoint.phase === 'committed') {
+          throw new Error('Injected profile postcommit interruption.');
+        }
+      }
+    }
+  );
+  return { prepared, transaction };
 }
 
 describe('public current-v8 project update', () => {
@@ -142,6 +191,238 @@ describe('public current-v8 project update', () => {
     expect(await invoke(project, [])).toMatchObject({ code: 0, report: { status: 'current', publicationCommitted: false } });
     expect(await inventory(project.root)).toEqual(before);
   });
+
+  it('previews and applies an exact governance-profile transition without allowing force', async () => {
+    const project = await freshManifestFixture(
+      'single-maintainer-gitflow',
+      'openspec'
+    );
+    await write(project.root, ['liftoff.config.json'], JSON.stringify({
+      governanceProfile: 'team-gitflow'
+    }));
+    const before = await inventory(project.root);
+    const preview = await invoke(project, ['--check']);
+    expect(preview).toMatchObject({
+      code: 2,
+      outcome: 'attention-required',
+      report: {
+        status: 'profile-transition-review-required',
+        publicationCommitted: false,
+        executionRequested: false,
+        transition: {
+          kind: 'governance-profile',
+          source: { profile: 'single-maintainer-gitflow' },
+          target: { profile: 'team-gitflow' },
+          evidenceBoundary: { reusableForTarget: false }
+        }
+      }
+    });
+    expect(await inventory(project.root)).toEqual(before);
+    const fingerprint = preview.report.transition.fingerprint;
+    expect(await invoke(project, [
+      '--force',
+      '--approve-plan',
+      fingerprint
+    ])).toMatchObject({
+      code: 1,
+      outcome: 'failure',
+      report: {
+        status: 'profile-transition-blocked',
+        reasonCode: 'profile-transition-force-forbidden',
+        publicationCommitted: false
+      }
+    });
+    expect(await inventory(project.root)).toEqual(before);
+
+    const applied = await invoke(project, ['--approve-plan', fingerprint]);
+    expect(applied).toMatchObject({
+      code: 2,
+      outcome: 'attention-required',
+      report: {
+        status: 'profile-transition-committed',
+        publicationCommitted: true,
+        projectFileEffectsUncertain: false,
+        operationComplete: true,
+        coreUpdateComplete: false,
+        transition: {
+          target: { profile: 'team-gitflow' },
+          evidenceReusableForTarget: false
+        }
+      }
+    });
+    const manifest = JSON.parse(await fs.readFile(
+      path.join(project.root, 'liftoff.manifest.json'),
+      'utf8'
+    ));
+    expect(manifest.governance.profile).toBe('team-gitflow');
+    const after = await inventory(project.root);
+    expect(after['application.txt']).toEqual(before['application.txt']);
+    expect(after['liftoff.config.json']).toEqual(before['liftoff.config.json']);
+  });
+
+  it.each([
+    {
+      config: { specWorkflow: 'manual', agents: [] },
+      status: 'workflow-transition-required',
+      reasonCode: 'workflow-transition-required'
+    },
+    {
+      config: { agents: ['codex'] },
+      status: 'plugin-transition-unsupported',
+      reasonCode: 'plugin-transition-unsupported'
+    }
+  ])('routes configured identity changes to $status even with force', async ({
+    config,
+    status,
+    reasonCode
+  }) => {
+    const project = await freshManifestFixture(
+      'single-maintainer-gitflow',
+      'openspec'
+    );
+    await write(
+      project.root,
+      ['liftoff.config.json'],
+      JSON.stringify(config)
+    );
+    const before = await inventory(project.root);
+    for (const argv of [['--check'], ['--force']]) {
+      expect(await invoke(project, argv)).toMatchObject({
+        code: 1,
+        report: {
+          status,
+          reasonCode,
+          publicationCommitted: false,
+          executionRequested: false
+        }
+      });
+      expect(await inventory(project.root)).toEqual(before);
+    }
+  });
+
+  it('blocks simultaneous profile and workflow changes instead of choosing authority implicitly', async () => {
+    const project = await freshManifestFixture(
+      'single-maintainer-gitflow',
+      'openspec'
+    );
+    await write(project.root, ['liftoff.config.json'], JSON.stringify({
+      governanceProfile: 'team-gitflow',
+      specWorkflow: 'manual',
+      agents: []
+    }));
+    const before = await inventory(project.root);
+    expect(await invoke(project, ['--check'])).toMatchObject({
+      code: 1,
+      outcome: 'failure',
+      report: {
+        status: 'multiple-transitions-required',
+        reasonCode: 'separate-transition-selection-required',
+        publicationCommitted: false
+      }
+    });
+    expect(await inventory(project.root)).toEqual(before);
+  });
+
+  it('routes exact profile-transition recovery through its dedicated journal', async () => {
+    const project = await freshManifestFixture(
+      'single-maintainer-gitflow',
+      'openspec'
+    );
+    const { prepared, transaction } =
+      await leaveCommittedProfileTransition(project);
+    expect(transaction).toMatchObject({
+      committed: true,
+      status: 'committed',
+      cleanupFailures: [
+        expect.stringContaining('Injected profile postcommit interruption')
+      ]
+    });
+    expect(await invoke(project, [])).toMatchObject({
+      code: 1,
+      report: {
+        status: 'profile-transition-recovery-required',
+        publicationCommitted: true,
+        executionRequested: false
+      }
+    });
+    expect(await invoke(project, [
+      '--recover',
+      '--approve-plan',
+      'f'.repeat(64)
+    ])).toMatchObject({
+      code: 1,
+      outcome: 'failure',
+      report: {
+        status: 'profile-transition-recovery-blocked',
+        reasonCode: 'profile-transition-recovery-mismatch',
+        publicationCommitted: true
+      }
+    });
+    expect(await invoke(project, [
+      '--recover',
+      '--approve-plan',
+      prepared.plan.fingerprint
+    ])).toMatchObject({
+      code: 2,
+      outcome: 'attention-required',
+      report: {
+        status: 'profile-transition-recovered',
+        publicationCommitted: true,
+        projectFileEffectsUncertain: false,
+        operationComplete: true
+      }
+    });
+  });
+
+  it('recovers an authenticated profile journal when its external plan is unavailable', async () => {
+    const project = await freshManifestFixture(
+      'single-maintainer-gitflow',
+      'openspec'
+    );
+    const { prepared } = await leaveCommittedProfileTransition(project);
+    await fs.unlink(prepared.path);
+    expect(await invoke(project, [
+      '--recover',
+      '--approve-plan',
+      prepared.plan.fingerprint
+    ])).toMatchObject({
+      code: 2,
+      outcome: 'attention-required',
+      report: {
+        status: 'profile-transition-recovered',
+        publicationCommitted: true,
+        projectFileEffectsUncertain: false,
+        operationComplete: true,
+        transition: {
+          kind: 'governance-profile',
+          fingerprint: prepared.plan.fingerprint
+        }
+      }
+    });
+  });
+
+  it.runIf(process.platform !== 'win32')(
+    'canonicalizes a symlinked project before profile authority inspection',
+    async () => {
+      const project = await freshManifestFixture(
+        'single-maintainer-gitflow',
+        'openspec'
+      );
+      const linked = path.join(project.parent, 'linked project');
+      await fs.symlink(project.root, linked);
+      expect(await invoke(project, [
+        '--project',
+        linked,
+        '--check'
+      ], { cwd: project.parent })).toMatchObject({
+        code: 0,
+        report: {
+          status: 'current',
+          projectRoot: project.root
+        }
+      });
+    }
+  );
 
   it.each(['required', 'declined', 'cancelled', 'mismatched'] as const)('preserves project bytes when approval is %s', async state => {
     const project = await fixture(), before = await inventory(project.root);
@@ -329,7 +610,9 @@ describe('public current-v8 project update', () => {
     reviewedUpdateTransactionPathParts,
     reviewedRepairTransactionPathParts,
     reviewedAdoptionTransactionPathParts,
-    localVerificationTransactionPathParts
+    localVerificationTransactionPathParts,
+    workflowTransitionTransactionPathParts,
+    profileTransitionTransactionPathParts
   ])(
     'refuses the pending %j journal before malformed manifest interpretation', async (...parts) => {
       const project = await fixture();

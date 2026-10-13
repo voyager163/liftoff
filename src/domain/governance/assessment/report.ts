@@ -1,6 +1,7 @@
 import { canonicalJson, canonicalSha256 } from '../activation/canonical-json.js';
 import { phaseIds } from '../activation/types.js';
 import { validateActivationIdentity } from '../activation/validators.js';
+import { modernActivationSourceContracts } from '../policy/identity.js';
 import { classifications } from './types.js';
 import type {
   AssessmentDiagnostic, AssessmentFinding, AssessmentProjectIdentity, AssessmentReport,
@@ -172,11 +173,23 @@ function assertAssessmentReport(value: unknown): asserts value is AssessmentRepo
   if (report.target !== null) {
     const target = exact(report.target, ['cliVersion', 'profile', 'policyVersion', 'policyDigest', 'activationIdentity',
       'phaseGraphHash', 'catalogSchemaVersion', 'catalogDigest'], 'Target');
-    if (target.profile !== 'single-maintainer-gitflow' || target.catalogSchemaVersion !== 1) throw new Error('Target identity is invalid.');
+    if (!['single-maintainer-gitflow', 'team-gitflow'].includes(String(target.profile)) ||
+        target.catalogSchemaVersion !== 1) {
+      throw new Error('Target identity is invalid.');
+    }
     for (const key of ['cliVersion', 'policyVersion']) string(target[key], `Target ${key}`);
     for (const key of ['policyDigest', 'phaseGraphHash', 'catalogDigest']) digest(target[key], `Target ${key}`);
-    const identity = validateActivationIdentity(target.activationIdentity);
-    if (identity.policyVersion !== target.policyVersion || identity.phaseGraphHash !== target.phaseGraphHash) throw new Error('Target version fields disagree.');
+    const identity = isRecord(target.activationIdentity) &&
+      typeof target.activationIdentity.profile === 'string'
+      ? modernActivationSourceContracts().find(source =>
+          canonicalJson(source.identity) === canonicalJson(target.activationIdentity)
+        )?.identity
+      : validateActivationIdentity(target.activationIdentity);
+    if (!identity || identity.policyVersion !== target.policyVersion ||
+        identity.phaseGraphHash !== target.phaseGraphHash ||
+        ('policyDigest' in identity && identity.policyDigest !== `sha256:${target.policyDigest}`)) {
+      throw new Error('Target version fields disagree.');
+    }
   }
   const identity = exact(report.projectIdentity, ['availability', 'manifestVersion', 'cliVersion', 'profile', 'policyVersion', 'recordedActivationIdentity', 'stateSource'], 'Project identity');
   enumeration(identity.availability, ['known', 'unsupported', 'unavailable'], 'Identity availability');

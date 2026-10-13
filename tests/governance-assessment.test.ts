@@ -17,7 +17,8 @@ import {
   pinnedActions,
   protectedRefs,
   runnerAlignment,
-  singleMaintainer
+  singleMaintainer,
+  teamReview
 } from '../src/governance-assessment/predicates.js';
 import type { AssessmentFinding, ControlDefinition, Observation } from '../src/governance-assessment/types.js';
 
@@ -118,6 +119,26 @@ describe('governance assessment report and catalog', () => {
     expect(() => validateAssessmentCatalog({ ...catalog, policyDigest: 'f'.repeat(64) })).toThrow(/digest/);
     expect(() => validateAssessmentCatalog({ ...catalog, controls: [...catalog.controls, catalog.controls[0]] })).toThrow(/duplicate/);
     expect(() => validateAssessmentCatalog({ ...catalog, controls: catalog.controls.map((item, index) => index ? item : { ...item, evaluator: 'invented' }) })).toThrow(/evaluator/);
+  });
+
+  it('loads distinct current single-maintainer and team catalogs', () => {
+    const single = loadAssessmentCatalog('single-maintainer-gitflow', 'openspec');
+    const team = loadAssessmentCatalog('team-gitflow', 'openspec');
+    expect(single.target).toMatchObject({
+      profile: 'single-maintainer-gitflow',
+      policyVersion: '7'
+    });
+    expect(team.target).toMatchObject({
+      profile: 'team-gitflow',
+      policyVersion: '1'
+    });
+    expect(single.catalog.controls.some(control =>
+      control.evaluator === 'single-maintainer'
+    )).toBe(true);
+    expect(team.catalog.controls.some(control =>
+      control.evaluator === 'team-review'
+    )).toBe(true);
+    expect(team.target.catalogDigest).not.toBe(single.target.catalogDigest);
   });
 
   it.each([
@@ -239,6 +260,25 @@ jobs:
     expect(protectedRefs(rules).value).toBe(true);
     expect(singleMaintainer(rules).value).toBe(true);
     expect(singleMaintainer([]).value).toBe(false);
+  });
+
+  it('accepts stronger team review controls without weakening them', () => {
+    const rule = (approvals: number, codeowners = false, lastPush = false) => [{
+      target: 'branch',
+      enforcement: 'active',
+      rules: [{
+        type: 'pull_request',
+        parameters: {
+          required_approving_review_count: approvals,
+          require_code_owner_review: codeowners,
+          require_last_push_approval: lastPush,
+          dismiss_stale_reviews_on_push: true
+        }
+      }]
+    }];
+    expect(teamReview(rule(1)).value).toBe(true);
+    expect(teamReview(rule(2, true, true)).value).toBe(true);
+    expect(teamReview(rule(0)).value).toBe(false);
   });
 
   it('does not borrow successful checks from another protected ref', () => {

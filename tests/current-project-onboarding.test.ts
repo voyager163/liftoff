@@ -84,8 +84,8 @@ describe('public current project onboarding', () => {
     expect(assessed.code, assessed.out + assessed.err).toBe(governance === 'none' ? 0 : 2);
     expect(assessment).toMatchObject({
       schemaVersion: 1, readOnly: true, outcome: governance === 'none' ? 'not-applicable' : 'partial',
-      projectIdentity: { availability: 'unsupported', manifestVersion: 8, profile: governance, stateSource: 'unsupported' },
-      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'unsupported-current-assessment' })])
+      projectIdentity: { availability: 'known', manifestVersion: 8, profile: governance, stateSource: 'unsupported' },
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: 'modern-proof-not-reused' })])
     });
     expect(assessment.projectIdentity.recordedActivationIdentity)
       .toEqual(governance === 'none' ? null : manifest.governance.activationIdentity);

@@ -274,6 +274,7 @@ function parsePayload(value: unknown, platform: NodeJS.Platform): JournalPayload
   const kind = hasKind ? value.transactionKind : 'update';
   if (kind !== 'update' && kind !== 'repair' && kind !== 'adoption' &&
       kind !== 'workflow-transition' &&
+      kind !== 'profile-transition' &&
       kind !== 'local-verification') fail('unregistered transaction kind.');
   const hasRepairIdentity = Object.hasOwn(value, 'repairIdentity');
   let repairIdentity: RepairExecutionIdentity | undefined;

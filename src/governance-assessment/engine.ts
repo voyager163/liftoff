@@ -28,13 +28,15 @@ import { classifyFinding, assembleAssessmentReport } from '../domain/governance/
 import {
   actionReferences, effectiveProtectedRefs, effectiveRequiredContextBindings, failOpenFlags, pinnedActions,
   protectedRefs, requiredCheckContexts, requiredContextBindings,
-  runnerAlignment, securityPipeline, singleMaintainer, tagControls, workflowPermissions, observedRequiredContexts,
+  runnerAlignment, securityPipeline, singleMaintainer, teamReview, tagControls, workflowPermissions,
+  observedRequiredContexts,
   type PredicateResult
 } from '../domain/governance/assessment/predicates.js';
 import { isRecord, jsonValue, notObserved, observed, sanitizeAssessmentText, source } from '../domain/governance/assessment/sanitize.js';
 import type {
   AssessmentDiagnostic, AssessmentFinding, AssessmentProjectIdentity, AssessmentReport, AssessmentTarget,
-  ControlDefinition, FindingScope, JsonValue, Layer, LiveAssessmentResult, LiveAssessmentScope, Observation
+  AssessmentProfile, ControlDefinition, FindingScope, JsonValue, Layer, LiveAssessmentResult,
+  LiveAssessmentScope, Observation
 } from './types.js';
 
 const documentationPaths = [
@@ -616,7 +618,7 @@ async function managedFindings(
 
 function evaluateControl(
   control: ControlDefinition, project: AssessmentProject, facts: LocalFacts, live: LiveAssessmentResult,
-  git: AssessmentGitFacts, liveScope: LiveAssessmentScope, now: Date
+  git: AssessmentGitFacts, liveScope: LiveAssessmentScope, target: AssessmentTarget, now: Date
 ): AssessmentFinding {
   const capturedAt = now.toISOString();
   const scope: FindingScope = { repository: liveScope.repository ? `${liveScope.repository.owner}/${liveScope.repository.name}` : null, environment: null, resource: null };
@@ -628,10 +630,23 @@ function evaluateControl(
     ? predicateObservation(predicate(facts.rulesets), facts.ruleSource) : absent('No declared ruleset payloads were found.', facts.ruleSource);
   switch (control.evaluator) {
     case 'identity': {
-      expected = jsonValue({ manifest: currentActivationIdentity, state: project.identity.stateSource === 'not-started' ? null : currentActivationIdentity });
+      expected = jsonValue(target.activationIdentity);
+      const recorded = project.identity.recordedActivationIdentity;
+      const targetKeys = isRecord(target.activationIdentity)
+        ? Object.keys(target.activationIdentity)
+        : [];
+      const comparable = isRecord(recorded) &&
+        targetKeys.every(key => Object.hasOwn(recorded, key))
+        ? Object.fromEntries(targetKeys.map(key => [key, recorded[key]]))
+        : recorded;
       observations.recorded = project.identity.recordedActivationIdentity === null
         ? notObserved('This historical manifest does not record an activation tuple.')
-        : observed({ manifest: project.identity.recordedActivationIdentity, state: project.stateIdentity }, source('file', 'manifest and activation identity', capturedAt, { manifest: project.identity.recordedActivationIdentity, state: project.stateIdentity }));
+        : observed(jsonValue(comparable), source(
+          'file',
+          'manifest activation identity',
+          capturedAt,
+          comparable
+        ));
       break;
     }
     case 'default-branch': {
@@ -674,6 +689,10 @@ function evaluateControl(
       observations.declared = declaredRules(singleMaintainer);
       observations.live = livePredicate(live, 'github.rulesets', singleMaintainer);
       break;
+    case 'team-review':
+      observations.declared = declaredRules(teamReview);
+      observations.live = livePredicate(live, 'github.rulesets', teamReview);
+      break;
     case 'tag-controls': {
       const app = live.observations['github.actions-app'];
       if (app?.availability === 'observed' && isRecord(app.value) && typeof app.value.id === 'number' &&
@@ -691,6 +710,15 @@ function evaluateControl(
     }
     case 'no-codeowners':
       observations.declared = facts.codeowners;
+      break;
+    case 'codeowners-preserved':
+      observations.declared = notObserved(
+        'Current CODEOWNERS presence does not prove that an earlier reviewed file was preserved.',
+        facts.codeowners.source
+      );
+      observations.declared.facts = jsonValue({
+        present: facts.codeowners.value
+      });
       break;
     case 'required-contexts': {
       const contexts = requiredCheckContexts(facts.rulesets);
@@ -874,7 +902,12 @@ function evaluateControl(
 
 export async function assessGovernance(
   projectRoot: string,
-  options: { live?: boolean; runner?: CommandRunner; now?: () => Date } = {}
+  options: {
+    live?: boolean;
+    runner?: CommandRunner;
+    now?: () => Date;
+    profile?: AssessmentProfile;
+  } = {}
 ): Promise<AssessmentReport> {
   const now = options.now ?? (() => new Date());
   const captured = now();
@@ -885,14 +918,14 @@ export async function assessGovernance(
     policyVersion: null, recordedActivationIdentity: null, stateSource: 'unavailable'
   };
   try {
-    const loaded = loadAssessmentCatalog();
+    let loaded = loadAssessmentCatalog(options.profile);
     target = loaded.target;
     let project: AssessmentProject;
     let git: AssessmentGitFacts;
     let initialActivationInspection: CurrentActivationInspection | null = null;
     let initialActivationFingerprint: string | null = null;
     try {
-      project = await inspectAssessmentProject(files);
+      project = await inspectAssessmentProject(files, options.profile);
       git = await inspectAssessmentGit(projectRoot, options.runner);
     } catch (error) {
       if (!(error instanceof AssessmentInputError) || error.code !== 'project-not-found') {
@@ -907,6 +940,18 @@ export async function assessGovernance(
       }
       project = ordinaryGitAssessmentProject();
     }
+    const recordedWorkflow = project.project?.specWorkflow;
+    const workflow = recordedWorkflow === 'manual' ||
+      recordedWorkflow === 'openspec' ||
+      recordedWorkflow === 'spec-kit'
+      ? recordedWorkflow
+      : 'openspec';
+    const selectedProfile = options.profile ??
+      (project.identity.profile === 'team-gitflow'
+        ? 'team-gitflow'
+        : 'single-maintainer-gitflow');
+    loaded = loadAssessmentCatalog(selectedProfile, workflow);
+    target = loaded.target;
     if (project.manifest && project.identity.availability === 'known') {
       try {
         const activation = await inspectCurrentActivationEvidence(
@@ -990,7 +1035,7 @@ export async function assessGovernance(
       }
     }
     projectIdentity = project.identity;
-    const disabled = project.identity.profile === 'none';
+    const disabled = options.profile === undefined && project.identity.profile === 'none';
     if (disabled) return assembleAssessmentReport({
       projectRoot, mode: options.live ? 'live' : 'local', target, projectIdentity,
       snapshot: { capturedAt: captured.toISOString(), repository: null, localHead: null, worktreeDigest: files.digest(), inputsStable: await files.stable() },
@@ -1008,7 +1053,7 @@ export async function assessGovernance(
     for (const control of loaded.catalog.controls) {
       if (control.evaluator === 'managed-core') {
         findings.push(...await managedFindings(control, project, files, { repository, environment: null, resource: null }, captured.toISOString()));
-      } else findings.push(evaluateControl(control, project, facts, live, git, scope, captured));
+      } else findings.push(evaluateControl(control, project, facts, live, git, scope, target, captured));
     }
     const worktreeDigest = files.digest();
     let activationStable = true;

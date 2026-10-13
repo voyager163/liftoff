@@ -51,13 +51,13 @@ const issuesFor = (packedPaths: readonly string[], declaredFiles: readonly unkno
 const consistentPack = [...nonAssetPaths, ...required];
 
 describe('unpacked package budget', () => {
-  it('admits exactly 12 MiB and rejects the first excess byte', () => {
-    expect(maximumUnpackedPackageBytes).toBe(12_582_912);
-    for (const bytes of [0, 8_388_608, 12_582_911, 12_582_912]) {
+  it('admits exactly 13 MiB and rejects the first excess byte', () => {
+    expect(maximumUnpackedPackageBytes).toBe(13_631_488);
+    for (const bytes of [0, 8_388_608, 13_631_487, 13_631_488]) {
       expect(() => assertUnpackedPackageSize(bytes)).not.toThrow();
     }
-    expect(() => assertUnpackedPackageSize(12_582_913))
-      .toThrow('Packed package unexpectedly exceeds the 12 MiB unpacked-size budget: 12582913');
+    expect(() => assertUnpackedPackageSize(13_631_489))
+      .toThrow('Packed package unexpectedly exceeds the 13 MiB unpacked-size budget: 13631489');
   });
 
   it.each([undefined, null, '12582912', -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
@@ -68,9 +68,9 @@ describe('unpacked package budget', () => {
 });
 
 describe('required packaged assets', () => {
-  it('requires exactly the thirteen template assets and thirteen core ancillary assets', () => {
-    expect(required).toHaveLength(26);
-    expect(new Set(required).size).toBe(26);
+  it('requires exactly the thirteen template assets and fourteen core ancillary assets', () => {
+    expect(required).toHaveLength(27);
+    expect(new Set(required).size).toBe(27);
     expect(required).toEqual([...templatePaths, ...requiredAncillaryAssets].sort());
     expect(templatePaths.filter((entry) => requiredAncillaryAssets.includes(entry))).toEqual([]);
     const declaredAssets = packageJson.files.filter((entry) =>
@@ -98,6 +98,7 @@ describe('packed asset inventory', () => {
         'assets/governance/single-maintainer-gitflow/assessment-controls.json',
         'assets/governance/single-maintainer-gitflow/policy-v7.md',
         'assets/governance/single-maintainer-gitflow/policy.md',
+        'assets/governance/team-gitflow/assessment-controls.json',
         'assets/governance/team-gitflow/policy-v1.md',
         ...eggInfoPaths,
         helperPath,

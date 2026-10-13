@@ -1,19 +1,39 @@
 import path from 'node:path';
+import { realpath } from 'node:fs/promises';
 import { findProjectRoot } from '../../adapters/filesystem/project-discovery.js';
 import {
   createUpdateTransactionApprovalStore, type UpdatePreviewOptions
 } from '../../adapters/filesystem/update-previews.js';
-import { inspectReviewedUpdateTransaction } from '../../adapters/filesystem/reviewed-update-transaction.js';
+import {
+  inspectProfileTransitionTransaction,
+  inspectReviewedUpdateTransaction
+} from '../../adapters/filesystem/reviewed-update-transaction.js';
 import { ProjectFileTransactionError } from '../../adapters/filesystem/project-transaction.js';
 import { errorMessage } from '../../adapters/filesystem/errors.js';
 import { commandShellForPlatform, formatShellCommand } from '../../adapters/process/shell-command.js';
 import { detectCredentialLeaks } from '../../governance-activation/credentials.js';
 import type { TelemetrySemanticOutcome } from '../../telemetry/contract.js';
 import type { ExecutionContext } from '../context.js';
+import {
+  applyProfileTransitionPlan,
+  recoverProfileTransitionJournal,
+  recoverProfileTransitionPlan
+} from '../profile-transition/execution.js';
+import {
+  findProfileTransitionPlan,
+  prepareProfileTransitionPlan,
+  readConfiguredProfileTransitionTarget
+} from '../profile-transition/plan.js';
+import {
+  createProfileTransitionTransactionAuthorityStore
+} from '../profile-transition/transaction-authority.js';
 import { currentUpdateReportSchemaVersion, currentUpdateRequestIssue, type CurrentUpdateRequest } from './current-request.js';
 import { UpdatePreviewError } from './preview.js';
 import { UpdatePlanError } from './inspection.js';
-import { readRecordedModernUpdateSelection } from './modern-update-selection.js';
+import {
+  readConfiguredModernUpdateRoute,
+  readRecordedModernUpdateSelection
+} from './modern-update-selection.js';
 import {
   applyModernSuccessorUpdate, previewModernSuccessorUpdate, recoverModernSuccessorUpdate, ModernUpdateRecoveryError
 } from './use-case.js';
@@ -33,7 +53,8 @@ export async function updateCurrentProject(request: CurrentUpdateRequest, contex
       mode, projectRoot, status, targetManifestVersion: 8, executionRequested, externalMetadataWriteRequested,
       publicationCommitted: committed, projectFileEffectsUncertain: uncertain,
       localComplete: false, activationComplete: false, lifecycleComplete: false, providerOperationsAuthorized: false,
-      boundary: 'Managed core and exact v8 successor/maintenance only. Configuration and original history remain protected. ' +
+      boundary: 'Managed core maintenance or one separately selected exact local governance-profile transition only. ' +
+        'Configuration and original history remain protected. ' +
         'Core currency and saved progress do not establish local readiness. No application migration, framework execution, ' +
         'directory relocation, provider operation or telemetry enrollment is authorized.',
       ...detail
@@ -79,10 +100,96 @@ export async function updateCurrentProject(request: CurrentUpdateRequest, contex
       }
       projectRoot = found;
     }
+    projectRoot = await realpath(projectRoot);
+    const now = options.clock?.() ?? new Date();
+    const profileAuthority = createProfileTransitionTransactionAuthorityStore(
+      projectRoot,
+      options
+    );
     if (request.recover) {
       const fingerprint = request.approvePlan;
       if (!fingerprint) throw new Error('Explicit recovery fingerprint is required.');
-      executionRequested = true; externalMetadataWriteRequested = true; committed = null; uncertain = true;
+      executionRequested = true;
+      externalMetadataWriteRequested = true;
+      committed = null;
+      uncertain = true;
+      const observedProfileRecovery =
+        await inspectProfileTransitionTransaction(
+          projectRoot,
+          { authorityStore: profileAuthority }
+        );
+      if (observedProfileRecovery.status !== 'absent') {
+        committed = observedProfileRecovery.committed;
+        if (observedProfileRecovery.status === 'blocked' ||
+            observedProfileRecovery.planFingerprint !== fingerprint) {
+          uncertain = true;
+          return emit('profile-transition-recovery-blocked', {
+            transition: {
+              kind: 'governance-profile',
+              fingerprint: observedProfileRecovery.planFingerprint ?? null
+            },
+            recovery: observedProfileRecovery,
+            operationComplete: false,
+            coreUpdateComplete: false,
+            reasonCode: 'profile-transition-recovery-mismatch',
+            diagnostics: [
+              observedProfileRecovery.reason ??
+                'The pending profile-transition journal is not attributable to the selected fingerprint.'
+            ],
+            remedy: 'Preserve the profile-transition journal and recover only its exact recorded fingerprint.'
+          }, 1, 'failure');
+        }
+      }
+      const profilePlan = await findProfileTransitionPlan(
+        projectRoot,
+        fingerprint,
+        now,
+        options,
+        true
+      );
+      if (observedProfileRecovery.status !== 'absent') {
+        const result = profilePlan
+          ? await recoverProfileTransitionPlan(
+            projectRoot,
+            fingerprint,
+            { now, storage: options }
+          )
+          : await recoverProfileTransitionJournal(
+            projectRoot,
+            fingerprint,
+            { storage: options }
+          );
+        committed = result.committed;
+        uncertain = result.status === 'blocked' ||
+          result.rollbackFailures.length > 0 ||
+          result.cleanupFailures.length > 0 ||
+          result.readbackFailures.length > 0;
+        const complete = !uncertain &&
+          (result.status === 'rolled-back' || result.status === 'committed');
+        return emit(
+          complete ? 'profile-transition-recovered' : result.status,
+          {
+            transition: {
+              kind: 'governance-profile',
+              ...(profilePlan
+                ? {
+                  source: profilePlan.source,
+                  target: profilePlan.target
+                }
+                : {}),
+              fingerprint
+            },
+            result,
+            operationComplete: complete,
+            coreUpdateComplete: false,
+            remedy: complete
+              ? `Recovery completed. Run ${command('--check')} before approving further work.`
+              : 'Preserve the exact profile-transition journal and resolve only its reported recovery blocker.'
+          },
+          complete ? 2 : 1,
+          complete ? 'attention-required' : 'failure'
+        );
+      }
       const result = await recoverModernSuccessorUpdate({ projectRoot, planFingerprint: fingerprint }, options);
       if ('outcome' in result && result.outcome) {
         committed = result.outcome.committed || result.observedCommitted === true;
@@ -97,6 +204,28 @@ export async function updateCurrentProject(request: CurrentUpdateRequest, contex
         remedy: `Recovery does not apply a new plan. Run ${command('--check')} before approving further work.`
       }, complete ? 2 : 1, complete ? 'attention-required' : 'failure');
     }
+    const profileRecovery = await inspectProfileTransitionTransaction(
+      projectRoot,
+      { authorityStore: profileAuthority }
+    );
+    if (profileRecovery.status !== 'absent') {
+      committed = profileRecovery.committed;
+      uncertain = profileRecovery.status === 'blocked';
+      return emit('profile-transition-recovery-required', {
+        transition: {
+          kind: 'governance-profile',
+          fingerprint: profileRecovery.planFingerprint ?? null
+        },
+        recovery: profileRecovery,
+        operationComplete: false,
+        coreUpdateComplete: false,
+        remedy: `Review the saved profile-transition journal, then select ${command(
+          '--recover',
+          '--approve-plan',
+          profileRecovery.planFingerprint ?? '<saved-fingerprint>'
+        )}.`
+      }, 1, profileRecovery.status === 'blocked' ? 'failure' : 'attention-required');
+    }
     const approvalStore = createUpdateTransactionApprovalStore(projectRoot, options);
     const recovery = await inspectReviewedUpdateTransaction(projectRoot, { approvalStore });
     if (recovery.status !== 'absent') {
@@ -105,6 +234,174 @@ export async function updateCurrentProject(request: CurrentUpdateRequest, contex
         recovery, operationComplete: false, coreUpdateComplete: false,
         remedy: `Review the saved journal, then select ${command('--recover', '--approve-plan', recovery.planFingerprint ?? '<saved-fingerprint>')}.`
       }, 1, recovery.status === 'blocked' ? 'failure' : 'attention-required');
+    }
+    const profileTarget = await readConfiguredProfileTransitionTarget(
+      projectRoot
+    );
+    const routed = await readConfiguredModernUpdateRoute(projectRoot);
+    if (profileTarget && routed) {
+      return emit('multiple-transitions-required', {
+        operationComplete: false,
+        coreUpdateComplete: false,
+        reasonCode: 'separate-transition-selection-required',
+        diagnostics: [
+          'Configuration requests more than one identity transition. Review and complete one exact profile, workflow or plugin selection at a time.'
+        ],
+        remedy: `Keep only one requested transition, then run ${command('--check')}.`
+      }, 1, 'failure');
+    }
+    if (routed?.kind === 'workflow-transition') {
+      const selectionArgs = [
+        ...(routed.agents === undefined
+          ? []
+          : [
+              '--agents',
+              routed.agents.length ? routed.agents.join(',') : 'none'
+            ]),
+        ...(routed.defaultAgent === undefined
+          ? []
+          : ['--default-agent', routed.defaultAgent])
+      ];
+      const remedy = formatShellCommand({
+        executable: 'liftoff',
+        args: [
+          'workflow',
+          'set',
+          routed.target,
+          '--project',
+          projectRoot,
+          ...selectionArgs,
+          '--check'
+        ]
+      }, commandShellForPlatform(process.platform));
+      return emit('workflow-transition-required', {
+        transition: routed,
+        operationComplete: false,
+        coreUpdateComplete: false,
+        reasonCode: 'workflow-transition-required',
+        diagnostics: [
+          'Ordinary update and --force cannot change the recorded development workflow.'
+        ],
+        remedy: `Use the distinct reviewed workflow-transition command: ${remedy}.`
+      }, 1, 'attention-required');
+    }
+    if (routed?.kind === 'plugin-transition') {
+      return emit('plugin-transition-unsupported', {
+        transition: routed,
+        operationComplete: false,
+        coreUpdateComplete: false,
+        reasonCode: 'plugin-transition-unsupported',
+        diagnostics: [
+          `Configuration changes ${routed.fields.join(', ')} without a workflow transition. Ordinary update and --force cannot replace the recorded plugin selection.`
+        ],
+        remedy: 'Run liftoff assess for compatibility findings, then use a supported workflow transition or additive agent repair; no generic plugin-transition executor is available.'
+      }, 1, 'failure');
+    }
+    const selectedProfilePlan = request.approvePlan === undefined
+      ? null
+      : await findProfileTransitionPlan(
+          projectRoot,
+          request.approvePlan,
+          now,
+          options
+        );
+    if (selectedProfilePlan) {
+      if (request.force) {
+        return emit('profile-transition-blocked', {
+          operationComplete: false,
+          coreUpdateComplete: false,
+          reasonCode: 'profile-transition-force-forbidden',
+          diagnostics: [
+            '--force cannot authorize or alter a governance-profile transition.'
+          ],
+          remedy: `Apply the exact saved plan without --force: ${command(
+            '--approve-plan',
+            selectedProfilePlan.fingerprint
+          )}.`
+        }, 1, 'failure');
+      }
+      executionRequested = true;
+      externalMetadataWriteRequested = true;
+      committed = null;
+      uncertain = true;
+      const result = await applyProfileTransitionPlan(
+        selectedProfilePlan,
+        { now, storage: options }
+      );
+      committed = result.committed;
+      uncertain = result.status === 'blocked' ||
+        result.rollbackFailures.length > 0 ||
+        result.cleanupFailures.length > 0 ||
+        result.readbackFailures.length > 0;
+      const complete = result.status === 'committed' && !uncertain;
+      return emit(complete ? 'profile-transition-committed' : result.status, {
+        transition: {
+          kind: 'governance-profile',
+          source: selectedProfilePlan.source,
+          target: selectedProfilePlan.target,
+          fingerprint: selectedProfilePlan.fingerprint,
+          evidenceReusableForTarget:
+            selectedProfilePlan.evidenceBoundary.reusableForTarget
+        },
+        result,
+        operationComplete: complete,
+        coreUpdateComplete: false,
+        remedy: complete
+          ? 'Local policy identity changed. Reassess the target profile and use a separate governance plan for any live provider enforcement.'
+          : 'Preserve any pending profile-transition journal and use exact recovery.'
+      }, complete ? 2 : 1, complete ? 'attention-required' : 'failure');
+    }
+    if (profileTarget) {
+      if (request.force) {
+        return emit('profile-transition-blocked', {
+          operationComplete: false,
+          coreUpdateComplete: false,
+          reasonCode: 'profile-transition-force-forbidden',
+          diagnostics: [
+            '--force cannot convert a configured governance-profile change into ordinary maintenance.'
+          ],
+          remedy: `Run ${command('--check')} and approve the exact profile-transition fingerprint without --force.`
+        }, 1, 'failure');
+      }
+      if (!request.check) {
+        return emit('profile-transition-review-required', {
+          transition: {
+            kind: 'governance-profile',
+            target: profileTarget
+          },
+          operationComplete: false,
+          coreUpdateComplete: false,
+          reasonCode: 'profile-transition-preview-required',
+          diagnostics: [
+            'Governance-profile transitions require an immutable preview before exact approval.'
+          ],
+          remedy: `Run ${command('--check')}.`
+        }, 1, 'attention-required');
+      }
+      externalMetadataWriteRequested = true;
+      const prepared = await prepareProfileTransitionPlan(
+        projectRoot,
+        profileTarget,
+        { now, storage: options }
+      );
+      return emit('profile-transition-review-required', {
+        transition: {
+          kind: 'governance-profile',
+          source: prepared.plan.source,
+          target: prepared.plan.target,
+          fingerprint: prepared.plan.fingerprint,
+          effects: prepared.plan.effects,
+          controls: prepared.plan.controls,
+          evidenceBoundary: prepared.plan.evidenceBoundary,
+          planStoragePath: prepared.path
+        },
+        operationComplete: true,
+        coreUpdateComplete: false,
+        remedy: `Review the exact effects, then select ${command(
+          '--approve-plan',
+          prepared.plan.fingerprint
+        )}.`
+      }, 2, 'attention-required');
     }
     if (request.check) {
       externalMetadataWriteRequested = true;

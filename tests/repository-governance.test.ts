@@ -632,12 +632,29 @@ describe('repository governance artifacts', () => {
         'Reports cannot complete Phase 0', 'telemetry and disclosure entirely',
         'HEAD, and origin metadata', 'never `git status`', 'project policy version',
         'normalized `facts`', 'current active-baseline', 'saved-plan/evidence receipts',
-        'future-dated approvals', 'do not fabricate or hand-edit activation state'
+        'future-dated approvals', 'do not fabricate or hand-edit activation state',
+        'liftoff governance assess --governance team-gitflow --json',
+        'preserves workflow, application/Git history, CODEOWNERS, stronger controls',
+        'unmanaged orphans', 'CLI-only users', 'Invoke-Expression'
       ]) {
         expect(content.replace(/\s+/g, ' ')).toContain(phrase);
       }
       expect(content).not.toContain('liftoff-repository-governance');
     }
+  });
+
+  it('keeps generated guidance profile-aware and force-closed', () => {
+    const artifacts = buildRepositoryGovernanceArtifacts(plan());
+    const guide = artifacts.find(
+      artifact => artifact.logicalName === 'repository-governance-guide'
+    )!.content;
+    expect(guide).toContain(
+      'liftoff governance assess --governance team-gitflow --json'
+    );
+    expect(guide).toContain(
+      '`--force` cannot cross these boundaries or authorize live enforcement'
+    );
+    expect(guide).toContain('Historical proof cannot satisfy another profile');
   });
 
   it('renders identical bytes and path identities repeatedly', () => {

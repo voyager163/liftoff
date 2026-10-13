@@ -9,6 +9,7 @@ import { FileSystemError } from '../../domain/project/errors.js';
 import {
   reviewedAdoptionTransactionPathParts, reviewedRepairTransactionPathParts,
   reviewedUpdateTransactionPathParts, workflowTransitionTransactionPathParts,
+  profileTransitionTransactionPathParts,
   localVerificationTransactionPathParts, localVerificationTransactionSchemaVersion
 } from '../../domain/project/reviewed-update-artifacts.js';
 import type { ReviewedTransactionKind } from '../../domain/project/reviewed-update-artifacts.js';
@@ -38,7 +39,7 @@ import type {
 export {
   reviewedAdoptionTransactionPathParts, reviewedRepairTransactionPathParts,
   reviewedUpdateTransactionPathParts, reviewedUpdateTransactionSchemaVersion,
-  workflowTransitionTransactionPathParts,
+  workflowTransitionTransactionPathParts, profileTransitionTransactionPathParts,
   localVerificationTransactionPathParts, localVerificationTransactionSchemaVersion
 } from '../../domain/project/reviewed-update-artifacts.js';
 export type { ReviewedTransactionKind } from '../../domain/project/reviewed-update-artifacts.js';
@@ -57,6 +58,11 @@ export interface AdoptionTransactionAuthorityStore extends ReviewedUpdateApprova
 
 export interface WorkflowTransitionTransactionAuthorityStore extends ReviewedUpdateApprovalStore {
   readonly transactionKind: 'workflow-transition';
+  readonly projectRoot: string;
+}
+
+export interface ProfileTransitionTransactionAuthorityStore extends ReviewedUpdateApprovalStore {
+  readonly transactionKind: 'profile-transition';
   readonly projectRoot: string;
 }
 
@@ -105,6 +111,16 @@ export interface AdoptionTransactionOptions {
 export interface WorkflowTransitionTransactionOptions {
   planFingerprint: string;
   authorityStore: WorkflowTransitionTransactionAuthorityStore;
+  preconditions: readonly ProjectFileSnapshot[];
+  expectedCandidateBinding: string;
+  /** Revalidate the exact saved transition and physical inputs under the project lock. */
+  validateCurrentInputs: (stage: ReviewedPublicationInputStage) => Promise<void>;
+  onCheckpoint?: (checkpoint: ReviewedUpdateTransactionCheckpoint) => Promise<void>;
+}
+
+export interface ProfileTransitionTransactionOptions {
+  planFingerprint: string;
+  authorityStore: ProfileTransitionTransactionAuthorityStore;
   preconditions: readonly ProjectFileSnapshot[];
   expectedCandidateBinding: string;
   /** Revalidate the exact saved transition and physical inputs under the project lock. */
@@ -178,7 +194,8 @@ const MAX_FILE_BYTES = reviewedJournalLimits.fileBytes;
 const MAX_JOURNAL_BYTES = reviewedJournalLimits.journalBytes;
 const privateFileMode = process.platform === 'win32' ? 0o666 : 0o600;
 const transactionKinds = [
-  'update', 'repair', 'adoption', 'workflow-transition', 'local-verification'
+  'update', 'repair', 'adoption', 'workflow-transition', 'profile-transition',
+  'local-verification'
 ] as const;
 
 function fail(message: string): never {
@@ -192,6 +209,7 @@ function journalParts(kind: ReviewedTransactionKind = 'update'): readonly string
   if (kind === 'repair') return reviewedRepairTransactionPathParts;
   if (kind === 'adoption') return reviewedAdoptionTransactionPathParts;
   if (kind === 'workflow-transition') return workflowTransitionTransactionPathParts;
+  if (kind === 'profile-transition') return profileTransitionTransactionPathParts;
   if (kind === 'local-verification') return localVerificationTransactionPathParts;
   return fail('unregistered transaction kind.');
 }
@@ -214,7 +232,7 @@ function captureAuthorityStore(store: ReviewedUpdateApprovalStore | undefined, k
       (!attribution || !Object.hasOwn(attribution, 'value'))) fail('authority kind must be an own data field.');
   let projectRoot: string | undefined;
   if (kind === 'local-verification' || kind === 'adoption' ||
-      kind === 'workflow-transition') {
+      kind === 'workflow-transition' || kind === 'profile-transition') {
     const root = store && Object.getOwnPropertyDescriptor(store, 'projectRoot');
     if (attribution?.value !== kind || !root || !Object.hasOwn(root, 'value') ||
         typeof root.value !== 'string' || !path.isAbsolute(root.value) || path.resolve(root.value) !== root.value) {
@@ -472,6 +490,8 @@ async function captureTransactionCandidate(
           ? 'adoption-transaction-candidate'
           : kind === 'workflow-transition'
             ? 'workflow-transition-transaction-candidate'
+          : kind === 'profile-transition'
+            ? 'profile-transition-transaction-candidate'
           : 'reviewed-update-candidate',
       payload, suppliedPreconditions, rootIdentity, parents: [...parents.values()]
     })
@@ -542,6 +562,26 @@ export async function inspectWorkflowTransitionTransactionCandidate(
   );
   await assertNoPendingTransactions(
     canonicalProjectRoot, 'workflow-transition', true
+  );
+  return captured.candidate;
+}
+
+export async function inspectProfileTransitionTransactionCandidate(
+  canonicalProjectRoot: string,
+  mutations: readonly ProjectFileMutation[],
+  preconditions: readonly ProjectFileSnapshot[]
+): Promise<ReviewedUpdateCandidate> {
+  const selected = captureJournalMutations(mutations);
+  const supplied = captureJournalPreconditions(preconditions);
+  await candidateRootIdentity(canonicalProjectRoot);
+  await assertNoPendingTransactions(
+    canonicalProjectRoot, 'profile-transition', true
+  );
+  const captured = await captureTransactionCandidate(
+    canonicalProjectRoot, selected, supplied, 'profile-transition'
+  );
+  await assertNoPendingTransactions(
+    canonicalProjectRoot, 'profile-transition', true
   );
   return captured.candidate;
 }
@@ -988,7 +1028,7 @@ export async function applyReviewedUpdateTransaction(
 ): Promise<ReviewedUpdateTransactionOutcome> {
   const kind = captureTransactionKind(options);
   if (kind === 'local-verification' || kind === 'adoption' ||
-      kind === 'workflow-transition') {
+      kind === 'workflow-transition' || kind === 'profile-transition') {
     fail(`${kind} requires its dedicated publication entrypoint.`);
   }
   return applyTransaction(projectRoot, mutations, options);
@@ -1092,6 +1132,60 @@ export function recoverWorkflowTransitionTransaction(
 ): Promise<ReviewedUpdateTransactionOutcome> {
   return recoverReviewedUpdateTransaction(projectRoot, {
     transactionKind: 'workflow-transition',
+    approvalStore: options.authorityStore,
+    ...(options.expectedTransaction
+      ? { expectedTransaction: options.expectedTransaction }
+      : {})
+  });
+}
+
+export async function applyProfileTransitionTransaction(
+  projectRoot: string,
+  mutations: readonly ProjectFileMutation[],
+  options: ProfileTransitionTransactionOptions
+): Promise<ReviewedUpdateTransactionOutcome> {
+  const {
+    authorityStore, planFingerprint, preconditions, expectedCandidateBinding,
+    validateCurrentInputs, onCheckpoint
+  } = options;
+  assertDigest(expectedCandidateBinding);
+  if (!Array.isArray(preconditions) ||
+      typeof validateCurrentInputs !== 'function') {
+    fail(
+      'profile-transition requires physical preconditions and locked current-input checks.'
+    );
+  }
+  return applyTransaction(projectRoot, mutations, {
+    planFingerprint,
+    transactionKind: 'profile-transition',
+    approvalStore: authorityStore,
+    preconditions,
+    expectedCandidateBinding,
+    ...(onCheckpoint ? { onCheckpoint } : {})
+  }, validateCurrentInputs);
+}
+
+export function inspectProfileTransitionTransaction(
+  projectRoot: string,
+  options: {
+    authorityStore: ProfileTransitionTransactionAuthorityStore;
+  }
+): Promise<ReviewedUpdateTransactionInspection> {
+  return inspectReviewedUpdateTransaction(projectRoot, {
+    transactionKind: 'profile-transition',
+    approvalStore: options.authorityStore
+  });
+}
+
+export function recoverProfileTransitionTransaction(
+  projectRoot: string,
+  options: {
+    authorityStore: ProfileTransitionTransactionAuthorityStore;
+    expectedTransaction?: ReviewedRecoveryExpectation;
+  }
+): Promise<ReviewedUpdateTransactionOutcome> {
+  return recoverReviewedUpdateTransaction(projectRoot, {
+    transactionKind: 'profile-transition',
     approvalStore: options.authorityStore,
     ...(options.expectedTransaction
       ? { expectedTransaction: options.expectedTransaction }

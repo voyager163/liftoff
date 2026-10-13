@@ -101,9 +101,9 @@ Depends on 3-7. References: design D7-D10; liftoff-project-migration, liftoff-pr
 - [x] 8.3 Implement transitions into pinned OpenSpec/Spec Kit using official isolated staging and separate tool/global-profile consent; verify collisions, active overlapping changes and invalid framework output block safely.
 - [x] 8.4 Complete additive agent/default repair for external workflows and Manual; verify existing integrations/defaults are preserved unless the exact requested change authorizes them.
 - [x] 8.5 Add team profile assets, identity, input selection and one-independent-human-review rules while retaining single-maintainer defaults; verify self/bot/stale approvals fail and no deployment-reviewer requirement is added implicitly.
-- [ ] 8.6 Implement profile-specific assessment and a distinct local policy/successor update plan for explicit profile changes; verify stronger existing controls, CODEOWNERS and old proof are not silently weakened/reused.
-- [ ] 8.7 Extend update routing and shared output contracts for workflow/profile/plugin incompatibility; verify ordinary update and force cannot execute another lane or enroll telemetry.
-- [ ] 8.8 Update all affected workflow/governance/repair guides and generated governance README sources; verify both profiles, all workflow directions, CLI-only use and Windows literal command rendering.
+- [x] 8.6 Implement profile-specific assessment and a distinct local policy/successor update plan for explicit profile changes; verify stronger existing controls, CODEOWNERS and old proof are not silently weakened/reused.
+- [x] 8.7 Extend update routing and shared output contracts for workflow/profile/plugin incompatibility; verify ordinary update and force cannot execute another lane or enroll telemetry.
+- [x] 8.8 Update all affected workflow/governance/repair guides and generated governance README sources; verify both profiles, all workflow directions, CLI-only use and Windows literal command rendering.
 
 ## 9. Build and qualify runtime-inclusive distributions
 

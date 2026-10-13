@@ -3,7 +3,9 @@ import { readBooleanFlag, readStringFlag } from '../cli/args/readers.js';
 import type { ParsedArgs } from '../domain/project/contracts.js';
 import type { CommandRunner } from '../process-runner.js';
 import type { PresentationSession } from '../terminal.js';
-import type { AssessmentReport, AssessmentTarget } from './types.js';
+import type {
+  AssessmentProfile, AssessmentReport, AssessmentTarget
+} from './types.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import { assessGovernance } from './engine.js';
 import { assembleAssessmentReport } from '../domain/governance/assessment/report.js';
@@ -63,12 +65,27 @@ export async function governanceAssessmentCommand(
 ): Promise<number> {
   const mode = readBooleanFlag(parsed.flags, 'live') ?? false;
   const start = path.resolve(context.cwd, parsed.positional[0] ?? readStringFlag(parsed.flags, 'project') ?? '.');
+  const requestedProfile = readStringFlag(parsed.flags, 'governance');
+  const profile: AssessmentProfile | undefined =
+    requestedProfile === 'single-maintainer-gitflow' ||
+    requestedProfile === 'team-gitflow'
+      ? requestedProfile
+      : undefined;
   let report: AssessmentReport;
   let target: AssessmentTarget | null = null;
   try {
-    target = loadAssessmentCatalog().target;
+    if (requestedProfile !== undefined && profile === undefined) {
+      throw new Error(
+        'Governance assessment profile must be single-maintainer-gitflow or team-gitflow.'
+      );
+    }
+    target = loadAssessmentCatalog(profile).target;
     const boundary = await resolveAssessmentBoundary(start);
-    report = await assessGovernance(boundary.root, { live: mode, runner: context.runner });
+    report = await assessGovernance(boundary.root, {
+      live: mode,
+      runner: context.runner,
+      ...(profile ? { profile } : {})
+    });
   } catch (error) {
     report = assembleAssessmentReport({
       projectRoot: start, mode: mode ? 'live' : 'local',

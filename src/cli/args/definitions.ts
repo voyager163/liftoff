@@ -323,6 +323,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
       'protected-stdin': booleanFlag('Credential enrollment is currently unavailable; this flag reads no secret', 'Consent'),
       execute: booleanFlag('Execute the reviewed apply-next/recover operation; planning and approval save external metadata separately', 'Consent'),
       live: booleanFlag('Assess only: request bounded read-only GitHub/Azure metadata with existing permissions', 'Consent'),
+      governance: valueFlag('Assess only: compare against single-maintainer-gitflow or team-gitflow without changing the project', 'Project', 'profile'),
       json: booleanFlag('Emit machine-readable JSON', 'Output'),
       ...helpFlag
     },

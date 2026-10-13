@@ -65,6 +65,12 @@ export type ManifestV8WriteRequest =
       };
       readonly activeLayout: ManifestActiveLayout;
       readonly managed: readonly ManagedManifestDecision[];
+    }
+  | {
+      readonly origin: 'profile-transition';
+      readonly source: unknown;
+      readonly profile: 'none' | ModernGovernanceProfile;
+      readonly managed: readonly ManagedManifestDecision[];
     };
 
 export interface ManifestV8Candidate {
@@ -208,7 +214,8 @@ function managedInput(
     | 'adoption'
     | 'historical-successor'
     | 'maintenance'
-    | 'workflow-transition',
+    | 'workflow-transition'
+    | 'profile-transition',
   source: HistoricalLiftoffManifest | LiftoffManifestV8 | undefined,
   target: ReturnType<typeof targetFor>
 ) {
@@ -226,9 +233,10 @@ function managedInput(
     names.add(name);
     const old = previous.get(name);
     if (record.kind === 'retire') {
-      if (origin !== 'workflow-transition' || !old || declared.has(name)) {
+      if (!['workflow-transition', 'profile-transition'].includes(origin) ||
+          !old || declared.has(name)) {
         throw new FileSystemError(
-          'Workflow transition retirement requires an exact source-only managed identity.'
+          'Transition retirement requires an exact source-only managed identity.'
         );
       }
       return [];
@@ -294,9 +302,9 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
   const origin = isRecord(input) ? Object.getOwnPropertyDescriptor(input, 'origin')?.value : undefined;
   if (origin !== 'fresh' && origin !== 'adoption' &&
       origin !== 'historical-successor' && origin !== 'maintenance' &&
-      origin !== 'workflow-transition') {
+      origin !== 'workflow-transition' && origin !== 'profile-transition') {
     throw new FileSystemError(
-      'Manifest writer requires explicit fresh, adoption, historical-successor, maintenance or workflow-transition origin.'
+      'Manifest writer requires explicit fresh, adoption, historical-successor, maintenance, workflow-transition or profile-transition origin.'
     );
   }
   const request = exactRecord(input, origin === 'fresh' ? [
@@ -306,6 +314,8 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
     origin === 'historical-successor' ? ['origin', 'source', 'profile', 'activeLayout', 'sourceManifestHistory', 'managed'] :
       origin === 'workflow-transition'
         ? ['origin', 'source', 'selection', 'activeLayout', 'managed']
+        : origin === 'profile-transition'
+          ? ['origin', 'source', 'profile', 'managed']
         : ['origin', 'source', 'managed',
         ...(isRecord(input) && Object.hasOwn(input, 'activationTargetHistory') ? ['activationTargetHistory'] : [])
       ], 'Manifest writer request');
@@ -350,7 +360,7 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
       }
       activationTargetHistory = requested;
     }
-  } else {
+  } else if (origin === 'workflow-transition') {
     source = rootReader.parseManifestV8(sourceData(request.source));
     const selection = exactRecord(
       sourceData(request.selection),
@@ -384,6 +394,27 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
     }
     originalReference = source.sourceManifestHistory;
     activationTargetHistory = source.activationTargetHistory;
+  } else {
+    source = rootReader.parseManifestV8(sourceData(request.source));
+    if (request.profile !== 'none' &&
+        request.profile !== 'single-maintainer-gitflow' &&
+        request.profile !== 'team-gitflow') {
+      throw new FileSystemError(
+        'Profile transition requires an explicit supported target profile.'
+      );
+    }
+    if (request.profile === source.governance.profile) {
+      throw new FileSystemError(
+        'Profile transition target must differ from the recorded profile.'
+      );
+    }
+    profile = request.profile as 'none' | ModernGovernanceProfile;
+    leaf = projectReader.validateManifestV8Project({
+      project: source.project,
+      framework: source.framework
+    });
+    originalReference = source.sourceManifestHistory;
+    activationTargetHistory = source.activationTargetHistory;
   }
   const target = targetFor(
     leaf,
@@ -399,7 +430,9 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
     return { logicalName: entry.logicalName, category: entry.category, pathParts: [...entry.pathParts], contentHash };
   }) : managedInput(origin === 'adoption' ? sourceData(request.managed) : request.managed,
     origin === 'adoption' || origin === 'historical-successor' ||
-      origin === 'workflow-transition' ? origin : 'maintenance',
+      origin === 'workflow-transition' || origin === 'profile-transition'
+      ? origin
+      : 'maintenance',
     source, target);
   const projectArtifacts = generated ? generated.flatMap((entry) => entry.lifecycle === 'project' ? [{
     logicalName: entry.logicalName, category: entry.category, pathParts: [...entry.pathParts],

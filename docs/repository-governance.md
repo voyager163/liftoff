@@ -81,7 +81,9 @@ governance/credentials/preflight-policy.json
 
 The complete policy is packaged at
 [`assets/governance/single-maintainer-gitflow/policy.md`](../assets/governance/single-maintainer-gitflow/policy.md).
-Policy version 6 treats numbered policy sections as capability chapters, not
+Current manifest-v8 single-maintainer generation uses policy version 7. Historical
+activation-v7 projects retain policy version 6 until their separately reviewed
+successor is published. Numbered policy sections are capability chapters, not
 execution order. The managed phase graph is the sole execution-order authority.
 Current team generation uses
 [`assets/governance/team-gitflow/policy-v1.md`](../assets/governance/team-gitflow/policy-v1.md)
@@ -89,12 +91,12 @@ and remains a local handoff until separately authorized live activation exists.
 
 ## Read-only governance assessment
 
-Current v8 manifests are validated and their exact identity is disclosed, but the
-existing assessment catalog does not yet interpret v8 active layout, managed-core
-compliance or activation records. Such reports mark identity support as
-`unsupported` and keep independent repository observations separate; they do not
-recommend a policy downgrade or reinterpret current records as historical proof.
-Use the advertised v8 local status/verification interfaces for their own scope.
+Current v8 manifests use the exact packaged assessment catalog for their recorded
+profile and workflow. Single-maintainer policy 7 and team policy 1 remain
+separate targets. Team review assessment accepts stronger controls such as two
+approvals, code-owner review, or last-push approval; it never recommends weakening
+them to the minimum. Historical activation proof remains diagnostic-only and
+cannot satisfy a different profile or current target identity.
 
 `/liftoff-governance-assess` is separate from `/liftoff-setup`, which remains the
 primary post-init path. Both OpenSpec and Spec Kit receive only their selected
@@ -103,7 +105,13 @@ runs assessment. It needs no commit, push, activation, or cloud credentials:
 
 ```bash
 liftoff governance assess --json
+liftoff governance assess --governance team-gitflow --json
 ```
+
+The optional `--governance` comparison is read-only. It does not change the
+manifest, configuration, live rules, evidence, or recorded profile. Without the
+flag, a supported Liftoff project uses its recorded profile; an ordinary Git
+repository uses the installed single-maintainer target.
 
 The same CLI command works in an ordinary Git repository without initialization,
 a manifest, or generated slash commands. An explicit path is authoritative;
@@ -215,6 +223,45 @@ diagnostics, but no migration is available without an explicit supported mapping
 Force cannot bypass compatibility or overwrite project-owned configuration.
 A future governance upgrade must reobserve facts and obtain its own reviewed
 plan and approvals; an assessment report supplies no mutation authority.
+
+## Reviewed governance-profile transitions
+
+For a current manifest-v8 project, edit only the developer-owned
+`governanceProfile` selection, then create the exact local transition plan:
+
+```bash
+liftoff update --check --json
+liftoff update --approve-plan <fingerprint> --json
+```
+
+The check stores an expiring plan outside the repository and reports source and
+target policy/activation identities, exact managed-core bytes, preserved
+CODEOWNERS and local ruleset summaries, stronger controls, and the explicit
+statement that old proof is not reusable for the target. Apply revalidates the
+same configuration, bytes, modes, directory conditions, and plan before using
+the dedicated profile-transition journal.
+
+The transaction can change only inventoried local managed policy/integration
+identity and the manifest. It preserves application files, Git history, workflow,
+configuration, CODEOWNERS, existing stronger review controls, deployment
+safeguards, activation state, evidence, approvals, and immutable history. Moving
+to `none` removes source-only governance files from manifest ownership but leaves
+their bytes on disk as preserved orphans. An existing
+`governance/activation-state.json` blocks this transition until governance is
+deactivated through its separately approved workflow. The profile transition
+does not deactivate live GitHub or Azure enforcement.
+
+`--force` cannot select, alter, or bypass this lane. Workflow changes route to
+`liftoff workflow set`; same-workflow agent/plugin changes use an advertised
+additive repair where applicable or remain explicitly unsupported. Recover only
+the exact selected plan:
+
+```bash
+liftoff update --recover --approve-plan <saved-fingerprint> --json
+```
+
+In PowerShell, pass the fingerprint as one literal argument; do not wrap the
+whole command in `Invoke-Expression` or reconstruct it from report prose.
 
 ## Separate native project repair
 

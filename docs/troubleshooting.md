@@ -220,6 +220,16 @@ conflicts. A missing or stale receipt requires a fresh check, not force.
 - Managed-core orphans are never deleted automatically.
 - Update neither changes nor installs project dependencies.
 
+If the report says `profile-transition-review-required`, review its source and
+target identities, stronger-control/CODEOWNERS inventory, exact effects, and
+`evidenceReusableForTarget: false`, then approve only that fingerprint without
+`--force`. If it says `workflow-transition-required`, use the literal
+`liftoff workflow set <target> ...` remedy. If it says
+`plugin-transition-unsupported`, use assessment and an advertised additive agent
+repair or workflow transition; do not edit the manifest or retry with force.
+`multiple-transitions-required` means configuration requests more than one
+identity change—keep one requested transition, complete it, then review the next.
+
 Commit or copy local work before overwriting. Transaction rollback protects a
 failed ordinary update. Activation migration additionally retains original
 history after success; failed revalidation retains blocked/resumable v2.
@@ -232,7 +242,9 @@ Run `liftoff update --check` to inspect the remaining paths. Once each path is
 absent or matches the current artifact, plain update promotes the handoff to
 `handoff-generated`. Setting `governanceProfile` to `none` turns previously
 managed handoff files into preserved orphans rather than deleting them; an
-unrecorded conflicting file remains user-owned and is not reported as an
+active `governance/activation-state.json` must first be removed by the
+separately approved deactivation workflow. An unrecorded conflicting file
+remains user-owned and is not reported as an
 orphan.
 
 If a newer Liftoff release contains different source, dependencies, schemas,

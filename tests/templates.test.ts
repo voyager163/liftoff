@@ -545,6 +545,12 @@ describe('templates and filesystem', () => {
     expect(readme).toMatch(/does not inspect or modify this project/);
     expect(readme).toContain('Managed-core conflicts are skipped by default');
     expect(readme).toContain('liftoff update --force');
+    expect(readme).toContain('separately labeled immutable local policy plan');
+    expect(readme).toContain('liftoff workflow set');
+    expect(readme).toContain('unmanaged orphans');
+    expect(readme).toMatch(
+      /(?:`--force` cannot cross those lanes|force cannot substitute either authority)/u
+    );
     expect(readme).not.toContain('liftoff update --apply');
     expect(readme).toContain('collision blocks the whole component');
     expect(readme).toContain('Managed-core orphans remain on disk');

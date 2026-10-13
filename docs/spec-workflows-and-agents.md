@@ -441,6 +441,30 @@ required history root survives version control. Existing inactive framework
 history remains outside managed-core ownership, and the expected complete
 target inventory is rechecked at commit and readback.
 
+All six workflow directions are explicit: Manual to OpenSpec or Spec Kit,
+OpenSpec to Manual or Spec Kit, and Spec Kit to Manual or OpenSpec. No direction
+is inferred from framework files, and active overlapping work blocks rather than
+being deleted or forced. CLI-only users run the same check, exact approval, and
+fingerprint-selected recovery commands; an agent integration is optional.
+
+```bash
+liftoff workflow set manual --project . --check --json
+liftoff workflow set manual --project . --approve-plan <fingerprint> --json
+liftoff workflow set manual --project . --recover --approve-plan <fingerprint> --json
+```
+
+Replace `manual` with `openspec` or `spec-kit` for the selected target. On
+Windows, these tokens and the fingerprint are literal argument values in
+PowerShell or `cmd.exe`; do not translate the displayed command into a POSIX
+subshell or pass it through `Invoke-Expression`.
+
+Governance-profile changes are different again. `liftoff update --check` reports
+a separately labeled local profile plan when `governanceProfile` changes.
+Its exact approval preserves this workflow and all framework history. It does
+not run an initializer, change agents, reuse old proof, weaken CODEOWNERS/review
+rules, or activate remote enforcement. `--force` cannot cross between workflow,
+profile, plugin, repair, or ordinary-maintenance authority.
+
 To align an existing OpenSpec project, configure both delivery and all workflows:
 
 ```bash

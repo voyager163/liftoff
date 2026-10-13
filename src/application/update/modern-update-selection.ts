@@ -18,6 +18,18 @@ export interface RecordedModernUpdateSelection {
 
 export type ModernUpdateSelection = ModernProjectSourceInput | RecordedModernUpdateSelection;
 
+export type ConfiguredModernUpdateRoute =
+  | {
+      readonly kind: 'workflow-transition';
+      readonly target: 'manual' | 'openspec' | 'spec-kit';
+      readonly agents: readonly string[] | undefined;
+      readonly defaultAgent: string | undefined;
+    }
+  | {
+      readonly kind: 'plugin-transition';
+      readonly fields: readonly ('agents' | 'defaultAgent')[];
+    };
+
 export function isRecordedModernUpdateSelection(value: ModernUpdateSelection): value is RecordedModernUpdateSelection {
   if (!Object.hasOwn(value, 'kind')) return false;
   if (Object.keys(value).length !== 1 || !('kind' in value) || value.kind !== 'recorded-project-intent') {
@@ -50,6 +62,7 @@ export async function readRecordedModernUpdateSelection(projectRoot: string) {
   if (profile !== 'none' && profile !== 'single-maintainer-gitflow' && profile !== 'team-gitflow') {
     throw new FileSystemError('Modern update requires a supported recorded governance profile.');
   }
+
   if (manifest.artifactVersion !== 8 && profile === 'team-gitflow') {
     throw new FileSystemError('A historical core update cannot introduce team policy; profile changes require a separate reviewed operation.');
   }
@@ -109,4 +122,80 @@ export async function readRecordedModernUpdateSelection(projectRoot: string) {
     snapshots: reader.observations(),
     deferredConfiguration
   };
+}
+
+export async function readConfiguredModernUpdateRoute(
+  projectRoot: string
+): Promise<ConfiguredModernUpdateRoute | null> {
+  const reader = await createSourceHistoryCapture(projectRoot);
+  const original = await reader.capture(['liftoff.manifest.json']);
+  const manifest = parseProjectManifest(parseHistoryJson(
+    original.content,
+    'update source manifest'
+  ));
+  if (manifest.artifactVersion !== 8) {
+    await reader.assertRoot();
+    return null;
+  }
+  const configuration = await reader.capture(['liftoff.config.json'], true);
+  if (configuration.content === undefined) {
+    await reader.assertRoot();
+    return null;
+  }
+  const config = parseProjectConfigOptions(
+    copySourceHistoryData(parseHistoryJson(
+      configuration.content,
+      'update desired configuration'
+    ), 'update desired configuration'),
+    {
+      ...projectCatalog,
+      getSpecWorkflow: value => catalogKey(value) === 'manual'
+        ? { id: 'manual' }
+        : projectCatalog.getSpecWorkflow(value),
+      getGovernanceProfile: value => catalogKey(value) === 'teamgitflow'
+        ? { id: 'team-gitflow' }
+        : projectCatalog.getGovernanceProfile(value)
+    },
+    { allowEmptyAgents: true }
+  );
+  const leaf = createManifestV8ProjectReader(
+    projectCatalog
+  ).validateManifestV8Project({
+    project: manifest.project,
+    framework: manifest.framework
+  });
+  const target = config.specWorkflow;
+  if (target !== undefined && target !== leaf.project.specWorkflow) {
+    if (target !== 'manual' && target !== 'openspec' &&
+        target !== 'spec-kit') {
+      throw new FileSystemError(
+        'Configured workflow transition target is unsupported.'
+      );
+    }
+    await reader.assertRoot();
+    return Object.freeze({
+      kind: 'workflow-transition',
+      target,
+      agents: config.agents === undefined
+        ? undefined
+        : Object.freeze([...config.agents]),
+      defaultAgent: config.defaultAgent
+    });
+  }
+  const fields: ('agents' | 'defaultAgent')[] = [];
+  if (config.agents !== undefined &&
+      canonicalJson(config.agents) !== canonicalJson(leaf.project.agents)) {
+    fields.push('agents');
+  }
+  if (config.defaultAgent !== undefined &&
+      config.defaultAgent !== leaf.project.defaultAgent) {
+    fields.push('defaultAgent');
+  }
+  await reader.assertRoot();
+  return fields.length
+    ? Object.freeze({
+        kind: 'plugin-transition',
+        fields: Object.freeze(fields)
+      })
+    : null;
 }

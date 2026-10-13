@@ -7,8 +7,6 @@ import type {
   ProjectAssessmentProfile, ProjectAssessmentReport, ProjectAssessmentTarget, ProjectRemediationCategory
 } from '../../domain/assessment/report.js';
 import { assembleProjectAssessmentReport, projectAssessmentFinding } from '../../domain/assessment/report.js';
-import { readManifestPluginMetadata } from '../../domain/project/manifest/plugins.js';
-import { toSafeProjectName } from '../../domain/project/planning.js';
 import { liftoffVersion } from '../../version.js';
 import {
   ApplicationFiles, ApplicationInspectionError, ApplicationInventoryLimitError, applicationDigest, applicationPathFold,
@@ -17,10 +15,9 @@ import {
 import { parseProjectManifest } from '../project/manifest.js';
 import { buildModernManagedCore } from '../project/modern-managed-core.js';
 import { modernSourceRegistry } from '../project/modern-plugins.js';
-import { composeModernManifestPlugins } from '../project/plugins.js';
 import {
   findModernActiveArtifactBinding, findModernActiveComponentBinding,
-  resolveModernManifestSourceContext, resolveModernProjectSourceContext, type ModernProjectSourceContext
+  resolveModernComparisonContext, resolveModernManifestSourceContext
 } from '../project/source-context.js';
 import { inspectProjectInventory } from './inventory.js';
 import { projectInventoryBounds } from './inventory-types.js';
@@ -52,25 +49,6 @@ async function boundary(start: string, explicit: boolean) {
     if (parent === root) throw new ApplicationInspectionError('No Liftoff or Git boundary was found. Select an explicit project directory to assess a non-Git application.');
     root = parent;
   }
-}
-
-function comparisonContext(source: ModernProjectSourceContext, profile: ProjectAssessmentProfile) {
-  const workload = source.selection.project.workload;
-  const composition = composeModernManifestPlugins({
-    workload: workload.kind, stack: workload.apiStack, cloud: workload.cloud,
-    ...(workload.kind === 'genai' ? { variant: workload.pattern } : {}),
-    workflow: source.selection.project.specWorkflow, agents: source.selection.project.agents,
-    frontend: workload.frontend ? 'included' : 'omitted', governanceProfile: profile, environments: workload.environments
-  }, { safeProjectName: toSafeProjectName(source.selection.project.name) });
-  const plugins = readManifestPluginMetadata({
-    schemaVersion: 1, resolutionDigest: composition.resolution.digest, selections: composition.resolution.plugins
-  }, {
-    stack: workload.apiStack, cloud: workload.cloud,
-    workflow: source.selection.project.specWorkflow, agents: source.selection.project.agents
-  });
-  return resolveModernProjectSourceContext({
-    selection: { ...source.selection, profile }, plugins, activeLayout: source.activeLayout
-  });
 }
 
 const unknown: ProjectAssessmentObservation = { availability: 'not-observed', value: null, source: null };
@@ -109,7 +87,7 @@ export async function assessProject(input: {
   const recordedProfile = manifest?.governance.profile ?? null;
   const selectedProfile = input.governance ?? (recordedProfile === 'none' || recordedProfile === 'single-maintainer-gitflow' ||
     recordedProfile === 'team-gitflow' ? recordedProfile : 'single-maintainer-gitflow');
-  const targetContext = source ? comparisonContext(source, selectedProfile) : null;
+  const targetContext = source ? resolveModernComparisonContext(source, selectedProfile) : null;
   const registry = modernSourceRegistry();
   const policySource = selectedProfile === 'none' ? null
     : modernActivationSourceContracts().find(contract => contract.identity.profile === selectedProfile);

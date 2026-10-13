@@ -4,7 +4,11 @@ import {
   parseManifest,
   parseProjectManifest
 } from '../application/project/manifest.js';
-import { resolveModernManifestSourceContext } from '../application/project/source-context.js';
+import {
+  resolveModernComparisonContext,
+  resolveModernManifestSourceContext
+} from '../application/project/source-context.js';
+import { buildModernManagedCore } from '../application/project/modern-managed-core.js';
 import { validateArtifactPathParts } from '../domain/project/paths.js';
 import { buildProjectPlan } from '../application/project/planning.js';
 import { formatUpdateCommand } from '../application/update/command-guidance.js';
@@ -31,7 +35,9 @@ import type {
   EvidenceSelectionResult
 } from '../domain/governance/activation/evidence.js';
 import type { ActivationInputSnapshot } from '../domain/governance/activation/inputs.js';
-import type { GeneratedArtifact, LiftoffManifest } from '../domain/project/contracts.js';
+import type { LiftoffManifest } from '../domain/project/contracts.js';
+import type { LiftoffManifestV8 } from '../domain/project/manifest/v8.js';
+import type { AssessmentProfile } from '../domain/governance/assessment/types.js';
 import type { AssessmentDiagnostic, AssessmentProjectIdentity, JsonValue } from './types.js';
 import { AssessmentFiles, AssessmentInputError, parseAssessmentJson } from './readers.js';
 import { containsSensitiveText, isRecord, jsonValue, sanitizeAssessmentText } from '../domain/governance/assessment/sanitize.js';
@@ -53,10 +59,14 @@ export type {
 export interface AssessmentProject {
   kind: 'liftoff' | 'git';
   manifest: LiftoffManifest | null;
-  project: LiftoffManifest['project'] | null;
+  project: LiftoffManifest['project'] | LiftoffManifestV8['project'] | null;
   identity: AssessmentProjectIdentity;
   managedEntries: Array<{ logicalName: string; pathParts: string[]; contentHash: string }>;
-  renderedCore: GeneratedArtifact[];
+  renderedCore: Array<{
+    logicalName: string;
+    pathParts: string[];
+    content: string;
+  }>;
   state: UserActivationState | null;
   stateIdentity: JsonValue;
   evidence: PhaseEvidenceRecord[];
@@ -166,7 +176,10 @@ function rawArtifactPaths(raw: Record<string, unknown>): void {
   }
 }
 
-export async function inspectAssessmentProject(files: AssessmentFiles): Promise<AssessmentProject> {
+export async function inspectAssessmentProject(
+  files: AssessmentFiles,
+  comparisonProfile?: AssessmentProfile
+): Promise<AssessmentProject> {
   const text = await files.read(['liftoff.manifest.json']);
   if (text === null) throw new AssessmentInputError('project-not-found', 'No liftoff.manifest.json was found in the selected project.');
   const raw = parseAssessmentJson(text, 'liftoff.manifest.json');
@@ -188,20 +201,37 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
       throw new AssessmentInputError('inputs-changed', 'Current manifest interpretation changed.', 'liftoff.manifest.json');
     }
     const context = resolveModernManifestSourceContext(manifest);
+    const profile = comparisonProfile ?? context.selection.profile;
+    const comparison = resolveModernComparisonContext(context, profile);
+    const renderedCore = buildModernManagedCore({
+      selection: comparison.selection,
+      plugins: comparison.plugins,
+      activeLayout: comparison.activeLayout
+    });
     return {
-      kind: 'liftoff', manifest: null, project: null,
+      kind: 'liftoff', manifest: null, project: manifest.project,
       identity: {
-        availability: 'unsupported', manifestVersion: 8, cliVersion: manifest.liftoffVersion,
+        availability: 'known', manifestVersion: 8, cliVersion: manifest.liftoffVersion,
         profile: context.selection.profile,
         policyVersion: manifest.governance.profile === 'none' ? null : manifest.governance.policyVersion,
         recordedActivationIdentity: manifest.governance.profile === 'none' ? null : jsonValue(manifest.governance.activationIdentity),
         stateSource: 'unsupported'
       },
-      managedEntries: [], renderedCore: [], state: null, stateIdentity: null,
+      managedEntries: manifest.managedArtifacts.map(entry => ({
+        logicalName: entry.logicalName,
+        pathParts: [...entry.pathParts],
+        contentHash: entry.contentHash
+      })),
+      renderedCore: renderedCore.map(entry => ({
+        logicalName: entry.logicalName,
+        pathParts: [...entry.pathParts],
+        content: entry.content
+      })),
+      state: null, stateIdentity: null,
       evidence: [], approvals: [], plans: [], bindingBaseline: null, invalidEvidence: false,
       diagnostics: [diagnostic(
-        'unsupported-current-assessment',
-        'Manifest v8 source and active-binding metadata are validated, but this assessment catalog does not assess active-layout or managed-core compliance or current activation records. Independent repository facts remain assessable. No conversion, evidence reuse or policy downgrade is recommended; use separately advertised v8 inspection commands.',
+        'modern-proof-not-reused',
+        `Manifest v8 managed-core and active-layout metadata are assessed against ${profile}. Existing activation state, evidence and approvals remain diagnostic-only here and cannot satisfy a different profile identity. No provider operation or policy change is authorized.`,
         'liftoff.manifest.json'
       )]
     };

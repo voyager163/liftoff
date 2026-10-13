@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "profile": "single-maintainer-gitflow",
-  "policyVersion": "6",
-  "policyDigest": "9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149",
+  "policyVersion": "7",
+  "policyDigest": "d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
   "families": ["azure", "deployment", "documentation", "dora", "environments", "evidence", "gitflow", "governance", "health", "identity", "monitoring", "promotion", "release", "retention", "rollback", "runner", "security"],
   "controls": [
     {"id":"identity.activation","title":"Recorded activation identity","policySection":"Liftoff activation protocol","severity":"warning","applicability":"always","evaluator":"identity","proofLayers":["recorded"],"expected":"installed-activation-identity","phaseIds":[],"supported":true,"exceptionAllowed":false,"ownership":"managed-core","recommendation":"Inspect the found and installed identities. Use a release with an explicit compatibility mapping; assessment cannot migrate state."},
