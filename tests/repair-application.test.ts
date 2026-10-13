@@ -207,6 +207,15 @@ describe('bounded application inventory and executable staged patch', () => {
       'ADMISSION_DENIED', 'SPAWN_REQUEST_FAILED', 'CONTROL_SERVER_ERROR',
       'UNSUPPORTED_PROCESS_SETTLEMENT', 'CORRUPTED_CONTROLLER_ASSET', 'ABORTED', 'ENOENT'
     ];
+    const admissionStages = [
+      'frame-header-read', 'frame-payload-read', 'frame-json', 'frame-returned',
+      'environment-decode', 'environment-digest', 'environment-allocate', 'environment-verified',
+      'job-create', 'job-configure', 'job-configured', 'stdio-open', 'stdio-configured',
+      'attributes-initialize', 'attributes-job', 'attributes-handles', 'attributes-configured',
+      'startup-info', 'executable-check', 'launch-enter', 'create-process', 'create-process-returned',
+      'job-membership', 'job-membership-verified', 'resume-thread', 'resume-thread-returned', 'launch-returned',
+      'ack-write', 'ack-written'
+    ];
     const runnerDiagnostics = runnerOutcomes.map((outcome) => {
       if (outcome.status !== 'fulfilled') return { rejected: true };
       const raw = outcome.value;
@@ -219,7 +228,9 @@ describe('bounded application inventory and executable staged patch', () => {
         supervisorPhase: raw.errorCode === 'SUPERVISOR_TIMEOUT'
           ? /during (startup|execution) without reporting settlement/u.exec(raw.errorMessage ?? '')?.[1] ?? null : null,
         controllerStage: raw.errorCode === 'SUPERVISOR_TIMEOUT'
-          ? /controller=(loading-compiler|compiling|connecting|connected|not-reported),/u.exec(raw.errorMessage ?? '')?.[1] ?? null : null
+          ? /controller=(loading-compiler|compiling|connecting|connected|not-reported),/u.exec(raw.errorMessage ?? '')?.[1] ?? null : null,
+        controllerAdmissionStage: raw.errorCode === 'SUPERVISOR_TIMEOUT'
+          ? new RegExp(`admission=(${admissionStages.join('|')}|not-reported),`, 'u').exec(raw.errorMessage ?? '')?.[1] ?? null : null
       };
     });
     expect(verified.status, `${verified.blockers.join('; ')}; runner metadata: ${JSON.stringify(runnerDiagnostics)}`).toBe('passed');

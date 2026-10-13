@@ -25,9 +25,18 @@ import {
 } from './windows-job-protocol.js';
 
 export const windowsJobControllerAssetPathParts = ['assets', 'repair', 'windows-job-controller.ps1'] as const;
-export const windowsJobControllerAssetDigest = 'e6874bc3f9af08aa2655f1a52115e50f2cce99da695533c723c790b25fd21b5d';
+export const windowsJobControllerAssetDigest = 'f12e941b5a1d053dd20bfefefdab40af7b0ccd9a380c4032310c51c5fbe53434';
 const controllerStartupTimeoutMs = 15_000;
 const controllerSettlementGraceMs = 5_000;
+const controllerAdmissionStages = [
+  'frame-header-read', 'frame-payload-read', 'frame-json', 'frame-returned',
+  'environment-decode', 'environment-digest', 'environment-allocate', 'environment-verified',
+  'job-create', 'job-configure', 'job-configured', 'stdio-open', 'stdio-configured',
+  'attributes-initialize', 'attributes-job', 'attributes-handles', 'attributes-configured',
+  'startup-info', 'executable-check', 'launch-enter', 'create-process', 'create-process-returned',
+  'job-membership', 'job-membership-verified', 'resume-thread', 'resume-thread-returned', 'launch-returned',
+  'ack-write', 'ack-written'
+] as const;
 
 export interface WindowsJobRunnerOptions {
   assetPath?: string;
@@ -462,12 +471,14 @@ export async function runWindowsJobCommand(
       if (supervisorTimer) clearTimeout(supervisorTimer);
       supervisorTimer = setTimeout(() => {
         const controllerStage = [...psStderr.matchAll(/LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|connecting|connected)/gu)].at(-1)?.[1] ?? 'not-reported';
+        const controllerAdmissionCandidate = [...psStderr.matchAll(/^LIFTOFF_CONTROLLER_ADMISSION: ([^\r\n]*)\r?$/gmu)].at(-1)?.[1];
+        const controllerAdmissionStage = controllerAdmissionStages.find(stage => stage === controllerAdmissionCandidate) ?? 'not-reported';
         void finish({
           timedOut: true,
           processTreeSettled: false,
           processSpawned: spawnRequestDispatched,
           errorCode: 'SUPERVISOR_TIMEOUT',
-          errorMessage: `Supervisor timeout: Windows Job Object controller exceeded ${budgetMs}ms during ${phase} without reporting settlement (controller=${controllerStage}, connected=${connected}, authenticated=${authenticated}, state=${session.getState()}).`
+          errorMessage: `Supervisor timeout: Windows Job Object controller exceeded ${budgetMs}ms during ${phase} without reporting settlement (controller=${controllerStage}, admission=${controllerAdmissionStage}, connected=${connected}, authenticated=${authenticated}, state=${session.getState()}).`
         });
       }, budgetMs);
     }

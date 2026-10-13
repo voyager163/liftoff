@@ -36,7 +36,8 @@ async function mockControllerLauncher(directory: string, script: string): Promis
 }
 
 async function timedProtocolController(directory: string,
-  mode: 'slow-ready' | 'no-ready' | 'no-ack' | 'no-result' | 'bad-ack' | 'duplicate-ack' | 'late-ack') {
+  mode: 'slow-ready' | 'no-ready' | 'no-ack' | 'no-result' | 'bad-ack' | 'duplicate-ack' | 'late-ack',
+  admissionDiagnostics = '') {
   const script = path.join(directory, 'timed-protocol-controller.mjs');
   await writeFile(script, `
 import net from 'node:net';
@@ -64,7 +65,10 @@ socket.on('data', chunk => {
   if (pending.length < 4 || pending.length < 4 + pending.readUInt32BE(0)) return;
   const request = JSON.parse(pending.subarray(4, 4 + pending.readUInt32BE(0)).toString());
   if (request.kind !== 'spawn' || request.timeoutMs !== 50) process.exit(2);
-  if (mode === 'no-ack') return;
+  if (mode === 'no-ack') {
+    process.stderr.write(${JSON.stringify(admissionDiagnostics)});
+    return;
+  }
   const ack = { kind: 'ack', sequence: 1, admitted: true };
   const response = { kind: 'response', sequence: 1, phase: 'completed', status: 0,
     signal: null, activeProcesses: 0, jobTerminated: false, settled: true };
@@ -129,6 +133,91 @@ describe('Windows Job Object controller asset integrity and host environment', (
     expect(bootstrap).not.toMatch(/\$_|\.Exception|\.Message/u);
   });
 
+  it('limits private admission emissions and failure capture to the same finite literal enum', async () => {
+    const controller = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+    const runner = await readFile(path.join(process.cwd(), 'src/adapters/process/windows-job-runner.ts'), 'utf8');
+    const assertion = await readFile(path.join(process.cwd(), 'tests/repair-application.test.ts'), 'utf8');
+    const stages = [
+      'frame-header-read', 'frame-payload-read', 'frame-json', 'frame-returned',
+      'environment-decode', 'environment-digest', 'environment-allocate', 'environment-verified',
+      'job-create', 'job-configure', 'job-configured', 'stdio-open', 'stdio-configured',
+      'attributes-initialize', 'attributes-job', 'attributes-handles', 'attributes-configured',
+      'startup-info', 'executable-check', 'launch-enter', 'create-process', 'create-process-returned',
+      'job-membership', 'job-membership-verified', 'resume-thread', 'resume-thread-returned', 'launch-returned',
+      'ack-write', 'ack-written'
+    ];
+    const emissions = [...controller.matchAll(/^ +(?:\[Console\]::Error|Console\.Error)\.WriteLine\("LIFTOFF_CONTROLLER_ADMISSION: ([a-z-]+)"\);?$/gmu)];
+    expect(new Set(emissions.map(match => match[1]))).toEqual(new Set(stages));
+    expect(emissions).toHaveLength(stages.length + 1);
+    expect(controller.match(/LIFTOFF_CONTROLLER_ADMISSION:/gu)).toHaveLength(emissions.length);
+    for (const [source, name] of [[runner, 'controllerAdmissionStages'], [assertion, 'admissionStages']] as const) {
+      const declaration = new RegExp(`const ${name} = \\[([\\s\\S]*?)\\]`, 'u').exec(source)?.[1] ?? '';
+      expect([...declaration.matchAll(/'([^']+)'/gu)].map(match => match[1])).toEqual(stages);
+    }
+  });
+
+  it('restores exact pre-diagnostic C#, control, containment and supervisor bytes by removing only approved diagnostics', async () => {
+    const controller = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+    const ackHelper = [
+      'function Write-AckAdmissionDiagnostic($frame, [bool]$completed) {',
+      "    if ($frame.kind -eq 'ack') {",
+      '        if ($completed) {',
+      '            [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: ack-written")',
+      '        } else {',
+      '            [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: ack-write")',
+      '        }',
+      '    }',
+      '}', '', ''
+    ].join('\n');
+    expect(controller).toContain(ackHelper);
+    const originalController = controller.replace(ackHelper, '')
+      .replace(/^ +(?:\[Console\]::Error|Console\.Error)\.WriteLine\("LIFTOFF_CONTROLLER_ADMISSION: [a-z-]+"\);?\n/gmu, '')
+      .replace(/^ +Write-AckAdmissionDiagnostic \$obj \$(?:false|true)\n/gmu, '');
+    expect(createHash('sha256').update(originalController).digest('hex'))
+      .toBe('e6874bc3f9af08aa2655f1a52115e50f2cce99da695533c723c790b25fd21b5d');
+    const runner = await readFile(path.join(process.cwd(), 'src/adapters/process/windows-job-runner.ts'), 'utf8');
+    const originalRunner = runner
+      .replace(windowsJobControllerAssetDigest, 'e6874bc3f9af08aa2655f1a52115e50f2cce99da695533c723c790b25fd21b5d')
+      .replace(/^const controllerAdmissionStages = \[\n(?: .*\n)+\] as const;\n/mu, '')
+      .replace(/^ +const controllerAdmission(?:Candidate|Stage) = .+\n/gmu, '')
+      .replace(', admission=${controllerAdmissionStage}', '');
+    expect(createHash('sha256').update(originalRunner).digest('hex'))
+      .toBe('09d043c32c3db5d133beb767ed1c63557377178b93c99a8923954cd2712ddd2d');
+  });
+
+  it('places fixed stages around admission boundaries without preceding native error capture or weakening policy denial', async () => {
+    const controller = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+    const frameReader = controller.slice(controller.indexOf('function Read-ControlFrame'), controller.indexOf('$hJob = [IntPtr]::Zero'));
+    for (const [stage, operation] of [
+      ['frame-header-read', '$stream.Read($header'], ['frame-payload-read', '$stream.Read($payload'],
+      ['frame-json', 'return $json | & $fromJsonCmdlet']
+    ]) {
+      expect(frameReader.indexOf(`LIFTOFF_CONTROLLER_ADMISSION: ${stage}"`)).toBeLessThan(frameReader.indexOf(operation));
+    }
+    const body = controller.slice(controller.indexOf('# Read the spawn request'), controller.indexOf('# Begin asynchronous read'));
+    const psStages = [
+      'frame-returned', 'environment-decode', 'environment-digest', 'environment-allocate', 'environment-verified',
+      'job-create', 'job-configure', 'job-configured', 'stdio-open', 'stdio-configured',
+      'attributes-initialize', 'attributes-job', 'attributes-handles', 'attributes-configured',
+      'startup-info', 'executable-check', 'launch-enter', 'launch-returned'
+    ];
+    expect([...body.matchAll(/LIFTOFF_CONTROLLER_ADMISSION: ([a-z-]+)"/gu)].map(match => match[1])).toEqual(psStages);
+    const createFailure = controller.slice(controller.indexOf('if (!created)'), controller.indexOf('bool inJob = false'));
+    expect(createFailure.indexOf('Marshal.GetLastWin32Error()'))
+      .toBeLessThan(createFailure.indexOf('LIFTOFF_CONTROLLER_ADMISSION: create-process-returned'));
+    for (const [stage, operation] of [
+      ['create-process', 'bool created = CreateProcess('], ['job-membership', 'if (!IsProcessInJob('],
+      ['resume-thread', 'ResumeThread(pi.hThread);']
+    ]) {
+      expect(controller.indexOf(`LIFTOFF_CONTROLLER_ADMISSION: ${stage}"`)).toBeLessThan(controller.indexOf(operation));
+    }
+    const send = controller.slice(controller.indexOf('function Send-ControlFrame'), controller.indexOf('function Read-ControlFrame'));
+    expect(send.indexOf('Write-AckAdmissionDiagnostic $obj $false')).toBeLessThan(send.indexOf('$obj | & $toJsonCmdlet'));
+    expect(send.indexOf('Write-AckAdmissionDiagnostic $obj $true')).toBeGreaterThan(send.indexOf('$stream.Flush()'));
+    expect(controller.indexOf("throw 'ConstrainedLanguage mode does not permit Win32 Job API compilation.'"))
+      .toBeLessThan(controller.indexOf('LIFTOFF_CONTROLLER_ADMISSION:'));
+  });
+
   it('rejects a corrupted controller asset before launching any process', async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'liftoff-bad-asset-'));
     tempDirs.push(tempDir);
@@ -180,14 +269,24 @@ describe('Windows Job Runner protocol execution and policy admission blockers', 
       .toMatchObject({ status: 0, timedOut: false, processSpawned: true, processTreeSettled: true });
   });
 
-  it.each(['no-ready', 'no-ack'] as const)('retains a finite startup deadline with %s rather than granting execution time', async mode => {
+  it.each([
+    { mode: 'no-ready', diagnostic: 'absent', stderr: '', stage: 'not-reported' },
+    { mode: 'no-ack', diagnostic: 'last closed enum', stderr: 'LIFTOFF_CONTROLLER_ADMISSION: frame-header-read\r\nLIFTOFF_CONTROLLER_ADMISSION: frame-json\r\n', stage: 'frame-json' },
+    { mode: 'no-ack', diagnostic: 'unknown enum', stderr: 'LIFTOFF_CONTROLLER_ADMISSION: PRIVATE_ENV_VALUE_PATH_ARG\n', stage: 'not-reported' },
+    { mode: 'no-ack', diagnostic: 'forged suffix after a valid enum', stderr: 'LIFTOFF_CONTROLLER_ADMISSION: frame-json\nLIFTOFF_CONTROLLER_ADMISSION: ack-written PRIVATE_ENV_VALUE_PATH_ARG\n', stage: 'not-reported' },
+    { mode: 'no-ack', diagnostic: 'forged prefix', stderr: 'PRIVATE_ENV_VALUE_PATH_ARG LIFTOFF_CONTROLLER_ADMISSION: ack-written\n', stage: 'not-reported' }
+  ] as const)('retains a finite startup deadline with $mode/$diagnostic rather than granting execution time or disclosing stderr', async ({ mode, stderr, stage }) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-controller-startup-'));
     tempDirs.push(directory);
     const result = await runWindowsJobCommand({ executable: process.execPath, args: ['--test'] }, { timeoutMs: 50 },
-      await timedProtocolController(directory, mode));
+      await timedProtocolController(directory, mode, stderr));
     expect(result).toMatchObject({ status: null, timedOut: true, processSpawned: mode === 'no-ack',
       processTreeSettled: false, errorCode: 'SUPERVISOR_TIMEOUT' });
     expect(result.errorMessage).toContain('exceeded 15000ms during startup');
+    expect(result.errorMessage).toContain(`admission=${stage},`);
+    expect(result.errorMessage).not.toContain('PRIVATE_ENV_VALUE_PATH_ARG');
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('');
   });
 
   it('keeps the target deadline and existing settlement grace finite after a valid acknowledgement', async () => {

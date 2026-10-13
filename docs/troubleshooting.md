@@ -441,6 +441,16 @@ supervisor remains separate from a target's declared execution budget; neither
 an admission failure nor unknown process settlement permits project mutation
 or deletion of provider staging.
 
+A private `LIFTOFF_CONTROLLER_ADMISSION` diagnostic identifies only a closed,
+fixed frame/JSON, environment/digest, Job, stdio, attribute, executable-check,
+CreateProcess, resume, or acknowledgement stage. The last observed stage is not
+proof of the blocked call or underlying cause; absence remains unknown.
+Authenticated ready plus a dispatched spawn request without a valid acknowledgement
+does not prove target creation. On a supervisor timeout, `processSpawned` conservatively
+records that request dispatch, not a confirmed target start. Diagnostic emissions
+can affect timing: a passing diagnostic candidate does not prove a root fix or
+qualify an earlier source revision.
+
 ## Native startup rejects configuration or appears to ignore the file
 
 Python and Node read root `.env`; Python backend-CWD startup still resolves that

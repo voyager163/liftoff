@@ -274,6 +274,7 @@ public static class Win32JobNative {
     {
         uint creationFlags = EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT;
         PROCESS_INFORMATION pi = new PROCESS_INFORMATION();
+        Console.Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: create-process");
         bool created = CreateProcess(
             appPath,
             commandLine,
@@ -288,13 +289,16 @@ public static class Win32JobNative {
 
         if (!created) {
             int err = Marshal.GetLastWin32Error();
+            Console.Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: create-process-returned");
             hProcess = IntPtr.Zero;
             processId = 0;
             errorMessage = "CreateProcessW failed with Win32 error " + err;
             return 1;
         }
 
+        Console.Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: create-process-returned");
         bool inJob = false;
+        Console.Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: job-membership");
         if (!IsProcessInJob(pi.hProcess, hJob, out inJob) || !inJob) {
             TerminateProcess(pi.hProcess, 1);
             CloseHandle(pi.hThread);
@@ -305,7 +309,10 @@ public static class Win32JobNative {
             return 2;
         }
 
+        Console.Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: job-membership-verified");
+        Console.Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: resume-thread");
         ResumeThread(pi.hThread);
+        Console.Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: resume-thread-returned");
         CloseHandle(pi.hThread);
 
         hProcess = pi.hProcess;
@@ -371,7 +378,18 @@ try {
     exit 1
 }
 
+function Write-AckAdmissionDiagnostic($frame, [bool]$completed) {
+    if ($frame.kind -eq 'ack') {
+        if ($completed) {
+            [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: ack-written")
+        } else {
+            [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: ack-write")
+        }
+    }
+}
+
 function Send-ControlFrame($stream, $obj) {
+    Write-AckAdmissionDiagnostic $obj $false
     $json = $obj | & $toJsonCmdlet -Compress -Depth 10
     $payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($json)
     $len = $payloadBytes.Length
@@ -383,9 +401,11 @@ function Send-ControlFrame($stream, $obj) {
     $stream.Write($header, 0, 4)
     $stream.Write($payloadBytes, 0, $len)
     $stream.Flush()
+    Write-AckAdmissionDiagnostic $obj $true
 }
 
 function Read-ControlFrame($stream) {
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: frame-header-read")
     $header = & $newObjectCmdlet byte[] 4
     $read = 0
     while ($read -lt 4) {
@@ -397,6 +417,7 @@ function Read-ControlFrame($stream) {
     if ($len -le 0 -or $len -gt 262144) {
         throw "Invalid control frame length: $len"
     }
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: frame-payload-read")
     $payload = & $newObjectCmdlet byte[] $len
     $read = 0
     while ($read -lt $len) {
@@ -405,6 +426,7 @@ function Read-ControlFrame($stream) {
         $read += $n
     }
     $json = [System.Text.Encoding]::UTF8.GetString($payload)
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: frame-json")
     return $json | & $fromJsonCmdlet
 }
 
@@ -433,6 +455,7 @@ try {
 
     # Read the spawn request from the parent
     $req = Read-ControlFrame $pipe
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: frame-returned")
     if ($null -eq $req) {
         throw "Parent closed control pipe before sending spawn request."
     }
@@ -459,8 +482,10 @@ try {
     }
 
     # Validate and allocate environment block if provided
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: environment-decode")
     if (-not [string]::IsNullOrEmpty($req.envBlockBase64)) {
         $envBytes = [System.Convert]::FromBase64String($req.envBlockBase64)
+        [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: environment-digest")
         $sha = [System.Security.Cryptography.SHA256]::Create()
         $computedEnv = -join ($sha.ComputeHash($envBytes) | ForEach-Object { '{0:x2}' -f $_ })
         if ($computedEnv -ne $req.envDigest) {
@@ -477,11 +502,14 @@ try {
             }
             exit 1
         }
+        [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: environment-allocate")
         $pEnv = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($envBytes.Length)
         [System.Runtime.InteropServices.Marshal]::Copy($envBytes, 0, $pEnv, $envBytes.Length)
     }
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: environment-verified")
 
     # Create unnamed non-inheritable Job Object
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: job-create")
     $hJob = [Win32JobNative]::CreateJobObject([IntPtr]::Zero, $null)
     if ($hJob -eq [IntPtr]::Zero) {
         $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
@@ -500,6 +528,7 @@ try {
     }
 
     # Set JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE on the Job
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: job-configure")
     $extendedInfo = [Win32JobNative]::CreateKillOnJobCloseExtendedInfo()
     $sizeExtended = [System.Runtime.InteropServices.Marshal]::SizeOf([type][Win32JobNative+JOBOBJECT_EXTENDED_LIMIT_INFORMATION])
     $pExtendedInfo = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($sizeExtended)
@@ -520,8 +549,10 @@ try {
         }
         exit 1
     }
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: job-configured")
 
     # Prepare stdio file handles if specified
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: stdio-open")
     $hasStdHandles = $false
     if (-not [string]::IsNullOrEmpty($req.stdoutFile) -and -not [string]::IsNullOrEmpty($req.stderrFile)) {
         $hStdOut = [Win32JobNative]::CreateFile(
@@ -565,8 +596,10 @@ try {
         }
         $hasStdHandles = $true
     }
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: stdio-configured")
 
     # Initialize Attribute List for STARTUPINFOEX
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: attributes-initialize")
     $attributeCount = if ($hasStdHandles) { 2 } else { 1 }
     $attrSize = [IntPtr]::Zero
     [Win32JobNative]::InitializeProcThreadAttributeList([IntPtr]::Zero, $attributeCount, 0, [ref]$attrSize) | Out-Null
@@ -588,6 +621,7 @@ try {
     }
 
     # Update Attribute List with PROC_THREAD_ATTRIBUTE_JOB_LIST
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: attributes-job")
     $pJobHandle = [System.Runtime.InteropServices.Marshal]::AllocHGlobal([IntPtr]::Size)
     [System.Runtime.InteropServices.Marshal]::WriteIntPtr($pJobHandle, $hJob)
 
@@ -617,6 +651,7 @@ try {
 
     # Update Attribute List with PROC_THREAD_ATTRIBUTE_HANDLE_LIST if stdio handles exist
     if ($hasStdHandles) {
+        [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: attributes-handles")
         $pHandleList = [System.Runtime.InteropServices.Marshal]::AllocHGlobal([IntPtr]::Size * 2)
         [System.Runtime.InteropServices.Marshal]::WriteIntPtr($pHandleList, 0, $hStdOut)
         [System.Runtime.InteropServices.Marshal]::WriteIntPtr($pHandleList, [IntPtr]::Size, $hStdErr)
@@ -645,8 +680,10 @@ try {
             exit 1
         }
     }
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: attributes-configured")
 
     # Prepare STARTUPINFOEX via C# helper to guarantee native struct field initialization
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: startup-info")
     $siex = [Win32JobNative]::CreateStartupInfoEx($attributeList, $hStdOut, $hStdErr)
 
     # Launch root process suspended inside the Job Object
@@ -654,6 +691,7 @@ try {
                      [Win32JobNative]::CREATE_SUSPENDED -bor
                      [Win32JobNative]::CREATE_UNICODE_ENVIRONMENT
 
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: executable-check")
     $targetDir = if ([string]::IsNullOrEmpty($req.cwd)) { $null } else { $req.cwd }
     if ([string]::IsNullOrEmpty($req.executable) -or -not [System.IO.Path]::IsPathRooted($req.executable) -or -not [System.IO.File]::Exists($req.executable)) {
         Send-ControlFrame $pipe @{
@@ -674,6 +712,7 @@ try {
     $hProcess = [IntPtr]::Zero
     $processId = [uint32]0
     $launchError = ""
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: launch-enter")
     $launchRes = [Win32JobNative]::LaunchInJobAndResume(
         $appPath,
         $req.commandLine,
@@ -686,6 +725,7 @@ try {
         [ref]$processId,
         [ref]$launchError
     )
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: launch-returned")
 
     if ($launchRes -ne 0) {
         Send-ControlFrame $pipe @{
