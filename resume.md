@@ -1784,3 +1784,69 @@ timeout before target dispatch in `repair-application.test.ts`. The unchanged
 was relabeled, and the PR-161 owner retains the repair/forward-integration
 scope. Do not invoke native cascading merge until a fresh exact-head run is
 fully green.
+
+## Native distribution parent audit and active owner state, 2026-10-13
+
+The current native-distribution parent in draft PR 160 is exact head
+`b65515ccfb83a19972574340ad45a11c09c79710`. Repository run
+`38367272627` and repository-setup run `38367272614` both completed
+successfully at that exact head; all 23 repository jobs succeeded. An
+independent coordinator audit downloaded the four native artifacts and both
+coverage artifacts rather than relying on the PR-body verdict.
+
+Every one of the 16 files declared by the four native release manifests had
+the exact uploaded byte count and SHA-256 value. The actual installed/package
+reports recorded:
+
+- macOS arm64: 105 passed, zero failed, five explicitly unrun;
+- Linux x64: 95 passed, zero failed, four explicitly unrun;
+- Linux arm64: 95 passed, zero failed, four explicitly unrun; and
+- Windows x64: 79 passed, zero failed, 20 explicitly unrun.
+
+The unrun cases remain named foreign-host/platform cases and are not evidence
+for their behavior. The retained archive extraction case passed on every
+applicable target. The exact clean-head coverage evidence independently
+records:
+
+- CLI statements/branches/functions/lines:
+  85.1061%/80.8105%/90.8900%/88.1403%, 9,905 passed, zero failed, 377
+  explicitly unrun, 497 source files.
+- Gateway statements/branches/functions/lines:
+  94.1860%/81.6143%/94.1176%/95.1020%, 211 passed, zero failed or unrun,
+  four source files.
+
+The audit receipt is retained outside the repository as
+`files/native-distribution-b65515cc/independent-audit.json`, SHA-256
+`9b08a36260d21a16d2caf2f5c0270d356f92592cbb55a97eacddb52da7a70805`.
+It qualifies exact-source development-bundle/archive proof only. Every native
+manifest still states `releaseReady: false`; minimum-host, installer ownership,
+signing, notarization, package namespace, and HCL source-correspondence flags
+remain false. Tasks 9.2-9.6 and 9.8 remain incomplete, and no artifact was
+published.
+
+Dependent draft PR 163 remains on exact parent `b65515cc` with current head
+`def217170a70caaf8938221ab7c925e71a6f08e5`; its fresh full CI run
+`38392481282` was still in progress at the latest direct read. All Group 10
+task flags remain unchecked because real managers, deployed stable metadata,
+approved identities, public assets, and minimum-host qualification are still
+absent. Task-14.1 draft PR 164 superseded its cancelled
+`ad3f6041ff1c3cc0145a7964a6bcc9a6a073c0f4` run with source head
+`6b8c0e90fcbdde0384955746825d2cfc1dab04e6`; fresh run `38393897604`
+was in progress. No owner branch source or task flags were copied into this
+continuation.
+
+There was no published owner for PR 161's two Windows repairs. To prevent
+overlap, the PR-161/Grafana owner is now the sole repair owner for that exact
+branch: diagnose and correct the pre-dispatch `loading-compiler` startup
+failure without changing the 15-second startup supervisor or 30-second target
+budget, and make native validation settle the required process tree while
+ensuring `finally` cleanup cannot mask an earlier validation failure. The
+repair must preserve every grace, worker, skip, coverage-floor, frozen-history,
+and cleanup/locking contract, publish an exact SHA, and pass fresh exact-head
+full CI before stack 162 can land.
+
+The user was unavailable when asked for task-13.6 disposable Azure write
+authorization. The autonomous safe decision is therefore to keep all cloud
+writes blocked and continue source/integration work only. Existing Korea
+Central production resources remain prohibited qualification scope. Task 13.6
+stays unchecked.
