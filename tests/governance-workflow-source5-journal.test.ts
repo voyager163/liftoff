@@ -115,6 +115,42 @@ describe('full closed source5 journal inventory and retained truth', () => {
     });
   });
 
+  it.each(['review-only', 'issued'] as const)('never writes missing observation ledgers for %s or poisons later explicit initialization', async mode => {
+    const value = await fixture();
+    await withSource5WorkflowLease(value.projectRoot, async lease => {
+      if (mode === 'issued') await issueSource5WorkflowApproval({ ...value, lease }, value.now);
+      const owner = await source5WorkflowOwnership({ ...value, lease, operation: value.operation });
+      const keys = [
+        { namespace: 'plan' as const, key: value.control.controlKey },
+        { namespace: 'approval' as const, key: canonicalSha256(source5WorkflowAuthorityValue({ ...value, lease })) },
+        { namespace: 'journal' as const, key: value.control.controlKey },
+        { namespace: 'operation' as const, key: opKey(value.control.controlKey, value.operation) },
+        { namespace: 'proof' as const, key: manifestKey(value.control.controlKey) },
+        { namespace: 'proof' as const, key: canonicalSha256({ kind: 'workflow-source5-reservation-key.v1', controlKey: value.control.controlKey }) },
+        { namespace: 'proof' as const, key: canonicalSha256({ kind: 'workflow-source5-finalization-key.v1', controlKey: value.control.controlKey }) },
+        ...(await owner.measureInventory()).objects.map(object => ({
+          namespace: object.namespace === 'operation' ? 'operation' as const : 'proof' as const, key: object.key
+        }))
+      ];
+      const snapshot = async () => Promise.all(keys.map(async entry => {
+        const record = await value.store.read(entry.namespace, entry.key);
+        return { ...entry, bytes: record ? await readFile(record.path) : null };
+      }));
+      const before = await snapshot();
+      expect(before.filter(entry => entry.bytes)).toHaveLength(mode === 'issued' ? 5 : 1);
+      await expect(openSource5WorkflowJournal({ ...value, lease, initialize: false })).rejects.toThrow(/index is missing/);
+      expect(await snapshot()).toEqual(before);
+      const journal = await openSource5WorkflowJournal({ ...value, lease, initialize: true });
+      await journal.assertInventory();
+      for (const entry of before.filter(entry => entry.bytes)) {
+        const record = (await value.store.read(entry.namespace, entry.key))!;
+        expect(await readFile(record.path)).toEqual(entry.bytes);
+      }
+      const restored = await openSource5WorkflowJournal({ ...value, lease, initialize: false });
+      await restored.assertInventory();
+    });
+  });
+
   it('requires retained remaining-only original ancestry without resealing it or changing prior ownership', async () => {
     const value = await fixture();
     await withSource5WorkflowLease(value.projectRoot, async lease => {

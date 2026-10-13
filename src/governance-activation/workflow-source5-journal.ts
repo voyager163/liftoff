@@ -98,6 +98,10 @@ export async function openSource5WorkflowJournal(input: {
     return workflowFailure('workflow-source5-original',
       'Opening a journal requires the exact separately sealed original review; missing or changed history cannot be created or recreated by initialization.');
   }
+  if (!input.initialize && !loadedIndex) {
+    return workflowFailure('workflow-source5-journal',
+      'Recorded workflow index is missing; observation cannot create a manifest, reservation or execution permission.');
+  }
   const reservationKey = canonicalSha256({ kind: 'workflow-source5-reservation-key.v1', controlKey: control.controlKey });
   const recoveryReservation = { ...common, kind: 'workflow-source5-reservation',
     operationKeys: effects.map(operationKey), stageDataBytes: maximumStageDataBytes,
@@ -339,7 +343,6 @@ export async function openSource5WorkflowJournal(input: {
     canonicalSha256(loadedIndex.value) !== canonicalSha256({ ...index, status: 'finalized', finalProofKey: finalizationKey })) {
     return workflowFailure('workflow-source5-journal', 'The sealed workflow index differs from its exact original plan, reservation or finalization.');
   }
-  if (!loadedIndex && !input.initialize) return workflowFailure('workflow-source5-journal', 'Recorded workflow index is missing; observation cannot recreate execution permission.');
   if (!loadedIndex) await store.save('journal', control.controlKey, index, null);
   async function assertInventory() {
     await assertSource5WorkflowLease(input.lease, input.projectRoot);
