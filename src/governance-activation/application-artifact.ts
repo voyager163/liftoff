@@ -253,6 +253,23 @@ function operationForRun(input: PhaseAdapterExecutionInput, run: Record<string, 
     startedAt: String(run.created_at), observedAt: (input.clock?.() ?? input.now).toISOString(), status: 'running' };
 }
 
+function operationForAcceptedDispatch(
+  input: PhaseAdapterExecutionInput, binding: ApplicationArtifactBinding,
+  response: Record<string, unknown>, startedAt: string
+): ExternalOperationState {
+  const id = positiveId(response.workflow_run_id, 'Actual accepted artifact workflow run ID');
+  const resourceId = `/repos/${binding.repository}/actions/runs/${id}`;
+  const pollUrl = `https://api.github.com${resourceId}`;
+  const htmlUrl = `https://github.com/${binding.repository}/actions/runs/${id}`;
+  if (typeof response.run_url !== 'string' || response.run_url.toLowerCase() !== pollUrl.toLowerCase() ||
+    typeof response.html_url !== 'string' || response.html_url.toLowerCase() !== htmlUrl.toLowerCase()) {
+    return applicationError('application-dispatch-scope',
+      'Accepted artifact dispatch returned an inconsistent repository/run location; do not invent a handle or repeat the effect.');
+  }
+  return { provider: 'github', actionId: 'github.artifact.build-dispatch', operationId: `github-actions:${id}`,
+    resourceId, pollUrl, startedAt, observedAt: (input.clock?.() ?? input.now).toISOString(), status: 'running' };
+}
+
 function outputFor(binding: ReturnType<typeof applicationArtifactBinding>, handle: ExternalOperationState, values: PhaseOutputBindings['values'] = {}): PhaseOutputBindings {
   return { values: { artifactBindingDigest: binding.bindingDigest, sourceSha: binding.sourceSha,
     workflowDigest: binding.workflowDigest, environment: binding.environment, registryResourceId: binding.registryId,
@@ -328,15 +345,24 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
         await input.recordApplicationDispatchIntent?.(dispatch);
         await assertApplicationAuthority(input, dispatch);
         dispatchAttempted = true;
-        await client.write('POST', `/repos/${binding.repository}/actions/workflows/${binding.workflowPath.split('/').at(-1)}/dispatches`,
+        const startedAt = (input.clock?.() ?? input.now).toISOString();
+        const accepted = await client.write('POST', `/repos/${binding.repository}/actions/workflows/${binding.workflowPath.split('/').at(-1)}/dispatches`,
           { ref: binding.ref, inputs: dispatchInputs(binding) });
-        const runs = await find();
-        if (runs.length !== 1) return applicationError('application-dispatch-uncertain',
-          'Artifact dispatch was accepted but no unique actual run is visible yet; recovery must observe this invocation and cannot repeat dispatch.');
-        handle = operationForRun(input, runs[0]!, binding);
-        currentReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
-          id: runs[0]!.id, headSha: runs[0]!.head_sha, runAttempt: runs[0]!.run_attempt
-        })];
+        if (accepted) {
+          handle = operationForAcceptedDispatch(input, binding, accepted, startedAt);
+          currentReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
+            id: accepted.workflow_run_id, runUrl: handle.pollUrl,
+            htmlUrl: `https://github.com/${binding.repository}/actions/runs/${accepted.workflow_run_id}`
+          })];
+        } else {
+          const runs = await find();
+          if (runs.length !== 1) return applicationError('application-dispatch-uncertain',
+            'Artifact dispatch was accepted but no unique actual run is visible yet; recovery must observe this invocation and cannot repeat dispatch.');
+          handle = operationForRun(input, runs[0]!, binding);
+          currentReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
+            id: runs[0]!.id, headSha: runs[0]!.head_sha, runAttempt: runs[0]!.run_attempt
+          })];
+        }
       }
     }
     outputs = outputFor(binding, handle, { sourceTreeDigest: source.sourceTreeDigest });

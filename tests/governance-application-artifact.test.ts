@@ -28,6 +28,7 @@ import { canonicalApprovalEnvelopeHash } from '../src/domain/governance/activati
 import { NodeCommandRunner, type CommandRunner, type CommandResult, type RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/types.js';
 import type { GitHubActivationTransport, GitHubRequest } from '../src/adapters/github/activation-rest.js';
+import { GitHubActivationError } from '../src/adapters/github/activation-rest.js';
 import type {
   PhaseAdapterExecutionInput, ProtectedStateCustodyProof, ProtectedStateCustodyPort, ProtectedStateHandoverPort
 } from '../src/governance-activation/transition-ports.js';
@@ -180,6 +181,7 @@ class ArtifactTransport implements GitHubActivationTransport {
   duplicate = false;
   invisible = false;
   movedSource = false;
+  dispatchResponse: Record<string, unknown> | null = null;
   onRunRead: (() => Promise<void>) | undefined;
   async request(request: GitHubRequest) {
     this.calls.push(request);
@@ -193,7 +195,8 @@ class ArtifactTransport implements GitHubActivationTransport {
       selected_workflows: [`owner/repo/${this.binding.workflowPath}@refs/heads/develop`]
     };
     else if (request.method === 'POST') {
-      this.dispatched = true; return { status: 204, headers: {}, data: null };
+      this.dispatched = true;
+      return { status: this.dispatchResponse ? 200 : 204, headers: {}, data: this.dispatchResponse };
     } else if (request.path.includes('/jobs')) data = { total_count: 1, jobs: [{
       id: 902, name: 'Liftoff application artifact', runner_id: 444, runner_group_id: 333,
       conclusion: this.conclusion, steps: [{ name: `Liftoff artifact ${imageDigest} run ca1`, conclusion: 'success' }]
@@ -530,6 +533,82 @@ describe('application source producers behind real prerequisites', () => {
 });
 
 describe('immutable application publication and independent readback', () => {
+  it('uses the documented accepted run ID without waiting for eventually consistent discovery', async () => {
+    const f = await fixture(true);
+    f.transport.invisible = true;
+    f.transport.dispatchResponse = {
+      workflow_run_id: 901, run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
+      html_url: 'https://github.com/owner/repo/actions/runs/901', privateDiagnostic: 'fixture-secret-response'
+    };
+    const progress = vi.fn(f.input.recordApplicationProgress!);
+    f.input.recordApplicationProgress = progress;
+    const outcome = await executeApplicationArtifactPublication(f.input);
+    expect(outcome).toMatchObject({ status: 'completed', resultState: 'verified',
+      operation: { operationId: 'github-actions:901' } });
+    expect(progress).toHaveBeenCalledOnce();
+    expect(progress.mock.calls[0]![0]).toMatchObject({
+      operation: { operationId: 'github-actions:901', resourceId: '/repos/owner/repo/actions/runs/901' },
+      liveReadback: [{ provider: 'github', resourceId: '/repos/owner/repo/actions/runs/901' }]
+    });
+    expect(f.transport.calls.filter((entry) => entry.method === 'GET' && entry.path.includes('/actions/workflows/'))).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(JSON.stringify([outcome, progress.mock.calls])).not.toContain('fixture-secret-response');
+  });
+  it('checkpoints the accepted provider ID before a failing metadata read and only observes it on retry', async () => {
+    const f = await fixture(true);
+    f.transport.invisible = true;
+    f.transport.runStatus = 'in_progress';
+    f.transport.dispatchResponse = {
+      workflow_run_id: 901, run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
+      html_url: 'https://github.com/owner/repo/actions/runs/901'
+    };
+    let checkpointDuringPoll: Awaited<ReturnType<typeof readState>> | undefined;
+    f.transport.onRunRead = async () => {
+      checkpointDuringPoll = await readState(f.root);
+      throw new GitHubActivationError('provider-response', 'Isolated metadata observation is unavailable.', 503);
+    };
+    const first = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
+      runner: f.runner, now: coverageNow, adapters: f.input.adapters });
+    expect(first).toMatchObject({ applied: false, reason: 'external-operation-pending' });
+    expect(checkpointDuringPoll?.phases[f.phase.id]).toMatchObject({
+      state: 'running', operation: { operationId: 'github-actions:901', status: 'running' }
+    });
+    const saved = (await readState(f.root))!;
+    const operation = saved.phases[f.phase.id].operation!;
+    expect(operation).toMatchObject({ operationId: 'github-actions:901', status: 'running',
+      pollUrl: 'https://api.github.com/repos/owner/repo/actions/runs/901' });
+    f.transport.onRunRead = undefined;
+    f.input.inspection.state = saved;
+    f.input.inspection.contexts[f.phase.id].reviewedPlans = [f.input.plan];
+    const next = await executeApplicationArtifactPublication({ ...f.input, now: new Date(coverageNow.getTime() + 1000) });
+    expect(next, JSON.stringify(next)).toMatchObject({ status: 'pending',
+      operation: { operationId: operation.operationId, startedAt: operation.startedAt, planDigest: operation.planDigest } });
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+  });
+  it.each(['run-url', 'html-url', 'run-id', 'missing'] as const)(
+    'refuses malformed accepted %s metadata without inventing a scoped handle or repeating dispatch', async (kind) => {
+      const f = await fixture(true);
+      f.transport.invisible = true;
+      f.transport.dispatchResponse = {
+        workflow_run_id: 901, run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
+        html_url: 'https://github.com/owner/repo/actions/runs/901', privateDiagnostic: 'fixture-secret-response'
+      };
+      if (kind === 'run-url') f.transport.dispatchResponse.run_url = 'https://api.github.com/repos/other/repo/actions/runs/901';
+      if (kind === 'html-url') f.transport.dispatchResponse.html_url = 'https://github.com/owner/repo/actions/runs/902';
+      if (kind === 'run-id') f.transport.dispatchResponse.workflow_run_id = 'fixture-secret-response';
+      if (kind === 'missing') f.transport.dispatchResponse = {};
+      const progress = vi.fn(f.input.recordApplicationProgress!);
+      f.input.recordApplicationProgress = progress;
+      const outcome = await executeApplicationArtifactPublication(f.input);
+      expect(outcome).toMatchObject({ status: 'blocked' });
+      expect(outcome.operation).toBeUndefined();
+      expect(progress).not.toHaveBeenCalled();
+      expect(JSON.stringify(outcome)).not.toContain('fixture-secret-response');
+      f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+      expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked' });
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    }
+  );
   it('dispatches the real approved recipe once and binds actual source/run/registry/digest readback', async () => {
     const f = await fixture(true);
     const outcome = await executeApplicationArtifactPublication(f.input);

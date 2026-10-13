@@ -224,7 +224,13 @@ required; there is no token login or ambient credential fallback. Only verified
 Confirmed provider handles are checkpointed privately before subsequent
 observation. Engine-owned dispatch intent is written only after preflight and
 before the actual external dispatch; permission/validation refusals are not
-misreported as uncertain acceptance. Native processes, registered network reads
+misreported as uncertain acceptance. The documented GitHub API 2026-03-10
+dispatch response returns an actual run ID and URLs: the producer validates
+their repository/run scope and checkpoints that handle before metadata polling,
+even if run-list discovery is delayed. A legacy empty response requires exact
+independent run discovery; malformed or cross-scope acceptance never invents a
+handle or permits redispatch. Unexpected response fields are not retained.
+Native processes, registered network reads
 and custody qualification have 30-second calls within one shared three-minute
 observation deadline; a timed-out dispatch is never automatically repeated.
 Pending retries retain the original dispatch plan/time/handle while checking
