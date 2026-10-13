@@ -196,7 +196,11 @@ describe('Windows test-project execution and filters', () => {
       /^tests\/(?:[\w-]+\/)*[\w-]+\.test\.ts$/.test(value)
     );
     expect(selection.filter((value) => !files.includes(value)))
-      .toEqual(['--maxWorkers=1', '--no-file-parallelism']);
+      .toEqual([
+        '--maxWorkers=1', '--no-file-parallelism',
+        '--reporter=default', '--reporter=json',
+        '--outputFile.json=qualification/windows-boundary-tests.json'
+      ]);
     expect(files).toContain(migrationFile);
     const current = await fixture(files);
     const selected: unknown = JSON.parse(await runCli(current.root, 'list', ['--filesOnly', ...files, '--json']));
