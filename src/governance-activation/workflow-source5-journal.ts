@@ -15,6 +15,7 @@ import type { Source5WorkflowContext } from './workflow-source5-authority.js';
 import { validateSource5WorkflowCheckpointData } from './workflow-source5-checkpoints.js';
 import { inspectModernInstalledActivation } from '../application/governance/modern-installed-preflight.js';
 import { source5WorkflowOwnership } from './workflow-source5-ownership.js';
+import { describeSource5WorkflowOwnership, readSource5WorkflowOwnershipHistory } from './workflow-source5-ownership-description.js';
 import { measureSource5WorkflowStorageInventory } from './workflow-source5-storage-inventory.js';
 import type { Source5WorkflowStorageBound } from './workflow-source5-storage-inventory.js';
 import type { ModernRelatedRecords } from '../domain/governance/activation/modern-records.js';
@@ -27,6 +28,7 @@ export const source5WorkflowStages = Object.freeze([
 ] as const);
 export type Source5WorkflowStage = typeof source5WorkflowStages[number];
 const instances = new WeakSet<Source5WorkflowJournal>();
+const journalWriters = new WeakMap<object, { journal: Source5WorkflowJournal; initialize: () => Promise<void> }>();
 const maximumStageDataBytes = 32 * 1024;
 export interface Source5WorkflowJournal {
   readonly projectRoot: string;
@@ -60,10 +62,11 @@ export interface Source5WorkflowEvent {
 export function assertSource5WorkflowJournal(journal: Source5WorkflowJournal): void {
   if (!instances.has(journal)) workflowFailure('workflow-source5-journal', 'Structural checkpoint sinks are not engine-owned sealed workflow journals.');
 }
-export async function openSource5WorkflowJournal(input: {
+interface Source5WorkflowJournalInput {
   projectRoot: string; plan: ModernSavedTransitionPlan; approval: ModernApprovalEnvelope;
   context: Source5WorkflowContext; lease: ProjectMutationLease; now: Date; storage?: UpdatePreviewOptions; initialize: boolean;
-}): Promise<Source5WorkflowJournal> {
+}
+async function describeSource5WorkflowJournal(input: Source5WorkflowJournalInput) {
   assertSource5WorkflowContext(input.context);
   await assertSource5WorkflowLease(input.lease, input.projectRoot);
   const recordedAt = input.now.toISOString();
@@ -114,6 +117,7 @@ export async function openSource5WorkflowJournal(input: {
   const readDependencies: { namespace: 'plan' | 'proof' | 'operation' | 'journal'; key: string;
     rawDigest: string; encodedBytes: number; revision: number }[] = [];
   let originalPublication: Readonly<Record<string, unknown>> | undefined;
+  const retainedReviews = [{ plan, approval }];
   if (control.origin) {
     const source = await store.read('plan', control.origin.planKey);
     if (!source || !isRecord(source.value) || source.value.kind !== 'workflow-source5-original-plan' ||
@@ -122,6 +126,7 @@ export async function openSource5WorkflowJournal(input: {
     }
     const originalApproval = input.context.records.readApproval(source.value.approval);
     const originalPlan = input.context.records.readPlan(source.value.plan, { approvals: [originalApproval] });
+    retainedReviews.push({ plan: originalPlan, approval: originalApproval });
     if (canonicalSha256(originalPlan.identity) !== canonicalSha256(plan.identity) ||
       canonicalSha256(source.value) !== canonicalSha256(source5WorkflowOriginalPlanValue(input.projectRoot, originalPlan, originalApproval))) {
       return workflowFailure('workflow-source5-original', 'Original publication metadata differs from the current exact source5 family.');
@@ -296,8 +301,8 @@ export async function openSource5WorkflowJournal(input: {
       maximumEncodedBytes: entry.encodedBytes, maximumRevisions: entry.revision }))
   ];
   for (const operation of effects) {
-    const owner = await source5WorkflowOwnership({ ...input, operation });
-    for (const object of (await owner.measureInventory()).objects) {
+    const owner = await describeSource5WorkflowOwnership({ ...input, operation });
+    for (const object of owner.inventory.objects) {
       if (!['operation', 'proof'].includes(object.namespace)) {
         return workflowFailure('workflow-source5-storage-inventory', 'Ownership cannot extend its closed operation/proof namespaces.');
       }
@@ -333,17 +338,13 @@ export async function openSource5WorkflowJournal(input: {
   if (loadedManifest && canonicalSha256(loadedManifest.value) !== manifest.digest) {
     return workflowFailure('workflow-source5-storage-inventory', 'The complete original closed key inventory or actual sealed footprint was changed.');
   }
-  if (!loadedManifest) await store.save('proof', manifestKey, manifest.value, null);
-  if (!storedReservation) await store.save('proof', reservationKey, completeReservation, null);
-  const reservation = await store.read('proof', reservationKey);
-  if (!reservation || canonicalSha256(reservation.value) !== canonicalSha256(completeReservation)) {
+  if (storedReservation && canonicalSha256(storedReservation.value) !== canonicalSha256(completeReservation)) {
     return workflowFailure('workflow-source5-reservation', 'Original full recovery/finalization reservation is absent or changed; no effect is permitted.');
   }
   if (loadedIndex && canonicalSha256(loadedIndex.value) !== canonicalSha256(index) &&
     canonicalSha256(loadedIndex.value) !== canonicalSha256({ ...index, status: 'finalized', finalProofKey: finalizationKey })) {
     return workflowFailure('workflow-source5-journal', 'The sealed workflow index differs from its exact original plan, reservation or finalization.');
   }
-  if (!loadedIndex) await store.save('journal', control.controlKey, index, null);
   async function assertInventory() {
     await assertSource5WorkflowLease(input.lease, input.projectRoot);
     const stored = await store.read('proof', manifestKey);
@@ -627,6 +628,238 @@ export async function openSource5WorkflowJournal(input: {
       }
     }
   };
-  instances.add(journal);
-  return Object.freeze(journal);
+  const description = { journal: Object.freeze({
+    projectRoot: journal.projectRoot, plan, approval, controlKey: journal.controlKey,
+    assertInventory, events, readFinalization
+  }), index, finalizationKey, store: Object.freeze({ read: store.read, digest: store.digest }), effects, retainedReviews,
+    manifestKey, reservationKey, manifest, completeReservation, baseline,
+    assertReservedObject };
+  journalWriters.set(description, { journal: Object.freeze(journal),
+    async initialize() {
+      if (!loadedManifest) await store.save('proof', manifestKey, manifest.value, null);
+      if (!storedReservation) await store.save('proof', reservationKey, completeReservation, null);
+      const reservation = await store.read('proof', reservationKey);
+      if (!reservation || canonicalSha256(reservation.value) !== canonicalSha256(completeReservation)) {
+        return workflowFailure('workflow-source5-reservation', 'Original full recovery/finalization reservation is absent or changed; no effect is permitted.');
+      }
+      if (!loadedIndex) await store.save('journal', control.controlKey, index, null);
+    } });
+  return description;
+}
+export async function openSource5WorkflowJournal(input: Source5WorkflowJournalInput): Promise<Source5WorkflowJournal> {
+  input = { ...input, plan: captureWorkflowBinding(input.plan), approval: captureWorkflowBinding(input.approval),
+    now: new Date(input.now) };
+  const description = await describeSource5WorkflowJournal(input);
+  for (const operation of description.effects) await source5WorkflowOwnership({ ...input, operation });
+  const writer = journalWriters.get(description)!;
+  await writer.initialize();
+  instances.add(writer.journal);
+  return writer.journal;
+}
+
+export interface Source5WorkflowFinalizationReader {
+  readonly kind: 'source5-workflow-finalization-reader';
+}
+type FinalizationInput = Omit<Source5WorkflowJournalInput, 'now' | 'initialize'>;
+type JournalDescription = Awaited<ReturnType<typeof describeSource5WorkflowJournal>>;
+const finalizationReaders = new WeakMap<Source5WorkflowFinalizationReader, {
+  input: FinalizationInput; description: JournalDescription; retainedDigest: string;
+}>();
+
+async function retainedFinalizationMaterial(input: FinalizationInput, description: JournalDescription) {
+  await assertSource5WorkflowLease(input.lease, input.projectRoot);
+  await description.journal.assertInventory();
+  const proof = await description.journal.readFinalization();
+  if (!proof || proof.revision !== 1 || proof.previousDigest !== null || !isRecord(proof.value) ||
+    !Array.isArray(proof.value.files)) {
+    return workflowFailure('workflow-source5-finalization', 'Terminal bookkeeping needs an existing immutable exact original finalization, not target-shaped bytes.');
+  }
+  await description.assertReservedObject('proof', description.finalizationKey, proof.value);
+  const originalRecords = [];
+  for (const entry of [
+    { namespace: 'plan' as const, key: description.journal.controlKey,
+      value: source5WorkflowOriginalPlanValue(input.projectRoot, input.plan, input.approval) },
+    { namespace: 'proof' as const, key: description.manifestKey, value: description.manifest.value },
+    { namespace: 'proof' as const, key: description.reservationKey, value: description.completeReservation }
+  ]) {
+    const original = await description.store.read(entry.namespace, entry.key);
+    if (!original || original.revision !== 1 || original.previousDigest !== null ||
+      original.rawDigest !== await description.store.digest(entry.namespace, entry.key, entry.value)) {
+      return workflowFailure('workflow-source5-finalization', 'Original plan, manifest and reservation require immutable first revisions, not coherent retagging.');
+    }
+    await description.assertReservedObject(entry.namespace, entry.key, original.value);
+    originalRecords.push(original);
+  }
+  const ownership = [];
+  const reviews = new Map(description.retainedReviews.map(review => [canonicalSha256(review.plan), review]));
+  for (const review of description.retainedReviews) {
+    if (review.plan !== description.journal.plan) {
+      const source = await describeSource5WorkflowJournal({ ...input, ...review,
+        now: new Date(review.plan.createdAt), initialize: false });
+      await source.journal.assertInventory();
+      await finalizationIndex(source);
+      for (const entry of [
+        { namespace: 'plan' as const, key: source.journal.controlKey,
+          value: source5WorkflowOriginalPlanValue(input.projectRoot, review.plan, review.approval) },
+        { namespace: 'proof' as const, key: source.manifestKey, value: source.manifest.value },
+        { namespace: 'proof' as const, key: source.reservationKey, value: source.completeReservation }
+      ]) {
+        const original = await source.store.read(entry.namespace, entry.key);
+        if (!original || original.revision !== 1 || original.previousDigest !== null ||
+          original.rawDigest !== await source.store.digest(entry.namespace, entry.key, entry.value)) {
+          return workflowFailure('workflow-source5-finalization', 'Original publication ledger cannot be coherently retagged for terminal bookkeeping.');
+        }
+        await source.assertReservedObject(entry.namespace, entry.key, original.value);
+        originalRecords.push(original);
+      }
+    }
+    for (const operation of source5WorkflowPlanInventory(review.plan).effects) {
+      const history = await readSource5WorkflowOwnershipHistory({ ...input, ...review, operation });
+      ownership.push(history);
+      for (const ancestor of history.description.lineage) reviews.set(canonicalSha256(ancestor.plan), ancestor);
+    }
+  }
+  const issuances = [];
+  for (const review of reviews.values()) {
+    const { control } = source5WorkflowPlanInventory(review.plan);
+    const value = source5WorkflowAuthorityValue({ ...input, ...review, repositoryAnchor: control.repositoryAnchor,
+      previewFingerprint: source5PreviewFingerprint(input.projectRoot, review.plan) });
+    const key = canonicalSha256(value), issued = await description.store.read('approval', key);
+    if (!issued || issued.revision !== 1 || issued.previousDigest !== null ||
+      canonicalSha256(issued.value) !== canonicalSha256(value)) {
+      return workflowFailure('workflow-source5-unissued', 'Original independently sealed workflow issuance is required even for expired terminal bookkeeping.');
+    }
+    issuances.push(issued);
+  }
+  const components = await Promise.all(description.effects.map(operation => description.journal.events(operation)));
+  await assertSource5WorkflowLease(input.lease, input.projectRoot);
+  return { proof, files: proof.value.files,
+    digest: canonicalSha256({ proof, originalRecords, ownership, issuances, components }) };
+}
+
+async function finalizationIndex(description: JournalDescription) {
+  const { store, index, finalizationKey, journal } = description;
+  const cursor = await store.read('journal', journal.controlKey);
+  const activeDigest = await store.digest('journal', journal.controlKey, index);
+  const completed = { ...index, status: 'finalized', finalProofKey: finalizationKey };
+  if (!cursor || !(
+    cursor.revision === 1 && cursor.previousDigest === null && cursor.rawDigest === activeDigest &&
+      canonicalSha256(cursor.value) === canonicalSha256(index) ||
+    cursor.revision === 2 && cursor.previousDigest === activeDigest &&
+      cursor.rawDigest === await store.digest('journal', journal.controlKey, completed, 2, activeDigest) &&
+      canonicalSha256(cursor.value) === canonicalSha256(completed))) {
+    return workflowFailure('workflow-source5-finalization', 'Final index must retain its exact original revision, sealed predecessor and canonical projection.');
+  }
+  await description.assertReservedObject('journal', journal.controlKey, cursor.value, cursor.revision, cursor.previousDigest);
+  return cursor;
+}
+
+export async function openSource5WorkflowFinalizationReader(raw: FinalizationInput): Promise<Source5WorkflowFinalizationReader> {
+  const required = ['projectRoot', 'plan', 'approval', 'context', 'lease'];
+  const allowed = [...required, 'storage'];
+  if (!raw || ![Object.prototype, null].includes(Object.getPrototypeOf(raw)) ||
+    Reflect.ownKeys(raw).some(key => typeof key !== 'string' || !allowed.includes(key)) ||
+    required.some(key => !Object.hasOwn(raw, key)) ||
+    Object.values(Object.getOwnPropertyDescriptors(raw)).some(field => !('value' in field))) {
+    return workflowFailure('workflow-source5-finalization', 'Finalization reader accepts only closed own data fields, never executable substitutes or execution capabilities.');
+  }
+  const input = { ...raw, plan: captureWorkflowBinding(raw.plan), approval: captureWorkflowBinding(raw.approval),
+    ...(raw.storage ? { storage: { ...raw.storage, ...(raw.storage.env ? { env: { ...raw.storage.env } } : {}) } } : {}) };
+  assertSource5WorkflowContext(input.context);
+  await assertSource5WorkflowLease(input.lease, input.projectRoot);
+  const location = await resolveUpdatePreviewLocation(input.projectRoot, input.storage);
+  const { control } = source5WorkflowPlanInventory(input.plan);
+  if (location.projectRoot !== input.projectRoot || location.projectKey !== control.projectKey) {
+    return workflowFailure('workflow-source5-finalization', 'Finalization reader requires the exact original canonical root and independently resolved project key.');
+  }
+  const description = await describeSource5WorkflowJournal({ ...input,
+    now: new Date(input.plan.createdAt), initialize: false });
+  const retained = await retainedFinalizationMaterial(input, description);
+  await finalizationIndex(description);
+  const reader = Object.freeze({ kind: 'source5-workflow-finalization-reader' as const });
+  finalizationReaders.set(reader, { input, description, retainedDigest: retained.digest });
+  return reader;
+}
+
+async function currentFinalization(reader: Source5WorkflowFinalizationReader) {
+  const binding = finalizationReaders.get(reader);
+  if (!binding) return workflowFailure('workflow-source5-finalization', 'Structural copies, journals and authority tokens are not branded terminal-bookkeeping readers.');
+  const { input, description } = binding;
+  const material = await retainedFinalizationMaterial(input, description);
+  if (material.digest !== binding.retainedDigest) {
+    return workflowFailure('workflow-source5-finalization', 'Retained original finalization inputs changed; reconciliation is unresolved, not permission to rebuild history.');
+  }
+  const files = await Promise.all(material.files.map(async (file: unknown) => {
+    if (!isRecord(file) || typeof file.path !== 'string' || typeof file.content !== 'string') {
+      return workflowFailure('workflow-source5-finalization', 'Exact original finalization file inventory is malformed.');
+    }
+    const actual = await captureProjectFileSnapshot(input.projectRoot, file.path.split('/'));
+    const state = actual.content?.equals(Buffer.from(file.content)) ? 'recorded' :
+      (actual.content === undefined ? null : workflowByteDigest(actual.content)) === file.beforeHash ? 'original' : 'different';
+    return { path: file.path, state };
+  }));
+  const cursor = await finalizationIndex(description);
+  if (files.every(file => file.state === 'recorded')) {
+    const observed = await inspectModernInstalledActivation(input.projectRoot);
+    if (observed.status !== 'observed' || !observed.current ||
+      observed.snapshot.root !== input.projectRoot ||
+      observed.current.state.repository.id !== source5WorkflowPlanInventory(input.plan).control.repositoryAnchor ||
+      canonicalSha256(observed.current.state.identity) !== canonicalSha256(input.plan.identity)) {
+      return workflowFailure('workflow-source5-finalization', 'Actual installed source, history and custody must remain independently readable in the original canonical scope.');
+    }
+    const decoded = material.files.map(file => {
+      if (!isRecord(file) || typeof file.path !== 'string' || typeof file.content !== 'string') {
+        return workflowFailure('workflow-source5-finalization', 'Original finalization file inventory is malformed.');
+      }
+      return { path: file.path, value: JSON.parse(file.content) as unknown };
+    });
+    if (canonicalSha256(observed.current.state) !==
+      canonicalSha256(decoded.find(file => file.path === 'governance/activation-state.json')!.value) ||
+      material.files.some(file => !isRecord(file) || typeof file.path !== 'string' || typeof file.content !== 'string' ||
+        observed.snapshot.files.find(actual => actual.pathParts.join('/') === file.path)?.digest !== workflowByteDigest(file.content))) {
+      return workflowFailure('workflow-source5-finalization', 'Independently captured installed target bytes changed during bookkeeping observation; the index remains unresolved.');
+    }
+    for (const collection of ['plans', 'approvals', 'evidence'] as const) {
+      const expected = [...(description.baseline.records[collection] ?? []),
+        ...decoded.filter(file => file.path.startsWith(`governance/${collection}/`)).map(file => file.value)]
+        .map(record => canonicalSha256(record));
+      if (canonicalSha256([...new Set(expected)].sort()) !==
+        canonicalSha256((observed.current.records[collection] ?? []).map(record => canonicalSha256(record)).sort())) {
+        return workflowFailure('workflow-source5-finalization', 'Unrelated original installed records cannot be added, removed or rewritten by final index bookkeeping.');
+      }
+    }
+  }
+  await assertSource5WorkflowLease(input.lease, input.projectRoot);
+  if (cursor.revision === 2 && files.some(file => file.state !== 'recorded')) {
+    return workflowFailure('workflow-source5-finalization', 'Finalized index contradicts independently observed exact original target bytes; retain the inconsistent ledger.');
+  }
+  return { binding, cursor, files };
+}
+
+export async function inspectSource5WorkflowFinalization(reader: Source5WorkflowFinalizationReader) {
+  const { cursor, files } = await currentFinalization(reader);
+  return captureWorkflowBinding({ status: files.every(file => file.state === 'recorded') ? 'recorded-bytes-present' :
+    files.some(file => file.state === 'different') ? 'different-bytes' :
+      files.some(file => file.state === 'recorded') ? 'partial-original-publication' : 'original-bytes',
+    finalized: cursor.revision === 2, files });
+}
+
+export async function reconcileSource5WorkflowFinalization(reader: Source5WorkflowFinalizationReader): Promise<void> {
+  const requireExact = async () => {
+    const current = await currentFinalization(reader);
+    if (current.files.some(file => file.state !== 'recorded')) {
+      return workflowFailure('workflow-source5-finalization', 'Only already-written exact original target bytes permit terminal index bookkeeping; before, partial or different bytes remain blocked.');
+    }
+    return current;
+  };
+  const { binding, cursor } = await requireExact();
+  if (cursor.revision === 2) return;
+  const { description } = binding;
+  await createWorkflowSource5ControlStore(binding.input.projectRoot, binding.input.storage)
+    .finalizeJournal(description.journal.controlKey, description.index,
+    description.finalizationKey, cursor.rawDigest, async () => { await requireExact(); });
+  const after = await requireExact();
+  if (after.cursor.revision !== 2 || after.cursor.previousDigest !== cursor.rawDigest) {
+    return workflowFailure('workflow-source5-finalization', 'Final index CAS was accepted without exact confirmation; retain unresolved original truth and never undo or recreate metadata.');
+  }
 }

@@ -227,8 +227,24 @@ Read-only publication observation requires the already recorded commit handle
 and rechecks its parent, exact inventory and immutable bytes. It never adopts a
 target-shaped HEAD or repeats commit/push work. These isolated component guards
 do not compose phase prerequisites or finalize a phase. Full planner composition,
-complete independently current matrix orchestration and exact-byte post-write
-restart handling remain engine obligations.
+complete independently current matrix orchestration remain engine obligations.
+A separate private branded terminal-bookkeeping reader can inspect an already
+sealed original finalization without any saves. It is not a journal, issued
+authority, ownership object or effect carrier. Its descriptive ownership
+inventory has no prepare/transfer/write methods; ordinary acquisition still
+requires the actual original canonical and raw installed scope. Terminal
+reconciliation requires retained original issuance, full original plan,
+manifest/reservation, publication dependencies, ownership confirmations and
+individual component chains. It independently reads exact target bytes and
+installed source/history/custody relations. Expiry does not refresh approval or
+authorize effects; a missing original issuance still refuses bookkeeping.
+Reconciliation is a metadata mutation, not read-only inspection: only the
+existing original revision-one active index may CAS to its reserved revision-two
+canonical finalized projection. It rechecks retained inputs and target bytes
+around CAS/readback, never creates a missing issuer/index, never rewrites project
+files and never undoes accepted-but-unconfirmed ledger truth. An already
+canonical finalized index is no-save readback. This isolated boundary is not
+admission of the complete engine, public execution or native/live qualification.
 The private planner/engine remains unregistered and incomplete.
 Staging/production workflow components cannot
 finalize independent Azure peer obligations, and source5 controls cannot

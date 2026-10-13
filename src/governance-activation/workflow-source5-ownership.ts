@@ -7,12 +7,13 @@ import type { ModernApprovalEnvelope, ModernSavedTransitionPlan, ModernTransitio
 import { captureWorkflowBinding, workflowFailure } from './workflow-binding.js';
 import {
   assertSource5WorkflowContext, assertSource5WorkflowLease, source5ApprovalHash,
-  source5WorkflowOriginalPlanValue, withSource5WorkflowEntryGate
+  withSource5WorkflowEntryGate
 } from './workflow-source5-context.js';
 import type { Source5WorkflowContext } from './workflow-source5-context.js';
 import { source5WorkflowPlanInventory } from './workflow-source5-operations.js';
+import { describeSource5WorkflowOwnership, source5OwnershipMaximumGeneration } from './workflow-source5-ownership-description.js';
 
-export const source5OwnershipMaximumGeneration = 64;
+export { source5OwnershipMaximumGeneration } from './workflow-source5-ownership-description.js';
 const hex = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value);
 const same = (left: unknown, right: unknown) => canonicalSha256(left) === canonicalSha256(right);
 const kinds = ['publication-writing', 'publication-commit-intent', 'publication-commit-observed', 'publication-committed',
@@ -57,40 +58,9 @@ export async function source5WorkflowOwnership(input: Source5WorkflowOwnershipIn
   }
   const rawSnapshotDigest = observed.binding;
   const store = createWorkflowSource5ControlStore(input.projectRoot, input.storage);
-  const sealedCurrent = await store.read('plan', inventory.control.controlKey);
-  if (!sealedCurrent || !same(sealedCurrent.value, source5WorkflowOriginalPlanValue(input.projectRoot, input.plan, input.approval))) {
-    return workflowFailure('workflow-source5-owner', 'Ownership requires the complete independently sealed exact original reviewed plan and approval.');
-  }
-  const lineage = [{ plan: input.plan, approval: input.approval, control: inventory.control }];
-  const visited = new Set([inventory.control.controlKey]);
-  while (lineage.at(-1)!.control.remainingFrom) {
-    const current = lineage.at(-1)!, reference = current.control.remainingFrom!;
-    if (visited.has(reference.planKey) || visited.size >= source5OwnershipMaximumGeneration + 1) {
-      return workflowFailure('workflow-source5-owner', 'Remaining-only entry ancestry is cyclic or exceeds its closed generation bound.');
-    }
-    visited.add(reference.planKey);
-    const original = await store.read('plan', reference.planKey);
-    if (!original || !isRecord(original.value) || original.value.kind !== 'workflow-source5-original-plan' ||
-      original.value.projectRoot !== input.projectRoot || original.value.controlKey !== reference.planKey) {
-      return workflowFailure('workflow-source5-owner', 'Remaining-only ownership needs the independently sealed exact original plan, not caller ancestry.');
-    }
-    const approval = input.context.records.readApproval(original.value.approval);
-    const plan = input.context.records.readPlan(original.value.plan, { approvals: [approval] });
-    const prior = source5WorkflowPlanInventory(plan);
-    if (!same(original.value, source5WorkflowOriginalPlanValue(input.projectRoot, plan, approval)) ||
-      !same(plan.identity, input.plan.identity) || plan.phaseId !== input.plan.phaseId ||
-      prior.control.projectKey !== location.projectKey || prior.control.repositoryAnchor !== inventory.control.repositoryAnchor ||
-      !same(prior.control.origin, inventory.control.origin) || !prior.effects.some(operation => same(operation, input.operation)) ||
-      !same(reference.operationDigests.slice().sort(), source5WorkflowPlanInventory(current.plan).effects.map(operation => canonicalSha256(operation)).sort())) {
-      return workflowFailure('workflow-source5-owner', 'Continuation scope or exact unstarted entries differ from their sealed original plan.');
-    }
-    lineage.push({ plan, approval, control: prior.control });
-  }
+  const description = await describeSource5WorkflowOwnership(input);
+  const { scope, entryKey, lineage } = description;
   const original = lineage.at(-1)!;
-  const scope = { schemaVersion: 1, projectRoot: input.projectRoot, projectKey: location.projectKey,
-    repositoryAnchor: inventory.control.repositoryAnchor, identity: input.plan.identity, phaseId: input.plan.phaseId,
-    originalPlanKey: original.control.controlKey, operationDigest };
-  const entryKey = canonicalSha256({ kind: 'workflow-source5-original-entry-key.v1', ...scope });
   function generationKey(kind: 'reservation' | 'confirmation', generation: number) {
     if (!Number.isSafeInteger(generation) || generation < (kind === 'reservation' ? 1 : 0) ||
       generation > source5OwnershipMaximumGeneration) {
@@ -145,35 +115,7 @@ export async function source5WorkflowOwnership(input: Source5WorkflowOwnershipIn
     ({ ...scope, kind: 'workflow-source5-owner-confirmed', owner: selected, pointerRawDigest: record.rawDigest,
       previousReceiptDigest });
   async function measureInventory() {
-    const maximum = { generation: source5OwnershipMaximumGeneration, controlKey: 'f'.repeat(64),
-      planDigest: 'f'.repeat(64), savedPlanDigest: 'f'.repeat(64), approvalHash: 'f'.repeat(64), rawSnapshotDigest: 'f'.repeat(64) };
-    const operationBytes = await store.measure('operation', entryKey,
-      { ...scope, kind: 'workflow-source5-entry-owner', owner: maximum }, source5OwnershipMaximumGeneration + 1, 'f'.repeat(64));
-    const confirmationBytes = await store.measure('proof', confirmationKey(maximum.generation),
-      confirmation({ rawDigest: 'f'.repeat(64) }, maximum, 'f'.repeat(64)));
-    const receiptBytes = await store.measure('proof', reservationKey(maximum.generation),
-      { ...scope, kind: 'workflow-source5-owner-reservation', previousOwner: maximum,
-        previousPointerRawDigest: 'f'.repeat(64), previousConfirmationRawDigest: 'f'.repeat(64), newOwner: maximum });
-    const objects = [
-      { namespace: 'operation', key: entryKey, maximumEncodedBytes: operationBytes, maximumRevisions: source5OwnershipMaximumGeneration + 1 },
-      ...Array.from({ length: source5OwnershipMaximumGeneration + 1 }, (_, generation) => [
-        { namespace: 'proof', key: confirmationKey(generation), maximumEncodedBytes: confirmationBytes, maximumRevisions: 1 },
-        ...(generation ? [{ namespace: 'proof', key: reservationKey(generation), maximumEncodedBytes: receiptBytes, maximumRevisions: 1 }] : [])
-      ]).flat()
-    ];
-    const self = { namespace: 'proof', key: manifestKey, maximumEncodedBytes: 0, maximumRevisions: 1 };
-    objects.push(self);
-    const value = { ...scope, kind: 'workflow-source5-owner-manifest', entryKey,
-      generationLimit: source5OwnershipMaximumGeneration, objects, maximumEncodedFootprint: 0 };
-    for (let attempt = 0; ; attempt++) {
-      value.maximumEncodedFootprint = objects.reduce((total, object) =>
-        total + object.maximumEncodedBytes * object.maximumRevisions, 0);
-      const measured = await store.measure('proof', manifestKey, value);
-      if (measured === self.maximumEncodedBytes) break;
-      if (attempt === 8) return workflowFailure('workflow-source5-owner', 'Complete sealed ownership inventory cannot be represented within its fixed bound.');
-      self.maximumEncodedBytes = measured;
-    }
-    return captureWorkflowBinding(value);
+    return description.inventory;
   }
   async function manifest(initialize: boolean) {
     const value = await measureInventory();

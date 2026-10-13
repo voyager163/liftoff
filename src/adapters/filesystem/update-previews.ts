@@ -741,6 +741,14 @@ export function createWorkflowSource5ControlStore(projectRoot: string, options: 
       const { storage } = await location(name, key);
       return Buffer.byteLength(encoded(storage, name, key, value, revision, previousDigest));
     },
+    async digest(name: WorkflowSource5ControlNamespace, key: string, value: unknown, revision = 1,
+      previousDigest: string | null = null): Promise<string> {
+      const { storage } = await location(name, key);
+      const snapshot = await directories(storage, false);
+      const secret = snapshot && await issuer(storage, snapshot, false);
+      if (!secret) throw storageError('Original workflow issuer is missing; descriptive validation cannot recreate it.');
+      return hash(encoded(storage, name, key, value, revision, previousDigest, secret));
+    },
     async read(name: WorkflowSource5ControlNamespace, key: string): Promise<WorkflowSource5StoredControl | null> {
       const { storage, filePath } = await location(name, key);
       const snapshot = await directories(storage, false);
@@ -771,6 +779,46 @@ export function createWorkflowSource5ControlStore(projectRoot: string, options: 
           throw storageError('Workflow save could not be durably confirmed; preserve unresolved intent.');
         }
         return decode(storage, name, key, filePath, content, secret);
+      });
+    },
+    async finalizeJournal(key: string, active: unknown, finalProofKey: string, expectedDigest: string,
+      validateBeforeWrite: () => Promise<void>): Promise<WorkflowSource5StoredControl> {
+      if (!/^[a-f0-9]{64}$/u.test(expectedDigest) || !/^[a-f0-9]{64}$/u.test(finalProofKey) ||
+        typeof active !== 'object' || active === null || Array.isArray(active)) {
+        throw storageError('Final index reconciliation requires the existing exact active projection.');
+      }
+      const projection = active as Record<string, unknown>;
+      if (projection.kind !== 'workflow-source5-journal' || projection.controlKey !== key ||
+        projection.status !== 'active' || projection.finalProofKey !== null || projection.finalizationKey !== finalProofKey) {
+        throw storageError('Final index reconciliation cannot create or retag original control metadata.');
+      }
+      const { storage, filePath } = await location('journal', key);
+      const snapshot = await directories(storage, false);
+      if (!snapshot) throw storageError('Original workflow storage is missing; finalization cannot recreate it.');
+      return withStoreLock(storage, snapshot, async () => {
+        const before = await readText(storage, filePath, snapshot, workflowSource5ControlLimits.journal);
+        const secret = await issuer(storage, snapshot, false);
+        if (!before || !secret || hash(before) !== expectedDigest) {
+          throw storageError('Existing-only final index CAS refused missing or changed original metadata.');
+        }
+        const previous = decode(storage, 'journal', key, filePath, before, secret);
+        if (previous.revision !== 1 || previous.previousDigest !== null ||
+          before !== encoded(storage, 'journal', key, active, 1, null, secret)) {
+          throw storageError('Final index CAS requires the exact original first revision and predecessor.');
+        }
+        await validateBeforeWrite();
+        const retainedSecret = await issuer(storage, snapshot, false);
+        if (!retainedSecret || !timingSafeEqual(secret, retainedSecret) ||
+          await readText(storage, filePath, snapshot, workflowSource5ControlLimits.journal) !== before) {
+          throw storageError('Original issuer or active index changed before final index CAS.');
+        }
+        const content = encoded(storage, 'journal', key,
+          { ...projection, status: 'finalized', finalProofKey }, 2, previous.rawDigest, secret);
+        await writeAtomicMetadata(storage, snapshot, filePath, content, before, true, workflowSource5ControlLimits.journal);
+        if (await readText(storage, filePath, snapshot, workflowSource5ControlLimits.journal) !== content) {
+          throw storageError('Final index CAS confirmation is unresolved; retain the original finalization and events.');
+        }
+        return decode(storage, 'journal', key, filePath, content, secret);
       });
     }
   });
