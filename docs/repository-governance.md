@@ -199,9 +199,19 @@ Separately, the reviewed logical
 mutation inventory counts every operation plus its nested effects, including
 checkpoint and exact project-metadata writes, and cannot exceed 272. A
 132-dispatch plan has 271 logical entries; that count is not evidence that its
-sealed storage fits. The private planner/engine, same-lease carrier exclusion
-and actual intent/effect integration remain
-unregistered and incomplete. Staging/production workflow components cannot
+sealed storage fits. Private effect carriers now share the held native lease's
+stable ORIGINAL-entry gate with ownership preparation and first-intent writes.
+An active branded gate can claim that entry only once; structural, expired or
+foreign gates do not mint carriers. The runtime consumes each exact inventoried
+file/Git/provider effect once after its durable original intent. Provider and
+push acceptance are retained before fallible readback, and original commit
+handles precede parent/inventory checks. Observation carriers cannot introduce
+intent or perform writes; their reads still require current held-lease authority.
+These isolated source/process/HTTP guards are not complete engine or live
+qualification. Independent current proof orchestration, phase prerequisite
+composition and exact-byte post-write restart handling remain engine obligations.
+The private planner/engine remains unregistered and incomplete.
+Staging/production workflow components cannot
 finalize independent Azure peer obligations, and source5 controls cannot
 authorize activation6.
 

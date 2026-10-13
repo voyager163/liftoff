@@ -152,16 +152,25 @@ export async function assertSource5WorkflowAuthority(input: {
   }
 }
 
-export async function assertSource5WorkflowEntryOwnership(input: {
+export interface Source5WorkflowEntryAuthorityInput {
   authority: Source5WorkflowAuthority; projectRoot: string; plan: ModernSavedTransitionPlan;
   operation: ModernTransitionOperation; lease: ProjectMutationLease; firstIntent: boolean;
-}): Promise<void> {
+}
+function entryOwner(input: Source5WorkflowEntryAuthorityInput) {
   const binding = authorities.get(input.authority);
   const owner = binding?.owners.get(canonicalSha256(input.operation));
   if (!binding || !owner || binding.projectRoot !== input.projectRoot || binding.lease !== input.lease ||
     canonicalSha256(binding.plan) !== canonicalSha256(input.plan)) {
     return workflowFailure('workflow-source5-owner', 'Only the original engine-issued exact entry authority can inspect or persist its ownership-bound progress.');
   }
-  // Acceptance/terminal writes retain original truth even when a later installed-state read would fail.
+  return owner;
+}
+export async function readSource5WorkflowEntryKey(input: Source5WorkflowEntryAuthorityInput): Promise<string> {
+  const owner = entryOwner(input);
   await owner.assertCurrent(input.firstIntent);
+  return owner.entryKey;
+}
+export async function assertSource5WorkflowEntryOwnership(input: Source5WorkflowEntryAuthorityInput): Promise<void> {
+  // Acceptance/terminal writes retain original truth even when a later installed-state read would fail.
+  await entryOwner(input).assertCurrent(input.firstIntent);
 }

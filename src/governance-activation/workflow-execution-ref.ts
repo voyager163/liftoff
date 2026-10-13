@@ -1,10 +1,9 @@
 import { canonicalSha256, isRecord } from '../domain/governance/activation/canonical-json.js';
 import { sourceSha } from './github-config.js';
 import { githubRepository, positiveId } from '../adapters/github/activation-rest.js';
-import type { PhaseAdapterExecutionInput } from './transition-ports.js';
 import {
   assertWorkflowAuthority, captureWorkflowBinding, workflowFailure, workflowOperation,
-  workflowRuntime, recordWorkflowCheckpoint, type WorkflowRuntime
+  workflowRuntime, recordWorkflowCheckpoint, type WorkflowRuntime, type WorkflowEffectInput
 } from './workflow-runtime.js';
 
 export interface WorkflowExecutionRefBinding {
@@ -128,10 +127,10 @@ export async function observeWorkflowProviderAdmission(
   return canonicalSha256({ mode: 'classic-oauth', repositoryId: binding.repositoryId, scopes, push: true, effect });
 }
 
-export interface WorkflowExecutionRefInput extends PhaseAdapterExecutionInput {
+export type WorkflowExecutionRefInput = WorkflowEffectInput & {
   executionRefIntent?: { bindingDigest: string; planDigest: string };
   recordExecutionRefIntent?: (intent: { bindingDigest: string; planDigest: string }) => Promise<void>;
-}
+};
 
 export async function bindImmutableWorkflowExecutionRef(
   input: WorkflowExecutionRefInput, binding: WorkflowExecutionRefBinding

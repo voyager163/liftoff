@@ -8,7 +8,6 @@ import {
 import { sourceSha } from './github-config.js';
 import { workflowTerminalConclusions, readWorkflowDispatchHandle } from './workflow-binding.js';
 export { readWorkflowDispatchHandle } from './workflow-binding.js';
-import type { PhaseAdapterExecutionInput } from './transition-ports.js';
 import type { PhaseId } from '../domain/governance/activation/types.js';
 import {
   observeImmutableWorkflowExecutionRef, type ImmutableWorkflowExecutionRef
@@ -19,8 +18,9 @@ import {
 } from './workflow-requirements.js';
 import {
   assertWorkflowAuthority, captureWorkflowBinding, readWorkflowBytes, workflowDigest, workflowFailure,
-  workflowOperation, workflowRuntime, recordWorkflowCheckpoint
+  workflowOperation, workflowRuntime, recordWorkflowCheckpoint, workflowReviewedPlans, type WorkflowEffectInput
 } from './workflow-runtime.js';
+import { isSource5WorkflowEffectInput } from './workflow-source5-ports.js';
 
 export { protectedWorkflowFamilies };
 export type { ProtectedWorkflowFamily };
@@ -66,11 +66,11 @@ export interface WorkflowProofCheckpoint {
   terminalConclusionDigest?: string;
 }
 
-export interface WorkflowContextExecutionInput extends PhaseAdapterExecutionInput {
+export type WorkflowContextExecutionInput = WorkflowEffectInput & {
   workflowCheckpoint?: WorkflowProofCheckpoint;
   workflowObservationOnly?: boolean;
   recordWorkflowDispatch?: (checkpoint: WorkflowProofCheckpoint) => Promise<void>;
-}
+};
 
 export interface ObservedWorkflowContext {
   name: string;
@@ -369,7 +369,7 @@ export async function executeWorkflowContextProof(
       !['dispatch-intent', 'accepted', 'terminal'].includes(checkpoint.stage)) {
       return workflowFailure('workflow-proof-checkpoint', 'Observation must retain the original exact dispatch binding, plan, timestamp and handle; imported or retagged checkpoints do not authorize a repeat.');
     }
-    const original = [input.plan, ...(input.inspection.contexts[input.phase.id].reviewedPlans ?? [])]
+    const original = workflowReviewedPlans(input)
       .find((plan) => plan.planDigest === checkpoint!.planDigest);
     if (!original || original.phaseId !== input.phase.id || original.scope !== input.plan.scope ||
       original.graphHash !== input.plan.graphHash ||
@@ -424,19 +424,19 @@ export async function executeWorkflowContextProof(
 }
 
 export async function readCurrentWorkflowContextProof(
-  input: PhaseAdapterExecutionInput, proof: WorkflowContextProof
+  input: WorkflowEffectInput, proof: WorkflowContextProof
 ): Promise<WorkflowContextProof> {
   return readCurrentProof(input, captureWorkflowBinding(proof), workflowRuntime(input));
 }
 
 async function readCurrentProof(
-  input: PhaseAdapterExecutionInput, proof: WorkflowContextProof, runtime: ReturnType<typeof workflowRuntime>
+  input: WorkflowEffectInput, proof: WorkflowContextProof, runtime: ReturnType<typeof workflowRuntime>
 ): Promise<WorkflowContextProof> {
   const binding = validateWorkflowContextBinding(proof.binding);
   if (proof.kind !== 'workflow-context-proof.v1' || proof.bindingDigest !== canonicalSha256(binding)) {
     return workflowFailure('workflow-proof-current', 'Independent proof readback requires the exact complete source binding.');
   }
-  const plans = [input.plan, ...Object.values(input.inspection.contexts).flatMap((context) => context.reviewedPlans ?? [])];
+  const plans = workflowReviewedPlans(input);
   if (!plans.some((plan) => plan.planDigest === proof.planDigest &&
     canonicalSha256(plan.identity) === canonicalSha256(input.plan.identity) &&
     plan.graphHash === input.plan.graphHash && plan.baselineDigest === input.plan.baselineDigest &&
@@ -459,7 +459,7 @@ async function readCurrentProof(
 }
 
 export async function verifyProtectedWorkflowProofMatrix(
-  input: PhaseAdapterExecutionInput,
+  input: WorkflowEffectInput,
   requirements: WorkflowRequirementSource,
   proofs: readonly WorkflowContextProof[]
 ): Promise<{ kind: 'green-red-required-contexts.v2'; proofDigests: readonly string[]; observationDigest: string }> {
@@ -508,7 +508,7 @@ export async function verifyProtectedWorkflowProofMatrix(
       path: file.path, content: await readWorkflowBytes(runtime.client, binding.repository, binding.sourceSha, file.path, file.digest)
     })));
     const actualRequirements = requiredWorkflowContextsFromSource(files, requirements.profile);
-    if (requirements.profile !== input.inspection.manifest.governance?.profile ||
+    if (requirements.profile !== (isSource5WorkflowEffectInput(input) ? input.profile : input.inspection.manifest.governance?.profile) ||
       actualRequirements.sourceDigest !== requirements.sourceDigest ||
       canonicalSha256(actualRequirements.families) !== canonicalSha256(requirements.families) ||
       canonicalSha256(actualRequirements.integrations) !== canonicalSha256(requirements.integrations)) {

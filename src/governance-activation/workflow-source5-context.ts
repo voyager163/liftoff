@@ -47,6 +47,14 @@ export function source5PreviewFingerprint(projectRoot: string, plan: ModernSaved
   } });
 }
 const leaseRoots = new WeakMap<ProjectMutationLease, string>();
+const entryGates = new WeakMap<ProjectMutationLease, Map<string, Promise<void>>>();
+const entryCarriers = new WeakMap<ProjectMutationLease, Set<string>>();
+export interface Source5WorkflowEntryGate {
+  readonly kind: 'source5-workflow-entry-gate';
+}
+const activeEntryGates = new WeakMap<Source5WorkflowEntryGate, {
+  projectRoot: string; lease: ProjectMutationLease; entryKey: string;
+}>();
 export async function assertSource5WorkflowLease(lease: ProjectMutationLease, projectRoot: string): Promise<void> {
   if (leaseRoots.get(lease) !== projectRoot) {
     return workflowFailure('workflow-source5-lease', 'A structural or foreign lease is not the live engine-held native project lease.');
@@ -58,8 +66,55 @@ export async function withSource5WorkflowLease<T>(
 ): Promise<T> {
   return withProjectMutationLock(projectRoot, async lease => {
     leaseRoots.set(lease, projectRoot);
-    try { return await action(lease); } finally { leaseRoots.delete(lease); }
+    try { return await action(lease); } finally {
+      leaseRoots.delete(lease);
+      entryGates.delete(lease);
+      entryCarriers.delete(lease);
+    }
   });
+}
+export async function withSource5WorkflowEntryGate<T>(
+  projectRoot: string, lease: ProjectMutationLease, entryKey: string,
+  action: (gate: Source5WorkflowEntryGate) => Promise<T>
+): Promise<T> {
+  await assertSource5WorkflowLease(lease, projectRoot);
+  if (!/^[a-f0-9]{64}$/u.test(entryKey)) {
+    return workflowFailure('workflow-source5-entry-gate', 'Entry exclusion requires the exact stable original entry key.');
+  }
+  const gates = entryGates.get(lease) ?? new Map<string, Promise<void>>();
+  entryGates.set(lease, gates);
+  const previous = gates.get(entryKey);
+  let release!: () => void;
+  const current = new Promise<void>(resolve => { release = resolve; });
+  gates.set(entryKey, current);
+  if (previous) await previous;
+  const gate = Object.freeze({ kind: 'source5-workflow-entry-gate' as const });
+  try {
+    await assertSource5WorkflowLease(lease, projectRoot);
+    activeEntryGates.set(gate, { projectRoot, lease, entryKey });
+    return await action(gate);
+  } finally {
+    activeEntryGates.delete(gate);
+    release();
+    if (gates.get(entryKey) === current) gates.delete(entryKey);
+  }
+}
+export async function claimSource5WorkflowEntryCarrier(gate: Source5WorkflowEntryGate): Promise<void> {
+  const scope = activeEntryGates.get(gate);
+  if (!scope) {
+    return workflowFailure('workflow-source5-entry-gate', 'Carrier issuance requires the active engine-held exact original entry gate.');
+  }
+  const { projectRoot, lease, entryKey } = scope;
+  await assertSource5WorkflowLease(lease, projectRoot);
+  if (activeEntryGates.get(gate) !== scope) {
+    return workflowFailure('workflow-source5-entry-gate', 'The original entry gate ended before carrier issuance.');
+  }
+  const entries = entryCarriers.get(lease) ?? new Set<string>();
+  if (entries.has(entryKey)) {
+    return workflowFailure('workflow-source5-effect-context', 'The held lease already issued this ORIGINAL entry; another plan cannot acquire a duplicate effect carrier.');
+  }
+  entries.add(entryKey);
+  entryCarriers.set(lease, entries);
 }
 export function source5WorkflowOriginalPlanValue(
   projectRoot: string, plan: ModernSavedTransitionPlan, approval: ModernApprovalEnvelope

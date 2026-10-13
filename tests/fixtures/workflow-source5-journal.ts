@@ -21,10 +21,13 @@ import { writeModernInstalledProject } from './modern-installed-project.js';
 import { workflowByteDigest } from '../../src/governance-activation/workflow-binding.js';
 
 /** Isolated current5 record/protocol fixtures, not host or live-provider qualification. */
-export async function workflowSource5JournalFixture() {
+export async function workflowSource5JournalFixture(options: {
+  initializeProject?: (projectRoot: string, fixtureRoot: string) => Promise<void>;
+} = {}) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff-source5-journal-')));
   const projectRoot = path.join(root, 'project'), homedir = path.join(root, 'home');
   await mkdir(projectRoot, { mode: 0o700 }); await mkdir(homedir, { mode: 0o700 });
+  await options.initializeProject?.(projectRoot, root);
   const storage = { homedir, env: {} }, installed = await writeModernInstalledProject(projectRoot);
   await installed.write(['governance', 'activation-state.json'], canonicalJson(installed.state));
   const identity = installed.api!.identity;

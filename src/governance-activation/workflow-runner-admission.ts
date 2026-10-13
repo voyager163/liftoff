@@ -1,9 +1,8 @@
 import { canonicalSha256, isRecord } from '../domain/governance/activation/canonical-json.js';
 import { githubRepository, positiveId } from '../adapters/github/activation-rest.js';
-import type { PhaseAdapterExecutionInput } from './transition-ports.js';
 import {
   assertWorkflowAuthority, captureWorkflowBinding, workflowFailure, workflowOperation,
-  workflowRuntime, recordWorkflowCheckpoint
+  workflowRuntime, recordWorkflowCheckpoint, type WorkflowEffectInput
 } from './workflow-runtime.js';
 
 export interface WorkflowRunnerAdmissionBinding {
@@ -16,10 +15,10 @@ export interface WorkflowRunnerAdmissionBinding {
   afterWorkflows: readonly string[];
 }
 
-export interface WorkflowRunnerAdmissionInput extends PhaseAdapterExecutionInput {
+export type WorkflowRunnerAdmissionInput = WorkflowEffectInput & {
   runnerAdmissionIntent?: { bindingDigest: string; planDigest: string };
   recordRunnerAdmissionIntent?: (intent: { bindingDigest: string; planDigest: string }) => Promise<void>;
-}
+};
 
 export async function admitReviewedRunnerWorkflows(
   input: WorkflowRunnerAdmissionInput, binding: WorkflowRunnerAdmissionBinding

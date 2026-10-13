@@ -1,5 +1,5 @@
-import { devNull } from 'node:os';
 import { GitHubActivationClient, GitHubActivationError } from '../adapters/github/activation-rest.js';
+import type { GitHubActivationTransport } from '../adapters/github/activation-rest.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import { assertGitHubAuthorized, clientFor } from './github-config.js';
 import { assertGovernanceApprovalIssued } from './authority-records.js';
@@ -9,15 +9,38 @@ import {
 } from '../domain/governance/activation/approvals.js';
 import type { TransitionOperation } from '../domain/governance/activation/types.js';
 import type { PhaseAdapterExecutionInput } from './transition-ports.js';
+import type { CommandRunner } from '../process-runner.js';
+import type { Source5WorkflowEffectInput } from './workflow-source5-ports.js';
+import {
+  isSource5WorkflowEffectInput, assertSource5WorkflowEffectContext,
+  requestSource5WorkflowEffect, runSource5WorkflowGitEffect
+} from './workflow-source5-ports.js';
+import { assertSource5WorkflowAuthority } from './workflow-source5-authority.js';
+import { source5WorkflowActions, source5WorkflowOperation } from './workflow-source5-operations.js';
 
-import { workflowByteDigest, workflowFailure } from './workflow-binding.js';
+import { workflowByteDigest, workflowFailure, workflowGitCommand, workflowGitOptions } from './workflow-binding.js';
 import { workflowPlannedOperation } from './workflow-operations.js';
 export { workflowPlannedOperation } from './workflow-operations.js';
 export { workflowFailure, captureWorkflowBinding, recordWorkflowCheckpoint, workflowByteDigest, workflowDigest } from './workflow-binding.js';
+export type WorkflowEffectInput = PhaseAdapterExecutionInput | Source5WorkflowEffectInput;
+export function workflowProjectRoot(input: WorkflowEffectInput): string {
+  return isSource5WorkflowEffectInput(input) ? input.projectRoot : input.inspection.projectRoot;
+}
+export function workflowReviewedPlans(input: WorkflowEffectInput) {
+  return isSource5WorkflowEffectInput(input) ? [input.plan, ...input.reviewedPlans] :
+    [input.plan, ...Object.values(input.inspection.contexts).flatMap(context => context.reviewedPlans ?? [])];
+}
 
 export async function assertWorkflowAuthority(
-  input: PhaseAdapterExecutionInput, operation: TransitionOperation
+  input: WorkflowEffectInput, operation: TransitionOperation
 ): Promise<void> {
+  if (isSource5WorkflowEffectInput(input)) {
+    assertSource5WorkflowEffectContext(input);
+    if (input.observationOnly) return workflowFailure('workflow-observation-only', 'Recorded workflow observation cannot acquire write authority or repeat an effect.');
+    return assertSource5WorkflowAuthority({ authority: input.authority, projectRoot: input.projectRoot,
+      plan: input.plan, operation: { ...operation, phaseId: input.phase.id },
+      now: input.clock?.() ?? input.now, write: true });
+  }
   await assertGitHubAuthorized(input, operation);
   if (!input.lease || !input.phase.approvalGate.required ||
     [operation, ...operation.effects ?? []].some((effect) =>
@@ -35,10 +58,27 @@ export async function assertWorkflowAuthority(
   }
   await assertGovernanceApprovalIssued(input.inspection.projectRoot, envelope);
 }
+export async function assertWorkflowObservationAuthority(input: WorkflowEffectInput, operation: TransitionOperation): Promise<void> {
+  if (!isSource5WorkflowEffectInput(input)) return assertWorkflowAuthority(input, operation);
+  assertSource5WorkflowEffectContext(input);
+  await assertSource5WorkflowAuthority({ authority: input.authority, projectRoot: input.projectRoot,
+    plan: input.plan, operation: { ...operation, phaseId: input.phase.id }, now: input.clock?.() ?? input.now, write: false });
+}
 
 export function workflowOperation(
-  input: PhaseAdapterExecutionInput, actionId: string, binding: unknown
+  input: WorkflowEffectInput, actionId: string, binding: unknown
 ): TransitionOperation {
+  if (isSource5WorkflowEffectInput(input)) {
+    const base = (source5WorkflowActions[input.phase.id] as readonly string[]).find(base => base === actionId);
+    if (!base) return workflowFailure('workflow-source5-action', 'Unknown indexed workflow action.');
+    const allowed = source5WorkflowActions[input.phase.id].find(base => base === actionId)!;
+    const expected = source5WorkflowOperation(input.phase.id, allowed, binding);
+    const matches = input.plan.operations.filter(entry => canonicalSha256(entry) === canonicalSha256(expected));
+    if (matches.length !== 1 || canonicalSha256(expected) !== canonicalSha256(input.operation)) {
+      return workflowFailure('workflow-source5-plan', 'The selected exact indexed workflow binding must occur once in the reviewed current5 plan.');
+    }
+    return expected;
+  }
   const matches = input.plan.operations.filter((entry) => entry.actionId === actionId);
   if (matches.length !== 1 || canonicalSha256(matches[0]) !==
     canonicalSha256(workflowPlannedOperation(input.phase.id, actionId, binding))) {
@@ -53,26 +93,72 @@ export interface WorkflowRuntime {
   assertWithinDeadline(): void;
 }
 
-export function workflowRuntime(input: PhaseAdapterExecutionInput): WorkflowRuntime {
+export interface WorkflowObservationServices {
+  readonly projectRoot: string;
+  readonly runner: CommandRunner;
+  readonly transport: GitHubActivationTransport;
+}
+export function workflowObservationRuntime(services: WorkflowObservationServices): WorkflowRuntime {
+  return boundedWorkflowRuntime(services, true);
+}
+export function workflowRuntime(input: WorkflowEffectInput): WorkflowRuntime {
+  if (isSource5WorkflowEffectInput(input)) assertSource5WorkflowEffectContext(input);
+  const projectRoot = workflowProjectRoot(input);
+  const underlying = isSource5WorkflowEffectInput(input) ? input.transport : clientFor(input).transport;
+  const transport: GitHubActivationTransport = {
+    async request(request) {
+      if (isSource5WorkflowEffectInput(input) && request.method !== 'GET') {
+        return requestSource5WorkflowEffect(input, request);
+      }
+      if (isSource5WorkflowEffectInput(input)) {
+        await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: false });
+      }
+      return underlying.request(request);
+    }
+  };
+  const runner: CommandRunner = isSource5WorkflowEffectInput(input) ? {
+    async run(command, options) {
+      await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: false });
+      return input.runner.run(command, options);
+    }
+  } : input.runner;
+  return boundedWorkflowRuntime({ projectRoot, transport, runner }, false,
+    isSource5WorkflowEffectInput(input) ? (args, timeoutMs) => runSource5WorkflowGitEffect(input, args, timeoutMs) : undefined);
+}
+function readableGit(args: readonly string[]): boolean {
+  const same = (expected: readonly string[]) => canonicalSha256(args) === canonicalSha256(expected);
+  const sha = (value: string | undefined) => typeof value === 'string' && /^[a-f0-9]{40}$/u.test(value);
+  return same(['symbolic-ref', '--short', 'HEAD']) || same(['remote', 'get-url', '--all', 'origin']) ||
+    same(['remote', 'get-url', '--push', '--all', 'origin']) || same(['config', '--list', '--name-only']) ||
+    same(['status', '--porcelain=v1', '--untracked-files=all']) || same(['diff', '--cached', '--name-only']) ||
+    args.length === 3 && args[0] === 'rev-parse' && args[1] === '--verify' &&
+      (args[2] === 'HEAD' || /^[a-f0-9]{40}\^\{tree\}$/u.test(args[2]!)) ||
+    args.length === 2 && args[0] === 'show' && /^[a-f0-9]{40}:(?:\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml|governance\/rulesets\/[A-Za-z0-9_-]+\.json)$/u.test(args[1]!) ||
+    args.length === 5 && sha(args[4]) && same(['rev-list', '--parents', '-n', '1', args[4]!]) ||
+    args.length === 6 && sha(args[5]) && same(['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', args[5]!]);
+}
+function boundedWorkflowRuntime(services: WorkflowObservationServices, readOnly: boolean,
+  effectGit?: (args: readonly string[], timeoutMs: number) => ReturnType<CommandRunner['run']>): WorkflowRuntime {
   const deadline = Date.now() + 180_000;
-  const projectRoot = input.inspection.projectRoot;
+  const projectRoot = services.projectRoot;
   function assertWithinDeadline() {
     if (Date.now() >= deadline) {
       return workflowFailure('workflow-deadline', 'Workflow observation reached its three-minute deadline. Retain dispatched work and observe it; never repeat an uncertain effect.');
     }
   }
-  const underlying = clientFor(input);
+  const underlying = services.transport;
   return {
     assertWithinDeadline,
     client: new GitHubActivationClient({
       async request(request) {
         assertWithinDeadline();
+        if (readOnly && request.method !== 'GET') return workflowFailure('workflow-observation-only', 'Observation services cannot write provider state.');
         let timer: ReturnType<typeof setTimeout> | undefined;
         const deadlineError = new GitHubActivationError('workflow-deadline',
           'Workflow provider response exceeded its bounded deadline; diagnostics were withheld and acceptance may be uncertain.');
         try {
           return await Promise.race([
-            underlying.transport.request(request),
+            underlying.request(request),
             new Promise<never>((_, reject) => {
               timer = setTimeout(() => reject(deadlineError),
               Math.min(30_000, deadline - Date.now()));
@@ -87,22 +173,14 @@ export function workflowRuntime(input: PhaseAdapterExecutionInput): WorkflowRunt
     }),
     async git(args) {
       assertWithinDeadline();
-      const command = { executable: 'git', args: [
-        '-c', 'core.fsmonitor=false', '-c', `core.hooksPath=${devNull}`,
-        '-c', 'gc.auto=0', '-c', 'maintenance.auto=false',
-        '-c', 'push.followTags=false', '-c', 'push.recurseSubmodules=no',
-        '-c', 'remote.origin.mirror=false', ...args
-      ] };
+      if (readOnly && !readableGit(args)) {
+        return workflowFailure('workflow-observation-only', 'Observation services accept only bounded literal Git reads.');
+      }
       let result;
-      try { result = await input.runner.run(command, {
-        cwd: projectRoot, timeoutMs: Math.min(30_000, deadline - Date.now()),
-        maxOutputBytes: 1024 * 1024, stream: false,
-        env: {
-          GIT_TERMINAL_PROMPT: '0', GIT_PAGER: 'cat', GIT_OPTIONAL_LOCKS: '0',
-          GIT_TRACE: '', GIT_TRACE_PACKET: '', GIT_TRACE_CURL: '', GIT_CURL_VERBOSE: '',
-          GIT_TRACE_SETUP: '', GIT_TRACE2: '', GIT_TRACE2_EVENT: '', GIT_TRACE2_PERF: ''
-        }
-      }); } catch {
+      try { result = effectGit && !readableGit(args)
+        ? await effectGit(args, Math.min(30_000, deadline - Date.now()))
+        : await services.runner.run(workflowGitCommand(args), workflowGitOptions(projectRoot,
+          Math.min(30_000, deadline - Date.now()))); } catch {
         return workflowFailure('workflow-git', 'The literal Git transport failed; diagnostics were withheld and recorded partial effects must be reconciled without repeating uncertain work.');
       }
       if (result.status !== 0 || result.timedOut || result.outputLimitExceeded || result.errorCode || result.aborted) {

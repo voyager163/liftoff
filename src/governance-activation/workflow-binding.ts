@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { devNull } from 'node:os';
 import { GitHubActivationError } from '../adapters/github/activation-rest.js';
 import { freezeModernValue } from '../domain/governance/activation/modern-graph.js';
 import { assertModernRecordData, assertSafeControlRecord } from '../domain/governance/activation/source-values.js';
@@ -46,4 +47,19 @@ export function workflowDigest(value: unknown): string {
     return workflowFailure('workflow-digest', 'Workflow source requires an exact raw SHA-256 byte digest.');
   }
   return value;
+}
+export function workflowGitCommand(args: readonly string[]) {
+  return { executable: 'git', args: [
+    '-c', 'core.fsmonitor=false', '-c', `core.hooksPath=${devNull}`,
+    '-c', 'gc.auto=0', '-c', 'maintenance.auto=false',
+    '-c', 'push.followTags=false', '-c', 'push.recurseSubmodules=no',
+    '-c', 'remote.origin.mirror=false', ...args
+  ] };
+}
+export function workflowGitOptions(projectRoot: string, timeoutMs: number) {
+  return { cwd: projectRoot, timeoutMs, maxOutputBytes: 1024 * 1024, stream: false, env: {
+    GIT_TERMINAL_PROMPT: '0', GIT_PAGER: 'cat', GIT_OPTIONAL_LOCKS: '0',
+    GIT_TRACE: '', GIT_TRACE_PACKET: '', GIT_TRACE_CURL: '', GIT_CURL_VERBOSE: '',
+    GIT_TRACE_SETUP: '', GIT_TRACE2: '', GIT_TRACE2_EVENT: '', GIT_TRACE2_PERF: ''
+  } };
 }

@@ -5,7 +5,10 @@ import { inspectModernInstalledActivation } from '../application/governance/mode
 import { canonicalSha256, isRecord } from '../domain/governance/activation/canonical-json.js';
 import type { ModernApprovalEnvelope, ModernSavedTransitionPlan, ModernTransitionOperation } from '../domain/governance/activation/modern-record-contracts.js';
 import { captureWorkflowBinding, workflowFailure } from './workflow-binding.js';
-import { assertSource5WorkflowContext, assertSource5WorkflowLease, source5ApprovalHash, source5WorkflowOriginalPlanValue } from './workflow-source5-context.js';
+import {
+  assertSource5WorkflowContext, assertSource5WorkflowLease, source5ApprovalHash,
+  source5WorkflowOriginalPlanValue, withSource5WorkflowEntryGate
+} from './workflow-source5-context.js';
 import type { Source5WorkflowContext } from './workflow-source5-context.js';
 import { source5WorkflowPlanInventory } from './workflow-source5-operations.js';
 
@@ -246,7 +249,7 @@ export async function source5WorkflowOwnership(input: Source5WorkflowOwnershipIn
       }
     }
   }
-  async function prepare(): Promise<void> {
+  async function prepareUnderGate(): Promise<void> {
     await assertSource5WorkflowLease(input.lease, input.projectRoot);
     if (rawSnapshotDigest !== input.plan.baselineDigest) {
       return workflowFailure('workflow-source5-owner-drift', 'Ownership preparation requires the exact independently reviewed raw installed snapshot, not a caller-selected baseline.');
@@ -306,6 +309,9 @@ export async function source5WorkflowOwnership(input: Source5WorkflowOwnershipIn
     }
     await store.save('proof', confirmationKey(generation), confirmation(readback.record, selected, receipt.rawDigest), null);
     await assertCurrent(true);
+  }
+  async function prepare(): Promise<void> {
+    return withSource5WorkflowEntryGate(input.projectRoot, input.lease, entryKey, prepareUnderGate);
   }
   return Object.freeze({ entryKey, originalPlanKey: original.control.controlKey,
     operationDigest, reservationKey, confirmationKey, prepare, assertCurrent, measureInventory,

@@ -5,12 +5,14 @@ import { captureProjectFileSnapshot, applyProjectFileTransaction } from '../adap
 import { githubRef, githubRepository } from '../adapters/github/activation-rest.js';
 import { detectCredentialLeaks } from './credentials.js';
 import { ownedPath, sourceSha } from './github-config.js';
-import type { PhaseAdapterExecutionInput, PhasePlanningInput, PhasePlanBuild } from './transition-ports.js';
+import type { PhasePlanningInput, PhasePlanBuild } from './transition-ports.js';
 import { repositoryConfiguration } from './github-config.js';
 import {
   assertWorkflowAuthority, captureWorkflowBinding, readWorkflowBytes, workflowByteDigest, workflowDigest,
-  workflowFailure, workflowOperation, workflowPlannedOperation, workflowRuntime, recordWorkflowCheckpoint
+  workflowFailure, workflowOperation, workflowPlannedOperation, workflowRuntime, recordWorkflowCheckpoint,
+  workflowProjectRoot, type WorkflowEffectInput
 } from './workflow-runtime.js';
+import { assertSource5WorkflowIntent, isSource5WorkflowEffectInput, recordSource5WorkflowStage } from './workflow-source5-ports.js';
 
 export interface ReviewedWorkflowFile {
   path: string;
@@ -32,10 +34,10 @@ export type WorkflowPublicationCheckpoint =
   | { bindingDigest: string; planDigest: string; stage: 'writing' }
   | { bindingDigest: string; planDigest: string; stage: 'committed' | 'push-intent' | 'published'; commitSha: string };
 
-export interface WorkflowPublicationInput extends PhaseAdapterExecutionInput {
+export type WorkflowPublicationInput = WorkflowEffectInput & {
   publicationCheckpoint?: WorkflowPublicationCheckpoint;
   recordWorkflowPublication?: (checkpoint: WorkflowPublicationCheckpoint) => Promise<void>;
-}
+};
 
 export interface PublishedWorkflowSource {
   kind: 'workflow-source-publication.v1';
@@ -133,7 +135,7 @@ export async function executeWorkflowSourcePublication(
   input: WorkflowPublicationInput, request: WorkflowPublicationBinding
 ): Promise<PublishedWorkflowSource> {
   const binding = validateWorkflowPublication(request);
-  const projectRoot = input.inspection.projectRoot;
+  const projectRoot = workflowProjectRoot(input);
   const bindingDigest = canonicalSha256(binding);
   const planDigest = input.plan.planDigest;
   const operation = workflowOperation(input, 'git.workflow-source.publish-reviewed', binding);
@@ -187,20 +189,38 @@ export async function executeWorkflowSourcePublication(
     }
     await assertWorkflowAuthority(input, operation);
     await recordWorkflowCheckpoint(recordPublication, { bindingDigest, planDigest, stage: 'writing' });
+    if (isSource5WorkflowEffectInput(input)) await assertSource5WorkflowIntent(input, 'source-write');
     await applyProjectFileTransaction(projectRoot, binding.files.map((file) =>
       ({ type: 'write' as const, pathParts: file.path.split('/'), content: file.content })), { preconditions: snapshots });
     await assertWorkflowAuthority(input, operation);
     await runtime.git(['--literal-pathspecs', 'add', '--', ...binding.files.map((file) => file.path)]);
+    if (isSource5WorkflowEffectInput(input)) {
+      await recordSource5WorkflowStage(input, 'publication-commit-intent', { bindingDigest, planDigest });
+    }
     await runtime.git(['-c', `core.hooksPath=${devNull}`, '--literal-pathspecs', 'commit', '--only', '--no-gpg-sign',
       '-m', 'Publish reviewed governance workflow source',
       '-m', 'Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>',
       '--', ...binding.files.map((file) => file.path)]);
     commitSha = sourceSha((await runtime.git(['rev-parse', '--verify', 'HEAD'])).trim());
+    if (isSource5WorkflowEffectInput(input)) {
+      await recordSource5WorkflowStage(input, 'publication-commit-observed', { bindingDigest, planDigest, commitSha });
+    } else {
+      const parents = (await runtime.git(['rev-list', '--parents', '-n', '1', commitSha])).trim();
+      if (parents !== `${commitSha} ${binding.parentSha}`) {
+        return workflowFailure('workflow-publication-parent', 'The actual source commit failed its immutable parent check; partial effects remain recorded.');
+      }
+      await recordWorkflowCheckpoint(recordPublication, { bindingDigest, planDigest, stage: 'committed', commitSha });
+    }
+  }
+  if (isSource5WorkflowEffectInput(input)) {
     const parents = (await runtime.git(['rev-list', '--parents', '-n', '1', commitSha])).trim();
     if (parents !== `${commitSha} ${binding.parentSha}`) {
-      return workflowFailure('workflow-publication-parent', 'The actual source commit failed its immutable parent check; partial effects remain recorded.');
+      return workflowFailure('workflow-publication-parent', 'The actual source commit failed its immutable parent check; original acceptance remains retained.');
     }
-    await recordWorkflowCheckpoint(recordPublication, { bindingDigest, planDigest, stage: 'committed', commitSha });
+    if (!input.publicationCheckpoint || input.publicationCheckpoint.stage === 'writing' ||
+      input.publicationCheckpoint.stage === 'committed') {
+      await recordWorkflowCheckpoint(recordPublication, { bindingDigest, planDigest, stage: 'committed', commitSha });
+    }
   }
   const changed = (await runtime.git(['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', commitSha]))
     .split('\0').filter(Boolean).sort();

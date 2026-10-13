@@ -27,6 +27,10 @@ import {
 import { source5WorkflowLogicalEntries, source5WorkflowPlanInventory } from '../src/governance-activation/workflow-source5-operations.js';
 import type { ProjectMutationLease } from '../src/adapters/filesystem/project-lock.js';
 import type { Source5WorkflowControlBinding } from '../src/governance-activation/workflow-source5-operations.js';
+import {
+  claimSource5WorkflowEntryCarrier, withSource5WorkflowEntryGate
+} from '../src/governance-activation/workflow-source5-context.js';
+import type { Source5WorkflowEntryGate } from '../src/governance-activation/workflow-source5-context.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -190,6 +194,49 @@ async function authorityFixture(scope: { controlAnchor?: string; bindingAnchor?:
 }
 
 describe('independently issued modern source5 workflow authority', () => {
+  it('serializes each original entry across failures without blocking a different entry', async () => {
+    const value = await fixture(), key = canonicalSha256('original-entry'), other = canonicalSha256('other-entry');
+    await withSource5WorkflowLease(value.project, async lease => {
+      const entered = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>(), order: string[] = [];
+      const first = withSource5WorkflowEntryGate(value.project, lease, key, async () => {
+        order.push('first'); entered.resolve();
+        await resume.promise;
+        throw new Error('isolated first entry failure');
+      });
+      const rejected = expect(first).rejects.toThrow(/isolated first entry failure/);
+      await entered.promise;
+      const second = withSource5WorkflowEntryGate(value.project, lease, key, async () => { order.push('second'); });
+      await withSource5WorkflowEntryGate(value.project, lease, other, async () => { order.push('other'); });
+      expect(order).toEqual(['first', 'other']);
+      resume.resolve();
+      await Promise.all([rejected, second]);
+      expect(order).toEqual(['first', 'other', 'second']);
+    });
+  });
+
+  it('claims a carrier only once through its active original entry gate, never structural or expired gates/leases', async () => {
+    const value = await fixture(), key = canonicalSha256('original-entry');
+    let endedGate: Source5WorkflowEntryGate | undefined, endedLease: ProjectMutationLease | undefined;
+    await expect(claimSource5WorkflowEntryCarrier({ kind: 'source5-workflow-entry-gate' })).rejects.toThrow(/active engine-held/);
+    await withSource5WorkflowLease(value.project, async lease => {
+      endedLease = lease;
+      await expect(withSource5WorkflowEntryGate(value.project, { ...lease }, key, async () => undefined)).rejects.toThrow(/lease/);
+      await expect(withSource5WorkflowEntryGate(`${value.project}/foreign`, lease, key, async () => undefined)).rejects.toThrow(/lease/);
+      await expect(withSource5WorkflowEntryGate(value.project, lease, 'unknown-key', async () => undefined)).rejects.toThrow(/stable original/);
+      await withSource5WorkflowEntryGate(value.project, lease, key, async gate => {
+        endedGate = gate;
+        await claimSource5WorkflowEntryCarrier(gate);
+        await expect(claimSource5WorkflowEntryCarrier(gate)).rejects.toThrow(/duplicate effect carrier/);
+      });
+      await expect(claimSource5WorkflowEntryCarrier(endedGate!)).rejects.toThrow(/active engine-held/);
+      await withSource5WorkflowEntryGate(value.project, lease, key, async gate => {
+        await expect(claimSource5WorkflowEntryCarrier(gate)).rejects.toThrow(/duplicate effect carrier/);
+      });
+      await withSource5WorkflowEntryGate(value.project, lease, canonicalSha256('independent-entry'), claimSource5WorkflowEntryCarrier);
+    });
+    await expect(withSource5WorkflowEntryGate(value.project, endedLease!, key, async () => undefined)).rejects.toThrow(/lease/);
+  });
+
   it('requires original private issuance and can restore it after a new process context/lease', async () => {
     const value = await authorityFixture();
     await withSource5WorkflowLease(value.project, async lease => {
@@ -243,6 +290,62 @@ describe('independently issued modern source5 workflow authority', () => {
     }
 
     describe('stable original-entry ownership, independent of future plan keys', () => {
+      it.each(['intent-first', 'transfer-first'] as const)(
+        'linearizes actual ownership preparation with a first-intent writer under the same original gate: %s', async order => {
+          const original = await authorityFixture(), next = await continuation(original);
+          await withSource5WorkflowLease(original.project, async lease => {
+            await issueSource5WorkflowApproval(bindingFor(original, lease), original.now);
+            const first = await owned(original, lease);
+            const entered = Promise.withResolvers<void>(), resume = Promise.withResolvers<void>();
+            let reservationWrites = 0, intentWrites = 0;
+            const receiptKey = first.reservationKey(1);
+            const second = await source5WorkflowOwnership({ ...bindingFor(next, lease), storage: {
+              ...original.options, fileSystem: { ...nodeUpdatePreviewFileSystem,
+                async replaceFile(source: string, target: string) {
+                  if (target.endsWith(`-${receiptKey}.json`)) {
+                    reservationWrites++;
+                    if (order === 'transfer-first') { entered.resolve(); await resume.promise; }
+                  }
+                  return nodeUpdatePreviewFileSystem.replaceFile(source, target);
+                }
+              }
+            } });
+            expect(second.entryKey).toBe(first.entryKey);
+            const operationKey = canonicalSha256({ controlKey: original.control.controlKey,
+              operationDigest: canonicalSha256(original.operation) });
+            const intentKey = canonicalSha256({ kind: 'workflow-source5-stage-key.v1', operationKey, stage: 'dispatch-intent' });
+            const writeIntent = () => withSource5WorkflowEntryGate(original.project, lease, first.entryKey, async () => {
+              await first.assertCurrent(true);
+              if (order === 'intent-first') { entered.resolve(); await resume.promise; }
+              await original.store.save('proof', intentKey,
+                { retained: 'isolated durable intent marker; not qualified dispatch evidence' }, null);
+              intentWrites++;
+            });
+            if (order === 'intent-first') {
+              const writer = writeIntent(); await entered.promise;
+              const transfer = expect(second.prepare()).rejects.toThrow(/intent|acceptance|terminal/);
+              await withSource5WorkflowEntryGate(original.project, lease, canonicalSha256('independent-entry'), async () => undefined);
+              expect(reservationWrites).toBe(0);
+              resume.resolve();
+              await Promise.all([writer, transfer]);
+              expect(intentWrites).toBe(1);
+              expect(await original.store.read('proof', receiptKey)).toBeNull();
+              await first.assertCurrent(false);
+            } else {
+              const transfer = second.prepare(); await entered.promise;
+              const writer = expect(writeIntent()).rejects.toThrow(/ownership|owner/);
+              await withSource5WorkflowEntryGate(original.project, lease, canonicalSha256('independent-entry'), async () => undefined);
+              expect(intentWrites).toBe(0);
+              resume.resolve();
+              await Promise.all([transfer, writer]);
+              expect(intentWrites).toBe(0);
+              expect(reservationWrites).toBe(1);
+              expect(await original.store.read('proof', intentKey)).toBeNull();
+              await second.assertCurrent(true);
+            }
+          });
+        });
+
       it('retains the same original entry across reviewed descendants and blocks every retired owner at issuance/restoration/pre-intent', async () => {
         const original = await authorityFixture(), next = await continuation(original), last = await continuation(next);
         let firstKey = '';
