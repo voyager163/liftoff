@@ -2026,3 +2026,32 @@ qualification. The canonical HCL ownership-tag mismatch remains
 `configuration-mismatch`; it was not mutated or waived. Task 14.2 remains
 unchecked, and no real GitHub, Azure, OpenTofu, state, registry, RBAC, cost,
 health, or global effect occurred.
+
+The exact private source has a further narrowly coupled successor:
+`1c131a35279e628622c70bab1670baf60208e0c5`
+(`fix: bound application health freshness`), tree
+`ad07c5037afcf030d9d97a320a7218c9b1536c3e`, direct child of `a18bbbe3`.
+Audit after the first correction found that a health observation was required
+to occur after completion but was not bounded to the current protected
+readback clock. The successor adds a five-minute maximum age, rejects
+future-dated observations, and requires the health observation to fall between
+completion and the current readback time. This prevents an arbitrarily old
+post-completion HTTP 200 from qualifying staging or production. The focused
+suite now includes an explicit stale-health negative.
+
+Renewed exact-source validation passed:
+
+- Qualified Node 24.21.0 plus npm 12.0.2 TypeScript build.
+- Ten focused deployment-source tests.
+- 121/121 adjacent deployment/artifact/ownership/environment tests.
+- Focused source coverage:
+  statements **304/348 (87.35%)**,
+  branches **561/620 (90.48%)**,
+  functions **77/78 (98.71%)**,
+  lines **298/342 (87.13%)**.
+- Package smoke, repository policy, supported-stack, strict OpenSpec, and
+  `git diff --check`.
+
+This successor supersedes `a18bbbe3` for private source audit and any future
+shared serialization. All task flags, real-effect blockers, ownership-tag
+mismatch, and no-shared-wiring constraints remain unchanged.
