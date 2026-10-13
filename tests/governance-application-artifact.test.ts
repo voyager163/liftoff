@@ -713,6 +713,31 @@ describe('immutable application publication and independent readback', () => {
       expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
     }
   );
+  it.each(['success', 'failure'] as const)('blocks regressing nonterminal readback of a known %s terminal run without redispatch', async (conclusion) => {
+    const f = await fixture(true);
+    f.transport.conclusion = conclusion;
+    f.transport.onJobsRead = async () => {
+      throw new GitHubActivationError('provider-response', 'Isolated job observation is unavailable.', 503);
+    };
+    const first = await executeApplicationArtifactPublication(f.input);
+    const terminalStatus = conclusion === 'success' ? 'completed' : 'failed';
+    expect(first).toMatchObject({ status: 'blocked', operation: { status: terminalStatus } });
+    const operation = first.operation!;
+    operation.planDigest = f.input.plan.planDigest;
+    f.input.inspection.state.phases[f.phase.id].operation = operation;
+    f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+    f.transport.runStatus = 'in_progress';
+    f.transport.conclusion = '';
+    const next = await executeApplicationArtifactPublication({
+      ...f.input, now: new Date(coverageNow.getTime() + 1000), recovery: true
+    });
+    expect(next).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/terminal.*nonterminal/),
+      operation: { operationId: operation.operationId, startedAt: operation.startedAt,
+        planDigest: operation.planDigest, status: terminalStatus } });
+    expect(next.evidencePayload).toBeUndefined();
+    expect(next.outputs?.values.immutableImage).toBeUndefined();
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+  });
   it.each(['', 'unknown'] as const)('refuses unsupported terminal conclusion %j without inferring publication success', async (conclusion) => {
     const f = await fixture(true);
     f.transport.conclusion = conclusion;

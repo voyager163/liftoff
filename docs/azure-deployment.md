@@ -245,6 +245,8 @@ read, including when source changes prevent a later outcome from being saved.
 Known unsuccessful conclusions (including failure, cancellation and timeout)
 checkpoint a failed handle even if job readback is unavailable; unknown terminal
 conclusions explicitly block publication rather than implying success.
+Contradictory nonterminal readback of a recorded terminal handle also blocks
+without downgrading its prior outcome or reporting a false pending operation.
 Provider completion alone does not verify publication: unavailable job readback
 blocks artifact readiness. The existing explicit terminal-operation recovery
 gate remains required; recovery observes the same handle without dispatch.
