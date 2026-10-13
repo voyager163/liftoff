@@ -207,6 +207,12 @@ file/Git/provider effect once after its durable original intent. Provider and
 push acceptance are retained before fallible readback, and original commit
 handles precede parent/inventory checks. Observation carriers cannot introduce
 intent or perform writes; their reads still require current held-lease authority.
+Intent consumption rechecks current issued, unexpired authority after asynchronous
+inventory and ownership validation. Actual provider/Git submission rechecks it
+again after intent consumption; each source-file mutation checks it before writing.
+Expiry is re-evaluated after authority's asynchronous reads. These pre-effect
+checks do not add fallible installed-state or time checks when retaining already
+accepted/terminal truth.
 These isolated source/process/HTTP guards are not complete engine or live
 qualification. Independent current proof orchestration, phase prerequisite
 composition and exact-byte post-write restart handling remain engine obligations.

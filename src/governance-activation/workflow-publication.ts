@@ -191,7 +191,10 @@ export async function executeWorkflowSourcePublication(
     await recordWorkflowCheckpoint(recordPublication, { bindingDigest, planDigest, stage: 'writing' });
     if (isSource5WorkflowEffectInput(input)) await assertSource5WorkflowIntent(input, 'source-write');
     await applyProjectFileTransaction(projectRoot, binding.files.map((file) =>
-      ({ type: 'write' as const, pathParts: file.path.split('/'), content: file.content })), { preconditions: snapshots });
+      ({ type: 'write' as const, pathParts: file.path.split('/'), content: file.content })), { preconditions: snapshots,
+      ...(isSource5WorkflowEffectInput(input) ? { onBeforeMutation: async () => {
+        await assertWorkflowAuthority(input, operation);
+      } } : {}) });
     await assertWorkflowAuthority(input, operation);
     await runtime.git(['--literal-pathspecs', 'add', '--', ...binding.files.map((file) => file.path)]);
     if (isSource5WorkflowEffectInput(input)) {

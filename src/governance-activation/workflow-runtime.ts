@@ -39,7 +39,7 @@ export async function assertWorkflowAuthority(
     if (input.observationOnly) return workflowFailure('workflow-observation-only', 'Recorded workflow observation cannot acquire write authority or repeat an effect.');
     return assertSource5WorkflowAuthority({ authority: input.authority, projectRoot: input.projectRoot,
       plan: input.plan, operation: { ...operation, phaseId: input.phase.id },
-      now: input.clock?.() ?? input.now, write: true });
+      now: input.clock?.() ?? input.now, clock: input.clock, write: true });
   }
   await assertGitHubAuthorized(input, operation);
   if (!input.lease || !input.phase.approvalGate.required ||

@@ -127,6 +127,7 @@ export async function restoreSource5WorkflowAuthority(
 export async function assertSource5WorkflowAuthority(input: {
   authority: Source5WorkflowAuthority; plan: ModernSavedTransitionPlan;
   operation: ModernTransitionOperation; projectRoot: string; now: Date; write: boolean; lease?: ProjectMutationLease;
+  clock?: () => Date;
 }): Promise<void> {
   const binding = authorities.get(input.authority);
   if (!binding || binding.projectRoot !== input.projectRoot || input.lease !== undefined && input.lease !== binding.lease ||
@@ -150,6 +151,7 @@ export async function assertSource5WorkflowAuthority(input: {
   if (!stored || canonicalSha256(stored.value) !== canonicalSha256(value)) {
     workflowFailure('workflow-source5-unissued', 'Original workflow issuance changed or disappeared; no effect or authority refresh is permitted.');
   }
+  validateBinding(binding, input.clock?.() ?? input.now, input.write);
 }
 
 export interface Source5WorkflowEntryAuthorityInput {

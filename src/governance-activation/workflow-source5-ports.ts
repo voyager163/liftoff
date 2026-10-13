@@ -184,6 +184,7 @@ export async function assertSource5WorkflowIntent(
     if (!matches || !identity || bound.submitted.has(identity)) {
       return workflowFailure('workflow-source5-intent', 'The exact reserved effect has no confirmed original intent, differs from review, or was already attempted. Never repeat uncertain work.');
     }
+    await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
     bound.submitted.add(identity);
   });
 }
@@ -198,6 +199,7 @@ export async function requestSource5WorkflowEffect(
   assertSource5WorkflowEffectContext(input);
   await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
   await assertSource5WorkflowIntent(input, request);
+  await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
   const response = await input.transport.request(request);
   await recordSource5WorkflowResponse(input, request, response);
   return response;
@@ -256,6 +258,7 @@ export async function runSource5WorkflowGitEffect(
   }
   await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
   await assertSource5WorkflowIntent(input, { git: args });
+  await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
   const result = await input.runner.run(workflowGitCommand(args), workflowGitOptions(input.projectRoot, timeoutMs));
   if (result.status === 0 && !result.timedOut && !result.outputLimitExceeded && !result.errorCode && !result.aborted) {
     await recordSource5WorkflowGitResult(input, args, result.stdout);
