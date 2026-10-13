@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { link, mkdir, mkdtemp, readFile, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
 import {
   createScopedUserLocalRecordStore, createWorkflowSource5ControlStore, nodeUpdatePreviewFileSystem,
   workflowSource5ControlLimits, workflowSource5ControlNamespaces, resolveUpdatePreviewLocation
@@ -12,13 +14,19 @@ import {
   assertSource5WorkflowAuthority, createSource5WorkflowContext, issueSource5WorkflowApproval,
   restoreSource5WorkflowAuthority, source5ApprovalHash, source5PreviewFingerprint, withSource5WorkflowLease
 } from '../src/governance-activation/workflow-source5-authority.js';
+import { assertSource5WorkflowEntryOwnership, source5WorkflowOriginalPlanValue } from '../src/governance-activation/workflow-source5-authority.js';
+import { source5OwnershipMaximumGeneration, source5WorkflowOwnership } from '../src/governance-activation/workflow-source5-ownership.js';
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { writeModernInstalledProject } from './fixtures/modern-installed-project.js';
+import { inspectModernInstalledActivation } from '../src/application/governance/modern-installed-preflight.js';
 import type { ModernPlanInput } from '../src/domain/governance/activation/modern-records.js';
 import type { Source5WorkflowAuthority } from '../src/governance-activation/workflow-source5-authority.js';
 import {
-  source5WorkflowCheckpointOperation, source5WorkflowControlKey, source5WorkflowOperation
+  source5WorkflowCheckpointOperation, source5WorkflowControlKey, source5WorkflowOperation, source5WorkflowProjectOperations
 } from '../src/governance-activation/workflow-source5-operations.js';
+import { source5WorkflowLogicalEntries, source5WorkflowPlanInventory } from '../src/governance-activation/workflow-source5-operations.js';
+import type { ProjectMutationLease } from '../src/adapters/filesystem/project-lock.js';
+import type { Source5WorkflowControlBinding } from '../src/governance-activation/workflow-source5-operations.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -145,16 +153,20 @@ async function authorityFixture(scope: { controlAnchor?: string; bindingAnchor?:
   const keyInput = { executionId: '11111111-1111-4111-8111-111111111111', phaseId: 'dev-proof' as const,
     repositoryAnchor: scope.controlAnchor ?? installed.state!.repository.id,
     projectKey: scope.controlProjectKey ?? (await resolveUpdatePreviewLocation(fixtureValue.project, fixtureValue.options)).projectKey };
-  const checkpoint = source5WorkflowCheckpointOperation({
+  const control = {
     ...keyInput, schemaVersion: 1, kind: 'workflow-source5-control.v1', controlKey: source5WorkflowControlKey(keyInput),
     reviewKind: 'bound-source', remainingFrom: null,
     origin: { planKey: 'a'.repeat(64), proofKey: 'b'.repeat(64), publicationDigest: 'c'.repeat(64),
       commitSha: 'a'.repeat(40), treeSha: 'b'.repeat(40) }
-  });
-  const operations = [operation, checkpoint], effects = operations.flatMap(operation => [operation, ...(operation.effects ?? [])]);
+  } as const;
+  const checkpoint = source5WorkflowCheckpointOperation(control);
+  const operations = [operation, checkpoint, ...source5WorkflowProjectOperations(control)];
+  const effects = [operation, checkpoint].flatMap(operation => [operation, ...(operation.effects ?? [])]);
+  const observed = await inspectModernInstalledActivation(fixtureValue.project);
+  if (observed.status !== 'observed') throw new Error('Expected independently readable installed fixture.');
   const input: ModernPlanInput = {
     phaseId: id, createdAt: '2026-09-01T12:00:00.000Z', expiresAt: '2026-09-01T13:00:00.000Z', stateHash: canonicalSha256(installed.state),
-    baselineDigest: 'a'.repeat(64), inputDigest: 'b'.repeat(64), transitionDigest: 'c'.repeat(64),
+    baselineDigest: observed.binding, inputDigest: 'b'.repeat(64), transitionDigest: 'c'.repeat(64),
     operations, noSecrets: true,
     configuration: { schemaVersion: 1, phases: {}, budget: { currency: 'USD', fixedMonthlyCents: 0, usageMonthlyCents: 0 } },
     approval: { gateKind: phase.approvalGate.kind, required: true, envelopeId: null, envelopeHash: null,
@@ -163,7 +175,7 @@ async function authorityFixture(scope: { controlAnchor?: string; bindingAnchor?:
     rollbackPlan: { phaseId: id, strategy: phase.rollback.kind, target: phase.rollback.target, operations: [], retained: [], cleanupWarnings: [] }
   };
   const draft = api.createPlan(input);
-  const approval = api.createApproval({ plan: draft, id: 'isolated-issued-review', approvedAt: input.createdAt,
+  const approval = api.createApproval({ plan: draft, id: `source5-${control.controlKey}`, approvedAt: input.createdAt,
     expiresAt: input.expiresAt, approver: 'isolated-fixture-human', resources: plannedApprovalResources(effects),
     destinations: plannedApprovalDestinations(effects), permissions: plannedApprovalMutations(effects),
     costCeiling: { currency: 'USD', fixedMonthlyCents: 0, usageMonthlyCents: 0 }, policyExceptions: [], destructiveScope: [] });
@@ -171,7 +183,8 @@ async function authorityFixture(scope: { controlAnchor?: string; bindingAnchor?:
   const plan = api.createPlan({ ...input, approval: { ...input.approval, envelopeId: approval.id, envelopeHash: hash,
     evaluation: { ...input.approval.evaluation, status: 'reused', envelopeId: approval.id, envelopeHash: hash } } },
   { approvals: [approval] });
-  return { ...fixtureValue, context, plan, approval, operation,
+  await fixtureValue.store.save('plan', control.controlKey, source5WorkflowOriginalPlanValue(fixtureValue.project, plan, approval), null);
+  return { ...fixtureValue, context, plan, approval, operation, control, input,
     now: new Date('2026-09-01T12:05:00.000Z'), repositoryAnchor: scope.bindingAnchor ?? installed.state!.repository.id,
     previewFingerprint: source5PreviewFingerprint(fixtureValue.project, plan), state: installed.state!, write: installed.write };
 }
@@ -195,7 +208,302 @@ describe('independently issued modern source5 workflow authority', () => {
         operation: value.operation, now: expired, write: false });
     });
   });
+    type AuthorityFixture = Omit<Awaited<ReturnType<typeof authorityFixture>>, 'control'> & { control: Source5WorkflowControlBinding };
+    async function continuation(value: AuthorityFixture): Promise<AuthorityFixture> {
+      const { control: previous } = source5WorkflowPlanInventory(value.plan);
+      const executionId = randomUUID();
+      const keyInput = { executionId, phaseId: previous.phaseId, repositoryAnchor: previous.repositoryAnchor, projectKey: previous.projectKey };
+      const control = { ...previous, ...keyInput, controlKey: source5WorkflowControlKey(keyInput), reviewKind: 'remaining-only' as const,
+        remainingFrom: { planKey: previous.controlKey, operationDigests: [canonicalSha256(value.operation)] } };
+      const checkpoint = source5WorkflowCheckpointOperation(control);
+      const input = { ...value.input, operations: [value.operation, checkpoint, ...source5WorkflowProjectOperations(control)] };
+      const api = value.context.records, draft = api.createPlan(input);
+      const effects = [value.operation, checkpoint].flatMap(operation => [operation, ...(operation.effects ?? [])]);
+      const approval = api.createApproval({ plan: draft, id: `source5-${control.controlKey}`, approvedAt: input.createdAt,
+        expiresAt: input.expiresAt, approver: 'isolated-fixture-human', resources: plannedApprovalResources(effects),
+        destinations: plannedApprovalDestinations(effects), permissions: plannedApprovalMutations(effects),
+        costCeiling: { currency: 'USD', fixedMonthlyCents: 0, usageMonthlyCents: 0 }, policyExceptions: [], destructiveScope: [] });
+      const hash = source5ApprovalHash(value.context, approval);
+      const plan = api.createPlan({ ...input, approval: { ...input.approval, envelopeId: approval.id, envelopeHash: hash,
+        evaluation: { ...input.approval.evaluation, status: 'reused', envelopeId: approval.id, envelopeHash: hash } } }, { approvals: [approval] });
+  await value.store.save('plan', control.controlKey, source5WorkflowOriginalPlanValue(value.project, plan, approval), null);
+      return { ...value, control, input, plan, approval, previewFingerprint: source5PreviewFingerprint(value.project, plan) };
+    }
+    const bindingFor = (value: AuthorityFixture, lease: ProjectMutationLease) =>
+      ({ ...value, projectRoot: value.project, lease, storage: value.options });
+    async function sealOriginal(value: AuthorityFixture) {
+      const { control } = source5WorkflowPlanInventory(value.plan);
+      const original = source5WorkflowOriginalPlanValue(value.project, value.plan, value.approval);
+      const existing = await value.store.read('plan', control.controlKey);
+      if (existing) expect(existing.value).toEqual(original); else await value.store.save('plan', control.controlKey, original, null);
+    }
+    async function owned(value: AuthorityFixture, lease: ProjectMutationLease) {
+      await sealOriginal(value);
+      return source5WorkflowOwnership(bindingFor(value, lease));
+    }
 
+    describe('stable original-entry ownership, independent of future plan keys', () => {
+      it('retains the same original entry across reviewed descendants and blocks every retired owner at issuance/restoration/pre-intent', async () => {
+        const original = await authorityFixture(), next = await continuation(original), last = await continuation(next);
+        let firstKey = '';
+        await withSource5WorkflowLease(original.project, async lease => {
+          await issueSource5WorkflowApproval(bindingFor(original, lease), original.now);
+          await sealOriginal(original);
+          const first = await owned(original, lease);
+          firstKey = first.entryKey;
+          const token = await restoreSource5WorkflowAuthority(bindingFor(original, lease), original.now);
+          await issueSource5WorkflowApproval(bindingFor(next, lease), next.now);
+          await sealOriginal(next);
+          expect((await owned(next, lease)).entryKey).toBe(firstKey);
+          await expect(issueSource5WorkflowApproval(bindingFor(original, lease), original.now)).rejects.toThrow();
+          await expect(restoreSource5WorkflowAuthority(bindingFor(original, lease), original.now)).rejects.toThrow();
+          await expect(assertSource5WorkflowEntryOwnership({ authority: token, projectRoot: original.project,
+            plan: original.plan, operation: original.operation, lease, firstIntent: true })).rejects.toThrow();
+          for (const operation of source5WorkflowProjectOperations(original.control)) {
+            await expect(assertSource5WorkflowAuthority({ authority: token, projectRoot: original.project,
+              plan: original.plan, operation, now: original.now, write: true, lease })).rejects.toThrow();
+          }
+          await issueSource5WorkflowApproval(bindingFor(last, lease), last.now);
+        });
+        await withSource5WorkflowLease(original.project, async lease => {
+          const current = await owned(last, lease);
+          expect(current.entryKey).toBe(firstKey);
+          expect(current.originalPlanKey).toBe(original.control.controlKey);
+          await current.assertCurrent(true);
+          await restoreSource5WorkflowAuthority(bindingFor(last, lease), last.now);
+          await expect(restoreSource5WorkflowAuthority(bindingFor(next, lease), next.now)).rejects.toThrow();
+        });
+      });
+
+      it.each(['reservation-rejected', 'reservation-confirmation-lost', 'cas-rejected', 'cas-confirmation-lost', 'readback-lost', 'confirmation-rejected'] as const)(
+        'restarts truthfully after %s without granting another owner or repeating a provider effect', async fault => {
+          const original = await authorityFixture(), next = await continuation(original);
+          let entryKey = '', receiptKey = '', confirmKey = '';
+          await withSource5WorkflowLease(original.project, async lease => {
+            await issueSource5WorkflowApproval(bindingFor(original, lease), original.now);
+            await sealOriginal(original);
+            const first = await owned(original, lease);
+            entryKey = first.entryKey; receiptKey = first.reservationKey(1); confirmKey = first.confirmationKey(1);
+            let readbackArmed = false;
+            const fileSystem = { ...nodeUpdatePreviewFileSystem,
+              async replaceFile(source: string, target: string) {
+                const receipt = target.endsWith(`-${receiptKey}.json`), pointer = target.endsWith(`-${entryKey}.json`),
+                  confirmation = target.endsWith(`-${confirmKey}.json`);
+                if (fault === 'reservation-rejected' && receipt || fault === 'cas-rejected' && pointer ||
+                  fault === 'confirmation-rejected' && confirmation) throw new Error(`isolated ${fault}`);
+                await nodeUpdatePreviewFileSystem.replaceFile(source, target);
+                if (fault === 'readback-lost' && pointer) readbackArmed = true;
+                if (fault === 'reservation-confirmation-lost' && receipt || fault === 'cas-confirmation-lost' && pointer) {
+                  throw new Error(`isolated ${fault}`);
+                }
+              },
+              async openFile(file: string, access: 'read' | 'create-exclusive', mode: number) {
+                if (readbackArmed && access === 'read' && file.endsWith(`-${entryKey}.json`)) throw new Error('isolated readback lost');
+                return nodeUpdatePreviewFileSystem.openFile(file, access, mode);
+              }
+            };
+            await expect(issueSource5WorkflowApproval({ ...bindingFor(next, lease),
+              storage: { ...original.options, fileSystem } }, next.now)).rejects.toThrow();
+          });
+          await withSource5WorkflowLease(original.project, async lease => {
+            const first = await owned(original, lease), second = await owned(next, lease);
+            const receipt = await original.store.read('proof', receiptKey);
+            if (fault === 'reservation-rejected') {
+              expect(receipt).toBeNull();
+              await first.assertCurrent(true);
+              await second.prepare();
+              await second.assertCurrent(true);
+            } else {
+              expect(receipt).not.toBeNull();
+              await expect(first.assertCurrent(false)).rejects.toThrow();
+              await expect(second.assertCurrent(false)).rejects.toThrow();
+              await expect(first.prepare()).rejects.toThrow();
+              await expect(second.prepare()).rejects.toThrow();
+              expect(await original.store.read('proof', confirmKey)).toBeNull();
+              expect((await original.store.read('proof', receiptKey))?.rawDigest).toBe(receipt!.rawDigest);
+            }
+          });
+        });
+
+      it.each(['publication-writing', 'publication-commit-intent', 'publication-commit-observed', 'publication-committed',
+        'publication-push-intent', 'publication-push-accepted', 'publication-published', 'execution-ref-intent',
+        'execution-ref-accepted', 'runner-intent', 'runner-accepted', 'dispatch-intent', 'dispatch-accepted',
+        'dispatch-terminal', 'component-completed', 'progress-pointer'] as const)(
+        'forbids continuation after durable %s even when the progress CAS was absent', async stage => {
+          const value = await authorityFixture(), next = await continuation(value);
+          await withSource5WorkflowLease(value.project, async lease => {
+            await issueSource5WorkflowApproval(bindingFor(value, lease), value.now); await sealOriginal(value);
+            const operationKey = canonicalSha256({ controlKey: value.control.controlKey, operationDigest: canonicalSha256(value.operation) });
+            const key = stage === 'progress-pointer' ? operationKey : canonicalSha256({ kind: 'workflow-source5-stage-key.v1', operationKey, stage });
+            const saved = await value.store.save(stage === 'progress-pointer' ? 'operation' : 'proof', key,
+              { retained: 'actual attempted entry fixture; never a qualified provider proof' }, null);
+            await expect(issueSource5WorkflowApproval(bindingFor(next, lease), next.now)).rejects.toThrow(/intent|progress|acceptance|terminal/);
+            expect((await value.store.read(stage === 'progress-pointer' ? 'operation' : 'proof', key))?.rawDigest).toBe(saved.rawDigest);
+            expect(await value.store.read('proof', (await owned(value, lease)).reservationKey(1))).toBeNull();
+          });
+        });
+
+      it('does not let two separately reapproved continuations or parallel reservations steal one original entry', async () => {
+        const original = await authorityFixture(), first = await continuation(original), second = await continuation(original);
+        await withSource5WorkflowLease(original.project, async lease => {
+          await issueSource5WorkflowApproval(bindingFor(original, lease), original.now); await sealOriginal(original);
+          const outcomes = await Promise.allSettled([issueSource5WorkflowApproval(bindingFor(first, lease), first.now),
+            issueSource5WorkflowApproval(bindingFor(second, lease), second.now)]);
+          expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+          const winner = outcomes[0]!.status === 'fulfilled' ? first : second;
+          const loser = winner === first ? second : first;
+          await (await owned(winner, lease)).assertCurrent(true);
+          await expect((await owned(loser, lease)).prepare()).rejects.toThrow();
+          await expect((await owned(original, lease)).assertCurrent(false)).rejects.toThrow();
+        });
+      });
+
+      it('blocks raw snapshot drift at first intent but still permits retaining later acceptance truth', async () => {
+        const value = await authorityFixture();
+        await withSource5WorkflowLease(value.project, async lease => {
+          await issueSource5WorkflowApproval(bindingFor(value, lease), value.now);
+          const token = await restoreSource5WorkflowAuthority(bindingFor(value, lease), value.now);
+          const input = { authority: token, projectRoot: value.project, plan: value.plan, operation: value.operation, lease };
+          await assertSource5WorkflowEntryOwnership({ ...input, firstIntent: true });
+          await value.write(['governance', 'activation-state.json'], canonicalJson(value.state) + '\n');
+          await expect(assertSource5WorkflowEntryOwnership({ ...input, firstIntent: true })).rejects.toThrow(/snapshot/);
+          await assertSource5WorkflowEntryOwnership({ ...input, firstIntent: false });
+          await value.write(['governance', 'activation-state.json'], canonicalJson(value.state));
+        });
+      });
+
+      it.each(['manifest', 'pointer', 'confirmation', 'original-plan'] as const)('does not recreate lost %s history', async kind => {
+        const value = await authorityFixture(), next = await continuation(value);
+        await withSource5WorkflowLease(value.project, async lease => {
+          await issueSource5WorkflowApproval(bindingFor(value, lease), value.now); await sealOriginal(value);
+          const owner = await owned(value, lease);
+          const record = kind === 'original-plan' ? await value.store.read('plan', value.control.controlKey) :
+            await value.store.read(kind === 'pointer' ? 'operation' : 'proof',
+              kind === 'pointer' ? owner.entryKey : kind === 'confirmation' ? owner.confirmationKey(0) : owner.inventory.manifestKey);
+          await unlink(record!.path);
+          await expect(source5WorkflowOwnership(bindingFor(value, lease)).then(owner => owner.prepare())).rejects.toThrow();
+          await expect(issueSource5WorkflowApproval(bindingFor(next, lease), next.now)).rejects.toThrow();
+        });
+      });
+
+      it('commits every bounded ownership key and independently measures complete sealed revision/generation growth', async () => {
+        const value = await authorityFixture();
+        await withSource5WorkflowLease(value.project, async lease => {
+          await issueSource5WorkflowApproval(bindingFor(value, lease), value.now);
+          const owner = await owned(value, lease);
+          const manifest = (await value.store.read('proof', owner.inventory.manifestKey))!;
+          const raw = manifest.value as { objects: { namespace: 'operation' | 'proof'; key: string; maximumEncodedBytes: number; maximumRevisions: number }[];
+            maximumEncodedFootprint: number; generationLimit: number };
+          expect(raw.generationLimit).toBe(source5OwnershipMaximumGeneration);
+          expect(raw.objects).toHaveLength(2 * source5OwnershipMaximumGeneration + 3);
+          expect(new Set(raw.objects.map(object => object.key)).size).toBe(raw.objects.length);
+          expect(raw.maximumEncodedFootprint).toBe(raw.objects.reduce((sum, object) =>
+            sum + object.maximumEncodedBytes * object.maximumRevisions, 0));
+          expect(raw.objects.find(object => object.key === owner.inventory.manifestKey)!.maximumEncodedBytes).toBe(manifest.encodedBytes);
+          expect(raw.objects.find(object => object.key === owner.entryKey)!.maximumRevisions).toBe(65);
+          for (const object of raw.objects) expect(object.maximumEncodedBytes).toBeLessThanOrEqual(workflowSource5ControlLimits[object.namespace]);
+        });
+      });
+
+      it.each([271, 272, 273])('separately enforces %i logical entries without claiming physical storage fit', async count => {
+        const value = await authorityFixture();
+        const operations = Array.from({ length: count }, () => ({ ...value.operation, effects: [] }));
+        if (count > 272) expect(() => source5WorkflowLogicalEntries(operations)).toThrow(/272/);
+        else expect(source5WorkflowLogicalEntries(operations)).toBe(count);
+        const actual = Array.from({ length: 132 }, (_, index) => source5WorkflowOperation('dev-proof', 'github.checks.dev-proof',
+          { ...value.operation.inputs, fixtureIndex: index }));
+        const plan = { ...value.plan, operations: [...actual, source5WorkflowCheckpointOperation(value.control),
+          ...source5WorkflowProjectOperations(value.control)] };
+        expect(source5WorkflowLogicalEntries(plan.operations)).toBe(271);
+        expect(source5WorkflowPlanInventory(plan).effects).toHaveLength(132);
+      });
+
+      it.each([-1, 0, 1])('rejects changed concrete key inventory at fixed cardinality %+i', async delta => {
+        const value = await authorityFixture();
+        await withSource5WorkflowLease(value.project, async lease => {
+          await issueSource5WorkflowApproval(bindingFor(value, lease), value.now);
+          const owner = await owned(value, lease), record = (await value.store.read('proof', owner.inventory.manifestKey))!;
+          const original = await readFile(record.path);
+          const raw = structuredClone(record.value) as { objects: Record<string, unknown>[] };
+          if (delta < 0) raw.objects.pop();
+          else if (delta > 0) raw.objects.push({ namespace: 'proof', key: 'f'.repeat(64), maximumEncodedBytes: 1000, maximumRevisions: 1 });
+          if (delta) {
+            await unlink(record.path);
+            await value.store.save('proof', owner.inventory.manifestKey, raw, null);
+            await expect(owner.assertCurrent(false)).rejects.toThrow(/inventory|footprint/);
+            await writeFile(record.path, original, { mode: 0o600 });
+          }
+          await owner.assertCurrent(true);
+          expect(() => owner.reservationKey(0)).toThrow(/range/);
+          expect(() => owner.reservationKey(65)).toThrow(/range/);
+          expect(() => owner.confirmationKey(-1)).toThrow(/range/);
+          expect(() => owner.confirmationKey(65)).toThrow(/range/);
+          expect(owner.confirmationKey(64)).toMatch(/^[a-f0-9]{64}$/);
+        });
+      });
+
+      it.each(['foreign-scope', 'extra-field', 'stale-generation'] as const)('blocks coherently sealed %s reservation without rewriting the current pointer', async variant => {
+        const value = await authorityFixture(), next = await continuation(value);
+        await withSource5WorkflowLease(value.project, async lease => {
+          await issueSource5WorkflowApproval(bindingFor(value, lease), value.now);
+          const owner = await owned(value, lease), pointer = (await value.store.read('operation', owner.entryKey))!;
+          await value.store.save('proof', owner.reservationKey(1), { kind: 'coherently sealed malformed reservation fixture',
+            originalEntryKey: variant === 'foreign-scope' ? 'f'.repeat(64) : owner.entryKey,
+            ...(variant === 'extra-field' ? { arbitraryPermission: 'denied' } : {}),
+            generation: variant === 'stale-generation' ? 0 : 1 }, null);
+          await expect(owner.assertCurrent(false)).rejects.toThrow(/reservation|retires/);
+          await expect(issueSource5WorkflowApproval(bindingFor(next, lease), next.now)).rejects.toThrow();
+          expect((await value.store.read('operation', owner.entryKey))?.rawDigest).toBe(pointer.rawDigest);
+        });
+      });
+
+      it('allows a never-attempted owner one actual bounded localhost request, then observation-only recovery', async () => {
+        const value = await authorityFixture();
+        let requests = 0;
+        const server = createServer((incoming, response) => {
+          if (incoming.method !== 'POST' || incoming.url !== '/repos/owner/repo/actions/workflows/996/dispatches') {
+            response.writeHead(400); response.end(); return;
+          }
+          requests++;
+          response.writeHead(200, { 'content-type': 'application/json' });
+          response.end(JSON.stringify({ workflow_run_id: 901,
+            run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
+            html_url: 'https://github.com/owner/repo/actions/runs/901' }));
+        });
+        await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+        const address = server.address();
+        if (!address || typeof address === 'string') throw new Error('Isolated HTTP fixture did not bind.');
+        try {
+          await withSource5WorkflowLease(value.project, async lease => {
+            await issueSource5WorkflowApproval(bindingFor(value, lease), value.now);
+            const token = await restoreSource5WorkflowAuthority(bindingFor(value, lease), value.now);
+            const check = { authority: token, projectRoot: value.project, plan: value.plan, operation: value.operation, lease };
+            await assertSource5WorkflowEntryOwnership({ ...check, firstIntent: true });
+            const operationKey = canonicalSha256({ controlKey: value.control.controlKey, operationDigest: canonicalSha256(value.operation) });
+            const key = canonicalSha256({ kind: 'workflow-source5-stage-key.v1', operationKey, stage: 'dispatch-intent' });
+            await value.store.save('proof', key, { kind: 'isolated literal HTTP intent; not qualified provider evidence',
+              controlKey: value.control.controlKey, planDigest: value.plan.planDigest, operationDigest: canonicalSha256(value.operation),
+              workflowId: 996, dispatchedAt: value.now.toISOString() }, null);
+            await assertSource5WorkflowEntryOwnership({ ...check, firstIntent: false });
+            const response = await fetch(`http://127.0.0.1:${address.port}/repos/owner/repo/actions/workflows/996/dispatches`, {
+              method: 'POST', signal: AbortSignal.timeout(1000), body: JSON.stringify({ ref: value.operation.inputs.executionRef })
+            });
+            expect(response.status).toBe(200);
+            expect(await response.json()).toMatchObject({ workflow_run_id: 901 });
+            await expect(assertSource5WorkflowEntryOwnership({ ...check, firstIntent: true })).rejects.toThrow(/intent|acceptance|terminal/);
+          });
+          await withSource5WorkflowLease(value.project, async lease => {
+            const token = await restoreSource5WorkflowAuthority(bindingFor(value, lease), value.now);
+            await assertSource5WorkflowEntryOwnership({ authority: token, projectRoot: value.project,
+              plan: value.plan, operation: value.operation, lease, firstIntent: false });
+            await expect((await owned(value, lease)).assertCurrent(true)).rejects.toThrow();
+          });
+          expect(requests).toBe(1);
+        } finally {
+          await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+        }
+      });
+    });
   it.each(['token', 'lease', 'context', 'root', 'operation', 'plan', 'preview'] as const)('rejects forged or reassigned %s', async field => {
     const value = await authorityFixture();
     await withSource5WorkflowLease(value.project, async lease => {

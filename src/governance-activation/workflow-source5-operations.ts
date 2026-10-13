@@ -1,5 +1,6 @@
 import { canonicalSha256, isRecord } from '../domain/governance/activation/canonical-json.js';
 import type { ModernSavedTransitionPlan, ModernTransitionOperation } from '../domain/governance/activation/modern-record-contracts.js';
+import type { TransitionOperation } from '../domain/governance/activation/types.js';
 import { workflowPlannedOperation } from './workflow-operations.js';
 import { captureWorkflowBinding, workflowFailure } from './workflow-binding.js';
 import type { Source5WorkflowPhase } from './workflow-source5-authority.js';
@@ -14,9 +15,16 @@ export const source5WorkflowActions = Object.freeze({
 } as const);
 export type Source5WorkflowAction = typeof source5WorkflowActions[Source5WorkflowPhase][number];
 export const source5MaximumEffectEntries = 272;
+export function source5WorkflowLogicalEntries(operations: readonly ModernTransitionOperation[]): number {
+  const entries = operations.reduce((total, operation) => total + 1 + (operation.effects?.length ?? 0), 0);
+  if (entries > source5MaximumEffectEntries) {
+    return workflowFailure('workflow-source5-inventory', 'The complete logical operation and nested-effect inventory exceeds 272 entries.');
+  }
+  return entries;
+}
 export function source5WorkflowOperation(
   phaseId: Source5WorkflowPhase, base: Source5WorkflowAction, binding: unknown
-): ModernTransitionOperation {
+): TransitionOperation & { readonly phaseId: Source5WorkflowPhase } {
   if (!(source5WorkflowActions[phaseId] as readonly string[] | undefined)?.includes(base)) {
     return workflowFailure('workflow-source5-action', 'The indexed workflow base is not permitted in this exact phase; proof phases cannot create refs or admit groups.');
   }
@@ -95,7 +103,26 @@ export function source5WorkflowCheckpointOperation(request: Source5WorkflowContr
   return { phaseId: binding.phaseId, adapter: 'local-state', actionId: 'governance.workflow-checkpoint.write',
     mutationClass: 'write-evidence', destination: { type: 'local', identity: `workflow-source5-journal:${binding.controlKey}`,
       pathParts: ['workflow-source5-journal', binding.controlKey] },
-    inputs: { ...binding }, remote: false, destructive: false };
+    inputs: { ...binding }, remote: false, destructive: false,
+    effects: [...new Set([binding.controlKey, ...(binding.origin ? [binding.origin.planKey] : [])])].flatMap(key => [
+      { mutationClass: 'write-evidence' as const, destination: { type: 'local' as const,
+        identity: `governance/plans/${key}.json`, pathParts: ['governance', 'plans', `${key}.json`] }, remote: false, destructive: false },
+      { mutationClass: 'write-evidence' as const, destination: { type: 'local' as const,
+        identity: `governance/approvals/source5-${key}.json`, pathParts: ['governance', 'approvals', `source5-${key}.json`] }, remote: false, destructive: false }
+    ]) };
+}
+export function source5WorkflowProjectOperations(control: Source5WorkflowControlBinding): readonly ModernTransitionOperation[] {
+  const destinations = [
+    { actionId: 'governance.evidence.write', mutationClass: 'write-evidence' as const,
+      pathParts: ['governance', 'evidence', `source5-${control.controlKey}.json`] },
+    { actionId: 'governance.activation-state.write', mutationClass: 'write-activation-state' as const,
+      pathParts: ['governance', 'activation-state.json'] }
+  ];
+  return destinations.map(({ actionId, mutationClass, pathParts }) => ({
+    phaseId: control.phaseId, adapter: 'local-state', actionId, mutationClass,
+    destination: { type: 'local', identity: pathParts.join('/'), pathParts },
+    inputs: { controlKey: control.controlKey }, remote: false, destructive: false
+  }));
 }
 export function source5WorkflowPlanInventory(plan: ModernSavedTransitionPlan): {
   control: Source5WorkflowControlBinding; checkpoint: ModernTransitionOperation; effects: readonly ModernTransitionOperation[];
@@ -111,8 +138,14 @@ export function source5WorkflowPlanInventory(plan: ModernSavedTransitionPlan): {
   if (canonicalSha256(checkpoints[0]) !== canonicalSha256(checkpoint) || control.phaseId !== plan.phaseId) {
     return workflowFailure('workflow-source5-inventory', 'The exact checkpoint operation or phase differs from its closed constructor.');
   }
-  const effects = plan.operations.filter(operation => operation !== checkpoints[0]);
-  if (!effects.length || effects.length > source5MaximumEffectEntries ||
+  const persistence = source5WorkflowProjectOperations(control);
+  const projectWrites = plan.operations.filter(operation => ['governance.evidence.write', 'governance.activation-state.write'].includes(operation.actionId));
+  if (canonicalSha256(projectWrites) !== canonicalSha256(persistence)) {
+    return workflowFailure('workflow-source5-inventory', 'Workflow final evidence/state writes must match their exact original inventoried destinations.');
+  }
+  const effects = plan.operations.filter(operation => operation !== checkpoints[0] && !projectWrites.includes(operation));
+  source5WorkflowLogicalEntries(plan.operations);
+  if (!effects.length ||
     new Set(effects.map(operation => operation.actionId)).size !== effects.length || plan.approvalBundle?.length) {
     return workflowFailure('workflow-source5-inventory', 'Workflow effects require one nonempty bounded unique exact phase inventory; approval bundles are not a bridge shortcut.');
   }

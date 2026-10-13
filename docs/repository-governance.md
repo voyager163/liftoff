@@ -141,6 +141,39 @@ preview/consent stores keep their64KiB limit. Failed saves throw and preserve
 unresolved progress; CAS refuses stale/concurrent replacement. These interfaces
 do not register a producer, qualify a host, or open public execution.
 
+The private ownership primitive seals the complete reviewed original plan before
+issuance. Each workflow entry keeps a stable key derived from that original
+plan, operation, current5 identity, phase, actual root, project key and existing
+anchor. Remaining-only reviews retain that original entry rather than
+renaming attempted work. A reservation is discoverable from the stable entry
+and next generation: once durable, it immediately retires the previous owner,
+including when the pointer CAS or its confirmation fails. The new owner needs
+exact CAS readback and an immutable confirmation under the live native lease.
+Missing, conflicting, malformed or outstanding ownership history blocks both
+owners; no automatic takeover or compensation is implemented.
+
+Only entries with no durable intent, progress, acceptance, terminal or component
+record anywhere in their reviewed ancestry can transfer. Issuance, restoration
+and first-intent checks validate ownership independently. First intent also
+checks the actual raw installed snapshot, separately from the canonical modern
+state digest. Later ownership-bound checkpoint persistence does not depend on
+a new installed-state read, so a subsequent failure cannot erase original
+acceptance or terminal truth.
+
+Ownership has a fixed 64-transfer bound. Its sealed manifest lists all 131
+concrete owner/confirmation/reservation/manifest keys, including itself, and
+measures the complete encoded worst-case objects, revision and previous-digest
+growth before ownership is established. This is a bounded ownership
+**subinventory**, not qualification of the unfinished engine's complete
+progress/recovery/finalization manifest. Separately, the reviewed logical
+mutation inventory counts every operation plus its nested effects, including
+checkpoint and exact project-metadata writes, and cannot exceed 272. A
+132-dispatch plan has 271 logical entries; that count is not evidence that its
+sealed storage fits. The private planner/engine and effect integration remain
+unregistered and incomplete. Staging/production workflow components cannot
+finalize independent Azure peer obligations, and source5 controls cannot
+authorize activation6.
+
 ## Managed files and user-owned state
 
 Enabled governance adds managed-core files:
