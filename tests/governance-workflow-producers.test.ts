@@ -242,7 +242,7 @@ async function fixture() {
   const state = coverageState();
   const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === 'dev-proof')!;
   const inspection = await coverageInspection({ root, phaseId: phase.id, state });
-  const plan = (await buildSavedTransitionPlan({ inspection, phase, runner, now: coverageNow }))!;
+  const plan = (await buildSavedTransitionPlan({ inspection, phaseId: phase.id, runner, now: coverageNow }))!;
   const transport = new WorkflowTransport();
   const operation = workflowPlannedOperation(phase.id, 'github.checks.dev-proof', transport.binding);
   plan.operations = [operation];

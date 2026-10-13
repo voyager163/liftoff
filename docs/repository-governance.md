@@ -226,8 +226,25 @@ a fresh observation is reported separately, never written over the original.
 Read-only publication observation requires the already recorded commit handle
 and rechecks its parent, exact inventory and immutable bytes. It never adopts a
 target-shaped HEAD or repeats commit/push work. These isolated component guards
-do not compose phase prerequisites or finalize a phase. Full planner composition,
-complete independently current matrix orchestration remain engine obligations.
+do not compose phase prerequisites or finalize a phase.
+A private complete-matrix reader requires the exact original ordered green/red
+component inventory and internally branded observation-only carriers from one
+original journal and held native lease. The first entry's carrier cannot stand
+in for another entry. It independently rereads every entry's actual
+run/jobs/checks/source and verifies complete immutable ruleset files, all four
+protected families, individual validator-caused reds and pinned integration
+identities on both green and red members. Original issuance, ownership and
+component chains are checked around readback; current observations cannot
+overwrite original IDs, dispatch/observation times, plans or proof bytes.
+Independent families may read concurrently, with separate per-entry authority
+checks and one unchanged three-minute budget. All family reads settle before
+returning or refusing; there are no Git/provider/file writes, status
+substitutions, new intent or terminal-bookkeeping capabilities in this path.
+Isolated matrix tests seed original publication/dispatch ledger formats and use
+bounded real Node validators to drive loopback responses. They are not actual
+publisher-created commits, GitHub dispatches or live green/red qualification.
+Full planner/prerequisite composition, final outcome persistence and engine
+admission remain separate obligations.
 A separate private branded terminal-bookkeeping reader can inspect an already
 sealed original finalization without any saves. It is not a journal, issued
 authority, ownership object or effect carrier. Its descriptive ownership

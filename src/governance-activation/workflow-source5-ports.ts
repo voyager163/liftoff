@@ -8,11 +8,12 @@ import {
   assertSource5WorkflowAuthority, assertSource5WorkflowEntryOwnership, readSource5WorkflowEntryKey
 } from './workflow-source5-authority.js';
 import { claimSource5WorkflowEntryCarrier, withSource5WorkflowEntryGate } from './workflow-source5-context.js';
-import { readSource5WorkflowDispatchCheckpoint } from './workflow-source5-checkpoints.js';
-import type { WorkflowProofCheckpoint } from './workflow-context-proof.js';
+import { readSource5WorkflowDispatchCheckpoint, validateSource5WorkflowCheckpointData } from './workflow-source5-checkpoints.js';
+import type { WorkflowContextProof, WorkflowProofCheckpoint } from './workflow-context-proof.js';
+import { source5WorkflowPlanInventory } from './workflow-source5-operations.js';
 import type { WorkflowPublicationCheckpoint } from './workflow-publication.js';
 import { assertSource5WorkflowJournal } from './workflow-source5-journal.js';
-import type { Source5WorkflowJournal, Source5WorkflowStage } from './workflow-source5-journal.js';
+import type { Source5WorkflowEvent, Source5WorkflowJournal, Source5WorkflowStage } from './workflow-source5-journal.js';
 import { canonicalSha256, isRecord } from '../domain/governance/activation/canonical-json.js';
 import {
   captureWorkflowBinding, readWorkflowDispatchHandle, workflowFailure, workflowGitCommand, workflowGitOptions
@@ -116,6 +117,83 @@ export async function createSource5WorkflowEffectInput(
 }
 export function assertSource5WorkflowEffectContext(input: Source5WorkflowEffectInput): void {
   if (!issued.has(input)) workflowFailure('workflow-source5-effect-context', 'Structural runtime fields or success-shaped callbacks are not a workflow effect capability.');
+}
+export async function assertSource5WorkflowCurrentProof(
+  input: Source5WorkflowEffectInput, proof: WorkflowContextProof
+): Promise<void> {
+  proof = captureWorkflowBinding(proof);
+  const bound = issued.get(input);
+  if (!bound || !input.operation.actionId.startsWith('github.checks.') ||
+    proof.planDigest !== input.plan.planDigest || proof.bindingDigest !== canonicalSha256(input.operation.inputs) ||
+    canonicalSha256(proof.binding) !== proof.bindingDigest) {
+    return workflowFailure('workflow-source5-proof-entry', 'Current proof must belong to this exact internally issued indexed entry, not another entry in the same plan.');
+  }
+  await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: false });
+  const events = await bound.journal.events(input.operation);
+  assertSource5WorkflowProofEvents(input, proof, events);
+}
+
+function assertSource5WorkflowProofEvents(
+  input: Source5WorkflowEffectInput, proof: WorkflowContextProof, events: readonly Source5WorkflowEvent[]
+) {
+  validateSource5WorkflowCheckpointData(input.operation, 'component-completed', {
+    bindingDigest: proof.bindingDigest, planDigest: proof.planDigest, proof
+  }, events, input.plan.planDigest);
+  const completed = events.find(event => event.stage === 'component-completed');
+  if (completed && (!isRecord(completed.data.proof) ||
+    canonicalSha256({ ...completed.data.proof, observedAt: null }) !==
+      canonicalSha256({ ...proof, observedAt: null }))) {
+    return workflowFailure('workflow-source5-proof-entry', 'Current observation cannot replace the original component, run identity, time, plan or source provenance.');
+  }
+}
+
+export function captureSource5WorkflowMatrixEntries(
+  entries: readonly { readonly input: Source5WorkflowEffectInput; readonly proof: WorkflowContextProof }[]
+): readonly { readonly input: Source5WorkflowEffectInput; readonly proof: WorkflowContextProof }[] {
+  if (!Array.isArray(entries) || Object.getPrototypeOf(entries) !== Array.prototype ||
+    !entries.length || entries.length > 132 || Object.keys(entries).length !== entries.length ||
+    Object.values(Object.getOwnPropertyDescriptors(entries)).some(descriptor => descriptor.get || descriptor.set) ||
+    Reflect.ownKeys(entries).some(key => typeof key !== 'string' || key !== 'length' && !/^(?:0|[1-9][0-9]*)$/u.test(key))) {
+    return workflowFailure('workflow-source5-proof-matrix', 'A private matrix requires its closed bounded explicit original entry array without accessors or extra fields.');
+  }
+  return Object.freeze(entries.map(entry => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(entry)) ||
+      !Object.hasOwn(entry, 'input') || !Object.hasOwn(entry, 'proof') ||
+      Reflect.ownKeys(entry).some(key => key !== 'input' && key !== 'proof') ||
+      Object.values(Object.getOwnPropertyDescriptors(entry)).some(descriptor => descriptor.get || descriptor.set)) {
+      return workflowFailure('workflow-source5-proof-matrix', 'Matrix members need only their internally issued original carrier and exact retained proof; callbacks and observation modes are not authority.');
+    }
+    assertSource5WorkflowEffectContext(entry.input);
+    return Object.freeze({ input: entry.input, proof: captureWorkflowBinding(entry.proof) });
+  }));
+}
+
+export async function assertSource5WorkflowMatrixEntries(
+  entries: readonly { readonly input: Source5WorkflowEffectInput; readonly proof: WorkflowContextProof }[]
+): Promise<void> {
+  entries = captureSource5WorkflowMatrixEntries(entries);
+  const first = entries[0] && issued.get(entries[0].input);
+  if (!first || first.journal.plan.phaseId !== 'green-red-proof' ||
+    entries.some(({ input }) => issued.get(input)?.journal !== first.journal || !input.observationOnly)) {
+    return workflowFailure('workflow-source5-proof-matrix', 'A private matrix needs original observation-only carriers from one exact green-red journal and held lease.');
+  }
+  const { effects, checkpoint } = source5WorkflowPlanInventory(first.journal.plan);
+  if (canonicalSha256(entries.map(({ input }) => input.operation)) !== canonicalSha256(effects)) {
+    return workflowFailure('workflow-source5-proof-matrix', 'The matrix must cover the complete original indexed operation inventory in its original order; caller-selected subsets or reordered carriers refuse.');
+  }
+  await first.journal.assertInventory();
+  for (const { input, proof } of entries) {
+    const events = await first.journal.events(input.operation);
+    assertSource5WorkflowProofEvents(input, proof, events);
+    const completed = events.find(event => event.stage === 'component-completed');
+    if (!completed || canonicalSha256(completed.data.proof) !== canonicalSha256(proof)) {
+      return workflowFailure('workflow-source5-proof-matrix', 'Every matrix member must be its exact already sealed original component, including its original observation time.');
+    }
+  }
+  // The original checkpoint selects the complete retained owner inventory, without minting a checkpoint carrier.
+  const input = entries[0]!.input;
+  await assertSource5WorkflowAuthority({ ...input, operation: checkpoint, now: input.clock?.() ?? input.now, write: false });
 }
 export async function recordSource5WorkflowStage(
   input: Source5WorkflowEffectInput, stage: Source5WorkflowStage, data: Readonly<Record<string, unknown>>

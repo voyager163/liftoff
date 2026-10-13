@@ -3,7 +3,7 @@ import {
   canonicalSha256, isRecord
 } from '../domain/governance/activation/canonical-json.js';
 import {
-  githubRef, githubRepository, GitHubActivationError, positiveId
+  githubRef, githubRepository, GitHubActivationClient, GitHubActivationError, positiveId
 } from '../adapters/github/activation-rest.js';
 import { sourceSha } from './github-config.js';
 import { workflowTerminalConclusions, readWorkflowDispatchHandle } from './workflow-binding.js';
@@ -20,7 +20,11 @@ import {
   assertWorkflowAuthority, captureWorkflowBinding, readWorkflowBytes, workflowDigest, workflowFailure,
   workflowOperation, workflowRuntime, recordWorkflowCheckpoint, workflowReviewedPlans, type WorkflowEffectInput
 } from './workflow-runtime.js';
-import { isSource5WorkflowEffectInput } from './workflow-source5-ports.js';
+import {
+  isSource5WorkflowEffectInput, assertSource5WorkflowCurrentProof, assertSource5WorkflowMatrixEntries,
+  captureSource5WorkflowMatrixEntries
+} from './workflow-source5-ports.js';
+import type { Source5WorkflowEffectInput } from './workflow-source5-ports.js';
 
 export { protectedWorkflowFamilies };
 export type { ProtectedWorkflowFamily };
@@ -436,6 +440,7 @@ async function readCurrentProof(
   if (proof.kind !== 'workflow-context-proof.v1' || proof.bindingDigest !== canonicalSha256(binding)) {
     return workflowFailure('workflow-proof-current', 'Independent proof readback requires the exact complete source binding.');
   }
+  if (isSource5WorkflowEffectInput(input)) await assertSource5WorkflowCurrentProof(input, proof);
   const plans = workflowReviewedPlans(input);
   if (!plans.some((plan) => plan.planDigest === proof.planDigest &&
     canonicalSha256(plan.identity) === canonicalSha256(input.plan.identity) &&
@@ -455,6 +460,7 @@ async function readCurrentProof(
     observed.proof.workflowId !== proof.workflowId) {
     return workflowFailure('workflow-proof-current', 'Actual current jobs/checks/source no longer match the retained proof.');
   }
+  if (isSource5WorkflowEffectInput(input)) await assertSource5WorkflowCurrentProof(input, proof);
   return observed.proof;
 }
 
@@ -463,14 +469,117 @@ export async function verifyProtectedWorkflowProofMatrix(
   requirements: WorkflowRequirementSource,
   proofs: readonly WorkflowContextProof[]
 ): Promise<{ kind: 'green-red-required-contexts.v2'; proofDigests: readonly string[]; observationDigest: string }> {
+  if (isSource5WorkflowEffectInput(input)) {
+    return workflowFailure('workflow-source5-proof-matrix', 'A complete source5 matrix requires its original per-entry observation carriers; the first indexed entry cannot stand in for other entries.');
+  }
   requirements = captureWorkflowBinding(requirements);
   proofs = captureWorkflowBinding(proofs);
   if (!proofs.length || proofs.length > 132) {
     return workflowFailure('workflow-proof-matrix', 'The complete proof matrix exceeds its bounded four-family context inventory.');
   }
   const runtime = workflowRuntime(input);
-  const observed: WorkflowContextProof[] = [];
+  return verifyProofMatrix(requirements, proofs.map(proof => ({ input, proof, runtime })));
+}
+
+export async function verifySource5WorkflowProofMatrix(
+  entries: readonly { readonly input: Source5WorkflowEffectInput; readonly proof: WorkflowContextProof }[],
+  requirements: WorkflowRequirementSource
+): Promise<{ kind: 'green-red-required-contexts.v2'; proofDigests: readonly string[]; observationDigest: string }> {
+  entries = captureSource5WorkflowMatrixEntries(entries);
+  requirements = captureWorkflowBinding(requirements);
+  if (!requirements || typeof requirements !== 'object' || Array.isArray(requirements) ||
+    canonicalSha256(Object.keys(requirements).sort()) !==
+    canonicalSha256(['profile', 'sourceDigest', 'files', 'families', 'integrations'].sort()) ||
+    !['single-maintainer-gitflow', 'team-gitflow'].includes(requirements.profile) ||
+    !Array.isArray(requirements.files) || !requirements.files.length || requirements.files.length > 16 ||
+    requirements.files.some(file => !isRecord(file) ||
+      canonicalSha256(Object.keys(file).sort()) !== canonicalSha256(['digest', 'path']) ||
+      typeof file.path !== 'string' || !/^governance\/rulesets\/[A-Za-z0-9_-]+\.json$/u.test(file.path) ||
+      typeof file.digest !== 'string' || !/^[a-f0-9]{64}$/u.test(file.digest)) ||
+    new Set(requirements.files.map(file => file.path)).size !== requirements.files.length ||
+    !isRecord(requirements.families) || !isRecord(requirements.integrations) ||
+    canonicalSha256(Object.keys(requirements.families).sort()) !== canonicalSha256([...protectedWorkflowFamilies].sort()) ||
+    canonicalSha256(Object.keys(requirements.integrations).sort()) !== canonicalSha256([...protectedWorkflowFamilies].sort()) ||
+    protectedWorkflowFamilies.some(family => {
+      const contexts = requirements.families[family], integrations = requirements.integrations[family];
+      return !Array.isArray(contexts) || !contexts.length || contexts.length > 32 ||
+        new Set(contexts).size !== contexts.length ||
+        contexts.some(name => typeof name !== 'string' || !name || name.length > 100 || /[\u0000-\u001f\u007f]/u.test(name)) ||
+        !isRecord(integrations) || canonicalSha256(Object.keys(integrations).sort()) !== canonicalSha256([...contexts].sort()) ||
+        Object.values(integrations).some(id => id !== null && (!Number.isSafeInteger(id) || Number(id) < 1));
+    }) ||
+    requirements.sourceDigest !== canonicalSha256({ profile: requirements.profile, files: requirements.files,
+      families: requirements.families, integrations: requirements.integrations })) {
+    return workflowFailure('workflow-source5-proof-matrix', 'Matrix requirements must be the closed complete source-derived family/file/integration inventory, not a partial or retagged summary.');
+  }
+  const captured = entries.map(entry => ({ ...entry, runtime: workflowRuntime(entry.input) }));
+  // One original three-minute budget covers ledger validation and all per-entry reads.
+  const budget = captured[0]!.runtime;
+  const bounded = captured.map(entry => ({ ...entry, runtime: { ...entry.runtime,
+    client: new GitHubActivationClient({ async request(request) {
+      budget.assertWithinDeadline();
+      const response = await entry.runtime.client.transport.request(request);
+      budget.assertWithinDeadline();
+      return response;
+    } })
+  } }));
+  await assertSource5WorkflowMatrixEntries(entries);
+  budget.assertWithinDeadline();
+  let expected = 0;
   for (const family of protectedWorkflowFamilies) {
+    const required = requirements.families[family];
+    const greens = captured.filter(entry => entry.proof.binding.family === family && entry.proof.binding.mode === 'green');
+    if (greens.length !== 1 || canonicalSha256(greens[0]!.proof.binding.contexts.map(context => context.name).sort()) !==
+      canonicalSha256([...required].sort())) {
+      return workflowFailure('workflow-proof-matrix', 'Every applicable protected ref family needs one independently current green proof for all required contexts.');
+    }
+    expected += 1 + required.length;
+    for (const name of required) {
+      const reds = captured.filter(entry => entry.proof.binding.family === family &&
+        entry.proof.binding.mode === 'controlled-red' && entry.proof.binding.violation?.context === name);
+      if (reds.length !== 1) {
+        return workflowFailure('workflow-proof-matrix', 'Each required context needs its own actual controlled violation and failing validator; one generic red run is insufficient.');
+      }
+    }
+  }
+  if (expected !== captured.length) {
+    return workflowFailure('workflow-proof-matrix', 'The original matrix contains extra entries outside its complete source-derived family/context inventory.');
+  }
+  const result = await verifyProofMatrix(requirements, bounded);
+  if (canonicalSha256(result.proofDigests) !== canonicalSha256(captured.map(({ proof }) => canonicalSha256({
+    bindingDigest: proof.bindingDigest, observationDigest: proof.observationDigest, planDigest: proof.planDigest
+  })))) {
+    return workflowFailure('workflow-source5-proof-matrix', 'The original indexed plan order differs from the source-derived complete matrix projection; current observation cannot reorder original provenance.');
+  }
+  budget.assertWithinDeadline();
+  await assertSource5WorkflowMatrixEntries(entries);
+  budget.assertWithinDeadline();
+  return result;
+}
+
+async function verifyProofMatrix(
+  requirements: WorkflowRequirementSource,
+  entries: readonly { readonly input: WorkflowEffectInput; readonly proof: WorkflowContextProof;
+    readonly runtime: ReturnType<typeof workflowRuntime> }[]
+): Promise<{ kind: 'green-red-required-contexts.v2'; proofDigests: readonly string[]; observationDigest: string }> {
+  const proofs = entries.map(entry => entry.proof), budget = entries[0]!.runtime;
+  const source5 = entries.every(entry => isSource5WorkflowEffectInput(entry.input));
+  const entryFor = (proof: WorkflowContextProof) => {
+    budget.assertWithinDeadline();
+    const entry = entries.find(entry => entry.proof === proof);
+    if (!entry) return workflowFailure('workflow-proof-matrix', 'The original current observation entry is missing.');
+    return entry;
+  };
+  const assertIntegrations = (proof: WorkflowContextProof, family: ProtectedWorkflowFamily) => {
+    if (proof.contexts.some(context => {
+      const integration = requirements.integrations[family][context.name];
+      return integration !== null && integration !== context.applicationId;
+    })) {
+      return workflowFailure('workflow-proof-matrix', 'Actual context application IDs do not satisfy the source-pinned required integration.');
+    }
+  };
+  async function observeFamily(family: ProtectedWorkflowFamily): Promise<readonly WorkflowContextProof[]> {
+    const observed: WorkflowContextProof[] = [];
     const required = requirements.families[family];
     if (!required.length || new Set(required).size !== required.length) {
       return workflowFailure('workflow-proof-matrix', 'Each protected ref family requires its nonempty exact source-derived context inventory.');
@@ -480,16 +589,12 @@ export async function verifyProtectedWorkflowProofMatrix(
       canonicalSha256([...required].sort())) {
       return workflowFailure('workflow-proof-matrix', 'Every applicable protected ref family needs one independently current green proof for all required contexts.');
     }
+    const { input, runtime } = entryFor(green[0]!);
     observed.push(await readCurrentProof(input, green[0]!, runtime));
-    if (observed.at(-1)!.contexts.some((context) => {
-      const integration = requirements.integrations[family][context.name];
-      return integration !== null && integration !== context.applicationId;
-    })) {
-      return workflowFailure('workflow-proof-matrix', 'Actual context application IDs do not satisfy the source-pinned required integration.');
-    }
+    assertIntegrations(observed.at(-1)!, family);
     const binding = green[0]!.binding;
     const commit = await runtime.client.get(`/repos/${binding.repository}/git/commits/${binding.sourceSha}`);
-    if (commit.sha !== binding.sourceSha || !isRecord(commit.tree)) {
+    if (commit.sha !== binding.sourceSha || !isRecord(commit.tree) || commit.tree.sha !== binding.treeSha) {
       return workflowFailure('workflow-proof-matrix', 'Actual green source tree could not establish the complete required-context inventory.');
     }
     const treeSha = sourceSha(commit.tree.sha);
@@ -526,8 +631,23 @@ export async function verifyProtectedWorkflowProofMatrix(
         canonicalSha256(red[0]!.binding.contexts) !== canonicalSha256(green[0]!.binding.contexts)) {
         return workflowFailure('workflow-proof-matrix', 'Each required context needs its own actual controlled violation and failing validator under the same immutable recipe; one generic red run is insufficient.');
       }
-      observed.push(await readCurrentProof(input, red[0]!, runtime));
+      const entry = entryFor(red[0]!);
+      observed.push(await readCurrentProof(entry.input, red[0]!, entry.runtime));
+      assertIntegrations(observed.at(-1)!, family);
     }
+    budget.assertWithinDeadline();
+    return observed;
+  }
+  const observed: WorkflowContextProof[] = [];
+  if (source5) {
+    // Independent read-only carriers share the held lease, not each other's authority.
+    const families = await Promise.allSettled(protectedWorkflowFamilies.map(observeFamily));
+    for (const family of families) {
+      if (family.status === 'rejected') throw family.reason;
+      observed.push(...family.value);
+    }
+  } else {
+    for (const family of protectedWorkflowFamilies) observed.push(...await observeFamily(family));
   }
   if (observed.length !== proofs.length ||
     new Set(observed.map(proof => proof.bindingDigest)).size !== observed.length ||
