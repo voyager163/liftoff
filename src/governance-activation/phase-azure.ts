@@ -22,6 +22,10 @@ import {
 import {
   runnerNetworkPlanInputs
 } from './runner-readiness.js';
+import {
+  applicationPrerequisitePlanInputs, executeApplicationPrerequisites
+} from './application-prerequisites.js';
+import { applicationArtifactBinding } from './application-artifact.js';
 
 function azureSubscriptionId(input: PhasePlanningInput | PhaseAdapterExecutionInput): string | null {
   return input.inspection.activationInputs?.azure?.subscriptionId ??
@@ -147,21 +151,29 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
       return {
         operations: [
           planAzureDeploymentOwnership(input, subId),
-          azureOperation(input.phase.id, 'azure.prerequisites.apply', 'azure-resource-provision', { acr: true, managedIdentity: true }, subId, [
+          azureOperation(input.phase.id, 'azure.prerequisites.apply', 'azure-resource-provision', applicationPrerequisitePlanInputs(input), subId, [
             { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
             { mutationClass: 'backend-state-write', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
             { mutationClass: 'azure-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
           ]),
-          azureOperation(input.phase.id, 'azure.prerequisites.verify', 'azure-read', { verifyAcr: true }, subId)
+          azureOperation(input.phase.id, 'azure.prerequisites.verify', 'azure-read', {
+            prerequisiteBindingDigest: applicationPrerequisitePlanInputs(input).bindingDigest
+          }, subId)
         ]
       };
     case 'application-artifact-ready':
+    {
+      const binding = applicationArtifactBinding(input);
       return {
         operations: [
           planAzureDeploymentOwnership(input, subId),
-          azureOperation(input.phase.id, 'azure.artifact.readback', 'azure-read', { verifyDigest: true }, subId)
+          azureOperation(input.phase.id, 'azure.artifact.readback', 'azure-read', {
+            artifactBindingDigest: binding.bindingDigest, sourceSha: binding.sourceSha,
+            registryResourceId: binding.registryId, immutableTag: binding.tag, verifyAttestation: true
+          }, subId)
         ]
       };
+    }
     case 'application-foundation':
       return {
         operations: [
@@ -195,6 +207,8 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
 export async function executeAzurePhase(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
   const subscriptionId = azureSubscriptionId(input);
   switch (input.phase.id) {
+    case 'application-prerequisites-ready':
+      return executeApplicationPrerequisites(input);
     case 'phase-0-complete': {
       const operation = input.plan.operations.find((entry) => entry.actionId === 'azure.phase0.discover');
       if (!subscriptionId || !operation) {

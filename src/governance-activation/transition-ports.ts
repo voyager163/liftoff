@@ -351,6 +351,13 @@ export interface GovernancePhaseAdapter {
 }
 
 export interface PhaseAdapterExecutionInput {
+  applicationObservationOnly?: boolean;
+  recordApplicationDispatchIntent?: (operation: TransitionOperation) => Promise<void>;
+  recordApplicationProgress?: (progress: {
+    operation: ExternalOperationState;
+    outputs: PhaseOutputBindings;
+    liveReadback: readonly LiveReadbackProof[];
+  }) => Promise<void>;
   inspection: GovernanceTransitionInspection;
   plan: SavedTransitionPlan;
   phase: PhaseGraphNode;

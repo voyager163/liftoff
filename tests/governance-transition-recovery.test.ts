@@ -24,6 +24,7 @@ import {
   isolateUserLocalStorage, isolatedGitEnvironment, issuePriorApproval, readState, resetDirectory, scratchDirectory,
   selectedSource, treeFingerprint, writeCoverageProject
 } from './fixtures/governance-coverage/transition-project.js';
+import { configureApplicationFixture } from './fixtures/governance-coverage/application-project.js';
 
 const scratch = scratchDirectory('transition-recovery');
 const activationInputs = coverageActivationInputs();
@@ -330,13 +331,15 @@ describe('source-of-truth and adapter integrity boundaries', () => {
   it('retains the running checkpoint but records no success when approval changes before outcome persistence', async () => {
     const root = await project('approval-changed');
     const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
-    const state = coverageState({ activationInputs });
+    const applicationInputs = structuredClone(activationInputs);
+    const state = coverageState({ activationInputs: applicationInputs });
+    configureApplicationFixture(applicationInputs, state);
     const planned = await buildSavedTransitionPlan({
-      inspection: await coverageInspection({ root, phaseId: 'application-prerequisites-ready', state, activationInputs }), runner, now: coverageNow
+      inspection: await coverageInspection({ root, phaseId: 'application-prerequisites-ready', state, activationInputs: applicationInputs }), runner, now: coverageNow
     });
     const approval = await issuePriorApproval(root, state, planned!);
-    const approved = await coverageInspection({ root, phaseId: 'application-prerequisites-ready', state, approvals: [approval], activationInputs });
-    const revoked = await coverageInspection({ root, phaseId: 'application-prerequisites-ready', state, approvals: [], activationInputs });
+    const approved = await coverageInspection({ root, phaseId: 'application-prerequisites-ready', state, approvals: [approval], activationInputs: applicationInputs });
+    const revoked = await coverageInspection({ root, phaseId: 'application-prerequisites-ready', state, approvals: [], activationInputs: applicationInputs });
     let reinspections = 0;
     const { calls, adapters } = injected('application-prerequisites-ready', (input) => ({
       status: 'completed', resultState: 'verified', evidencePayload: { kind: 'application-prerequisites-ready.v1' },
@@ -363,13 +366,15 @@ describe('source-of-truth and adapter integrity boundaries', () => {
   it('persists sanitized failed evidence and owned outputs when a remote effect precedes failure', async () => {
     const root = await project('partial-remote-failure');
     const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
-    const state = coverageState({ activationInputs });
+    const applicationInputs = structuredClone(activationInputs);
+    const state = coverageState({ activationInputs: applicationInputs });
+    configureApplicationFixture(applicationInputs, state);
     const planned = await buildSavedTransitionPlan({
       inspection: await coverageInspection({
         root,
         phaseId: 'application-prerequisites-ready',
         state,
-        activationInputs
+        activationInputs: applicationInputs
       }),
       runner,
       now: coverageNow
@@ -380,7 +385,7 @@ describe('source-of-truth and adapter integrity boundaries', () => {
       phaseId: 'application-prerequisites-ready',
       state,
       approvals: [approval],
-      activationInputs
+      activationInputs: applicationInputs
     });
     const completedResource = `/subscriptions/${coverageSubscription}/resourceGroups/rg-partial/providers/Microsoft.ManagedIdentity/userAssignedIdentities/app`;
     const blocker = 'Azure apply stopped after the managed identity committed; inspect current ownership before recovery.';

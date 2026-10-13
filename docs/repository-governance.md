@@ -859,6 +859,37 @@ locking, and active writers remain explicit blockers. Provider registrations
 remain retained subscription capabilities and are not unregistered during
 teardown.
 
+## Approved application readiness
+
+`application-prerequisites-ready` and `application-artifact-ready` now have
+concrete bounded source producers, conditional on both private protected-state
+capabilities and the same independently qualified execution host. Public modern
+activation remains separately gated; neither source presence nor unit fixtures
+qualify production task13/task14 execution.
+
+Prerequisite plans bind exact registry/identity resources, tenant service
+principal, registry-only AcrPull/AcrPush assignments and cost. Unknown or
+pre-existing resources stay planning-only. Continuity from prior bootstrap/runner
+phases requires authoritative, fresh evidence/output bindings and exact recorded
+operation inventories, not names, local files or tags. A confirmed pending
+prerequisite deployment can be observed read-only even while newly appearing
+resources lack final ownership proof; completion still requires deployed-recipe
+and full resource/role/ownership readback before publishing authoritative outputs.
+
+Artifact plans separately bind source transmission, dependency/network and build
+consent. The existing GitHub artifact route verifies committed recipe bytes,
+exact source and runner admission before dispatch, checkpoints the real run,
+and combines actual ACR run/digest/immutability with cryptographically verified
+GitHub source/signer/run provenance. No artifact readiness is recorded from a
+placeholder, candidate tag or caller-supplied source annotation. Partial handles
+survive a later source/authority change; failed or uncertain effects are observed,
+not automatically repeated or undone.
+
+See [Azure application readiness](azure-deployment.md#application-readiness-source-boundary)
+for declarative recipe inputs, operator boundaries and remaining real
+qualification blockers. The original exact 30-day protected retention/disposal
+obligation remains unchanged; TASK14.1 is not checked by source tests.
+
 ## Commands
 
 The generated setup integrations call only strict, project-aware CLI commands:
