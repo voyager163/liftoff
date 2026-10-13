@@ -30,6 +30,7 @@ const maximumSourceFiles = 512;
 const maximumSourceBytes = 8 * 1024 * 1024;
 const maximumFileBytes = 1024 * 1024;
 const maximumHealthBodyBytes = 64 * 1024;
+const maximumFreshHealthAgeMilliseconds = 5 * 60 * 1000;
 
 export interface ApplicationDeploymentStateTransition {
   resourceType: string;
@@ -2321,6 +2322,7 @@ function validateFreshApplicationHealthObservation(
   executionAuthority: ProtectedApplicationExecutionAuthority,
   expectedEndpoint: string,
   expectedRevision: string,
+  readbackObservedAt: Date,
   health: FreshApplicationHealthObservation
 ): FreshApplicationHealthObservation {
   validateProtectedApplicationExecutionProvenance(
@@ -2328,6 +2330,8 @@ function validateFreshApplicationHealthObservation(
   );
   const target = binding.healthTargets[0]!;
   const { observationDigest, ...digestInput } = health;
+  const observedAt = Date.parse(health.observedAt);
+  const readbackTime = readbackObservedAt.getTime();
   if (!exactKeys(health, [
     'kind', 'bindingDigest', 'sourceInventoryDigest',
     'executionAuthorityDigest', 'provenanceDigest', 'operationId',
@@ -2353,8 +2357,11 @@ function validateFreshApplicationHealthObservation(
     !Number.isSafeInteger(health.bodyBytes) || health.bodyBytes <= 0 ||
     health.bodyBytes > maximumHealthBodyBytes ||
     !digestPattern.test(health.bodySha256) ||
-    !Number.isFinite(Date.parse(health.observedAt)) ||
-    Date.parse(health.observedAt) <= Date.parse(completion.completedAt) ||
+    !Number.isFinite(observedAt) ||
+    !Number.isFinite(readbackTime) ||
+    observedAt <= Date.parse(completion.completedAt) ||
+    observedAt > readbackTime ||
+    readbackTime - observedAt > maximumFreshHealthAgeMilliseconds ||
     canonicalSha256(digestInput) !== observationDigest) {
     return applicationError(
       'application-deployment-health',
@@ -2428,9 +2435,10 @@ export async function observeApplicationDeploymentReadback(
     isRecord(entry) ? text(entry.id, 'Application inventory resource ID') : '') : [];
   const fqdn = text(ingress.fqdn, 'Application ingress FQDN');
   const expectedHealthEndpoint = `https://${fqdn}/health`;
+  const readbackObservedAt = input.clock?.() ?? input.now;
   const health = validateFreshApplicationHealthObservation(
     binding, source, completion, provenance, executionAuthority,
-    expectedHealthEndpoint, latestRevision, freshHealth
+    expectedHealthEndpoint, latestRevision, readbackObservedAt, freshHealth
   );
   if (text(group.id, 'Application resource group ID').toLowerCase() !== binding.resourceGroupId.toLowerCase() ||
     group.name !== binding.resourceGroup || group.location !== binding.region ||

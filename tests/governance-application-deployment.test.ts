@@ -289,7 +289,8 @@ async function fixture() {
   const input: PhaseAdapterExecutionInput = {
     ...planned,
     plan: savedPlan,
-    adapters: {}
+    adapters: {},
+    clock: () => new Date(coverageNow.getTime() + 5_000)
   };
   return { ...planned, input, runner, artifact, binding, source };
 }
@@ -1193,6 +1194,15 @@ describe('protected application deployment source contracts', () => {
     await expect(observeApplicationDeploymentReadback(
       f.input, f.source, state, plan, completion, provenance, authority,
       malformedSuccess
+    )).rejects.toThrow(/Fresh application health/u);
+
+    const staleReadbackInput = {
+      ...f.input,
+      clock: () => new Date(coverageNow.getTime() + 10 * 60_000)
+    };
+    await expect(observeApplicationDeploymentReadback(
+      staleReadbackInput, f.source, state, plan, completion, provenance,
+      authority, health
     )).rejects.toThrow(/Fresh application health/u);
   });
 
