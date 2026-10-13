@@ -16,6 +16,7 @@ import { createTelemetryDelivery } from '../src/telemetry/delivery.js';
 import { reportProjectObservation } from '../src/application/telemetry/project-reporting.js';
 import { projectTelemetryDimensions } from '../src/application/project/telemetry.js';
 import { isProjectTelemetryEvent } from '../src/telemetry/contract.js';
+import { NodeCommandRunner } from '../src/process-runner.js';
 
 const roots: string[] = [];
 const generated = buildCurrentArtifacts(buildCurrentProjectPlan({
@@ -137,6 +138,37 @@ describe('explicit project enrollment and external checkout consent', () => {
     const independent = await approve('enroll', nested, f.env);
     expect(new Set([first.projectId, fork.projectId, independent.projectId]).size).toBe(3);
     expect(JSON.parse(await readFile(recordPath(f.project), 'utf8')).projectId).toBe(first.projectId);
+  });
+
+  it('preserves the tracked measurement ID in an actual local Git clone and worktree only after each checkout approves consent', async () => {
+    const f = await fixture(), enrolled = await approve('enroll', f.project, f.env);
+    const runner = new NodeCommandRunner(), gitEnv = {
+      GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(f.root, 'unused-git-config'),
+      GIT_DIR: undefined, GIT_WORK_TREE: undefined
+    };
+    const git = async (args: string[]) => {
+      const result = await runner.run({ executable: 'git', args: ['-c', 'core.fsmonitor=false', ...args] }, {
+        cwd: f.project, env: gitEnv, timeoutMs: 5_000, maxOutputBytes: 8192
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.timedOut).toBe(false);
+    };
+    await git(['init', '--quiet', '--template=']);
+    await git(['add', '--', 'liftoff.manifest.json', '.liftoff/telemetry/project.json']);
+    await git(['-c', 'user.name=Consent specimen', '-c', 'user.email=consent@specimen.invalid',
+      '-c', 'commit.gpgsign=false', 'commit', '--quiet', '-m', 'Share approved measurement identity']);
+    const clone = path.join(f.root, 'actual-clone'), worktree = path.join(f.root, 'actual-worktree');
+    await git(['clone', '--quiet', '--no-hardlinks', '--', f.project, clone]);
+    await git(['worktree', 'add', '--quiet', '--detach', worktree, 'HEAD']);
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    for (const checkout of [clone, worktree]) {
+      expect((await invoke(['telemetry', 'report', '--json'], checkout, f.env)).report.reason).toBe('local-consent-required');
+      expect((await approve('enroll', checkout, f.env, ['--preserve-identity'])).projectId).toBe(enrolled.projectId);
+      expect((await invoke(['telemetry', 'status', '--json'], checkout, f.env)).report.status).toBe('enabled');
+    }
+    expect(fetch).not.toHaveBeenCalled();
+    expect(projectConsentBindings(JSON.parse(await readFile(f.config, 'utf8'))).map(binding => binding.projectId))
+      .toEqual([enrolled.projectId, enrolled.projectId, enrolled.projectId]);
   });
 
   it('invalidates moved checkout review receipts without changing measurement identity', async () => {
