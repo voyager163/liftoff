@@ -1722,3 +1722,65 @@ execution contract proposal from schema family 4 to 5. Released-v3,
 pre-custody, current-family-4, and v7 history remain readable and immutable;
 there is no implicit migration or cloud effect. Do not duplicate either
 owner's source in this continuation.
+
+## Task 13.6 partial native qualification, 2026-10-13
+
+The safe native-only portion of task 13.6 was exercised on exact clean
+documentation successor
+`67eb20f0ea3c7ecbe97d639130d653888524ad15`. The first wrapper invocation
+exited before starting because the ambient shell had no `python` command; it
+created no fixture and changed no repository bytes. The lane was immediately
+rerun with the preserved qualified CPython 3.14.7 executable, OpenTofu 1.12.6,
+Node 24.21.0, and npm 12.0.2.
+
+The explicit `LIFTOFF_NATIVE_STATE_QUALIFICATION=1` lane passed both tests in
+`tests/state-backend-native-qualification.test.ts` with zero failures. It used
+only a fresh private scratch directory, the builtin `terraform_data` resource,
+empty credentials, and a filesystem-only empty provider mirror. The result is
+scope `synthetic-disposable-only`, records `azureLiveQualification:
+not-performed`, and does not claim atomic crash-safe replacement.
+
+The actual native result verified all 20 declared checks, including mutual
+OpenTofu/fcntl exclusion, observer descriptor-close behavior, exact pre-acquire
+metadata preservation, an actual module address move, stable lineage/resource
+identity, an actual no-change plan, same-inode conditional publication,
+stale-write rejection, replaced/unlinked inode lock-loss detection, preservation
+of the newer native writer and its lock metadata, and rejection of absent
+destination/unlink retirement. Tool/result identities were:
+
+- Native host:
+  `native-host:a9e3d703d3efc5f5840c137826212ed5a50ed4bb65a806390ec311cc94abefa0`.
+- OpenTofu binary:
+  `0445d7cc114d24440af150b1ddec600f4e4c3e6af16ba63a9a7d42054ae970e3`.
+- CPython binary:
+  `16a1bac7c40871327d591833239cafc6cd060b4d199d3aa4b3048b8d69644bce`.
+- Native protocol:
+  `bef6fcb34e93bd9029667de242273c653d95462da7da4ee75949ac127774a607`,
+  tied to immutable OpenTofu source commit
+  `b4305e5a5dd2fb79a27897ae30784a181d3a26cb`.
+- Observed volume: APFS, FileVault enabled, encrypted, owner-only, and not
+  currently locked.
+
+The raw 2,526-byte log is retained as
+`files/native-state-qualification-67eb20f0/native-state.log` with SHA-256
+`5cb7ee2852be3313d8a870606b09acaa968df925ee3cc1e9e2ef9738102e3226`.
+The structured partial receipt has SHA-256
+`3b62a191cc5915f8d8191335b3ab3f026af05ce5d0b59532708c99341ead11f6`.
+
+Task 13.6 remains unchecked. This native scratch result is real local-state
+evidence, but it is not production custody/handover qualification and performs
+no Azure operation. Completion still requires explicitly approved disposable
+cloud scope plus the missing production adapters and authority; existing Korea
+Central resources remain excluded.
+
+Native successor stack 162 remains ordered `[158, 159, 161]`. PRs 158 and 159
+are green and mergeable, but PR 161 current head
+`5adcb6c18257139a1f70d398c0a929233d3262a1` is not landable. Run
+`38366776115` failed two Windows cases: an `EBUSY` cleanup of the OpenTofu
+AzureRM provider in `repair-command.test.ts`, and a process-supervisor startup
+timeout before target dispatch in `repair-application.test.ts`. The unchanged
+15-second startup supervisor fired at `loading-compiler`; the public
+30-second target budget never began. No deadline was changed, no old evidence
+was relabeled, and the PR-161 owner retains the repair/forward-integration
+scope. Do not invoke native cascading merge until a fresh exact-head run is
+fully green.
