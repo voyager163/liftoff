@@ -5,6 +5,8 @@ import path from 'node:path';
 import { macMigrationPackageArguments, packageMacMigration } from '../scripts/mac-migration-package.mjs';
 import { bundleInventory } from '../scripts/native-bundle-contract.mjs';
 import { NodeCommandRunner } from '../src/process-runner.js';
+import { migrationAbsent } from '../src/adapters/distribution/mac-migration-state.js';
+import { macMigrationFixture } from './fixtures/mac-migration.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
@@ -49,5 +51,23 @@ describe.skipIf(!selected || process.platform !== 'darwin' || process.arch !== '
   it('refuses existing/checkout outputs rather than overwriting them', async () => {
     await expect(packageMacMigration({ bundle: selected!, output: selected! })).rejects.toThrow();
     await expect(packageMacMigration({ bundle: selected!, output: path.resolve('migration-output') })).rejects.toThrow();
+  });
+  it('the real standalone entrypoint refuses unqualified apply on an isolated old npm fixture', async () => {
+    const value = await macMigrationFixture();
+    try {
+      const packaged = await packageMacMigration({ bundle: selected!, output: path.join(value.root, 'standalone utility') });
+      const result = await new NodeCommandRunner().run({
+        executable: path.join(packaged.output, 'bin/liftoff-migrate-npm'),
+        args: ['--npm', value.npm, '--node', value.node,
+          '--prefix', value.prefix, '--manager', 'custom', '--brew', value.request.brew!,
+          '--recovery', value.recovery, '--apply', 'a'.repeat(64), '--journal', path.join(value.root, 'never-created')]
+      }, { cwd: value.root, env: { PATH: '', HOME: value.root }, timeoutMs: 30_000, ensureProcessTreeSettled: true });
+      expect(result.status).toBe(1);
+      expect(result.stdout, result.stderr).not.toBe('');
+      expect(JSON.parse(result.stdout)).toMatchObject({ status: 'blocked', effects: 'none',
+        blockers: expect.arrayContaining(['native-cask-provider-unqualified']) });
+      expect(await migrationAbsent(value.oldPackage)).toBe(false);
+      expect(await migrationAbsent(path.join(value.root, 'never-created'))).toBe(true);
+    } finally { await value.cleanup(); }
   });
 });

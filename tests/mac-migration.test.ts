@@ -12,7 +12,6 @@ import { discoverMacNpmSelections, inspectMacNpmOwner, macMigrationHash as hash,
 import { macMigrationFixture } from './fixtures/mac-migration.js';
 import { MacMigrationFailure, type MacNpmManager } from '../src/domain/distribution/mac-migration.js';
 import { macMigrationBridge } from '../src/domain/distribution/mac-migration-bridge.js';
-import { NodeCommandRunner } from '../src/process-runner.js';
 
 type Fixture = Awaited<ReturnType<typeof macMigrationFixture>>;
 const fixtures: Fixture[] = [];
@@ -122,19 +121,6 @@ describe.skipIf(process.platform === 'win32')('private SOURCE-only Mac migration
     expect((await runMacMigration(value.request, value.dependencies)).blockers).toContain('native-cask-provider-unqualified');
     expect(defaultMacMigrationDependencies().cask).toBeUndefined();
     expect(await migrationAbsent(value.oldPackage)).toBe(false);
-  });
-
-  it('the real standalone entrypoint refuses unqualified apply on an isolated old npm fixture', async () => {
-    const value = await fixture();
-    const result = await new NodeCommandRunner().run({ executable: process.execPath,
-      args: [path.resolve('dist/cli/mac-migration.js'), '--npm', value.npm, '--node', value.node,
-        '--prefix', value.prefix, '--manager', 'custom', '--brew', value.request.brew!,
-        '--recovery', value.recovery, '--apply', 'a'.repeat(64), '--journal', path.join(value.root, 'never-created')] },
-    { cwd: value.root, env: { PATH: '', HOME: value.root }, timeoutMs: 30_000, ensureProcessTreeSettled: true });
-    expect(result.status).toBe(1);
-    expect(JSON.parse(result.stdout)).toMatchObject({ status: 'blocked', effects: 'none' });
-    expect(await migrationAbsent(value.oldPackage)).toBe(false);
-    expect(await migrationAbsent(path.join(value.root, 'never-created'))).toBe(true);
   });
 
   it('standalone main emits help, input errors and honest unqualified preview JSON', async () => {
