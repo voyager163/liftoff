@@ -224,6 +224,10 @@ repair, governance operation or deletion request.
 Explicit report returns schema 1 `delivered`, `disabled` or `failed` and whether
 a request was attempted. Failed delivery exits 1; disabled/delivered exits 0.
 Delivery proves only a successful endpoint response, not durable storage.
+If the shared deadline expires after fetch starts, `attempted` remains true:
+that request may have been accepted despite the missing response. Collection
+exhaustion or other refusal before fetch retains `attempted: false`. Collection
+and transport share one deadline, not separate one-second allowances.
 Unsupported/missing project metadata or unavailable consent sends nothing.
 After an eligible ordinary project command, the candidate client can send one
 consented project observation alongside its one anonymous command event. Both

@@ -100,14 +100,17 @@ export async function reportProjectObservation(
         cliVersion: liftoffVersion, ...observed.dimensions, source: 'cli'
       };
       if (!isProjectTelemetryEvent(event)) throw new FileSystemError('Project telemetry dimensions are unsupported.');
-      const result = await delivery.deliver({ project: { endpoint: projectTelemetryEndpoint, event } });
-      if (!result.project) throw new FileSystemError('Project delivery did not return its requested result.');
-      return result.project;
+      return { status: 'ready', event } as const;
     });
-    if (prepared.status === 'completed') return prepared.value;
-    return prepared.reason === 'operation-failed'
-      ? { status: 'failed', attempted: false, reason: 'project-or-consent-unavailable' }
-      : { status: 'failed', attempted: false, reason: prepared.reason };
+    if (prepared.status === 'failed') {
+      return prepared.reason === 'operation-failed'
+        ? { status: 'failed', attempted: false, reason: 'project-or-consent-unavailable' }
+        : { status: 'failed', attempted: false, reason: prepared.reason };
+    }
+    if (prepared.value.status !== 'ready') return prepared.value;
+    const result = await delivery.deliver({ project: { endpoint: projectTelemetryEndpoint, event: prepared.value.event } });
+    if (!result.project) throw new FileSystemError('Project delivery did not return its requested result.');
+    return result.project;
   } finally {
     if (!options.delivery) delivery.close();
   }

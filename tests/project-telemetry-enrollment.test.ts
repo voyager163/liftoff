@@ -12,7 +12,7 @@ import { captureTreeState } from '../src/init-filesystem.js';
 import { getTelemetryConfigPath, recordTelemetryNotice } from '../src/telemetry/config.js';
 import { projectTelemetryRecordPath, parseProjectTelemetryRecord, projectConsentBindings } from '../src/domain/project/telemetry-consent.js';
 import * as storage from '../src/adapters/filesystem/telemetry-consent.js';
-import { createTelemetryDelivery } from '../src/telemetry/delivery.js';
+import { createTelemetryDelivery, maximumTelemetryDeliveryMs } from '../src/telemetry/delivery.js';
 import { reportProjectObservation } from '../src/application/telemetry/project-reporting.js';
 import { projectTelemetryDimensions } from '../src/application/project/telemetry.js';
 import { isProjectTelemetryEvent } from '../src/telemetry/contract.js';
@@ -339,9 +339,59 @@ describe('explicit project enrollment and external checkout consent', () => {
     const delivery = createTelemetryDelivery({ env: f.env });
     try {
       expect((await reportProjectObservation({ cwd: f.project, env: f.env, delivery })).status).toBe('delivered');
-      expect(await reportProjectObservation({ cwd: f.project, env: f.env, delivery })).toMatchObject({ status: 'failed', reason: 'duplicate-channel' });
+      expect(await reportProjectObservation({ cwd: f.project, env: f.env, delivery })).toMatchObject({ status: 'failed', reason: 'duplicate-channel', attempted: false });
       expect(fetch).toHaveBeenCalledTimes(1);
     } finally { delivery.close(); }
+  });
+
+  it.each(['reporter', 'cli'] as const)('retains truthful attempted state after a started transport exhausts the one-second deadline through %s', async route => {
+    const f = await fixture(); await approve('enroll', f.project, f.env);
+    const before = await captureTreeState(f.root);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    let started!: () => void;
+    const transportStarted = new Promise<void>(resolve => { started = resolve; });
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(() => {
+      started(); return new Promise<Response>(() => {});
+    });
+    const start = performance.now();
+    let settled = false;
+    const result = (route === 'reporter'
+      ? reportProjectObservation({ cwd: f.project, env: f.env })
+      : invoke(['telemetry', 'report', '--json'], f.project, f.env)
+    ).then(value => { settled = true; return value; });
+    await transportStarted;
+    await vi.advanceTimersByTimeAsync(maximumTelemetryDeliveryMs - 1);
+    expect(settled).toBe(false); expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][1]?.signal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const completed = await result;
+    const expected = { status: 'failed', reason: 'budget-expired', attempted: true };
+    if ('code' in completed) {
+      expect(completed.code).toBe(1); expect(completed.report).toMatchObject(expected);
+      expect(completed.err).toBe('');
+    } else expect(completed).toEqual(expected);
+    expect(performance.now() - start).toBe(maximumTelemetryDeliveryMs);
+    expect(fetch.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1); expect(vi.getTimerCount()).toBe(0);
+    expect(String(fetch.mock.calls[0][0])).toMatch(/\/api\/projects$/u);
+    expect(await captureTreeState(f.root)).toEqual(before);
+  });
+
+  it('reports attempted false when collection consumes the shared deadline before any fetch', async () => {
+    const f = await fixture(); await approve('enroll', f.project, f.env);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    let started!: () => void;
+    const collectionStarted = new Promise<void>(resolve => { started = resolve; });
+    vi.spyOn(storage, 'readTelemetryConsentConfig').mockImplementation(() => {
+      started(); return new Promise<storage.TelemetryConsentConfig>(() => {});
+    });
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const start = performance.now(), result = reportProjectObservation({ cwd: f.project, env: f.env });
+    await collectionStarted;
+    await vi.advanceTimersByTimeAsync(maximumTelemetryDeliveryMs);
+    expect(await result).toEqual({ status: 'failed', reason: 'budget-expired', attempted: false });
+    expect(performance.now() - start).toBe(maximumTelemetryDeliveryMs);
+    expect(fetch).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0);
   });
 
   it('keeps assessment/live/help/capabilities/status telemetry-free in an enrolled checkout', async () => {
