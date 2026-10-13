@@ -317,7 +317,7 @@ describe('bounded exact-commit workflow context production', () => {
     const f = await fixture();
     const result = await executeWorkflowContextProof(f.input, f.transport.binding);
     expect(result).toMatchObject({ status: 'completed', proof: { runId: 901, workflowId: 90, conclusion: 'success' } });
-    expect(f.checkpoints.map((entry) => entry.stage)).toEqual(['dispatch-intent', 'accepted']);
+    expect(f.checkpoints.map((entry) => entry.stage)).toEqual(['dispatch-intent', 'accepted', 'terminal']);
     expect(f.transport.writes).toEqual([{ method: 'POST',
       path: '/repos/owner/repo/actions/workflows/90/dispatches',
       body: { ref: workflowExecutionRefName('a'.repeat(40)), inputs: {
@@ -554,7 +554,7 @@ describe('bounded exact-commit workflow context production', () => {
     } } };
     try {
       expect(await executeWorkflowContextProof(f.input, f.transport.binding)).toMatchObject({
-        status: 'completed', checkpoint: { stage: 'accepted', runId: 901 }
+        status: 'completed', checkpoint: { stage: 'terminal', runId: 901 }
       });
       expect(f.transport.writes).toHaveLength(1);
       expect(f.transport.writes[0]!.body).toMatchObject({ ref: f.transport.binding.executionRef });
@@ -574,6 +574,43 @@ describe('bounded exact-commit workflow context production', () => {
       expect(await executeWorkflowContextProof(f.input, f.transport.binding)).toMatchObject({ status: 'completed' });
       expect(f.transport.writes).toHaveLength(1);
     }
+  });
+  it.each(['success', 'failure', 'cancelled', 'timed_out', 'neutral', 'skipped', 'action_required', 'unknown-outcome'])(
+    'retains terminal provider %s before fallible proof inventory without repeat dispatch', async conclusion => {
+      const f = await fixture();
+      f.transport.runConclusion = conclusion;
+      const original = f.transport.request.bind(f.transport);
+      vi.spyOn(f.transport, 'request').mockImplementation(async input => {
+        if (input.path.includes('/jobs')) throw new Error('secret jobs inventory diagnostics');
+        return original(input);
+      });
+      await expect(executeWorkflowContextProof(f.input, f.transport.binding)).rejects.toThrow();
+      const terminal = f.checkpoints.at(-1)!;
+      expect(terminal).toMatchObject({
+        stage: 'terminal', runId: 901, planDigest: f.input.plan.planDigest,
+        terminalConclusion: conclusion === 'unknown-outcome' ? 'unknown' : conclusion,
+        terminalConclusionDigest: canonicalSha256({ conclusion })
+      });
+      if (conclusion !== 'success') {
+        expect(f.transport.calls.some(call => call.path.includes('/jobs'))).toBe(false);
+      }
+      f.input.workflowObservationOnly = true;
+      await expect(executeWorkflowContextProof(f.input, f.transport.binding)).rejects.toThrow();
+      expect(f.transport.writes).toHaveLength(1);
+      expect(f.checkpoints.at(-1)).toEqual(terminal);
+    });
+  it('preserves actual terminal success when current source readback drifts', async () => {
+    const f = await fixture();
+    const original = f.transport.request.bind(f.transport);
+    vi.spyOn(f.transport, 'request').mockImplementation(async input => {
+      if (input.path.includes('/jobs')) f.transport.refSha = 'f'.repeat(40);
+      return original(input);
+    });
+    await expect(executeWorkflowContextProof(f.input, f.transport.binding)).rejects.toThrow('ref moved');
+    expect(f.checkpoints.at(-1)).toMatchObject({ stage: 'terminal', terminalConclusion: 'success', runId: 901 });
+    f.input.workflowObservationOnly = true;
+    await expect(executeWorkflowContextProof(f.input, f.transport.binding)).rejects.toThrow();
+    expect(f.transport.writes).toHaveLength(1);
   });
   it.each(['missing-port', 'missing-lease', 'missing-authority', 'moved-ref', 'placeholder', 'changed-recipe'] as const)(
     'refuses %s before any provider write', async (reason) => {

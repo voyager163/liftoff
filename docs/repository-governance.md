@@ -75,6 +75,9 @@ Inherited/organization rule admission remains unsupported by this narrow
 repository producer and blocks rather than silently omitting inherited policy.
 Runner-group PATCH additionally requires observed classic `admin:org` scope,
 active administrator membership and a non-inherited writable selected group.
+Group/network identity readback is not runner or private-network qualification.
+The future current5 engine bridge must independently admit the existing qualified
+group/host; this source interface cannot manufacture TASK14.2 evidence.
 
 The engine must durably record original dispatch intent before POST and the
 actual accepted workflow/run ID before further observation. Uncertain acceptance,
@@ -85,6 +88,9 @@ The pinned REST API2026-03-10 returns HTTP200 with `workflow_run_id`, `run_url`
 and `html_url`; all three must identify the exact approved repository. The accepted
 handle is checkpointed before metadata polling. Legacy empty HTTP204 is
 read-only discovery of the original intent, never permission to POST again.
+Actual terminal provider conclusions are durably retained before fallible job
+inventory or final freshness reads. Unknown outcomes and missing later proof
+stay blocked; source drift cannot relabel actual terminal provider truth.
 
 Proof binds real workflow jobs to their own GitHub Actions check-run URLs,
 application and check suite, complete SHA, immutable recipe, first attempt and

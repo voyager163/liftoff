@@ -52,15 +52,21 @@ export interface WorkflowContextBinding {
   tokenSuppressedTrigger: true;
 }
 
+const workflowTerminalConclusions = [
+  'success', 'failure', 'cancelled', 'timed_out', 'action_required', 'neutral', 'skipped', 'stale', 'startup_failure'
+] as const;
+
 export interface WorkflowProofCheckpoint {
   bindingDigest: string;
   planDigest: string;
   dispatchedAt: string;
   workflowId: number;
-  stage: 'dispatch-intent' | 'accepted';
+  stage: 'dispatch-intent' | 'accepted' | 'terminal';
   runId?: number;
   runUrl?: string;
   htmlUrl?: string;
+  terminalConclusion?: typeof workflowTerminalConclusions[number] | 'unknown';
+  terminalConclusionDigest?: string;
 }
 
 export interface WorkflowContextExecutionInput extends PhaseAdapterExecutionInput {
@@ -250,16 +256,29 @@ function validateRun(run: Record<string, unknown>, binding: WorkflowContextBindi
 
 async function observeRun(
   runtime: ReturnType<typeof workflowRuntime>, binding: WorkflowContextBinding, checkpoint: WorkflowProofCheckpoint,
-  observedAt: string
+  observedAt: string, recordDispatch?: WorkflowContextExecutionInput['recordWorkflowDispatch']
 ): Promise<WorkflowContextResult> {
   if (!checkpoint.runId) return { status: 'pending', checkpoint };
   const run = await runtime.client.get(`/repos/${binding.repository}/actions/runs/${checkpoint.runId}`);
   const identity = validateRun(run, binding, checkpoint);
+  if (checkpoint.stage === 'terminal' && run.status !== 'completed') {
+    return workflowFailure('workflow-proof-run', 'A previously terminal actual workflow cannot be reclassified as pending.');
+  }
   if (run.status !== 'completed') {
     if (!['queued', 'in_progress', 'waiting', 'pending', 'requested'].includes(String(run.status))) {
       return workflowFailure('workflow-proof-run', 'The provider returned an unsupported workflow state.');
     }
     return { status: 'pending', checkpoint };
+  }
+  const terminalConclusion = workflowTerminalConclusions.find(conclusion => conclusion === run.conclusion) ?? 'unknown';
+  const terminalConclusionDigest = canonicalSha256({ conclusion: run.conclusion ?? null });
+  if (checkpoint.stage === 'terminal' &&
+    (checkpoint.terminalConclusion !== terminalConclusion || checkpoint.terminalConclusionDigest !== terminalConclusionDigest)) {
+    return workflowFailure('workflow-proof-run', 'The actual terminal provider outcome differs from its original durable record.');
+  }
+  if (recordDispatch && checkpoint.stage !== 'terminal') {
+    checkpoint = { ...checkpoint, stage: 'terminal', terminalConclusion, terminalConclusionDigest };
+    await recordWorkflowCheckpoint(recordDispatch, checkpoint);
   }
   const expected: 'success' | 'failure' = binding.mode === 'green' ? 'success' : 'failure';
   if (run.conclusion !== expected) {
@@ -339,7 +358,8 @@ export async function executeWorkflowContextProof(
   }
   if (checkpoint) {
     if (Object.keys(checkpoint).some(key => ![
-      'bindingDigest', 'planDigest', 'dispatchedAt', 'workflowId', 'stage', 'runId', 'runUrl', 'htmlUrl'
+      'bindingDigest', 'planDigest', 'dispatchedAt', 'workflowId', 'stage', 'runId', 'runUrl', 'htmlUrl',
+      'terminalConclusion', 'terminalConclusionDigest'
     ].includes(key))) {
       return workflowFailure('workflow-proof-checkpoint', 'Workflow checkpoint contains unsupported control fields.');
     }
@@ -353,9 +373,17 @@ export async function executeWorkflowContextProof(
       !Number.isFinite(Date.parse(checkpoint.dispatchedAt)) ||
       Date.parse(checkpoint.dispatchedAt) > (input.clock?.() ?? input.now).getTime() ||
       (input.clock?.() ?? input.now).getTime() - Date.parse(checkpoint.dispatchedAt) > 86_400_000 ||
-      checkpoint.stage === 'accepted' && !checkpoint.runId ||
+      (checkpoint.stage === 'accepted' || checkpoint.stage === 'terminal') && !checkpoint.runId ||
       checkpoint.stage === 'dispatch-intent' && checkpoint.runId !== undefined ||
-      !['dispatch-intent', 'accepted'].includes(checkpoint.stage)) {
+      checkpoint.stage === 'terminal' && (
+        ![...workflowTerminalConclusions, 'unknown']
+          .includes(String(checkpoint.terminalConclusion)) ||
+        typeof checkpoint.terminalConclusionDigest !== 'string' || !/^[a-f0-9]{64}$/u.test(checkpoint.terminalConclusionDigest)
+      ) ||
+      checkpoint.stage !== 'terminal' && (
+        checkpoint.terminalConclusion !== undefined || checkpoint.terminalConclusionDigest !== undefined
+      ) ||
+      !['dispatch-intent', 'accepted', 'terminal'].includes(checkpoint.stage)) {
       return workflowFailure('workflow-proof-checkpoint', 'Observation must retain the original exact dispatch binding, plan, timestamp and handle; imported or retagged checkpoints do not authorize a repeat.');
     }
     const original = [input.plan, ...(input.inspection.contexts[input.phase.id].reviewedPlans ?? [])]
@@ -409,7 +437,7 @@ export async function executeWorkflowContextProof(
     await recordWorkflowCheckpoint(recordDispatch, checkpoint);
   }
   runtime.assertWithinDeadline();
-  return observeRun(runtime, binding, checkpoint, (input.clock?.() ?? input.now).toISOString());
+  return observeRun(runtime, binding, checkpoint, (input.clock?.() ?? input.now).toISOString(), recordDispatch);
 }
 
 export async function readCurrentWorkflowContextProof(
