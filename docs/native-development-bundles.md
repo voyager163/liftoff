@@ -112,7 +112,8 @@ test-only Ed25519 bootstrap authentication. Every target also extracts its exact
 native archive with the absolute native archive tool into a new private fixture,
 reverifies the unchanged complete inventory (including native filesystem modes),
 runs the extracted launcher outside the checkout with no global tools, and refuses
-an altered extracted-file mode. CI creates the retained handoff before the suite
+an altered extracted-file mode. GNU tar explicitly selects `/usr/bin/gzip`, so
+extraction and CLI startup retain the isolated empty PATH. CI creates the retained handoff before the suite
 and selects it with `LIFTOFF_NATIVE_ARCHIVE_ROOT`, so the tested archive is the
 uploaded artifact; local runs without this variable create a fixture-only handoff.
 Windows Node `lstat` modes and raw POSIX tar permission fields are not interchangeable.
