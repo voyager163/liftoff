@@ -6,7 +6,8 @@ import {
   githubRef, githubRepository, GitHubActivationError, positiveId
 } from '../adapters/github/activation-rest.js';
 import { sourceSha } from './github-config.js';
-import type { GitHubResponse } from '../adapters/github/activation-rest.js';
+import { workflowTerminalConclusions, readWorkflowDispatchHandle } from './workflow-binding.js';
+export { readWorkflowDispatchHandle } from './workflow-binding.js';
 import type { PhaseAdapterExecutionInput } from './transition-ports.js';
 import type { PhaseId } from '../domain/governance/activation/types.js';
 import {
@@ -51,10 +52,6 @@ export interface WorkflowContextBinding {
   };
   tokenSuppressedTrigger: true;
 }
-
-const workflowTerminalConclusions = [
-  'success', 'failure', 'cancelled', 'timed_out', 'action_required', 'neutral', 'skipped', 'stale', 'startup_failure'
-] as const;
 
 export interface WorkflowProofCheckpoint {
   bindingDigest: string;
@@ -144,20 +141,6 @@ export function validateWorkflowContextBinding(binding: WorkflowContextBinding):
     return workflowFailure('workflow-red-binding', 'A green request cannot contain a controlled-red override.');
   }
   return binding;
-}
-
-export function readWorkflowDispatchHandle(
-  response: GitHubResponse, repository: string
-): Pick<WorkflowProofCheckpoint, 'runId' | 'runUrl' | 'htmlUrl'> | undefined {
-  if (response.status === 204 && response.data === null) return undefined;
-  const data = response.data;
-  if (response.status !== 200 || !isRecord(data) ||
-    !Number.isSafeInteger(data.workflow_run_id) || Number(data.workflow_run_id) <= 0 ||
-    data.run_url !== `https://api.github.com/repos/${repository}/actions/runs/${data.workflow_run_id}` ||
-    data.html_url !== `https://github.com/${repository}/actions/runs/${data.workflow_run_id}`) {
-    return workflowFailure('workflow-dispatch-handle', 'The accepted dispatch response did not expose a valid exact-repository run ID and URLs. Retain intent; do not redispatch or expose provider diagnostics.');
-  }
-  return { runId: Number(data.workflow_run_id), runUrl: data.run_url, htmlUrl: data.html_url };
 }
 
 export function validateContextWorkflow(bytes: Buffer, binding: WorkflowContextBinding): void {

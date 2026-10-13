@@ -164,12 +164,38 @@ Ownership has a fixed 64-transfer bound. Its sealed manifest lists all 131
 concrete owner/confirmation/reservation/manifest keys, including itself, and
 measures the complete encoded worst-case objects, revision and previous-digest
 growth before ownership is established. This is a bounded ownership
-**subinventory**, not qualification of the unfinished engine's complete
-progress/recovery/finalization manifest. Separately, the reviewed logical
+**subinventory**, not qualification of the complete engine. The private journal
+now separately seals a closed full metadata manifest: original plans, issuer
+and authority, index, owner histories, every allowed progress/event key,
+original publication read dependencies, recovery baseline and finalization.
+It measures actual complete sealed worst-case bytes and revision/digest growth
+before effects; its total encoded footprint is not a disk-space or qualified-host
+attestation. Its concrete key cardinality is independently bounded to 21,994
+(including itself), within the unchanged safe-record node budget and namespace
+caps. Oversized or unrepresentable inventories block rather than widening
+existing stores or hiding keys behind suffix/directory permissions.
+
+The journal requires exact independently sealed publication A provenance before
+a source-bound B review. Immutable intent/accepted/terminal/component receipts
+survive failed cursor CAS or lost confirmation. Missing or changed index,
+manifest, reservation or original read dependencies block; retained intent
+cannot recreate a lost ledger. Completion requires canonical exact inventoried
+plan/approval bytes, the original individual component receipts, modern evidence
+validation and precisely the state derived from the original modern outcome.
+Publication A alone cannot finalize. Finalized status also requires independent
+exact-byte observation of every reserved project destination; there is no
+cross-filesystem atomicity claim. These are source metadata/protocol guards,
+not independently qualified live evidence producers or an execution engine.
+Same-lease exact-byte completion is not restart reconciliation after partial
+project writes. That narrow recovery remains an engine obligation; original
+authority and ownership state checks are not relaxed.
+
+Separately, the reviewed logical
 mutation inventory counts every operation plus its nested effects, including
 checkpoint and exact project-metadata writes, and cannot exceed 272. A
 132-dispatch plan has 271 logical entries; that count is not evidence that its
-sealed storage fits. The private planner/engine and effect integration remain
+sealed storage fits. The private planner/engine, same-lease carrier exclusion
+and actual intent/effect integration remain
 unregistered and incomplete. Staging/production workflow components cannot
 finalize independent Azure peer obligations, and source5 controls cannot
 authorize activation6.

@@ -141,7 +141,7 @@ export async function source5WorkflowOwnership(input: Source5WorkflowOwnershipIn
   const confirmation = (record: Pick<WorkflowSource5StoredControl, 'rawDigest'>, selected: Owner, previousReceiptDigest: string | null) =>
     ({ ...scope, kind: 'workflow-source5-owner-confirmed', owner: selected, pointerRawDigest: record.rawDigest,
       previousReceiptDigest });
-  async function manifest(initialize: boolean) {
+  async function measureInventory() {
     const maximum = { generation: source5OwnershipMaximumGeneration, controlKey: 'f'.repeat(64),
       planDigest: 'f'.repeat(64), savedPlanDigest: 'f'.repeat(64), approvalHash: 'f'.repeat(64), rawSnapshotDigest: 'f'.repeat(64) };
     const operationBytes = await store.measure('operation', entryKey,
@@ -170,6 +170,10 @@ export async function source5WorkflowOwnership(input: Source5WorkflowOwnershipIn
       if (attempt === 8) return workflowFailure('workflow-source5-owner', 'Complete sealed ownership inventory cannot be represented within its fixed bound.');
       self.maximumEncodedBytes = measured;
     }
+    return captureWorkflowBinding(value);
+  }
+  async function manifest(initialize: boolean) {
+    const value = await measureInventory();
     const existing = await store.read('proof', manifestKey);
     if (existing) {
       if (!same(existing.value, value)) return workflowFailure('workflow-source5-owner', 'Original concrete ownership inventory or complete sealed footprint was changed.');
@@ -304,7 +308,7 @@ export async function source5WorkflowOwnership(input: Source5WorkflowOwnershipIn
     await assertCurrent(true);
   }
   return Object.freeze({ entryKey, originalPlanKey: original.control.controlKey,
-    operationDigest, reservationKey, confirmationKey, prepare, assertCurrent,
+    operationDigest, reservationKey, confirmationKey, prepare, assertCurrent, measureInventory,
     snapshotDigest: rawSnapshotDigest,
     inventory: captureWorkflowBinding({
       entryKey, operationNamespace: 'operation', generationLimit: source5OwnershipMaximumGeneration,

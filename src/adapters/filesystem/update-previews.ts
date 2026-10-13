@@ -729,6 +729,13 @@ export function createWorkflowSource5ControlStore(projectRoot: string, options: 
       value: structuredClone(record.value), encodedBytes: Buffer.byteLength(content) });
   }
   return Object.freeze({
+    async issuerDescription() {
+      const storage = await storageFor(projectRoot, captured);
+      return Object.freeze({ namespace: 'approval' as const, key: keyFor(storage.location.projectKey),
+        maximumEncodedBytes: Buffer.byteLength(canonicalJson({ kind: 'liftoff-workflow-source5-issuer', schemaVersion: 1,
+          projectRoot: storage.location.projectRoot, projectKey: storage.location.projectKey, key: '0'.repeat(64) })),
+        maximumRevisions: 1 });
+    },
     async measure(name: WorkflowSource5ControlNamespace, key: string, value: unknown, revision = 1,
       previousDigest: string | null = null): Promise<number> {
       const { storage } = await location(name, key);
