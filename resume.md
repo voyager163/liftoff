@@ -2454,3 +2454,90 @@ client enrollment, public channel enablement, or task-flag advancement.
 Task 14.2 remains unchecked pending the exact allocator readback, separately
 admitted HCL intake, qualified real producers, and genuine disposable
 qualification.
+
+### HCL ownership milestone qualification correction, 2026-10-14
+
+The approved private HCL/source milestone was committed as
+`841eddac4d7c91f78673ca8cd8295194210f507c`, tree
+`23e4d04ed3b2913e422807cb30bb39b0a560a3ff`, with direct parent
+`9a31b983cf398fa15b7a3f1da832e77526e35bd6`. Its first clean committed
+qualification used Node 24.21.0, npm 12.0.2, restored OpenTofu 1.12.6 and
+OpenSpec 1.11.0. Supported-stack and build passed. The unfiltered suite then
+ran for 3,946.23 seconds and reported 304 passed files, five intentional
+skipped files and three failed files; 10,138 tests passed, 117 were skipped and
+169 failed. The chained source-complete coverage command did not run after that
+suite failure.
+
+The immutable raw log is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/hcl-ownership-841eddac/clean-qualification.log`
+
+Its SHA-256 is
+`876cdffb5331ad91152a5f7755e821ff1f2ab5d9e8dc1ae2559db49ab736163c`
+and its byte length is 3,765,182.
+
+The failure separated into two exact causes:
+
+- the approved generator variable, forwarding, owned-tag and README changes
+  had not yet received current reviewed successors for 165 plugin-generation
+  matrix cases, 16 representative rendered-artifact cases and four current
+  CLI JSON cases; and
+- ambient `/opt/homebrew` OpenSpec 1.11.0 had the current registry resolution
+  profile (2,590 files, 299 directories, two links and 11,849,959 bytes), not
+  the frozen qualified cutoff profile. Version equality alone was
+  insufficient.
+
+The generated-output correction is test-evidence-only. Exactly 185 top-level
+records now wrap their previous complete records as `priorChange`, retain each
+original baseline digest, and bind the actual current output. No prior record
+was flattened, regenerated or altered. A structural check proved all 236
+top-level keys stayed in the same order and every changed record's nested
+predecessor is byte-for-byte the former top-level record.
+
+The requested native ownership correction also changes tests only. It extracts
+the actual emitted ownership `locals` block from the generated application
+module, evaluates all four emitted locals with provider-free OpenTofu, writes
+saved plans and inspects their JSON. It proves ordinary null input produces
+null digest/tag outputs, valid protected input produces the exact four-key
+resource-group and two-key application maps, and malformed, missing,
+uppercase and non-hex digest inputs fail.
+
+OpenSpec was restored in a global-style isolated npm-12 prefix using the
+required registry cutoff:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/macos-toolchain/openspec-qualified-cutoff-1.11.0`
+
+`scripts/native-custody-qualification.mjs verify-openspec-profile` confirms
+2,590 files, 299 directories, two links, 11,862,860 bytes and exact profile
+`sha256:05d52efd0875c1ff0c1bd0aec13f7128a4baab787ea6b31f33fa7360cd53bde2`.
+Use this prefix before every later native command; do not substitute a
+same-version current-registry tree.
+
+Focused successor validation passed:
+
+- build;
+- seven focused files with 353 passing tests and two existing skips, including
+  the 165-case plugin matrix, frozen contract baseline, actual emitted HCL
+  saved plans, private application binding, Manual interpretation, repair
+  preservation and explicit native OpenSpec identity;
+- supported-stack;
+- repository named-file policy;
+- strict OpenSpec validation; and
+- `git diff --check`.
+
+Session `68be53ea-3101-4b13-b2a8-e520cecb7a48` independently retained the
+requested exact 94f0/5d normalized CLI observations, so no duplicate capture
+generation is needed here. Its reported immutable receipts are
+`parent-observation.json`
+`dd026d3d42790a1dff70bda7fc0e5df405b0f07c4a9865cea501845802c262e9`,
+`current-observation.json`
+`67c0828f4dee362f360e6b1ea9d8ef82f92cdabfdacc36c9870cfaf04ed39eed`,
+and `actual-cli-differences.json`
+`34ee012ea18ea09f3551d1abd3f788adf98080798ca6dff33122979bfa0faac2`.
+Only the three task-14.1 intermediate governance-extraction records are
+reusable; the task-14.2 outer records and whole HCL head are not.
+
+Commit this narrow successor, then rerun the complete clean committed
+qualification sequence and its focused/package/policy/OpenSpec follow-ups.
+Native9 and all later SOURCE intake remain held before every shared-file
+resolution pending root review and sole-allocator per-file disposition.
