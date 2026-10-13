@@ -378,6 +378,10 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
     })];
     currentReadback = liveReadback;
     if (run.status !== 'completed') {
+      if (handle.status !== 'running') {
+        return applicationError('application-run-regressed',
+          'A recorded terminal workflow now has contradictory nonterminal readback; preserve its handle and observe recovery without redispatch.');
+      }
       if (!['queued', 'in_progress', 'waiting', 'pending', 'requested'].includes(String(run.status))) {
         return applicationError('application-run-status', 'Artifact workflow returned an unsupported observation state.');
       }
