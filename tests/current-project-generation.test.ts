@@ -136,6 +136,8 @@ describe('current real-project generation', () => {
     expect(currentInfrastructureGuide).toContain('Pre-existing deployment/state adoption, import, partition, relocation');
     expect(currentInfrastructureGuide).toContain('operator reference only');
     expect(currentInfrastructureGuide).toContain('bootstrap is not protected remote-state bootstrap');
+    for (const phrase of ['mutable default-branch ref', 'immutable execution-tag binding',
+      'Do not enable real dispatch', 'no safe mutable-ref fallback']) expect(currentInfrastructureGuide).toContain(phrase);
     expect(manifest.activeLayout.bindings).toEqual(expect.arrayContaining([
       { kind: 'component', component: 'backend', pathParts: ['backend'] },
       { kind: 'component', component: 'database', pathParts: ['database'] },

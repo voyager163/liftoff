@@ -29,6 +29,9 @@ import {
   privateBackendProofPlanInputs,
   stateHandoverPlanInputs
 } from './protected-state-handover.js';
+import {
+  applicationArtifactBinding, applicationArtifactPlanInputs, executeApplicationArtifactPublication
+} from './application-artifact.js';
 
 export async function planGitHubPhase(input: PhasePlanningInput): Promise<PhasePlanBuild | null> {
   const repository = repositoryConfiguration(input.inspection).name;
@@ -190,11 +193,19 @@ export async function planGitHubPhase(input: PhasePlanningInput): Promise<PhaseP
         };
       }
     case 'application-artifact-ready':
+    {
+      const binding = applicationArtifactBinding(input);
       return {
         operations: [
-          githubOperation(input, 'github.artifact.build-dispatch', 'github-workflow-dispatch', { repository })
+          githubOperation(input, 'github.artifact.build-dispatch', 'github-workflow-dispatch',
+            applicationArtifactPlanInputs(input), undefined, [{
+              mutationClass: 'registry-publish',
+              destination: transitionDestination('subscription', binding.registryId, { subscriptionId: binding.subscriptionId }),
+              remote: true, destructive: false
+            }])
         ]
       };
+    }
     case 'workflow-source-ready':
       return {
         operations: [
@@ -258,6 +269,8 @@ export async function executeGitHubPhase(input: PhaseAdapterExecutionInput): Pro
   // Fails closed on repository drift before any phase producer runs.
   repositoryConfiguration(input.inspection);
   switch (input.phase.id) {
+    case 'application-artifact-ready':
+      return executeApplicationArtifactPublication(input);
     case 'pushed':
       if (input.inspection.activationInputs?.repository?.create) {
         return executeGitHubPublication(input);

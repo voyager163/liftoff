@@ -2,6 +2,10 @@ import type {
   MutationClass, TransitionOperation
 } from '../domain/governance/activation/types.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
+import {
+  latestRecordWithPayload, validateEvidenceFreshness
+} from '../domain/governance/activation/evidence.js';
+import { outputBindingsMatch, outputResourcesMatch } from '../domain/governance/activation/source-values.js';
 import { operation, transitionDestination } from '../domain/governance/activation/operations.js';
 import type {
   PhaseAdapterExecutionInput, PhasePlanningInput
@@ -10,6 +14,7 @@ import {
   AzureDiscoveryError, expectedAzureEnvironmentBindings, observeAzurePhase0
 } from './azure-discovery.js';
 import { readbackProof } from './transition-records.js';
+import { applicationDispatchPlan } from './application-readiness.js';
 
 export const deploymentOwnershipActionId = 'azure.deployment.classify-ownership';
 
@@ -92,6 +97,43 @@ function sameOperationProof(
   if (!environment.resourceGroup) return null;
   const phaseState = input.inspection.state.phases[input.phase.id];
   const external = phaseState.operation;
+  if (input.phase.id === 'application-prerequisites-ready' || input.phase.id === 'application-artifact-ready') {
+    const sources = ['bootstrap-local', 'runner-ready', 'application-prerequisites-ready'] as const;
+    const inventories = sources.flatMap((phaseId) => {
+      if (phaseId === input.phase.id) return [];
+      const state = input.inspection.state.phases[phaseId];
+      const output = input.inspection.state.phaseOutputs?.[phaseId];
+      const record = latestRecordWithPayload(input.inspection, phaseId);
+      const context = input.inspection.contexts[phaseId];
+      const plan = context?.reviewedPlans?.find((candidate) => candidate.planDigest === state.executionPlanDigest);
+      const handle = state.operation;
+      if (!['verified', 'retained'].includes(state.state) || !output || !record || !context ||
+        !plan || !handle || handle.status !== 'completed' ||
+        !plan.operations.some((candidate) => candidate.actionId === handle.actionId &&
+          operationRequiresDeploymentOwnership(candidate)) ||
+        !validateEvidenceFreshness(record, { ...context, now: input.now, reviewedPlans: [plan] }).valid ||
+        !outputBindingsMatch(record, phaseId, state.evidence, output) || !outputResourcesMatch(output, record)) {
+        return [];
+      }
+      applicationDispatchPlan({ inspection: input.inspection, plan,
+        phase: input.inspection.graph.phases.find((phase) => phase.id === phaseId)! });
+      return [{ phaseId, planDigest: plan.planDigest, operationId: handle.operationId,
+        resources: output.resources.filter((resource) => resource.provider === 'azure').map((resource) => resource.resourceId.toLowerCase()) }];
+    });
+    const current = external?.provider === 'azure' && external.status !== 'failed' &&
+      applicationDispatchPlan(input)
+      ? (input.inspection.state.phaseOutputs?.[input.phase.id]?.resources ?? [])
+        .filter((resource) => resource.provider === 'azure').map((resource) => resource.resourceId.toLowerCase())
+      : [];
+    const recorded = new Set([...inventories.flatMap((entry) => entry.resources), ...current]);
+    const observed = normalizedResourceIds(environment);
+    if (inventories.length && recorded.has(environment.resourceGroup.id.toLowerCase()) &&
+      observed.every((resourceId) => recorded.has(resourceId))) {
+      return canonicalSha256({ scope: 'same-activation-owned-application-preparation', inventories,
+        currentOperation: current.length ? external!.operationId : null, observed });
+    }
+    return null;
+  }
   if (!external || external.provider !== 'azure' || external.status === 'failed' ||
     phaseState.executionPlanDigest !== input.plan.planDigest ||
     external.planDigest !== input.plan.planDigest) {

@@ -32,6 +32,7 @@ import {
   scratchDirectory,
   writeCoverageProject
 } from './fixtures/governance-coverage/transition-project.js';
+import { applicationPlanningFixture } from './fixtures/governance-coverage/application-project.js';
 
 const scratch = scratchDirectory('azure-deployment-ownership');
 const principalId = '00000000-0000-4000-8000-000000000003';
@@ -134,7 +135,7 @@ async function fixture(label: string, phaseId: PhaseId, occupied: boolean) {
   const state = coverageState({
     applicability: { statePath: 'existing-private', privateStagingDast: false, credentialRequired: false }
   });
-  const inspection = await coverageInspection({
+  let inspection = await coverageInspection({
     root,
     phaseId,
     state,
@@ -142,6 +143,9 @@ async function fixture(label: string, phaseId: PhaseId, occupied: boolean) {
   });
   const runner = new OwnershipRunner(occupied);
   const phase = canonicalPhaseGraph.phases.find((candidate) => candidate.id === phaseId)!;
+  if (phaseId === 'application-prerequisites-ready' || phaseId === 'application-artifact-ready') {
+    inspection = (await applicationPlanningFixture(root, phaseId, runner)).inspection;
+  }
   const plan = await buildSavedTransitionPlan({ inspection, runner, now: coverageNow });
   expect(plan?.phaseId).toBe(phaseId);
   return {
@@ -192,7 +196,7 @@ describe('Azure deployment ownership planning', () => {
         usageMonthlyCents: 10_000
       };
     }
-    const inspection = await coverageInspection({
+    let inspection = await coverageInspection({
       root,
       phaseId,
       state: coverageState(),
@@ -200,6 +204,9 @@ describe('Azure deployment ownership planning', () => {
     });
     const runner = new OwnershipRunner(false);
     const phase = canonicalPhaseGraph.phases.find((candidate) => candidate.id === phaseId)!;
+    if (phaseId === 'application-prerequisites-ready' || phaseId === 'application-artifact-ready') {
+      inspection = (await applicationPlanningFixture(root, phaseId, runner)).inspection;
+    }
     const planned = await planAzurePhase({ inspection, phase, runner, now: coverageNow });
     expect(planned?.operations[0]).toMatchObject({
       phaseId,

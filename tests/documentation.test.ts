@@ -889,8 +889,12 @@ describe('public documentation', () => {
     for (const phase of Object.entries(phaseCapabilities).filter(([, value]) => value.executor !== 'built-in').map(([id]) => id)) {
       expect(developer).toContain(`\`${phase}\``);
     }
-    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'unavailable')).toHaveLength(9);
-    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'injected-only')).toHaveLength(5);
+    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'unavailable')).toHaveLength(7);
+    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'injected-only')).toHaveLength(7);
+    for (const phase of ['application-prerequisites-ready', 'application-artifact-ready'] as const) {
+      expect(phaseCapabilities[phase]).toMatchObject({ executor: 'injected-only', retry: 'none' });
+      expect(phaseCapabilities[phase].blocker).toContain('production task13/task14 qualification is not available');
+    }
     expect(developer).not.toContain('activation inspection still uses');
     expect(developer).not.toContain('finish RAG publisher configuration');
     expect(developer).not.toContain('strengthen shared mutation locking');
@@ -936,6 +940,21 @@ describe('public documentation', () => {
       ...Object.values(packagedSupportedStack.runtimes),
       ...Object.values(packagedSupportedStack.packageManagers)
     ]) expect(baseline).toContain(entry.version);
+  });
+
+  it('keeps the unresolved execution-ref prerequisite explicit in application operator guidance', async () => {
+    const [azure, governance] = await Promise.all([
+      repositoryFile('docs/azure-deployment.md'), repositoryFile('docs/repository-governance.md')
+    ]);
+    for (const content of [azure, governance]) {
+      expect(content).toContain('mutable default-branch ref');
+      expect(content).toContain('execution-tag binding');
+      expect(content).toContain('unreviewed replacement workflow');
+    }
+    expect(azure).toContain('Execution-ref qualification remains blocked');
+    expect(azure).toContain('Do not enable real artifact dispatch');
+    expect(azure).toContain('policy administrators remain an external');
+    expect(governance).toContain('source tests do not establish that missing barrier');
   });
 
   it('documents exact new-output-only infrastructure retirement without granting migration authority', async () => {

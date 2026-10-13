@@ -6,7 +6,10 @@ import { executeSeedOperations } from './seed-lifecycle.js';
 import { executeGitOperations } from './phase-publication.js';
 import { executeActivationApproval, executeRulesetPhase } from './phase-governance.js';
 import { remoteImportRetention, executeBootstrapStateDisposal } from './phase-bootstrap-state.js';
-import type { PhaseId, PhaseEvidenceRecord, UserActivationState, SavedTransitionPlan, TransitionOperation } from '../domain/governance/activation/types.js';
+import type {
+  ExternalOperationState, LiveReadbackProof, PhaseOutputBindings,
+  PhaseId, PhaseEvidenceRecord, UserActivationState, SavedTransitionPlan, TransitionOperation
+} from '../domain/governance/activation/types.js';
 import { phaseScope } from '../domain/governance/activation/types.js';
 import {
   phaseOrder, rollbackPlanFromCompletedOperations, phaseById, phaseUsesProvider, assertPlanOperationsAllowed,
@@ -67,6 +70,8 @@ const builtInExecutors: Partial<Record<PhaseId, PhaseExecutor>> = {
   'runner-ready': executeRunnerReadiness,
   'private-backend-proof': executeProtectedStatePhase,
   'remote-import-verified': executeProtectedStatePhase,
+  'application-prerequisites-ready': executeAzurePhase,
+  'application-artifact-ready': executeGitHubPhase,
   'remote-ready': remoteImportRetention,
   'bootstrap-state-disposed': executeBootstrapStateDisposal,
   'rulesets-applied': executeRulesetPhase,
@@ -114,7 +119,8 @@ function executionCapabilityBlocker(
 ): string | null {
   const capability = phaseCapabilities[phaseId];
   if (adapters.phases?.[phaseId]) return null;
-  if ((phaseId === 'private-backend-proof' || phaseId === 'remote-import-verified') &&
+  if ((phaseId === 'private-backend-proof' || phaseId === 'remote-import-verified' ||
+    phaseId === 'application-prerequisites-ready' || phaseId === 'application-artifact-ready') &&
     adapters.protectedStateHandover && adapters.protectedStateCustody) {
     return null;
   }
@@ -331,12 +337,58 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   await lease.assertHeld();
   const inputOptions = { sensitivePathExclusions: freshInspection.sensitivePathExclusions };
   const beforeSnapshot = await readActivationInputSnapshot(freshInspection.projectRoot, freshInspection.manifest, runner, inputOptions);
+  let executionStateHash = initialPlan.stateHash;
+  const applicationProducer = !adapters.phases?.[phase.id] &&
+    (phase.id === 'application-prerequisites-ready' || phase.id === 'application-artifact-ready');
+  let applicationDispatchIntentRecorded = false;
+  const applicationObservationOnly = phase.id === 'application-prerequisites-ready' &&
+    !adapters.phases?.[phase.id] && pendingOperation?.provider === 'azure' &&
+    pendingOperation.actionId === 'azure.prerequisites.apply' &&
+    !!pendingOperation.planDigest &&
+    !!freshInspection.state.phases[phase.id].executionPlanDigest;
   const adapterInput = {
     inspection: freshInspection, plan: initialPlan, phase, runner, adapters, now,
-    clock, lease, recovery: input.recovery, credentialEnrollment: input.credentialEnrollment
+    clock, lease, recovery: input.recovery, credentialEnrollment: input.credentialEnrollment,
+    applicationObservationOnly,
+    recordApplicationDispatchIntent: async (operation: TransitionOperation) => {
+      if (!applicationProducer || pendingOperation || applicationDispatchIntentRecorded ||
+        !['azure.prerequisites.apply', 'github.artifact.build-dispatch'].includes(operation.actionId) ||
+        !initialPlan.operations.some((planned) => canonicalSha256(planned) === canonicalSha256(operation))) {
+        throw new Error('Application dispatch intent must identify one exact new approved producer operation.');
+      }
+      await lease.assertHeld();
+      await input.assertProtectedInputs?.();
+      const intent = nextStateForOutcome({ inspection: freshInspection, phase, plan: initialPlan,
+        resultState: 'running', now: clock() });
+      executionStateHash = (await writeOutcomeTransaction({ projectRoot: freshInspection.projectRoot,
+        plan: initialPlan, nextState: intent, expectedStateHash: executionStateHash })).stateHash;
+      applicationDispatchIntentRecorded = true;
+      executionStarted = true;
+    },
+    recordApplicationProgress: async (progress: {
+      operation: ExternalOperationState;
+      outputs: PhaseOutputBindings;
+      liveReadback: readonly LiveReadbackProof[];
+    }) => {
+      if (phase.id !== 'application-prerequisites-ready' && phase.id !== 'application-artifact-ready') {
+        throw new Error('Application progress checkpoints cannot change another phase.');
+      }
+      await lease.assertHeld();
+      const actual = validateExternalOperationCheckpoint({
+        plan: initialPlan, operation: progress.operation, liveReadback: progress.liveReadback,
+        observedAt: clock(), ...(pendingOperation ? { previous: pendingOperation } : {})
+      });
+      const nextState = nextStateForOutcome({
+        inspection: freshInspection, phase, plan: initialPlan, resultState: 'running',
+        now: clock(), operation: actual, outputs: progress.outputs
+      });
+      executionStateHash = (await writeOutcomeTransaction({
+        projectRoot: freshInspection.projectRoot, plan: initialPlan, nextState, expectedStateHash: executionStateHash
+      })).stateHash;
+    }
   };
   const ownership = await inspectAzureDeploymentOwnership(adapterInput);
-  if (ownership?.blocker) {
+  if (ownership?.blocker && !applicationObservationOnly) {
     return executionBlockedResult(
       freshInspection,
       initialPlan,
@@ -349,9 +401,8 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     );
   }
   const taskSource = localRevalidation ? undefined : await captureGovernanceTaskSource(freshInspection, initialPlan);
-  let executionStateHash = initialPlan.stateHash;
   const readOnlyMutations = new Set(['none', 'read-worktree', 'github-read', 'azure-read', 'backend-state-read', 'write-evidence', 'write-activation-state', 'project-governance-tasks']);
-  const executionStarted = phaseScope(phase.id) !== 'local' && initialPlan.operations.some((operation) =>
+  let executionStarted = !applicationProducer && phaseScope(phase.id) !== 'local' && initialPlan.operations.some((operation) =>
     (operation.remote || operation.effects?.some((effect) => effect.remote)) &&
     (!readOnlyMutations.has(operation.mutationClass) || operation.effects?.some((effect) => !readOnlyMutations.has(effect.mutationClass))));
   if (executionStarted) {
@@ -370,13 +421,22 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     ...(ownership?.completedOperations ?? []),
     ...(outcome.completedOperations ?? [])
   ];
-  const effectiveEvidencePayload = ownership?.payload && isRecord(outcome.evidencePayload)
-    ? { ...outcome.evidencePayload, deploymentOwnership: ownership.payload }
+  const evidenceOwnership = applicationObservationOnly && outcome.status === 'completed' ? undefined : ownership;
+  const effectiveEvidencePayload = evidenceOwnership?.payload && isRecord(outcome.evidencePayload)
+    ? { ...outcome.evidencePayload, deploymentOwnership: evidenceOwnership.payload }
     : outcome.evidencePayload;
-  const effectiveLiveReadback = ownership?.liveReadback || outcome.liveReadback
-    ? [...(ownership?.liveReadback ?? []), ...(outcome.liveReadback ?? [])]
+  const effectiveLiveReadback = evidenceOwnership?.liveReadback || outcome.liveReadback
+    ? [...(evidenceOwnership?.liveReadback ?? []), ...(outcome.liveReadback ?? [])]
     : undefined;
   if (pendingOperation && !outcome.operation) {
+    if ((phase.id === 'application-prerequisites-ready' || phase.id === 'application-artifact-ready') &&
+      !adapters.phases?.[phase.id] && outcome.status === 'blocked' &&
+      !outcome.completedOperations?.length) {
+      return executionBlockedResult(freshInspection, initialPlan, saved,
+        outcome.blocker ?? 'Current application operation observation was refused; the original handle was retained without claiming fresh proof.',
+        ownership?.completedOperations ?? [], executionStateHash ?? initialPlan.stateHash,
+        outcome.cleanupWarnings ?? [], false);
+    }
     throw new Error('A resumed external operation must return the exact freshly reobserved provider handle.');
   }
   if (outcome.status === 'pending' && (!outcome.operation || outcome.operation.status !== 'running')) {

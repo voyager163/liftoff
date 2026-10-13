@@ -294,6 +294,21 @@ function bindingFor(
   };
 }
 
+export function protectedStateCustodyRequest(
+  input: PhasePlanningInput | PhaseAdapterExecutionInput
+): ProtectedStateCustodyRequest {
+  const binding = bindingFor(input);
+  return {
+    schemaVersion: 1,
+    bindingDigest: binding.request.bindingDigest,
+    repository: binding.request.repository,
+    runner: binding.request.runner,
+    backendBindingDigest: binding.backend.bindingDigest,
+    bootstrapBindingDigest: binding.bootstrap.bindingDigest,
+    retentionDays: 30
+  };
+}
+
 export function privateBackendProofPlanInputs(
   input: PhasePlanningInput | PhaseAdapterExecutionInput
 ): Record<string, unknown> {

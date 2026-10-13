@@ -2221,12 +2221,11 @@ other-platform qualification remain separate gates.
 ## Activation completeness and separate follow-up plan
 
 The activation engine is not yet an end-to-end production provisioning engine.
-Of its 29 declared phases, 15 have built-in handler paths, 5 require an explicit injected capability
-that the public CLI does not currently supply, and 9
+Of its 29 declared phases, 15 have built-in handler paths, 7 require an explicit injected capability
+that the public CLI does not currently supply, and 7
 fall back to an explicit missing-production-adapter blocker.
 
 The missing production phase handlers are `bootstrap-workflow-source-ready`,
-`application-prerequisites-ready`, `application-artifact-ready`,
 `application-foundation`, `workflow-source-ready`, `dev-proof`,
 `staging-qualified`, `production-rehearsed`, and `green-red-proof`.
 `rulesets-applied` and `live-readback` require the GitHub ruleset adapter.
@@ -2254,6 +2253,45 @@ result saves one exact external-operation handle, sanitized readback, and partia
 outputs; resume must present the immutable handle identity with a strictly newer
 matching provider observation, does not redispatch registration, and rejects
 operations older than 24 hours or observations older than ten minutes.
+
+TASK14.1's `application-prerequisites-ready` and `application-artifact-ready`
+source producers (`application-prerequisites.ts`, `application-artifact.ts` and
+`application-readiness.ts`) supply concrete Azure CLI/ARM and existing GitHub REST
+transport source producers behind the paired protected capabilities. They retain
+the current graph/record schemas and frozen families; stricter concrete recipe
+inputs invalidate an old placeholder plan rather than executing or rewriting it.
+Application continuity consumes independently validated prior owned inventories;
+unknown resources never become owned merely because a name or tag matches.
+Private `recordApplicationDispatchIntent` persists intent at the actual dispatch
+boundary, not during preflight. `recordApplicationProgress` checkpoints validate real scoped provider
+handles before subsequent observation, so source/authority drift cannot erase a
+confirmed dispatch. `applicationObservationOnly` is a nonserialized internal
+restriction for read-only prerequisite polling, not adoption or write authority.
+`readVerifiedApplicationArtifact` returns `VerifiedApplicationArtifact` only
+from authoritative current source/registry/environment/digest receipts;
+`observeImmutableApplicationArtifact` provides independent actual readback.
+These interfaces do not implement or authorize workflow source publication or
+application deployment.
+
+The current artifact dispatch still selects a mutable default-branch ref.
+Pre-dispatch checks, a reviewed workflow guard and later provenance refusal
+do not close the ref-selection race. Do not enable real dispatch before the
+separately owned immutable execution-tag binding and admission interface is
+published, integrated and independently qualified; no mutable-ref fallback
+is production-safe.
+
+Actual committed workflow bytes, separate transmission/network/build consent,
+the admitted private-network hosted runner, ACR QuickBuild output image and
+locked tag/digest, plus `gh attestation verify` certificate signer/source/run
+bindings are required. Never accept the final job step name or SLSA predicate
+annotations as ownership proof. Both handover/custody ports remain mandatory;
+existing-private application execution has no qualified custody binding, and an
+ambient workstation cannot use a remote host assertion as permission to write.
+The source tests exercise isolated provider/HTTP/process seams only. Full
+source-complete/native exact-head qualification, protected task13 wiring and
+real disposable publication scenarios remain external blockers; TASK14.1 stays
+unchecked. See the maintained Azure/operator guidance for the exact recipe
+protocol and unsupported combinations.
 
 Blocked execution after a validated external operation or completed remote write
 persists `partial-failure.v1` evidence while leaving the phase blocked. The

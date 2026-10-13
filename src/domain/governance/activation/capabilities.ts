@@ -20,6 +20,11 @@ const protectedDisposal = {
   retry: 'none',
   blocker: 'The same qualified protected custody capability is required for due-time bootstrap disposal.'
 } as const;
+const protectedApplication = {
+  executor: 'injected-only',
+  retry: 'none',
+  blocker: 'Application source producers require both qualified protected handover and custody capabilities, current exact approved resources and a protected execution host; production task13/task14 qualification is not available.'
+} as const;
 
 export const phaseCapabilities: Readonly<Record<PhaseId, PhaseCapability>> = {
   'seed-valid': local,
@@ -39,8 +44,8 @@ export const phaseCapabilities: Readonly<Record<PhaseId, PhaseCapability>> = {
   'private-backend-proof': protectedState,
   'remote-import-verified': protectedState,
   'remote-ready': builtIn,
-  'application-prerequisites-ready': unavailable,
-  'application-artifact-ready': unavailable,
+  'application-prerequisites-ready': protectedApplication,
+  'application-artifact-ready': protectedApplication,
   'application-foundation': unavailable,
   'workflow-source-ready': unavailable,
   'dev-proof': unavailable,

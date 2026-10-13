@@ -86,6 +86,21 @@ describe('developer activation-completeness guidance', () => {
     for (const phase of byExecutor('injected-only')) expect(completeness).toContain(`\`${phase}\``);
   });
 
+  it('documents guarded application source interfaces without claiming downstream or production qualification', () => {
+    for (const phrase of [
+      '`application-prerequisites-ready`', '`application-artifact-ready`',
+      '`recordApplicationDispatchIntent`', '`recordApplicationProgress`',
+      '`applicationObservationOnly`', '`readVerifiedApplicationArtifact`',
+      '`VerifiedApplicationArtifact`', '`observeImmutableApplicationArtifact`',
+      'old placeholder plan', 'TASK14.1 stays\nunchecked',
+      'do not implement or authorize workflow source publication',
+      'mutable default-branch ref', 'immutable execution-tag binding',
+      'no mutable-ref fallback'
+    ]) expect(completeness).toContain(phrase);
+    expect(phaseCapabilities['application-prerequisites-ready'].executor).toBe('injected-only');
+    expect(phaseCapabilities['application-artifact-ready'].executor).toBe('injected-only');
+  });
+
   it('describes approval and execution denial instead of a missing approval command', () => {
     expect(developer).not.toContain('no public approval-persistence');
     for (const phrase of [
