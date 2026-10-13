@@ -213,6 +213,12 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
   it.runIf(windows)('refuses replacement of a running Windows image and retains the original bytes', async () => {
     const locked = await copy('locked Windows version');
     const executable = path.join(locked, manifest.runtime.executable);
+    const replacement = path.join(fixture, 'writable replacement node.exe');
+    await copyFile(runtime, replacement);
+    await chmod(replacement, 0o600);
+    await chmod(executable, 0o600);
+    await copyFile(replacement, executable);
+    const before = await bundleFile(executable);
     const child = spawn(executable, ['-e', 'process.stdout.write("ready\\n"); setInterval(() => {}, 1000)'], {
       cwd: outside, env, shell: false, stdio: ['ignore', 'pipe', 'pipe']
     });
@@ -223,10 +229,11 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
         child.stdout!.once('data', bytes => { clearTimeout(timer); bytes.toString().includes('ready') ? resolve() : reject(new Error('No image-lock readiness.')); });
         child.once('error', error => { clearTimeout(timer); reject(error); });
       });
-      const before = await bundleFile(executable);
-      await expect(copyFile(runtime, executable)).rejects.toThrow();
+      await expect(copyFile(replacement, executable)).rejects.toThrow();
       expect((await bundleFile(executable)).sha256).toBe(before.sha256);
     } finally { child.kill(); await exited; }
+    await copyFile(replacement, executable);
+    expect((await bundleFile(executable)).sha256).toBe(before.sha256);
   }, 60_000);
   it.runIf(windows)('settles an actual installed Windows controller job without changing execution policy', () => {
     const result = installed(`
