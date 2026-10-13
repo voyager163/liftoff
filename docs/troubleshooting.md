@@ -426,6 +426,21 @@ both failures are retained internally, with only fixed validation diagnostics
 reported. Do not retry deletion, remove an active provider executable, or assume
 an `EBUSY` error identifies the process holding it.
 
+## Windows native verification cannot admit a target
+
+The controller requires FullLanguage mode and the built-in Windows PowerShell
+Utility assembly, resolved by its complete Microsoft strong name rather than
+assuming a DLL exists in `PSHOME`. Policy denial happens before compiler or
+Console method calls; Liftoff does not elevate or bypass execution policy.
+Do not substitute a downloaded compiler DLL or cached Win32 helper.
+
+A `LIFTOFF_CONTROLLER_BOOTSTRAP` diagnostic reports only a fixed assembly,
+type, cmdlet-binding, or compilation stage. Failure before compilation does not
+identify compiler expense or the host's underlying cause. The 15-second startup
+supervisor remains separate from a target's declared execution budget; neither
+an admission failure nor unknown process settlement permits project mutation
+or deletion of provider staging.
+
 ## Native startup rejects configuration or appears to ignore the file
 
 Python and Node read root `.env`; Python backend-CWD startup still resolves that

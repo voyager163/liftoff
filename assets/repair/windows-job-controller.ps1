@@ -24,6 +24,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+    throw 'ConstrainedLanguage mode does not permit Win32 Job API compilation.'
+}
+
 # Define Win32 interop for Job Objects and CreateProcessW with STARTUPINFOEX
 $win32TypeDef = @"
 using System;
@@ -312,22 +316,46 @@ public static class Win32JobNative {
 }
 "@
 
+$bootstrapStage = 'not-reported'
 try {
     [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: loading-compiler")
-    if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
-        [Console]::Error.WriteLine("ConstrainedLanguage mode does not permit Win32 Job API compilation.")
-        exit 1
+    # Windows PowerShell resolves this system assembly by strong name, not a PSHOME file.
+    $utilityAssemblyName = 'Microsoft.PowerShell.Commands.Utility, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'
+    $bootstrapStage = 'assembly-load'
+    $utilityAssembly = [System.Reflection.Assembly]::Load($utilityAssemblyName)
+    $bootstrapStage = 'assembly-identity'
+    if ($utilityAssembly.FullName -cne $utilityAssemblyName) {
+        throw 'Built-in compiler assembly identity does not match.'
     }
-    $utilityAssembly = [System.Reflection.Assembly]::LoadFrom([System.IO.Path]::Combine($PSHOME, 'Microsoft.PowerShell.Commands.Utility.dll'))
-    $compilerCmdlet = [System.Management.Automation.CmdletInfo]::new('Add-Type', $utilityAssembly.GetType('Microsoft.PowerShell.Commands.AddTypeCommand', $true))
-    $newObjectCmdlet = [System.Management.Automation.CmdletInfo]::new('New-Object', $utilityAssembly.GetType('Microsoft.PowerShell.Commands.NewObjectCommand', $true))
-    $toJsonCmdlet = [System.Management.Automation.CmdletInfo]::new('ConvertTo-Json', $utilityAssembly.GetType('Microsoft.PowerShell.Commands.ConvertToJsonCommand', $true))
-    $fromJsonCmdlet = [System.Management.Automation.CmdletInfo]::new('ConvertFrom-Json', $utilityAssembly.GetType('Microsoft.PowerShell.Commands.ConvertFromJsonCommand', $true))
-    $sleepCmdlet = [System.Management.Automation.CmdletInfo]::new('Start-Sleep', $utilityAssembly.GetType('Microsoft.PowerShell.Commands.StartSleepCommand', $true))
-    $writeErrorCmdlet = [System.Management.Automation.CmdletInfo]::new('Write-Error', $utilityAssembly.GetType('Microsoft.PowerShell.Commands.WriteErrorCommand', $true))
+    $bootstrapStage = 'compiler-type'
+    $compilerType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.AddTypeCommand', $true)
+    $bootstrapStage = 'compiler-cmdlet'
+    $compilerCmdlet = [System.Management.Automation.CmdletInfo]::new('Add-Type', $compilerType)
+    $bootstrapStage = 'new-object-type'
+    $newObjectType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.NewObjectCommand', $true)
+    $bootstrapStage = 'new-object-cmdlet'
+    $newObjectCmdlet = [System.Management.Automation.CmdletInfo]::new('New-Object', $newObjectType)
+    $bootstrapStage = 'to-json-type'
+    $toJsonType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.ConvertToJsonCommand', $true)
+    $bootstrapStage = 'to-json-cmdlet'
+    $toJsonCmdlet = [System.Management.Automation.CmdletInfo]::new('ConvertTo-Json', $toJsonType)
+    $bootstrapStage = 'from-json-type'
+    $fromJsonType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.ConvertFromJsonCommand', $true)
+    $bootstrapStage = 'from-json-cmdlet'
+    $fromJsonCmdlet = [System.Management.Automation.CmdletInfo]::new('ConvertFrom-Json', $fromJsonType)
+    $bootstrapStage = 'sleep-type'
+    $sleepType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.StartSleepCommand', $true)
+    $bootstrapStage = 'sleep-cmdlet'
+    $sleepCmdlet = [System.Management.Automation.CmdletInfo]::new('Start-Sleep', $sleepType)
+    $bootstrapStage = 'write-error-type'
+    $writeErrorType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.WriteErrorCommand', $true)
+    $bootstrapStage = 'write-error-cmdlet'
+    $writeErrorCmdlet = [System.Management.Automation.CmdletInfo]::new('Write-Error', $writeErrorType)
+    $bootstrapStage = 'compile'
     [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: compiling")
     & $compilerCmdlet -TypeDefinition $win32TypeDef -ErrorAction Stop
 } catch {
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_BOOTSTRAP: $bootstrapStage")
     [Console]::Error.WriteLine("Failed to load Win32 Job API definitions. Check the built-in compiler, LanguageMode and ExecutionPolicy.")
     exit 1
 }

@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
@@ -96,19 +97,36 @@ describe('Windows Job Object controller asset integrity and host environment', (
 
   it('binds the required built-in cmdlets directly without module import or command discovery', async () => {
     const controller = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
-    expect(controller).toContain("[System.Reflection.Assembly]::LoadFrom([System.IO.Path]::Combine($PSHOME, 'Microsoft.PowerShell.Commands.Utility.dll'))");
-    for (const [command, type] of [
-      ['Add-Type', 'AddTypeCommand'], ['New-Object', 'NewObjectCommand'],
-      ['ConvertTo-Json', 'ConvertToJsonCommand'], ['ConvertFrom-Json', 'ConvertFromJsonCommand'],
-      ['Start-Sleep', 'StartSleepCommand'], ['Write-Error', 'WriteErrorCommand']
+    expect(controller).toContain("$utilityAssemblyName = 'Microsoft.PowerShell.Commands.Utility, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'");
+    expect(controller).toContain('[System.Reflection.Assembly]::Load($utilityAssemblyName)');
+    expect(controller).toContain('if ($utilityAssembly.FullName -cne $utilityAssemblyName)');
+    expect(controller).not.toMatch(/LoadFrom|LoadWithPartialName|System\.IO\.Path.*Utility/u);
+    for (const [command, type, variable] of [
+      ['Add-Type', 'AddTypeCommand', 'compilerType'], ['New-Object', 'NewObjectCommand', 'newObjectType'],
+      ['ConvertTo-Json', 'ConvertToJsonCommand', 'toJsonType'], ['ConvertFrom-Json', 'ConvertFromJsonCommand', 'fromJsonType'],
+      ['Start-Sleep', 'StartSleepCommand', 'sleepType'], ['Write-Error', 'WriteErrorCommand', 'writeErrorType']
     ]) {
-      expect(controller).toContain(`[System.Management.Automation.CmdletInfo]::new('${command}', $utilityAssembly.GetType('Microsoft.PowerShell.Commands.${type}', $true))`);
+      expect(controller).toContain(`$${variable} = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.${type}', $true)`);
+      expect(controller).toContain(`[System.Management.Automation.CmdletInfo]::new('${command}', $${variable})`);
     }
     expect(controller).toContain('& $compilerCmdlet -TypeDefinition $win32TypeDef -ErrorAction Stop');
     expect(controller).not.toMatch(/Import-Module|Get-Command|Microsoft\.PowerShell\.Utility\.psd1/u);
     expect(controller).toContain("if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage')");
     expect(controller.indexOf("$ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage'"))
-      .toBeLessThan(controller.indexOf('[System.Reflection.Assembly]::LoadFrom'));
+      .toBeLessThan(controller.indexOf('[System.Reflection.Assembly]::Load('));
+    expect(controller.indexOf("throw 'ConstrainedLanguage mode does not permit Win32 Job API compilation.'"))
+      .toBeLessThan(controller.indexOf('[Console]'));
+    expect(controller.indexOf('$utilityAssembly.FullName -cne $utilityAssemblyName'))
+      .toBeLessThan(controller.indexOf("[System.Management.Automation.CmdletInfo]::new('Add-Type'"));
+    const bootstrap = controller.slice(controller.indexOf("$bootstrapStage = 'not-reported'"),
+      controller.indexOf('# Connect to the private control pipe'));
+    expect([...bootstrap.matchAll(/\$bootstrapStage = '([^']+)'/gu)].map(match => match[1])).toEqual([
+      'not-reported', 'assembly-load', 'assembly-identity', 'compiler-type', 'compiler-cmdlet',
+      'new-object-type', 'new-object-cmdlet', 'to-json-type', 'to-json-cmdlet',
+      'from-json-type', 'from-json-cmdlet', 'sleep-type', 'sleep-cmdlet',
+      'write-error-type', 'write-error-cmdlet', 'compile'
+    ]);
+    expect(bootstrap).not.toMatch(/\$_|\.Exception|\.Message/u);
   });
 
   it('rejects a corrupted controller asset before launching any process', async () => {
@@ -245,7 +263,7 @@ describe('Windows Job Runner protocol execution and policy admission blockers', 
     expect(result.errorMessage).toContain('ConstrainedLanguage mode or restricted by AppLocker/WDAC');
   });
 
-  it.each(['missing-assembly', 'missing-type', 'constrained-language'] as const)(
+  it.each(['missing-assembly', 'unexpected-identity', 'missing-type', 'constrained-language'] as const)(
     'fails closed before target dispatch for compiler bootstrap %s', async (mode) => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-controller-bootstrap-'));
     tempDirs.push(directory);
@@ -254,18 +272,37 @@ describe('Windows Job Runner protocol execution and policy admission blockers', 
       const controller = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
       const assetPath = path.join(directory, 'missing-compiler.ps1');
       const negative = mode === 'missing-assembly'
-        ? controller.replace('Microsoft.PowerShell.Commands.Utility.dll', 'liftoff-missing-compiler-fixture.dll')
-        : mode === 'missing-type'
-          ? controller.replace('Microsoft.PowerShell.Commands.AddTypeCommand', 'Microsoft.PowerShell.Commands.MissingCompilerFixture')
-          : controller.replace("$ErrorActionPreference = 'Stop'",
-            "$ErrorActionPreference = 'Stop'\n$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'");
+        ? controller.replace('Microsoft.PowerShell.Commands.Utility, Version=', 'Liftoff.Missing.Compiler.Fixture, Version=')
+        : mode === 'unexpected-identity'
+          ? controller.replace('$utilityAssembly.FullName -cne $utilityAssemblyName', '$utilityAssembly.FullName -ceq $utilityAssemblyName')
+          : mode === 'missing-type'
+            ? controller.replace('Microsoft.PowerShell.Commands.AddTypeCommand', 'Microsoft.PowerShell.Commands.MissingCompilerFixture')
+            : controller.replace("$ErrorActionPreference = 'Stop'",
+              "$ErrorActionPreference = 'Stop'\n$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'");
       await writeFile(assetPath, negative);
+      if (mode === 'constrained-language') {
+        const denied = spawnSync('powershell.exe', [
+          '-NoLogo', '-NoProfile', '-NonInteractive', '-File', assetPath,
+          '-ControlPipeName', 'liftoff-policy-test', '-ExpectedNonce', 'test-fixture',
+          '-WorkspaceId', 'test-workspace', '-InvocationId', 'test-invocation'
+        ], {
+          env: buildWindowsControllerHostEnvironment(), encoding: 'utf8', windowsHide: true,
+          timeout: 15_000, maxBuffer: 64 * 1024
+        });
+        expect(denied.error === undefined).toBe(true);
+        expect(denied.status).toBe(1);
+        expect(denied.stderr.includes('ConstrainedLanguage mode does not permit Win32 Job API compilation.')).toBe(true);
+        expect(denied.stderr.includes('MethodInvocationNotSupportedInConstrainedLanguage')).toBe(false);
+        expect(denied.stderr.includes('LIFTOFF_CONTROLLER_STAGE:')).toBe(false);
+      }
       launcher = { assetPath, skipAssetVerification: true };
     } else {
       const script = path.join(directory, 'missing-compiler.mjs');
       const diagnostic = mode === 'constrained-language'
         ? 'ConstrainedLanguage mode does not permit Win32 Job API compilation.'
-        : 'Failed to load Win32 Job API definitions.';
+        : mode === 'unexpected-identity'
+          ? 'LIFTOFF_CONTROLLER_BOOTSTRAP: assembly-identity\nFailed to load Win32 Job API definitions.'
+          : `LIFTOFF_CONTROLLER_BOOTSTRAP: ${mode === 'missing-assembly' ? 'assembly-load' : 'compiler-type'}\nFailed to load Win32 Job API definitions.`;
       await writeFile(script, `process.stderr.write(${JSON.stringify(`${diagnostic}\n`)}); process.exitCode = 1;\n`);
       launcher = await mockControllerLauncher(directory, script);
     }
@@ -281,6 +318,10 @@ describe('Windows Job Runner protocol execution and policy admission blockers', 
     });
     expect((result.errorMessage ?? '').includes(mode === 'constrained-language'
       ? 'ConstrainedLanguage' : 'Failed to load Win32 Job API definitions')).toBe(true);
+    if (mode !== 'constrained-language') {
+      expect((result.errorMessage ?? '').includes(`LIFTOFF_CONTROLLER_BOOTSTRAP: ${mode === 'missing-assembly'
+        ? 'assembly-load' : mode === 'unexpected-identity' ? 'assembly-identity' : 'compiler-type'}`)).toBe(true);
+    }
     expect(result.stdout.includes('UNEXPECTED_TARGET_EXECUTION')).toBe(false);
   });
 
