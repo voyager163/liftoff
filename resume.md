@@ -2094,3 +2094,125 @@ This exact source supersedes `1c131a35` for renewed private admission. It
 does not alter shared/current-family-5 contracts, generator/HCL, runtime
 wiring, production authority, task flags, or any real effect. The ownership
 tag mismatch remains fail-closed and task 14.2 remains unchecked.
+
+### Task 14.2 serialized current-5 integration proposal, 2026-10-13
+
+Coordinator review admitted exact private source
+`4c7efd104b26167125076c976cb34e3f143c1188`, tree
+`17a3d25eaa9d690a2fccf92e9518de5bc7319550`, for bounded source reuse and
+preparation of a serialized modern/current-5 integration proposal. This is
+not shared/public/native/cloud execution admission and does not complete task
+14.2.
+
+Read-only inspection of current-5 owner source
+`d38d86c0f4f61d1e034cbc0d0b879ffdae371bcb`, tree
+`78a15d31fed00c2d1f7ffc64eb0df3c995f8c3d6`, confirmed:
+
+- the current source family uses activation contract 5, graph schema 3,
+  saved-plan schema 3, state/evidence/approval schema 4, compatibility
+  metadata schema 5, and six profile/workflow-specific graph hashes;
+- compatibility still declares execution `source-contract-only`;
+- `application-foundation` still declares `application-foundation.v1`;
+- source-5 `staging-qualified` and `production-rehearsed` payloads are the
+  workflow-only `.v2` allocation;
+- the existing transition/runtime surfaces remain legacy
+  `PhaseAdapterExecutionInput` contracts and cannot be cast into or borrowed
+  by a modern application engine; and
+- staging/production graph permissions still include Azure provision and
+  backend-state-write even though the admitted private application read path
+  is strictly observation-only.
+
+The concrete proposal was sent to current-5 sole allocation owner session
+`e1389524-41f1-47aa-8c43-4bf14b14cf20` and serialized coordinator session
+`8d89d4b7-10db-4009-945e-b14397314a84`. No shared source was edited.
+
+The proposed identity and graph change does not reuse or overwrite the six
+`d38d86c0` graph hashes. It introduces a distinct
+`application-foundation.v2` protected-deployment payload and combined
+`staging-qualified.v3` / `production-rehearsed.v3` payloads rather than
+overloading the admitted workflow-only `.v2` schema. The staging/production
+application path retains GitHub read/dispatch and Azure read, but removes
+Azure resource provision and backend-state-write; application-foundation
+retains its exact Azure provision/read and protected backend read/write
+permissions. These changes produce six new graph hashes and phase-contract
+digests. They therefore require the sole owner to allocate either an exact
+source-5 successor with `d38d86c0` frozen readable or a new activation
+contract version; they cannot silently mutate the published current-5
+identity. Saved-plan/state/evidence-header/approval fields need not change.
+Compatibility must remain `source-contract-only` until genuine producers
+qualify.
+
+The proposed private `ModernApplicationExecutionCarrier.v1` is separate from
+`PhaseAdapterExecutionInput`. Its serialized fields bind the complete modern
+identity, phase and phase-contract digest, state/plan/saved-plan/operation and
+approval commitments, original invocation times, and exact application
+binding, source, artifact, backend, provider-lock, configuration,
+customization, subscription, tenant, environment, resource, cost, custody,
+and original-state-authority digests. It carries no raw state, plan, secret,
+or health body and no runtime callbacks.
+
+Runtime ownership remains outside the serialized carrier:
+
+- an engine-owned durable checkpoint store loads and records pre-effect
+  intent, first accepted handle, and terminal provider truth;
+- a read-only immutable source/runner/network/custody producer supplies the
+  independently qualified execution authority without borrowing workflow
+  issuers, tag writers, auxiliary namespaces, or legacy callbacks;
+- a protected-state producer supplies authoritative lineage, serial, state,
+  unchanged-unmapped-state, backup, lock, and writer-quiescence digests;
+- a private protected OpenTofu/Azure port performs the exact bounded dispatch
+  or observation;
+- a bounded actual HTTP observer returns only validated status/media/length
+  and raw/semantic digests, never the response body; and
+- a modern record writer creates evidence and advances state only after all
+  required proofs are durable.
+
+The modern application-foundation plan must contain exactly
+`azure.application-foundation.apply` with its exact effects and static
+application/source/backend/artifact/state-authority/approval commitments,
+not the current `{ opentofu: true }` placeholder. Staging and production must
+contain only their exact readback operation, admitted completion/handle/source
+commitments, and no application apply/import/move/state effect.
+
+Required write ordering is: decode and revalidate modern state, plan,
+approval, and source; observe independent execution and state authority;
+build the exact protected plan; fail `configuration-mismatch` before intent;
+persist intent; dispatch once; persist the first accepted handle; observe
+terminal provider truth; persist terminal truth before fallible export,
+mapping, Azure readback, HTTP health, or evidence; then write modern evidence
+and state. Source freshness is re-observed before the effect and before final
+readback. Any failure after acceptance retains the original accepted or
+terminal checkpoint and permits observation-only reconciliation, never a
+second dispatch. Evidence or state-write failure likewise preserves terminal
+truth and retries only final observation/evidence construction.
+
+The proposed evidence receipts contain only binding, source, execution
+authority, original-state authority, protected-plan, mapping-batch,
+checkpoint-chain, completion, fresh-readback, custody, retention, and
+disposal digests plus sanitized resources and exact operation identity.
+Staging/production `.v3` retains the existing workflow proofs and adds the
+admitted application completion and fresh Azure/HTTP proof. No protected
+state/plan payload or health body crosses the carrier.
+
+No qualified protected application dispatch port, authoritative original
+backend-state producer, durable modern checkpoint store, or bounded actual
+HTTP producer is currently admitted. Each remains a real qualification
+blocker rather than a structural success. The canonical HCL
+resource-group/registry/identity ownership-tag mismatch also remains
+`configuration-mismatch`; a generator remedy requires a separate exact
+allocation/intake. OpenSpec remains 82/136, task 14.2 remains unchecked, and
+no real GitHub, Azure, OpenTofu, registry, RBAC, state, cost, health, or
+global effect occurred.
+
+The current-5 sole owner reviewed the proposal boundary and explicitly
+withheld shared/current-5 consumption. The existing approved allocation
+remains strictly activation 5 to activation 5 with unchanged `fce27` source,
+six graph identities, workflow-only components, and no task-14.2 port or
+callback wiring. The proposed foundation `.v2`, combined staging/production
+`.v3`, and changed allowed effects are a separate normative contract
+allocation. The owner's recommendation is activation contract 6 with
+`d38d86c0` source 5 preserved readable, rather than two different phase and
+recovery meanings labelled current 5. The serialized coordinator must choose
+and authorize that allocation before any shared family, graph, payload,
+compatibility, phase, or runtime edit. Existing immutable-ref observers remain
+stable, and no generator/HCL intake is implied.
