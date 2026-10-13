@@ -116,6 +116,10 @@ with the selected global prefix, `--ignore-scripts`, and the literal
 launcher may be removed. All cask dispatch goes through the exact candidate/
 channel-bound, abortable provider port with a settlement result; there is no
 unqualified fallback command.
+The utility package/runtime and selected Node, npm, manager and Homebrew
+executables must remain outside the old uninstall scope. Overlapping tool
+selections are refused rather than deleting the tools needed for handover or
+recovery.
 
 ## Partial outcomes and selected recovery
 

@@ -9,7 +9,7 @@ import { admitNativeStableMaterial } from '../../adapters/distribution/native-me
 import type { MacMigrationCaskPort } from '../../adapters/distribution/mac-migration-cask.js';
 import {
   discoverMacNpmSelections, inspectMacNpmOwner, macMigrationHash, migrationDirectory, migrationEnvironment,
-  migrationFileIdentity, migrationProbe, assertMigrationTools
+  migrationFileIdentity, migrationProbe, assertMigrationTools, assertMigrationOutsideOldScope
 } from '../../adapters/distribution/mac-npm-owner.js';
 import {
   captureMigrationTree, copyMigrationTree, MacMigrationJournalStore, migrationAbsent, migrationLauncher,
@@ -62,6 +62,7 @@ async function brewObservation(executable: string | undefined, owner: MacNpmOwne
   dependencies: SelfUpgradeDependencies, scratch: string): Promise<MacMigrationBrew> {
   if (!executable || !path.isAbsolute(executable)) throw new MacMigrationFailure('approved-existing-homebrew-required');
   const selected = await realpath(executable);
+  assertMigrationOutsideOldScope(owner.packageRoot, [selected]);
   await access(selected, constants.X_OK);
   const prefix = await migrationProbe(dependencies, scratch, owner.node, selected, ['--prefix']);
   await migrationDirectory(prefix, true);
@@ -207,6 +208,8 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
     }
     const owner = owners[0];
     report.selected = selectedReport(owner);
+    assertMigrationOutsideOldScope(owner.packageRoot,
+      [await realpath(installedPackageRoot), await realpath(dependencies.upgrade.execPath)]);
     const brew = await brewObservation(request.brew, owner, dependencies.upgrade, scratch);
     if (!dependencies.cask) throw new MacMigrationFailure('native-cask-provider-unqualified');
     const cask = dependencies.cask;

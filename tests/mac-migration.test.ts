@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { chmod, lstat, mkdir, readFile, readlink, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, readFile, readlink, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runMacMigration, defaultMacMigrationDependencies } from '../src/application/upgrade/mac-migration.js';
 import { parseMacMigration, macMigrationHelp, macMigrationMain } from '../src/cli/mac-migration.js';
@@ -8,7 +8,7 @@ import { captureMigrationTree, MacMigrationJournalStore, migrationAbsent, migrat
   type MigrationJournal } from '../src/adapters/distribution/mac-migration-state.js';
 import * as migrationState from '../src/adapters/distribution/mac-migration-state.js';
 import { discoverMacNpmSelections, inspectMacNpmOwner, macMigrationHash as hash,
-  migrationDirectory, migrationEnvironment, migrationNames } from '../src/adapters/distribution/mac-npm-owner.js';
+  assertMigrationOutsideOldScope, migrationDirectory, migrationEnvironment, migrationNames } from '../src/adapters/distribution/mac-npm-owner.js';
 import { macMigrationFixture } from './fixtures/mac-migration.js';
 import { MacMigrationFailure, type MacNpmManager } from '../src/domain/distribution/mac-migration.js';
 import { macMigrationBridge } from '../src/domain/distribution/mac-migration-bridge.js';
@@ -77,6 +77,41 @@ describe.skipIf(process.platform === 'win32')('private SOURCE-only Mac migration
     const run = vi.spyOn(value.dependencies.upgrade.runner, 'run');
     const result = await runMacMigration(value.request, value.dependencies);
     expect(result.blockers).toContain('source-checkout'); expect(run).not.toHaveBeenCalled();
+  });
+
+  it.each(['node', 'npm', 'manager', 'brew', 'runtime'])('refuses selected %s tools inside the old uninstall scope', async tool => {
+    const value = await fixture();
+    const selected = tool === 'node' || tool === 'runtime' ? value.node : tool === 'npm' ? value.npm : value.request.brew!;
+    const relative = tool === 'npm' ? 'embedded npm/bin/npm-cli.js' : path.basename(selected);
+    const nested = path.join(value.oldPackage, relative);
+    for (const root of [value.oldPackage, value.recovery]) {
+      const copied = path.join(root, relative);
+      await mkdir(path.dirname(copied), { recursive: true });
+      await copyFile(selected, copied); await chmod(copied, 0o755);
+      if (tool === 'npm') {
+        await copyFile(path.join(path.dirname(path.dirname(value.npm)), 'package.json'),
+          path.join(root, 'embedded npm/package.json'));
+      }
+    }
+    if (tool === 'node' || tool === 'npm') value.request.selection![tool] = nested;
+    if (tool === 'manager') value.request.selection!.managerExecutable = nested;
+    if (tool === 'brew') value.request.brew = nested;
+    if (tool === 'runtime') value.dependencies.upgrade.execPath = nested;
+    const before = await captureMigrationTree(value.oldPackage);
+    const run = vi.spyOn(value.dependencies.upgrade.runner, 'run');
+    const result = await runMacMigration(value.request, value.dependencies);
+    expect(result).toMatchObject({ status: 'blocked', effects: 'none' });
+    expect(result.blockers).toContain('migration-tool-overlaps-old-scope');
+    expect(run.mock.calls.some(([command]) => command.args.includes('uninstall'))).toBe(false);
+    if (['node', 'npm', 'manager'].includes(tool)) expect(run).not.toHaveBeenCalled();
+    expect((await captureMigrationTree(value.oldPackage)).physical).toBe(before.physical);
+  });
+
+  it('uses exact directory boundaries for utility and tool disjointness', () => {
+    const root = path.resolve('old liftoff');
+    expect(() => assertMigrationOutsideOldScope(root, [root])).toThrow('migration-tool-overlaps-old-scope');
+    expect(() => assertMigrationOutsideOldScope(root, [path.join(root, 'core/application')])).toThrow('migration-tool-overlaps-old-scope');
+    expect(() => assertMigrationOutsideOldScope(root, [`${root}-external/runtime/node`])).not.toThrow();
   });
 
   it('requires exact existing Homebrew and the separately qualified real provider even for source admission', async () => {

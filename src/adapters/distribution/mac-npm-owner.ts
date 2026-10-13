@@ -10,6 +10,12 @@ import { isStableSemver } from '../../stable-release.js';
 
 export const macMigrationHash = (value: Buffer | string) => createHash('sha256').update(value).digest('hex');
 
+export function assertMigrationOutsideOldScope(packageRoot: string, files: readonly string[]): void {
+  if (files.some(file => file === packageRoot || file.startsWith(`${packageRoot}${path.sep}`))) {
+    throw new MacMigrationFailure('migration-tool-overlaps-old-scope');
+  }
+}
+
 export async function migrationFileIdentity(file: string, maximum = 8 * 1024 * 1024): Promise<string> {
   const bytes = await readUpgradeBytes(file, maximum);
   const stat = await lstat(file);
@@ -81,6 +87,8 @@ export async function inspectMacNpmOwner(selection: MacNpmSelection, dependencie
   const version = metadata.version;
   const node = await canonicalExecutable(selection.node);
   const npm = await canonicalExecutable(selection.npm);
+  assertMigrationOutsideOldScope(packageRoot, [node, npm,
+    ...(selection.managerExecutable ? [await canonicalExecutable(selection.managerExecutable)] : [])]);
   const npmRoot = path.dirname(path.dirname(npm));
   const npmMetadata: unknown = JSON.parse((await readUpgradeBytes(path.join(npmRoot, 'package.json'), 64 * 1024)).toString('utf8'));
   if (path.basename(npm) !== 'npm-cli.js' || path.basename(path.dirname(npm)) !== 'bin' ||
