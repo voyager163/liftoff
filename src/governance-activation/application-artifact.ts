@@ -466,21 +466,24 @@ export async function observeImmutableApplicationArtifact(
 ) {
   input = applicationDeadlineInput(input);
   const binding = applicationArtifactBinding(input);
-  if (outputs.values.artifactBindingDigest !== binding.bindingDigest ||
-    outputs.values.sourceSha !== binding.sourceSha || outputs.values.workflowDigest !== binding.workflowDigest ||
-    outputs.values.registryResourceId !== binding.registryId ||
-    typeof outputs.values.acrRunId !== 'string' || !/^[a-z0-9]{1,32}$/u.test(outputs.values.acrRunId)) {
+  const { artifactBindingDigest, sourceSha: outputSourceSha, workflowDigest, registryResourceId,
+    acrRunId, artifactDigest } = outputs.values;
+  const workflowRunResourceId = operation.resourceId;
+  if (artifactBindingDigest !== binding.bindingDigest ||
+    outputSourceSha !== binding.sourceSha || workflowDigest !== binding.workflowDigest ||
+    registryResourceId !== binding.registryId ||
+    typeof acrRunId !== 'string' || !/^[a-z0-9]{1,32}$/u.test(acrRunId)) {
     return applicationError('application-artifact-binding', 'Artifact publication changed source, environment, approved recipe, registry or actual build run.');
   }
-  const imageDigest = digest(outputs.values.artifactDigest);
+  const imageDigest = digest(artifactDigest);
   const image = `${binding.imageRepository}@${imageDigest}`;
   const tag = `${binding.imageRepository}:${binding.tag}`;
   const run = azureObject(await runAzureJson(input, [
     'acr', 'task', 'show-run', '--subscription', binding.subscriptionId, '--registry', binding.registryName,
-    '--run-id', outputs.values.acrRunId,
+    '--run-id', acrRunId,
     '--query', '{runId:runId,status:status,runType:runType,outputImages:outputImages}'
   ], 'Actual application ACR build run readback'), 'ACR build run');
-  if (run.runId !== outputs.values.acrRunId || run.status !== 'Succeeded' || run.runType !== 'QuickBuild' ||
+  if (run.runId !== acrRunId || run.status !== 'Succeeded' || run.runType !== 'QuickBuild' ||
     !Array.isArray(run.outputImages) || run.outputImages.length !== 1 ||
     !isRecord(run.outputImages[0]) || run.outputImages[0].registry !== binding.loginServer ||
     run.outputImages[0].repository !== binding.imageRepository || run.outputImages[0].tag !== binding.tag ||
@@ -518,7 +521,7 @@ export async function observeImmutableApplicationArtifact(
   let attestations: unknown;
   try { attestations = JSON.parse(verified.stdout); }
   catch { return applicationError('application-attestation-invalid', 'Artifact verification returned invalid bounded JSON; proof/log bytes were withheld.'); }
-  const expectedRun = `https://github.com${operation.resourceId.replace('/repos/', '/')}/attempts/1`;
+  const expectedRun = `https://github.com${workflowRunResourceId.replace('/repos/', '/')}/attempts/1`;
   const valid = Array.isArray(attestations) && attestations.length > 0 && attestations.length <= 10 &&
     attestations.some((entry) => {
       if (!isRecord(entry) || !isRecord(entry.verificationResult)) return false;

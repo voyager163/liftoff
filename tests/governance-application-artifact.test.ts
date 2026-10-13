@@ -943,6 +943,132 @@ describe('immutable application publication and independent readback', () => {
       resourceId: '/repos/owner/repo/actions/runs/901', status: 'completed', startedAt: coverageNow.toISOString(), observedAt: coverageNow.toISOString()
     })).rejects.toThrow();
   });
+  it.each(['acr-run', 'tag', 'digest', 'attestation', 'final-tag'] as const)(
+    'retains original artifact inputs while the %s read is awaiting a response', async (boundary) => {
+      const f = await fixture(true);
+      const binding = f.transport.binding;
+      const values = { artifactBindingDigest: binding.bindingDigest, sourceSha: binding.sourceSha,
+        workflowDigest: binding.workflowDigest, registryResourceId: binding.registryId,
+        acrRunId: 'ca1', artifactDigest: imageDigest };
+      const outputs = { values, resources: [] };
+      const operation = {
+        provider: 'github' as const, actionId: 'github.artifact.build-dispatch', operationId: 'github-actions:901',
+        resourceId: '/repos/owner/repo/actions/runs/901', status: 'completed' as const,
+        startedAt: coverageNow.toISOString(), observedAt: coverageNow.toISOString(), planDigest: f.input.plan.planDigest
+      };
+      const original = structuredClone(await observeImmutableApplicationArtifact(f.input, outputs, operation));
+      const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+      const run = f.runner.run.bind(f.runner);
+      let tagReads = 0;
+      const calls: ExternalCommand[] = [];
+      vi.spyOn(f.runner, 'run').mockImplementation(async (command, options) => {
+        calls.push(command);
+        const key = command.args.join(' ');
+        const tagRead = key.startsWith('acr repository show ') && argument(command, '--image') === `${binding.imageRepository}:${binding.tag}`;
+        if (tagRead) tagReads++;
+        const selected = boundary === 'acr-run' ? key.startsWith('acr task show-run ')
+          : boundary === 'attestation' ? command.executable === 'gh'
+          : boundary === 'digest' ? key.startsWith('acr repository show ') && argument(command, '--image') === `${binding.imageRepository}@${imageDigest}`
+          : tagRead && tagReads === (boundary === 'tag' ? 1 : 2);
+        if (selected) { entered.resolve(); await release.promise; }
+        return run(command, options);
+      });
+      const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+      const intent = vi.spyOn(f.input, 'recordApplicationDispatchIntent');
+      const phase = structuredClone(f.input.inspection.state.phases[f.phase.id]);
+      const pending = observeImmutableApplicationArtifact(f.input, outputs, operation);
+      await entered.promise;
+      try {
+        Object.assign(values, { artifactBindingDigest: 'e'.repeat(64), sourceSha: 'f'.repeat(40),
+          workflowDigest: 'e'.repeat(64), registryResourceId: `${binding.registryId}-replacement`,
+          acrRunId: 'ca2', artifactDigest: `sha256:${'e'.repeat(64)}` });
+        outputs.values = { ...values, acrRunId: 'ca3' };
+        Object.assign(operation, { operationId: 'github-actions:999', resourceId: '/repos/owner/repo/actions/runs/999',
+          startedAt: new Date(coverageNow.getTime() + 1000).toISOString(), planDigest: 'f'.repeat(64) });
+        Object.assign(f.inputs.phases['application-artifact-ready']!, {
+          sourceSha: 'f'.repeat(40), workflowDigest: 'e'.repeat(64), imageRepository: 'application/replacement'
+        });
+      } finally { release.resolve(); }
+      expect(await pending).toEqual(original);
+      expect(argument(calls[0]!, '--run-id')).toBe('ca1');
+      expect(calls.filter((command) => command.args.join(' ').startsWith('acr repository show '))
+        .map((command) => argument(command, '--image'))).toEqual([
+        `${binding.imageRepository}:${binding.tag}`, `${binding.imageRepository}@${imageDigest}`,
+        `${binding.imageRepository}:${binding.tag}`
+      ]);
+      expect(calls.find((command) => command.executable === 'gh')!.args).toContain(binding.sourceSha);
+      expect(calls).toHaveLength(5);
+      expect(f.transport.calls).toEqual([]);
+      expect(f.runner.writes).toEqual([]);
+      expect(progress).not.toHaveBeenCalled();
+      expect(intent).not.toHaveBeenCalled();
+      expect(f.input.inspection.state.phases[f.phase.id]).toEqual(phase);
+      expect(operation.operationId).toBe('github-actions:999');
+      expect(outputs.values.acrRunId).toBe('ca3');
+      expect(f.inputs.phases['application-artifact-ready']!.imageRepository).toBe('application/replacement');
+    }
+  );
+  it.each(['acr-run', 'operation', 'tag', 'digest', 'source'] as const)(
+    'refuses replacement %s proof after caller inputs change during the original read', async (replacement) => {
+      const f = await fixture(true);
+      const binding = f.transport.binding;
+      const values = { artifactBindingDigest: binding.bindingDigest, sourceSha: binding.sourceSha,
+        workflowDigest: binding.workflowDigest, registryResourceId: binding.registryId,
+        acrRunId: 'ca1', artifactDigest: imageDigest };
+      const operation = {
+        provider: 'github' as const, actionId: 'github.artifact.build-dispatch', operationId: 'github-actions:901',
+        resourceId: '/repos/owner/repo/actions/runs/901', status: 'completed' as const,
+        startedAt: coverageNow.toISOString(), observedAt: coverageNow.toISOString(), planDigest: f.input.plan.planDigest
+      };
+      const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+      const run = f.runner.run.bind(f.runner);
+      const calls: ExternalCommand[] = [];
+      vi.spyOn(f.runner, 'run').mockImplementation(async (command, options) => {
+        calls.push(command);
+        const selected = ['operation', 'source'].includes(replacement)
+          ? command.executable === 'gh' : command.args.join(' ').startsWith('acr task show-run ');
+        if (selected) { entered.resolve(); await release.promise; }
+        const observed = await run(command, options);
+        if (selected && replacement === 'acr-run') {
+          return { ...observed, stdout: JSON.stringify({ ...JSON.parse(observed.stdout), runId: 'ca2' }) };
+        }
+        return observed;
+      });
+      const pending = observeImmutableApplicationArtifact(f.input, { values, resources: [] }, operation);
+      const rejected = expect(pending).rejects.toThrow(
+        ['operation', 'source'].includes(replacement) ? /certificate does not bind/ : /ACR publication run does not own/
+      );
+      await entered.promise;
+      try {
+        if (replacement === 'acr-run') values.acrRunId = 'ca2';
+        if (replacement === 'operation') {
+          operation.operationId = 'github-actions:999';
+          operation.resourceId = '/repos/owner/repo/actions/runs/999';
+          f.runner.attestationRun = '999';
+        }
+        if (replacement === 'tag') {
+          f.inputs.phases['application-artifact-ready']!.imageRepository = 'application/replacement';
+          f.runner.artifact = { ...binding, tag: `${binding.tag}-replacement` };
+        }
+        if (replacement === 'digest') {
+          values.artifactDigest = `sha256:${'e'.repeat(64)}`;
+          f.runner.actualDigest = values.artifactDigest;
+        }
+        if (replacement === 'source') {
+          values.sourceSha = 'f'.repeat(40);
+          f.inputs.phases['application-artifact-ready']!.sourceSha = values.sourceSha;
+          f.runner.attestationSource = values.sourceSha;
+        }
+      } finally { release.resolve(); }
+      await rejected;
+      expect(argument(calls[0]!, '--run-id')).toBe('ca1');
+      expect(calls).toHaveLength(['operation', 'source'].includes(replacement) ? 4 : 1);
+      expect(f.transport.calls).toEqual([]);
+      expect(f.runner.writes).toEqual([]);
+      expect(f.input.inspection.state.phases[f.phase.id].state).not.toBe('verified');
+      expect(operation).toMatchObject({ startedAt: coverageNow.toISOString(), planDigest: f.input.plan.planDigest });
+    }
+  );
   it('withholds completion after a failed job and retains its actual operation for recovery', async () => {
     const f = await fixture(true); f.transport.conclusion = 'failure';
     expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked',

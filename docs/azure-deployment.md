@@ -237,6 +237,11 @@ and the immutable subject digest must match; caller annotations and user-control
 predicate metadata cannot replace them. Existing protected OCI authentication is
 required; there is no token login or ambient credential fallback. Only verified
 `<registry>/<repository>@sha256:<digest>` output can become artifact readiness.
+The read-only observer captures the original publication values and workflow-run
+resource ID before its first asynchronous read. Caller changes during ACR or
+attestation readback cannot select a replacement run, tag, source or digest:
+unchanged observations remain bound to the original inputs, and replacement
+provider proof is refused. This grants no dispatch or execution-ref authority.
 
 Confirmed provider handles are checkpointed privately before subsequent
 observation. Engine-owned dispatch intent is written only after preflight and
