@@ -131,6 +131,7 @@ describe('developer activation-completeness guidance', () => {
   it('separates published defaults, exact private source contracts and protected state work', () => {
     const manifests = readFileSync(path.join(process.cwd(), 'docs/configuration-and-manifests.md'), 'utf8');
     const state = readFileSync(path.join(process.cwd(), 'src/application/state-migration/README.md'), 'utf8');
+    const bootstrap = readFileSync(path.join(process.cwd(), 'infrastructure/opentofu/bootstrap/README.md'), 'utf8');
     const sources = modernActivationSourceContracts();
     expect(sources).toHaveLength(6);
     for (const source of sources) {
@@ -155,6 +156,20 @@ describe('developer activation-completeness guidance', () => {
       'planning-only', 'cannot authorize any state operation',
       'same recorded operation', 'does not authorize arbitrary brownfield state access'
     ]) expect(state).toContain(phrase);
+    for (const phrase of [
+      'Current availability diagnosis', '`synthetic-disposable-only`',
+      'installed public CLI registers no production implementations',
+      'implementation integration and qualification gap',
+      'approval cannot instantiate a missing port',
+      'Deliberately excluded from the public release'
+    ]) expect(state).toContain(phrase);
+    for (const phrase of [
+      "repository maintainer's telemetry bootstrap root",
+      'tofu -chdir=infrastructure/opentofu/bootstrap init -backend=false',
+      'same recorded operation', 'register production implementations',
+      'and qualification gap', 'planning-only',
+      'Missing local state is never evidence'
+    ]) expect(bootstrap).toContain(phrase);
   });
 
   it('documents installed preflight and project-attributed publication without claiming execution', () => {

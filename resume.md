@@ -807,3 +807,112 @@ has materially subsided. Task 13.6 also remains unchecked: no explicit
 authorization, disposable cloud scope, production custody/handover ports, or
 real native/cloud evidence became available in this continuation. Synthetic
 tests remain distinct from real qualification.
+
+## Task 13.7 generated/bootstrap guidance checkpoint, 2026-10-12
+
+This continuation resumed from clean published revision
+`85846e7b74d72227fad6b77a7fae803343e267ef` and completed only the independent
+task 13.7 documentation and generated-guidance scope. Tasks 13.5 and 13.6 remain
+unchecked.
+
+The maintained and current-generated guidance now distinguishes all of the
+following without claiming production readiness:
+
+- Verified reuse of an existing approved private backend/execution path.
+- The narrow exception for backend resources created and handed over by the
+  same recorded activation operation after exact ownership and no-change
+  readback.
+- Implemented phase logic, proof validation, and injected
+  `ProtectedStateHandoverPort` / `ProtectedStateCustodyPort` contracts.
+- The installed public CLI's missing production handover/custody port
+  registration. This is an implementation integration and qualification gap;
+  operator approval cannot instantiate a missing adapter.
+- The separate real-capability requirement for a disposable scope, scoped
+  credentials, cost/network authority, qualified host, protected storage/key
+  custody, locking, retention, disposal, and exact provider evidence even after
+  a production adapter exists.
+- Pre-existing/brownfield deployment or state adoption, import, partition,
+  relocation, and address migration remaining planning-only.
+- The actual native local lane being limited to the documented
+  `darwin/arm64`, OpenTofu 1.12.6 and CPython 3.14 existing-inode refactor
+  profile with `synthetic-disposable-only` result. It is not Azure, production,
+  relocation, partition, Windows, or Linux qualification.
+
+The repository-maintained telemetry bootstrap README now labels its live
+plan/apply sequence as an operator runbook requiring independently admitted
+Azure scope and custody. Its supported backend-free repository checks are:
+
+```bash
+tofu -chdir=infrastructure/opentofu/bootstrap fmt -check
+tofu -chdir=infrastructure/opentofu/bootstrap init -backend=false -input=false -lockfile=readonly -no-color
+tofu -chdir=infrastructure/opentofu/bootstrap validate -no-color
+```
+
+Current manifest-v8 infrastructure README generation adds the same exact
+availability boundary and distinguishes application image bootstrap from
+protected state bootstrap. Frozen historical generation remains byte-identical:
+the 165-case plugin-generation matrix, governance extraction, pre-custody
+managed bodies, released records, and historical source identities were not
+regenerated or retagged. The reviewed
+`tests/fixtures/contract-baseline-changes.json` entry for
+`cli-json` / `update --check --json` was advanced as a task 13.7 successor with
+the complete task 13.5 record retained under `priorChange`; no baseline or
+prior-change chain was flattened.
+
+Validation used Node 24.21.0, session-local npm 12.0.2, OpenTofu 1.12.6, and
+OpenSpec 1.11.0:
+
+- `npm run build -- --pretty false`: passed.
+- Focused current-generation and documentation suite:
+  `tests/current-project-generation.test.ts`,
+  `tests/developer-activation-documentation.test.ts`,
+  `tests/generated-infrastructure.test.ts`,
+  `tests/modern-managed-core.test.ts`, and
+  `tests/repository-governance.test.ts`: 5 files passed, 256 tests passed.
+- Frozen-history/source-contract/generation parity suite:
+  `tests/contract-baseline.test.ts`,
+  `tests/current-project-generation.test.ts`,
+  `tests/generator-parity.test.ts`,
+  `tests/governance-extraction.test.ts`,
+  `tests/governance-source-of-truth.test.ts`,
+  `tests/manifest-v8-source.test.ts`,
+  `tests/modern-governance-source.test.ts`,
+  `tests/modern-source-registry.test.ts`,
+  `tests/plugin-generation-parity.test.ts`,
+  `tests/pre-assessment-source-contract.test.ts`, and
+  `tests/project-telemetry-source.test.ts`: 11 files passed, 496 tests passed,
+  1 skipped.
+- `npm run smoke:package`: passed for `@msn-control/liftoff@0.12.3`.
+- `npm run check:repository`: passed named-file policy; hosted settings still
+  require separate readback.
+- The three backend-free bootstrap OpenTofu commands above passed.
+- `openspec validate modernize-liftoff-platform --strict`: passed.
+- `git diff --check`: passed.
+
+An independently dispatched existing hosted workflow also completed partial
+evidence on the unchanged pre-task-13.7 revision
+`85846e7b74d72227fad6b77a7fae803343e267ef`:
+
+- Workflow run:
+  `https://github.com/voyager163/liftoff/actions/runs/38338242547`.
+- Gateway shard: 211 passed, 0 failed; statements 243/258 (94.1860%),
+  branches 182/223 (81.6143%), functions 64/68 (94.1176%), and lines 233/245
+  (95.1020%). Source/config hashes matched committed bytes.
+- macOS ARM64 parser shard: 3 files, 276 passed, 0 failed, 0 skipped.
+- Runtime-inclusive development bundle: 42 passed, 0 failed, 1
+  case-sensitive-host skip; all 11 actual-installed cases passed on Node
+  24.21.0 `darwin/arm64`; `releaseReady=false`.
+- All seven builder input hashes were verified, and the full 506-source digest
+  was independently reconstructed from Git objects as
+  `sha256:d224256c5587b23788bbe9a646b54d15134eeb10c134983465d1f6b8ddc89a98`.
+
+That hosted run is not native Mac source-complete CLI coverage, does not cover
+this newer task 13.7 revision, and does not qualify production custody,
+handover, Azure, or task 13.6. Its CLI-coverage and platform shards were still
+active when this checkpoint was recorded and must be evaluated independently
+when their final evidence is available.
+
+Task 13.7 is complete because every maintained/current-generated guidance
+surface now uses only actual validated local commands and labels unavailable
+production combinations as unavailable. Tasks 13.5 and 13.6 remain pending
+until their distinct exact evidence requirements are met.

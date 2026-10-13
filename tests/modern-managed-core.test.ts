@@ -158,6 +158,10 @@ describe('real modern managed-core inventory and content', () => {
         expect(guide).toContain('Historical generation/adoption paths are provenance');
         expect(guide).toContain('Preserve existing CODEOWNERS and stronger controls');
         expect(guide).toContain('Pre-existing deployment and OpenTofu state changes remain planning-only');
+        expect(guide).toContain('registers no\nproduction protected handover or custody ports');
+        expect(guide).toContain('implementation\nintegration and real-qualification gap');
+        expect(guide).toContain('Authorization cannot instantiate a missing adapter');
+        expect(guide).toContain('cannot expand into brownfield import, partition, relocation');
         expect(guide).not.toContain('--execute');
         expect(guide).not.toContain('liftoff capabilities');
         expect(guide).toContain(profile === 'team-gitflow' ? 'one independent human approval' : 'zero additional human PR approvals');

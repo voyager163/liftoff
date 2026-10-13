@@ -163,7 +163,7 @@ Depends on 12. References: design D11; liftoff-governance-activation-engine, lif
 - [x] 13.4 Qualify protected state handling/handover only for resources created by the same approved bootstrap, with backups, exact mapping/concurrency, no-change verification and retention; verify the public API still rejects arbitrary pre-existing state import/partition/relocation.
 - [ ] 13.5 Preserve due-time/custody/disposal obligations and unsupported-host admission; verify absent protected storage/keys/locking blocks rather than falling back to plaintext or an unapproved execution host.
 - [ ] 13.6 Run explicitly approved disposable native/cloud qualification for each advertised execution combination; verify reports separate real outcomes from mocks and preserve partial checkpoints on failure.
-- [ ] 13.7 Update generated infrastructure/bootstrap guidance and state-migration README with the narrow new-owned-bootstrap exception and deferred brownfield scope; verify examples use actual qualified hosts and commands.
+- [x] 13.7 Update generated infrastructure/bootstrap guidance and state-migration README with the narrow new-owned-bootstrap exception and deferred brownfield scope; verify examples use actual qualified hosts and commands.
 
 ## 14. Complete application deployment qualification and enforcement
 

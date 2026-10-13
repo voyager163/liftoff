@@ -65,6 +65,19 @@ export function renderModernGovernanceGuide(context: ModernGovernanceContext, gr
   const review = graph.profileContract.pullRequestReview.kind === 'independent-human'
     ? 'Team requires one independent human approval on the actual current head. Authors, bots and stale approvals do not satisfy it.'
     : 'Single-maintainer requires zero additional human PR approvals; applicable automated exact-head checks remain required.';
+  const protectedCustody = graph.phases.some(phase =>
+    phase.id === 'bootstrap-state-disposed' &&
+    phase.label === 'Retained protected bootstrap state is disposed after day 30'
+  );
+  const protectedCustodyBoundary = protectedCustody ? `
+
+The engine implements strict same-operation-owned backend handover/disposal
+contracts and proof validation, but the installed public CLI registers no
+production protected handover or custody ports. That is an implementation
+integration and real-qualification gap, not a request awaiting approval.
+Authorization cannot instantiate a missing adapter. A future adapter must still
+prove the exact disposable host/cloud combination and scoped authority; it
+cannot expand into brownfield import, partition, relocation, or address migration.` : '';
   return `# Modern Liftoff governance handoff
 
 Profile: ${identity.profile}; policy: ${identity.policyVersion}; source: ${identity.liftoffVersion}.
@@ -97,7 +110,7 @@ Preserve existing CODEOWNERS and stronger controls; review any proposed reductio
 No mandatory deployment reviewers are introduced. Protected back-merges require
 their exact-head checks. Enforcement comes last after real green/red proof.
 Pre-existing deployment and OpenTofu state changes remain planning-only; absent
-state files do not establish safe adoption or authority to import, move or publish state.
+state files do not establish safe adoption or authority to import, move or publish state.${protectedCustodyBoundary}
 
 ## Actual graph requirements, not completed work
 

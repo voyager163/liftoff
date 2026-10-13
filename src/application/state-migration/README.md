@@ -92,6 +92,22 @@ deletion proof. The default public CLI registers neither capability. This narrow
 exception does not authorize arbitrary brownfield state access and does not
 expose this module's generic state-migration API.
 
+## Current availability diagnosis
+
+| Surface | Current status | Boundary |
+| --- | --- | --- |
+| Generic migration contracts, encrypted workspace, backend/native adapters, recovery and disposal records | Implemented private building blocks | Synthetic/unit coverage does not register a public command or prove a production provider |
+| macOS existing-inode local refactor profile | Opt-in native lane for actual `darwin/arm64`, OpenTofu 1.12.6 and CPython 3.14 | The result is `synthetic-disposable-only`; it does not qualify Azure, relocation, partition, production cutover, Windows, or Linux |
+| Same-operation-owned backend handover and day-30 disposal | Phase logic, strict proof validation, and `ProtectedStateHandoverPort` / `ProtectedStateCustodyPort` contracts are implemented | The installed public CLI registers no production implementations, so this remains an implementation integration and qualification gap; approval cannot instantiate a missing port |
+| Disposable Azure/provider qualification | No current live proof is registered | Requires a real disposable scope, current credential/network/cost authority, production port implementations, and exact provider evidence; this is separate from adapter implementation |
+| Pre-existing/brownfield state migration | Deliberately excluded from the public release | It remains planning-only even if private primitives, credentials, or broad approval exist |
+
+This distinction is intentional. Missing production handover/custody adapters
+are not merely missing user authorization. Conversely, implementing those
+adapters would not by itself authorize a subscription, create a disposable
+scope, or qualify a host. Both the production integration and its separately
+approved real evidence are required before capability admission can change.
+
 ## Coordinator integration
 
 Every function takes `StateMigrationDependencies` and a typed request.

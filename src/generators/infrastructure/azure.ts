@@ -624,9 +624,37 @@ ${plan.workload === 'genai' && plan.pattern.id === 'rag' ? '\nThe RAG backend id
 Azure is the supported infrastructure starter. Generated files are not production-readiness evidence.
 ${governanceGate}
 
-## Bootstrap Infrastructure
+${current ? `## State and bootstrap boundary
 
-The first apply uses a public bootstrap image so Azure Container Apps can start before the new ACR contains application images.
+Each generated environment starts with an explicit local backend. A missing
+local state file does not prove that an Azure deployment, backend, or resource
+name is absent. \`backend.remote.example.tf\` is a configuration example, not
+approval, ownership evidence, or a state-migration command.
+
+New-environment activation may hand over only backend resources created by the
+same recorded operation, after exact ownership, protected backups, locking,
+writer quiescence, complete mappings, no-change readback, retention, and
+due-time disposal are verified. The public CLI has the phase contracts and
+strict proof validators but does not currently register production protected
+handover/custody adapters. This is unavailable implementation wiring plus a
+separate native/cloud qualification requirement; approval alone cannot enable
+it.
+
+Pre-existing deployment/state adoption, import, partition, relocation, and
+address migration remain planning-only. Do not substitute direct \`tofu\`,
+Azure CLI, copied state, plaintext storage, or a different host for a blocked
+capability. The supported offline commands are \`tofu fmt -check -recursive\`,
+\`tofu init -backend=false\`, and \`tofu validate\` in each selected root.
+The live commands below are operator reference only until the exact execution
+combination has real disposable qualification and current scoped authority.
+
+## Application bootstrap reference
+
+The first application apply uses a public bootstrap image so Azure Container
+Apps can start before the new ACR contains application images. This image
+bootstrap is not protected remote-state bootstrap or handover evidence.` : `## Bootstrap Infrastructure
+
+The first apply uses a public bootstrap image so Azure Container Apps can start before the new ACR contains application images.`}
 
 \`\`\`bash
 cd infrastructure/opentofu/azure/environments/${env}
@@ -667,8 +695,12 @@ use \`tofu init -backend=false\` followed by \`tofu validate\` in each selected 
 For reviewed remote-state adoption, replace \`backend.local.tf\` using that root's
 \`backend.remote.example.tf\`. Each example has a distinct project-and-environment blob key.
 State is secret-sensitive: require private access, encryption, ZRS redundancy, and blob-lease locking;
-do not commit state or credentials. Existing flat-root projects need a separate reviewed migration;
-Liftoff update and force do not move infrastructure or state.
+${current ? `do not commit state or credentials. This replacement is available only through
+the separately qualified same-operation-owned handover described above or an
+independently operated reviewed path; the generated project does not claim one.
+Existing flat-root projects need a separate reviewed planning path; Liftoff
+update and force do not move infrastructure or state.` : `do not commit state or credentials. Existing flat-root projects need a separate reviewed migration;
+Liftoff update and force do not move infrastructure or state.`}
 The default PostgreSQL firewall permits Azure-hosted services. Replace it with private networking before production; set \`enable_private_networking=true\` only when the required VNet, delegated subnet, and private DNS resources are added.
 
 ## Azure Name Suffixes
