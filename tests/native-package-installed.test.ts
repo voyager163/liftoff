@@ -7,7 +7,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { bundleFile, bundleInventory } from '../scripts/native-bundle-contract.mjs';
+import { bundleFile, bundleInventory, nativeArchiveTool } from '../scripts/native-bundle-contract.mjs';
 import { verifyNativeBundle } from '../scripts/native-bundle.mjs';
 import { archiveNativeBundle, verifyNativeArchive } from '../scripts/native-release.mjs';
 import { inspectOwnedInstallation, installOwnedBundle, recoverOwnedInstallation } from '../scripts/native-install.mjs';
@@ -159,6 +159,53 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
     expect(record.version).toBe(manifest.package.version);
     await writeFile(path.join(output, 'NOTICE'), 'changed notice');
     await expect(verifyNativeArchive(output, digest, record.commit)).rejects.toThrow('changed');
+  }, 120_000);
+  it('extracts the exact native archive and reverifies every filesystem entry without mode normalization', async () => {
+    expect(manifest.source.dirty).toBe(false);
+    const suppliedArchive = process.env.LIFTOFF_NATIVE_ARCHIVE_ROOT;
+    const output = suppliedArchive ?? path.join(fixture, 'roundtrip artifact handoff');
+    if (suppliedArchive !== undefined) expect(path.isAbsolute(suppliedArchive)).toBe(true);
+    else await archiveNativeBundle({ bundle, output });
+    const digest = (await bundleFile(path.join(output, 'native-release.json'))).sha256;
+    const record = await verifyNativeArchive(output, digest, manifest.source.commit);
+    const originalManifest = await bundleFile(path.join(bundle, 'bundle.json'));
+    expect(record.manifestSha256).toBe(originalManifest.sha256);
+    expect(record.inventorySha256).toBe(manifest.inventory.sha256);
+    const extracted = path.join(fixture, "extracted archive with spaces & apostrophe's");
+    await mkdir(extracted, { mode: 0o700 });
+    const extraction = execute(nativeArchiveTool(), ['-xzpf', path.join(output, record.files[0].filename), '-C', extracted]);
+    expect(extraction.status, extraction.stdout + extraction.stderr).toBe(0);
+    expect(await bundleFile(path.join(extracted, 'bundle.json'))).toEqual(originalManifest);
+    const extractedManifest = await verifyNativeBundle(extracted);
+    expect(extractedManifest).toEqual(manifest);
+    expect(await bundleInventory(extracted)).toEqual(manifest.inventory);
+    const before = await bundleInventory(outside);
+    const version = execute(path.join(extracted, manifest.launcher), ['--version']);
+    expect(version.status, version.stdout + version.stderr).toBe(0);
+    expect(version.stdout.trim()).toBe(`Liftoff ${manifest.package.version}`);
+    expect(await bundleInventory(outside)).toEqual(before);
+    const file = path.join(extracted, 'installation/platforms.json');
+    const mode = (await bundleFile(file)).mode;
+    expect(mode & 0o200).not.toBe(0);
+    await chmod(file, mode & ~0o222);
+    try { await expect(verifyNativeBundle(extracted)).rejects.toThrow('inventory changed'); }
+    finally { await chmod(file, mode); }
+    await verifyNativeBundle(extracted);
+    expect(await verifyNativeArchive(output, digest, manifest.source.commit)).toEqual(record);
+    const filesystemModes: Record<string, number> = {};
+    for (const entry of extractedManifest.inventory.entries) {
+      if (entry.kind === 'file' || entry.kind === 'directory') {
+        const key = `${entry.kind}:${entry.mode.toString(8).padStart(4, '0')}`;
+        filesystemModes[key] = (filesystemModes[key] ?? 0) + 1;
+      }
+    }
+    console.log(JSON.stringify({
+      kind: 'liftoff-native-archive-roundtrip', commit: record.commit, target: record.target,
+      runId: record.runId, archiveSha256: record.files[0].sha256, manifestSha256: record.manifestSha256,
+      inventorySha256: record.inventorySha256, entries: extractedManifest.inventory.entries.length,
+      filesystemModes, permissionEvidence: 'exact Node lstat inventory, not Windows ACL qualification',
+      releaseReady: false
+    }));
   }, 120_000);
   it.runIf(process.platform === 'linux')('installs and recovers the actual Linux bundle within an isolated private prefix', async () => {
     const prefix = path.join(fixture, 'private local prefix');

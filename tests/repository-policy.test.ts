@@ -34,7 +34,7 @@ describe('source repository setup policy', () => {
   });
   it.each([
     'missing', 'conditional', 'runner', 'node', 'architecture', 'go', 'install', 'download',
-    'build', 'filtered', 'unset-bundle', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
+    'build', 'filtered', 'unset-bundle', 'unset-archive', 'archive-after-tests', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
   ])('rejects incomplete runtime-inclusive qualification: %s', async fault => {
     const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-bundle'];
     if (fault === 'missing') delete workflow.jobs['qualify-native-bundle'];
@@ -48,6 +48,11 @@ describe('source repository setup policy', () => {
     if (fault === 'build') job.steps[6].run = 'npm run build';
     if (fault === 'filtered') job.steps[7].run = job.steps[7].run.replace('--allowOnly=false', '-t skipped');
     if (fault === 'unset-bundle') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_BUNDLE_ROOT', 'UNSELECTED_BUNDLE');
+    if (fault === 'unset-archive') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_ARCHIVE_ROOT', 'UNSELECTED_ARCHIVE');
+    if (fault === 'archive-after-tests') {
+      const archive = job.steps[7].run.split('\n')[0];
+      job.steps[7].run = job.steps[7].run.slice(archive.length + 1) + archive + '\n';
+    }
     if (fault === 'skip-report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/native-bundle.mjs verify-report.*\n/m, '');
     if (fault === 'conditional-cases') job.steps[7].if = 'false';
     if (fault === 'missing-upload') job.steps.pop();
@@ -65,7 +70,7 @@ describe('source repository setup policy', () => {
       delete workflow.jobs[id].steps[0].with.ref;
       expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
     });
-  it.each(['missing', 'matrix', 'runner', 'conditional', 'compiler', 'runtime', 'filtered', 'report', 'archive', 'upload'])(
+  it.each(['missing', 'matrix', 'runner', 'conditional', 'compiler', 'runtime', 'filtered', 'report', 'archive', 'unset-archive', 'upload'])(
     'rejects incomplete native platform packaging: %s', async fault => {
       const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-platform-packages'];
       if (fault === 'missing') delete workflow.jobs['qualify-native-platform-packages'];
@@ -77,6 +82,7 @@ describe('source repository setup policy', () => {
       if (fault === 'filtered') job.steps[6].run += ' -t skipped';
       if (fault === 'report') job.steps[6].run = job.steps[6].run.replace(/^node scripts\/native-package-report.*\n/m, '');
       if (fault === 'archive') job.steps[6].run = job.steps[6].run.replace(/^node scripts\/native-release.*\n/m, '');
+      if (fault === 'unset-archive') job.steps[6].run = job.steps[6].run.replace('LIFTOFF_NATIVE_ARCHIVE_ROOT', 'UNSELECTED_ARCHIVE');
       if (fault === 'upload') job.steps[7].with['if-no-files-found'] = 'ignore';
       expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
     });
