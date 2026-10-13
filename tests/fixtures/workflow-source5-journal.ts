@@ -37,6 +37,7 @@ export async function workflowSource5JournalFixture(options: {
     pluginResolutionDigest: identity.pluginResolutionDigest, activeLayoutDigest: identity.activeLayoutDigest });
   const observed = await inspectModernInstalledActivation(projectRoot);
   if (observed.status !== 'observed' || !observed.current) throw new Error('Expected original readable fixture state.');
+  const baselineDigest = observed.binding;
   const content = 'name: Isolated source fixture\non: workflow_dispatch\njobs:\n  validate:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo source-fixture\n';
   const binding = { repository: 'owner/repo', repositoryId: 123, ref: 'ci/liftoff-workflows-journal',
     parentSha: 'a'.repeat(40), sourceTransmissionApproved: true,
@@ -57,7 +58,7 @@ export async function workflowSource5JournalFixture(options: {
       ...source5WorkflowProjectOperations(control)];
     const effects = operations.flatMap(operation => [operation, ...(operation.effects ?? [])]);
     const input: ModernPlanInput = { phaseId, createdAt: '2026-09-01T12:00:00.000Z', expiresAt: '2026-09-01T13:00:00.000Z',
-      stateHash: canonicalSha256(installed.state), baselineDigest: observed.binding, inputDigest: canonicalSha256(selected),
+      stateHash: canonicalSha256(installed.state), baselineDigest, inputDigest: canonicalSha256(selected),
       transitionDigest: canonicalSha256({ control, selected }), operations, noSecrets: true,
       configuration: { schemaVersion: 1, phases: {}, budget: { currency: 'USD', fixedMonthlyCents: 0, usageMonthlyCents: 0 } },
       approval: { gateKind: phase.approvalGate.kind, required: true, envelopeId: null, envelopeHash: null,

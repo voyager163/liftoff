@@ -245,6 +245,11 @@ around CAS/readback, never creates a missing issuer/index, never rewrites projec
 files and never undoes accepted-but-unconfirmed ledger truth. An already
 canonical finalized index is no-save readback. This isolated boundary is not
 admission of the complete engine, public execution or native/live qualification.
+Final-index reconciliation repeats held-native-lease, exact original-chain,
+target-byte and active-index validation after staging and reading temporary
+metadata, immediately before the atomic replacement. Loss before replacement
+preserves the revision-one index; failures after accepted replacement still
+retain the revision-two truth without compensation.
 The private planner/engine remains unregistered and incomplete.
 Staging/production workflow components cannot
 finalize independent Azure peer obligations, and source5 controls cannot

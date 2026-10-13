@@ -604,7 +604,8 @@ async function writeAtomicMetadata(
   content: string,
   before: string | undefined,
   durable = false,
-  maximumBytes = maximumReceiptBytes
+  maximumBytes = maximumReceiptBytes,
+  validateBeforeReplace?: () => Promise<void>
 ): Promise<void> {
   if (Buffer.byteLength(content) > maximumBytes) throw storageError('User-local update metadata exceeds its size limit.');
   const temporaryPath = storage.paths.join(storage.location.directory, `.${storage.paths.basename(filePath)}.${randomUUID()}.tmp`);
@@ -620,6 +621,7 @@ async function writeAtomicMetadata(
       throw storageError(`User-local update metadata changed before replacement: ${filePath}`);
     }
     await assertDirectories(storage, snapshot);
+    if (validateBeforeReplace) await validateBeforeReplace();
     await io('atomically replace receipt or seal', filePath, () => storage.fs.replaceFile(temporaryPath, filePath));
     if (durable) {
       await assertDirectories(storage, snapshot);
@@ -814,7 +816,8 @@ export function createWorkflowSource5ControlStore(projectRoot: string, options: 
         }
         const content = encoded(storage, 'journal', key,
           { ...projection, status: 'finalized', finalProofKey }, 2, previous.rawDigest, secret);
-        await writeAtomicMetadata(storage, snapshot, filePath, content, before, true, workflowSource5ControlLimits.journal);
+        await writeAtomicMetadata(storage, snapshot, filePath, content, before, true,
+          workflowSource5ControlLimits.journal, validateBeforeWrite);
         if (await readText(storage, filePath, snapshot, workflowSource5ControlLimits.journal) !== content) {
           throw storageError('Final index CAS confirmation is unresolved; retain the original finalization and events.');
         }

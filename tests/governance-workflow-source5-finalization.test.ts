@@ -18,6 +18,7 @@ import { source5WorkflowOriginalPlanValue } from '../src/governance-activation/w
 import { workflowSource5JournalFixture } from './fixtures/workflow-source5-journal.js';
 import { workflowSource5FinalizationFixture } from './fixtures/workflow-source5-finalization.js';
 import type { ProjectMutationLease } from '../src/adapters/filesystem/project-lock.js';
+import { projectMutationLockPath } from '../src/adapters/filesystem/project-lock.js';
 import type { UpdatePreviewOptions } from '../src/adapters/filesystem/update-previews.js';
 
 const roots: string[] = [];
@@ -29,7 +30,7 @@ async function fixture(remaining = false, sourceReady = false) {
   const f = await withSource5WorkflowLease(value.projectRoot, lease => workflowSource5FinalizationFixture(value, lease, remaining));
   const location = await resolveUpdatePreviewLocation(value.projectRoot, value.storage);
   const bytes = async () => Object.fromEntries(await Promise.all((await readdir(location.directory))
-    .filter(name => name.endsWith('.json')).sort().map(async name => [name, await readFile(path.join(location.directory, name))])));
+    .filter(name => name.endsWith('.json')).sort().map(async name => [name, await readFile(path.join(location.directory, name))] as const)));
   const open = (lease: ProjectMutationLease, storage: UpdatePreviewOptions = value.storage) =>
     openSource5WorkflowFinalizationReader({ projectRoot: value.projectRoot, context: value.context,
       plan: f.reviewed.plan, approval: f.reviewed.approval, lease, storage });
@@ -199,6 +200,73 @@ describe('distinct source5 terminal-bookkeeping reader', () => {
       expect((await value.store.read('journal', f.reviewed.control.controlKey))!.revision).toBe(2);
     });
   });
+
+  it.each(['unchanged', 'native-lease-loss', 'original-plan-loss', 'approval-loss', 'issuer-loss',
+    'manifest-loss', 'reservation-loss', 'owner-loss', 'source-plan-loss', 'source-approval-loss', 'source-owner-loss',
+    ...Array.from({ length: 6 }, (_, index) => `target-${index}`)])(
+    'validates the atomic boundary %s after reading staged metadata but before actual index replacement', async fault => {
+      const { value, f, open, seal, bytes, location } = await fixture();
+      await seal(); await f.writeFiles();
+      const index = (await value.store.read('journal', f.reviewed.control.controlKey))!;
+      const originalIndexBytes = await readFile(index.path), before = await bytes();
+      const nativeLock = await projectMutationLockPath(value.projectRoot);
+      const source = fault.startsWith('source-'), kind = source ? fault.slice(7, -5) : fault.slice(0, -5);
+      const review = source ? value : f.reviewed, operationDigest = canonicalSha256(review.plan.operations[0]);
+      const targetFile = fault.startsWith('target-') ? f.files[Number(fault.slice(7))]! : undefined;
+      const selected = Object.entries(before).find(([, content]) => {
+        const raw = JSON.parse(content.toString()), item = raw.value;
+        if (kind === 'issuer') return raw.kind === 'liftoff-workflow-source5-issuer';
+        if (kind === 'original-plan' || kind === 'plan') {
+          return item?.kind === 'workflow-source5-original-plan' && raw.key === review.control.controlKey;
+        }
+        if (kind === 'approval') return item?.kind === 'liftoff-source5-workflow-approval' &&
+          item.savedPlanDigest === canonicalSha256(review.plan);
+        if (kind === 'owner') return item?.kind === 'workflow-source5-entry-owner' &&
+          item.owner.controlKey === review.control.controlKey && item.operationDigest === operationDigest;
+        return item?.kind === `workflow-source5-${kind === 'manifest' ? 'storage-inventory' : kind}` &&
+          item.controlKey === review.control.controlKey;
+      });
+      if (fault !== 'unchanged' && fault !== 'native-lease-loss' && !targetFile) expect(selected).toBeDefined();
+      let hit = false, replacements = 0, error: unknown;
+      const fileSystem = {
+        ...nodeUpdatePreviewFileSystem,
+        async openFile(filePath: string, access: 'read' | 'create-exclusive', permissions: number) {
+          const handle = await nodeUpdatePreviewFileSystem.openFile(filePath, access, permissions);
+          if (access !== 'read' || hit || !path.basename(filePath).startsWith(`.${path.basename(index.path)}.`) ||
+            !filePath.endsWith('.tmp')) return handle;
+          return { ...handle, async readText(maximumBytes: number) {
+            const content = await handle.readText(maximumBytes);
+            hit = true;
+            if (fault === 'native-lease-loss') await unlink(nativeLock);
+            else if (targetFile) await value.installed.write(targetFile.path.split('/'), `${targetFile.content}\n`);
+            else if (fault !== 'unchanged') await unlink(path.join(location.directory, selected![0]));
+            return content;
+          } };
+        },
+        async replaceFile(source: string, target: string) {
+          if (target === index.path) replacements++;
+          await nodeUpdatePreviewFileSystem.replaceFile(source, target);
+        }
+      };
+      try {
+        await withSource5WorkflowLease(value.projectRoot, async lease => {
+          await reconcileSource5WorkflowFinalization(await open(lease, { ...value.storage, fileSystem }));
+        });
+      } catch (caught) { error = caught; }
+      expect(hit).toBe(true);
+      const retainedBytes = await readFile(index.path), retained = JSON.parse(retainedBytes.toString());
+      if (fault === 'unchanged') {
+        expect(error).toBeUndefined(); expect(replacements).toBe(1); expect(retained.revision).toBe(2);
+        expect(retained.previousDigest).toBe(index.rawDigest);
+        expect(await bytes()).toEqual({ ...before, [path.basename(index.path)]: retainedBytes });
+      } else {
+        expect(error).toBeInstanceOf(Error); expect(replacements).toBe(0); expect(retained.revision).toBe(1);
+        expect(retainedBytes).toEqual(originalIndexBytes);
+        expect(await bytes()).toEqual(Object.fromEntries(Object.entries(before).filter(([name]) =>
+          fault === 'native-lease-loss' || targetFile || name !== selected![0])));
+        if (targetFile) expect(await readFile(path.join(value.projectRoot, targetFile.path), 'utf8')).toBe(`${targetFile.content}\n`);
+      }
+    });
 
   it.each(['target', 'source', 'original-plan'] as const)('reports accepted-but-inconsistent CAS after %s mutation without undo', async fault => {
     const { value, f, open, seal } = await fixture();

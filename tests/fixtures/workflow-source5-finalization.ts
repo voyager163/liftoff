@@ -41,9 +41,9 @@ export async function workflowSource5FinalizationFixture(
     { action: 'github.workflow-source.bind-execution-ref', binding },
     { action: 'github.workflow-source.admit-reviewed', binding: runner }
   ] as const;
-  const prior = await seal(value.review({ phaseId: value.plan.phaseId, origin, effects }));
+  const prior = await seal(value.review({ phaseId: value.control.phaseId, origin, effects }));
   if (remaining) await openSource5WorkflowJournal({ ...prior, lease, initialize: true });
-  const reviewed = remaining ? await seal(value.review({ phaseId: value.plan.phaseId, origin, effects,
+  const reviewed = remaining ? await seal(value.review({ phaseId: value.control.phaseId, origin, effects,
     remainingFrom: { planKey: prior.control.controlKey, operationDigests: prior.plan.operations.slice(0, 2).map(canonicalSha256) }
   })) : prior;
   const journal = await openSource5WorkflowJournal({ ...reviewed, lease, initialize: true });

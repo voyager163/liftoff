@@ -857,7 +857,12 @@ export async function reconcileSource5WorkflowFinalization(reader: Source5Workfl
   const { description } = binding;
   await createWorkflowSource5ControlStore(binding.input.projectRoot, binding.input.storage)
     .finalizeJournal(description.journal.controlKey, description.index,
-    description.finalizationKey, cursor.rawDigest, async () => { await requireExact(); });
+    description.finalizationKey, cursor.rawDigest, async () => {
+      const current = await requireExact();
+      if (current.cursor.revision !== 1 || current.cursor.rawDigest !== cursor.rawDigest) {
+        return workflowFailure('workflow-source5-finalization', 'The original active index changed before atomic replacement; retain its current truth without another CAS.');
+      }
+    });
   const after = await requireExact();
   if (after.cursor.revision !== 2 || after.cursor.previousDigest !== cursor.rawDigest) {
     return workflowFailure('workflow-source5-finalization', 'Final index CAS was accepted without exact confirmation; retain unresolved original truth and never undo or recreate metadata.');
