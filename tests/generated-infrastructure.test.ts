@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { parse } from '@cdktf/hcl2json';
 import { describe, expect, it } from 'vitest';
 import { buildProjectPlan } from '../src/planner.js';
 import { AZURE_NAME_LIMITS, buildArtifacts, buildAzureResourceNames } from '../src/templates.js';
@@ -100,6 +101,167 @@ describe('independent generated infrastructure roots', () => {
     expect(readme).not.toContain('environments/dev');
     expect(readme).not.toContain('immutable execution-tag binding');
   });
+
+  it('keeps ordinary ownership null while rendering only the closed protected tag contract', async () => {
+    for (const extra of [
+      { governanceProfile: 'none', agents: ['copilot'] },
+      { specWorkflow: 'openspec', agents: ['copilot'] }
+    ]) {
+      const artifacts = artifactsFor(['dev'], extra);
+      const moduleVariables = artifacts.find(
+        ({ logicalName }) => logicalName === 'opentofu-application-variables'
+      )!.content;
+      const rootVariables = artifacts.find(
+        ({ logicalName }) => logicalName === 'opentofu-dev-variables'
+      )!.content;
+      const moduleMain = artifacts.find(
+        ({ logicalName }) => logicalName === 'opentofu-application-main'
+      )!.content;
+      const rootMain = artifacts.find(
+        ({ logicalName }) => logicalName === 'opentofu-dev-main'
+      )!.content;
+      const tfvars = artifacts.find(
+        ({ logicalName }) => logicalName === 'opentofu-dev-tfvars'
+      )!.content;
+      const parsedModuleVariables = await parse('variables.tf', moduleVariables);
+      const parsedRootVariables = await parse('variables.tf', rootVariables);
+      const parsedMain = await parse('main.tf', moduleMain);
+      for (const parsedVariables of [parsedModuleVariables, parsedRootVariables]) {
+        expect(parsedVariables.variable.liftoff_activation_ownership).toEqual([
+          expect.objectContaining({
+            default: null,
+            nullable: true,
+            type: expect.stringContaining('bootstrap_binding_digest')
+          })
+        ]);
+      }
+      expect(parsedModuleVariables.variable.liftoff_activation_ownership[0])
+        .not.toHaveProperty('validation');
+      expect(parsedRootVariables.variable.liftoff_activation_ownership[0])
+        .not.toHaveProperty('validation');
+      expect(parsedMain.locals[0].liftoff_bootstrap_binding_digest)
+        .toContain('regex(');
+      expect(parsedMain.locals[0].liftoff_bootstrap_binding_digest)
+        .toContain('var.liftoff_activation_ownership.bootstrap_binding_digest');
+      expect(parsedMain.locals[0].liftoff_prerequisite_binding_digest)
+        .toContain('regex(');
+      expect(parsedMain.locals[0].liftoff_prerequisite_binding_digest)
+        .toContain('var.liftoff_activation_ownership.prerequisite_binding_digest');
+      expect(parsedMain.locals[0].liftoff_resource_group_ownership_tags)
+        .toContain('== null ? null');
+      expect(parsedMain.locals[0].liftoff_application_ownership_tags)
+        .toContain('== null ? null');
+      expect(parsedMain.locals[0].liftoff_resource_group_ownership_tags)
+        .toContain('local.liftoff_bootstrap_binding_digest');
+      expect(parsedMain.locals[0].liftoff_application_ownership_tags)
+        .toContain('local.liftoff_prerequisite_binding_digest');
+      expect(rootMain).toContain(
+        'liftoff_activation_ownership = var.liftoff_activation_ownership'
+      );
+      expect(moduleMain).toContain('tags     = local.liftoff_resource_group_ownership_tags');
+      expect(moduleMain).toContain('tags                = local.liftoff_application_ownership_tags');
+      expect(moduleMain).not.toContain('"AcrPush"');
+      expect(tfvars).not.toContain('liftoff_activation_ownership');
+      expect(tfvars).not.toContain('liftoff-binding');
+    }
+  });
+
+  it.skipIf(spawnSync('tofu', ['version'], { encoding: 'utf8' }).status !== 0)(
+    'validates null and exact digest ownership values without provider access',
+    async () => {
+      const root = path.resolve('tests', '.generated-ownership', randomUUID());
+      try {
+        const variables = artifactsFor(['dev']).find(
+          ({ logicalName }) => logicalName === 'opentofu-application-variables'
+        )!.content;
+        await mkdir(root, { recursive: true });
+        await writeFile(path.join(root, 'variables.tf'), variables);
+        await writeFile(path.join(root, 'main.tf'), `locals {
+  liftoff_bootstrap_binding_digest = var.liftoff_activation_ownership == null ? null : regex(
+    "^[a-f0-9]{64}$",
+    var.liftoff_activation_ownership.bootstrap_binding_digest
+  )
+  liftoff_prerequisite_binding_digest = var.liftoff_activation_ownership == null ? null : regex(
+    "^[a-f0-9]{64}$",
+    var.liftoff_activation_ownership.prerequisite_binding_digest
+  )
+}
+
+output "ordinary" {
+  value = var.liftoff_activation_ownership == null
+}
+
+output "bootstrap_binding_digest" {
+  value = local.liftoff_bootstrap_binding_digest
+}
+
+output "prerequisite_binding_digest" {
+  value = local.liftoff_prerequisite_binding_digest
+}
+`);
+        const init = spawnSync(
+          'tofu',
+          ['init', '-backend=false', '-input=false', '-no-color'],
+          { cwd: root, encoding: 'utf8', timeout: 30_000 }
+        );
+        expect(init.status, `${init.stdout}\n${init.stderr}`).toBe(0);
+        const base = {
+          environment: 'dev',
+          resource_suffix: 'abcdef123456',
+          postgres_admin_password: 'fixture-only'
+        };
+        const cases = [
+          { name: 'null', value: base, expected: 0 },
+          {
+            name: 'valid',
+            value: {
+              ...base,
+              liftoff_activation_ownership: {
+                bootstrap_binding_digest: 'a'.repeat(64),
+                prerequisite_binding_digest: 'b'.repeat(64)
+              }
+            },
+            expected: 0
+          },
+          {
+            name: 'invalid',
+            value: {
+              ...base,
+              liftoff_activation_ownership: {
+                bootstrap_binding_digest: 'invalid',
+                prerequisite_binding_digest: 'b'.repeat(64)
+              }
+            },
+            expected: 1
+          },
+          {
+            name: 'missing',
+            value: {
+              ...base,
+              liftoff_activation_ownership: {
+                bootstrap_binding_digest: 'a'.repeat(64)
+              }
+            },
+            expected: 1
+          }
+        ];
+        for (const testCase of cases) {
+          const file = path.join(root, `${testCase.name}.tfvars.json`);
+          await writeFile(file, JSON.stringify(testCase.value));
+          const plan = spawnSync(
+            'tofu',
+            ['plan', '-refresh=false', '-input=false', '-lock=false', '-no-color', `-var-file=${file}`],
+            { cwd: root, encoding: 'utf8', timeout: 30_000 }
+          );
+          expect(plan.status, `${testCase.name}\n${plan.stdout}\n${plan.stderr}`)
+            .toBe(testCase.expected);
+        }
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+    120_000
+  );
 
   it.skipIf(spawnSync('tofu', ['version'], { encoding: 'utf8' }).status !== 0)('formats every emitted HCL root and module without provider access', async () => {
     const root = path.resolve('tests', '.generated-infrastructure', randomUUID());

@@ -22,6 +22,7 @@ import {
 import {
   azureObject, expectedAzureEnvironmentBindings, runAzureJson
 } from './azure-discovery.js';
+import { parseHcl } from '../adapters/hcl/semantic.js';
 
 const sourceModePattern = /^100(?:644|755)$/u;
 const sourceObjectPattern = /^[a-f0-9]{40}$/u;
@@ -41,7 +42,7 @@ export interface ApplicationDeploymentStateTransition {
 }
 
 export interface ApplicationAuthoritativeRecord {
-  phaseId: 'remote-import-verified' | 'application-prerequisites-ready' |
+  phaseId: 'bootstrap-local' | 'remote-import-verified' | 'application-prerequisites-ready' |
     'application-artifact-ready';
   evidenceId: string;
   headerDigest: string;
@@ -98,7 +99,7 @@ export interface ApplicationDeploymentBinding {
   stateTransitions: readonly ApplicationDeploymentStateTransition[];
   ownedResourceConfigurations: readonly ApplicationOwnedResourceConfiguration[];
   ownedResourceConfigurationDigest: string;
-  variableOverrides: Readonly<Record<string, string>>;
+  variableOverrides: ApplicationDeploymentVariableOverrides;
   protectedVariableNames: readonly ['postgres_admin_password'];
   healthTargets: readonly {
     component: 'backend';
@@ -125,6 +126,19 @@ export interface ApplicationDeploymentBinding {
     uncertainRedispatch: false;
   };
   bindingDigest: string;
+}
+
+export interface ApplicationActivationOwnership {
+  bootstrap_binding_digest: string;
+  prerequisite_binding_digest: string;
+}
+
+export interface ApplicationDeploymentVariableOverrides {
+  backend_image: string;
+  environment: string;
+  location: string;
+  resource_suffix: string;
+  liftoff_activation_ownership: ApplicationActivationOwnership;
 }
 
 export interface ApplicationDeploymentSourceFile {
@@ -741,11 +755,36 @@ function authoritativeRecord(
       `Application deployment requires the authoritative verified ${phaseId} evidence reference.`
     );
   }
+
   return {
     phaseId,
     evidenceId: reference.evidenceId,
     headerDigest: reference.headerDigest,
     bindingDigest
+  };
+}
+
+export function validateApplicationActivationOwnership(
+  binding: Pick<ApplicationDeploymentBinding, 'bootstrapBindingDigest' | 'prerequisiteBindingDigest'>,
+  value: unknown
+): ApplicationActivationOwnership {
+  if (!isRecord(value) ||
+    Object.keys(value).sort().join('\0') !==
+      ['bootstrap_binding_digest', 'prerequisite_binding_digest'].join('\0') ||
+    typeof value.bootstrap_binding_digest !== 'string' ||
+    typeof value.prerequisite_binding_digest !== 'string' ||
+    !digestPattern.test(value.bootstrap_binding_digest) ||
+    !digestPattern.test(value.prerequisite_binding_digest) ||
+    value.bootstrap_binding_digest !== binding.bootstrapBindingDigest ||
+    value.prerequisite_binding_digest !== binding.prerequisiteBindingDigest) {
+    return applicationError(
+      'application-deployment-configuration',
+      'Protected application ownership requires the exact original bootstrap and prerequisite binding digests in one closed two-field object.'
+    );
+  }
+  return {
+    bootstrap_binding_digest: value.bootstrap_binding_digest,
+    prerequisite_binding_digest: value.prerequisite_binding_digest
   };
 }
 
@@ -798,9 +837,19 @@ export function bindApplicationDeployment(
     'Protected custody qualification digest'
   );
   const bootstrapBindingDigest = exactDigest(
-    input.inspection.state.phaseOutputs?.['remote-import-verified']?.values.bootstrapBindingDigest,
-    'Protected bootstrap binding digest'
+    input.inspection.state.phaseOutputs?.['bootstrap-local']?.values.bootstrapBindingDigest,
+    'Original bootstrap binding digest'
   );
+  const retainedBootstrapBindingDigest = exactDigest(
+    input.inspection.state.phaseOutputs?.['remote-import-verified']?.values.bootstrapBindingDigest,
+    'Retained bootstrap binding digest'
+  );
+  if (retainedBootstrapBindingDigest !== bootstrapBindingDigest) {
+    return applicationError(
+      'application-deployment-custody',
+      'Protected bootstrap continuity does not match the original verified bootstrap binding.'
+    );
+  }
   if (!input.inspection.state.bootstrapState ||
     input.inspection.state.bootstrapState.status !== 'retained') {
     return applicationError(
@@ -841,7 +890,7 @@ export function bindApplicationDeployment(
   const applicationModule = 'infrastructure/opentofu/azure/modules/application';
   const authoritativeRecords = {
     bootstrap: authoritativeRecord(
-      input, 'remote-import-verified', bootstrapBindingDigest
+      input, 'bootstrap-local', bootstrapBindingDigest
     ),
     prerequisites: authoritativeRecord(
       input, 'application-prerequisites-ready', prerequisite.bindingDigest
@@ -956,7 +1005,11 @@ export function bindApplicationDeployment(
       backend_image: artifact.immutableImage,
       environment: environment.environment,
       location: prerequisite.region,
-      resource_suffix: environment.resourceSuffix
+      resource_suffix: environment.resourceSuffix,
+      liftoff_activation_ownership: {
+        bootstrap_binding_digest: bootstrapBindingDigest,
+        prerequisite_binding_digest: prerequisite.bindingDigest
+      }
     },
     protectedVariableNames: ['postgres_admin_password'] as const,
     healthTargets: [{
@@ -1071,6 +1124,255 @@ function exactLocalBackend(binding: ApplicationDeploymentBinding): string {
 }`;
 }
 
+const activationOwnershipVariableHcl = `variable "liftoff_activation_ownership" {
+  type = object({
+    bootstrap_binding_digest    = string
+    prerequisite_binding_digest = string
+  })
+  default     = null
+  nullable    = true
+  description = "Protected activation ownership bindings. Leave null for ordinary or independently governed use."
+}
+`;
+
+const activationOwnershipLocalsHcl = `locals {
+  liftoff_bootstrap_binding_digest = var.liftoff_activation_ownership == null ? null : regex(
+    "^[a-f0-9]{64}$",
+    var.liftoff_activation_ownership.bootstrap_binding_digest
+  )
+  liftoff_prerequisite_binding_digest = var.liftoff_activation_ownership == null ? null : regex(
+    "^[a-f0-9]{64}$",
+    var.liftoff_activation_ownership.prerequisite_binding_digest
+  )
+  liftoff_resource_group_ownership_tags = var.liftoff_activation_ownership == null ? null : {
+    "liftoff-managed-by" = "liftoff"
+    "liftoff-phase"      = "bootstrap-local"
+    "liftoff-environment" = var.environment
+    "liftoff-binding"     = local.liftoff_bootstrap_binding_digest
+  }
+  liftoff_application_ownership_tags = var.liftoff_activation_ownership == null ? null : {
+    "liftoff-environment" = var.environment
+    "liftoff-binding"     = local.liftoff_prerequisite_binding_digest
+  }
+}
+`;
+
+function hclObject(value: unknown, label: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    return applicationError(
+      'application-deployment-source',
+      `Application deployment ${label} is absent or not one supported HCL object.`
+    );
+  }
+  return value;
+}
+
+function hclSingle(value: unknown, label: string): Record<string, unknown> {
+  if (!Array.isArray(value) || value.length !== 1 || !isRecord(value[0])) {
+    return applicationError(
+      'application-deployment-source',
+      `Application deployment ${label} is absent or duplicated.`
+    );
+  }
+  return value[0];
+}
+
+function hclNamedBlock(
+  parsed: Record<string, unknown>,
+  kind: string,
+  type: string,
+  name: string,
+  label: string
+): Record<string, unknown> {
+  const kinds = hclObject(parsed[kind], label);
+  const types = hclObject(kinds[type], label);
+  return hclSingle(types[name], label);
+}
+
+function hclLabeledBlock(
+  parsed: Record<string, unknown>,
+  kind: string,
+  name: string,
+  label: string
+): Record<string, unknown> {
+  const blocks = hclObject(parsed[kind], label);
+  return hclSingle(blocks[name], label);
+}
+
+function exactEndingTemplate(
+  value: string,
+  suffix: string,
+  replacement: string,
+  label: string
+): string {
+  if (!value.endsWith(suffix) || value.length === suffix.length) {
+    return applicationError(
+      'application-deployment-source',
+      `Application deployment ${label} is not derived from the exact bound environment identity.`
+    );
+  }
+  return `${value.slice(0, -suffix.length)}${replacement}`;
+}
+
+function ownedConfiguration(
+  binding: ApplicationDeploymentBinding,
+  resourceType: string
+): ApplicationOwnedResourceConfiguration {
+  const matches = binding.ownedResourceConfigurations.filter((item) =>
+    item.resourceType === resourceType);
+  if (matches.length !== 1) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment owned-resource configuration is incomplete or ambiguous.'
+    );
+  }
+  return matches[0]!;
+}
+
+async function validateApplicationDeploymentHcl(
+  binding: ApplicationDeploymentBinding,
+  contents: ReadonlyMap<string, string>
+): Promise<void> {
+  const moduleVariablesPath = `${binding.applicationModule}/variables.tf`;
+  const moduleMainPath = `${binding.applicationModule}/main.tf`;
+  const rootVariablesPath = `${binding.applicationRoot}/variables.tf`;
+  const rootMainPath = `${binding.applicationRoot}/main.tf`;
+  const required = [moduleVariablesPath, moduleMainPath, rootVariablesPath, rootMainPath];
+  if (required.some((file) => !contents.has(file))) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment ownership configuration files are incomplete.'
+    );
+  }
+  let parsed: readonly Record<string, unknown>[];
+  try {
+    parsed = await Promise.all([
+      ...required.map((file) => parseHcl(contents.get(file)!, file)),
+      parseHcl(activationOwnershipVariableHcl, 'activation ownership variable contract'),
+      parseHcl(activationOwnershipLocalsHcl, 'activation ownership tag contract')
+    ]);
+  } catch {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment ownership configuration is invalid or cannot be inspected safely.'
+    );
+  }
+  const [
+    moduleVariables, moduleMain, rootVariables, rootMain,
+    expectedVariable, expectedLocals
+  ] = parsed;
+  const expectedVariableBlock = hclLabeledBlock(
+    expectedVariable!, 'variable', 'liftoff_activation_ownership', 'ownership variable contract'
+  );
+  const actualModuleVariable = hclLabeledBlock(
+    moduleVariables!,
+    'variable',
+    'liftoff_activation_ownership',
+    'module ownership variable'
+  );
+  const actualRootVariable = hclLabeledBlock(
+    rootVariables!,
+    'variable',
+    'liftoff_activation_ownership',
+    'root ownership variable'
+  );
+  if (canonicalSha256(actualModuleVariable) !== canonicalSha256(expectedVariableBlock) ||
+    canonicalSha256(actualRootVariable) !== canonicalSha256(expectedVariableBlock)) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment requires the exact nullable closed ownership variable contract.'
+    );
+  }
+  const actualLocals = hclSingle(moduleMain!.locals, 'ownership tag locals');
+  const expectedLocalValues = hclSingle(expectedLocals!.locals, 'ownership tag contract');
+  if (canonicalSha256(actualLocals) !== canonicalSha256(expectedLocalValues)) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment ownership tags do not match the null-safe protected ownership contract.'
+    );
+  }
+  const rootModule = hclLabeledBlock(rootMain!, 'module', 'application', 'application root module');
+  if (rootModule.source !== '../../modules/application' ||
+    rootModule.liftoff_activation_ownership !== '${var.liftoff_activation_ownership}') {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment root does not forward the exact protected ownership object to the owned module.'
+    );
+  }
+
+  const resourceGroupConfiguration = ownedConfiguration(
+    binding, 'Microsoft.Resources/resourceGroups'
+  );
+  const registryConfiguration = ownedConfiguration(
+    binding, 'Microsoft.ContainerRegistry/registries'
+  );
+  const identityConfiguration = ownedConfiguration(
+    binding, 'Microsoft.ManagedIdentity/userAssignedIdentities'
+  );
+  const groupName = String(resourceGroupConfiguration.attributes.name);
+  const registryName = String(registryConfiguration.attributes.name);
+  const identityName = String(identityConfiguration.attributes.name);
+  const resourceGroup = hclNamedBlock(
+    moduleMain!, 'resource', 'azurerm_resource_group', 'main', 'owned resource group'
+  );
+  const registry = hclNamedBlock(
+    moduleMain!, 'resource', 'azurerm_container_registry', 'main', 'owned registry'
+  );
+  const identity = hclNamedBlock(
+    moduleMain!, 'resource', 'azurerm_user_assigned_identity', 'app', 'owned application identity'
+  );
+  if (canonicalSha256(resourceGroup) !== canonicalSha256({
+    name: exactEndingTemplate(
+      groupName, `-${binding.environment}`, '-${var.environment}', 'resource-group name'
+    ),
+    location: '${var.location}',
+    tags: '${local.liftoff_resource_group_ownership_tags}'
+  }) ||
+    canonicalSha256(registry) !== canonicalSha256({
+      name: exactEndingTemplate(
+        registryName, binding.variableOverrides.resource_suffix,
+        '${var.resource_suffix}', 'registry name'
+      ),
+      resource_group_name: '${azurerm_resource_group.main.name}',
+      location: '${azurerm_resource_group.main.location}',
+      sku: 'Basic',
+      admin_enabled: false,
+      tags: '${local.liftoff_application_ownership_tags}'
+    }) ||
+    canonicalSha256(identity) !== canonicalSha256({
+      name: exactEndingTemplate(
+        identityName, `-${binding.environment}`, '-${var.environment}', 'identity name'
+      ),
+      resource_group_name: '${azurerm_resource_group.main.name}',
+      location: '${azurerm_resource_group.main.location}',
+      tags: '${local.liftoff_application_ownership_tags}'
+    })) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment owned resource names, locations, provider attributes or ownership tags differ from the authoritative records.'
+    );
+  }
+  const roleAssignments = hclObject(
+    hclObject(moduleMain!.resource, 'owned role assignments').azurerm_role_assignment,
+    'owned role assignments'
+  );
+  const pull = hclSingle(roleAssignments.acr_pull, 'owned AcrPull role');
+  if (canonicalSha256(pull) !== canonicalSha256({
+    scope: '${azurerm_container_registry.main.id}',
+    role_definition_name: 'AcrPull',
+    principal_id: '${azurerm_user_assigned_identity.app.principal_id}'
+  }) ||
+    Object.entries(roleAssignments).some(([name, blocks]) =>
+      name.toLowerCase().includes('acr_push') ||
+      Array.isArray(blocks) && blocks.some((block) =>
+        isRecord(block) && block.role_definition_name === 'AcrPush'))) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment HCL must retain exact AcrPull while leaving AcrPush externally owned and absent.'
+    );
+  }
+}
+
 function sourceEntry(entry: string): {
   mode: '100644' | '100755';
   objectId: string;
@@ -1165,12 +1467,17 @@ export async function observeApplicationDeploymentSource(
     contents.get(binding.remoteBackendExamplePath)?.split(/\r?\n/u)
       .some((line) => line.trim() && !line.trim().startsWith('#')) ||
     [...contents.entries()].some(([file, content]) =>
-      file.endsWith('.tfvars') && /^\s*postgres_admin_password\s*=/mu.test(content))) {
+      file.endsWith('.tfvars') &&
+      /^\s*(?:postgres_admin_password|liftoff_activation_ownership)\s*=/mu.test(content))) {
     return applicationError(
       'application-deployment-source',
       'The local backend placeholder, remote example or committed variables contain unsupported execution configuration or protected values.'
     );
   }
+  await validateApplicationDeploymentHcl(binding, contents);
+  validateApplicationActivationOwnership(
+    binding, binding.variableOverrides.liftoff_activation_ownership
+  );
   const executionFiles = files.filter((file) => file.path !== binding.localBackendPath);
   const overlay = actualBackendOverlay(input, binding);
   const variables = canonicalSha256(binding.variableOverrides);

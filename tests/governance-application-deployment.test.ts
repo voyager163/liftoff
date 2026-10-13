@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -13,6 +13,7 @@ import {
   protectedApplicationTerminalCheckpoint,
   protectedApplicationWriteObservationRequest,
   validateApplicationStateMappingProofs,
+  validateApplicationActivationOwnership,
   validateApplicationOriginalInvocation,
   validateProtectedApplicationAcceptedCheckpoint,
   validateProtectedApplicationCompletionProof,
@@ -37,6 +38,7 @@ import {
   type ProtectedApplicationTerminalCheckpoint,
   type ProtectedApplicationWriteDispatchRequest
 } from '../src/governance-activation/application-deployment.js';
+import { applicationEnvironment } from '../src/governance-activation/application-readiness.js';
 import {
   executeProtectedApplicationRead,
   executeProtectedApplicationWrite,
@@ -167,25 +169,102 @@ async function put(root: string, relative: string, content: string): Promise<voi
   await writeFile(target, content, 'utf8');
 }
 
-async function writeApplicationSources(root: string): Promise<void> {
+const ownershipVariable = `variable "liftoff_activation_ownership" {
+  type = object({
+    bootstrap_binding_digest    = string
+    prerequisite_binding_digest = string
+  })
+  default     = null
+  nullable    = true
+  description = "Protected activation ownership bindings. Leave null for ordinary or independently governed use."
+}
+`;
+
+async function writeApplicationSources(
+  root: string,
+  planned: Awaited<ReturnType<typeof applicationPlanningFixture>>
+): Promise<void> {
   const moduleRoot = 'infrastructure/opentofu/azure/modules/application';
   const environmentRoot = 'infrastructure/opentofu/azure/environments/dev';
+  const environment = applicationEnvironment(planned, 'dev');
+  const environmentName = (value: string) =>
+    `${value.slice(0, -'-dev'.length)}-\${var.environment}`;
+  const registryName =
+    `${planned.prerequisite.registryName.slice(0, -environment.resourceSuffix.length)}\${var.resource_suffix}`;
   await put(root, `${moduleRoot}/versions.tf`, 'terraform { required_version = ">= 1.12.6" }\n');
   await put(root, `${moduleRoot}/variables.tf`, [
-    'variable "backend_image" { type = string }',
-    'variable "postgres_admin_password" { type = string sensitive = true }'
+    'variable "backend_image" {\n  type = string\n}',
+    'variable "postgres_admin_password" {\n  type = string\n  sensitive = true\n}',
+    ownershipVariable
   ].join('\n'));
   await put(root, `${moduleRoot}/main.tf`, [
-    'resource "azurerm_resource_group" "main" { name = "fixture" location = "eastus" }',
-    'resource "azurerm_container_app" "backend" { name = "fixture" resource_group_name = azurerm_resource_group.main.name }',
-    'resource "azurerm_monitor_action_group" "custom" { name = "custom-preserved" resource_group_name = azurerm_resource_group.main.name short_name = "custom" }'
+    `locals {
+  liftoff_bootstrap_binding_digest = var.liftoff_activation_ownership == null ? null : regex(
+    "^[a-f0-9]{64}$",
+    var.liftoff_activation_ownership.bootstrap_binding_digest
+  )
+  liftoff_prerequisite_binding_digest = var.liftoff_activation_ownership == null ? null : regex(
+    "^[a-f0-9]{64}$",
+    var.liftoff_activation_ownership.prerequisite_binding_digest
+  )
+  liftoff_resource_group_ownership_tags = var.liftoff_activation_ownership == null ? null : {
+    "liftoff-managed-by" = "liftoff"
+    "liftoff-phase"      = "bootstrap-local"
+    "liftoff-environment" = var.environment
+    "liftoff-binding"     = local.liftoff_bootstrap_binding_digest
+  }
+  liftoff_application_ownership_tags = var.liftoff_activation_ownership == null ? null : {
+    "liftoff-environment" = var.environment
+    "liftoff-binding"     = local.liftoff_prerequisite_binding_digest
+  }
+}`,
+    `resource "azurerm_resource_group" "main" {
+  name = "${environmentName(planned.prerequisite.resourceGroup)}"
+  location = var.location
+  tags = local.liftoff_resource_group_ownership_tags
+}`,
+    `resource "azurerm_container_registry" "main" {
+  name = "${registryName}"
+  resource_group_name = azurerm_resource_group.main.name
+  location = azurerm_resource_group.main.location
+  sku = "Basic"
+  admin_enabled = false
+  tags = local.liftoff_application_ownership_tags
+}`,
+    `resource "azurerm_user_assigned_identity" "app" {
+  name = "${environmentName(planned.prerequisite.identityName)}"
+  resource_group_name = azurerm_resource_group.main.name
+  location = azurerm_resource_group.main.location
+  tags = local.liftoff_application_ownership_tags
+}`,
+    `resource "azurerm_role_assignment" "acr_pull" {
+  scope = azurerm_container_registry.main.id
+  role_definition_name = "AcrPull"
+  principal_id = azurerm_user_assigned_identity.app.principal_id
+}`,
+    `resource "azurerm_container_app" "backend" {
+  name = "fixture"
+  resource_group_name = azurerm_resource_group.main.name
+}`,
+    `resource "azurerm_monitor_action_group" "custom" {
+  name = "custom-preserved"
+  resource_group_name = azurerm_resource_group.main.name
+  short_name = "custom"
+}`
   ].join('\n'));
   await put(root, `${moduleRoot}/outputs.tf`, 'output "backend_url" { value = "fixture.example" }\n');
   await put(root, `${environmentRoot}/versions.tf`, 'terraform { required_version = ">= 1.12.6" }\n');
   await put(root, `${environmentRoot}/.terraform.lock.hcl`, '# exact provider lock fixture\n');
   await put(root, `${environmentRoot}/providers.tf`, 'provider "azurerm" { features {} }\n');
-  await put(root, `${environmentRoot}/variables.tf`, 'variable "environment" { type = string default = "dev" }\n');
-  await put(root, `${environmentRoot}/main.tf`, 'module "application" { source = "../../modules/application" }\n');
+  await put(root, `${environmentRoot}/variables.tf`,
+    `variable "environment" {\n  type = string\n  default = "dev"\n}\n${ownershipVariable}`);
+  await put(root, `${environmentRoot}/main.tf`, [
+    'module "application" {',
+    '  source = "../../modules/application"',
+    '  liftoff_activation_ownership = var.liftoff_activation_ownership',
+    '}',
+    ''
+  ].join('\n'));
   await put(root, `${environmentRoot}/outputs.tf`, 'output "backend_url" { value = module.application.backend_url }\n');
   await put(root, `${environmentRoot}/backend.local.tf`, [
     'terraform {',
@@ -215,8 +294,9 @@ async function git(root: string, runner: DeploymentRunner, args: readonly string
 
 async function fixture() {
   const root = await writeCoverageProject(path.join(scratch, `${++counter}`));
-  await writeApplicationSources(root);
   const runner = new DeploymentRunner();
+  const planned = await applicationPlanningFixture(root, 'application-foundation', runner);
+  await writeApplicationSources(root, planned);
   await git(root, runner, ['init', '--initial-branch=develop']);
   await git(root, runner, ['add', '.']);
   await git(root, runner, [
@@ -225,9 +305,8 @@ async function fixture() {
     'commit', '-m', 'Qualified application source'
   ]);
   const sourceSha = await git(root, runner, ['rev-parse', 'HEAD']);
-  const planned = await applicationPlanningFixture(root, 'application-foundation', runner);
   const reference = (
-    phaseId: 'remote-import-verified' | 'application-prerequisites-ready' |
+    phaseId: 'bootstrap-local' | 'remote-import-verified' | 'application-prerequisites-ready' |
       'application-artifact-ready',
     marker: string
   ) => ({
@@ -239,6 +318,9 @@ async function fixture() {
   planned.state.phases['remote-import-verified'].state = 'verified';
   planned.state.phases['remote-import-verified'].evidence = [
     reference('remote-import-verified', '7')
+  ];
+  planned.state.phases['bootstrap-local'].evidence = [
+    reference('bootstrap-local', '6')
   ];
   planned.state.phases['application-prerequisites-ready'].state = 'verified';
   planned.state.phases['application-prerequisites-ready'].evidence = [
@@ -771,6 +853,11 @@ describe('protected application deployment source contracts', () => {
         uncertainRedispatch: false
       }
     });
+    expect(f.binding.authoritativeRecords.bootstrap.phaseId).toBe('bootstrap-local');
+    expect(f.binding.variableOverrides.liftoff_activation_ownership).toEqual({
+      bootstrap_binding_digest: f.bootstrap.bindingDigest,
+      prerequisite_binding_digest: f.prerequisite.bindingDigest
+    });
     expect(f.binding.stateTransitions).toEqual([
       expect.objectContaining({
         disposition: 'move',
@@ -805,9 +892,71 @@ describe('protected application deployment source contracts', () => {
     expect(f.source.backendOverlay.path).toBe('backend.tf');
     expect(f.source.backendOverlay.bytes).toBeGreaterThan(0);
     expect(f.source.variableOverlay.keys).toEqual([
-      'backend_image', 'environment', 'location', 'resource_suffix'
+      'backend_image', 'environment', 'liftoff_activation_ownership', 'location', 'resource_suffix'
     ]);
     expect(f.source.requiredProtectedVariables).toEqual(['postgres_admin_password']);
+  });
+
+  it('admits only the exact original two-digest protected ownership overlay', async () => {
+    const f = await fixture();
+    const expected = f.binding.variableOverrides.liftoff_activation_ownership;
+    expect(validateApplicationActivationOwnership(f.binding, expected)).toEqual(expected);
+    for (const value of [
+      null,
+      {},
+      { bootstrap_binding_digest: expected.bootstrap_binding_digest },
+      { ...expected, extra: 'not-permitted' },
+      { ...expected, bootstrap_binding_digest: expected.bootstrap_binding_digest.toUpperCase() },
+      { ...expected, prerequisite_binding_digest: '0'.repeat(64) }
+    ]) {
+      expect(() => validateApplicationActivationOwnership(f.binding, value))
+        .toThrow(/exact original bootstrap and prerequisite/u);
+    }
+
+    const retained = f.inspection.state.phaseOutputs?.['remote-import-verified'];
+    expect(retained).toBeDefined();
+    retained!.values.bootstrapBindingDigest = '0'.repeat(64);
+    expect(() => bindApplicationDeployment(f, f.artifact))
+      .toThrow(/does not match the original verified bootstrap binding/u);
+  });
+
+  it('rejects lookalike ownership tags, changed owned attributes and declared AcrPush', async () => {
+    for (const change of ['lookalike-tag', 'registry-name', 'acr-push'] as const) {
+      const f = await fixture();
+      const mainPath = path.join(f.root, ...f.binding.applicationModule.split('/'), 'main.tf');
+      let main = await readFile(mainPath, 'utf8');
+      if (change === 'lookalike-tag') {
+        main = main.replace(
+          '"liftoff-binding"     = local.liftoff_bootstrap_binding_digest',
+          `"liftoff-binding"     = "${f.binding.bootstrapBindingDigest}"`
+        );
+      } else if (change === 'registry-name') {
+        main = main.replace(
+          /(resource "azurerm_container_registry" "main" \{\n  name = ")[^"]+/u,
+          '$1lookalike${var.resource_suffix}'
+        );
+      } else {
+        main += `\nresource "azurerm_role_assignment" "acr_push" {
+  scope = azurerm_container_registry.main.id
+  role_definition_name = "AcrPush"
+  principal_id = azurerm_user_assigned_identity.app.principal_id
+}\n`;
+      }
+      await writeFile(mainPath, main, 'utf8');
+      await git(f.root, f.runner, ['add', '.']);
+      await git(f.root, f.runner, [
+        '-c', 'user.name=Fixture',
+        '-c', 'user.email=fixture@example.test',
+        'commit', '-m', `Invalid ${change}`
+      ]);
+      const artifact = {
+        ...f.artifact,
+        sourceSha: await git(f.root, f.runner, ['rev-parse', 'HEAD'])
+      };
+      const binding = bindApplicationDeployment(f, artifact);
+      await expect(observeApplicationDeploymentSource(f, binding))
+        .rejects.toThrow(/ownership|owned resource|AcrPush/u);
+    }
   });
 
   it('refuses dirty source, execution-overlay collisions and committed protected values', async () => {
@@ -831,6 +980,29 @@ describe('protected application deployment source contracts', () => {
     };
     const unsafeBinding = bindApplicationDeployment(secret, unsafeArtifact);
     await expect(observeApplicationDeploymentSource(secret, unsafeBinding))
+      .rejects.toThrow(/protected values/u);
+
+    const ownership = await fixture();
+    await put(ownership.root, ownership.binding.environmentVariablesPath, [
+      'environment = "dev"',
+      'liftoff_activation_ownership = {',
+      `  bootstrap_binding_digest = "${ownership.binding.bootstrapBindingDigest}"`,
+      `  prerequisite_binding_digest = "${ownership.binding.prerequisiteBindingDigest}"`,
+      '}',
+      ''
+    ].join('\n'));
+    await git(ownership.root, ownership.runner, ['add', '.']);
+    await git(ownership.root, ownership.runner, [
+      '-c', 'user.name=Fixture',
+      '-c', 'user.email=fixture@example.test',
+      'commit', '-m', 'Unsafe ownership fixture'
+    ]);
+    const ownershipArtifact = {
+      ...ownership.artifact,
+      sourceSha: await git(ownership.root, ownership.runner, ['rev-parse', 'HEAD'])
+    };
+    const ownershipBinding = bindApplicationDeployment(ownership, ownershipArtifact);
+    await expect(observeApplicationDeploymentSource(ownership, ownershipBinding))
       .rejects.toThrow(/protected values/u);
   });
 

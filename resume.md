@@ -2321,43 +2321,135 @@ failure, malformed readback, and no second dispatch. This source remains a
 private protocol; no qualified protected application, state, checkpoint,
 HTTP, Azure, or OpenTofu producer is claimed.
 
-The coordinator also requested a separately scoped, proposal-only canonical
-HCL ownership-tag remedy. No generator bytes were changed. The proposal sent
-to the sole allocator is:
+The coordinator subsequently approved only the bounded private source form of
+the canonical HCL ownership-tag remedy. The implemented contract is one closed
+nullable object, `liftoff_activation_ownership`, with exact fields
+`bootstrap_binding_digest` and `prerequisite_binding_digest`. Its default is
+`null`; ordinary, Manual, governance-none, and not-yet-activated generation
+therefore emits no reserved Liftoff ownership tags and requires no private
+activation evidence. The object is forwarded through each environment root
+but is never written into committed `<environment>.tfvars`.
 
-- add required no-default module/root variables
-  `liftoff_bootstrap_binding_digest` and
-  `liftoff_prerequisite_binding_digest`, each restricted to lowercase
-  64-hex;
-- forward them through the environment root but never write them into
-  committed `<environment>.tfvars`;
-- supply them only in the protected ephemeral
-  `liftoff.auto.tfvars.json` overlay from the authoritative retained-bootstrap
-  and application-prerequisite records;
-- give the resource group exact tags
-  `liftoff-managed-by=liftoff`,
-  `liftoff-phase=bootstrap-local`,
-  `liftoff-environment=var.environment`, and
-  `liftoff-binding=var.liftoff_bootstrap_binding_digest`;
-- give the ACR and application identity exact tags
-  `liftoff-binding=var.liftoff_prerequisite_binding_digest` and
-  `liftoff-environment=var.environment`;
-- leave AcrPush externally owned and absent from HCL; and
-- semantically prove those exact generated/customized attributes and refuse
-  absent, extra, different, self-asserted, or caller-overridden predecessor
-  evidence as `configuration-mismatch`.
+Protected execution supplies the non-null object only in the ephemeral
+`liftoff.auto.tfvars.json` overlay. Runtime admission requires exactly those
+two keys, lowercase 64-hex values, and equality with the original verified
+records. The resource-group tag authority is
+`phaseOutputs['bootstrap-local'].values.bootstrapBindingDigest` plus verified
+`bootstrap-local` evidence. `remote-import-verified` must preserve the same
+digest as continuity evidence but is not substituted as the original tag
+authority. The ACR/application-identity authority is the verified
+`application-prerequisites-ready` binding digest. Null handling uses explicit
+conditional digest/tag expressions: the null branch never reads object
+attributes, while a non-null value must match the exact lowercase 64-hex
+pattern before it can become a tag value. It does not rely on boolean
+short-circuit behavior.
 
-If separately admitted, the bounded remedy surface is the Azure generator's
-module variables, root forwarding, and those three owned resources; the
-private deployment overlay/source validator; and exact generated-template
-tests. `renderTofuTfvars`, provider versions/lock assets, artifact logical
-identities/layout, unrelated custom files/resources, predecessor evidence
-bytes, state, and role ownership stay unchanged. Infrastructure repair may
-preserve and forward already present variables but must not inject them into
-old or customized projects. Every changed generated source requires a new
-reviewed commit, tree, immutable execution tag, source inventory, and
-activation-6 capture. The proposal is not apply authority, brownfield import,
-existing-resource mutation, or a configuration waiver.
+The generated resource group conditionally receives exact
+`liftoff-managed-by=liftoff`, `liftoff-phase=bootstrap-local`,
+`liftoff-environment`, and original bootstrap `liftoff-binding` tags. The ACR
+and application identity conditionally receive exact environment and original
+prerequisite binding tags. AcrPull remains exact; AcrPush remains externally
+owned and absent from HCL. The private source observer now semantically parses
+the committed module/root HCL and rejects changed names, locations, provider
+attributes, forwarding, tag construction, lookalike literal tags, AcrPush, or
+committed protected ownership values. The overlay validator rejects null,
+missing, extra, malformed, recomputed, or mismatched protected objects before
+provider execution.
+
+The bounded changed surface is
+`src/generators/infrastructure/azure.ts`,
+`src/governance-activation/application-deployment.ts`, their exact tests, and
+this handoff, plus one narrowly coupled Manual source-interpretation change:
+`object` is admitted as a pure HCL type constructor alongside the already
+admitted Manual-only pure functions. No `map`, unknown-object shortcut,
+filesystem function, environment function, dynamic source, provider authority,
+or parser-policy weakening was added. `renderTofuTfvars`, provider versions and
+locks, artifact logical identities/layout, unrelated custom files/resources,
+predecessor bytes, state, and role ownership remain unchanged. Infrastructure
+repair preserves and forwards an ownership variable only when the existing
+project already declares it; it does not inject private values or rewrite
+old/custom projects. Focused application, generated-HCL,
+Manual/no-governance, repair, isolated-parser, and reviewed governance controls
+pass, including native OpenTofu null/valid/invalid/missing variable cases.
+This source patch is not shared activation-6 allocation, apply authority,
+brownfield import, existing-resource mutation, a configuration waiver, or task
+14.2 completion.
+
+Final pre-commit focused evidence under Node 24.21.0, npm 12.0.2 and restored
+OpenTofu 1.12.6:
+
+- build passed;
+- application deployment, generated infrastructure, and native Manual
+  OpenTofu checks passed 63/63;
+- the 13-file adjacent generation/repair/source-inventory/governance set passed
+  710 tests with three existing skips;
+- private application source plus engine coverage passed with 88.74%
+  statements, 91.98% branches, 99.09% functions, and 88.59% lines; and
+- supported-stack, repository named-file policy, strict OpenSpec validation,
+  and `git diff --check` passed; and
+- reviewed task-14.2 successors now wrap the task-14.1 and complete earlier
+  chains for `status-json`
+  (`31988e7f08d48c0fdeebe1c5235d827f3221b41f24b0bea03454bc33c4f77c94`),
+  `status-local-json`
+  (`2a4dcfb30328068decc3add5db80b011334b6b5d8819e04978b933481406beaa`),
+  `resume-json`
+  (`490465574ee04fa753e23bc447fecb452302482f624dafce0d658bb3b539580a`),
+  and `plan-json`
+  (`cd5f9b8a8e832d472b67575caaa527dad6f6b2a01d1a628c336d36b57ad2ec60`).
+
+Clean qualification of the preceding private-engine commit first exposed two
+environment mistakes: direct npm-CLI invocation did not place the exact
+12.0.2 launcher on `PATH`, and ambient Python was 3.14.8 rather than the
+preserved 3.14.7 runtime. With the full isolated npm/Python/uv/OpenTofu profile,
+all rerun failures cleared except a governance extraction record. Exact
+parent/current comparison proved that mismatch predated the private engine and
+was solely the admitted task-14.1 application capability disclosure changing
+current `status-json`, `status-local-json`, and `resume-json` output from
+unavailable to injected-only with a stronger fail-closed blocker. New
+task-14.1 successor records wrap the complete existing task-13.5 and earlier
+`priorChange` chains; frozen captures and historical records were not
+regenerated, flattened, or rewritten.
+
+The session-local OpenTofu path was later found to have been overwritten by
+ambient 1.13.1 bytes. Exact 1.12.6 was restored from the official darwin/arm64
+release archive. The archive SHA-256 is
+`e083ee43790ab9e19ad66d9933e24a7244a1412e1d5728f37999ae2163fdac95`;
+the extracted executable SHA-256 is
+`0445d7cc114d24440af150b1ddec600f4e4c3e6af16ba63a9a7d42054ae970e3`,
+matching the previously retained qualified binary identity. Subsequent native
+HCL evidence must use the restored `tofu-1.12.6` directory and export the full
+qualified `PATH`; a one-command environment prefix does not persist across a
+later `&&` command.
+
+After this HCL/private-source milestone is committed and qualified, the
+coordinator-authorized ordinary preserving SOURCE integration order is now:
+
+1. native9 `b65515ccfb83a19972574340ad45a11c09c79710`;
+2. upgrade10 `def217170a70caaf8938221ab7c925e71a6f08e5`;
+3. migration11 `0b9c61575af8959795ccc10a1b4f5aa6ed5aaaa7`
+   (tree `d6aa57ad4dba22abcac05fdba76dcea1ffc0416a`);
+4. project-telemetry16 `c477d24d50e906a98afd718682d6aa2466693515`;
+5. Grafana17/Windows diagnostic candidate
+   `c550a7290053965f3a77145e239fb5e7d14bd7a0`.
+
+Root's independent migration11 receipt is
+`beb0dd6a4780ff350dabd1205d10565d5d41a22905bb6b8efc7e6d338497e967`.
+The telemetry/Grafana receipt is
+`448eb3c3c290afb13ee6740f0dd799e461303ad2590decbd11531547bed34ef1`.
+The green c550 Windows evidence is diagnostic only: it does not identify the
+older pre-ack blocked call, prove its root fix, or qualify the dec2 repair.
+
+Use one ordinary preserving merge per unit. Run small exact regressions and
+identity/source-inventory checks after each merge. Stop shared
+family/identity/graph/history conflicts for the sole allocator; never resolve
+them with ours/theirs. After migration11, run a fresh combined complete
+CLI/gateway/current selected native+migration gate; do not relabel inherited
+native9/upgrade10 evidence as migration11 qualification. After telemetry16 and
+Grafana17, run a distinct fresh combined CLI/gateway/relevant
+installed/native/platform gate; do not relabel the 9-11 gate as 16/17 proof.
+The source-intake authorization is not PR-stack landing, publication, cask or
+provider registration, real migration, production telemetry/Grafana apply,
+client enrollment, public channel enablement, or task-flag advancement.
 
 Task 14.2 remains unchecked pending the exact allocator readback, separately
 admitted HCL intake, qualified real producers, and genuine disposable

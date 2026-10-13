@@ -183,6 +183,43 @@ output "secret" {
     });
   });
 
+  it('forwards an existing ownership object without injecting values or rewriting source', async () => {
+    const { root, manifest } = await fixture(['dev']);
+    const variables = `${legacyInfrastructureSources['variables.tf']}
+variable "liftoff_activation_ownership" {
+  type = object({
+    bootstrap_binding_digest    = string
+    prerequisite_binding_digest = string
+  })
+  default  = null
+  nullable = true
+}
+`;
+    await put(root, ['variables.tf'], variables);
+    const originalTfvars = await readFile(
+      path.join(root, ...repairRoot, 'environments', 'dev.tfvars'),
+      'utf8'
+    );
+    const candidate = await inspectInfrastructureRepair(root, manifest);
+    expect(candidate.blockers).toEqual([]);
+    const moduleVariables = candidate.files.find(item =>
+      item.pathParts.join('/') ===
+      [...repairRoot, 'modules', 'application', 'variables.tf'].join('/'))!;
+    const rootMain = candidate.files.find(item =>
+      item.pathParts.join('/') ===
+      [...repairRoot, 'environments', 'dev', 'main.tf'].join('/'))!;
+    const tfvars = candidate.files.find(item =>
+      item.pathParts.join('/') ===
+      [...repairRoot, 'environments', 'dev', 'dev.tfvars'].join('/'))!;
+    expect(moduleVariables.content).toBe(variables);
+    expect((await parse('main.tf', rootMain.content)).module.application[0])
+      .toMatchObject({
+        liftoff_activation_ownership: '${var.liftoff_activation_ownership}'
+      });
+    expect(tfvars.content).toBe(originalTfvars);
+    expect(tfvars.content).not.toContain('liftoff_activation_ownership');
+  });
+
   it('supports the legacy worker resource and role chains without reinterpreting literal runtime paths', async () => {
     const { root, manifest } = await fixture(['dev']);
     await put(root, ['main.tf'], legacyInfrastructureSources['main.tf'] + `
