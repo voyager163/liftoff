@@ -18,8 +18,8 @@ import { liftoffVersion } from '../src/version.js';
 import { CaptureStream, ttyCaptureStream } from './helpers.js';
 import { liftoffPackage, upgradeWorld, type UpgradeWorld } from './fixtures/installer-upgrade.js';
 
-// Original pre-extraction traces stay immutable. Schema 2 intentionally adds
-// owner/source reinspection and telemetry-free environments; record it separately.
+// The distinct suite name keeps frozen schema-1 history out of live snapshot
+// discovery. Its exact hash remains checked; schema-2 observations are separate.
 const observations: Record<string, unknown> = {};
 
 interface TraceScenario {
