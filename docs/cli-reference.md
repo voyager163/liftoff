@@ -79,6 +79,12 @@ use `liftoff init`; there is no compatibility alias.
 command or `liftoff -repair` flag. Init creates a scaffold; repair
 works on a supported existing Liftoff project without reinitializing it.
 
+`liftoff-migrate-npm` is a **separate, source-only development utility**, not a
+`liftoff migrate` subcommand or a released npm bin. See the
+[standalone Mac migration contract](mac-npm-migration.md) for preview, exact
+approval, preservation, journal/recovery and parent-shell limits. Its public
+cask provider is unregistered; npm remains the only published channel.
+
 Generation, validation, doctor, governance, and update consume the packaged
 [supported-stack baseline](supported-stack.md). The current contract uses
 Node.js 24 LTS, Python 3.14, Go 1.27, OpenTofu 1.12, OpenSpec 1.11, and Spec Kit

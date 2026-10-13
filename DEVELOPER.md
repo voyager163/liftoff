@@ -508,8 +508,12 @@ retains qualified tag/main ancestry and requires independently signed platform
 evidence. The approved namespace/key policy remains unconfigured; neither that
 route nor the gated cask/WinGet definition renderer publishes anything.
 Linux receipt/journal interfaces and their recovery limits are documented in
-the native guide for later owner-aware upgrade work. Current upgrade and
-npm-to-Homebrew migration behavior is unchanged.
+the native guide for owner-aware upgrade work. Group 11's
+[standalone Mac npm migration](docs/mac-npm-migration.md) reuses the existing
+native admission, ownership and packaged/licensed inventory APIs. Its
+independent runtime-inclusive development package does not rely on an old
+Liftoff command. Public migration and npm bridge publication remain blocked;
+no cask provider is registered and the published npm bin is unchanged.
 
 - Validate the canonical graph, graph hash, per-phase contract digests, and
   compatibility metadata together.
