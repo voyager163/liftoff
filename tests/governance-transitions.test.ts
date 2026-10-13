@@ -333,12 +333,16 @@ class Phase0Runner extends ReadyInitRunner {
     if (command.executable === 'gh') {
       this.calls.push(command);
       return this.result(command, {
-        stdout: `${JSON.stringify({
-          id: 'R_phase0',
-          nameWithOwner: 'owner/phase0',
-          defaultBranchRef: { name: 'develop' },
-          isPrivate: true
-        })}\n`
+        stdout: `HTTP/2.0 200 OK\r\n\r\n${JSON.stringify({
+          id: 123,
+          full_name: 'owner/phase0',
+          private: true,
+          archived: false,
+          fork: false,
+          default_branch: 'develop',
+          owner: { login: 'owner', type: 'User', id: 1 },
+          permissions: { admin: true, push: true, pull: true }
+        })}`
       });
     }
     if (command.executable === 'az' && command.args[0] === 'account') {
@@ -759,12 +763,26 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
   it('runs Phase 0 through read-only literal commands and writes no active change before approval', async () => {
     const root = await writeProject('phase0');
     const runner = new Phase0Runner();
-    const inspection = await inspectionFor({ root, phaseId: 'phase-0-complete', source: sourceNone() });
+    const state = validState({
+      repository: { id: '123', name: 'owner/phase0', defaultBranch: 'develop' },
+      remoteBinding: {
+        id: '123',
+        name: 'owner/phase0',
+        defaultBranch: 'develop',
+        pushUrl: 'https://github.com/owner/phase0.git',
+        verifiedAt: now.toISOString()
+      }
+    });
+    const inspection = await inspectionFor({ root, phaseId: 'phase-0-complete', source: sourceNone(), state });
     const result = await import('../src/governance-activation/transitions.js').then(({ executeApplyNext }) =>
       executeApplyNext({ inspection, reinspect: async () => inspection, runner, now }));
-    expect(result.applied, result.message).toBe(true);
+    expect(result.applied).toBe(false);
+    expect(result.message).toMatch(/incomplete authoritative GitHub coverage/u);
     const commands = runner.calls.map((command) => `${command.executable} ${command.args.join(' ')}`);
-    expect(commands).toContain('gh repo view owner/phase0 --json id,nameWithOwner,defaultBranchRef,isPrivate');
+    expect(commands.some((command) =>
+      command.startsWith('gh api ') && command.includes('--method GET') && command.endsWith('--include /repos/owner/phase0')
+    )).toBe(true);
+    expect(commands.some((command) => command.startsWith('gh repo view '))).toBe(false);
     expect(commands).not.toContain('az account show --output json');
     expect(commands.some((command) => /\b(gh repo create|gh api --method (POST|PATCH)|az deployment|tofu apply)\b/u.test(command))).toBe(false);
     expect(JSON.parse(await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8')).activeChange).toBeNull();

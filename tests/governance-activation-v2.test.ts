@@ -379,7 +379,8 @@ describe('activation-v2 local production adapter', () => {
     const prior = (await loadActivationState(root))!;
     await mkdir(path.join(root, '.git'));
     const manifest = await loadManifest(root);
-    const url = 'https://github.com/owner/repository.git';
+    const repository = `owner/${manifest.project.name}`;
+    const url = `https://github.com/${repository}.git`;
     let pushUrls = [url];
     const calls: string[] = [];
     const runner: CommandRunner = {
@@ -396,9 +397,53 @@ describe('activation-v2 local production adapter', () => {
         else if (key === 'git remote -v') stdout = `origin ${url} (fetch)\norigin ${url} (push)\n`;
         else if (key === 'git remote get-url --push --all origin') stdout = pushUrls.join('\n');
         else if (key.startsWith('git ls-remote')) stdout = `${'a'.repeat(40)}\trefs/heads/develop`;
-        else if (key.startsWith('gh repo view owner/repository ')) stdout = JSON.stringify({
-          id: 'R_REMOTE', nameWithOwner: 'owner/repository', defaultBranchRef: { name: 'develop' }, isPrivate: true
-        });
+        else if (command.executable === 'gh' && command.args[0] === 'api') {
+          const endpoint = command.args[command.args.indexOf('--include') + 1]!;
+          const sha = 'a'.repeat(40);
+          let responseStatus = 200;
+          let body: unknown;
+          if (endpoint === `/repos/${repository}`) {
+            body = {
+              id: 7,
+              full_name: repository,
+              private: true,
+              archived: false,
+              fork: false,
+              default_branch: 'develop',
+              owner: { login: 'owner', type: 'User', id: 1 },
+              permissions: { admin: true, push: true, pull: true }
+            };
+          } else if (endpoint === '/user') {
+            body = { id: 1, login: 'owner', type: 'User' };
+          } else if (endpoint.startsWith(`/repos/${repository}/branches`)) {
+            body = [{ name: 'develop', commit: { sha }, protected: true }];
+          } else if (endpoint.startsWith(`/repos/${repository}/actions/workflows`)) {
+            body = { total_count: 0, workflows: [] };
+          } else if (endpoint.startsWith(`/repos/${repository}/rulesets`)) {
+            body = [];
+          } else if (endpoint.startsWith(`/repos/${repository}/tags`) ||
+            endpoint.startsWith(`/repos/${repository}/releases`) ||
+            endpoint.startsWith(`/repos/${repository}/deployments`) ||
+            endpoint.startsWith(`/repos/${repository}/code-scanning/alerts`) ||
+            endpoint.startsWith(`/repos/${repository}/secret-scanning/alerts`) ||
+            endpoint.startsWith(`/repos/${repository}/dependabot/alerts`)) {
+            body = [];
+          } else if (endpoint.startsWith(`/repos/${repository}/environments`)) {
+            body = { total_count: 0, environments: [] };
+          } else if (endpoint === `/repos/${repository}/actions/permissions`) {
+            body = { enabled: true, allowed_actions: 'all' };
+          } else if (endpoint === `/repos/${repository}/actions/permissions/workflow`) {
+            body = { default_workflow_permissions: 'read', can_approve_pull_request_reviews: false };
+          } else if (endpoint.startsWith(`/repos/${repository}/commits/${sha}/check-runs`)) {
+            body = { total_count: 0, check_runs: [] };
+          } else if (endpoint.startsWith('/orgs/owner/')) {
+            responseStatus = 404;
+            body = { message: 'Not Found' };
+          } else {
+            body = {};
+          }
+          stdout = `HTTP/2.0 ${responseStatus} Test\r\n\r\n${JSON.stringify(body)}`;
+        }
         return { command, displayCommand: key, status, signal: null, stdout, stderr: '', timedOut: false };
       }
     };
@@ -457,8 +502,7 @@ describe('activation-v2 local production adapter', () => {
     expect(observed.status).toBe('inspected');
     if (observed.status !== 'inspected') throw new Error('Missing persisted inspection');
     expect(observed.state.repository).toEqual(prior.state.repository);
-    expect(observed.state.remoteBinding).toMatchObject({ id: 'R_REMOTE', name: 'owner/repository', pushUrl: url });
-    expect(observed.state.applicability).toEqual({ statePath: 'none', privateStagingDast: 'unknown', credentialRequired: 'unknown' });
+    expect(observed.state.remoteBinding).toMatchObject({ id: '7', name: repository, pushUrl: url });
     expect(observed.selections['seed-valid']!.selected).not.toBeNull();
     expect(observed.selections['phase-0-complete']!.selected).not.toBeNull();
     expect(calls.some((call) => call.startsWith('az ') || /^git (?:push|init|commit) /.test(call))).toBe(false);

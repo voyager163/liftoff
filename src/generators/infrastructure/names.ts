@@ -20,12 +20,13 @@ export const AZURE_NAME_LIMITS = {
 } as const;
 
 export type AzureResourceNames = Record<keyof typeof AZURE_NAME_LIMITS, string>;
+type AzureProjectIdentity = Pick<ApiProjectPlan, 'projectName' | 'safeProjectName'>;
 
 export const boundedToken = (value: string, length: number) =>
   value.slice(0, length).replace(/-+$/g, '') || 'app';
 
 export function buildAzureResourceNames(
-  plan: ApiProjectPlan,
+  plan: AzureProjectIdentity,
   environment: string,
   resourceSuffix: string
 ): AzureResourceNames {
@@ -51,13 +52,13 @@ export function buildAzureResourceNames(
   };
 }
 
-export function stableResourceSuffix(plan: ApiProjectPlan, environment: string): string {
+export function stableResourceSuffix(plan: Pick<ApiProjectPlan, 'projectName'>, environment: string): string {
   return createHash('sha256')
     .update(`${plan.projectName}:${environment}`, 'utf8')
     .digest('hex')
     .slice(0, 12);
 }
 
-export function projectIdentityDigest(plan: ApiProjectPlan): string {
+export function projectIdentityDigest(plan: Pick<ApiProjectPlan, 'projectName'>): string {
   return createHash('sha256').update(plan.projectName, 'utf8').digest('hex').slice(0, 8);
 }

@@ -95,12 +95,21 @@ export async function observeGitHubPhase0(input: PhasePlanningInput | PhaseAdapt
   const config = repositoryConfiguration(input.inspection);
   const client = clientFor(input);
   const repo = await client.get(`/repos/${config.name}`);
-  if (repo.full_name !== config.name || input.inspection.state.remoteBinding?.id !== String(repo.id)) {
+  const providerName = text(repo.full_name, 'Repository full name');
+  const providerId = positiveId(repo.id);
+  const git = await inspectGitRepository(input.inspection.projectRoot, input.runner);
+  const pushUrl = reviewedPushUrl(git);
+  const pushRepository = githubRepositoryFromPushUrl(pushUrl);
+  const bound = input.inspection.state.remoteBinding;
+  const sameRepository = (value: string | undefined) => value?.toLowerCase() === providerName.toLowerCase();
+  if (!sameRepository(config.name) || !sameRepository(pushRepository) ||
+    bound && (!sameRepository(bound.name) || bound.id !== String(providerId) || bound.pushUrl !== pushUrl) ||
+    !bound && input.inspection.state.phases.pushed.state !== 'verified') {
     throw new GitHubActivationError('phase0-binding', 'Phase 0 repository identity differs from independently verified publication.');
   }
   const workload = await classifyGitHubWorkload(input.inspection);
   const repository = {
-    id: positiveId(repo.id), name: config.name, defaultBranch: githubRef(repo.default_branch), private: repo.private,
+    id: providerId, name: providerName, pushUrl, defaultBranch: githubRef(repo.default_branch), private: repo.private,
     owner: project(object(repo.owner), ['login', 'type', 'id']),
     permissions: project(object(repo.permissions ?? {}), ['admin', 'push', 'pull', 'maintain']),
     security: repo.security_and_analysis ? Object.fromEntries(Object.entries(object(repo.security_and_analysis)).map(([key, value]) =>
@@ -207,7 +216,24 @@ export async function planGitHubDiscovery(input: PhasePlanningInput): Promise<{ 
 }
 
 export async function executeGitHubDiscovery(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome> {
-  const report = await observeGitHubPhase0(input);
+  let report: Awaited<ReturnType<typeof observeGitHubPhase0>>;
+  try {
+    report = await observeGitHubPhase0(input);
+  } catch (error) {
+    const detail = error instanceof GitHubActivationError && error.code === 'phase0-binding'
+      ? error.message
+      : error instanceof GitHubActivationError && error.code === 'invalid-response'
+        ? error.message
+        : error instanceof GitHubActivationError
+          ? 'GitHub did not confirm the required bounded read access; provider diagnostics were withheld.'
+          : 'GitHub discovery failed unexpectedly; provider diagnostics were withheld.';
+    return {
+      status: 'blocked',
+      resultState: 'failed',
+      completedOperations: [],
+      blocker: `Phase 0 GitHub discovery failed: ${detail}`
+    };
+  }
   const facts = [
     { id: 'repository.id', value: String(report.repository.id) },
     { id: 'repository.nameWithOwner', value: String(report.repository.name) },
@@ -215,8 +241,15 @@ export async function executeGitHubDiscovery(input: PhaseAdapterExecutionInput):
     { id: 'repository.isPrivate', value: Boolean(report.repository.private) }
   ];
   const state = cloneState(input.inspection.state);
+  state.remoteBinding = {
+    id: String(report.repository.id),
+    name: String(report.repository.name),
+    defaultBranch: String(report.repository.defaultBranch),
+    pushUrl: String(report.repository.pushUrl),
+    verifiedAt: input.now.toISOString()
+  };
   // Azure/state applicability is deliberately left to its independent producer.
-  const resourceId = `/repos/${report.repository.name}`;
+  const resourceId = String(report.repository.name);
   const unknown = Object.entries(report.observations).filter(([, value]) => value.status === 'unknown').map(([name]) => name);
   const missing = report.workload.missing as string[];
   const mandatory = unknown.filter((name) => !['runners', 'networkConfigurations'].includes(name));

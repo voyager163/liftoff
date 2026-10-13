@@ -4,7 +4,6 @@ import type {
 } from './transition-ports.js';
 import { executeSeedOperations } from './seed-lifecycle.js';
 import { executeGitOperations } from './phase-publication.js';
-import { discoverPhase0 } from './phase-discovery.js';
 import { executeActivationApproval, executeCredentialReady, executeRulesetPhase } from './phase-governance.js';
 import { remoteImportRetention, executeBootstrapStateDisposal } from './phase-bootstrap-state.js';
 import type { PhaseId, PhaseEvidenceRecord, UserActivationState, SavedTransitionPlan, TransitionOperation } from '../domain/governance/activation/types.js';
@@ -54,7 +53,6 @@ const builtInExecutors: Partial<Record<PhaseId, PhaseExecutor>> = {
   'seed-archived': executeSeedOperations,
   committed: executeGitOperations,
   pushed: executeGitOperations,
-  'phase-0-complete': discoverPhase0,
   'activation-approved': executeActivationApproval,
   'enforcement-approved': () => ({ status: 'completed', resultState: 'approved', completedOperations: [] }),
   'credential-ready': executeCredentialReady,

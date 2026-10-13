@@ -147,13 +147,8 @@ export class FakeGitRunner implements CommandRunner {
   }
 }
 
-/**
- * Routes `gh api` through the same in-memory provider so reviewed planning (CLI transport) and execution observe
- * one deterministic GitHub state; `gh repo view` results are scripted for Phase 0 discovery.
- */
+/** Routes `gh api` through the same in-memory provider so planning and execution observe one deterministic GitHub state. */
 export class FakeProviderRunner extends FakeGitRunner {
-  repoView?: Partial<CommandResult>;
-
   constructor(root: string, readonly provider: FakeGitHub) {
     super(root, provider);
   }
@@ -167,10 +162,6 @@ export class FakeProviderRunner extends FakeGitRunner {
       const reply = await this.provider.request({ method, path: endpoint, ...(body === undefined ? {} : { body }) });
       return { ...this.result(command, reply.status < 400 ? 0 : 1),
         stdout: `HTTP/2.0 ${reply.status} Fake\r\n\r\n${reply.data === null ? '' : JSON.stringify(reply.data)}` };
-    }
-    if (command.executable === 'gh' && command.args[0] === 'repo' && this.repoView) {
-      this.calls.push([command.executable, ...command.args]);
-      return { ...this.result(command, 0), ...this.repoView };
     }
     return super.run(command, options);
   }

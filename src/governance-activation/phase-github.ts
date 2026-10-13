@@ -1,8 +1,7 @@
 import type { PhaseAdapterExecutionInput, PhaseAdapterOutcome, PhasePlanBuild, PhasePlanningInput } from './transition-ports.js';
 import type { TransitionOperation, LiveReadbackProof } from '../domain/governance/activation/types.js';
 import { planGitHubPublication, executeGitHubPublication } from './github-publication.js';
-import { planGitHubDiscovery, observeGitHubPhase0 } from './github-discovery.js';
-import { discoverPhase0 } from './phase-discovery.js';
+import { executeGitHubDiscovery, planGitHubDiscovery, observeGitHubPhase0 } from './github-discovery.js';
 import { clientFor, githubOperation, repositoryConfiguration } from './github-config.js';
 import { executeCredentialReady, executeRulesetPhase } from './phase-governance.js';
 import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
@@ -134,7 +133,7 @@ export async function executeGitHubPhase(input: PhaseAdapterExecutionInput): Pro
       }
       return null;
     case 'phase-0-complete':
-      return discoverPhase0(input);
+      return executeGitHubDiscovery(input);
     case 'credential-ready':
       if (input.credentialEnrollment) {
         // Public enrollment stays unavailable until independent readback exists: refuse before any input channel or write.
