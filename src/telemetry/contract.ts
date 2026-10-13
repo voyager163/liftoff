@@ -80,7 +80,17 @@ export const telemetryCommands = [
   'infra:output'
 ] as const;
 
-export const telemetryExcludedCommands = ['governance:assess', 'capabilities', 'assess'] as const;
+export const telemetryExcludedCommands = [
+  'governance:assess',
+  'capabilities',
+  'assess',
+  'telemetry',
+  'telemetry:status',
+  'telemetry:enroll',
+  'telemetry:disable',
+  'telemetry:report',
+  'telemetry:heartbeat'
+] as const;
 
 export type TelemetryCommand = (typeof telemetryCommands)[number];
 export type TelemetryOutcome = 'success' | 'failure';
