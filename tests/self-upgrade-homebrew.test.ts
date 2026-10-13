@@ -96,7 +96,7 @@ function harness(
   };
   const entry = (file: string) => {
     const found = files.get(file);
-    if (!found) throw new Error('Missing private fixture path.');
+    if (!found) throw Object.assign(new Error('Missing private fixture path.'), { code: 'ENOENT' });
     return found;
   };
   const dependencies: SelfUpgradeDependencies = {

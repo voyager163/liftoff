@@ -131,6 +131,7 @@ describe('independently signed native candidate admission', () => {
     const fixture = signedMaterial();
     const old = fixture.record.files[0].filename;
     fixture.record.target = 'win32-x64';
+    for (const file of fixture.record.files) file.mode = 0o666;
     fixture.record.files[0].filename = 'liftoff-0.13.0-win32-x64.tar.gz';
     fixture.assets.set(fixture.record.files[0].filename, fixture.assets.get(old)!);
     fixture.assets.delete(old);
@@ -156,6 +157,10 @@ describe('independently signed native candidate admission', () => {
       windowsInstaller: { filename, sha256: hash(content), bytes: content.length }
     });
     fixture.assets.delete(filename);
+    await expect(admitNativeStableMaterial(fixture.material, owner, fixture.policy)).rejects.toMatchObject({ reasonCode: 'native_invalid' });
+    fixture.assets.set(filename, content);
+    fixture.record.files[0].mode = 0o644;
+    fixture.resign();
     await expect(admitNativeStableMaterial(fixture.material, owner, fixture.policy)).rejects.toMatchObject({ reasonCode: 'native_invalid' });
   });
 });
@@ -412,6 +417,14 @@ function nativeWorld(owner: NativeInstallation['owner'] = 'liftoff-native') {
 }
 
 describe('owner-aware orchestration and read-only doctor', () => {
+  it.each(['file', 'directory'] as const)('refuses a source checkout with a %s Git marker before any manager or metadata probe', async kind => {
+    const fixture = upgradeWorld({ mode: 'apply' });
+    fixture.world.nodes.set(path.posix.join(fixture.world.packageRoot, '.git'), { kind });
+    expect(await runSelfUpgrade(fixture.request, fixture.dependencies)).toMatchObject({
+      status: 'blocked', reasonCode: 'unsupported_installation', installationOwner: 'unknown', effects: 'none'
+    });
+    expect(fixture.world.trace.filter(event => 'run' in event || 'lookup' in event)).toEqual([]);
+  });
   it.each(['darwin', 'win32'] as const)('classifies %s only after bounded explicit manager observations, never from a prefix alone', async platform => {
     const fixture = managerObservationFixture(platform);
     const port = createNativeUpgradePort(fixture.dependencies, {

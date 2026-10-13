@@ -290,7 +290,7 @@ describe('npm compatibility adapter on private filesystem fixtures', () => {
     const runner = recordingRunner(() => ({ stdout: `${fixture.globalRoot}\n` }));
     await expect(inspectGlobalInstallation({ currentVersion: '0.12.3' }, fixture.neutralDirectory, host(runner)))
       .rejects.toMatchObject({ status: 'blocked', reasonCode: 'unsupported_installation' });
-    expect(runner.calls.map(({ command }) => command.args)).toEqual([['root', '--global']]);
+    expect(runner.calls).toEqual([]);
   });
 
   it.each<[string, (root: string) => Partial<CommandResult>]>([

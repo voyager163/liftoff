@@ -9,6 +9,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -340,6 +344,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -676,6 +684,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -951,6 +963,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -1345,6 +1361,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -1676,6 +1696,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -2011,6 +2035,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -2344,6 +2372,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -2617,6 +2649,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -2831,6 +2867,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -3104,6 +3144,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -3439,6 +3483,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -3735,6 +3783,10 @@
         }
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -4021,6 +4073,10 @@
           "stdout": null,
           "stderr": null
         }
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -4390,6 +4446,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -4686,6 +4746,10 @@
         }
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -4972,6 +5036,10 @@
           "stdout": null,
           "stderr": null
         }
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -5341,6 +5409,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -5637,6 +5709,10 @@
         }
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -5923,6 +5999,10 @@
           "stdout": null,
           "stderr": null
         }
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -6152,6 +6232,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -6448,6 +6532,10 @@
         }
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -6734,6 +6822,10 @@
           "stdout": null,
           "stderr": null
         }
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -6963,6 +7055,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -7259,6 +7355,10 @@
         }
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -7545,6 +7645,10 @@
           "stdout": null,
           "stderr": null
         }
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -7914,6 +8018,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -8210,6 +8318,10 @@
         }
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -8496,6 +8608,10 @@
           "stdout": null,
           "stderr": null
         }
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -8801,6 +8917,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -9097,6 +9217,10 @@
         }
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -9383,6 +9507,10 @@
           "stdout": null,
           "stderr": null
         }
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -9676,6 +9804,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -9764,6 +9896,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -9856,6 +9992,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -9946,6 +10086,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -10034,6 +10178,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -10128,6 +10276,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/home/dev/.npm/_npx/fixture/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -10228,6 +10380,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -10324,6 +10480,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -10432,6 +10592,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -10536,6 +10700,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -10693,6 +10861,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -10844,6 +11016,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -10999,6 +11175,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -11150,6 +11330,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -11305,6 +11489,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -11456,6 +11644,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -11611,6 +11803,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -11762,6 +11958,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -12094,6 +12294,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "c:\\users\\dev\\appdata\\roaming\\npm\\node_modules\\@msn-control\\liftoff\\.git"
       },
       {
         "run": {
@@ -12430,6 +12634,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "C:\\Users\\Dev\\AppData\\Roaming\\npm\\node_modules\\@msn-control\\liftoff\\.git"
+      },
+      {
         "run": {
           "executable": "npm.cmd",
           "args": [
@@ -12726,6 +12934,10 @@
         }
       },
       {
+        "fs": "lstat",
+        "path": "C:\\Users\\Dev\\AppData\\Roaming\\npm\\node_modules\\@msn-control\\liftoff\\.git"
+      },
+      {
         "run": {
           "executable": "npm.cmd",
           "args": [
@@ -13012,6 +13224,10 @@
           "stdout": null,
           "stderr": null
         }
+      },
+      {
+        "fs": "lstat",
+        "path": "C:\\Users\\Dev\\AppData\\Roaming\\npm\\node_modules\\@msn-control\\liftoff\\.git"
       },
       {
         "run": {
@@ -13379,6 +13595,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/opt/homebrew/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -13973,6 +14193,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -14526,6 +14750,10 @@
         }
       },
       {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -15069,6 +15297,10 @@
           "stdout": null,
           "stderr": null
         }
+      },
+      {
+        "fs": "lstat",
+        "path": "/usr/local/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -15769,6 +16001,10 @@
         "detail": null
       },
       {
+        "fs": "lstat",
+        "path": "/opt/homebrew/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -16295,6 +16531,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/opt/homebrew/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {
@@ -16850,6 +17090,10 @@
         }
       },
       {
+        "fs": "lstat",
+        "path": "/opt/homebrew/lib/node_modules/@msn-control/liftoff/.git"
+      },
+      {
         "run": {
           "executable": "npm",
           "args": [
@@ -17023,6 +17267,10 @@
       {
         "stage": "Inspect installation owner",
         "detail": null
+      },
+      {
+        "fs": "lstat",
+        "path": "/opt/homebrew/lib/node_modules/@msn-control/liftoff/.git"
       },
       {
         "run": {

@@ -86,7 +86,8 @@ export async function admitNativeStableMaterial(
       const content = material.assets.get(String(asset.filename));
       const maximum = asset.filename === names[0] ? 1024 * 1024 * 1024 : 8 * 1024 * 1024;
       if (!content || content.length === 0 || content.length > maximum ||
-        asset.bytes !== content.length || asset.sha256 !== hash(content) || asset.mode !== 0o644) throw new Error('Deployed release asset differs.');
+        asset.bytes !== content.length || asset.sha256 !== hash(content) ||
+        asset.mode !== (record.target === 'win32-x64' ? 0o666 : 0o644)) throw new Error('Deployed release asset differs.');
     }
     const platformEvidence = object(evidence.evidenceDigests);
     if (material.platformEvidence.size !== Object.keys(platformEvidence).length) throw new Error('Qualification evidence inventory differs.');

@@ -211,6 +211,16 @@ export async function inspectGlobalInstallation(
   neutralDirectory: string,
   dependencies: SelfUpgradeDependencies
 ): Promise<InstallationInspection> {
+  const pathApi = pathApiForPlatform(dependencies.platform);
+  let checkoutMarker: Stats | undefined;
+  try {
+    checkoutMarker = await dependencies.lstat(pathApi.join(request.runningPackageRoot ?? sourcePackageRoot, '.git'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
+    }
+  }
+  if (checkoutMarker) throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
   const npmExecutable = npmExecutableForPlatform(dependencies.platform);
   const rootResult = await dependencies.runner.run(
     { executable: npmExecutable, args: ['root', '--global'] },
@@ -232,7 +242,6 @@ export async function inspectGlobalInstallation(
   if (rootLines.length !== 1) {
     throw new SelfUpgradeFailure('blocked', 'invalid_global_root');
   }
-  const pathApi = pathApiForPlatform(dependencies.platform);
   const reportedRoot = rootLines[0];
   if (!pathApi.isAbsolute(reportedRoot)) {
     throw new SelfUpgradeFailure('blocked', 'invalid_global_root');
