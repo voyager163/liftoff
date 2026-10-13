@@ -314,30 +314,40 @@ public static class Win32JobNative {
 
 try {
     [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: loading-compiler")
-    Import-Module ([System.IO.Path]::Combine($PSHOME, 'Microsoft.PowerShell.Commands.Utility.dll')) -Cmdlet Add-Type -ErrorAction Stop
+    if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+        [Console]::Error.WriteLine("ConstrainedLanguage mode does not permit Win32 Job API compilation.")
+        exit 1
+    }
+    $utilityAssembly = [System.Reflection.Assembly]::LoadFrom([System.IO.Path]::Combine($PSHOME, 'Microsoft.PowerShell.Commands.Utility.dll'))
+    $compilerCmdlet = [System.Management.Automation.CmdletInfo]::new('Add-Type', $utilityAssembly.GetType('Microsoft.PowerShell.Commands.AddTypeCommand', $true))
+    $newObjectCmdlet = [System.Management.Automation.CmdletInfo]::new('New-Object', $utilityAssembly.GetType('Microsoft.PowerShell.Commands.NewObjectCommand', $true))
+    $toJsonCmdlet = [System.Management.Automation.CmdletInfo]::new('ConvertTo-Json', $utilityAssembly.GetType('Microsoft.PowerShell.Commands.ConvertToJsonCommand', $true))
+    $fromJsonCmdlet = [System.Management.Automation.CmdletInfo]::new('ConvertFrom-Json', $utilityAssembly.GetType('Microsoft.PowerShell.Commands.ConvertFromJsonCommand', $true))
+    $sleepCmdlet = [System.Management.Automation.CmdletInfo]::new('Start-Sleep', $utilityAssembly.GetType('Microsoft.PowerShell.Commands.StartSleepCommand', $true))
+    $writeErrorCmdlet = [System.Management.Automation.CmdletInfo]::new('Write-Error', $utilityAssembly.GetType('Microsoft.PowerShell.Commands.WriteErrorCommand', $true))
     [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: compiling")
-    Microsoft.PowerShell.Commands.Utility\Add-Type -TypeDefinition $win32TypeDef -ErrorAction Stop
+    & $compilerCmdlet -TypeDefinition $win32TypeDef -ErrorAction Stop
 } catch {
-    Write-Error "Failed to load Win32 Job API definitions. Check LanguageMode and ExecutionPolicy: $_"
+    [Console]::Error.WriteLine("Failed to load Win32 Job API definitions. Check the built-in compiler, LanguageMode and ExecutionPolicy.")
     exit 1
 }
 
 # Connect to the private control pipe
-$pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', $ControlPipeName, [System.IO.Pipes.PipeDirection]::InOut, [System.IO.Pipes.PipeOptions]::Asynchronous)
+$pipe = & $newObjectCmdlet System.IO.Pipes.NamedPipeClientStream('.', $ControlPipeName, [System.IO.Pipes.PipeDirection]::InOut, [System.IO.Pipes.PipeOptions]::Asynchronous)
 try {
     [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: connecting")
     $pipe.Connect(30000)
     [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: connected")
 } catch {
-    Write-Error "Failed to connect to control pipe $ControlPipeName : $_"
+    & $writeErrorCmdlet "Failed to connect to control pipe $ControlPipeName : $_"
     exit 1
 }
 
 function Send-ControlFrame($stream, $obj) {
-    $json = $obj | ConvertTo-Json -Compress -Depth 10
+    $json = $obj | & $toJsonCmdlet -Compress -Depth 10
     $payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($json)
     $len = $payloadBytes.Length
-    $header = New-Object byte[] 4
+    $header = & $newObjectCmdlet byte[] 4
     $header[0] = [byte](($len -shr 24) -band 0xFF)
     $header[1] = [byte](($len -shr 16) -band 0xFF)
     $header[2] = [byte](($len -shr 8) -band 0xFF)
@@ -348,7 +358,7 @@ function Send-ControlFrame($stream, $obj) {
 }
 
 function Read-ControlFrame($stream) {
-    $header = New-Object byte[] 4
+    $header = & $newObjectCmdlet byte[] 4
     $read = 0
     while ($read -lt 4) {
         $n = $stream.Read($header, $read, 4 - $read)
@@ -359,7 +369,7 @@ function Read-ControlFrame($stream) {
     if ($len -le 0 -or $len -gt 262144) {
         throw "Invalid control frame length: $len"
     }
-    $payload = New-Object byte[] $len
+    $payload = & $newObjectCmdlet byte[] $len
     $read = 0
     while ($read -lt $len) {
         $n = $stream.Read($payload, $read, $len - $read)
@@ -367,12 +377,12 @@ function Read-ControlFrame($stream) {
         $read += $n
     }
     $json = [System.Text.Encoding]::UTF8.GetString($payload)
-    return $json | ConvertFrom-Json
+    return $json | & $fromJsonCmdlet
 }
 
 $hJob = [IntPtr]::Zero
 $hProcess = [IntPtr]::Zero
-$pi = New-Object Win32JobNative+PROCESS_INFORMATION
+$pi = & $newObjectCmdlet Win32JobNative+PROCESS_INFORMATION
 $attributeList = [IntPtr]::Zero
 $pJobHandle = [IntPtr]::Zero
 $pExtendedInfo = [IntPtr]::Zero
@@ -677,7 +687,7 @@ try {
     }
 
     # Begin asynchronous read on control pipe to detect parent disconnect or abort
-    $pipeBuffer = New-Object byte[] 1
+    $pipeBuffer = & $newObjectCmdlet byte[] 1
     $pipeAsync = $pipe.BeginRead($pipeBuffer, 0, 1, $null, $null)
 
     # Monitor root process and Job accounting
@@ -703,8 +713,8 @@ try {
         # Check output limits if files are present
         if ($hasStdHandles) {
             $currentBytes = 0
-            if ([System.IO.File]::Exists($req.stdoutFile)) { $currentBytes += (New-Object System.IO.FileInfo($req.stdoutFile)).Length }
-            if ([System.IO.File]::Exists($req.stderrFile)) { $currentBytes += (New-Object System.IO.FileInfo($req.stderrFile)).Length }
+            if ([System.IO.File]::Exists($req.stdoutFile)) { $currentBytes += (& $newObjectCmdlet System.IO.FileInfo($req.stdoutFile)).Length }
+            if ([System.IO.File]::Exists($req.stderrFile)) { $currentBytes += (& $newObjectCmdlet System.IO.FileInfo($req.stderrFile)).Length }
             if ($currentBytes -gt $maxBytes) {
                 $outputLimitExceeded = $true
                 [Win32JobNative]::TerminateJobObject($hJob, 1) | Out-Null
@@ -734,8 +744,8 @@ try {
                 # Recheck output limit before declaring clean natural settlement
                 if ($hasStdHandles) {
                     $finalBytes = 0
-                    if ([System.IO.File]::Exists($req.stdoutFile)) { $finalBytes += (New-Object System.IO.FileInfo($req.stdoutFile)).Length }
-                    if ([System.IO.File]::Exists($req.stderrFile)) { $finalBytes += (New-Object System.IO.FileInfo($req.stderrFile)).Length }
+                    if ([System.IO.File]::Exists($req.stdoutFile)) { $finalBytes += (& $newObjectCmdlet System.IO.FileInfo($req.stdoutFile)).Length }
+                    if ([System.IO.File]::Exists($req.stderrFile)) { $finalBytes += (& $newObjectCmdlet System.IO.FileInfo($req.stderrFile)).Length }
                     if ($finalBytes -gt $maxBytes) {
                         $outputLimitExceeded = $true
                         $terminated = $true
@@ -763,7 +773,7 @@ try {
                 $acct = [System.Runtime.InteropServices.Marshal]::PtrToStructure($pAccounting, [type][Win32JobNative+JOBOBJECT_BASIC_ACCOUNTING_INFORMATION])
                 if ($acct.ActiveProcesses -eq 0) { break }
             }
-            Start-Sleep -Milliseconds 25
+            & $sleepCmdlet -Milliseconds 25
         }
     }
 
