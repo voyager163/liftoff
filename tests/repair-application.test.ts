@@ -197,7 +197,32 @@ describe('bounded application inventory and executable staged patch', () => {
       await applicationVerificationFixtureContext(root, candidate, { projectCode: true, dependencyPreparation: false, network: false }, {
         env: { ...process.env, APPLICATION_FIXTURE_SECRET: 'PRIVATE_INHERITED_CREDENTIAL' }
       }));
-    expect(verified.status, verified.blockers.join('; ')).toBe('passed');
+    const runnerOutcomes = await Promise.allSettled(spy.mock.results
+      .filter((result) => result.type === 'return').map((result) => result.value));
+    const diagnosticCodes = [
+      'SUPERVISOR_TIMEOUT', 'JOB_EXECUTION_ERROR', 'LOG_CLEANUP_FAILED',
+      'INVALID_CONTROL_FRAME', 'INVALID_CONTROL_RESPONSE', 'CONTROL_PIPE_ERROR',
+      'CONTROL_PIPE_DISCONNECTED', 'CONTROLLER_EXITED_UNEXPECTEDLY',
+      'CONTROLLER_LAUNCH_FAILED', 'POWERSHELL_SPAWN_FAILED', 'AUTHENTICATION_FAILED',
+      'ADMISSION_DENIED', 'SPAWN_REQUEST_FAILED', 'CONTROL_SERVER_ERROR',
+      'UNSUPPORTED_PROCESS_SETTLEMENT', 'CORRUPTED_CONTROLLER_ASSET', 'ABORTED', 'ENOENT'
+    ];
+    const runnerDiagnostics = runnerOutcomes.map((outcome) => {
+      if (outcome.status !== 'fulfilled') return { rejected: true };
+      const raw = outcome.value;
+      return {
+        exit: Number.isSafeInteger(raw.status) ? raw.status === 0 ? 'zero' : 'nonzero' : 'unknown',
+        timedOut: typeof raw.timedOut === 'boolean' ? raw.timedOut : null,
+        errorCode: diagnosticCodes.includes(raw.errorCode ?? '') ? raw.errorCode : 'unknown',
+        processSpawned: typeof raw.processSpawned === 'boolean' ? raw.processSpawned : null,
+        processTreeSettled: typeof raw.processTreeSettled === 'boolean' ? raw.processTreeSettled : null,
+        supervisorPhase: raw.errorCode === 'SUPERVISOR_TIMEOUT'
+          ? /during (startup|execution) without reporting settlement/u.exec(raw.errorMessage ?? '')?.[1] ?? null : null,
+        controllerStage: raw.errorCode === 'SUPERVISOR_TIMEOUT'
+          ? /controller=(loading-compiler|compiling|connecting|connected|not-reported),/u.exec(raw.errorMessage ?? '')?.[1] ?? null : null
+      };
+    });
+    expect(verified.status, `${verified.blockers.join('; ')}; runner metadata: ${JSON.stringify(runnerDiagnostics)}`).toBe('passed');
     expect(verified.commands).toHaveLength(2);
     expect(verified.commands.every((item) => item.status === 0 && item.passed)).toBe(true);
     expect(verified).toMatchObject({ inspectedProjectUnchanged: true, cleanupComplete: true, candidateDigest: applicationCandidateDigest(candidate) });
