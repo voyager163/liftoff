@@ -69,7 +69,7 @@ export function renderTofuRootVariables(plan: ApiProjectPlan, environment: strin
 export function renderTofuRootMain(plan: ApiProjectPlan): string {
   const variables = [
     'environment', 'location', 'resource_suffix', 'backend_image', 'backend_target_port',
-    'postgres_admin_password', 'enable_private_networking',
+    'postgres_admin_password', 'enable_private_networking', 'liftoff_activation_ownership',
     ...(plan.includeFrontend ? ['frontend_image'] : []),
     ...(hasFunctionWorker(plan) ? ['function_worker_queue_name', 'functions_python_version'] : [])
   ];
@@ -167,6 +167,16 @@ variable "enable_private_networking" {
   type        = bool
   default     = false
   description = "Enable production-oriented private-networking-ready settings."
+}
+
+variable "liftoff_activation_ownership" {
+  type = object({
+    bootstrap_binding_digest    = string
+    prerequisite_binding_digest = string
+  })
+  default     = null
+  nullable    = true
+  description = "Protected activation ownership bindings. Leave null for ordinary or independently governed use."
 }
 ${functionVariables}
 `;
@@ -322,9 +332,31 @@ resource "azurerm_role_assignment" "function_storage_blob_contributor" {
   principal_id         = azurerm_user_assigned_identity.worker.principal_id
 }
 ` : '';
-  return `resource "azurerm_resource_group" "main" {
+  return `locals {
+  liftoff_bootstrap_binding_digest = var.liftoff_activation_ownership == null ? null : regex(
+    "^[a-f0-9]{64}$",
+    var.liftoff_activation_ownership.bootstrap_binding_digest
+  )
+  liftoff_prerequisite_binding_digest = var.liftoff_activation_ownership == null ? null : regex(
+    "^[a-f0-9]{64}$",
+    var.liftoff_activation_ownership.prerequisite_binding_digest
+  )
+  liftoff_resource_group_ownership_tags = var.liftoff_activation_ownership == null ? null : {
+    "liftoff-managed-by"  = "liftoff"
+    "liftoff-phase"       = "bootstrap-local"
+    "liftoff-environment" = var.environment
+    "liftoff-binding"     = local.liftoff_bootstrap_binding_digest
+  }
+  liftoff_application_ownership_tags = var.liftoff_activation_ownership == null ? null : {
+    "liftoff-environment" = var.environment
+    "liftoff-binding"     = local.liftoff_prerequisite_binding_digest
+  }
+}
+
+resource "azurerm_resource_group" "main" {
   name     = "${names.resourceGroup}"
   location = var.location
+  tags     = local.liftoff_resource_group_ownership_tags
 }
 
 resource "azurerm_container_registry" "main" {
@@ -333,12 +365,14 @@ resource "azurerm_container_registry" "main" {
   location            = azurerm_resource_group.main.location
   sku                 = "Basic"
   admin_enabled       = false
+  tags                = local.liftoff_application_ownership_tags
 }
 
 resource "azurerm_user_assigned_identity" "app" {
   name                = "${names.identity}"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
+  tags                = local.liftoff_application_ownership_tags
 }
 
 resource "azurerm_role_assignment" "acr_pull" {
@@ -667,6 +701,15 @@ is never that proof. Confirmed partial operation handles are retained for
 observation, not redispatch; changed source, tag/digest or authority blocks.
 Workflow publication and application deployment remain separate unavailable
 phases. Source fixtures do not satisfy real disposable task13/task14 qualification.
+
+Generated roots keep \`liftoff_activation_ownership = null\` by default and do
+not emit reserved Liftoff ownership tags in ordinary, Manual, governance-none,
+or not-yet-activated use. A protected execution may supply the closed two-digest
+object only through its ephemeral \`liftoff.auto.tfvars.json\` overlay, using the
+original verified bootstrap and application-prerequisite binding digests.
+Missing, malformed, extra, current-recomputed, or mismatched ownership evidence
+is a configuration mismatch; generated tfvars never contain these private values.
+The HCL retains AcrPull only. AcrPush stays externally owned and is not declared.
 
 The current artifact dispatch selects a mutable default-branch ref. Earlier
 readback/guards and later provenance refusal cannot prevent an unreviewed

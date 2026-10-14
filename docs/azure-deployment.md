@@ -178,6 +178,9 @@ and `governance resume --json` describe these two application executors as
 readiness or approval to run the source adapters. CLI review history covers each
 scope separately; its frozen captures, normalization, prior records, exit codes
 and stderr are preserved.
+Forward source integration retains both the application disclosure review and
+the six separately reviewed HCL fingerprint/planning-digest changes. Neither
+static contract data nor an installed package supplies execution authority.
 
 `application-prerequisites-ready` accepts only the selected declared environment,
 `registrySku: "Basic"` and explicit `assignRegistryRoles: true`, with nonzero

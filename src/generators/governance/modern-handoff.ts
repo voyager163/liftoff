@@ -23,7 +23,18 @@ function frameworkMeaning(selection: HandoffSelection): string {
   }`;
 }
 
-function supportBoundary(selection: HandoffSelection): string {
+function supportBoundary(selection: HandoffSelection, currentSource: boolean): string {
+  const installedCatalog = currentSource
+    ? `Project-independent \`liftoff capabilities --json\`, \`liftoff --help\`,
+\`liftoff --version\` and \`liftoff repair --capabilities --json\` describe the
+installed CLI without project discovery or execution. The general capability
+catalog is a read-only contract, not proof that this source is currently
+accepted; the repair capability report alone does not declare v8 manifest
+support. Do not invent a supported-manifest response field.`
+    : `Project-independent \`liftoff --help\`, \`liftoff --version\` and
+\`liftoff repair --capabilities --json\` describe the installed CLI; the repair
+capability report alone does not declare v8 manifest support.
+Do not invent a capabilities command or a supported-manifest response field.`;
   return `## Source contract, not execution permission
 
 This handoff targets manifest 8 and ${selection.profile === 'none' ? 'disabled governance' : `the ${selection.profile} modern governance source`}.
@@ -35,10 +46,7 @@ An existing read-only compatibility probe is
 \`liftoff governance status --scope local --json\` from the exact project.
 If it reports an unsupported manifest or identity, STOP: do not edit versions,
 retag proof, reinitialize, manufacture receipts or emulate an unavailable command.
-Project-independent \`liftoff --help\`, \`liftoff --version\` and
-\`liftoff repair --capabilities --json\` describe the installed CLI; the repair
-capability report alone does not declare v8 manifest support.
-Do not invent a capabilities command or a supported-manifest response field.
+${installedCatalog}
 
 Only a CLI that actually accepts this exact source and reports its applicable
 operation may supply a next action. Preserve its executable, argument array, cwd,
@@ -50,7 +58,11 @@ ${frameworkMeaning(selection)}
 `;
 }
 
-export function renderModernGovernanceGuide(context: ModernGovernanceContext, graph: ModernPhaseGraph): string {
+export function renderModernGovernanceGuide(
+  context: ModernGovernanceContext,
+  graph: ModernPhaseGraph,
+  currentSource = true
+): string {
   const identity = context.governance.activationIdentity;
   if (identity.phaseGraphHash !== canonicalSha256(graph) ||
     graph.profileContract.profile !== identity.profile || graph.workflowContract.workflow !== identity.workflow) {
@@ -85,7 +97,7 @@ Activation contract: ${identity.activationContractVersion}; graph: ${identity.ph
 Policy digest: ${identity.policyDigest}.
 Live enforcement: **not observed**. No branches, settings, tools, resources or providers were changed.
 
-${supportBoundary(selection)}
+${supportBoundary(selection, currentSource)}
 ## Selected integrations
 
 ${invocations}
@@ -135,13 +147,14 @@ distinct outcomes; report committed-but-incomplete work without automatic downgr
 export function renderModernGovernanceIntegration(
   agent: CodingAgentId,
   operation: 'setup' | 'assessment' | 'repair',
-  selection: HandoffSelection
+  selection: HandoffSelection,
+  currentSource = true
 ): string {
   if (!selection.project.agents.some((selected) => selected === agent) || selection.profile === 'none' && operation !== 'repair') {
     throw new Error('Modern integration is not applicable to the selected agent/profile.');
   }
   const introduction = `${nativeIntegrationHeader(agent, operation)}
-${supportBoundary(selection)}
+${supportBoundary(selection, currentSource)}
 `;
   if (operation === 'repair') {
     return `${introduction}

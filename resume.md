@@ -24,9 +24,10 @@ remaining work, and cautions needed to continue the OpenSpec change
   branch. The tip containing this MacBook-return update is a later handoff commit.
 - The branch tip containing this file is the handoff commit. After fetching,
   run `git rev-parse HEAD` to record its full SHA.
-- OpenSpec progress remains 81/136 tasks complete; 55 remain.
-- Task 13.5 remains unchecked after failed Windows full-suite/coverage
-  qualification. Task 13.6 also remains unchecked; task 13.7 is complete.
+- OpenSpec progress is 82/136 tasks complete; 54 remain.
+- Task 13.5 is complete after exact hosted-native qualification and independent
+  artifact re-judgment on clean revision `94f0d63e`. Task 13.6 remains
+  unchecked; task 13.7 is complete.
 - Read "MacBook return checkpoint, 2026-10-12" below first for the latest
   transfer status and next actions; earlier sections retain the original
   architecture and qualification history.
@@ -52,8 +53,9 @@ Fetching only `feature/state-custody-readiness` omits both Windows handoff
 updates. The continuation branch is a documentation successor, not a new
 implementation layer or a registered native-stack member.
 
-Do not squash, rebase, reset, regenerate baselines, or mark task 13.5 complete
-before reading this file and the OpenSpec artifacts.
+Do not squash, rebase, reset, regenerate baselines, or reinterpret task 13.5's
+passing hosted-native evidence before reading this file and the OpenSpec
+artifacts.
 
 ## Original modernization objective
 
@@ -128,7 +130,7 @@ Live GitHub state last verified on 2026-10-11:
   app-native PR, bottom to top; do not replace that with ordinary `gh pr create`
   merely because linkage is unavailable.
 
-## Current focus: OpenSpec task 13.5
+## Completed milestone: OpenSpec task 13.5
 
 Task 13.5:
 
@@ -136,9 +138,12 @@ Task 13.5:
 > admission; verify absent protected storage/keys/locking blocks rather than
 > falling back to plaintext or an unapproved execution host.
 
-The implementation is complete enough for focused validation, but repository
-qualification and source-complete coverage remain pending. Therefore the task
-checkbox is still open.
+The implementation and exact hosted-native qualification are complete. Run
+`38359670554`, attempt 1, passed on clean revision `94f0d63e`; the independent
+audit described in the latest checkpoint below re-judged the raw reports
+against a fresh archive of those committed bytes. Task 13.5 is checked. Task
+13.6 remains a distinct authorization/capability gate and is not implied by
+this result.
 
 ### Implemented custody model
 
@@ -1620,3 +1625,1698 @@ Downstream ownership remains separate:
   application-artifact owner. It has its own concrete producer/adapter tests
   and must ordinary-forward-merge this continuation's final corrected parent
   before its own qualification. Do not duplicate or import that source here.
+
+## Hosted native custody qualification passed, 2026-10-13
+
+The setup correction was committed and pushed as
+`94f0d63e4294a809bf7e3592d6434f0dc1f33e57`
+(`fix: correct hosted native qualification profile`). The remote
+`origin/voyager163-liftoff-modernization` read back that exact SHA and the
+worktree was clean. Required ancestry through `c23d1842`, `2914f0f`,
+`d6222b3`, and `2785087c` remained intact. No task checkbox changed in that
+source-repair commit.
+
+Exactly one replacement `Repository setup` workflow was dispatched:
+
+- Run: `38359670554`, attempt 1, `workflow_dispatch`.
+- Exact head:
+  `94f0d63e4294a809bf7e3592d6434f0dc1f33e57`.
+- Native job: `115170628167`, completed `SUCCESS`.
+- Repository-policy job: `115170628289`, completed `SUCCESS`.
+- Artifact: `11804615717`,
+  `liftoff-native-custody-38359670554-1`, 4,982,748 bytes.
+
+The native job ran from `2026-10-13T06:57:18Z` through
+`2026-10-13T10:18:30Z`. Every named gate recorded `success`: exact toolchain,
+clean start, supported stack, build, unfiltered full suite, source-complete
+coverage, independent coverage verification, focused custody/history checks,
+package smoke, repository policy, strict OpenSpec validation, and clean finish.
+The evidence records darwin/arm64 with Node 24.21.0, npm 12.0.2, OpenTofu
+1.12.6, OpenSpec 1.11.0, Go 1.27.0, Python 3.14.7, uv 0.12.7, Docker 29.8.2
+build `7fc2dff`, Compose 5.5.1, and the exact complete OpenSpec content profile
+`sha256:05d52efd0875c1ff0c1bd0aec13f7128a4baab787ea6b31f33fa7360cd53bde2`.
+
+The raw unfiltered full suite passed 305 files and skipped five intentional
+host/profile files, for 310 result files total: 10,206 tests passed, zero
+failed, and 117 were explicitly skipped. The source-complete coverage run
+recorded the same zero-failure test totals and a complete clean inventory:
+
+- 506 runtime source files,
+  `sha256:8d71186fbe98052b903b46db90751c103b5553390527adb73f41dca081b6f50e`.
+- 404 test/input files,
+  `sha256:5a4202929c20f2ab9c54a77778ef22d712af353eb24d196c6fbda25947266e38`,
+  including all 310 executable `.test.ts` files.
+- Five configuration/gate files,
+  `sha256:63b6e933a0e58b7a551e8e0794067fa29130736bb48b31d27bbcad935b13f2f8`.
+- Statements: 39,911/44,525, **89.6372%**.
+- Branches: 35,103/41,036, **85.5419%**.
+- Functions: 7,503/7,904, **94.9266%**.
+- Lines: 35,322/38,459, **91.8432%**.
+
+All four integer ratios are strictly greater than 80%; no source exclusion,
+threshold change, deadline change, snapshot refresh, baseline regeneration, or
+failed-evidence reuse was used. The focused custody/history selection also
+passed 15/15 files, 472 tests passed, one intentional case skipped, and zero
+failed. Package smoke, repository policy, strict OpenSpec validation, and both
+clean-tree gates passed on the same committed revision.
+
+The complete raw run metadata, jobs metadata, artifact, job log, extracted
+reports, and independent receipt are retained outside the repository under
+`files/native-custody-38359670554/`. Immutable hashes include:
+
+- Artifact ZIP:
+  `c5aa44ae885f2e21162f067cda731f07aadb9a42a106bc808b1afaafc2e9d444`.
+- Native job log:
+  `749601857a76162852671c0d934e85f23129b8dc5a6770d7b3c2646c6976e311`.
+- Native evidence:
+  `2c09ba7b6fb91837339aaeb8a5317823449a7967ec556b2ec98e47ab678b7889`.
+- Coverage evidence:
+  `db0422656b4d2257db3f36a1f8384685be3ee43830b0af85cee315b23c68fa8e`.
+- Full-suite log:
+  `1b42f050fb329e1fedbe6d268936db76cc99fd489d1e49321de60478a2c7ee1b`.
+- Coverage log:
+  `31ab26ca9a33aa87e56efd6c767993932e5181a875d5000d6564802e407b463d`.
+- Independent audit receipt:
+  `6bb8ab8c24348e5f50ce534bf6a1cc78391270013d5a7e471785d66022ec7c69`.
+
+The independent audit did not trust the stored passing verdict. It reconstructed
+the exact committed tree with `git archive`, recomputed source, test, and
+configuration inventories, verified every raw report used the uniform hosted
+runner root, relocated only that absolute path prefix into the fresh archive,
+and ran the repository's verifier again. Re-judgment returned `passed` with an
+empty failure list and the exact raw integer metrics above.
+
+Task 13.5 is therefore complete and OpenSpec progress is 82/136. Task 13.6
+remains unchecked: no approved disposable cloud scope, production
+custody/handover ports, or authorized real-cloud operation was supplied. The
+existing Korea Central telemetry and state resources remain explicitly outside
+task-13.6 scope and must not be borrowed for writes or qualification.
+
+Downstream source ownership remains separate. Task-14.1 owner session
+`68be53ea-3101-4b13-b2a8-e520cecb7a48` explicitly admitted `94f0d63e` as its
+source parent and now owns source head
+`efa749cf9276db76bc27c4e42d1c78c0b6bad80b` in draft PR 164, with 546 selected
+tests and no real/native qualification flag. Task-14.3 owner session
+`e1389524-41f1-47aa-8c43-4bf14b14cf20` alone owns the current-only protected
+execution contract proposal from schema family 4 to 5. Released-v3,
+pre-custody, current-family-4, and v7 history remain readable and immutable;
+there is no implicit migration or cloud effect. Do not duplicate either
+owner's source in this continuation.
+
+## Task 13.6 partial native qualification, 2026-10-13
+
+The safe native-only portion of task 13.6 was exercised on exact clean
+documentation successor
+`67eb20f0ea3c7ecbe97d639130d653888524ad15`. The first wrapper invocation
+exited before starting because the ambient shell had no `python` command; it
+created no fixture and changed no repository bytes. The lane was immediately
+rerun with the preserved qualified CPython 3.14.7 executable, OpenTofu 1.12.6,
+Node 24.21.0, and npm 12.0.2.
+
+The explicit `LIFTOFF_NATIVE_STATE_QUALIFICATION=1` lane passed both tests in
+`tests/state-backend-native-qualification.test.ts` with zero failures. It used
+only a fresh private scratch directory, the builtin `terraform_data` resource,
+empty credentials, and a filesystem-only empty provider mirror. The result is
+scope `synthetic-disposable-only`, records `azureLiveQualification:
+not-performed`, and does not claim atomic crash-safe replacement.
+
+The actual native result verified all 20 declared checks, including mutual
+OpenTofu/fcntl exclusion, observer descriptor-close behavior, exact pre-acquire
+metadata preservation, an actual module address move, stable lineage/resource
+identity, an actual no-change plan, same-inode conditional publication,
+stale-write rejection, replaced/unlinked inode lock-loss detection, preservation
+of the newer native writer and its lock metadata, and rejection of absent
+destination/unlink retirement. Tool/result identities were:
+
+- Native host:
+  `native-host:a9e3d703d3efc5f5840c137826212ed5a50ed4bb65a806390ec311cc94abefa0`.
+- OpenTofu binary:
+  `0445d7cc114d24440af150b1ddec600f4e4c3e6af16ba63a9a7d42054ae970e3`.
+- CPython binary:
+  `16a1bac7c40871327d591833239cafc6cd060b4d199d3aa4b3048b8d69644bce`.
+- Native protocol:
+  `bef6fcb34e93bd9029667de242273c653d95462da7da4ee75949ac127774a607`,
+  tied to immutable OpenTofu source commit
+  `b4305e5a5dd2fb79a27897ae30784a181d3a26cb`.
+- Observed volume: APFS, FileVault enabled, encrypted, owner-only, and not
+  currently locked.
+
+The raw 2,526-byte log is retained as
+`files/native-state-qualification-67eb20f0/native-state.log` with SHA-256
+`5cb7ee2852be3313d8a870606b09acaa968df925ee3cc1e9e2ef9738102e3226`.
+The structured partial receipt has SHA-256
+`3b62a191cc5915f8d8191335b3ab3f026af05ce5d0b59532708c99341ead11f6`.
+
+Task 13.6 remains unchecked. This native scratch result is real local-state
+evidence, but it is not production custody/handover qualification and performs
+no Azure operation. Completion still requires explicitly approved disposable
+cloud scope plus the missing production adapters and authority; existing Korea
+Central resources remain excluded.
+
+Native successor stack 162 remains ordered `[158, 159, 161]`. PRs 158 and 159
+are green and mergeable, but PR 161 current head
+`5adcb6c18257139a1f70d398c0a929233d3262a1` is not landable. Run
+`38366776115` failed two Windows cases: an `EBUSY` cleanup of the OpenTofu
+AzureRM provider in `repair-command.test.ts`, and a process-supervisor startup
+timeout before target dispatch in `repair-application.test.ts`. The unchanged
+15-second startup supervisor fired at `loading-compiler`; the public
+30-second target budget never began. No deadline was changed, no old evidence
+was relabeled, and the PR-161 owner retains the repair/forward-integration
+scope. Do not invoke native cascading merge until a fresh exact-head run is
+fully green.
+
+## Native distribution parent audit and active owner state, 2026-10-13
+
+The current native-distribution parent in draft PR 160 is exact head
+`b65515ccfb83a19972574340ad45a11c09c79710`. Repository run
+`38367272627` and repository-setup run `38367272614` both completed
+successfully at that exact head; all 23 repository jobs succeeded. An
+independent coordinator audit downloaded the four native artifacts and both
+coverage artifacts rather than relying on the PR-body verdict.
+
+Every one of the 16 files declared by the four native release manifests had
+the exact uploaded byte count and SHA-256 value. The actual installed/package
+reports recorded:
+
+- macOS arm64: 105 passed, zero failed, five explicitly unrun;
+- Linux x64: 95 passed, zero failed, four explicitly unrun;
+- Linux arm64: 95 passed, zero failed, four explicitly unrun; and
+- Windows x64: 79 passed, zero failed, 20 explicitly unrun.
+
+The unrun cases remain named foreign-host/platform cases and are not evidence
+for their behavior. The retained archive extraction case passed on every
+applicable target. The exact clean-head coverage evidence independently
+records:
+
+- CLI statements/branches/functions/lines:
+  85.1061%/80.8105%/90.8900%/88.1403%, 9,905 passed, zero failed, 377
+  explicitly unrun, 497 source files.
+- Gateway statements/branches/functions/lines:
+  94.1860%/81.6143%/94.1176%/95.1020%, 211 passed, zero failed or unrun,
+  four source files.
+
+The audit receipt is retained outside the repository as
+`files/native-distribution-b65515cc/independent-audit.json`, SHA-256
+`9b08a36260d21a16d2caf2f5c0270d356f92592cbb55a97eacddb52da7a70805`.
+It qualifies exact-source development-bundle/archive proof only. Every native
+manifest still states `releaseReady: false`; minimum-host, installer ownership,
+signing, notarization, package namespace, and HCL source-correspondence flags
+remain false. Tasks 9.2-9.6 and 9.8 remain incomplete, and no artifact was
+published.
+
+Dependent draft PR 163 remains on exact parent `b65515cc` with current head
+`def217170a70caaf8938221ab7c925e71a6f08e5`; its fresh full CI run
+`38392481282` was still in progress at the latest direct read. All Group 10
+task flags remain unchecked because real managers, deployed stable metadata,
+approved identities, public assets, and minimum-host qualification are still
+absent. Task-14.1 draft PR 164 superseded its cancelled
+`ad3f6041ff1c3cc0145a7964a6bcc9a6a073c0f4` run with source head
+`6b8c0e90fcbdde0384955746825d2cfc1dab04e6`; fresh run `38393897604`
+was in progress. No owner branch source or task flags were copied into this
+continuation.
+
+There was no published owner for PR 161's two Windows repairs. To prevent
+overlap, the PR-161/Grafana owner is now the sole repair owner for that exact
+branch: diagnose and correct the pre-dispatch `loading-compiler` startup
+failure without changing the 15-second startup supervisor or 30-second target
+budget, and make native validation settle the required process tree while
+ensuring `finally` cleanup cannot mask an earlier validation failure. The
+repair must preserve every grace, worker, skip, coverage-floor, frozen-history,
+and cleanup/locking contract, publish an exact SHA, and pass fresh exact-head
+full CI before stack 162 can land.
+
+The user was unavailable when asked for task-13.6 disposable Azure write
+authorization. The autonomous safe decision is therefore to keep all cloud
+writes blocked and continue source/integration work only. Existing Korea
+Central production resources remain prohibited qualification scope. Task 13.6
+stays unchecked.
+
+## Task 14.2 protected application deployment source, 2026-10-13
+
+The continuation ordinary-merged the exact admitted task-14.1 source
+`6b8c0e90fcbdde0384955746825d2cfc1dab04e6` and its direct terminal-handle
+successor `5d51b79623548717e8c9c1eba147c67e6e713284`. The resulting local merge
+commits are `d76334c9853d58fa4128cd7de5fc944c6c5b2aaa` and
+`9161a36f509f409003f8689f050ecac7af80191d`; no rebase, squash, force update,
+owner task flag, or mutable branch guess was used.
+
+The bounded task-14.2 source milestone is commit
+`65aa8d66b08f8f2d186857b7d2c8a052ce2d26e2`
+(`feat: bind protected application deployment source`). It adds only
+`src/governance-activation/application-deployment.ts` and
+`tests/governance-application-deployment.test.ts`. Shared transition ports,
+phase graph/identity/schema/header/authority contracts, current-family-5
+assets, runtime registration, and production execution wiring were not
+changed.
+
+The private source contract now:
+
+- binds the exact current immutable artifact, application-prerequisite
+  registry/identity/RBAC records, protected backend/custody records, current
+  committed environment/module HCL inventory, provider lock, protected backend
+  overlay, variable overlay, subscription/tenant/environment/resource names,
+  fixed cost ceilings, and original approval/operation invocation;
+- preserves all tracked bounded application customizations, excludes only the
+  exact generated local backend from isolated protected execution staging,
+  rejects dirty/untracked/sensitive/state/plan/backend-overlay collisions, and
+  never writes a protected value to project source;
+- permits only the fixed same-operation mapping set: move the bootstrap
+  resource-group address, import the exact task-14.1 ACR, workload identity,
+  and AcrPull assignment, and retain the publisher AcrPush role externally;
+- requires provider-derived configuration digests for the exact owned
+  resource name/location/tags/SKU/admin/tenant/principal/client/scope/role
+  attributes, before/after lineage and state serials, encrypted backup and key
+  references, locking and writer-quiescence proofs, unchanged unmapped state,
+  retained custody/disposal obligations, zero resource mutation during
+  mapping, a zero-change/no-destroy bounded plan, and a post-apply no-change
+  plan;
+- requires exact immutable-image Container App readback, managed identity,
+  active 100% revision traffic, provider resource inventory, credential-free
+  HTTPS backend output, and bounded `/health` HTTP-200 evidence represented
+  only by byte count and SHA-256; and
+- blocks frontend and worker-bearing workloads because the admitted artifact
+  source proves only one backend image.
+
+The private provider surface is durability-split rather than a single
+ambiguous `execute` call. A write dispatch requires an engine-owned,
+digest-bound pre-effect intent and callbacks for accepted-handle and terminal
+checkpoints. Recovery/observation is a separate method and can start from
+either the exact accepted handle or an intent-without-handle state; neither
+path may redispatch. Read-only staging/production observation is separately
+typed with Azure read only and state-read/state-write/dispatch/import/move/apply
+all fixed false. Result states distinguish no-effect blocking from
+intent-only uncertainty, accepted effects, post-acceptance failure with the
+original handle, terminal failure with a durable terminal checkpoint, and
+fully completed proof. Terminal provider status must be checkpointed before
+fallible export, readback, health, or verification work, so a later failure
+cannot erase the original ID/status/time/plan or become a second dispatch.
+
+Validation on the exact source bytes passed:
+
+- Qualified Node 24.21.0 plus npm 12.0.2 TypeScript build.
+- Ten focused deployment-source tests.
+- 121/121 adjacent deployment/artifact/ownership/environment tests.
+- Focused source coverage:
+  statements **256/295 (86.77%)**,
+  branches **422/475 (88.84%)**,
+  functions **73/74 (98.64%)**,
+  lines **250/289 (86.50%)**.
+- Package smoke with the exact qualified Node/npm execution paths.
+- Repository policy.
+- Strict OpenSpec validation.
+- `git diff --check`.
+
+An earlier whole-suite run used the pre-durability draft and was deliberately
+stopped when contract review identified the missing accepted/terminal
+checkpoint channel. It is not qualification evidence and was not relabeled.
+The bounded focused/adjacent checks above cover the final committed source.
+
+Task 14.2 remains unchecked. There was no real Azure, GitHub, OpenTofu,
+registry, RBAC, state, cost, health, or global effect. No production provider
+is registered. The canonical generated HCL currently omits predecessor-owned
+resource-group/registry/identity tags, so a real protected plan must fail
+closed with `configuration-mismatch` rather than remove those tags or claim a
+no-change import. Coordinator review explicitly kept any generator/source
+inventory repair and shared-port insertion serialized behind the current-5
+owner audit. Current-5 owner source
+`d38d86c0f4f61d1e034cbc0d0b879ffdae371bcb` is published with admitted
+`5d51b796` as second parent but is not yet admitted for consumption.
+
+Downstream evidence remains separately owned. Group-10 PR 163 run
+`38392481282` completed successfully across all reported platform shards,
+native development packages, runtime bundle, HCL parser, coverage, telemetry,
+template, and aggregate jobs; this does not advance its real-manager,
+public-asset, identity, or minimum-host task flags. PR 161 repair head is now
+`f0fd79ae533749ad5bf922900abe10ff9f9cf336`, removing the still-failing Windows
+module/command discovery path while preserving the existing timers, process
+settlement, error preservation, Win32/C# behavior, and frozen evidence. Its
+fresh exact-head whole CI remains required before stack 162 can land. OpenSpec
+progress remains 82/136.
+
+### Task 14.2 private proof correction, 2026-10-13
+
+The initial private source milestone has a validated corrective descendant:
+`a18bbbe37f962a61dbc979dd3d81489b4394b7d0`
+(`fix: harden protected application execution proofs`), tree
+`abae7841c76dcddaefa8815b1ab9a74e73a3bba0`. It changes only
+`src/governance-activation/application-deployment.ts` and
+`tests/governance-application-deployment.test.ts`; no shared transition port,
+current-family allocation, graph, phase, authority, schema, provider
+registration, generator, runtime wiring, or task checkbox changed.
+
+The private contract now retains independently engine-owned intent, accepted,
+and terminal checkpoints. A first dispatch whose pre-effect intent is durable
+but whose provider acceptance is unknown returns intent-only uncertainty
+rather than a false no-effect block. Observation can never redispatch that
+intent. Accepted and terminal results must byte-match the independently
+retained original checkpoints, so a producer cannot replace handle A with a
+coherently rebuilt handle B or regress a terminal handle to running.
+
+Execution provenance is now checked against an independently supplied source
+authority. The only accepted workflow ref is the full lightweight-tag ref
+`refs/tags/liftoff-execution-<sourceSha>`, where `sourceSha` is the exact
+lowercase 40-hex reviewed commit SHA. The bare execution ref, repository ID
+and name, workflow path, source commit, independently approved tree SHA,
+workflow and execution-source digests, qualified host/runner/group/network
+and custody identities, active update-and-deletion/no-bypass barrier evidence,
+lightweight commit object observation, and current provider admission are all
+bound. Branch refs, raw SHA refs, alternate tag namespaces, annotated-tag
+indirection, and digest-derived substitutions fail closed. This is an
+observer-only private source contract; it grants no tag writer or protection
+mutation authority and makes no public execution qualification claim.
+
+State mapping is now bound to one authoritative original protected-backend
+state identity and one reviewed mapping batch. Every fixed move/import proof
+must share the same original lineage, serial, state digest, encrypted backup,
+lock, writer-quiescence, unchanged-unmapped-state identity, batch digest, and
+single after-mapping state. The protected plan consumes that exact mapped
+state, and completion must preserve the lineage and unmapped identity while
+advancing from the mapped pre-apply state to a later final state. Independently
+rehashed but disconnected per-resource lineages are rejected.
+
+Read-only staging/production observation no longer recycles completion health.
+It requires a fresh bounded protected HTTP observation after completion,
+bound to the admitted operation, exact execution authority and provenance,
+current Azure Container App FQDN, active revision, immutable image, and the
+source-declared `GET /health` JSON contract. Only media type, byte count,
+raw-body SHA-256, parsed semantic digest, revision, immutable image, endpoint,
+status, and observation time cross the private port; no response body is
+exported. A prior HTTP 200 followed by a current 500, or an unknown/malformed
+HTTP-200 body, remains health-unverified.
+
+Validation on the exact corrective source bytes passed:
+
+- Qualified Node 24.21.0 plus npm 12.0.2 TypeScript build.
+- Ten focused deployment-source tests.
+- 121/121 adjacent deployment/artifact/ownership/environment tests.
+- Focused source coverage:
+  statements **300/344 (87.20%)**,
+  branches **557/615 (90.56%)**,
+  functions **77/78 (98.71%)**,
+  lines **294/338 (86.98%)**.
+- Package smoke with the exact qualified Node/npm execution paths.
+- Repository policy and supported-stack checks.
+- Strict OpenSpec validation.
+- `git diff --check`.
+
+No unfiltered whole-suite result is claimed for this corrective descendant.
+The private coordinator audit and shared current-family-5 serialization remain
+prerequisites before any shared insertion or fresh exact-commit whole-suite
+qualification. The canonical HCL ownership-tag mismatch remains
+`configuration-mismatch`; it was not mutated or waived. Task 14.2 remains
+unchecked, and no real GitHub, Azure, OpenTofu, state, registry, RBAC, cost,
+health, or global effect occurred.
+
+The exact private source has a further narrowly coupled successor:
+`1c131a35279e628622c70bab1670baf60208e0c5`
+(`fix: bound application health freshness`), tree
+`ad07c5037afcf030d9d97a320a7218c9b1536c3e`. Its actual direct parent is the
+documentation successor `755f076bcd92c412d86b7a3b622f22ea6ab7f409`;
+`a18bbbe3` remains an ancestor. No source ancestry was lost.
+Audit after the first correction found that a health observation was required
+to occur after completion but was not bounded to the current protected
+readback clock. The successor adds a five-minute maximum age, rejects
+future-dated observations, and requires the health observation to fall between
+completion and the current readback time. This prevents an arbitrarily old
+post-completion HTTP 200 from qualifying staging or production. The focused
+suite now includes an explicit stale-health negative.
+
+Renewed exact-source validation passed:
+
+- Qualified Node 24.21.0 plus npm 12.0.2 TypeScript build.
+- Ten focused deployment-source tests.
+- 121/121 adjacent deployment/artifact/ownership/environment tests.
+- Focused source coverage:
+  statements **304/348 (87.35%)**,
+  branches **561/620 (90.48%)**,
+  functions **77/78 (98.71%)**,
+  lines **298/342 (87.13%)**.
+- Package smoke, repository policy, supported-stack, strict OpenSpec, and
+  `git diff --check`.
+
+This successor supersedes `a18bbbe3` for private source audit and any future
+shared serialization. All task flags, real-effect blockers, ownership-tag
+mismatch, and no-shared-wiring constraints remain unchanged.
+
+Renewed private audit accepted the five original proof families in `1c131a35`
+and identified one final bounded runtime-union gap. The corrective source
+successor is `4c7efd104b26167125076c976cb34e3f143c1188`
+(`fix: close application result discriminants`), tree
+`17a3d25eaa9d690a2fccf92e9518de5bc7319550`, with actual direct parent
+`3e7ee56d98482c69e7428e1f87e50b2a3a88baee`.
+
+Write-result validation now accepts only the declared
+`blocked`/`uncertain`/`accepted`/`failed`/`completed` runtime statuses,
+explicitly requires the final proof branch to be `completed`, and accepts
+only `accepted` or `terminal` effects for failed results. Read-result
+validation accepts only `blocked` or `completed` and no longer treats an
+arbitrary nonblocked status as completion. The complete declared failure
+reason set is runtime-enforced for blocked, uncertain, and failed results.
+Focused controls use fully populated, internally coherent objects with an
+unknown write status, unknown read status, failed unknown effect, and unknown
+blocked/uncertain/failed reasons; missing-field or stale-hash proxies are not
+used for those cases.
+
+Renewed exact-source validation passed:
+
+- Qualified Node 24.21.0 plus npm 12.0.2 TypeScript build.
+- Ten focused deployment-source tests.
+- 121/121 adjacent deployment/artifact/ownership/environment tests.
+- Focused source coverage:
+  statements **317/356 (89.04%)**,
+  branches **586/634 (92.42%)**,
+  functions **78/79 (98.73%)**,
+  lines **311/350 (88.85%)**.
+- Package smoke, repository policy, supported-stack, strict OpenSpec, and
+  `git diff --check`.
+
+This exact source supersedes `1c131a35` for renewed private admission. It
+does not alter shared/current-family-5 contracts, generator/HCL, runtime
+wiring, production authority, task flags, or any real effect. The ownership
+tag mismatch remains fail-closed and task 14.2 remains unchecked.
+
+### Task 14.2 serialized current-5 integration proposal, 2026-10-13
+
+Coordinator review admitted exact private source
+`4c7efd104b26167125076c976cb34e3f143c1188`, tree
+`17a3d25eaa9d690a2fccf92e9518de5bc7319550`, for bounded source reuse and
+preparation of a serialized modern/current-5 integration proposal. This is
+not shared/public/native/cloud execution admission and does not complete task
+14.2.
+
+Read-only inspection of current-5 owner source
+`d38d86c0f4f61d1e034cbc0d0b879ffdae371bcb`, tree
+`78a15d31fed00c2d1f7ffc64eb0df3c995f8c3d6`, confirmed:
+
+- the current source family uses activation contract 5, graph schema 3,
+  saved-plan schema 3, state/evidence/approval schema 4, compatibility
+  metadata schema 5, and six profile/workflow-specific graph hashes;
+- compatibility still declares execution `source-contract-only`;
+- `application-foundation` still declares `application-foundation.v1`;
+- source-5 `staging-qualified` and `production-rehearsed` payloads are the
+  workflow-only `.v2` allocation;
+- the existing transition/runtime surfaces remain legacy
+  `PhaseAdapterExecutionInput` contracts and cannot be cast into or borrowed
+  by a modern application engine; and
+- staging/production graph permissions still include Azure provision and
+  backend-state-write even though the admitted private application read path
+  is strictly observation-only.
+
+The concrete proposal was sent to current-5 sole allocation owner session
+`e1389524-41f1-47aa-8c43-4bf14b14cf20` and serialized coordinator session
+`8d89d4b7-10db-4009-945e-b14397314a84`. No shared source was edited.
+
+The proposed identity and graph change does not reuse or overwrite the six
+`d38d86c0` graph hashes. It introduces a distinct
+`application-foundation.v2` protected-deployment payload and combined
+`staging-qualified.v3` / `production-rehearsed.v3` payloads rather than
+overloading the admitted workflow-only `.v2` schema. The staging/production
+application path retains GitHub read/dispatch and Azure read, but removes
+Azure resource provision and backend-state-write; application-foundation
+retains its exact Azure provision/read and protected backend read/write
+permissions. These changes produce six new graph hashes and phase-contract
+digests. They therefore require the sole owner to allocate either an exact
+source-5 successor with `d38d86c0` frozen readable or a new activation
+contract version; they cannot silently mutate the published current-5
+identity. Saved-plan/state/evidence-header/approval fields need not change.
+Compatibility must remain `source-contract-only` until genuine producers
+qualify.
+
+The proposed private `ModernApplicationExecutionCarrier.v1` is separate from
+`PhaseAdapterExecutionInput`. Its serialized fields bind the complete modern
+identity, phase and phase-contract digest, state/plan/saved-plan/operation and
+approval commitments, original invocation times, and exact application
+binding, source, artifact, backend, provider-lock, configuration,
+customization, subscription, tenant, environment, resource, cost, custody,
+and original-state-authority digests. It carries no raw state, plan, secret,
+or health body and no runtime callbacks.
+
+Runtime ownership remains outside the serialized carrier:
+
+- an engine-owned durable checkpoint store loads and records pre-effect
+  intent, first accepted handle, and terminal provider truth;
+- a read-only immutable source/runner/network/custody producer supplies the
+  independently qualified execution authority without borrowing workflow
+  issuers, tag writers, auxiliary namespaces, or legacy callbacks;
+- a protected-state producer supplies authoritative lineage, serial, state,
+  unchanged-unmapped-state, backup, lock, and writer-quiescence digests;
+- a private protected OpenTofu/Azure port performs the exact bounded dispatch
+  or observation;
+- a bounded actual HTTP observer returns only validated status/media/length
+  and raw/semantic digests, never the response body; and
+- a modern record writer creates evidence and advances state only after all
+  required proofs are durable.
+
+The modern application-foundation plan must contain exactly
+`azure.application-foundation.apply` with its exact effects and static
+application/source/backend/artifact/state-authority/approval commitments,
+not the current `{ opentofu: true }` placeholder. Staging and production must
+contain only their exact readback operation, admitted completion/handle/source
+commitments, and no application apply/import/move/state effect.
+
+Required write ordering is: decode and revalidate modern state, plan,
+approval, and source; observe independent execution and state authority;
+build the exact protected plan; fail `configuration-mismatch` before intent;
+persist intent; dispatch once; persist the first accepted handle; observe
+terminal provider truth; persist terminal truth before fallible export,
+mapping, Azure readback, HTTP health, or evidence; then write modern evidence
+and state. Source freshness is re-observed before the effect and before final
+readback. Any failure after acceptance retains the original accepted or
+terminal checkpoint and permits observation-only reconciliation, never a
+second dispatch. Evidence or state-write failure likewise preserves terminal
+truth and retries only final observation/evidence construction.
+
+The proposed evidence receipts contain only binding, source, execution
+authority, original-state authority, protected-plan, mapping-batch,
+checkpoint-chain, completion, fresh-readback, custody, retention, and
+disposal digests plus sanitized resources and exact operation identity.
+Staging/production `.v3` retains the existing workflow proofs and adds the
+admitted application completion and fresh Azure/HTTP proof. No protected
+state/plan payload or health body crosses the carrier.
+
+No qualified protected application dispatch port, authoritative original
+backend-state producer, durable modern checkpoint store, or bounded actual
+HTTP producer is currently admitted. Each remains a real qualification
+blocker rather than a structural success. The canonical HCL
+resource-group/registry/identity ownership-tag mismatch also remains
+`configuration-mismatch`; a generator remedy requires a separate exact
+allocation/intake. OpenSpec remains 82/136, task 14.2 remains unchecked, and
+no real GitHub, Azure, OpenTofu, registry, RBAC, state, cost, health, or
+global effect occurred.
+
+The current-5 sole owner reviewed the proposal boundary and explicitly
+withheld shared/current-5 consumption. The existing approved allocation
+remains strictly activation 5 to activation 5 with unchanged `fce27` source,
+six graph identities, workflow-only components, and no task-14.2 port or
+callback wiring. The proposed foundation `.v2`, combined staging/production
+`.v3`, and changed allowed effects are a separate normative contract
+allocation. The owner's recommendation is activation contract 6 with
+`d38d86c0` source 5 preserved readable, rather than two different phase and
+recovery meanings labelled current 5. The serialized coordinator must choose
+and authorize that allocation before any shared family, graph, payload,
+compatibility, phase, or runtime edit. Existing immutable-ref observers remain
+stable, and no generator/HCL intake is implied.
+
+### Native stack 162 post-repair CI boundary, 2026-10-13
+
+Read-only native-stack revalidation confirmed stack 162 remains open with
+exact membership `[158, 159, 161]`. PR 161 remained open, non-draft, without
+auto-merge, at exact live head
+`dec2d477925ef2b00c03dd71004ebd54740cdda0`; its live branch ref matched.
+Previously published Windows repair
+`f0fd79ae533749ad5bf922900abe10ff9f9cf336` is the direct ancestor of
+`dec2d477`, so the fresh result below is a genuine post-`f0fd79ae` failure,
+not an integration omission.
+
+Automatic whole-head run `38402156706` completed with successful Linux,
+macOS, coverage, package, HCL, telemetry, repository-policy, and Windows
+shard-1 gates. Windows shard 2 job `115312248354` failed one actual test:
+`tests/repair-application.test.ts:225`, “executes native Node tests and real
+reference checks against the candidate without applying the file
+transaction.” The aggregate Windows job failed only because that shard
+failed. Stack 162 must not land.
+
+Exact retained runner metadata was:
+
+- `exit: unknown`
+- `timedOut: true`
+- `errorCode: SUPERVISOR_TIMEOUT`
+- `processSpawned: true`
+- `processTreeSettled: false`
+- `supervisorPhase: startup`
+- `controllerStage: connected`
+
+The dedicated boundary artifact is retained outside the repository at
+`files/windows-boundary-38402156706/windows-boundary-tests.json`. It records
+the failed test duration as **16,735.8205 ms** despite the declared 30,000 ms
+target-command budget. Therefore the unchanged 15-second controller startup
+supervisor fired after the controller connected, became ready, and received a
+spawn request, but before any valid acknowledgement proved `CreateProcess` or
+actual target start; the target budget did not begin. The same shard's
+dedicated packaged-controller test passed in **686.4988 ms**, along with all
+startup-boundary controls. Exact source tracing therefore remains bounded to
+the post-request, pre-ack environment/job/stdio/attributes/`CreateProcess`
+path under whole-suite load. Neither deadline may be extended or
+back-attributed to target execution.
+
+The owner independently retained the complete failing log with SHA-256
+`ea351d8e9b2915d51a4920fbb4e1b2e040d666e5bfd18ccee36be8027d99718f`
+and boundary ZIP `11819272407` with SHA-256
+`c16eb655d8fb62e9f95b62fe6e9dc38bf56b050dea6e32f08149ff02a47db2d6`,
+matching the Actions API artifact. The exact 55-file/1,937-test shard result
+was 1,911 passed, 1 failed, and 25 existing skips. Native 18, OpenTofu 21,
+and the complete Windows shard 1 all passed.
+
+Exact evidence and ancestry were sent to PR-161 owning session
+`dd2469fb-1715-433c-9155-925eee7eee4d`. That owner was asked to publish only
+a root-cause successor preserving the 15-second startup supervisor, declared
+30-second target budget, containment, settlement, grace, worker, skip, floor,
+protocol, and frozen-history contracts. No repair code was edited in this
+continuation, no CI rerun was requested, and no stack mutation or landing
+occurred.
+
+### Activation 6 decision and bounded private engine source, 2026-10-13
+
+The serialized coordinator selected a separately authorized source-contract
+activation 6. Exact source 5, `fce27`, all six current graph identities,
+read-only original interpretation, and every historical family remain frozen
+and readable. Foundation `.v2` and combined staging/production `.v3` are the
+approved direction. Staging and production application authority is strictly
+Azure-read-only: backend state read, backend state write, provisioning,
+application dispatch, apply, import, and move are excluded. Retained GitHub
+workflow read/dispatch authority does not delegate any Azure write.
+
+The sole shared allocator remains
+`e1389524-41f1-47aa-8c43-4bf14b14cf20`. It must first preserve and publish the
+coherent approved 5-to-5 workflow bridge, then return the exact activation-6
+identity, graph, phase-contract, capture, and edit set for coordinator review.
+No shared identity, graph, phase, compatibility, runtime, issuer, namespace,
+callback, or public wiring was edited here.
+
+Within the separately allowed private scope, a version-neutral engine-owned
+protocol was added in
+`src/governance-activation/application-deployment-engine.ts`. It does not cast
+modern records to `PhaseAdapterExecutionInput` and does not allocate any
+activation identity. Its boundaries are:
+
+- an independently durable checkpoint store loaded by exact request digest;
+- no-effect preflight before any intent;
+- durable intent before the one permitted provider dispatch;
+- a first running accepted handle recorded by the engine;
+- observation-only recovery from retained intent or accepted handle;
+- terminal provider truth recorded before any fallible completion export,
+  mapping, readback, health, or evidence construction;
+- terminal and accepted checkpoint failure paths that retain the strongest
+  durable truth and never redispatch;
+- completed write construction only from separately supplied provenance,
+  plan, mapping, and completion proofs; and
+- read-only completion derived from a bounded actual observation object,
+  with runtime shape and exact binding checks rather than a producer boolean.
+
+Focused controls cover preflight blocking, one dispatch, ambiguous
+intent/accepted/terminal checkpoint writes, acceptance-then-later failure,
+intent-only observation, handle substitution, unsupported synchronous
+terminal dispatch, terminal-before-finalization ordering, finalization
+failure, malformed readback, and no second dispatch. This source remains a
+private protocol; no qualified protected application, state, checkpoint,
+HTTP, Azure, or OpenTofu producer is claimed.
+
+The coordinator subsequently approved only the bounded private source form of
+the canonical HCL ownership-tag remedy. The implemented contract is one closed
+nullable object, `liftoff_activation_ownership`, with exact fields
+`bootstrap_binding_digest` and `prerequisite_binding_digest`. Its default is
+`null`; ordinary, Manual, governance-none, and not-yet-activated generation
+therefore emits no reserved Liftoff ownership tags and requires no private
+activation evidence. The object is forwarded through each environment root
+but is never written into committed `<environment>.tfvars`.
+
+Protected execution supplies the non-null object only in the ephemeral
+`liftoff.auto.tfvars.json` overlay. Runtime admission requires exactly those
+two keys, lowercase 64-hex values, and equality with the original verified
+records. The resource-group tag authority is
+`phaseOutputs['bootstrap-local'].values.bootstrapBindingDigest` plus verified
+`bootstrap-local` evidence. `remote-import-verified` must preserve the same
+digest as continuity evidence but is not substituted as the original tag
+authority. The ACR/application-identity authority is the verified
+`application-prerequisites-ready` binding digest. Null handling uses explicit
+conditional digest/tag expressions: the null branch never reads object
+attributes, while a non-null value must match the exact lowercase 64-hex
+pattern before it can become a tag value. It does not rely on boolean
+short-circuit behavior.
+
+The generated resource group conditionally receives exact
+`liftoff-managed-by=liftoff`, `liftoff-phase=bootstrap-local`,
+`liftoff-environment`, and original bootstrap `liftoff-binding` tags. The ACR
+and application identity conditionally receive exact environment and original
+prerequisite binding tags. AcrPull remains exact; AcrPush remains externally
+owned and absent from HCL. The private source observer now semantically parses
+the committed module/root HCL and rejects changed names, locations, provider
+attributes, forwarding, tag construction, lookalike literal tags, AcrPush, or
+committed protected ownership values. The overlay validator rejects null,
+missing, extra, malformed, recomputed, or mismatched protected objects before
+provider execution.
+
+The bounded changed surface is
+`src/generators/infrastructure/azure.ts`,
+`src/governance-activation/application-deployment.ts`, their exact tests, and
+this handoff, plus one narrowly coupled Manual source-interpretation change:
+`object` is admitted as a pure HCL type constructor alongside the already
+admitted Manual-only pure functions. No `map`, unknown-object shortcut,
+filesystem function, environment function, dynamic source, provider authority,
+or parser-policy weakening was added. `renderTofuTfvars`, provider versions and
+locks, artifact logical identities/layout, unrelated custom files/resources,
+predecessor bytes, state, and role ownership remain unchanged. Infrastructure
+repair preserves and forwards an ownership variable only when the existing
+project already declares it; it does not inject private values or rewrite
+old/custom projects. Focused application, generated-HCL,
+Manual/no-governance, repair, isolated-parser, and reviewed governance controls
+pass, including native OpenTofu null/valid/invalid/missing variable cases.
+This source patch is not shared activation-6 allocation, apply authority,
+brownfield import, existing-resource mutation, a configuration waiver, or task
+14.2 completion.
+
+Final pre-commit focused evidence under Node 24.21.0, npm 12.0.2 and restored
+OpenTofu 1.12.6:
+
+- build passed;
+- application deployment, generated infrastructure, and native Manual
+  OpenTofu checks passed 63/63;
+- the 13-file adjacent generation/repair/source-inventory/governance set passed
+  710 tests with three existing skips;
+- private application source plus engine coverage passed with 88.74%
+  statements, 91.98% branches, 99.09% functions, and 88.59% lines; and
+- supported-stack, repository named-file policy, strict OpenSpec validation,
+  and `git diff --check` passed; and
+- reviewed task-14.2 successors now wrap the task-14.1 and complete earlier
+  chains for `status-json`
+  (`31988e7f08d48c0fdeebe1c5235d827f3221b41f24b0bea03454bc33c4f77c94`),
+  `status-local-json`
+  (`2a4dcfb30328068decc3add5db80b011334b6b5d8819e04978b933481406beaa`),
+  `resume-json`
+  (`490465574ee04fa753e23bc447fecb452302482f624dafce0d658bb3b539580a`),
+  and `plan-json`
+  (`cd5f9b8a8e832d472b67575caaa527dad6f6b2a01d1a628c336d36b57ad2ec60`).
+
+Clean qualification of the preceding private-engine commit first exposed two
+environment mistakes: direct npm-CLI invocation did not place the exact
+12.0.2 launcher on `PATH`, and ambient Python was 3.14.8 rather than the
+preserved 3.14.7 runtime. With the full isolated npm/Python/uv/OpenTofu profile,
+all rerun failures cleared except a governance extraction record. Exact
+parent/current comparison proved that mismatch predated the private engine and
+was solely the admitted task-14.1 application capability disclosure changing
+current `status-json`, `status-local-json`, and `resume-json` output from
+unavailable to injected-only with a stronger fail-closed blocker. New
+task-14.1 successor records wrap the complete existing task-13.5 and earlier
+`priorChange` chains; frozen captures and historical records were not
+regenerated, flattened, or rewritten.
+
+The session-local OpenTofu path was later found to have been overwritten by
+ambient 1.13.1 bytes. Exact 1.12.6 was restored from the official darwin/arm64
+release archive. The archive SHA-256 is
+`e083ee43790ab9e19ad66d9933e24a7244a1412e1d5728f37999ae2163fdac95`;
+the extracted executable SHA-256 is
+`0445d7cc114d24440af150b1ddec600f4e4c3e6af16ba63a9a7d42054ae970e3`,
+matching the previously retained qualified binary identity. Subsequent native
+HCL evidence must use the restored `tofu-1.12.6` directory and export the full
+qualified `PATH`; a one-command environment prefix does not persist across a
+later `&&` command.
+
+After this HCL/private-source milestone is committed and qualified, the
+coordinator-authorized ordinary preserving SOURCE integration order is now:
+
+1. native9 `b65515ccfb83a19972574340ad45a11c09c79710`;
+2. upgrade10 `def217170a70caaf8938221ab7c925e71a6f08e5`;
+3. migration11 `0b9c61575af8959795ccc10a1b4f5aa6ed5aaaa7`
+   (tree `d6aa57ad4dba22abcac05fdba76dcea1ffc0416a`);
+4. project-telemetry16 `c477d24d50e906a98afd718682d6aa2466693515`;
+5. Grafana17/Windows diagnostic candidate
+   `c550a7290053965f3a77145e239fb5e7d14bd7a0`.
+
+Root's independent migration11 receipt is
+`beb0dd6a4780ff350dabd1205d10565d5d41a22905bb6b8efc7e6d338497e967`.
+The telemetry/Grafana receipt is
+`448eb3c3c290afb13ee6740f0dd799e461303ad2590decbd11531547bed34ef1`.
+The green c550 Windows evidence is diagnostic only: it does not identify the
+older pre-ack blocked call, prove its root fix, or qualify the dec2 repair.
+
+Use one ordinary preserving merge per unit. Run small exact regressions and
+identity/source-inventory checks after each merge. Stop shared
+family/identity/graph/history conflicts for the sole allocator; never resolve
+them with ours/theirs. After migration11, run a fresh combined complete
+CLI/gateway/current selected native+migration gate; do not relabel inherited
+native9/upgrade10 evidence as migration11 qualification. After telemetry16 and
+Grafana17, run a distinct fresh combined CLI/gateway/relevant
+installed/native/platform gate; do not relabel the 9-11 gate as 16/17 proof.
+The source-intake authorization is not PR-stack landing, publication, cask or
+provider registration, real migration, production telemetry/Grafana apply,
+client enrollment, public channel enablement, or task-flag advancement.
+
+Task 14.2 remains unchecked pending the exact allocator readback, separately
+admitted HCL intake, qualified real producers, and genuine disposable
+qualification.
+
+### HCL ownership milestone qualification correction, 2026-10-14
+
+The approved private HCL/source milestone was committed as
+`841eddac4d7c91f78673ca8cd8295194210f507c`, tree
+`23e4d04ed3b2913e422807cb30bb39b0a560a3ff`, with direct parent
+`9a31b983cf398fa15b7a3f1da832e77526e35bd6`. Its first clean committed
+qualification used Node 24.21.0, npm 12.0.2, restored OpenTofu 1.12.6 and
+OpenSpec 1.11.0. Supported-stack and build passed. The unfiltered suite then
+ran for 3,946.23 seconds and reported 304 passed files, five intentional
+skipped files and three failed files; 10,138 tests passed, 117 were skipped and
+169 failed. The chained source-complete coverage command did not run after that
+suite failure.
+
+The immutable raw log is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/hcl-ownership-841eddac/clean-qualification.log`
+
+Its SHA-256 is
+`876cdffb5331ad91152a5f7755e821ff1f2ab5d9e8dc1ae2559db49ab736163c`
+and its byte length is 3,765,182.
+
+The failure separated into two exact causes:
+
+- the approved generator variable, forwarding, owned-tag and README changes
+  had not yet received current reviewed successors for 165 plugin-generation
+  matrix cases, 16 representative rendered-artifact cases and four current
+  CLI JSON cases; and
+- ambient `/opt/homebrew` OpenSpec 1.11.0 had the current registry resolution
+  profile (2,590 files, 299 directories, two links and 11,849,959 bytes), not
+  the frozen qualified cutoff profile. Version equality alone was
+  insufficient.
+
+The generated-output correction is test-evidence-only. Exactly 185 top-level
+records now wrap their previous complete records as `priorChange`, retain each
+original baseline digest, and bind the actual current output. No prior record
+was flattened, regenerated or altered. A structural check proved all 236
+top-level keys stayed in the same order and every changed record's nested
+predecessor is byte-for-byte the former top-level record.
+
+The requested native ownership correction also changes tests only. It extracts
+the actual emitted ownership `locals` block from the generated application
+module, evaluates all four emitted locals with provider-free OpenTofu, writes
+saved plans and inspects their JSON. It proves ordinary null input produces
+null digest/tag outputs, valid protected input produces the exact four-key
+resource-group and two-key application maps, and malformed, missing,
+uppercase and non-hex digest inputs fail.
+
+OpenSpec was restored in a global-style isolated npm-12 prefix using the
+required registry cutoff:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/macos-toolchain/openspec-qualified-cutoff-1.11.0`
+
+`scripts/native-custody-qualification.mjs verify-openspec-profile` confirms
+2,590 files, 299 directories, two links, 11,862,860 bytes and exact profile
+`sha256:05d52efd0875c1ff0c1bd0aec13f7128a4baab787ea6b31f33fa7360cd53bde2`.
+Use this prefix before every later native command; do not substitute a
+same-version current-registry tree.
+
+Focused successor validation passed:
+
+- build;
+- seven focused files with 353 passing tests and two existing skips, including
+  the 165-case plugin matrix, frozen contract baseline, actual emitted HCL
+  saved plans, private application binding, Manual interpretation, repair
+  preservation and explicit native OpenSpec identity;
+- supported-stack;
+- repository named-file policy;
+- strict OpenSpec validation; and
+- `git diff --check`.
+
+Session `68be53ea-3101-4b13-b2a8-e520cecb7a48` independently retained the
+requested exact 94f0/5d normalized CLI observations, so no duplicate capture
+generation is needed here. Its reported immutable receipts are
+`parent-observation.json`
+`dd026d3d42790a1dff70bda7fc0e5df405b0f07c4a9865cea501845802c262e9`,
+`current-observation.json`
+`67c0828f4dee362f360e6b1ea9d8ef82f92cdabfdacc36c9870cfaf04ed39eed`,
+and `actual-cli-differences.json`
+`34ee012ea18ea09f3551d1abd3f788adf98080798ca6dff33122979bfa0faac2`.
+Only the three task-14.1 intermediate governance-extraction records are
+reusable; the task-14.2 outer records and whole HCL head are not.
+
+Commit this narrow successor, then rerun the complete clean committed
+qualification sequence and its focused/package/policy/OpenSpec follow-ups.
+Native9 and all later SOURCE intake remain held before every shared-file
+resolution pending root review and sole-allocator per-file disposition.
+
+### Qualified and published HCL ownership milestone, 2026-10-14
+
+The test-only ownership correction was committed as
+`12d2f4715d8f1901093676baa875f1422c5c5a90`, tree
+`610e05452993b4fdafaad28cbe9a704cb55a4fc9`, with direct parent
+`841eddac4d7c91f78673ca8cd8295194210f507c`. It was fast-forward pushed to
+`origin/voyager163-liftoff-modernization`, and GitHub readback confirmed that
+exact commit, tree and parent. The four required continuation ancestors remain
+ancestors of the published head.
+
+The first clean committed qualification attempt preserved the exact source and
+failed after 4,031.10 seconds in two
+`tests/modern-openspec-initialization.test.ts` cases. The shared complete
+OpenSpec distribution scan exceeded its unchanged 30-second custody deadline;
+the second selected test never reached its injected command because the same
+scan failed first. The attempt reported 306 passed files, five skipped files
+and one failed file; 10,305 tests passed, 117 were skipped and two failed.
+The immutable log is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/hcl-ownership-12d2f471/clean-qualification.log`
+
+Its SHA-256 is
+`7817e22d4e9279b4a39368ef4058f6858aeea971f92ac580e6adb2d172d9ba37`
+and its byte length is 2,261,131. An initial focused reproduction omitted the
+ambient Docker and Go paths and failed before the OpenSpec scan; that was an
+environment setup error, not a source defect. Both exact failing selectors
+passed unchanged with the complete native tool path. The 30-second deadline,
+custody policy, thresholds and source behavior were not weakened.
+
+The second clean attempt on the same exact commit and tree passed:
+
+- supported-stack and build passed;
+- the unfiltered suite passed 307 files with five intentional skipped files;
+- 10,307 tests passed, zero failed and 117 were skipped in 4,225.59 seconds;
+- source-complete CLI coverage included 511 source files with inventory digest
+  `sha256:77942f49cc57f9da92b06b09e81b412af754cb7ca36510e37cd0b224ddc6cbdd`;
+- statements were 40,883/45,607, 89.6419%;
+- branches were 36,463/42,533, 85.7287%;
+- functions were 7,700/8,105, 95.0030%; and
+- lines were 36,256/39,493, 91.8036%.
+
+The successful raw log is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/hcl-ownership-12d2f471-retry/clean-qualification.log`
+
+Its SHA-256 is
+`4cd8748adeb4db63ada4465c9cae67fe182275493416bef21ee107912ca047c1`
+and its byte length is 5,406,073. Coverage verification, seven focused files
+with 353 passes and two existing skips, package smoke, repository policy,
+strict OpenSpec validation, `git diff --check` and the final clean status also
+passed. Their log is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/hcl-ownership-12d2f471-retry/follow-up-validation.log`
+
+with SHA-256
+`3706d14e6e838c17a68502dc9e43ce07aad98fe29bc695d910e31ec761b1eddc`.
+
+Before later coverage could replace `coverage/cli/`, the exact successful
+`12d2f471` raw coverage-final, coverage-summary, text report, test-results,
+complete coverage evidence, and both successful logs were copied byte-for-byte
+into a read-only session artifact:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/hcl-ownership-12d2f471-raw-qualification-sealed/manifest.json`
+
+The manifest SHA-256 is
+`fb7096ed188abecb9d9d4cbce75fb1693653c96a2043182c15ffb6b9bba7f7f4`.
+It records each original subject path, copied path, byte length and SHA-256.
+`coverage-evidence.json` contains the complete 511-source, 407-test and
+five-configuration-file inventories plus exact revision, command, host/tool,
+limits, test counts and integer coverage metrics. The copied bytes were
+compared before the directory was made read-only.
+
+Independent actual-output review remains retained separately:
+
+- `hcl-independent-audit/comparison.json`,
+  SHA-256
+  `c3290feb7351b2ecd2b3dd35f18639433d5bdaf6a8bac405f8e1b85eeee2e5bc`;
+  and
+- `hcl-independent-audit/extraction-comparison.json`,
+  SHA-256
+  `b87cf61835c9678efb40085dc1bc6b4c1b8895718fac66e5721bee41ff16bb3f`.
+
+Those receipts prove the bounded 181 generation and four generic CLI changes,
+the unchanged frozen extraction harness streams, and the complete predecessor
+chains. They do not admit native9, shared identities, task 14.2, provider
+execution, publication or landing.
+
+Root independently re-extracted the sealed raw reports and admitted exact
+`12d2f471`, tree `610e054`, for the bounded corrective HCL
+source/repository test and CLI coverage gate. Its final review is:
+
+`/Users/jonathan/.copilot/session-state/8d89d4b7-10db-4009-945e-b14397314a84/files/hcl-12d2-final-independent-audit/review.json`
+
+with SHA-256
+`88d5e1256b7dce24bc524c125580e1147560dd0811c351eda1deca9b8ffbb55d`.
+The review independently reconstructed all 511 source counter maps with the
+pinned Vitest 5 Istanbul library, reproduced the four integer totals and
+strict greater-than-80% floors, verified 10,307 passes, zero failures and the
+unchanged 117 intentional skips, and rechecked all 1,550 clean source blobs.
+It explicitly preserves six original negative derived branch counters as
+uncovered under provider semantics. The admission does not extend to native9,
+later shared identity/family/graph intake, task 14.2, private activation stages
+5/6, provider effects, public/cloud qualification, or landing.
+
+### Bounded documentation successor, 2026-10-14
+
+After the exact `12d2f471` qualification was sealed, three independently
+reviewed patches were integrated without editing their retained evidence:
+
+- CLI reference correction patch
+  `87abb6c20abfdd7a3e1d8972839a4bd72ce666057f4559848031f1d1480b2979`,
+  handoff
+  `3632f62d5181db1634b83fa7a04abbca2b27af82d4be2448f0e01b23773dce6e`;
+- packaged fragment regression patch
+  `f48d2ea2add1f0090115b654cc03a5f819a3624da2b9ce9653a7c860d932ee15`,
+  handoff
+  `d83fdbc36aad878557f908e277234409503cc7cb08f6306aa14929c4aeaaed2a`;
+  and
+- lifecycle synopsis regression patch
+  `6ca9b18551b470ee37fba89223c5c52b49a8a52f8e2490b301bdad36c4e88777`,
+  handoff
+  `e38c4d4751dd0449041fc679b912c4fefdba4665a7a68620a9b151fa72c01503`.
+
+The separately retained physical macOS spaces-path supplement is
+`ae89aa93571b53727716003b672eee845e07fa5fe074beff95c83cde94b1cce6`.
+These receipts are supporting evidence only; this checkout still had to
+integrate and qualify one coherent successor.
+
+The successor corrects the following bounded documentation contracts:
+
+- `docs/cli-reference.md` no longer advertises an unsupported positional
+  argument for `liftoff doctor`; it documents current-directory diagnostics;
+- the same reference now states that current plan/init/migrate generation
+  writes manifest v8 and reads v2-v8 while preserving the exact historical,
+  unknown-tuple, phase-graph and activation-v1 restrictions;
+- current generated modern governance guidance names the registered
+  project-independent `liftoff capabilities --json` catalog as read-only
+  installed-CLI metadata, while preserving no project acceptance, execution,
+  repair-support or invented `supported-manifest` field claim;
+- the packaged configuration guide now links to the packaged private staging
+  and bootstrap retention section instead of an unpackaged source README; and
+- maintained local-link tests cover all four maintained README files.
+
+The generated guidance correction initially changed both current and frozen
+pre-assessment source rendering. The broadened focused gate correctly rejected
+21 historical managed-body hashes. The source resolver now retains the
+already-determined release classification as `current` or `pre-assessment`;
+managed rendering uses the truthful capability catalog only for current source
+and reproduces the exact former guidance for genuine historical source. The
+immutable `pre-assessment-guidance-source.json`, historical declarations and
+all old captured bodies remain unchanged. No current plugin identity, public
+schema, manifest format, graph, policy, parser, command behavior, provider
+surface or historical source bytes were retagged.
+
+Three executable regressions were added:
+
+- `tests/documented-command-contracts.test.ts` checks the actual doctor parser
+  contract and current public manifest-generation capability;
+- `tests/documentation-fragment-links.test.ts` validates the closed plain-ASCII
+  ATX fragment grammar and every declared packaged same-page/cross-page
+  fragment without claiming general GFM, HTML, setext, Unicode or custom-ID
+  support; and
+- `tests/documented-command-synopses.test.ts` expands the lifecycle table's
+  closed optional/value/enumerated notation, feeds every expansion to the
+  actual parser, and compares documented commands/subcommands with the
+  registered definitions.
+
+The first focused documentation run passed 526 tests and failed two expected
+review controls: the old negative capability assertion and the missing current
+contract-baseline successor. After correcting both, the first broader run
+passed 559 tests and failed the 21 historical source-body checks described
+above. The final build and 13-file gate passed 580/580 with no skips, including
+the frozen baseline, current managed rendering, complete pre-assessment source,
+current-project repair, generated infrastructure, plugin-generation parity,
+repository governance and all documentation regressions.
+
+Exactly one frozen top-level contract record changes:
+`cli-json` / `update --check --json`. A structural check with an increased
+child-process buffer proved all 235 unrelated records are identical, the new
+task-18.4 `priorChange` is byte-for-byte the complete former record, its
+`priorCurrentSha256` is the predecessor's
+`557a862cc73b531448ee43c88cb71cc45721787d6dd77ae34de2d714c0f85c0c`,
+and the new current digest is
+`d8891c94656d0206e0c0bef1af1e8fb679c77674b51b552c0ff6698b43ef9105`.
+The initial structural helper failed only because `git show` exceeded its
+default child-process buffer; no ledger assertion failed.
+
+Actual predecessor/current normalized CLI captures were then run through the
+unchanged contract-baseline harness. All other JSON records were byte-equal.
+Both normal and force plans changed only:
+
+- `.github/prompts/liftoff-governance-assess.prompt.md`;
+- `.github/prompts/liftoff-repair.prompt.md`;
+- `.github/prompts/liftoff-setup.prompt.md`;
+- `.liftoff/governance/README.md`; and
+- the resulting `liftoff.manifest.json` content digest.
+
+Exit codes, stderr, volatility, plan eligibility, blockers, operation ordering,
+paths, modes and unrelated operations remained unchanged. The immutable
+receipt is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/docs-successor-cli-delta-12d2/manifest.json`
+
+with SHA-256
+`96b630a52e848335e38cdd0c36c4b78e97a2da021d207bbd7be21fb4c713b166`.
+Its `comparison.json` contains both complete normalized records and every
+before/after changed leaf; `before-all.json` and `current-all.json` retain all
+captured JSON surfaces.
+
+Package smoke passed for `@msn-control/liftoff@0.12.3`; repository named-file
+policy passed; supported-stack remained current; strict noninteractive OpenSpec
+validation passed; and `git diff --check` passed. OpenSpec apply remains
+`ready`, schema `spec-driven`, at 82/136 complete. Task 18.4 remains unchecked
+because this is only the bounded documentation-contract slice, not complete
+generated/native/installed/public documentation qualification. Task 14.2,
+native9 and later SOURCE intake, shared allocation, activation-6, provider
+effects, PR-stack mutation, landing and public claims remain held.
+
+The bounded documentation successor above was committed as
+`4f8d6baa94c7da7653baa0e319c03e784f1125c5`, tree
+`c2647a7b16a5c3fe7073cf57f1a26efec076f1a4`, with direct parent
+`12d2f4715d8f1901093676baa875f1422c5c5a90`. It has not yet been pushed.
+
+Exact-head clean qualification preserved the source but did not qualify that
+commit. Supported-stack and build passed. The unfiltered suite ran for
+7,331.49 seconds and reported 308 passed files, five skipped files and two
+failed files; 10,324 tests passed, 117 were skipped and seven failed. Two
+unchanged complete OpenSpec distribution scans exceeded the existing
+30-second custody deadline, and five later revalidation cases exceeded their
+existing 120-second test deadlines. No documentation, generated-source,
+ledger or changed-source assertion failed. Coverage did not run because the
+unfiltered suite failed. The immutable log is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/docs-successor-4f8d6baa/clean-qualification.log`
+
+Its SHA-256 is
+`32bd349f6c531198f30fc2064131a730e04df0ba23163c1f8a5af0ce7153f07f`
+and its byte length is 2,582,751.
+
+A file-level rerun of
+`tests/modern-openspec-tool-identity.test.ts` passed 26 cases and failed only
+its second complete-distribution scan under cumulative load. Each of the seven
+originally failed cases then passed unchanged in a fresh process with the
+complete native environment. The isolated evidence is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/docs-successor-4f8d6baa/isolated-failure-reproduction.log`
+
+with SHA-256
+`86302cd3aab92f62c134243f8bfa28a704cb25a25c825f74a6f038d82bb0c963`.
+The file-level cumulative-load reproduction remains at:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/docs-successor-4f8d6baa/focused-timeout-reproduction.log`
+
+with SHA-256
+`e9f7eaa85713d388fed75fa26c7b5e23b2580aadbb66144a54bac656a7390581`.
+No deadline, custody bound, source-complete threshold, test expectation or
+scan scope was weakened.
+
+### Packaged-command and ruleset-readback successor, 2026-10-15
+
+A second bounded successor integrates two independently reviewed patches
+without extending their evidence:
+
+- packaged command-example regression patch
+  `c1b950950039fed673a9cd9371aec71a0aca9db71efd79cc9ff21aa40f41c14c`,
+  handoff
+  `fbdbd7c0da4167b3df642c36b0ff621575d86f0874e8a9ae71ace9f592c7464f`;
+  and
+- immutable ruleset readback-input binding patch
+  `e33add509832b52d7832fa18cc21723c3243e58a46b6fd2079948e3c81d3c17d`,
+  handoff
+  `082f3604d86f6053ab5eb79eae30137b149659d1e324d458b0805028176a2026`.
+
+`tests/documented-command-examples.test.ts` derives the actual packaged
+Markdown inventory from npm's package list and checks its closed set of
+runnable command examples against the real parser. It keeps literal commands,
+bounded redirection prefixes, documented notation, partial command families,
+negative/historical examples and alternation distinct. It does not execute
+shell commands or establish provider, native-host, installed-package or past
+and future `npx` qualification.
+
+The ruleset readback correction is deliberately narrower than task 14.4.
+`executeRulesetPhase` now captures an originally requested `live-readback`
+repository, source digest, evidence header, operation set, expiry, clock,
+lease assertion, approval inputs and `readRuleset` callback before the first
+await. A caller mutation across lease validation cannot convert that read into
+enforcement, acquire an injected writer, replace the repository or identity,
+or relabel proof after observation. The ordinary writer path after its
+original envelope acquisition remains unchanged. Maintainer guidance records
+that the production ruleset reader is injected and read-only; it does not
+claim a production GitHub adapter or live qualification.
+
+The current dirty successor passed:
+
+- a clean build;
+- 289/289 tests with no skips across the twelve focused documentation,
+  governance, readback-binding and package-policy files;
+- strict standalone TypeScript checking of both newly added regression files
+  and their imported source;
+- package smoke for `@msn-control/liftoff@0.12.3`;
+- supported-stack and named-file repository policy checks;
+- strict noninteractive OpenSpec validation; and
+- `git diff --check`.
+
+Task 18.4 remains unchecked. The bounded implementation gaps are now:
+
+- qualify one exact coherent committed successor through the unfiltered native
+  suite and source-complete four-metric coverage gate; the failed
+  `4f8d6baa` run and isolated selectors do not substitute for that gate;
+- replay the complete maintained/generated README inventory and package-link
+  audit on that exact successor, including actual package bytes and physical
+  paths with spaces, without inheriting the independently reviewed
+  `12d2f471` candidate as current evidence;
+- retain cross-host Windows, macOS and Linux link/path evidence for those same
+  coherent bytes rather than extrapolating the macOS spaces-path supplement;
+- explicitly close the final four-README/generated-source/related-guide
+  disposition against stale npm-primary wording, invented archive/setup
+  aliases, premature completion/public-stateful claims, and anonymous
+  project-ID claims; and
+- leave any still-unqualified native, installed, cloud, stateful or provider
+  feature labeled unavailable/unverified until its owning gate is admitted.
+
+No new schema, capability, command, default, graph, shared identity, provider
+effect or public surface is allocated by this successor. Task 14.4 remains
+unchecked because no production ruleset adapter or live read/write
+qualification was added. Native9 and later source-family intake, shared
+allocation, activation-6, task 14.2, public/cloud effects, PR-stack mutation
+and landing remain held.
+
+### Assessment scope and current-successor correction, 2026-10-14
+
+The packaged-command/ruleset-readback successor above was committed locally as
+`ed0d344d2414e8783d8aeb5dfe2a89c66c36b4c7`, tree
+`39dc5c323c1a70ccad0189a2c7a3e16008f7ed09`, with direct parent
+`4f8d6baa94c7da7653baa0e319c03e784f1125c5`. It remains unpushed.
+
+The first `ed0d344d` qualification preflight accidentally resolved ambient
+OpenTofu 1.13.1. It was stopped before the unfiltered suite and retained only
+as invalid setup evidence:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/docs-ruleset-successor-ed0d344d/invalid-opentofu-1.13.1-preflight.log`
+
+with SHA-256
+`f9080cab32076193a54e75b954d567110c33f4eb969622110b98ffbdf4a357cb`.
+
+The corrected attempt used Node 24.21.0, npm 12.0.2, OpenTofu 1.12.6,
+OpenSpec 1.11.0 and the qualified OpenSpec content profile. Supported-stack
+and build passed. The command setup still omitted the restored CPython 3.14.7
+and uv directories, and the wrapper used `pipefail` without `errexit`. The
+unfiltered suite therefore failed but the wrapper continued into coverage:
+
+- 309 files passed, five were skipped and three failed;
+- 10,353 tests passed, 117 were skipped and 13 failed;
+- two unchanged activation-history cases exceeded their existing 30-second
+  deadlines;
+- ten Manual cases correctly refused the unqualified ambient Python identity;
+  and
+- the team-gitflow initialized-baseline case returned a truthful failed result
+  before dispatching its remaining checks.
+
+The unfiltered duration was 5,105.58 seconds. Coverage was interrupted by the
+user-directed pause and produced no final report or metrics; only its temporary
+directory existed. It cannot qualify the failed invocation. The preserved raw
+log is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/docs-ruleset-successor-ed0d344d/clean-qualification.log`
+
+with 4,823,618 bytes and SHA-256
+`dd8406db9f63b1ba2f23b00dc5e4aa82952c4823b8676759012de9e8d847306c`.
+The explicit partial receipt is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/docs-ruleset-successor-ed0d344d/interrupted-evidence.json`
+
+with SHA-256
+`46fc2464155e79a948fab9bf5ff6e4f170fad6eaf2a41ef688c9ff511de2fcda`.
+The checkout was clean at the exact subject when stopped, no queued source unit
+had been applied and no attributable worker remained.
+
+The retained team-gitflow result had `failureCode: process-failed`,
+`inputsUnchanged: true`, `cleanupComplete: true` and no nonzero or unsettled
+recorded subprocess. Status, apply instructions and selected strict OpenSpec
+validation all exited zero; the failure occurred before `openspec validate
+--all` dispatch. A separately named exact-`ed0d344d` archive rerun with the
+restored CPython 3.14.7 and uv 0.12.7 paths identified the boundary directly:
+the complete qualified OpenSpec distribution scan exceeded its unchanged
+30-second custody deadline in `observeModernLocalTools` before initialization
+execution. Its log is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/ed0d-team-selector-diagnosis/run.log`
+
+with SHA-256
+`907ab29db3d9f6f3823b6b65abf3a6d15cffdba5e1cdaf3b86cd1cab167610c0`.
+The interrupted coverage invocation later passed the same team case on the
+same source, which supports variable native scan load but is not substituted
+for full-suite admission. No deadline or scan scope was changed.
+
+After the failed/interrupted evidence was sealed, six independently retained
+ordinary source units were integrated in their required order:
+
+1. team review ref-scope patch
+   `723d2138c69c1ade59b20f060874406578b14676e653b38a9e99a3db2f656b91`,
+   handoff
+   `d515ae481bbff111ef32c3829add0f0cdb0e4342cc6837e4948ebaa323b4d1a9`;
+2. single-maintainer review ref-scope patch
+   `08972902cbacd58285b4eb3718ce87b70927e16a866b56dfb7262581c75ffa12`,
+   handoff
+   `26fe17f029d6d58666960ecf87dd2eb0ec03e1bf89582457dc75c24d4e784df2`;
+3. assessment original-scope patch
+   `2ed730bf0e7ad281a68ed119516642d118364ab16a92999a84d203749f452557`,
+   handoff
+   `604bc68d541aa81673eb80c0df462bf5edd1680df31c4899e136adf1907d2843`;
+4. current-successor documentation patch
+   `0ab1d037f40d2682f34afcb36d4a3db55ea99a339f7822c3964aa006dd130ad8`,
+   handoff
+   `10f5d2d8fbc01a1bf4c1451e0efbfe0e4116fca5740ae3e4c90c5967e0078cbe`;
+5. profile-aware classic review patch
+   `67eb07d7754d60b010d910769b9cc05b506220cdfb98a8edf616f68771fef8d9`,
+   handoff
+   `f1d51c142d87f4deffa2250c024694dea764a68d7cbc4e5119e654cce8f2e67a`;
+   and
+6. integer review-count patch
+   `9236a231b6025de21d04d369b93a42ab17526e070409e55f34b8d38d292fb800`,
+   handoff
+   `212e4f4cac13075ad8d0a41a3d19d1128806c8c8fa269fafdbdfa776772d096c`.
+
+The combined source correction:
+
+- requires team and single-maintainer review rules to cover main, develop,
+  release and hotfix families rather than accepting an unrelated branch;
+- preserves the single-maintainer profile's global refusal of human,
+  code-owner and last-push approval requirements;
+- interprets classic protection using the selected profile while preserving
+  force-push, deletion, required-check, stale-review and incomplete-metadata
+  refusal;
+- accepts only nonnegative safe-integer review counts in declared and live
+  metadata;
+- captures the originally requested local/live assessment scope and initial
+  report before asynchronous observation, without adding new observers or
+  write authority; and
+- corrects public historical-successor wording to the advertised
+  `schemas.currentUpdate` state4/journal2/v8 contract without claiming that
+  update performs separate verification or publication.
+
+No policy/catalog bytes, profile identity, graph, default capability, provider
+write, activation authority or external evaluator was added. Existing
+unsupported mandatory observations remain partial.
+
+Coherent validation passed:
+
+- build and project-wide no-emit;
+- 25 selected files with 760/760 tests and no skips or unrun cases;
+- strict no-emit for the complete 23 clean fixture/import files;
+- the complete 25-file strict fixture check reproduced the exact 12 inherited
+  diagnostics with SHA-256
+  `6eca6fdb9dd24433d51c01f108fabcc5ed6fadabab22d04579d4e99a2406d598`;
+- package smoke for `@msn-control/liftoff@0.12.3`;
+- supported-stack and repository named-file policy;
+- strict noninteractive OpenSpec validation; and
+- `git diff --check`.
+
+The retained selected-results report is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/assessment-docs-successor-ed0d-working/selected-results.json`
+
+with SHA-256
+`8fec6c124f1fbaa92415b94c5e5bdbbb3683a5098a0ec84aac1ece6f08732cc7`.
+The exact committed source successor
+`0e29ad80252b46520dc2cfa9337733b6f16a128d` was independently reviewed
+against all six retained source units, parent blobs and modes. The review
+rehashed all 18 subjects, reproduced the 760-test report and clean 23-file
+strict check, and confirmed the complete 25-file diagnostic output remained
+byte-identical to the 12 inherited errors. Its receipt is:
+
+`/Users/jonathan/.copilot/session-state/8d89d4b7-10db-4009-945e-b14397314a84/files/canonical-0e29-review/review.json`
+
+with SHA-256
+`98e0d5667d6884ef400c01f7cb59ab108d4810b9d48518923cbfdaf0e5a297ba`.
+This admits the bounded assessment/documentation source only; it does not
+admit full-suite, coverage, provider or landing claims.
+
+OpenSpec remains `ready`, schema `spec-driven`, at 82/136 tasks complete.
+Tasks 14.7 and 18.4 remain unchecked: this source unit does not add every real
+evidence producer or complete the same-revision cross-host/full/package-link
+qualification. A future exact committed qualification must use the complete
+qualified Python/uv path and a fail-fast wrapper so a failed unfiltered suite
+cannot continue into qualifying coverage. No push, PR mutation, provider
+effect or landing is authorized by this checkpoint alone.
+
+### Bounded npm runtime surface correction, 2026-10-14
+
+After preserving the assessment/documentation checkpoint as a distinct commit,
+the independently retained package runtime patch was applied:
+
+- patch
+  `21f765098d65d2c98cbf4f571437507781328b1db46791c2c10616c6f553e602`;
+  and
+- handoff
+  `74c92c4b24b9969003a60bb0ece251ab877ba88c0db2c38fe765e95e9708d50a`.
+
+The npm package now declares recursive emitted JavaScript and declaration
+surfaces instead of the whole `dist` directory. Local TypeScript builds still
+produce source maps for development; only packed development maps are omitted.
+The package smoke contract admits exactly `dist/**/*.js` and
+`dist/**/*.d.ts`, rejects every other packed `dist` payload, and retains the
+unchanged 13 MiB unpacked-size ceiling. Explicit packaged assets, runtime
+modules, declarations, package lock and dependency set remain unchanged.
+`CONTRIBUTING.md` intentionally gained maintainer guidance for the narrowed
+published surface, and this ledger records the correction and its evidence.
+The `2647869d` ledger sentence that said all documentation remained unchanged
+was inaccurate; this additive documentation-only successor corrects that claim
+without rewriting the admitted commit, source receipt or validation evidence.
+
+Validation on the canonical successor passed:
+
+- build and project-wide no-emit;
+- `tests/package-identity.test.ts` and
+  `tests/package-smoke-contract.test.ts`, 38/38 tests with no skips;
+- strict ES2024/NodeNext no-emit for the complete selected test/import graph
+  with existing JavaScript helpers;
+- real npm 12 dry-run inventory with 1,076 packed files, 8,855,966 unpacked
+  bytes, 4,775,522 bytes remaining below the unchanged limit, zero packed
+  source maps, zero unreviewed `dist` extensions and all sampled runtime and
+  declaration files present;
+- installed-tarball package smoke for `@msn-control/liftoff@0.12.3`; and
+- supported-stack, repository named-file policy, strict OpenSpec validation
+  and `git diff --check`.
+
+The first two local inventory summary helpers incorrectly assumed npm 12
+returned either an array or a direct pack object. npm 12 returned an object
+keyed by package name. The successful `npm pack --dry-run --json` bytes were
+not rerun or rewritten; the corrected read-only parser used the existing
+inventory and produced the measurements above. These helper failures are not
+source or package failures.
+
+The first OpenSpec validation command used the unsupported
+`--non-interactive` spelling and exited 1 before validation. It is preserved
+as `invalid-openspec-non-interactive-option.log`, SHA-256
+`d6a21c62645df48e749cff356d93d783f3cdf91a5eb6e74812d7a946cde0e832`.
+The OpenSpec 1.11.0 `--no-interactive` command then passed. A separate evidence
+hash command also exited after hashing existing subjects because it named two
+nonexistent convenience aliases; the subsequent complete hash inventory used
+the actual retained filenames. Neither driver error changed repository or
+package bytes.
+
+The complete evidence directory is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/package-runtime-surface-0e29-working`
+
+Its selected test report has SHA-256
+`7bd3c6a333c4d47c1413249ff75b7265234cd52150ba38a76a497ce703674d6a`,
+the npm inventory has SHA-256
+`f006837c88043a736016abae914809c3fef35014d27701c4fb3808dcd0ce6e42`,
+and the inventory verification has SHA-256
+`3de3d95302a9a914b70fbdf1fa7420a7363269d28b96a2dc28c4dc4b0730f07b`.
+
+The exact committed package successor
+`2647869d2eac2da8b5cdb1b4ea51929461bb4837` was independently reviewed
+against its admitted parent and all retained source/evidence subjects. The
+review rehashed 21 subjects, all 1,560 tracked rows and modes, all five exact
+parent/target source blobs, the 38-test report and the 1,076-path package
+inventory. Its receipt is:
+
+`/Users/jonathan/.copilot/session-state/8d89d4b7-10db-4009-945e-b14397314a84/files/canonical-package-264-review/review.json`
+
+with SHA-256
+`362b3876214c26dab1890c4b4de864541b174a774210ac70ade60b3c156e3269`.
+The first independent verifier assumed only the five package-source files and
+refused the additional `resume.md` ledger file. That failed verifier result was
+preserved; the reviewer separately inspected the additive ledger and corrected
+the verifier scope to the actual six-file commit. The resulting admission is
+bounded source admission only, not full-suite, coverage, provider or landing
+authority.
+
+The first current-head replay of the 25-file assessment/documentation corpus
+after the package correction exposed a tightly coupled test-inventory defect:
+758/760 cases passed, but
+`tests/documentation-fragment-links.test.ts` and
+`tests/documented-command-examples.test.ts` rejected the newly admitted
+`dist/**/*.js` entry as an unsupported nonliteral package declaration. The
+failed report is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/source-draft-b1d70c3c`
+
+The corrective successor imports the existing
+`compiledPackageFiles` contract and skips exactly its two reviewed compiled
+patterns while constructing the packaged Markdown inventory. Every other
+wildcard, absolute path and parent traversal remains refused. It does not
+change the package declaration, package budget, packed bytes or documentation
+selection.
+
+Validation of that correction passed:
+
+- the two directly affected files, 20/20 tests;
+- the complete 25-file coherent corpus, 760/760 tests with no skips or unrun
+  cases;
+- package identity and smoke contracts, 38/38 tests;
+- project-wide no-emit; and
+- `git diff --check`.
+
+The successful correction evidence is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/package-doc-inventory-b1d-working`
+
+This correction does not raise a budget, remove local debugging output, alter
+runtime behavior, qualify native packages or satisfy source-complete coverage.
+No broad native/full-suite rerun was performed for this package-only unit.
+Task 18.4 remains incomplete pending the coherent same-revision maintained
+README/package-link/cross-host audit, and tasks 18.1/18.2 remain responsible
+for the complete advertised matrix and fresh coverage evidence.
+
+### Typed package-documentation contract and bounded native replay, 2026-10-14
+
+The runtime correction above was committed as
+`e77686a1ff4bfc211221cb9d32aa394a27df6a95`, pushed normally on
+`askhooli-modernization-continuation`, and published as source-only draft pull
+request #168 against the explicitly verified
+`voyager163-liftoff-modernization` base at
+`12d2f4715d8f1901093676baa875f1422c5c5a90`. The pull request remains draft
+and unstacked; this publication is not full-suite, coverage, landing, provider
+or release authority.
+
+Before any broad rerun, one bounded affected native invocation used the clean
+pushed `e77686a1` bytes with `set -euo pipefail`, the original native flags and
+unchanged limits. The qualified tools were Node 24.21.0, npm 12.0.2, CPython
+3.14.7, uv 0.12.7, OpenTofu 1.12.6 and OpenSpec 1.11.0. Its selector retained
+the two activation-history cases implicated by the earlier process boundary,
+the complete generated Manual matrix and the team initialized-baseline
+OpenSpec case. It passed 15 selected tests with no failure. The reporter also
+listed 88 unselected cases as pending because of the name filter; those cases
+were not executed and are not qualification credit. This selector was
+slightly stronger than the original failure set because the generated Manual
+pattern also selected the Node and Go variants. The earlier Python identity,
+history-timeout and initialized-baseline failures did not reproduce in this
+bounded successor gate. No unfiltered suite or coverage followed.
+
+The native evidence is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/native-affected-e77686a1`
+
+Its preflight, run log and JSON report have SHA-256 values
+`99827a6bb11e74a73fe71fa5d59574e2d2ef91e9684e802955abe24d7f1c00d6`,
+`2364722286a320bf918dfd809e7733c37a1933f510eb437630fbba9eb224a36d`
+and
+`6f5c19db5f435b3dbd231140a7387d520bdc080c0dc1ef9e13a2632ea15c1dcf`
+respectively.
+
+Independent strict fixture replay then found that both corrected documentation
+tests imported the JavaScript-only
+`scripts/package-smoke-contract.mjs` boundary. Under the original
+ES2024/NodeNext `--ignoreConfig` flags, with no `allowJs`, each test produced
+TS7016. The earlier runtime 20/20 and coherent 760/760 reports remain their
+actual results, but they did not establish the required strict fixture typing.
+Those two TS7016 failures are preserved separately and were not relabeled as
+part of the inherited fixture diagnostics.
+
+The first typed correction moved the exact compiled declarations into the
+existing `src/plugins/builtin/assets.ts` metadata module and imported that
+typed source from both the smoke contract and documentation tests. Leaving the
+constant as a literal tuple produced two TS2345 diagnostics for
+`.includes(entry: string)`. A typed predicate removed those diagnostics, but
+the coherent runtime corpus then correctly refused the predicate as a function
+inside the enforced data-only asset leaf: 759/760 passed and the single
+failure reported
+`plugins/builtin/assets.ts:23: FunctionDeclaration is not data`. Both failed
+iterations are preserved as diagnostic evidence rather than semantic credit.
+
+The final correction keeps the metadata module data-only and declares the
+single shared value as `readonly string[]`. The smoke contract re-exports that
+same value, and both documentation tests import the typed source module.
+There are no duplicated pattern strings, casts, handwritten declarations or
+weakened inventory refusals. Exact behavior remains limited to
+`dist/**/*.js` and `dist/**/*.d.ts`.
+
+Validation on the final working successor passed:
+
+- the two affected strict ES2024/NodeNext imports with an empty log;
+- the complete 23-file clean fixture/import strict set with an empty log;
+- the complete 25-file strict set with exactly the same 12 inherited
+  diagnostics and byte-identical SHA-256
+  `6eca6fdb9dd24433d51c01f108fabcc5ed6fadabab22d04579d4e99a2406d598`;
+- the two affected runtime files, 20/20 tests;
+- the complete coherent source corpus, 25 files and 760/760 tests;
+- package identity and smoke contracts, 38/38 tests;
+- project-wide no-emit and the installed-tarball package smoke;
+- supported-stack, repository named-file policy and strict noninteractive
+  OpenSpec validation; and
+- `git diff --check`.
+
+The final and failed-iteration evidence is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/package-doc-typed-e776-working`
+
+The already-pushed draft source is therefore superseded additively by this
+typed-boundary successor. It must remain draft after publication. OpenSpec
+remains at 82/136 tasks complete; no task checkbox is changed by this bounded
+correction, and no full-suite or coverage qualification is claimed.
+
+The exact source-and-ledger successor was committed as
+`7578e54ef0db14689d6796ccf24776a1383e9c0e`, tree
+`0e22cd05f9fb3c5dbeeef2786eedf39c0bd9c162`, with parent
+`e77686a1ff4bfc211221cb9d32aa394a27df6a95`. Its sealed evidence manifest is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/package-doc-typed-7578e54e/manifest.json`
+
+with SHA-256
+`7f2a93ff11c004afba02c38aaaf82908494a06c8381bc30bdbac0b4329bce544`.
+This receipt records the exact five source paths, their committed blobs, all
+final validation subjects and both failed correction iterations. It remains a
+bounded source receipt only.
+
+Independent review accepted the `7578e54e` source and validation subjects but
+found one receipt-label error: `manifest.results.coherentFiles` preserved
+Vitest's nested passed-suite count of 64, not the actual test-file count. The
+original manifest remains immutable. The source report has 25
+`testResults` entries, 760 passed tests and zero failed tests. The correction
+supplement is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/package-doc-typed-7578e54e/manifest-correction.json`
+
+with SHA-256
+`f1040ca35bc59b28f6d2f0d67c98889425e6492cdd3fd234bdc9870d59314df0`.
+No ledger, draft description or qualification claim treats 64 as a file count.
+
+### Explicit maintained and generated README audit, 2026-10-14
+
+Task 18.4 now has a source-enforced explicit inventory:
+
+- maintained repository paths:
+  `README.md`, `infrastructure/opentofu/bootstrap/README.md`,
+  `infrastructure/opentofu/telemetry/README.md` and
+  `src/application/state-migration/README.md`; and
+- generated logical families:
+  `root-readme`, `opentofu-readme`, `functions-readme`,
+  `function-worker-readme`, `pattern-prompt-readme` and
+  `repository-governance-guide`.
+
+The integrated audit uses `buildCurrentProjectPlan` and
+`buildCurrentArtifacts`, not the legacy generator. It verifies the current npm
+installation path remains truthful while no Homebrew cask or WinGet channel has
+been published; unshipped work remains labeled unavailable; protected state
+handover/custody and brownfield migration remain unavailable/planning-only;
+telemetry schema changes remain undeployed and do not enroll a client; generated
+setup is not a shell command or completion claim; Function and prompt scaffolds
+do not claim missing processing/loading; and generated governance reports live
+enforcement as unobserved. It also continues rejecting removed create/apply
+syntax and anonymous-project-ID wording.
+
+Validation passed:
+
+- all 38 repository-local Markdown links across the four maintained README
+  paths resolved: 37 from the root README and one from the private state
+  migration guide;
+- `tests/documentation.test.ts` passed 24/24;
+- the complete ten-file maintained/generated documentation corpus passed 336
+  tests with two existing intentional skips;
+- the strict ES2024/NodeNext fixture import for `tests/documentation.test.ts`
+  passed with an empty log;
+- project-wide no-emit, strict noninteractive OpenSpec validation and
+  `git diff --check` passed.
+
+Evidence is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/readme-audit-a975-working`
+
+Task 18.4 is complete. OpenSpec is now 83/136. This documentation audit does
+not complete tasks 18.1, 18.2 or any native/provider/publication requirement.
+
+The exact audit successor was committed as
+`b34e4fc87c93a3b3fd66593dc9fc70e2a9e83ef1`, tree
+`52e562b84a457465c45a0314546d2439c5338c8e`, with parent
+`a975405a9faa288c1afdbcbc51730224a9121e74`. Its sealed evidence manifest is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/readme-audit-b34e4fc8/manifest.json`
+
+with SHA-256
+`e085c897144f3b299a30bbd87a8c96f9fa4f551e7f54627c418014414c588c5c`.
+The manifest records 10 actual test files, 336 passes, two existing skips,
+38 resolved maintained local links and zero failures.

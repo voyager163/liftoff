@@ -113,7 +113,61 @@ function setLeaf(value: unknown, segments: string[], replacement: unknown): void
   Reflect.set(parent, segments.at(-1)!, replacement);
 }
 
-function assertBoundedApplicationCliChanges(key: string, result: CliResult, text: string, baseline: unknown): void {
+function assertBoundedInfrastructureCliChanges(key: string, result: CliResult, text: string, baseline: unknown) {
+  const changes: Record<string, readonly { segments: readonly string[]; before: string; after: string }[]> = {
+    'status-json': [{
+      segments: ['blockerFingerprint'],
+      before: '1defc0e6ee6332ee3d0214e92909da917a9ea38b9105658573f016b710aa99aa',
+      after: '1f2144a069c1d6ec4c24ba98268d219a300fd40001fb38178fd89deff454b62b'
+    }],
+    'status-local-json': [{
+      segments: ['blockerFingerprint'],
+      before: 'f9b492336fe34859a7621b40bb9bfe2645e80d7eb2048e881060370726bc2798',
+      after: 'f6f553b888e0e61d4e39763cba34b2df2e5a5ff02716544b06098a4c8be7ce22'
+    }],
+    'resume-json': [{
+      segments: ['blockerFingerprint'],
+      before: 'f9b492336fe34859a7621b40bb9bfe2645e80d7eb2048e881060370726bc2798',
+      after: 'f6f553b888e0e61d4e39763cba34b2df2e5a5ff02716544b06098a4c8be7ce22'
+    }],
+    'plan-json': [
+      { segments: ['plan', 'baselineDigest'],
+        before: '7a96f6d38085dbccf1aa220b7e7adeedca01f563fbc8f817956621564e0e4d57',
+        after: '812d3d259db037e768371e60a04b6b02cdb2a4bbedabf6aa3c8ad240bc64f572' },
+      { segments: ['plan', 'inputDigest'],
+        before: '0e428f06ddb9e55a755bbfa077bde4b46a799bff7583e1378179f317642155a1',
+        after: '9e946fa21ddcd717ed73a6e28d88295fc91c47d9ec2395cc9e3066a20c44385a' },
+      { segments: ['plan', 'transitionDigest'],
+        before: 'b7b6fe4d2e262573cd3e8fd1020cbbd287c86aaad25c43c0d4cde1ed00522d7d',
+        after: 'ab342b18e493921cbf2d3ba7f4791a5d454f2c1477756b8e3f3e1db6c4605804' }
+    ]
+  };
+  const beforeStdout: Record<string, string> = {
+    'status-json': '82e9884a1e9611646f2a8e2442871543d000c0a0936816991165666175049f2a',
+    'status-local-json': 'ec9b412a477546d2daf90084ad3e26cebc8458c3265accbf05fb0d4f62462664',
+    'resume-json': 'c2876816df7660228b122c86057e2c8940d3f9bfb9c2a672bf5a672120358775',
+    'plan-json': 'b5da567ee1ca6705f9eb644543486718d0589e2a67550da96deba7b046de1aeb'
+  };
+  const review = cliReviews.find((entry) => entry.key === key)!;
+  if (!Object.hasOwn(changes, key)) return { result, text, review };
+  const payload: unknown = JSON.parse(text);
+  expect(`${JSON.stringify(payload, null, 2)}\n`).toBe(text);
+  for (const { segments, before, after } of changes[key]!) {
+    const actual = segments.reduce<unknown>((value, segment) =>
+      value !== null && typeof value === 'object' ? Reflect.get(value, segment) : undefined, payload);
+    expect(actual, `${key} ${segments.join('/')}`).toBe(after);
+    setLeaf(payload, [...segments], before);
+  }
+  const recovered = `${JSON.stringify(payload, null, 2)}\n`;
+  expect(sha256(recovered), `${key} only the six reviewed HCL leaves may differ`).toBe(beforeStdout[key]);
+  expect(review.priorCurrentSha256).toBe(review.priorChange?.currentSha256);
+  const recoveredResult = withStdout(result, recovered);
+  expect(baselineComparison('governance-extraction-cli', key, recoveredResult, baseline, [review.priorChange!]).status)
+    .toBe('recorded-change');
+  return { result: recoveredResult, text: recovered, review: review.priorChange! };
+}
+
+function assertBoundedApplicationCliChanges(key: string, result: CliResult, text: string, baseline: unknown, review: CliReview): void {
   const beforeStdout = {
     'status-json': '142e404b828a87fbd400917a06ebf0cec5848a5c7b2cbd66ad447f8b6887cd2a',
     'status-local-json': '43dad724785afb6157eda3655ee58210c9c6deb0b5dd9bc43b94e4dfdb7f9864',
@@ -148,7 +202,6 @@ function assertBoundedApplicationCliChanges(key: string, result: CliResult, text
   const recovered = `${JSON.stringify(payload, null, 2)}\n`;
   expect(sha256(recovered), `${key} every other field preserves measured immutable 13.5 output`)
     .toBe(beforeStdout[key as keyof typeof beforeStdout]);
-  const review = cliReviews.find((entry) => entry.key === key)!;
   expect(review.priorCurrentSha256).toBe(review.priorChange?.currentSha256);
   expect(baselineComparison('governance-extraction-cli', key, withStdout(result, recovered), baseline, [review.priorChange!]).status)
     .toBe('recorded-change');
@@ -210,7 +263,8 @@ describe('governance responsibility extraction parity', () => {
     for (const { key } of cliReviews) {
       const result = currentResults[key] as CliResult;
       const text = stdout[key]!;
-      assertBoundedApplicationCliChanges(key, result, text, recordedResults[key]);
+      const prior = assertBoundedInfrastructureCliChanges(key, result, text, recordedResults[key]);
+      assertBoundedApplicationCliChanges(key, prior.result, prior.text, recordedResults[key], prior.review);
       const verdict = (candidate: CliResult) => baselineComparison(
         'governance-extraction-cli', key, candidate, recordedResults[key], cliReviews).status;
       expect(verdict({ ...result, exitCode: result.exitCode === 0 ? 1 : 0 }), `${key} exit delta`).toBe('mismatched-record');

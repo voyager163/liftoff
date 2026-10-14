@@ -29,7 +29,8 @@
     "liftoff": "dist/cli.js"
   },
   "files": [
-    "dist",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
     "assets/governance/modern/source-contracts.json",
     "assets/governance/single-maintainer-gitflow/activation-v2-graph.json",
     "assets/governance/single-maintainer-gitflow/activation-v3-graph.json",

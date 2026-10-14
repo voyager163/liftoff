@@ -15,6 +15,11 @@ export interface BuiltinAssetDeclaration extends AssetDeclaration {
   readonly role: BuiltinAssetRole;
 }
 
+export const compiledPackageFiles: readonly string[] = Object.freeze([
+  'dist/**/*.js',
+  'dist/**/*.d.ts'
+]);
+
 export const builtinAssets: readonly BuiltinAssetDeclaration[] = Object.freeze([
   Object.freeze({
     owner: Object.freeze({ kind: 'plugin', category: 'stack', id: 'node-fastify' }),
