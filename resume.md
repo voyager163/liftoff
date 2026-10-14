@@ -3308,3 +3308,15 @@ Evidence is retained under:
 
 Task 18.4 is complete. OpenSpec is now 83/136. This documentation audit does
 not complete tasks 18.1, 18.2 or any native/provider/publication requirement.
+
+The exact audit successor was committed as
+`b34e4fc87c93a3b3fd66593dc9fc70e2a9e83ef1`, tree
+`52e562b84a457465c45a0314546d2439c5338c8e`, with parent
+`a975405a9faa288c1afdbcbc51730224a9121e74`. Its sealed evidence manifest is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/readme-audit-b34e4fc8/manifest.json`
+
+with SHA-256
+`e085c897144f3b299a30bbd87a8c96f9fa4f551e7f54627c418014414c588c5c`.
+The manifest records 10 actual test files, 336 passes, two existing skips,
+38 resolved maintained local links and zero failures.
