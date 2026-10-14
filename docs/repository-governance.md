@@ -896,6 +896,23 @@ for declarative recipe inputs, operator boundaries and remaining real
 qualification blockers. The original exact 30-day protected retention/disposal
 obligation remains unchanged; TASK14.1 is not checked by source tests.
 
+## Maintainer boundary: injected ruleset observation
+
+Ruleset enforcement and its final `live-readback` phase still require an
+explicitly injected GitHub ruleset adapter; there is no default production
+ruleset writer or reader. The observation path retains the original repository,
+saved source digest, evidence header, read-operation inventory, plan expiry,
+clock, lease assertion and reader method before its first await. Changing
+caller-owned phase, repository, identity, context, plan or adapter objects during
+lease validation or provider observation cannot turn that read into enforcement
+or relabel its proof. Caller changes are not restored. Expiry, lease failure and
+source/readback digest mismatch still refuse completion; ordinary enforcement
+retains its separately required approval checks.
+
+This source boundary does not qualify live GitHub ruleset behavior, add a
+production adapter, grant provider writes or complete TASK14.4. Full production
+execution and its independent evidence remain separate requirements.
+
 ## Commands
 
 The generated setup integrations call only strict, project-aware CLI commands:
