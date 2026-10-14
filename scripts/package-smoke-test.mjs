@@ -312,6 +312,17 @@ try {
   const installedCapabilities = JSON.parse(run(process.execPath, [liftoffEntrypoint, 'capabilities', '--json'], {
     cwd: outsideDirectory, env: npmEnv
   }).stdout);
+  const telemetryHelp = run(process.execPath, [liftoffEntrypoint, 'telemetry', '--help'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  if (!telemetryHelp.stdout.includes('--preserve-identity') || !telemetryHelp.stdout.includes('--new-identity') ||
+      !telemetryHelp.stdout.includes('--approve-plan') || !telemetryHelp.stdout.includes('--repository') ||
+      installedCapabilities.boundaries?.projectTelemetryEnrollment !== true ||
+      installedCapabilities.schemas?.projectTelemetry?.externalCheckoutConsent !== true ||
+      installedCapabilities.schemas?.projectTelemetry?.heartbeat?.enableAvailable !== false ||
+      installedCapabilities.schemas?.projectTelemetry?.heartbeat?.ciReportingAvailable !== false) {
+    throw new Error('Installed telemetry help/capabilities lost explicit consent or overstated heartbeat publication.');
+  }
   if (installedCapabilities.schemas?.projectAssessment?.report !== 1 ||
       installedCapabilities.schemas.projectAssessment.readOnly !== true ||
       installedCapabilities.schemas.projectAssessment.liveMetadata !== true ||
@@ -890,6 +901,49 @@ try {
   if (unsupported.status !== 2 || unsupportedReport.projectIdentity?.stateSource !== 'unsupported' ||
       await treeDigest(assessmentProject) !== unsupportedBefore) {
     throw new Error('Installed assessment did not preserve and explain unsupported activation state.');
+  }
+
+  const telemetryProject = path.join(tempRoot, 'telemetry consent current project');
+  await installedWrite(telemetryProject, installedCurrentArtifacts(installedCurrentPlan({
+    projectName: 'Installed consent specimen', projectType: 'standard', apiStack: 'node',
+    specWorkflow: 'manual', agents: [], governanceProfile: 'none', environments: ['dev']
+  }, { requireProjectName: true })));
+  const telemetryEnv = { ...npmEnv, LIFTOFF_TELEMETRY: '1' };
+  delete telemetryEnv.CI; delete telemetryEnv.DO_NOT_TRACK;
+  const consentBefore = await treeDigest(telemetryProject), consentHomeBefore = await treeDigest(homeDirectory);
+  const installedStatus = JSON.parse(run(process.execPath, [liftoffEntrypoint, 'telemetry', 'status', '--json'], {
+    cwd: telemetryProject, env: telemetryEnv
+  }).stdout);
+  const installedPreview = runFailure(process.execPath, [liftoffEntrypoint, 'telemetry', 'enroll', '--check', '--json'], {
+    cwd: telemetryProject, env: telemetryEnv
+  });
+  const consentPlan = JSON.parse(installedPreview.stdout);
+  if (installedStatus.status !== 'disabled' || installedPreview.status !== 2 || consentPlan.status !== 'review-required' ||
+      await treeDigest(telemetryProject) !== consentBefore || await treeDigest(homeDirectory) !== consentHomeBefore) {
+    throw new Error('Installed telemetry status/enrollment preview implicitly enrolled or wrote disclosure state.');
+  }
+  const installedEnrollment = JSON.parse(run(process.execPath, [
+    liftoffEntrypoint, 'telemetry', 'enroll', '--approve-plan', consentPlan.fingerprint, '--json'
+  ], { cwd: telemetryProject, env: telemetryEnv }).stdout);
+  const enrolledStatus = JSON.parse(run(process.execPath, [liftoffEntrypoint, 'telemetry', 'status', '--json'], {
+    cwd: telemetryProject, env: telemetryEnv
+  }).stdout);
+  if (installedEnrollment.status !== 'enrolled' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(installedEnrollment.projectId) ||
+      enrolledStatus.status !== 'enabled' || enrolledStatus.projectId !== installedEnrollment.projectId) {
+    throw new Error('Installed exact enrollment did not return its random approved project identity.');
+  }
+  const consentAfter = await treeDigest(telemetryProject), consentHomeAfter = await treeDigest(homeDirectory);
+  const heartbeatReport = JSON.parse(run(process.execPath, [
+    liftoffEntrypoint, 'telemetry', 'report', '--heartbeat', '--json'
+  ], { cwd: telemetryProject, env: telemetryEnv }).stdout);
+  const optedOutReport = JSON.parse(run(process.execPath, [
+    liftoffEntrypoint, 'telemetry', 'report', '--json'
+  ], { cwd: telemetryProject, env: npmEnv }).stdout);
+  if (heartbeatReport.reason !== 'heartbeat-not-qualified' || heartbeatReport.attempted !== false ||
+      optedOutReport.status !== 'disabled' || optedOutReport.attempted !== false ||
+      await treeDigest(telemetryProject) !== consentAfter || await treeDigest(homeDirectory) !== consentHomeAfter) {
+    throw new Error('Installed unqualified heartbeat or global opt-out changed consent/reporting state.');
   }
 
   if (suppliedTarball && createHash('sha256').update(await readFile(suppliedTarball)).digest('hex') !== suppliedDigest) {

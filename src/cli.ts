@@ -11,7 +11,7 @@ import {
   maybeShowTelemetryNotice,
   isTelemetryEnabled,
   reportCommandEvent,
-  telemetryCommandFor,
+  telemetryCommandFor
 } from './telemetry/index.js';
 import { PresentationSession } from './terminal.js';
 import type { ParsedArgs } from './domain/project/contracts.js';
@@ -19,6 +19,7 @@ import { liftoffVersion } from './version.js';
 import { isTelemetryExcludedCommand, createSemanticTelemetryEvent, type SemanticTelemetryEvent } from './telemetry/contract.js';
 import { createCommandOutcome } from './application/command-outcome.js';
 import { createTelemetryDelivery, type TelemetryDelivery } from './telemetry/delivery.js';
+import { reportOrdinaryProject } from './application/telemetry/project-reporting.js';
 
 export interface CliTelemetryHooks {
   beforeCommand(stderr: NodeJS.WritableStream, env: NodeJS.ProcessEnv): Promise<boolean>;
@@ -95,7 +96,7 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
     return 1;
   }
 
-  const telemetryReady = !isTelemetryExcludedCommand(parsed) && await safelyPrepareTelemetry(
+  const telemetryReady = isTelemetryEnabled(env) && !isTelemetryExcludedCommand(parsed) && await safelyPrepareTelemetry(
     () => telemetry.beforeCommand(stderr, env)
   );
 
@@ -115,22 +116,25 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
     renderEntrypointError(error, stdout, stderr);
     exitCode = 1;
   }
-  if (telemetryReady) delivery = createTelemetryDelivery({ env });
+  if (telemetryReady && isTelemetryEnabled(env)) delivery = createTelemetryDelivery({ env });
   const semanticOutcome = outcome.finish(exitCode);
   const semanticCommand = telemetryCommandFor(parsed);
 
   if (delivery) {
+    const activeDelivery = delivery;
     try {
-      await delivery.withinBudget(() => telemetry.afterCommand(parsed, exitCode, env));
-      await delivery.withinBudget(async () => {
-        if (telemetry.afterSemanticCommand && semanticCommand && isTelemetryEnabled(env)) {
-          await telemetry.afterSemanticCommand(
-            Object.freeze(createSemanticTelemetryEvent(semanticCommand, liftoffVersion, semanticOutcome)), env
-          );
-        }
+      await activeDelivery.withinBudget(() => telemetry.afterCommand(parsed, exitCode, env));
+      await activeDelivery.withinBudget(async () => {
+        await Promise.all([
+          telemetry.afterSemanticCommand && semanticCommand && isTelemetryEnabled(env)
+            ? telemetry.afterSemanticCommand(
+                Object.freeze(createSemanticTelemetryEvent(semanticCommand, liftoffVersion, semanticOutcome)), env
+              ) : undefined,
+          !options.telemetry ? reportOrdinaryProject(parsed, options.cwd ?? process.cwd(), env, activeDelivery) : undefined
+        ]);
       });
     } finally {
-      delivery.close();
+      activeDelivery.close();
     }
   }
   return exitCode;

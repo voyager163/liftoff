@@ -1,5 +1,7 @@
 import {
   mkdir,
+  lstat,
+  open,
   readFile,
   rename,
   rm,
@@ -8,6 +10,8 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { telemetryNoticeVersion } from './contract.js';
+import { readTelemetryConsentConfig, readTelemetryFile, telemetrySnapshotIdentity } from '../adapters/filesystem/telemetry-consent.js';
+import { createFileAtomically, replaceFileAtomically } from '../adapters/filesystem/atomic-write.js';
 
 const configDirectoryName = 'liftoff';
 const configFileName = 'config.json';
@@ -116,6 +120,38 @@ export async function readTelemetryNoticeVersion(
 export async function recordTelemetryNotice(
   options: TelemetryConfigOptions = {}
 ): Promise<boolean> {
+  if (!options.fileSystem) {
+    const configPath = resolveConfigPath(options);
+    let lock: Awaited<ReturnType<typeof open>> | undefined;
+    let lockPath: string | undefined;
+    try {
+      const observed = await readTelemetryConsentConfig(configPath);
+      if (observed.snapshot.mode !== undefined && (observed.snapshot.mode & 0o222) === 0) return false;
+      const directory = path.dirname(observed.path);
+      await mkdir(directory, { recursive: true });
+      if (((await lstat(directory)).mode & 0o222) === 0) return false;
+      lockPath = path.join(directory, '.project-consent.lock');
+      lock = await open(lockPath, 'wx', 0o600);
+      const current = await readTelemetryConsentConfig(configPath);
+      if (current.path !== observed.path || current.snapshot.mode !== undefined && (current.snapshot.mode & 0o222) === 0) return false;
+      const telemetry = isJsonObject(current.config.telemetry) ? current.config.telemetry : {};
+      const config = { ...current.config, telemetry: { ...telemetry, noticeVersion: telemetryNoticeVersion } };
+      const checked = await readTelemetryFile(current.anchor, current.parts);
+      if (JSON.stringify(telemetrySnapshotIdentity(checked)) !== JSON.stringify(telemetrySnapshotIdentity(current.snapshot))) return false;
+      const content = `${JSON.stringify(config, null, 2)}\n`;
+      if (current.snapshot.content === undefined) await createFileAtomically(current.path, content, 0o600);
+      else await replaceFileAtomically(current.path, content);
+      return true;
+    } catch {
+      // Invalid/unwritable disclosure state repeats the notice; it never grants project consent.
+      return false;
+    } finally {
+      if (lock) {
+        await lock.close();
+        if (lockPath) await rm(lockPath, { force: true });
+      }
+    }
+  }
   const fileSystem = options.fileSystem ?? nodeTelemetryConfigFileSystem;
   const configPath = resolveConfigPath(options);
   const result = await readConfig(options);

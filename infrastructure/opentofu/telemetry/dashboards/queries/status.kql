@@ -1,0 +1,4 @@
+projects
+| summarize RetainedEvents = count(), LastObserved = max(TimeGenerated)
+| extend State = iff(RetainedEvents == 0, "empty - no retained observations; earlier records may have expired", "observations available; silence is not disablement")
+| project State, RetainedEvents, LastObserved, RetentionDays = 180

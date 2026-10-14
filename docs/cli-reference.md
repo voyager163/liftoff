@@ -12,6 +12,7 @@ liftoff adopt --help
 liftoff upgrade --help
 liftoff update --help
 liftoff repair --help
+liftoff telemetry --help
 ```
 
 Unknown flags or commands, missing values, invalid booleans, incompatible
@@ -33,6 +34,14 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | `liftoff migrate <source>` | Creates a new sibling scaffold and filtered source copy without changing the source |
 | `liftoff validate [project]` | Validates manifest identity, managed-core hashes, project provenance, workload metadata, and framework markers |
 | `liftoff doctor` | Runs read-only workload-derived diagnostics for the current directory and workstation |
+| `liftoff telemetry status [project] --json` | Read-only project enrollment status; no notice, consent, transport or receipts |
+| `liftoff telemetry enroll [project] --check --json` | Discloses pseudonymous reporting and reviews exact project/external local consent writes; no random ID is generated |
+| `liftoff telemetry enroll [project] --approve-plan <fingerprint> --json` | Creates a random UUID after exact current approval and binds consent outside that checkout; cloned/copied records require explicit `--preserve-identity` or `--new-identity` review |
+| `liftoff telemetry disable [project] --approve-plan <fingerprint> --json` | Disables that project and removes its local consent binding while preserving the UUID, unrelated bindings and accepted history |
+| `liftoff telemetry report [project] --json` | Explicit bounded project-only delivery result; never recursively emits an anonymous aggregate |
+| `liftoff telemetry heartbeat enable [project] --repository <root> --check --json` | Refuses activation without real qualified published CLI/action/artifact pins and a registered repository-scoped producer; no cron is installed |
+| `liftoff telemetry heartbeat disable [project] --repository <root> --check --json` | Reviews exact removal of an inventoried shared workflow entry; application requires its current fingerprint/default-No approval and preserves other entries/custom bytes |
+| `liftoff telemetry report [project] --heartbeat --json` | Currently emits nothing because the separately qualified CI producer is absent; global opt-outs and ordinary CI disablement always win |
 | `liftoff governance status [project]` | Reports deterministic setup state, activation identity, phase states, blockers, approvals, and evidence freshness |
 | `liftoff governance plan [project]` | Previews dependency-ready work before approval and saves a disclosed project-bound receipt outside the repository; no project/provider mutations |
 | `liftoff governance approve [project] --plan <fingerprint>` | Approves only the exact unexpired preview; does not execute its operations; refuses blocked or unavailable capabilities |
@@ -74,6 +83,12 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 
 The former `liftoff create` command is intentionally rejected with guidance to
 use `liftoff init`; there is no compatibility alias.
+Project telemetry is candidate code, not production ingestion/publication
+qualification. Its independent review is never part of setup/installation,
+generic yes, framework selection or project-write authority. See
+[telemetry and privacy](telemetry.md#explicit-project-consent-candidate-client)
+for disclosure, exact fields, clone/fork choices, status/exit behavior and
+heartbeat publication blockers.
 `/liftoff-setup` and `/liftoff-repair` (Copilot/Claude), and `$liftoff-setup` and
 `$liftoff-repair` (Codex), are native coding-agent invocations, not a `liftoff setup`
 command or `liftoff -repair` flag. Init creates a scaffold; repair
