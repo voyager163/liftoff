@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,8 +10,16 @@ import { buildRepairPreview, loadRepairPreview, repairApprovalStore } from '../s
 import { createScopedUserLocalRecordStore } from '../src/adapters/filesystem/update-previews.js';
 import { parse as parseYaml } from 'yaml';
 
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const filesystem = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...filesystem, rm: vi.fn(filesystem.rm) };
+});
+
 const roots: string[] = [];
-afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
+afterEach(async () => {
+  vi.mocked(rm).mockReset();
+  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
+});
 async function directory(prefix: string) {
   const root = await mkdtemp(path.join(os.tmpdir(), prefix)); roots.push(root); return root;
 }
@@ -29,7 +37,7 @@ class Runner implements CommandRunner {
     if (!['--version', 'fmt'].includes(command.args[0])) expect(await readFile(path.join(options!.cwd!, 'main.tf'), 'utf8')).toBe('# preserved source\n');
     return {
       command, displayCommand: '', status: 0, signal: null, stdout: '{"valid":true,"error_count":0}',
-      stderr: '', timedOut: false, ...this.result,
+      stderr: '', timedOut: false, processSpawned: true, processTreeSettled: true, ...this.result,
       ...(command.args[0] === '--version' ? { stdout: `OpenTofu v${this.version}`, status: 0, timedOut: false } : {})
     };
   }
@@ -58,6 +66,7 @@ describe('isolated local repair validation', () => {
     for (const call of runner.calls) {
       expect(call.options?.timeoutMs).toBeLessThanOrEqual(120000);
       expect(call.options?.maxOutputBytes).toBeLessThanOrEqual(65536);
+      expect(call.options?.ensureProcessTreeSettled).toBe(true);
       expect(call.options?.env?.TF_CLI_ARGS_init).toBeUndefined();
       expect(call.options?.env?.ARM_CLIENT_SECRET).toBeUndefined();
       await expect(stat(call.options!.cwd!)).rejects.toMatchObject({ code: 'ENOENT' });
@@ -70,6 +79,91 @@ describe('isolated local repair validation', () => {
     const runner = new Runner(result);
     await expect(validateRepairCandidate(candidate(), ['dev'], runner)).rejects.not.toThrow(/sensitive output|sensitive diagnostic/);
     await expect(stat(runner.calls[0].options!.cwd!)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each(['--version', 'fmt', 'init', 'validate'].flatMap((phase) =>
+    [false, undefined].map((settlement) => ({ phase, settlement }))
+  ))('retains staging after unproven $phase settlement $settlement', async ({ phase, settlement }) => {
+    const runner = new Runner();
+    const run = runner.run.bind(runner);
+    vi.spyOn(runner, 'run').mockImplementation(async (command, options) => {
+      const result = await run(command, options);
+      return command.args[0] === phase ? { ...result, processTreeSettled: settlement } : result;
+    });
+    const cleanup = vi.mocked(rm);
+    cleanup.mockClear();
+    await expect(validateRepairCandidate(candidate(), ['dev'], runner)).rejects.toThrow('staging cleanup is blocked');
+    expect(cleanup).not.toHaveBeenCalled();
+    const staging = runner.calls[0].options!.cwd!;
+    roots.push(staging);
+    expect((await stat(staging)).isDirectory()).toBe(true);
+    expect(runner.calls.at(-1)?.command.args[0]).toBe(phase);
+  });
+
+  it.each(['PROCESS_TREE_TERMINATION_FAILED', 'DESCENDANT_PROCESSES_ACTIVE', 'UNSUPPORTED_PROCESS_SETTLEMENT'])(
+    'does not accept contradictory settled metadata alongside %s', async (errorCode) => {
+      const runner = new Runner({ processTreeSettled: true, errorCode });
+      await expect(validateRepairCandidate(candidate(), ['dev'], runner)).rejects.toThrow('staging cleanup is blocked');
+      roots.push(runner.calls[0].options!.cwd!);
+      expect((await stat(runner.calls[0].options!.cwd!)).isDirectory()).toBe(true);
+    }
+  );
+
+  it('reports unknown validation and cleanup failures without echoing either private message', async () => {
+    const runner = new Runner();
+    const cleanupError = new Error('PRIVATE_CLEANUP_PATH');
+    vi.mocked(rm).mockRejectedValueOnce(cleanupError);
+    const error = await validateRepairCandidate({
+      ...candidate(), files: [{ pathParts: ['infrastructure', '\0private'], content: '' }]
+    }, ['dev'], runner).catch((value: unknown) => value);
+    const cleanup = vi.mocked(rm).mock.calls.at(-1);
+    if (typeof cleanup?.[0] !== 'string') throw new Error('Expected private staging cleanup.');
+    roots.push(cleanup[0]);
+    expect(error).toBeInstanceOf(AggregateError);
+    if (!(error instanceof AggregateError)) throw new Error('Expected both failures to be retained.');
+    expect(error.errors[1]).toBe(cleanupError);
+    expect(error.message).toBe('Isolated OpenTofu validation failed. Private staging cleanup also failed; no project transaction is authorized.');
+    expect(error.message).not.toContain('PRIVATE_');
+  });
+
+  it('retains staging after a thrown runner outcome without inferring settlement', async () => {
+    const runner = new Runner();
+    const run = runner.run.bind(runner);
+    vi.spyOn(runner, 'run').mockImplementation(async (command, options) => {
+      await run(command, options);
+      throw new Error('PRIVATE_RUNNER_DIAGNOSTIC');
+    });
+    await expect(validateRepairCandidate(candidate(), ['dev'], runner)).rejects.toThrow('settlement was not confirmed');
+    const staging = runner.calls[0].options!.cwd!;
+    roots.push(staging);
+    expect((await stat(staging)).isDirectory()).toBe(true);
+  });
+
+  it('reports cleanup failure even when every validation command passed', async () => {
+    const runner = new Runner();
+    const cleanupError = Object.assign(new Error('PRIVATE_PROVIDER_PATH'), { code: 'EBUSY' });
+    vi.mocked(rm).mockRejectedValueOnce(cleanupError);
+    const error = await validateRepairCandidate(candidate(), ['dev'], runner).catch((value: unknown) => value);
+    roots.push(runner.calls[0].options!.cwd!);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toMatchObject({ message: 'Private OpenTofu staging cleanup failed; no project transaction is authorized.', cause: cleanupError });
+  });
+
+  it('preserves the primary validation error and cleanup error without exposing private diagnostics', async () => {
+    const runner = new Runner({ stdout: '{"valid":false,"error_count":1}' });
+    const cleanupError = Object.assign(new Error('PRIVATE_PROVIDER_PATH'), { code: 'EBUSY' });
+    vi.mocked(rm).mockRejectedValueOnce(cleanupError);
+    const error = await validateRepairCandidate(candidate(), ['dev'], runner).catch((value: unknown) => value);
+    roots.push(runner.calls[0].options!.cwd!);
+    expect(error).toBeInstanceOf(AggregateError);
+    if (!(error instanceof AggregateError)) throw new Error('Expected both failures to be retained.');
+    expect(error.errors).toHaveLength(2);
+    expect(error.errors[0]).toMatchObject({ message: expect.stringContaining('did not confirm a valid candidate') });
+    expect(error.errors[1]).toBe(cleanupError);
+    expect(error.cause).toBe(error.errors[0]);
+    expect(error.message).toContain('did not confirm a valid candidate');
+    expect(error.message).toContain('Private staging cleanup also failed');
+    expect(error.message).not.toContain('PRIVATE_');
   });
 });
 describe('repair external authority', () => {
