@@ -3320,3 +3320,118 @@ with SHA-256
 `e085c897144f3b299a30bbd87a8c96f9fa4f551e7f54627c418014414c588c5c`.
 The manifest records 10 actual test files, 336 passes, two existing skips,
 38 resolved maintained local links and zero failures.
+
+### Exact-head qualification failure and package inventory fixture successor, 2026-10-14
+
+The independent typed-boundary source review is retained at:
+
+`/Users/jonathan/.copilot/session-state/8d89d4b7-10db-4009-945e-b14397314a84/files/canonical-package-264-review/typed-757-review.json`
+
+with SHA-256
+`46dc857809186cb60bba795bf117a34c287f87c293d4b54cb30951b243c6fa2b`.
+It admits the bounded `7578e54e` typed source together with the additive
+25-test-file/64-nested-suite receipt correction. It does not supply
+full-suite, coverage, native publication, readiness or landing admission.
+
+The earlier statement that pull request #168 was unstacked is historical and
+has been superseded. Native stack 170 is now registered with exact
+bottom-to-top membership `[168, 169]` and ultimate base
+`voyager163-liftoff-modernization`. The registration receipt is:
+
+`/Users/jonathan/.copilot/session-state/8d89d4b7-10db-4009-945e-b14397314a84/files/telemetry-source-stack-registration/receipt.json`
+
+with SHA-256
+`acdf016bb3fc9910029f9bef05c00c0c2ee98bc4e97982d9ec3d3695a0b591cb`.
+Fresh readback found both members open and draft. Pull request #168 still has
+base `voyager163-liftoff-modernization` at
+`12d2f4715d8f1901093676baa875f1422c5c5a90` and published head
+`d3f94a8af5f5b6e4fa12fe4b9ca1520de38c180e`; pull request #169 still targets
+that exact #168 head and has head
+`f0976474b2bd83041d17af68415853b76122cb39`. Do not recreate, unstack,
+retarget, ready or merge either member independently.
+
+One exact-current-head fail-fast qualification was run on clean committed and
+pushed `d3f94a8af5f5b6e4fa12fe4b9ca1520de38c180e` with the qualified Node
+24.21.0, npm 12.0.2, CPython 3.14.7, uv 0.12.7, OpenTofu 1.12.6 and OpenSpec
+1.11.0 paths, the original native flags, unchanged limits and
+`set -euo pipefail`. Supported-stack and build passed. The unfiltered
+one-worker suite then failed after 15,953.51 seconds:
+
+- 322 test files: 311 passed, six failed and five skipped;
+- 10,598 tests: 10,462 passed, 19 failed and 117 skipped; and
+- coverage did not start because the wrapper stopped at the failed suite.
+
+The exact failed evidence is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/qualification-d3f94a8a`
+
+Its raw full-suite log, failure summary and manifest have SHA-256 values
+`e65d46884920bbfe7f5f6b9086ccec8e6e23622c2ca158746cec318594164b71`,
+`d2bffe7149e18f1d3383702367664276c31113bf59cd2b09996c143d73457aec`
+and
+`01c5c3af17e064ff9c174f5c4a2d35f88753bbd7d06f00d65f3f34d214f93099`
+respectively. This remains failed qualification, not coverage or release
+evidence.
+
+Two of the failures were fixture assertions in
+`tests/plugin-asset-inventory.test.ts`. The admitted typed package contract had
+added `compiledPackageFiles` as a second frozen data export and had added the
+two exact compiled package globs, while this older inventory fixture still
+expected only `builtinAssets` and treated every wildcard as an asset-tree
+entry. The correction imports the shared typed declaration, admits exactly
+those two frozen compiled patterns and preserves the wildcard refusal for
+every other package entry.
+
+A six-file focused replay with that working-tree correction passed the other
+five previously failing files. It ran 232 passing tests and retained one
+failure: the team initialized-baseline case exceeded its existing 300-second
+test boundary after all commands through `tofu init` had succeeded. Its sealed
+manifest is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/qualification-d3f94a8a-focused-fix/manifest.json`
+
+with SHA-256
+`bee84ae6752f640589eaf163d45e7b104401ff1f127e0b08c19872f3515ddc2f`.
+
+One exact isolated replay of that team selector then completed without any
+source or limit change. It passed in 277,502.223791 milliseconds, recorded 25
+dispatches and 25 results, emitted its completion marker and ended with a
+settled successful `tofu validate`. This establishes that the focused timeout
+was timing variance on a successful path with only about 22.5 seconds of
+remaining test-budget margin; it does not convert the failed unfiltered run
+into qualification. The isolated disposition manifest is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/qualification-d3f94a8a-team-only/manifest.json`
+
+with SHA-256
+`36aaee81b976b9fde5d620e01ab278312a2b0fa673e5e24edb54e2f9e1f2248d`.
+No timeout, custody limit, scanner guard or settlement check was raised,
+cached, skipped or weakened.
+
+The fixture-only package inventory source was committed locally as
+`93a5946b2c60c9d9a00db7dae3a7fe9b07371b66`, tree
+`da5f806e8c1eef6ea540643dd7788d71712c20d3`, with parent
+`d3f94a8af5f5b6e4fa12fe4b9ca1520de38c180e`. Its exact validation passed:
+
+- the current coherent corpus retained all 25 test files and passed its actual
+  current count of 761 tests;
+- the complete original 25-file strict graph retained exactly the 12 inherited
+  diagnostics with byte-identical SHA-256
+  `6eca6fdb9dd24433d51c01f108fabcc5ed6fadabab22d04579d4e99a2406d598`;
+- the affected strict fixture import produced an empty log;
+- package inventory, identity and smoke contracts passed 47/47;
+- build, project no-emit and installed-tarball package smoke passed;
+- supported-stack, repository named-file policy and strict noninteractive
+  OpenSpec validation passed; and
+- `git diff --check` passed.
+
+The sealed fixture evidence manifest is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/package-inventory-93a5946b/manifest.json`
+
+with SHA-256
+`97036d97c498e184136d5b4e40fd99a8371fef97b91a594499f2ea6217e95ee5`.
+This source commit and the following ledger commit remain local and unpushed:
+the published #168 head and stack 170 membership are unchanged. Tasks 18.1 and
+18.2 remain unchecked because the unfiltered suite failed and coverage never
+started; OpenSpec remains at 83/136 complete.
