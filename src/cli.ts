@@ -10,8 +10,8 @@ import { nodeRuntimeError } from './runtime.js';
 import {
   maybeShowTelemetryNotice,
   isTelemetryEnabled,
-  telemetryCommandFor,
-  trackCommand
+  reportCommandEvent,
+  telemetryCommandFor
 } from './telemetry/index.js';
 import { PresentationSession } from './terminal.js';
 import type { ParsedArgs } from './domain/project/contracts.js';
@@ -42,11 +42,9 @@ export interface RunCliOptions {
 function createDefaultTelemetryHooks(delivery: () => TelemetryDelivery | undefined): CliTelemetryHooks {
   return {
     beforeCommand: (stderr, env) => maybeShowTelemetryNotice({ stderr, env }),
-    afterCommand: async (parsed, exitCode, env) => {
-      const command = telemetryCommandFor(parsed);
-      if (command) {
-        await trackCommand(command, liftoffVersion, exitCode, { env, delivery: delivery() });
-      }
+    afterCommand: async () => undefined,
+    afterSemanticCommand: async (event, env) => {
+      await reportCommandEvent(event, { env, delivery: delivery() });
     }
   };
 }
@@ -97,7 +95,7 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
     return 1;
   }
 
-  const telemetryReady = !isTelemetryExcludedCommand(parsed) && await safelyPrepareTelemetry(
+  const telemetryReady = isTelemetryEnabled(env) && !isTelemetryExcludedCommand(parsed) && await safelyPrepareTelemetry(
     () => telemetry.beforeCommand(stderr, env)
   );
 
@@ -117,7 +115,7 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
     renderEntrypointError(error, stdout, stderr);
     exitCode = 1;
   }
-  if (telemetryReady) delivery = createTelemetryDelivery({ env });
+  if (telemetryReady && isTelemetryEnabled(env)) delivery = createTelemetryDelivery({ env });
   const semanticOutcome = outcome.finish(exitCode);
   const semanticCommand = telemetryCommandFor(parsed);
 
