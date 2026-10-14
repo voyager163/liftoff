@@ -3238,3 +3238,16 @@ The already-pushed draft source is therefore superseded additively by this
 typed-boundary successor. It must remain draft after publication. OpenSpec
 remains at 82/136 tasks complete; no task checkbox is changed by this bounded
 correction, and no full-suite or coverage qualification is claimed.
+
+The exact source-and-ledger successor was committed as
+`7578e54ef0db14689d6796ccf24776a1383e9c0e`, tree
+`0e22cd05f9fb3c5dbeeef2786eedf39c0bd9c162`, with parent
+`e77686a1ff4bfc211221cb9d32aa394a27df6a95`. Its sealed evidence manifest is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/package-doc-typed-7578e54e/manifest.json`
+
+with SHA-256
+`7f2a93ff11c004afba02c38aaaf82908494a06c8381bc30bdbac0b4329bce544`.
+This receipt records the exact five source paths, their committed blobs, all
+final validation subjects and both failed correction iterations. It remains a
+bounded source receipt only.
