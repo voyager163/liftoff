@@ -52,7 +52,7 @@ export function capabilitiesCommand(parsed: ParsedArgs, context: ExecutionContex
       report.schemas.modernSuccessorRevalidation.scope,
       report.schemas.currentUpdate.scope,
       report.schemas.projectAdoption.scope,
-      'Public stateful migration and project telemetry enrollment are unavailable.',
+      'Public stateful migration and heartbeat activation remain unavailable; project telemetry requires independent explicit enrollment.',
       'Use liftoff capabilities --json for exact schemas, recipes and per-phase executor blockers.',
       'Capability discovery is not approval to execute or modify anything.'
     ]);

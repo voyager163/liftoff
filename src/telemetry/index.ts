@@ -47,14 +47,15 @@ export async function maybeShowTelemetryNotice(
   }
 
   try {
-    const seenVersion = await readTelemetryNoticeVersion(options.config);
+    const config = { ...options.config, env: options.config?.env ?? options.env };
+    const seenVersion = await readTelemetryNoticeVersion(config);
     if (seenVersion !== undefined && seenVersion >= telemetryNoticeVersion) {
       return true;
     }
     if (!(await writeTelemetryNotice(options.stderr ?? process.stderr))) {
       return false;
     }
-    await recordTelemetryNotice(options.config);
+    await recordTelemetryNotice(config);
     return true;
   } catch {
     // Telemetry disclosure state must never affect command execution.

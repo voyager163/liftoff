@@ -25,7 +25,7 @@ interface PreparedDelivery<T> {
   readonly event: T;
 }
 
-// These inputs are not consent or release-ownership proofs. No production project caller exists yet.
+// These inputs are not consent or release-ownership proofs; callers validate those independently.
 export interface PreparedTelemetrySlots {
   readonly command?: PreparedDelivery<TelemetryCommandEvent>;
   readonly project?: PreparedDelivery<ProjectTelemetryEvent>;
