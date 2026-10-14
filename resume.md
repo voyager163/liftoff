@@ -3115,6 +3115,36 @@ the verifier scope to the actual six-file commit. The resulting admission is
 bounded source admission only, not full-suite, coverage, provider or landing
 authority.
 
+The first current-head replay of the 25-file assessment/documentation corpus
+after the package correction exposed a tightly coupled test-inventory defect:
+758/760 cases passed, but
+`tests/documentation-fragment-links.test.ts` and
+`tests/documented-command-examples.test.ts` rejected the newly admitted
+`dist/**/*.js` entry as an unsupported nonliteral package declaration. The
+failed report is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/source-draft-b1d70c3c`
+
+The corrective successor imports the existing
+`compiledPackageFiles` contract and skips exactly its two reviewed compiled
+patterns while constructing the packaged Markdown inventory. Every other
+wildcard, absolute path and parent traversal remains refused. It does not
+change the package declaration, package budget, packed bytes or documentation
+selection.
+
+Validation of that correction passed:
+
+- the two directly affected files, 20/20 tests;
+- the complete 25-file coherent corpus, 760/760 tests with no skips or unrun
+  cases;
+- package identity and smoke contracts, 38/38 tests;
+- project-wide no-emit; and
+- `git diff --check`.
+
+The successful correction evidence is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/package-doc-inventory-b1d-working`
+
 This correction does not raise a budget, remove local debugging output, alter
 runtime behavior, qualify native packages or satisfy source-complete coverage.
 No broad native/full-suite rerun was performed for this package-only unit.

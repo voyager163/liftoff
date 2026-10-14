@@ -1,6 +1,7 @@
 import { lstat, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { compiledPackageFiles } from '../scripts/package-smoke-contract.mjs';
 
 function headings(markdown: string): Array<{ title: string; line: number }> {
   const result: Array<{ title: string; line: number }> = [];
@@ -82,6 +83,7 @@ describe('packaged documentation plain-heading fragments', () => {
     }
     const files = new Set<string>();
     for (const entry of packageJson.files) {
+      if (compiledPackageFiles.includes(entry)) continue;
       if (/[\\*?{}]/.test(entry) || path.posix.isAbsolute(entry) || entry.split('/').includes('..')) {
         throw new Error(`Unsupported nonliteral package inventory entry: ${entry}`);
       }

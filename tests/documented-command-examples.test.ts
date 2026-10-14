@@ -1,6 +1,7 @@
 import { glob, lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { compiledPackageFiles } from '../scripts/package-smoke-contract.mjs';
 import { commandDefinitions } from '../src/cli/args/definitions.js';
 import { parseArgs, UsageError } from '../src/cli/args/parser.js';
 
@@ -204,11 +205,12 @@ describe('packaged documented command examples', () => {
         !Array.isArray(packageJson.files) || !packageJson.files.every(entry => typeof entry === 'string')) {
       throw new Error('Package files must be an explicit string inventory.');
     }
-    const patterns = packageJson.files.map(entry => {
+    const patterns = packageJson.files.flatMap(entry => {
+      if (compiledPackageFiles.includes(entry)) return [];
       if (/[\\*?{}]/.test(entry) || path.posix.isAbsolute(entry) || entry.split('/').includes('..')) {
         throw new Error(`Unsupported nonliteral package inventory entry: ${entry}`);
       }
-      return entry.endsWith('.md') ? entry : `${entry}/**/*.md`;
+      return [entry.endsWith('.md') ? entry : `${entry}/**/*.md`];
     });
     const files = new Set<string>();
     for await (const file of glob(patterns, { cwd: root })) files.add(file);
