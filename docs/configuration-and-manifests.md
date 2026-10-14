@@ -394,9 +394,11 @@ fresh proof remain independently required for local completion. A committed
 successor and successful revalidation are separate outcomes; failed follow-up
 must preserve the committed successor and source history, not downgrade them.
 
-The [protected state API](../src/application/state-migration/README.md) is a
-different private boundary. A local control-record successor does not read,
-import, move or rewrite deployed OpenTofu state.
+The packaged
+[private staging and bootstrap retention boundary](repository-governance.md#private-staging-and-bootstrap-retention)
+documents the protected-state handover scope. The generic protected state API
+remains a different private boundary. A local control-record successor does not
+read, import, move or rewrite deployed OpenTofu state.
 
 ## Artifact ownership
 

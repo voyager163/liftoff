@@ -163,7 +163,9 @@ describe('real modern managed-core inventory and content', () => {
         expect(guide).toContain('Authorization cannot instantiate a missing adapter');
         expect(guide).toContain('cannot expand into brownfield import, partition, relocation');
         expect(guide).not.toContain('--execute');
-        expect(guide).not.toContain('liftoff capabilities');
+        expect(guide).toContain('liftoff capabilities --json');
+        expect(guide).toContain('read-only contract, not proof');
+        expect(guide).toContain('Do not invent a supported-manifest response field');
         expect(guide).toContain(profile === 'team-gitflow' ? 'one independent human approval' : 'zero additional human PR approvals');
         if (workflow === 'manual') {
           expect(guide).toContain('external framework as not-required');

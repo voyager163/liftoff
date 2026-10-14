@@ -183,7 +183,11 @@ remote opt-in for that redirect. Do not persist either override globally.
 The package smoke test builds, runs `npm pack`, checks the explicit package
 surface and size budget, installs the tarball into an isolated prefix, and
 executes the installed CLI, upgrade help, and an injected read-only self-upgrade
-check without selecting the host global prefix. The standard template verifier generates a Node.js
+check without selecting the host global prefix. Local builds retain source maps
+for debugging; npm and native package payloads include every emitted JavaScript
+module and TypeScript declaration, but exclude development source maps. Required
+assets remain explicit and the 13 MiB unpacked package budget is unchanged.
+The standard template verifier generates a Node.js
 backend with its Vue frontend, runs both locked installs, builds both projects,
 and runs the generated backend tests without permitting package metadata
 changes.
