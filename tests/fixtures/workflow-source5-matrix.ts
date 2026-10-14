@@ -239,8 +239,11 @@ async function prepareMatrixFixture(seed: Awaited<ReturnType<typeof workflowSour
     return { projectRoot: value.projectRoot, plan: value.plan, phase: { ...phase, id: value.control.phaseId },
       authority, lease, now, runner: noGit, transport, profile: value.plan.identity.profile };
   }
-  try {
-    await withSource5WorkflowLease(value.projectRoot, async lease => {
+  let originalPreparation: Promise<void> | undefined;
+  let originalPrepared = false;
+  async function prepareOriginalComponents() {
+    if (originalPreparation) throw new Error('Never repeat attempted original matrix fixture preparation.');
+    originalPreparation = withSource5WorkflowLease(value.projectRoot, async lease => {
       await issueSource5WorkflowApproval({ ...value, lease }, value.now);
       const journal = await openSource5WorkflowJournal({ ...value, lease, initialize: true });
       const effects = source5WorkflowPlanInventory(value.plan).effects;
@@ -264,18 +267,26 @@ async function prepareMatrixFixture(seed: Awaited<ReturnType<typeof workflowSour
         proofs.push(proof);
       }
     });
-  } catch (error) { await new Promise<void>(resolve => server.close(() => resolve())); throw error; }
+    await originalPreparation;
+    originalPrepared = true;
+    calls.splice(0);
+  }
   calls.splice(0);
   return { ...value, source, bindings, proofs, files, state, calls, errors,
     requirements: requiredWorkflowContextsFromSource(files, 'single-maintainer-gitflow'),
+    prepareOriginalComponents,
     onRead(callback: (request: GitHubRequest) => Promise<void> | void) { onRead = callback; },
     async entries(lease: ProjectMutationLease, now = value.now) {
+      if (!originalPrepared) throw new Error('Original matrix fixture components have not completed; do not issue observation carriers.');
       const journal = await openSource5WorkflowJournal({ ...value, lease, initialize: false }), input = await fields(lease, now);
       const entries = await Promise.all(source5WorkflowPlanInventory(value.plan).effects.map(async (operation, index) =>
         ({ input: await createSource5WorkflowEffectInput({ ...input, operation, transport: transportFor(index),
           kind: 'source5-workflow-effect.v1', reviewedPlans: [value.plan], observationOnly: true }, journal), proof: proofs[index]! })));
       return { entries, journal };
     },
-    close: () => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
+    async close() {
+      if (originalPreparation) await Promise.allSettled([originalPreparation]);
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
   };
 }

@@ -18,12 +18,16 @@ interface MatrixSession {
   close(): Promise<void>;
 }
 const sessions: MatrixSession[] = [];
+const preparations = new Set<Promise<unknown>>();
 let prepared: Awaited<ReturnType<typeof workflowSource5MatrixFixture>> | undefined;
 let originalProviderState: Awaited<ReturnType<typeof workflowSource5MatrixFixture>>['state'] | undefined;
 let original: MatrixSession | undefined;
+let integrationFixture: MatrixFixture | undefined;
 let integration: { fixture: MatrixFixture; session: MatrixSession } | undefined;
+let incompleteFixture: MatrixFixture | undefined;
 let incomplete: { fixture: MatrixFixture; session: MatrixSession } | undefined;
 beforeEach(() => {
+  if (preparations.size) throw new Error('An earlier bounded original preparation has not settled; do not overlap it or remove its root.');
   if (sessions.some(session => session.pending)) throw new Error('An earlier bounded observation has not settled; do not reuse or remove its held lease.');
   if (prepared && originalProviderState) {
     Object.assign(prepared.state, originalProviderState);
@@ -32,11 +36,16 @@ beforeEach(() => {
   }
 });
 afterAll(async () => {
+  await Promise.allSettled(preparations);
   for (const session of sessions.splice(0)) await session.close();
   for (const fixture of fixtures.splice(0)) {
     await fixture.close(); await rm(fixture.root, { recursive: true, force: true });
   }
 });
+async function prepare<T>(work: () => Promise<T>): Promise<T> {
+  const result = work(); preparations.add(result);
+  try { return await result; } finally { preparations.delete(result); }
+}
 async function fixture(options: Parameters<typeof workflowSource5MatrixFixture>[0] = {}) {
   const value = await workflowSource5MatrixFixture(options); fixtures.push(value); return value;
 }
@@ -73,14 +82,29 @@ async function prepareObservation(value: MatrixFixture): Promise<MatrixSession> 
 }
 
 describe('complete source5 per-entry independently current matrix', () => {
-  it('prepares all12 original fixture components with separately issued sealed provenance and actual bounded validators', async () => {
-    prepared = await fixture();
-    original = await prepareObservation(prepared);
-    originalProviderState = { ...prepared.state };
+  it('prepares original source provenance and actual bounded validators independently of component and carrier preparation', async () => {
+    prepared = await prepare(() => fixture());
+    expect(prepared.bindings).toHaveLength(12);
+    expect(prepared.proofs).toEqual([]);
+    expect(prepared.calls).toEqual([]);
+  });
+  it('seals all12 original fixture components before acquiring read-only observation carriers', async () => {
+    if (!prepared) throw new Error('The original source fixture preparation did not complete.');
+    await prepare(() => prepared!.prepareOriginalComponents());
     expect(prepared.proofs).toHaveLength(12);
     expect(prepared.proofs.filter(proof => proof.conclusion === 'success')).toHaveLength(4);
     expect(prepared.proofs.filter(proof => proof.conclusion === 'failure')).toHaveLength(8);
     expect(prepared.errors).toEqual([]);
+    const proofs = structuredClone(prepared.proofs);
+    await expect(prepared.prepareOriginalComponents()).rejects.toThrow(/Never repeat attempted original/);
+    expect(prepared.proofs).toEqual(proofs);
+  });
+  it('acquires a fresh genuine native lease and the complete original observation carrier inventory', async () => {
+    if (!prepared) throw new Error('The original source fixture preparation did not complete.');
+    original = await prepare(() => prepareObservation(prepared!));
+    originalProviderState = { ...prepared.state };
+    expect(original.pending).toBe(false);
+    expect(prepared.calls).toEqual([]);
   });
   it('observes all12 original fixture components through actual process-backed loopback outcomes under a fresh lease without overwriting them', async () => {
     const { fixture: value, session } = originalFixture();
@@ -247,10 +271,21 @@ describe('complete source5 per-entry independently current matrix', () => {
     });
   });
 
-  it('prepares independently sealed red integration provenance without reusing or changing the valid original ledgers', async () => {
-    const value = await fixture({ wrongRedIntegration: true });
-    integration = { fixture: value, session: await prepareObservation(value) };
+  it('prepares independent red integration source without reusing or changing the valid original ledgers', async () => {
+    integrationFixture = await prepare(() => fixture({ wrongRedIntegration: true }));
+    expect(integrationFixture.proofs).toEqual([]);
+  });
+  it('seals independent original red integration components without acquiring an observation lease', async () => {
+    if (!integrationFixture) throw new Error('The independent integration source preparation did not complete.');
+    const value = integrationFixture;
+    await prepare(() => value.prepareOriginalComponents());
     expect(value.proofs[1]!.contexts.every(context => context.applicationId === 17000)).toBe(true);
+  });
+  it('acquires the fresh independent red integration observation lease and exact original carriers', async () => {
+    if (!integrationFixture) throw new Error('The independent integration source preparation did not complete.');
+    const value = integrationFixture;
+    integration = { fixture: value, session: await prepare(() => prepareObservation(value)) };
+    expect(value.calls).toEqual([]);
   });
   it('requires pinned actual integrations on controlled-red members, not only greens', async () => {
     if (!integration) throw new Error('The explicit red integration fixture preparation did not complete.');
@@ -293,10 +328,22 @@ describe('complete source5 per-entry independently current matrix', () => {
     expect(value.calls).toEqual([]);
   });
 
-  it('prepares a separately reviewed incomplete inventory without fabricating or repairing its missing member', async () => {
-    const value = await fixture({ omitLastRed: true });
-    incomplete = { fixture: value, session: await prepareObservation(value) };
+  it('prepares separately reviewed incomplete source without fabricating or repairing its missing member', async () => {
+    incompleteFixture = await prepare(() => fixture({ omitLastRed: true }));
+    expect(incompleteFixture.bindings).toHaveLength(11);
+    expect(incompleteFixture.proofs).toEqual([]);
+  });
+  it('seals only the separately reviewed incomplete original component inventory', async () => {
+    if (!incompleteFixture) throw new Error('The incomplete source preparation did not complete.');
+    const value = incompleteFixture;
+    await prepare(() => value.prepareOriginalComponents());
     expect(value.proofs).toHaveLength(11);
+  });
+  it('acquires a fresh native observation lease for the separately reviewed incomplete original inventory', async () => {
+    if (!incompleteFixture) throw new Error('The incomplete source preparation did not complete.');
+    const value = incompleteFixture;
+    incomplete = { fixture: value, session: await prepare(() => prepareObservation(value)) };
+    expect(value.calls).toEqual([]);
   });
   it('refuses a coherently reviewed incomplete original plan rather than treating its operation inventory as complete proof coverage', async () => {
     if (!incomplete) throw new Error('The explicit incomplete inventory fixture preparation did not complete.');
