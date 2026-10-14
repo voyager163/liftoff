@@ -1,0 +1,6 @@
+LiftoffCommandEvents_CL
+| where TimeGenerated >= ago(180d) and TimeGenerated <= now()
+| where EventName == "command_executed" and SchemaVersion in (1, 2)
+| summarize RetainedCommandEvents = count(), LegacyEvents = countif(SchemaVersion == 1), SemanticEvents = countif(SchemaVersion == 2), LastCommandObserved = max(TimeGenerated)
+| extend State = iff(RetainedCommandEvents == 0, "empty - no retained command events; not proof of ingestion failure", "command table query available; not end-to-end ingestion proof")
+| project State, RetainedCommandEvents, LegacyEvents, SemanticEvents, LastCommandObserved

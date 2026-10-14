@@ -11,7 +11,7 @@ variable "subscription_id" {
 variable "location" {
   description = "Azure region for telemetry resources."
   type        = string
-  default     = "eastus"
+  default     = "koreacentral"
 
   validation {
     condition     = can(regex("^[a-z0-9]+$", var.location))

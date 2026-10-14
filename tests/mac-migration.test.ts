@@ -528,12 +528,16 @@ describe('standalone interface and no-public-authority contract', () => {
       .toMatchObject({ recover: { journalSha256: 'b'.repeat(64), deadLockSha256: 'c'.repeat(64) } });
   });
   it.each([
-    ['--help', '--apply'], ['--apply'], ['--apply', 'latest'], ['--apply', 'A'.repeat(64)], ['--journal', '/private'],
-    ['--recover', 'a'.repeat(64)], ['--recover', 'a'.repeat(64), '--journal', '/private', '--brew', '/brew'],
-    ['--dead-lock', 'a'.repeat(64)], ['--npm', '/npm'], ['--brew', 'relative'], ['--brew', '/a/../b'],
-    ['--brew', '/a', '--brew', '/b'], ['--manager-root', '/root'],
-    ['--npm', '/npm', '--node', '/node', '--prefix', '/prefix', '--manager', 'unknown']
-  ])('rejects ambiguous option set %j', args => expect(() => parseMacMigration(args)).toThrow());
+    { argv: ['--help', '--apply'] }, { argv: ['--apply'] }, { argv: ['--apply', 'latest'] },
+    { argv: ['--apply', 'A'.repeat(64)] }, { argv: ['--journal', '/private'] },
+    { argv: ['--recover', 'a'.repeat(64)] },
+    { argv: ['--recover', 'a'.repeat(64), '--journal', '/private', '--brew', '/brew'] },
+    { argv: ['--dead-lock', 'a'.repeat(64)] }, { argv: ['--npm', '/npm'] },
+    { argv: ['--brew', 'relative'] }, { argv: ['--brew', '/a/../b'] },
+    { argv: ['--brew', '/a', '--brew', '/b'] }, { argv: ['--manager-root', '/root'] },
+    { argv: ['--npm', '/npm', '--node', '/node', '--prefix', '/prefix', '--manager', 'unknown'] }
+  ] satisfies { argv: string[] }[])('rejects ambiguous option set $argv', ({ argv }) =>
+    expect(() => parseMacMigration(argv)).toThrow());
   it('clears inherited loaders, manager settings and shared cache/config/auto-update authority', () => {
     const dependencies = { ...defaultMacMigrationDependencies().upgrade,
       environment: { HOME: '/home', PATH: '/foreign', NODE_OPTIONS: '--require=foreign', npm_config_registry: 'https://foreign' } };

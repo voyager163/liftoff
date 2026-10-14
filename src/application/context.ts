@@ -23,6 +23,7 @@ export interface CommandContext {
   approveUpdatePlan?: UpdateApprovalPrompt;
   approveRepairPlan?: UpdateApprovalPrompt;
   approveWorkflowTransitionPlan?: UpdateApprovalPrompt;
+  approveTelemetryPlan?: UpdateApprovalPrompt;
   updateNow?: () => Date;
   workstationProbe?: WorkstationProbeOptions;
   workstationNoProgressStore?: WorkstationNoProgressStore;

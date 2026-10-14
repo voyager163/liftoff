@@ -248,20 +248,22 @@ migrate  Adopt an existing project
 
 Maintenance
 ───────────
-Command   Description
-────────  ──────────────────────────────────────────────────────────────────────
-assess    Read-only whole-project comparison against explicitly displayed
-          installed targets
-adopt     Preview reviewed in-place adoption for a supported non-Liftoff
-          application
-workflow  Review an explicit development-workflow transition
-validate  Validate a generated project manifest
-update    Preview and explicitly approve scoped project updates
-repair    Review and repair supported project files with separate default-No
-          approval
-upgrade   Upgrade only the verified owning CLI installation; project templates
-          use update separately
-doctor    Check local and project readiness
+Command    Description
+─────────  ─────────────────────────────────────────────────────────────────────
+telemetry  Explicit pseudonymous project consent and reporting; status is
+           side-effect-free
+assess     Read-only whole-project comparison against explicitly displayed
+           installed targets
+adopt      Preview reviewed in-place adoption for a supported non-Liftoff
+           application
+workflow   Review an explicit development-workflow transition
+validate   Validate a generated project manifest
+update     Preview and explicitly approve scoped project updates
+repair     Review and repair supported project files with separate default-No
+           approval
+upgrade    Upgrade only the verified owning CLI installation; project templates
+           use update separately
+doctor     Check local and project readiness
 
 Reference
 ─────────
@@ -673,6 +675,64 @@ docs/cli-reference.md#repair-modes.
 "
 `;
 
+exports[`complete help screens > snapshots compact telemetry command help 1`] = `
+"LIFTOFF / TELEMETRY
+Explicit pseudonymous project consent and reporting; status is side-effect-free
+
+Usage
+─────
+liftoff telemetry <status|enroll|disable|report|heartbeat> [project-path]
+
+Subcommands
+───────────
+- status
+- enroll
+- disable
+- report
+- heartbeat
+
+Project options
+───────────────
+Option               Description
+───────────────────  ───────────────────────────────────────────────────────────
+--project <path>     One exact Liftoff project root
+--repository <path>  Exact repository root for separate heartbeat file authority
+
+Command options
+───────────────
+Option       Description
+───────────  ───────────────────────────────────────────────────────────────────
+--check      Review exact project and external consent writes without generating
+             an identity
+--heartbeat  Select only the separately approved CI reporting path; unavailable
+             without qualified published pins
+
+Consent options
+───────────────
+Option                        Description
+────────────────────────────  ──────────────────────────────────────────────────
+--approve-plan <fingerprint>  Approve the full current 64-hex telemetry review
+                              fingerprint
+--preserve-identity           Explicitly reuse a tracked identity for this
+                              clone/worktree; bind this checkout locally
+--new-identity                Explicitly replace a copied/forked identity with a
+                              new random project UUID after approval
+
+Output options
+──────────────
+Option  Description
+──────  ──────────────────────────────────────────────────────────
+--json  Emit one schema-1 result; bare mutation JSON previews only
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
 exports[`complete help screens > snapshots compact update command help 1`] = `
 "LIFTOFF / UPDATE
 Start with \`liftoff update --check\`, then run \`liftoff update\` to approve the
@@ -894,6 +954,7 @@ Command: plan | Description: Preview generated artifacts
 Command: migrate | Description: Adopt an existing project
 
 Maintenance
+Command: telemetry | Description: Explicit pseudonymous project consent and reporting; status is side-effect-free
 Command: assess | Description: Read-only whole-project comparison against explicitly displayed installed targets
 Command: adopt | Description: Preview reviewed in-place adoption for a supported non-Liftoff application
 Command: workflow | Description: Review an explicit development-workflow transition
@@ -1099,6 +1160,41 @@ Repair approval and native help
 - Recovery cleans only authenticated CLI-created disposable workspace identities with safely established ownership; never patch staging, live projects, global caches or original-byte backups. Earlier approved effects remain visible after later cancellation.
 - Open the selected project in Copilot or Claude and invoke /liftoff-repair; in Codex use $liftoff-repair or its skill picker. These are coding-agent integrations, not shell commands.
 - If the native integration is missing, run liftoff update --check for that project and review its separate managed update. See docs/cli-reference.md#repair-modes.
+
+"
+`;
+
+exports[`complete help screens > snapshots plain telemetry command help 1`] = `
+"LIFTOFF / TELEMETRY - Explicit pseudonymous project consent and reporting; status is side-effect-free
+
+Usage
+Usage: liftoff telemetry <status|enroll|disable|report|heartbeat> [project-path]
+
+Subcommands
+- status
+- enroll
+- disable
+- report
+- heartbeat
+
+Project options
+Option: --project <path> | Description: One exact Liftoff project root
+Option: --repository <path> | Description: Exact repository root for separate heartbeat file authority
+
+Command options
+Option: --check | Description: Review exact project and external consent writes without generating an identity
+Option: --heartbeat | Description: Select only the separately approved CI reporting path; unavailable without qualified published pins
+
+Consent options
+Option: --approve-plan <fingerprint> | Description: Approve the full current 64-hex telemetry review fingerprint
+Option: --preserve-identity | Description: Explicitly reuse a tracked identity for this clone/worktree; bind this checkout locally
+Option: --new-identity | Description: Explicitly replace a copied/forked identity with a new random project UUID after approval
+
+Output options
+Option: --json | Description: Emit one schema-1 result; bare mutation JSON previews only
+
+General options
+Option: --help | Description: Show command-specific help
 
 "
 `;
@@ -1363,17 +1459,18 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ migrate  Adopt an existing project                                                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Maintenance ────────────────────────────────────────────────────────────────────────────────┐
-│ Command   Description                                                                        │
-│ ────────  ────────────────────────────────────────────────────────────────────────────────── │
-│ assess    Read-only whole-project comparison against explicitly displayed installed targets  │
-│ adopt     Preview reviewed in-place adoption for a supported non-Liftoff application         │
-│ workflow  Review an explicit development-workflow transition                                 │
-│ validate  Validate a generated project manifest                                              │
-│ update    Preview and explicitly approve scoped project updates                              │
-│ repair    Review and repair supported project files with separate default-No approval        │
-│ upgrade   Upgrade only the verified owning CLI installation; project templates use update    │
-│           separately                                                                         │
-│ doctor    Check local and project readiness                                                  │
+│ Command    Description                                                                       │
+│ ─────────  ───────────────────────────────────────────────────────────────────────────────── │
+│ telemetry  Explicit pseudonymous project consent and reporting; status is side-effect-free   │
+│ assess     Read-only whole-project comparison against explicitly displayed installed targets │
+│ adopt      Preview reviewed in-place adoption for a supported non-Liftoff application        │
+│ workflow   Review an explicit development-workflow transition                                │
+│ validate   Validate a generated project manifest                                             │
+│ update     Preview and explicitly approve scoped project updates                             │
+│ repair     Review and repair supported project files with separate default-No approval       │
+│ upgrade    Upgrade only the verified owning CLI installation; project templates use update   │
+│            separately                                                                        │
+│ doctor     Check local and project readiness                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Reference ──────────────────────────────────────────────────────────────────────────────────┐
 │ Command       Description                                                                    │
@@ -1717,6 +1814,55 @@ exports[`complete help screens > snapshots rich repair command help 1`] = `
 │ commands.                                                                                    │
 │ • If the native integration is missing, run liftoff update --check for that project and      │
 │ review its separate managed update. See docs/cli-reference.md#repair-modes.                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
+exports[`complete help screens > snapshots rich telemetry command help 1`] = `
+"┌─ LIFTOFF / TELEMETRY ────────────────────────────────────────────────────────────────────────┐
+│ Explicit pseudonymous project consent and reporting; status is side-effect-free              │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff telemetry <status|enroll|disable|report|heartbeat> [project-path]                    │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Subcommands ────────────────────────────────────────────────────────────────────────────────┐
+│ • status                                                                                     │
+│ • enroll                                                                                     │
+│ • disable                                                                                    │
+│ • report                                                                                     │
+│ • heartbeat                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option               Description                                                             │
+│ ───────────────────  ───────────────────────────────────────────────────────────             │
+│ --project <path>     One exact Liftoff project root                                          │
+│ --repository <path>  Exact repository root for separate heartbeat file authority             │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option       Description                                                                     │
+│ ───────────  ─────────────────────────────────────────────────────────────────────────────── │
+│ --check      Review exact project and external consent writes without generating an identity │
+│ --heartbeat  Select only the separately approved CI reporting path; unavailable without      │
+│              qualified published pins                                                        │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                        Description                                                    │
+│ ────────────────────────────  ────────────────────────────────────────────────────────────── │
+│ --approve-plan <fingerprint>  Approve the full current 64-hex telemetry review fingerprint   │
+│ --preserve-identity           Explicitly reuse a tracked identity for this clone/worktree;   │
+│                               bind this checkout locally                                     │
+│ --new-identity                Explicitly replace a copied/forked identity with a new random  │
+│                               project UUID after approval                                    │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────────────────────────────────────                           │
+│ --json  Emit one schema-1 result; bare mutation JSON previews only                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 "
 `;

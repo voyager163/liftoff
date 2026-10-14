@@ -9,6 +9,7 @@ import {
   isTelemetryCliVersion,
   isProjectTelemetryDigest,
   isProjectTelemetryId,
+  isTelemetryExcludedCommand,
   isTelemetrySemanticOutcome,
   parseProjectTelemetryPolicy,
   projectTelemetryClientFields,
@@ -30,7 +31,7 @@ describe('telemetry contract', () => {
   ])('rejects malformed schema2 constructor inputs %j %j %j', (command, version, outcome) => {
     expect(() => Reflect.apply(createSemanticTelemetryEvent, undefined, [command, version, outcome])).toThrow(TypeError);
   });
-  it('covers explicit CLI commands except the exact read-only telemetry exclusions', () => {
+  it('covers every registered CLI path with exact anonymous-telemetry exclusions', () => {
     const expected = new Set<string>(['version']);
     for (const [command, definition] of Object.entries(commandDefinitions)) {
       expected.add(command);
@@ -39,9 +40,28 @@ describe('telemetry contract', () => {
       }
     }
     expect([...telemetryCommands, ...telemetryExcludedCommands].sort()).toEqual([...expected].sort());
-    expect(telemetryExcludedCommands).toEqual(['governance:assess', 'capabilities', 'assess']);
+    expect(telemetryExcludedCommands).toEqual([
+      'governance:assess', 'capabilities', 'assess', 'telemetry', 'telemetry:status',
+      'telemetry:enroll', 'telemetry:disable', 'telemetry:report', 'telemetry:heartbeat'
+    ]);
     expect(telemetryCommands.some((command) => telemetryExcludedCommands.some((excluded) => excluded === String(command)))).toBe(false);
   });
+
+  it.each([undefined, ...(commandDefinitions.telemetry.subcommands ?? []), 'unknown'])(
+    'excludes telemetry %s and its help paths from anonymous command events',
+    (subcommand) => {
+      for (const flags of [{}, { help: true }]) {
+        const input = { command: 'telemetry', subcommand, flags };
+        expect(isTelemetryExcludedCommand(input)).toBe(true);
+        expect(canonicalTelemetryCommand(input)).toBeUndefined();
+        expect(canonicalTelemetryCommand({
+          command: 'help', positional: subcommand ? ['telemetry', subcommand] : ['telemetry'], flags
+        })).toBeUndefined();
+      }
+      const command = subcommand ? `telemetry:${subcommand}` : 'telemetry';
+      expect(() => Reflect.apply(createSemanticTelemetryEvent, undefined, [command, '0.12.3', 'success'])).toThrow(TypeError);
+    }
+  );
 
   it('defines the exact client and storage fields', () => {
     expect(telemetryClientFields).toEqual([

@@ -328,6 +328,8 @@ describe('public documentation', () => {
     expect(telemetry).toContain('LIFTOFF_TELEMETRY=0');
     expect(telemetry).toContain('DO_NOT_TRACK=1');
     expect(telemetry).toContain('no persistent installation or session identifier');
+    expect(telemetry).toContain('current default client sends schema 2');
+    expect(telemetry).toContain('reportCommandEvent');
     expect(telemetry).toContain('source network address while routing');
     expect(telemetry).toContain('180 days');
     expect(telemetry).toContain('rg-liftoff-prod');
