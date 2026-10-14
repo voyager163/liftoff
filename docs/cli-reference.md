@@ -1497,10 +1497,12 @@ not that writer contract.
 Future versions, individually known but unsupported tuples, and unknown
 phase-graph hashes block and report an upgrade or
 reconciliation remedy instead of downgrading or fabricating evidence.
-Exact known activation-v1 identity remains non-executable. The explicitly
-supported reviewed successor lane preserves that original history while
-establishing new v2 state and fresh proof; merely reading a historical identity
-or updating a core file does not perform or authorize the migration.
+Exact known activation-v1 identity remains non-executable. On builds advertising
+`schemas.currentUpdate`, the supported reviewed historical successor lane
+preserves that original history while publishing linked state4/journal2 and v8 metadata.
+Fresh local proof requires separate verification and exact-byte publication;
+merely reading a historical identity or updating a core file does not perform
+or authorize the migration.
 
 ## Development and infrastructure helpers
 

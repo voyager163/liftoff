@@ -2870,3 +2870,148 @@ unchecked because no production ruleset adapter or live read/write
 qualification was added. Native9 and later source-family intake, shared
 allocation, activation-6, task 14.2, public/cloud effects, PR-stack mutation
 and landing remain held.
+
+### Assessment scope and current-successor correction, 2026-10-14
+
+The packaged-command/ruleset-readback successor above was committed locally as
+`ed0d344d2414e8783d8aeb5dfe2a89c66c36b4c7`, tree
+`39dc5c323c1a70ccad0189a2c7a3e16008f7ed09`, with direct parent
+`4f8d6baa94c7da7653baa0e319c03e784f1125c5`. It remains unpushed.
+
+The first `ed0d344d` qualification preflight accidentally resolved ambient
+OpenTofu 1.13.1. It was stopped before the unfiltered suite and retained only
+as invalid setup evidence:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/docs-ruleset-successor-ed0d344d/invalid-opentofu-1.13.1-preflight.log`
+
+with SHA-256
+`f9080cab32076193a54e75b954d567110c33f4eb969622110b98ffbdf4a357cb`.
+
+The corrected attempt used Node 24.21.0, npm 12.0.2, OpenTofu 1.12.6,
+OpenSpec 1.11.0 and the qualified OpenSpec content profile. Supported-stack
+and build passed. The command setup still omitted the restored CPython 3.14.7
+and uv directories, and the wrapper used `pipefail` without `errexit`. The
+unfiltered suite therefore failed but the wrapper continued into coverage:
+
+- 309 files passed, five were skipped and three failed;
+- 10,353 tests passed, 117 were skipped and 13 failed;
+- two unchanged activation-history cases exceeded their existing 30-second
+  deadlines;
+- ten Manual cases correctly refused the unqualified ambient Python identity;
+  and
+- the team-gitflow initialized-baseline case returned a truthful failed result
+  before dispatching its remaining checks.
+
+The unfiltered duration was 5,105.58 seconds. Coverage was interrupted by the
+user-directed pause and produced no final report or metrics; only its temporary
+directory existed. It cannot qualify the failed invocation. The preserved raw
+log is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/docs-ruleset-successor-ed0d344d/clean-qualification.log`
+
+with 4,823,618 bytes and SHA-256
+`dd8406db9f63b1ba2f23b00dc5e4aa82952c4823b8676759012de9e8d847306c`.
+The explicit partial receipt is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/docs-ruleset-successor-ed0d344d/interrupted-evidence.json`
+
+with SHA-256
+`46fc2464155e79a948fab9bf5ff6e4f170fad6eaf2a41ef688c9ff511de2fcda`.
+The checkout was clean at the exact subject when stopped, no queued source unit
+had been applied and no attributable worker remained.
+
+The retained team-gitflow result had `failureCode: process-failed`,
+`inputsUnchanged: true`, `cleanupComplete: true` and no nonzero or unsettled
+recorded subprocess. Status, apply instructions and selected strict OpenSpec
+validation all exited zero; the failure occurred before `openspec validate
+--all` dispatch. A separately named exact-`ed0d344d` archive rerun with the
+restored CPython 3.14.7 and uv 0.12.7 paths identified the boundary directly:
+the complete qualified OpenSpec distribution scan exceeded its unchanged
+30-second custody deadline in `observeModernLocalTools` before initialization
+execution. Its log is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/ed0d-team-selector-diagnosis/run.log`
+
+with SHA-256
+`907ab29db3d9f6f3823b6b65abf3a6d15cffdba5e1cdaf3b86cd1cab167610c0`.
+The interrupted coverage invocation later passed the same team case on the
+same source, which supports variable native scan load but is not substituted
+for full-suite admission. No deadline or scan scope was changed.
+
+After the failed/interrupted evidence was sealed, six independently retained
+ordinary source units were integrated in their required order:
+
+1. team review ref-scope patch
+   `723d2138c69c1ade59b20f060874406578b14676e653b38a9e99a3db2f656b91`,
+   handoff
+   `d515ae481bbff111ef32c3829add0f0cdb0e4342cc6837e4948ebaa323b4d1a9`;
+2. single-maintainer review ref-scope patch
+   `08972902cbacd58285b4eb3718ce87b70927e16a866b56dfb7262581c75ffa12`,
+   handoff
+   `26fe17f029d6d58666960ecf87dd2eb0ec03e1bf89582457dc75c24d4e784df2`;
+3. assessment original-scope patch
+   `2ed730bf0e7ad281a68ed119516642d118364ab16a92999a84d203749f452557`,
+   handoff
+   `604bc68d541aa81673eb80c0df462bf5edd1680df31c4899e136adf1907d2843`;
+4. current-successor documentation patch
+   `0ab1d037f40d2682f34afcb36d4a3db55ea99a339f7822c3964aa006dd130ad8`,
+   handoff
+   `10f5d2d8fbc01a1bf4c1451e0efbfe0e4116fca5740ae3e4c90c5967e0078cbe`;
+5. profile-aware classic review patch
+   `67eb07d7754d60b010d910769b9cc05b506220cdfb98a8edf616f68771fef8d9`,
+   handoff
+   `f1d51c142d87f4deffa2250c024694dea764a68d7cbc4e5119e654cce8f2e67a`;
+   and
+6. integer review-count patch
+   `9236a231b6025de21d04d369b93a42ab17526e070409e55f34b8d38d292fb800`,
+   handoff
+   `212e4f4cac13075ad8d0a41a3d19d1128806c8c8fa269fafdbdfa776772d096c`.
+
+The combined source correction:
+
+- requires team and single-maintainer review rules to cover main, develop,
+  release and hotfix families rather than accepting an unrelated branch;
+- preserves the single-maintainer profile's global refusal of human,
+  code-owner and last-push approval requirements;
+- interprets classic protection using the selected profile while preserving
+  force-push, deletion, required-check, stale-review and incomplete-metadata
+  refusal;
+- accepts only nonnegative safe-integer review counts in declared and live
+  metadata;
+- captures the originally requested local/live assessment scope and initial
+  report before asynchronous observation, without adding new observers or
+  write authority; and
+- corrects public historical-successor wording to the advertised
+  `schemas.currentUpdate` state4/journal2/v8 contract without claiming that
+  update performs separate verification or publication.
+
+No policy/catalog bytes, profile identity, graph, default capability, provider
+write, activation authority or external evaluator was added. Existing
+unsupported mandatory observations remain partial.
+
+Coherent validation passed:
+
+- build and project-wide no-emit;
+- 25 selected files with 760/760 tests and no skips or unrun cases;
+- strict no-emit for the complete 23 clean fixture/import files;
+- the complete 25-file strict fixture check reproduced the exact 12 inherited
+  diagnostics with SHA-256
+  `6eca6fdb9dd24433d51c01f108fabcc5ed6fadabab22d04579d4e99a2406d598`;
+- package smoke for `@msn-control/liftoff@0.12.3`;
+- supported-stack and repository named-file policy;
+- strict noninteractive OpenSpec validation; and
+- `git diff --check`.
+
+The retained selected-results report is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/assessment-docs-successor-ed0d-working/selected-results.json`
+
+with SHA-256
+`8fec6c124f1fbaa92415b94c5e5bdbbb3683a5098a0ec84aac1ece6f08732cc7`.
+OpenSpec remains `ready`, schema `spec-driven`, at 82/136 tasks complete.
+Tasks 14.7 and 18.4 remain unchecked: this source unit does not add every real
+evidence producer or complete the same-revision cross-host/full/package-link
+qualification. A future exact committed qualification must use the complete
+qualified Python/uv path and a fail-fast wrapper so a failed unfiltered suite
+cannot continue into qualifying coverage. No push, PR mutation, provider
+effect or landing is authorized by this checkpoint alone.
