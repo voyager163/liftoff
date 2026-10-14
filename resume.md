@@ -3408,6 +3408,13 @@ with SHA-256
 No timeout, custody limit, scanner guard or settlement check was raised,
 cached, skipped or weakened.
 
+Historical caveat: the isolated replay proves only its own successful result
+and the approximately 22.5 seconds that remained within that run's unchanged
+test bound. It does not establish the cause of the earlier focused timeout,
+prove settlement or disposition for the other `d3f94a8a` failures, or convert
+any failed receipt into qualification. The earlier wording and receipts remain
+preserved as the original contemporaneous record.
+
 The fixture-only package inventory source was committed locally as
 `93a5946b2c60c9d9a00db7dae3a7fe9b07371b66`, tree
 `da5f806e8c1eef6ea540643dd7788d71712c20d3`, with parent
@@ -3435,3 +3442,47 @@ This source commit and the following ledger commit remain local and unpushed:
 the published #168 head and stack 170 membership are unchanged. Tasks 18.1 and
 18.2 remain unchecked because the unfiltered suite failed and coverage never
 started; OpenSpec remains at 83/136 complete.
+
+The later exact clean parent `ce84792f8f28fb9e7ddd2a251e737e9f29461903`,
+tree `7f314d55f47b205513e6c2ac33c41bdb0655b092`, then completed the same
+fail-fast sequence without command, limit or worker changes. Supported-stack
+and build passed. The unfiltered suite passed 10,481 tests with zero failures
+and 117 skips across 317 passing and five fully skipped files in 4,193.90
+seconds. Coverage then repeated the same test totals in 4,538.27 seconds and
+bound 511 executable source files to
+`sha256:24991953b5e97069aa3cfa1036eb6503838c5411a47122ab0913945e7cde2783`.
+Its independent metrics all passed the strict greater-than-80-percent rule:
+statements 40,993/45,679 (89.7414%), branches 36,572/42,600 (85.8497%),
+functions 7,712/8,113 (95.0573%) and lines 36,336/39,554 (91.8642%).
+
+The successful parent evidence is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/qualification-ce84792f`
+
+Its sealed manifest has SHA-256
+`4a68a8058628680ba068d3102e1d8ea6607a45495cf4b2466aa65ff593b99a99`;
+the unfiltered log has SHA-256
+`b1832f931dd4c86cc8af9974f4ec22756b35c85830597bb943dc28c3d5a0f125`.
+This is exact qualification of the clean `ce84792f` parent only. It does not
+qualify a later successor, supply native Windows/package publication evidence,
+complete the five skipped native/disposable families, authorize publication
+or landing, or by itself complete tasks 18.1/18.2.
+
+Independent review of the preceding failure/correction chain is retained at:
+
+`/Users/jonathan/.copilot/session-state/8d89d4b7-10db-4009-945e-b14397314a84/files/canonical-d3-failure-93a-independent-source-review.json`
+
+with SHA-256
+`2ff36d3a18e2fe94300ef2dabe7b61421e63168efa89b0525a557690927e1590`.
+It admits only the one-file `93a5946b` typed-allowance fixture source and keeps
+the original `d3f94a8a` failure, dirty-parent focused replay, isolated replay
+and inherited strict diagnostics separate.
+
+The inherited Windows shard failure on the published parent was
+`tests/documented-command-examples.test.ts` comparing the native
+`fs.promises.glob` key against a POSIX literal. The bounded successor changes
+only that membership key to `path.join('docs', 'cli-reference.md')`; it keeps
+the native key unchanged for `lstat`/read operations and does not alter package
+inventory, production code, dependencies, budgets or selectors. This is a
+source correction informed by the retained Windows evidence, not a new native
+Windows qualification.
