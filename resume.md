@@ -3008,6 +3008,20 @@ The retained selected-results report is:
 
 with SHA-256
 `8fec6c124f1fbaa92415b94c5e5bdbbb3683a5098a0ec84aac1ece6f08732cc7`.
+The exact committed source successor
+`0e29ad80252b46520dc2cfa9337733b6f16a128d` was independently reviewed
+against all six retained source units, parent blobs and modes. The review
+rehashed all 18 subjects, reproduced the 760-test report and clean 23-file
+strict check, and confirmed the complete 25-file diagnostic output remained
+byte-identical to the 12 inherited errors. Its receipt is:
+
+`/Users/jonathan/.copilot/session-state/8d89d4b7-10db-4009-945e-b14397314a84/files/canonical-0e29-review/review.json`
+
+with SHA-256
+`98e0d5667d6884ef400c01f7cb59ab108d4810b9d48518923cbfdaf0e5a297ba`.
+This admits the bounded assessment/documentation source only; it does not
+admit full-suite, coverage, provider or landing claims.
+
 OpenSpec remains `ready`, schema `spec-driven`, at 82/136 tasks complete.
 Tasks 14.7 and 18.4 remain unchecked: this source unit does not add every real
 evidence producer or complete the same-revision cross-host/full/package-link
@@ -3015,3 +3029,72 @@ qualification. A future exact committed qualification must use the complete
 qualified Python/uv path and a fail-fast wrapper so a failed unfiltered suite
 cannot continue into qualifying coverage. No push, PR mutation, provider
 effect or landing is authorized by this checkpoint alone.
+
+### Bounded npm runtime surface correction, 2026-10-14
+
+After preserving the assessment/documentation checkpoint as a distinct commit,
+the independently retained package runtime patch was applied:
+
+- patch
+  `21f765098d65d2c98cbf4f571437507781328b1db46791c2c10616c6f553e602`;
+  and
+- handoff
+  `74c92c4b24b9969003a60bb0ece251ab877ba88c0db2c38fe765e95e9708d50a`.
+
+The npm package now declares recursive emitted JavaScript and declaration
+surfaces instead of the whole `dist` directory. Local TypeScript builds still
+produce source maps for development; only packed development maps are omitted.
+The package smoke contract admits exactly `dist/**/*.js` and
+`dist/**/*.d.ts`, rejects every other packed `dist` payload, and retains the
+unchanged 13 MiB unpacked-size ceiling. Explicit assets, runtime modules,
+declarations, documentation, package lock and dependency set remain unchanged.
+
+Validation on the canonical successor passed:
+
+- build and project-wide no-emit;
+- `tests/package-identity.test.ts` and
+  `tests/package-smoke-contract.test.ts`, 38/38 tests with no skips;
+- strict ES2024/NodeNext no-emit for the complete selected test/import graph
+  with existing JavaScript helpers;
+- real npm 12 dry-run inventory with 1,076 packed files, 8,855,966 unpacked
+  bytes, 4,775,522 bytes remaining below the unchanged limit, zero packed
+  source maps, zero unreviewed `dist` extensions and all sampled runtime and
+  declaration files present;
+- installed-tarball package smoke for `@msn-control/liftoff@0.12.3`; and
+- supported-stack, repository named-file policy, strict OpenSpec validation
+  and `git diff --check`.
+
+The first two local inventory summary helpers incorrectly assumed npm 12
+returned either an array or a direct pack object. npm 12 returned an object
+keyed by package name. The successful `npm pack --dry-run --json` bytes were
+not rerun or rewritten; the corrected read-only parser used the existing
+inventory and produced the measurements above. These helper failures are not
+source or package failures.
+
+The first OpenSpec validation command used the unsupported
+`--non-interactive` spelling and exited 1 before validation. It is preserved
+as `invalid-openspec-non-interactive-option.log`, SHA-256
+`d6a21c62645df48e749cff356d93d783f3cdf91a5eb6e74812d7a946cde0e832`.
+The OpenSpec 1.11.0 `--no-interactive` command then passed. A separate evidence
+hash command also exited after hashing existing subjects because it named two
+nonexistent convenience aliases; the subsequent complete hash inventory used
+the actual retained filenames. Neither driver error changed repository or
+package bytes.
+
+The complete evidence directory is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/package-runtime-surface-0e29-working`
+
+Its selected test report has SHA-256
+`7bd3c6a333c4d47c1413249ff75b7265234cd52150ba38a76a497ce703674d6a`,
+the npm inventory has SHA-256
+`f006837c88043a736016abae914809c3fef35014d27701c4fb3808dcd0ce6e42`,
+and the inventory verification has SHA-256
+`3de3d95302a9a914b70fbdf1fa7420a7363269d28b96a2dc28c4dc4b0730f07b`.
+
+This correction does not raise a budget, remove local debugging output, alter
+runtime behavior, qualify native packages or satisfy source-complete coverage.
+No broad native/full-suite rerun was performed for this package-only unit.
+Task 18.4 remains incomplete pending the coherent same-revision maintained
+README/package-link/cross-host audit, and tasks 18.1/18.2 remain responsible
+for the complete advertised matrix and fresh coverage evidence.
