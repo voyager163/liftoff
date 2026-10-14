@@ -3151,3 +3151,90 @@ No broad native/full-suite rerun was performed for this package-only unit.
 Task 18.4 remains incomplete pending the coherent same-revision maintained
 README/package-link/cross-host audit, and tasks 18.1/18.2 remain responsible
 for the complete advertised matrix and fresh coverage evidence.
+
+### Typed package-documentation contract and bounded native replay, 2026-10-14
+
+The runtime correction above was committed as
+`e77686a1ff4bfc211221cb9d32aa394a27df6a95`, pushed normally on
+`askhooli-modernization-continuation`, and published as source-only draft pull
+request #168 against the explicitly verified
+`voyager163-liftoff-modernization` base at
+`12d2f4715d8f1901093676baa875f1422c5c5a90`. The pull request remains draft
+and unstacked; this publication is not full-suite, coverage, landing, provider
+or release authority.
+
+Before any broad rerun, one bounded affected native invocation used the clean
+pushed `e77686a1` bytes with `set -euo pipefail`, the original native flags and
+unchanged limits. The qualified tools were Node 24.21.0, npm 12.0.2, CPython
+3.14.7, uv 0.12.7, OpenTofu 1.12.6 and OpenSpec 1.11.0. Its selector retained
+the two activation-history cases implicated by the earlier process boundary,
+the complete generated Manual matrix and the team initialized-baseline
+OpenSpec case. It passed 15 selected tests with no failure. The reporter also
+listed 88 unselected cases as pending because of the name filter; those cases
+were not executed and are not qualification credit. This selector was
+slightly stronger than the original failure set because the generated Manual
+pattern also selected the Node and Go variants. The earlier Python identity,
+history-timeout and initialized-baseline failures did not reproduce in this
+bounded successor gate. No unfiltered suite or coverage followed.
+
+The native evidence is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/native-affected-e77686a1`
+
+Its preflight, run log and JSON report have SHA-256 values
+`99827a6bb11e74a73fe71fa5d59574e2d2ef91e9684e802955abe24d7f1c00d6`,
+`2364722286a320bf918dfd809e7733c37a1933f510eb437630fbba9eb224a36d`
+and
+`6f5c19db5f435b3dbd231140a7387d520bdc080c0dc1ef9e13a2632ea15c1dcf`
+respectively.
+
+Independent strict fixture replay then found that both corrected documentation
+tests imported the JavaScript-only
+`scripts/package-smoke-contract.mjs` boundary. Under the original
+ES2024/NodeNext `--ignoreConfig` flags, with no `allowJs`, each test produced
+TS7016. The earlier runtime 20/20 and coherent 760/760 reports remain their
+actual results, but they did not establish the required strict fixture typing.
+Those two TS7016 failures are preserved separately and were not relabeled as
+part of the inherited fixture diagnostics.
+
+The first typed correction moved the exact compiled declarations into the
+existing `src/plugins/builtin/assets.ts` metadata module and imported that
+typed source from both the smoke contract and documentation tests. Leaving the
+constant as a literal tuple produced two TS2345 diagnostics for
+`.includes(entry: string)`. A typed predicate removed those diagnostics, but
+the coherent runtime corpus then correctly refused the predicate as a function
+inside the enforced data-only asset leaf: 759/760 passed and the single
+failure reported
+`plugins/builtin/assets.ts:23: FunctionDeclaration is not data`. Both failed
+iterations are preserved as diagnostic evidence rather than semantic credit.
+
+The final correction keeps the metadata module data-only and declares the
+single shared value as `readonly string[]`. The smoke contract re-exports that
+same value, and both documentation tests import the typed source module.
+There are no duplicated pattern strings, casts, handwritten declarations or
+weakened inventory refusals. Exact behavior remains limited to
+`dist/**/*.js` and `dist/**/*.d.ts`.
+
+Validation on the final working successor passed:
+
+- the two affected strict ES2024/NodeNext imports with an empty log;
+- the complete 23-file clean fixture/import strict set with an empty log;
+- the complete 25-file strict set with exactly the same 12 inherited
+  diagnostics and byte-identical SHA-256
+  `6eca6fdb9dd24433d51c01f108fabcc5ed6fadabab22d04579d4e99a2406d598`;
+- the two affected runtime files, 20/20 tests;
+- the complete coherent source corpus, 25 files and 760/760 tests;
+- package identity and smoke contracts, 38/38 tests;
+- project-wide no-emit and the installed-tarball package smoke;
+- supported-stack, repository named-file policy and strict noninteractive
+  OpenSpec validation; and
+- `git diff --check`.
+
+The final and failed-iteration evidence is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/package-doc-typed-e776-working`
+
+The already-pushed draft source is therefore superseded additively by this
+typed-boundary successor. It must remain draft after publication. OpenSpec
+remains at 82/136 tasks complete; no task checkbox is changed by this bounded
+correction, and no full-suite or coverage qualification is claimed.

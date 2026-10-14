@@ -1,7 +1,7 @@
 import { lstat, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { compiledPackageFiles } from '../scripts/package-smoke-contract.mjs';
+import { compiledPackageFiles } from '../src/plugins/builtin/assets.js';
 
 function headings(markdown: string): Array<{ title: string; line: number }> {
   const result: Array<{ title: string; line: number }> = [];

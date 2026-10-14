@@ -3,10 +3,10 @@
 // modules; the installed-package checks read files when they are called.
 import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { builtinAssets } from '../src/plugins/builtin/assets.ts';
+import { builtinAssets, compiledPackageFiles } from '../src/plugins/builtin/assets.ts';
 
 export const maximumUnpackedPackageBytes = 13 * 1024 * 1024;
-export const compiledPackageFiles = Object.freeze(['dist/**/*.js', 'dist/**/*.d.ts']);
+export { compiledPackageFiles };
 
 export function assertCompiledPackageFiles(packedPaths) {
   if (!isStringList(packedPaths)) {

@@ -1,7 +1,7 @@
 import { glob, lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { compiledPackageFiles } from '../scripts/package-smoke-contract.mjs';
+import { compiledPackageFiles } from '../src/plugins/builtin/assets.js';
 import { commandDefinitions } from '../src/cli/args/definitions.js';
 import { parseArgs, UsageError } from '../src/cli/args/parser.js';
 
