@@ -3251,3 +3251,60 @@ with SHA-256
 This receipt records the exact five source paths, their committed blobs, all
 final validation subjects and both failed correction iterations. It remains a
 bounded source receipt only.
+
+Independent review accepted the `7578e54e` source and validation subjects but
+found one receipt-label error: `manifest.results.coherentFiles` preserved
+Vitest's nested passed-suite count of 64, not the actual test-file count. The
+original manifest remains immutable. The source report has 25
+`testResults` entries, 760 passed tests and zero failed tests. The correction
+supplement is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/package-doc-typed-7578e54e/manifest-correction.json`
+
+with SHA-256
+`f1040ca35bc59b28f6d2f0d67c98889425e6492cdd3fd234bdc9870d59314df0`.
+No ledger, draft description or qualification claim treats 64 as a file count.
+
+### Explicit maintained and generated README audit, 2026-10-14
+
+Task 18.4 now has a source-enforced explicit inventory:
+
+- maintained repository paths:
+  `README.md`, `infrastructure/opentofu/bootstrap/README.md`,
+  `infrastructure/opentofu/telemetry/README.md` and
+  `src/application/state-migration/README.md`; and
+- generated logical families:
+  `root-readme`, `opentofu-readme`, `functions-readme`,
+  `function-worker-readme`, `pattern-prompt-readme` and
+  `repository-governance-guide`.
+
+The integrated audit uses `buildCurrentProjectPlan` and
+`buildCurrentArtifacts`, not the legacy generator. It verifies the current npm
+installation path remains truthful while no Homebrew cask or WinGet channel has
+been published; unshipped work remains labeled unavailable; protected state
+handover/custody and brownfield migration remain unavailable/planning-only;
+telemetry schema changes remain undeployed and do not enroll a client; generated
+setup is not a shell command or completion claim; Function and prompt scaffolds
+do not claim missing processing/loading; and generated governance reports live
+enforcement as unobserved. It also continues rejecting removed create/apply
+syntax and anonymous-project-ID wording.
+
+Validation passed:
+
+- all 38 repository-local Markdown links across the four maintained README
+  paths resolved: 37 from the root README and one from the private state
+  migration guide;
+- `tests/documentation.test.ts` passed 24/24;
+- the complete ten-file maintained/generated documentation corpus passed 336
+  tests with two existing intentional skips;
+- the strict ES2024/NodeNext fixture import for `tests/documentation.test.ts`
+  passed with an empty log;
+- project-wide no-emit, strict noninteractive OpenSpec validation and
+  `git diff --check` passed.
+
+Evidence is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/readme-audit-a975-working`
+
+Task 18.4 is complete. OpenSpec is now 83/136. This documentation audit does
+not complete tasks 18.1, 18.2 or any native/provider/publication requirement.
