@@ -1,5 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFile, rm, unlink } from 'node:fs/promises';
+import { setImmediate } from 'node:timers/promises';
+import { GitHubActivationError } from '../src/adapters/github/activation-rest.js';
+import * as workflowRuntime from '../src/governance-activation/workflow-runtime.js';
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import {
   source5WorkflowAuthorityValue, withSource5WorkflowLease
@@ -33,6 +36,7 @@ beforeEach(() => {
     Object.assign(prepared.state, originalProviderState);
     prepared.calls.splice(0);
     prepared.onRead(() => undefined);
+    prepared.onResponse(() => undefined);
   }
 });
 afterAll(async () => {
@@ -253,6 +257,111 @@ describe('complete source5 per-entry independently current matrix', () => {
         expect(await readFile(original.path)).toEqual(bytes);
         expect(value.errors).toEqual([]);
       });
+    });
+
+  it('settles every immutable ruleset source read before refusing a failed matrix and yielding its held lease', async () => {
+    const { fixture: value, session } = originalFixture();
+    let release!: () => void, ready!: () => void;
+    const retained = new Promise<void>(resolve => { release = resolve; });
+    const responses = new Promise<void>(resolve => { ready = resolve; });
+    let held = 0, returned = 0, siblingResponses = 0, settled = false;
+    const markReady = () => { if (held === 4 && returned === 4) ready(); };
+    value.state.rulesetDrift = true;
+    value.onRead(async request => {
+      if (request.path.includes('/contents/governance/rulesets/tags.json')) {
+        held++; markReady(); await retained;
+      }
+    });
+    value.onResponse(request => {
+      if (request.path.includes('/contents/governance/rulesets/branches.json')) {
+        returned++; markReady();
+      }
+      if (request.path.includes('/contents/governance/rulesets/tags.json')) siblingResponses++;
+    });
+    const reading = session.read(async ({ entries }) => {
+      try { await verifySource5WorkflowProofMatrix(entries, value.requirements); return null; }
+      catch (error) { return error; }
+    }).finally(() => { settled = true; });
+    try {
+      await responses;
+      await setImmediate();
+      expect(settled).toBe(false);
+      expect(session.pending).toBe(true);
+      expect(siblingResponses).toBe(0);
+    } finally {
+      release();
+      const error = await reading;
+      if (!(error instanceof Error)) throw new Error('The actual drifted source matrix did not refuse.');
+      expect(error.message).toMatch(/Immutable provider source bytes/);
+    }
+    expect(held).toBe(4); expect(returned).toBe(4);
+    expect(siblingResponses).toBe(4);
+    expect(session.pending).toBe(false);
+    expect(value.calls.every(call => call.method === 'GET')).toBe(true);
+    expect(value.errors).toEqual([]);
+  });
+
+  it.each(['branches', 'tags'] as const)(
+    'preserves the exact first temporal %s rejection after draining both distinguishable actual source reads', async firstPath => {
+      const { fixture: value, session } = originalFixture();
+      const secondPath = firstPath === 'branches' ? 'tags' : 'branches';
+      const failures: { path: string; reason: unknown }[] = [];
+      const responseOrder: string[] = [];
+      let release!: () => void, firstRejected!: () => void, secondHeld!: () => void;
+      const retained = new Promise<void>(resolve => { release = resolve; });
+      const firstRejection = new Promise<void>(resolve => { firstRejected = resolve; });
+      const heldResponse = new Promise<void>(resolve => { secondHeld = resolve; });
+      value.state.rulesetDriftIndex = 0;
+      value.state.invalidTagRulesetIndex = 0;
+      value.onResponse(async (request, index) => {
+        if (index !== 0) return;
+        if (request.path.includes(`/contents/governance/rulesets/${secondPath}.json`)) {
+          secondHeld(); await retained;
+          responseOrder.push(secondPath);
+        } else if (request.path.includes(`/contents/governance/rulesets/${firstPath}.json`)) {
+          responseOrder.push(firstPath);
+        }
+      });
+      const read = workflowRuntime.readWorkflowBytes;
+      const observer = vi.spyOn(workflowRuntime, 'readWorkflowBytes').mockImplementation(async (...args) => {
+        try { return await read(...args); }
+        catch (reason) {
+          const path = args[3].split('/').at(-1)!.replace('.json', '');
+          failures.push({ path, reason });
+          if (path === firstPath) firstRejected();
+          throw reason;
+        }
+      });
+      const reading = session.read(async ({ entries }) => {
+        try { await verifySource5WorkflowProofMatrix(entries, value.requirements); return null; }
+        catch (reason) { return reason; }
+      });
+      let result: unknown;
+      try {
+        await Promise.all([firstRejection, heldResponse]);
+        expect(failures.map(failure => failure.path)).toEqual([firstPath]);
+        expect(responseOrder).toEqual([firstPath]);
+      } finally {
+        release();
+        try { result = await reading; } finally { observer.mockRestore(); }
+      }
+      expect(responseOrder).toEqual([firstPath, secondPath]);
+      expect(failures.map(failure => failure.path)).toEqual([firstPath, secondPath]);
+      const first = failures[0]!.reason, second = failures[1]!.reason;
+      if (!(first instanceof GitHubActivationError) || !(second instanceof GitHubActivationError)) {
+        throw new Error('Both actual source failures must retain their original typed provider validation errors.');
+      }
+      expect(first).not.toBe(second);
+      expect(first.code).toBe(firstPath === 'branches' ? 'workflow-readback' : 'invalid-response');
+      expect(second.code).toBe(secondPath === 'branches' ? 'workflow-readback' : 'invalid-response');
+      expect(result).toBe(first);
+      expect(result).toBeInstanceOf(GitHubActivationError);
+      expect(session.pending).toBe(false);
+      for (const path of ['branches', 'tags']) {
+        expect(value.calls.filter(call => call.path.includes(`/contents/governance/rulesets/${path}.json`))).toHaveLength(4);
+      }
+      expect(value.calls.every(call => call.method === 'GET')).toBe(true);
+      expect(value.errors).toEqual([]);
     });
 
   it('rechecks original component ledgers after current provider reads and preserves loss without repair', async () => {

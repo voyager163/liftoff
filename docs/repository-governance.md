@@ -237,14 +237,23 @@ identities on both green and red members. Original issuance, ownership and
 component chains are checked around readback; current observations cannot
 overwrite original IDs, dispatch/observation times, plans or proof bytes.
 Independent families may read concurrently, with separate per-entry authority
-checks and one unchanged three-minute budget. All family reads settle before
-returning or refusing; there are no Git/provider/file writes, status
+checks and one unchanged three-minute budget. Every started ruleset read promise
+is awaited before its family refuses, preserving the exact first temporal
+rejection and successful input ordering. Family read promises settle before
+returning or refusing. This does not establish cancellation or drainage of
+underlying transports after a bounded timeout race. There are no Git/provider/file writes, status
 substitutions, new intent or terminal-bookkeeping capabilities in this path.
 Isolated matrix tests seed original publication/dispatch ledger formats and use
 bounded real Node validators to drive loopback responses. They are not actual
 publisher-created commits, GitHub dispatches or live green/red qualification.
 Full planner/prerequisite composition, final outcome persistence and engine
 admission remain separate obligations.
+
+Identity readers consume fresh frozen scalar identity projections rather than
+unused full graph copies; full-contract readers retain their original deep
+copies. These static projections contain no project or approval authority and
+do not replace any independent current scope, ownership, or proof validation.
+
 A separate private branded terminal-bookkeeping reader can inspect an already
 sealed original finalization without any saves. It is not a journal, issued
 authority, ownership object or effect carrier. Its descriptive ownership

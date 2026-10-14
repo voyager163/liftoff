@@ -290,3 +290,18 @@ export function readableModernActivationSourceContracts(): readonly ModernActiva
     ...preCustodyModernActivationSourceContracts()
   ]);
 }
+
+export function modernActivationSourceIdentityTables(): Readonly<{
+  current: readonly ModernActivationSourceContract['identity'][];
+  readable: readonly ModernActivationSourceContract['identity'][];
+}> {
+  modernSources ??= buildModernSources('protected-custody');
+  preWorkflowModernSources ??= buildModernSources('protected-custody', preWorkflowSourceVersions);
+  preCustodyModernSources ??= buildModernSources('local-bootstrap', preWorkflowSourceVersions);
+  const identities = (sources: readonly ModernActivationSourceContract[]) =>
+    Object.freeze(sources.map(source => Object.freeze({ ...source.identity })));
+  return Object.freeze({
+    current: identities(modernSources),
+    readable: identities([...modernSources, ...preWorkflowModernSources, ...preCustodyModernSources])
+  });
+}

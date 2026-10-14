@@ -1,7 +1,4 @@
-import {
-  modernActivationSourceContracts,
-  readableModernActivationSourceContracts
-} from '../policy/identity.js';
+import { modernActivationSourceIdentityTables } from '../policy/identity.js';
 import { canonicalSha256 } from './canonical-json.js';
 import { exactRecord } from '../../project/manifest/fields.js';
 import { createManifestV8ProjectReader } from '../../project/manifest/v8-project.js';
@@ -26,32 +23,31 @@ function digest(value: unknown, label: string): ModernDigest {
 /** Trusted catalog values select the actual M6 reader, never an arbitrary caller parser or current default. */
 export function createModernActivationIdentityReader(catalog: ManifestContractContext['catalog']) {
   const projectReader = createManifestV8ProjectReader(catalog);
-  const currentSources = modernActivationSourceContracts();
-  const readableSources = readableModernActivationSourceContracts();
+  const { current: currentSources, readable: readableSources } = modernActivationSourceIdentityTables();
   const contextFields = ['profile', 'policyVersion', 'selection', 'pluginResolutionDigest', 'activeLayoutDigest'] as const;
-  const identityFields = [...Object.keys(currentSources[0].identity), 'sourceSelectionDigest', 'pluginResolutionDigest', 'activeLayoutDigest'];
+  const identityFields = [...Object.keys(currentSources[0]), 'sourceSelectionDigest', 'pluginResolutionDigest', 'activeLayoutDigest'];
 
   function identityFromContext(
     request: Record<string, unknown>,
     sourceVersion: unknown,
-    sources: readonly ReturnType<typeof modernActivationSourceContracts>[number][],
+    sources: readonly StaticModernActivationIdentity[],
     phaseGraphHash?: unknown
   ): ReadableModernActivationIdentity {
     const selection = exactRecord(request.selection, ['project', 'framework', 'profile'], 'Modern activation selection');
     if (selection.profile !== request.profile) throw new Error('Modern activation selection and governance profile disagree.');
     const leaf = projectReader.validateManifestV8Project({ project: selection.project, framework: selection.framework });
-    const source = sources.find(source => source.identity.liftoffVersion === sourceVersion &&
-      source.identity.profile === request.profile && source.identity.policyVersion === request.policyVersion &&
-      source.identity.workflow === leaf.project.specWorkflow &&
-      (phaseGraphHash === undefined || source.identity.phaseGraphHash === phaseGraphHash));
+    const source = sources.find(source => source.liftoffVersion === sourceVersion &&
+      source.profile === request.profile && source.policyVersion === request.policyVersion &&
+      source.workflow === leaf.project.specWorkflow &&
+      (phaseGraphHash === undefined || source.phaseGraphHash === phaseGraphHash));
     if (!source) throw new Error('Modern activation requires an exact declared source version, profile, policy and workflow.');
     const pluginResolutionDigest = digest(request.pluginResolutionDigest, 'Modern activation plugin resolution');
     const activeLayoutDigest = digest(request.activeLayoutDigest, 'Modern activation active layout');
     const sourceSelectionDigest: ModernDigest = `sha256:${canonicalSha256({
       kind: 'liftoff-activation-source-selection', schemaVersion: 1,
-      profile: source.identity.profile, project: leaf.project, framework: leaf.framework
+      profile: source.profile, project: leaf.project, framework: leaf.framework
     })}`;
-    return Object.freeze({ ...source.identity, sourceSelectionDigest, pluginResolutionDigest, activeLayoutDigest });
+    return Object.freeze({ ...source, sourceSelectionDigest, pluginResolutionDigest, activeLayoutDigest });
   }
 
   function validateReadableModernActivationIdentity(input: ModernActivationSourceInput): ReadableModernActivationIdentity {

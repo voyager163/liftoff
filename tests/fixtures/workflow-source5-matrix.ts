@@ -112,7 +112,8 @@ async function prepareMatrixFixture(seed: Awaited<ReturnType<typeof workflowSour
     source5WorkflowOriginalPlanValue(value.projectRoot, value.plan, value.approval), null);
   const calls: GitHubRequest[] = [], errors: unknown[] = [];
   const state = { driftRunId: 0, driftCheckId: 0, extraRuleFile: false, truncated: false,
-    workflowDrift: false, tagDrift: false, protectedRefDrift: false, rulesetDrift: false, treeDrift: false };
+    workflowDrift: false, tagDrift: false, protectedRefDrift: false, rulesetDrift: false, treeDrift: false,
+    rulesetDriftIndex: -1, invalidTagRulesetIndex: -1 };
   const validators = new NodeCommandRunner();
   const outcomes: ('success' | 'failure')[][] = [];
   for (const binding of bindings) {
@@ -146,6 +147,7 @@ async function prepareMatrixFixture(seed: Awaited<ReturnType<typeof workflowSour
       status: 'completed', conclusion: outcomes[index]!.includes('failure') ? 'failure' : 'success' };
   };
   let onRead: ((request: GitHubRequest) => Promise<void> | void) | undefined;
+  let onResponse: ((request: GitHubRequest, observedIndex: number) => Promise<void> | void) | undefined;
   function response(request: GitHubRequest, observedIndex: number): unknown {
     if (request.method !== 'GET') throw new Error('Matrix fixture permits no provider writes.');
     if (request.path === '/repos/owner/repo') return { id: 123, full_name: 'owner/repo', permissions: { push: true } };
@@ -169,8 +171,10 @@ async function prepareMatrixFixture(seed: Awaited<ReturnType<typeof workflowSour
     if (request.path.includes('/contents/')) {
       const [file, sha] = request.path.split('/contents/')[1]!.split('?ref=');
       const index = paths.indexOf(file!), rule = files.find(rule => rule.path === file);
+      if (file === 'governance/rulesets/tags.json' && state.invalidTagRulesetIndex === observedIndex) return [];
       const bytes = file === sourceBinding.files[0]!.path ? state.workflowDrift ? 'foreign workflow' : content :
-        rule ? state.rulesetDrift ? '{}\n' : rule.content.toString('utf8') : sha === 'c'.repeat(40) ? valid[index] : invalid[index];
+        rule ? state.rulesetDrift || state.rulesetDriftIndex === observedIndex ? '{}\n' : rule.content.toString('utf8') :
+          sha === 'c'.repeat(40) ? valid[index] : invalid[index];
       if (bytes === undefined) throw new Error('Unexpected exact fixture source path.');
       return { type: 'file', path: file, encoding: 'base64', content: Buffer.from(bytes).toString('base64') };
     }
@@ -229,7 +233,9 @@ async function prepareMatrixFixture(seed: Awaited<ReturnType<typeof workflowSour
     const result = await fetch(`http://127.0.0.1:${address.port}${request.path}`, { method: request.method,
       headers: { 'x-liftoff-fixture-entry': String(index) },
       ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) }), signal: AbortSignal.timeout(30_000) });
-    return { status: result.status, headers: { 'x-oauth-scopes': result.headers.get('x-oauth-scopes') ?? '' }, data: await result.json() };
+    const data = await result.json();
+    await onResponse?.(request, index);
+    return { status: result.status, headers: { 'x-oauth-scopes': result.headers.get('x-oauth-scopes') ?? '' }, data };
   } });
   const transport = transportFor(0);
   const proofs: WorkflowContextProof[] = [];
@@ -276,6 +282,7 @@ async function prepareMatrixFixture(seed: Awaited<ReturnType<typeof workflowSour
     requirements: requiredWorkflowContextsFromSource(files, 'single-maintainer-gitflow'),
     prepareOriginalComponents,
     onRead(callback: (request: GitHubRequest) => Promise<void> | void) { onRead = callback; },
+    onResponse(callback: (request: GitHubRequest, observedIndex: number) => Promise<void> | void) { onResponse = callback; },
     async entries(lease: ProjectMutationLease, now = value.now) {
       if (!originalPrepared) throw new Error('Original matrix fixture components have not completed; do not issue observation carriers.');
       const journal = await openSource5WorkflowJournal({ ...value, lease, initialize: false }), input = await fields(lease, now);

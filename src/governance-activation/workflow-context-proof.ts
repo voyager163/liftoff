@@ -609,9 +609,13 @@ async function verifyProofMatrix(
       canonicalSha256(requirements.files.map((file) => file.path).sort())) {
       return workflowFailure('workflow-proof-matrix', 'Required context source omitted or substituted actual committed ruleset files.');
     }
-    const files = await Promise.all(requirements.files.map(async (file) => ({
+    const fileReads = requirements.files.map(async (file) => ({
       path: file.path, content: await readWorkflowBytes(runtime.client, binding.repository, binding.sourceSha, file.path, file.digest)
-    })));
+    }));
+    const files = await Promise.all(fileReads).catch(async (error: unknown) => {
+      await Promise.allSettled(fileReads);
+      throw error;
+    });
     const actualRequirements = requiredWorkflowContextsFromSource(files, requirements.profile);
     if (requirements.profile !== (isSource5WorkflowEffectInput(input) ? input.profile : input.inspection.manifest.governance?.profile) ||
       actualRequirements.sourceDigest !== requirements.sourceDigest ||
