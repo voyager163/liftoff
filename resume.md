@@ -3046,8 +3046,13 @@ surfaces instead of the whole `dist` directory. Local TypeScript builds still
 produce source maps for development; only packed development maps are omitted.
 The package smoke contract admits exactly `dist/**/*.js` and
 `dist/**/*.d.ts`, rejects every other packed `dist` payload, and retains the
-unchanged 13 MiB unpacked-size ceiling. Explicit assets, runtime modules,
-declarations, documentation, package lock and dependency set remain unchanged.
+unchanged 13 MiB unpacked-size ceiling. Explicit packaged assets, runtime
+modules, declarations, package lock and dependency set remain unchanged.
+`CONTRIBUTING.md` intentionally gained maintainer guidance for the narrowed
+published surface, and this ledger records the correction and its evidence.
+The `2647869d` ledger sentence that said all documentation remained unchanged
+was inaccurate; this additive documentation-only successor corrects that claim
+without rewriting the admitted commit, source receipt or validation evidence.
 
 Validation on the canonical successor passed:
 
@@ -3091,6 +3096,24 @@ the npm inventory has SHA-256
 `f006837c88043a736016abae914809c3fef35014d27701c4fb3808dcd0ce6e42`,
 and the inventory verification has SHA-256
 `3de3d95302a9a914b70fbdf1fa7420a7363269d28b96a2dc28c4dc4b0730f07b`.
+
+The exact committed package successor
+`2647869d2eac2da8b5cdb1b4ea51929461bb4837` was independently reviewed
+against its admitted parent and all retained source/evidence subjects. The
+review rehashed 21 subjects, all 1,560 tracked rows and modes, all five exact
+parent/target source blobs, the 38-test report and the 1,076-path package
+inventory. Its receipt is:
+
+`/Users/jonathan/.copilot/session-state/8d89d4b7-10db-4009-945e-b14397314a84/files/canonical-package-264-review/review.json`
+
+with SHA-256
+`362b3876214c26dab1890c4b4de864541b174a774210ac70ade60b3c156e3269`.
+The first independent verifier assumed only the five package-source files and
+refused the additional `resume.md` ledger file. That failed verifier result was
+preserved; the reviewer separately inspected the additive ledger and corrected
+the verifier scope to the actual six-file commit. The resulting admission is
+bounded source admission only, not full-suite, coverage, provider or landing
+authority.
 
 This correction does not raise a budget, remove local debugging output, alter
 runtime behavior, qualify native packages or satisfy source-complete coverage.
