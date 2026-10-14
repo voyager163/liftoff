@@ -80,7 +80,17 @@ export const telemetryCommands = [
   'infra:output'
 ] as const;
 
-export const telemetryExcludedCommands = ['governance:assess', 'capabilities', 'assess'] as const;
+export const telemetryExcludedCommands = [
+  'governance:assess',
+  'capabilities',
+  'assess',
+  'telemetry',
+  'telemetry:status',
+  'telemetry:enroll',
+  'telemetry:disable',
+  'telemetry:report',
+  'telemetry:heartbeat'
+] as const;
 
 export type TelemetryCommand = (typeof telemetryCommands)[number];
 export type TelemetryOutcome = 'success' | 'failure';
@@ -219,7 +229,8 @@ export function parseProjectTelemetryPolicy(
 export function isTelemetryExcludedCommand(input: TelemetryCommandInput): boolean {
   if (input.command === 'doctor' || input.command === 'upgrade' && input.flags.help === true ||
     input.command === 'help' && ['upgrade', 'doctor'].includes(input.positional?.[0] ?? '')) return true;
-  if (input.command === 'help' && ['capabilities', 'assess'].includes(input.positional?.[0] ?? '')) return true;
+  if (input.command === 'telemetry') return true;
+  if (input.command === 'help' && ['capabilities', 'assess', 'telemetry'].includes(input.positional?.[0] ?? '')) return true;
   if (input.command === 'repair' &&
       ['capabilities', 'inspect-layout'].some((flag) => input.flags[flag] === true)) return true;
   const candidate = input.subcommand ? `${input.command}:${input.subcommand}` : input.command;

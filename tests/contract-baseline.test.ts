@@ -114,6 +114,20 @@ describe('frozen 0.12.3 contract baseline provenance', () => {
       expect(entry.files.length).toBeGreaterThan(0);
     }
   });
+
+  it.each([
+    { key: 'help', owner: '3490dfa20dc41b4550d1a28d3c3118be049c14566bf9597ee655ee5aa72326c6',
+      parent: 'ac07e503cadf4b9c0d04d7db54925e355778181c2ad86b5a44f4fbc7d17cbf83' },
+    { key: '--help', owner: '436c803069370a9d88aa5d98c57b538fc544a6d1676930ea33043b7471d4a4f5',
+      parent: '1aaa34033a2e741827206932aed419a044c49a6aab4ef055195655e4c200b16f' }
+  ])('preserves both independently reviewed $key parent chains through source composition', ({ key, owner, parent }) => {
+    const change = review.changes.find((entry: Change) => entry.surface === 'cli-text' && entry.key === key);
+    expect(sha256(JSON.stringify(change.priorChange))).toBe(owner);
+    expect(sha256(JSON.stringify(change.mergedPriorChange))).toBe(parent);
+    expect(change.priorCurrentSha256).toBe(change.priorChange.currentSha256);
+    expect(change.baselineSha256).toBe(change.priorChange.baselineSha256);
+    expect(change.baselineSha256).toBe(change.mergedPriorChange.baselineSha256);
+  });
 });
 
 describe('frozen public CLI surfaces', () => {

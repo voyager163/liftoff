@@ -54,3 +54,27 @@ backend becomes unreachable:
 
 Do not add dynamic GitHub-hosted runner ranges. Standard hosted CI performs only
 build, test, formatting, backend-free initialization, and validation.
+
+## Grafana does not own the state boundary
+
+The telemetry [Grafana runbook](../telemetry/README.md#managed-grafana-source-preparation-not-deployed)
+adds separate resource and dashboard roots, not another bootstrap or a state
+migration. Future approved roots need distinct keys in the existing private
+`tfstate` container and independently verified ownership/lineage, writer
+locking, protected host and network admission. Do not reuse the telemetry key,
+copy state, broaden either storage network layer, change the enforced
+`state-storage` association or give Grafana's query identity state access.
+Dashboard disablement/rollback preserves this group, account, container,
+perimeter and all accepted telemetry records.
+
+The commands above are an operator runbook, not authority to provision, read
+state payloads or change CIDRs. Source preparation and backend-free validation
+do not qualify production custody, network admission or rollback. Existing
+resources are in Korea Central; examples/defaults are never authority for
+replacement. Repository checks need no production credentials:
+
+```bash
+tofu -chdir=infrastructure/opentofu/bootstrap fmt -check
+tofu -chdir=infrastructure/opentofu/bootstrap init -backend=false -input=false -lockfile=readonly
+tofu -chdir=infrastructure/opentofu/bootstrap validate
+```

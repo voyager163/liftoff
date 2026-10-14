@@ -3,6 +3,36 @@
 This guide covers release-owned compatibility, deterministic setup, and package
 publishing. General contribution setup remains in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Project reporting consent boundary
+
+`application/telemetry/project-reporting.ts` owns explicit status/enroll/disable/
+report and ordinary-command project eligibility. `domain/project/telemetry-consent.ts`
+owns the independently versioned disclosure/record/review contract;
+`adapters/filesystem/telemetry-consent.ts` uses bounded single-link reads,
+exact checkout/config snapshots, external consent locking, project transactions,
+atomic publication and readback. Tracked UUIDs are measurements, not authentication,
+write approval or installed readiness. No UUID belongs in deterministic rendering.
+The existing one-second `telemetry/delivery.ts` transport remains the only delivery
+budget; one project slot cannot recursively emit an aggregate.
+
+`domain/project/telemetry-heartbeat.ts` provides candidate immutable tooling,
+explicit-root rendering and exact byte-preserving entry updates. The installed
+`application/telemetry/heartbeat.ts` refuses enablement because no actual qualified
+published producer is registered, but permits independently reviewed removal of
+an existing exact entry. Candidate rendering/fixtures never qualify an artifact,
+publication, production ingestion or the CI exception. Keep those gates unchecked;
+do not populate `qualifiedHeartbeatTooling` with guessed URLs, tags or digests.
+
+Run bounded related tests with:
+
+```bash
+npx vitest run tests/project-telemetry-enrollment.test.ts tests/project-telemetry-heartbeat.test.ts tests/telemetry-config.test.ts tests/cli-telemetry.test.ts tests/telemetry-delivery.test.ts --maxWorkers=1 --no-file-parallelism
+```
+
+Generated README/setup guidance remains unenrolled. Current assets/source-contract
+identities, frozen historical renderers and every prior reviewed-change chain are
+independent of consent and must not be refreshed to bless reporting.
+
 ## Stabilization acceptance matrix
 
 The `stabilize-and-modularize-liftoff` change separates retirement, mechanical

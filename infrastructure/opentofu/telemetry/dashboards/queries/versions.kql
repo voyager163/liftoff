@@ -1,0 +1,5 @@
+projects
+| where TimeGenerated >= ago(1d * toint("${window_days}"))
+| summarize arg_max(TimeGenerated, CliVersion) by ProjectId
+| summarize ProjectsApprox = dcount(ProjectId, 2) by CliVersion
+| order by ProjectsApprox desc, CliVersion asc

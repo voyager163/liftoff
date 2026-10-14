@@ -244,7 +244,7 @@ describe('invocation-scoped semantic completion',()=>{
     const h=hooks();expect(await runCli({argv,env:{},stdout:new CaptureStream(),stderr:new CaptureStream(),telemetry:h.telemetry,execute:async()=>2})).toBe(2);
     expect(h.telemetry.beforeCommand).not.toHaveBeenCalled();expect(h.legacy).not.toHaveBeenCalled();expect(h.events).toEqual([]);
   });
-  it('does not activate schema2 transport or bypass unsuccessful disclosure',async()=>{
+  it('does not bypass unsuccessful disclosure or global opt-outs',async()=>{
     const fetch=vi.spyOn(globalThis,'fetch').mockRejectedValue(new Error('Unexpected network'));
     const h=hooks();h.telemetry.beforeCommand.mockResolvedValue(false);
     expect(await runCli({argv:['--version'],env:{},stdout:new CaptureStream(),stderr:new CaptureStream(),telemetry:h.telemetry,execute:async()=>0})).toBe(0);

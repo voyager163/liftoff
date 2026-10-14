@@ -1,0 +1,7 @@
+LiftoffCommandEvents_CL
+| where TimeGenerated >= ago(1d * toint("${window_days}")) and TimeGenerated <= now()
+| where EventName == "command_executed" and SchemaVersion == 1
+| where Outcome in ("success", "failure")
+| extend LegacyMeaning = iff(Outcome == "success", "zero exit", "nonzero exit - not semantic failure")
+| summarize Events = count() by Command, LegacyMeaning
+| order by Command asc, LegacyMeaning asc

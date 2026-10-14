@@ -155,12 +155,34 @@ describe('strict update approval arguments', () => {
 
   it.each(Object.keys(commandDefinitions).filter((command) =>
     command !== 'update' && command !== 'repair' && command !== 'adopt' &&
-    command !== 'workflow'))(
+    command !== 'workflow' && command !== 'telemetry'))(
     'does not accept update approval on %s',
     (command) => {
       expect(() => parseArgs([command, '--approve-plan', fingerprint])).toThrow(/Unknown flag/);
     }
   );
+
+  it.each([
+    ['enroll'], ['disable'], ['heartbeat', 'enable'], ['heartbeat', 'disable']
+  ])('accepts only an operation-scoped telemetry approval in %j', (...operation) => {
+    const parsed = parseArgs(['telemetry', ...operation, '--approve-plan', fingerprint]);
+    expect(parsed.command).toBe('telemetry');
+    expect(parsed.subcommand).toBe(operation[0]);
+    expect(parsed.flags['approve-plan']).toBe(fingerprint);
+  });
+
+  it.each([['status'], ['report'], ['heartbeat', 'status']])(
+    'rejects telemetry mutation authority in %j',
+    (...operation) => {
+      expect(() => parseArgs(['telemetry', ...operation, '--approve-plan', fingerprint]))
+        .toThrow(/does not accept mutation authority/);
+    }
+  );
+
+  it('requires an explicit telemetry operation before accepting its approval flag', () => {
+    expect(() => parseArgs(['telemetry', '--approve-plan', fingerprint]))
+      .toThrow(/Select telemetry status, enroll, disable, report, or heartbeat/);
+  });
 
   it.each(['--approve', '--approve-p', '--no-approve-plan', '--yes', '--yes=true'])(
     'rejects abbreviated, negated, or generic approval %s',
