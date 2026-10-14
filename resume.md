@@ -3486,3 +3486,85 @@ the native key unchanged for `lstat`/read operations and does not alter package
 inventory, production code, dependencies, budgets or selectors. This is a
 source correction informed by the retained Windows evidence, not a new native
 Windows qualification.
+
+The Windows-key correction and the additive historical timeout caveat were
+committed locally as
+`1eaf882d412a6875e1987f95608e01dba5e0584a`, tree
+`b789d459fb9da3a86c78c2016ccaa5d6d89a4648`, with parent
+`ce84792f8f28fb9e7ddd2a251e737e9f29461903`. Its affected runtime file passed
+15/15 tests, its strict ES2024/NodeNext import was empty, and repository policy,
+strict OpenSpec validation and `git diff --check` passed. The bounded evidence
+manifest is retained at:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/native-doc-key-1eaf882d/manifest.json`
+
+with SHA-256
+`02aeca3268bede32b46e151e345ffeaf770674b11d519b3c3d76202b1b7a9e9c`.
+That correction remains local and is not a native Windows qualification.
+
+### Complete strict fixture graph correction, 2026-10-14
+
+The 12 inherited strict TypeScript diagnostics were corrected in only
+`tests/governance-assessment-engine.test.ts` and
+`tests/governance-transitions.test.ts`. The assessment fixture now removes
+only an unreachable retired-workload comparison from a supported
+GenAI/standard fixture, uses the existing `LiveReadbackProof` and
+`EvidenceFreshnessContext` domain types for complete readback fixtures, and
+preserves every literal value and assertion. Runtime retired-input coverage
+elsewhere is unchanged. The transition fixture uses one typed complete
+phase-record helper and renames only the subclass-local command-result helper
+that collided with the base runner's private member. No `any`, `unknown`,
+suppression, compiler relaxation, production source, normative contract,
+schema, timeout, cache or selector change was introduced.
+
+The exact test-only source commit is
+`3ff7b31f0b4cb7f28b461b17cfbba9693b89cb9c`, tree
+`1bec57879c222897d8ab20ab57b6bd09603d45fe`, with parent
+`1eaf882d412a6875e1987f95608e01dba5e0584a`. Its two committed blobs are
+`7cd2e923182274bace4ff3f0eaa538438d57aa29` and
+`22f2b2dce0a8ab55f308f3e5b2d3f8acceceddb6`. The parent and successor have
+the identical production `src` tree
+`476e12a57cbfcfe3b5db0a056c35183f1ec1b7c2`.
+
+Validation on those exact committed source bytes passed:
+
+- the two affected strict ES2024/NodeNext imports with an empty log;
+- both affected runtime files, 66/66 tests;
+- the complete original 25-file strict import graph with an empty log, replacing
+  all 12 old diagnostics without altering the immutable historical
+  `sha256:6eca6fdb9dd24433d51c01f108fabcc5ed6fadabab22d04579d4e99a2406d598`
+  receipt;
+- the current complete 25-file runtime corpus, 761/761 tests and zero failures;
+- exact test-identity comparison against the preceding 761-test corpus;
+- build and project-wide no-emit;
+- repository named-file policy, strict noninteractive OpenSpec validation,
+  source parity and `git diff --check`.
+
+Vitest reports 64 nested suites for that 25-file/761-test corpus; 64 is not a
+file count. The historical `7578e54e` 25-file/760-test evidence remains
+unchanged, and the later README audit case was retained rather than removed to
+manufacture the older count.
+
+Two command-name mistakes were preserved as failed setup attempts:
+`npm run typecheck` and `npm run test:repository-policy` do not exist in this
+package. They executed no project check. The actual repository commands,
+`./node_modules/.bin/tsc -p tsconfig.json --noEmit --pretty false` and
+`npm run check:repository`, then passed. Their failed and successful logs are
+kept separately.
+
+The sealed source receipt is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/strict-fixtures-3ff7b31f/manifest.json`
+
+with SHA-256
+`3171351b9ba3ca082b659454a32a6e0ec1d6de7098bcd83717c470700bdc3dee`.
+It also preserves the exact patch, before/after blobs, commands, tool versions,
+the immutable old diagnostic log, current test inventory, failed attempts and
+OpenSpec status.
+
+This successor has not been pushed and did not mutate pull request #168,
+pull request #169, native stack 170, workflow flags, provider state,
+publication readiness or landing state. No unfiltered full suite or coverage
+was rerun for this test-only successor, and the exact `ce84792f`
+qualification is not relabeled as qualification of `3ff7b31f`. OpenSpec
+remains 83/136 complete; tasks 18.1 and 18.2 remain unchecked.
