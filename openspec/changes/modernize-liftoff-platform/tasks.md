@@ -186,22 +186,34 @@ Depends on 1 and 3. References: design D12; liftoff-cli-telemetry.
 - [x] 15.1 Define command schema 2 semantic outcomes and exact project_observed schema 2/dimension allowlists; verify expected exit-2 drift, cancellation and actual partial failures are classified correctly while v1 records retain old semantics.
 - [x] 15.2 Extend strict endpoint parsing and managed-identity upload for separate command/project records under the 1-KiB streamed limit; verify unknown fields/versions, raw metadata and malformed/oversized bodies are rejected without logging.
 - [x] 15.3 Add project table/DCR declarations with 180-day analytics/total retention, preserving existing command table/data and logging exclusions; verify static OpenTofu and privacy-contract tests on supported hosts.
-- [ ] 15.4 Implement shared one-second ordinary-command telemetry delivery budget, at most one request per channel, no queue/retry and verification-probe exclusions; verify unreachable endpoints do not alter ordinary output/exit.
-- [ ] 15.5 Add explicit reporting-result behavior without recursive aggregate emission; verify status/disabled/failure delivery results and strict telemetry-free assessment/capability/help paths.
+- [x] 15.4 Implement shared one-second ordinary-command telemetry delivery budget, at most one request per channel, no queue/retry and verification-probe exclusions; verify unreachable endpoints do not alter ordinary output/exit.
+- [x] 15.5 Add explicit reporting-result behavior without recursive aggregate emission; verify status/disabled/failure delivery results and strict telemetry-free assessment/capability/help paths.
 - [x] 15.6 Update service/operator/privacy documentation with schema rollout and historical semantics; verify package links and independent gateway coverage remain above the floor.
 
 ## 16. Add explicit project enrollment and optional monthly CI reporting
 
 Depends on 3-8 and 15. References: design D12; liftoff-cli-telemetry, liftoff-template-ownership.
 
-- [ ] 16.1 Implement explicit status/enrollment/disable/report CLI operations and disclosure versioning; verify install, generic yes, existing notices and copied repository records cannot opt a developer in.
-- [ ] 16.2 Create per-project random identity only during approved enrollment and bind local consent externally; verify deterministic rendering, clone/worktree identity preservation, independent monorepo IDs and deliberate fork/copy reenrollment.
+- [x] 16.1 Implement explicit status/enrollment/disable/report CLI operations and disclosure versioning; verify install, generic yes, existing notices and copied repository records cannot opt a developer in.
+- [x] 16.2 Create per-project random identity only during approved enrollment and bind local consent externally; verify deterministic rendering, clone/worktree identity preservation, independent monorepo IDs and deliberate fork/copy reenrollment.
 - [ ] 16.3 Preserve global opt-outs, invalid/read-only config and unknown fields across enrollment and installer migration; verify no notice/consent writes or transport occur when opted out.
 - [ ] 16.4 Add a separately approved monthly repository-scoped heartbeat workflow with explicit root inventory and pinned CLI/action/tooling; verify no application scripts, project scan, upgrade, repair or Azure deployment runs.
 - [ ] 16.5 Implement the narrow explicit CI heartbeat exception while retaining ordinary CI=true disablement; verify both global opt-outs always win and no event is sent for absent/disabled/unsupported project records.
 - [ ] 16.6 Implement reviewed heartbeat entry updates/removal for nested monorepo projects with explicit repository authority; verify other project entries and custom workflow bytes are preserved on Windows/macOS/Linux.
-- [ ] 16.7 Add bounded consent/identity/transport integration tests including moved checkout receipts and no telemetry on assessment/live/help/capabilities/status; verify measurement identity never becomes write approval or authentication.
-- [ ] 16.8 Document pseudonymity, first-observed/windowed metrics, heartbeat meaning/delays, disablement versus retention and operator-reviewed deletion; verify generated README/setup guidance never enrolls implicitly.
+- [x] 16.7 Add bounded consent/identity/transport integration tests including moved checkout receipts and no telemetry on assessment/live/help/capabilities/status; verify measurement identity never becomes write approval or authentication.
+- [x] 16.8 Document pseudonymity, first-observed/windowed metrics, heartbeat meaning/delays, disablement versus retention and operator-reviewed deletion; verify generated README/setup guidance never enrolls implicitly.
+
+Candidate enrollment/reporting, external consent/config preservation, deterministic
+heartbeat inventory/rendering and separately reviewed exact entry removal are
+implemented and locally tested. Task 16.3 remains incomplete because native
+installer migration is not qualified/wired. Tasks 16.4-16.6 remain incomplete:
+there is no qualified published heartbeat-capable Linux CLI archive/digest or
+registered repository-scoped activation/CI producer. Candidate syntax and
+unpublished deterministic test specimens are not publication qualification.
+Enablement and `report --heartbeat` refuse without writes/delivery; neither
+project enrollment nor a caller flag enables ordinary CI. No active cron was
+installed in this repository. Production ingestion and release/custody gates
+remain separate; all other groups retain their parent-branch task status.
 
 ## 17. Extend the approved Azure telemetry deployment and Grafana dashboards
 
@@ -215,6 +227,15 @@ Depends on 9 and 15-16 for qualified candidate artifacts and client contracts, n
 - [ ] 17.6 Update telemetry and bootstrap READMEs with OpenTofu-only deployment, cost/RBAC, consent schema, verification and rollback instructions; verify static configuration, dashboard JSON and documentation tests without production access.
 - [ ] 17.7 After explicit operator approval, deploy backward-compatible gateway/table/DCR changes first, then Grafana; verify real identity access, synthetic ingestion/query, 180-day retention and continued absence of request/IP/console logging.
 - [ ] 17.8 Exercise approved feature disablement/dashboard rollback without destroying the protected group, workspace/data, backend or perimeter; verify existing anonymous ingestion remains operational and records survive.
+
+Tasks 17.2-17.6 have a bounded source-preparation layer: separate pinned
+OpenTofu resource/dashboard roots, workspace-scoped Logs identity, native
+Grafana panels/KQL, registered synthetic exclusions, paused query-availability
+and explicit monthly-expectation rules, portable offline tests and operator
+runbooks. All 17.x flags remain unchecked: qualified task-9/16 candidate
+prerequisites, actual SKU/provider/quota/cost and state ownership, verified
+ingestion-fault signal, real identity/query/UI scenarios and approved live
+deployment/rollback are unmet. Static source is not deployment qualification.
 
 ## 18. Qualify the integrated release and complete the change
 
