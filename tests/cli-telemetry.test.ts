@@ -88,6 +88,7 @@ describe('CLI telemetry integration', () => {
     });
     expect(notice).toHaveBeenCalledTimes(1); expect(record).not.toHaveBeenCalled();
     expect(stdout.text()).toBe('{"status":"update-available"}\n'); expect(stderr.text()).toBe('');
+    expect(fetch.mock.calls[0][1]?.signal?.aborted).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -103,6 +104,33 @@ describe('CLI telemetry integration', () => {
   });
 
   it.each([
+    { outcome: 'success', code: 0 },
+    { outcome: 'attention-required', code: 2 },
+    { outcome: 'cancelled', code: 0 },
+    { outcome: 'failure', code: 2 }
+  ] as const)('preserves ordinary output/exit for semantic $outcome with an unreachable endpoint', async ({ outcome, code }) => {
+    vi.spyOn(telemetryConfig, 'readTelemetryNoticeVersion').mockResolvedValue(1);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('private network diagnostic'));
+    const stdout = new CaptureStream(), stderr = new CaptureStream();
+    expect(await runCli({
+      argv: ['update', '--check', '--json'], env: {}, stdout, stderr,
+      execute: async (_parsed, context) => {
+        context.outcome?.record(outcome);
+        context.stdout.write('{"ordinary":"result"}\n');
+        context.stderr.write('ordinary diagnostic\n');
+        return code;
+      }
+    })).toBe(code);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual({
+      schemaVersion: 2, event: 'command_executed', command: 'update',
+      cliVersion: '0.12.3', outcome
+    });
+    expect(stdout.text()).toBe('{"ordinary":"result"}\n');
+    expect(stderr.text()).toBe('ordinary diagnostic\n');
+  });
+
+  it.each([
     { env: { LIFTOFF_TELEMETRY: '0' } }, { env: { DO_NOT_TRACK: '1' } },
     { env: { CI: 'true' } }, { env: { CI: 'true', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0' } }
   ])('performs no default disclosure/config/transport work for $env', async ({ env }) => {
@@ -114,8 +142,11 @@ describe('CLI telemetry integration', () => {
   });
 
   it.each([
+    ['assess'], ['assess', '--live'], ['assess', '--help'], ['help', 'assess'],
+    ['capabilities'], ['capabilities', '--json'], ['capabilities', '--help'], ['help', 'capabilities'],
+    ['governance', 'assess'], ['governance', 'assess', '--live'],
     ['governance', 'assess', '--live', '--help'], ['repair', '--capabilities', '--help'],
-    ['repair', '--inspect-layout', '--help']
+    ['repair', '--inspect-layout', '--help'], ['repair', '--inspect-layout', '--json']
   ].map(argv => ({ argv })))('preserves default telemetry-free discovery/help $argv', async ({ argv }) => {
     const notice = vi.spyOn(telemetryConfig, 'readTelemetryNoticeVersion').mockResolvedValue(1);
     const record = vi.spyOn(telemetryConfig, 'recordTelemetryNotice').mockResolvedValue(false);
@@ -128,6 +159,7 @@ describe('CLI telemetry integration', () => {
     const hooks = telemetryHooks();
     const code = await runCli({
       argv: ['repair', flag, '--json'],
+      env: {},
       stdout: new CaptureStream(), stderr: new CaptureStream(), telemetry: hooks,
       execute: async () => 0
     });
@@ -140,6 +172,7 @@ describe('CLI telemetry integration', () => {
     const hooks = telemetryHooks();
     const code = await runCli({
       argv: ['governance', 'assess', ...flags],
+      env: {},
       stdout: new CaptureStream(), stderr: new CaptureStream(), telemetry: hooks,
       execute: async () => 2
     });
@@ -156,6 +189,7 @@ describe('CLI telemetry integration', () => {
     };
     const code = await runCli({
       argv: ['infra', 'plan'],
+      env: {},
       stdout: new CaptureStream(),
       stderr: new CaptureStream(),
       telemetry: hooks,
@@ -173,6 +207,7 @@ describe('CLI telemetry integration', () => {
       const hooks = telemetryHooks();
       const code = await runCli({
         argv: ['update'],
+        env: {},
         stdout: new CaptureStream(),
         stderr: new CaptureStream(),
         telemetry: hooks,
@@ -193,6 +228,7 @@ describe('CLI telemetry integration', () => {
       const hooks = telemetryHooks();
       const code = await runCli({
         argv: ['upgrade', '--check'],
+        env: {},
         stdout: new CaptureStream(),
         stderr: new CaptureStream(),
         telemetry: hooks,
@@ -227,7 +263,35 @@ describe('CLI telemetry integration', () => {
       execute: async () => 0
     });
     expect(code).toBe(0);
+    expect(hooks.beforeCommand).not.toHaveBeenCalled();
     expect(hooks.afterCommand).not.toHaveBeenCalled();
+  });
+
+  it.each([{ LIFTOFF_TELEMETRY: '0' }, { DO_NOT_TRACK: '1' }, { CI: 'true' }])(
+    'does not delegate opt-out enforcement to injected hooks for %j', async env => {
+      const hooks = telemetryHooks();
+      const semantic = vi.fn<NonNullable<CliTelemetryHooks['afterSemanticCommand']>>();
+      expect(await runCli({
+        argv: ['--version'], env, stdout: new CaptureStream(), stderr: new CaptureStream(),
+        telemetry: { ...hooks, afterSemanticCommand: semantic }, execute: async () => 0
+      })).toBe(0);
+      expect(hooks.beforeCommand).not.toHaveBeenCalled();
+      expect(hooks.afterCommand).not.toHaveBeenCalled();
+      expect(semantic).not.toHaveBeenCalled();
+    }
+  );
+
+  it('rechecks disablement after ordinary execution before invoking delivery hooks', async () => {
+    const env: NodeJS.ProcessEnv = {}, hooks = telemetryHooks();
+    const semantic = vi.fn<NonNullable<CliTelemetryHooks['afterSemanticCommand']>>();
+    expect(await runCli({
+      argv: ['--version'], env, stdout: new CaptureStream(), stderr: new CaptureStream(),
+      telemetry: { ...hooks, afterSemanticCommand: semantic },
+      execute: async () => { env.DO_NOT_TRACK = '1'; return 0; }
+    })).toBe(0);
+    expect(hooks.beforeCommand).toHaveBeenCalledTimes(1);
+    expect(hooks.afterCommand).not.toHaveBeenCalled();
+    expect(semantic).not.toHaveBeenCalled();
   });
 
   it('does not run telemetry when parsing fails', async () => {
@@ -235,6 +299,7 @@ describe('CLI telemetry integration', () => {
     const stderr = new CaptureStream();
     const code = await runCli({
       argv: ['unknown'],
+      env: {},
       stdout: new CaptureStream(),
       stderr,
       telemetry: hooks
@@ -254,6 +319,7 @@ describe('CLI telemetry integration', () => {
     };
     const code = await runCli({
       argv: ['validate', '--json'],
+      env: {},
       stdout,
       stderr,
       telemetry: hooks,
@@ -276,6 +342,7 @@ describe('CLI telemetry integration', () => {
     };
     const code = await runCli({
       argv: ['doctor'],
+      env: {},
       stdout,
       stderr,
       telemetry: hooks,
@@ -293,6 +360,7 @@ describe('CLI telemetry integration', () => {
     const afterCommand = vi.fn<CliTelemetryHooks['afterCommand']>().mockResolvedValue(undefined);
     const code = await runCli({
       argv: ['help'],
+      env: {},
       stdout: new CaptureStream(),
       stderr: new CaptureStream(),
       telemetry: {

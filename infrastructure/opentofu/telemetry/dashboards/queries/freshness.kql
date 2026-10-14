@@ -1,0 +1,14 @@
+let expected = datatable(ProjectId:string, ExpectedSince:datetime) [@expected_heartbeats@];
+expected
+| where ExpectedSince <= now() and ProjectId !in (syntheticIds)
+| join kind=leftouter (
+    projects
+    | where Source == "ci-heartbeat"
+    | summarize LastHeartbeat = max(TimeGenerated) by ProjectId
+) on ProjectId
+| extend Due = max_of(ExpectedSince, coalesce(LastHeartbeat, ExpectedSince)) + 40d
+| extend Overdue = now() > Due
+| extend Freshness = case(
+    isnull(LastHeartbeat), "unknown - no retained heartbeat; never received or expired",
+    Overdue, "stale reporting - monthly plus grace exceeded",
+    "within monthly reporting grace")

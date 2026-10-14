@@ -233,6 +233,7 @@ jobs:
           -t "settles a real native Node command|detects unref descendant|runs exact checks in a disposable copy"
 
       - name: Run Windows project and packaging boundary coverage
+        id: windows-boundary
         if: runner.os == 'Windows' && matrix.shard == 2
         run: >-
           npx vitest run
@@ -258,6 +259,17 @@ jobs:
           tests/telemetry-contract.test.ts tests/telemetry-config.test.ts tests/telemetry.test.ts
           tests/cli-telemetry.test.ts tests/telemetry-infrastructure.test.ts
           --maxWorkers=1 --no-file-parallelism
+          --reporter=default --reporter=json
+          --outputFile.json=qualification/windows-boundary-tests.json
+
+      - name: Store Windows boundary test evidence
+        if: ${{ !cancelled() && (steps.windows-boundary.outcome == 'success' || steps.windows-boundary.outcome == 'failure') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: liftoff-windows-boundary-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification/windows-boundary-tests.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Validate local repair with native OpenTofu
         if: matrix.shard == 1
@@ -438,7 +450,20 @@ jobs:
         run: tofu -chdir=infrastructure/opentofu/telemetry validate
 
       - name: Check telemetry infrastructure privacy contract
-        run: npx vitest run tests/telemetry-infrastructure.test.ts
+        run: |
+          npm run check:telemetry-dashboards
+          npx vitest run tests/telemetry-infrastructure.test.ts tests/telemetry-dashboard.test.ts tests/telemetry-bootstrap.test.ts
+
+      - name: Validate Grafana roots without credentials or backends
+        run: |
+          tofu -chdir=infrastructure/opentofu/telemetry/grafana fmt -check
+          tofu -chdir=infrastructure/opentofu/telemetry/grafana init -backend=false -input=false -lockfile=readonly
+          tofu -chdir=infrastructure/opentofu/telemetry/grafana validate
+          tofu -chdir=infrastructure/opentofu/telemetry/grafana test -no-color
+          tofu -chdir=infrastructure/opentofu/telemetry/dashboards fmt -check
+          tofu -chdir=infrastructure/opentofu/telemetry/dashboards init -backend=false -input=false -lockfile=readonly
+          tofu -chdir=infrastructure/opentofu/telemetry/dashboards validate
+          tofu -chdir=infrastructure/opentofu/telemetry/dashboards test -no-color
 
   standard-node-templates:
     name: ${{ matrix.check-name }}

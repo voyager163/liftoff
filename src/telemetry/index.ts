@@ -12,7 +12,7 @@ import {
   type TelemetryConfigOptions
 } from './config.js';
 import {
-  createTelemetryDelivery, isTelemetryEnabled, maximumTelemetryDeliveryMs,
+  createTelemetryDelivery, isTelemetryEnabled, maximumTelemetryDeliveryMs, telemetryDisabledResult,
   type TelemetryDelivery, type TelemetryDeliveryResult, type TelemetryFetch
 } from './delivery.js';
 export { isTelemetryEnabled } from './delivery.js';
@@ -47,14 +47,15 @@ export async function maybeShowTelemetryNotice(
   }
 
   try {
-    const seenVersion = await readTelemetryNoticeVersion(options.config);
+    const config = { ...options.config, env: options.config?.env ?? options.env };
+    const seenVersion = await readTelemetryNoticeVersion(config);
     if (seenVersion !== undefined && seenVersion >= telemetryNoticeVersion) {
       return true;
     }
     if (!(await writeTelemetryNotice(options.stderr ?? process.stderr))) {
       return false;
     }
-    await recordTelemetryNotice(options.config);
+    await recordTelemetryNotice(config);
     return true;
   } catch {
     // Telemetry disclosure state must never affect command execution.
@@ -112,6 +113,9 @@ export async function reportCommandEvent(
   event: TelemetryCommandEvent,
   options: TelemetryRuntimeOptions = {}
 ): Promise<TelemetryDeliveryResult> {
+  const disabled = telemetryDisabledResult(options.env);
+  if (disabled) return disabled;
+
   const endpoint = options.endpoint ?? productionTelemetryEndpoint;
   const delivery = options.delivery ?? createTelemetryDelivery({
     env: options.env, fetch: options.fetch, timeoutMs: options.timeoutMs

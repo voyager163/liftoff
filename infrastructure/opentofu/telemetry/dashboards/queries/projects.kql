@@ -1,0 +1,6 @@
+let syntheticIds = dynamic(@synthetic_ids@);
+let projects = LiftoffProjectEvents_CL
+| where TimeGenerated >= ago(180d) and TimeGenerated <= now()
+| where SchemaVersion == 2 and EventName == "project_observed"
+| where Source in ("cli", "ci-heartbeat")
+| where ProjectId !in (syntheticIds);
