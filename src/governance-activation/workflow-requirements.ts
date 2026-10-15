@@ -1,5 +1,7 @@
 import { canonicalSha256, isRecord } from '../domain/governance/activation/canonical-json.js';
-import { workflowByteDigest, workflowFailure } from './workflow-runtime.js';
+import { githubRepository } from '../adapters/github/activation-rest.js';
+import { captureWorkflowBinding, workflowByteDigest, workflowFailure, readWorkflowBytes } from './workflow-runtime.js';
+import type { WorkflowRuntime } from './workflow-runtime.js';
 
 export const protectedWorkflowFamilies = ['develop', 'main', 'release', 'hotfix'] as const;
 export type ProtectedWorkflowFamily = typeof protectedWorkflowFamilies[number];
@@ -10,6 +12,77 @@ export interface WorkflowRequirementSource {
   files: readonly { path: string; digest: string }[];
   families: Readonly<Record<ProtectedWorkflowFamily, readonly string[]>>;
   integrations: Readonly<Record<ProtectedWorkflowFamily, Readonly<Record<string, number | null>>>>;
+}
+
+export interface WorkflowRequirementSourceReference {
+  readonly repository: string;
+  readonly repositoryId: number;
+  readonly sourceSha: string;
+  readonly treeSha: string;
+  readonly files: readonly { readonly path: string; readonly digest: string }[];
+}
+
+export function captureWorkflowRequirementSourceReference(
+  value: WorkflowRequirementSourceReference
+): WorkflowRequirementSourceReference {
+  const reference = captureWorkflowBinding(value);
+  if (!isRecord(reference) ||
+    canonicalSha256(Object.keys(reference).sort()) !== canonicalSha256(['files', 'repository', 'repositoryId', 'sourceSha', 'treeSha']) ||
+    typeof reference.repository !== 'string' || !Number.isSafeInteger(reference.repositoryId) || reference.repositoryId <= 0 ||
+    typeof reference.sourceSha !== 'string' || !/^[a-f0-9]{40}$/u.test(reference.sourceSha) ||
+    typeof reference.treeSha !== 'string' || !/^[a-f0-9]{40}$/u.test(reference.treeSha) ||
+    !Array.isArray(reference.files) || !reference.files.length || reference.files.length > 16 ||
+    reference.files.some(file => !isRecord(file) ||
+      canonicalSha256(Object.keys(file).sort()) !== canonicalSha256(['digest', 'path']) ||
+      typeof file.path !== 'string' || !/^governance\/rulesets\/[A-Za-z0-9_-]+\.json$/u.test(file.path) ||
+      typeof file.digest !== 'string' || !/^[a-f0-9]{64}$/u.test(file.digest)) ||
+    new Set(reference.files.map(file => file.path)).size !== reference.files.length) {
+    return workflowFailure('workflow-required-source-reference',
+      'Required-context source selectors need one exact repository/commit/tree and closed bounded unique file/digest references; context inventories and proof values are not inputs.');
+  }
+  githubRepository(reference.repository);
+  return reference;
+}
+
+/** Complete immutable source readback only; neither semantic recipe qualification nor authority. */
+export async function readRequiredWorkflowSource(
+  runtime: Pick<WorkflowRuntime, 'client' | 'assertWithinDeadline'>,
+  reference: WorkflowRequirementSourceReference,
+  profile: WorkflowRequirementSource['profile']
+): Promise<WorkflowRequirementSource> {
+  runtime.assertWithinDeadline();
+  reference = captureWorkflowRequirementSourceReference(reference);
+  const commit = await runtime.client.get(`/repos/${reference.repository}/git/commits/${reference.sourceSha}`);
+  runtime.assertWithinDeadline();
+  if (commit.sha !== reference.sourceSha || !isRecord(commit.tree) || commit.tree.sha !== reference.treeSha) {
+    return workflowFailure('workflow-proof-matrix', 'Actual source tree could not establish the complete required-context inventory.');
+  }
+  const tree = await runtime.client.get(`/repos/${reference.repository}/git/trees/${reference.treeSha}?recursive=1`);
+  runtime.assertWithinDeadline();
+  if (tree.sha !== reference.treeSha || tree.truncated !== false || !Array.isArray(tree.tree) ||
+    tree.tree.some(entry => !isRecord(entry) || typeof entry.path !== 'string')) {
+    return workflowFailure('workflow-proof-matrix', 'Incomplete/truncated source trees cannot prove that every required context was covered.');
+  }
+  const ruleFiles = tree.tree.filter(entry => isRecord(entry) && typeof entry.path === 'string' &&
+    entry.path.startsWith('governance/rulesets/'));
+  if (ruleFiles.some(entry => !isRecord(entry) || typeof entry.path !== 'string' ||
+    !/^governance\/rulesets\/[A-Za-z0-9_-]+\.json$/u.test(entry.path) ||
+    entry.type !== 'blob' || entry.mode !== '100644') ||
+    canonicalSha256(ruleFiles.map(entry => String(entry.path)).sort()) !==
+      canonicalSha256(reference.files.map(file => file.path).sort())) {
+    return workflowFailure('workflow-proof-matrix', 'Required context source omitted or substituted actual committed ruleset files, or contains unsupported ruleset members.');
+  }
+  const fileReads = reference.files.map(async file => ({
+    path: file.path, content: await readWorkflowBytes(runtime.client, reference.repository, reference.sourceSha, file.path, file.digest)
+  }));
+  const files = await Promise.all(fileReads).catch(async (error: unknown) => {
+    await Promise.allSettled(fileReads);
+    throw error;
+  });
+  runtime.assertWithinDeadline();
+  const requirements = requiredWorkflowContextsFromSource(files, profile);
+  runtime.assertWithinDeadline();
+  return requirements;
 }
 
 export function requiredWorkflowContextsFromSource(

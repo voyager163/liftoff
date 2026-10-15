@@ -13,7 +13,7 @@ import {
   observeImmutableWorkflowExecutionRef, type ImmutableWorkflowExecutionRef
 } from './workflow-execution-ref.js';
 import {
-  protectedWorkflowFamilies, requiredWorkflowContextsFromSource,
+  protectedWorkflowFamilies, readRequiredWorkflowSource,
   type ProtectedWorkflowFamily, type WorkflowRequirementSource
 } from './workflow-requirements.js';
 import {
@@ -683,30 +683,10 @@ async function verifyProofMatrix(
     observed.push(await readCurrentProof(input, green[0]!, runtime));
     assertIntegrations(observed.at(-1)!, family);
     const binding = green[0]!.binding;
-    const commit = await runtime.client.get(`/repos/${binding.repository}/git/commits/${binding.sourceSha}`);
-    if (commit.sha !== binding.sourceSha || !isRecord(commit.tree) || commit.tree.sha !== binding.treeSha) {
-      return workflowFailure('workflow-proof-matrix', 'Actual green source tree could not establish the complete required-context inventory.');
-    }
-    const treeSha = sourceSha(commit.tree.sha);
-    const tree = await runtime.client.get(`/repos/${binding.repository}/git/trees/${treeSha}?recursive=1`);
-    if (tree.sha !== treeSha || tree.truncated !== false || !Array.isArray(tree.tree)) {
-      return workflowFailure('workflow-proof-matrix', 'Incomplete/truncated source trees cannot prove that every required context was covered.');
-    }
-    const ruleFiles = tree.tree.filter((entry) => isRecord(entry) && typeof entry.path === 'string' &&
-      /^governance\/rulesets\/[^/]+\.json$/u.test(entry.path));
-    if (ruleFiles.some((entry) => !isRecord(entry) || entry.type !== 'blob' || entry.mode !== '100644') ||
-      canonicalSha256(ruleFiles.map((entry) => String(entry.path)).sort()) !==
-      canonicalSha256(requirements.files.map((file) => file.path).sort())) {
-      return workflowFailure('workflow-proof-matrix', 'Required context source omitted or substituted actual committed ruleset files.');
-    }
-    const fileReads = requirements.files.map(async (file) => ({
-      path: file.path, content: await readWorkflowBytes(runtime.client, binding.repository, binding.sourceSha, file.path, file.digest)
-    }));
-    const files = await Promise.all(fileReads).catch(async (error: unknown) => {
-      await Promise.allSettled(fileReads);
-      throw error;
-    });
-    const actualRequirements = requiredWorkflowContextsFromSource(files, requirements.profile);
+    const actualRequirements = await readRequiredWorkflowSource(runtime, {
+      repository: binding.repository, repositoryId: binding.repositoryId,
+      sourceSha: binding.sourceSha, treeSha: binding.treeSha, files: requirements.files
+    }, requirements.profile);
     if (requirements.profile !== (isSource5WorkflowEffectInput(input) ? input.profile : input.inspection.manifest.governance?.profile) ||
       actualRequirements.sourceDigest !== requirements.sourceDigest ||
       canonicalSha256(actualRequirements.families) !== canonicalSha256(requirements.families) ||

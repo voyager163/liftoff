@@ -138,6 +138,20 @@ separate and unavailable through this subcheck. There is no public
 native-host authority; unavailable or changed installed tools never fall back
 to operator Docker configuration or a caller-supplied successful observation.
 
+Private `observeSource5WorkflowRequirementSource` reads the complete immutable
+ruleset source using the original current5 context and read-only observation
+runtime. File/digest references are selectors: the actual commit/tree inventory
+must match completely, including tag-rule files, without unsupported nested,
+symlink or executable members. It reuses the matrix's same source reader and
+retains actual full context names and integration IDs on all four families;
+unknown names never disappear or become semantic mappings. The original runtime
+and absolute deadline are rechecked across reads, without project execution or
+new observation budgets. Its descriptive result explicitly does not validate
+the original plan, current branch heads or required-context semantics and has no
+prerequisite session or execution authority. Neither copied data nor the source
+reader's namespace is a qualified native/Azure producer or executable recipe.
+This private source-composition input is not wired into public review or effects.
+
 Private `executeWorkflowTofuComponentFormatValidator(projectRoot, sourceSha,
 component)` validates one actual selected OpenTofu component. It reuses the
 captured-file formatter policy: only explicit present `.tf` paths are passed,
