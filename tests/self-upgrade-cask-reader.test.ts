@@ -7,6 +7,7 @@ import { readHomebrewCaskOwnership } from '../src/adapters/distribution/native-c
 import { assertCaskOwnership } from '../src/adapters/distribution/native.js';
 import { NodeCommandRunner, type CommandResult, type CommandRunner } from '../src/process-runner.js';
 import type { NativeBundleInventory, NativeReleasePolicy } from '../src/domain/distribution/native-upgrade.js';
+import { environmentValue } from '../src/domain/workstation/executables.js';
 import { upgradeWorld } from './fixtures/installer-upgrade.js';
 
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -110,6 +111,13 @@ describe('production Homebrew cask reader on explicit filesystem/process ports',
 
   it('proves filtered Git options in real harmless children, with a default-merge contrast and no Git or Homebrew execution', async () => {
     const fixture = caskWorld();
+    const hostEnvironment: NodeJS.ProcessEnv = {};
+    if (process.platform === 'win32') {
+      const systemRoot = environmentValue(process.env, 'SystemRoot', 'win32');
+      if (!systemRoot) throw new Error('The native Windows Node fixture requires SystemRoot.');
+      hostEnvironment.SystemRoot = systemRoot;
+    }
+    Object.assign(fixture.dependencies.environment, hostEnvironment);
     const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf cask child env ')));
     const parentOnly = {
       GIT_DIR: '/parent-only-fixture', GIT_CONFIG_PARAMETERS: 'fixture-parent-config',
@@ -120,7 +128,8 @@ describe('production Homebrew cask reader on explicit filesystem/process ports',
     };
     for (const [key, value] of Object.entries(parentOnly)) vi.stubEnv(key, value);
     const inspector = `console.log(JSON.stringify(Object.fromEntries(${JSON.stringify([
-      ...Object.keys(parentOnly), 'npm_config_registry', 'DO_NOT_TRACK', 'LIFTOFF_TELEMETRY', 'NODE_OPTIONS', 'NODE_PATH'
+      ...Object.keys(parentOnly), ...Object.keys(hostEnvironment),
+      'npm_config_registry', 'DO_NOT_TRACK', 'LIFTOFF_TELEMETRY', 'NODE_OPTIONS', 'NODE_PATH'
     ])}.map(key=>[key,process.env[key] ?? null]))))`;
     fixture.world.neutralDirectory = directory;
     const runner = new NodeCommandRunner();
@@ -151,6 +160,7 @@ describe('production Homebrew cask reader on explicit filesystem/process ports',
         })).toBe(0);
         if (kind === 'inherited') expect(JSON.parse(result.stdout)).toMatchObject(parentOnly);
         else expect(JSON.parse(result.stdout)).toEqual({
+          ...hostEnvironment,
           ...Object.fromEntries(Object.keys(parentOnly).map(key => [key, null])),
           npm_config_registry: 'https://fixture-mirror.test/npm', DO_NOT_TRACK: '1',
           LIFTOFF_TELEMETRY: '0', NODE_OPTIONS: '', NODE_PATH: ''
