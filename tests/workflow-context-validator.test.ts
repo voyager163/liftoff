@@ -27,13 +27,14 @@ describe('release-owned real context validator bodies, not phase qualification',
       '-c', 'user.name=Isolated validator fixture', '-c', 'user.email=validator@example.invalid', ...args],
     { cwd, encoding: 'utf8', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }).trim();
   }
-  async function fixture(testSource = '', frontend = false, workflow: 'manual' | 'spec-kit' = 'manual') {
+  async function fixture(testSource = '', frontend = false, workflow: 'manual' | 'spec-kit' = 'manual',
+    apiStack: 'node-fastify' | 'go-huma' = 'node-fastify') {
     const projectRoot = await mkdtemp(path.join(root, 'project-'));
-    const seed = await writeModernInstalledProject(projectRoot, workflow, 'single-maintainer-gitflow', { frontend });
+    const seed = await writeModernInstalledProject(projectRoot, workflow, 'single-maintainer-gitflow', { frontend, apiStack });
     const source = resolveModernManifestV8SourceContract({ selection: seed.input.selection, recordedPlugins: seed.input.plugins });
     const components = new Map(source.layoutDescriptor.components.map(component => [component, ['source', component.replace(':', '-')]]));
     const value = await writeModernInstalledProject(projectRoot, workflow, 'single-maintainer-gitflow', {
-      frontend,
+      frontend, apiStack,
       activeLayout: { schemaVersion: 1, state: 'bound', bindings: [
         ...[...components].map(([component, pathParts]) => ({ kind: 'component' as const, component, pathParts })),
         { kind: 'artifact', logicalName: 'docker-compose', pathParts: ['compose.yml'] }
@@ -41,15 +42,26 @@ describe('release-owned real context validator bodies, not phase qualification',
     });
     await writeModernLocalFixtureInputs(value.input.selection, components, ['compose.yml'], value.write);
     const backend = components.get('backend')!;
-    await value.write([...backend, 'source.js'], 'export function double(value) { return value * 2; }\n');
-    await value.write([...backend, 'unused.js'], 'export const selectedSource = "committed application input";\n');
-    await value.write([...backend, 'tests', 'source.test.js'], [
-      'import test from "node:test";',
-      'import assert from "node:assert/strict";',
-      'import { double } from "../source.js";',
-      'test("the real function doubles its input", () => { assert.equal(double(3), 6); });',
-      testSource
-    ].join('\n'));
+    if (apiStack === 'node-fastify') {
+      await value.write([...backend, 'source.js'], 'export function double(value) { return value * 2; }\n');
+      await value.write([...backend, 'unused.js'], 'export const selectedSource = "committed application input";\n');
+      await value.write([...backend, 'tests', 'source.test.js'], [
+        'import test from "node:test";',
+        'import assert from "node:assert/strict";',
+        'import { double } from "../source.js";',
+        'test("the real function doubles its input", () => { assert.equal(double(3), 6); });',
+        testSource
+      ].join('\n'));
+    } else {
+      await value.write([...backend, 'go.mod'], 'module example.local/source\n\ngo 1.27\n');
+      await value.write([...backend, 'source.go'], 'package source\n\nfunc Double(value int) int { return value * 2 }\n');
+      await value.write([...backend, 'tests', 'source_test.go'], [
+        'package tests', 'import (', '  "testing"', '  source "example.local/source"', ')',
+        'func TestDouble(t *testing.T) {',
+        '  if actual := source.Double(3); actual != 6 { t.Fatalf("Double(3) = %d; want 6", actual) }',
+        '}', testSource
+      ].join('\n'));
+    }
     if (frontend) {
       const parts = components.get('frontend')!;
       await value.write([...parts, 'package.json'], JSON.stringify({
@@ -107,6 +119,25 @@ describe('release-owned real context validator bodies, not phase qualification',
     expect(red).toMatchObject({ status: 'failed', code: 'validator-command',
       command: { status: 1, processTreeSettled: true }, retainedExecutionDirectory: null, phaseProof: 'not-issued' });
     expect(red.message).not.toContain('AssertionError');
+  });
+
+  it.each(['passing', 'broken'] as const)('runs the real Go backend tests against %s committed application logic', async variant => {
+    const value = await fixture('', false, 'manual', 'go-huma');
+    if (variant === 'broken') {
+      await value.write([...value.backend, 'source.go'], 'package source\n\nfunc Double(value int) int { return value * 3 }\n');
+      git(value.root, 'add', '--', [...value.backend, 'source.go'].join('/'));
+      git(value.root, 'commit', '--quiet', '-m', 'Break the actual Go doubling implementation');
+    }
+    const report = await executeWorkflowContextValidator(value.root, {
+      validator: 'backend-tests', sourceSha: git(value.root, 'rev-parse', 'HEAD')
+    });
+    expect(report).toMatchObject({
+      status: variant === 'passing' ? 'passed' : 'failed',
+      code: variant === 'passing' ? 'validator-passed' : 'validator-command',
+      workloadExecution: true, command: { status: variant === 'passing' ? 0 : 1, processTreeSettled: true },
+      retainedExecutionDirectory: null, phaseProof: 'not-issued'
+    });
+    expect(JSON.stringify(report)).not.toContain('Double(3)');
   });
 
   it('refuses a different commit before running project code', async () => {

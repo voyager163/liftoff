@@ -73,6 +73,11 @@ block instead of passing vacuously. Infrastructure, security-report,
 artifact/release and deployment verification bodies are not supplied by this
 entry yet and cannot be substituted with its test/build results.
 
+Backend fixture controls execute both actual Node and Go test commands. Genuine
+committed application regressions fail their unchanged behavioral tests, rather
+than an injected exit or replacement test. These isolated controls do not
+qualify a runtime/release subject or any protected-ref proof.
+
 The separate private `executeWorkflowActionReferenceValidator` body checks actual
 committed workflow source, local reusable workflows and recursively referenced
 local-action metadata with the existing immutable-action policy. Declared local
