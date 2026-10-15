@@ -17,11 +17,7 @@ import { exactRecord, isRecord } from '../../domain/project/manifest/fields.js';
 import { FileSystemError } from '../../domain/project/errors.js';
 import { toSafeProjectName } from '../../domain/project/planning.js';
 import { retiredFlatRootInfrastructureIdentities } from '../../domain/project/infrastructure-layout.js';
-import {
-  modernActivationSourceContracts,
-  preWorkflowModernActivationSourceContracts,
-  preCustodyModernActivationSourceContracts
-} from '../../domain/governance/policy/identity.js';
+import { modernActivationSourceContractForFamily } from '../../domain/governance/policy/identity.js';
 import { createManifestV8Reader, type LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import { canonicalJson } from '../../domain/governance/activation/canonical-json.js';
 import { capturedFileBytes } from '../../domain/governance/activation/modern-local-inputs.js';
@@ -119,10 +115,8 @@ export function resolveModernManifestV8SourceContract(input: unknown) {
   if (profile === 'none') {
     return Object.freeze({ ...contract, governanceSource: Object.freeze({ profile: 'none' as const }) });
   }
-  const sources = current ? modernActivationSourceContracts() : preWorkflow
-    ? preWorkflowModernActivationSourceContracts() : preCustodyModernActivationSourceContracts();
-  const source = sources.find((source) =>
-    source.identity.profile === profile && source.identity.workflow === workflow);
+  const source = modernActivationSourceContractForFamily(
+    current ? 'current' : preWorkflow ? 'preWorkflow' : 'preCustody', profile, workflow);
   if (!source) throw new FileSystemError('No authoritative modern governance source matches the selected profile and workflow.');
   return Object.freeze({ ...contract, governanceSource: source });
 }

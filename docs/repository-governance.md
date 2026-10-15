@@ -251,8 +251,11 @@ admission remain separate obligations.
 
 Identity readers consume fresh frozen scalar identity projections rather than
 unused full graph copies; full-contract readers retain their original deep
-copies. These static projections contain no project or approval authority and
-do not replace any independent current scope, ownership, or proof validation.
+copies. After complete identity validation, record and metadata constructors
+deep-copy and freeze only the selected registered full source row, using the
+same readable-family ordering without a scope or authority cache. These static
+copies contain no project or approval authority and do not replace any
+independent current scope, ownership, or proof validation.
 
 A separate private branded terminal-bookkeeping reader can inspect an already
 sealed original finalization without any saves. It is not a journal, issued

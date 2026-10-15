@@ -305,3 +305,35 @@ export function modernActivationSourceIdentityTables(): Readonly<{
     readable: identities([...modernSources, ...preWorkflowModernSources, ...preCustodyModernSources])
   });
 }
+
+export function readableModernActivationSourceContract(
+  phaseGraphHash: string
+): ModernActivationSourceContract | undefined {
+  modernSources ??= buildModernSources('protected-custody');
+  preWorkflowModernSources ??= buildModernSources('protected-custody', preWorkflowSourceVersions);
+  preCustodyModernSources ??= buildModernSources('local-bootstrap', preWorkflowSourceVersions);
+  for (const sources of [modernSources, preWorkflowModernSources, preCustodyModernSources]) {
+    const selected = sources.find(source => source.identity.phaseGraphHash === phaseGraphHash);
+    if (selected) return freezeModernValue(structuredClone(selected));
+  }
+}
+
+export function modernActivationSourceContractForFamily(
+  family: 'current' | 'preWorkflow' | 'preCustody',
+  profile: string,
+  workflow: ModernWorkflow
+): ModernActivationSourceContract | undefined {
+  let sources: readonly ModernActivationSourceContract[];
+  if (family === 'current') {
+    sources = modernSources ??= buildModernSources('protected-custody');
+  } else if (family === 'preWorkflow') {
+    sources = preWorkflowModernSources ??= buildModernSources('protected-custody', preWorkflowSourceVersions);
+  } else if (family === 'preCustody') {
+    sources = preCustodyModernSources ??= buildModernSources('local-bootstrap', preWorkflowSourceVersions);
+  } else {
+    throw new Error('Unknown modern activation source family.');
+  }
+  const selected = sources.find(source =>
+    source.identity.profile === profile && source.identity.workflow === workflow);
+  return selected ? freezeModernValue(structuredClone(selected)) : undefined;
+}
