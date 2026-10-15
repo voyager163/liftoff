@@ -28,11 +28,10 @@ import { createSource5WorkflowContext } from './governance-activation/workflow-s
 import { workflowGitCommand, workflowGitOptions } from './governance-activation/workflow-binding.js';
 import { NodeCommandRunner } from './process-runner.js';
 import type { CommandResult } from './process-runner.js';
-
-export const workflowContextValidators = Object.freeze([
-  'source-integrity', 'backend-tests', 'worker-tests', 'frontend-build', 'framework-source'
-] as const);
-export type WorkflowContextValidator = typeof workflowContextValidators[number];
+import { workflowContextValidators } from './domain/governance/activation/workflow-validator-program.js';
+import type { WorkflowContextValidator } from './domain/governance/activation/workflow-validator-program.js';
+export { workflowContextValidators };
+export type { WorkflowContextValidator };
 export interface WorkflowContextValidatorRequest {
   readonly validator: WorkflowContextValidator;
   readonly sourceSha: string;

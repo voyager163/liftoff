@@ -127,6 +127,7 @@ function actualFamily(ref: string): ProtectedWorkflowFamily | null {
   if (/^hotfix\/[^/]+(?:\/[^/]+)*$/u.test(ref)) return 'hotfix';
   return null;
 }
+export { actualFamily as protectedWorkflowFamilyForRef };
 
 export function validateWorkflowContextBinding(binding: WorkflowContextBinding): WorkflowContextBinding {
   binding = captureWorkflowBinding(binding);
@@ -163,7 +164,7 @@ export function validateWorkflowContextBinding(binding: WorkflowContextBinding):
   return binding;
 }
 
-export function validateContextWorkflow(bytes: Buffer, binding: WorkflowContextBinding): void {
+export function validateContextWorkflow(bytes: Buffer, binding: Pick<WorkflowContextBinding, 'contexts'>): void {
   let value: unknown;
   try { value = parse(bytes.toString('utf8'), { uniqueKeys: true, maxAliasCount: 0 }); }
   catch { return workflowFailure('workflow-proof-recipe', 'The immutable proof workflow is not unambiguous bounded YAML.'); }

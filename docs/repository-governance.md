@@ -152,6 +152,30 @@ prerequisite session or execution authority. Neither copied data nor the source
 reader's namespace is a qualified native/Azure producer or executable recipe.
 This private source-composition input is not wired into public review or effects.
 
+Private `observeSource5WorkflowRecipeInputs` additionally reads one selected
+family's actual immutable workflow, checks ordinary committed file membership
+and byte identity, and reobserves its exact protected ref before returning.
+Its complete real job/context names must equal that family's complete required
+source inventory, retaining each integration ID. It reuses the existing proof
+workflow structural checks; missing, extra, renamed, conditional or fail-open
+jobs cannot become an executable recipe. Other families remain present in the
+source inventory, not silently qualified by this one-family observation.
+
+The finite syntax recognizer shares the unchanged five public validator
+selectors. It accepts only their literal local CLI invocation with the exact
+shell and cleared Node environment; arbitrary commands, echo/forced exits and
+private selectors are not registered bodies. Syntax is not immutable executable
+provenance: a project-owned `node_modules` path, pinned checkout reference,
+workflow permissions or matching job name does not qualify the package, setup,
+toolchain, native host or context semantics. Every literal context therefore
+retains an explicit missing release-owned semantic/executable-subject blocker;
+unrecognized bodies have an additional blocker. The descriptive result is
+always blocked, with no qualified executable recipe, prerequisite session or
+execution authority. It cannot be submitted back as authority, runs no project
+commands and preserves the original read-only runtime/deadline. It is private
+compiler-input plumbing, not the completed semantic compiler or installed
+review/approval/apply composition, and changes no public help or JSON contract.
+
 Private `executeWorkflowTofuComponentFormatValidator(projectRoot, sourceSha,
 component)` validates one actual selected OpenTofu component. It reuses the
 captured-file formatter policy: only explicit present `.tf` paths are passed,

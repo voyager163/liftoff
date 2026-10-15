@@ -24,6 +24,19 @@ export interface Source5WorkflowRequirementSourceObservation {
   readonly execution: 'not-authorized';
 }
 
+export function workflowRequirementObservationClient(runtime: WorkflowRuntime): GitHubActivationClient {
+  assertWorkflowObservationRuntime(runtime);
+  return new GitHubActivationClient({ async request(request) {
+    assertWorkflowObservationRuntime(runtime);
+    if (request.method !== 'GET') {
+      return workflowFailure('workflow-required-source-read-only', 'Immutable required-context observation cannot submit provider effects.');
+    }
+    const response = await runtime.client.transport.request(request);
+    assertWorkflowObservationRuntime(runtime);
+    return response;
+  } });
+}
+
 /** Uses the original read-only invocation; a serializable inventory never becomes a recipe or session. */
 export async function observeSource5WorkflowRequirementSource(input: {
   readonly context: Source5WorkflowContext;
@@ -43,16 +56,7 @@ export async function observeSource5WorkflowRequirementSource(input: {
   assertSource5WorkflowContext(context);
   assertWorkflowObservationRuntime(runtime);
   const source = captureWorkflowRequirementSourceReference(input.source);
-  const request = async (request: Parameters<typeof runtime.client.transport.request>[0]) => {
-    assertWorkflowObservationRuntime(runtime);
-    if (request.method !== 'GET') {
-      return workflowFailure('workflow-required-source-read-only', 'Immutable required-context observation cannot submit provider effects.');
-    }
-    const response = await runtime.client.transport.request(request);
-    assertWorkflowObservationRuntime(runtime);
-    return response;
-  };
-  const client = new GitHubActivationClient({ request });
+  const client = workflowRequirementObservationClient(runtime);
   const repository = await client.get(`/repos/${source.repository}`);
   if (repository.id !== source.repositoryId || repository.full_name !== source.repository) {
     return workflowFailure('workflow-required-source-repository', 'The actual immutable source repository differs from its exact selected ID/name.');
