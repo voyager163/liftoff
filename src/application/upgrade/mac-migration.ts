@@ -41,11 +41,17 @@ export interface MacMigrationDependencies {
 
 async function bounded<T>(read: (signal: AbortSignal) => Promise<T>, timeoutMs = 10_000): Promise<T> {
   const controller = new AbortController();
+  const started = performance.now();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await Promise.race([read(controller.signal), new Promise<never>((_, reject) => {
+    const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => { controller.abort(); reject(new MacMigrationFailure('cask-observation-timeout')); }, timeoutMs);
-    })]);
+    });
+    const observed = await Promise.race([read(controller.signal), timeout]);
+    if (controller.signal.aborted || performance.now() - started >= timeoutMs) {
+      throw new MacMigrationFailure('cask-observation-timeout');
+    }
+    return observed;
   } finally { clearTimeout(timer); controller.abort(); }
 }
 

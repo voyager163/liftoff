@@ -146,6 +146,10 @@ with the selected global prefix, `--ignore-scripts`, and the literal
 launcher may be removed. All cask dispatch goes through the exact candidate/
 channel-bound, abortable provider port with a settlement result; there is no
 unqualified fallback command.
+Cask observations have a 10-second elapsed deadline and installation dispatch
+has a 120-second deadline. A late response is refused even if the timeout
+callback could not run first. A late installation result retains the partial
+journal, lock and scratch rather than authorizing cleanup or restoration.
 The utility package/runtime and selected Node, npm, manager and Homebrew
 executables must remain outside the old uninstall scope. Overlapping tool
 selections are refused rather than deleting the tools needed for handover or
@@ -206,6 +210,7 @@ verified cask with unresolved PATH; help/ready/fully selected completion exits 0
 ```sh
 npm run build
 npx vitest run tests/mac-migration.test.ts tests/mac-migration-safety.test.ts \
+  tests/mac-migration-observation.test.ts \
   tests/mac-migration-environment.test.ts tests/process-runner.test.ts \
   tests/mac-migration-npm-installed.test.ts \
   tests/mac-migration-package.test.ts tests/mac-migration-package-report.test.ts \
@@ -225,6 +230,9 @@ Actual private macOS safety cases add ACLs, extended attributes and file flags
 and verify refusal without stripping them; settled recovery checks supported
 directory/file modes and exact observed OS provenance. These cases do not
 qualify arbitrary metadata, mixed groups or a real Homebrew cask.
+Clock-controlled observation cases check the exact elapsed deadline, timely
+success and preservation after a late installation result. They use private
+process/filesystem fixtures, not real elapsed-wall-time or live-cask proof.
 When `npm_execpath` explicitly selects an npm CLI, four additional disposable
 prefix cases use that actual owning npm to uninstall only the fixture package,
 with separate/shared launcher paths and handover/settled recovery. They verify
