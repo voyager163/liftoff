@@ -32,6 +32,258 @@ unsupported account capabilities, unverified private access, and incomplete
 observations remain explicit blockers. Retained-state disposal is separate
 lifecycle work, not a 30-day delay before initial activation can complete.
 
+### Private workflow publication and context-proof source
+
+TASK14.3's private `workflow-publication.ts`, `workflow-execution-ref.ts`,
+`workflow-runner-admission.ts`, `workflow-context-proof.ts` and
+`workflow-requirements.ts` provide bounded literal Git/GitHub source interfaces.
+They are not a public activation command or evidence that a repository is ready.
+The legacy ungated local workflow write is not permission to commit, push,
+create execution refs, admit workflows, or dispatch checks. Current v8 public
+activation remains inspection-only; unsupported plans remain blocked.
+
+Publication binds one existing `ci/liftoff-workflows-*` review branch, one actual
+parent commit and exact regular per-file before/after byte digests. It commits
+only that inventory, never consumes unrelated developer-staged changes, never
+directly pushes protected branches, and independently reads the resulting
+commit/tree, ref and immutable file bytes. A source-review publication is not a
+protected-branch merge. Artifact production still requires its own immutable
+recipe readback after the separately authorized merge.
+
+GitHub documents workflow dispatch refs as branches or tags, not an immutable
+SHA fallback. A mutable branch precheck and an original workflow's SHA guard
+cannot prevent a replacement recipe from executing earlier effects. Dispatch
+therefore requires a separately approved `liftoff-execution-<full-commit-SHA>`
+tag and independently read active repository tag update/deletion protection
+with no bypass. Blocking all updates also blocks non-fast-forward changes; no
+unsupported extra tag rule is invented. A commit-named tag without that barrier is insufficient.
+The producer never installs or weakens protection. Exact private runner-group
+workflow admission preserves the repository-only assignment and existing
+workflow entries; it does not provision or broaden access.
+
+Current provider permission admission is deliberately narrow: independently
+observed classic OAuth `repo`/`workflow` grants and actual repository push access.
+Fine-grained, installation and workflow-token grants are not inferred from a
+repository role or caller annotation; unsupported credentials block before
+dispatch. Current barrier/provider admission is bound separately from the source
+tag and protected context. Administrator or policy changes are a separate trust
+boundary: repeated observations do not promise absolute immutability or atomic
+execution. Missing an independently qualified existing barrier/group during the
+early bootstrap phase is a prerequisite blocker, not permission to create one
+early, add a dependency cycle, or undermine rulesets-last sequencing.
+Inherited/organization rule admission remains unsupported by this narrow
+repository producer and blocks rather than silently omitting inherited policy.
+Runner-group PATCH additionally requires observed classic `admin:org` scope,
+active administrator membership and a non-inherited writable selected group.
+Group/network identity readback is not runner or private-network qualification.
+The future current5 engine bridge must independently admit the existing qualified
+group/host; this source interface cannot manufacture TASK14.2 evidence.
+
+The engine must durably record original dispatch intent before POST and the
+actual accepted workflow/run ID before further observation. Uncertain acceptance,
+invisible runs, ambiguous runs and missing original authority never cause an
+automatic repeat dispatch. Explicit dispatch handles `GITHUB_TOKEN`-suppressed
+push triggers; inferred push-triggered success does not qualify.
+The pinned REST API2026-03-10 returns HTTP200 with `workflow_run_id`, `run_url`
+and `html_url`; all three must identify the exact approved repository. The accepted
+handle is checkpointed before metadata polling. Legacy empty HTTP204 is
+read-only discovery of the original intent, never permission to POST again.
+Actual terminal provider conclusions are durably retained before fallible job
+inventory or final freshness reads. Unknown outcomes and missing later proof
+stay blocked; source drift cannot relabel actual terminal provider truth.
+
+Proof binds real workflow jobs to their own GitHub Actions check-run URLs,
+application and check suite, complete SHA, immutable recipe, first attempt and
+actual protected ref family. Green requires success, not skipped/neutral/
+cancelled. Controlled red requires the unchanged recipe, one exact reviewed
+nonsensitive source violation and failure of the real required validator, with
+successful setup rather than an unrelated infrastructure failure.
+Every proof job starts with a pinned checkout of `inputs.source_sha`, a clean
+worktree and disabled credential persistence; extra unbound jobs cannot qualify.
+The complete matrix shares one three-minute observation deadline, and restored
+checkpoints preserve the original plan, dispatch time and actual accepted handle.
+Red runs use their own protected execution tag derived from the exact healthy
+protected commit; they do not move the protected branch to a failing commit.
+Each red parent/ref must match its corresponding independently current green.
+Every required context needs its own red proof on every applicable `develop`, `main`, `release/**`
+and `hotfix/**` family. Independent current readback checks the complete committed
+ruleset inventory; caller-selected contexts or old success annotations are not
+enforcement permission. No status or check is written to fabricate proof.
+
+These source interfaces do not qualify deployment, protected handover/custody,
+an authorized native host, release promotion, ruleset enforcement or package
+publication. Single-maintainer still means zero human PR reviews; team still
+means one current independent human PR approval, not self/bot/stale approval.
+No mandatory deployment reviewer is introduced. TASK14.3 remains incomplete
+without separately authorized live source and green/red qualification.
+The approved source5 allocation changes activation contract4 to5 and the six
+source graphs only; state/evidence-header/approval4 and all other listed wire
+versions are unchanged. Frozen releases, pre-custody source4 and custody source4
+remain readable diagnostic/planning families. Source5 does not enable public
+execution or automatic migration. The public/legacy executor now reports this
+explicit workflow prerequisite blocker instead of silently returning no producer.
+
+The unregistered source5 bridge uses a separate private control schema1 and the
+closed `workflow-source5-{plan,approval,journal,operation,proof}` namespaces
+outside the project and repository. Controls are canonical, project-bound,
+HMAC-sealed objects; restart validates the exact original issuance, not imported
+project approvals or structurally similar runtime objects. The private local
+issuer and operating-system user remain a trust boundary, not an attestation of
+a qualified host. A live engine-issued lease/capability is also required.
+Issuance, restart and each capability assertion independently read the existing
+installed current5 state under that lease. Its local repository anchor and state
+digest, the canonical root and resolved project key must exactly match the
+reviewed plan, checkpoint inventory and authority. Missing or changed state
+blocks; callers cannot create an anchor or substitute a scope assertion.
+Index, approval and operation objects are limited to64KiB; original plan/proof
+objects to16MiB, counting the **complete encoded sealed disk object**. Existing
+preview/consent stores keep their64KiB limit. Failed saves throw and preserve
+unresolved progress; CAS refuses stale/concurrent replacement. These interfaces
+do not register a producer, qualify a host, or open public execution.
+
+The private ownership primitive seals the complete reviewed original plan before
+issuance. Each workflow entry keeps a stable key derived from that original
+plan, operation, current5 identity, phase, actual root, project key and existing
+anchor. Remaining-only reviews retain that original entry rather than
+renaming attempted work. A reservation is discoverable from the stable entry
+and next generation: once durable, it immediately retires the previous owner,
+including when the pointer CAS or its confirmation fails. The new owner needs
+exact CAS readback and an immutable confirmation under the live native lease.
+Missing, conflicting, malformed or outstanding ownership history blocks both
+owners; no automatic takeover or compensation is implemented.
+
+Only entries with no durable intent, progress, acceptance, terminal or component
+record anywhere in their reviewed ancestry can transfer. Issuance, restoration
+and first-intent checks validate ownership independently. First intent also
+checks the actual raw installed snapshot, separately from the canonical modern
+state digest. Later ownership-bound checkpoint persistence does not depend on
+a new installed-state read, so a subsequent failure cannot erase original
+acceptance or terminal truth.
+
+Ownership has a fixed 64-transfer bound. Its sealed manifest lists all 131
+concrete owner/confirmation/reservation/manifest keys, including itself, and
+measures the complete encoded worst-case objects, revision and previous-digest
+growth before ownership is established. This is a bounded ownership
+**subinventory**, not qualification of the complete engine. The private journal
+now separately seals a closed full metadata manifest: original plans, issuer
+and authority, index, owner histories, every allowed progress/event key,
+original publication read dependencies, recovery baseline and finalization.
+It measures actual complete sealed worst-case bytes and revision/digest growth
+before effects; its total encoded footprint is not a disk-space or qualified-host
+attestation. Its concrete key cardinality is independently bounded to 21,994
+(including itself), within the unchanged safe-record node budget and namespace
+caps. Oversized or unrepresentable inventories block rather than widening
+existing stores or hiding keys behind suffix/directory permissions.
+
+Opening or initializing a journal requires its exact separately sealed original
+review. Initialization never creates that plan or recreates missing history,
+even when old authority and ownership records remain.
+Observation rejects a missing control index before writing any ledger; it cannot
+create partial metadata that blocks a later explicitly initialized fresh review.
+The journal requires exact independently sealed publication A provenance before
+a source-bound B review. Immutable intent/accepted/terminal/component receipts
+survive failed cursor CAS or lost confirmation. Missing or changed index,
+manifest, reservation or original read dependencies block; retained intent
+cannot recreate a lost ledger. Completion requires canonical exact inventoried
+plan/approval bytes, the original individual component receipts, modern evidence
+validation and precisely the state derived from the original modern outcome.
+Publication A alone cannot finalize. Finalized status also requires independent
+exact-byte observation of every reserved project destination; there is no
+cross-filesystem atomicity claim. These are source metadata/protocol guards,
+not independently qualified live evidence producers or an execution engine.
+Same-lease exact-byte completion is not restart reconciliation after partial
+project writes. That narrow recovery remains an engine obligation; original
+authority and ownership state checks are not relaxed.
+
+Separately, the reviewed logical
+mutation inventory counts every operation plus its nested effects, including
+checkpoint and exact project-metadata writes, and cannot exceed 272. A
+132-dispatch plan has 271 logical entries; that count is not evidence that its
+sealed storage fits. Private effect carriers now share the held native lease's
+stable ORIGINAL-entry gate with ownership preparation and first-intent writes.
+An active branded gate can claim that entry only once; structural, expired or
+foreign gates do not mint carriers. The runtime consumes each exact inventoried
+file/Git/provider effect once after its durable original intent. Provider and
+push acceptance are retained before fallible readback, and original commit
+handles precede parent/inventory checks. Observation carriers cannot introduce
+intent or perform writes; their reads still require current held-lease authority.
+Intent consumption rechecks current issued, unexpired authority after asynchronous
+inventory and ownership validation. Actual provider/Git submission rechecks it
+again after intent consumption; each source-file mutation checks it before writing.
+Expiry is re-evaluated after authority's asynchronous reads. These pre-effect
+checks do not add fallible installed-state or time checks when retaining already
+accepted/terminal truth.
+These isolated source/process/HTTP guards are not complete engine or live
+qualification. A private component driver now derives observation-only versus
+first-effect mode from the original sealed entry, mints its own carrier, invokes
+the exact indexed producer and retains its component internally. It captures
+closed original runtime fields before asynchronous reads and rejects caller
+checkpoint callbacks, accessors, prototype/symbol fields and observation modes.
+Workflow
+components require a separate current run/jobs/checks/source reread after terminal
+observation. Restart preserves original proof bytes, IDs, dispatch time and plan;
+a fresh observation is reported separately, never written over the original.
+Read-only publication observation requires the already recorded commit handle
+and rechecks its parent, exact inventory and immutable bytes. It never adopts a
+target-shaped HEAD or repeats commit/push work. These isolated component guards
+do not compose phase prerequisites or finalize a phase.
+A private complete-matrix reader requires the exact original ordered green/red
+component inventory and internally branded observation-only carriers from one
+original journal and held native lease. The first entry's carrier cannot stand
+in for another entry. It independently rereads every entry's actual
+run/jobs/checks/source and verifies complete immutable ruleset files, all four
+protected families, individual validator-caused reds and pinned integration
+identities on both green and red members. Original issuance, ownership and
+component chains are checked around readback; current observations cannot
+overwrite original IDs, dispatch/observation times, plans or proof bytes.
+Independent families may read concurrently, with separate per-entry authority
+checks and one unchanged three-minute budget. Every started ruleset read promise
+is awaited before its family refuses, preserving the exact first temporal
+rejection and successful input ordering. Family read promises settle before
+returning or refusing. This does not establish cancellation or drainage of
+underlying transports after a bounded timeout race. There are no Git/provider/file writes, status
+substitutions, new intent or terminal-bookkeeping capabilities in this path.
+Isolated matrix tests seed original publication/dispatch ledger formats and use
+bounded real Node validators to drive loopback responses. They are not actual
+publisher-created commits, GitHub dispatches or live green/red qualification.
+Full planner/prerequisite composition, final outcome persistence and engine
+admission remain separate obligations.
+
+Identity readers consume fresh frozen scalar identity projections rather than
+unused full graph copies; full-contract readers retain their original deep
+copies. After complete identity validation, record and metadata constructors
+deep-copy and freeze only the selected registered full source row, using the
+same readable-family ordering without a scope or authority cache. These static
+copies contain no project or approval authority and do not replace any
+independent current scope, ownership, or proof validation.
+
+A separate private branded terminal-bookkeeping reader can inspect an already
+sealed original finalization without any saves. It is not a journal, issued
+authority, ownership object or effect carrier. Its descriptive ownership
+inventory has no prepare/transfer/write methods; ordinary acquisition still
+requires the actual original canonical and raw installed scope. Terminal
+reconciliation requires retained original issuance, full original plan,
+manifest/reservation, publication dependencies, ownership confirmations and
+individual component chains. It independently reads exact target bytes and
+installed source/history/custody relations. Expiry does not refresh approval or
+authorize effects; a missing original issuance still refuses bookkeeping.
+Reconciliation is a metadata mutation, not read-only inspection: only the
+existing original revision-one active index may CAS to its reserved revision-two
+canonical finalized projection. It rechecks retained inputs and target bytes
+around CAS/readback, never creates a missing issuer/index, never rewrites project
+files and never undoes accepted-but-unconfirmed ledger truth. An already
+canonical finalized index is no-save readback. This isolated boundary is not
+admission of the complete engine, public execution or native/live qualification.
+Final-index reconciliation repeats held-native-lease, exact original-chain,
+target-byte and active-index validation after staging and reading temporary
+metadata, immediately before the atomic replacement. Loss before replacement
+preserves the revision-one index; failures after accepted replacement still
+retain the revision-two truth without compensation.
+The private planner/engine remains unregistered and incomplete.
+Staging/production workflow components cannot
+finalize independent Azure peer obligations, and source5 controls cannot
+authorize activation6.
+
 ## Managed files and user-owned state
 
 Enabled governance adds managed-core files:

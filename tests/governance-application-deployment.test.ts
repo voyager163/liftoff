@@ -915,7 +915,7 @@ describe('protected application deployment source contracts', () => {
 
     const retained = f.inspection.state.phaseOutputs?.['remote-import-verified'];
     expect(retained).toBeDefined();
-    retained!.values.bootstrapBindingDigest = '0'.repeat(64);
+    retained!.values = { ...retained!.values, bootstrapBindingDigest: '0'.repeat(64) };
     expect(() => bindApplicationDeployment(f, f.artifact))
       .toThrow(/does not match the original verified bootstrap binding/u);
   });

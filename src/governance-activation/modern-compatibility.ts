@@ -122,7 +122,8 @@ export function createModernCompatibilityContract(context: ManifestV8ReaderConte
         targetIdentity: identity,
         readableReleasedSources: released.map(({ identity, reader }) => ({ identity: { ...identity }, reader })),
         targetPhaseContracts: graph.phases.map(phase => ({ phaseId: phase.id, digest: digests[phase.id]! })),
-        successorLanes: identity.profile === 'single-maintainer-gitflow' && workflow !== 'manual' ? released.map(source => ({
+        successorLanes: identity.activationContractVersion === 4 &&
+          identity.profile === 'single-maintainer-gitflow' && workflow !== 'manual' ? released.map(source => ({
           id: source.lane, sourceIdentity: { ...source.identity }, targetIdentity: identity, sourceWorkflow: workflow,
           strategy: 'preserve-history-revalidate', profileTransition: 'preserve'
         })) : [],

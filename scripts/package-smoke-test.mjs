@@ -7,6 +7,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import {
+  assertCompiledPackageFiles,
   assertUnpackedPackageSize,
   formatSmokeIssues,
   installedAssetByteIssues,
@@ -202,6 +203,7 @@ try {
   assertPackageContains(packResult, 'dist/domain/assessment/report.js');
   assertPackageContains(packResult, 'dist/cli/commands/assess.js');
   assertPackageContains(packResult, 'dist/supported-stack.js');
+  assertCompiledPackageFiles(packResult.files.map((file) => file.path));
   const declaredPackage = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
   const packedAssetIssues = packagedAssetIssues({
     packedPaths: packResult.files.map((file) => file.path),

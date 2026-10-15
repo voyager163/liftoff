@@ -10,7 +10,9 @@ import { runCommand } from '../src/commands.js';
 import { builtinAssets } from '../src/plugins/builtin/assets.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import {
+  assertCompiledPackageFiles,
   assertUnpackedPackageSize,
+  compiledPackageFiles,
   formatSmokeIssues,
   installedAssetByteIssues,
   installedPlanCases,
@@ -63,6 +65,29 @@ describe('unpacked package budget', () => {
   it.each([undefined, null, '12582912', -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
     'rejects an invalid measured size %s instead of bypassing the budget', (bytes) => {
       expect(() => assertUnpackedPackageSize(bytes)).toThrow(TypeError);
+    }
+  );
+});
+
+describe('compiled package surface', () => {
+  it('declares every emitted JavaScript module and declaration without development source maps', () => {
+    expect(packageJson.files.filter((entry) => entry.startsWith('dist'))).toEqual(compiledPackageFiles);
+    expect(() => assertCompiledPackageFiles([
+      ...nonAssetPaths, 'dist/cli.d.ts', 'dist/nested/reader.js', 'dist/nested/reader.d.ts'
+    ])).not.toThrow();
+    expect(issuesFor(consistentPack, packageJson.files)).toEqual([]);
+  });
+
+  it.each(['dist/cli.js.map', 'dist/nested/reader.d.ts.map', 'dist/unreviewed.json'])(
+    'refuses development or unreviewed compiled payload %s', (entry) => {
+      expect(() => assertCompiledPackageFiles([...nonAssetPaths, entry]))
+        .toThrow(`Packed compiled output must contain only JavaScript and declarations: ${entry}`);
+    }
+  );
+
+  it.each([null, 'dist/cli.js', [undefined], Array(1)])(
+    'refuses an uninterpretable packed path inventory %s', (value) => {
+      expect(() => assertCompiledPackageFiles(value)).toThrow(TypeError);
     }
   );
 });

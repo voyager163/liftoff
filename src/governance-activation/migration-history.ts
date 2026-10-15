@@ -1074,7 +1074,8 @@ export async function planModernActivationSuccessor(
   const reference: ManifestSourceHistoryReference = { schemaVersion: 1, kind: 'activation-history',
     snapshotId: index.snapshotId, indexDigest: rawHistoryDigest(source.indexContent) };
   const candidate = createManifestV8Candidate({ origin: 'historical-successor', source: rawSourceManifest,
-    profile: target.selection.profile, activeLayout: target.activeLayout, sourceManifestHistory: reference, managed: decisions });
+    profile: target.selection.profile, activeLayout: target.activeLayout, sourceManifestHistory: reference,
+    managed: decisions, targetPlugins: target.plugins });
   const context = candidateContext(candidate), contract = createModernHistoryContract(projectCatalog, context);
   const compatibility = createModernCompatibilityContract({ catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract })
     .buildModernCompatibilityMetadata(candidate.manifest);

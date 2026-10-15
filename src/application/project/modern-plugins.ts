@@ -7,6 +7,9 @@ import { modernRelease } from '../../plugins/builtin/modern-release.js';
 import { modernHistoricalRelease } from '../../plugins/builtin/modern-historical-release.js';
 import { modernPreviousRelease } from '../../plugins/builtin/modern-previous-release.js';
 import {
+  modernPreWorkflowGovernanceSourceContracts, modernPreWorkflowSource
+} from '../../plugins/builtin/modern-pre-workflow.js';
+import {
   modernPreAssessmentDeclarationsDigest,
   modernPreAssessmentGovernanceSourceContracts,
   modernPreAssessmentSource
@@ -62,6 +65,7 @@ export function createModernSourceRegistry(read: ModernAssetReader = readDeclare
 
 let registry: PluginRegistry | undefined;
 let preAssessmentRegistry: PluginRegistry | undefined;
+let preWorkflowRegistry: PluginRegistry | undefined;
 const historicalSourceContractsId = 'modern-governance-source-contracts';
 
 export function modernSourceRegistry(): PluginRegistry {
@@ -99,6 +103,27 @@ export function createModernPreAssessmentRegistry(read: ModernAssetReader = read
 export function modernPreAssessmentRegistry(): PluginRegistry {
   preAssessmentRegistry ??= createModernPreAssessmentRegistry();
   return preAssessmentRegistry;
+}
+
+/** Exact custody source4 registry for original-record interpretation, never execution permission. */
+export function modernPreWorkflowRegistry(): PluginRegistry {
+  if (!preWorkflowRegistry) {
+    const declarations = [
+      ...modernPreWorkflowSource.core.sharedAssets.map(asset => ({ ...asset, owner: { kind: 'core' as const } })),
+      ...modernPreWorkflowSource.descriptors.flatMap(descriptor => descriptor.assets.map(asset => ({
+        ...asset, owner: { kind: 'plugin' as const, category: descriptor.category, id: descriptor.id }
+      })))
+    ];
+    const bytes = readDeclaredAssetBytes(declarations, {
+      maxAssetBytes: pluginRegistryLimits.maxAssetBytes,
+      maxTotalAssetBytes: pluginRegistryLimits.maxTotalAssetBytes,
+      maxPathParts: pluginRegistryLimits.maxPathParts,
+      maxPartLength: pluginRegistryLimits.maxStringLength
+    }).map(asset => asset.pathParts.join('/') === 'assets/governance/modern/source-contracts.json'
+      ? { ...asset, bytes: Buffer.from(modernPreWorkflowGovernanceSourceContracts, 'utf8') } : asset);
+    preWorkflowRegistry = createPluginRegistry({ ...modernPreWorkflowSource, assets: bytes });
+  }
+  return preWorkflowRegistry;
 }
 
 /** Recognizes exact pinned source families, never old template bytes or execution permission. */
