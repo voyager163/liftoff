@@ -98,8 +98,32 @@ export interface WorkflowObservationServices {
   readonly runner: CommandRunner;
   readonly transport: GitHubActivationTransport;
 }
+const observationRuntimes = new WeakMap<WorkflowRuntime, {
+  client: GitHubActivationClient;
+  transport: GitHubActivationTransport;
+  request: GitHubActivationTransport['request'];
+  source: GitHubActivationTransport;
+  sourceRequest: GitHubActivationTransport['request'];
+  guard: WorkflowRuntime['assertWithinDeadline'];
+}>();
 export function workflowObservationRuntime(services: WorkflowObservationServices): WorkflowRuntime {
-  return boundedWorkflowRuntime(services, true);
+  const runtime = boundedWorkflowRuntime(services, true);
+  observationRuntimes.set(runtime, {
+    client: runtime.client, transport: runtime.client.transport, request: runtime.client.transport.request,
+    source: services.transport, sourceRequest: services.transport.request, guard: runtime.assertWithinDeadline
+  });
+  return runtime;
+}
+export function assertWorkflowObservationRuntime(value: WorkflowRuntime): void {
+  const issued = observationRuntimes.get(value);
+  if (!issued || Object.getOwnPropertyDescriptor(value, 'client')?.value !== issued.client ||
+    Object.getOwnPropertyDescriptor(value, 'assertWithinDeadline')?.value !== issued.guard ||
+    Object.getOwnPropertyDescriptor(issued.client, 'transport')?.value !== issued.transport ||
+    issued.transport.request !== issued.request || issued.source.request !== issued.sourceRequest) {
+    return workflowFailure('workflow-observation-runtime',
+      'Provider facts require the original first-party read-only runtime and transport; copied, substituted and effect runtimes are not observation services.');
+  }
+  issued.guard();
 }
 export function workflowRuntime(input: WorkflowEffectInput): WorkflowRuntime {
   if (isSource5WorkflowEffectInput(input)) assertSource5WorkflowEffectContext(input);

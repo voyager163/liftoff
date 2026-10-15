@@ -61,6 +61,26 @@ Unavailable readers and Azure completion peers remain explicit blockers, and no
 prerequisite session is issued. This private observation is not yet wired into
 public review or approval/apply routing and does not qualify a native host.
 
+The private `observeWorkflowContextProviderProof` can independently reread a
+retained run's source, immutable execution admission, jobs, checks and actual
+validator cause without requiring an already issued effect. It accepts only a
+closed retained reference and an original first-party read-only observation
+runtime. Runtime or transport substitution and expiry invalidate that runtime;
+the reader neither creates a new time budget nor renews the original dispatch
+window. The exact GitHub Actions application lookup is a bounded GET-only route,
+not general application access.
+
+These are provider facts, not proof of original plan ownership or release-owned
+context semantics. The returned prerequisite session is always null and execution
+is explicitly not authorized. Historical terminal metadata remains readable
+without acquiring fresh qualification. The original authoritative reader still
+requires its original plan and current source5 carrier before and after readback;
+the new reader cannot dispatch, journal, issue approval or finalize a phase.
+It retains the existing independently observed operator classic-OAuth admission;
+automation `GITHUB_TOKEN` and other unsupported credential modes are not inferred
+or substituted. Isolated HTTP fixture outcomes are not real hosted green/red,
+native-host, Azure-peer or four-family qualification.
+
 The packaged source entry `dist/workflow-context-validator.js` supplies finite
 real validator bodies for source integrity, backend tests, worker tests, frontend
 builds and framework source. It accepts only `--validator <subject> --source-sha
@@ -72,6 +92,11 @@ become a successful exact-source result. Omitted or uninterpretable validators
 block instead of passing vacuously. Infrastructure, security-report,
 artifact/release and deployment verification bodies are not supplied by this
 entry yet and cannot be substituted with its test/build results.
+
+Backend fixture controls execute both actual Node and Go test commands. Genuine
+committed application regressions fail their unchanged behavioral tests, rather
+than an injected exit or replacement test. These isolated controls do not
+qualify a runtime/release subject or any protected-ref proof.
 
 The separate private `executeWorkflowActionReferenceValidator` body checks actual
 committed workflow source, local reusable workflows and recursively referenced
@@ -95,6 +120,23 @@ negative controls are source tests, not approved four-family proof subjects.
 
 Exact-commit source reads disable local Git replacement objects. A replacement
 must not redefine the immutable commit whose selected inputs are being checked.
+
+The private `executeWorkflowComposeConfigValidator` subcheck uses the actual
+selected `compose-config` command and captured source closure. It reuses the
+existing independent CLI/plugin observer, executes the exact supported Compose
+plugin with the selected `config -q` arguments, and reobserves its program files.
+Execution uses the same bounded runner, stripped
+environment and identity-checked owned HOME as the five public validators.
+Docker configuration is private and the daemon address names a nonexistent owned
+socket. Dotenv input is disabled and only the selected Compose file is used;
+no container build/start or backend initialization is authorized. This is a real
+runner operation, not plan-time metadata or a sandbox. It is only configuration
+validation: OpenTofu formatting, locked provider/module initialization and
+validation, native-host qualification and infrastructure phase proof remain
+separate and unavailable through this subcheck. There is no public
+`compose-config` selector. Independent program observations are not qualified
+native-host authority; unavailable or changed installed tools never fall back
+to operator Docker configuration or a caller-supplied successful observation.
 
 These are explicit runner operations, never operations performed by plan or
 `--live` review. Tests, builds and framework tools may execute project code and

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { observeProjectGitMetadata, gitConfigNullFile } from './adapters/assessment/live.js';
 import { assertWorkspaceDirectorySnapshot, captureWorkspaceDirectoryChain } from './adapters/filesystem/repair-workspaces.js';
 import { readBoundProjectFileSnapshot } from './adapters/filesystem/bound-project-files.js';
+import { assertModernLocalToolsCurrent, observeModernLocalTools } from './adapters/process/modern-local-tools.js';
 import { inspectModernLocalRuntime, planModernLocalRuntime } from './application/governance/modern-local-inputs.js';
 import { RepairWorkspaceError } from './application/repair/workspaces-types.js';
 import { projectCatalog } from './application/project/catalog.js';
@@ -57,6 +58,11 @@ export interface WorkflowContextValidatorReport {
     readonly stderrDigest: string;
   };
 }
+
+type ExecutableValidator = WorkflowContextValidator | 'compose-config';
+type ExecutableValidatorReport<Validator extends ExecutableValidator> =
+  Omit<WorkflowContextValidatorReport, 'validator'> & { readonly validator: Validator };
+export type WorkflowComposeConfigValidatorReport = ExecutableValidatorReport<'compose-config'>;
 
 class ValidatorRefusal extends Error {
   constructor(readonly code: string, message: string, readonly status: 'failed' | 'blocked' = 'blocked') {
@@ -342,7 +348,20 @@ export async function executeWorkflowActionReferenceValidator(
 export async function executeWorkflowContextValidator(
   projectRoot: string, request: WorkflowContextValidatorRequest
 ): Promise<WorkflowContextValidatorReport> {
-  request = readRequest(request);
+  return executeSelectedValidator(projectRoot, readRequest(request));
+}
+
+/** Private configuration subcheck, not full infrastructure qualification or a public selector. */
+export async function executeWorkflowComposeConfigValidator(
+  projectRoot: string, sourceSha: string
+): Promise<WorkflowComposeConfigValidatorReport> {
+  const request = readRequest({ validator: 'source-integrity', sourceSha });
+  return executeSelectedValidator(projectRoot, { ...request, validator: 'compose-config' });
+}
+
+async function executeSelectedValidator<Validator extends ExecutableValidator>(
+  projectRoot: string, request: { readonly validator: Validator; readonly sourceSha: string }
+): Promise<ExecutableValidatorReport<Validator>> {
   let graphHash: string | null = null, inputDigest: string | null = null;
   let workloadExecution = false;
   let retainedExecutionDirectory: string | null = null;
@@ -395,6 +414,14 @@ export async function executeWorkflowContextValidator(
     const originalInputs = await assertCommittedInputs(projectRoot, local.inspection.snapshot,
       request.sourceSha, managedPaths, componentRoots);
     if (selected.command) {
+      const tools = request.validator === 'compose-config' ? await observeModernLocalTools(projectRoot, [selected], []) : null;
+      const compose = tools?.find(tool => tool.id === 'docker');
+      if (tools && !compose) {
+        throw new ValidatorRefusal('validator-compose-tool', 'The independently observed Docker CLI and Compose plugin are unavailable.');
+      }
+      const executable = compose
+        ? { executable: compose.executablePath, args: [...compose.prefixArgs, ...selected.command.args.slice(1)] }
+        : selected.command;
       const home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'liftoff-workflow-validator-'));
       let settled = false;
       let commandFailed = false;
@@ -419,7 +446,14 @@ export async function executeWorkflowContextValidator(
           npm_config_userconfig: path.join(home, 'npmrc'), npm_config_globalconfig: path.join(home, 'global-npmrc'),
           npm_config_cache: path.join(home, 'npm-cache')
         });
-        const result = await runner.run(selected.command, {
+        if (tools) {
+          Object.assign(env, {
+            DOCKER_CONFIG: path.join(home, 'docker'), DOCKER_HOST: `unix://${path.join(home, 'no-daemon.sock')}`,
+            DOCKER_CLI_HINTS: 'false'
+          });
+          await assertModernLocalToolsCurrent(projectRoot, home, tools);
+        }
+        const result = await runner.run(executable, {
           cwd: path.join(projectRoot, ...selected.cwdPathParts), env, timeoutMs: 180_000,
           maxOutputBytes: 1024 * 1024, ensureProcessTreeSettled: true, stream: false
         });
@@ -431,6 +465,7 @@ export async function executeWorkflowContextValidator(
           stdoutDigest: canonicalSha256(result.stdout), stderrDigest: canonicalSha256(result.stderr)
         };
         commandFailed = !completed(result);
+        if (tools) await assertModernLocalToolsCurrent(projectRoot, home, tools);
       } finally {
         if (settled) {
           try {

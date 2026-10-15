@@ -1,15 +1,19 @@
 import { execFileSync } from 'node:child_process';
-import { link, lstat, mkdtemp, readFile, realpath, rename, rm, symlink } from 'node:fs/promises';
+import { appendFile, copyFile, link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
-  executeWorkflowActionReferenceValidator, executeWorkflowContextValidator, parseWorkflowContextValidatorArgs
+  executeWorkflowActionReferenceValidator, executeWorkflowComposeConfigValidator,
+  executeWorkflowContextValidator, parseWorkflowContextValidatorArgs
 } from '../src/workflow-context-validator.js';
 import { resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
 import { writeModernInstalledProject } from './fixtures/modern-installed-project.js';
 import { writeModernLocalFixtureInputs } from './fixtures/modern-local-project.js';
 import * as boundFiles from '../src/adapters/filesystem/bound-project-files.js';
+import { observeModernLocalTools } from '../src/adapters/process/modern-local-tools.js';
+import { inspectModernLocalRuntime, planModernLocalRuntime } from '../src/application/governance/modern-local-inputs.js';
+import { NodeCommandRunner } from '../src/process-runner.js';
 
 describe('release-owned real context validator bodies, not phase qualification', () => {
   let root: string;
@@ -23,13 +27,14 @@ describe('release-owned real context validator bodies, not phase qualification',
       '-c', 'user.name=Isolated validator fixture', '-c', 'user.email=validator@example.invalid', ...args],
     { cwd, encoding: 'utf8', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }).trim();
   }
-  async function fixture(testSource = '', frontend = false, workflow: 'manual' | 'spec-kit' = 'manual') {
+  async function fixture(testSource = '', frontend = false, workflow: 'manual' | 'spec-kit' = 'manual',
+    apiStack: 'node-fastify' | 'go-huma' = 'node-fastify') {
     const projectRoot = await mkdtemp(path.join(root, 'project-'));
-    const seed = await writeModernInstalledProject(projectRoot, workflow, 'single-maintainer-gitflow', { frontend });
+    const seed = await writeModernInstalledProject(projectRoot, workflow, 'single-maintainer-gitflow', { frontend, apiStack });
     const source = resolveModernManifestV8SourceContract({ selection: seed.input.selection, recordedPlugins: seed.input.plugins });
     const components = new Map(source.layoutDescriptor.components.map(component => [component, ['source', component.replace(':', '-')]]));
     const value = await writeModernInstalledProject(projectRoot, workflow, 'single-maintainer-gitflow', {
-      frontend,
+      frontend, apiStack,
       activeLayout: { schemaVersion: 1, state: 'bound', bindings: [
         ...[...components].map(([component, pathParts]) => ({ kind: 'component' as const, component, pathParts })),
         { kind: 'artifact', logicalName: 'docker-compose', pathParts: ['compose.yml'] }
@@ -37,15 +42,26 @@ describe('release-owned real context validator bodies, not phase qualification',
     });
     await writeModernLocalFixtureInputs(value.input.selection, components, ['compose.yml'], value.write);
     const backend = components.get('backend')!;
-    await value.write([...backend, 'source.js'], 'export function double(value) { return value * 2; }\n');
-    await value.write([...backend, 'unused.js'], 'export const selectedSource = "committed application input";\n');
-    await value.write([...backend, 'tests', 'source.test.js'], [
-      'import test from "node:test";',
-      'import assert from "node:assert/strict";',
-      'import { double } from "../source.js";',
-      'test("the real function doubles its input", () => { assert.equal(double(3), 6); });',
-      testSource
-    ].join('\n'));
+    if (apiStack === 'node-fastify') {
+      await value.write([...backend, 'source.js'], 'export function double(value) { return value * 2; }\n');
+      await value.write([...backend, 'unused.js'], 'export const selectedSource = "committed application input";\n');
+      await value.write([...backend, 'tests', 'source.test.js'], [
+        'import test from "node:test";',
+        'import assert from "node:assert/strict";',
+        'import { double } from "../source.js";',
+        'test("the real function doubles its input", () => { assert.equal(double(3), 6); });',
+        testSource
+      ].join('\n'));
+    } else {
+      await value.write([...backend, 'go.mod'], 'module example.local/source\n\ngo 1.27\n');
+      await value.write([...backend, 'source.go'], 'package source\n\nfunc Double(value int) int { return value * 2 }\n');
+      await value.write([...backend, 'tests', 'source_test.go'], [
+        'package tests', 'import (', '  "testing"', '  source "example.local/source"', ')',
+        'func TestDouble(t *testing.T) {',
+        '  if actual := source.Double(3); actual != 6 { t.Fatalf("Double(3) = %d; want 6", actual) }',
+        '}', testSource
+      ].join('\n'));
+    }
     if (frontend) {
       const parts = components.get('frontend')!;
       await value.write([...parts, 'package.json'], JSON.stringify({
@@ -74,6 +90,7 @@ describe('release-owned real context validator bodies, not phase qualification',
       [], ['--validator', 'echo', '--source-sha', 'a'.repeat(40)],
       ['--validator', 'infrastructure', '--source-sha', 'a'.repeat(40)],
       ['--validator', 'action-references', '--source-sha', 'a'.repeat(40)],
+      ['--validator', 'compose-config', '--source-sha', 'a'.repeat(40)],
       ['--validator', 'source-integrity', '--source-sha', 'main'],
       ['--validator', 'source-integrity', '--source-sha', 'a'.repeat(40), '--execute'],
       ['--source-sha', 'a'.repeat(40), '--validator', 'source-integrity']
@@ -102,6 +119,25 @@ describe('release-owned real context validator bodies, not phase qualification',
     expect(red).toMatchObject({ status: 'failed', code: 'validator-command',
       command: { status: 1, processTreeSettled: true }, retainedExecutionDirectory: null, phaseProof: 'not-issued' });
     expect(red.message).not.toContain('AssertionError');
+  });
+
+  it.each(['passing', 'broken'] as const)('runs the real Go backend tests against %s committed application logic', async variant => {
+    const value = await fixture('', false, 'manual', 'go-huma');
+    if (variant === 'broken') {
+      await value.write([...value.backend, 'source.go'], 'package source\n\nfunc Double(value int) int { return value * 3 }\n');
+      git(value.root, 'add', '--', [...value.backend, 'source.go'].join('/'));
+      git(value.root, 'commit', '--quiet', '-m', 'Break the actual Go doubling implementation');
+    }
+    const report = await executeWorkflowContextValidator(value.root, {
+      validator: 'backend-tests', sourceSha: git(value.root, 'rev-parse', 'HEAD')
+    });
+    expect(report).toMatchObject({
+      status: variant === 'passing' ? 'passed' : 'failed',
+      code: variant === 'passing' ? 'validator-passed' : 'validator-command',
+      workloadExecution: true, command: { status: variant === 'passing' ? 0 : 1, processTreeSettled: true },
+      retainedExecutionDirectory: null, phaseProof: 'not-issued'
+    });
+    expect(JSON.stringify(report)).not.toContain('Double(3)');
   });
 
   it('refuses a different commit before running project code', async () => {
@@ -537,6 +573,98 @@ describe('release-owned real context validator bodies, not phase qualification',
         workloadExecution: false, command: null, phaseProof: 'not-issued' });
     } finally {
       reads.mockRestore();
+    }
+  });
+
+  it('runs the same real Compose configuration command for valid source and an actual missing-service dependency', async () => {
+    const value = await fixture();
+    const green = await executeWorkflowComposeConfigValidator(value.root, value.sourceSha);
+    expect(green).toMatchObject({
+      validator: 'compose-config', status: 'passed', workloadExecution: true,
+      command: { status: 0, processTreeSettled: true }, retainedExecutionDirectory: null, phaseProof: 'not-issued'
+    });
+    await value.write(['compose.yml'], [
+      'services:', '  app:', '    image: fixture.invalid/local:source',
+      '    depends_on:', '      - missing-service'
+    ].join('\n'));
+    git(value.root, 'add', '--', 'compose.yml');
+    git(value.root, 'commit', '--quiet', '-m', 'Introduce a genuine unresolved Compose service dependency');
+    const red = await executeWorkflowComposeConfigValidator(value.root, git(value.root, 'rev-parse', 'HEAD'));
+    expect(red).toMatchObject({
+      status: 'failed', code: 'validator-command', workloadExecution: true,
+      command: { status: expect.any(Number), processTreeSettled: true },
+      retainedExecutionDirectory: null, phaseProof: 'not-issued'
+    });
+    expect(red.command!.status).not.toBe(0);
+    expect(JSON.stringify(red)).not.toContain('missing-service');
+  });
+
+  it('refuses changed uncommitted Compose source before running its configuration validator', async () => {
+    const value = await fixture();
+    await value.write(['compose.yml'], 'services:\n  app:\n    image: fixture.invalid/changed:source\n');
+    expect(await executeWorkflowComposeConfigValidator(value.root, value.sourceSha))
+      .toMatchObject({ status: 'failed', code: 'validator-source-mismatch', workloadExecution: false, command: null });
+  });
+
+  it('does not read a real untracked dotenv file or implicit Compose override into its closed configuration check', async () => {
+    const value = await fixture();
+    await value.write(['.env'], 'PRIVATE_FIXTURE_VALUE="unterminated\n');
+    await value.write(['compose.override.yml'], 'services:\n  app:\n    depends_on:\n      - missing-implicit-service\n');
+    const report = await executeWorkflowComposeConfigValidator(value.root, value.sourceSha);
+    expect(report).toMatchObject({
+      status: 'passed', workloadExecution: true, command: { status: 0, processTreeSettled: true },
+      retainedExecutionDirectory: null, phaseProof: 'not-issued'
+    });
+    expect(JSON.stringify(report)).not.toContain('PRIVATE_FIXTURE_VALUE');
+  });
+
+  it('does not admit the private Compose subcheck through public execution or accept a nonliteral source commit', async () => {
+    const value = await fixture(), run = vi.spyOn(NodeCommandRunner.prototype, 'run');
+    try {
+      // @ts-expect-error The public validator inventory deliberately excludes this private subcheck.
+      await expect(executeWorkflowContextValidator(value.root, { validator: 'compose-config', sourceSha: value.sourceSha }))
+        .rejects.toMatchObject({ code: 'validator-request' });
+      await expect(executeWorkflowComposeConfigValidator(value.root, 'develop'))
+        .rejects.toMatchObject({ code: 'validator-request' });
+      expect(run).not.toHaveBeenCalled();
+    } finally {
+      run.mockRestore();
+    }
+  });
+
+  it('refuses actual copied plugin drift after a successful settled configuration child without changing installed host programs', async () => {
+    const value = await fixture(), planned = await planModernLocalRuntime(await inspectModernLocalRuntime(value.root));
+    const check = planned.localPlan!.checks.find(candidate => candidate.id === 'compose-config')!;
+    const observed = (await observeModernLocalTools(value.root, [check], [])).find(tool => tool.id === 'docker')!;
+    const bundle = await mkdtemp(path.join(root, 'copied-compose-tools-'));
+    await mkdir(path.join(bundle, 'bin'));
+    await mkdir(path.join(bundle, 'cli-plugins'));
+    const plugin = path.join(bundle, 'cli-plugins', 'docker-compose');
+    await copyFile(observed.files[0]!.path, path.join(bundle, 'bin', 'docker'));
+    await copyFile(observed.executablePath, plugin);
+    vi.stubEnv('PATH', [path.join(bundle, 'bin'), process.env.PATH].join(path.delimiter));
+    const original = NodeCommandRunner.prototype.run;
+    let home = '', changed = false;
+    const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(async function (this: NodeCommandRunner, command, options) {
+      const result = await original.call(this, command, options);
+      if (command.executable === plugin && command.args.includes('config') && result.status === 0 &&
+          result.processTreeSettled === true) {
+        const actualHome = options?.env?.HOME;
+        if (!actualHome) throw new Error('The actual configuration child has no private HOME.');
+        home = actualHome;
+        await appendFile(plugin, '\n');
+        changed = true;
+      }
+      return result;
+    });
+    try {
+      await expect(executeWorkflowComposeConfigValidator(value.root, value.sourceSha))
+        .rejects.toThrow('Installed local tool bytes or physical identity changed.');
+      expect(changed).toBe(true);
+      expect(path.basename(home)).toMatch(/^liftoff-workflow-validator-/u);
+      await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      run.mockRestore();
     }
   });
 });
