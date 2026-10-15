@@ -3918,6 +3918,22 @@ Its manifest has SHA-256
 and its checksum ledger has SHA-256
 `7adbfe0d37091767fb31e18ad6d1d927e7e959f39acf2a97b09b7d6077077cf1`.
 
+Replacement pull request #168 run `38815462840` then passed all 20 jobs
+on exact pushed documentation head
+`6d87dee383548a17c4dee3a62579ccec7af61272`, tree
+`bd06bbf9b59f765bc3ac20cad53f8ecfaca95280`. The run-level evidence
+directory is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/dependency-audit-ci-success-6d87dee3`
+
+Its manifest has SHA-256
+`2219d6032b38e442cf009e7cee938630c7b0aed1b916b50bc53ab4e7b3f85755`
+and its checksum ledger has SHA-256
+`38de9c9c2e3a3d3fb7c1ac13649b7e7db8646f6bfb28fdbd0a5ef29f615c0352`.
+The successful required PR CI does not transfer the earlier
+`cdadc3911519af0e19d2e2dbd7b9ed22db614a23` complete local
+CLI/gateway coverage qualification to this dependency-adjusted successor.
+
 This correction records only the already-reviewed dependency-induced registry
 identity. It changes no governance runtime, capability, blocker, authority,
 task checkbox, provider or publication state and is not a fresh complete
