@@ -117,6 +117,12 @@ dispatch context force both `DO_NOT_TRACK=1` and `LIFTOFF_TELEMETRY=0`
 independently of caller preferences; the original caller environment is not
 modified. These are environment/process guards, not a network sandbox or proof
 that arbitrary old installed code cannot send traffic.
+Migration subprocesses explicitly disable the shared runner's default parent
+environment inheritance, including npm inspection/uninstall, host/manager
+probes, metadata reads and native verification. Child-observed regression
+cases verify neutral HOME/XDG and both opt-outs without ambient proxy, registry,
+unselected Volta or fixture sentinel variables. Other commands retain the
+runner's existing default environment merging.
 npm lifecycle scripts, audit/funding/update
 notifications, inherited loaders, Homebrew auto-update/analytics/install cleanup
 and environment hints are suppressed. Independent Homebrew approval does not
@@ -200,6 +206,7 @@ verified cask with unresolved PATH; help/ready/fully selected completion exits 0
 ```sh
 npm run build
 npx vitest run tests/mac-migration.test.ts tests/mac-migration-safety.test.ts \
+  tests/mac-migration-environment.test.ts tests/process-runner.test.ts \
   tests/mac-migration-npm-installed.test.ts \
   tests/mac-migration-package.test.ts tests/mac-migration-package-report.test.ts \
   tests/repository-policy.test.ts

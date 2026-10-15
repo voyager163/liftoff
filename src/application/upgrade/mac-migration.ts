@@ -101,6 +101,7 @@ async function verifyCask(journal: MigrationJournal, dependencies: MacMigrationD
     inventory.inventorySha256 !== journal.candidate.inventorySha256 || inventory.sourceCommit !== journal.candidate.sourceCommit ||
     inventory.target !== 'darwin-arm64') throw new MacMigrationFailure('cask-assets-mismatch');
   const port = createNativeUpgradePort({ ...dependencies.upgrade, execPath: inventory.runtime,
+    runner: { run: (command, options) => dependencies.upgrade.runner.run(command, { ...options, inheritEnvironment: false }) },
     environment: migrationEnvironment(dependencies.upgrade, scratch, inventory.runtime),
     runningExecutable: path.join(inventory.packageRoot, 'dist/cli.js'), resolveLiftoff: async () => journal.destination }, {
     cask: async () => observed.ownership
@@ -291,6 +292,7 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
     const result = await dependencies.upgrade.runner.run({ executable: owner.node,
       args: [owner.npm, 'uninstall', '--global', '--prefix', owner.prefix, '--ignore-scripts', '--no-audit', '--no-fund', '@msn-control/liftoff'] }, {
       cwd: scratch, env: migrationEnvironment(dependencies.upgrade, scratch, owner.node),
+      inheritEnvironment: false,
       timeoutMs: 120_000, maxOutputBytes: 64 * 1024, ensureProcessTreeSettled: true
     });
     if (result.processTreeSettled !== true || result.aborted || result.timedOut) {

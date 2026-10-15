@@ -35,6 +35,7 @@ export async function assertMigrationMetadata(files: readonly string[], maximumM
     if (remaining <= 0) throw new MacMigrationFailure('mac-metadata-deadline');
     const result = await runner.run({ executable, args }, {
       cwd: '/', env: { PATH: '/usr/bin:/bin', LC_ALL: 'C', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0' },
+      inheritEnvironment: false,
       timeoutMs: Math.max(1, Math.min(10_000, Math.floor(remaining))),
       maxOutputBytes: 2 * 1024 * 1024, ensureProcessTreeSettled: true
     });
@@ -116,7 +117,7 @@ export function migrationEnvironment(dependencies: SelfUpgradeDependencies, scra
 export async function migrationProbe(dependencies: SelfUpgradeDependencies, scratch: string, node: string,
   executable: string, args: string[]): Promise<string> {
   const result = await dependencies.runner.run({ executable, args }, {
-    cwd: scratch, env: migrationEnvironment(dependencies, scratch, node), timeoutMs: 10_000,
+    cwd: scratch, env: migrationEnvironment(dependencies, scratch, node), inheritEnvironment: false, timeoutMs: 10_000,
     maxOutputBytes: 64 * 1024, ensureProcessTreeSettled: true
   });
   if (commandFailed(result) || result.processTreeSettled !== true) throw new MacMigrationFailure('probe-not-settled');
@@ -191,6 +192,7 @@ export async function inspectMacNpmOwner(selection: MacNpmSelection, dependencie
     const which = async (name: string) => {
       const result = await dependencies.runner.run({ executable: volta, args: ['which', name] }, {
         cwd: scratch, env: { ...migrationEnvironment(dependencies, scratch, node), VOLTA_HOME: root, VOLTA_LOGLEVEL: 'off' },
+        inheritEnvironment: false,
         timeoutMs: 10_000, maxOutputBytes: 64 * 1024, ensureProcessTreeSettled: true
       });
       if (commandFailed(result) || result.processTreeSettled !== true) throw new MacMigrationFailure('probe-not-settled');
@@ -203,7 +205,7 @@ export async function inspectMacNpmOwner(selection: MacNpmSelection, dependencie
   const runner: SelfUpgradeDependencies['runner'] = {
     run: (command, options) => dependencies.runner.run({
       executable: node, args: [npm, ...command.args, '--prefix', prefix]
-    }, { ...options, env: migrationEnvironment(dependencies, scratch, node) })
+    }, { ...options, env: migrationEnvironment(dependencies, scratch, node), inheritEnvironment: false })
   };
   const installation = await inspectGlobalInstallation({ currentVersion: version, runningPackageRoot: packageRoot,
     runningExecutable: files.binary }, scratch, {

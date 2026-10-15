@@ -14,8 +14,21 @@ import type { NativeStableMaterial } from '../../src/adapters/distribution/nativ
 const json = (value: unknown) => Buffer.from(JSON.stringify(value));
 
 // Real private file/process fixtures, synthetic manager/publication evidence; never public qualification.
-export async function macMigrationFixture(manager: MacNpmManager = 'custom', shared = false) {
+export async function macMigrationFixture(manager: MacNpmManager = 'custom', shared = false, observeChildEnvironment = false) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf mac migration spaces ')));
+  const childEnvironmentFile = path.join(root, 'child-environment.jsonl');
+  const childEnvironmentProbe = path.join(root, 'child-environment-probe.cjs');
+  if (observeChildEnvironment) await writeFile(childEnvironmentProbe, `
+const fs = require('node:fs');
+const keys = ['HOME','TMPDIR','XDG_CONFIG_HOME','XDG_CACHE_HOME','XDG_STATE_HOME','DO_NOT_TRACK','LIFTOFF_TELEMETRY',
+'NODE_OPTIONS','NODE_PATH','LIFTOFF_MIGRATION_PARENT_ONLY_FIXTURE','HTTP_PROXY','npm_config_registry','VOLTA_HOME'];
+const environment = Object.fromEntries(keys.filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]]));
+fs.appendFileSync(${JSON.stringify(childEnvironmentFile)}, JSON.stringify(environment) + '\\n');
+if (['LIFTOFF_MIGRATION_PARENT_ONLY_FIXTURE','HTTP_PROXY','npm_config_registry','VOLTA_HOME']
+.some(key => process.env[key] !== undefined)) process.exitCode = 95;
+`, { mode: 0o600 });
+  const childEnvironmentGuard = observeChildEnvironment
+    ? `${JSON.stringify(process.execPath)} ${JSON.stringify(childEnvironmentProbe)} || exit $?\n` : '';
   const nvmRoot = path.join(root, 'nvm home');
   const voltaRoot = path.join(root, 'volta home');
   const prefix = manager === 'nvm' ? path.join(nvmRoot, 'versions/node/v24.21.0') :
@@ -26,7 +39,7 @@ export async function macMigrationFixture(manager: MacNpmManager = 'custom', sha
   const node = manager === 'homebrew-node' ? path.join(prefix, 'Cellar/node/24.21.0/bin/node') : path.join(prefix, 'bin/node');
   for (const directory of [path.dirname(npm), path.join(oldPackage, 'dist'), path.join(prefix, 'bin'),
     path.join(brewPrefix, 'bin'), path.dirname(node)]) await mkdir(directory, { recursive: true, mode: 0o755 });
-  await writeFile(node, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} "$@"\n`, { mode: 0o755 });
+  await writeFile(node, `#!/bin/sh\n${childEnvironmentGuard}exec ${JSON.stringify(process.execPath)} "$@"\n`, { mode: 0o755 });
   if (manager === 'homebrew-node') await symlink(node, path.join(prefix, 'bin/node'));
   await writeFile(path.join(path.dirname(path.dirname(npm)), 'package.json'), json({ name: 'npm', version: '12.0.2' }));
   await writeFile(npm, `#!/usr/bin/env node
@@ -49,7 +62,7 @@ args.includes('@msn-control/liftoff') && args.includes('--ignore-scripts')) {
   const oldLauncher = path.join(prefix, 'bin/liftoff');
   await symlink('../lib/node_modules/@msn-control/liftoff/dist/cli.js', oldLauncher);
   const brew = path.join(brewPrefix, 'bin/brew');
-  await writeFile(brew, `#!/bin/sh\nprintf '%s\\n' ${JSON.stringify(brewPrefix)}\n`, { mode: 0o755 });
+  await writeFile(brew, `#!/bin/sh\n${childEnvironmentGuard}printf '%s\\n' ${JSON.stringify(brewPrefix)}\n`, { mode: 0o755 });
   let managerExecutable: string | undefined;
   if (manager === 'volta') {
     managerExecutable = path.join(voltaRoot, 'bin/volta');
@@ -69,7 +82,7 @@ esac
   for (const directory of ['bin', 'runtime', 'application/dist', 'installation']) {
     await mkdir(path.join(source, directory), { recursive: true });
   }
-  await writeFile(path.join(source, 'runtime/node'), `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} "$@"\n`, { mode: 0o755 });
+  await writeFile(path.join(source, 'runtime/node'), `#!/bin/sh\n${childEnvironmentGuard}exec ${JSON.stringify(process.execPath)} "$@"\n`, { mode: 0o755 });
   await writeFile(path.join(source, 'bin/liftoff'),
     `#!/bin/sh\nexec ${JSON.stringify(path.join(source, 'runtime/node'))} ${JSON.stringify(path.join(source, 'application/dist/cli.js'))} "$@"\n`,
     { mode: 0o755 });
@@ -147,7 +160,7 @@ esac
   const request: MacMigrationRequest = { selection: { npm, node, prefix, manager,
     ...(manager === 'nvm' ? { managerRoot: nvmRoot } : manager === 'volta' ? { managerRoot: voltaRoot, managerExecutable } :
       manager === 'homebrew-node' ? { managerRoot: prefix, managerExecutable: brew } : {}) }, brew, recovery };
-  return { root, prefix, brewPrefix, oldPackage, oldLauncher, npm, node, recovery, source, policy, material, channel,
+  return { root, prefix, brewPrefix, oldPackage, oldLauncher, npm, node, recovery, source, policy, material, channel, childEnvironmentFile,
     dependencies, request, cleanup: async () => {
       for (const directory of scratch) await base.removeNeutralDirectory(directory);
       await rm(root, { recursive: true, force: true });
