@@ -17,6 +17,8 @@ import {
   privateBackendProofPlanInputs
 } from '../src/governance-activation/protected-state-handover.js';
 import {
+  assertProtectedStateCustodyProof,
+  protectedStateCustodyDigest,
   protectedStateCustodyIdentityDigest
 } from '../src/governance-activation/protected-state-custody.js';
 import { bootstrapBinding } from '../src/governance-activation/azure-backend-bootstrap.js';
@@ -773,6 +775,51 @@ describe('protected bootstrap-owned state handover', () => {
     expect(result).toMatchObject({ status: 'blocked', resultState: 'failed' });
     expect(result?.blocker).toContain('changed the host, storage, key, locking, or writer custody');
     expect(port.requests).toHaveLength(0);
+  });
+
+  it.each<[string, unknown]>([
+    ['hostId', 1234],
+    ['hostId', null],
+    ['hostId', true],
+    ['hostId', ['github-hosted-runner:444']],
+    ['workspaceRef', ['state-workspace:fixture']],
+    ['storageRef', ['protected-storage:fixture']],
+    ['keyProviderRef', ['key-provider:fixture']],
+    ['observedAt', 2026],
+    ['expiresAt', 2027]
+  ])('rejects coercible %s value %j before protected-state dispatch', async (field, changedValue) => {
+    const value = await fixture('private-backend-proof');
+    const port = new StatePort(value.root);
+    const qualify = port.qualify.bind(port);
+    port.qualify = async request => {
+      const result = await qualify(request);
+      if (result.status === 'qualified') {
+        Object.defineProperty(result.proof, field, { value: changedValue, enumerable: true });
+        result.proof.qualificationDigest = protectedStateCustodyDigest(result.proof);
+      }
+      return result;
+    };
+    const result = await executeProtectedStatePhase(execution(value, port));
+    expect(result).toMatchObject({ status: 'blocked', resultState: 'failed' });
+    expect(result?.blocker).toContain('provider diagnostics were withheld');
+    expect(port.custodyRequests).toHaveLength(1);
+    expect(port.requests).toHaveLength(0);
+  });
+
+  it('requires a finite current clock without rejecting a valid custody proof', () => {
+    const request: ProtectedStateCustodyRequest = {
+      schemaVersion: 1,
+      bindingDigest: 'a'.repeat(64),
+      repository: 'owner/repo',
+      runner: { id: 444, label: 'liftoff-runner', groupId: 1, networkConfigurationId: 'network:fixture' },
+      backendBindingDigest: 'b'.repeat(64),
+      bootstrapBindingDigest: 'c'.repeat(64),
+      retentionDays: 30
+    };
+    const proof = custodyProof(request);
+    expect(() => assertProtectedStateCustodyProof(proof, request, coverageNow)).not.toThrow();
+    expect(() => assertProtectedStateCustodyProof(proof, request, new Date(NaN)))
+      .toThrow('Protected state custody must bind');
   });
 
   it('rejects brownfield claims and incomplete provider readback as current authoritative evidence', async () => {
