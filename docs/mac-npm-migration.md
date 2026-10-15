@@ -200,6 +200,7 @@ verified cask with unresolved PATH; help/ready/fully selected completion exits 0
 ```sh
 npm run build
 npx vitest run tests/mac-migration.test.ts tests/mac-migration-safety.test.ts \
+  tests/mac-migration-npm-installed.test.ts \
   tests/mac-migration-package.test.ts tests/mac-migration-package-report.test.ts \
   tests/repository-policy.test.ts
 ```
@@ -217,6 +218,12 @@ Actual private macOS safety cases add ACLs, extended attributes and file flags
 and verify refusal without stripping them; settled recovery checks supported
 directory/file modes and exact observed OS provenance. These cases do not
 qualify arbitrary metadata, mixed groups or a real Homebrew cask.
+When `npm_execpath` explicitly selects an npm CLI, four additional disposable
+prefix cases use that actual owning npm to uninstall only the fixture package,
+with separate/shared launcher paths and handover/settled recovery. They verify
+unrelated package bytes and read-only preferences survive. The old client and
+cask remain synthetic in those cases; actual npm filesystem settlement is not
+real Homebrew, historical-client, minimum-host or no-transport qualification.
 They do not qualify real Homebrew/nvm/Volta hosts, publication, signing,
 notarization or minimum-host behavior. The optional installed-package suite
 requires `LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT` naming a current verified native
