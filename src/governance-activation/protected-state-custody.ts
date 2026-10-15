@@ -53,18 +53,18 @@ export function assertProtectedStateCustodyProof(
   binding: CustodyBinding,
   now: Date
 ): void {
-  const observedAt = Date.parse(proof.observedAt);
-  const expiresAt = Date.parse(proof.expiresAt);
+  const observedAt = typeof proof.observedAt === 'string' ? Date.parse(proof.observedAt) : NaN;
+  const expiresAt = typeof proof.expiresAt === 'string' ? Date.parse(proof.expiresAt) : NaN;
   if (proof.kind !== 'protected-state-custody.v1' ||
     proof.bindingDigest !== binding.bindingDigest ||
     proof.runnerId !== binding.runner.id ||
     proof.runnerLabel !== binding.runner.label ||
     proof.runnerGroupId !== binding.runner.groupId ||
     proof.networkConfigurationId !== binding.runner.networkConfigurationId ||
-    !hostIdPattern.test(proof.hostId) ||
-    !opaqueRefPattern.test(proof.workspaceRef) ||
-    !opaqueRefPattern.test(proof.storageRef) ||
-    !opaqueRefPattern.test(proof.keyProviderRef) ||
+    typeof proof.hostId !== 'string' || !hostIdPattern.test(proof.hostId) ||
+    typeof proof.workspaceRef !== 'string' || !opaqueRefPattern.test(proof.workspaceRef) ||
+    typeof proof.storageRef !== 'string' || !opaqueRefPattern.test(proof.storageRef) ||
+    typeof proof.keyProviderRef !== 'string' || !opaqueRefPattern.test(proof.keyProviderRef) ||
     proof.protectedStorage !== 'encrypted-private' ||
     proof.keyCustody !== 'external-nonexporting' ||
     proof.locking !== 'azure-blob-lease' ||
@@ -73,6 +73,7 @@ export function assertProtectedStateCustodyProof(
     proof.disposalSupported !== true ||
     !Number.isFinite(observedAt) ||
     !Number.isFinite(expiresAt) ||
+    !Number.isFinite(now.getTime()) ||
     observedAt > now.getTime() ||
     expiresAt <= now.getTime() ||
     !digestPattern.test(proof.qualificationDigest) ||
