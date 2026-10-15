@@ -1082,13 +1082,18 @@ describe('real pinned-provider gate runs', () => {
     expect(fn).toBeDefined();
     expect(branch).toBeDefined();
     const records = [];
-    for (const value of [-1, 0.5, '1', null, Number.MAX_SAFE_INTEGER + 1]) {
+    for (const value of [0.5, '1', null, Number.MAX_SAFE_INTEGER + 1]) {
       for (const kind of ['s', 'f', 'b']) {
         const record = structuredClone(originalReport[key]);
         if (kind === 'b') record.b[branch][0] = value;
         else record[kind][kind === 's' ? statement : fn] = value;
         records.push(record);
       }
+    }
+    for (const kind of ['s', 'f']) {
+      const record = structuredClone(originalReport[key]);
+      record[kind][kind === 's' ? statement : fn] = -1;
+      records.push(record);
     }
     for (const kind of ['statementMap', 'fnMap', 'branchMap', 's', 'f', 'b']) {
       for (const value of [undefined, null, []]) {
@@ -1123,6 +1128,23 @@ describe('real pinned-provider gate runs', () => {
       expect(verdict.failures).toContain('coverage-final.json source record src/covered.ts has malformed hit maps or counters.');
       expect(await readFile(file, 'utf8')).toBe(bytes);
     }
+    const signedBranch = structuredClone(originalReport[key]);
+    const originallyCovered = signedBranch.b[branch][0] > 0;
+    signedBranch.b[branch][0] = -1;
+    const signedBytes = JSON.stringify({ ...JSON.parse(original), [key]: signedBranch });
+    await writeFile(file, signedBytes);
+    const signedVerdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+    expect(signedVerdict.failures).not.toContain(
+      'coverage-final.json source record src/covered.ts has malformed hit maps or counters.'
+    );
+    if (originallyCovered) {
+      expect(signedVerdict.failures).toContainEqual(
+        expect.stringMatching(/^coverage-final\.json source record src\/covered\.ts branches counts .* do not match/)
+      );
+    } else {
+      expect(signedVerdict).toMatchObject({ result: 'passed', failures: [] });
+    }
+    expect(await readFile(file, 'utf8')).toBe(signedBytes);
     await writeFile(file, original);
     await expect(verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision }))
       .resolves.toMatchObject({ result: 'passed', failures: [] });

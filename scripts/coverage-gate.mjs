@@ -384,6 +384,9 @@ export function evaluateCoverageReports({ summary, final, inventory, root = repo
 function validHitMaps(record) {
   const object = value => typeof value === 'object' && value !== null && !Array.isArray(value);
   const count = value => Number.isSafeInteger(value) && value >= 0;
+  // The pinned V8 provider can emit negative synthetic else-branch hits while
+  // deriving branch coverage from merged ranges; its summarizer treats them as uncovered.
+  const branchCount = value => Number.isSafeInteger(value);
   const sameKeys = (left, right) => Object.keys(left).length === Object.keys(right).length &&
     Object.keys(left).every(key => Object.hasOwn(right, key));
   if (!['statementMap', 'fnMap', 'branchMap', 's', 'f', 'b'].every(key => object(record[key]))) return false;
@@ -395,7 +398,7 @@ function validHitMaps(record) {
     return false;
   }
   if (!Object.values(record.fnMap).every(object)) return false;
-  return Object.entries(record.b).every(([key, hits]) => Array.isArray(hits) && hits.every(count) &&
+  return Object.entries(record.b).every(([key, hits]) => Array.isArray(hits) && hits.every(branchCount) &&
     object(record.branchMap[key]) && Array.isArray(record.branchMap[key].locations) &&
     record.branchMap[key].locations.length === hits.length);
 }
