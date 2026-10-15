@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isMap, isScalar, isSeq, parseDocument } from 'yaml';
 import { FileSystemError } from './errors.js';
 import { exactRecord } from './manifest/fields.js';
 import { validateArtifactPathParts } from './paths.js';
@@ -7,7 +8,7 @@ import { isProjectTelemetryId, isTelemetryCliVersion } from '../../telemetry/con
 export const heartbeatInventoryPath = ['.liftoff', 'telemetry', 'heartbeat.json'];
 export const heartbeatWorkflowPath = ['.github', 'workflows', 'liftoff-project-heartbeat.yml'];
 export const heartbeatPublicationBlocker =
-  'No qualified published heartbeat-capable Linux CLI archive, immutable artifact digest, and repository-scoped enablement producer are registered. Enrollment cannot enable CI reporting.';
+  'No qualified published heartbeat-capable Linux CLI archive, immutable artifact digest, and checkout action are registered. Enrollment cannot enable CI reporting.';
 
 export interface HeartbeatTooling {
   cliVersion: string;
@@ -98,7 +99,7 @@ export function renderHeartbeatEntry(entry: HeartbeatEntry, tooling: HeartbeatTo
     '          CI: "true"',
     '        run: |',
     '          set -euo pipefail',
-    `          "$RUNNER_TEMP/liftoff-heartbeat/bin/liftoff" telemetry report '${root}' --heartbeat --json`,
+    `          "$RUNNER_TEMP/liftoff-heartbeat/bin/liftoff" telemetry report '${root}' --heartbeat --json --repository '.'`,
     `  # liftoff-heartbeat:${id}:end`,
     ''
   ].join('\n');
@@ -113,18 +114,31 @@ export function renderHeartbeatWorkflow(inventory: HeartbeatInventory): string {
   ].join('\n') + checked.entries.map(entry => renderHeartbeatEntry(entry, checked.tooling, checked.repository)).join('');
 }
 
+export function heartbeatWorkflowText(workflow: string | Buffer): string {
+  if ((typeof workflow === 'string' ? Buffer.byteLength(workflow, 'utf8') : workflow.length) > 256 * 1024) {
+    throw new FileSystemError('Heartbeat workflow exceeds its bounded size.');
+  }
+  const text = typeof workflow === 'string' ? workflow : workflow.toString('utf8');
+  const bytes = Buffer.from(text, 'utf8');
+  if (Buffer.isBuffer(workflow) ? !bytes.equals(workflow) : bytes.toString('utf8') !== text) {
+    throw new FileSystemError('Heartbeat requires exact UTF-8 workflow bytes; custom content was not rewritten.');
+  }
+  const withoutCrlf = text.replaceAll('\r\n', '');
+  if (withoutCrlf.includes('\r')) throw new FileSystemError('Heartbeat workflow has unsupported line endings.');
+  if (text.includes('\r\n') && withoutCrlf.includes('\n')) {
+    throw new FileSystemError('Heartbeat refuses mixed line endings rather than normalize custom bytes.');
+  }
+  return text;
+}
+
 export function updateHeartbeatEntry(
-  value: HeartbeatInventory, workflow: string, entry: HeartbeatEntry, operation: 'add' | 'remove'
+  value: HeartbeatInventory, source: string | Buffer, entry: HeartbeatEntry, operation: 'add' | 'remove'
 ): { inventory: HeartbeatInventory; workflow: string } {
   const inventory = parseHeartbeatInventory(value);
-  if (Buffer.byteLength(workflow, 'utf8') > 256 * 1024) throw new FileSystemError('Heartbeat workflow exceeds its bounded size.');
-  if (workflow.includes('\r')) {
-    // Preserve the actual line ending in the exact-byte adapter; domain comparison uses LF.
-    if (workflow.includes('\r') && !workflow.replaceAll('\r\n', '\n').includes('\r')) {
-      const updated = updateHeartbeatEntry(inventory, workflow.replaceAll('\r\n', '\n'), entry, operation);
-      return { inventory: updated.inventory, workflow: updated.workflow.replaceAll('\n', '\r\n') };
-    }
-    throw new FileSystemError('Heartbeat workflow has unsupported line endings.');
+  const workflow = heartbeatWorkflowText(source);
+  if (workflow.includes('\r\n')) {
+    const updated = updateHeartbeatEntry(inventory, workflow.replaceAll('\r\n', '\n'), entry, operation);
+    return { inventory: updated.inventory, workflow: updated.workflow.replaceAll('\n', '\r\n') };
   }
   for (const current of inventory.entries) {
     const section = renderHeartbeatEntry(current, inventory.tooling, inventory.repository);
@@ -147,6 +161,91 @@ export function updateHeartbeatEntry(
   return { inventory: target, workflow: workflow.replace(/^(jobs:[ \t]*\n)/mu, `$1${section}`) };
 }
 
-export function heartbeatWorkflowDigest(workflow: string): string {
-  return createHash('sha256').update(workflow).digest('hex');
+export function heartbeatWorkflowDigest(workflow: string | Buffer): string {
+  return createHash('sha256').update(heartbeatWorkflowText(workflow)).digest('hex');
+}
+
+export function heartbeatToolingMatches(left: HeartbeatTooling, right: HeartbeatTooling): boolean {
+  return JSON.stringify(validateHeartbeatTooling(left)) === JSON.stringify(validateHeartbeatTooling(right));
+}
+
+export function validateHeartbeatWorkflow(inventory: HeartbeatInventory, workflow: string | Buffer): void {
+  const checked = parseHeartbeatInventory(inventory);
+  const normalized = heartbeatWorkflowText(workflow).replaceAll('\r\n', '\n');
+  const header = renderHeartbeatWorkflow({ ...checked, entries: [] });
+  if (!normalized.startsWith(header) || (normalized.match(/^jobs:[ \t]*$/gmu) ?? []).length !== 1) {
+    throw new FileSystemError('Heartbeat monthly schedule, read-only permissions or jobs boundary changed.');
+  }
+  const markers = normalized.match(/^[ \t]*# liftoff-heartbeat:[^\n]*$/gmu) ?? [];
+  if (markers.length !== checked.entries.length * 2) {
+    throw new FileSystemError('Heartbeat owned entry markers are missing, foreign or ambiguous.');
+  }
+  for (const entry of checked.entries) {
+    if (normalized.split(renderHeartbeatEntry(entry, checked.tooling, checked.repository)).length !== 2) {
+      throw new FileSystemError('Heartbeat owned entry bytes changed or are ambiguous; custom workflow bytes were preserved.');
+    }
+  }
+  if (!heartbeatWorkflowHasJobs(normalized)) throw new FileSystemError('Heartbeat workflow has no runnable jobs.');
+}
+
+export function heartbeatWorkflowHasJobs(workflow: string | Buffer): boolean {
+  const document = parseDocument(heartbeatWorkflowText(workflow), { uniqueKeys: true });
+  if (document.errors.length || document.warnings.length || !isMap(document.contents)) {
+    throw new FileSystemError('Heartbeat workflow YAML is invalid or ambiguous; no raw contents were disclosed.');
+  }
+  const jobs = document.get('jobs', true);
+  if (jobs === null || jobs === undefined || isScalar(jobs) && jobs.value === null) return false;
+  if (!isMap(jobs)) {
+    throw new FileSystemError('Heartbeat workflow jobs are invalid, aliased or ambiguous.');
+  }
+  const dependencies = new Map<string, Set<string>>();
+  for (const item of jobs.items) {
+    if (!isScalar(item.key) || typeof item.key.value !== 'string' ||
+        !/^[A-Za-z_][A-Za-z0-9_-]*$/u.test(item.key.value) || !isMap(item.value)) {
+      throw new FileSystemError('Heartbeat workflow jobs are invalid, aliased or ambiguous.');
+    }
+    const needs = item.value.get('needs', true), references = needs === undefined ? [] : isSeq(needs) ? needs.items : [needs];
+    const names = new Set<string>();
+    for (const reference of references) {
+      if (!isScalar(reference) || typeof reference.value !== 'string') {
+        throw new FileSystemError('Heartbeat workflow job dependencies are invalid or aliased.');
+      }
+      names.add(reference.value);
+    }
+    dependencies.set(item.key.value, names);
+  }
+  const pending = new Map<string, number>(), dependents = new Map<string, string[]>();
+  for (const [job, needs] of dependencies) {
+    pending.set(job, needs.size);
+    for (const required of needs) {
+      if (!dependencies.has(required)) throw new FileSystemError('Heartbeat workflow job dependencies reference a missing job.');
+      const next = dependents.get(required) ?? [];
+      next.push(job); dependents.set(required, next);
+    }
+  }
+  const ready = [...pending].filter(([, count]) => count === 0).map(([job]) => job);
+  for (let index = 0; index < ready.length; index++) {
+    for (const dependent of dependents.get(ready[index]) ?? []) {
+      const count = pending.get(dependent)! - 1;
+      pending.set(dependent, count);
+      if (count === 0) ready.push(dependent);
+    }
+  }
+  if (ready.length !== jobs.items.length) throw new FileSystemError('Heartbeat workflow job dependencies are cyclic.');
+  return jobs.items.length > 0;
+}
+
+export function heartbeatReportingEntry(input: {
+  inventory: HeartbeatInventory; workflow: string | Buffer; repository: string;
+  selectedRoot: string[]; projectId: string; enabled: boolean; tooling: HeartbeatTooling;
+}): HeartbeatEntry {
+  const inventory = parseHeartbeatInventory(input.inventory);
+  validateHeartbeatWorkflow(inventory, input.workflow);
+  if (!input.enabled || inventory.repository !== input.repository || !heartbeatToolingMatches(inventory.tooling, input.tooling)) {
+    throw new FileSystemError('Heartbeat enrollment, repository or exact release tooling does not match.');
+  }
+  const entry = inventory.entries.find(candidate =>
+    JSON.stringify(candidate.pathParts) === JSON.stringify(input.selectedRoot) && candidate.projectId === input.projectId);
+  if (!entry) throw new FileSystemError('The selected root has no separately enabled matching heartbeat entry.');
+  return entry;
 }

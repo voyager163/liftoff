@@ -252,6 +252,8 @@ describe('package asset declarations', () => {
       const normalized = entry.replaceAll('\\', '/').replace(/^(?:!|\.\/|\/)+/, '');
       return normalized.split('/')[0].normalize('NFKC').toLowerCase() === 'assets' || /[*?[\]{}()!+@]/.test(entry);
     });
+    expect(packageJson.files.filter((entry) => compiledPackageFiles.includes(entry)))
+      .toEqual(compiledPackageFiles);
     expect(new Set(assetEntries).size).toBe(assetEntries.length);
     expect([...assetEntries].sort()).toEqual([...declaredPaths, ...coreAncillaryAssets].sort());
     // File or directory comes from lstat, never from the entry name.

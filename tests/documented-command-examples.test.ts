@@ -228,7 +228,7 @@ describe('packaged documented command examples', () => {
       }
     }
     expect(files.has('README.md')).toBe(true);
-    expect(files.has('docs/cli-reference.md')).toBe(true);
+    expect(files.has(path.join('docs', 'cli-reference.md'))).toBe(true);
     expect(counts.literal).toBeGreaterThan(0);
     expect(counts.notation).toBeGreaterThan(0);
     expect(counts.partial).toBeGreaterThan(0);

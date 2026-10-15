@@ -241,7 +241,9 @@ self-upgrade never collect a project observation.
 Project enrollment never installs a schedule or enables a CI exception.
 `liftoff telemetry heartbeat enable ./project --repository ./repository --check --json`
 currently reports a blocker: no qualified published heartbeat-capable Linux CLI
-archive/digest and repository-scoped enablement producer are registered.
+archive/digest and immutable checkout action are registered. The source producer
+foundation is gated by release-owned qualification, which remains undefined;
+there is no CLI flag, environment variable or caller-supplied pin override.
 The latest release's presence, a syntactically valid URL/digest, a caller flag,
 or a test specimen is not artifact qualification. No invented archive URL,
 mutable `latest`/tag pin, automatic installation or active cron is installed.
@@ -255,6 +257,32 @@ runtime-inclusive CLI archive/digest and immutable checkout action, monthly
 schedule and contents-read permission. It never scans/enrolls projects, runs
 application scripts, upgrades/repairs projects or deploys Azure resources.
 Syntax/rendering tests are not real artifact/publication/CI qualification.
+
+The gated producer reviews one explicit canonical project and repository root,
+the independently verified GitHub origin and physical Git/repository identity,
+current enrollment and external consent/config snapshot, and both exact target
+files. Separate approval installs only the reviewed root; stale snapshots,
+ambiguous ownership, different tooling and read-only targets fail before writes.
+It does not enroll, generate an identity, update another root, upgrade tooling
+or execute application code. Candidate-tooling tests exercise pure plans and
+disposable filesystem transactions only, not the public release gate.
+
+The future qualified workflow invokes
+`liftoff telemetry report ./project --heartbeat --repository ./repository --json`
+with the exact selected root and repository. It must validate the current enabled
+project record, distinct enabled inventory entry, exact release-owned tooling,
+owned monthly workflow/job bytes and independently verified repository binding.
+A tracked record or forged CI/workflow environment is not sufficient. This path
+reads no local consent/config and writes no notice, consent or event queue; its
+separately approved repository inventory is the CI enablement. Both global
+opt-outs are rechecked after asynchronous preparation and before transport.
+Ordinary `CI=true` paths remain disabled. Collection, proof revalidation and the
+single project request share the existing one-second deadline with no retries.
+
+Removing the last entry deletes the two reviewed files only when the workflow
+is entirely Liftoff-owned. Custom jobs and bytes are retained; custom content
+without remaining jobs requires a separate review rather than an implicit
+overwrite or deletion.
 
 For an existing exact inventoried entry,
 `liftoff telemetry heartbeat disable ./project --repository ./repository --check --json`
