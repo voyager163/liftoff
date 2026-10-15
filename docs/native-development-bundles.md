@@ -157,6 +157,8 @@ does not import a builder, inspect Git or execute a release operation. CLI-speci
 npm packaging/import integration remains separate owner-aware upgrade work.
 The adjacent inert `native-release-catalog.mjs` validates flat immutable artifact
 locators; it does not authenticate a publisher, inspect a channel or grant installation.
+Its adjacent `.d.mts` declaration provides the typed locator contract; both are
+bound to the builder inputs and copied into the native bundle's `installation/`.
 
 The existing canonical prefix must belong to the invoking user and be private.
 Version directories are `versions/<package-version>-<bundle-manifest-sha256>`;
@@ -269,7 +271,7 @@ selected subjects/source/version. Its validator is shared as the inert
 No deployed catalog URL or successful native release is asserted by this source.
 
 Cross-host assembly uses explicitly named `verifyNativeArchiveSubjects` to
-verify producer-recorded modes and exact subject bytes without interpreting the
+preserve producer-recorded modes and verify exact subject bytes without interpreting the
 collector's local filesystem modes as Windows permissions. The existing
 `verifyNativeArchive` and `verifyNativeBundle` retain their exact native mode
 checks. Native extraction/mode, minimum-host and installation evidence must still

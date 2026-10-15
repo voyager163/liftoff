@@ -19,6 +19,7 @@ const windows = process.platform === 'win32';
 let bundle: string, runtime: string, cli: string, fixture: string, outside: string, manifest: Awaited<ReturnType<typeof verifyNativeBundle>>;
 let env: NodeJS.ProcessEnv;
 let failed = false;
+const copiedBundles: string[] = [];
 
 function execute(command: string, args: string[], cwd = outside) {
   const result = spawnSync(command, args, { cwd, env, encoding: 'utf8', shell: false, timeout: 60_000, maxBuffer: 16 * 1024 * 1024 });
@@ -35,6 +36,7 @@ function moduleUrl(relative: string, root = bundle) {
 async function copy(name: string) {
   const result = path.join(fixture, name);
   await cp(bundle, result, { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
+  copiedBundles.push(result);
   return result;
 }
 
@@ -46,6 +48,7 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
     expect(manifest.platform).toEqual({ platform: process.platform, architecture: process.arch });
     assertNativeHost(observeNativeHost());
     fixture = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff installed native package ')));
+    console.info(`Native package qualification fixture: ${fixture}`);
     outside = path.join(fixture, "foreign cwd with spaces & apostrophe's");
     const home = path.join(fixture, 'home'), empty = path.join(fixture, 'no global tools');
     for (const directory of [outside, home, empty]) await mkdir(directory);
@@ -58,7 +61,16 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
     cli = path.join(bundle, manifest.launcher);
     runtime = path.join(bundle, manifest.runtime.executable);
   }, 60_000);
-  afterEach(({ task }) => { if (task.result?.state === 'fail') failed = true; });
+  afterEach(async ({ task }) => {
+    if (task.result?.state === 'fail') failed = true;
+    if (failed) return;
+    try {
+      await Promise.all(copiedBundles.splice(0).map(directory => rm(directory, { recursive: true })));
+    } catch (error) {
+      failed = true;
+      throw error;
+    }
+  });
   afterAll(async () => {
     if (!fixture || failed) return;
     await verifyNativeBundle(bundle);

@@ -248,7 +248,7 @@ describe('complete native + npm release assembly (ephemeral synthetic signing on
     const f = await fixture();
     const result = await assembleNativeReleaseSet(f.handoff, f.inputDigest, f.env, f.options);
     for (const fault of ['missing', 'duplicate', 'escape', 'digest']) {
-      const catalog = structuredClone(result.catalog);
+      const catalog = JSON.parse(JSON.stringify(result.catalog));
       if (fault === 'missing') catalog.targets.pop();
       if (fault === 'duplicate') catalog.targets[1] = catalog.targets[0];
       if (fault === 'escape') catalog.targets[0].qualification.filename = '../outside.json';
@@ -263,6 +263,30 @@ describe('complete native + npm release assembly (ephemeral synthetic signing on
     { cwd: f.parent, env: { PATH: '', NODE_OPTIONS: '', NODE_PATH: '' }, encoding: 'utf8', shell: false, timeout: 10_000 });
     expect(resultImport.status, resultImport.stderr).toBe(0);
     expect(resultImport.stdout.trim()).toBe(nativeReleaseCatalogFilename);
+  });
+
+  it('provides a strict inert declaration without importing the release builder', async () => {
+    const f = await fixture(), file = path.join(f.parent, 'catalog-consumer.mts');
+    const module = path.resolve('distribution/native/native-release-catalog.mjs').split(path.sep).join('/');
+    await writeFile(file, `
+      import { assertNativeReleaseCatalog, nativeCatalogSubjects, nativeReleaseAssetStem, nativeReleaseTargets,
+        type NativeReleaseCatalog, type NativeReleaseSubject } from ${JSON.stringify(module)};
+      declare const input: unknown;
+      const catalog: NativeReleaseCatalog = assertNativeReleaseCatalog(input);
+      const subjects: NativeReleaseSubject[] = nativeCatalogSubjects(catalog);
+      const filename: string = nativeReleaseAssetStem(catalog.version, nativeReleaseTargets[0]);
+      void [subjects, filename];
+      // @ts-expect-error Unvalidated input is not a catalog.
+      const unsafe: NativeReleaseCatalog = input;
+      // @ts-expect-error Intel macOS is not a native target.
+      nativeReleaseAssetStem(catalog.version, 'darwin-x64');
+    `);
+    const result = spawnSync(process.execPath, [path.resolve('node_modules/typescript/bin/tsc'),
+      '--ignoreConfig', '--noEmit', '--strict', '--module', 'NodeNext', '--moduleResolution', 'NodeNext',
+      '--target', 'es2022', '--types', 'node', '--typeRoots', path.resolve('node_modules/@types'), file],
+    { cwd: f.parent, encoding: 'utf8', shell: false, timeout: 30_000, maxBuffer: 1024 * 1024 });
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stdout + result.stderr).toBe(0);
   });
 });
 
