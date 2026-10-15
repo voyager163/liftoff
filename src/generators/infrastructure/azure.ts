@@ -711,11 +711,14 @@ Missing, malformed, extra, current-recomputed, or mismatched ownership evidence
 is a configuration mismatch; generated tfvars never contain these private values.
 The HCL retains AcrPull only. AcrPush stays externally owned and is not declared.
 
-The current artifact dispatch selects a mutable default-branch ref. Earlier
-readback/guards and later provenance refusal cannot prevent an unreviewed
-replacement workflow's earlier transmission. Do not enable real dispatch until
-the separately owned immutable execution-tag binding and admission interface
-is integrated and independently qualified; there is no safe mutable-ref fallback.
+Artifact dispatch requires the existing protected lightweight
+\`liftoff-execution-<full-source-SHA>\` tag, exact reviewed \`sourceTreeSha\`,
+independent no-bypass tag update/deletion protection/provider-grant/commit/tag
+readback and tag-specific runner admission. Admission is read-only and repeated
+before dispatch and accepted/resumed observation: no tag/policy writer,
+task14.3 authority, branch or raw-SHA fallback is borrowed. Old plans need new
+review. Public-v8 activation, actual protected production ports/host and
+disposable execution-ref qualification remain unavailable.
 
 ## Application bootstrap reference
 

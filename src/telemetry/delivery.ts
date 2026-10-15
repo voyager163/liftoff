@@ -25,7 +25,7 @@ interface PreparedDelivery<T> {
   readonly event: T;
 }
 
-// These inputs are not consent or release-ownership proofs. No production project caller exists yet.
+// These inputs are not consent or release-ownership proofs; callers validate those independently.
 export interface PreparedTelemetrySlots {
   readonly command?: PreparedDelivery<TelemetryCommandEvent>;
   readonly project?: PreparedDelivery<ProjectTelemetryEvent>;
@@ -52,7 +52,16 @@ export interface TelemetryDelivery {
 }
 
 export function isTelemetryEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.LIFTOFF_TELEMETRY !== '0' && env.DO_NOT_TRACK !== '1' && env.CI !== 'true';
+  return telemetryDisabledResult(env) === undefined;
+}
+
+export function telemetryDisabledResult(
+  env: NodeJS.ProcessEnv = process.env
+): Extract<TelemetryDeliveryResult, { status: 'disabled' }> | undefined {
+  if (env.LIFTOFF_TELEMETRY === '0' || env.DO_NOT_TRACK === '1') {
+    return { status: 'disabled', reason: 'global-opt-out', attempted: false };
+  }
+  return env.CI === 'true' ? { status: 'disabled', reason: 'ordinary-ci', attempted: false } : undefined;
 }
 
 export function createTelemetryDelivery(options: TelemetryDeliveryOptions = {}): TelemetryDelivery {
@@ -68,13 +77,6 @@ export function createTelemetryDelivery(options: TelemetryDeliveryOptions = {}):
   let timer: ReturnType<typeof setTimeout> | undefined;
   let resolveStopped!: (reason: StopReason) => void;
   const stopped = new Promise<StopReason>((resolve) => { resolveStopped = resolve; });
-
-  function disabledResult(): TelemetryDeliveryResult | undefined {
-    if (env.LIFTOFF_TELEMETRY === '0' || env.DO_NOT_TRACK === '1') {
-      return { status: 'disabled', reason: 'global-opt-out', attempted: false };
-    }
-    return env.CI === 'true' ? { status: 'disabled', reason: 'ordinary-ci', attempted: false } : undefined;
-  }
 
   function stop(reason: StopReason): void {
     if (state !== undefined) return;
@@ -114,7 +116,7 @@ export function createTelemetryDelivery(options: TelemetryDeliveryOptions = {}):
     channel: 'command' | 'project',
     prepared: PreparedDelivery<TelemetryCommandEvent | ProjectTelemetryEvent>
   ): Promise<TelemetryDeliveryResult> {
-    const disabled = disabledResult();
+    const disabled = telemetryDisabledResult(env);
     if (disabled) return disabled;
     if (claimed[channel]) return { status: 'failed', reason: 'duplicate-channel', attempted: false };
     claimed[channel] = true;
@@ -144,7 +146,7 @@ export function createTelemetryDelivery(options: TelemetryDeliveryOptions = {}):
     }
     let attempted = false;
     const outcome = await withinBudget(async (): Promise<TelemetryDeliveryResult> => {
-      const disabled = disabledResult();
+      const disabled = telemetryDisabledResult(env);
       if (disabled) return disabled;
       const before = currentStop();
       if (before) return { status: 'failed', reason: before, attempted: false };

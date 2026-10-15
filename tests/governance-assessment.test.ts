@@ -266,6 +266,7 @@ jobs:
     const rule = (approvals: number, codeowners = false, lastPush = false) => [{
       target: 'branch',
       enforcement: 'active',
+      conditions: { ref_name: { include: ['~ALL'], exclude: [] } },
       rules: [{
         type: 'pull_request',
         parameters: {

@@ -150,7 +150,7 @@ async function prepared(
     throw new Error('Missing package target fixture.');
   }
   const preparationCwd = preparationTarget?.pathParts.slice(0, -1);
-  let inspection: Parameters<typeof saveAdoptionVerificationPlan>[8];
+  let inspection: Parameters<typeof saveAdoptionVerificationPlan>[7];
   if (preparation) {
     await put(root, [...preparationCwd!, 'package.json'], JSON.stringify({
       name: 'preserved-application',

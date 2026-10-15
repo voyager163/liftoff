@@ -164,7 +164,11 @@ describe('project-independent capability discovery', () => {
     expect(report.runtime).toMatchObject({ minimumNodeVersion, distribution: 'node/npm', nativeDistribution: false });
     expect(report.boundaries).toMatchObject({
       thirdPartyPluginLoading: false, publicStatefulMigration: false,
-      projectTelemetryEnrollment: false, capabilityIsApproval: false
+      projectTelemetryEnrollment: true, capabilityIsApproval: false
+    });
+    expect(report.schemas.projectTelemetry).toMatchObject({
+      report: 1, record: 1, disclosureVersion: 1, externalCheckoutConsent: true,
+      heartbeat: { enableAvailable: false, ciReportingAvailable: false, reviewedExactEntryRemoval: true }
     });
     expect(report.boundaries.privateApis).toContain('Historical successor creation is limited to the separately advertised currentUpdate scope');
   });
