@@ -61,6 +61,26 @@ Unavailable readers and Azure completion peers remain explicit blockers, and no
 prerequisite session is issued. This private observation is not yet wired into
 public review or approval/apply routing and does not qualify a native host.
 
+The private `observeWorkflowContextProviderProof` can independently reread a
+retained run's source, immutable execution admission, jobs, checks and actual
+validator cause without requiring an already issued effect. It accepts only a
+closed retained reference and an original first-party read-only observation
+runtime. Runtime or transport substitution and expiry invalidate that runtime;
+the reader neither creates a new time budget nor renews the original dispatch
+window. The exact GitHub Actions application lookup is a bounded GET-only route,
+not general application access.
+
+These are provider facts, not proof of original plan ownership or release-owned
+context semantics. The returned prerequisite session is always null and execution
+is explicitly not authorized. Historical terminal metadata remains readable
+without acquiring fresh qualification. The original authoritative reader still
+requires its original plan and current source5 carrier before and after readback;
+the new reader cannot dispatch, journal, issue approval or finalize a phase.
+It retains the existing independently observed operator classic-OAuth admission;
+automation `GITHUB_TOKEN` and other unsupported credential modes are not inferred
+or substituted. Isolated HTTP fixture outcomes are not real hosted green/red,
+native-host, Azure-peer or four-family qualification.
+
 The packaged source entry `dist/workflow-context-validator.js` supplies finite
 real validator bodies for source integrity, backend tests, worker tests, frontend
 builds and framework source. It accepts only `--validator <subject> --source-sha

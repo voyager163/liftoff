@@ -18,7 +18,8 @@ import {
 } from './workflow-requirements.js';
 import {
   assertWorkflowAuthority, captureWorkflowBinding, readWorkflowBytes, workflowDigest, workflowFailure,
-  workflowOperation, workflowRuntime, recordWorkflowCheckpoint, workflowReviewedPlans, type WorkflowEffectInput
+  workflowOperation, workflowRuntime, recordWorkflowCheckpoint, workflowReviewedPlans,
+  assertWorkflowObservationRuntime, type WorkflowEffectInput, type WorkflowRuntime
 } from './workflow-runtime.js';
 import {
   isSource5WorkflowEffectInput, assertSource5WorkflowCurrentProof, assertSource5WorkflowMatrixEntries,
@@ -104,6 +105,21 @@ export interface WorkflowContextProof {
 export type WorkflowContextResult =
   | { status: 'pending'; checkpoint: WorkflowProofCheckpoint }
   | { status: 'completed'; checkpoint: WorkflowProofCheckpoint; proof: WorkflowContextProof };
+
+export interface WorkflowContextProviderObservation {
+  readonly status: 'observed';
+  readonly proof: WorkflowContextProof;
+  readonly originalPlan: 'not-validated';
+  readonly requiredContextSemantics: 'not-validated';
+  readonly prerequisiteSession: null;
+  readonly execution: 'not-authorized';
+}
+
+type WorkflowContextObservationRuntime = Pick<WorkflowRuntime, 'client' | 'assertWithinDeadline'>;
+
+function exactKeys(value: unknown, keys: readonly string[]): boolean {
+  return isRecord(value) && canonicalSha256(Object.keys(value).sort()) === canonicalSha256([...keys].sort());
+}
 
 function actualFamily(ref: string): ProtectedWorkflowFamily | null {
   if (ref === 'develop' || ref === 'main') return ref;
@@ -193,7 +209,7 @@ export function validateContextWorkflow(bytes: Buffer, binding: WorkflowContextB
 }
 
 async function observeSource(
-  runtime: ReturnType<typeof workflowRuntime>, binding: WorkflowContextBinding, requireCurrentRef: boolean
+  runtime: WorkflowContextObservationRuntime, binding: WorkflowContextBinding, requireCurrentRef: boolean
 ) {
   const repository = await runtime.client.get(`/repos/${binding.repository}`);
   if (repository.id !== binding.repositoryId || repository.full_name !== binding.repository) {
@@ -246,7 +262,7 @@ function validateRun(run: Record<string, unknown>, binding: WorkflowContextBindi
 }
 
 async function observeRun(
-  runtime: ReturnType<typeof workflowRuntime>, binding: WorkflowContextBinding, checkpoint: WorkflowProofCheckpoint,
+  runtime: WorkflowContextObservationRuntime, binding: WorkflowContextBinding, checkpoint: WorkflowProofCheckpoint,
   observedAt: string, recordDispatch?: WorkflowContextExecutionInput['recordWorkflowDispatch']
 ): Promise<WorkflowContextResult> {
   if (!checkpoint.runId) return { status: 'pending', checkpoint };
@@ -437,13 +453,75 @@ export async function readCurrentWorkflowContextProof(
   return readCurrentProof(input, captureWorkflowBinding(proof), workflowRuntime(input));
 }
 
-async function readCurrentProof(
-  input: WorkflowEffectInput, proof: WorkflowContextProof, runtime: ReturnType<typeof workflowRuntime>
-): Promise<WorkflowContextProof> {
+/** GET-only provider facts; original ownership, recipe semantics and current prerequisites remain separate gates. */
+export async function observeWorkflowContextProviderProof(
+  runtime: WorkflowRuntime, reference: WorkflowContextProof
+): Promise<WorkflowContextProviderObservation> {
+  assertWorkflowObservationRuntime(runtime);
+  const proof = captureWorkflowBinding(reference);
+  if (!exactKeys(proof, [
+    'kind', 'binding', 'bindingDigest', 'planDigest', 'runId', 'workflowId', 'attempt', 'conclusion',
+    'contexts', 'observedAt', 'dispatchedAt', 'observationDigest', 'executionAdmission'
+  ]) || !isRecord(proof.binding) || !exactKeys(proof.binding, [
+    'repository', 'repositoryId', 'family', 'ref', 'sourceSha', 'treeSha', 'executionRef',
+    'workflowPath', 'workflowDigest', 'contexts', 'mode', 'tokenSuppressedTrigger',
+    ...(proof.binding.violation === undefined ? [] : ['violation'])
+  ]) || !Array.isArray(proof.binding.contexts) || proof.binding.contexts.some(context =>
+    !exactKeys(context, ['jobId', 'name', 'validationStep']) ||
+    typeof context.jobId !== 'string' || typeof context.name !== 'string' || typeof context.validationStep !== 'string') ||
+    proof.binding.violation !== undefined && !exactKeys(proof.binding.violation,
+      ['path', 'parentSha', 'beforeDigest', 'afterDigest', 'context']) ||
+    proof.attempt !== 1 || !['success', 'failure'].includes(proof.conclusion) ||
+    !Array.isArray(proof.contexts) || proof.contexts.some(context =>
+      !exactKeys(context, ['name', 'jobId', 'checkRunId', 'applicationId', 'conclusion', 'validationStep'])) ||
+    !exactKeys(proof.executionAdmission, [
+      'kind', 'binding', 'protectingRulesetIds', 'barrierDigest', 'providerAdmissionDigest', 'observationDigest'
+    ]) || !isRecord(proof.executionAdmission) || !exactKeys(proof.executionAdmission.binding,
+      ['repository', 'repositoryId', 'sourceSha', 'treeSha', 'executionRef']) ||
+    typeof proof.observedAt !== 'string' || !Number.isFinite(Date.parse(proof.observedAt))) {
+    return workflowFailure('workflow-proof-observation', 'Provider observation requires one closed original run reference; imported authority, missing fields and unsupported attempts are not selectors.');
+  }
+  positiveId(proof.runId); positiveId(proof.workflowId);
+  workflowDigest(proof.planDigest); workflowDigest(proof.observationDigest);
+  if (proof.observationDigest !== canonicalSha256({
+    runId: proof.runId, workflowId: proof.workflowId, attempt: proof.attempt,
+    conclusion: proof.conclusion, contexts: proof.contexts, executionAdmission: proof.executionAdmission
+  })) {
+    return workflowFailure('workflow-proof-observation', 'The retained provider facts differ from their complete observation commitment.');
+  }
+  const binding = retainedProofBinding(proof);
+  const reader = {
+    client: new GitHubActivationClient({
+      request(request) {
+        assertWorkflowObservationRuntime(runtime);
+        if (request.method !== 'GET') {
+          return workflowFailure('workflow-observation-only', 'Provider proof observation cannot submit an effect.');
+        }
+        return runtime.client.transport.request(request);
+      }
+    }),
+    assertWithinDeadline: () => assertWorkflowObservationRuntime(runtime)
+  };
+  const observed = await observeRetainedProof(reader, proof, binding, () => new Date().toISOString());
+  assertWorkflowObservationRuntime(runtime);
+  return captureWorkflowBinding({
+    status: 'observed', proof: observed, originalPlan: 'not-validated',
+    requiredContextSemantics: 'not-validated', prerequisiteSession: null, execution: 'not-authorized'
+  });
+}
+
+function retainedProofBinding(proof: WorkflowContextProof): WorkflowContextBinding {
   const binding = validateWorkflowContextBinding(proof.binding);
   if (proof.kind !== 'workflow-context-proof.v1' || proof.bindingDigest !== canonicalSha256(binding)) {
     return workflowFailure('workflow-proof-current', 'Independent proof readback requires the exact complete source binding.');
   }
+  return binding;
+}
+
+async function readCurrentProof(
+  input: WorkflowEffectInput, proof: WorkflowContextProof, runtime: ReturnType<typeof workflowRuntime>
+): Promise<WorkflowContextProof> {
+  const binding = retainedProofBinding(proof);
   if (isSource5WorkflowEffectInput(input)) await assertSource5WorkflowCurrentProof(input, proof);
   const plans = workflowReviewedPlans(input);
   if (!plans.some((plan) => plan.planDigest === proof.planDigest &&
@@ -452,6 +530,15 @@ async function readCurrentProof(
     plan.operations.some((operation) => canonicalSha256(operation.inputs) === canonicalSha256(binding)))) {
     return workflowFailure('workflow-proof-current', 'Retained proof has no independently loaded original plan for this identity, baseline and exact dispatch binding.');
   }
+  const observed = await observeRetainedProof(runtime, proof, binding, () => (input.clock?.() ?? input.now).toISOString());
+  if (isSource5WorkflowEffectInput(input)) await assertSource5WorkflowCurrentProof(input, proof);
+  return observed;
+}
+
+async function observeRetainedProof(
+  runtime: WorkflowContextObservationRuntime, proof: WorkflowContextProof,
+  binding: WorkflowContextBinding, observedAt: () => string
+): Promise<WorkflowContextProof> {
   const dispatchedAt = proof.dispatchedAt;
   if (typeof dispatchedAt !== 'string' || !Number.isFinite(Date.parse(dispatchedAt))) {
     return workflowFailure('workflow-proof-current', 'Independent current proof must preserve its original durable dispatch time.');
@@ -459,12 +546,11 @@ async function readCurrentProof(
   const observed = await observeRun(runtime, binding, {
     bindingDigest: proof.bindingDigest, planDigest: proof.planDigest,
     dispatchedAt, workflowId: positiveId(proof.workflowId), stage: 'accepted', runId: proof.runId
-  }, (input.clock?.() ?? input.now).toISOString());
+  }, observedAt());
   if (observed.status !== 'completed' || observed.proof.observationDigest !== proof.observationDigest ||
     observed.proof.workflowId !== proof.workflowId) {
     return workflowFailure('workflow-proof-current', 'Actual current jobs/checks/source no longer match the retained proof.');
   }
-  if (isSource5WorkflowEffectInput(input)) await assertSource5WorkflowCurrentProof(input, proof);
   return observed.proof;
 }
 
