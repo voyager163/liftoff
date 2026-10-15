@@ -3568,3 +3568,102 @@ publication readiness or landing state. No unfiltered full suite or coverage
 was rerun for this test-only successor, and the exact `ce84792f`
 qualification is not relabeled as qualification of `3ff7b31f`. OpenSpec
 remains 83/136 complete; tasks 18.1 and 18.2 remain unchecked.
+
+### Qualified coverage and failure-attribution integration, 2026-10-15
+
+The reviewed exact-8eb coverage projection through final tree `53d08df8` and
+the independent `a52c28b8` aggregate failure-attribution correction were
+integrated as source commit
+`9f9cb7941ea16726780b3e67505b94831eb4a723`. The seven changed paths are
+`CONTRIBUTING.md`, `docs/cli-reference.md`, `scripts/coverage-gate.mjs`,
+`src/application/governance/modern-local-execution.ts`,
+`src/domain/governance/activation/modern-local-runtime.ts`,
+`tests/coverage-gate.test.ts` and `tests/modern-local-execution.test.ts`.
+The later exact three-file protected-custody correction
+`f93a5c626de32c25f5eb42983a07a6cd27cbe52f` was then cherry-picked as
+`bd7635d8c15988f1d701dd281ad691045224e3ce`; all three resulting files were
+byte-identical to the reviewed owning commit.
+
+The first frozen `9f9cb794` full-suite attempt remains failed evidence. It
+used `/opt/homebrew/bin/openspec`, whose global package still reported
+OpenSpec 1.11.0 but had 273 files differing from the preserved qualified
+package and a total byte count of 11,849,959 instead of 11,862,860. The run
+therefore failed only the two native OpenSpec distribution-identity bodies:
+one file failed, 316 passed and five were skipped; 10,590 tests passed, two
+failed and 117 were skipped in 4,798.22 seconds. Coverage did not start.
+Rebinding to
+`files/macos-toolchain/openspec-qualified-cutoff-1.11.0/bin/openspec`
+made both bodies pass without any source, expectation, inventory or limit
+change. The failed receipt remains under
+`files/native-qualification-9f9cb794`; it is not qualification evidence.
+
+The first clean `bd7635d8` retry used that preserved qualified OpenSpec
+distribution. Its unfiltered one-worker suite passed 317 files with five
+fully skipped files and passed 10,602 tests with 117 skipped tests in
+4,127.01 seconds. Its first complete CLI coverage command also executed all
+322 files and all 10,719 test records without a test failure, and all four raw
+metrics exceeded the unchanged 80.01% floor. The new final-map validator
+nevertheless rejected five genuine pinned-provider records because V8 had
+emitted signed synthetic else-branch counters such as `[1024, -993]`. The
+failed report, summary, test result and evidence bytes are retained under
+`files/native-qualification-bd7635d8/failed-cli-report`, including their
+`sha256.txt`. This was an introduced validator defect; the passing percentages
+from that failed verdict are not qualification evidence.
+
+Commit `cdadc3911519af0e19d2e2dbd7b9ed22db614a23`, tree
+`8fb17cbc501bf62311da3b0176945760e1b8b403`, corrects only that defect. It
+accepts signed safe-integer branch-hit counters that the pinned V8 provider
+summarizes as uncovered while continuing to require nonnegative safe-integer
+statement/function counters, complete matching hit maps, exact path identity,
+and provider-derived agreement with the saved summary. The regression corpus
+now distinguishes valid signed provider output from malformed, unsafe or
+contradictory records. Syntax, affected strict checking, 155/155 coverage-gate
+tests, build, project no-emit, repository policy and strict OpenSpec validation
+passed before the final clean run.
+
+The complete clean qualification sequence then passed on exact committed
+`cdadc391` bytes using Node 24.21.0, npm 12.0.2, OpenTofu 1.12.6, CPython
+3.14.7, uv 0.12.7, Go 1.27.0 and the preserved OpenSpec 1.11.0 cutoff. The
+environment retained `CI=1`, `TERM=dumb`, `NO_COLOR=1`,
+`LIFTOFF_OPENSPEC_B_TESTS=1`, `OB1_VERSION_REMAINING=2`,
+`OB1_SUPPORT_REMAINING=10`, `LIFTOFF_OI_TESTS=1` and
+`LIFTOFF_HCL_TEST_LANE=native`; source-complete invocations retained one
+worker and every existing inventory, timeout and floor.
+
+- Supported-stack and build passed.
+- The unfiltered suite passed 317 files with five skipped files and 10,602
+  tests with 117 skipped tests in 3,976.07 seconds.
+- CLI coverage repeated the same test totals in 4,645.22 seconds and passed
+  511 executable source files with digest
+  `sha256:5890d41f355eb05a47162ff87bb11d5e2463547ae4bdea2ff024f5e5a2263fb3`.
+  Statements were 40,996/45,681 (89.7440%), branches 36,587/42,614
+  (85.8567%), functions 7,713/8,114 (95.0579%) and lines 36,339/39,555
+  (91.8695%). Independent saved-evidence verification passed.
+- The workflow's 15-file custody/history selection passed 485 tests with one
+  unchanged skip in 60.61 seconds.
+- Independent gateway coverage passed nine files and 211/211 tests in 3.57
+  seconds. Its four-source digest is
+  `sha256:3e32017987886b56fa30ecae1c890674c61f073b5d8b17bf1cfa43c9db8a2c8f`;
+  statements were 243/258 (94.1860%), branches 182/223 (81.6143%),
+  functions 64/68 (94.1176%) and lines 233/245 (95.1020%). Independent saved
+  verification passed.
+- Installed package smoke passed for `@msn-control/liftoff@0.12.3`.
+  Repository policy, strict noninteractive OpenSpec validation,
+  `git diff --check`, exact HEAD/tree/index identity and the final clean-tree
+  check also passed.
+
+The complete retained receipt is
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/native-qualification-cdadc391`.
+Its 29-file checksum ledger has SHA-256
+`76402ffa39ea4ec6982aff8e9071e9bbc63f09612d7de9f2835d145563446880`.
+The CLI and gateway evidence records have SHA-256 values
+`0b7497a0a0bf257c614cf2f6fbc1b6334c6603ca737a72f677abd6bcfa5408fc`
+and
+`3131316c5cf3ee85adc7d75d1f5951cbe633482fd5d68a14f90016949c936685`.
+
+This qualifies only the exact `cdadc391` source revision on the native Apple
+Silicon host and its independent local telemetry-gateway package. It does not
+qualify later Root unions, the five intentionally skipped native/disposable
+families, live cloud providers, publication, signing, deployment, landing or
+merge order. No OpenSpec planning checkbox was edited here; Root retains the
+authoritative ledger and dependency-order integration.
