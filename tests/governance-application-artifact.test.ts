@@ -833,6 +833,43 @@ describe('immutable application publication and independent readback', () => {
       { dockerfilePath: 'backend/Custom.Dockerfile' },
       { sourceTransmissionApproved: false }
     ]) {
+  it.each(['accepted', 'resumed'] as const)(
+    'refuses a different actual workflow run at the exact %s publication handle', async (kind) => {
+      const f = await fixture(true);
+      if (kind === 'resumed') {
+        f.transport.runStatus = 'in_progress';
+        const pending = await executeApplicationArtifactPublication(f.input);
+        expect(pending).toMatchObject({ status: 'pending', operation: { operationId: 'github-actions:901' } });
+        f.input.inspection.state.phases[f.phase.id].operation = {
+          ...pending.operation!, planDigest: f.input.plan.planDigest
+        };
+        f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+        f.transport.runStatus = 'completed';
+      } else {
+        f.transport.dispatchResponse = {
+          workflow_run_id: 901, run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
+          html_url: 'https://github.com/owner/repo/actions/runs/901'
+        };
+      }
+      const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+      const run = f.transport.run.bind(f.transport);
+      vi.spyOn(f.transport, 'run').mockImplementation(() => ({ ...run(), id: 999 }));
+      const jobReads = f.transport.calls.filter((entry) => entry.path.includes('/jobs')).length;
+      const outcome = await executeApplicationArtifactPublication(f.input);
+      expect(outcome).toMatchObject({
+        status: kind === 'accepted' ? 'pending' : 'blocked',
+        blocker: expect.stringMatching(/exact.*workflow.*handle/),
+        ...(kind === 'accepted' ? { operation: { operationId: 'github-actions:901', status: 'running' } } : {})
+      });
+      expect(outcome.evidencePayload).toBeUndefined();
+      expect(outcome.outputs?.values.immutableImage).toBeUndefined();
+      expect(progress.mock.calls.every(([entry]) => entry.operation.operationId === 'github-actions:901' &&
+        entry.operation.status === 'running')).toBe(true);
+      expect(f.transport.calls.filter((entry) => entry.path.includes('/jobs'))).toHaveLength(jobReads);
+      expect(f.runner.calls.filter((entry) => entry.executable === 'gh')).toEqual([]);
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    }
+  );
       const changed = { ...f.inputs, phases: { ...f.inputs.phases,
         'application-artifact-ready': { ...f.inputs.phases['application-artifact-ready'], ...change } } };
       const inspection = await coverageInspection({ root: f.root, phaseId: f.phase.id,

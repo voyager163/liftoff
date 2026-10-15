@@ -370,7 +370,12 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
       await input.recordApplicationProgress?.({ operation: handle, outputs, liveReadback: currentReadback });
     }
     const run = await client.get(handle.resourceId);
-    boundRun(run, binding, dispatchedPlan.createdAt);
+    const observedRunId = boundRun(run, binding, dispatchedPlan.createdAt);
+    if (handle.resourceId !== `/repos/${binding.repository}/actions/runs/${observedRunId}` ||
+      handle.operationId !== `github-actions:${observedRunId}`) {
+      return applicationError('application-run-mismatch',
+        'Actual artifact workflow readback differs from the exact recorded workflow run handle; no replacement run or completion proof was adopted.');
+    }
     handle = { ...handle, observedAt: (input.clock?.() ?? input.now).toISOString() };
     const liveReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
       id: run.id, headSha: run.head_sha, workflowPath: run.path, runAttempt: run.run_attempt,
