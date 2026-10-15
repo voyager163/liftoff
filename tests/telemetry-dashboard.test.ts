@@ -241,7 +241,7 @@ describe('fixed-dataset semantic oracle (not Azure query execution)', () => {
 });
 
 describe('operator, privacy and non-destructive boundaries', () => {
-  it('pins providers, avoids resource-group/workspace/state ownership and scopes Logs identity', async () => {
+  it('pins providers, avoids resource-group/workspace/state ownership and scopes Logs and DCR metrics identity', async () => {
     const [resource, resourceVersions, dashboard, dashboardVersions] = await Promise.all([
       readFile(path.join(root, 'grafana', 'main.tf'), 'utf8'),
       readFile(path.join(root, 'grafana', 'versions.tf'), 'utf8'),
@@ -253,6 +253,11 @@ describe('operator, privacy and non-destructive boundaries', () => {
     expect(dashboardVersions).toContain('version = "4.49.0"');
     expect(resource).toMatch(/scope\s*=\s*data\.azurerm_log_analytics_workspace\.telemetry\.id/);
     expect(resource).toContain('"Log Analytics Reader"');
+    expect(resource).toMatch(/scope\s*=\s*data\.azurerm_monitor_data_collection_rule\.telemetry\.id/);
+    expect(resource).toContain('"Monitoring Reader"');
+    expect(resource).toContain('"dcr-liftoff-telemetry-f5be1618"');
+    expect(resource).toContain('data.azurerm_monitor_data_collection_rule.telemetry.location == "koreacentral"');
+    expect(resource).not.toMatch(/scope\s*=\s*data\.azurerm_resource_group\.telemetry\.id/);
     expect(resource).toContain('prevent_destroy = true');
     expect(resource).toMatch(/api_key_enabled\s*=\s*false/);
     expect(resource).toMatch(/location\s*=\s*"koreacentral"/);
@@ -279,6 +284,31 @@ describe('operator, privacy and non-destructive boundaries', () => {
     expect(source).not.toMatch(/grafana_contact_point|notification_policy|email|webhook/i);
   });
 
+  it('defines only the observed DCR transform metric with a bounded window and independent enablement', async () => {
+    const [source, vars] = await Promise.all([
+      readFile(path.join(root, 'dashboards', 'ingestion-faults.tf'), 'utf8'),
+      readFile(path.join(root, 'dashboards', 'variables.tf'), 'utf8')
+    ]);
+    expect(source).toContain('grafana_rule_group" "ingestion_faults"');
+    expect(source).toMatch(/interval_seconds\s*=\s*60/);
+    expect(source).toMatch(/for\s*=\s*"5m"/);
+    expect(source).toMatch(/from\s*=\s*900/);
+    expect(source).toMatch(/queryType\s*=\s*"Azure Monitor"/);
+    expect(source).toMatch(/aggregation\s*=\s*"Count"/);
+    expect(source).toMatch(/timeGrain\s*=\s*"PT1M"/);
+    expect(source).toMatch(/metricName\s*=\s*"TransformationErrors_Count"/);
+    expect(source).toMatch(/resourceName\s*=\s*"dcr-liftoff-telemetry-f5be1618"/);
+    expect(source).toMatch(/metricNamespace\s*=\s*"Microsoft\.Insights\/dataCollectionRules"/);
+    expect(source).toContain('!var.alerts_enabled || !var.ingestion_fault_alerts_enabled');
+    expect(vars).toMatch(/variable "ingestion_fault_alerts_enabled"[\s\S]*?default\s*=\s*false/);
+    expect(source).toMatch(/no_data_state\s*=\s*"NoData"/);
+    expect(source).toMatch(/exec_err_state\s*=\s*"Error"/);
+    expect(source).toContain('type = "sum"');
+    expect(source).toContain('type = "gt", params = [0]');
+    expect(source).not.toMatch(/ApiCallReceived|LiftoffCommandEvents|LiftoffProjectEvents|fill|coalesce|dimensionFilters|grafana_contact_point|notification_policy|email|webhook/i);
+    expect(source).toContain('does not verify gateway/auth/network health or project activity');
+  });
+
   it('documents real blockers, no deployment, retention states, cost and safe rollback across related READMEs', async () => {
     const [operator, bootstrap, privacy, tasks] = await Promise.all([
       readFile(path.join(root, 'README.md'), 'utf8'),
@@ -289,6 +319,10 @@ describe('operator, privacy and non-destructive boundaries', () => {
     for (const term of ['NotRegistered', '$0.04617/hour', '$6/month', 'not an X1/X2', '180 days', 'Verified ingestion-fault',
       'NoData', '40 days', 'not execution', 'GRAFANA_AUTH', 'https://dashboard.azure.com', 'does **not stop', 'distinct backend keys']) {
       expect(operator).toContain(term);
+    }
+    for (const term of ['TransformationErrors_Count', 'DCR-scoped', '5-minute pending', '15-minute window',
+      'ingestion_fault_alerts_enabled', 'empty timeseries', 'not end-to-end ingestion health', 'sensitive']) {
+      expect(operator.replace(/\s+/g, ' ')).toContain(term);
     }
     expect(bootstrap).toContain('Grafana does not own the state boundary');
     for (const term of ['unavailable', 'expired', 'disabled', 'stale/unknown', 'forge', 'not a census', 'Schema-1', 'synthetic']) expect(privacy).toContain(term);
