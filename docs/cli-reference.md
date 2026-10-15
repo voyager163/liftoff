@@ -997,6 +997,12 @@ only. The reusable source admission requires independently verified Ed25519
 qualification, exact repository/commit/version/target/manifest/inventory,
 referenced platform evidence and downloaded deployed assets with bound provenance
 and SBOM. Fixtures do not qualify a real manager or public distribution.
+Linux also requires the downloaded archive's detached Ed25519 signature against
+its separately approved archive key; qualification assertions or catalog hashes
+alone are insufficient. The bounded default native stable reader checks the
+canonical GitHub catalog, tag/main/run identity and deployed bytes. It remains
+inert before HTTP while the real signing/namespace policy is null, supplies no
+staging root, and does not establish selected-manager availability.
 
 On macOS, a verified global installation at the standard Homebrew prefix can
 remain eligible when Homebrew Node/npm reports its versioned Cellar prefix.
@@ -1017,7 +1023,7 @@ Nonstandard, missing, contradictory or racing receipts fail closed. WinGet
 ownership remains an explicit provider port pending authoritative installed
 AppId/publisher/certificate/source observations.
 
-Canonical npm's stable `latest` metadata selects one exact target. The effective
+Canonical npm's stable `latest` metadata selects one exact target for npm owners. The effective
 configured npm registry remains the delivery path and must expose that exact
 version. Liftoff never edits `.npmrc`, embeds registry credentials, forces a
 canonical bypass around a stale mirror, invokes elevation, installs a

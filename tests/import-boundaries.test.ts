@@ -1471,10 +1471,10 @@ function nativeAdmissionHelperViolations(source: string, file: string): string[]
   const exports = body.filter(node => node.type !== 'ImportDeclaration');
   return [
     ...(JSON.stringify(imports) === JSON.stringify(expectedImports) ? [] : ['fixed admission dependency closure differs']),
-    ...(exports.length === 2 && exports.every(node => node.type === 'ExportNamedDeclaration' &&
+    ...(exports.length === 3 && exports.every(node => node.type === 'ExportNamedDeclaration' &&
       isAstRecord(node.declaration) && node.declaration.type === 'FunctionDeclaration') &&
       exports.map(node => isAstRecord(node.declaration) ? identifierName(node.declaration.id) : undefined).sort().join() ===
-      'assertNativePublicationEvidence,verifyNativeEvidenceSignature'
+      'assertNativePublicationEvidence,verifyNativeBytesSignature,verifyNativeEvidenceSignature'
       ? [] : ['admission has unexpected exports or top-level effects']),
     ...pluginPurityViolations(source, file),
     ...loaderReferenceViolations(source, file)

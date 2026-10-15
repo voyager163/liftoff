@@ -15,8 +15,8 @@ import {
   assertNativeReleaseCatalog, nativeCatalogSubjects, nativeEvidenceKinds,
   nativeReleaseAssetStem, nativeReleaseCatalogFilename, nativeReleaseTargets
 } from '../distribution/native/native-release-catalog.mjs';
-import policy from '../distribution/native/release-policy.json';
-import inputs from '../distribution/native/inputs.json';
+import policy from '../distribution/native/release-policy.json' with { type: 'json' };
+import inputs from '../distribution/native/inputs.json' with { type: 'json' };
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -235,13 +235,17 @@ describe('complete native + npm release assembly (ephemeral synthetic signing on
     const f = await fixture(), target = 'win32-x64';
     const directory = path.join(f.handoff, 'native', target), file = path.join(directory, 'native-release.json');
     const record = await readJson(file);
-    const originalMode = (await bundleFile(path.join(directory, record.files[0].filename))).mode;
+    const original = await bundleFile(path.join(directory, record.files[0].filename));
+    if (!('mode' in original)) throw new Error('Expected the fixture file identity without content.');
+    const originalMode = original.mode;
     for (const item of record.files) item.mode = originalMode === 0o666 ? 0o644 : 0o666;
     await writeFile(file, jsonBytes(record));
     const digest = hash(jsonBytes(record));
     await expect(verifyNativeArchive(directory, digest, f.context.commit)).rejects.toThrow('mode changed');
     await expect(verifyNativeArchiveSubjects(directory, digest, f.context.commit)).resolves.toEqual(record);
-    expect((await bundleFile(path.join(directory, record.files[0].filename))).mode).toBe(originalMode);
+    const unchanged = await bundleFile(path.join(directory, record.files[0].filename));
+    if (!('mode' in unchanged)) throw new Error('Expected the unchanged fixture file identity without content.');
+    expect(unchanged.mode).toBe(originalMode);
   });
 
   it('rejects missing, duplicated, escaped or unauthenticated catalog locators', async () => {
@@ -256,6 +260,7 @@ describe('complete native + npm release assembly (ephemeral synthetic signing on
       expect(() => assertNativeReleaseCatalog(catalog)).toThrow();
     }
     expect(() => nativeReleaseAssetStem('1.2.3/../outside', 'darwin-arm64')).toThrow();
+    // @ts-expect-error Unsupported targets must also be rejected at runtime.
     expect(() => nativeReleaseAssetStem('1.2.3', 'darwin-x64')).toThrow();
     const url = pathToFileURL(path.resolve('distribution/native/native-release-catalog.mjs')).href;
     const resultImport = spawnSync(process.execPath, ['--input-type=module', '-e',
@@ -265,17 +270,29 @@ describe('complete native + npm release assembly (ephemeral synthetic signing on
     expect(resultImport.stdout.trim()).toBe(nativeReleaseCatalogFilename);
   });
 
-  it('provides a strict inert declaration without importing the release builder', async () => {
+  it('strictly checks the inert catalog consumer and the release-set fixture boundary', async () => {
     const f = await fixture(), file = path.join(f.parent, 'catalog-consumer.mts');
     const module = path.resolve('distribution/native/native-release-catalog.mjs').split(path.sep).join('/');
+    const admission = path.resolve('distribution/native/native-release-admission.mjs').split(path.sep).join('/');
     await writeFile(file, `
+      import type { Buffer } from 'node:buffer';
       import { assertNativeReleaseCatalog, nativeCatalogSubjects, nativeReleaseAssetStem, nativeReleaseTargets,
         type NativeReleaseCatalog, type NativeReleaseSubject } from ${JSON.stringify(module)};
+      import { assertNativePublicationEvidence, verifyNativeBytesSignature, verifyNativeEvidenceSignature }
+        from ${JSON.stringify(admission)};
       declare const input: unknown;
+      declare const bytes: Buffer, publicKey: Buffer | string, fingerprint: string;
+      const verified: void = verifyNativeBytesSignature(bytes, bytes, publicKey, fingerprint);
+      const parsed: unknown = verifyNativeEvidenceSignature(bytes, bytes, publicKey, fingerprint);
+      const publication: unknown = assertNativePublicationEvidence(input, input);
       const catalog: NativeReleaseCatalog = assertNativeReleaseCatalog(input);
       const subjects: NativeReleaseSubject[] = nativeCatalogSubjects(catalog);
       const filename: string = nativeReleaseAssetStem(catalog.version, nativeReleaseTargets[0]);
-      void [subjects, filename];
+      void [subjects, filename, verified, parsed, publication];
+      // @ts-expect-error The binary verifier requires original bytes, not a decoded string.
+      verifyNativeBytesSignature('decoded text', bytes, publicKey, fingerprint);
+      // @ts-expect-error Verification does not return parsed or transformed bytes.
+      const transformed: Buffer = verifyNativeBytesSignature(bytes, bytes, publicKey, fingerprint);
       // @ts-expect-error Unvalidated input is not a catalog.
       const unsafe: NativeReleaseCatalog = input;
       // @ts-expect-error Intel macOS is not a native target.
@@ -283,7 +300,9 @@ describe('complete native + npm release assembly (ephemeral synthetic signing on
     `);
     const result = spawnSync(process.execPath, [path.resolve('node_modules/typescript/bin/tsc'),
       '--ignoreConfig', '--noEmit', '--strict', '--module', 'NodeNext', '--moduleResolution', 'NodeNext',
-      '--target', 'es2022', '--types', 'node', '--typeRoots', path.resolve('node_modules/@types'), file],
+      '--target', 'es2022', '--types', 'node', '--typeRoots', path.resolve('node_modules/@types'),
+      '--allowJs', '--resolveJsonModule', '--esModuleInterop', '--skipLibCheck', 'false',
+      file, path.resolve('tests/native-release-set.test.ts')],
     { cwd: f.parent, encoding: 'utf8', shell: false, timeout: 30_000, maxBuffer: 1024 * 1024 });
     expect(result.error).toBeUndefined();
     expect(result.status, result.stdout + result.stderr).toBe(0);

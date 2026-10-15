@@ -25,9 +25,9 @@ const builderPaths = [
   'distribution/windows/launcher.c',
   'scripts/native-install.mjs', 'scripts/native-release.mjs',
   'distribution/native/release-policy.json', 'distribution/windows/liftoff.iss',
-  'distribution/native/native-release-admission.mjs',
+  'distribution/native/native-release-admission.mjs', 'distribution/native/native-release-admission.d.mts',
   'distribution/native/native-release-catalog.mjs', 'distribution/native/native-release-catalog.d.mts',
-  'scripts/native-release-set.mjs', 'scripts/release-artifact.mjs',
+  'scripts/native-release-set.mjs', 'scripts/native-release-set.d.mts', 'scripts/release-artifact.mjs',
   'distribution/linux/install.sh',
   'scripts/native-bundle.mjs', 'scripts/native-bundle-contract.mjs',
   'scripts/package-smoke-contract.mjs', 'scripts/coverage-gate.mjs', 'scripts/clean-build.mjs'
@@ -280,7 +280,7 @@ export async function buildNativeBundle({ output, runtimeArchive, windowsLaunche
   await chmod(path.join(bundle, launcher), 0o755);
   if (launcherInput) assert.deepEqual(await bundleFile(windowsLauncher), launcherInput, 'Windows launcher changed during build.');
   await mkdir(path.join(bundle, 'installation'));
-  for (const name of ['host.mjs', 'platforms.json', 'release-policy.json', 'native-release-admission.mjs',
+  for (const name of ['host.mjs', 'platforms.json', 'release-policy.json', 'native-release-admission.mjs', 'native-release-admission.d.mts',
     'native-release-catalog.mjs', 'native-release-catalog.d.mts']) {
     await copyFile(path.join(repositoryRoot, 'distribution/native', name), path.join(bundle, 'installation', name), constants.COPYFILE_EXCL);
   }
@@ -358,7 +358,7 @@ export async function verifyNativeBundle(directory) {
   assert.equal((await bundleFile(path.join(root, manifest.launcher))).sha256, windows
     ? manifest.launcherInput.sha256
     : (await bundleFile(path.join(repositoryRoot, 'distribution/native/launcher.sh'))).sha256, 'Launcher bytes differ.');
-  for (const name of ['host.mjs', 'platforms.json', 'release-policy.json', 'native-release-admission.mjs',
+  for (const name of ['host.mjs', 'platforms.json', 'release-policy.json', 'native-release-admission.mjs', 'native-release-admission.d.mts',
     'native-release-catalog.mjs', 'native-release-catalog.d.mts']) {
     assert.equal((await bundleFile(path.join(root, 'installation', name))).sha256,
       (await bundleFile(path.join(repositoryRoot, 'distribution/native', name))).sha256, 'Installed host admission differs.');

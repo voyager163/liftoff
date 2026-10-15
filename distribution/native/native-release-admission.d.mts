@@ -7,3 +7,7 @@ export function assertNativePublicationEvidence(
 export function verifyNativeEvidenceSignature(
   bytes: Buffer, signature: Buffer, publicKey: Buffer | string, expectedKeySha256: string
 ): unknown;
+
+export function verifyNativeBytesSignature(
+  bytes: Buffer, signature: Buffer, publicKey: Buffer | string, expectedKeySha256: string
+): void;

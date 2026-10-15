@@ -149,12 +149,17 @@ inspectOwnedInstallation(prefix)
 recoverOwnedInstallation({ prefix, expectedJournalSha256, expectedStaleLockSha256 })
 ```
 
-`distribution/native/native-release-admission.mjs` supplies the unchanged pure
+`distribution/native/native-release-admission.mjs` supplies the pure
 `assertNativePublicationEvidence` and `verifyNativeEvidenceSignature` functions,
-re-exported by the release script. Native bundles carry this inert module and
-adjacent release-policy/platforms JSON in `installation/`; importing admission
-does not import a builder, inspect Git or execute a release operation.
-The npm package also carries the inert module and adjacent JSON under
+re-exported by the release script. Its `verifyNativeBytesSignature` authenticates
+original binary bytes against the caller's approved Ed25519 SPKI SHA-256 and
+returns nothing; it does not parse JSON, select a signing principal or grant
+installation authority. The existing JSON verifier delegates to the same checks
+before parsing, preserving its results and failures. Native bundles carry this
+inert module, its adjacent `.d.mts` declaration and release-policy/platforms JSON
+in `installation/`; importing admission does not import a builder, inspect Git or
+execute a release operation.
+The npm package also carries the inert module, declaration and adjacent JSON under
 `distribution/native/`; installed runtime-only foreign-directory smoke checks
 exercise signer/source/inventory binding without builder or checkout imports.
 CLI admission defers loading through one exact literal package-relative edge.
@@ -261,6 +266,8 @@ not a PR SHA or manual dispatch. Every artifact must identify that same run,
 source and package version. No output directory is created before all input
 gates pass. An existing `publication/` is never overwritten; a later I/O failure
 retains its exact partial output and reports it as failure.
+The adjacent `scripts/native-release-set.d.mts` types the assembly library's
+inputs/results; the CLI still uses only the committed signing policy.
 
 The output is a flat immutable upload set plus `liftoff-native-release.json`
 (schema 1, kind `liftoff-native-release-catalog`). Archives and the signed Windows
@@ -312,8 +319,8 @@ It never executes Homebrew or Ruby or refreshes a source. The receipt format is
 derived from [Homebrew's pinned cask Tab implementation](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cask/tab.rb)
 and [metadata paths](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cask/metadata.rb).
 This is local attribution, not publisher authentication. The current null policy
-does not invoke that reader. No production WinGet reader or deployed native
-stable endpoint is registered; real manager/source/certificate facts and
+does not invoke that reader. No production WinGet reader is registered, and no
+qualified deployed native stable release is established; real manager/source/certificate facts and
 independent qualification remain required. Returning fixture observations does
 not qualify a provider. WinGet source currently admits only observed
 user-scope ownership; machine-scope installs are not migrated or elevated.
@@ -328,7 +335,11 @@ identity with final ref/release readbacks. It downloads only the selected target
 rejects unsafe redirects and oversized streams, and preserves the two-second
 metadata deadline. Returned bytes still require `lookupNativeStableCandidate` /
 `admitNativeStableMaterial`; no staging root or manager execution permission is
-created. This factory is not yet registered as the CLI's production stable reader.
+created. The upgrade port uses this default only behind approved policy;
+an explicit `stable: undefined` still disables it. The current null policy
+refuses before HTTP. Linux candidate admission independently verifies original
+archive bytes with the shared raw-byte primitive and the separately approved
+archive key, in addition to the qualification-envelope key and subject hashes.
 The npm package includes both inert catalog files; no builder is imported.
 
 Absent-cask preparation is distinct from upgrading an installed owner.

@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createNativeStableSource } from '../src/adapters/distribution/native-transport.js';
+import { createNativeUpgradePort } from '../src/adapters/distribution/native.js';
 import { authenticateNativeStableMetadata } from '../src/adapters/distribution/native-metadata.js';
 import { nativeCatalogSubjects, nativeReleaseCatalogFilename } from '../distribution/native/native-release-catalog.mjs';
 import { nativeInstallation } from './fixtures/native-stable-material.js';
 import { jsonResponse, nativeFixtureApi, nativeFixtureRelease, nativeTransportFixture } from './fixtures/native-stable-transport.js';
+import { upgradeWorld } from './fixtures/installer-upgrade.js';
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 const read = (world: ReturnType<typeof nativeTransportFixture>, signal = new AbortController().signal) =>
   createNativeStableSource(world.policy, { fetch: world.fetch }).readStable(nativeInstallation, signal);
@@ -15,6 +18,38 @@ const invalid = { reasonCode: 'native_invalid' };
 const latest = `${nativeFixtureApi}/releases/latest`;
 
 describe('bounded read-only native stable transport', () => {
+  it('wires the qualified default reader through independent archive admission without inferring manager availability or a staging root', async () => {
+    const world = nativeTransportFixture();
+    vi.stubGlobal('fetch', world.fetch);
+    const host = upgradeWorld();
+    const port = createNativeUpgradePort({ ...host.dependencies, readJson: async () => world.policy }, { cask: undefined });
+    const candidate = await port.stable(nativeInstallation, '/virtual/neutral');
+    expect(candidate).toMatchObject({ version: '0.13.0', target: 'linux-x64', sourceCommit: world.record.commit });
+    expect(candidate).not.toHaveProperty('bundleRoot');
+    await expect(port.channel(nativeInstallation, candidate, '/virtual/neutral')).rejects.toMatchObject({ reasonCode: 'channel_unavailable' });
+    await expect(port.apply(nativeInstallation, candidate, '/virtual/neutral')).rejects.toMatchObject({ reasonCode: 'manual_handoff' });
+    expect(host.world.trace.filter(event => 'run' in event || 'installCommand' in event)).toEqual([]);
+  });
+
+  it('preserves an explicit stable-reader disable override', async () => {
+    const world = nativeTransportFixture();
+    vi.stubGlobal('fetch', world.fetch);
+    const host = upgradeWorld();
+    const port = createNativeUpgradePort({ ...host.dependencies, readJson: async () => world.policy }, { stable: undefined });
+    await expect(port.stable(nativeInstallation, '/virtual/neutral')).rejects.toMatchObject({ reasonCode: 'native_unavailable' });
+    expect(world.fetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps the production default inert before HTTP while signing policy is null', async () => {
+    const world = nativeTransportFixture();
+    world.policy.approvedSigningKeySha256 = null;
+    vi.stubGlobal('fetch', world.fetch);
+    const host = upgradeWorld();
+    const port = createNativeUpgradePort({ ...host.dependencies, readJson: async () => world.policy });
+    await expect(port.stable(nativeInstallation, '/virtual/neutral')).rejects.toMatchObject({ reasonCode: 'native_unqualified' });
+    expect(world.fetch).not.toHaveBeenCalled();
+  });
+
   it('authenticates selected subjects, main ancestry and the successful tag run without supplying an install root or manager state', async () => {
     const world = nativeTransportFixture();
     const material = await read(world);

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { copyFile, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -9,7 +9,7 @@ import { bundleInventory } from '../scripts/native-bundle-contract.mjs';
 import { inspectOwnedInstallation, installOwnedBundle } from '../scripts/native-install.mjs';
 import { runSelfUpgrade } from '../src/application/upgrade/self-upgrade.js';
 import { cliInstallationLayer } from '../src/application/diagnose/doctor.js';
-import { admitNativeStableMaterial, lookupNativeStableCandidate } from '../src/adapters/distribution/native-metadata.js';
+import { admitNativeStableMaterial, authenticateNativeStableMetadata, lookupNativeStableCandidate } from '../src/adapters/distribution/native-metadata.js';
 import { assertCaskOwnership, assertWinGetOwnership, createNativeUpgradePort, nativePolicy } from '../src/adapters/distribution/native.js';
 import { SelfUpgradeFailure, selfUpgradeExitCode, selfUpgradeRemedy } from '../src/domain/distribution/liftoff-upgrade.js';
 import type { NativeCandidate, NativeInstallation, NativeUpgradePort } from '../src/domain/distribution/native-upgrade.js';
@@ -64,11 +64,37 @@ function managerObservationFixture(platform: 'darwin' | 'win32') {
 describe('independently signed native candidate admission', () => {
   it('binds an approved signer, source, inventory, qualification, provenance and every deployed asset', async () => {
     const fixture = signedMaterial();
+    expect(fixture.policy.approvedSigningKeySha256).not.toBe(fixture.policy.linux.archiveSigningKeySha256);
     expect(await admitNativeStableMaterial(fixture.material, installation, fixture.policy)).toEqual({
       version: '0.13.0', target: 'linux-x64', sourceCommit: 'd'.repeat(40), manifestSha256: 'f'.repeat(64),
       inventorySha256: 'e'.repeat(64), identity: expect.stringMatching(/^[a-f0-9]{64}$/), bundleRoot: fixture.material.bundleRoot,
       archiveSha256: hash(fixture.assets.get('liftoff-0.13.0-linux-x64.tar.gz')!)
     });
+  });
+
+  it.each([
+    { name: 'missing signature', change: (f: ReturnType<typeof signedMaterial>) => { delete f.material.archiveSignature; } },
+    { name: 'missing public key', change: (f: ReturnType<typeof signedMaterial>) => { delete f.material.archivePublicKey; } },
+    { name: 'oversized signature', change: (f: ReturnType<typeof signedMaterial>) => { f.material.archiveSignature = Buffer.alloc(65); } },
+    { name: 'oversized public key', change: (f: ReturnType<typeof signedMaterial>) => { f.material.archivePublicKey = Buffer.alloc(4097); } },
+    { name: 'tampered signature', change: (f: ReturnType<typeof signedMaterial>) => { f.material.archiveSignature![0] ^= 1; } },
+    { name: 'qualification key substituted for archive key', change: (f: ReturnType<typeof signedMaterial>) => {
+      f.material.archivePublicKey = f.material.publicKey;
+    } },
+    { name: 'different algorithm even with approved SPKI', change: (f: ReturnType<typeof signedMaterial>) => {
+      const key = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey;
+      f.policy.linux.archiveSigningKeySha256 = hash(key.export({ type: 'spki', format: 'der' }));
+      f.qualification.platformSigningIdentity = f.policy.linux.archiveSigningKeySha256;
+      f.material.archivePublicKey = Buffer.from(key.export({ type: 'spki', format: 'pem' }));
+      f.resign();
+    } }
+  ])('refuses $name independently of valid qualification evidence', async ({ change }) => {
+    const fixture = signedMaterial();
+    change(fixture);
+    await expect(authenticateNativeStableMetadata(fixture.material, installation, fixture.policy))
+      .resolves.toMatchObject({ record: { target: 'linux-x64' } });
+    await expect(admitNativeStableMaterial(fixture.material, installation, fixture.policy))
+      .rejects.toMatchObject({ reasonCode: 'native_invalid' });
   });
 
   it('requires the separately qualified Windows installer to be deployed with exact source/publisher/AppId/certificate binding', async () => {

@@ -30,6 +30,7 @@ const object = (value: unknown): Record<string, unknown> => {
   return value as Record<string, unknown>;
 };
 const sha256 = /^[a-f0-9]{64}$/;
+const loadNativeAdmission = () => import('../../../distribution/native/native-release-admission.mjs');
 
 interface NativeStableRecord extends Record<string, unknown> {
   repository: NativeReleasePolicy['repository'];
@@ -59,7 +60,7 @@ export async function authenticateNativeStableMetadata(
       material.stableTag !== `v${record.version}` || material.draft || material.prerelease || !Array.isArray(record.files)) {
       throw new Error('Stable release identity differs.');
     }
-    const admission = await import('../../../distribution/native/native-release-admission.mjs');
+    const admission = await loadNativeAdmission();
     const evidence = object(admission.verifyNativeEvidenceSignature(material.qualification, material.signature,
       material.publicKey, policy.approvedSigningKeySha256));
     admission.assertNativePublicationEvidence(record, evidence, policy);
@@ -107,6 +108,16 @@ export async function admitNativeStableMaterial(
       if (!content || content.length === 0 || content.length > maximum ||
         asset.bytes !== content.length || asset.sha256 !== hash(content) ||
         asset.mode !== (record.target === 'win32-x64' ? 0o666 : 0o644)) throw new Error('Deployed release asset differs.');
+    }
+    if (record.target.startsWith('linux-')) {
+      const approved = policy.linux.archiveSigningKeySha256;
+      if (!approved || !material.archiveSignature || material.archiveSignature.length !== 64 ||
+        !material.archivePublicKey || !material.archivePublicKey.length || material.archivePublicKey.length > 4096) {
+        throw new Error('Detached Linux archive signature is missing or unbounded.');
+      }
+      const admission = await loadNativeAdmission();
+      admission.verifyNativeBytesSignature(material.assets.get(names[0])!, material.archiveSignature,
+        material.archivePublicKey, approved);
     }
     const platformEvidence = object(evidence.evidenceDigests);
     if (material.platformEvidence.size !== Object.keys(platformEvidence).length) throw new Error('Qualification evidence inventory differs.');

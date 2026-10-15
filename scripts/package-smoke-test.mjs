@@ -466,7 +466,8 @@ try {
     import assert from 'node:assert/strict';
     import {createHash,generateKeyPairSync,sign} from 'node:crypto';
     import {readFile} from 'node:fs/promises';
-    import {assertNativePublicationEvidence,verifyNativeEvidenceSignature} from ${JSON.stringify(
+    import {gzipSync} from 'node:zlib';
+    import {assertNativePublicationEvidence,verifyNativeBytesSignature,verifyNativeEvidenceSignature} from ${JSON.stringify(
       pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-release-admission.mjs')).href)};
     import {admitNativeStableMaterial} from ${JSON.stringify(
       pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-metadata.js')).href)};
@@ -496,6 +497,13 @@ try {
     const {publicKey,privateKey}=generateKeyPairSync('ed25519');
     const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
     const approved=sha(publicKey.export({format:'der',type:'spki'}));
+    const binary=gzipSync(Buffer.from('Private installed raw-byte fixture, not a native release.'));
+    const binarySignature=sign(null,binary,privateKey);
+    const pem=publicKey.export({format:'pem',type:'spki'});
+    assert.equal(verifyNativeBytesSignature(binary,binarySignature,pem,approved),undefined);
+    const changed=Buffer.from(binary);changed[0]^=1;
+    assert.throws(()=>verifyNativeBytesSignature(changed,binarySignature,pem,approved));
+    assert.throws(()=>verifyNativeEvidenceSignature(binary,binarySignature,pem,approved),SyntaxError);
     const record={repository:policy.repository,commit:'a'.repeat(40),version:'0.13.0',target:'linux-x64',
       manifestSha256:'b'.repeat(64),inventorySha256:'c'.repeat(64),files:[]};
     const checks=['minimumHost','installerOwnership','signing','packageNamespace','hclSourceCorrespondence'];

@@ -10,6 +10,7 @@ import type { SelfUpgradeDependencies } from './upgrade-host.js';
 import { isStableSemver } from '../../stable-release.js';
 import { compareSemver } from '../../semver.js';
 import { readHomebrewCaskOwnership } from './native-cask.js';
+import { createNativeStableSource } from './native-transport.js';
 
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const sha256 = /^[a-f0-9]{64}$/;
@@ -295,8 +296,9 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
         installation.owner === 'winget' && !approved.winget.certificateSha256) {
         throw new SelfUpgradeFailure('blocked', 'native_unqualified');
       }
-      if (!readers.stable) throw new SelfUpgradeFailure('blocked', 'native_unavailable');
-      const candidate = await lookupNativeStableCandidate(installation, approved, readers.stable);
+      const source = Object.hasOwn(overrides, 'stable') ? readers.stable : createNativeStableSource(approved);
+      if (!source) throw new SelfUpgradeFailure('blocked', 'native_unavailable');
+      const candidate = await lookupNativeStableCandidate(installation, approved, source);
       admitted.set(candidate.identity, JSON.stringify(candidate));
       return Object.freeze(candidate);
     },
