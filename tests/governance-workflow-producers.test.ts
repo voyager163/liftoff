@@ -1,7 +1,7 @@
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createServer } from 'node:http';
-import { stringify } from 'yaml';
+import { parse, stringify } from 'yaml';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   buildSavedTransitionPlan, canonicalPhaseGraph, canonicalSha256
@@ -37,6 +37,7 @@ import {
 } from './fixtures/governance-coverage/transition-project.js';
 import type { PhaseAdapterExecutionInput } from '../src/governance-activation/transition-ports.js';
 import { requiredWorkflowContextsFromSource } from '../src/governance-activation/workflow-requirements.js';
+import { isRecord } from '../src/domain/governance/activation/canonical-json.js';
 
 const scratch = scratchDirectory('workflow-producers');
 let storage: Awaited<ReturnType<typeof isolateUserLocalStorage>>;
@@ -106,6 +107,38 @@ function rulesetSource(count = 0) {
     ]
   })) }];
 }
+
+it.each(['trailing-step', 'duplicate-validation', 'required-job-dependency', 'empty-validator', 'mixed-validator'] as const)(
+  'refuses a %s recipe before an ordinary final validator can be misidentified', variant => {
+    const value: unknown = parse(recipe());
+    if (!isRecord(value) || !isRecord(value.jobs) || !isRecord(value.jobs.validate)) {
+      throw new Error('Expected actual isolated recipe job.');
+    }
+    const job = value.jobs.validate;
+    if (!Array.isArray(job.steps)) throw new Error('Expected actual isolated recipe steps.');
+    const reviewed = binding();
+    if (variant === 'required-job-dependency') {
+      value.jobs.inspect = {
+        ...job, name: 'Required configuration validation',
+        steps: [...structuredClone(job.steps.slice(0, -1)), { name: 'Validate configuration', run: 'node --check backend/configuration.js' }]
+      };
+      reviewed.contexts = [...reviewed.contexts, {
+        jobId: 'inspect', name: 'Required configuration validation', validationStep: 'Validate configuration'
+      }];
+      expect(() => validateContextWorkflow(Buffer.from(stringify(value)), reviewed)).not.toThrow();
+      job.needs = 'inspect';
+    }
+    else if (variant === 'empty-validator' || variant === 'mixed-validator') {
+      job.steps[job.steps.length - 1] = {
+        name: 'Validate source', run: variant === 'empty-validator' ? ' ' : 'node --check backend/application.js',
+        ...(variant === 'mixed-validator' ? { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' } : {})
+      };
+    } else job.steps.push({
+      name: variant === 'duplicate-validation' ? 'Validate source' : 'Inspect source after validation',
+      run: 'node --check backend/application.js'
+    });
+    expect(() => validateContextWorkflow(Buffer.from(stringify(value)), reviewed)).toThrow(/validation|validator|recipe/);
+  });
 
 class WorkflowTransport implements GitHubActivationTransport {
   calls: GitHubRequest[] = [];

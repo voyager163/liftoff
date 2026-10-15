@@ -167,23 +167,27 @@ export function validateContextWorkflow(bytes: Buffer, binding: WorkflowContextB
   for (const context of binding.contexts) {
     const job = value.jobs[context.jobId];
     const checkout = isRecord(job) && Array.isArray(job.steps) ? job.steps[0] : null;
+    const validation = isRecord(job) && Array.isArray(job.steps) ? job.steps.at(-1) : null;
     if (!isRecord(job) || job.name !== context.name ||
       job.if !== '${{ github.sha == inputs.source_sha && github.run_attempt == 1 }}' ||
       job['continue-on-error'] !== undefined ||
       !Number.isInteger(job['timeout-minutes']) || Number(job['timeout-minutes']) < 1 || Number(job['timeout-minutes']) > 20 ||
-      job.strategy !== undefined || job.uses !== undefined || job.permissions !== undefined ||
-      !Array.isArray(job.steps) || !job.steps.length || job.steps.length > 32 ||
+      job.strategy !== undefined || job.uses !== undefined || job.permissions !== undefined || job.needs !== undefined ||
+      !Array.isArray(job.steps) || job.steps.length < 2 || job.steps.length > 32 ||
       !isRecord(checkout) || checkout.name !== 'Checkout reviewed source' ||
       typeof checkout.uses !== 'string' || !/^actions\/checkout@[a-f0-9]{40}$/u.test(checkout.uses) ||
       !isRecord(checkout.with) ||
       canonicalSha256(Object.keys(checkout.with).sort()) !== canonicalSha256(['clean', 'persist-credentials', 'ref']) ||
       checkout.with.ref !== '${{ inputs.source_sha }}' || checkout.with.clean !== true ||
       checkout.with['persist-credentials'] !== false ||
-      !job.steps.some((step) => isRecord(step) && step.name === context.validationStep) ||
+      !isRecord(validation) || validation.name !== context.validationStep ||
+      (validation.run === undefined) === (validation.uses === undefined) ||
+      validation.run !== undefined && (typeof validation.run !== 'string' || !validation.run.trim()) ||
+      job.steps.filter((step) => isRecord(step) && step.name === context.validationStep).length !== 1 ||
       job.steps.some((step) => !isRecord(step) || step['continue-on-error'] !== undefined ||
         step.if !== undefined || step.uses !== undefined &&
         (typeof step.uses !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_./-]+@[a-f0-9]{40}$/u.test(step.uses)))) {
-      return workflowFailure('workflow-proof-recipe', 'Every required context must be one stable bounded job with a pre-effect exact-SHA/attempt guard, pinned actions and an unconditional actual validation step; skipped and fail-open recipes cannot qualify.');
+      return workflowFailure('workflow-proof-recipe', 'Every required context must be one independent bounded job with a pre-effect exact-SHA/attempt guard, pinned actions and one unconditional executable validator as its final ordinary step; duplicate validators, dependent jobs, skipped and fail-open recipes cannot qualify.');
     }
   }
 }
