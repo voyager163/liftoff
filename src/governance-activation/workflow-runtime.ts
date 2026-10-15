@@ -1,5 +1,5 @@
 import { GitHubActivationClient, GitHubActivationError } from '../adapters/github/activation-rest.js';
-import type { GitHubActivationTransport } from '../adapters/github/activation-rest.js';
+import type { GitHubActivationTransport, GitHubRequest, GitHubResponse } from '../adapters/github/activation-rest.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import { assertGitHubAuthorized, clientFor } from './github-config.js';
 import { assertGovernanceApprovalIssued } from './authority-records.js';
@@ -105,25 +105,30 @@ export function workflowRuntime(input: WorkflowEffectInput): WorkflowRuntime {
   if (isSource5WorkflowEffectInput(input)) assertSource5WorkflowEffectContext(input);
   const projectRoot = workflowProjectRoot(input);
   const underlying = isSource5WorkflowEffectInput(input) ? input.transport : clientFor(input).transport;
-  const transport: GitHubActivationTransport = {
-    async request(request) {
-      if (isSource5WorkflowEffectInput(input) && request.method !== 'GET') {
-        return requestSource5WorkflowEffect(input, request);
-      }
-      if (isSource5WorkflowEffectInput(input)) {
-        await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: false });
-      }
-      return underlying.request(request);
+  const requestWithDeadline = async (request: GitHubRequest, deadline: number): Promise<GitHubResponse> => {
+    if (isSource5WorkflowEffectInput(input) && request.method !== 'GET') {
+      return requestSource5WorkflowEffect(input, request, deadline);
     }
-  };
-  const runner: CommandRunner = isSource5WorkflowEffectInput(input) ? {
-    async run(command, options) {
+    if (isSource5WorkflowEffectInput(input)) {
       await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: false });
-      return input.runner.run(command, options);
     }
-  } : input.runner;
-  return boundedWorkflowRuntime({ projectRoot, transport, runner }, false,
-    isSource5WorkflowEffectInput(input) ? (args, timeoutMs) => runSource5WorkflowGitEffect(input, args, timeoutMs) : undefined);
+    if (Date.now() >= deadline) {
+      return workflowFailure('workflow-deadline', 'Workflow provider preparation exhausted its original bounded deadline before the request could start.');
+    }
+    return underlying.request(request);
+  };
+  const gitWithDeadline = isSource5WorkflowEffectInput(input) ?
+    async (args: readonly string[], deadline: number): ReturnType<CommandRunner['run']> => {
+      if (!readableGit(args)) return runSource5WorkflowGitEffect(input, args, deadline);
+      await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: false });
+      const command = workflowGitCommand(args), remaining = deadline - Date.now();
+      if (remaining <= 0 || remaining > 30_000) {
+        return workflowFailure('workflow-deadline', 'Workflow Git preparation exhausted its original bounded deadline before the process could start.');
+      }
+      return input.runner.run(command, workflowGitOptions(projectRoot, remaining));
+    } : undefined;
+  return boundedWorkflowRuntime({ projectRoot, transport: underlying, runner: input.runner }, false,
+    gitWithDeadline, requestWithDeadline);
 }
 function readableGit(args: readonly string[]): boolean {
   const same = (expected: readonly string[]) => canonicalSha256(args) === canonicalSha256(expected);
@@ -138,7 +143,8 @@ function readableGit(args: readonly string[]): boolean {
     args.length === 6 && sha(args[5]) && same(['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', args[5]!]);
 }
 function boundedWorkflowRuntime(services: WorkflowObservationServices, readOnly: boolean,
-  effectGit?: (args: readonly string[], timeoutMs: number) => ReturnType<CommandRunner['run']>): WorkflowRuntime {
+  runGit?: (args: readonly string[], deadline: number) => ReturnType<CommandRunner['run']>,
+  requestWithDeadline?: (request: GitHubRequest, deadline: number) => Promise<GitHubResponse>): WorkflowRuntime {
   const deadline = Date.now() + 180_000;
   const projectRoot = services.projectRoot;
   function assertWithinDeadline() {
@@ -159,7 +165,7 @@ function boundedWorkflowRuntime(services: WorkflowObservationServices, readOnly:
           'Workflow provider response exceeded its bounded deadline; diagnostics were withheld and acceptance may be uncertain.');
         try {
           const response = await Promise.race([
-            underlying.request(request),
+            requestWithDeadline ? requestWithDeadline(request, responseDeadline) : underlying.request(request),
             new Promise<never>((_, reject) => {
               timer = setTimeout(() => reject(deadlineError),
               Math.max(0, responseDeadline - Date.now()));
@@ -168,7 +174,7 @@ function boundedWorkflowRuntime(services: WorkflowObservationServices, readOnly:
           if (Date.now() >= responseDeadline) throw deadlineError;
           return response;
         } catch (error) {
-          if (error === deadlineError) throw error;
+          if (error === deadlineError || Date.now() >= responseDeadline) throw deadlineError;
           throw new GitHubActivationError('workflow-provider',
             'Workflow provider observation failed; diagnostics were withheld. Retain recorded intent because write acceptance may be uncertain.');
         } finally { if (timer) clearTimeout(timer); }
@@ -181,10 +187,16 @@ function boundedWorkflowRuntime(services: WorkflowObservationServices, readOnly:
       }
       const commandDeadline = Math.min(deadline, Date.now() + 30_000);
       let result;
-      try { result = effectGit && !readableGit(args)
-        ? await effectGit(args, Math.min(30_000, deadline - Date.now()))
-        : await services.runner.run(workflowGitCommand(args), workflowGitOptions(projectRoot,
-          Math.min(30_000, deadline - Date.now()))); } catch {
+      try {
+        if (runGit) result = await runGit(args, commandDeadline);
+        else {
+          const command = workflowGitCommand(args), remaining = commandDeadline - Date.now();
+          if (remaining <= 0 || remaining > 30_000) {
+            return workflowFailure('workflow-deadline', 'Workflow Git preparation exhausted its original bounded deadline before the process could start.');
+          }
+          result = await services.runner.run(command, workflowGitOptions(projectRoot, remaining));
+        }
+      } catch {
         return workflowFailure('workflow-git', 'The literal Git transport failed; diagnostics were withheld and recorded partial effects must be reconciled without repeating uncertain work.');
       }
       if (Date.now() >= commandDeadline || result.status !== 0 || result.timedOut ||

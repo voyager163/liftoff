@@ -106,6 +106,11 @@ Provider and literal Git results received at or after their existing 30-second
 operation limit or the shared deadline are refused even if a delayed timer has
 not fired. Receipt-time refusal does not establish cancellation or drainage of
 an underlying transport or undo an uncertain accepted effect.
+Authority and intent preparation consume that same operation budget. An expired
+operation cannot start its provider request or literal Git process, and Git
+receives only the remaining budget rather than a restarted timeout. Actual
+acceptance is retained before a later deadline refusal; the original attempt
+cannot be repeated.
 Red runs use their own protected execution tag derived from the exact healthy
 protected commit; they do not move the protected branch to a failing commit.
 Each red parent/ref must match its corresponding independently current green.
