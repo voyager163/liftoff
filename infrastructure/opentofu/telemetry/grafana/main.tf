@@ -7,6 +7,11 @@ data "azurerm_log_analytics_workspace" "telemetry" {
   resource_group_name = data.azurerm_resource_group.telemetry.name
 }
 
+data "azurerm_monitor_data_collection_rule" "telemetry" {
+  name                = "dcr-liftoff-telemetry-f5be1618"
+  resource_group_name = data.azurerm_resource_group.telemetry.name
+}
+
 resource "azurerm_dashboard_grafana" "telemetry" {
   name                              = var.grafana_name
   resource_group_name               = data.azurerm_resource_group.telemetry.name
@@ -32,7 +37,8 @@ resource "azurerm_dashboard_grafana" "telemetry" {
     precondition {
       condition = (
         data.azurerm_resource_group.telemetry.location == "koreacentral" &&
-        data.azurerm_log_analytics_workspace.telemetry.location == "koreacentral"
+        data.azurerm_log_analytics_workspace.telemetry.location == "koreacentral" &&
+        data.azurerm_monitor_data_collection_rule.telemetry.location == "koreacentral"
       )
       error_message = "Existing telemetry placement changed; stop for ownership/region review."
     }
@@ -42,6 +48,12 @@ resource "azurerm_dashboard_grafana" "telemetry" {
 resource "azurerm_role_assignment" "logs_reader" {
   scope                = data.azurerm_log_analytics_workspace.telemetry.id
   role_definition_name = "Log Analytics Reader"
+  principal_id         = azurerm_dashboard_grafana.telemetry.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "transform_metrics_reader" {
+  scope                = data.azurerm_monitor_data_collection_rule.telemetry.id
+  role_definition_name = "Monitoring Reader"
   principal_id         = azurerm_dashboard_grafana.telemetry.identity[0].principal_id
 }
 

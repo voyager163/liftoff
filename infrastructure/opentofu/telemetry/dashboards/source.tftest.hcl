@@ -33,6 +33,10 @@ run "offline_render" {
     condition     = alltrue([for rule in grafana_rule_group.telemetry.rule : rule.is_paused && rule.no_data_state == "NoData" && rule.exec_err_state == "Error"])
     error_message = "Alerts must default paused and preserve unavailable/NoData semantics."
   }
+  assert {
+    condition     = alltrue([for rule in grafana_rule_group.ingestion_faults.rule : rule.is_paused && rule.no_data_state == "NoData" && rule.exec_err_state == "Error"])
+    error_message = "The independent transform metric alert also defaults paused without hiding errors or missing metrics."
+  }
 }
 
 run "explicit_reporting_enabled" {
@@ -106,4 +110,64 @@ run "invalid_timestamp_injection" {
     }]
   }
   expect_failures = [var.expected_heartbeats]
+}
+
+run "ingestion_fault_requires_separate_enablement" {
+  command = plan
+  variables {
+    alerts_enabled = true
+  }
+  assert {
+    condition     = alltrue([for rule in grafana_rule_group.ingestion_faults.rule : rule.is_paused])
+    error_message = "Enabling existing reporting alerts must not implicitly enable unqualified transform metrics."
+  }
+}
+
+run "ingestion_fault_global_pause_wins" {
+  command = plan
+  variables {
+    ingestion_fault_alerts_enabled = true
+  }
+  assert {
+    condition     = alltrue([for rule in grafana_rule_group.ingestion_faults.rule : rule.is_paused])
+    error_message = "The global alert pause must win even with explicit transform-rule enablement."
+  }
+}
+
+run "ingestion_fault_explicit_source_enabled" {
+  command = plan
+  variables {
+    alerts_enabled                 = true
+    ingestion_fault_alerts_enabled = true
+  }
+  assert {
+    condition     = grafana_rule_group.ingestion_faults.interval_seconds == 60 && alltrue([for rule in grafana_rule_group.ingestion_faults.rule : !rule.is_paused && rule.for == "5m" && rule.no_data_state == "NoData" && rule.exec_err_state == "Error"])
+    error_message = "Transform faults use explicit enablement, one-minute evaluation, five-minute pending and native missing/error states."
+  }
+  assert {
+    condition = alltrue([for rule in grafana_rule_group.ingestion_faults.rule :
+      rule.data[0].relative_time_range[0].from == 900 &&
+      jsondecode(rule.data[0].model).queryType == "Azure Monitor" &&
+      jsondecode(rule.data[0].model).subscription == "4158373b-2ebe-4b5f-9176-187d49e0ba84" &&
+      jsondecode(rule.data[0].model).azureMonitor.aggregation == "Count" &&
+      jsondecode(rule.data[0].model).azureMonitor.timeGrain == "PT1M" &&
+      jsondecode(rule.data[0].model).azureMonitor.metricName == "TransformationErrors_Count" &&
+      jsondecode(rule.data[0].model).azureMonitor.resources == [{
+        subscription    = "4158373b-2ebe-4b5f-9176-187d49e0ba84"
+        resourceGroup   = "rg-liftoff-prod"
+        resourceName    = "dcr-liftoff-telemetry-f5be1618"
+        metricNamespace = "Microsoft.Insights/dataCollectionRules"
+        region          = "koreacentral"
+      }]
+    ])
+    error_message = "Query only the observed DCR Count metric and exact resource for the bounded fifteen-minute window."
+  }
+  assert {
+    condition = alltrue([for rule in grafana_rule_group.ingestion_faults.rule :
+      jsondecode(rule.data[1].model).conditions[0].evaluator == { type = "gt", params = [0] } &&
+      jsondecode(rule.data[1].model).conditions[0].query.params == ["A"] &&
+      jsondecode(rule.data[1].model).conditions[0].reducer.type == "sum"
+    ])
+    error_message = "Alert on positive transform errors across the window, not low requests, command volume or a last zero sample."
+  }
 }
