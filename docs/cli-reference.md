@@ -1016,6 +1016,9 @@ When the exact target is missing, a second bounded package lookup through that
 same scoped registry distinguishes a lagging mirror (`registry_stale`) from a
 missing package (`registry_absent`). Offline, timeout or contradictory metadata
 remain unknown, not current.
+An exact-target response naming another product, omitting a valid stable version,
+returning a prerelease, or reporting a version newer than the requested target
+is `registry_invalid`, not evidence of mirror lag.
 
 Machine-level `@msn-control:registry` takes precedence over the default
 `registry`, even when the default is canonical. The lookup runs from a neutral
@@ -1068,6 +1071,9 @@ anonymous/project telemetry, a disclosure notice or consent-enrollment writes.
 Doctor's read-only process probes retain the short two-second diagnostic profile;
 ordinary upgrade probes are bounded at 30 seconds, install at ten minutes, and
 replacement version execution at 15 seconds.
+Native owner/channel observations also check elapsed time after the reader
+returns: synchronous parsing or verification cannot turn a result arriving
+after its deadline into an accepted ownership or availability observation.
 
 ## Repair modes
 

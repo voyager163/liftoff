@@ -387,7 +387,8 @@ try {
       pathToFileURL(path.join(installedPackageRoot, 'dist', 'self-upgrade.js')).href
     )};
     const calls = [];
-    const result = await runSelfUpgrade({
+    let deliveryMetadata = { name: '@msn-control/liftoff', version: ${JSON.stringify(packResult.version)} };
+    const inspect = () => runSelfUpgrade({
       mode: 'check',
       currentVersion: ${JSON.stringify(packResult.version)},
       stdout: process.stdout,
@@ -408,7 +409,7 @@ try {
             signal: null,
             stdout: command.args[0] === 'root' ? ${JSON.stringify(`${isolatedGlobalRoot}\n`)} :
               command.args[0] === 'config' ? (command.args[2] === '@msn-control:registry' ? 'undefined' : 'https://registry.npmjs.org/') :
-              JSON.stringify({ name: '@msn-control/liftoff', version: ${JSON.stringify(packResult.version)} }),
+              JSON.stringify(deliveryMetadata),
             stderr: '',
             timedOut: false
           };
@@ -420,11 +421,20 @@ try {
       }),
       environment: process.env
     });
+    const result = await inspect();
     if (result.status !== 'current' || result.schemaVersion !== 2 || result.installationOwner !== 'npm' ||
       result.channel.status !== 'available' || result.effects !== 'none' || calls.length !== 4) {
       throw new Error('Installed owner check failed: '+JSON.stringify(result));
     }
-    process.stdout.write(JSON.stringify(result));
+    calls.length = 0;
+    deliveryMetadata = { name: '@foreign/liftoff', version: ${JSON.stringify(packResult.version)} };
+    const invalid = await inspect();
+    if (invalid.status !== 'failed' || invalid.reasonCode !== 'registry_invalid' ||
+      invalid.installationOwner !== 'npm' || invalid.upstream.status !== 'available' ||
+      invalid.channel.status !== 'unknown' || invalid.effects !== 'none' || calls.length !== 4) {
+      throw new Error('Installed owner check misclassified invalid channel metadata: '+JSON.stringify(invalid));
+    }
+    process.stdout.write(JSON.stringify({ current: result, invalid }));
   `;
   const injectedCheck = run(
     process.execPath,
@@ -433,8 +443,9 @@ try {
   );
   const injectedResult = JSON.parse(injectedCheck.stdout);
   if (
-    injectedResult.status !== 'current' ||
-    injectedResult.currentVersion !== packResult.version
+    injectedResult.current.status !== 'current' ||
+    injectedResult.current.currentVersion !== packResult.version ||
+    injectedResult.invalid.reasonCode !== 'registry_invalid'
   ) {
     throw new Error('Installed self-upgrade module failed its isolated injected check');
   }

@@ -79,6 +79,10 @@ Liftoff reads this configuration from a neutral directory, not a project's
 A response-body timeout is a transport failure, not invalid release metadata.
 Retry after connectivity is restored; do not change registry policy or regenerate
 project locks to work around it.
+`registry_invalid` with unknown channel availability is not a stale-mirror
+diagnosis. A foreign product, missing or prerelease version, or newer mismatched
+response to an exact-version query must be corrected by the approved registry
+operator before retrying; Liftoff does not install from that response.
 
 ## npm cannot write the global prefix
 

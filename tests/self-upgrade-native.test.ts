@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { copyFile, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { NodeCommandRunner } from '../src/process-runner.js';
+import { NodeCommandRunner, type CommandRunner } from '../src/process-runner.js';
 import { defaultSelfUpgradeDependencies } from '../src/adapters/distribution/upgrade-host.js';
 import { bundleInventory } from '../scripts/native-bundle-contract.mjs';
 import { inspectOwnedInstallation, installOwnedBundle } from '../scripts/native-install.mjs';
@@ -96,9 +96,11 @@ function managerObservationFixture(platform: 'darwin' | 'win32') {
     launcher, runtime: { executable: runtime }, inventory };
   files.set(api.join(root, 'bundle.json'), json(manifest));
   const policy = signedMaterial().policy;
-  policy.homebrew = { cask: 'fixture/tools/liftoff', sourceRepository: 'fixture/tools', developerTeamId: 'ABCDEFGHIJ' };
-  policy.winget = { packageIdentifier: 'Fixture.Liftoff', publisher: 'Fixture Publisher',
+  const homebrewPolicy = { cask: 'fixture/tools/liftoff', sourceRepository: 'fixture/tools', developerTeamId: 'ABCDEFGHIJ' };
+  const wingetPolicy = { packageIdentifier: 'Fixture.Liftoff', publisher: 'Fixture Publisher',
     certificateSha256: '0'.repeat(64), installerAppId: 'fixture-app' };
+  policy.homebrew = homebrewPolicy;
+  policy.winget = wingetPolicy;
   const dependencies = { ...defaultSelfUpgradeDependencies(), platform, architecture: manifest.platform.architecture,
     execPath: api.join(root, ...runtime.split('/')), runningExecutable: api.join(root, 'application', 'dist', 'cli.js'),
     resolveLiftoff: async () => api.join(root, ...launcher.split('/')), realpath: async (file: string) => file,
@@ -108,12 +110,12 @@ function managerObservationFixture(platform: 'darwin' | 'win32') {
       return content;
     },
     runner: { run: async command => ({ command, displayCommand: 'synthetic native inventory port',
-      stdout: JSON.stringify(inventory), stderr: '', status: 0, signal: null, timedOut: false }) } };
+      stdout: JSON.stringify(inventory), stderr: '', status: 0, signal: null, timedOut: false }) } satisfies CommandRunner };
   const packageRoot = api.join(root, 'application');
-  const cask = { fullToken: policy.homebrew.cask, sourceRepository: policy.homebrew.sourceRepository,
+  const cask = { fullToken: homebrewPolicy.cask, sourceRepository: homebrewPolicy.sourceRepository,
     bundleRoot: root, launcher: api.join(root, ...launcher.split('/')), installedVersion: '0.12.3' };
-  const winget = { packageIdentifier: policy.winget.packageIdentifier, source: 'fixture-source', publisher: policy.winget.publisher,
-    certificateSha256: policy.winget.certificateSha256, appId: policy.winget.installerAppId, scope: 'user' as const,
+  const winget = { packageIdentifier: wingetPolicy.packageIdentifier, source: 'fixture-source', publisher: wingetPolicy.publisher,
+    certificateSha256: wingetPolicy.certificateSha256, appId: wingetPolicy.installerAppId, scope: 'user' as const,
     installLocation: root, launcher: cask.launcher, installedVersion: '0.12.3' };
   return { dependencies, packageRoot, policy, cask, winget };
 }
@@ -200,11 +202,12 @@ async function ownedBundle(version = '0.12.3') {
   const manifestBytes = json(manifest);
   await writeFile(path.join(source, 'bundle.json'), manifestBytes);
   const expectedManifestSha256 = hash(manifestBytes);
-  const installed = await installOwnedBundle({ source, prefix, expectedManifestSha256, expectedCurrent: null, admitHost: () => {} });
+  const installed = await installOwnedBundle({ source, prefix, expectedManifestSha256, expectedCurrent: null,
+    admitHost: () => {}, interruptAt: undefined });
   const bundleRoot = path.join(prefix, installed.current);
   const dependencies = {
     ...defaultSelfUpgradeDependencies(), platform: 'linux' as const, architecture: 'x64',
-    runner: { run: (command, options) => new NodeCommandRunner().run({ ...command, executable: process.execPath }, options) },
+    runner: { run: (command, options) => new NodeCommandRunner().run({ ...command, executable: process.execPath }, options) } satisfies CommandRunner,
     execPath: path.join(bundleRoot, 'runtime/node'), runningExecutable: path.join(bundleRoot, 'application/dist/cli.js'),
     resolveLiftoff: async () => path.join(prefix, 'bin/liftoff'),
     environment: { PATH: path.dirname(process.execPath), HOME: root, NODE_OPTIONS: '--require=foreign-fixture' }
@@ -410,8 +413,8 @@ function nativeWorld(owner: NativeInstallation['owner'] = 'liftoff-native') {
   };
   const port: NativeUpgradePort = {
     inspect: vi.fn(async () => selected), stable: vi.fn(async () => candidate),
-    channel: vi.fn(async () => ({ status: 'available', version: candidate.version, identity: 'fixture-channel', exactApply: true })),
-    apply: vi.fn(async () => ({ effects: 'installed' })), verify: vi.fn(async () => {})
+    channel: vi.fn<NativeUpgradePort['channel']>(async () => ({ status: 'available', version: candidate.version, identity: 'fixture-channel', exactApply: true })),
+    apply: vi.fn<NativeUpgradePort['apply']>(async () => ({ effects: 'installed' })), verify: vi.fn(async () => {})
   };
   fixture.dependencies.nativeUpgrade = port;
   return { ...fixture, selected, candidate, port };
@@ -578,6 +581,100 @@ describe('owner-aware orchestration and read-only doctor', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('uses the selected doctor probe deadline for native stable metadata rather than the ordinary upgrade deadline', async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    let outcome: unknown;
+    const fixture = signedMaterial();
+    const dependencies = { ...defaultSelfUpgradeDependencies(), probeTimeoutMs: 2_000, readJson: async () => fixture.policy };
+    const pending = createNativeUpgradePort(dependencies, {
+      stable: { readStable: async (_installation, observed) => {
+        signal = observed;
+        return new Promise(() => {});
+      } }
+    }).stable(installation, '/virtual/neutral').then(value => { outcome = value; }, error => { outcome = error; });
+    try {
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(outcome).toBeUndefined();
+      expect(signal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(outcome).toMatchObject({ reasonCode: 'native_timeout' });
+      expect(signal?.aborted).toBe(true);
+    } finally {
+      await vi.runAllTimersAsync();
+      await pending;
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    { kind: 'owner', elapsed: 10 }, { kind: 'owner', elapsed: 11 },
+    { kind: 'channel', elapsed: 10 }, { kind: 'channel', elapsed: 11 }
+  ])('rejects a late $kind observation at $elapsed ms even when synchronous work delays the timeout callback', async ({ kind, elapsed }) => {
+    const fixture = managerObservationFixture('darwin');
+    fixture.dependencies.probeTimeoutMs = 10;
+    const world = nativeWorld();
+    const ownerRead = vi.fn(async () => fixture.cask);
+    const channelRead = vi.fn(async () => ({
+      status: 'available' as const, version: world.candidate.version, identity: 'fixture-channel',
+      exactApply: false, artifactSha256: '1'.repeat(64)
+    }));
+    world.candidate.archiveSha256 = '1'.repeat(64);
+    let ownerSignal: AbortSignal | undefined;
+    let channelSignal: AbortSignal | undefined;
+    const port = createNativeUpgradePort(fixture.dependencies, {
+      cask: async (...args) => {
+        ownerSignal = args[3];
+        return ownerRead();
+      },
+      channel: async (...args) => {
+        channelSignal = args[3];
+        return channelRead();
+      }
+    });
+    const clock = vi.spyOn(performance, 'now').mockReturnValueOnce(0).mockReturnValue(elapsed);
+    try {
+      await expect(kind === 'owner'
+        ? port.inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral')
+        : port.channel(world.selected, world.candidate, '/virtual/neutral'))
+        .rejects.toMatchObject({ reasonCode: kind === 'owner' ? 'native_timeout' : 'channel_timeout' });
+      expect(kind === 'owner' ? ownerSignal?.aborted : channelSignal?.aborted).toBe(true);
+      expect(kind === 'owner' ? ownerRead : channelRead).toHaveBeenCalledOnce();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it.each([0, -1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648])('rejects an invalid native observation deadline %s before reading a provider', async probeTimeoutMs => {
+    const fixture = managerObservationFixture('darwin');
+    const read = vi.fn(async () => fixture.cask);
+    await expect(createNativeUpgradePort({ ...fixture.dependencies, probeTimeoutMs }, { cask: read })
+      .inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral'))
+      .rejects.toMatchObject({ reasonCode: 'native_invalid' });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: 'foreign product', metadata: { name: 'foreign', version: '0.13.0' } },
+    { name: 'missing identity', metadata: { version: '0.13.0' } },
+    { name: 'missing version', metadata: { name: '@msn-control/liftoff' } },
+    { name: 'malformed version', metadata: { name: '@msn-control/liftoff', version: 'stable' } },
+    { name: 'prerelease version', metadata: { name: '@msn-control/liftoff', version: '0.13.0-rc.1' } },
+    { name: 'newer mismatched version', metadata: { name: '@msn-control/liftoff', version: '0.14.0' } }
+  ])('reports exact npm target metadata with $name as invalid, not mirror lag', async ({ metadata }) => {
+    const fixture = upgradeWorld({ mode: 'apply' });
+    fixture.world.viewResult = { stdout: JSON.stringify(metadata) };
+    const result = await runSelfUpgrade(fixture.request, fixture.dependencies);
+    expect(result).toMatchObject({
+      status: 'failed', reasonCode: 'registry_invalid', installationOwner: 'npm',
+      upstream: { status: 'available', version: '0.13.0' }, channel: { status: 'unknown' }, effects: 'none'
+    });
+    expect(fixture.world.trace.some(event => 'run' in event && event.run.args[0] === 'install')).toBe(false);
+    expect(cliInstallationLayer(result).checks).toContainEqual(expect.objectContaining({
+      label: 'channel availability', detail: 'unknown'
+    }));
   });
 
   it('binds exact manager identities to approved namespace, publisher, certificate and installed bundle facts', () => {

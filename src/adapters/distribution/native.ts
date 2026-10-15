@@ -104,15 +104,23 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, r
   const probeTimeoutMs = dependencies.probeTimeoutMs ?? selfUpgradeProbeTimeoutMs;
   const admitted = new Map<string, string>();
   const observe = async <T>(read: (signal: AbortSignal) => Promise<T>, channel = false): Promise<T> => {
+    if (!Number.isSafeInteger(probeTimeoutMs) || probeTimeoutMs <= 0 || probeTimeoutMs > 2_147_483_647) {
+      throw new SelfUpgradeFailure('failed', channel ? 'channel_invalid' : 'native_invalid');
+    }
     const controller = new AbortController();
+    const started = performance.now();
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      return await Promise.race([read(controller.signal), new Promise<never>((_, reject) => {
+      const result = await Promise.race([read(controller.signal), new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           controller.abort();
           reject(new SelfUpgradeFailure('failed', channel ? 'channel_timeout' : 'native_timeout'));
         }, probeTimeoutMs);
       })]);
+      if (controller.signal.aborted || performance.now() - started >= probeTimeoutMs) {
+        throw new SelfUpgradeFailure('failed', channel ? 'channel_timeout' : 'native_timeout');
+      }
+      return result;
     } catch (error) {
       if (error instanceof SelfUpgradeFailure) throw error;
       throw new SelfUpgradeFailure('failed', channel ? 'channel_unavailable' : 'native_unavailable');

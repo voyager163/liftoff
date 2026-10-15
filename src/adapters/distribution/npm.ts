@@ -448,7 +448,11 @@ export async function inspectRegistryParity(
     throw new SelfUpgradeFailure('failed', 'registry_invalid', kind);
   }
   const record = metadata as Record<string, unknown>;
-  if (record.name !== liftoffPackageName || record.version !== targetVersion) {
+  if (record.name !== liftoffPackageName || !isStableSemver(record.version) ||
+    compareSemver(record.version, targetVersion) > 0) {
+    throw new SelfUpgradeFailure('failed', 'registry_invalid', kind);
+  }
+  if (record.version !== targetVersion) {
     throw new SelfUpgradeFailure('blocked', 'registry_stale', kind);
   }
   return { kind, identity: delivery.url };
