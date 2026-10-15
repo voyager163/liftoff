@@ -904,9 +904,20 @@ do not blindly auto-merge a green check or an automated suggestion.
 The separate [native development bundle builder](docs/native-development-bundles.md)
 uses pinned official runtime bytes, the production dependency lock and original
 license notices. Run its portable contracts with
-`npx vitest run tests/native-bundle.test.ts --maxWorkers=1 --no-file-parallelism`.
+`npx vitest run tests/native-bundle.test.ts tests/native-distribution.test.ts tests/native-release-set.test.ts --maxWorkers=1 --no-file-parallelism`.
 An unsigned development inventory is not signature, installer ownership, OS-floor
 or publication evidence. It does not replace the npm release gates below.
+CI adds isolated native package lanes on Linux x64/arm64 and Windows x64 to the
+existing Apple Silicon lane. Their complete opt-in report gates reject omitted
+or skipped applicable cases. Windows compiles the real launcher and exercises
+running-image locks and the installed controller without changing execution
+policy. Linux uses an explicitly test-only signing key for authentication
+negatives; that is not production signature or package namespace qualification.
+The release-set contracts also use ephemeral, explicitly synthetic keys and
+artifacts. They exercise all-target/npm immutable assembly, signature/subject/ref
+refusal and cross-host byte verification without signing or publishing a release.
+Only an independently authenticated complete handoff may supply the flat catalog
+described in the native guide; no fixture namespace or generated key is approved.
 
 The public release authority is `https://registry.npmjs.org`. The `Release
 Liftoff` workflow runs package checks, both source-complete coverage gates,

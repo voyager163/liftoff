@@ -10,6 +10,38 @@
     "licenseSha256": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace",
     "archiveRoot": "node-v24.21.0-darwin-arm64"
   },
+  "additionalRuntimes": [
+    {
+      "version": "24.21.0",
+      "platform": "linux",
+      "architecture": "x64",
+      "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.gz",
+      "sha256": "6e1db87ef58b8819e5d5402eff1536491b18edd8eb7bee5ef7897876e88dc5ff",
+      "executableSha256": "7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c",
+      "licenseSha256": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace",
+      "archiveRoot": "node-v24.21.0-linux-x64"
+    },
+    {
+      "version": "24.21.0",
+      "platform": "linux",
+      "architecture": "arm64",
+      "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-arm64.tar.gz",
+      "sha256": "724282c3b43aec998aa9527380465b45d229e021b58035f5f4f63095eabfe5d5",
+      "executableSha256": "0f8949d1028f6d61506b2d5bc57e7e6fe893d7b1997509b7847294fc9c616584",
+      "licenseSha256": "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace",
+      "archiveRoot": "node-v24.21.0-linux-arm64"
+    },
+    {
+      "version": "24.21.0",
+      "platform": "win32",
+      "architecture": "x64",
+      "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip",
+      "sha256": "158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541",
+      "executableSha256": "ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32",
+      "licenseSha256": "ed34dd8e3f0a78dbaf00d0444ce8e285b015b765379c2e17880455f70370f8e9",
+      "archiveRoot": "node-v24.21.0-win-x64"
+    }
+  ],
   "hcl": {
     "package": "@cdktf/hcl2json",
     "version": "0.21.0",

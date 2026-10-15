@@ -41,9 +41,34 @@ export function assertNativeBundleReport(report) {
 }
 
 export function nativeBundleHost(platform = process.platform, architecture = process.arch) {
-  assert.equal(platform, 'darwin', 'This development bundle currently requires native Apple Silicon macOS.');
-  assert.equal(architecture, 'arm64', 'Intel and translated runtimes are not qualified for this development bundle.');
+  assert.ok((platform === 'darwin' && architecture === 'arm64') ||
+    (platform === 'win32' && architecture === 'x64') ||
+    (platform === 'linux' && ['x64', 'arm64'].includes(architecture)),
+  'Unsupported native development target; Intel macOS and translated runtimes are not qualified.');
   return { platform, architecture };
+}
+
+export function nativeRuntimeInput(inputs, host) {
+  const matches = [inputs.runtime, ...inputs.additionalRuntimes].filter(input =>
+    input.platform === host.platform && input.architecture === host.architecture);
+  assert.equal(matches.length, 1, 'Native runtime policy must contain exactly one input for this host.');
+  return matches[0];
+}
+
+export function nativeArchiveTool(platform = process.platform, windowsRoot = process.env.SystemRoot) {
+  if (platform !== 'win32') {
+    assert.ok(['linux', 'darwin'].includes(platform), 'Unsupported native archiving host.');
+    return '/usr/bin/tar';
+  }
+  assert.ok(typeof windowsRoot === 'string' && /^[A-Za-z]:\\/.test(windowsRoot) &&
+    path.win32.normalize(windowsRoot) === windowsRoot && !/[\u0000-\u001f]/.test(windowsRoot),
+  'Native Windows archiving requires the explicit local SystemRoot.');
+  return path.win32.join(windowsRoot, 'System32', 'tar.exe');
+}
+
+export function nativeArchiveMembers(output) {
+  assert.equal(typeof output, 'string', 'Native archive member output must be text.');
+  return output.replace(/\r?\n$/, '').split(/\r?\n/).map(bundlePath).sort();
 }
 
 export function bundlePath(value) {
@@ -65,8 +90,26 @@ function contained(root, target) {
 }
 
 export async function bundleFile(file, maximum = nativeBundleLimits.fileBytes) {
+  return checkedFile(file, maximum, false);
+}
+
+export async function readBundleFile(file, maximum = 8 * 1024 * 1024) {
+  return checkedFile(file, maximum, true);
+}
+
+/**
+ * @template {boolean} Capture
+ * @param {string} file
+ * @param {number} maximum
+ * @param {Capture} capture
+ * @returns {Promise<Capture extends true
+ *   ? { identity: { bytes: number, sha256: string, mode: number }, content: Buffer }
+ *   : { bytes: number, sha256: string, mode: number }>}
+ */
+async function checkedFile(file, maximum, capture) {
   const before = await lstat(file);
   assert.ok(before.isFile() && before.nlink === 1, `Bundle input must be a single-link regular file: ${file}`);
+  assert.equal(before.mode & 0o7000, 0, 'Native material cannot have special permission bits.');
   assert.ok(before.size <= maximum, `Bundle input exceeds its byte limit: ${file}`);
   const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   try {
@@ -75,12 +118,14 @@ export async function bundleFile(file, maximum = nativeBundleLimits.fileBytes) {
       assert.equal(opened[key], before[key], `Bundle input changed before opening: ${file}`);
     }
     const hash = createHash('sha256');
+    const chunks = [];
     const buffer = Buffer.alloc(Math.min(1024 * 1024, Math.max(1, before.size)));
     let bytes = 0;
     while (bytes < before.size) {
       const result = await handle.read(buffer, 0, Math.min(buffer.length, before.size - bytes), bytes);
       assert.ok(result.bytesRead > 0, `Bundle input changed during reading: ${file}`);
       hash.update(buffer.subarray(0, result.bytesRead));
+      if (capture) chunks.push(Buffer.from(buffer.subarray(0, result.bytesRead)));
       bytes += result.bytesRead;
     }
     const after = await handle.stat();
@@ -90,7 +135,8 @@ export async function bundleFile(file, maximum = nativeBundleLimits.fileBytes) {
         assert.equal(observed[key], before[key], `Bundle input changed during reading: ${file}`);
       }
     }
-    return { bytes, sha256: hash.digest('hex'), mode: before.mode & 0o777 };
+    const identity = { bytes, sha256: hash.digest('hex'), mode: before.mode & 0o777 };
+    return capture ? { identity, content: Buffer.concat(chunks) } : identity;
   } finally {
     await handle.close();
   }
@@ -115,6 +161,7 @@ export async function bundleInventory(directory, limits = nativeBundleLimits) {
       const file = path.join(root, ...parts, name);
       const stat = await lstat(file);
       if (stat.isDirectory()) {
+        assert.equal(stat.mode & 0o7000, 0, 'Native directory cannot have special permission bits.');
         entries.push({ path: relative, kind: 'directory', mode: stat.mode & 0o777 });
         await visit([...parts, name]);
       } else if (stat.isSymbolicLink()) {
@@ -153,6 +200,37 @@ export function assertSystemRuntimeLibraries(output) {
   });
   assert.ok(libraries.includes('/usr/lib/libSystem.B.dylib'), 'Runtime system-library evidence is incomplete.');
   return libraries;
+}
+
+export function assertLinuxRuntimeLibraries(linked, versions, floor) {
+  const libraries = [];
+  for (const line of linked.trim().split('\n')) {
+    if (/^\s*linux-vdso\.so\.1 \(0x[a-f0-9]+\)$/.test(line)) continue;
+    const match = /^\s*(?:\S+ => )?(\/\S+) \(0x[a-f0-9]+\)$/.exec(line);
+    assert.ok(match, 'Missing or unrecognized Linux runtime library.');
+    const name = match[1];
+    assert.ok(/^\/(?:usr\/)?lib(?:64)?\//.test(name) && !name.split('/').includes('..'),
+      'Linux runtime depends on a non-system library.');
+    libraries.push(name);
+  }
+  assert.ok(libraries.some(name => name.endsWith('/libc.so.6')) &&
+    libraries.some(name => name.endsWith('/libstdc++.so.6')), 'Linux system-library evidence is incomplete.');
+  const needs = { GLIBC: [], GLIBCXX: [] };
+  for (const match of versions.matchAll(/Name:\s+(GLIBCXX|GLIBC)_(\d+(?:\.\d+)+)\b/g)) {
+    needs[match[1]].push(match[2]);
+  }
+  const atMost = (actual, declared) => {
+    const left = actual.split('.').map(Number), right = declared.split('.').map(Number);
+    for (let i = 0; i < Math.max(left.length, right.length); i++) {
+      if ((left[i] ?? 0) !== (right[i] ?? 0)) return (left[i] ?? 0) < (right[i] ?? 0);
+    }
+    return true;
+  };
+  for (const [kind, declared] of [['GLIBC', floor.minimumGlibc], ['GLIBCXX', floor.minimumGlibcxx]]) {
+    assert.ok(needs[kind].length > 0 && needs[kind].every(version => atMost(version, declared)),
+      `Linux runtime ${kind} requirements exceed or do not establish the declared upstream floor.`);
+  }
+  return { linked: libraries, requiredVersions: needs };
 }
 
 export function assertDependencyClosure(installed, lock) {

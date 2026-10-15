@@ -87,11 +87,12 @@ async function outputs(record, env) {
 
 async function main() {
   const [operation, destination, ...extra] = process.argv.slice(2);
-  assert.ok(['check-ref', 'pack', 'verify'].includes(operation), 'Usage: release-artifact.mjs <check-ref|pack|verify> [directory]');
+  assert.ok(['check-ref', 'pack', 'verify', 'verify-native', 'assemble-native', 'verify-native-set'].includes(operation),
+    'Usage: release-artifact.mjs <check-ref|pack|verify|verify-native|assemble-native|verify-native-set> [directory]');
   assert.equal(extra.length, 0, 'Unexpected release artifact arguments.');
   const root = process.cwd();
   const env = process.env;
-  const context = await releaseContext(root, env, { allowDispatch: operation !== 'verify' });
+  const context = await releaseContext(root, env, { allowDispatch: ['check-ref', 'pack'].includes(operation) });
   if (operation === 'check-ref') {
     assert.equal(destination, undefined, 'check-ref does not take an artifact directory.');
     console.log(`Qualified ref ${env.GITHUB_REF} at ${context.commit}; ${context.event}.`);
@@ -99,6 +100,20 @@ async function main() {
   }
   assert.ok(destination, 'An explicit artifact directory is required.');
   const directory = path.resolve(destination);
+  if (operation === 'assemble-native' || operation === 'verify-native-set') {
+    const { assembleNativeReleaseSet, verifyNativeReleaseSet } = await import('./native-release-set.mjs');
+    const result = operation === 'assemble-native'
+      ? await assembleNativeReleaseSet(directory, env.EXPECTED_NATIVE_INPUTS_SHA256, env, { root })
+      : { catalog: await verifyNativeReleaseSet(directory, env.EXPECTED_NATIVE_CATALOG_SHA256, env, { root }), published: false };
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  if (operation === 'verify-native') {
+    const { verifyNativeReleaseForPublication } = await import('./native-release.mjs');
+    await verifyNativeReleaseForPublication(directory, env.EXPECTED_NATIVE_MANIFEST_SHA256, context.commit, env);
+    console.log(`Verified native evidence for ${context.name}@${context.version}; publication still needs independent operator approval.`);
+    return;
+  }
   if (operation === 'pack') {
     assert.ok(env.npm_execpath, 'Run packing through npm run prepare:release.');
     await mkdir(directory, { recursive: true });

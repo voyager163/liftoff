@@ -94,6 +94,18 @@ describe('qualified release artifacts', () => {
     await expect(releaseContext(root, manual)).rejects.toThrow('Only tag pushes');
   });
 
+  it.each(['assemble-native', 'verify-native-set'])('refuses manual %s before inspecting or creating native material', async operation => {
+    const { root, env } = await fixture();
+    const result = spawnSync(process.execPath, [path.join(process.cwd(), 'scripts/release-artifact.mjs'), operation,
+      path.join(root, 'uncreated-native-handoff')], {
+      cwd: root, encoding: 'utf8', shell: false, timeout: 30_000,
+      env: { ...process.env, ...env, GITHUB_EVENT_NAME: 'workflow_dispatch' }
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('Only tag pushes');
+    expect(result.stderr).not.toContain('ENOENT');
+  });
+
   it('rejects fork, PR, branch, wrong version, wrong checkout and missing run identities', async () => {
     const { root, env } = await fixture();
     for (const [key, value] of [
