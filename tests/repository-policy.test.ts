@@ -64,6 +64,14 @@ describe('source repository setup policy', () => {
     expect(workflow.jobs['qualify-native-platform-packages']).toEqual(nativePlatformQualificationJob());
     expect((await readWorkflow('release.yml')).jobs['qualify-native-platform-packages']).toBeUndefined();
   });
+  it.each(['qualify-native-bundle', 'qualify-native-platform-packages'])(
+    'requires complete release-set failure/recovery contracts in %s', async id => {
+      const workflow = await readWorkflow('ci.yml');
+      const step = workflow.jobs[id].steps.find((value: { run?: string }) => value.run?.includes('tests/native-release-set.test.ts'));
+      expect(step).toBeDefined();
+      step.run = step.run.replace('tests/native-release-set.test.ts ', '');
+      expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
+    });
   it.each(['qualify-native-bundle', 'qualify-native-platform-packages', 'coverage-cli', 'coverage-gateway'])(
     'rejects synthetic-merge or unbound source checkout in %s qualification', async id => {
       const workflow = await readWorkflow('ci.yml');

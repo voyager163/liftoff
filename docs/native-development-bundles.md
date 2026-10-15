@@ -73,6 +73,9 @@ status. Its exact executable hash is recorded alongside the source inputs.
 The Inno Setup source requires an independently approved publisher/AppId and an
 actual configured signing tool. It is not a qualified install/uninstall or
 stable-command/PATH integration; it must not be distributed unsigned.
+Its `x64os` architecture restriction rejects ARM64/x64 emulation before
+installation; the former generic 64-bit check was insufficient. This source
+restriction is not a compiled or minimum-host installer result.
 
 ## Installed qualification
 
@@ -84,7 +87,7 @@ LIFTOFF_NATIVE_BUNDLE_ROOT=/absolute/path/outside-the-checkout/new-liftoff-bundl
 LIFTOFF_NATIVE_GO_EXECUTABLE="$(command -v go)" \
 LIFTOFF_NATIVE_PACKAGE_ROOT=/absolute/path/outside-the-checkout/new-liftoff-bundle \
 npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \
-  tests/native-distribution.test.ts tests/native-package-installed.test.ts \
+tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \
   --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \
   --reporter=default --reporter=json --outputFile.json=qualification/native-bundle.json
 node scripts/native-bundle.mjs verify-report qualification/native-bundle.json
@@ -104,7 +107,7 @@ bytes. It isolates HOME, disables Go telemetry only in that owned test home, and
 retains failed fixture roots. It does not change global installations or user settings.
 These checks do not qualify Windows controller execution, OS minimums or public
 distribution. Windows/Linux use `LIFTOFF_NATIVE_PACKAGE_ROOT` with
-`tests/native-bundle.test.ts tests/native-distribution.test.ts
+`tests/native-bundle.test.ts tests/native-distribution.test.ts tests/native-release-set.test.ts
 tests/native-package-installed.test.ts` and the cross-platform report gate.
 Windows cases run the real installed controller and running-image locking.
 Linux cases exercise the actual bundle's isolated owned installation/recovery and
@@ -152,6 +155,8 @@ re-exported by the release script. Native bundles carry this inert module and
 adjacent release-policy/platforms JSON in `installation/`; importing admission
 does not import a builder, inspect Git or execute a release operation. CLI-specific
 npm packaging/import integration remains separate owner-aware upgrade work.
+The adjacent inert `native-release-catalog.mjs` validates flat immutable artifact
+locators; it does not authenticate a publisher, inspect a channel or grant installation.
 
 The existing canonical prefix must belong to the invoking user and be private.
 Version directories are `versions/<package-version>-<bundle-manifest-sha256>`;
@@ -197,6 +202,78 @@ also requires notarization. The gated `native-release.mjs definitions` renderer
 emits a cask or WinGet definition only after those same gates; Windows additionally
 requires exact signed installer and verified command metadata. It does not submit
 definitions or publish artifacts.
+
+Linux publication admission also verifies the actual archive's detached Ed25519
+signature, not just a `signing: true` assertion. The evidence directory must contain
+`<exact-archive-filename>.sig` (64 raw bytes) and `<exact-archive-filename>.pub`
+(PEM SPKI public key). Their approved SPKI SHA-256 comes from
+`release-policy.json`; a missing key, foreign key, other algorithm, changed archive
+or invalid signature blocks the handoff. Private keys are never part of it.
+
+### Complete native and npm assembly
+
+`release-artifact.mjs assemble-native` and `verify-native-set` reuse the existing
+tag/main ancestry, exact run/version/source, npm tarball and authenticated native
+qualification gates. They are non-publishing maintainer tools, not an additional
+release workflow or a way to approve currently unsigned artifacts. The existing
+npm compatibility workflow is unchanged; integrated native/bridge publication
+must use the complete set and separately qualify channel availability before
+exposing migration guidance. Telemetry readiness is independently required before
+project-reporting publication.
+
+Prepare an existing handoff **outside the source checkout** with this layout:
+
+```text
+handoff/
+  native-inputs.json
+  npm/                         # unchanged release.json and exact qualified .tgz
+  native/<target>/             # unchanged native-release.json, archive and 3 sidecars
+  evidence/<target>/           # qualification.json/.sig/.pub and referenced JSON proofs
+                               # Linux: exact archive filename + .sig and .pub
+                               # Windows: exact signed setup.exe
+```
+
+All four target directories are mandatory: `darwin-arm64`, `linux-arm64`,
+`linux-x64`, `win32-x64`. `native-inputs.json` has schema 1, `npmSha256` from
+the qualification job, and a `nativeManifests` object mapping **each** of those
+targets to its independently reviewed `native-release.json` SHA-256. Supply the
+independently reviewed input JSON digest as `EXPECTED_NATIVE_INPUTS_SHA256`:
+
+```sh
+node scripts/release-artifact.mjs assemble-native /absolute/qualified-handoff
+# Reverify the returned catalog digest through EXPECTED_NATIVE_CATALOG_SHA256:
+node scripts/release-artifact.mjs verify-native-set /absolute/qualified-handoff/publication
+```
+
+These commands require the real canonical tag-push qualification environment,
+not a PR SHA or manual dispatch. Every artifact must identify that same run,
+source and package version. No output directory is created before all input
+gates pass. An existing `publication/` is never overwritten; a later I/O failure
+retains its exact partial output and reports it as failure.
+
+The output is a flat immutable upload set plus `liftoff-native-release.json`
+(schema 1, kind `liftoff-native-release-catalog`). Archives and the signed Windows
+installer retain their existing names. Every other native subject is prefixed
+with `liftoff-<version>-<target>.`: `native-release.json`,
+`qualification.json/.sig/.pub`, `sbom.cdx.json`, `provenance.json`, `NOTICE`,
+`evidence-<kind>.json` and the rendered cask/WinGet definitions. The catalog maps
+original sidecar filenames to the exact output names/bytes/SHA-256; neither signed
+JSON nor original sidecar content is rewritten. npm's record is named
+`msn-control-liftoff-<version>.release.json`; its tarball retains its original name.
+
+The catalog is **untrusted locators**, not a replacement signature, source of
+package-channel availability or publication receipt. Consumers must verify the
+existing approved qualification key/signature, exact native manifest and all
+selected subjects/source/version. Its validator is shared as the inert
+`distribution/native/native-release-catalog.mjs`; it imports no builder.
+No deployed catalog URL or successful native release is asserted by this source.
+
+Cross-host assembly uses explicitly named `verifyNativeArchiveSubjects` to
+verify producer-recorded modes and exact subject bytes without interpreting the
+collector's local filesystem modes as Windows permissions. The existing
+`verifyNativeArchive` and `verifyNativeBundle` retain their exact native mode
+checks. Native extraction/mode, minimum-host and installation evidence must still
+be independently authenticated; no file normalization supplies that evidence.
 
 The real `release-policy.json` has no approved key, Developer ID team, cask
 namespace or WinGet ID/publisher/AppId/certificate. No signing/notarization,

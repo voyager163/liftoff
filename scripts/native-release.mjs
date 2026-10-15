@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, createPublicKey, verify } from 'node:crypto';
 import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -11,6 +11,7 @@ import { releaseContext } from './release-artifact.mjs';
 import { assertNativePublicationEvidence, verifyNativeEvidenceSignature } from '../distribution/native/native-release-admission.mjs';
 import policy from '../distribution/native/release-policy.json' with { type: 'json' };
 import platforms from '../distribution/native/platforms.json' with { type: 'json' };
+import { nativeEvidenceKinds } from '../distribution/native/native-release-catalog.mjs';
 import { stringify } from 'yaml';
 
 export { assertNativePublicationEvidence, verifyNativeEvidenceSignature };
@@ -124,30 +125,33 @@ export async function archiveNativeBundle({ bundle, output, env = process.env })
 }
 
 export async function verifyNativeArchive(directory, expectedDigest, expectedCommit) {
+  return verifyArchiveMaterial(directory, expectedDigest, expectedCommit, true);
+}
+
+export async function verifyNativeArchiveSubjects(directory, expectedDigest, expectedCommit) {
+  return verifyArchiveMaterial(directory, expectedDigest, expectedCommit, false);
+}
+
+async function verifyArchiveMaterial(directory, expectedDigest, expectedCommit, nativeFilesystemModes) {
   assert.match(expectedDigest ?? '', /^[a-f0-9]{64}$/, 'Exact native manifest digest must come from qualification.');
   assert.match(expectedCommit ?? '', /^[a-f0-9]{40}$/, 'Exact source revision must come from qualification.');
   const inspected = await readBundleFile(path.join(directory, 'native-release.json'));
   assert.equal(inspected.identity.sha256, expectedDigest, 'Native artifact manifest changed.');
   const record = JSON.parse(inspected.content.toString('utf8'));
-  assert.equal(record.schemaVersion, 1);
-  assert.equal(record.kind, 'liftoff-native-release-candidate');
-  assert.equal(record.repository, 'voyager163/liftoff');
-  assert.equal(record.commit, expectedCommit, 'Native artifact source revision changed.');
-  assert.match(record.version, /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/);
-  assert.ok(['darwin-arm64', 'win32-x64', 'linux-x64', 'linux-arm64'].includes(record.target));
-  assert.equal(record.releaseReady, false, 'A development archive cannot mint release approval.');
-  assert.match(record.manifestSha256, /^[a-f0-9]{64}$/);
-  assert.match(record.inventorySha256, /^[a-f0-9]{64}$/);
-  assert.ok(record.runId === null || /^[1-9]\d*$/.test(record.runId), 'Native run identity is malformed.');
-  assert.deepEqual(record.qualification, { minimumHost: false, installerOwnership: false, signing: false,
-    notarization: false, packageNamespace: false, hclSourceCorrespondence: false },
-  'A development handoff cannot claim platform qualification.');
-  const expectedFiles = [`liftoff-${record.version}-${record.target}.tar.gz`, 'sbom.cdx.json', 'provenance.json', 'NOTICE'];
-  assert.deepEqual(record.files.map(file => file.filename), expectedFiles, 'Native sidecar inventory differs.');
+  assertNativeReleaseRecord(record, expectedCommit);
+  const expectedFiles = record.files.map(file => file.filename);
   assert.deepEqual((await readdir(directory)).sort(), [...expectedFiles, 'native-release.json'].sort(), 'Unexpected native artifact material.');
   for (const file of record.files) {
-    assert.deepEqual(await bundleFile(path.join(directory, bundlePath(file.filename))),
-      { bytes: file.bytes, sha256: file.sha256, mode: file.mode }, 'Native artifact digest, bytes or mode changed.');
+    const actual = await bundleFile(path.join(directory, bundlePath(file.filename)));
+    if (nativeFilesystemModes) {
+      assert.deepEqual(actual, { bytes: file.bytes, sha256: file.sha256, mode: file.mode },
+        'Native artifact digest, bytes or mode changed.');
+    } else {
+      // A cross-host release collector verifies bytes, not producer filesystem
+      // permissions. Native extraction/mode proof remains a separate signed gate.
+      assert.equal(actual.bytes, file.bytes, 'Native artifact size changed.');
+      assert.equal(actual.sha256, file.sha256, 'Native artifact digest changed.');
+    }
   }
   const sbom = await json(path.join(directory, 'sbom.cdx.json'));
   assert.equal(sbom.bomFormat, 'CycloneDX');
@@ -168,6 +172,70 @@ export async function verifyNativeArchive(directory, expectedDigest, expectedCom
   });
   assert.deepEqual(provenance.predicate.buildDefinition.internalParameters, { releaseReady: false });
   return record;
+}
+
+export function assertNativeReleaseRecord(record, expectedCommit) {
+  assert.match(expectedCommit ?? '', /^[a-f0-9]{40}$/, 'Exact native source revision is required.');
+  assert.equal(record.schemaVersion, 1);
+  assert.equal(record.kind, 'liftoff-native-release-candidate');
+  assert.equal(record.repository, 'voyager163/liftoff');
+  assert.equal(record.commit, expectedCommit, 'Native artifact source revision changed.');
+  assert.match(record.version, /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/);
+  assert.ok(['darwin-arm64', 'win32-x64', 'linux-x64', 'linux-arm64'].includes(record.target));
+  assert.equal(record.releaseReady, false, 'A development archive cannot mint release approval.');
+  assert.match(record.manifestSha256, /^[a-f0-9]{64}$/);
+  assert.match(record.inventorySha256, /^[a-f0-9]{64}$/);
+  assert.ok(record.runId === null || /^[1-9]\d*$/.test(record.runId), 'Native run identity is malformed.');
+  assert.deepEqual(record.qualification, { minimumHost: false, installerOwnership: false, signing: false,
+    notarization: false, packageNamespace: false, hclSourceCorrespondence: false },
+  'A development handoff cannot claim platform qualification.');
+  const expectedFiles = [`liftoff-${record.version}-${record.target}.tar.gz`, 'sbom.cdx.json', 'provenance.json', 'NOTICE'];
+  assert.deepEqual(record.files.map(file => file.filename), expectedFiles, 'Native sidecar inventory differs.');
+  for (const file of record.files) {
+    assert.ok(Number.isSafeInteger(file.mode) && file.mode >= 0 && file.mode <= 0o777);
+    assert.ok(Number.isSafeInteger(file.bytes) && file.bytes > 0 && file.bytes <= 256 * 1024 * 1024);
+    assert.match(file.sha256 ?? '', /^[a-f0-9]{64}$/);
+  }
+  return record;
+}
+
+export function verifyNativeArchiveSignature(bytes, signature, publicKey, expectedKeySha256) {
+  assert.equal(signature.length, 64, 'Linux archive requires an exact Ed25519 signature.');
+  assert.match(expectedKeySha256 ?? '', /^[a-f0-9]{64}$/, 'No approved Linux archive signing key.');
+  const key = createPublicKey(publicKey);
+  assert.equal(key.asymmetricKeyType, 'ed25519', 'Linux archive requires Ed25519.');
+  assert.equal(hash(key.export({ format: 'der', type: 'spki' })), expectedKeySha256, 'Linux archive signing principal differs.');
+  assert.ok(verify(null, bytes, key, signature), 'Linux archive signature did not verify.');
+}
+
+export async function verifyNativeQualification(record, readArtifact, readEvidence, approvedPolicy = policy) {
+  assert.match(approvedPolicy.approvedSigningKeySha256 ?? '', /^[a-f0-9]{64}$/, 'Native signing/namespace qualification is not configured.');
+  const bytes = await readEvidence('qualification.json');
+  const signature = await readEvidence('qualification.sig', 64);
+  const key = await readEvidence('qualification.pub', 4096);
+  const evidence = verifyNativeEvidenceSignature(bytes, signature, key, approvedPolicy.approvedSigningKeySha256);
+  assertNativePublicationEvidence(record, evidence, approvedPolicy);
+  assert.equal(evidence.runId, record.runId, 'Native qualification run differs.');
+  const kinds = [...nativeEvidenceKinds, ...(record.target === 'darwin-arm64' ? ['notarization'] : [])];
+  assert.deepEqual(Object.keys(evidence.evidenceDigests).sort(), [...kinds].sort(), 'Unexpected or missing platform evidence.');
+  for (const name of kinds) {
+    assert.equal(hash(await readEvidence(`${name}.json`)), evidence.evidenceDigests[name], 'Referenced platform evidence changed.');
+  }
+  if (record.target === 'win32-x64') {
+    nativePackageDefinitions(record, evidence, approvedPolicy);
+    const installer = await readEvidence(bundlePath(evidence.windowsInstaller.filename), 256 * 1024 * 1024);
+    assert.equal(hash(installer), evidence.windowsInstaller.sha256, 'Exact qualified Windows installer changed.');
+    assert.equal(installer.length, evidence.windowsInstaller.bytes, 'Qualified Windows installer size changed.');
+  } else if (record.target.startsWith('linux-')) {
+    const archive = record.files[0];
+    const archiveBytes = await readArtifact(archive.filename, 256 * 1024 * 1024);
+    assert.equal(hash(archiveBytes), archive.sha256, 'Signed Linux archive differs from qualification.');
+    assert.equal(archiveBytes.length, archive.bytes, 'Signed Linux archive size differs.');
+    verifyNativeArchiveSignature(archiveBytes,
+      await readEvidence(`${archive.filename}.sig`, 64),
+      await readEvidence(`${archive.filename}.pub`, 4096), approvedPolicy.linux.archiveSigningKeySha256);
+  }
+  return evidence;
 }
 
 export function nativePackageDefinitions(record, evidence, approvedPolicy = policy) {
@@ -227,25 +295,11 @@ export async function verifyNativeReleaseForPublication(directory, digest, commi
   assert.equal(context.commit, record.commit);
   assert.equal(context.version, record.version);
   assert.equal(record.runId, context.runId, 'Native artifacts must come from this exact release qualification run.');
-  assert.match(policy.approvedSigningKeySha256 ?? '', /^[a-f0-9]{64}$/, 'Native signing/namespace qualification is not configured.');
   assert.ok(env.LIFTOFF_NATIVE_EVIDENCE_DIRECTORY, 'An exact signed evidence handoff is required.');
   const evidenceRoot = env.LIFTOFF_NATIVE_EVIDENCE_DIRECTORY;
-  const bytes = (await readBundleFile(path.join(evidenceRoot, 'qualification.json'))).content;
-  const signature = (await readBundleFile(path.join(evidenceRoot, 'qualification.sig'), 64)).content;
-  const key = (await readBundleFile(path.join(evidenceRoot, 'qualification.pub'), 4096)).content;
-  const evidence = verifyNativeEvidenceSignature(bytes, signature, key, policy.approvedSigningKeySha256);
-  assertNativePublicationEvidence(record, evidence);
-  for (const [name, expected] of Object.entries(evidence.evidenceDigests)) {
-    assert.equal(bundlePath(name).split('/').length, 1, 'Evidence names must be bounded direct filenames.');
-    assert.equal((await bundleFile(path.join(evidenceRoot, `${bundlePath(name)}.json`))).sha256, expected,
-      'Referenced platform evidence changed.');
-  }
-  if (record.target === 'win32-x64') {
-    nativePackageDefinitions(record, evidence);
-    const installer = await bundleFile(path.join(evidenceRoot, bundlePath(evidence.windowsInstaller.filename)));
-    assert.equal(installer.sha256, evidence.windowsInstaller.sha256, 'Exact qualified Windows installer changed.');
-    assert.equal(installer.bytes, evidence.windowsInstaller.bytes, 'Qualified Windows installer size changed.');
-  }
+  const read = (root, name, maximum) => readBundleFile(path.join(root, bundlePath(name)), maximum).then(file => file.content);
+  const evidence = await verifyNativeQualification(record,
+    (name, maximum) => read(directory, name, maximum), (name, maximum) => read(evidenceRoot, name, maximum));
   return { record, evidence };
 }
 

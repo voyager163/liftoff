@@ -537,6 +537,15 @@ provenance handoffs. The existing `release-artifact.mjs verify-native` route
 retains qualified tag/main ancestry and requires independently signed platform
 evidence. The approved namespace/key policy remains unconfigured; neither that
 route nor the gated cask/WinGet definition renderer publishes anything.
+The non-publishing `release-artifact.mjs assemble-native` / `verify-native-set`
+tools additionally require all four authenticated native handoffs and the exact
+npm bridge tarball from the same source/version/run. Their flat catalog preserves
+original signed bytes and avoids colliding sidecar names. Linux admission verifies
+the detached archive signature against its separately approved key; a signed
+operator claim alone is insufficient. The inert catalog validator is not publisher
+authentication or channel-availability evidence. The native guide documents its
+layout, exact-digest inputs, cross-host byte/native-mode distinction and remaining
+publication prerequisites.
 Linux receipt/journal interfaces and their recovery limits are documented in
 the native guide for later owner-aware upgrade work. Current upgrade and
 npm-to-Homebrew migration behavior is unchanged.

@@ -97,13 +97,16 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
     const result = installed(`
       import { verifyWindowsJobControllerAsset } from ${JSON.stringify(moduleUrl('adapters/process/windows-job-runner.js'))};
       const admission = await import(${JSON.stringify(pathToFileURL(path.join(bundle, 'installation/native-release-admission.mjs')).href)});
+      const catalog = await import(${JSON.stringify(pathToFileURL(path.join(bundle, 'installation/native-release-catalog.mjs')).href)});
       console.log(JSON.stringify({ controller: await verifyWindowsJobControllerAsset(), runtime: process.execPath,
-        admissionExports: Object.keys(admission).sort() }));
+        admissionExports: Object.keys(admission).sort(), catalogFilename: catalog.nativeReleaseCatalogFilename,
+        catalogTargets: catalog.nativeReleaseTargets }));
     `);
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({
       controller: path.join(bundle, 'application/assets/repair/windows-job-controller.ps1'), runtime,
-      admissionExports: ['assertNativePublicationEvidence', 'verifyNativeEvidenceSignature']
+      admissionExports: ['assertNativePublicationEvidence', 'verifyNativeEvidenceSignature'],
+      catalogFilename: 'liftoff-native-release.json', catalogTargets: ['darwin-arm64', 'linux-arm64', 'linux-x64', 'win32-x64']
     });
   });
   it('refuses missing template, controller, HCL and host-policy material without checkout fallback', async () => {
@@ -111,7 +114,7 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
     for (const relative of ['application/assets/plugins/go-huma/go-backend/go.mod',
       'application/assets/repair/windows-job-controller.ps1',
       'application/node_modules/@cdktf/hcl2json/main.wasm.gz', 'installation/platforms.json',
-      'installation/release-policy.json', 'installation/native-release-admission.mjs']) {
+      'installation/release-policy.json', 'installation/native-release-admission.mjs', 'installation/native-release-catalog.mjs']) {
       const file = path.join(damaged, relative), bytes = await readFile(file), mode = (await lstat(file)).mode & 0o777;
       await rm(file);
       try {
@@ -123,7 +126,8 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
             : relative.endsWith('platforms.json')
               ? execute(path.join(damaged, manifest.launcher), ['--version'])
               : relative.startsWith('installation/')
-                ? installed(`await import(${JSON.stringify(pathToFileURL(path.join(damaged, 'installation/native-release-admission.mjs')).href)});`, damaged)
+                ? installed(`await import(${JSON.stringify(pathToFileURL(path.join(damaged,
+                  relative.endsWith('native-release-catalog.mjs') ? relative : 'installation/native-release-admission.mjs')).href)});`, damaged)
                 : installed(`import { parseIsolatedHcl } from ${JSON.stringify(moduleUrl('adapters/hcl/isolated-parser.js', damaged))}; await parseIsolatedHcl(['locals { enabled = true }\\n']);`, damaged);
         expect(result.status, result.stdout + result.stderr).not.toBe(0);
       } finally { await writeFile(file, bytes, { mode }); if (!windows) await chmod(file, mode); }
