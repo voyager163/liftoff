@@ -5,16 +5,22 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { observeProjectGitMetadata, gitConfigNullFile } from './adapters/assessment/live.js';
 import { assertWorkspaceDirectorySnapshot, captureWorkspaceDirectoryChain } from './adapters/filesystem/repair-workspaces.js';
+import { readBoundProjectFileSnapshot } from './adapters/filesystem/bound-project-files.js';
 import { inspectModernLocalRuntime, planModernLocalRuntime } from './application/governance/modern-local-inputs.js';
 import { RepairWorkspaceError } from './application/repair/workspaces-types.js';
 import { projectCatalog } from './application/project/catalog.js';
 import { parseProjectManifest } from './application/project/manifest.js';
 import { resolveModernManifestSourceContext } from './application/project/source-context.js';
-import { canonicalSha256 } from './domain/governance/activation/canonical-json.js';
+import { canonicalSha256, isRecord } from './domain/governance/activation/canonical-json.js';
 import { freezeModernValue } from './domain/governance/activation/modern-graph.js';
 import { capturedFileBytes } from './domain/governance/activation/modern-local-inputs.js';
 import type { ModernLocalSnapshot } from './domain/governance/activation/modern-local-inputs.js';
-import { copyModernLocalData } from './domain/governance/activation/modern-local-inputs.js';
+import { copyModernLocalData, localPath, modernLocalBounds, ModernLocalInputError } from './domain/governance/activation/modern-local-inputs.js';
+import { actionReferences, pinnedActions } from './domain/governance/assessment/predicates.js';
+import { parseAssessmentWorkflow } from './domain/governance/assessment/yaml.js';
+import type { ParsedWorkflow } from './domain/governance/assessment/yaml.js';
+import { AssessmentFiles, AssessmentInputError } from './governance-assessment/readers.js';
+import { FileSystemError } from './domain/project/errors.js';
 import { createSource5WorkflowContext } from './governance-activation/workflow-source5-context.js';
 import { workflowGitCommand, workflowGitOptions } from './governance-activation/workflow-binding.js';
 import { NodeCommandRunner } from './process-runner.js';
@@ -88,16 +94,19 @@ function completed(result: CommandResult): boolean {
     !result.aborted && !result.errorCode && result.processTreeSettled === true;
 }
 
-async function assertCommittedInputs(root: string, snapshot: ModernLocalSnapshot, sourceSha: string,
-  managedPaths: readonly string[], componentRoots: readonly string[]): Promise<string> {
-  const options = workflowGitOptions(root, 10_000);
+function validatorGitOptions(root: string, timeoutMs: number) {
+  const options = workflowGitOptions(root, timeoutMs);
   const env: NodeJS.ProcessEnv = { ...options.env };
   for (const key of Object.keys(process.env)) if (key.toUpperCase().startsWith('GIT_')) env[key] = undefined;
   Object.assign(env, { GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: gitConfigNullFile(),
-    GIT_CONFIG_COUNT: '0', GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' });
+    GIT_CONFIG_COUNT: '0', GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_NO_REPLACE_OBJECTS: '1' });
+  return { ...options, env, ensureProcessTreeSettled: true };
+}
+
+async function readCommittedTree(root: string, sourceSha: string, timeoutMs = 10_000) {
   const result = await new NodeCommandRunner().run(
     workflowGitCommand(['ls-tree', '-r', '--full-tree', '-z', sourceSha]),
-    { ...options, env, ensureProcessTreeSettled: true });
+    validatorGitOptions(root, timeoutMs));
   if (!completed(result) || result.stdout.length && !result.stdout.endsWith('\0')) {
     throw new ValidatorRefusal('validator-source-tree', 'The complete bounded immutable source tree was not observed.');
   }
@@ -109,6 +118,12 @@ async function assertCommittedInputs(root: string, snapshot: ModernLocalSnapshot
     }
     blobs.set(match[3]!, { mode: match[1]!, digest: match[2]! });
   }
+  return blobs;
+}
+
+async function assertCommittedInputs(root: string, snapshot: ModernLocalSnapshot, sourceSha: string,
+  managedPaths: readonly string[], componentRoots: readonly string[]): Promise<string> {
+  const blobs = await readCommittedTree(root, sourceSha);
   const files = snapshot.files.filter(file => file.scope === 'application' ||
     file.pathParts.join('/') === 'liftoff.manifest.json' || managedPaths.includes(file.pathParts.join('/')));
   const selectedPaths = new Set(files.map(file => file.pathParts.join('/')));
@@ -133,6 +148,194 @@ async function assertCommittedInputs(root: string, snapshot: ModernLocalSnapshot
   return canonicalSha256(files.map(file => ({
     pathParts: file.pathParts, digest: file.digest, mode: file.mode
   })));
+}
+
+export type WorkflowActionReferenceValidatorReport = Omit<WorkflowContextValidatorReport, 'validator'> & {
+  readonly validator: 'action-references';
+};
+
+/** Private committed-source policy body; no public selector, exception authority or project execution. */
+export async function executeWorkflowActionReferenceValidator(
+  projectRoot: string, sourceSha: string
+): Promise<WorkflowActionReferenceValidatorReport> {
+  const cutoff = performance.now() + 180_000;
+  const initial = await executeWorkflowContextValidator(projectRoot, { validator: 'source-integrity', sourceSha });
+  const inputs = new Map<string, { mode: string; digest: string }>();
+  const report = (status: WorkflowContextValidatorReport['status'], code: string, message: string) =>
+    freezeModernValue({ ...initial, validator: 'action-references' as const, status, code, message,
+      inputDigest: initial.inputDigest === null ? null :
+        canonicalSha256({ project: initial.inputDigest, actions: [...inputs].sort(([a], [b]) => a.localeCompare(b, 'en')) }) });
+  if (initial.status !== 'passed') return report(initial.status, initial.code, initial.message);
+  function remaining(): number {
+    const value = cutoff - performance.now();
+    if (value <= 0) throw new ValidatorRefusal('validator-actions-deadline',
+      'The original bounded source observation expired; no successful action-reference result was issued.');
+    return Math.min(10_000, value);
+  }
+  try {
+    const root = await realpath(projectRoot);
+    const tree = await readCommittedTree(root, sourceSha, remaining());
+    remaining();
+    const files = new AssessmentFiles(root);
+    const paths = (await files.list(['.github', 'workflows'], ['.yml', '.yaml'])).map(parts => parts.join('/'));
+    const committed = [...tree.keys()].filter(name => /^\.github\/workflows\/[^/]+\.ya?ml$/u.test(name)).sort();
+    if (!paths.length || paths.length > modernLocalBounds.files ||
+      canonicalSha256([...paths].sort()) !== canonicalSha256(committed)) {
+      throw new ValidatorRefusal('validator-actions-membership',
+        'The complete nonempty actual workflow inventory must match the reviewed commit; missing, untracked or unsafe sources cannot qualify.');
+    }
+    let bytes = 0;
+    async function snapshot(name: string) {
+      remaining();
+      const captured = await readBoundProjectFileSnapshot(root, name.split('/'), {
+        maximumBytes: modernLocalBounds.fileBytes, linkPolicy: 'single-link',
+        diagnostics: { pathLabel: 'Action-reference source', invalid() {
+          throw new ValidatorRefusal('validator-actions-source', 'Action-reference source has an unsafe or changed filesystem boundary.');
+        } }
+      });
+      remaining();
+      return captured;
+    }
+    async function sourceText(name: string): Promise<string> {
+      const blob = tree.get(name);
+      if (!blob || !['100644', '100755'].includes(blob.mode)) {
+        throw new ValidatorRefusal('validator-actions-source',
+          'Each declared action source must already be one exact committed regular file.');
+      }
+      const captured = await snapshot(name);
+      const content = captured.content;
+      if (!content ||
+        createHash('sha1').update(`blob ${content.length}\0`).update(content).digest('hex') !== blob.digest ||
+        (captured.mode! & 0o111 ? '100755' : '100644') !== blob.mode) {
+        throw new ValidatorRefusal('validator-actions-source',
+          'Actual action-reference source bytes or modes differ from the exact committed regular file.', 'failed');
+      }
+      if (!inputs.has(name)) bytes += content.length;
+      inputs.set(name, blob);
+      if (inputs.size > modernLocalBounds.files || bytes > modernLocalBounds.totalBytes ||
+        !Buffer.from(content.toString('utf8')).equals(content)) {
+        throw new ValidatorRefusal('validator-actions-source',
+          'The complete action-reference closure exceeds the existing source bounds or is not UTF-8 text.');
+      }
+      remaining();
+      return content.toString('utf8');
+    }
+    async function source(name: string): Promise<ParsedWorkflow> {
+      return parseAssessmentWorkflow(await sourceText(name), name);
+    }
+    async function localActionMetadata(parts: readonly string[]): Promise<string> {
+      const candidates = ['action.yml', 'action.yaml'].map(name => [...parts, name].join('/'));
+      const committed = candidates.filter(name => tree.has(name)), actual: string[] = [];
+      for (const name of candidates) if ((await snapshot(name)).content !== undefined) actual.push(name);
+      if (committed.length !== 1 || canonicalSha256(actual) !== canonicalSha256(committed)) {
+        throw new ValidatorRefusal('validator-actions-local',
+          'Actual local action metadata membership must exactly match one committed safe file; an untracked shadow or alternate metadata cannot qualify.');
+      }
+      return committed[0]!;
+    }
+    const views: ParsedWorkflow[] = [];
+    const visiting = new Set<string>(), visited = new Set<string>();
+    const metadataSources = new Map<string, string>();
+    async function visit(workflow: ParsedWorkflow): Promise<void> {
+      if (visiting.has(workflow.path)) throw new ValidatorRefusal('validator-actions-cycle',
+        'The actual local composite-action reference closure contains a cycle.');
+      if (visited.has(workflow.path)) return;
+      visiting.add(workflow.path);
+      const references = actionReferences([workflow]);
+      const jobs = workflow.value.jobs;
+      if (!references || !isRecord(jobs)) throw new ValidatorRefusal('validator-actions-unavailable',
+        'The complete declared action-reference inventory could not be interpreted.');
+      views.push(workflow);
+      const localReferences: { reference: string; reusable: boolean }[] = [];
+      for (const job of Object.values(jobs)) {
+        if (!isRecord(job)) throw new ValidatorRefusal('validator-actions-unavailable',
+          'The complete declared action-reference inventory could not be interpreted.');
+        if (typeof job.uses === 'string' && job.uses.startsWith('./')) {
+          if (job.steps !== undefined) throw new ValidatorRefusal('validator-actions-local',
+            'A local reusable workflow job cannot also declare action steps.');
+          localReferences.push({ reference: job.uses, reusable: true });
+        }
+        if (Array.isArray(job.steps)) for (const step of job.steps) {
+          if (isRecord(step) && typeof step.uses === 'string' && step.uses.startsWith('./')) {
+            localReferences.push({ reference: step.uses, reusable: false });
+          }
+        }
+      }
+      for (const { reference, reusable } of localReferences) {
+        const parts = localPath(reference.slice(2).split('/'));
+        if (reusable) {
+          const name = parts.join('/');
+          if (!/^\.github\/workflows\/[^/]+\.ya?ml$/u.test(name)) {
+            throw new ValidatorRefusal('validator-actions-local',
+              'A local reusable workflow must name one exact committed top-level workflow file.');
+          }
+          await visit(await source(name));
+          continue;
+        }
+        const directory = parts.join('/');
+        const metadata = metadataSources.get(directory) ?? await localActionMetadata(parts);
+        metadataSources.set(directory, metadata);
+        if (visiting.has(metadata)) throw new ValidatorRefusal('validator-actions-cycle',
+          'The actual local composite-action reference closure contains a cycle.');
+        if (visited.has(metadata)) continue;
+        const action = await source(metadata);
+        const runs = action.value.runs;
+        if (!isRecord(runs) || (runs.using === 'composite'
+          ? !Array.isArray(runs.steps) || !runs.steps.length || !runs.steps.every(step => isRecord(step) &&
+            (typeof step.uses === 'string' && step.uses.trim().length > 0 && step.run === undefined ||
+             typeof step.run === 'string' && step.run.trim().length > 0 && step.uses === undefined &&
+               typeof step.shell === 'string' && step.shell.trim().length > 0))
+          : runs.steps !== undefined || (runs.using === 'docker'
+            ? typeof runs.image !== 'string' || !runs.image.startsWith('docker://')
+            : runs.using !== 'node20' && runs.using !== 'node24' ||
+              typeof runs.main !== 'string' || !runs.main.trim().length))) {
+          throw new ValidatorRefusal('validator-actions-local', 'The actual local action metadata has no supported declared reference interpretation.');
+        }
+        if (runs.using === 'node20' || runs.using === 'node24') {
+          for (const entry of [runs.main, runs.pre, runs.post]) {
+            if (entry === undefined) continue;
+            if (typeof entry !== 'string' || !entry.trim().length) {
+              throw new ValidatorRefusal('validator-actions-local',
+                'Declared local Node action entrypoints must name actual committed project files.');
+            }
+            const name = localPath([...parts, ...(entry.startsWith('./') ? entry.slice(2) : entry).split('/')]).join('/');
+            await sourceText(name);
+          }
+        }
+        await visit({ ...action, value: { jobs: { localAction: {
+          ...(runs.using === 'composite' ? { steps: runs.steps } :
+            runs.using === 'docker' ? { steps: [{ uses: runs.image }] } : {})
+        } } } });
+      }
+      visiting.delete(workflow.path);
+      visited.add(workflow.path);
+    }
+    for (const name of paths) await visit(await source(name));
+    const policy = pinnedActions(views);
+    for (const directory of metadataSources.keys()) await localActionMetadata(directory.split('/'));
+    for (const name of inputs.keys()) await sourceText(name);
+    const finalPaths = (await files.list(['.github', 'workflows'], ['.yml', '.yaml'])).map(parts => parts.join('/'));
+    const final = await executeWorkflowContextValidator(root, { validator: 'source-integrity', sourceSha });
+    remaining();
+    if (canonicalSha256(finalPaths) !== canonicalSha256(paths) || final.status !== 'passed' ||
+      final.graphHash !== initial.graphHash || final.inputDigest !== initial.inputDigest) {
+      throw new ValidatorRefusal('validator-actions-drift', 'The actual project or complete workflow inventory changed during validation.', 'failed');
+    }
+    if (policy.exceptionResource) return report('blocked', 'validator-actions-exception-unavailable',
+      'The exact official SLSA tag reference needs its independently approved current scoped exception reader; source declarations or copied approvals cannot supply it.');
+    if (policy.value === null) return report('blocked', 'validator-actions-unavailable',
+      'Declared action references are dynamic, empty or uninterpretable; no successful pinning result was substituted.');
+    return policy.value ? report('passed', 'validator-actions-passed',
+      'Every declared external action reference in the complete committed workflow/local-action closure is content-pinned; no workflow, scan, exception or phase authority was issued.') :
+      report('failed', 'validator-actions-unpinned',
+        'The actual committed action-reference closure violates the unchanged immutable-reference policy; source contents were withheld.');
+  } catch (error) {
+    if (error instanceof ValidatorRefusal) return report(error.status, error.code, error.message);
+    if (error instanceof AssessmentInputError || error instanceof ModernLocalInputError ||
+        error instanceof FileSystemError) return report('blocked', 'validator-actions-source',
+      'The complete actual workflow/local-action source could not be safely parsed or observed; source contents were withheld.');
+    throw error;
+  }
 }
 
 /** Explicit runner execution, not a plan reader, host sandbox, approval issuer or provider proof producer. */

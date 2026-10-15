@@ -1,14 +1,15 @@
 import { execFileSync } from 'node:child_process';
-import { lstat, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
+import { link, lstat, mkdtemp, readFile, realpath, rename, rm, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
-  executeWorkflowContextValidator, parseWorkflowContextValidatorArgs
+  executeWorkflowActionReferenceValidator, executeWorkflowContextValidator, parseWorkflowContextValidatorArgs
 } from '../src/workflow-context-validator.js';
 import { resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
 import { writeModernInstalledProject } from './fixtures/modern-installed-project.js';
 import { writeModernLocalFixtureInputs } from './fixtures/modern-local-project.js';
+import * as boundFiles from '../src/adapters/filesystem/bound-project-files.js';
 
 describe('release-owned real context validator bodies, not phase qualification', () => {
   let root: string;
@@ -72,6 +73,7 @@ describe('release-owned real context validator bodies, not phase qualification',
     for (const argv of [
       [], ['--validator', 'echo', '--source-sha', 'a'.repeat(40)],
       ['--validator', 'infrastructure', '--source-sha', 'a'.repeat(40)],
+      ['--validator', 'action-references', '--source-sha', 'a'.repeat(40)],
       ['--validator', 'source-integrity', '--source-sha', 'main'],
       ['--validator', 'source-integrity', '--source-sha', 'a'.repeat(40), '--execute'],
       ['--source-sha', 'a'.repeat(40), '--validator', 'source-integrity']
@@ -106,6 +108,21 @@ describe('release-owned real context validator bodies, not phase qualification',
     const value = await fixture();
     const report = await executeWorkflowContextValidator(value.root, { validator: 'backend-tests', sourceSha: 'a'.repeat(40) });
     expect(report).toMatchObject({ status: 'failed', code: 'validator-source-binding', workloadExecution: false, command: null });
+  });
+
+  it('does not let a real local Git replacement redefine the reviewed commit source', async () => {
+    const value = await fixture();
+    await value.write([...value.backend, 'source.js'], 'export function double(value) { return value * 3; }\n');
+    git(value.root, 'add', '.');
+    git(value.root, 'commit', '--quiet', '-m', 'Different actual application source');
+    const replacement = git(value.root, 'rev-parse', 'HEAD');
+    git(value.root, 'replace', value.sourceSha, replacement);
+    git(value.root, 'update-ref', 'HEAD', value.sourceSha);
+    expect(await executeWorkflowContextValidator(value.root, {
+      validator: 'source-integrity', sourceSha: value.sourceSha
+    })).toMatchObject({
+      status: 'failed', code: 'validator-source-mismatch', workloadExecution: false, command: null
+    });
   });
 
   it('refuses uncommitted application bytes before project code can execute', async () => {
@@ -232,5 +249,294 @@ describe('release-owned real context validator bodies, not phase qualification',
     expect(report).toMatchObject({ status: 'failed', code: 'validator-command', workloadExecution: true,
       command: { outputLimitExceeded: true, processTreeSettled: true }, retainedExecutionDirectory: null });
     expect(JSON.stringify(report).length).toBeLessThan(2048);
+  });
+
+  async function actionFixture() {
+    const value = await fixture();
+    const action = ['scripts', 'node-setup', 'action.yml'];
+    const metadata = {
+      name: 'Actual Node setup', description: 'Reusable project runtime setup',
+      runs: { using: 'composite', steps: [{ uses: `actions/setup-node@${'a'.repeat(40)}` }] }
+    };
+    await value.write(action, JSON.stringify(metadata));
+    await value.write(['.github', 'workflows', 'source.yml'], JSON.stringify({
+      on: { push: {} }, jobs: { test: { 'runs-on': 'ubuntu-latest', steps: [
+        { uses: `actions/checkout@${'b'.repeat(40)}` }, { uses: './scripts/node-setup' }
+      ] } }
+    }));
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual declared workflow and composite action');
+    return { ...value, action, metadata, sourceSha: git(value.root, 'rev-parse', 'HEAD') };
+  }
+
+  it('checks the real recursive committed action closure and detects an actual single-file pinning violation', async () => {
+    const value = await actionFixture();
+    const green = await executeWorkflowActionReferenceValidator(value.root, value.sourceSha);
+    expect(green).toMatchObject({
+      validator: 'action-references', status: 'passed', code: 'validator-actions-passed',
+      workloadExecution: false, command: null, phaseProof: 'not-issued', graphHash: value.api!.identity.phaseGraphHash
+    });
+    expect(Object.keys(green).sort()).toEqual(Object.keys(await executeWorkflowContextValidator(value.root, {
+      validator: 'source-integrity', sourceSha: value.sourceSha
+    })).sort());
+    value.metadata.runs.steps[0]!.uses = 'actions/setup-node@main';
+    await value.write(value.action, JSON.stringify(value.metadata));
+    git(value.root, 'add', '--', value.action.join('/'));
+    git(value.root, 'commit', '--quiet', '-m', 'Replace the existing setup action pin with a mutable reference');
+    expect(git(value.root, 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD')).toBe(value.action.join('/'));
+    const red = await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD'));
+    expect(red).toMatchObject({
+      status: 'failed', code: 'validator-actions-unpinned', workloadExecution: false, command: null, phaseProof: 'not-issued'
+    });
+    expect(red.inputDigest).not.toBe(green.inputDigest);
+    expect(JSON.stringify(red)).not.toContain('actions/setup-node@main');
+  });
+
+  it('does not pass an empty workflow inventory vacuously', async () => {
+    const value = await fixture();
+    expect(await executeWorkflowActionReferenceValidator(value.root, value.sourceSha))
+      .toMatchObject({ status: 'blocked', code: 'validator-actions-membership', workloadExecution: false });
+  });
+
+  it('does not renew its original absolute source-observation cutoff after real initial validation', async () => {
+    const value = await actionFixture();
+    const clock = vi.spyOn(performance, 'now').mockReturnValueOnce(0).mockReturnValue(180_001);
+    try {
+      expect(await executeWorkflowActionReferenceValidator(value.root, value.sourceSha))
+        .toMatchObject({ status: 'blocked', code: 'validator-actions-deadline',
+          workloadExecution: false, command: null, phaseProof: 'not-issued' });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it.each(['deleted', 'untracked'] as const)('refuses a real %s workflow instead of selecting a partial source closure', async variant => {
+    const value = await actionFixture();
+    if (variant === 'deleted') await rm(path.join(value.root, '.github', 'workflows', 'source.yml'));
+    else await value.write(['.github', 'workflows', 'untracked.yml'], '{"jobs":{}}\n');
+    expect(await executeWorkflowActionReferenceValidator(value.root, value.sourceSha))
+      .toMatchObject({ status: 'blocked', code: 'validator-actions-membership', workloadExecution: false });
+  });
+
+  it('refuses modified uncommitted local-action bytes against the original exact source', async () => {
+    const value = await actionFixture();
+    value.metadata.runs.steps[0]!.uses = 'actions/setup-node@main';
+    await value.write(value.action, JSON.stringify(value.metadata));
+    expect(await executeWorkflowActionReferenceValidator(value.root, value.sourceSha))
+      .toMatchObject({ status: 'failed', code: 'validator-actions-source', workloadExecution: false });
+  });
+
+  it('refuses an actual composite-action cycle without running either action', async () => {
+    const value = await actionFixture();
+    value.metadata.runs.steps[0]!.uses = './scripts/node-setup';
+    await value.write(value.action, JSON.stringify(value.metadata));
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual cyclic composite-action reference');
+    expect(await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD')))
+      .toMatchObject({ status: 'blocked', code: 'validator-actions-cycle', workloadExecution: false });
+  });
+
+  it('does not turn an official SLSA tag or a copied approval into a current exception grant', async () => {
+    const value = await actionFixture();
+    await value.write(['.github', 'workflows', 'source.yml'], JSON.stringify({
+      on: { push: {} }, jobs: { provenance: {
+        uses: 'slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0'
+      } }
+    }));
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual tag-based official SLSA generator source');
+    const report = await Reflect.apply(executeWorkflowActionReferenceValidator, undefined, [
+      value.root, git(value.root, 'rev-parse', 'HEAD'),
+      { status: 'approved', expiresAt: '2099-01-01T00:00:00.000Z' }
+    ]);
+    expect(report).toMatchObject({ status: 'blocked', code: 'validator-actions-exception-unavailable',
+      workloadExecution: false, command: null, phaseProof: 'not-issued' });
+  });
+
+  it('refuses dynamic references and missing local metadata instead of guessing a successful closure', async () => {
+    const value = await actionFixture();
+    for (const reference of ['${{ inputs.action }}', './scripts/absent']) {
+      value.metadata.runs.steps[0]!.uses = reference;
+      await value.write(value.action, JSON.stringify(value.metadata));
+      git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Unprovable actual action-reference source');
+      const report = await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD'));
+      expect(report.status).toBe('blocked');
+      expect(report.workloadExecution).toBe(false);
+    }
+  });
+
+  it('interprets real local reusable workflow calls and refuses their actual cycles', async () => {
+    const value = await actionFixture();
+    const reusable = ['.github', 'workflows', 'reusable.yml'];
+    await value.write(reusable, JSON.stringify({
+      on: { workflow_call: {} }, jobs: { test: { 'runs-on': 'ubuntu-latest',
+        steps: [{ uses: './scripts/node-setup' }] } }
+    }));
+    await value.write(['.github', 'workflows', 'source.yml'], JSON.stringify({
+      on: { push: {} }, jobs: { test: { uses: './.github/workflows/reusable.yml' } }
+    }));
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Real local reusable workflow reference');
+    expect(await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD')))
+      .toMatchObject({ status: 'passed', code: 'validator-actions-passed', workloadExecution: false, command: null });
+    await value.write(reusable, JSON.stringify({
+      on: { workflow_call: {} }, jobs: { cycle: { uses: './.github/workflows/source.yml' } }
+    }));
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Real reusable workflow cycle');
+    expect(await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD')))
+      .toMatchObject({ status: 'blocked', code: 'validator-actions-cycle', workloadExecution: false });
+  });
+
+  it.each([
+    { using: 'composite', steps: [] },
+    { using: 'composite', steps: [{}] },
+    { using: 'composite', steps: [{ run: 'node --version' }] },
+    { using: 'composite', steps: [{ run: 'node --version', shell: 'bash', uses: `actions/setup-node@${'a'.repeat(40)}` }] },
+    { using: 'node24' },
+    { using: 'docker' },
+    { using: { toString: 'not-callable' }, main: 'index.js' },
+    { using: 'unknown-runtime', main: 'index.js' }
+  ])('blocks uninterpretable actual local metadata %j', async runs => {
+    const value = await actionFixture();
+    await value.write(value.action, JSON.stringify({ name: 'Actual malformed local action', runs }));
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual unsupported local-action metadata');
+    expect(await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD')))
+      .toMatchObject({ status: 'blocked', code: 'validator-actions-local', workloadExecution: false });
+  });
+
+  it.each(['ambiguous', 'untracked', 'traversal'] as const)('blocks %s local-action metadata explicitly', async variant => {
+    const value = await actionFixture();
+    if (variant === 'ambiguous') {
+      await value.write(['scripts', 'node-setup', 'action.yaml'], JSON.stringify(value.metadata));
+    } else if (variant === 'untracked') {
+      git(value.root, 'rm', '--cached', '--', value.action.join('/'));
+    } else {
+      value.metadata.runs.steps[0]!.uses = './../outside';
+      await value.write(value.action, JSON.stringify(value.metadata));
+    }
+    git(value.root, 'add', ...(variant === 'untracked' ? ['--update'] : ['.']));
+    git(value.root, 'commit', '--quiet', '-m', 'Unprovable actual local-action closure');
+    expect(await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD')))
+      .toMatchObject({ status: 'blocked', workloadExecution: false, command: null });
+  });
+
+  it.each([
+    { runs: { using: 'node24', main: 'index.js' }, status: 'passed' },
+    { runs: { using: 'composite', steps: [{ run: 'node --version', shell: 'bash' }] }, status: 'passed' },
+    { runs: { using: 'docker', image: `docker://fixture.invalid/action@sha256:${'c'.repeat(64)}` }, status: 'passed' },
+    { runs: { using: 'docker', image: 'docker://fixture.invalid/action:latest' }, status: 'failed' },
+    { runs: { using: 'docker', image: 'Dockerfile' }, status: 'blocked' }
+  ] as const)('interprets only supported declared local runtime references %j', async ({ runs, status }) => {
+    const value = await actionFixture();
+    await value.write(value.action, JSON.stringify({ name: 'Actual declared runtime metadata', runs }));
+    await value.write(['scripts', 'node-setup', 'index.js'], 'export const actualLocalActionSource = true;\n');
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual declared local runtime reference');
+    expect(await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD')))
+      .toMatchObject({ status, workloadExecution: false, command: null, phaseProof: 'not-issued' });
+  });
+
+  it.each(['symlink', 'hardlink', 'executable-mode', 'malformed-yaml'] as const)(
+    'refuses actual local-action %s source without leaking its contents', async variant => {
+      const value = await actionFixture(), file = path.join(value.root, ...value.action);
+      if (variant === 'symlink') {
+        const copy = path.join(value.root, 'actual-action-copy.yml');
+        await value.write(['actual-action-copy.yml'], JSON.stringify(value.metadata));
+        await rm(file); await symlink(copy, file);
+      } else if (variant === 'hardlink') {
+        await link(file, path.join(value.root, 'actual-action-copy.yml'));
+      } else if (variant === 'executable-mode') {
+        git(value.root, 'update-index', '--chmod=+x', '--', value.action.join('/'));
+        git(value.root, 'commit', '--quiet', '-m', 'Actual committed executable metadata mode differs from the working file');
+      } else {
+        await value.write(value.action, 'runs: [isolated-sensitive-fixture: [\n');
+        git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual malformed committed metadata');
+      }
+      const report = await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD'));
+      expect(report.status).not.toBe('passed');
+      expect(report.workloadExecution).toBe(false);
+      expect(report.command).toBeNull();
+      expect(JSON.stringify(report)).not.toContain('isolated-sensitive-fixture');
+    }
+  );
+
+  it.each(['missing', 'modified', 'untracked-pre', 'symlink-post'] as const)(
+    'does not call an actual %s Node action entrypoint committed source', async variant => {
+      const value = await actionFixture();
+      const directory = ['scripts', 'node-setup'];
+      await value.write(value.action, JSON.stringify({
+        name: 'Actual Node entrypoints', runs: { using: 'node24', main: 'index.js',
+          ...(variant === 'untracked-pre' ? { pre: 'pre.js' } : {}),
+          ...(variant === 'symlink-post' ? { post: 'post.js' } : {}) }
+      }));
+      if (variant !== 'missing') await value.write([...directory, 'index.js'], 'export const actualEntrypoint = true;\n');
+      if (variant === 'symlink-post') await value.write([...directory, 'post.js'], 'export const actualPost = true;\n');
+      git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual Node action source declaration');
+      if (variant === 'modified') await value.write([...directory, 'index.js'], 'export const actualEntrypoint = false;\n');
+      if (variant === 'untracked-pre') await value.write([...directory, 'pre.js'], 'export const untrackedPre = true;\n');
+      if (variant === 'symlink-post') {
+        const post = path.join(value.root, ...directory, 'post.js');
+        await rm(post); await symlink(path.join(value.root, ...directory, 'index.js'), post);
+      }
+      const report = await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD'));
+      expect(report.status).not.toBe('passed');
+      expect(report.workloadExecution).toBe(false);
+      expect(report.command).toBeNull();
+    }
+  );
+
+  it.each(['mutable', 'symlink'] as const)(
+    'refuses an actual untracked %s action.yml shadow beside committed action.yaml', async variant => {
+      const value = await actionFixture();
+      const yml = path.join(value.root, ...value.action);
+      const yaml = path.join(value.root, 'scripts', 'node-setup', 'action.yaml');
+      await rename(yml, yaml);
+      git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual committed safe action.yaml metadata');
+      const sourceSha = git(value.root, 'rev-parse', 'HEAD');
+      expect(await executeWorkflowActionReferenceValidator(value.root, sourceSha))
+        .toMatchObject({ status: 'passed', workloadExecution: false, command: null });
+      if (variant === 'symlink') await symlink(yaml, yml);
+      else {
+        value.metadata.runs.steps[0]!.uses = 'actions/setup-node@main';
+        await value.write(value.action, JSON.stringify(value.metadata));
+      }
+      const report = await executeWorkflowActionReferenceValidator(value.root, sourceSha);
+      expect(report.status).toBe('blocked');
+      expect(report.workloadExecution).toBe(false);
+      expect(report.command).toBeNull();
+    }
+  );
+
+  it.each(['node20', 'node24'])('binds all actual declared %s entrypoints without running them', async using => {
+    const value = await actionFixture();
+    await value.write(value.action, JSON.stringify({
+      name: 'Actual complete Node entrypoints', runs: { using, main: './index.js', pre: 'before.js', post: 'after.js' }
+    }));
+    for (const file of ['index.js', 'before.js', 'after.js']) {
+      await value.write(['scripts', 'node-setup', file], 'export const declaredLocalActionInput = true;\n');
+    }
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual complete committed Node action entrypoints');
+    expect(await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD')))
+      .toMatchObject({ status: 'passed', workloadExecution: false, command: null, phaseProof: 'not-issued' });
+  });
+
+  it('reobserves actual metadata membership after interpretation instead of retaining its initial safe inventory', async () => {
+    const value = await actionFixture(), yaml = ['scripts', 'node-setup', 'action.yaml'];
+    await rename(path.join(value.root, ...value.action), path.join(value.root, ...yaml));
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual initial safe alternate metadata');
+    const original = boundFiles.readBoundProjectFileSnapshot;
+    let metadataReads = 0, shadowWritten = false;
+    const reads = vi.spyOn(boundFiles, 'readBoundProjectFileSnapshot').mockImplementation(async (...args) => {
+      const captured = await original(...args);
+      if (args[0] === value.root && args[1].join('/') === yaml.join('/') && ++metadataReads === 2) {
+        value.metadata.runs.steps[0]!.uses = 'actions/setup-node@main';
+        await value.write(value.action, JSON.stringify(value.metadata));
+        shadowWritten = true;
+      }
+      return captured;
+    });
+    try {
+      const report = await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD'));
+      expect(shadowWritten).toBe(true);
+      expect(report).toMatchObject({ status: 'blocked', code: 'validator-actions-local',
+        workloadExecution: false, command: null, phaseProof: 'not-issued' });
+    } finally {
+      reads.mockRestore();
+    }
   });
 });
