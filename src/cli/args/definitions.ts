@@ -291,12 +291,12 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     defaultMaxPositionals: 1
   },
   upgrade: {
-    description: 'Replace the supported global npm Liftoff CLI; project templates use update separately',
+    description: 'Upgrade only the verified owning CLI installation; project templates use update separately',
     usage: '',
     group: 'Maintenance',
     flags: {
       check: booleanFlag('Check for an installable stable CLI update without changing anything', 'Command'),
-      json: booleanFlag('Emit one machine-readable result object', 'Output'),
+      json: booleanFlag('Emit one schema-2 owner, availability, effects, and verification result', 'Output'),
       ...helpFlag
     },
     defaultMaxPositionals: 0

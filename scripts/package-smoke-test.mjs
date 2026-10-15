@@ -186,6 +186,12 @@ try {
   assertPackageContains(packResult, 'dist/commands.js');
   assertPackageContains(packResult, 'dist/package-identity.js');
   assertPackageContains(packResult, 'dist/self-upgrade.js');
+  for (const asset of [
+    'native-release-admission.mjs', 'native-release-admission.d.mts',
+    'native-release-catalog.mjs', 'native-release-catalog.d.mts', 'release-policy.json', 'platforms.json'
+  ]) {
+    assertPackageContains(packResult, `distribution/native/${asset}`);
+  }
   assertPackageContains(packResult, 'dist/stable-release.js');
   assertPackageContains(packResult, 'dist/genai-templates.js');
   assertPackageExcludes(packResult, 'dist/power-apps-assets.js');
@@ -399,7 +405,7 @@ try {
     env: npmEnv
   });
   if (
-    !upgradeHelp.stdout.includes('supported global npm Liftoff CLI') ||
+    !upgradeHelp.stdout.includes('verified owning CLI installation') ||
     !upgradeHelp.stdout.includes('--check') ||
     !upgradeHelp.stdout.includes('--json') ||
     !upgradeHelp.stdout.includes('project templates use update separately')
@@ -415,7 +421,8 @@ try {
       pathToFileURL(path.join(installedPackageRoot, 'dist', 'self-upgrade.js')).href
     )};
     const calls = [];
-    const result = await runSelfUpgrade({
+    let deliveryMetadata = { name: '@msn-control/liftoff', version: ${JSON.stringify(packResult.version)} };
+    const inspect = () => runSelfUpgrade({
       mode: 'check',
       currentVersion: ${JSON.stringify(packResult.version)},
       stdout: process.stdout,
@@ -426,7 +433,7 @@ try {
       runner: {
         run: async (command) => {
           calls.push(command);
-          if (command.args.join(' ') !== 'root --global') {
+          if (!['root', 'config', 'view'].includes(command.args[0])) {
             throw new Error('Injected current-version check attempted an unexpected command.');
           }
           return {
@@ -434,7 +441,9 @@ try {
             displayCommand: command.executable + ' ' + command.args.join(' '),
             status: 0,
             signal: null,
-            stdout: ${JSON.stringify(`${isolatedGlobalRoot}\n`)},
+            stdout: command.args[0] === 'root' ? ${JSON.stringify(`${isolatedGlobalRoot}\n`)} :
+              command.args[0] === 'config' ? (command.args[2] === '@msn-control:registry' ? 'undefined' : 'https://registry.npmjs.org/') :
+              JSON.stringify(deliveryMetadata),
             stderr: '',
             timedOut: false
           };
@@ -444,23 +453,105 @@ try {
         name: '@msn-control/liftoff',
         version: ${JSON.stringify(packResult.version)}
       }),
-      environment: { LIFTOFF_TELEMETRY: '0' }
+      environment: process.env
     });
-    if (result.status !== 'current' || calls.length !== 1) process.exit(1);
-    process.stdout.write(JSON.stringify(result));
+    const result = await inspect();
+    if (result.status !== 'current' || result.schemaVersion !== 2 || result.installationOwner !== 'npm' ||
+      result.channel.status !== 'available' || result.effects !== 'none' || calls.length !== 4) {
+      throw new Error('Installed owner check failed: '+JSON.stringify(result));
+    }
+    calls.length = 0;
+    deliveryMetadata = { name: '@foreign/liftoff', version: ${JSON.stringify(packResult.version)} };
+    const invalid = await inspect();
+    if (invalid.status !== 'failed' || invalid.reasonCode !== 'registry_invalid' ||
+      invalid.installationOwner !== 'npm' || invalid.upstream.status !== 'available' ||
+      invalid.channel.status !== 'unknown' || invalid.effects !== 'none' || calls.length !== 4) {
+      throw new Error('Installed owner check misclassified invalid channel metadata: '+JSON.stringify(invalid));
+    }
+    process.stdout.write(JSON.stringify({ current: result, invalid }));
   `;
   const injectedCheck = run(
     process.execPath,
     ['--input-type=module', '-e', injectedCheckScript],
-    { cwd: outsideDirectory, env: npmEnv }
+    { cwd: outsideDirectory, env: { ...npmEnv, PATH: `${path.dirname(liftoffBinary)}${path.delimiter}${npmEnv.PATH ?? ''}` } }
   );
   const injectedResult = JSON.parse(injectedCheck.stdout);
   if (
-    injectedResult.status !== 'current' ||
-    injectedResult.currentVersion !== packResult.version
+    injectedResult.current.status !== 'current' ||
+    injectedResult.current.currentVersion !== packResult.version ||
+    injectedResult.invalid.reasonCode !== 'registry_invalid'
   ) {
     throw new Error('Installed self-upgrade module failed its isolated injected check');
   }
+
+  for (const asset of [
+    'native-release-admission.mjs', 'native-release-admission.d.mts',
+    'native-release-catalog.mjs', 'native-release-catalog.d.mts', 'release-policy.json', 'platforms.json'
+  ]) {
+    const relative = path.join('distribution', 'native', asset);
+    if (!(await readFile(path.join(installedPackageRoot, relative))).equals(await readFile(path.join(packageRoot, relative)))) {
+      throw new Error(`Installed native admission material differs: ${asset}`);
+    }
+  }
+  const runtimeAdmission = `
+    import assert from 'node:assert/strict';
+    import {createHash,generateKeyPairSync,sign} from 'node:crypto';
+    import {readFile} from 'node:fs/promises';
+    import {gzipSync} from 'node:zlib';
+    import {assertNativePublicationEvidence,verifyNativeBytesSignature,verifyNativeEvidenceSignature} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-release-admission.mjs')).href)};
+    import {admitNativeStableMaterial} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-metadata.js')).href)};
+    import {readHomebrewCaskOwnership} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-cask.js')).href)};
+    import {createNativeStableSource} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-transport.js')).href)};
+    import {createHomebrewCaskPreparation} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-cask-plan.js')).href)};
+    import {assertNativeReleaseCatalog,nativeReleaseCatalogFilename,nativeReleaseTargets} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-release-catalog.mjs')).href)};
+    const policy=JSON.parse(await readFile(${JSON.stringify(path.join(installedPackageRoot, 'distribution/native/release-policy.json'))},'utf8'));
+    assert.equal(policy.approvedSigningKeySha256,null);
+    await assert.rejects(()=>admitNativeStableMaterial({}, {}, policy),e=>e.reasonCode==='native_unqualified');
+    await assert.rejects(()=>readHomebrewCaskOwnership({}, {}, policy, '', new AbortController().signal),
+      e=>e.reasonCode==='native_unqualified');
+    const source=createNativeStableSource(policy,{fetch:async()=>{throw new Error('Unqualified metadata must not fetch.');}});
+    await assert.rejects(()=>source.readStable({target:'linux-x64'},new AbortController().signal),
+      e=>e.reasonCode==='native_unqualified');
+    const preparation=createHomebrewCaskPreparation({},policy);
+    await assert.rejects(()=>preparation.preview('/opt/homebrew',new AbortController().signal),
+      e=>e.reasonCode==='native_unqualified');
+    assert.equal(preparation.installExact,undefined);
+    assert.equal(nativeReleaseCatalogFilename,'liftoff-native-release.json');
+    assert.deepEqual([...nativeReleaseTargets],['darwin-arm64','linux-arm64','linux-x64','win32-x64']);
+    assert.throws(()=>assertNativeReleaseCatalog({}));
+    const {publicKey,privateKey}=generateKeyPairSync('ed25519');
+    const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+    const approved=sha(publicKey.export({format:'der',type:'spki'}));
+    const binary=gzipSync(Buffer.from('Private installed raw-byte fixture, not a native release.'));
+    const binarySignature=sign(null,binary,privateKey);
+    const pem=publicKey.export({format:'pem',type:'spki'});
+    assert.equal(verifyNativeBytesSignature(binary,binarySignature,pem,approved),undefined);
+    const changed=Buffer.from(binary);changed[0]^=1;
+    assert.throws(()=>verifyNativeBytesSignature(changed,binarySignature,pem,approved));
+    assert.throws(()=>verifyNativeEvidenceSignature(binary,binarySignature,pem,approved),SyntaxError);
+    const record={repository:policy.repository,commit:'a'.repeat(40),version:'0.13.0',target:'linux-x64',
+      manifestSha256:'b'.repeat(64),inventorySha256:'c'.repeat(64),files:[]};
+    const checks=['minimumHost','installerOwnership','signing','packageNamespace','hclSourceCorrespondence'];
+    const evidence={...record,qualification:Object.fromEntries(checks.map(key=>[key,true])),
+      evidenceDigests:Object.fromEntries(checks.map(key=>[key,'d'.repeat(64)])),platformSigningIdentity:approved};
+    const bytes=Buffer.from(JSON.stringify(evidence));
+    const verified=verifyNativeEvidenceSignature(bytes,sign(null,bytes,privateKey),publicKey.export({format:'pem',type:'spki'}),approved);
+    const fixturePolicy={...policy,approvedSigningKeySha256:approved,linux:{archiveSigningKeySha256:approved}};
+    assertNativePublicationEvidence(record,verified,fixturePolicy);
+    assert.throws(()=>assertNativePublicationEvidence({...record,inventorySha256:'0'.repeat(64)},verified,fixturePolicy));
+    assert.throws(()=>assertNativePublicationEvidence({...record,commit:'0'.repeat(40)},verified,fixturePolicy));
+    assert.throws(()=>verifyNativeEvidenceSignature(bytes,sign(null,bytes,privateKey),publicKey.export({format:'pem',type:'spki'}),'0'.repeat(64)));
+    console.log('Installed runtime-only native admission and inventory binding verified; public policy remains unqualified.');
+  `;
+  run(process.execPath, ['--input-type=module', '-e', runtimeAdmission], {
+    cwd: outsideDirectory, env: { PATH: path.dirname(process.execPath), DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0', CI: 'true', NODE_OPTIONS: '', NODE_PATH: '' }
+  });
 
   const removedApply = runFailure(process.execPath, [liftoffEntrypoint, 'update', '--apply'], {
     cwd: outsideDirectory,

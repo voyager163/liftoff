@@ -54,6 +54,13 @@ reason codes, and errors are not added. The replacement binary's verification
 process runs with telemetry and disclosure disabled, so at most the originally
 invoked parent command emits an event.
 
+`liftoff doctor` and its JSON/help forms, `liftoff help doctor`,
+`liftoff upgrade --help`, and `liftoff help upgrade` bypass anonymous telemetry,
+disclosure, and consent/enrollment writes. Ownership, freshness and replacement
+verification subprocesses opt out with both `DO_NOT_TRACK=1` and
+`LIFTOFF_TELEMETRY=0`, including in ordinary CI environments. Updating the CLI
+does not enroll project reporting or change the user's reporting configuration.
+
 Liftoff does **not** send:
 
 - An installation, user, device, or session identifier.

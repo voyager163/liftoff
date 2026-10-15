@@ -71,11 +71,23 @@ describe('unpacked package budget', () => {
 
 describe('compiled package surface', () => {
   it('declares every emitted JavaScript module and declaration without development source maps', () => {
-    expect(packageJson.files.filter((entry) => entry.startsWith('dist'))).toEqual(compiledPackageFiles);
+    expect(packageJson.files.filter((entry) => entry === 'dist' || entry.startsWith('dist/')))
+      .toEqual(compiledPackageFiles);
     expect(() => assertCompiledPackageFiles([
       ...nonAssetPaths, 'dist/cli.d.ts', 'dist/nested/reader.js', 'dist/nested/reader.d.ts'
     ])).not.toThrow();
     expect(issuesFor(consistentPack, packageJson.files)).toEqual([]);
+  });
+
+  it('declares exactly the reviewed native helpers and policies outside compiled output', () => {
+    expect(packageJson.files.filter((entry) => entry.startsWith('distribution/'))).toEqual([
+      'distribution/native/native-release-admission.mjs',
+      'distribution/native/native-release-admission.d.mts',
+      'distribution/native/native-release-catalog.mjs',
+      'distribution/native/native-release-catalog.d.mts',
+      'distribution/native/release-policy.json',
+      'distribution/native/platforms.json'
+    ]);
   });
 
   it.each(['dist/cli.js.map', 'dist/nested/reader.d.ts.map', 'dist/unreviewed.json'])(

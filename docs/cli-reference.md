@@ -51,8 +51,8 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | `liftoff governance resume [project]` | Rechecks external blockers and readiness descendants without rerunning verified operations |
 | `liftoff governance verify [project]` | Read-only validation of graph, state, evidence, task projection, policy identity, active-change identity, and live readback; reports consistency separately from setup completion and reports completion as indeterminate when inspection fails |
 | `liftoff governance assess [project] [--governance <profile>]` | Read-only comparison against the recorded or explicitly selected installed packaged governance target; local-only unless `--live` is explicitly requested |
-| `liftoff upgrade` | Replaces a verified global npm installation with the exact canonical stable release exposed by the configured registry |
-| `liftoff upgrade --check` | Checks installation origin and registry parity without installing; exits 2 when an installable update exists |
+| `liftoff upgrade` | Replaces only the verified owning CLI installation, or reports a blocked native channel/manual manager handoff |
+| `liftoff upgrade --check` | Checks ownership, upstream freshness and selected-channel availability without installing; exits 2 when an installable update exists |
 | `liftoff update [project]` | Applies an exactly approved v8 successor, managed-core maintenance, or separately labeled local governance-profile plan |
 | `liftoff update --check` | Reports eligible v8 maintenance or explicit governance-profile plans without project mutation; exits 0 when clean and 2 when actionable |
 | `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; it cannot select profile, workflow, plugin, application, or provider authority |
@@ -1044,12 +1044,27 @@ liftoff upgrade --json
 liftoff upgrade --check --json
 ```
 
-`liftoff upgrade` is an imperative request to replace the supported global npm
+`liftoff upgrade` is an imperative request to replace only the verified owning
 installation of `@msn-control/liftoff`; it does not prompt or accept `--yes`,
 `--force`, `--install-tools`, project paths, or project dependency flags.
 Automatic replacement is refused for local dependencies, `npx` execution-cache
 copies, linked checkouts, unknown package-manager stores, ambiguous roots, or
 unsafe paths.
+
+Owners are `npm`, `homebrew-cask`, `winget`, `liftoff-native`, or `unknown`.
+The native policy has no approved signing identity or public manager namespace:
+native upgrades currently return an explicit `native_unqualified` refusal, not
+an available release or an npm fallback. Local native receipts prove attribution
+only. The reusable source admission requires independently verified Ed25519
+qualification, exact repository/commit/version/target/manifest/inventory,
+referenced platform evidence and downloaded deployed assets with bound provenance
+and SBOM. Fixtures do not qualify a real manager or public distribution.
+Linux also requires the downloaded archive's detached Ed25519 signature against
+its separately approved archive key; qualification assertions or catalog hashes
+alone are insufficient. The bounded default native stable reader checks the
+canonical GitHub catalog, tag/main/run identity and deployed bytes. It remains
+inert before HTTP while the real signing/namespace policy is null, supplies no
+staging root, and does not establish selected-manager availability.
 
 On macOS, a verified global installation at the standard Homebrew prefix can
 remain eligible when Homebrew Node/npm reports its versioned Cellar prefix.
@@ -1057,12 +1072,32 @@ Liftoff checks the package, runtime layout, and launcher, then explicitly target
 that existing prefix throughout the upgrade. It rejects a prefix-specific
 registry change instead of silently switching delivery policy. This fallback
 does not apply to arbitrary prefixes, Windows, or Linux.
+This is npm running with Homebrew-managed Node, **not Homebrew cask ownership**.
 
-Canonical npm's stable `latest` metadata selects one exact target. The effective
+The production cask ownership reader is wired but remains inert while the cask
+namespace/source policy is null. It requires the exact standard Caskroom staged
+version, Homebrew's installed receipt and canonical source definition, and the
+approved tap's local Git origin. It rechecks receipt/definition/config bytes,
+directory identities and the tap commit; it does not execute Homebrew or Ruby,
+refresh a source, or contact a repository. This proves local attribution only,
+not signing, publication, current channel availability or migration authority.
+Nonstandard, missing, contradictory or racing receipts fail closed. WinGet
+ownership remains an explicit provider port pending authoritative installed
+AppId/publisher/certificate/source observations.
+
+Canonical npm's stable `latest` metadata selects one exact target for npm owners. The effective
 configured npm registry remains the delivery path and must expose that exact
 version. Liftoff never edits `.npmrc`, embeds registry credentials, forces a
 canonical bypass around a stale mirror, invokes elevation, installs a
 prerelease, or performs a downgrade.
+
+When the exact target is missing, a second bounded package lookup through that
+same scoped registry distinguishes a lagging mirror (`registry_stale`) from a
+missing package (`registry_absent`). Offline, timeout or contradictory metadata
+remain unknown, not current.
+An exact-target response naming another product, omitting a valid stable version,
+returning a prerelease, or reporting a version newer than the requested target
+is `registry_invalid`, not evidence of mirror lag.
 
 Machine-level `@msn-control:registry` takes precedence over the default
 `registry`, even when the default is canonical. The lookup runs from a neutral
@@ -1077,13 +1112,47 @@ confined binary, and exact `Liftoff <version>` output. A failed install or
 verification is not automatically rolled back; use the exact-version repair
 command printed by Liftoff.
 
-JSON results use schema version 1 and expose only `mode`, `status`,
+Apply rechecks the same owner and delivery source before installation; changed
+metadata or selection blocks rather than silently choosing another target.
+Version verification disables telemetry and Node startup overrides and checks
+the selected launcher. Windows source uses a version-bound, ID/source/user-scope
+WinGet handoff outside the running executable, with a new shell and postverification.
+Homebrew cannot pin a cask upgrade to the reviewed version, so no unbound brew
+upgrade is executed. Linux source reuses receipt-bound immutable version
+replacement and exact journal/selected-dead-lock recovery, never prefix sweeps.
+These are source interfaces, not a declaration of qualified native availability.
+For native receipts, equal package versions are not enough: differing source,
+manifest or inventory identity reports `native_identity_mismatch`, not current.
+
+JSON results use **schema version 2** and expose `mode`, `status`,
 `currentVersion`, applicable `targetVersion`, applicable `registryKind`, and a
-stable `reasonCode`, plus optional `installationTarget` (`homebrew-opt` or
-`homebrew-usr-local`) when the standard Homebrew fallback is verified. Arbitrary
+stable `reasonCode`, `installationOwner`, separate `upstream` and `channel`
+availability (`available`, `lagging`, `absent`, `unknown`, `unqualified`),
+`effects` (`none`, `possible`, `installed`), and `verification`
+(`not-run`, `verified`, `failed`). Applicable `handoff` and `restartRequired`
+do not imply successful replacement. Optional `installationTarget` (`homebrew-opt` or
+`homebrew-usr-local`) is included when the standard Homebrew fallback is verified. Arbitrary
 installation paths are not included. Status is one of `current`, `update-available`, `upgraded`,
-`blocked`, or `failed`. Child progress goes to stderr so stdout remains one JSON
-object.
+`blocked`, `failed`, or `handoff-required`. Exit codes are 0 for verified upgraded
+or checked current, 2 for a read-only available update, and 1 for blocked, failed
+or required handoff. Child progress goes to stderr so stdout remains one JSON object.
+Schema-1 consumers must branch on `schemaVersion` before reading new fields or
+statuses; the internal compatibility facade still accepts historical schema-1
+results, but newly executed upgrade reports are schema 2.
+`neutral_directory_unavailable` means no install was attempted; `cleanup_failed`
+retains the preceding effect/verification facts rather than resetting them to
+none. A rejected apply executor reports possible effects, never invented success.
+
+`doctor` shares this read-only inspection and retains local diagnostics when
+metadata is offline. Unknown, channel lag/absence, prerelease and refused downgrade
+are not described as current. Doctor and upgrade help/verification do not emit
+anonymous/project telemetry, a disclosure notice or consent-enrollment writes.
+Doctor's read-only process probes retain the short two-second diagnostic profile;
+ordinary upgrade probes are bounded at 30 seconds, install at ten minutes, and
+replacement version execution at 15 seconds.
+Native owner/channel observations also check elapsed time after the reader
+returns: synchronous parsing or verification cannot turn a result arriving
+after its deadline into an accepted ownership or availability observation.
 
 ## Repair modes
 

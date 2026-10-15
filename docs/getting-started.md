@@ -41,7 +41,14 @@ liftoff upgrade --check
 liftoff upgrade
 ```
 
-`upgrade` replaces only the supported global CLI installation. It does not read
+`upgrade` replaces only the verified owning global CLI installation. Existing
+npm users keep their prefix and approved scoped mirror/account configuration;
+neither the check nor apply migrates to a different manager. Native cask, WinGet
+and Linux archive distribution remains **unqualified**; native source and local
+receipts are not publisher approval or evidence of public availability.
+`liftoff doctor` uses the same read-only ownership/freshness inspection and reports
+offline or indeterminate metadata explicitly, without a telemetry notice or delivery.
+Upgrade does not read
 or update a generated project. Inspect Liftoff-managed core maintenance
 separately with `liftoff update --check`; production template modernization is
 a reviewed project change.

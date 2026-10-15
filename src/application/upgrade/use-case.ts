@@ -12,6 +12,7 @@ import {
 import {
   runSelfUpgrade
 } from './self-upgrade.js';
+import { selfUpgradeResult } from '../../domain/distribution/liftoff-upgrade.js';
 
 export interface UpgradeRequest {
   mode: 'check' | 'apply';
@@ -49,12 +50,7 @@ export async function executeUpgrade(
         : {})
     });
   } catch {
-    return {
-      schemaVersion: 1,
-      mode,
-      status: 'failed',
-      currentVersion: liftoffVersion,
-      reasonCode: 'verification_failed'
-    };
+    return selfUpgradeResult({ mode, currentVersion: liftoffVersion }, 'failed', 'verification_failed',
+      { effects: mode === 'apply' ? 'possible' : 'none' });
   }
 }

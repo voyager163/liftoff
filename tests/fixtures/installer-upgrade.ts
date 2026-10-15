@@ -104,6 +104,7 @@ export function upgradeWorld(options: {
     prefixDefaultRegistry: undefined as string | undefined,
     configResult: {} as Record<string, Partial<CommandResult>>,
     viewResult: undefined as Partial<CommandResult> | undefined,
+    packageViewResult: undefined as Partial<CommandResult> | undefined,
     installResult: {} as Partial<CommandResult>,
     versionOutput: `Liftoff ${targetVersion}`,
     afterInstall: () => { metadata.version = targetVersion; },
@@ -174,7 +175,9 @@ export function upgradeWorld(options: {
         }
         case 'view':
           world.beforeView();
-          return result(command, world.viewResult ?? { stdout: JSON.stringify({ name: liftoffPackage, version: targetVersion }) });
+          return result(command, command.args[1] === liftoffPackage
+            ? world.packageViewResult ?? { stdout: JSON.stringify({ name: liftoffPackage, version: currentVersion }) }
+            : world.viewResult ?? { stdout: JSON.stringify({ name: liftoffPackage, version: targetVersion }) });
         case 'install':
           world.installed = true;
           if (!world.installResult.timedOut && (world.installResult.status ?? 0) === 0) world.afterInstall();
@@ -187,6 +190,7 @@ export function upgradeWorld(options: {
 
   const missing = (file: string) => Object.assign(new Error(`Private fixture path is absent: ${file}`), { code: 'ENOENT' });
   const dependencies: SelfUpgradeDependencies = {
+    resolveLiftoff: undefined,
     runner,
     platform,
     execPath,

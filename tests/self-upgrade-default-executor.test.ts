@@ -61,11 +61,13 @@ describe('default upgrade executor', () => {
       .toEqual(['currentVersion', 'json', 'mode', 'stderr', 'stdout']);
   });
 
-  it('turns a rejected default orchestration into the stable schema-1 failure instead of rethrowing', async () => {
+  it('turns a rejected default orchestration into an explicit schema-2 unknown-owner failure', async () => {
     runSelfUpgrade.mockRejectedValue(new Error('fixture orchestration failure'));
 
     await expect(executeUpgrade({ mode: 'apply', json: true }, context({ env: {} }))).resolves.toEqual({
-      schemaVersion: 1, mode: 'apply', status: 'failed', currentVersion: liftoffVersion, reasonCode: 'verification_failed'
+      schemaVersion: 2, mode: 'apply', status: 'failed', currentVersion: liftoffVersion, reasonCode: 'verification_failed',
+      installationOwner: 'unknown', upstream: { status: 'unknown' }, channel: { status: 'unknown' },
+      effects: 'possible', verification: 'not-run'
     });
   });
 });

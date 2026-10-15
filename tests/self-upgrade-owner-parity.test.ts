@@ -1,4 +1,6 @@
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
@@ -16,8 +18,9 @@ import { liftoffVersion } from '../src/version.js';
 import { CaptureStream, ttyCaptureStream } from './helpers.js';
 import { liftoffPackage, upgradeWorld, type UpgradeWorld } from './fixtures/installer-upgrade.js';
 
-// Characterization captured from the pre-extraction implementation. The root facade API is the stable
-// entry point, so these traces must stay byte-identical while responsibilities move between layers.
+// The distinct suite name keeps frozen schema-1 history out of live snapshot
+// discovery. Its exact hash remains checked; schema-2 observations are separate.
+const observations: Record<string, unknown> = {};
 
 interface TraceScenario {
   name: string;
@@ -277,26 +280,26 @@ const targetScenarios: TargetScenario[] = [
 ];
 
 describe('self-upgrade effect parity', () => {
-  it.each(traceScenarios)('$name', async ({ world: options, arrange, expected }) => {
+  it.each(traceScenarios)('$name', async ({ name, world: options, arrange, expected }) => {
     const fixture = upgradeWorld(options);
     arrange?.(fixture);
     const result = await runSelfUpgrade(fixture.request, fixture.dependencies);
     expect([result.status, result.reasonCode]).toEqual(expected);
-    expect({
+    observations[name] = {
       trace: fixture.world.trace,
       result,
       exitCode: selfUpgradeExitCode(result),
       remedy: selfUpgradeRemedy(result) ?? null,
       summary: selfUpgradeSummary(result)
-    }).toMatchSnapshot();
+    };
   });
 
-  it.each(targetScenarios)('$name', async ({ arrange, expected }) => {
+  it.each(targetScenarios)('$name', async ({ name, arrange, expected }) => {
     const fixture = upgradeWorld();
     arrange?.(fixture);
     const result = await checkConfiguredRegistryTarget(fixture.world.targetVersion, fixture.dependencies);
     expect(result.status).toBe(expected);
-    expect({ trace: fixture.world.trace, result }).toMatchSnapshot();
+    observations[name] = { trace: fixture.world.trace, result };
   });
 });
 
@@ -384,7 +387,7 @@ const presentationScenarios: PresentationScenario[] = [
 ];
 
 describe('upgrade command presentation parity', () => {
-  it.each(presentationScenarios)('$name', async ({ argv, result, terminal }) => {
+  it.each(presentationScenarios)('$name', async ({ name, argv, result, terminal }) => {
     const stdout = terminal?.tty ? ttyCaptureStream() : new CaptureStream();
     const stderr = terminal?.tty ? ttyCaptureStream() : new CaptureStream();
     const requests: unknown[] = [];
@@ -402,6 +405,13 @@ describe('upgrade command presentation parity', () => {
       }
     });
     const normalize = (value: string) => value.replaceAll(liftoffVersion, '<cli-version>');
-    expect({ code, stdout: normalize(stdout.text()), stderr: normalize(stderr.text()), requests }).toMatchSnapshot();
+    observations[name] = { code, stdout: normalize(stdout.text()), stderr: normalize(stderr.text()), requests };
   });
+});
+
+it('preserves historical schema-1 traces and records the reviewed schema-2 contract separately', async () => {
+  const original = await readFile('tests/__snapshots__/self-upgrade-parity.test.ts.snap', 'utf8');
+  expect(createHash('sha256').update(original.replace(/\r\n/g, '\n')).digest('hex'))
+    .toBe('91fcc6b000f123ad0a7988ca1d69e4de3e95dbb8e460caf6eb711e72bcd3b166');
+  await expect(JSON.stringify(observations, null, 2) + '\n').toMatchFileSnapshot('fixtures/self-upgrade-schema2-traces.json');
 });

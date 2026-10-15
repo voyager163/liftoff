@@ -136,7 +136,7 @@ describe('public documentation', () => {
     expect(await repositoryFile('docs/cli-reference.md')).toContain('--approve-plan <fingerprint>');
     expect(readme).toContain('liftoff upgrade --check');
     expect(readme).toMatch(
-      /replaces the CLI only; generated projects use `liftoff update` separately\s+for reviewed project maintenance/
+      /replaces only the verified owning CLI installation; generated projects use `liftoff update` separately\s+for reviewed project maintenance/
     );
 
     const bashExamples = [...readme.matchAll(/```bash\n([\s\S]*?)```/g)]
