@@ -453,6 +453,14 @@ process or write actually occurred; inspect the exact result and saved progress.
 Actual check failures, blocked preparation, and uncertain settlement exit 1.
 A successfully completed requested operation exits 0.
 
+In local execution results, aggregate `process-failed` means a failed subprocess
+was actually observed. Aggregate `execution-failed` means execution stopped
+without an observed subprocess failure, for example at an in-process guard. It
+does not identify the underlying exception or claim that inputs changed.
+Individual checks retain their existing process/admission codes; neither raw
+exception text nor project output is disclosed. Incomplete execution remains
+failed and cannot authorize automatic replay.
+
 Omitting `--execute`, or using `--execute=false`, only inspects saved execution
 progress and exits 0 unless that inspection fails or is blocked. It never
 promotes even a successful stored result to fresh proof. `apply-next` accepts

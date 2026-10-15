@@ -262,7 +262,7 @@ export interface LocalExecutionResultV1 {
   checks:readonly LocalExecutionCheckResult[];preparation:readonly LocalExecutionCheckResult[];
   inputsUnchanged:boolean;cleanupComplete:boolean;retainedWorkspace:string|null;
   policyDigest:string;baselineDigest:string;selectedPlanDigest:string|null;resultDigest:string;
-  failureCode:LocalExecutionCode|null;
+  failureCode:LocalExecutionCode|'execution-failed'|null;
 }
 export interface LocalExecutionResultV2 extends Omit<LocalExecutionResultV1,'schemaVersion'>{
   schemaVersion:2;openSpec:{inputDigest:string;projectRoot:string;observations:readonly OpenSpecExecutionObservation[]};
@@ -520,7 +520,7 @@ export function validateLocalExecutionResult(input:unknown,preview:LocalExecutio
     value.checks.some((check,index)=>check.id!==preview.checks[index].id))localInputFailure('Execution result lacks exact complete input/check correspondence.');
   const validCodes=['passed','inapplicable','nonzero-exit','process-failed','timeout','output-limit','cancelled','unsettled','admission-changed','workspace-failed','storage-failed','not-run','preparation-failed'];
   if(typeof value.inputsUnchanged!=='boolean'||typeof value.cleanupComplete!=='boolean'||typeof value.complete!=='boolean'||
-    !(preview.schemaVersion===4?['initialization-obligations-observed','failed','blocked','uncertain']:['checks-verified','failed','blocked','uncertain']).includes(value.status)||value.failureCode!==null&&!validCodes.includes(value.failureCode)||
+    !(preview.schemaVersion===4?['initialization-obligations-observed','failed','blocked','uncertain']:['checks-verified','failed','blocked','uncertain']).includes(value.status)||value.failureCode!==null&&value.failureCode!=='execution-failed'&&!validCodes.includes(value.failureCode)||
     value.retainedWorkspace!==null&&(typeof value.retainedWorkspace!=='string'||!path.isAbsolute(value.retainedWorkspace)))localInputFailure('Invalid execution result state.');
   for(const result of [...value.checks,...value.preparation]){
     exactRecord(result,['id','status','code','commandDigest','toolDigest','exitStatus','signal','startedAt','completedAt','stdoutDigest','stderrDigest','processTreeSettled'],'Execution check result');
