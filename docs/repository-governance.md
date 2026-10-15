@@ -73,6 +73,22 @@ block instead of passing vacuously. Infrastructure, security-report,
 artifact/release and deployment verification bodies are not supplied by this
 entry yet and cannot be substituted with its test/build results.
 
+The separate private `executeWorkflowActionReferenceValidator` body checks actual
+committed workflow source, local reusable workflows and recursively referenced
+local-action metadata with the existing immutable-action policy. Declared Docker
+image references use that same policy; local Dockerfile interpretation remains
+blocked. It checks complete workflow membership and
+regular single-link bytes/modes before and after observation, rejects cycles,
+dynamic references and missing metadata, and performs no project or workflow
+execution. An official SLSA tag remains blocked without an independently current
+scoped exception reader; copied approvals cannot authorize it. This private body
+has no public CLI selector or currentness/phase authority and does not attest
+remote action authenticity or analyze arbitrary action code. Its local-action
+negative controls are source tests, not approved four-family proof subjects.
+
+Exact-commit source reads disable local Git replacement objects. A replacement
+must not redefine the immutable commit whose selected inputs are being checked.
+
 These are explicit runner operations, never operations performed by plan or
 `--live` review. Tests, builds and framework tools may execute project code and
 write outputs; provider-read-only workflow permissions do not make them a host
