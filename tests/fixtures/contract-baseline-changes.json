@@ -18572,105 +18572,118 @@
     {
       "surface": "governance-extraction-cli",
       "key": "status-json",
-      "task": "14.2",
-      "reason": "Task 14.2 adds the bounded private nullable two-digest ownership source contract, protected-only overlay admission, exact owned HCL tags and Manual object-type interpretation while ordinary generation remains null and tag-free. No shared activation, provider registration, state write or production authority is added; frozen baselines and every prior reviewed record remain unchanged.",
+      "task": "18.2",
+      "reason": "Task 18.2 advances the current modern registry digest after the reviewed Node and frontend dependency-lock remediation. Normalized governance status changes only its output byte count and SHA-256; exits, stderr, every other field, the frozen capture and every predecessor record remain unchanged.",
       "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
-      "currentSha256": "31988e7f08d48c0fdeebe1c5235d827f3221b41f24b0bea03454bc33c4f77c94",
+      "currentSha256": "5cc23bff5f86e2498ea8ea61f9169431b369475cc1bb0c078d712b14c22c8b28",
       "changed": [
         "/stdout/bytes",
         "/stdout/sha256"
       ],
-      "priorCurrentSha256": "14e590c4ea93b568a2c11ef2b94fd00dedad9141dd02feedbe74fd51f5630c5e",
+      "priorCurrentSha256": "31988e7f08d48c0fdeebe1c5235d827f3221b41f24b0bea03454bc33c4f77c94",
       "priorChange": {
         "surface": "governance-extraction-cli",
         "key": "status-json",
-        "task": "14.1",
-        "reason": "Task 14.1 advances the current application staging and production capability disclosure from unavailable to injected-only while retaining an explicit fail-closed blocker for missing qualified protected handover, custody, exact approved resources and execution-host proof. Frozen released-v3 output and all prior reviewed change records remain unchanged.",
+        "task": "14.2",
+        "reason": "Task 14.2 adds the bounded private nullable two-digest ownership source contract, protected-only overlay admission, exact owned HCL tags and Manual object-type interpretation while ordinary generation remains null and tag-free. No shared activation, provider registration, state write or production authority is added; frozen baselines and every prior reviewed record remain unchanged.",
         "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
-        "currentSha256": "14e590c4ea93b568a2c11ef2b94fd00dedad9141dd02feedbe74fd51f5630c5e",
+        "currentSha256": "31988e7f08d48c0fdeebe1c5235d827f3221b41f24b0bea03454bc33c4f77c94",
         "changed": [
           "/stdout/bytes",
           "/stdout/sha256"
         ],
-        "priorCurrentSha256": "de275ca1b55688275fd32e2a80479f6dad001466b149c7e0e317a5ab5a139a98",
+        "priorCurrentSha256": "14e590c4ea93b568a2c11ef2b94fd00dedad9141dd02feedbe74fd51f5630c5e",
         "priorChange": {
           "surface": "governance-extraction-cli",
           "key": "status-json",
-          "task": "13.5",
-          "reason": "Task 13.5 binds protected state work and day-30 disposal to the same qualified host, encrypted storage, non-exporting key, lease-lock and writer-quiescence custody; plaintext project-file fallback is removed while frozen released-v3 records remain unchanged.",
+          "task": "14.1",
+          "reason": "Task 14.1 advances the current application staging and production capability disclosure from unavailable to injected-only while retaining an explicit fail-closed blocker for missing qualified protected handover, custody, exact approved resources and execution-host proof. Frozen released-v3 output and all prior reviewed change records remain unchanged.",
           "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
-          "currentSha256": "de275ca1b55688275fd32e2a80479f6dad001466b149c7e0e317a5ab5a139a98",
-          "priorCurrentSha256": "27a6279a0ba45b28453c45680f2ceb232c57855e8341bc6cc46caef1e6a70f4d",
+          "currentSha256": "14e590c4ea93b568a2c11ef2b94fd00dedad9141dd02feedbe74fd51f5630c5e",
+          "changed": [
+            "/stdout/bytes",
+            "/stdout/sha256"
+          ],
+          "priorCurrentSha256": "de275ca1b55688275fd32e2a80479f6dad001466b149c7e0e317a5ab5a139a98",
           "priorChange": {
             "surface": "governance-extraction-cli",
             "key": "status-json",
-            "task": "13.4",
-            "reason": "Task 13.4 advances current governance output for exact same-bootstrap private backend proof and protected state handover through an injected capability. The public CLI remains fail-closed for arbitrary existing-state migration, and frozen released-v3 contracts remain unchanged.",
+            "task": "13.5",
+            "reason": "Task 13.5 binds protected state work and day-30 disposal to the same qualified host, encrypted storage, non-exporting key, lease-lock and writer-quiescence custody; plaintext project-file fallback is removed while frozen released-v3 records remain unchanged.",
             "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
-            "currentSha256": "27a6279a0ba45b28453c45680f2ceb232c57855e8341bc6cc46caef1e6a70f4d",
-            "priorCurrentSha256": "f7eb1838760c9caa9b7cf32122fe2840a4c9cf71b4c20ee4e013b85c587b89c1",
+            "currentSha256": "de275ca1b55688275fd32e2a80479f6dad001466b149c7e0e317a5ab5a139a98",
+            "priorCurrentSha256": "27a6279a0ba45b28453c45680f2ceb232c57855e8341bc6cc46caef1e6a70f4d",
             "priorChange": {
               "surface": "governance-extraction-cli",
               "key": "status-json",
-              "task": "13.3",
-              "reason": "Task 13.3 advertises runner-ready as a built-in Azure/GitHub producer and binds the reviewed current graph successor in normalized governance command output. The command remains read-only or preview-only as applicable, preserves exits and stderr, and makes no readiness claim without exact evidence.",
+              "task": "13.4",
+              "reason": "Task 13.4 advances current governance output for exact same-bootstrap private backend proof and protected state handover through an injected capability. The public CLI remains fail-closed for arbitrary existing-state migration, and frozen released-v3 contracts remain unchanged.",
               "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
-              "currentSha256": "f7eb1838760c9caa9b7cf32122fe2840a4c9cf71b4c20ee4e013b85c587b89c1",
-              "priorCurrentSha256": "e4a09e4e7ce13d37eb9ba68b5cf221628b2e4128ba1984766743b0623f116175",
+              "currentSha256": "27a6279a0ba45b28453c45680f2ceb232c57855e8341bc6cc46caef1e6a70f4d",
+              "priorCurrentSha256": "f7eb1838760c9caa9b7cf32122fe2840a4c9cf71b4c20ee4e013b85c587b89c1",
               "priorChange": {
                 "surface": "governance-extraction-cli",
                 "key": "status-json",
-                "task": "13.2",
-                "reason": "Task 13.2 adds bootstrap-local as a built-in producer for the separately approved Azure network foundation. The normalized governance status capability fingerprint changes intentionally; frozen historical output, exits, stderr, and all non-capability fields remain unchanged.",
+                "task": "13.3",
+                "reason": "Task 13.3 advertises runner-ready as a built-in Azure/GitHub producer and binds the reviewed current graph successor in normalized governance command output. The command remains read-only or preview-only as applicable, preserves exits and stderr, and makes no readiness claim without exact evidence.",
                 "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
-                "currentSha256": "e4a09e4e7ce13d37eb9ba68b5cf221628b2e4128ba1984766743b0623f116175",
-                "changed": [
-                  "/stdout/sha256"
-                ],
-                "priorCurrentSha256": "68f1c714ee0c5cb7874ed1f8024b0254aeb98e645b199a31fc00e7340bb75143",
+                "currentSha256": "f7eb1838760c9caa9b7cf32122fe2840a4c9cf71b4c20ee4e013b85c587b89c1",
+                "priorCurrentSha256": "e4a09e4e7ce13d37eb9ba68b5cf221628b2e4128ba1984766743b0623f116175",
                 "priorChange": {
                   "surface": "governance-extraction-cli",
                   "key": "status-json",
-                  "task": "13.1",
-                  "reason": "Task 13.1 adds built-in state-path selection and exact existing-private Azure backend readiness. The normalized governance status capability fingerprint changes intentionally; frozen historical output, exits, stderr, and all non-capability fields remain unchanged.",
+                  "task": "13.2",
+                  "reason": "Task 13.2 adds bootstrap-local as a built-in producer for the separately approved Azure network foundation. The normalized governance status capability fingerprint changes intentionally; frozen historical output, exits, stderr, and all non-capability fields remain unchanged.",
                   "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
-                  "currentSha256": "68f1c714ee0c5cb7874ed1f8024b0254aeb98e645b199a31fc00e7340bb75143",
+                  "currentSha256": "e4a09e4e7ce13d37eb9ba68b5cf221628b2e4128ba1984766743b0623f116175",
                   "changed": [
                     "/stdout/sha256"
                   ],
-                  "priorCurrentSha256": "df51531b1e693082190b0d61c09612db2aaa5fb26a4d006bb0cfecc2a366a138",
+                  "priorCurrentSha256": "68f1c714ee0c5cb7874ed1f8024b0254aeb98e645b199a31fc00e7340bb75143",
                   "priorChange": {
                     "surface": "governance-extraction-cli",
                     "key": "status-json",
-                    "task": "12.3",
-                    "reason": "Task 12.3 updates generated governance guidance and normalized status output for exact approved protected credential enrollment, provider scope/use verification, independent Actions secret metadata readback, and payload-free policy/evidence. Frozen baselines, artifact identities, application templates, historical captures, and prior review records remain unchanged.",
+                    "task": "13.1",
+                    "reason": "Task 13.1 adds built-in state-path selection and exact existing-private Azure backend readiness. The normalized governance status capability fingerprint changes intentionally; frozen historical output, exits, stderr, and all non-capability fields remain unchanged.",
                     "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
-                    "currentSha256": "df51531b1e693082190b0d61c09612db2aaa5fb26a4d006bb0cfecc2a366a138",
+                    "currentSha256": "68f1c714ee0c5cb7874ed1f8024b0254aeb98e645b199a31fc00e7340bb75143",
                     "changed": [
                       "/stdout/sha256"
                     ],
-                    "priorCurrentSha256": "9272f916151945555b970bc852ea554fa6a78d4c0271c1963184c9450b7bb4e0",
+                    "priorCurrentSha256": "df51531b1e693082190b0d61c09612db2aaa5fb26a4d006bb0cfecc2a366a138",
                     "priorChange": {
                       "surface": "governance-extraction-cli",
                       "key": "status-json",
-                      "task": "12.2",
-                      "reason": "Provider-ready now has a reviewed built-in Azure namespace and feature registration executor, so the normalized governance status capability fingerprint changes intentionally while the frozen historical baseline remains immutable.",
+                      "task": "12.3",
+                      "reason": "Task 12.3 updates generated governance guidance and normalized status output for exact approved protected credential enrollment, provider scope/use verification, independent Actions secret metadata readback, and payload-free policy/evidence. Frozen baselines, artifact identities, application templates, historical captures, and prior review records remain unchanged.",
                       "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
-                      "currentSha256": "9272f916151945555b970bc852ea554fa6a78d4c0271c1963184c9450b7bb4e0",
+                      "currentSha256": "df51531b1e693082190b0d61c09612db2aaa5fb26a4d006bb0cfecc2a366a138",
                       "changed": [
                         "/stdout/sha256"
                       ],
-                      "priorCurrentSha256": "b5f87a42b9d4ce8c5b84a8b4fcdf4fac1951801a677d4c15e9b71b6feaa9e868",
+                      "priorCurrentSha256": "9272f916151945555b970bc852ea554fa6a78d4c0271c1963184c9450b7bb4e0",
                       "priorChange": {
                         "surface": "governance-extraction-cli",
                         "key": "status-json",
-                        "task": "2.5",
-                        "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged. Independent actual accepted-parent/current CLI execution confirms only the blocker fingerprint change with Node package/lock generation hashes; all other normalized JSON, result fields and frozen capture/harness remain unchanged.",
+                        "task": "12.2",
+                        "reason": "Provider-ready now has a reviewed built-in Azure namespace and feature registration executor, so the normalized governance status capability fingerprint changes intentionally while the frozen historical baseline remains immutable.",
                         "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
-                        "currentSha256": "b5f87a42b9d4ce8c5b84a8b4fcdf4fac1951801a677d4c15e9b71b6feaa9e868",
+                        "currentSha256": "9272f916151945555b970bc852ea554fa6a78d4c0271c1963184c9450b7bb4e0",
                         "changed": [
                           "/stdout/sha256"
-                        ]
+                        ],
+                        "priorCurrentSha256": "b5f87a42b9d4ce8c5b84a8b4fcdf4fac1951801a677d4c15e9b71b6feaa9e868",
+                        "priorChange": {
+                          "surface": "governance-extraction-cli",
+                          "key": "status-json",
+                          "task": "2.5",
+                          "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged. Independent actual accepted-parent/current CLI execution confirms only the blocker fingerprint change with Node package/lock generation hashes; all other normalized JSON, result fields and frozen capture/harness remain unchanged.",
+                          "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
+                          "currentSha256": "b5f87a42b9d4ce8c5b84a8b4fcdf4fac1951801a677d4c15e9b71b6feaa9e868",
+                          "changed": [
+                            "/stdout/sha256"
+                          ]
+                        }
                       }
                     }
                   }
@@ -18684,105 +18697,118 @@
     {
       "surface": "governance-extraction-cli",
       "key": "status-local-json",
-      "task": "14.2",
-      "reason": "Task 14.2 adds the bounded private nullable two-digest ownership source contract, protected-only overlay admission, exact owned HCL tags and Manual object-type interpretation while ordinary local generation remains null and tag-free. No shared activation, provider registration, state write or production authority is added; frozen baselines and every prior reviewed record remain unchanged.",
+      "task": "18.2",
+      "reason": "Task 18.2 advances the current modern registry digest after the reviewed Node and frontend dependency-lock remediation. Normalized governance JSON changes only its exact recorded output fields; exits, stderr, every other field, the frozen capture and every predecessor record remain unchanged.",
       "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
-      "currentSha256": "2a4dcfb30328068decc3add5db80b011334b6b5d8819e04978b933481406beaa",
+      "currentSha256": "20e42d3b09b174d69b77a84f018efd92471829f739799c7f05118d9b143373a8",
       "changed": [
         "/stdout/bytes",
         "/stdout/sha256"
       ],
-      "priorCurrentSha256": "ee80eb595d53a16f7bd60ca17e7187b299b69f9cf651cd96de15f9b739b70970",
+      "priorCurrentSha256": "2a4dcfb30328068decc3add5db80b011334b6b5d8819e04978b933481406beaa",
       "priorChange": {
         "surface": "governance-extraction-cli",
         "key": "status-local-json",
-        "task": "14.1",
-        "reason": "Task 14.1 advances the current local-scope application staging and production capability disclosure from unavailable to injected-only while retaining an explicit fail-closed blocker for missing qualified protected handover, custody, exact approved resources and execution-host proof. Frozen released-v3 output and all prior reviewed change records remain unchanged.",
+        "task": "14.2",
+        "reason": "Task 14.2 adds the bounded private nullable two-digest ownership source contract, protected-only overlay admission, exact owned HCL tags and Manual object-type interpretation while ordinary local generation remains null and tag-free. No shared activation, provider registration, state write or production authority is added; frozen baselines and every prior reviewed record remain unchanged.",
         "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
-        "currentSha256": "ee80eb595d53a16f7bd60ca17e7187b299b69f9cf651cd96de15f9b739b70970",
+        "currentSha256": "2a4dcfb30328068decc3add5db80b011334b6b5d8819e04978b933481406beaa",
         "changed": [
           "/stdout/bytes",
           "/stdout/sha256"
         ],
-        "priorCurrentSha256": "f2a7e9ac6a3cc9e61d459fa99897e6a4c145dea3dc6b63904c501d6f71b29208",
+        "priorCurrentSha256": "ee80eb595d53a16f7bd60ca17e7187b299b69f9cf651cd96de15f9b739b70970",
         "priorChange": {
           "surface": "governance-extraction-cli",
           "key": "status-local-json",
-          "task": "13.5",
-          "reason": "Task 13.5 binds protected state work and day-30 disposal to the same qualified host, encrypted storage, non-exporting key, lease-lock and writer-quiescence custody; plaintext project-file fallback is removed while frozen released-v3 records remain unchanged.",
+          "task": "14.1",
+          "reason": "Task 14.1 advances the current local-scope application staging and production capability disclosure from unavailable to injected-only while retaining an explicit fail-closed blocker for missing qualified protected handover, custody, exact approved resources and execution-host proof. Frozen released-v3 output and all prior reviewed change records remain unchanged.",
           "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
-          "currentSha256": "f2a7e9ac6a3cc9e61d459fa99897e6a4c145dea3dc6b63904c501d6f71b29208",
-          "priorCurrentSha256": "f83a8347695217e1e7c1387b6365de39cc86cd572af70ed6f485a9572f609e56",
+          "currentSha256": "ee80eb595d53a16f7bd60ca17e7187b299b69f9cf651cd96de15f9b739b70970",
+          "changed": [
+            "/stdout/bytes",
+            "/stdout/sha256"
+          ],
+          "priorCurrentSha256": "f2a7e9ac6a3cc9e61d459fa99897e6a4c145dea3dc6b63904c501d6f71b29208",
           "priorChange": {
             "surface": "governance-extraction-cli",
             "key": "status-local-json",
-            "task": "13.4",
-            "reason": "Task 13.4 advances current governance output for exact same-bootstrap private backend proof and protected state handover through an injected capability. The public CLI remains fail-closed for arbitrary existing-state migration, and frozen released-v3 contracts remain unchanged.",
+            "task": "13.5",
+            "reason": "Task 13.5 binds protected state work and day-30 disposal to the same qualified host, encrypted storage, non-exporting key, lease-lock and writer-quiescence custody; plaintext project-file fallback is removed while frozen released-v3 records remain unchanged.",
             "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
-            "currentSha256": "f83a8347695217e1e7c1387b6365de39cc86cd572af70ed6f485a9572f609e56",
-            "priorCurrentSha256": "a249d9e712bd621975502f2d06c02a87e0628a45548f386f2ed358dc7b837d7c",
+            "currentSha256": "f2a7e9ac6a3cc9e61d459fa99897e6a4c145dea3dc6b63904c501d6f71b29208",
+            "priorCurrentSha256": "f83a8347695217e1e7c1387b6365de39cc86cd572af70ed6f485a9572f609e56",
             "priorChange": {
               "surface": "governance-extraction-cli",
               "key": "status-local-json",
-              "task": "13.3",
-              "reason": "Task 13.3 advertises runner-ready as a built-in Azure/GitHub producer and binds the reviewed current graph successor in normalized governance command output. The command remains read-only or preview-only as applicable, preserves exits and stderr, and makes no readiness claim without exact evidence.",
+              "task": "13.4",
+              "reason": "Task 13.4 advances current governance output for exact same-bootstrap private backend proof and protected state handover through an injected capability. The public CLI remains fail-closed for arbitrary existing-state migration, and frozen released-v3 contracts remain unchanged.",
               "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
-              "currentSha256": "a249d9e712bd621975502f2d06c02a87e0628a45548f386f2ed358dc7b837d7c",
-              "priorCurrentSha256": "6d8af072bf05b466ab50dd3f586b9d82eee2d2b6c4d1975a2b5dbde079bee4a0",
+              "currentSha256": "f83a8347695217e1e7c1387b6365de39cc86cd572af70ed6f485a9572f609e56",
+              "priorCurrentSha256": "a249d9e712bd621975502f2d06c02a87e0628a45548f386f2ed358dc7b837d7c",
               "priorChange": {
                 "surface": "governance-extraction-cli",
                 "key": "status-local-json",
-                "task": "13.2",
-                "reason": "Task 13.2 adds bootstrap-local as a built-in producer for the separately approved Azure network foundation. The normalized local-scope governance status capability fingerprint changes intentionally; frozen historical output, exits, stderr, and all non-capability fields remain unchanged.",
+                "task": "13.3",
+                "reason": "Task 13.3 advertises runner-ready as a built-in Azure/GitHub producer and binds the reviewed current graph successor in normalized governance command output. The command remains read-only or preview-only as applicable, preserves exits and stderr, and makes no readiness claim without exact evidence.",
                 "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
-                "currentSha256": "6d8af072bf05b466ab50dd3f586b9d82eee2d2b6c4d1975a2b5dbde079bee4a0",
-                "changed": [
-                  "/stdout/sha256"
-                ],
-                "priorCurrentSha256": "977e1421faaa04fb81d66e5144d6d51a2dd742d77a9c27549b196fa70bd15fe5",
+                "currentSha256": "a249d9e712bd621975502f2d06c02a87e0628a45548f386f2ed358dc7b837d7c",
+                "priorCurrentSha256": "6d8af072bf05b466ab50dd3f586b9d82eee2d2b6c4d1975a2b5dbde079bee4a0",
                 "priorChange": {
                   "surface": "governance-extraction-cli",
                   "key": "status-local-json",
-                  "task": "13.1",
-                  "reason": "Task 13.1 adds built-in state-path selection and exact existing-private Azure backend readiness. The normalized local-scope governance status capability fingerprint changes intentionally; frozen historical output, exits, stderr, and all non-capability fields remain unchanged.",
+                  "task": "13.2",
+                  "reason": "Task 13.2 adds bootstrap-local as a built-in producer for the separately approved Azure network foundation. The normalized local-scope governance status capability fingerprint changes intentionally; frozen historical output, exits, stderr, and all non-capability fields remain unchanged.",
                   "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
-                  "currentSha256": "977e1421faaa04fb81d66e5144d6d51a2dd742d77a9c27549b196fa70bd15fe5",
+                  "currentSha256": "6d8af072bf05b466ab50dd3f586b9d82eee2d2b6c4d1975a2b5dbde079bee4a0",
                   "changed": [
                     "/stdout/sha256"
                   ],
-                  "priorCurrentSha256": "348d5b40355813ddfb006537da5d552d59f0f664295756a22b604c6ca9396111",
+                  "priorCurrentSha256": "977e1421faaa04fb81d66e5144d6d51a2dd742d77a9c27549b196fa70bd15fe5",
                   "priorChange": {
                     "surface": "governance-extraction-cli",
                     "key": "status-local-json",
-                    "task": "12.3",
-                    "reason": "Task 12.3 updates generated governance guidance and normalized status output for exact approved protected credential enrollment, provider scope/use verification, independent Actions secret metadata readback, and payload-free policy/evidence. Frozen baselines, artifact identities, application templates, historical captures, and prior review records remain unchanged.",
+                    "task": "13.1",
+                    "reason": "Task 13.1 adds built-in state-path selection and exact existing-private Azure backend readiness. The normalized local-scope governance status capability fingerprint changes intentionally; frozen historical output, exits, stderr, and all non-capability fields remain unchanged.",
                     "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
-                    "currentSha256": "348d5b40355813ddfb006537da5d552d59f0f664295756a22b604c6ca9396111",
+                    "currentSha256": "977e1421faaa04fb81d66e5144d6d51a2dd742d77a9c27549b196fa70bd15fe5",
                     "changed": [
                       "/stdout/sha256"
                     ],
-                    "priorCurrentSha256": "0983b74533baf8ab3a3b7d8f39556141ddf65d2e6104f12499cd3dfe97ec617f",
+                    "priorCurrentSha256": "348d5b40355813ddfb006537da5d552d59f0f664295756a22b604c6ca9396111",
                     "priorChange": {
                       "surface": "governance-extraction-cli",
                       "key": "status-local-json",
-                      "task": "12.2",
-                      "reason": "Provider-ready now has a reviewed built-in Azure namespace and feature registration executor, so the normalized local-scope status capability fingerprint changes intentionally while the frozen historical baseline remains immutable.",
+                      "task": "12.3",
+                      "reason": "Task 12.3 updates generated governance guidance and normalized status output for exact approved protected credential enrollment, provider scope/use verification, independent Actions secret metadata readback, and payload-free policy/evidence. Frozen baselines, artifact identities, application templates, historical captures, and prior review records remain unchanged.",
                       "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
-                      "currentSha256": "0983b74533baf8ab3a3b7d8f39556141ddf65d2e6104f12499cd3dfe97ec617f",
+                      "currentSha256": "348d5b40355813ddfb006537da5d552d59f0f664295756a22b604c6ca9396111",
                       "changed": [
                         "/stdout/sha256"
                       ],
-                      "priorCurrentSha256": "279074399503e8812fc43a36882f1741ae3c681bd723f99cb7a443d49de294b6",
+                      "priorCurrentSha256": "0983b74533baf8ab3a3b7d8f39556141ddf65d2e6104f12499cd3dfe97ec617f",
                       "priorChange": {
                         "surface": "governance-extraction-cli",
                         "key": "status-local-json",
-                        "task": "2.5",
-                        "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged. Independent actual accepted-parent/current CLI execution confirms only the blocker fingerprint change with Node package/lock generation hashes; all other normalized JSON, result fields and frozen capture/harness remain unchanged.",
+                        "task": "12.2",
+                        "reason": "Provider-ready now has a reviewed built-in Azure namespace and feature registration executor, so the normalized local-scope status capability fingerprint changes intentionally while the frozen historical baseline remains immutable.",
                         "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
-                        "currentSha256": "279074399503e8812fc43a36882f1741ae3c681bd723f99cb7a443d49de294b6",
+                        "currentSha256": "0983b74533baf8ab3a3b7d8f39556141ddf65d2e6104f12499cd3dfe97ec617f",
                         "changed": [
                           "/stdout/sha256"
-                        ]
+                        ],
+                        "priorCurrentSha256": "279074399503e8812fc43a36882f1741ae3c681bd723f99cb7a443d49de294b6",
+                        "priorChange": {
+                          "surface": "governance-extraction-cli",
+                          "key": "status-local-json",
+                          "task": "2.5",
+                          "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged. Independent actual accepted-parent/current CLI execution confirms only the blocker fingerprint change with Node package/lock generation hashes; all other normalized JSON, result fields and frozen capture/harness remain unchanged.",
+                          "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
+                          "currentSha256": "279074399503e8812fc43a36882f1741ae3c681bd723f99cb7a443d49de294b6",
+                          "changed": [
+                            "/stdout/sha256"
+                          ]
+                        }
                       }
                     }
                   }
@@ -18796,105 +18822,118 @@
     {
       "surface": "governance-extraction-cli",
       "key": "resume-json",
-      "task": "14.2",
-      "reason": "Task 14.2 adds the bounded private nullable two-digest ownership source contract, protected-only overlay admission, exact owned HCL tags and Manual object-type interpretation while ordinary resume generation remains null and tag-free. No shared activation, provider registration, state write or production authority is added; frozen baselines and every prior reviewed record remain unchanged.",
+      "task": "18.2",
+      "reason": "Task 18.2 advances the current modern registry digest after the reviewed Node and frontend dependency-lock remediation. Normalized governance JSON changes only its exact recorded output fields; exits, stderr, every other field, the frozen capture and every predecessor record remain unchanged.",
       "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
-      "currentSha256": "490465574ee04fa753e23bc447fecb452302482f624dafce0d658bb3b539580a",
+      "currentSha256": "99c2ce89072f149e4074f6c243c2dd79916987eafa9730863944459060d3836f",
       "changed": [
         "/stdout/bytes",
         "/stdout/sha256"
       ],
-      "priorCurrentSha256": "3e12bcfcf1d44b75bc85699973d643965d25a15089855d228eea0a7ce5cf67f7",
+      "priorCurrentSha256": "490465574ee04fa753e23bc447fecb452302482f624dafce0d658bb3b539580a",
       "priorChange": {
         "surface": "governance-extraction-cli",
         "key": "resume-json",
-        "task": "14.1",
-        "reason": "Task 14.1 advances the current application staging and production resume capability disclosure from unavailable to injected-only while retaining an explicit fail-closed blocker for missing qualified protected handover, custody, exact approved resources and execution-host proof. Frozen released-v3 output and all prior reviewed change records remain unchanged.",
+        "task": "14.2",
+        "reason": "Task 14.2 adds the bounded private nullable two-digest ownership source contract, protected-only overlay admission, exact owned HCL tags and Manual object-type interpretation while ordinary resume generation remains null and tag-free. No shared activation, provider registration, state write or production authority is added; frozen baselines and every prior reviewed record remain unchanged.",
         "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
-        "currentSha256": "3e12bcfcf1d44b75bc85699973d643965d25a15089855d228eea0a7ce5cf67f7",
+        "currentSha256": "490465574ee04fa753e23bc447fecb452302482f624dafce0d658bb3b539580a",
         "changed": [
           "/stdout/bytes",
           "/stdout/sha256"
         ],
-        "priorCurrentSha256": "23c16f09ab28e0645fee3b63738c8ff2c78b1d553e2b8c788e8de6a598467ae2",
+        "priorCurrentSha256": "3e12bcfcf1d44b75bc85699973d643965d25a15089855d228eea0a7ce5cf67f7",
         "priorChange": {
           "surface": "governance-extraction-cli",
           "key": "resume-json",
-          "task": "13.5",
-          "reason": "Task 13.5 binds protected state work and day-30 disposal to the same qualified host, encrypted storage, non-exporting key, lease-lock and writer-quiescence custody; plaintext project-file fallback is removed while frozen released-v3 records remain unchanged.",
+          "task": "14.1",
+          "reason": "Task 14.1 advances the current application staging and production resume capability disclosure from unavailable to injected-only while retaining an explicit fail-closed blocker for missing qualified protected handover, custody, exact approved resources and execution-host proof. Frozen released-v3 output and all prior reviewed change records remain unchanged.",
           "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
-          "currentSha256": "23c16f09ab28e0645fee3b63738c8ff2c78b1d553e2b8c788e8de6a598467ae2",
-          "priorCurrentSha256": "e9402634d52db1554a689de7eb49911b10cad44379fce7c88aebcc36d4512aff",
+          "currentSha256": "3e12bcfcf1d44b75bc85699973d643965d25a15089855d228eea0a7ce5cf67f7",
+          "changed": [
+            "/stdout/bytes",
+            "/stdout/sha256"
+          ],
+          "priorCurrentSha256": "23c16f09ab28e0645fee3b63738c8ff2c78b1d553e2b8c788e8de6a598467ae2",
           "priorChange": {
             "surface": "governance-extraction-cli",
             "key": "resume-json",
-            "task": "13.4",
-            "reason": "Task 13.4 advances current governance output for exact same-bootstrap private backend proof and protected state handover through an injected capability. The public CLI remains fail-closed for arbitrary existing-state migration, and frozen released-v3 contracts remain unchanged.",
+            "task": "13.5",
+            "reason": "Task 13.5 binds protected state work and day-30 disposal to the same qualified host, encrypted storage, non-exporting key, lease-lock and writer-quiescence custody; plaintext project-file fallback is removed while frozen released-v3 records remain unchanged.",
             "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
-            "currentSha256": "e9402634d52db1554a689de7eb49911b10cad44379fce7c88aebcc36d4512aff",
-            "priorCurrentSha256": "8a9cc4ecdc6f6e690ad87b175d7fc5a07bae0335367f10f50002d51acb758d4a",
+            "currentSha256": "23c16f09ab28e0645fee3b63738c8ff2c78b1d553e2b8c788e8de6a598467ae2",
+            "priorCurrentSha256": "e9402634d52db1554a689de7eb49911b10cad44379fce7c88aebcc36d4512aff",
             "priorChange": {
               "surface": "governance-extraction-cli",
               "key": "resume-json",
-              "task": "13.3",
-              "reason": "Task 13.3 advertises runner-ready as a built-in Azure/GitHub producer and binds the reviewed current graph successor in normalized governance command output. The command remains read-only or preview-only as applicable, preserves exits and stderr, and makes no readiness claim without exact evidence.",
+              "task": "13.4",
+              "reason": "Task 13.4 advances current governance output for exact same-bootstrap private backend proof and protected state handover through an injected capability. The public CLI remains fail-closed for arbitrary existing-state migration, and frozen released-v3 contracts remain unchanged.",
               "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
-              "currentSha256": "8a9cc4ecdc6f6e690ad87b175d7fc5a07bae0335367f10f50002d51acb758d4a",
-              "priorCurrentSha256": "3eb8f670047b1c23f3b2338f71e5b287f6395f9017102bedf09e6892346daeab",
+              "currentSha256": "e9402634d52db1554a689de7eb49911b10cad44379fce7c88aebcc36d4512aff",
+              "priorCurrentSha256": "8a9cc4ecdc6f6e690ad87b175d7fc5a07bae0335367f10f50002d51acb758d4a",
               "priorChange": {
                 "surface": "governance-extraction-cli",
                 "key": "resume-json",
-                "task": "13.2",
-                "reason": "Task 13.2 adds bootstrap-local as a built-in producer for the separately approved Azure network foundation. The normalized governance resume capability fingerprint changes intentionally; frozen historical output, exits, stderr, and all non-capability fields remain unchanged.",
+                "task": "13.3",
+                "reason": "Task 13.3 advertises runner-ready as a built-in Azure/GitHub producer and binds the reviewed current graph successor in normalized governance command output. The command remains read-only or preview-only as applicable, preserves exits and stderr, and makes no readiness claim without exact evidence.",
                 "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
-                "currentSha256": "3eb8f670047b1c23f3b2338f71e5b287f6395f9017102bedf09e6892346daeab",
-                "changed": [
-                  "/stdout/sha256"
-                ],
-                "priorCurrentSha256": "57b464a59c4f3e88c65792c2dbd40312a6e71739ad5ac7166881c073008f52d5",
+                "currentSha256": "8a9cc4ecdc6f6e690ad87b175d7fc5a07bae0335367f10f50002d51acb758d4a",
+                "priorCurrentSha256": "3eb8f670047b1c23f3b2338f71e5b287f6395f9017102bedf09e6892346daeab",
                 "priorChange": {
                   "surface": "governance-extraction-cli",
                   "key": "resume-json",
-                  "task": "13.1",
-                  "reason": "Task 13.1 adds built-in state-path selection and exact existing-private Azure backend readiness. The normalized governance resume capability fingerprint changes intentionally; frozen historical output, exits, stderr, and all non-capability fields remain unchanged.",
+                  "task": "13.2",
+                  "reason": "Task 13.2 adds bootstrap-local as a built-in producer for the separately approved Azure network foundation. The normalized governance resume capability fingerprint changes intentionally; frozen historical output, exits, stderr, and all non-capability fields remain unchanged.",
                   "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
-                  "currentSha256": "57b464a59c4f3e88c65792c2dbd40312a6e71739ad5ac7166881c073008f52d5",
+                  "currentSha256": "3eb8f670047b1c23f3b2338f71e5b287f6395f9017102bedf09e6892346daeab",
                   "changed": [
                     "/stdout/sha256"
                   ],
-                  "priorCurrentSha256": "8ed2eb5ee95691864c991302327392b7859347c829581b3f38b602b176ac05b9",
+                  "priorCurrentSha256": "57b464a59c4f3e88c65792c2dbd40312a6e71739ad5ac7166881c073008f52d5",
                   "priorChange": {
                     "surface": "governance-extraction-cli",
                     "key": "resume-json",
-                    "task": "12.3",
-                    "reason": "Task 12.3 updates generated governance guidance and normalized status output for exact approved protected credential enrollment, provider scope/use verification, independent Actions secret metadata readback, and payload-free policy/evidence. Frozen baselines, artifact identities, application templates, historical captures, and prior review records remain unchanged.",
+                    "task": "13.1",
+                    "reason": "Task 13.1 adds built-in state-path selection and exact existing-private Azure backend readiness. The normalized governance resume capability fingerprint changes intentionally; frozen historical output, exits, stderr, and all non-capability fields remain unchanged.",
                     "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
-                    "currentSha256": "8ed2eb5ee95691864c991302327392b7859347c829581b3f38b602b176ac05b9",
+                    "currentSha256": "57b464a59c4f3e88c65792c2dbd40312a6e71739ad5ac7166881c073008f52d5",
                     "changed": [
                       "/stdout/sha256"
                     ],
-                    "priorCurrentSha256": "a9cf7e760ecfbe694b9ac8c4f9306f8a3de4430f708713db0101ce0158cac3c2",
+                    "priorCurrentSha256": "8ed2eb5ee95691864c991302327392b7859347c829581b3f38b602b176ac05b9",
                     "priorChange": {
                       "surface": "governance-extraction-cli",
                       "key": "resume-json",
-                      "task": "12.2",
-                      "reason": "Provider-ready now has a reviewed built-in Azure namespace and feature registration executor, so the normalized governance resume capability fingerprint changes intentionally while the frozen historical baseline remains immutable.",
+                      "task": "12.3",
+                      "reason": "Task 12.3 updates generated governance guidance and normalized status output for exact approved protected credential enrollment, provider scope/use verification, independent Actions secret metadata readback, and payload-free policy/evidence. Frozen baselines, artifact identities, application templates, historical captures, and prior review records remain unchanged.",
                       "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
-                      "currentSha256": "a9cf7e760ecfbe694b9ac8c4f9306f8a3de4430f708713db0101ce0158cac3c2",
+                      "currentSha256": "8ed2eb5ee95691864c991302327392b7859347c829581b3f38b602b176ac05b9",
                       "changed": [
                         "/stdout/sha256"
                       ],
-                      "priorCurrentSha256": "e9686676af5688b9b9c695a49f79cac55d717fb9d92e50accd234a625d6e5528",
+                      "priorCurrentSha256": "a9cf7e760ecfbe694b9ac8c4f9306f8a3de4430f708713db0101ce0158cac3c2",
                       "priorChange": {
                         "surface": "governance-extraction-cli",
                         "key": "resume-json",
-                        "task": "2.5",
-                        "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged. Independent actual accepted-parent/current CLI execution confirms only the blocker fingerprint change with Node package/lock generation hashes; all other normalized JSON, result fields and frozen capture/harness remain unchanged.",
+                        "task": "12.2",
+                        "reason": "Provider-ready now has a reviewed built-in Azure namespace and feature registration executor, so the normalized governance resume capability fingerprint changes intentionally while the frozen historical baseline remains immutable.",
                         "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
-                        "currentSha256": "e9686676af5688b9b9c695a49f79cac55d717fb9d92e50accd234a625d6e5528",
+                        "currentSha256": "a9cf7e760ecfbe694b9ac8c4f9306f8a3de4430f708713db0101ce0158cac3c2",
                         "changed": [
                           "/stdout/sha256"
-                        ]
+                        ],
+                        "priorCurrentSha256": "e9686676af5688b9b9c695a49f79cac55d717fb9d92e50accd234a625d6e5528",
+                        "priorChange": {
+                          "surface": "governance-extraction-cli",
+                          "key": "resume-json",
+                          "task": "2.5",
+                          "reason": "Actual preserved-parent and current normalized JSON differ only at /blockerFingerprint because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged. Independent actual accepted-parent/current CLI execution confirms only the blocker fingerprint change with Node package/lock generation hashes; all other normalized JSON, result fields and frozen capture/harness remain unchanged.",
+                          "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
+                          "currentSha256": "e9686676af5688b9b9c695a49f79cac55d717fb9d92e50accd234a625d6e5528",
+                          "changed": [
+                            "/stdout/sha256"
+                          ]
+                        }
                       }
                     }
                   }
@@ -18908,59 +18947,71 @@
     {
       "surface": "governance-extraction-cli",
       "key": "plan-json",
-      "task": "14.2",
-      "reason": "Task 14.2 changes current planning input identities for the bounded nullable ownership object, exact owned-resource tags and Manual object-type interpretation. The plan remains no-effect without qualified protected providers; frozen baselines and every prior reviewed record remain unchanged.",
+      "task": "18.2",
+      "reason": "Task 18.2 advances the current modern registry digest after the reviewed Node and frontend dependency-lock remediation. Normalized governance JSON changes only its exact recorded output fields; exits, stderr, every other field, the frozen capture and every predecessor record remain unchanged.",
       "baselineSha256": "c5abe8887e02a6d0d246c46b5fcaa1bd6d7de03867dc624d50b72d3c8d463b58",
-      "currentSha256": "cd5f9b8a8e832d472b67575caaa527dad6f6b2a01d1a628c336d36b57ad2ec60",
+      "currentSha256": "5a9228e68c9562a00ef39e4957a63f75540faaf64e30fc2b1ac1f409ad50d4b7",
       "changed": [
         "/stdout/sha256"
       ],
-      "priorCurrentSha256": "93a2df524385e97606309a67183fa23ad2cda77860e4dc3196707502ea146432",
+      "priorCurrentSha256": "cd5f9b8a8e832d472b67575caaa527dad6f6b2a01d1a628c336d36b57ad2ec60",
       "priorChange": {
         "surface": "governance-extraction-cli",
         "key": "plan-json",
-        "task": "13.5",
-        "reason": "Task 13.5 binds protected state work and day-30 disposal to the same qualified host, encrypted storage, non-exporting key, lease-lock and writer-quiescence custody; plaintext project-file fallback is removed while frozen released-v3 records remain unchanged.",
+        "task": "14.2",
+        "reason": "Task 14.2 changes current planning input identities for the bounded nullable ownership object, exact owned-resource tags and Manual object-type interpretation. The plan remains no-effect without qualified protected providers; frozen baselines and every prior reviewed record remain unchanged.",
         "baselineSha256": "c5abe8887e02a6d0d246c46b5fcaa1bd6d7de03867dc624d50b72d3c8d463b58",
-        "currentSha256": "93a2df524385e97606309a67183fa23ad2cda77860e4dc3196707502ea146432",
-        "priorCurrentSha256": "b20a843b1317c840402b522a6fdc1238140331af0fc0aff6249e57d28720d42e",
+        "currentSha256": "cd5f9b8a8e832d472b67575caaa527dad6f6b2a01d1a628c336d36b57ad2ec60",
+        "changed": [
+          "/stdout/sha256"
+        ],
+        "priorCurrentSha256": "93a2df524385e97606309a67183fa23ad2cda77860e4dc3196707502ea146432",
         "priorChange": {
           "surface": "governance-extraction-cli",
           "key": "plan-json",
-          "task": "13.4",
-          "reason": "Task 13.4 advances current governance output for exact same-bootstrap private backend proof and protected state handover through an injected capability. The public CLI remains fail-closed for arbitrary existing-state migration, and frozen released-v3 contracts remain unchanged.",
+          "task": "13.5",
+          "reason": "Task 13.5 binds protected state work and day-30 disposal to the same qualified host, encrypted storage, non-exporting key, lease-lock and writer-quiescence custody; plaintext project-file fallback is removed while frozen released-v3 records remain unchanged.",
           "baselineSha256": "c5abe8887e02a6d0d246c46b5fcaa1bd6d7de03867dc624d50b72d3c8d463b58",
-          "currentSha256": "b20a843b1317c840402b522a6fdc1238140331af0fc0aff6249e57d28720d42e",
-          "priorCurrentSha256": "13ea57bfa5836d31de9a7eb81a7441014b73de54a3deb93e00bae36df103eec0",
+          "currentSha256": "93a2df524385e97606309a67183fa23ad2cda77860e4dc3196707502ea146432",
+          "priorCurrentSha256": "b20a843b1317c840402b522a6fdc1238140331af0fc0aff6249e57d28720d42e",
           "priorChange": {
             "surface": "governance-extraction-cli",
             "key": "plan-json",
-            "task": "13.3",
-            "reason": "Task 13.3 advertises runner-ready as a built-in Azure/GitHub producer and binds the reviewed current graph successor in normalized governance command output. The command remains read-only or preview-only as applicable, preserves exits and stderr, and makes no readiness claim without exact evidence.",
+            "task": "13.4",
+            "reason": "Task 13.4 advances current governance output for exact same-bootstrap private backend proof and protected state handover through an injected capability. The public CLI remains fail-closed for arbitrary existing-state migration, and frozen released-v3 contracts remain unchanged.",
             "baselineSha256": "c5abe8887e02a6d0d246c46b5fcaa1bd6d7de03867dc624d50b72d3c8d463b58",
-            "currentSha256": "13ea57bfa5836d31de9a7eb81a7441014b73de54a3deb93e00bae36df103eec0",
-            "priorCurrentSha256": "0627422e4f7333b5f06c86ce31ed663ef1057b700f8d03d0f4633fda06346c2b",
+            "currentSha256": "b20a843b1317c840402b522a6fdc1238140331af0fc0aff6249e57d28720d42e",
+            "priorCurrentSha256": "13ea57bfa5836d31de9a7eb81a7441014b73de54a3deb93e00bae36df103eec0",
             "priorChange": {
               "surface": "governance-extraction-cli",
               "key": "plan-json",
-              "task": "2.5",
-              "reason": "Actual preserved-parent and current normalized JSON differ only at /plan/baselineDigest, /plan/inputDigest, /plan/transitionDigest because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged. Independent actual accepted-parent/current CLI execution confirms only the baseline/input/transition digests change with Node package/lock generation hashes; all other normalized JSON, result fields and frozen capture/harness remain unchanged.",
+              "task": "13.3",
+              "reason": "Task 13.3 advertises runner-ready as a built-in Azure/GitHub producer and binds the reviewed current graph successor in normalized governance command output. The command remains read-only or preview-only as applicable, preserves exits and stderr, and makes no readiness claim without exact evidence.",
               "baselineSha256": "c5abe8887e02a6d0d246c46b5fcaa1bd6d7de03867dc624d50b72d3c8d463b58",
-              "currentSha256": "0627422e4f7333b5f06c86ce31ed663ef1057b700f8d03d0f4633fda06346c2b",
-              "changed": [
-                "/stdout/sha256"
-              ],
-              "priorCurrentSha256": "f5419a37633cc4b69a69c9f5750876d15809f59b7dd38f5c3938fb2cc7dabce7",
+              "currentSha256": "13ea57bfa5836d31de9a7eb81a7441014b73de54a3deb93e00bae36df103eec0",
+              "priorCurrentSha256": "0627422e4f7333b5f06c86ce31ed663ef1057b700f8d03d0f4633fda06346c2b",
               "priorChange": {
                 "surface": "governance-extraction-cli",
                 "key": "plan-json",
                 "task": "2.5",
-                "reason": "Actual preserved-parent and current normalized JSON differ only at /plan/baselineDigest, /plan/inputDigest, /plan/transitionDigest because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged.",
+                "reason": "Actual preserved-parent and current normalized JSON differ only at /plan/baselineDigest, /plan/inputDigest, /plan/transitionDigest because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged. Independent actual accepted-parent/current CLI execution confirms only the baseline/input/transition digests change with Node package/lock generation hashes; all other normalized JSON, result fields and frozen capture/harness remain unchanged.",
                 "baselineSha256": "c5abe8887e02a6d0d246c46b5fcaa1bd6d7de03867dc624d50b72d3c8d463b58",
-                "currentSha256": "f5419a37633cc4b69a69c9f5750876d15809f59b7dd38f5c3938fb2cc7dabce7",
+                "currentSha256": "0627422e4f7333b5f06c86ce31ed663ef1057b700f8d03d0f4633fda06346c2b",
                 "changed": [
                   "/stdout/sha256"
-                ]
+                ],
+                "priorCurrentSha256": "f5419a37633cc4b69a69c9f5750876d15809f59b7dd38f5c3938fb2cc7dabce7",
+                "priorChange": {
+                  "surface": "governance-extraction-cli",
+                  "key": "plan-json",
+                  "task": "2.5",
+                  "reason": "Actual preserved-parent and current normalized JSON differ only at /plan/baselineDigest, /plan/inputDigest, /plan/transitionDigest because the fresh fixture's dependency generation hashes changed. Exits, stderr, byte counts, all other JSON fields and the frozen capture/harness remain unchanged.",
+                  "baselineSha256": "c5abe8887e02a6d0d246c46b5fcaa1bd6d7de03867dc624d50b72d3c8d463b58",
+                  "currentSha256": "f5419a37633cc4b69a69c9f5750876d15809f59b7dd38f5c3938fb2cc7dabce7",
+                  "changed": [
+                    "/stdout/sha256"
+                  ]
+                }
               }
             }
           }
