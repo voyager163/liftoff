@@ -27,7 +27,7 @@ const builderPaths = [
   'distribution/native/release-policy.json', 'distribution/windows/liftoff.iss',
   'distribution/native/native-release-admission.mjs',
   'distribution/native/native-release-catalog.mjs', 'distribution/native/native-release-catalog.d.mts',
-  'scripts/native-release-set.mjs', 'scripts/release-artifact.mjs',
+  'scripts/native-release-set.mjs', 'scripts/native-release-set.d.mts', 'scripts/release-artifact.mjs',
   'distribution/linux/install.sh',
   'scripts/native-bundle.mjs', 'scripts/native-bundle-contract.mjs',
   'scripts/package-smoke-contract.mjs', 'scripts/coverage-gate.mjs', 'scripts/clean-build.mjs'

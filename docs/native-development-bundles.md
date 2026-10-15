@@ -252,6 +252,8 @@ not a PR SHA or manual dispatch. Every artifact must identify that same run,
 source and package version. No output directory is created before all input
 gates pass. An existing `publication/` is never overwritten; a later I/O failure
 retains its exact partial output and reports it as failure.
+The adjacent `scripts/native-release-set.d.mts` types the assembly library's
+inputs/results; the CLI still uses only the committed signing policy.
 
 The output is a flat immutable upload set plus `liftoff-native-release.json`
 (schema 1, kind `liftoff-native-release-catalog`). Archives and the signed Windows
