@@ -1,7 +1,7 @@
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createServer } from 'node:http';
-import { stringify } from 'yaml';
+import { parse, stringify } from 'yaml';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   buildSavedTransitionPlan, canonicalPhaseGraph, canonicalSha256
@@ -37,6 +37,7 @@ import {
 } from './fixtures/governance-coverage/transition-project.js';
 import type { PhaseAdapterExecutionInput } from '../src/governance-activation/transition-ports.js';
 import { requiredWorkflowContextsFromSource } from '../src/governance-activation/workflow-requirements.js';
+import { isRecord } from '../src/domain/governance/activation/canonical-json.js';
 
 const scratch = scratchDirectory('workflow-producers');
 let storage: Awaited<ReturnType<typeof isolateUserLocalStorage>>;
@@ -106,6 +107,38 @@ function rulesetSource(count = 0) {
     ]
   })) }];
 }
+
+it.each(['trailing-step', 'duplicate-validation', 'required-job-dependency', 'empty-validator', 'mixed-validator'] as const)(
+  'refuses a %s recipe before an ordinary final validator can be misidentified', variant => {
+    const value: unknown = parse(recipe());
+    if (!isRecord(value) || !isRecord(value.jobs) || !isRecord(value.jobs.validate)) {
+      throw new Error('Expected actual isolated recipe job.');
+    }
+    const job = value.jobs.validate;
+    if (!Array.isArray(job.steps)) throw new Error('Expected actual isolated recipe steps.');
+    const reviewed = binding();
+    if (variant === 'required-job-dependency') {
+      value.jobs.inspect = {
+        ...job, name: 'Required configuration validation',
+        steps: [...structuredClone(job.steps.slice(0, -1)), { name: 'Validate configuration', run: 'node --check backend/configuration.js' }]
+      };
+      reviewed.contexts = [...reviewed.contexts, {
+        jobId: 'inspect', name: 'Required configuration validation', validationStep: 'Validate configuration'
+      }];
+      expect(() => validateContextWorkflow(Buffer.from(stringify(value)), reviewed)).not.toThrow();
+      job.needs = 'inspect';
+    }
+    else if (variant === 'empty-validator' || variant === 'mixed-validator') {
+      job.steps[job.steps.length - 1] = {
+        name: 'Validate source', run: variant === 'empty-validator' ? ' ' : 'node --check backend/application.js',
+        ...(variant === 'mixed-validator' ? { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' } : {})
+      };
+    } else job.steps.push({
+      name: variant === 'duplicate-validation' ? 'Validate source' : 'Inspect source after validation',
+      run: 'node --check backend/application.js'
+    });
+    expect(() => validateContextWorkflow(Buffer.from(stringify(value)), reviewed)).toThrow(/validation|validator|recipe/);
+  });
 
 class WorkflowTransport implements GitHubActivationTransport {
   calls: GitHubRequest[] = [];
@@ -1018,6 +1051,32 @@ describe('per-file workflow source publication authority', () => {
   });
 
   describe('source-derived protected context inventory', () => {
+    it('preserves actual inherited-property context names and their pinned integrations as own data', () => {
+      const source = rulesetSource();
+      const ruleset = JSON.parse(source[0]!.content.toString('utf8'));
+      const names = ['toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf'];
+      ruleset.rules[0].parameters.required_status_checks = names.map((context, index) => ({
+        context, integration_id: 15368 + index
+      }));
+      source[0]!.content = Buffer.from(JSON.stringify(ruleset));
+      const requirements = requiredWorkflowContextsFromSource(source, 'single-maintainer-gitflow');
+      for (const family of ['develop', 'main', 'release', 'hotfix'] as const) {
+        expect(requirements.families[family]).toEqual([...names].sort());
+        expect(Object.keys(requirements.integrations[family]).sort()).toEqual([...names].sort());
+        for (const [index, name] of names.entries()) {
+          expect(Object.getOwnPropertyDescriptor(requirements.integrations[family], name))
+            .toMatchObject({ value: 15368 + index, enumerable: true });
+        }
+      }
+    });
+    it.each(['toString', '__proto__'])('explicitly refuses inherited property %s as a protected ref pattern', pattern => {
+      const source = rulesetSource();
+      const ruleset = JSON.parse(source[0]!.content.toString('utf8'));
+      ruleset.conditions.ref_name.include = [pattern];
+      source[0]!.content = Buffer.from(JSON.stringify(ruleset));
+      expect(() => requiredWorkflowContextsFromSource(source, 'single-maintainer-gitflow'))
+        .toThrow('exact supported GitFlow families');
+    });
     it('preserves zero-review single-maintainer and one-current-independent-human team minima', () => {
       expect(requiredWorkflowContextsFromSource(rulesetSource(), 'single-maintainer-gitflow').families.main).toEqual(['Required validation']);
       expect(() => requiredWorkflowContextsFromSource(rulesetSource(), 'team-gitflow')).toThrow('profile');

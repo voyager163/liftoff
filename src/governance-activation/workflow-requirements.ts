@@ -43,7 +43,7 @@ export function requiredWorkflowContextsFromSource(
       !isRecord(value.conditions) || !isRecord(value.conditions.ref_name) ||
       !Array.isArray(value.conditions.ref_name.include) || !value.conditions.ref_name.include.length ||
       !Array.isArray(value.conditions.ref_name.exclude) || value.conditions.ref_name.exclude.length ||
-      value.conditions.ref_name.include.some((pattern) => typeof pattern !== 'string' || !(pattern in patterns))) {
+      value.conditions.ref_name.include.some((pattern) => typeof pattern !== 'string' || !Object.hasOwn(patterns, pattern))) {
       return workflowFailure('workflow-required-contexts', 'Protected context scope must name exact supported GitFlow families without exclusions or protected-branch bypass.');
     }
     const checks = value.rules.filter((rule) => isRecord(rule) && rule.type === 'required_status_checks');
@@ -76,11 +76,13 @@ export function requiredWorkflowContextsFromSource(
       for (const check of parameters.required_status_checks) {
         const context = String(check.context);
         const integration = typeof check.integration_id === 'number' ? check.integration_id : null;
-        const previous = integrations[family][context];
+        const previous = Object.hasOwn(integrations[family], context) ? integrations[family][context] : undefined;
         if (previous !== undefined && previous !== null && integration !== null && previous !== integration) {
           return workflowFailure('workflow-required-contexts', 'The same context requires conflicting pinned integration identities.');
         }
-        integrations[family][context] = previous ?? integration;
+        Object.defineProperty(integrations[family], context, {
+          value: previous ?? integration, enumerable: true, configurable: true, writable: true
+        });
         if (!families[family].includes(context)) families[family].push(context);
       }
     }

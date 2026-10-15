@@ -52,6 +52,15 @@ not an arbitrary first match. Its immutable output is explicitly `not-observed`
 and `not-authorized`: it is a reference inventory, not a prerequisite session,
 fresh producer observation or permission to execute.
 
+The separate private `observeSource5WorkflowPrerequisites` reads the real installed
+closure before and after selecting those references. It accepts no installed DTO,
+reader callback, host/peer proof bag or caller currentness timestamps. Dependency
+alternatives and provider obligations stay graph-selected; accepted stored
+approval/outcome formats still require their own current producer reader.
+Unavailable readers and Azure completion peers remain explicit blockers, and no
+prerequisite session is issued. This private observation is not yet wired into
+public review or approval/apply routing and does not qualify a native host.
+
 The packaged source entry `dist/workflow-context-validator.js` supplies finite
 real validator bodies for source integrity, backend tests, worker tests, frontend
 builds and framework source. It accepts only `--validator <subject> --source-sha
@@ -74,6 +83,13 @@ refuses success. Reports withhold raw project output and issue no phase,
 provider, native-host, release or green/red matrix qualification. The source
 entry being present in a development npm pack is not a qualified published
 current5 recipe/tool subject or an automation `GITHUB_TOKEN` admission.
+
+Required proof jobs are independent. Each has exactly one named executable
+validator as its final ordinary step; trailing steps, duplicated validator names
+and required-job dependencies are refused before dispatch.
+Required context names and integration IDs remain literal own data, including
+names that match inherited JavaScript properties. Ref scopes recognize only the
+four declared GitFlow patterns; inherited object properties are not ref families.
 
 Cleanup captures the allocated HOME's directory and ancestor creation identities
 before project execution and rechecks them after settlement. A missing, renamed,
