@@ -10,7 +10,9 @@ import {
   issueSource5WorkflowApproval, restoreSource5WorkflowAuthority, source5WorkflowOriginalPlanValue, withSource5WorkflowLease
 } from '../src/governance-activation/workflow-source5-authority.js';
 import { openSource5WorkflowJournal } from '../src/governance-activation/workflow-source5-journal.js';
-import { executeSource5WorkflowComponent } from '../src/governance-activation/workflow-source5-components.js';
+import {
+  executeSource5WorkflowComponent, executeSource5WorkflowPlanComponents
+} from '../src/governance-activation/workflow-source5-components.js';
 import { workflowByteDigest } from '../src/governance-activation/workflow-binding.js';
 import type { WorkflowContextBinding } from '../src/governance-activation/workflow-context-proof.js';
 import type { Source5WorkflowOrigin } from '../src/governance-activation/workflow-source5-operations.js';
@@ -186,6 +188,107 @@ async function provider(f: Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe('private source5 original component orchestration', () => {
+  it.each(['green', 'controlled-red'] as const)(
+    'observes every original %s plan entry without claiming a completed phase or matrix', async mode => {
+      const f = await fixture(mode), p = await provider(f);
+      try {
+        await withSource5WorkflowLease(f.value.projectRoot, async lease => {
+          const journal = await openSource5WorkflowJournal({ ...f.value, lease, initialize: true });
+          const { operation: _, ...input } = await fields(f.value, lease, noGit(), p.transport);
+          const result = await executeSource5WorkflowPlanComponents(input, journal);
+          expect(result).toMatchObject({
+            status: 'components-observed', phaseComplete: false, matrixComplete: false,
+            controlKey: f.value.control.controlKey, planDigest: f.value.plan.planDigest, unexecutedOperationDigests: [],
+            observations: [{ operationDigest: canonicalSha256(f.value.operation), actionId: f.value.operation.actionId,
+              result: { status: 'completed', proof: { runId: 901, conclusion: mode === 'green' ? 'success' : 'failure' } } }]
+          });
+          expect(result.observations).toHaveLength(1);
+          expect(await journal.readFinalization()).toBeNull();
+          expect(p.calls.filter(call => call.method === 'POST')).toHaveLength(1);
+        });
+      } finally { await p.close(); }
+    });
+
+  it('stops a whole plan at its original pending entry and exposes the untouched remaining inventory', async () => {
+    const f = await fixture(), p = await provider(f);
+    const value = await seal(f.review({ phaseId: 'dev-proof', origin: f.origin, effects: [
+      { action: 'github.checks.dev-proof', binding: f.binding },
+      { action: 'github.checks.dev-proof', binding: { ...f.binding, family: 'release', ref: 'release/fixture' } }
+    ] }));
+    p.state.status = 'queued';
+    try {
+      await withSource5WorkflowLease(value.projectRoot, async lease => {
+        const journal = await openSource5WorkflowJournal({ ...value, lease, initialize: true });
+        const { operation: _, ...input } = await fields(value, lease, noGit(), p.transport);
+        const result = await executeSource5WorkflowPlanComponents(input, journal);
+        const later = value.plan.operations[1]!;
+        expect(result).toMatchObject({
+          status: 'pending', phaseComplete: false, matrixComplete: false,
+          unexecutedOperationDigests: [canonicalSha256(later)],
+          observations: [{ result: { status: 'pending', checkpoint: { runId: 901, stage: 'accepted' } } }]
+        });
+        expect(result.observations).toHaveLength(1);
+        expect(await journal.events(later)).toEqual([]);
+        expect(p.calls.filter(call => call.method !== 'GET')).toHaveLength(1);
+      });
+    } finally { await p.close(); }
+  });
+
+  it('validates a later original binding before submitting the first effect', async () => {
+    const f = await fixture(), p = await provider(f);
+    const value = await seal(f.review({ phaseId: 'dev-proof', origin: f.origin, effects: [
+      { action: 'github.checks.dev-proof', binding: f.binding },
+      { action: 'github.checks.dev-proof', binding: { ...f.binding, contexts: [] } }
+    ] }));
+    try {
+      await withSource5WorkflowLease(value.projectRoot, async lease => {
+        const journal = await openSource5WorkflowJournal({ ...value, lease, initialize: true });
+        const { operation: _, ...input } = await fields(value, lease, noGit(), p.transport);
+        await expect(executeSource5WorkflowPlanComponents(input, journal)).rejects.toThrow();
+        expect(p.calls).toEqual([]);
+        expect(await journal.events(value.operation)).toEqual([]);
+        expect(await journal.events(value.plan.operations[1]!)).toEqual([]);
+      });
+    } finally { await p.close(); }
+  });
+
+  it('retains an original failing terminal and never starts a later entry or fabricates finalization', async () => {
+    const f = await fixture(), p = await provider(f);
+    const value = await seal(f.review({ phaseId: 'dev-proof', origin: f.origin, effects: [
+      { action: 'github.checks.dev-proof', binding: f.binding },
+      { action: 'github.checks.dev-proof', binding: { ...f.binding, family: 'release', ref: 'release/fixture' } }
+    ] }));
+    p.state.conclusion = 'failure';
+    try {
+      await withSource5WorkflowLease(value.projectRoot, async lease => {
+        const journal = await openSource5WorkflowJournal({ ...value, lease, initialize: true });
+        const { operation: _, ...input } = await fields(value, lease, noGit(), p.transport);
+        await expect(executeSource5WorkflowPlanComponents(input, journal)).rejects.toThrow(/actual workflow did not reach/);
+        expect((await journal.events(value.operation)).at(-1)).toMatchObject({
+          stage: 'dispatch-terminal', data: { terminalConclusion: 'failure' }
+        });
+        expect(await journal.events(value.plan.operations[1]!)).toEqual([]);
+        expect(await journal.readFinalization()).toBeNull();
+        expect(p.calls.filter(call => call.method !== 'GET')).toHaveLength(1);
+      });
+    } finally { await p.close(); }
+  });
+
+  it.each(['operation', 'observationOnly', 'reviewedPlans', 'recordWorkflowDispatch'] as const)(
+    'rejects whole-plan caller %s overrides before any provider call', async key => {
+      const f = await fixture(), p = await provider(f);
+      try {
+        await withSource5WorkflowLease(f.value.projectRoot, async lease => {
+          const journal = await openSource5WorkflowJournal({ ...f.value, lease, initialize: true });
+          const { operation: _, ...input } = await fields(f.value, lease, noGit(), p.transport);
+          Reflect.set(input, key, true);
+          await expect(executeSource5WorkflowPlanComponents(input, journal)).rejects.toThrow(/closed own runtime fields/);
+          expect(await journal.events(f.value.operation)).toEqual([]);
+          expect(p.calls).toEqual([]);
+        });
+      } finally { await p.close(); }
+    });
+
   it.each(['callback', 'accessor', 'symbol', 'prototype'] as const)(
     'rejects caller %s fields before callbacks, intent, carrier claim or provider calls', async fault => {
       const f = await fixture(), p = await provider(f);

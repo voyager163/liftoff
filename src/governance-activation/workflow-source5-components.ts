@@ -7,21 +7,26 @@ import type { Source5WorkflowEffectFields } from './workflow-source5-ports.js';
 import { assertSource5WorkflowJournal } from './workflow-source5-journal.js';
 import type { Source5WorkflowJournal } from './workflow-source5-journal.js';
 import {
-  executeWorkflowSourcePublication, observeWorkflowSourcePublication
+  executeWorkflowSourcePublication, observeWorkflowSourcePublication, validateWorkflowPublication
 } from './workflow-publication.js';
 import type { WorkflowPublicationBinding, PublishedWorkflowSource } from './workflow-publication.js';
-import { bindImmutableWorkflowExecutionRef } from './workflow-execution-ref.js';
+import { bindImmutableWorkflowExecutionRef, workflowExecutionRefName } from './workflow-execution-ref.js';
 import type { WorkflowExecutionRefBinding, ImmutableWorkflowExecutionRef } from './workflow-execution-ref.js';
-import { admitReviewedRunnerWorkflows } from './workflow-runner-admission.js';
+import { admitReviewedRunnerWorkflows, validateWorkflowRunnerAdmission } from './workflow-runner-admission.js';
 import type { WorkflowRunnerAdmissionBinding } from './workflow-runner-admission.js';
 import {
   executeWorkflowContextProof, readCurrentWorkflowContextProof, validateWorkflowContextBinding
 } from './workflow-context-proof.js';
 import type { WorkflowContextBinding, WorkflowContextProof, WorkflowProofCheckpoint } from './workflow-context-proof.js';
 import { protectedWorkflowFamilies } from './workflow-requirements.js';
+import { source5WorkflowPlanInventory } from './workflow-source5-operations.js';
+import type { ModernSavedTransitionPlan } from '../domain/governance/activation/modern-record-contracts.js';
+import { githubRepository, positiveId } from '../adapters/github/activation-rest.js';
+import { sourceSha } from './github-config.js';
 
 export type Source5WorkflowComponentFields = Omit<Source5WorkflowEffectFields,
   'kind' | 'observationOnly' | 'reviewedPlans'>;
+export type Source5WorkflowPlanComponentFields = Omit<Source5WorkflowComponentFields, 'operation'>;
 export type Source5WorkflowComponentProof = PublishedWorkflowSource | ImmutableWorkflowExecutionRef |
   WorkflowContextProof | { bindingDigest: string; observationDigest: string };
 export type Source5WorkflowComponentResult =
@@ -29,17 +34,23 @@ export type Source5WorkflowComponentResult =
   | { readonly status: 'completed'; readonly proof: Source5WorkflowComponentProof;
       readonly currentObservationDigest: string; readonly currentObservedAt: string };
 
-function captureComponentFields(fields: Source5WorkflowComponentFields): Source5WorkflowComponentFields {
-  const required = ['projectRoot', 'plan', 'operation', 'phase', 'authority', 'lease', 'now', 'runner', 'transport', 'profile'];
+function assertComponentFields(
+  fields: Source5WorkflowPlanComponentFields, operation: boolean
+): void {
+  const required = ['projectRoot', 'plan', 'phase', 'authority', 'lease', 'now', 'runner', 'transport', 'profile',
+    ...(operation ? ['operation'] : [])];
   if (!isRecord(fields) || ![Object.prototype, null].includes(Object.getPrototypeOf(fields)) ||
     required.some(key => !Object.hasOwn(fields, key)) ||
     Reflect.ownKeys(fields).some(key => typeof key !== 'string' || ![...required, 'clock'].includes(key)) ||
     Object.values(Object.getOwnPropertyDescriptors(fields)).some(descriptor => descriptor.get || descriptor.set) ||
     !(fields.now instanceof Date) || !Number.isFinite(fields.now.getTime()) ||
     fields.clock !== undefined && typeof fields.clock !== 'function') {
-    return workflowFailure('workflow-source5-component-fields',
+    workflowFailure('workflow-source5-component-fields',
       'A component needs closed own runtime fields without accessors, caller checkpoints or caller-selected observation mode.');
   }
+}
+function captureComponentFields(fields: Source5WorkflowComponentFields): Source5WorkflowComponentFields {
+  assertComponentFields(fields, true);
   return Object.freeze({ ...fields, plan: captureWorkflowBinding(fields.plan),
     operation: captureWorkflowBinding(fields.operation), phase: captureWorkflowBinding(fields.phase),
     now: new Date(fields.now.getTime()) });
@@ -126,6 +137,21 @@ function readComponentBinding(action: string, raw: unknown): ComponentBinding {
   return workflowFailure('workflow-source5-component-binding', 'Only an exact indexed workflow entry has a private component producer.');
 }
 
+export function validateSource5WorkflowPlanComponents(plan: ModernSavedTransitionPlan): void {
+  for (const operation of source5WorkflowPlanInventory(plan).effects) {
+    const selected = readComponentBinding(operation.actionId.split(':')[0]!, operation.inputs);
+    if (selected.kind === 'publication') validateWorkflowPublication(selected.binding);
+    else if (selected.kind === 'runner') validateWorkflowRunnerAdmission(selected.binding);
+    else if (selected.kind === 'execution-ref') {
+      githubRepository(selected.binding.repository); positiveId(selected.binding.repositoryId);
+      sourceSha(selected.binding.treeSha);
+      if (selected.binding.executionRef !== workflowExecutionRefName(selected.binding.sourceSha)) {
+        return workflowFailure('workflow-execution-ref', 'Execution requires the exact full-commit-named tag, not a mutable branch or an undocumented SHA-dispatch fallback.');
+      }
+    }
+  }
+}
+
 export async function executeSource5WorkflowComponent(
   fields: Source5WorkflowComponentFields, journal: Source5WorkflowJournal
 ): Promise<Source5WorkflowComponentResult> {
@@ -180,4 +206,44 @@ export async function executeSource5WorkflowComponent(
   }
   return captureWorkflowBinding({ status: 'completed', proof,
     currentObservationDigest: proof.observationDigest, currentObservedAt: (fields.clock?.() ?? fields.now).toISOString() });
+}
+
+export interface Source5WorkflowPlanComponentObservation {
+  readonly operationDigest: string;
+  readonly actionId: string;
+  readonly result: Source5WorkflowComponentResult;
+}
+
+/** Runs the original whole inventory in order; it neither issues approval nor finalizes a phase. */
+export async function executeSource5WorkflowPlanComponents(
+  fields: Source5WorkflowPlanComponentFields, journal: Source5WorkflowJournal
+) {
+  assertSource5WorkflowJournal(journal);
+  assertComponentFields(fields, false);
+  fields = Object.freeze({ ...fields, plan: captureWorkflowBinding(fields.plan),
+    phase: captureWorkflowBinding(fields.phase), now: new Date(fields.now.getTime()) });
+  const { control, effects } = source5WorkflowPlanInventory(fields.plan);
+  if (fields.projectRoot !== journal.projectRoot || fields.lease !== journal.lease ||
+    canonicalSha256(fields.plan) !== canonicalSha256(journal.plan)) {
+    return workflowFailure('workflow-source5-component-plan', 'Plan execution requires this exact original journal, root, native lease and whole operation inventory.');
+  }
+  validateSource5WorkflowPlanComponents(fields.plan);
+  await journal.assertInventory();
+  const observations: Source5WorkflowPlanComponentObservation[] = [];
+  for (const [index, operation] of effects.entries()) {
+    const result = await executeSource5WorkflowComponent({ ...fields, operation }, journal);
+    observations.push({ operationDigest: canonicalSha256(operation), actionId: operation.actionId, result });
+    if (result.status === 'pending') {
+      return captureWorkflowBinding({
+        status: 'pending' as const, controlKey: control.controlKey, planDigest: fields.plan.planDigest,
+        observations, unexecutedOperationDigests: effects.slice(index + 1).map(operation => canonicalSha256(operation)),
+        phaseComplete: false as const, matrixComplete: false as const
+      });
+    }
+  }
+  return captureWorkflowBinding({
+    status: 'components-observed' as const, controlKey: control.controlKey, planDigest: fields.plan.planDigest,
+    observations, unexecutedOperationDigests: [],
+    phaseComplete: false as const, matrixComplete: false as const
+  });
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -321,6 +321,19 @@ try {
       JSON.stringify(installedCapabilities.schemas.projectAssessment.modes) !== '["local","live"]') {
     throw new Error('Installed capabilities lost the bounded local/live metadata and no-conformance contract.');
   }
+  const workflowCapabilities = installedCapabilities.schemas?.modernWorkflowReview;
+  if (workflowCapabilities?.report !== 1 || workflowCapabilities.request !== 'review-workflow-source5' ||
+      workflowCapabilities.readOnly !== true || workflowCapabilities.blockedExit !== 2 ||
+      workflowCapabilities.approval !== false || workflowCapabilities.execution !== false ||
+      workflowCapabilities.externalMetadataWrites !== false || workflowCapabilities.providerOperations !== false) {
+    throw new Error('Installed workflow review capability must remain read-only and explicitly blocked before effects.');
+  }
+  const governanceHelp = run(process.execPath, [liftoffEntrypoint, 'governance', '--help'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  if (!governanceHelp.stdout.includes('review-workflow-source5') || !governanceHelp.stdout.includes('exits 2')) {
+    throw new Error('Installed governance help lost the nonexecuting workflow-review boundary.');
+  }
   for (const flag of ['--check', '--live', '--subscription', '--approve-plan', '--recover', '--json',
     '--capabilities', '--inspect-layout', '--application-patch', '--verify-plan', '--allow-network', '--allow-dependency-preparation']) {
     if (!repairHelp.stdout.includes(flag)) throw new Error(`Installed repair help is missing ${flag}.`);
@@ -615,6 +628,61 @@ try {
   const { buildCurrentProjectPlan: installedCurrentPlan } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'planning.js')).href);
   const { buildArtifacts: installedArtifacts, buildCurrentArtifacts: installedCurrentArtifacts } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'templates.js')).href);
   const { writeArtifacts: installedWrite } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'file-system.js')).href);
+  const workflowProject = path.join(tempRoot, 'workflow review current project');
+  await installedWrite(workflowProject, installedCurrentArtifacts(installedCurrentPlan({
+    projectName: 'Workflow Review Smoke', projectType: 'standard', apiStack: 'node',
+    specWorkflow: 'manual', agents: [], governanceProfile: 'single-maintainer-gitflow', environments: ['dev']
+  }, { requireProjectName: true })));
+  const { loadProjectManifest } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'manifest.js')).href);
+  const { resolveModernManifestSourceContext } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'source-context.js')).href);
+  const { projectCatalog } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'catalog.js')).href);
+  const { createModernActivationRecordContract } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'domain', 'governance', 'activation', 'modern-records.js')).href);
+  const workflowManifest = await loadProjectManifest(workflowProject), workflowSource = resolveModernManifestSourceContext(workflowManifest);
+  const workflowRecords = createModernActivationRecordContract(projectCatalog, {
+    recordedIdentity: workflowManifest.governance.activationIdentity, profile: workflowManifest.governance.profile,
+    policyVersion: workflowManifest.governance.policyVersion,
+    selection: { ...workflowSource.selection, profile: workflowManifest.governance.profile },
+    pluginResolutionDigest: workflowSource.plugins.resolutionDigest,
+    activeLayoutDigest: workflowManifest.governance.activationIdentity.activeLayoutDigest
+  });
+  const workflowNow = new Date();
+  const pendingWorkflowState = workflowRecords.createInitialState({
+    repository: { id: `local:${randomUUID()}`, name: workflowManifest.project.name, defaultBranch: 'develop' },
+    applicability: { statePath: 'none', privateStagingDast: 'unknown', credentialRequired: 'unknown' },
+    createdAt: workflowNow.toISOString()
+  });
+  await mkdir(path.join(workflowProject, 'governance'), { recursive: true });
+  await writeFile(path.join(workflowProject, 'governance', 'activation-state.json'), JSON.stringify(pendingWorkflowState));
+  const workflowContent = 'name: Isolated reviewed source\non: workflow_dispatch\njobs:\n  validate:\n    runs-on: ubuntu-latest\n    steps:\n      - run: node --check backend/application.js\n';
+  const workflowRequest = path.join(tempRoot, 'workflow-review.json');
+  await writeFile(workflowRequest, JSON.stringify({
+    schemaVersion: 1, kind: 'review-workflow-source5', phaseId: 'bootstrap-workflow-source-ready', executionId: randomUUID(),
+    createdAt: workflowNow.toISOString(), expiresAt: new Date(workflowNow.getTime() + 60 * 60 * 1000).toISOString(),
+    configuration: { schemaVersion: 1, phases: {}, budget: { currency: 'USD', fixedMonthlyCents: 0, usageMonthlyCents: 0 } },
+    origin: null, remainingFrom: null, effects: [{ action: 'git.workflow-source.publish-reviewed', binding: {
+      repository: 'owner/repo', repositoryId: 123, ref: 'ci/liftoff-workflows-installed-review',
+      parentSha: 'a'.repeat(40), sourceTransmissionApproved: true,
+      files: [{ path: '.github/workflows/review.yml', content: workflowContent,
+        digest: createHash('sha256').update(workflowContent).digest('hex'), beforeDigest: null }]
+    } }]
+  }));
+  const workflowBefore = await treeDigest(workflowProject), workflowHomeBefore = await treeDigest(homeDirectory);
+  const workflowReview = runFailure(process.execPath, [liftoffEntrypoint, 'governance', 'plan', workflowProject,
+    '--scope', 'activation', '--inputs', workflowRequest, '--json'], { cwd: outsideDirectory, env: npmEnv });
+  const workflowReport = JSON.parse(workflowReview.stdout);
+  if (workflowReview.status !== 2 || workflowReport.kind !== 'liftoff-modern-workflow-review' ||
+      workflowReport.status !== 'blocked' || workflowReport.readOnly !== true ||
+      workflowReport.projectWrites !== false || workflowReport.externalMetadataWrites !== false ||
+      workflowReport.providerWrites !== false || workflowReport.workloadExecution !== false ||
+      workflowReport.executionAuthorized !== false || workflowReport.phaseComplete !== false ||
+      workflowReport.matrixComplete !== false || workflowReport.recordedProgressIsCurrentProof !== false ||
+      workflowReport.review?.execution !== 'not-authorized' ||
+      workflowReport.review?.prerequisites?.status !== 'not-observed' ||
+      workflowReport.review?.plan?.approval?.envelopeId !== null ||
+      !workflowReport.blockers?.some(blocker => blocker.code === 'workflow-current-prerequisite-observer-unavailable') ||
+      await treeDigest(workflowProject) !== workflowBefore || await treeDigest(homeDirectory) !== workflowHomeBefore) {
+    throw new Error(`Installed workflow review violated its nonexecuting prerequisite boundary: ${workflowReview.stdout}`);
+  }
   const assessmentBody = await readFile(path.join(installedPackageRoot, 'assets', 'skills', 'assessment.md'), 'utf8');
   const assessmentIntegrations = [
     { agent: 'github-copilot', logicalName: 'liftoff-assess-copilot', pathParts: ['.github', 'prompts', 'liftoff-assess.prompt.md'], invocation: '/liftoff-assess' },
