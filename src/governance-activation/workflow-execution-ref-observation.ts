@@ -2,7 +2,7 @@ import { canonicalSha256, isRecord } from '../domain/governance/activation/canon
 import { sourceSha } from './github-config.js';
 import { githubRepository, positiveId } from '../adapters/github/activation-rest.js';
 import type { GitHubActivationClient } from '../adapters/github/activation-rest.js';
-import { captureWorkflowBinding, workflowFailure } from './workflow-binding.js';
+import { captureWorkflowBinding, workflowFailure } from './workflow-control-values.js';
 
 export interface WorkflowExecutionRefObservationRuntime {
   readonly client: Pick<GitHubActivationClient, 'get' | 'list' | 'transport'>;

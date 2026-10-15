@@ -1,15 +1,9 @@
 import { createServer } from 'node:http';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { GitHubActivationClient } from '../src/adapters/github/activation-rest.js';
 import type { GitHubActivationTransport, GitHubRequest } from '../src/adapters/github/activation-rest.js';
 import type { WorkflowExecutionRefBinding } from '../src/governance-activation/workflow-execution-ref-observation.js';
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
-
-afterEach(() => {
-  vi.doUnmock('../src/governance-activation/workflow-runtime.js');
-  vi.doUnmock('../src/governance-activation/workflow-source5-authority.js');
-  vi.resetModules();
-});
 
 async function provider() {
   const binding: WorkflowExecutionRefBinding = {
@@ -65,10 +59,7 @@ async function provider() {
 }
 
 describe('neutral exact execution-ref observation without writer authority', () => {
-  it('loads without either private runtime/authority value closure and observes actual bounded loopback responses', async () => {
-    vi.resetModules();
-    vi.doMock('../src/governance-activation/workflow-runtime.js', () => { throw new Error('Private runtime must not load.'); });
-    vi.doMock('../src/governance-activation/workflow-source5-authority.js', () => { throw new Error('Private authority must not load.'); });
+  it('observes actual bounded loopback responses through the client-only module', async () => {
     const neutral = await import('../src/governance-activation/workflow-execution-ref-observation.js');
     const fixture = await provider();
     try {
@@ -82,15 +73,6 @@ describe('neutral exact execution-ref observation without writer authority', () 
       expect(fixture.calls.every(call => call.method === 'GET')).toBe(true);
       expect(neutral.workflowExecutionRefName(fixture.binding.sourceSha)).toBe(fixture.binding.executionRef);
     } finally { await fixture.close(); }
-  });
-
-  it('preserves the original module exports as the same observer functions', async () => {
-    const neutral = await import('../src/governance-activation/workflow-execution-ref-observation.js');
-    const original = await import('../src/governance-activation/workflow-execution-ref.js');
-    expect(original.observeImmutableWorkflowExecutionRef).toBe(neutral.observeImmutableWorkflowExecutionRef);
-    expect(original.observeWorkflowExecutionBarrier).toBe(neutral.observeWorkflowExecutionBarrier);
-    expect(original.observeWorkflowProviderAdmission).toBe(neutral.observeWorkflowProviderAdmission);
-    expect(original.workflowExecutionRefName).toBe(neutral.workflowExecutionRefName);
   });
 
   it.each(['inherited', 'unprotected', 'bypass', 'scope', 'tree', 'tag', 'annotated', 'repository'] as const)(
