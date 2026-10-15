@@ -273,14 +273,26 @@ describe('complete native + npm release assembly (ephemeral synthetic signing on
   it('strictly checks the inert catalog consumer and the release-set fixture boundary', async () => {
     const f = await fixture(), file = path.join(f.parent, 'catalog-consumer.mts');
     const module = path.resolve('distribution/native/native-release-catalog.mjs').split(path.sep).join('/');
+    const admission = path.resolve('distribution/native/native-release-admission.mjs').split(path.sep).join('/');
     await writeFile(file, `
+      import type { Buffer } from 'node:buffer';
       import { assertNativeReleaseCatalog, nativeCatalogSubjects, nativeReleaseAssetStem, nativeReleaseTargets,
         type NativeReleaseCatalog, type NativeReleaseSubject } from ${JSON.stringify(module)};
+      import { assertNativePublicationEvidence, verifyNativeBytesSignature, verifyNativeEvidenceSignature }
+        from ${JSON.stringify(admission)};
       declare const input: unknown;
+      declare const bytes: Buffer, publicKey: Buffer | string, fingerprint: string;
+      const verified: void = verifyNativeBytesSignature(bytes, bytes, publicKey, fingerprint);
+      const parsed: unknown = verifyNativeEvidenceSignature(bytes, bytes, publicKey, fingerprint);
+      const publication: unknown = assertNativePublicationEvidence(input, input);
       const catalog: NativeReleaseCatalog = assertNativeReleaseCatalog(input);
       const subjects: NativeReleaseSubject[] = nativeCatalogSubjects(catalog);
       const filename: string = nativeReleaseAssetStem(catalog.version, nativeReleaseTargets[0]);
-      void [subjects, filename];
+      void [subjects, filename, verified, parsed, publication];
+      // @ts-expect-error The binary verifier requires original bytes, not a decoded string.
+      verifyNativeBytesSignature('decoded text', bytes, publicKey, fingerprint);
+      // @ts-expect-error Verification does not return parsed or transformed bytes.
+      const transformed: Buffer = verifyNativeBytesSignature(bytes, bytes, publicKey, fingerprint);
       // @ts-expect-error Unvalidated input is not a catalog.
       const unsafe: NativeReleaseCatalog = input;
       // @ts-expect-error Intel macOS is not a native target.

@@ -107,18 +107,28 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
   });
   it('resolves packaged templates and the exact controller from the installed boundary', () => {
     const result = installed(`
+      import assert from 'node:assert/strict';
+      import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+      import { gzipSync } from 'node:zlib';
       import { verifyWindowsJobControllerAsset } from ${JSON.stringify(moduleUrl('adapters/process/windows-job-runner.js'))};
       const admission = await import(${JSON.stringify(pathToFileURL(path.join(bundle, 'installation/native-release-admission.mjs')).href)});
       const catalog = await import(${JSON.stringify(pathToFileURL(path.join(bundle, 'installation/native-release-catalog.mjs')).href)});
+      const key = generateKeyPairSync('ed25519'), bytes = gzipSync(Buffer.from('Installed synthetic signature specimen.'));
+      const signature = sign(null, bytes, key.privateKey), publicKey = key.publicKey.export({ type: 'spki', format: 'pem' });
+      const fingerprint = createHash('sha256').update(key.publicKey.export({ type: 'spki', format: 'der' })).digest('hex');
+      assert.equal(admission.verifyNativeBytesSignature(bytes, signature, publicKey, fingerprint), undefined);
+      assert.throws(() => admission.verifyNativeBytesSignature(Buffer.from('changed'), signature, publicKey, fingerprint), /signature/);
+      assert.throws(() => admission.verifyNativeEvidenceSignature(bytes, signature, publicKey, fingerprint), SyntaxError);
       console.log(JSON.stringify({ controller: await verifyWindowsJobControllerAsset(), runtime: process.execPath,
         admissionExports: Object.keys(admission).sort(), catalogFilename: catalog.nativeReleaseCatalogFilename,
-        catalogTargets: catalog.nativeReleaseTargets }));
+        catalogTargets: catalog.nativeReleaseTargets, rawSignatureVerified: true }));
     `);
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({
       controller: path.join(bundle, 'application/assets/repair/windows-job-controller.ps1'), runtime,
-      admissionExports: ['assertNativePublicationEvidence', 'verifyNativeEvidenceSignature'],
-      catalogFilename: 'liftoff-native-release.json', catalogTargets: ['darwin-arm64', 'linux-arm64', 'linux-x64', 'win32-x64']
+      admissionExports: ['assertNativePublicationEvidence', 'verifyNativeBytesSignature', 'verifyNativeEvidenceSignature'],
+      catalogFilename: 'liftoff-native-release.json', catalogTargets: ['darwin-arm64', 'linux-arm64', 'linux-x64', 'win32-x64'],
+      rawSignatureVerified: true
     });
   });
   it('refuses missing template, controller, HCL and host-policy material without checkout fallback', async () => {

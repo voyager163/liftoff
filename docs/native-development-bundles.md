@@ -149,10 +149,15 @@ inspectOwnedInstallation(prefix)
 recoverOwnedInstallation({ prefix, expectedJournalSha256, expectedStaleLockSha256 })
 ```
 
-`distribution/native/native-release-admission.mjs` supplies the unchanged pure
+`distribution/native/native-release-admission.mjs` supplies the pure
 `assertNativePublicationEvidence` and `verifyNativeEvidenceSignature` functions,
-re-exported by the release script. Native bundles carry this inert module and
-adjacent release-policy/platforms JSON in `installation/`; importing admission
+re-exported by the release script. Its `verifyNativeBytesSignature` authenticates
+original binary bytes against the caller's approved Ed25519 SPKI SHA-256 and
+returns nothing; it does not parse JSON, select a signing principal or grant
+installation authority. The existing JSON verifier delegates to the same checks
+before parsing, preserving its results and failures. Native bundles carry this
+inert module, its adjacent `.d.mts` declaration and release-policy/platforms JSON
+in `installation/`; importing admission
 does not import a builder, inspect Git or execute a release operation. CLI-specific
 npm packaging/import integration remains separate owner-aware upgrade work.
 The adjacent inert `native-release-catalog.mjs` validates flat immutable artifact

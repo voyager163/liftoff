@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import { spawnSync } from 'node:child_process';
 import { chmod, link, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { assertNativeHost, atLeastVersion } from '../distribution/native/host.mjs';
+import { verifyNativeBytesSignature } from '../distribution/native/native-release-admission.mjs';
 import { assertLinuxRuntimeLibraries, bundleFile, bundleInventory, nativeArchiveMembers, nativeArchiveTool, nativeRuntimeInput, readBundleFile } from '../scripts/native-bundle-contract.mjs';
 import { nativeMaterials, nativePackageDefinitions, assertNativePublicationEvidence, verifyNativeEvidenceSignature, verifyNativeArchive } from '../scripts/native-release.mjs';
 import { parse } from 'yaml';
@@ -128,7 +130,9 @@ describe('native exact-artifact and signing gates (synthetic contract data, not 
       `const admission = await import(${JSON.stringify(url)}); console.log(JSON.stringify(Object.keys(admission).sort()));`],
     { cwd, env: { PATH: '', NODE_OPTIONS: '', NODE_PATH: '' }, shell: false, encoding: 'utf8', timeout: 10_000 });
     expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual(['assertNativePublicationEvidence', 'verifyNativeEvidenceSignature']);
+    expect(JSON.parse(result.stdout)).toEqual([
+      'assertNativePublicationEvidence', 'verifyNativeBytesSignature', 'verifyNativeEvidenceSignature'
+    ]);
   });
   it('binds synthetic evidence to exact source, version, every sidecar and approved channel', () => {
     expect(assertNativePublicationEvidence(record, evidence, approved)).toEqual(evidence);
@@ -170,6 +174,57 @@ describe('native exact-artifact and signing gates (synthetic contract data, not 
     expect(() => verifyNativeEvidenceSignature(bytes, Buffer.alloc(64), pub, fingerprint)).toThrow('signature');
     const foreign = generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({ type: 'spki', format: 'pem' });
     expect(() => verifyNativeEvidenceSignature(bytes, signature, foreign, fingerprint)).toThrow('Ed25519');
+  });
+  it('authenticates signed gzip bytes without JSON parsing and preserves the JSON API result and parse errors', () => {
+    const key = generateKeyPairSync('ed25519');
+    const publicKey = key.publicKey.export({ type: 'spki', format: 'pem' });
+    const fingerprint = hash(key.publicKey.export({ type: 'spki', format: 'der' }));
+    const bytes = gzipSync(Buffer.from('Synthetic archive signature contract specimen.'));
+    const signature = sign(null, bytes, key.privateKey);
+    expect(verifyNativeBytesSignature(bytes, signature, publicKey, fingerprint)).toBeUndefined();
+    expect(() => verifyNativeEvidenceSignature(bytes, signature, publicKey, fingerprint)).toThrow(SyntaxError);
+    const json = Buffer.from('null');
+    expect(verifyNativeEvidenceSignature(json, sign(null, json, key.privateKey), publicKey, fingerprint)).toBeNull();
+  });
+  it('refuses changed binary bytes, signatures, unapproved principals and foreign keys before any JSON parsing', () => {
+    const key = generateKeyPairSync('ed25519'), other = generateKeyPairSync('ed25519');
+    const publicKey = key.publicKey.export({ type: 'spki', format: 'pem' });
+    const fingerprint = hash(key.publicKey.export({ type: 'spki', format: 'der' }));
+    const bytes = gzipSync(Buffer.from('Synthetic archive signature refusal specimen.'));
+    const signature = sign(null, bytes, key.privateKey);
+    const changed = Buffer.from(bytes);
+    changed[changed.length - 1] ^= 1;
+    expect(() => verifyNativeBytesSignature(changed, signature, publicKey, fingerprint))
+      .toThrow('Native qualification signature did not verify.');
+    expect(() => verifyNativeBytesSignature(bytes, Buffer.alloc(64), publicKey, fingerprint))
+      .toThrow('Native qualification signature did not verify.');
+    expect(() => verifyNativeEvidenceSignature(bytes, Buffer.alloc(64), publicKey, fingerprint))
+      .toThrow('Native qualification signature did not verify.');
+    expect(() => verifyNativeBytesSignature(bytes, signature, publicKey, ''))
+      .toThrow('Native signing principal is not approved.');
+    expect(() => verifyNativeBytesSignature(bytes, signature, publicKey, '0'.repeat(64)))
+      .toThrow('Native signing principal differs.');
+    const foreign = other.publicKey.export({ type: 'spki', format: 'pem' });
+    expect(() => verifyNativeBytesSignature(bytes, signature, foreign, fingerprint))
+      .toThrow('Native signing principal differs.');
+    expect(() => verifyNativeBytesSignature(bytes, signature, foreign,
+      hash(other.publicKey.export({ type: 'spki', format: 'der' }))))
+      .toThrow('Native qualification signature did not verify.');
+    const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({ type: 'spki', format: 'pem' });
+    expect(() => verifyNativeBytesSignature(bytes, signature, rsa, ''))
+      .toThrow('Native evidence requires the approved Ed25519 signing algorithm.');
+    expect(() => verifyNativeBytesSignature(bytes, signature, 'not a public key', fingerprint)).toThrow();
+  });
+  it.each([0, 63, 65])('refuses malformed detached binary and JSON signatures of %s bytes', length => {
+    const key = generateKeyPairSync('ed25519');
+    const publicKey = key.publicKey.export({ type: 'spki', format: 'pem' });
+    const fingerprint = hash(key.publicKey.export({ type: 'spki', format: 'der' }));
+    const bytes = gzipSync(Buffer.from('Synthetic malformed signature specimen.'));
+    const signature = Buffer.alloc(length);
+    expect(() => verifyNativeBytesSignature(bytes, signature, publicKey, fingerprint))
+      .toThrow('Native qualification signature did not verify.');
+    expect(() => verifyNativeEvidenceSignature(bytes, signature, publicKey, fingerprint))
+      .toThrow('Native qualification signature did not verify.');
   });
   it('renders channel definitions only from approved exact evidence, never the real unconfigured namespace', () => {
     const artifactUrl = `https://github.com/${record.repository}/releases/download/v${record.version}/${record.files[0].filename}`;
