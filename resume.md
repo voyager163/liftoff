@@ -3320,3 +3320,251 @@ with SHA-256
 `e085c897144f3b299a30bbd87a8c96f9fa4f551e7f54627c418014414c588c5c`.
 The manifest records 10 actual test files, 336 passes, two existing skips,
 38 resolved maintained local links and zero failures.
+
+### Exact-head qualification failure and package inventory fixture successor, 2026-10-14
+
+The independent typed-boundary source review is retained at:
+
+`/Users/jonathan/.copilot/session-state/8d89d4b7-10db-4009-945e-b14397314a84/files/canonical-package-264-review/typed-757-review.json`
+
+with SHA-256
+`46dc857809186cb60bba795bf117a34c287f87c293d4b54cb30951b243c6fa2b`.
+It admits the bounded `7578e54e` typed source together with the additive
+25-test-file/64-nested-suite receipt correction. It does not supply
+full-suite, coverage, native publication, readiness or landing admission.
+
+The earlier statement that pull request #168 was unstacked is historical and
+has been superseded. Native stack 170 is now registered with exact
+bottom-to-top membership `[168, 169]` and ultimate base
+`voyager163-liftoff-modernization`. The registration receipt is:
+
+`/Users/jonathan/.copilot/session-state/8d89d4b7-10db-4009-945e-b14397314a84/files/telemetry-source-stack-registration/receipt.json`
+
+with SHA-256
+`acdf016bb3fc9910029f9bef05c00c0c2ee98bc4e97982d9ec3d3695a0b591cb`.
+Fresh readback found both members open and draft. Pull request #168 still has
+base `voyager163-liftoff-modernization` at
+`12d2f4715d8f1901093676baa875f1422c5c5a90` and published head
+`d3f94a8af5f5b6e4fa12fe4b9ca1520de38c180e`; pull request #169 still targets
+that exact #168 head and has head
+`f0976474b2bd83041d17af68415853b76122cb39`. Do not recreate, unstack,
+retarget, ready or merge either member independently.
+
+One exact-current-head fail-fast qualification was run on clean committed and
+pushed `d3f94a8af5f5b6e4fa12fe4b9ca1520de38c180e` with the qualified Node
+24.21.0, npm 12.0.2, CPython 3.14.7, uv 0.12.7, OpenTofu 1.12.6 and OpenSpec
+1.11.0 paths, the original native flags, unchanged limits and
+`set -euo pipefail`. Supported-stack and build passed. The unfiltered
+one-worker suite then failed after 15,953.51 seconds:
+
+- 322 test files: 311 passed, six failed and five skipped;
+- 10,598 tests: 10,462 passed, 19 failed and 117 skipped; and
+- coverage did not start because the wrapper stopped at the failed suite.
+
+The exact failed evidence is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/qualification-d3f94a8a`
+
+Its raw full-suite log, failure summary and manifest have SHA-256 values
+`e65d46884920bbfe7f5f6b9086ccec8e6e23622c2ca158746cec318594164b71`,
+`d2bffe7149e18f1d3383702367664276c31113bf59cd2b09996c143d73457aec`
+and
+`01c5c3af17e064ff9c174f5c4a2d35f88753bbd7d06f00d65f3f34d214f93099`
+respectively. This remains failed qualification, not coverage or release
+evidence.
+
+Two of the failures were fixture assertions in
+`tests/plugin-asset-inventory.test.ts`. The admitted typed package contract had
+added `compiledPackageFiles` as a second frozen data export and had added the
+two exact compiled package globs, while this older inventory fixture still
+expected only `builtinAssets` and treated every wildcard as an asset-tree
+entry. The correction imports the shared typed declaration, admits exactly
+those two frozen compiled patterns and preserves the wildcard refusal for
+every other package entry.
+
+A six-file focused replay with that working-tree correction passed the other
+five previously failing files. It ran 232 passing tests and retained one
+failure: the team initialized-baseline case exceeded its existing 300-second
+test boundary after all commands through `tofu init` had succeeded. Its sealed
+manifest is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/qualification-d3f94a8a-focused-fix/manifest.json`
+
+with SHA-256
+`bee84ae6752f640589eaf163d45e7b104401ff1f127e0b08c19872f3515ddc2f`.
+
+One exact isolated replay of that team selector then completed without any
+source or limit change. It passed in 277,502.223791 milliseconds, recorded 25
+dispatches and 25 results, emitted its completion marker and ended with a
+settled successful `tofu validate`. This establishes that the focused timeout
+was timing variance on a successful path with only about 22.5 seconds of
+remaining test-budget margin; it does not convert the failed unfiltered run
+into qualification. The isolated disposition manifest is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/qualification-d3f94a8a-team-only/manifest.json`
+
+with SHA-256
+`36aaee81b976b9fde5d620e01ab278312a2b0fa673e5e24edb54e2f9e1f2248d`.
+No timeout, custody limit, scanner guard or settlement check was raised,
+cached, skipped or weakened.
+
+Historical caveat: the isolated replay proves only its own successful result
+and the approximately 22.5 seconds that remained within that run's unchanged
+test bound. It does not establish the cause of the earlier focused timeout,
+prove settlement or disposition for the other `d3f94a8a` failures, or convert
+any failed receipt into qualification. The earlier wording and receipts remain
+preserved as the original contemporaneous record.
+
+The fixture-only package inventory source was committed locally as
+`93a5946b2c60c9d9a00db7dae3a7fe9b07371b66`, tree
+`da5f806e8c1eef6ea540643dd7788d71712c20d3`, with parent
+`d3f94a8af5f5b6e4fa12fe4b9ca1520de38c180e`. Its exact validation passed:
+
+- the current coherent corpus retained all 25 test files and passed its actual
+  current count of 761 tests;
+- the complete original 25-file strict graph retained exactly the 12 inherited
+  diagnostics with byte-identical SHA-256
+  `6eca6fdb9dd24433d51c01f108fabcc5ed6fadabab22d04579d4e99a2406d598`;
+- the affected strict fixture import produced an empty log;
+- package inventory, identity and smoke contracts passed 47/47;
+- build, project no-emit and installed-tarball package smoke passed;
+- supported-stack, repository named-file policy and strict noninteractive
+  OpenSpec validation passed; and
+- `git diff --check` passed.
+
+The sealed fixture evidence manifest is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/package-inventory-93a5946b/manifest.json`
+
+with SHA-256
+`97036d97c498e184136d5b4e40fd99a8371fef97b91a594499f2ea6217e95ee5`.
+This source commit and the following ledger commit remain local and unpushed:
+the published #168 head and stack 170 membership are unchanged. Tasks 18.1 and
+18.2 remain unchecked because the unfiltered suite failed and coverage never
+started; OpenSpec remains at 83/136 complete.
+
+The later exact clean parent `ce84792f8f28fb9e7ddd2a251e737e9f29461903`,
+tree `7f314d55f47b205513e6c2ac33c41bdb0655b092`, then completed the same
+fail-fast sequence without command, limit or worker changes. Supported-stack
+and build passed. The unfiltered suite passed 10,481 tests with zero failures
+and 117 skips across 317 passing and five fully skipped files in 4,193.90
+seconds. Coverage then repeated the same test totals in 4,538.27 seconds and
+bound 511 executable source files to
+`sha256:24991953b5e97069aa3cfa1036eb6503838c5411a47122ab0913945e7cde2783`.
+Its independent metrics all passed the strict greater-than-80-percent rule:
+statements 40,993/45,679 (89.7414%), branches 36,572/42,600 (85.8497%),
+functions 7,712/8,113 (95.0573%) and lines 36,336/39,554 (91.8642%).
+
+The successful parent evidence is retained under:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/qualification-ce84792f`
+
+Its sealed manifest has SHA-256
+`4a68a8058628680ba068d3102e1d8ea6607a45495cf4b2466aa65ff593b99a99`;
+the unfiltered log has SHA-256
+`b1832f931dd4c86cc8af9974f4ec22756b35c85830597bb943dc28c3d5a0f125`.
+This is exact qualification of the clean `ce84792f` parent only. It does not
+qualify a later successor, supply native Windows/package publication evidence,
+complete the five skipped native/disposable families, authorize publication
+or landing, or by itself complete tasks 18.1/18.2.
+
+Independent review of the preceding failure/correction chain is retained at:
+
+`/Users/jonathan/.copilot/session-state/8d89d4b7-10db-4009-945e-b14397314a84/files/canonical-d3-failure-93a-independent-source-review.json`
+
+with SHA-256
+`2ff36d3a18e2fe94300ef2dabe7b61421e63168efa89b0525a557690927e1590`.
+It admits only the one-file `93a5946b` typed-allowance fixture source and keeps
+the original `d3f94a8a` failure, dirty-parent focused replay, isolated replay
+and inherited strict diagnostics separate.
+
+The inherited Windows shard failure on the published parent was
+`tests/documented-command-examples.test.ts` comparing the native
+`fs.promises.glob` key against a POSIX literal. The bounded successor changes
+only that membership key to `path.join('docs', 'cli-reference.md')`; it keeps
+the native key unchanged for `lstat`/read operations and does not alter package
+inventory, production code, dependencies, budgets or selectors. This is a
+source correction informed by the retained Windows evidence, not a new native
+Windows qualification.
+
+The Windows-key correction and the additive historical timeout caveat were
+committed locally as
+`1eaf882d412a6875e1987f95608e01dba5e0584a`, tree
+`b789d459fb9da3a86c78c2016ccaa5d6d89a4648`, with parent
+`ce84792f8f28fb9e7ddd2a251e737e9f29461903`. Its affected runtime file passed
+15/15 tests, its strict ES2024/NodeNext import was empty, and repository policy,
+strict OpenSpec validation and `git diff --check` passed. The bounded evidence
+manifest is retained at:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/native-doc-key-1eaf882d/manifest.json`
+
+with SHA-256
+`02aeca3268bede32b46e151e345ffeaf770674b11d519b3c3d76202b1b7a9e9c`.
+That correction remains local and is not a native Windows qualification.
+
+### Complete strict fixture graph correction, 2026-10-14
+
+The 12 inherited strict TypeScript diagnostics were corrected in only
+`tests/governance-assessment-engine.test.ts` and
+`tests/governance-transitions.test.ts`. The assessment fixture now removes
+only an unreachable retired-workload comparison from a supported
+GenAI/standard fixture, uses the existing `LiveReadbackProof` and
+`EvidenceFreshnessContext` domain types for complete readback fixtures, and
+preserves every literal value and assertion. Runtime retired-input coverage
+elsewhere is unchanged. The transition fixture uses one typed complete
+phase-record helper and renames only the subclass-local command-result helper
+that collided with the base runner's private member. No `any`, `unknown`,
+suppression, compiler relaxation, production source, normative contract,
+schema, timeout, cache or selector change was introduced.
+
+The exact test-only source commit is
+`3ff7b31f0b4cb7f28b461b17cfbba9693b89cb9c`, tree
+`1bec57879c222897d8ab20ab57b6bd09603d45fe`, with parent
+`1eaf882d412a6875e1987f95608e01dba5e0584a`. Its two committed blobs are
+`7cd2e923182274bace4ff3f0eaa538438d57aa29` and
+`22f2b2dce0a8ab55f308f3e5b2d3f8acceceddb6`. The parent and successor have
+the identical production `src` tree
+`476e12a57cbfcfe3b5db0a056c35183f1ec1b7c2`.
+
+Validation on those exact committed source bytes passed:
+
+- the two affected strict ES2024/NodeNext imports with an empty log;
+- both affected runtime files, 66/66 tests;
+- the complete original 25-file strict import graph with an empty log, replacing
+  all 12 old diagnostics without altering the immutable historical
+  `sha256:6eca6fdb9dd24433d51c01f108fabcc5ed6fadabab22d04579d4e99a2406d598`
+  receipt;
+- the current complete 25-file runtime corpus, 761/761 tests and zero failures;
+- exact test-identity comparison against the preceding 761-test corpus;
+- build and project-wide no-emit;
+- repository named-file policy, strict noninteractive OpenSpec validation,
+  source parity and `git diff --check`.
+
+Vitest reports 64 nested suites for that 25-file/761-test corpus; 64 is not a
+file count. The historical `7578e54e` 25-file/760-test evidence remains
+unchanged, and the later README audit case was retained rather than removed to
+manufacture the older count.
+
+Two command-name mistakes were preserved as failed setup attempts:
+`npm run typecheck` and `npm run test:repository-policy` do not exist in this
+package. They executed no project check. The actual repository commands,
+`./node_modules/.bin/tsc -p tsconfig.json --noEmit --pretty false` and
+`npm run check:repository`, then passed. Their failed and successful logs are
+kept separately.
+
+The sealed source receipt is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/strict-fixtures-3ff7b31f/manifest.json`
+
+with SHA-256
+`3171351b9ba3ca082b659454a32a6e0ec1d6de7098bcd83717c470700bdc3dee`.
+It also preserves the exact patch, before/after blobs, commands, tool versions,
+the immutable old diagnostic log, current test inventory, failed attempts and
+OpenSpec status.
+
+This successor has not been pushed and did not mutate pull request #168,
+pull request #169, native stack 170, workflow flags, provider state,
+publication readiness or landing state. No unfiltered full suite or coverage
+was rerun for this test-only successor, and the exact `ce84792f`
+qualification is not relabeled as qualification of `3ff7b31f`. OpenSpec
+remains 83/136 complete; tasks 18.1 and 18.2 remain unchecked.

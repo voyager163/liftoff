@@ -149,6 +149,39 @@ export function parseArgs(argv: string[]): ParsedArgs {
     index += 1;
   }
 
+  if (command === 'telemetry') {
+    if (!subcommand && flags.help !== true) throw new UsageError('Select telemetry status, enroll, disable, report, or heartbeat.');
+    const offset = subcommand === 'heartbeat' ? 1 : 0;
+    if (positional.length > offset && Object.hasOwn(flags, 'project')) {
+      throw new UsageError('Provide a telemetry project root either positionally or with --project, not both.');
+    }
+    if (flags['preserve-identity'] === true && flags['new-identity'] === true) {
+      throw new UsageError('Choose only one of --preserve-identity and --new-identity.');
+    }
+    if (['preserve-identity', 'new-identity'].some(flag => Object.hasOwn(flags, flag)) && subcommand !== 'enroll') {
+      throw new UsageError('Identity selection is allowed only for telemetry enroll.');
+    }
+    if (Object.hasOwn(flags, 'heartbeat') && subcommand !== 'report') throw new UsageError('--heartbeat is allowed only for telemetry report.');
+    if (Object.hasOwn(flags, 'repository') && subcommand !== 'heartbeat' &&
+        !(subcommand === 'report' && flags.heartbeat === true)) {
+      throw new UsageError('--repository is allowed only for telemetry heartbeat or report --heartbeat.');
+    }
+    if (Object.hasOwn(flags, 'approve-plan') && !isUpdatePlanFingerprint(flags['approve-plan'])) {
+      throw new UsageError('--approve-plan requires the full current 64-character lowercase SHA-256 telemetry review fingerprint.');
+    }
+    if (flags.check === true && Object.hasOwn(flags, 'approve-plan')) throw new UsageError('--check cannot also approve a telemetry plan.');
+    if (['status', 'report'].includes(subcommand ?? '') && ['check', 'approve-plan'].some(flag => Object.hasOwn(flags, flag))) {
+      throw new UsageError('Telemetry status/report does not accept mutation authority.');
+    }
+    if (subcommand === 'heartbeat' && flags.help !== true && !['status', 'enable', 'disable'].includes(positional[0] ?? '')) {
+      throw new UsageError('Select telemetry heartbeat status, enable, or disable.');
+    }
+    if (subcommand === 'heartbeat' && positional[0] === 'status' &&
+        ['check', 'approve-plan'].some(flag => Object.hasOwn(flags, flag))) {
+      throw new UsageError('Heartbeat status does not accept mutation authority.');
+    }
+  }
+
   if (command === 'update') {
     if (positional.length && Object.hasOwn(flags, 'project')) {
       throw new UsageError('Provide a project path either positionally or with --project, not both.');

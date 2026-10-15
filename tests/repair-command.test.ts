@@ -98,7 +98,8 @@ class Runner implements CommandRunner {
       await this.onValidation?.();
       stdout = JSON.stringify({ valid: !this.failValidation, error_count: this.failValidation ? 1 : 0 });
     }
-    return { command, displayCommand: '', stdout, stderr: '', status: 0, signal: null, timedOut: false };
+    return { command, displayCommand: '', stdout, stderr: '', status: 0, signal: null, timedOut: false,
+      processSpawned: true, processTreeSettled: true };
   }
 }
 async function command(project: { root: string; home: string }, args: string[], runner = new Runner(), cwd = project.root) {
@@ -380,7 +381,7 @@ describe('interactive repair and truthful command surfaces', () => {
     ['--application-patch', 'patch.json', '--allow-dependency-preparation'],
     ['--approve-plan', 'a'.repeat(64), '--allow-dependency-preparation'],
     ['--yes'], ['--force']
-  ])('rejects expanded or ambiguous authority %j', (flags) => {
+  ].map(flags => ({ flags })))('rejects expanded or ambiguous authority $flags', ({ flags }) => {
     expect(() => parseArgs(['repair', ...flags])).toThrow();
   });
 });

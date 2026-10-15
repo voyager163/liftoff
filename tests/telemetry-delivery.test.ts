@@ -232,6 +232,53 @@ describe('private telemetry delivery foundation', () => {
     expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([projectEndpoint]);
   });
 
+  it.each([{}, { CI: 'true' }, { CI: 'true', GITHUB_ACTIONS: 'true', LIFTOFF_HEARTBEAT: '1' }])(
+    'never promotes a ci-heartbeat payload or forged proof into release-owned transport authority: %j', async env => {
+      const fetch = vi.fn<TelemetryFetch>(), delivery = session({ env, fetch });
+      const event = { ...projectEvent, source: 'ci-heartbeat' as const };
+      const result = await Reflect.apply(delivery.deliver, undefined, [{
+        project: { endpoint: projectEndpoint, event, heartbeatProof: { event, qualified: true } }
+      }]);
+      expect(result.project).toMatchObject({ status: 'disabled', attempted: false });
+      expect(fetch).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([{ DO_NOT_TRACK: '1' }, { LIFTOFF_TELEMETRY: '0' }])(
+    'checks global opt-outs before even inspecting an untrusted heartbeat slot: %j', async optOut => {
+      const fetch = vi.fn<TelemetryFetch>(), event = vi.fn(() => projectEvent);
+      const slot = { endpoint: projectEndpoint };
+      Object.defineProperty(slot, 'event', { get: event });
+      const delivery = session({ env: { CI: 'true', ...optOut }, fetch });
+      const result = await Reflect.apply(delivery.deliver, undefined, [{ project: slot }]);
+      expect(result.project).toEqual({ status: 'disabled', attempted: false, reason: 'global-opt-out' });
+      expect(event).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+    }
+  );
+
+  it('does not inspect an ordinary CI project payload without a release-owned proof', async () => {
+    const fetch = vi.fn<TelemetryFetch>(), event = vi.fn(() => { throw new Error('Payload must remain unread.'); });
+    const slot = { endpoint: projectEndpoint };
+    Object.defineProperty(slot, 'event', { get: event });
+    const result = await Reflect.apply(session({ env: { CI: 'true' }, fetch }).deliver, undefined, [{ project: slot }]);
+    expect(result.project).toEqual({ status: 'disabled', attempted: false, reason: 'ordinary-ci' });
+    expect(event).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('classifies an unreadable project payload and rechecks opt-outs after asynchronous heartbeat verification', async () => {
+    const fetch = vi.fn<TelemetryFetch>(), unreadable = { endpoint: projectEndpoint };
+    Object.defineProperty(unreadable, 'event', { get: () => { throw new Error('Private details.'); } });
+    const invalid = await Reflect.apply(session({ env: {}, fetch }).deliver, undefined, [{ project: unreadable }]);
+    expect(invalid.project).toEqual({ status: 'failed', attempted: false, reason: 'invalid-payload' });
+    const env: NodeJS.ProcessEnv = {};
+    const result = session({ env, fetch }).deliver({ project: {
+      ...project, event: { ...projectEvent, source: 'ci-heartbeat' }
+    } });
+    env.LIFTOFF_TELEMETRY = '0';
+    expect((await result).project).toEqual({ status: 'disabled', attempted: false, reason: 'global-opt-out' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('rechecks opt-outs before a scheduled request can dispatch', async () => {
     const env: NodeJS.ProcessEnv = {};
     const fetch = vi.fn<TelemetryFetch>(), delivery = session({ env, fetch });
