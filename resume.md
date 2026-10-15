@@ -3836,3 +3836,45 @@ This correction does not borrow the exact-`cdadc391` complete qualification for
 the dependency-adjusted successor. It does not complete task 18.2, change an
 OpenSpec checkbox, ready or merge pull request #168, or imply provider,
 publication, deployment, native-signing, readiness, retarget or restack effect.
+
+### Task 18.2 project-telemetry identity correction, 2026-10-16
+
+Replacement pull request #168 run `38805200563` confirmed the 57-record
+plugin-generation correction, then exposed one further scoped omission in both
+Ubuntu and macOS shard 2. The same 11
+`tests/project-telemetry-source.test.ts` expectations still named the
+pre-remediation modern registry digest
+`sha256:1e9632b5200f945536955f1078ca4194c4f9a56bd712d810ec69f8faac7d61b0`.
+Production correctly returned the already reviewed current registry digest
+`sha256:452f988fcfe33b30fc6477ded97490ecc3968a52f2257f33886d05ed4ce0cc63`
+from `modernSourceRegistry()`. The failure reproduced locally as exactly 11
+failed and 28 passed tests; no runtime or source-registry correction was
+required.
+
+Commit `b003800f4ba8287b4c120c64c88d11ef282c3f15`, tree
+`22ed31e95ca642246fe3936b82a2823714848457`, changes only the one test
+constant to the reviewed current registry identity. Clean committed validation
+passed:
+
+- `tests/project-telemetry-source.test.ts`,
+  `tests/telemetry-contract.test.ts` and
+  `tests/modern-source-registry.test.ts`: three files and 109/109 tests;
+- build and project-wide no-emit;
+- the all-four-inventory template dependency audit;
+- repository policy, strict noninteractive OpenSpec validation and the exact
+  commit diff check.
+
+The additive evidence directory is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/dependency-audit-telemetry-identity-correction-8abac600`
+
+It retains both cross-host failed job logs and the clean committed correction
+checks. Its manifest has SHA-256
+`a3ba0cdf339567174a468e3b480d336d1ab5cfe43e751cc5f7cb622062ae579b`
+and its checksum ledger has SHA-256
+`7321c3c02b340ab11b9993292c86eac601198ffe187c6ba2be069d84d200acab`.
+
+This is a test identity correction induced by the scoped dependency release
+identity. It changes no telemetry policy, schema, transport, consent, project
+identity, production byte or task flag. It is not a fresh full-suite/coverage
+qualification and has no publication, provider, readiness or landing effect.
