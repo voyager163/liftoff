@@ -96,6 +96,23 @@ negative controls are source tests, not approved four-family proof subjects.
 Exact-commit source reads disable local Git replacement objects. A replacement
 must not redefine the immutable commit whose selected inputs are being checked.
 
+The private `executeWorkflowComposeConfigValidator` subcheck uses the actual
+selected `compose-config` command and captured source closure. It reuses the
+existing independent CLI/plugin observer, executes the exact supported Compose
+plugin with the selected `config -q` arguments, and reobserves its program files.
+Execution uses the same bounded runner, stripped
+environment and identity-checked owned HOME as the five public validators.
+Docker configuration is private and the daemon address names a nonexistent owned
+socket. Dotenv input is disabled and only the selected Compose file is used;
+no container build/start or backend initialization is authorized. This is a real
+runner operation, not plan-time metadata or a sandbox. It is only configuration
+validation: OpenTofu formatting, locked provider/module initialization and
+validation, native-host qualification and infrastructure phase proof remain
+separate and unavailable through this subcheck. There is no public
+`compose-config` selector. Independent program observations are not qualified
+native-host authority; unavailable or changed installed tools never fall back
+to operator Docker configuration or a caller-supplied successful observation.
+
 These are explicit runner operations, never operations performed by plan or
 `--live` review. Tests, builds and framework tools may execute project code and
 write outputs; provider-read-only workflow permissions do not make them a host
