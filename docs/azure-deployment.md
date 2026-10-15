@@ -257,6 +257,11 @@ independent run discovery; malformed or cross-scope acceptance never invents a
 handle or permits redispatch. Unexpected response fields are not retained.
 Actual terminal run status is checkpointed before the fallible job inventory
 read, including when source changes prevent a later outcome from being saved.
+Every polled run ID must match the exact accepted or resumed workflow handle
+before status, jobs or attestation can advance publication. A different run
+with otherwise matching source and recipe cannot replace the recorded operation.
+Known terminal prerequisite deployments also refuse contradictory nonterminal
+readback during recovery; the original handle remains terminal, not pending.
 Known unsuccessful conclusions (including failure, cancellation and timeout)
 checkpoint a failed handle even if job readback is unavailable; unknown terminal
 conclusions explicitly block publication rather than implying success.

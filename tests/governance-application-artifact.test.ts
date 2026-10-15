@@ -562,6 +562,33 @@ describe('application source producers behind real prerequisites', () => {
       provider: 'azure', resourceType: 'Microsoft.Resources/deployments', resourceId: f.prerequisite.deploymentId
     }]);
   });
+  it.each(['Succeeded', 'Failed'] as const)(
+    'blocks regressing nonterminal readback of a known %s prerequisite deployment without redispatch', async (state) => {
+      const f = await fixture();
+      f.runner.deploymentState = state;
+      f.runner.failExport = true;
+      const first = await executeApplicationPrerequisites(f.input);
+      const terminalStatus = state === 'Succeeded' ? 'completed' : 'failed';
+      expect(first).toMatchObject({ status: 'blocked', operation: { status: terminalStatus } });
+      const operation = { ...first.operation!, planDigest: f.input.plan.planDigest };
+      f.input.inspection.state.phases[f.phase.id].operation = operation;
+      f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+      f.runner.deploymentState = 'Running';
+      const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+      const next = await executeApplicationPrerequisites({
+        ...f.input, now: new Date(coverageNow.getTime() + 1000), recovery: true
+      });
+      expect(next).toMatchObject({
+        status: 'blocked', blocker: expect.stringMatching(/terminal.*nonterminal/),
+        operation: { operationId: operation.operationId, startedAt: operation.startedAt,
+          planDigest: operation.planDigest, status: terminalStatus }
+      });
+      expect(next.evidencePayload).toBeUndefined();
+      expect(next.outputs?.values.workloadPrincipalId).toBeUndefined();
+      expect(progress).not.toHaveBeenCalled();
+      expect(f.runner.writes).toHaveLength(1);
+    }
+  );
   it.each(['registrySku', 'assignRegistryRoles', 'environment', 'budget', 'principal', 'unknown'] as const)(
     'rejects malformed prerequisite %s without inventing resources or roles', async (kind) => {
       const f = await fixture();
@@ -806,33 +833,6 @@ describe('immutable application publication and independent readback', () => {
     expect(verification.args).toContain('--source-digest');
     expect(verification.args).not.toContain('--token');
   });
-  it('persists real producer output through the engine and exposes a strict downstream immutable artifact interface', async () => {
-    const f = await fixture(true);
-    const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
-      runner: f.runner, now: coverageNow, adapters: f.input.adapters });
-    expect(outcome, JSON.stringify(outcome)).toMatchObject({ applied: true });
-    const saved = (await readState(f.root))!;
-    const receipt = JSON.parse(await readFile(path.join(f.root, ...outcome.evidence!.pathParts), 'utf8'));
-    const inspection = await coverageInspection({ root: f.root, phaseId: 'application-artifact-ready',
-      state: saved, activationInputs: f.inputs, evidence: [receipt], reviewedPlans: [f.input.plan] });
-    expect(readVerifiedApplicationArtifact(inspection)).toMatchObject({ sourceSha: f.transport.binding.sourceSha,
-      digest: imageDigest, environment: 'dev', registryResourceId: f.prerequisite.registryId,
-      workflowRunId: 901, workflowJobId: 902, acrRunId: 'ca1' });
-    Object.assign(saved.phaseOutputs!['application-artifact-ready']!.values, { artifactDigest: 'latest' });
-    expect(() => readVerifiedApplicationArtifact(inspection)).toThrow(/authoritative/);
-  });
-  it('refuses an earlier verified artifact after independently inspecting changed recipe or transmission consent', async () => {
-    const f = await fixture(true);
-    const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
-      runner: f.runner, now: coverageNow, adapters: f.input.adapters });
-    expect(outcome).toMatchObject({ applied: true });
-    const saved = (await readState(f.root))!;
-    const receipt = JSON.parse(await readFile(path.join(f.root, ...outcome.evidence!.pathParts), 'utf8'));
-    for (const change of [
-      { contextPath: 'backend/changed' },
-      { dockerfilePath: 'backend/Custom.Dockerfile' },
-      { sourceTransmissionApproved: false }
-    ]) {
   it.each(['accepted', 'resumed'] as const)(
     'refuses a different actual workflow run at the exact %s publication handle', async (kind) => {
       const f = await fixture(true);
@@ -870,6 +870,33 @@ describe('immutable application publication and independent readback', () => {
       expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
     }
   );
+  it('persists real producer output through the engine and exposes a strict downstream immutable artifact interface', async () => {
+    const f = await fixture(true);
+    const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
+      runner: f.runner, now: coverageNow, adapters: f.input.adapters });
+    expect(outcome, JSON.stringify(outcome)).toMatchObject({ applied: true });
+    const saved = (await readState(f.root))!;
+    const receipt = JSON.parse(await readFile(path.join(f.root, ...outcome.evidence!.pathParts), 'utf8'));
+    const inspection = await coverageInspection({ root: f.root, phaseId: 'application-artifact-ready',
+      state: saved, activationInputs: f.inputs, evidence: [receipt], reviewedPlans: [f.input.plan] });
+    expect(readVerifiedApplicationArtifact(inspection)).toMatchObject({ sourceSha: f.transport.binding.sourceSha,
+      digest: imageDigest, environment: 'dev', registryResourceId: f.prerequisite.registryId,
+      workflowRunId: 901, workflowJobId: 902, acrRunId: 'ca1' });
+    Object.assign(saved.phaseOutputs!['application-artifact-ready']!.values, { artifactDigest: 'latest' });
+    expect(() => readVerifiedApplicationArtifact(inspection)).toThrow(/authoritative/);
+  });
+  it('refuses an earlier verified artifact after independently inspecting changed recipe or transmission consent', async () => {
+    const f = await fixture(true);
+    const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
+      runner: f.runner, now: coverageNow, adapters: f.input.adapters });
+    expect(outcome).toMatchObject({ applied: true });
+    const saved = (await readState(f.root))!;
+    const receipt = JSON.parse(await readFile(path.join(f.root, ...outcome.evidence!.pathParts), 'utf8'));
+    for (const change of [
+      { contextPath: 'backend/changed' },
+      { dockerfilePath: 'backend/Custom.Dockerfile' },
+      { sourceTransmissionApproved: false }
+    ]) {
       const changed = { ...f.inputs, phases: { ...f.inputs.phases,
         'application-artifact-ready': { ...f.inputs.phases['application-artifact-ready'], ...change } } };
       const inspection = await coverageInspection({ root: f.root, phaseId: f.phase.id,

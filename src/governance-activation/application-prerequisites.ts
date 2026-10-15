@@ -339,6 +339,10 @@ export async function executeApplicationPrerequisites(input: PhaseAdapterExecuti
     const liveReadback = [readbackProof(input, 'azure', 'Microsoft.Resources/deployments', binding.deploymentId, observed)];
     currentReadback = liveReadback;
     if (['Accepted', 'Running', 'Creating', 'Ready'].includes(String(state))) {
+      if (handle.status !== 'running') {
+        return applicationError('application-operation-regressed',
+          'A recorded terminal prerequisite deployment now has contradictory nonterminal readback; preserve its handle and observe recovery without redispatch.');
+      }
       return { status: 'pending', operation: handle, outputs: output, liveReadback, completedOperations,
         blocker: 'Application prerequisite deployment is pending; retry observes this exact deployment without redispatch.' };
     }
