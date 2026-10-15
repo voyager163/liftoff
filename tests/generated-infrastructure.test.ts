@@ -99,7 +99,7 @@ describe('independent generated infrastructure roots', () => {
     expect(readme).toContain('cd infrastructure/opentofu/azure/environments/prod');
     expect(readme).toContain('tofu plan -var-file=prod.tfvars');
     expect(readme).not.toContain('environments/dev');
-    expect(readme).not.toContain('immutable execution-tag binding');
+    expect(readme).not.toContain('liftoff-execution-<full-source-SHA>');
   });
 
   it('keeps ordinary ownership null while rendering only the closed protected tag contract', async () => {

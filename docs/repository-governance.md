@@ -95,8 +95,32 @@ Current v8 manifests use the exact packaged assessment catalog for their recorde
 profile and workflow. Single-maintainer policy 7 and team policy 1 remain
 separate targets. Team review assessment accepts stronger controls such as two
 approvals, code-owner review, or last-push approval; it never recommends weakening
-them to the minimum. Historical activation proof remains diagnostic-only and
+them to the minimum. A current approval rule must cover each protected main,
+develop, release and hotfix family; a rule for an unrelated branch cannot supply
+that coverage. Uninterpretable scope or wildcard-family exclusions remain
+not-observed rather than aligned. Historical activation proof remains
+diagnostic-only and
 cannot satisfy a different profile or current target identity.
+
+Single-maintainer assessment requires pull request rule coverage for those same
+protected families while retaining policy 7's zero-review requirement across
+observed active branch rules. An unrelated zero-review rule cannot supply missing
+coverage. Unknown family scope remains not-observed, and a required human review
+remains a conflict, not permission to weaken an existing protection.
+
+Live classic branch protection uses the selected assessment profile: required
+approvals, code-owner review, and last-push approval remain conflicts for the
+single-maintainer target but are not conflicts for the team target. Team minimum
+review coverage is still evaluated across the scoped active rulesets; a classic
+zero-review setting does not weaken an independently proven ruleset minimum.
+Force-push, deletion, required-check, stale-review, and incomplete-metadata
+checks remain unchanged. Assessment never rewrites the observed protection.
+
+Declared and observed review counts must be nonnegative safe integers. Fractional,
+negative, unsafe, or nonnumeric counts remain not-observed rather than satisfying
+a review requirement or being treated as an interpretable policy conflict.
+Malformed provider counts also produce a scoped invalid-response diagnostic.
+Valid zero and stronger integer settings retain their selected-profile meaning.
 
 `/liftoff-governance-assess` is separate from `/liftoff-setup`, which remains the
 primary post-init path. Both OpenSpec and Spec Kit receive only their selected
@@ -112,6 +136,16 @@ The optional `--governance` comparison is read-only. It does not change the
 manifest, configuration, live rules, evidence, or recorded profile. Without the
 flag, a supported Liftoff project uses its recorded profile; an ordinary Git
 repository uses the installed single-maintainer target.
+
+The whole-project assessment producer captures its requested comparison before
+filesystem observation. Its scoped live reader retains the original root,
+profile, declared environment inventory and clock across asynchronous reads, and
+the coordinator snapshots its initial local report before collecting metadata.
+Later caller mutations do not redirect reads or relabel the resulting report;
+they are not reverted. Existing local, manifest and Git reobservations still
+detect observed drift, not atomic confinement. This source-level input binding
+does not add current-profile evaluators, activation proof, provider permissions
+or mutation authority; unsupported mandatory observations remain partial.
 
 The same CLI command works in an ordinary Git repository without initialization,
 a manifest, or generated slash commands. An explicit path is authoritative;
@@ -885,16 +919,37 @@ placeholder, candidate tag or caller-supplied source annotation. Partial handles
 survive a later source/authority change; failed or uncertain effects are observed,
 not automatically repeated or undone.
 
-The current artifact route still selects a mutable default-branch ref at
-dispatch. Pre-dispatch readback and later proof refusal cannot prevent an
-unreviewed replacement workflow's earlier transmission. Real dispatch remains
-unqualified pending the separately owned immutable execution-tag binding and
-admission integration; source tests do not establish that missing barrier.
+The artifact route dispatches only the existing protected lightweight
+`liftoff-execution-<full-source-SHA>` tag bound to its own reviewed complete
+source/tree/recipe. A shared read-only observer rechecks effective no-bypass
+tag update/deletion protection, provider grants, source tree and tag before
+dispatch and accepted/resumed observation. Runner admission must select that
+tag. Missing, unsupported or changed admission blocks; no tag creation,
+policy mutation, mutable branch fallback or task14.3 authority is borrowed.
+Old plans require review instead of retagging. Public-v8 activation, actual
+protected execution ports/host and disposable qualification remain unavailable.
 
 See [Azure application readiness](azure-deployment.md#application-readiness-source-boundary)
 for declarative recipe inputs, operator boundaries and remaining real
 qualification blockers. The original exact 30-day protected retention/disposal
 obligation remains unchanged; TASK14.1 is not checked by source tests.
+
+## Maintainer boundary: injected ruleset observation
+
+Ruleset enforcement and its final `live-readback` phase still require an
+explicitly injected GitHub ruleset adapter; there is no default production
+ruleset writer or reader. The observation path retains the original repository,
+saved source digest, evidence header, read-operation inventory, plan expiry,
+clock, lease assertion and reader method before its first await. Changing
+caller-owned phase, repository, identity, context, plan or adapter objects during
+lease validation or provider observation cannot turn that read into enforcement
+or relabel its proof. Caller changes are not restored. Expiry, lease failure and
+source/readback digest mismatch still refuse completion; ordinary enforcement
+retains its separately required approval checks.
+
+This source boundary does not qualify live GitHub ruleset behavior, add a
+production adapter, grant provider writes or complete TASK14.4. Full production
+execution and its independent evidence remain separate requirements.
 
 ## Commands
 

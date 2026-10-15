@@ -29,7 +29,8 @@
     "liftoff": "dist/cli.js"
   },
   "files": [
-    "dist",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
     "assets/governance/modern/source-contracts.json",
     "assets/governance/single-maintainer-gitflow/activation-v2-graph.json",
     "assets/governance/single-maintainer-gitflow/activation-v3-graph.json",
@@ -88,6 +89,7 @@
     "verify:release-identity": "npm run build && node scripts/verify-release-identity.mjs",
     "prepare:release": "node scripts/release-artifact.mjs pack",
     "check:repository": "node scripts/check-repository-policy.mjs",
+    "check:telemetry-dashboards": "node scripts/telemetry-dashboards.mjs --check",
     "verify:published": "npm run build && node scripts/verify-published-package.mjs",
     "check": "npm run check:supported-stack && npm run build && npm test"
   },
@@ -95,6 +97,7 @@
     "node": ">=24.20"
   },
   "devDependencies": {
+    "@kusto/language-service-next": "12.4.1",
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "^24.6.0",
     "@vitest/coverage-v8": "5.0.0",

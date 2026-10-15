@@ -1,0 +1,4 @@
+projects
+| where TimeGenerated >= ago(1d * toint("${window_days}"))
+| summarize ProjectsApprox = dcount(ProjectId, 2), Observations = count(), LastObserved = max(TimeGenerated) by Source
+| order by Source asc

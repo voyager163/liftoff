@@ -1,4 +1,5 @@
 import type { ParsedWorkflow } from './yaml.js';
+import type { AssessmentProfile } from './types.js';
 import { isRecord } from './sanitize.js';
 
 export interface PredicateResult {
@@ -33,6 +34,7 @@ function parameters(rule: Record<string, unknown>): Record<string, unknown> | nu
 function zeroReviewers(rule: Record<string, unknown>): boolean | null {
   const values = parameters(rule);
   if (!values || typeof values.required_approving_review_count !== 'number' ||
+      !Number.isSafeInteger(values.required_approving_review_count) || values.required_approving_review_count < 0 ||
       typeof values.require_code_owner_review !== 'boolean' || typeof values.require_last_push_approval !== 'boolean' ||
       typeof values.dismiss_stale_reviews_on_push !== 'boolean') return null;
   return values.required_approving_review_count === 0 &&
@@ -42,6 +44,7 @@ function zeroReviewers(rule: Record<string, unknown>): boolean | null {
 function currentTeamReview(rule: Record<string, unknown>): boolean | null {
   const values = parameters(rule);
   if (!values || typeof values.required_approving_review_count !== 'number' ||
+      !Number.isSafeInteger(values.required_approving_review_count) || values.required_approving_review_count < 0 ||
       typeof values.require_code_owner_review !== 'boolean' ||
       typeof values.require_last_push_approval !== 'boolean' ||
       typeof values.dismiss_stale_reviews_on_push !== 'boolean') return null;
@@ -132,7 +135,7 @@ function classicRequiredContexts(value: unknown): Array<{ name: string; appId: n
   return result;
 }
 
-function classicProtection(value: unknown): boolean | null {
+function classicProtection(value: unknown, profile: AssessmentProfile): boolean | null {
   if (value === null) return true;
   if (!isRecord(value)) return null;
   const force = isRecord(value.allow_force_pushes) ? value.allow_force_pushes.enabled : undefined;
@@ -143,9 +146,13 @@ function classicProtection(value: unknown): boolean | null {
   if (force || deletion || checks.length === 0 || reviews === null) return false;
   if (!isRecord(reviews) ||
       typeof reviews.required_approving_review_count !== 'number' ||
+      !Number.isSafeInteger(reviews.required_approving_review_count) || reviews.required_approving_review_count < 0 ||
       typeof reviews.require_code_owner_reviews !== 'boolean' ||
       typeof reviews.require_last_push_approval !== 'boolean' ||
       typeof reviews.dismiss_stale_reviews !== 'boolean') return null;
+  if (profile === 'team-gitflow') {
+    return reviews.dismiss_stale_reviews === true;
+  }
   return reviews.required_approving_review_count === 0 &&
     reviews.require_code_owner_reviews === false &&
     reviews.require_last_push_approval === false &&
@@ -156,7 +163,8 @@ export function effectiveProtectedRefs(
   rulesetValue: unknown,
   branchValue: unknown,
   familyValue: unknown,
-  defaultBranch: string | null = null
+  defaultBranch: string | null = null,
+  profile: AssessmentProfile = 'single-maintainer-gitflow'
 ): PredicateResult {
   const declared = protectedRefs(rulesetValue, defaultBranch);
   if (declared.value === false) return declared;
@@ -182,7 +190,7 @@ export function effectiveProtectedRefs(
       return result(false, `Branch ${ref} is not proven protected by complete effective/classic metadata.`);
     }
     const protection = branch.protection;
-    const classic = classicProtection(protection.classic);
+    const classic = classicProtection(protection.classic, profile);
     if (classic === false) return result(false, `Classic branch protection contradicts the target on ${ref}.`);
     if (classic === null) return result(null, `Classic branch protection is incomplete on ${ref}.`);
     const effectiveRules = records(protection.effectiveRules);
@@ -193,7 +201,7 @@ export function effectiveProtectedRefs(
     : result(true, 'Repository, inherited/effective, and classic protections cover every exact assessed ref.');
 }
 
-export function singleMaintainer(value: unknown): PredicateResult {
+export function singleMaintainer(value: unknown, defaultBranch: string | null = null): PredicateResult {
   const rulesets = records(value);
   if (!rulesets) return result(null, 'Pull request rules are not observable.');
   const reviews: Record<string, unknown>[] = [];
@@ -205,31 +213,53 @@ export function singleMaintainer(value: unknown): PredicateResult {
   if (!reviews.length) return { ...result(false, 'No active pull request rule was observed.'), absent: true };
   const results = reviews.map(zeroReviewers);
   if (results.includes(false)) return result(false, 'A pull request rule requires a human or code-owner approval.');
-  return result(results.includes(null) ? null : true, results.includes(null) ? 'Review settings are incomplete.' : 'Observed pull request rules use zero required human reviewers.');
-}
-
-export function teamReview(value: unknown): PredicateResult {
-  const rulesets = records(value);
-  if (!rulesets) return result(null, 'Pull request rules are not observable.');
-  const reviews: Record<string, unknown>[] = [];
-  for (const ruleset of rulesets.filter((entry) => entry.target === 'branch' && entry.enforcement === 'active')) {
-    const rules = ruleList(ruleset);
-    if (!rules) return result(null, 'Ruleset rule details are missing.');
-    reviews.push(...rules.filter((rule) => rule.type === 'pull_request'));
-  }
-  if (!reviews.length) return { ...result(false, 'No active pull request rule was observed.'), absent: true };
-  const results = reviews.map(currentTeamReview);
-  if (results.includes(true)) {
-    return result(
-      true,
-      'An active pull request rule requires at least one current approval; stronger approval, code-owner, and last-push controls remain acceptable.'
-    );
+  let incomplete = results.includes(null);
+  for (const ref of ['refs/heads/develop', 'refs/heads/main', 'refs/heads/release/**', 'refs/heads/hotfix/**']) {
+    const { matching, uncertain } = matchingBranchRules(rulesets, ref, defaultBranch);
+    let covered = false;
+    for (const ruleset of matching) {
+      const rules = ruleList(ruleset);
+      if (!rules) return result(null, 'Ruleset rule details are missing.');
+      if (rules.some(rule => rule.type === 'pull_request')) covered = true;
+    }
+    if (covered) continue;
+    if (uncertain) incomplete = true;
+    else return { ...result(false, `No active pull request rule covers ${ref}.`), absent: true };
   }
   return result(
-    results.includes(null) ? null : false,
-    results.includes(null)
-      ? 'Review settings are incomplete.'
-      : 'No active pull request rule requires both at least one approval and stale-review dismissal.'
+    incomplete ? null : true,
+    incomplete ? 'Review settings or protected-family coverage are incomplete.'
+      : 'Every protected GitFlow family has a pull request rule, and observed branch rules use zero required human reviewers.'
+  );
+}
+
+export function teamReview(value: unknown, defaultBranch: string | null = null): PredicateResult {
+  const rulesets = records(value);
+  if (!rulesets) return result(null, 'Pull request rules are not observable.');
+  const refs = ['refs/heads/develop', 'refs/heads/main', 'refs/heads/release/**', 'refs/heads/hotfix/**'];
+  let incomplete = false;
+  for (const ref of refs) {
+    const { matching, uncertain } = matchingBranchRules(rulesets, ref, defaultBranch);
+    const reviews: Record<string, unknown>[] = [];
+    let missingDetails = false;
+    for (const ruleset of matching) {
+      const rules = ruleList(ruleset);
+      if (!rules) missingDetails = true;
+      else reviews.push(...rules.filter((rule) => rule.type === 'pull_request'));
+    }
+    const results = reviews.map(currentTeamReview);
+    if (results.includes(true)) continue;
+    if (uncertain || missingDetails || results.includes(null)) incomplete = true;
+    else return {
+      ...result(false, `No active pull request rule requires a current approval for ${ref}.`),
+      absent: !reviews.length
+    };
+  }
+  return result(
+    incomplete ? null : true,
+    incomplete
+      ? 'Review scope or settings are incomplete for a protected GitFlow family.'
+      : 'Every protected GitFlow family requires at least one current approval; stronger approval, code-owner, and last-push controls remain acceptable.'
   );
 }
 

@@ -15,6 +15,7 @@ import { manualInfrastructurePolicy } from '../domain/governance/activation/mode
 import { protectedCompletionIndexEncoding } from '../domain/governance/activation/modern-local-completion.js';
 import { adoptionCommandReportSchemaVersion } from './adoption/public-command.js';
 import { workflowTransitionReportSchemaVersion } from './workflow-transition/use-case.js';
+import { heartbeatPublicationBlocker } from '../domain/project/telemetry-heartbeat.js';
 
 export function installedCapabilities() {
   const registry = modernSourceRegistry();
@@ -142,6 +143,19 @@ export function installedCapabilities() {
         projectAssessment: 1, projectAdoption: adoptionCommandReportSchemaVersion,
         workflowTransition: workflowTransitionReportSchemaVersion
       },
+      projectTelemetry: {
+        report: 1, record: 1, disclosureVersion: 1,
+        commands: ['telemetry status', 'telemetry enroll', 'telemetry disable', 'telemetry report'],
+        explicitFingerprintOrDefaultNoApproval: true, externalCheckoutConsent: true,
+        preserveCloneIdentity: 'Explicit --preserve-identity enrollment of each checkout',
+        independentCopyIdentity: 'Explicit --new-identity enrollment',
+        heartbeat: {
+          commands: ['telemetry heartbeat status', 'telemetry heartbeat enable', 'telemetry heartbeat disable', 'telemetry report --heartbeat'],
+          enableAvailable: false, ciReportingAvailable: false, reviewedExactEntryRemoval: true,
+          blocker: heartbeatPublicationBlocker
+        },
+        scope: 'Candidate client code only; production project ingestion/publication remains independently unqualified. Status and discovery never send or enroll. Measurement identity is not authentication, file authority or readiness.'
+      },
       repair: { ...repairCapabilities.schemas }
     },
     plugins: {
@@ -177,7 +191,7 @@ export function installedCapabilities() {
     boundaries: {
       thirdPartyPluginLoading: false,
       publicStatefulMigration: false,
-      projectTelemetryEnrollment: false,
+      projectTelemetryEnrollment: true,
       capabilityIsApproval: false,
       privateApis: 'OpenSpec finalization and arbitrary v8 project writer APIs are not public CLI support. Fresh Manual and team-profile generation is limited to currentGeneration. Historical successor creation is limited to the separately advertised currentUpdate scope.',
       registration: 'Command syntax does not imply that every option combination is valid or an executor is available.'

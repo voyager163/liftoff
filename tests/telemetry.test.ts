@@ -5,6 +5,7 @@ import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CaptureStream } from './helpers.js';
 import { createTelemetryDelivery } from '../src/telemetry/delivery.js';
+import { createSemanticTelemetryEvent } from '../src/telemetry/contract.js';
 import {
   isTelemetryEnabled,
   maybeShowTelemetryNotice,
@@ -137,10 +138,10 @@ describe('telemetry client', () => {
     const delivery = createTelemetryDelivery({ env: {}, fetch: delivered });
     try {
       await expect(reportCommandEvent(event, {
-        endpoint: 'https://telemetry.example.test/api/events', delivery
+        env: {}, endpoint: 'https://telemetry.example.test/api/events', delivery
       })).resolves.toEqual({ status: 'delivered', attempted: true });
       await expect(reportCommandEvent(event, {
-        endpoint: 'https://telemetry.example.test/api/events', delivery
+        env: {}, endpoint: 'https://telemetry.example.test/api/events', delivery
       })).resolves.toEqual({ status: 'failed', reason: 'duplicate-channel', attempted: false });
       expect(delivered).toHaveBeenCalledTimes(1);
       expect(JSON.parse(String(delivered.mock.calls[0][1]?.body))).toEqual(event);
@@ -159,6 +160,107 @@ describe('telemetry client', () => {
       env: {}, endpoint: 'https://telemetry.example.test/api/events', fetch: failed
     })).resolves.toEqual({ status: 'failed', reason: 'network', attempted: true });
     expect(failed).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns the explicit result and rejects a second command report without aggregate recursion', async () => {
+    const event = createSemanticTelemetryEvent('update', '0.12.3', 'attention-required');
+    const fetch = vi.fn<TelemetryFetch>().mockResolvedValue(new Response(null, { status: 204 }));
+    const delivery = createTelemetryDelivery({ env: {}, fetch });
+    try {
+      await expect(reportCommandEvent(event, { env: {}, delivery })).resolves.toEqual({
+        status: 'delivered', attempted: true
+      });
+      await expect(reportCommandEvent(event, { env: {}, delivery })).resolves.toEqual({
+        status: 'failed', reason: 'duplicate-channel', attempted: false
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual(event);
+    } finally {
+      delivery.close();
+    }
+  });
+
+  it.each([
+    { env: { DO_NOT_TRACK: '1' }, reason: 'global-opt-out' },
+    { env: { LIFTOFF_TELEMETRY: '0' }, reason: 'global-opt-out' },
+    { env: { CI: 'true' }, reason: 'ordinary-ci' },
+    { env: { CI: 'true', DO_NOT_TRACK: '1' }, reason: 'global-opt-out' }
+  ])('returns disabled for $env even with an independently enabled delivery object', async ({ env, reason }) => {
+    const fetch = vi.fn<TelemetryFetch>(), delivery = createTelemetryDelivery({ env: {}, fetch });
+    try {
+      await expect(reportCommandEvent(createSemanticTelemetryEvent('help', '0.12.3', 'success'), {
+        env, delivery
+      })).resolves.toEqual({ status: 'disabled', reason, attempted: false });
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      delivery.close();
+    }
+  });
+
+  it.each(['network', 'http-rejected', 'invalid-endpoint'] as const)(
+    'returns explicit %s failure without retry or response-body diagnostics', async reason => {
+      const response = new Response('private response diagnostic', { status: 503 });
+      const text = vi.spyOn(response, 'text'), json = vi.spyOn(response, 'json');
+      const fetch = vi.fn<TelemetryFetch>();
+      if (reason === 'network') fetch.mockRejectedValue(new Error('private network diagnostic'));
+      else fetch.mockResolvedValue(response);
+      await expect(reportCommandEvent(createSemanticTelemetryEvent('update', '0.12.3', 'failure'), {
+        env: {}, endpoint: reason === 'invalid-endpoint' ? '' : productionTelemetryEndpoint, fetch
+      })).resolves.toEqual({ status: 'failed', reason, attempted: reason !== 'invalid-endpoint' });
+      expect(fetch).toHaveBeenCalledTimes(reason === 'invalid-endpoint' ? 0 : 1);
+      expect(text).not.toHaveBeenCalled(); expect(json).not.toHaveBeenCalled();
+    }
+  );
+
+  it('returns invalid-payload rather than delivering a malformed explicit report', async () => {
+    const fetch = vi.fn<TelemetryFetch>();
+    await expect(Reflect.apply(reportCommandEvent, undefined, [
+      { ...createSemanticTelemetryEvent('help', '0.12.3', 'success'), rawProject: '/private/project' },
+      { env: {}, fetch }
+    ])).resolves.toEqual({ status: 'failed', reason: 'invalid-payload', attempted: false });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps explicit reporting in the remaining shared budget without another project request', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const fetch = vi.fn<TelemetryFetch>(() => new Promise<Response>(() => {}));
+    const delivery = createTelemetryDelivery({ env: {}, fetch });
+    try {
+      const project = delivery.deliver({ project: {
+        endpoint: 'https://telemetry.example.test/api/projects',
+        event: {
+          schemaVersion: 2, event: 'project_observed', projectId: '550e8400-e29b-41d4-a716-446655440000',
+          cliVersion: '0.12.3', policyProfile: 'none', policyVersion: 'none',
+          templateSetDigest: `sha256:${'a'.repeat(64)}`, source: 'cli'
+        }
+      } });
+      await vi.advanceTimersByTimeAsync(750);
+      let done = false;
+      const command = reportCommandEvent(createSemanticTelemetryEvent('update', '0.12.3', 'attention-required'), {
+        env: {}, delivery
+      }).then(result => { done = true; return result; });
+      await vi.advanceTimersByTimeAsync(249);
+      expect(done).toBe(false); expect(fetch).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await command).toEqual({ status: 'failed', reason: 'budget-expired', attempted: true });
+      expect(await project).toEqual({ project: { status: 'failed', reason: 'budget-expired', attempted: true } });
+      expect(fetch.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(['/api/projects', '/api/events']);
+      expect(fetch.mock.calls.every(([, init]) => init?.signal?.aborted)).toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      delivery.close();
+    }
+  });
+
+  it('does not fabricate success when an injected delivery omits the requested result', async () => {
+    const delivery = createTelemetryDelivery({ env: {} });
+    try {
+      await expect(reportCommandEvent(createSemanticTelemetryEvent('help', '0.12.3', 'success'), {
+        env: {}, delivery: { ...delivery, deliver: async () => ({}) }
+      })).rejects.toThrow('Command telemetry delivery did not return its requested result.');
+    } finally {
+      delivery.close();
+    }
   });
 
   it('sends no upgrade mode, target, registry, origin, path, or error detail', async () => {
