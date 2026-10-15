@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createServer } from 'node:http';
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import type { GitHubActivationTransport, GitHubRequest } from '../src/adapters/github/activation-rest.js';
-import { NodeCommandRunner, type CommandRunner } from '../src/process-runner.js';
+import { NodeCommandRunner, type CommandRunner, type RunCommandOptions } from '../src/process-runner.js';
 import type { ProjectMutationLease } from '../src/adapters/filesystem/project-lock.js';
 import {
   issueSource5WorkflowApproval, restoreSource5WorkflowAuthority, source5WorkflowOriginalPlanValue,
@@ -14,7 +14,10 @@ import { openSource5WorkflowJournal } from '../src/governance-activation/workflo
 import {
   assertSource5WorkflowIntent, createSource5WorkflowEffectInput, recordSource5WorkflowStage
 } from '../src/governance-activation/workflow-source5-ports.js';
+import * as workflowPorts from '../src/governance-activation/workflow-source5-ports.js';
+import * as workflowAuthority from '../src/governance-activation/workflow-source5-authority.js';
 import { workflowObservationRuntime, workflowRuntime } from '../src/governance-activation/workflow-runtime.js';
+import { workflowGitCommand } from '../src/governance-activation/workflow-binding.js';
 import { executeWorkflowSourcePublication } from '../src/governance-activation/workflow-publication.js';
 import { workflowSource5JournalFixture } from './fixtures/workflow-source5-journal.js';
 
@@ -72,8 +75,298 @@ function services() {
   } };
   return { runner, transport, commands, requests };
 }
+async function nativeGitFixture() {
+  const native = new NodeCommandRunner();
+  const value = await fixture({ initializeProject: async projectRoot => {
+    const initialized = await native.run({
+      executable: 'git', args: ['init', '--template=', '--initial-branch=fixture']
+    }, { cwd: projectRoot, env: { GIT_DIR: path.join(projectRoot, '.git'),
+      GIT_WORK_TREE: projectRoot, GIT_CEILING_DIRECTORIES: projectRoot }, timeoutMs: 30_000, stream: false });
+    expect(initialized.status).toBe(0);
+  } });
+  const env = { GIT_DIR: path.join(value.projectRoot, '.git'),
+    GIT_WORK_TREE: value.projectRoot, GIT_CEILING_DIRECTORIES: value.projectRoot };
+  return { value, native, env };
+}
 
 describe('engine-owned source5 carriers and exact intent effects', () => {
+  for (const observationOnly of [false, true]) {
+    it.each([
+      { startedAt: 0, waited: 25_000, allowed: true },
+      { startedAt: 0, waited: 30_000, allowed: false },
+      { startedAt: 0, waited: 30_001, allowed: false },
+      { startedAt: 170_000, waited: 5_000, allowed: true },
+      { startedAt: 170_000, waited: 10_000, allowed: false },
+      { startedAt: 170_000, waited: 10_001, allowed: false }
+    ])(`bounds unresolved Git authority preparation (observation=${observationOnly}) against %j`, async window => {
+      const service = services(), { value, native, env } = await nativeGitFixture();
+      const file = value.binding.files[0]!, commands: RunCommandOptions[] = [];
+      const args = observationOnly ? ['config', '--list', '--name-only'] :
+        ['--literal-pathspecs', 'add', '--', file.path];
+      const runner: CommandRunner = { async run(command, options) {
+        expect(command).toEqual(workflowGitCommand(args));
+        commands.push(options ?? {});
+        const result = await native.run(command, { ...options, env: { ...options?.env, ...env } });
+        expect(result.status).toBe(0);
+        return result;
+      } };
+      await withSource5WorkflowLease(value.projectRoot, async lease => {
+        const log = await journal(value, lease);
+        const carrier = await createSource5WorkflowEffectInput({
+          ...await fields(value, lease, runner, service.transport, observationOnly), clock: () => value.now
+        }, log);
+        if (!observationOnly) {
+          await carrier.recordWorkflowPublication({ bindingDigest: canonicalSha256(value.binding),
+            planDigest: value.plan.planDigest, stage: 'writing' });
+          await mkdir(path.dirname(path.join(value.projectRoot, file.path)), { recursive: true });
+          await writeFile(path.join(value.projectRoot, file.path), file.content);
+        }
+        const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+        const authorityWaits: Promise<void>[] = [], original = workflowAuthority.assertSource5WorkflowAuthority;
+        let paused = false, elapsed = 0;
+        const observed = vi.spyOn(workflowAuthority, 'assertSource5WorkflowAuthority').mockImplementation((...args) => {
+          const pending = original(...args).then(async () => {
+            if (!paused) { paused = true; entered.resolve(); await release.promise; }
+          });
+          authorityWaits.push(pending); return pending;
+        });
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const started = Date.now(), clock = vi.spyOn(Date, 'now').mockImplementation(() => started + elapsed);
+        let state = 'pending', failure: unknown;
+        const runtime = workflowRuntime(carrier);
+        elapsed = window.startedAt;
+        const response = runtime.git(args);
+        const settled = response.then(() => { state = 'fulfilled'; }, error => { state = 'rejected'; failure = error; });
+        try {
+          await entered.promise;
+          elapsed += window.waited;
+          await vi.advanceTimersByTimeAsync(window.waited);
+          expect(state).toBe(window.allowed ? 'pending' : 'rejected');
+          expect(commands).toHaveLength(0);
+          if (window.allowed) {
+            release.resolve(); await settled;
+            expect(state).toBe('fulfilled');
+            expect(commands).toHaveLength(1);
+            expect(commands[0]!.timeoutMs).toBe(5_000);
+          } else {
+            expect(failure).toMatchObject({ code: 'workflow-git' });
+          }
+        } finally {
+          release.resolve();
+          await settled;
+          await Promise.allSettled(authorityWaits);
+          clock.mockRestore(); vi.useRealTimers(); observed.mockRestore();
+        }
+        expect(commands).toHaveLength(window.allowed ? 1 : 0);
+        expect(service.requests).toHaveLength(0);
+        expect((await log.events(value.operation)).map(event => event.stage))
+          .toEqual(observationOnly ? [] : ['publication-writing']);
+      });
+    });
+
+    it(`awaits the original started Git runner after preparation (observation=${observationOnly})`, async () => {
+      const service = services(), { value, native, env } = await nativeGitFixture();
+      const file = value.binding.files[0]!;
+      const args = observationOnly ? ['config', '--list', '--name-only'] :
+        ['--literal-pathspecs', 'add', '--', file.path];
+      const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+      const runner: CommandRunner = { async run(command, options) {
+        expect(command).toEqual(workflowGitCommand(args));
+        const result = await native.run(command, { ...options, env: { ...options?.env, ...env } });
+        expect(result.status).toBe(0);
+        entered.resolve(); await release.promise;
+        return result;
+      } };
+      await withSource5WorkflowLease(value.projectRoot, async lease => {
+        const log = await journal(value, lease);
+        const carrier = await createSource5WorkflowEffectInput({
+          ...await fields(value, lease, runner, service.transport, observationOnly), clock: () => value.now
+        }, log);
+        if (!observationOnly) {
+          await carrier.recordWorkflowPublication({ bindingDigest: canonicalSha256(value.binding),
+            planDigest: value.plan.planDigest, stage: 'writing' });
+          await mkdir(path.dirname(path.join(value.projectRoot, file.path)), { recursive: true });
+          await writeFile(path.join(value.projectRoot, file.path), file.content);
+        }
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const started = Date.now();
+        let elapsed = 0, state = 'pending', failure: unknown;
+        const clock = vi.spyOn(Date, 'now').mockImplementation(() => started + elapsed);
+        const settled = workflowRuntime(carrier).git(args)
+          .then(() => { state = 'fulfilled'; }, error => { state = 'rejected'; failure = error; });
+        try {
+          await entered.promise;
+          elapsed = 30_000;
+          await vi.advanceTimersByTimeAsync(30_000);
+          expect(state).toBe('pending');
+          release.resolve(); await settled;
+          expect(state).toBe('rejected');
+          expect(failure).toMatchObject({ code: 'workflow-git' });
+          await lease.assertHeld();
+        } finally {
+          release.resolve(); await settled;
+          clock.mockRestore(); vi.useRealTimers();
+        }
+      });
+    });
+  }
+
+  const preparationWindows = [
+    { startedAt: 0, preparedAt: 25_000, allowed: true },
+    { startedAt: 0, preparedAt: 30_000, allowed: false },
+    { startedAt: 0, preparedAt: 30_001, allowed: false },
+    { startedAt: 170_000, preparedAt: 175_000, allowed: true },
+    { startedAt: 170_000, preparedAt: 180_000, allowed: false },
+    { startedAt: 170_000, preparedAt: 180_001, allowed: false }
+  ];
+  it.each(preparationWindows)('bounds actual provider start after authority preparation against %j', async window => {
+    const value = await fixture(), service = services();
+    let elapsed = 0, armed = false, posts = 0, transportCalls = 0;
+    const server = createServer(async (request, response) => {
+      const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      expect(request.method).toBe('POST');
+      expect(request.url).toBe('/repos/owner/repo/git/refs');
+      posts++;
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      response.writeHead(201, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ ref: body.ref,
+        url: `https://api.github.com/repos/owner/repo/git/refs/${body.ref.slice(5)}`,
+        object: { type: 'commit', sha: body.sha } }));
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Expected isolated TCP fixture.');
+    const transport: GitHubActivationTransport = { async request(request) {
+      transportCalls++;
+      const response = await fetch(`http://127.0.0.1:${address.port}${request.path}`, {
+        method: request.method, body: JSON.stringify(request.body),
+        headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(30_000)
+      });
+      return { status: response.status, headers: {}, data: await response.json() };
+    } };
+    const pending: ReturnType<typeof workflowPorts.requestSource5WorkflowEffect>[] = [];
+    const original = workflowPorts.requestSource5WorkflowEffect;
+    const observed = vi.spyOn(workflowPorts, 'requestSource5WorkflowEffect').mockImplementation((...args) => {
+      const response = original(...args); pending.push(response); return response;
+    });
+    try {
+      await withSource5WorkflowLease(value.projectRoot, async lease => {
+        const source = await publication(value, lease);
+        const reviewed = value.review({ origin: source.origin,
+          effects: [{ action: 'github.workflow-source.bind-execution-ref', binding: source.binding }] });
+        const log = await journal(reviewed, lease);
+        const carrier = await createSource5WorkflowEffectInput({
+          ...await fields(reviewed, lease, service.runner, transport),
+          clock: () => { if (armed) elapsed = window.preparedAt; return value.now; }
+        }, log);
+        await carrier.recordExecutionRefIntent({ bindingDigest: canonicalSha256(source.binding),
+          planDigest: reviewed.plan.planDigest });
+        const started = Date.now();
+        const clock = vi.spyOn(Date, 'now').mockImplementation(() => started + elapsed);
+        try {
+          const runtime = workflowRuntime(carrier);
+          elapsed = window.startedAt; armed = true;
+          const response = runtime.client.transport.request({ method: 'POST', path: '/repos/owner/repo/git/refs',
+            body: { ref: `refs/tags/${source.binding.executionRef}`, sha: source.binding.sourceSha } });
+          if (window.allowed) await expect(response).resolves.toMatchObject({ status: 201 });
+          else await expect(response).rejects.toMatchObject({ code: 'workflow-deadline' });
+          expect(pending).toHaveLength(1);
+          const settled = await Promise.allSettled(pending);
+          expect(settled[0]!.status).toBe(window.allowed ? 'fulfilled' : 'rejected');
+        } finally {
+          await Promise.allSettled(pending);
+          armed = false; clock.mockRestore();
+        }
+        expect(transportCalls).toBe(window.allowed ? 1 : 0);
+        expect(posts).toBe(window.allowed ? 1 : 0);
+        expect((await log.events(reviewed.operation)).map(event => event.stage))
+          .toEqual(window.allowed ? ['execution-ref-intent', 'execution-ref-accepted'] : ['execution-ref-intent']);
+      });
+    } finally {
+      observed.mockRestore();
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
+  });
+  it.each(preparationWindows)('bounds actual Git start after authority preparation against %j', async window => {
+    const service = services(), { value, native, env: gitEnvironment } = await nativeGitFixture();
+    const configuration = await readFile(path.join(value.projectRoot, '.git', 'config'), 'utf8');
+    expect(configuration).not.toMatch(/\[(?:remote|branch) /u);
+    const file = value.binding.files[0]!;
+    const commands: RunCommandOptions[] = [];
+    const runner: CommandRunner = { async run(command, options) {
+      expect(command).toEqual(workflowGitCommand(['--literal-pathspecs', 'add', '--', file.path]));
+      commands.push(options ?? {});
+      const result = await native.run(command, { ...options, env: { ...options?.env, ...gitEnvironment } });
+      expect(result.status).toBe(0);
+      expect(result.timedOut).toBe(false);
+      return result;
+    } };
+    let elapsed = 0, armed = false;
+    await withSource5WorkflowLease(value.projectRoot, async lease => {
+      const log = await journal(value, lease);
+      const carrier = await createSource5WorkflowEffectInput({
+        ...await fields(value, lease, runner, service.transport),
+        clock: () => { if (armed) elapsed = window.preparedAt; return value.now; }
+      }, log);
+      await carrier.recordWorkflowPublication({ bindingDigest: canonicalSha256(value.binding),
+        planDigest: value.plan.planDigest, stage: 'writing' });
+      await mkdir(path.dirname(path.join(value.projectRoot, file.path)), { recursive: true });
+      await writeFile(path.join(value.projectRoot, file.path), file.content);
+      const started = Date.now();
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => started + elapsed);
+      try {
+        const runtime = workflowRuntime(carrier);
+        elapsed = window.startedAt; armed = true;
+        const response = runtime.git(['--literal-pathspecs', 'add', '--', file.path]);
+        if (window.allowed) await expect(response).resolves.toBe('');
+        else await expect(response).rejects.toMatchObject({ code: 'workflow-git' });
+      } finally { armed = false; clock.mockRestore(); }
+      expect(commands).toHaveLength(window.allowed ? 1 : 0);
+      if (window.allowed) expect(commands[0]!.timeoutMs).toBe(5_000);
+      const staged = await native.run({ executable: 'git', args: ['diff', '--cached', '--name-only'] },
+        { cwd: value.projectRoot, env: gitEnvironment, timeoutMs: 30_000, stream: false });
+      expect(staged.status).toBe(0);
+      expect(staged.stdout.trim()).toBe(window.allowed ? file.path : '');
+      expect(await readFile(path.join(value.projectRoot, '.git', 'config'), 'utf8')).toBe(configuration);
+      expect(service.requests).toHaveLength(0);
+    });
+  });
+  it.each(preparationWindows)('bounds actual observation Git start after authority preparation against %j', async window => {
+    const service = services(), { value, native, env } = await nativeGitFixture();
+    const configuration = await readFile(path.join(value.projectRoot, '.git', 'config'), 'utf8');
+    const commands: RunCommandOptions[] = [];
+    const runner: CommandRunner = { async run(command, options) {
+      expect(command).toEqual(workflowGitCommand(['config', '--list', '--name-only']));
+      commands.push(options ?? {});
+      const result = await native.run(command, { ...options, env: { ...options?.env, ...env } });
+      expect(result.status).toBe(0);
+      expect(result.timedOut).toBe(false);
+      return result;
+    } };
+    let elapsed = 0, armed = false;
+    await withSource5WorkflowLease(value.projectRoot, async lease => {
+      const log = await journal(value, lease);
+      const carrier = await createSource5WorkflowEffectInput({
+        ...await fields(value, lease, runner, service.transport, true),
+        clock: () => { if (armed) elapsed = window.preparedAt; return value.now; }
+      }, log);
+      const started = Date.now();
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => started + elapsed);
+      try {
+        const runtime = workflowRuntime(carrier);
+        elapsed = window.startedAt; armed = true;
+        const response = runtime.git(['config', '--list', '--name-only']);
+        if (window.allowed) await expect(response).resolves.toEqual(expect.any(String));
+        else await expect(response).rejects.toMatchObject({ code: 'workflow-git' });
+      } finally { armed = false; clock.mockRestore(); }
+      expect(commands).toHaveLength(window.allowed ? 1 : 0);
+      if (window.allowed) expect(commands[0]!.timeoutMs).toBe(5_000);
+      expect(await readFile(path.join(value.projectRoot, '.git', 'config'), 'utf8')).toBe(configuration);
+      expect(await log.events(value.operation)).toEqual([]);
+      expect(service.requests).toHaveLength(0);
+    });
+  });
+
   it('rejects caller callbacks/structural copies and duplicate original carriers before any effect', async () => {
     const value = await fixture(), service = services();
     let released: Awaited<ReturnType<typeof createSource5WorkflowEffectInput>> | undefined;
@@ -192,6 +485,66 @@ describe('engine-owned source5 carriers and exact intent effects', () => {
           bindingDigest: canonicalSha256(reviewed!.operation.inputs), planDigest: reviewed!.plan.planDigest
         });
         await expect(workflowRuntime(carrier).client.transport.request({ method: 'POST', path: '/repos/owner/repo/git/refs' })).rejects.toThrow();
+        expect((await log.events(reviewed!.operation)).at(-1)!.stage).toBe('execution-ref-accepted');
+      });
+      expect(posts).toBe(1);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
+  });
+
+  it('retains actual late HTTP201 acceptance before deadline refusal and never repeats it after restart', async () => {
+    const value = await fixture(), service = services();
+    let posts = 0, elapsed = 0;
+    const server = createServer(async (request, response) => {
+      const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      expect(request.method).toBe('POST');
+      expect(request.url).toBe('/repos/owner/repo/git/refs');
+      posts++;
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      response.writeHead(201, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ ref: body.ref, url: `https://api.github.com/repos/owner/repo/git/refs/${body.ref.slice(5)}`,
+        object: { type: 'commit', sha: body.sha } }));
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Expected isolated TCP fixture.');
+    const transport: GitHubActivationTransport = { async request(request) {
+      const response = await fetch(`http://127.0.0.1:${address.port}${request.path}`, {
+        method: request.method, body: JSON.stringify(request.body), headers: { 'content-type': 'application/json' },
+        signal: AbortSignal.timeout(30_000)
+      });
+      const data: unknown = await response.json();
+      elapsed = 30_000;
+      return { status: response.status, headers: {}, data };
+    } };
+    let reviewed: Review | undefined;
+    try {
+      await withSource5WorkflowLease(value.projectRoot, async lease => {
+        const source = await publication(value, lease);
+        reviewed = value.review({ origin: source.origin,
+          effects: [{ action: 'github.workflow-source.bind-execution-ref', binding: source.binding }] });
+        const log = await journal(reviewed, lease);
+        const carrier = await createSource5WorkflowEffectInput(await fields(reviewed, lease, service.runner, transport), log);
+        await carrier.recordExecutionRefIntent({ bindingDigest: canonicalSha256(source.binding), planDigest: reviewed.plan.planDigest });
+        const request: GitHubRequest = { method: 'POST', path: '/repos/owner/repo/git/refs',
+          body: { ref: `refs/tags/${source.binding.executionRef}`, sha: source.binding.sourceSha } };
+        const started = Date.now();
+        const clock = vi.spyOn(Date, 'now').mockImplementation(() => started + elapsed);
+        try {
+          await expect(workflowRuntime(carrier).client.transport.request(request))
+            .rejects.toMatchObject({ code: 'workflow-deadline' });
+        } finally { clock.mockRestore(); }
+        expect((await log.events(reviewed.operation)).map(event => event.stage))
+          .toEqual(['execution-ref-intent', 'execution-ref-accepted']);
+        await expect(workflowRuntime(carrier).client.transport.request(request)).rejects.toThrow();
+      });
+      await withSource5WorkflowLease(value.projectRoot, async lease => {
+        const log = await journal(reviewed!, lease, false);
+        const carrier = await createSource5WorkflowEffectInput(await fields(reviewed!, lease, service.runner, transport, true, false), log);
+        await expect(workflowRuntime(carrier).client.transport.request({
+          method: 'POST', path: '/repos/owner/repo/git/refs'
+        })).rejects.toThrow();
         expect((await log.events(reviewed!.operation)).at(-1)!.stage).toBe('execution-ref-accepted');
       });
       expect(posts).toBe(1);

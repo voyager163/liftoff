@@ -15,11 +15,16 @@ import type { WorkflowExecutionRefBinding, ImmutableWorkflowExecutionRef } from 
 import { admitReviewedRunnerWorkflows, validateWorkflowRunnerAdmission } from './workflow-runner-admission.js';
 import type { WorkflowRunnerAdmissionBinding } from './workflow-runner-admission.js';
 import {
-  executeWorkflowContextProof, readCurrentWorkflowContextProof, validateWorkflowContextBinding
+  executeWorkflowContextProof, readCurrentWorkflowContextProof, validateWorkflowContextBinding,
+  verifySource5WorkflowProofMatrix
 } from './workflow-context-proof.js';
 import type { WorkflowContextBinding, WorkflowContextProof, WorkflowProofCheckpoint } from './workflow-context-proof.js';
 import { protectedWorkflowFamilies } from './workflow-requirements.js';
+import type { WorkflowRequirementSource } from './workflow-requirements.js';
 import { source5WorkflowPlanInventory } from './workflow-source5-operations.js';
+import { validateSource5WorkflowCheckpointData } from './workflow-source5-checkpoints.js';
+import type { Source5WorkflowEvent } from './workflow-source5-journal.js';
+import { workflowObservationRuntime } from './workflow-runtime.js';
 import type { ModernSavedTransitionPlan } from '../domain/governance/activation/modern-record-contracts.js';
 import { githubRepository, positiveId } from '../adapters/github/activation-rest.js';
 import { sourceSha } from './github-config.js';
@@ -54,6 +59,21 @@ function captureComponentFields(fields: Source5WorkflowComponentFields): Source5
   return Object.freeze({ ...fields, plan: captureWorkflowBinding(fields.plan),
     operation: captureWorkflowBinding(fields.operation), phase: captureWorkflowBinding(fields.phase),
     now: new Date(fields.now.getTime()) });
+}
+
+function capturePlanFields(
+  fields: Source5WorkflowPlanComponentFields, journal: Source5WorkflowJournal
+): Source5WorkflowPlanComponentFields {
+  assertSource5WorkflowJournal(journal);
+  assertComponentFields(fields, false);
+  fields = Object.freeze({ ...fields, plan: captureWorkflowBinding(fields.plan),
+    phase: captureWorkflowBinding(fields.phase), now: new Date(fields.now.getTime()) });
+  if (fields.projectRoot !== journal.projectRoot || fields.lease !== journal.lease ||
+    canonicalSha256(fields.plan) !== canonicalSha256(journal.plan)) {
+    return workflowFailure('workflow-source5-component-plan', 'Plan execution requires this exact original journal, root, native lease and whole operation inventory.');
+  }
+  validateSource5WorkflowPlanComponents(fields.plan);
+  return fields;
 }
 
 function exact(value: unknown, required: readonly string[], optional: readonly string[] = []) {
@@ -218,16 +238,8 @@ export interface Source5WorkflowPlanComponentObservation {
 export async function executeSource5WorkflowPlanComponents(
   fields: Source5WorkflowPlanComponentFields, journal: Source5WorkflowJournal
 ) {
-  assertSource5WorkflowJournal(journal);
-  assertComponentFields(fields, false);
-  fields = Object.freeze({ ...fields, plan: captureWorkflowBinding(fields.plan),
-    phase: captureWorkflowBinding(fields.phase), now: new Date(fields.now.getTime()) });
+  fields = capturePlanFields(fields, journal);
   const { control, effects } = source5WorkflowPlanInventory(fields.plan);
-  if (fields.projectRoot !== journal.projectRoot || fields.lease !== journal.lease ||
-    canonicalSha256(fields.plan) !== canonicalSha256(journal.plan)) {
-    return workflowFailure('workflow-source5-component-plan', 'Plan execution requires this exact original journal, root, native lease and whole operation inventory.');
-  }
-  validateSource5WorkflowPlanComponents(fields.plan);
   await journal.assertInventory();
   const observations: Source5WorkflowPlanComponentObservation[] = [];
   for (const [index, operation] of effects.entries()) {
@@ -245,5 +257,63 @@ export async function executeSource5WorkflowPlanComponents(
     status: 'components-observed' as const, controlKey: control.controlKey, planDigest: fields.plan.planDigest,
     observations, unexecutedOperationDigests: [],
     phaseComplete: false as const, matrixComplete: false as const
+  });
+}
+
+function assertOriginalContextProof(
+  proof: unknown, operation: Source5WorkflowEffectFields['operation'],
+  events: readonly Source5WorkflowEvent[], planDigest: string
+): asserts proof is WorkflowContextProof {
+  if (!operation.actionId.startsWith('github.checks.green-red-proof:')) {
+    return workflowFailure('workflow-source5-component-matrix', 'A current matrix must contain only its original green/red context-proof entries.');
+  }
+  validateSource5WorkflowCheckpointData(operation, 'component-completed', {
+    bindingDigest: canonicalSha256(operation.inputs), planDigest, proof
+  }, events, planDigest);
+}
+
+/** Reconstructs observation carriers from original receipts, never caller-selected proof values. */
+export async function observeSource5WorkflowPlanMatrix(
+  fields: Source5WorkflowPlanComponentFields, journal: Source5WorkflowJournal,
+  requirements: WorkflowRequirementSource
+) {
+  fields = capturePlanFields(fields, journal);
+  requirements = captureWorkflowBinding(requirements);
+  if (fields.plan.phaseId !== 'green-red-proof') {
+    return workflowFailure('workflow-source5-component-matrix', 'Only the complete original green/red plan can request a current matrix observation.');
+  }
+  const runtime = workflowObservationRuntime(fields);
+  const { control, effects } = source5WorkflowPlanInventory(fields.plan);
+  await journal.assertInventory();
+  runtime.assertWithinDeadline();
+  const originals: { operation: Source5WorkflowEffectFields['operation']; proof: WorkflowContextProof }[] = [];
+  for (const operation of effects) {
+    const events = await journal.events(operation);
+    runtime.assertWithinDeadline();
+    const completed = events.find(event => event.stage === 'component-completed');
+    if (!completed) {
+      return workflowFailure('workflow-source5-component-matrix', 'Every original matrix entry must already have its retained complete component; pending or missing work cannot be dispatched by observation.');
+    }
+    const proof = completed.data.proof;
+    assertOriginalContextProof(proof, operation, events, fields.plan.planDigest);
+    originals.push({ operation, proof });
+  }
+  const entries: {
+    input: Awaited<ReturnType<typeof createSource5WorkflowEffectInput>>; proof: WorkflowContextProof;
+  }[] = [];
+  for (const original of originals) {
+    runtime.assertWithinDeadline();
+    const input = await createSource5WorkflowEffectInput({
+      ...fields, operation: original.operation, transport: runtime.client.transport,
+      kind: 'source5-workflow-effect.v1', observationOnly: true, reviewedPlans: [journal.plan]
+    }, journal);
+    runtime.assertWithinDeadline();
+    entries.push({ input, proof: original.proof });
+  }
+  const matrix = await verifySource5WorkflowProofMatrix(entries, requirements);
+  runtime.assertWithinDeadline();
+  return captureWorkflowBinding({
+    controlKey: control.controlKey, planDigest: fields.plan.planDigest, matrix,
+    observedAt: (fields.clock?.() ?? fields.now).toISOString(), phaseComplete: false as const
   });
 }

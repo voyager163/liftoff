@@ -11,7 +11,7 @@ import {
 } from '../src/governance-activation/workflow-source5-authority.js';
 import { openSource5WorkflowJournal } from '../src/governance-activation/workflow-source5-journal.js';
 import {
-  executeSource5WorkflowComponent, executeSource5WorkflowPlanComponents
+  executeSource5WorkflowComponent, executeSource5WorkflowPlanComponents, observeSource5WorkflowPlanMatrix
 } from '../src/governance-activation/workflow-source5-components.js';
 import { workflowByteDigest } from '../src/governance-activation/workflow-binding.js';
 import type { WorkflowContextBinding } from '../src/governance-activation/workflow-context-proof.js';
@@ -188,6 +188,22 @@ async function provider(f: Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe('private source5 original component orchestration', () => {
+  it('refuses to relabel an individual phase as the independently current complete green/red matrix', async () => {
+    const f = await fixture(), p = await provider(f);
+    try {
+      await withSource5WorkflowLease(f.value.projectRoot, async lease => {
+        const journal = await openSource5WorkflowJournal({ ...f.value, lease, initialize: true });
+        const { operation: _, ...input } = await fields(f.value, lease, noGit(), p.transport);
+        const requirements = { profile: 'single-maintainer-gitflow' as const, sourceDigest: '0'.repeat(64), files: [],
+          families: { develop: [], main: [], release: [], hotfix: [] },
+          integrations: { develop: {}, main: {}, release: {}, hotfix: {} } };
+        await expect(observeSource5WorkflowPlanMatrix(input, journal, requirements)).rejects.toThrow(/complete original green\/red plan/);
+        expect(p.calls).toEqual([]);
+        expect(await journal.events(f.value.operation)).toEqual([]);
+      });
+    } finally { await p.close(); }
+  });
+
   it.each(['green', 'controlled-red'] as const)(
     'observes every original %s plan entry without claiming a completed phase or matrix', async mode => {
       const f = await fixture(mode), p = await provider(f);

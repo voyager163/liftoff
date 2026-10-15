@@ -102,6 +102,21 @@ Every proof job starts with a pinned checkout of `inputs.source_sha`, a clean
 worktree and disabled credential persistence; extra unbound jobs cannot qualify.
 The complete matrix shares one three-minute observation deadline, and restored
 checkpoints preserve the original plan, dispatch time and actual accepted handle.
+Provider and literal Git results received at or after their existing 30-second
+operation limit or the shared deadline are refused even if a delayed timer has
+not fired. Receipt-time refusal does not establish cancellation or drainage of
+an underlying transport or undo an uncertain accepted effect.
+Authority and intent preparation consume that same operation budget. An expired
+operation cannot start its provider request or literal Git process, and Git
+receives only the remaining budget rather than a restarted timeout. Actual
+acceptance is retained before a later deadline refusal; the original attempt
+cannot be repeated.
+Waiting for asynchronous authority or intent preparation is itself bounded by
+that original cutoff. A timed-out preparation cannot later start provider or
+Git work. This does not cancel or settle a stalled authority read. Once a Git
+runner has started, its original promise remains awaited rather than being
+detached by the preparation timer; its native timeout and settlement contract
+remain unchanged.
 Red runs use their own protected execution tag derived from the exact healthy
 protected commit; they do not move the protected branch to a failing commit.
 Each red parent/ref must match its corresponding independently current green.
@@ -154,6 +169,14 @@ the untouched remaining operation digests. A failed entry throws without startin
 later entries or erasing earlier receipts. Individual current observations never
 become whole-matrix or phase completion; the runner cannot issue approval,
 finalize metadata or discharge independent prerequisite/peer obligations.
+
+Whole-matrix observation reconstructs every observation-only carrier and original
+proof from that same journal, not a caller-supplied carrier or proof list. It
+requires every component to be complete before provider reads and independently
+rechecks the complete four-family green/per-context-red matrix and immutable
+ruleset source. Carrier preparation and provider reads share the original bounded
+observation window. It performs no dispatch, replaces no original observation
+timestamp or receipt, and cannot finalize a phase.
 
 The private source5 effect bridge uses a separate private control schema1 and the
 closed `workflow-source5-{plan,approval,journal,operation,proof}` namespaces
