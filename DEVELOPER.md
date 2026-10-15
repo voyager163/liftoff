@@ -2303,12 +2303,14 @@ from authoritative current source/registry/environment/digest receipts;
 These interfaces do not implement or authorize workflow source publication or
 application deployment.
 
-The current artifact dispatch still selects a mutable default-branch ref.
-Pre-dispatch checks, a reviewed workflow guard and later provenance refusal
-do not close the ref-selection race. Do not enable real dispatch before the
-separately owned immutable execution-tag binding and admission interface is
-published, integrated and independently qualified; no mutable-ref fallback
-is production-safe.
+Artifact dispatch now requires an existing protected lightweight
+`liftoff-execution-<full-source-SHA>` tag, exact reviewed `sourceTreeSha`,
+independent repository protection/provider-grant/commit/tag readback and
+tag-specific runner admission. The shared observer is read-only: no tag or
+policy writer, task14.3 authority, branch or raw-SHA fallback is borrowed.
+Old mutable-ref plans are stale, not silently upgraded. Admission is repeated
+before dispatch and accepted/resumed observation; this source integration
+does not qualify public-v8 execution or the missing production host/ports.
 
 Actual committed workflow bytes, separate transmission/network/build consent,
 the admitted private-network hosted runner, ACR QuickBuild output image and

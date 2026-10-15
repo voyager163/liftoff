@@ -27,7 +27,7 @@ import { createScopedUserLocalRecordStore } from '../src/adapters/filesystem/upd
 import { canonicalApprovalEnvelopeHash } from '../src/domain/governance/activation/approvals.js';
 import { NodeCommandRunner, type CommandRunner, type CommandResult, type RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/types.js';
-import type { GitHubActivationTransport, GitHubRequest } from '../src/adapters/github/activation-rest.js';
+import type { GitHubActivationTransport, GitHubRequest, GitHubResponse } from '../src/adapters/github/activation-rest.js';
 import { GitHubActivationError } from '../src/adapters/github/activation-rest.js';
 import type {
   PhaseAdapterExecutionInput, ProtectedStateCustodyProof, ProtectedStateCustodyPort, ProtectedStateHandoverPort
@@ -189,22 +189,53 @@ class ArtifactTransport implements GitHubActivationTransport {
   duplicate = false;
   invisible = false;
   movedSource = false;
+  executionTagPresent = true;
+  executionTagProtected = true;
+  executionTagBypass = false;
+  executionTagSha: string | undefined;
+  executionTreeSha: string | undefined;
+  providerScopes = 'repo, workflow';
+  runnerUsesBranch = false;
   dispatchResponse: Record<string, unknown> | null = null;
   onRunRead: (() => Promise<void>) | undefined;
   onJobsRead: (() => Promise<void>) | undefined;
-  async request(request: GitHubRequest) {
+  onDispatch: (() => void) | undefined;
+  async request(request: GitHubRequest): Promise<GitHubResponse> {
     this.calls.push(request);
     let data: unknown;
     if (request.path.includes('/contents/')) data = {
       type: 'file', encoding: 'base64', path: this.binding.workflowPath, content: Buffer.from(this.workflow).toString('base64')
     };
+    else if (request.path.includes('/git/ref/tags/')) {
+      if (!this.executionTagPresent) return { status: 404, headers: {}, data: null };
+      data = { ref: `refs/tags/${this.binding.executionRef}`,
+        object: { type: 'commit', sha: this.executionTagSha ?? this.binding.sourceSha } };
+    }
     else if (request.path.includes('/git/ref/')) data = { object: { sha: this.movedSource ? 'f'.repeat(40) : this.binding.sourceSha } };
+    else if (request.path.includes('/git/commits/')) data = {
+      sha: this.binding.sourceSha, tree: { sha: this.executionTreeSha ?? this.binding.sourceTreeSha }
+    };
+    else if (request.path.includes('/rulesets?includes_parents=true')) data = this.executionTagProtected ? [{
+      id: 11, source_type: 'Repository', source: this.binding.repository
+    }] : [];
+    else if (request.path.endsWith('/rulesets/11')) data = {
+      id: 11, source_type: 'Repository', source: this.binding.repository, target: 'tag', enforcement: 'active',
+      bypass_actors: this.executionTagBypass ? [{ actor_id: 1 }] : [],
+      conditions: { ref_name: { include: ['refs/tags/liftoff-execution-*'], exclude: [] } },
+      rules: [{ type: 'update' }, { type: 'deletion' }]
+    };
+    else if (request.path === '/repos/owner/repo') data = {
+      id: 123, full_name: this.binding.repository, permissions: { push: true }
+    };
     else if (request.path.includes('/runner-groups/')) data = {
       id: 333, name: this.binding.runnerGroupName, network_configuration_id: 'NC_fixture', restricted_to_workflows: true,
-      selected_workflows: [`owner/repo/${this.binding.workflowPath}@refs/heads/develop`]
+      selected_workflows: [this.runnerUsesBranch
+        ? `owner/repo/${this.binding.workflowPath}@refs/heads/develop`
+        : `owner/repo/${this.binding.workflowPath}@refs/tags/${this.binding.executionRef}`]
     };
     else if (request.method === 'POST') {
       this.dispatched = true;
+      this.onDispatch?.();
       return { status: this.dispatchResponse ? 200 : 204, headers: {}, data: this.dispatchResponse };
     } else if (request.path.includes('/jobs')) {
       await this.onJobsRead?.();
@@ -218,10 +249,10 @@ class ArtifactTransport implements GitHubActivationTransport {
       if (this.duplicate && runs.length) runs.push(this.run());
       data = { total_count: runs.length, workflow_runs: runs };
     } else { await this.onRunRead?.(); data = this.run(); }
-    return { status: 200, headers: {}, data };
+    return { status: 200, headers: { 'x-oauth-scopes': this.providerScopes }, data };
   }
   run() { return {
-    id: 901, head_sha: this.binding.sourceSha, head_branch: 'develop', path: this.binding.workflowPath,
+    id: 901, head_sha: this.binding.sourceSha, head_branch: this.binding.executionRef, path: this.binding.workflowPath,
     display_title: this.binding.runTitle, event: 'workflow_dispatch', run_attempt: 1, repository: { id: 123 },
     created_at: coverageNow.toISOString(), status: this.runStatus, conclusion: this.conclusion
   }; }
@@ -271,8 +302,9 @@ async function fixture(artifact = false) {
       const value = await runner.run({ executable: 'git', args }, { cwd: root }); expect(value.status).toBe(0);
     }
     const sha = (await runner.run({ executable: 'git', args: ['rev-parse', 'HEAD'] }, { cwd: root })).stdout.trim();
+    const treeSha = (await runner.run({ executable: 'git', args: ['rev-parse', `${sha}^{tree}`] }, { cwd: root })).stdout.trim();
     f.inputs.phases['application-artifact-ready'] = { ...f.inputs.phases['application-artifact-ready'],
-      sourceSha: sha, workflowDigest: createHash('sha256').update(transport.workflow).digest('hex') };
+      sourceSha: sha, sourceTreeSha: treeSha, workflowDigest: createHash('sha256').update(transport.workflow).digest('hex') };
   }
   f.inspection = await coverageInspection({ root, phaseId: f.phase.id, state: f.state, activationInputs: f.inputs });
   const preview = (await buildSavedTransitionPlan(f))!;
@@ -827,11 +859,95 @@ describe('immutable application publication and independent readback', () => {
     const outcome = await executeApplicationArtifactPublication(f.input);
     expect(outcome, JSON.stringify(outcome)).toMatchObject({ status: 'completed', resultState: 'verified',
       outputs: { values: { artifactDigest: imageDigest, immutableImage: `${f.transport.binding.loginServer}/application/backend@${imageDigest}` } } });
+    expect(outcome.evidencePayload).toMatchObject({
+      executionRefAdmission: { kind: 'immutable-workflow-execution-ref.v1',
+        binding: { sourceSha: f.transport.binding.sourceSha, treeSha: f.transport.binding.sourceTreeSha,
+          executionRef: f.transport.binding.executionRef }, protectingRulesetIds: [11] }
+    });
     expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.input.plan.operations.find((entry) => entry.actionId === 'github.artifact.build-dispatch')?.inputs)
+      .toMatchObject({ sourceSha: f.transport.binding.sourceSha, sourceTreeSha: f.transport.binding.sourceTreeSha,
+        executionRef: f.transport.binding.executionRef });
+    expect(f.transport.calls.find((entry) => entry.method === 'POST')?.body)
+      .toMatchObject({ ref: `liftoff-execution-${f.transport.binding.sourceSha}` });
     expect(outcome.liveReadback?.map((entry) => entry.provider)).toEqual(['github', 'azure', 'azure']);
     const verification = f.runner.calls.find((entry) => entry.executable === 'gh')!;
     expect(verification.args).toContain('--source-digest');
     expect(verification.args).not.toContain('--token');
+  });
+  it.each(['missing-tag', 'unprotected', 'bypass', 'tag-source', 'commit-tree', 'provider-grants', 'branch-runner'] as const)(
+    'refuses %s execution-ref admission without tag/policy writes or mutable-ref fallback', async (kind) => {
+      const f = await fixture(true);
+      if (kind === 'missing-tag') f.transport.executionTagPresent = false;
+      if (kind === 'unprotected') f.transport.executionTagProtected = false;
+      if (kind === 'bypass') f.transport.executionTagBypass = true;
+      if (kind === 'tag-source') f.transport.executionTagSha = 'f'.repeat(40);
+      if (kind === 'commit-tree') f.transport.executionTreeSha = 'f'.repeat(40);
+      if (kind === 'provider-grants') f.transport.providerScopes = 'repo';
+      if (kind === 'branch-runner') f.transport.runnerUsesBranch = true;
+      const outcome = await executeApplicationArtifactPublication(f.input);
+      expect(outcome).toMatchObject({ status: 'blocked' });
+      expect(outcome.evidencePayload).toBeUndefined();
+      expect(outcome.outputs?.values.immutableImage).toBeUndefined();
+      expect(f.transport.calls.every((entry) => entry.method === 'GET')).toBe(true);
+      expect(f.runner.writes).toEqual([]);
+      expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
+    }
+  );
+  it('reobserves execution-ref admission after durable intent and before actual dispatch', async () => {
+    const f = await fixture(true);
+    f.input.recordApplicationDispatchIntent = async () => { f.transport.executionTagProtected = false; };
+    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked' });
+    expect(f.transport.calls.every((entry) => entry.method === 'GET')).toBe(true);
+    expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
+  });
+  it.each(['accepted', 'resumed'] as const)(
+    'refuses changed execution-ref admission at %s observation while retaining the actual invocation', async (kind) => {
+      const f = await fixture(true);
+      if (kind === 'accepted') {
+        f.transport.dispatchResponse = { workflow_run_id: 901,
+          run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
+          html_url: 'https://github.com/owner/repo/actions/runs/901' };
+        f.transport.onDispatch = () => { f.transport.executionTagProtected = false; };
+      } else {
+        f.transport.runStatus = 'in_progress';
+        const first = await executeApplicationArtifactPublication(f.input);
+        expect(first).toMatchObject({ status: 'pending', operation: { operationId: 'github-actions:901' } });
+        f.input.inspection.state.phases[f.phase.id].operation = {
+          ...first.operation!, planDigest: f.input.plan.planDigest
+        };
+        f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+        f.transport.executionTagProtected = false;
+      }
+      const outcome = await executeApplicationArtifactPublication(f.input);
+      expect(outcome).toMatchObject({
+        status: kind === 'accepted' ? 'pending' : 'blocked',
+        blocker: expect.stringMatching(/independently read repository tag-update/)
+      });
+      if (kind === 'accepted') expect(outcome.operation).toMatchObject({
+        operationId: 'github-actions:901', status: 'running'
+      });
+      else expect(f.input.inspection.state.phases[f.phase.id].operation).toMatchObject({
+        operationId: 'github-actions:901', status: 'running'
+      });
+      expect(outcome.evidencePayload).toBeUndefined();
+      expect(outcome.outputs?.values.immutableImage).toBeUndefined();
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+      expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
+    }
+  );
+  it('rejects a legacy plan lacking its complete source-tree and execution-tag binding before provider reads', async () => {
+    const f = await fixture(true);
+    const dispatch = f.input.plan.operations.find((entry) => entry.actionId === 'github.artifact.build-dispatch')!;
+    const { sourceTreeSha, executionRef, ...legacyInputs } = dispatch.inputs;
+    expect(sourceTreeSha).toBe(f.transport.binding.sourceTreeSha);
+    expect(executionRef).toBe(f.transport.binding.executionRef);
+    Object.assign(dispatch, { inputs: legacyInputs });
+    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({
+      status: 'blocked', blocker: expect.stringMatching(/changed exact source/)
+    });
+    expect(f.transport.calls).toEqual([]);
+    expect(f.runner.writes).toEqual([]);
   });
   it.each(['accepted', 'resumed'] as const)(
     'refuses a different actual workflow run at the exact %s publication handle', async (kind) => {

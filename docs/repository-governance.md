@@ -919,11 +919,15 @@ placeholder, candidate tag or caller-supplied source annotation. Partial handles
 survive a later source/authority change; failed or uncertain effects are observed,
 not automatically repeated or undone.
 
-The current artifact route still selects a mutable default-branch ref at
-dispatch. Pre-dispatch readback and later proof refusal cannot prevent an
-unreviewed replacement workflow's earlier transmission. Real dispatch remains
-unqualified pending the separately owned immutable execution-tag binding and
-admission integration; source tests do not establish that missing barrier.
+The artifact route dispatches only the existing protected lightweight
+`liftoff-execution-<full-source-SHA>` tag bound to its own reviewed complete
+source/tree/recipe. A shared read-only observer rechecks effective no-bypass
+tag update/deletion protection, provider grants, source tree and tag before
+dispatch and accepted/resumed observation. Runner admission must select that
+tag. Missing, unsupported or changed admission blocks; no tag creation,
+policy mutation, mutable branch fallback or task14.3 authority is borrowed.
+Old plans require review instead of retagging. Public-v8 activation, actual
+protected execution ports/host and disposable qualification remain unavailable.
 
 See [Azure application readiness](azure-deployment.md#application-readiness-source-boundary)
 for declarative recipe inputs, operator boundaries and remaining real

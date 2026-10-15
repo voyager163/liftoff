@@ -195,24 +195,34 @@ resource/role readback are required. Provider conditional creation and competing
 resource-creation scenarios still require real disposable qualification; source
 tests cannot qualify an Azure resource provider's concurrency behavior.
 
-**Execution-ref qualification remains blocked.** The current artifact route
-selects a mutable default-branch ref at dispatch. Earlier source/workflow checks,
-a reviewed job guard and later provenance refusal do not make that selection
-atomic or prevent an unreviewed replacement workflow's earlier transmission.
-Do not enable real artifact dispatch until the separately owned exact-commit
-execution-tag binding and admission interface is published, integrated and
-independently qualified. Missing or unknown tag update/delete/no-bypass protection
-cannot fall back to a mutable ref; policy administrators remain an external
-trust boundary. TASK14.1 source presence does not resolve this prerequisite.
+**Execution-ref source admission is read-only, not production qualification.**
+The artifact route accepts only the existing lightweight
+`liftoff-execution-<full-source-SHA>` tag, independently bound to the complete
+reviewed commit and tree. It rereads effective repository tag update/deletion
+protection with no bypass, provider grants, the commit tree and tag before
+dispatch and accepted/resumed observation. Missing tags, unknown or inherited
+policy, bypass, changed source/tree or unsupported credentials block; this
+producer never creates tags, changes policy or falls back to a branch/raw SHA.
+The current admission supports independently observed classic OAuth `repo` and
+`workflow` grants plus repository push access, not inferred installation or
+fine-grained permissions. Policy administrators remain an external trust
+boundary. Public-v8 activation, protected production ports and real disposable
+execution-ref qualification remain separate blockers.
 
 `application-artifact-ready` requires an existing separately reviewed/published
 workflow and private-network runner admission. Its exact plan binds the complete
-Git source SHA, raw workflow byte digest, one observed source context and
+Git `sourceSha`, required complete `sourceTreeSha`, derived protected execution
+tag, raw workflow byte digest, one observed source context and
 Dockerfile, image repository, canonical registry resource, environment, principal,
 backend/runner identity and cost. `sourceTransmissionApproved`,
 `dependencyNetworkApproved` and `buildExecutionApproved` must each be explicitly
 true; resource approval alone cannot authorize them. Changed or uncommitted
 customizations are preserved and block rather than being reset or uploaded.
+The tree is obtained with `git rev-parse <sourceSha>^{tree}` and independently
+checked against both local Git and the provider commit. Runner admission must
+name `<repository>/<workflowPath>@refs/tags/<execution-tag>`, not a branch.
+Older plans without the exact tree/tag binding are stale and require review;
+accepted runs cannot be silently retagged under a new plan.
 
 The reviewed workflow protocol is one `publish` job named
 `Liftoff application artifact`, with the exact qualified runner group/label, a
