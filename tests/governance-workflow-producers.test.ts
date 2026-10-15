@@ -19,7 +19,9 @@ import {
   executeWorkflowSourcePublication, validateWorkflowPublication,
   type WorkflowPublicationBinding, type WorkflowPublicationInput, type WorkflowPublicationCheckpoint
 } from '../src/governance-activation/workflow-publication.js';
-import { workflowByteDigest, workflowPlannedOperation, workflowRuntime } from '../src/governance-activation/workflow-runtime.js';
+import {
+  workflowByteDigest, workflowObservationRuntime, workflowPlannedOperation, workflowRuntime
+} from '../src/governance-activation/workflow-runtime.js';
 import {
   bindImmutableWorkflowExecutionRef, workflowExecutionRefName,
   type WorkflowExecutionRefInput
@@ -248,6 +250,108 @@ class WorkflowRunner implements CommandRunner {
     return this.native.run(command, { ...options, env: { ...options?.env, ...environment } });
   }
 }
+
+describe('workflow receipt-time bounds without timer scheduling assumptions', () => {
+  const boundaries = [
+    { startedAt: 0, completedAt: 29_999, accepted: true },
+    { startedAt: 0, completedAt: 30_000, accepted: false },
+    { startedAt: 0, completedAt: 30_001, accepted: false },
+    { startedAt: 170_000, completedAt: 179_999, accepted: true },
+    { startedAt: 170_000, completedAt: 180_000, accepted: false },
+    { startedAt: 170_000, completedAt: 180_001, accepted: false }
+  ];
+  it.each(boundaries)('checks actual loopback provider receipt against %j', async boundary => {
+    let elapsed = 0, received = false;
+    const requests: GitHubRequest[] = [];
+    const server = createServer((request, response) => {
+      expect(request.method).toBe('GET');
+      expect(request.url).toBe('/repos/owner/repo');
+      elapsed = boundary.completedAt;
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ id: 123 }));
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Expected isolated TCP fixture.');
+    const transport: GitHubActivationTransport = { async request(request) {
+      requests.push(request);
+      const response = await fetch(`http://127.0.0.1:${address.port}${request.path}`, {
+        signal: AbortSignal.timeout(30_000)
+      });
+      const data: unknown = await response.json();
+      received = true;
+      return { status: response.status, headers: {}, data };
+    } };
+    const started = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => started + elapsed);
+    try {
+      const runtime = workflowObservationRuntime({ projectRoot: scratch, runner: new WorkflowRunner(), transport });
+      elapsed = boundary.startedAt;
+      const reading = runtime.client.get('/repos/owner/repo');
+      if (boundary.accepted) await expect(reading).resolves.toEqual({ id: 123 });
+      else await expect(reading).rejects.toMatchObject({ code: 'workflow-deadline' });
+      expect(received).toBe(true);
+      expect(requests).toEqual([{ method: 'GET', path: '/repos/owner/repo' }]);
+    } finally {
+      clock.mockRestore();
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
+  });
+  it.each(boundaries)('checks settled literal Git receipt against %j', async boundary => {
+    const root = await writeCoverageProject(path.join(scratch, `${++counter}`));
+    const native = new WorkflowRunner();
+    const gitEnvironment = { GIT_DIR: path.join(root, '.git'), GIT_WORK_TREE: root, GIT_CEILING_DIRECTORIES: root };
+    const initialized = await native.run({
+      executable: 'git', args: ['init', '--template=', '--initial-branch=fixture']
+    }, { cwd: root, env: gitEnvironment, timeoutMs: 30_000, stream: false });
+    expect(initialized.status).toBe(0);
+    const configuration = await readFile(path.join(root, '.git', 'config'), 'utf8');
+    expect(configuration).not.toMatch(/\[(?:remote|branch) /u);
+    let elapsed = 0, settled = false;
+    const runner: CommandRunner = { async run(command, options) {
+      const result = await native.run(command, { ...options, env: { ...options?.env, ...gitEnvironment } });
+      expect(result.status).toBe(0);
+      expect(result.timedOut).toBe(false);
+      elapsed = boundary.completedAt;
+      settled = true;
+      return result;
+    } };
+    const started = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => started + elapsed);
+    try {
+      const runtime = workflowObservationRuntime({ projectRoot: root, runner, transport: new WorkflowTransport() });
+      elapsed = boundary.startedAt;
+      const reading = runtime.git(['config', '--list', '--name-only']);
+      if (boundary.accepted) await expect(reading).resolves.toEqual(expect.any(String));
+      else await expect(reading).rejects.toMatchObject({ code: 'workflow-git' });
+      expect(settled).toBe(true);
+      expect(native.calls).toHaveLength(2);
+      expect(native.options[1]!.timeoutMs).toBe(Math.min(30_000, 180_000 - boundary.startedAt));
+      expect(await readFile(path.join(root, '.git', 'config'), 'utf8')).toBe(configuration);
+    } finally { clock.mockRestore(); }
+  });
+  it('does not restart the provider budget after synchronous transport preparation', async () => {
+    vi.useFakeTimers();
+    const started = Date.now();
+    const timers = vi.spyOn(globalThis, 'setTimeout');
+    const transport: GitHubActivationTransport = { async request() {
+      vi.setSystemTime(started + 25_000);
+      return new Promise(() => {});
+    } };
+    const runtime = workflowObservationRuntime({ projectRoot: scratch, runner: new WorkflowRunner(), transport });
+    const refused = expect(runtime.client.get('/repos/owner/repo')).rejects.toMatchObject({ code: 'workflow-deadline' });
+    try {
+      expect(timers.mock.calls.at(-1)?.[1]).toBe(5_000);
+      await vi.advanceTimersByTimeAsync(5_000);
+      await refused;
+    } finally {
+      await vi.runAllTimersAsync();
+      await refused;
+      timers.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+});
 
 async function fixture() {
   const root = await writeCoverageProject(path.join(scratch, `${++counter}`));

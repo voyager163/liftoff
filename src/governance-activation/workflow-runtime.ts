@@ -153,17 +153,20 @@ function boundedWorkflowRuntime(services: WorkflowObservationServices, readOnly:
       async request(request) {
         assertWithinDeadline();
         if (readOnly && request.method !== 'GET') return workflowFailure('workflow-observation-only', 'Observation services cannot write provider state.');
+        const responseDeadline = Math.min(deadline, Date.now() + 30_000);
         let timer: ReturnType<typeof setTimeout> | undefined;
         const deadlineError = new GitHubActivationError('workflow-deadline',
           'Workflow provider response exceeded its bounded deadline; diagnostics were withheld and acceptance may be uncertain.');
         try {
-          return await Promise.race([
+          const response = await Promise.race([
             underlying.request(request),
             new Promise<never>((_, reject) => {
               timer = setTimeout(() => reject(deadlineError),
-              Math.min(30_000, deadline - Date.now()));
+              Math.max(0, responseDeadline - Date.now()));
             })
           ]);
+          if (Date.now() >= responseDeadline) throw deadlineError;
+          return response;
         } catch (error) {
           if (error === deadlineError) throw error;
           throw new GitHubActivationError('workflow-provider',
@@ -176,6 +179,7 @@ function boundedWorkflowRuntime(services: WorkflowObservationServices, readOnly:
       if (readOnly && !readableGit(args)) {
         return workflowFailure('workflow-observation-only', 'Observation services accept only bounded literal Git reads.');
       }
+      const commandDeadline = Math.min(deadline, Date.now() + 30_000);
       let result;
       try { result = effectGit && !readableGit(args)
         ? await effectGit(args, Math.min(30_000, deadline - Date.now()))
@@ -183,7 +187,8 @@ function boundedWorkflowRuntime(services: WorkflowObservationServices, readOnly:
           Math.min(30_000, deadline - Date.now()))); } catch {
         return workflowFailure('workflow-git', 'The literal Git transport failed; diagnostics were withheld and recorded partial effects must be reconciled without repeating uncertain work.');
       }
-      if (result.status !== 0 || result.timedOut || result.outputLimitExceeded || result.errorCode || result.aborted) {
+      if (Date.now() >= commandDeadline || result.status !== 0 || result.timedOut ||
+        result.outputLimitExceeded || result.errorCode || result.aborted) {
         return workflowFailure('workflow-git', 'The literal reviewed Git operation was not confirmed within its time and output bounds; diagnostics were withheld.');
       }
       return result.stdout;

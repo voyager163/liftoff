@@ -102,6 +102,10 @@ Every proof job starts with a pinned checkout of `inputs.source_sha`, a clean
 worktree and disabled credential persistence; extra unbound jobs cannot qualify.
 The complete matrix shares one three-minute observation deadline, and restored
 checkpoints preserve the original plan, dispatch time and actual accepted handle.
+Provider and literal Git results received at or after their existing 30-second
+operation limit or the shared deadline are refused even if a delayed timer has
+not fired. Receipt-time refusal does not establish cancellation or drainage of
+an underlying transport or undo an uncertain accepted effect.
 Red runs use their own protected execution tag derived from the exact healthy
 protected commit; they do not move the protected branch to a failing commit.
 Each red parent/ref must match its corresponding independently current green.

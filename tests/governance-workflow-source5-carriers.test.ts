@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createServer } from 'node:http';
@@ -192,6 +192,66 @@ describe('engine-owned source5 carriers and exact intent effects', () => {
           bindingDigest: canonicalSha256(reviewed!.operation.inputs), planDigest: reviewed!.plan.planDigest
         });
         await expect(workflowRuntime(carrier).client.transport.request({ method: 'POST', path: '/repos/owner/repo/git/refs' })).rejects.toThrow();
+        expect((await log.events(reviewed!.operation)).at(-1)!.stage).toBe('execution-ref-accepted');
+      });
+      expect(posts).toBe(1);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
+  });
+
+  it('retains actual late HTTP201 acceptance before deadline refusal and never repeats it after restart', async () => {
+    const value = await fixture(), service = services();
+    let posts = 0, elapsed = 0;
+    const server = createServer(async (request, response) => {
+      const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      expect(request.method).toBe('POST');
+      expect(request.url).toBe('/repos/owner/repo/git/refs');
+      posts++;
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      response.writeHead(201, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ ref: body.ref, url: `https://api.github.com/repos/owner/repo/git/refs/${body.ref.slice(5)}`,
+        object: { type: 'commit', sha: body.sha } }));
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Expected isolated TCP fixture.');
+    const transport: GitHubActivationTransport = { async request(request) {
+      const response = await fetch(`http://127.0.0.1:${address.port}${request.path}`, {
+        method: request.method, body: JSON.stringify(request.body), headers: { 'content-type': 'application/json' },
+        signal: AbortSignal.timeout(30_000)
+      });
+      const data: unknown = await response.json();
+      elapsed = 30_000;
+      return { status: response.status, headers: {}, data };
+    } };
+    let reviewed: Review | undefined;
+    try {
+      await withSource5WorkflowLease(value.projectRoot, async lease => {
+        const source = await publication(value, lease);
+        reviewed = value.review({ origin: source.origin,
+          effects: [{ action: 'github.workflow-source.bind-execution-ref', binding: source.binding }] });
+        const log = await journal(reviewed, lease);
+        const carrier = await createSource5WorkflowEffectInput(await fields(reviewed, lease, service.runner, transport), log);
+        await carrier.recordExecutionRefIntent({ bindingDigest: canonicalSha256(source.binding), planDigest: reviewed.plan.planDigest });
+        const request: GitHubRequest = { method: 'POST', path: '/repos/owner/repo/git/refs',
+          body: { ref: `refs/tags/${source.binding.executionRef}`, sha: source.binding.sourceSha } };
+        const started = Date.now();
+        const clock = vi.spyOn(Date, 'now').mockImplementation(() => started + elapsed);
+        try {
+          await expect(workflowRuntime(carrier).client.transport.request(request))
+            .rejects.toMatchObject({ code: 'workflow-deadline' });
+        } finally { clock.mockRestore(); }
+        expect((await log.events(reviewed.operation)).map(event => event.stage))
+          .toEqual(['execution-ref-intent', 'execution-ref-accepted']);
+        await expect(workflowRuntime(carrier).client.transport.request(request)).rejects.toThrow();
+      });
+      await withSource5WorkflowLease(value.projectRoot, async lease => {
+        const log = await journal(reviewed!, lease, false);
+        const carrier = await createSource5WorkflowEffectInput(await fields(reviewed!, lease, service.runner, transport, true, false), log);
+        await expect(workflowRuntime(carrier).client.transport.request({
+          method: 'POST', path: '/repos/owner/repo/git/refs'
+        })).rejects.toThrow();
         expect((await log.events(reviewed!.operation)).at(-1)!.stage).toBe('execution-ref-accepted');
       });
       expect(posts).toBe(1);
