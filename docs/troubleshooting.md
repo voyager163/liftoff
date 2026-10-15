@@ -24,6 +24,16 @@ Versions that predate `liftoff upgrade` require one manual global installation:
 npm install -g @msn-control/liftoff@latest
 ```
 
+## Mac npm-to-Homebrew migration is unavailable
+
+Do not uninstall an old npm installation merely because a native development
+bundle or source fixture passes. npm is still the sole published channel.
+The [standalone Mac migration source](mac-npm-migration.md) works independently
+of old versions lacking `liftoff upgrade`, but public cask/signing/minimum-host
+and provider qualification remain blockers. It cannot bootstrap Homebrew,
+invent an exact-version cask command, sweep nvm/Volta, or fix parent-shell
+aliases/hash. Verified offline old-package recovery must precede uninstall.
+
 ## CLI upgrade is blocked by installation origin
 
 Automatic replacement supports the canonical package at npm's effective

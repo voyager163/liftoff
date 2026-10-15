@@ -307,8 +307,12 @@ implementation consent does not authorize accounts, credentials, external taps,
 settings changes, release uploads or unsigned fallbacks. Group 10 adds owner-aware
 upgrade/doctor source, schema-2 availability/effects/verification and safe manager
 handoff interfaces; it does **not** qualify these public channels or complete
-real-manager/minimum-host tasks. Standalone npm-to-Homebrew migration remains
-unimplemented, separate Group 11 work.
+real-manager/minimum-host tasks. Group 11 now supplies
+[standalone npm-to-Homebrew migration source](mac-npm-migration.md), including
+an independent development package, exact selected-owner preflight, private
+journal/recovery and injected exact-cask handover. Its production cask provider
+is deliberately unregistered. Source fixtures and development packaging do not
+enable actual/public migration or complete Group 11 qualification.
 
 Reusable Group-10 contracts live in `src/domain/distribution/native-upgrade.ts`;
 `NativeBundleInventory` contains unattributed local facts, while
