@@ -144,7 +144,7 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
   ));
   const run = async (runtime: string, args: string[], directory: string, timeoutMs: number) => {
     const result = await dependencies.runner.run({ executable: runtime, args }, {
-      cwd: directory, env: readOnlyEnvironment(dependencies, directory), timeoutMs, maxOutputBytes: metadataLimit,
+      cwd: directory, env: readOnlyEnvironment(dependencies, directory), inheritEnvironment: false, timeoutMs, maxOutputBytes: metadataLimit,
       ensureProcessTreeSettled: true
     });
     if (commandFailed(result) || result.processTreeSettled === false) {

@@ -137,6 +137,7 @@ describe('independently signed native candidate admission', () => {
 
 const ownedRoots: string[] = [];
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const root of ownedRoots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
@@ -184,6 +185,35 @@ async function ownedBundle(version = '0.12.3') {
 }
 
 describe.skipIf(process.platform === 'win32')('native adapter on explicit private receipt-owned fixtures', () => {
+  it('proves the supplied native verification environment reaches actual children without ambient reinheritance', async () => {
+    const fixture = await ownedBundle();
+    vi.stubEnv('LIFTOFF_NATIVE_PARENT_ONLY_FIXTURE', 'fixture-parent-only');
+    vi.stubEnv('NPM_CONFIG_REGISTRY', 'https://parent-registry.invalid');
+    const inspector = { executable: process.execPath, args: ['-e',
+      'console.log(JSON.stringify({parent:process.env.LIFTOFF_NATIVE_PARENT_ONLY_FIXTURE ?? null,' +
+      'registry:process.env.NPM_CONFIG_REGISTRY ?? null,telemetry:process.env.LIFTOFF_TELEMETRY,' +
+      'tracking:process.env.DO_NOT_TRACK,nodeOptions:process.env.NODE_OPTIONS,home:process.env.HOME}))'] };
+    const runner = new NodeCommandRunner();
+    const original = fixture.dependencies.runner;
+    let children = 0;
+    const port = createNativeUpgradePort({ ...fixture.dependencies, runner: { run: async (command, options) => {
+      expect(options?.inheritEnvironment).toBe(false);
+      if (children === 0) {
+        const inherited = await runner.run(inspector, { ...options, inheritEnvironment: undefined });
+        expect(inherited.status).toBe(0);
+        expect(JSON.parse(inherited.stdout)).toMatchObject({ parent: 'fixture-parent-only', registry: 'https://parent-registry.invalid' });
+      }
+      const observed = await runner.run(inspector, options);
+      expect(observed.status).toBe(0);
+      expect(JSON.parse(observed.stdout)).toEqual({ parent: null, registry: null, telemetry: '0',
+        tracking: '1', nodeOptions: '', home: fixture.root });
+      children++;
+      return original.run(command, options);
+    } } });
+    expect(await port.inspect(fixture.packageRoot, '0.12.3', fixture.directory)).toMatchObject({ owner: 'liftoff-native' });
+    expect(children).toBeGreaterThan(0);
+  });
+
   it('classifies only exact receipt/inventory/runtime attribution and refuses the real unqualified publisher policy', async () => {
     const fixture = await ownedBundle();
     const port = createNativeUpgradePort(fixture.dependencies);

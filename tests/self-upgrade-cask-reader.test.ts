@@ -1,14 +1,17 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import os from 'node:os';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readHomebrewCaskOwnership } from '../src/adapters/distribution/native-cask.js';
 import { assertCaskOwnership } from '../src/adapters/distribution/native.js';
-import type { CommandResult, CommandRunner } from '../src/process-runner.js';
+import { NodeCommandRunner, type CommandResult, type CommandRunner } from '../src/process-runner.js';
 import type { NativeBundleInventory, NativeReleasePolicy } from '../src/domain/distribution/native-upgrade.js';
 import { upgradeWorld } from './fixtures/installer-upgrade.js';
 
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value));
+afterEach(() => { vi.unstubAllEnvs(); });
 
 function caskWorld(prefix = '/opt/homebrew') {
   const fixture = upgradeWorld({ platform: 'darwin' });
@@ -93,7 +96,7 @@ describe('production Homebrew cask reader on explicit filesystem/process ports',
     for (const [, options] of fixture.run.mock.calls) {
       expect(options).toMatchObject({
         cwd: fixture.world.neutralDirectory, timeoutMs: 30_000, maxOutputBytes: 8192,
-        signal: fixture.controller.signal, ensureProcessTreeSettled: true,
+        signal: fixture.controller.signal, ensureProcessTreeSettled: true, inheritEnvironment: false,
         env: { GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_OPTIONAL_LOCKS: '0',
           DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0', NODE_OPTIONS: '', NODE_PATH: '',
           npm_config_registry: 'https://fixture-mirror.test/npm' }
@@ -103,6 +106,49 @@ describe('production Homebrew cask reader on explicit filesystem/process ports',
     }
     expect(fixture.run.mock.calls[0][0].args.slice(5))
       .toEqual(['config', '--no-includes', '--local', '--get-all', 'remote.origin.url']);
+  });
+
+  it('proves filtered Git options in real harmless children, with a default-merge contrast and no Git or Homebrew execution', async () => {
+    const fixture = caskWorld();
+    const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf cask child env ')));
+    const parentOnly = {
+      GIT_DIR: '/parent-only-fixture', GIT_CONFIG_PARAMETERS: 'fixture-parent-config',
+      GIT_ASKPASS: '/parent-only-never-executed-helper', GH_TOKEN: 'fixture-parent-only-not-a-credential',
+      GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'fixture.key', GIT_CONFIG_VALUE_0: 'fixture-value',
+      HTTP_PROXY: 'http://parent-proxy.invalid', NPM_CONFIG_REGISTRY: 'https://parent-registry.invalid',
+      LIFTOFF_CASK_PARENT_ONLY_FIXTURE: 'fixture-parent-only'
+    };
+    for (const [key, value] of Object.entries(parentOnly)) vi.stubEnv(key, value);
+    const inspector = `console.log(JSON.stringify(Object.fromEntries(${JSON.stringify([
+      ...Object.keys(parentOnly), 'npm_config_registry', 'DO_NOT_TRACK', 'LIFTOFF_TELEMETRY', 'NODE_OPTIONS', 'NODE_PATH'
+    ])}.map(key=>[key,process.env[key] ?? null]))))`;
+    fixture.world.neutralDirectory = directory;
+    const runner = new NodeCommandRunner();
+    let children = 0;
+    fixture.dependencies.runner = { run: vi.fn<CommandRunner['run']>(async (command, options) => {
+      expect(options?.inheritEnvironment).toBe(false);
+      const child = { executable: process.execPath, args: ['-e', inspector] };
+      if (children === 0) {
+        const inherited = await runner.run(child, { ...options, inheritEnvironment: undefined });
+        expect(inherited.status).toBe(0);
+        expect(JSON.parse(inherited.stdout)).toMatchObject(parentOnly);
+      }
+      const observed = await runner.run(child, options);
+      expect(observed.status).toBe(0);
+      expect(JSON.parse(observed.stdout)).toEqual({
+        ...Object.fromEntries(Object.keys(parentOnly).map(key => [key, null])),
+        npm_config_registry: 'https://fixture-mirror.test/npm', DO_NOT_TRACK: '1',
+        LIFTOFF_TELEMETRY: '0', NODE_OPTIONS: '', NODE_PATH: ''
+      });
+      children++;
+      return fixture.run(command, options);
+    }) };
+    try {
+      expect(await fixture.observe()).toMatchObject({ sourceRepository: 'fixture/homebrew-tools' });
+      expect(children).toBe(3);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it.each([

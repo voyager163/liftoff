@@ -49,7 +49,7 @@ export async function readHomebrewCaskOwnership(
       executable: 'git',
       args: ['--no-optional-locks', '--git-dir', path.posix.join(tapRoot, '.git'), '--work-tree', tapRoot, ...args]
     }, {
-      cwd: neutralDirectory, env: environment, signal,
+      cwd: neutralDirectory, env: environment, inheritEnvironment: false, signal,
       timeoutMs: dependencies.probeTimeoutMs ?? selfUpgradeProbeTimeoutMs,
       maxOutputBytes: 8192, ensureProcessTreeSettled: true
     });

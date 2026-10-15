@@ -327,6 +327,13 @@ user-scope ownership; machine-scope installs are not migrated or elevated.
 Linux recovery delegates unchanged to the installed receipt/journal API and
 requires exact selected digests; it is not a macOS cask recovery authority.
 
+Cask Git probes and native verification subprocesses explicitly opt out of
+ambient environment inheritance. Omitted parent variables are not restored over
+their supplied environment; explicitly selected settings remain preserved.
+Real harmless child controls contrast the unchanged default merge with these
+opt-ins, including filtered Git variables and telemetry-disabled verification.
+Their filesystem/signing fixtures still do not qualify a real manager or host.
+
 `createNativeStableSource` in `native-transport.ts` is a bounded read-only material
 reader, not an installer or package-manager availability reader. It uses the
 canonical GitHub stable release and flat catalog, verifies the selected signed
