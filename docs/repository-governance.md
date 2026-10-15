@@ -42,6 +42,45 @@ The legacy ungated local workflow write is not permission to commit, push,
 create execution refs, admit workflows, or dispatch checks. Current v8 public
 activation remains inspection-only; unsupported plans remain blocked.
 
+The private `workflow-source5-prerequisites.ts` selector derives its dependency
+alternatives, applicability, approval gate, invalidation inputs and provider
+obligations from the exact constructed current5 graph. It retains the original
+saved-plan, evidence-header/body and approval commitments and exact namespace
+paths/raw digests from the validated installed record closure. Multiple original
+saved records sharing one semantic plan authority remain separate references,
+not an arbitrary first match. Its immutable output is explicitly `not-observed`
+and `not-authorized`: it is a reference inventory, not a prerequisite session,
+fresh producer observation or permission to execute.
+
+The packaged source entry `dist/workflow-context-validator.js` supplies finite
+real validator bodies for source integrity, backend tests, worker tests, frontend
+builds and framework source. It accepts only `--validator <subject> --source-sha
+<full-commit>` and reuses the existing current5 source/input interpretation and
+literal commands. Selected source membership, bytes and executable modes must
+match the actual Git commit before execution and remain unchanged afterward;
+deleted, untracked, excluded-but-committed or modified component inputs cannot
+become a successful exact-source result. Omitted or uninterpretable validators
+block instead of passing vacuously. Infrastructure, security-report,
+artifact/release and deployment verification bodies are not supplied by this
+entry yet and cannot be substituted with its test/build results.
+
+These are explicit runner operations, never operations performed by plan or
+`--live` review. Tests, builds and framework tools may execute project code and
+write outputs; provider-read-only workflow permissions do not make them a host
+or network sandbox. Their child environment omits inherited credentials and
+uses an owned temporary tool home, which is removed only after original process
+settlement. Unsettled execution or failed cleanup retains its directory and
+refuses success. Reports withhold raw project output and issue no phase,
+provider, native-host, release or green/red matrix qualification. The source
+entry being present in a development npm pack is not a qualified published
+current5 recipe/tool subject or an automation `GITHUB_TOKEN` admission.
+
+Cleanup captures the allocated HOME's directory and ancestor creation identities
+before project execution and rechecks them after settlement. A missing, renamed,
+linked or replaced boundary blocks cleanup without deleting its replacement.
+The retained original pathname is diagnostic, not a claim that the moved
+allocation can still be located there or that cleanup succeeded.
+
 Publication binds one existing `ci/liftoff-workflows-*` review branch, one actual
 parent commit and exact regular per-file before/after byte digests. It commits
 only that inventory, never consumes unrelated developer-staged changes, never
@@ -60,6 +99,14 @@ unsupported extra tag rule is invented. A commit-named tag without that barrier 
 The producer never installs or weakens protection. Exact private runner-group
 workflow admission preserves the repository-only assignment and existing
 workflow entries; it does not provision or broaden access.
+
+The neutral `workflow-runner-admission-observation.ts` module exposes that same
+binding validator and existing assignment/grant readback without importing the
+writer runtime. Its GET-only reader returns the actual selected workflows,
+including an unchanged before-set; callers must still compare the approved
+after-set. It issues no host qualification, prerequisite session or permission
+to patch runner access. The writer reuses this reader and retains its original
+intent, authority, no-repeat and after-set checks.
 
 Current provider permission admission is deliberately narrow: independently
 observed classic OAuth `repo`/`workflow` grants and actual repository push access.
