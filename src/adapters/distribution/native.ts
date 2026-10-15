@@ -9,6 +9,8 @@ import { lookupNativeStableCandidate, type NativeStableSource } from './native-m
 import type { SelfUpgradeDependencies } from './upgrade-host.js';
 import { isStableSemver } from '../../stable-release.js';
 import { compareSemver } from '../../semver.js';
+import { readHomebrewCaskOwnership } from './native-cask.js';
+import { createNativeStableSource } from './native-transport.js';
 
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const sha256 = /^[a-f0-9]{64}$/;
@@ -99,20 +101,32 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, readers: NativeOwnerReaders = {}): NativeUpgradePort {
+export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, overrides: NativeOwnerReaders = {}): NativeUpgradePort {
+  const readers: NativeOwnerReaders = {
+    cask: (...args) => readHomebrewCaskOwnership(dependencies, ...args),
+    ...overrides
+  };
   const api = pathApiForPlatform(dependencies.platform);
   const probeTimeoutMs = dependencies.probeTimeoutMs ?? selfUpgradeProbeTimeoutMs;
   const admitted = new Map<string, string>();
   const observe = async <T>(read: (signal: AbortSignal) => Promise<T>, channel = false): Promise<T> => {
+    if (!Number.isSafeInteger(probeTimeoutMs) || probeTimeoutMs <= 0 || probeTimeoutMs > 2_147_483_647) {
+      throw new SelfUpgradeFailure('failed', channel ? 'channel_invalid' : 'native_invalid');
+    }
     const controller = new AbortController();
+    const started = performance.now();
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      return await Promise.race([read(controller.signal), new Promise<never>((_, reject) => {
+      const result = await Promise.race([read(controller.signal), new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           controller.abort();
           reject(new SelfUpgradeFailure('failed', channel ? 'channel_timeout' : 'native_timeout'));
         }, probeTimeoutMs);
       })]);
+      if (controller.signal.aborted || performance.now() - started >= probeTimeoutMs) {
+        throw new SelfUpgradeFailure('failed', channel ? 'channel_timeout' : 'native_timeout');
+      }
+      return result;
     } catch (error) {
       if (error instanceof SelfUpgradeFailure) throw error;
       throw new SelfUpgradeFailure('failed', channel ? 'channel_unavailable' : 'native_unavailable');
@@ -130,7 +144,7 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, r
   ));
   const run = async (runtime: string, args: string[], directory: string, timeoutMs: number) => {
     const result = await dependencies.runner.run({ executable: runtime, args }, {
-      cwd: directory, env: readOnlyEnvironment(dependencies, directory), timeoutMs, maxOutputBytes: metadataLimit,
+      cwd: directory, env: readOnlyEnvironment(dependencies, directory), inheritEnvironment: false, timeoutMs, maxOutputBytes: metadataLimit,
       ensureProcessTreeSettled: true
     });
     if (commandFailed(result) || result.processTreeSettled === false) {
@@ -282,8 +296,9 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, r
         installation.owner === 'winget' && !approved.winget.certificateSha256) {
         throw new SelfUpgradeFailure('blocked', 'native_unqualified');
       }
-      if (!readers.stable) throw new SelfUpgradeFailure('blocked', 'native_unavailable');
-      const candidate = await lookupNativeStableCandidate(installation, approved, readers.stable);
+      const source = Object.hasOwn(overrides, 'stable') ? readers.stable : createNativeStableSource(approved);
+      if (!source) throw new SelfUpgradeFailure('blocked', 'native_unavailable');
+      const candidate = await lookupNativeStableCandidate(installation, approved, source);
       admitted.set(candidate.identity, JSON.stringify(candidate));
       return Object.freeze(candidate);
     },

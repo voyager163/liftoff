@@ -109,7 +109,7 @@ function harness(
       npm_config_cache: path.posix.join('/', 'private', 'fixture-cache'),
       NPM_CONFIG_PREFIX: cellar
     }),
-    lookupStableRelease: vi.fn(async () => ({ name: '@msn-control/liftoff', version: '0.12.0' })),
+    lookupStableRelease: vi.fn<SelfUpgradeDependencies['lookupStableRelease']>(async () => ({ name: '@msn-control/liftoff', version: '0.12.0' })),
     makeNeutralDirectory: vi.fn(async () => neutralDirectory),
     removeNeutralDirectory: vi.fn(async () => {}),
     realpath: vi.fn(async (file: string) => entry(file).resolved ?? file),

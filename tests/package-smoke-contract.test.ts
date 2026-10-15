@@ -10,7 +10,9 @@ import { runCommand } from '../src/commands.js';
 import { builtinAssets } from '../src/plugins/builtin/assets.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import {
+  assertCompiledPackageFiles,
   assertUnpackedPackageSize,
+  compiledPackageFiles,
   formatSmokeIssues,
   installedAssetByteIssues,
   installedPlanCases,
@@ -27,7 +29,7 @@ const packageJson = JSON.parse(readFileSync(path.join(repositoryRoot, 'package.j
   files: string[];
 };
 const templatePaths = builtinAssets.map((asset) => asset.pathParts.join('/'));
-const required = requiredPackagedAssets as readonly string[];
+const required = requiredPackagedAssets;
 const nonAssetPaths = ['package.json', 'README.md', 'dist/cli.js', 'docs/getting-started.md'];
 const eggInfoPaths = ['PKG-INFO', 'SOURCES.txt', 'dependency_links.txt', 'requires.txt', 'top_level.txt']
   .map((name) => `assets/locks/python-genai/liftoff_template_python_genai.egg-info/${name}`);
@@ -63,6 +65,41 @@ describe('unpacked package budget', () => {
   it.each([undefined, null, '12582912', -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])(
     'rejects an invalid measured size %s instead of bypassing the budget', (bytes) => {
       expect(() => assertUnpackedPackageSize(bytes)).toThrow(TypeError);
+    }
+  );
+});
+
+describe('compiled package surface', () => {
+  it('declares every emitted JavaScript module and declaration without development source maps', () => {
+    expect(packageJson.files.filter((entry) => entry === 'dist' || entry.startsWith('dist/')))
+      .toEqual(compiledPackageFiles);
+    expect(() => assertCompiledPackageFiles([
+      ...nonAssetPaths, 'dist/cli.d.ts', 'dist/nested/reader.js', 'dist/nested/reader.d.ts'
+    ])).not.toThrow();
+    expect(issuesFor(consistentPack, packageJson.files)).toEqual([]);
+  });
+
+  it('declares exactly the reviewed native helpers and policies outside compiled output', () => {
+    expect(packageJson.files.filter((entry) => entry.startsWith('distribution/'))).toEqual([
+      'distribution/native/native-release-admission.mjs',
+      'distribution/native/native-release-admission.d.mts',
+      'distribution/native/native-release-catalog.mjs',
+      'distribution/native/native-release-catalog.d.mts',
+      'distribution/native/release-policy.json',
+      'distribution/native/platforms.json'
+    ]);
+  });
+
+  it.each(['dist/cli.js.map', 'dist/nested/reader.d.ts.map', 'dist/unreviewed.json'])(
+    'refuses development or unreviewed compiled payload %s', (entry) => {
+      expect(() => assertCompiledPackageFiles([...nonAssetPaths, entry]))
+        .toThrow(`Packed compiled output must contain only JavaScript and declarations: ${entry}`);
+    }
+  );
+
+  it.each([null, 'dist/cli.js', [undefined], Array(1)])(
+    'refuses an uninterpretable packed path inventory %s', (value) => {
+      expect(() => assertCompiledPackageFiles(value)).toThrow(TypeError);
     }
   );
 });

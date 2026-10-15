@@ -230,13 +230,23 @@ describe('captured generated Manual provider and module relationships', () => {
     { projectType: 'standard', apiStack: 'go-huma' },
     ...projectCatalog.patterns.map(pattern => ({ projectType: 'genai', pattern: pattern.id }))
   ])('binds actual generated locks and one application module from every selected environment for %j', async workload => {
-    const { manifest, files } = generated(workload);
+    const { manifest, files, artifacts } = generated(workload);
     const before = canonicalSha256([...files]);
     const result = deriveManualInfrastructureInputs(manifest, files, await parsedFiles(files));
     expect(result.roots).toHaveLength(3);
     expect(result.roots.map(root => root.component)).toEqual(
       manifest.project.workload.environments.map(id => `opentofu-environment:${id}`));
     expect(result.roots.every(root => root.module.key === 'application' && root.module.source === '../../modules/application')).toBe(true);
+    expect(artifacts.find(artifact =>
+      artifact.pathParts.join('/') ===
+      'infrastructure/opentofu/azure/modules/application/variables.tf')!.content)
+      .toContain('default     = null');
+    expect(artifacts.filter(artifact => artifact.logicalName.endsWith('-tfvars'))
+      .every(artifact => !artifact.content.includes('liftoff_activation_ownership'))).toBe(true);
+    expect(artifacts.find(artifact => artifact.logicalName === 'opentofu-application-main')!.content)
+      .not.toContain('"AcrPush"');
+    expect(artifacts.find(artifact => artifact.logicalName === 'opentofu-readme')!.content)
+      .toContain('ordinary, Manual, governance-none');
     expect(canonicalSha256([...files])).toBe(before);
     expect(result).not.toHaveProperty('approved');
   }, 30_000);

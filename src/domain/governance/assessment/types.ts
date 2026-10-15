@@ -158,6 +158,7 @@ export interface LiveAssessmentScope {
     runnerId: number;
     groupId: number | null;
     networkConfigurationId: string | null;
+    label: string;
   } | null;
   azure: AzureAssessmentBinding[];
 }

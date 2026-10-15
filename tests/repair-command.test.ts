@@ -381,7 +381,7 @@ describe('interactive repair and truthful command surfaces', () => {
     ['--application-patch', 'patch.json', '--allow-dependency-preparation'],
     ['--approve-plan', 'a'.repeat(64), '--allow-dependency-preparation'],
     ['--yes'], ['--force']
-  ])('rejects expanded or ambiguous authority %j', (flags) => {
+  ].map(flags => ({ flags })))('rejects expanded or ambiguous authority $flags', ({ flags }) => {
     expect(() => parseArgs(['repair', ...flags])).toThrow();
   });
 });

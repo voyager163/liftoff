@@ -147,6 +147,11 @@ async function withLock(prefix, operation, expectedStaleLockSha256) {
   }
 }
 
+/**
+ * @param {{ source: string, prefix: string, expectedManifestSha256: string,
+ *   expectedCurrent: string | null, development?: boolean,
+ *   admitHost: () => unknown | Promise<unknown>, interruptAt?: string }} options
+ */
 export async function installOwnedBundle({
   source, prefix, expectedManifestSha256, expectedCurrent, development = false,
   admitHost, interruptAt
@@ -212,6 +217,7 @@ export async function installOwnedBundle({
   });
 }
 
+/** @param {{ prefix: string, expectedJournalSha256: string, expectedStaleLockSha256?: string }} options */
 export async function recoverOwnedInstallation({ prefix, expectedJournalSha256, expectedStaleLockSha256 }) {
   assert.match(expectedJournalSha256 ?? '', /^[a-f0-9]{64}$/, 'Recovery requires the exact selected journal digest.');
   assert.equal((await bundleFile(path.join(prefix, transactionName))).sha256, expectedJournalSha256,

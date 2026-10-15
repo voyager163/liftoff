@@ -29,9 +29,12 @@
     "liftoff": "dist/cli.js"
   },
   "files": [
-    "dist",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
     "distribution/native/native-release-admission.mjs",
     "distribution/native/native-release-admission.d.mts",
+    "distribution/native/native-release-catalog.mjs",
+    "distribution/native/native-release-catalog.d.mts",
     "distribution/native/release-policy.json",
     "distribution/native/platforms.json",
     "assets/governance/modern/source-contracts.json",

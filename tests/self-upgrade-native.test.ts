@@ -1,82 +1,23 @@
-import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { copyFile, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { NodeCommandRunner } from '../src/process-runner.js';
+import { NodeCommandRunner, type CommandRunner } from '../src/process-runner.js';
 import { defaultSelfUpgradeDependencies } from '../src/adapters/distribution/upgrade-host.js';
 import { bundleInventory } from '../scripts/native-bundle-contract.mjs';
 import { inspectOwnedInstallation, installOwnedBundle } from '../scripts/native-install.mjs';
 import { runSelfUpgrade } from '../src/application/upgrade/self-upgrade.js';
 import { cliInstallationLayer } from '../src/application/diagnose/doctor.js';
-import { admitNativeStableMaterial, lookupNativeStableCandidate, type NativeStableMaterial } from '../src/adapters/distribution/native-metadata.js';
+import { admitNativeStableMaterial, authenticateNativeStableMetadata, lookupNativeStableCandidate } from '../src/adapters/distribution/native-metadata.js';
 import { assertCaskOwnership, assertWinGetOwnership, createNativeUpgradePort, nativePolicy } from '../src/adapters/distribution/native.js';
 import { SelfUpgradeFailure, selfUpgradeExitCode, selfUpgradeRemedy } from '../src/domain/distribution/liftoff-upgrade.js';
-import type { NativeCandidate, NativeInstallation, NativeReleasePolicy, NativeUpgradePort } from '../src/domain/distribution/native-upgrade.js';
+import type { NativeCandidate, NativeInstallation, NativeUpgradePort } from '../src/domain/distribution/native-upgrade.js';
 import { upgradeWorld } from './fixtures/installer-upgrade.js';
+import { nativeInstallation as installation, signedMaterial } from './fixtures/native-stable-material.js';
 
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const json = (value: unknown) => Buffer.from(JSON.stringify(value));
-const installation: NativeInstallation = {
-  owner: 'liftoff-native', version: '0.12.3', target: 'linux-x64', packageRoot: '/fixture/versions/old/application',
-  bundleRoot: '/fixture/versions/old', launcher: '/fixture/versions/old/bin/liftoff',
-  runtime: '/fixture/versions/old/runtime/node', prefix: '/fixture', current: 'versions/old',
-  manifestSha256: 'a'.repeat(64), inventorySha256: 'b'.repeat(64), sourceCommit: 'c'.repeat(40), identity: 'fixture-local-owner'
-};
-
-function signedMaterial() {
-  const key = generateKeyPairSync('ed25519');
-  const keyDigest = hash(key.publicKey.export({ type: 'spki', format: 'der' }));
-  const policy: NativeReleasePolicy = {
-    schemaVersion: 1, repository: 'voyager163/liftoff', approvedSigningKeySha256: keyDigest,
-    homebrew: { cask: null, sourceRepository: null, developerTeamId: null },
-    winget: { packageIdentifier: null, publisher: null, installerAppId: null, certificateSha256: null },
-    linux: { archiveSigningKeySha256: keyDigest }
-  };
-  const archive = 'liftoff-0.13.0-linux-x64.tar.gz';
-  const assets = new Map<string, Buffer>([
-    [archive, Buffer.from('fixture deployed archive')],
-    ['sbom.cdx.json', json({ bomFormat: 'CycloneDX', specVersion: '1.6',
-      components: [{ name: '@msn-control/liftoff', version: '0.13.0' }, { name: 'node' }, { name: 'fixture-dependency' }],
-      properties: [{ name: 'liftoff:sourceCommit', value: 'd'.repeat(40) },
-        { name: 'liftoff:inventorySha256', value: 'e'.repeat(64) }] })],
-    ['NOTICE', Buffer.from('Fixture-only license notices')]
-  ]);
-  assets.set('provenance.json', json({
-    _type: 'https://in-toto.io/Statement/v1', predicateType: 'https://slsa.dev/provenance/v1',
-    subject: [{ name: archive, digest: { sha256: hash(assets.get(archive)!) } }],
-    predicate: { buildDefinition: { externalParameters: {
-      repository: policy.repository, commit: 'd'.repeat(40), packageVersion: '0.13.0', target: { platform: 'linux', architecture: 'x64' }
-    } } }
-  }));
-  const record = {
-    schemaVersion: 1, kind: 'liftoff-native-release-candidate', repository: policy.repository, commit: 'd'.repeat(40),
-    version: '0.13.0', target: 'linux-x64', manifestSha256: 'f'.repeat(64), inventorySha256: 'e'.repeat(64),
-    files: [archive, 'sbom.cdx.json', 'provenance.json', 'NOTICE'].map(filename => ({
-      filename, bytes: assets.get(filename)!.length, sha256: hash(assets.get(filename)!), mode: 0o644
-    }))
-  };
-  const platformEvidence = new Map(['minimumHost', 'installerOwnership', 'signing', 'packageNamespace', 'hclSourceCorrespondence']
-    .map(name => [name, json({ fixtureOnly: true, name })]));
-  const qualification = {
-    ...record, qualification: Object.fromEntries([...platformEvidence.keys()].map(name => [name, true])),
-    evidenceDigests: Object.fromEntries([...platformEvidence].map(([name, bytes]) => [name, hash(bytes)])),
-    platformSigningIdentity: keyDigest
-  };
-  const material: NativeStableMaterial = {
-    record: json(record), qualification: json(qualification), signature: sign(null, json(qualification), key.privateKey),
-    publicKey: Buffer.from(key.publicKey.export({ type: 'spki', format: 'pem' })), assets, platformEvidence,
-    stableTag: 'v0.13.0', draft: false, prerelease: false,
-    bundleRoot: path.resolve(os.tmpdir(), 'liftoff-virtual-candidate')
-  };
-  const resign = () => {
-    material.record = json(record);
-    material.qualification = json(qualification);
-    material.signature = sign(null, material.qualification, key.privateKey);
-  };
-  return { material, policy, record, qualification, assets, platformEvidence, resign };
-}
-
 function managerObservationFixture(platform: 'darwin' | 'win32') {
   const api = platform === 'win32' ? path.win32 : path.posix;
   const root = platform === 'win32' ? 'C:\\virtual\\fixture-native' : '/virtual/fixture-native';
@@ -96,9 +37,11 @@ function managerObservationFixture(platform: 'darwin' | 'win32') {
     launcher, runtime: { executable: runtime }, inventory };
   files.set(api.join(root, 'bundle.json'), json(manifest));
   const policy = signedMaterial().policy;
-  policy.homebrew = { cask: 'fixture/tools/liftoff', sourceRepository: 'fixture/tools', developerTeamId: 'ABCDEFGHIJ' };
-  policy.winget = { packageIdentifier: 'Fixture.Liftoff', publisher: 'Fixture Publisher',
+  const homebrewPolicy = { cask: 'fixture/tools/liftoff', sourceRepository: 'fixture/tools', developerTeamId: 'ABCDEFGHIJ' };
+  const wingetPolicy = { packageIdentifier: 'Fixture.Liftoff', publisher: 'Fixture Publisher',
     certificateSha256: '0'.repeat(64), installerAppId: 'fixture-app' };
+  policy.homebrew = homebrewPolicy;
+  policy.winget = wingetPolicy;
   const dependencies = { ...defaultSelfUpgradeDependencies(), platform, architecture: manifest.platform.architecture,
     execPath: api.join(root, ...runtime.split('/')), runningExecutable: api.join(root, 'application', 'dist', 'cli.js'),
     resolveLiftoff: async () => api.join(root, ...launcher.split('/')), realpath: async (file: string) => file,
@@ -108,12 +51,12 @@ function managerObservationFixture(platform: 'darwin' | 'win32') {
       return content;
     },
     runner: { run: async command => ({ command, displayCommand: 'synthetic native inventory port',
-      stdout: JSON.stringify(inventory), stderr: '', status: 0, signal: null, timedOut: false }) } };
+      stdout: JSON.stringify(inventory), stderr: '', status: 0, signal: null, timedOut: false }) } satisfies CommandRunner };
   const packageRoot = api.join(root, 'application');
-  const cask = { fullToken: policy.homebrew.cask, sourceRepository: policy.homebrew.sourceRepository,
+  const cask = { fullToken: homebrewPolicy.cask, sourceRepository: homebrewPolicy.sourceRepository,
     bundleRoot: root, launcher: api.join(root, ...launcher.split('/')), installedVersion: '0.12.3' };
-  const winget = { packageIdentifier: policy.winget.packageIdentifier, source: 'fixture-source', publisher: policy.winget.publisher,
-    certificateSha256: policy.winget.certificateSha256, appId: policy.winget.installerAppId, scope: 'user' as const,
+  const winget = { packageIdentifier: wingetPolicy.packageIdentifier, source: 'fixture-source', publisher: wingetPolicy.publisher,
+    certificateSha256: wingetPolicy.certificateSha256, appId: wingetPolicy.installerAppId, scope: 'user' as const,
     installLocation: root, launcher: cask.launcher, installedVersion: '0.12.3' };
   return { dependencies, packageRoot, policy, cask, winget };
 }
@@ -121,11 +64,37 @@ function managerObservationFixture(platform: 'darwin' | 'win32') {
 describe('independently signed native candidate admission', () => {
   it('binds an approved signer, source, inventory, qualification, provenance and every deployed asset', async () => {
     const fixture = signedMaterial();
+    expect(fixture.policy.approvedSigningKeySha256).not.toBe(fixture.policy.linux.archiveSigningKeySha256);
     expect(await admitNativeStableMaterial(fixture.material, installation, fixture.policy)).toEqual({
       version: '0.13.0', target: 'linux-x64', sourceCommit: 'd'.repeat(40), manifestSha256: 'f'.repeat(64),
       inventorySha256: 'e'.repeat(64), identity: expect.stringMatching(/^[a-f0-9]{64}$/), bundleRoot: fixture.material.bundleRoot,
       archiveSha256: hash(fixture.assets.get('liftoff-0.13.0-linux-x64.tar.gz')!)
     });
+  });
+
+  it.each([
+    { name: 'missing signature', change: (f: ReturnType<typeof signedMaterial>) => { delete f.material.archiveSignature; } },
+    { name: 'missing public key', change: (f: ReturnType<typeof signedMaterial>) => { delete f.material.archivePublicKey; } },
+    { name: 'oversized signature', change: (f: ReturnType<typeof signedMaterial>) => { f.material.archiveSignature = Buffer.alloc(65); } },
+    { name: 'oversized public key', change: (f: ReturnType<typeof signedMaterial>) => { f.material.archivePublicKey = Buffer.alloc(4097); } },
+    { name: 'tampered signature', change: (f: ReturnType<typeof signedMaterial>) => { f.material.archiveSignature![0] ^= 1; } },
+    { name: 'qualification key substituted for archive key', change: (f: ReturnType<typeof signedMaterial>) => {
+      f.material.archivePublicKey = f.material.publicKey;
+    } },
+    { name: 'different algorithm even with approved SPKI', change: (f: ReturnType<typeof signedMaterial>) => {
+      const key = generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey;
+      f.policy.linux.archiveSigningKeySha256 = hash(key.export({ type: 'spki', format: 'der' }));
+      f.qualification.platformSigningIdentity = f.policy.linux.archiveSigningKeySha256;
+      f.material.archivePublicKey = Buffer.from(key.export({ type: 'spki', format: 'pem' }));
+      f.resign();
+    } }
+  ])('refuses $name independently of valid qualification evidence', async ({ change }) => {
+    const fixture = signedMaterial();
+    change(fixture);
+    await expect(authenticateNativeStableMetadata(fixture.material, installation, fixture.policy))
+      .resolves.toMatchObject({ record: { target: 'linux-x64' } });
+    await expect(admitNativeStableMaterial(fixture.material, installation, fixture.policy))
+      .rejects.toMatchObject({ reasonCode: 'native_invalid' });
   });
 
   it('requires the separately qualified Windows installer to be deployed with exact source/publisher/AppId/certificate binding', async () => {
@@ -168,6 +137,7 @@ describe('independently signed native candidate admission', () => {
 
 const ownedRoots: string[] = [];
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const root of ownedRoots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
@@ -200,11 +170,12 @@ async function ownedBundle(version = '0.12.3') {
   const manifestBytes = json(manifest);
   await writeFile(path.join(source, 'bundle.json'), manifestBytes);
   const expectedManifestSha256 = hash(manifestBytes);
-  const installed = await installOwnedBundle({ source, prefix, expectedManifestSha256, expectedCurrent: null, admitHost: () => {} });
+  const installed = await installOwnedBundle({ source, prefix, expectedManifestSha256, expectedCurrent: null,
+    admitHost: () => {}, interruptAt: undefined });
   const bundleRoot = path.join(prefix, installed.current);
   const dependencies = {
     ...defaultSelfUpgradeDependencies(), platform: 'linux' as const, architecture: 'x64',
-    runner: { run: (command, options) => new NodeCommandRunner().run({ ...command, executable: process.execPath }, options) },
+    runner: { run: (command, options) => new NodeCommandRunner().run({ ...command, executable: process.execPath }, options) } satisfies CommandRunner,
     execPath: path.join(bundleRoot, 'runtime/node'), runningExecutable: path.join(bundleRoot, 'application/dist/cli.js'),
     resolveLiftoff: async () => path.join(prefix, 'bin/liftoff'),
     environment: { PATH: path.dirname(process.execPath), HOME: root, NODE_OPTIONS: '--require=foreign-fixture' }
@@ -214,6 +185,35 @@ async function ownedBundle(version = '0.12.3') {
 }
 
 describe.skipIf(process.platform === 'win32')('native adapter on explicit private receipt-owned fixtures', () => {
+  it('proves the supplied native verification environment reaches actual children without ambient reinheritance', async () => {
+    const fixture = await ownedBundle();
+    vi.stubEnv('LIFTOFF_NATIVE_PARENT_ONLY_FIXTURE', 'fixture-parent-only');
+    vi.stubEnv('NPM_CONFIG_REGISTRY', 'https://parent-registry.invalid');
+    const inspector = { executable: process.execPath, args: ['-e',
+      'console.log(JSON.stringify({parent:process.env.LIFTOFF_NATIVE_PARENT_ONLY_FIXTURE ?? null,' +
+      'registry:process.env.NPM_CONFIG_REGISTRY ?? null,telemetry:process.env.LIFTOFF_TELEMETRY,' +
+      'tracking:process.env.DO_NOT_TRACK,nodeOptions:process.env.NODE_OPTIONS,home:process.env.HOME}))'] };
+    const runner = new NodeCommandRunner();
+    const original = fixture.dependencies.runner;
+    let children = 0;
+    const port = createNativeUpgradePort({ ...fixture.dependencies, runner: { run: async (command, options) => {
+      expect(options?.inheritEnvironment).toBe(false);
+      if (children === 0) {
+        const inherited = await runner.run(inspector, { ...options, inheritEnvironment: undefined });
+        expect(inherited.status).toBe(0);
+        expect(JSON.parse(inherited.stdout)).toMatchObject({ parent: 'fixture-parent-only', registry: 'https://parent-registry.invalid' });
+      }
+      const observed = await runner.run(inspector, options);
+      expect(observed.status).toBe(0);
+      expect(JSON.parse(observed.stdout)).toEqual({ parent: null, registry: null, telemetry: '0',
+        tracking: '1', nodeOptions: '', home: fixture.root });
+      children++;
+      return original.run(command, options);
+    } } });
+    expect(await port.inspect(fixture.packageRoot, '0.12.3', fixture.directory)).toMatchObject({ owner: 'liftoff-native' });
+    expect(children).toBeGreaterThan(0);
+  });
+
   it('classifies only exact receipt/inventory/runtime attribution and refuses the real unqualified publisher policy', async () => {
     const fixture = await ownedBundle();
     const port = createNativeUpgradePort(fixture.dependencies);
@@ -410,8 +410,8 @@ function nativeWorld(owner: NativeInstallation['owner'] = 'liftoff-native') {
   };
   const port: NativeUpgradePort = {
     inspect: vi.fn(async () => selected), stable: vi.fn(async () => candidate),
-    channel: vi.fn(async () => ({ status: 'available', version: candidate.version, identity: 'fixture-channel', exactApply: true })),
-    apply: vi.fn(async () => ({ effects: 'installed' })), verify: vi.fn(async () => {})
+    channel: vi.fn<NativeUpgradePort['channel']>(async () => ({ status: 'available', version: candidate.version, identity: 'fixture-channel', exactApply: true })),
+    apply: vi.fn<NativeUpgradePort['apply']>(async () => ({ effects: 'installed' })), verify: vi.fn(async () => {})
   };
   fixture.dependencies.nativeUpgrade = port;
   return { ...fixture, selected, candidate, port };
@@ -435,8 +435,13 @@ describe('owner-aware orchestration and read-only doctor', () => {
       owner: platform === 'darwin' ? 'homebrew-cask' : 'winget',
       ...(platform === 'win32' ? { managerScope: 'user' } : {})
     });
-    await expect(createNativeUpgradePort(fixture.dependencies).inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral'))
+    await expect(createNativeUpgradePort(fixture.dependencies, { cask: undefined }).inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral'))
       .rejects.toMatchObject({ reasonCode: 'native_unavailable' });
+    if (platform === 'darwin') {
+      await expect(createNativeUpgradePort(fixture.dependencies, { stable: { readStable: async () => signedMaterial().material } })
+        .inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral'))
+        .rejects.toMatchObject({ reasonCode: 'unsupported_installation' });
+    }
     fixture.policy.homebrew.cask = null;
     fixture.policy.winget.packageIdentifier = null;
     await expect(port.inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral'))
@@ -578,6 +583,100 @@ describe('owner-aware orchestration and read-only doctor', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('uses the selected doctor probe deadline for native stable metadata rather than the ordinary upgrade deadline', async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    let outcome: unknown;
+    const fixture = signedMaterial();
+    const dependencies = { ...defaultSelfUpgradeDependencies(), probeTimeoutMs: 2_000, readJson: async () => fixture.policy };
+    const pending = createNativeUpgradePort(dependencies, {
+      stable: { readStable: async (_installation, observed) => {
+        signal = observed;
+        return new Promise(() => {});
+      } }
+    }).stable(installation, '/virtual/neutral').then(value => { outcome = value; }, error => { outcome = error; });
+    try {
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(outcome).toBeUndefined();
+      expect(signal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(outcome).toMatchObject({ reasonCode: 'native_timeout' });
+      expect(signal?.aborted).toBe(true);
+    } finally {
+      await vi.runAllTimersAsync();
+      await pending;
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    { kind: 'owner', elapsed: 10 }, { kind: 'owner', elapsed: 11 },
+    { kind: 'channel', elapsed: 10 }, { kind: 'channel', elapsed: 11 }
+  ])('rejects a late $kind observation at $elapsed ms even when synchronous work delays the timeout callback', async ({ kind, elapsed }) => {
+    const fixture = managerObservationFixture('darwin');
+    fixture.dependencies.probeTimeoutMs = 10;
+    const world = nativeWorld();
+    const ownerRead = vi.fn(async () => fixture.cask);
+    const channelRead = vi.fn(async () => ({
+      status: 'available' as const, version: world.candidate.version, identity: 'fixture-channel',
+      exactApply: false, artifactSha256: '1'.repeat(64)
+    }));
+    world.candidate.archiveSha256 = '1'.repeat(64);
+    let ownerSignal: AbortSignal | undefined;
+    let channelSignal: AbortSignal | undefined;
+    const port = createNativeUpgradePort(fixture.dependencies, {
+      cask: async (...args) => {
+        ownerSignal = args[3];
+        return ownerRead();
+      },
+      channel: async (...args) => {
+        channelSignal = args[3];
+        return channelRead();
+      }
+    });
+    const clock = vi.spyOn(performance, 'now').mockReturnValueOnce(0).mockReturnValue(elapsed);
+    try {
+      await expect(kind === 'owner'
+        ? port.inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral')
+        : port.channel(world.selected, world.candidate, '/virtual/neutral'))
+        .rejects.toMatchObject({ reasonCode: kind === 'owner' ? 'native_timeout' : 'channel_timeout' });
+      expect(kind === 'owner' ? ownerSignal?.aborted : channelSignal?.aborted).toBe(true);
+      expect(kind === 'owner' ? ownerRead : channelRead).toHaveBeenCalledOnce();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it.each([0, -1, 0.5, Number.NaN, Number.POSITIVE_INFINITY, 2_147_483_648])('rejects an invalid native observation deadline %s before reading a provider', async probeTimeoutMs => {
+    const fixture = managerObservationFixture('darwin');
+    const read = vi.fn(async () => fixture.cask);
+    await expect(createNativeUpgradePort({ ...fixture.dependencies, probeTimeoutMs }, { cask: read })
+      .inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral'))
+      .rejects.toMatchObject({ reasonCode: 'native_invalid' });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: 'foreign product', metadata: { name: 'foreign', version: '0.13.0' } },
+    { name: 'missing identity', metadata: { version: '0.13.0' } },
+    { name: 'missing version', metadata: { name: '@msn-control/liftoff' } },
+    { name: 'malformed version', metadata: { name: '@msn-control/liftoff', version: 'stable' } },
+    { name: 'prerelease version', metadata: { name: '@msn-control/liftoff', version: '0.13.0-rc.1' } },
+    { name: 'newer mismatched version', metadata: { name: '@msn-control/liftoff', version: '0.14.0' } }
+  ])('reports exact npm target metadata with $name as invalid, not mirror lag', async ({ metadata }) => {
+    const fixture = upgradeWorld({ mode: 'apply' });
+    fixture.world.viewResult = { stdout: JSON.stringify(metadata) };
+    const result = await runSelfUpgrade(fixture.request, fixture.dependencies);
+    expect(result).toMatchObject({
+      status: 'failed', reasonCode: 'registry_invalid', installationOwner: 'npm',
+      upstream: { status: 'available', version: '0.13.0' }, channel: { status: 'unknown' }, effects: 'none'
+    });
+    expect(fixture.world.trace.some(event => 'run' in event && event.run.args[0] === 'install')).toBe(false);
+    expect(cliInstallationLayer(result).checks).toContainEqual(expect.objectContaining({
+      label: 'channel availability', detail: 'unknown'
+    }));
   });
 
   it('binds exact manager identities to approved namespace, publisher, certificate and installed bundle facts', () => {

@@ -59,7 +59,7 @@ jobs:
           LIFTOFF_NATIVE_PACKAGE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \
           LIFTOFF_NATIVE_ARCHIVE_ROOT="$RUNNER_TEMP/liftoff-native-archive" \
           npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \
-            tests/native-distribution.test.ts tests/native-package-installed.test.ts \
+            tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \
             tests/mac-migration-package.test.ts \
             --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \
             --reporter=default --reporter=json --outputFile.json=qualification/native-bundle.json
@@ -129,7 +129,7 @@ jobs:
           node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-native-bundle" "$RUNNER_TEMP/liftoff-native-archive"
           LIFTOFF_NATIVE_PACKAGE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \
           LIFTOFF_NATIVE_ARCHIVE_ROOT="$RUNNER_TEMP/liftoff-native-archive" \
-          npx vitest run tests/native-bundle.test.ts tests/native-distribution.test.ts tests/native-package-installed.test.ts \
+          npx vitest run tests/native-bundle.test.ts tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \
             --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \
             --reporter=default --reporter=json --outputFile.json=qualification/native-platform-package.json
           node scripts/native-package-report.mjs qualification/native-platform-package.json "$RUNNER_TEMP/liftoff-native-bundle"

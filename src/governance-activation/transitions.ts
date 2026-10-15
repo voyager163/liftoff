@@ -4,9 +4,12 @@ import type {
 } from './transition-ports.js';
 import { executeSeedOperations } from './seed-lifecycle.js';
 import { executeGitOperations } from './phase-publication.js';
-import { executeActivationApproval, executeCredentialReady, executeRulesetPhase } from './phase-governance.js';
+import { executeActivationApproval, executeRulesetPhase } from './phase-governance.js';
 import { remoteImportRetention, executeBootstrapStateDisposal } from './phase-bootstrap-state.js';
-import type { PhaseId, PhaseEvidenceRecord, UserActivationState, SavedTransitionPlan, TransitionOperation } from '../domain/governance/activation/types.js';
+import type {
+  ExternalOperationState, LiveReadbackProof, PhaseOutputBindings,
+  PhaseId, PhaseEvidenceRecord, UserActivationState, SavedTransitionPlan, TransitionOperation
+} from '../domain/governance/activation/types.js';
 import { phaseScope } from '../domain/governance/activation/types.js';
 import {
   phaseOrder, rollbackPlanFromCompletedOperations, phaseById, phaseUsesProvider, assertPlanOperationsAllowed,
@@ -39,6 +42,10 @@ import {
   type CapturedGovernanceTaskSource
 } from './task-writes.js';
 import type { ActivationInputSnapshot } from '../domain/governance/activation/inputs.js';
+import { inspectAzureDeploymentOwnership } from './azure-deployment-ownership.js';
+import { validateExternalOperationCheckpoint } from './external-operations.js';
+import { executeRunnerReadiness } from './runner-readiness.js';
+import { executeProtectedStatePhase } from './protected-state-handover.js';
 
 export type * from './transition-ports.js';
 export { governancePlanDirectoryPathParts, transitionPlanPathParts } from './transition-records.js';
@@ -54,8 +61,17 @@ const builtInExecutors: Partial<Record<PhaseId, PhaseExecutor>> = {
   committed: executeGitOperations,
   pushed: executeGitOperations,
   'activation-approved': executeActivationApproval,
+  'credential-ready': executeGitHubPhase,
   'enforcement-approved': () => ({ status: 'completed', resultState: 'approved', completedOperations: [] }),
-  'credential-ready': executeCredentialReady,
+  'provider-ready': executeAzurePhase,
+  'state-path-selected': executeAzurePhase,
+  'existing-private-path': executeAzurePhase,
+  'bootstrap-local': executeAzurePhase,
+  'runner-ready': executeRunnerReadiness,
+  'private-backend-proof': executeProtectedStatePhase,
+  'remote-import-verified': executeProtectedStatePhase,
+  'application-prerequisites-ready': executeAzurePhase,
+  'application-artifact-ready': executeGitHubPhase,
   'remote-ready': remoteImportRetention,
   'bootstrap-state-disposed': executeBootstrapStateDisposal,
   'rulesets-applied': executeRulesetPhase,
@@ -70,6 +86,7 @@ async function executeBuiltInPhase(input: PhaseAdapterExecutionInput, localReval
   }
   const custom = input.adapters.phases?.[input.phase.id];
   if (custom) return await custom.execute(input);
+  if (input.phase.id === 'runner-ready') return executeRunnerReadiness(input);
   if (phaseScope(input.phase.id) === 'local') {
     const outcome = await executeSeedOperations(input);
     if (!outcome) throw new Error(`The local scope has no executor for ${input.phase.id}.`);
@@ -95,11 +112,24 @@ async function executeBuiltInPhase(input: PhaseAdapterExecutionInput, localReval
  * Phases without an unblocked built-in production executor run only through a trusted injected seam; public
  * execution stops before any plan, intent, or producer effect. Previously issued approvals do not change this.
  */
-function executionCapabilityBlocker(phaseId: PhaseId, adapters: GovernanceTransitionAdapters): string | null {
+function executionCapabilityBlocker(
+  phaseId: PhaseId,
+  adapters: GovernanceTransitionAdapters,
+  credentialEnrollment?: { protectedStdin: boolean }
+): string | null {
   const capability = phaseCapabilities[phaseId];
   if (adapters.phases?.[phaseId]) return null;
+  if ((phaseId === 'private-backend-proof' || phaseId === 'remote-import-verified' ||
+    phaseId === 'application-prerequisites-ready' || phaseId === 'application-artifact-ready') &&
+    adapters.protectedStateHandover && adapters.protectedStateCustody) {
+    return null;
+  }
+  if (phaseId === 'bootstrap-state-disposed' && adapters.protectedStateCustody) return null;
   if (capability.executor === 'injected-only' && adapters.githubRulesets &&
     (phaseId === 'rulesets-applied' || phaseId === 'live-readback')) return null;
+  if (phaseId === 'credential-ready' && !credentialEnrollment) {
+    return 'Credential enrollment must be explicitly invoked with governance credential-enroll after reviewing and approving the credential-ready plan. No protected input was read.';
+  }
   if (capability.executor === 'built-in' && !capability.blocker) return null;
   return capability.blocker ?? `No production executor is available for ${phaseId}.`;
 }
@@ -247,7 +277,7 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   }
   const phase = phaseById(input.inspection.graph, initialPlan.phaseId);
   assertPlanOperationsAllowed(initialPlan, phase);
-  const capabilityBlocker = executionCapabilityBlocker(phase.id, adapters);
+  const capabilityBlocker = executionCapabilityBlocker(phase.id, adapters, input.credentialEnrollment);
   if (capabilityBlocker) return capabilityBlockedResult(input.inspection, initialPlan, capabilityBlocker);
   if (input.reviewedPlan && (input.reviewedPlan.planDigest !== initialPlan.planDigest ||
     input.reviewedPlan.stateHash !== initialPlan.stateHash ||
@@ -256,6 +286,9 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   }
   const pendingOperation = input.inspection.state.phases[phase.id].operation;
   if (pendingOperation) {
+    if (pendingOperation.status !== 'running' && !input.recovery) {
+      throw new Error('A terminal external operation requires explicit recovery after current ownership is reverified; ordinary retry cannot dispatch compensation.');
+    }
     const checkpointDigest = pendingOperation.planDigest ?? input.inspection.state.phases[phase.id].executionPlanDigest;
     const dispatched = input.inspection.contexts[phase.id].reviewedPlans?.find((plan) => plan.planDigest === checkpointDigest);
     if (!dispatched || dispatched.phaseId !== phase.id || dispatched.scope !== initialPlan.scope ||
@@ -295,7 +328,6 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   }
   if (freshPlan) await input.assertReviewedPlan?.(freshPlan);
   await input.assertProtectedInputs?.();
-  const taskSource = localRevalidation ? undefined : await captureGovernanceTaskSource(freshInspection, initialPlan);
   const sourceBlocker = sourceOfTruthAllowsPhase(freshInspection, initialPlan.phaseId);
   if (sourceBlocker) {
     const nextState = blockedState({ inspection: freshInspection, phase, plan: initialPlan, blocker: sourceBlocker, now });
@@ -306,8 +338,71 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   const inputOptions = { sensitivePathExclusions: freshInspection.sensitivePathExclusions };
   const beforeSnapshot = await readActivationInputSnapshot(freshInspection.projectRoot, freshInspection.manifest, runner, inputOptions);
   let executionStateHash = initialPlan.stateHash;
+  const applicationProducer = !adapters.phases?.[phase.id] &&
+    (phase.id === 'application-prerequisites-ready' || phase.id === 'application-artifact-ready');
+  let applicationDispatchIntentRecorded = false;
+  const applicationObservationOnly = phase.id === 'application-prerequisites-ready' &&
+    !adapters.phases?.[phase.id] && pendingOperation?.provider === 'azure' &&
+    pendingOperation.actionId === 'azure.prerequisites.apply' &&
+    !!pendingOperation.planDigest &&
+    !!freshInspection.state.phases[phase.id].executionPlanDigest;
+  const adapterInput = {
+    inspection: freshInspection, plan: initialPlan, phase, runner, adapters, now,
+    clock, lease, recovery: input.recovery, credentialEnrollment: input.credentialEnrollment,
+    applicationObservationOnly,
+    recordApplicationDispatchIntent: async (operation: TransitionOperation) => {
+      if (!applicationProducer || pendingOperation || applicationDispatchIntentRecorded ||
+        !['azure.prerequisites.apply', 'github.artifact.build-dispatch'].includes(operation.actionId) ||
+        !initialPlan.operations.some((planned) => canonicalSha256(planned) === canonicalSha256(operation))) {
+        throw new Error('Application dispatch intent must identify one exact new approved producer operation.');
+      }
+      await lease.assertHeld();
+      await input.assertProtectedInputs?.();
+      const intent = nextStateForOutcome({ inspection: freshInspection, phase, plan: initialPlan,
+        resultState: 'running', now: clock() });
+      executionStateHash = (await writeOutcomeTransaction({ projectRoot: freshInspection.projectRoot,
+        plan: initialPlan, nextState: intent, expectedStateHash: executionStateHash })).stateHash;
+      applicationDispatchIntentRecorded = true;
+      executionStarted = true;
+    },
+    recordApplicationProgress: async (progress: {
+      operation: ExternalOperationState;
+      outputs: PhaseOutputBindings;
+      liveReadback: readonly LiveReadbackProof[];
+    }) => {
+      if (phase.id !== 'application-prerequisites-ready' && phase.id !== 'application-artifact-ready') {
+        throw new Error('Application progress checkpoints cannot change another phase.');
+      }
+      await lease.assertHeld();
+      const actual = validateExternalOperationCheckpoint({
+        plan: initialPlan, operation: progress.operation, liveReadback: progress.liveReadback,
+        observedAt: clock(), ...(pendingOperation ? { previous: pendingOperation } : {})
+      });
+      const nextState = nextStateForOutcome({
+        inspection: freshInspection, phase, plan: initialPlan, resultState: 'running',
+        now: clock(), operation: actual, outputs: progress.outputs
+      });
+      executionStateHash = (await writeOutcomeTransaction({
+        projectRoot: freshInspection.projectRoot, plan: initialPlan, nextState, expectedStateHash: executionStateHash
+      })).stateHash;
+    }
+  };
+  const ownership = await inspectAzureDeploymentOwnership(adapterInput);
+  if (ownership?.blocker && !applicationObservationOnly) {
+    return executionBlockedResult(
+      freshInspection,
+      initialPlan,
+      saved,
+      ownership.blocker,
+      ownership.completedOperations,
+      initialPlan.stateHash,
+      [],
+      false
+    );
+  }
+  const taskSource = localRevalidation ? undefined : await captureGovernanceTaskSource(freshInspection, initialPlan);
   const readOnlyMutations = new Set(['none', 'read-worktree', 'github-read', 'azure-read', 'backend-state-read', 'write-evidence', 'write-activation-state', 'project-governance-tasks']);
-  const executionStarted = phaseScope(phase.id) !== 'local' && initialPlan.operations.some((operation) =>
+  let executionStarted = !applicationProducer && phaseScope(phase.id) !== 'local' && initialPlan.operations.some((operation) =>
     (operation.remote || operation.effects?.some((effect) => effect.remote)) &&
     (!readOnlyMutations.has(operation.mutationClass) || operation.effects?.some((effect) => !readOnlyMutations.has(effect.mutationClass))));
   if (executionStarted) {
@@ -320,14 +415,50 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     })).stateHash;
     await lease.assertHeld();
   }
-  const outcome = await executeBuiltInPhase({
-    inspection: freshInspection, plan: initialPlan, phase, runner, adapters, now,
-    clock, lease, recovery: input.recovery, credentialEnrollment: input.credentialEnrollment
-  }, localRevalidation);
+  const outcome = await executeBuiltInPhase(adapterInput, localRevalidation);
   await input.assertProtectedInputs?.();
-  const completedOperations = outcome.completedOperations ?? [];
-  if (outcome.operation && !initialPlan.operations.some((operation) => operation.actionId === outcome.operation!.actionId)) {
-    throw new Error('The reported external operation has no corresponding action in the reviewed plan.');
+  const completedOperations = [
+    ...(ownership?.completedOperations ?? []),
+    ...(outcome.completedOperations ?? [])
+  ];
+  const evidenceOwnership = applicationObservationOnly && outcome.status === 'completed' ? undefined : ownership;
+  const effectiveEvidencePayload = evidenceOwnership?.payload && isRecord(outcome.evidencePayload)
+    ? { ...outcome.evidencePayload, deploymentOwnership: evidenceOwnership.payload }
+    : outcome.evidencePayload;
+  const effectiveLiveReadback = evidenceOwnership?.liveReadback || outcome.liveReadback
+    ? [...(evidenceOwnership?.liveReadback ?? []), ...(outcome.liveReadback ?? [])]
+    : undefined;
+  if (pendingOperation && !outcome.operation) {
+    if ((phase.id === 'application-prerequisites-ready' || phase.id === 'application-artifact-ready') &&
+      !adapters.phases?.[phase.id] && outcome.status === 'blocked' &&
+      !outcome.completedOperations?.length) {
+      return executionBlockedResult(freshInspection, initialPlan, saved,
+        outcome.blocker ?? 'Current application operation observation was refused; the original handle was retained without claiming fresh proof.',
+        ownership?.completedOperations ?? [], executionStateHash ?? initialPlan.stateHash,
+        outcome.cleanupWarnings ?? [], false);
+    }
+    throw new Error('A resumed external operation must return the exact freshly reobserved provider handle.');
+  }
+  if (outcome.status === 'pending' && (!outcome.operation || outcome.operation.status !== 'running')) {
+    throw new Error('A pending phase must provide a concrete resumable external operation handle.');
+  }
+  if (outcome.status === 'blocked' && outcome.retryableWithoutStateMutation && outcome.operation) {
+    throw new Error('A producer cannot request a state-free retry after reporting remote writes or an external operation handle.');
+  }
+  const validatedOperation = outcome.operation
+    ? validateExternalOperationCheckpoint({
+      plan: initialPlan,
+      operation: outcome.operation,
+      ...(pendingOperation ? { previous: pendingOperation } : {}),
+      liveReadback: effectiveLiveReadback,
+      observedAt: clock()
+    })
+    : undefined;
+  if (outcome.status === 'completed' && validatedOperation?.status === 'running') {
+    throw new Error('A completed phase cannot retain a running external operation handle.');
+  }
+  if (outcome.status === 'blocked' && validatedOperation?.status === 'running') {
+    throw new Error('A running external operation must remain pending rather than being reported as a terminal blocker.');
   }
   for (const completed of completedOperations) {
     if (completed.actionId === governanceTaskProjectionAction) throw new Error('Adapters cannot claim the engine-owned post-outcome task projection.');
@@ -359,12 +490,10 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   const effectiveSnapshot = snapshotWithPlannedWrites(postSnapshot, outcome.fileMutations ?? []);
   const afterInputDigest = phaseInputDigest(phase.id, effectiveSnapshot, freshInspection.state);
   if (outcome.status === 'pending') {
-    if (!outcome.operation || outcome.operation.status !== 'running') {
-      throw new Error('A pending phase must provide a concrete resumable external operation handle.');
-    }
     const nextState = nextStateForOutcome({
       inspection: freshInspection, phase, plan: initialPlan, resultState: 'running', now: clock(),
-      operation: { ...outcome.operation, planDigest: pendingOperation?.planDigest ?? initialPlan.planDigest }
+      operation: validatedOperation,
+      outputs: outcome.outputs
     });
     const write = await persistWithTaskProjection({
       inspection: freshInspection, plan: initialPlan, nextState, source: taskSource, snapshot: postSnapshot, now: clock(),
@@ -372,7 +501,7 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     });
     return {
       ...executionBlockedResult(freshInspection, initialPlan, saved,
-        outcome.blocker ?? `External operation ${outcome.operation.operationId} is running; resume polls this operation without redispatch.`,
+        outcome.blocker ?? `External operation ${validatedOperation!.operationId} is running; resume polls this operation without redispatch.`,
         [...completedOperations, ...taskSource?.contract.source === 'existing' && !write.projectionFailure
           ? initialPlan.operations.filter((operation) => operation.actionId === governanceTaskProjectionAction) : []],
         write.stateHash, [...outcome.cleanupWarnings ?? [], ...(write.projectionFailure ? [write.projectionFailure] : [])]),
@@ -383,7 +512,7 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   if (outcome.status === 'blocked') {
     const blocker = outcome.blocker ?? `Phase ${phase.id} blocked.`;
     if (outcome.retryableWithoutStateMutation) {
-      if (outcome.operation || completedOperations.some((operation) =>
+      if (validatedOperation || completedOperations.some((operation) =>
         operation.remote && !readOnlyMutations.has(operation.mutationClass) ||
         operation.effects?.some((effect) => effect.remote && !readOnlyMutations.has(effect.mutationClass)))) {
         throw new Error('A producer cannot request a state-free retry after reporting remote writes or an external operation handle.');
@@ -396,10 +525,113 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
         : executionStateHash ?? activationStateContentHash(canonicalJson(freshInspection.state));
       return executionBlockedResult(freshInspection, initialPlan, saved, blocker, completedOperations, stateHash, outcome.cleanupWarnings ?? [], executionStarted);
     }
+    const completedRemoteEffects = completedOperations.filter((operation) =>
+      operation.remote && !readOnlyMutations.has(operation.mutationClass) ||
+      operation.effects?.some((effect) => effect.remote && !readOnlyMutations.has(effect.mutationClass)));
+    if (validatedOperation || completedRemoteEffects.length > 0) {
+      const failureNow = clock();
+      const failurePayload = {
+        kind: 'partial-failure.v1',
+        phaseId: phase.id,
+        planDigest: initialPlan.planDigest,
+        savedPlanDigest: canonicalSha256(initialPlan),
+        blockerDigest: canonicalSha256(blocker),
+        providerPayloadDigest: canonicalSha256(effectiveEvidencePayload ?? null),
+        completedOperations: completedRemoteEffects.map((operation) => ({
+          actionId: operation.actionId,
+          mutationClass: operation.mutationClass,
+          operationDigest: canonicalSha256(operation)
+        })),
+        ...(validatedOperation ? { operation: validatedOperation } : {}),
+        ...(outcome.outputs ? { outputBindings: outcome.outputs } : {}),
+        cleanupWarningDigests: (outcome.cleanupWarnings ?? []).map((warning) => canonicalSha256(warning))
+      };
+      const evidenceId = `${phase.id}-partial-failure-${safeTimestamp(failureNow.toISOString())}`;
+      const header = evidenceHeaderFor({
+        inspection: freshInspection,
+        phase,
+        plan: initialPlan,
+        result: 'failed',
+        now: failureNow,
+        payload: failurePayload,
+        liveReadback: effectiveLiveReadback,
+        afterInputDigest,
+        gitBinding
+      });
+      const evidenceRecord: PhaseEvidenceRecord = {
+        evidenceId,
+        header,
+        payload: failurePayload,
+        ...(effectiveLiveReadback ? { liveReadback: effectiveLiveReadback } : {})
+      };
+      const evidenceReference = {
+        phaseId: phase.id,
+        evidenceId,
+        headerDigest: evidenceHeaderDigest(header),
+        result: header.result
+      };
+      const validation = validateEvidenceFreshness(evidenceRecord, {
+        ...freshInspection.contexts[phase.id],
+        inputDigest: (initialPlan.fileChanges?.length || gitBinding) ? afterInputDigest : initialPlan.inputDigest,
+        remoteBindingDigest: remoteBindingDigest(freshInspection.state.remoteBinding),
+        evidenceReferences: [evidenceReference],
+        reviewedPlans: [initialPlan],
+        now: failureNow
+      });
+      if (!validation.valid) {
+        throw new Error(`Partial failure evidence was rejected: ${validation.issues.map((issue) => issue.message).join(' ')}`);
+      }
+      const nextState = blockedState({
+        inspection: freshInspection,
+        phase,
+        plan: initialPlan,
+        blocker,
+        now: failureNow,
+        executionStarted,
+        evidenceReference,
+        ...(validatedOperation ? { operation: validatedOperation } : {}),
+        ...(outcome.outputs ? { outputs: outcome.outputs } : {})
+      });
+      const write = await persistWithTaskProjection({
+        inspection: freshInspection,
+        plan: initialPlan,
+        nextState,
+        source: taskSource,
+        snapshot: postSnapshot,
+        now: failureNow,
+        evidenceRecord,
+        evidencePathParts: evidencePathParts(evidenceId),
+        expectedStateHash: executionStateHash,
+        projectCreation: false,
+        fallbackState: nextState
+      });
+      const projectionOperations = taskSource?.contract.source === 'existing' && !write.projectionFailure
+        ? initialPlan.operations.filter((operation) => operation.actionId === governanceTaskProjectionAction)
+        : [];
+      const recordedOperations = [...completedOperations, ...projectionOperations];
+      const result = executionBlockedResult(
+        freshInspection,
+        initialPlan,
+        saved,
+        blocker,
+        recordedOperations,
+        write.stateHash,
+        [...outcome.cleanupWarnings ?? [], ...(write.projectionFailure ? [write.projectionFailure] : [])]
+      );
+      return {
+        ...result,
+        executedOperations: [
+          ...recordedOperations,
+          evidenceWriteOperation(phase, evidencePathParts(evidenceId)),
+          stateWriteOperation(phase)
+        ],
+        evidence: write.evidence
+      };
+    }
     const nextState = blockedState({
       inspection: freshInspection, phase, plan: initialPlan, blocker, now,
-      executionStarted, ...(outcome.operation ? {
-        operation: { ...outcome.operation, planDigest: pendingOperation?.planDigest ?? initialPlan.planDigest }
+      executionStarted, ...(validatedOperation ? {
+        operation: validatedOperation
       } : {})
     });
     const write = await persistWithTaskProjection({
@@ -415,7 +647,10 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   await assertPlannedFilesAfter(freshInspection.projectRoot, initialPlan, outcome.fileMutations ?? []);
   if (!(phase.terminalStates as readonly string[]).includes(resultState)) {
     const blocker = `Phase adapter returned ${resultState}, which is not an allowed terminal state for ${phase.id}.`;
-    const nextState = blockedState({ inspection: freshInspection, phase, plan: initialPlan, blocker, now, executionStarted, operation: outcome.operation });
+    const nextState = blockedState({
+      inspection: freshInspection, phase, plan: initialPlan, blocker, now, executionStarted,
+      ...(validatedOperation ? { operation: validatedOperation } : {})
+    });
     const write = await writeOutcomeTransaction({ projectRoot: freshInspection.projectRoot, plan: initialPlan, nextState, expectedStateHash: executionStateHash });
     return executionBlockedResult(freshInspection, initialPlan, saved, blocker, completedOperations, write.stateHash, outcome.cleanupWarnings ?? []);
   }
@@ -448,10 +683,10 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     }
   }
   const outcomeInspection = { ...freshInspection, state: outcome.stateOverride ?? freshInspection.state };
-  const boundPayload = isRecord(outcome.evidencePayload)
-    ? { ...outcome.evidencePayload, planDigest: initialPlan.planDigest, savedPlanDigest: canonicalSha256(initialPlan),
+  const boundPayload = isRecord(effectiveEvidencePayload)
+    ? { ...effectiveEvidencePayload, planDigest: initialPlan.planDigest, savedPlanDigest: canonicalSha256(initialPlan),
       ...(outcome.outputs ? { outputBindings: outcome.outputs } : {}) }
-    : outcome.evidencePayload;
+    : effectiveEvidencePayload;
   const outcomeNow = clock();
   let evidenceRecord: PhaseEvidenceRecord | undefined;
   let evidenceParts: readonly string[] | undefined;
@@ -460,11 +695,11 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     const evidenceId = `${phase.id}-${safeTimestamp(now.toISOString())}`;
     const header = evidenceHeaderFor({
       inspection: outcomeInspection, phase, plan: initialPlan, result: resultState, now: outcomeNow,
-      payload: boundPayload, liveReadback: outcome.liveReadback, afterInputDigest, gitBinding
+      payload: boundPayload, liveReadback: effectiveLiveReadback, afterInputDigest, gitBinding
     });
     evidenceRecord = {
       evidenceId, header,
-      ...(outcome.liveReadback ? { liveReadback: outcome.liveReadback } : {}),
+      ...(effectiveLiveReadback ? { liveReadback: effectiveLiveReadback } : {}),
       ...(boundPayload !== undefined ? { payload: boundPayload } : {})
     };
     evidenceParts = evidencePathParts(evidenceId);
@@ -485,7 +720,8 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   }
   const nextState = nextStateForOutcome({
     inspection: freshInspection, phase, plan: initialPlan, resultState,
-    evidenceReference, override: outcome.stateOverride, now: outcomeNow, outputs: outcome.outputs
+    evidenceReference, override: outcome.stateOverride, now: outcomeNow,
+    outputs: outcome.outputs, operation: validatedOperation
   });
   await input.assertProtectedInputs?.();
   const write = await persistWithTaskProjection({
@@ -494,7 +730,7 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     expectedStateHash: executionStateHash, projectCreation: true,
     fallbackState: blockedState({
       inspection: freshInspection, phase, plan: initialPlan, blocker: 'Current task projection did not commit.',
-      now: outcomeNow, executionStarted, operation: outcome.operation
+      now: outcomeNow, executionStarted, operation: validatedOperation
     })
   });
   if (write.projectionFailure) {
@@ -553,11 +789,18 @@ async function persistWithTaskProjection(input: {
         }
       }
     };
+    const preserveEvidence = input.evidenceRecord && input.evidencePathParts &&
+      fallback.phases[input.plan.phaseId].evidence.some((reference) =>
+        reference.evidenceId === input.evidenceRecord!.evidenceId);
     try {
       return {
         ...await writeOutcomeTransaction({
           projectRoot: input.inspection.projectRoot, plan: input.plan,
-          nextState: fallback, expectedStateHash: input.expectedStateHash
+          nextState: fallback, expectedStateHash: input.expectedStateHash,
+          ...(preserveEvidence ? {
+            evidenceRecord: input.evidenceRecord,
+            evidencePathParts: input.evidencePathParts
+          } : {})
         }), projectionFailure
       };
     } catch (checkpointError) {
@@ -572,7 +815,7 @@ function executionBlockedResult(
   saved: { pathParts: readonly string[]; digest: string },
   blocker: string,
   completedOperations: readonly TransitionOperation[],
-  stateHashValue: string,
+  stateHashValue: string | null,
   cleanupWarnings: readonly string[] = [],
   stateWritten = true
 ): ApplyNextExecutionResult {

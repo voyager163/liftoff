@@ -478,21 +478,14 @@ describe('explicit project enrollment and external checkout consent', () => {
   });
 
   it.each([
-    { argv: ['telemetry'] },
-    { argv: ['telemetry', 'status', '--check'] },
-    { argv: ['telemetry', 'report', '--approve-plan', 'a'.repeat(64)] },
-    { argv: ['telemetry', 'enroll', '--preserve-identity', '--new-identity'] },
-    { argv: ['telemetry', 'disable', '--new-identity'] },
-    { argv: ['telemetry', 'enroll', '--approve-plan', 'bad'] },
-    { argv: ['telemetry', 'enroll', '--check', '--approve-plan', 'a'.repeat(64)] },
-    { argv: ['telemetry', 'status', '--heartbeat'] },
-    { argv: ['telemetry', 'enroll', '--repository', '.'] },
-    { argv: ['telemetry', 'status', '.', '--project', '.'] },
-    { argv: ['telemetry', 'heartbeat', 'invalid'] },
-    { argv: ['telemetry', 'heartbeat', 'status', '--check'] },
-    { argv: ['telemetry', 'heartbeat', 'status', '--approve-plan', 'a'.repeat(64)] },
-    { argv: ['telemetry', 'heartbeat', 'status', '.', '--project', '.'] }
-  ] satisfies { argv: string[] }[])('rejects invalid authority before project access: $argv', ({ argv }) => {
+    ['telemetry'], ['telemetry', 'status', '--check'], ['telemetry', 'report', '--approve-plan', 'a'.repeat(64)],
+    ['telemetry', 'enroll', '--preserve-identity', '--new-identity'], ['telemetry', 'disable', '--new-identity'],
+    ['telemetry', 'enroll', '--approve-plan', 'bad'], ['telemetry', 'enroll', '--check', '--approve-plan', 'a'.repeat(64)],
+    ['telemetry', 'status', '--heartbeat'], ['telemetry', 'enroll', '--repository', '.'],
+    ['telemetry', 'status', '.', '--project', '.'], ['telemetry', 'heartbeat', 'invalid'],
+    ['telemetry', 'heartbeat', 'status', '--check'], ['telemetry', 'heartbeat', 'status', '--approve-plan', 'a'.repeat(64)],
+    ['telemetry', 'heartbeat', 'status', '.', '--project', '.']
+  ].map(argv => ({ argv })))('rejects invalid authority before project access: $argv', ({ argv }) => {
     expect(() => parseArgs(argv)).toThrow();
   });
 });

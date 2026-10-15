@@ -73,6 +73,9 @@ status. Its exact executable hash is recorded alongside the source inputs.
 The Inno Setup source requires an independently approved publisher/AppId and an
 actual configured signing tool. It is not a qualified install/uninstall or
 stable-command/PATH integration; it must not be distributed unsigned.
+Its `x64os` architecture restriction rejects ARM64/x64 emulation before
+installation; the former generic 64-bit check was insufficient. This source
+restriction is not a compiled or minimum-host installer result.
 
 ## Installed qualification
 
@@ -84,7 +87,7 @@ LIFTOFF_NATIVE_BUNDLE_ROOT=/absolute/path/outside-the-checkout/new-liftoff-bundl
 LIFTOFF_NATIVE_GO_EXECUTABLE="$(command -v go)" \
 LIFTOFF_NATIVE_PACKAGE_ROOT=/absolute/path/outside-the-checkout/new-liftoff-bundle \
 npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \
-  tests/native-distribution.test.ts tests/native-package-installed.test.ts \
+tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \
   --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \
   --reporter=default --reporter=json --outputFile.json=qualification/native-bundle.json
 node scripts/native-bundle.mjs verify-report qualification/native-bundle.json
@@ -104,7 +107,7 @@ bytes. It isolates HOME, disables Go telemetry only in that owned test home, and
 retains failed fixture roots. It does not change global installations or user settings.
 These checks do not qualify Windows controller execution, OS minimums or public
 distribution. Windows/Linux use `LIFTOFF_NATIVE_PACKAGE_ROOT` with
-`tests/native-bundle.test.ts tests/native-distribution.test.ts
+`tests/native-bundle.test.ts tests/native-distribution.test.ts tests/native-release-set.test.ts
 tests/native-package-installed.test.ts` and the cross-platform report gate.
 Windows cases run the real installed controller and running-image locking.
 Linux cases exercise the actual bundle's isolated owned installation/recovery and
@@ -146,18 +149,33 @@ inspectOwnedInstallation(prefix)
 recoverOwnedInstallation({ prefix, expectedJournalSha256, expectedStaleLockSha256 })
 ```
 
-`distribution/native/native-release-admission.mjs` supplies the unchanged pure
+`distribution/native/native-release-admission.mjs` supplies the pure
 `assertNativePublicationEvidence` and `verifyNativeEvidenceSignature` functions,
-re-exported by the release script. Native bundles carry this inert module and
-adjacent release-policy/platforms JSON in `installation/`; importing admission
-does not import a builder, inspect Git or execute a release operation.
-The npm package also carries the inert module and adjacent JSON under
+re-exported by the release script. Its `verifyNativeBytesSignature` authenticates
+original binary bytes against the caller's approved Ed25519 SPKI SHA-256 and
+returns nothing; it does not parse JSON, select a signing principal or grant
+installation authority. The existing JSON verifier delegates to the same checks
+before parsing, preserving its results and failures. Native bundles carry this
+inert module, its adjacent `.d.mts` declaration and release-policy/platforms JSON
+in `installation/`; importing admission does not import a builder, inspect Git or
+execute a release operation.
+The npm package also carries the inert module, declaration and adjacent JSON under
 `distribution/native/`; installed runtime-only foreign-directory smoke checks
 exercise signer/source/inventory binding without builder or checkout imports.
 CLI admission defers loading through one exact literal package-relative edge.
 The architectural guard admits only that importer/target, checks the helper's
 fixed pure builtin/data dependency closure and packaged presence, and continues
 to reject computed, escaping, URL, evaluation and unrelated external edges.
+
+The adjacent inert `native-release-catalog.mjs` validates flat immutable artifact
+locators; it does not authenticate a publisher, inspect a channel or grant installation.
+Its adjacent `.d.mts` declaration provides the typed locator contract; both are
+bound to the builder inputs and copied into the native bundle's `installation/`.
+
+Strict TypeScript consumers distinguish `bundleFile` identities from
+`readBundleFile` identities plus captured bytes. Builder and recovery interfaces
+retain their optional Windows launcher and selected stale-lock inputs; these
+compiler contracts do not grant signing, installation or release authority.
 
 The existing canonical prefix must belong to the invoking user and be private.
 Version directories are `versions/<package-version>-<bundle-manifest-sha256>`;
@@ -206,6 +224,80 @@ emits a cask or WinGet definition only after those same gates; Windows additiona
 requires exact signed installer and verified command metadata. It does not submit
 definitions or publish artifacts.
 
+Linux publication admission also verifies the actual archive's detached Ed25519
+signature, not just a `signing: true` assertion. The evidence directory must contain
+`<exact-archive-filename>.sig` (64 raw bytes) and `<exact-archive-filename>.pub`
+(PEM SPKI public key). Their approved SPKI SHA-256 comes from
+`release-policy.json`; a missing key, foreign key, other algorithm, changed archive
+or invalid signature blocks the handoff. Private keys are never part of it.
+
+### Complete native and npm assembly
+
+`release-artifact.mjs assemble-native` and `verify-native-set` reuse the existing
+tag/main ancestry, exact run/version/source, npm tarball and authenticated native
+qualification gates. They are non-publishing maintainer tools, not an additional
+release workflow or a way to approve currently unsigned artifacts. The existing
+npm compatibility workflow is unchanged; integrated native/bridge publication
+must use the complete set and separately qualify channel availability before
+exposing migration guidance. Telemetry readiness is independently required before
+project-reporting publication.
+
+Prepare an existing handoff **outside the source checkout** with this layout:
+
+```text
+handoff/
+  native-inputs.json
+  npm/                         # unchanged release.json and exact qualified .tgz
+  native/<target>/             # unchanged native-release.json, archive and 3 sidecars
+  evidence/<target>/           # qualification.json/.sig/.pub and referenced JSON proofs
+                               # Linux: exact archive filename + .sig and .pub
+                               # Windows: exact signed setup.exe
+```
+
+All four target directories are mandatory: `darwin-arm64`, `linux-arm64`,
+`linux-x64`, `win32-x64`. `native-inputs.json` has schema 1, `npmSha256` from
+the qualification job, and a `nativeManifests` object mapping **each** of those
+targets to its independently reviewed `native-release.json` SHA-256. Supply the
+independently reviewed input JSON digest as `EXPECTED_NATIVE_INPUTS_SHA256`:
+
+```sh
+node scripts/release-artifact.mjs assemble-native /absolute/qualified-handoff
+# Reverify the returned catalog digest through EXPECTED_NATIVE_CATALOG_SHA256:
+node scripts/release-artifact.mjs verify-native-set /absolute/qualified-handoff/publication
+```
+
+These commands require the real canonical tag-push qualification environment,
+not a PR SHA or manual dispatch. Every artifact must identify that same run,
+source and package version. No output directory is created before all input
+gates pass. An existing `publication/` is never overwritten; a later I/O failure
+retains its exact partial output and reports it as failure.
+The adjacent `scripts/native-release-set.d.mts` types the assembly library's
+inputs/results; the CLI still uses only the committed signing policy.
+
+The output is a flat immutable upload set plus `liftoff-native-release.json`
+(schema 1, kind `liftoff-native-release-catalog`). Archives and the signed Windows
+installer retain their existing names. Every other native subject is prefixed
+with `liftoff-<version>-<target>.`: `native-release.json`,
+`qualification.json/.sig/.pub`, `sbom.cdx.json`, `provenance.json`, `NOTICE`,
+`evidence-<kind>.json` and the rendered cask/WinGet definitions. The catalog maps
+original sidecar filenames to the exact output names/bytes/SHA-256; neither signed
+JSON nor original sidecar content is rewritten. npm's record is named
+`msn-control-liftoff-<version>.release.json`; its tarball retains its original name.
+
+The catalog is **untrusted locators**, not a replacement signature, source of
+package-channel availability or publication receipt. Consumers must verify the
+existing approved qualification key/signature, exact native manifest and all
+selected subjects/source/version. Its validator is shared as the inert
+`distribution/native/native-release-catalog.mjs`; it imports no builder.
+No deployed catalog URL or successful native release is asserted by this source.
+
+Cross-host assembly uses explicitly named `verifyNativeArchiveSubjects` to
+preserve producer-recorded modes and verify exact subject bytes without interpreting the
+collector's local filesystem modes as Windows permissions. The existing
+`verifyNativeArchive` and `verifyNativeBundle` retain their exact native mode
+checks. Native extraction/mode, minimum-host and installation evidence must still
+be independently authenticated; no file normalization supplies that evidence.
+
 The real `release-policy.json` has no approved key, Developer ID team, cask
 namespace or WinGet ID/publisher/AppId/certificate. No signing/notarization,
 cask install/uninstall, signed Windows installer/WinGet submission, public Linux
@@ -229,13 +321,68 @@ Reusable Group-10 contracts live in `src/domain/distribution/native-upgrade.ts`;
 `createNativeUpgradePort`, while `native-metadata.ts` admits independently signed
 material without release-builder imports. Cask/WinGet observations and owning
 channel reads are explicit abortable provider ports, bounded at the selected
-probe deadline. No production provider or deployed native stable endpoint is
-registered while the namespace/signing policy is null. A qualified provider must
-observe real manager receipts and source/certificate facts; returning fixture
-observations does not qualify it. WinGet source currently admits only observed
+probe deadline. A default Homebrew reader is wired behind the namespace policy:
+it reads the exact standard Caskroom receipt/staged version, canonical tap
+definition and approved local Git origin, with byte/directory/commit rechecks.
+It never executes Homebrew or Ruby or refreshes a source. The receipt format is
+derived from [Homebrew's pinned cask Tab implementation](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cask/tab.rb)
+and [metadata paths](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cask/metadata.rb).
+This is local attribution, not publisher authentication. The current null policy
+does not invoke that reader. No production WinGet reader is registered, and no
+qualified deployed native stable release is established; real manager/source/certificate facts and
+independent qualification remain required. Returning fixture observations does
+not qualify a provider. WinGet source currently admits only observed
 user-scope ownership; machine-scope installs are not migrated or elevated.
 Linux recovery delegates unchanged to the installed receipt/journal API and
 requires exact selected digests; it is not a macOS cask recovery authority.
+
+Cask Git probes and native verification subprocesses explicitly opt out of
+ambient environment inheritance. Omitted parent variables are not restored over
+their supplied environment; explicitly selected settings remain preserved.
+Real harmless child controls contrast the unchanged default merge with these
+opt-ins, including filtered Git variables and telemetry-disabled verification.
+Their filesystem/signing fixtures still do not qualify a real manager or host.
+
+`createNativeStableSource` in `native-transport.ts` is a bounded read-only material
+reader, not an installer or package-manager availability reader. It uses the
+canonical GitHub stable release and flat catalog, verifies the selected signed
+envelope before large subject downloads, and independently checks tag/main/run
+identity with final ref/release readbacks. It downloads only the selected target,
+rejects unsafe redirects and oversized streams, and preserves the two-second
+metadata deadline. Returned bytes still require `lookupNativeStableCandidate` /
+`admitNativeStableMaterial`; no staging root or manager execution permission is
+created. The upgrade port uses this default only behind approved policy;
+an explicit `stable: undefined` still disables it. The current null policy
+refuses before HTTP. Linux candidate admission independently verifies original
+archive bytes with the shared raw-byte primitive and the separately approved
+archive key, in addition to the qualification-envelope key and subject hashes.
+The npm package includes both inert catalog files; no builder is imported.
+
+Absent-cask preparation is distinct from upgrading an installed owner.
+`createHomebrewCaskPreparation` in `native-cask-plan.ts` exposes
+`observeDestination(prefix, signal)` and `preview(prefix, signal)`. Stable lookup
+accepts a target-only request, so a migration caller need not forge a
+`NativeInstallation`. The preview authenticates target material, rechecks canonical
+destination/presence facts, and optionally observes bounded local cask bytes in
+the flat or first-letter tap layout. Those bytes are explicitly
+`unverified-local-bytes`; neither a matching filename nor their hash proves tap
+origin, safe Ruby, channel availability, writable destinations, signing or host
+qualification. An occupied path is not installed ownership. Callers must use fresh
+policy and observations; preview identities are not later effect authority.
+
+Every preview retains `channel.status: unknown`,
+`preflight.exactExecutionProven: false`, and
+`execution: { status: blocked, reason: exact_cask_execution_unproven, command: null }`.
+There is no install/uninstall method. A migration must stop before removing npm.
+The inspected [Homebrew install parser](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cmd/install.rb)
+has no cask version selector; [`version-install`](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cmd/version-install.rb)
+is formula-only and may create a personal tap. The
+[cask path loader](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cask/cask_loader.rb)
+applies loadability/trust policy, then reopens and evaluates Ruby. A prehashed
+temporary `.rb`, an unpinned token, `--dry-run` or a no-auto-update setting is
+therefore not established exact-source execution authority. Preparation never
+executes Homebrew/Ruby/Git, creates a tap, changes trust/settings, writes a cask,
+or supplies an unbound fallback command.
 
 The pinned HCL npm package omits standalone license notices. The builder supplies its
 upstream MPL notice and the notices for the seven modules recorded in the original WASM,

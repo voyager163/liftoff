@@ -5,10 +5,15 @@ import { createModernActivationIdentityReader, type ModernIdentityCreationInput 
 import type {
   ModernActivationSelection, ModernDigest, ModernGovernanceProfile, ModernWorkflow, ReadableModernActivationIdentity
 } from '../src/domain/governance/activation/modern-record-contracts.js';
-import { modernActivationSourceContracts, releasedV3ActivationIdentity } from '../src/domain/governance/policy/identity.js';
+import {
+  modernActivationSourceContracts, preWorkflowModernActivationSourceContracts,
+  preCustodyModernActivationSourceContracts, releasedV3ActivationIdentity
+} from '../src/domain/governance/policy/identity.js';
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { capturedV3Records } from './fixtures/activation-v3/fixture.js';
 import { historyRecord } from '../src/governance-activation/history-contracts.js';
+import { createModernHistoryContract } from '../src/governance-activation/modern-history-contracts.js';
+import { validatePhasePayloadValues } from '../src/domain/governance/activation/source-values.js';
 
 const reader = createModernActivationIdentityReader(projectCatalog);
 const projectReader = createManifestV8ProjectReader(projectCatalog);
@@ -34,6 +39,26 @@ function input(source = context()) {
 }
 
 describe('pure modern identity/context relations; full source registry qualification is separate', () => {
+  it('retains both source4 families as exact readable original context without granting source5 migration', () => {
+    for (const source of [...preWorkflowModernActivationSourceContracts(), ...preCustodyModernActivationSourceContracts()]) {
+      const request = context(source.identity.profile, source.identity.workflow);
+      const recordedIdentity = reader.identityForReadableSource({ ...request, phaseGraphHash: source.identity.phaseGraphHash });
+      const { sourceVersion: _version, ...data } = request;
+      expect(recordedIdentity.activationContractVersion).toBe(4);
+      expect(reader.validateReadableModernActivationIdentity({ ...data, recordedIdentity })).toEqual(recordedIdentity);
+      expect(reader.identityForSource(request).activationContractVersion).toBe(5);
+    }
+    const history = createModernHistoryContract(projectCatalog, input());
+    expect(() => Reflect.apply(history.semanticInput, undefined, [null, null, null])).toThrow('no approved automatic migration');
+  });
+  it('does not accept historical v1 success summaries as current source5 workflow proof', () => {
+    const evidence = (version: number) => ({
+      header: { identity: { activationContractVersion: version }, phaseId: 'green-red-proof', result: 'verified' },
+      payload: { kind: 'green-red-proof.v1', green: 'success', red: 'failure' }
+    });
+    expect(Reflect.apply(validatePhasePayloadValues, undefined, [evidence(4)])).toEqual([]);
+    expect(Reflect.apply(validatePhasePayloadValues, undefined, [evidence(5)])).toContain('green-red-proof payload kind must be green-red-proof.v2.');
+  });
   it.each(modernActivationSourceContracts())('uses the actual $identity.profile/$identity.workflow row and complete M6 leaf', source => {
     const value = input(context(source.identity.profile, source.identity.workflow));
     const parsed = reader.validateReadableModernActivationIdentity(value);

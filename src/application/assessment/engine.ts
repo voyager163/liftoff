@@ -55,12 +55,14 @@ const unknown: ProjectAssessmentObservation = { availability: 'not-observed', va
 const within = (parent: readonly string[], child: readonly string[]) =>
   parent.length <= child.length && parent.every((part, index) => part === child[index]);
 
-export async function assessProject(input: {
+export async function assessProject(request: {
   start: string;
   explicitRoot: boolean;
   governance?: ProjectAssessmentProfile;
   live?: boolean;
 }): Promise<ProjectAssessmentReport> {
+  const { start, explicitRoot, governance, live } = request;
+  const input = { start, explicitRoot, governance, live };
   if (input.governance !== undefined) projectAssessmentProfile(input.governance);
   if (input.live) throw new ApplicationInspectionError('The local assessment engine does not collect live metadata. Use the scoped live coordinator; no network or credential access occurred.');
   const selected = await boundary(input.start, input.explicitRoot);

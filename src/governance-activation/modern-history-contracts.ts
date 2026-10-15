@@ -8,7 +8,7 @@ import { canonicalSha256 } from '../domain/governance/activation/canonical-json.
 import { assertModernRecordData } from '../domain/governance/activation/source-values.js';
 import { historicalV1ActivationIdentity, historicalV2ActivationIdentity, releasedV3ActivationIdentity,
   isHistoricalV1ActivationIdentity, isHistoricalV2ActivationIdentity, isReleasedV3ActivationIdentity, type ReleasedActivationIdentity,
-  modernActivationSourceContracts } from '../domain/governance/policy/identity.js';
+  readableModernActivationSourceContracts } from '../domain/governance/policy/identity.js';
 import {
   historyArray, historyDigest, historyEnum, historyExact, historyFail, historyLiteral,
   historyRecordId, historyString, historyStrings, historyTimestamp
@@ -85,7 +85,7 @@ export function createModernHistoryContract(catalog: ManifestContractContext['ca
   if (identity.profile !== 'single-maintainer-gitflow' || identity.workflow === 'manual') {
     historyFail('modern successor', 'only same-intent external single-maintainer successors have lanes.', 'unsupported-migration-target');
   }
-  const source = modernActivationSourceContracts().find(source => source.identity.phaseGraphHash === identity.phaseGraphHash)!;
+  const source = readableModernActivationSourceContracts().find(source => source.identity.phaseGraphHash === identity.phaseGraphHash)!;
   const records = createModernActivationRecordContract(catalog, context);
   const targetDigests = modernPhaseContractDigests(source.graph);
   const policy = freezeModernValue({
@@ -111,6 +111,9 @@ export function createModernHistoryContract(catalog: ManifestContractContext['ca
     })) });
   }
   function semanticInput(originalIdentity: unknown, reference: ManifestSourceHistoryReference, targetManifestDigest: string): ModernSemanticTransitionInput {
+    if (identity.activationContractVersion !== 4) {
+      historyFail('modern successor', 'Source5 has no approved automatic migration lane.', 'unsupported-migration-target');
+    }
     assertModernRecordData({ originalIdentity, reference, targetManifestDigest }, 'semantic input');
     const lane = releasedSuccessorLane(originalIdentity);
     if (reference.kind !== 'activation-history') historyFail('successor history', 'requires activation source history.');

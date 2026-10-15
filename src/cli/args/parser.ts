@@ -162,7 +162,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
       throw new UsageError('Identity selection is allowed only for telemetry enroll.');
     }
     if (Object.hasOwn(flags, 'heartbeat') && subcommand !== 'report') throw new UsageError('--heartbeat is allowed only for telemetry report.');
-    if (Object.hasOwn(flags, 'repository') && subcommand !== 'heartbeat') throw new UsageError('--repository is allowed only for telemetry heartbeat.');
+    if (Object.hasOwn(flags, 'repository') && subcommand !== 'heartbeat' &&
+        !(subcommand === 'report' && flags.heartbeat === true)) {
+      throw new UsageError('--repository is allowed only for telemetry heartbeat or report --heartbeat.');
+    }
     if (Object.hasOwn(flags, 'approve-plan') && !isUpdatePlanFingerprint(flags['approve-plan'])) {
       throw new UsageError('--approve-plan requires the full current 64-character lowercase SHA-256 telemetry review fingerprint.');
     }

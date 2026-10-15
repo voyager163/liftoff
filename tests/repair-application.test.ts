@@ -555,7 +555,11 @@ describe('bounded application inventory and executable staged patch', () => {
       if (kind === 'directory entry') await putApplicationFixtureFile(root, ['docs', 'added.txt'], 'new');
       if (kind === 'directory mode') {
         if (process.platform === 'win32') return;
-        await chmod(path.join(root, 'docs'), 0o700);
+        const directory = path.join(root, 'docs');
+        const before = (await lstat(directory)).mode & 0o777;
+        const changed = before === 0o700 ? 0o750 : 0o700;
+        await chmod(directory, changed);
+        expect((await lstat(directory)).mode & 0o777).toBe(changed);
       }
       if (kind === 'staged bytes') await putApplicationFixtureFile(stage, document.mappings[1]!.stagedPathParts, 'changed');
       if (kind === 'staged mode') await chmod(path.join(stage, ...document.mappings[1]!.stagedPathParts), 0o444);

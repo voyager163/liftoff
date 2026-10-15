@@ -1,9 +1,8 @@
-import type { PhaseAdapterExecutionInput, PhaseAdapterOutcome } from './transition-ports.js';
+import type { GitHubRulesetAdapter, PhaseAdapterExecutionInput, PhaseAdapterOutcome } from './transition-ports.js';
 import { cloneState, evidenceHeaderFor } from './transition-records.js';
 import type { ProjectFileMutation } from '../adapters/filesystem/project-transaction.js';
 import { buildApprovedPhase0FactsFromState, renderGovernanceChangeWritePlan } from './source-of-truth.js';
 import { readProjectFile } from '../adapters/filesystem/project-files.js';
-import { credentialPolicyPathParts, detectCredentialLeaks } from './credentials.js';
 import type { PhaseEvidenceRecord, TransitionOperation, LiveReadbackProof } from '../domain/governance/activation/types.js';
 import { latestRecordWithPayload, rulesetSourceDigestFromEvidence, selectLatestPhaseEvidence } from '../domain/governance/activation/evidence.js';
 import { isRecord } from '../domain/governance/activation/canonical-json.js';
@@ -54,25 +53,6 @@ export async function executeActivationApproval(input: PhaseAdapterExecutionInpu
   };
 }
 
-export async function executeCredentialReady(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
-  if (input.phase.id !== 'credential-ready') return null;
-  const policy = await readProjectFile(input.inspection.projectRoot, [...credentialPolicyPathParts]);
-  if (policy === undefined) {
-    return {
-      status: 'blocked',
-      blocker: 'Public credential enrollment and independent credential readback are unavailable; no credential policy is present. Do not supply a token through setup or fabricate policy proof.',
-      completedOperations: []
-    };
-  }
-  const scan = detectCredentialLeaks([{ source: 'imported-evidence', label: credentialPolicyPathParts.join('/'), text: policy.toString('utf8') }]);
-  if (scan.status === 'compromised') return { status: 'blocked', blocker: scan.guidance.join(' '), completedOperations: [] };
-  return {
-    status: 'blocked',
-    blocker: 'Independent credential readback and public credential enrollment are unavailable; a policy file cannot establish credential readiness.',
-    completedOperations: []
-  };
-}
-
 function assertGreenRedProof(input: PhaseAdapterExecutionInput): PhaseEvidenceRecord {
   const record = latestRecordWithPayload(input.inspection, 'green-red-proof');
   if (!record || !isRecord(record.payload) || record.payload.kind !== 'green-red-proof.v1') {
@@ -91,8 +71,61 @@ function assertGreenRedProof(input: PhaseAdapterExecutionInput): PhaseEvidenceRe
   return record;
 }
 
+async function executeRulesetReadback(
+  input: PhaseAdapterExecutionInput,
+  adapter: GitHubRulesetAdapter,
+  sourceDigest: string
+): Promise<PhaseAdapterOutcome> {
+  const now = new Date(input.now.getTime());
+  const header = structuredClone(evidenceHeaderFor({
+    inspection: input.inspection, phase: input.phase, plan: input.plan, result: 'verified', now
+  }));
+  const repository = remoteRepository(input.inspection.state).name;
+  const completed = structuredClone(input.plan.operations.filter(op => op.actionId === 'github.ruleset.readback'));
+  const expiresAt = Date.parse(input.plan.expiresAt);
+  const clock = input.clock?.bind(input);
+  const assertHeld = input.lease?.assertHeld.bind(input.lease);
+  const readRuleset = adapter.readRuleset.bind(adapter);
+  const approvalRequest = input.phase.approvalGate.required ? structuredClone(transitionPlanForPhase(
+    input.phase, input.inspection.state, input.inspection.contexts[input.phase.id].transition,
+    input.inspection.projectRoot, undefined,
+    { operations: input.plan.operations, configuration: input.plan.configuration, fileChanges: input.plan.fileChanges }
+  )) : null;
+  const approvals = approvalRequest ? structuredClone(input.inspection.approvals) : [];
+  const envelopeHash = input.plan.approval.envelopeHash;
+
+  await assertHeld?.();
+  const executionTime = clock?.() ?? now;
+  if (expiresAt <= executionTime.getTime()) {
+    return { status: 'blocked', blocker: 'The reviewed ruleset plan expired before provider access.', completedOperations: [] };
+  }
+  if (approvalRequest) {
+    const authorization = evaluateApprovalForTransitionPlan(approvalRequest, approvals, { now: executionTime });
+    if (authorization.approvalRequired || authorization.envelopeHash !== envelopeHash) {
+      return { status: 'blocked', blocker: 'Ruleset approval is no longer valid immediately before provider access.', completedOperations: [] };
+    }
+  }
+  const readback = await readRuleset({ repository, sourceDigest });
+  if (readback.sourceDigest !== sourceDigest || readback.readbackDigest !== sourceDigest) {
+    return { status: 'blocked', blocker: 'Post-write live ruleset readback did not match the saved source digest.', completedOperations: completed };
+  }
+  const liveReadback: LiveReadbackProof = {
+    schemaVersion: header.schemaVersion,
+    repositoryId: header.repositoryId, identity: header.identity, phaseGraphHash: header.phaseGraphHash,
+    phaseId: header.phaseId, baselineSha: header.baselineSha, inputDigest: header.inputDigest,
+    transition: header.transition, observedAt: header.producedAt, provider: 'github',
+    resourceType: 'ruleset', resourceId: readback.resourceId, sourceDigest, readbackDigest: readback.readbackDigest, matches: true
+  };
+  return {
+    status: 'completed', resultState: 'verified', liveReadback: [liveReadback],
+    evidencePayload: { kind: 'live-readback.v1', sourceDigest, resourceId: readback.resourceId, readbackDigest: readback.readbackDigest },
+    completedOperations: completed
+  };
+}
+
 export async function executeRulesetPhase(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
-  if (input.phase.id !== 'rulesets-applied' && input.phase.id !== 'live-readback') return null;
+  const phaseId = input.phase.id;
+  if (phaseId !== 'rulesets-applied' && phaseId !== 'live-readback') return null;
   try {
     assertGreenRedProof(input);
   } catch (error) {
@@ -106,6 +139,7 @@ export async function executeRulesetPhase(input: PhaseAdapterExecutionInput): Pr
   if (!adapter) {
     return { status: 'blocked', blocker: 'No injected GitHub ruleset adapter is configured; refusing live ruleset calls in this execution context.', completedOperations: [] };
   }
+  if (phaseId === 'live-readback') return executeRulesetReadback(input, adapter, sourceDigest);
   const envelopeId = input.plan.approval.envelopeId;
   if (input.phase.id === 'rulesets-applied' && !envelopeId) {
     return { status: 'blocked', blocker: 'Ruleset enforcement requires a persisted enforcement approval envelope.', completedOperations: [] };

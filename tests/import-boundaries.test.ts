@@ -696,6 +696,7 @@ const pluginRuntimeConsumers: ReadonlyMap<string, readonly string[]> = new Map([
     'plugins/builtin/modern-historical-release.ts',
     'plugins/builtin/modern-previous-release.ts',
     'plugins/builtin/modern-pre-assessment.ts',
+    'plugins/builtin/modern-pre-workflow.ts',
     'plugins/builtin/index.ts',
     'plugins/contracts.ts',
     'plugins/registry.ts'
@@ -1395,6 +1396,10 @@ interface ModuleLoadingContext {
     readonly source: string;
     readonly packagedFiles: ReadonlySet<string>;
   };
+  readonly nativeCatalog?: {
+    readonly source: string;
+    readonly packagedFiles: ReadonlySet<string>;
+  };
 }
 
 const nativeAdmissionImporter = 'adapters/distribution/native-metadata.ts';
@@ -1404,6 +1409,50 @@ const nativeAdmissionFiles = [
   'distribution/native/native-release-admission.d.mts',
   'distribution/native/release-policy.json'
 ];
+const nativeCatalogImporter = 'adapters/distribution/native-transport.ts';
+const nativeCatalogSpecifier = '../../../distribution/native/native-release-catalog.mjs';
+const nativeCatalogFiles = [
+  'distribution/native/native-release-catalog.mjs',
+  'distribution/native/native-release-catalog.d.mts'
+];
+
+function nativeCatalogHelperViolations(source: string, file: string): string[] {
+  const body = recordsAt(parseProgram(source, file), 'body');
+  const imports = body.filter(node => node.type === 'ImportDeclaration');
+  const exports = body.filter(node => node.type !== 'ImportDeclaration');
+  const declarations = exports.map(node => node.type === 'ExportNamedDeclaration' && isAstRecord(node.declaration)
+    ? node.declaration : undefined);
+  const functions = declarations.filter(node => node?.type === 'FunctionDeclaration');
+  const variables = declarations.filter(node => node?.type === 'VariableDeclaration')
+    .flatMap(node => recordsAt(node!, 'declarations'));
+  const constants = variables.map(node => {
+    const name = identifierName(node.id), init = node.init;
+    if (name === 'nativeReleaseCatalogFilename') return [name, stringLiteralValue(init)];
+    if (!isAstRecord(init) || init.type !== 'CallExpression' || !isAstRecord(init.callee) ||
+      init.callee.type !== 'MemberExpression' || identifierName(init.callee.object) !== 'Object' ||
+      staticMemberName(init.callee) !== 'freeze') return [name, undefined];
+    const args = recordsAt(init, 'arguments');
+    return [name, args.length === 1 && args[0].type === 'ArrayExpression'
+      ? recordsAt(args[0], 'elements').map(stringLiteralValue) : undefined];
+  });
+  return [
+    ...(imports.length === 1 && stringLiteralValue(imports[0].source) === 'node:assert/strict' &&
+      recordsAt(imports[0], 'specifiers').length === 1 &&
+      recordsAt(imports[0], 'specifiers')[0].type === 'ImportDefaultSpecifier' &&
+      identifierName(recordsAt(imports[0], 'specifiers')[0].local) === 'assert' &&
+      recordsAt(imports[0], 'attributes').length === 0 ? [] : ['fixed catalog dependency closure differs']),
+    ...(exports.length === 6 && functions.length === 3 && variables.length === 3 &&
+      functions.map(node => identifierName(node!.id)).sort().join() ===
+        'assertNativeReleaseCatalog,nativeCatalogSubjects,nativeReleaseAssetStem' &&
+      JSON.stringify(constants) === JSON.stringify([
+        ['nativeReleaseCatalogFilename', 'liftoff-native-release.json'],
+        ['nativeReleaseTargets', ['darwin-arm64', 'linux-arm64', 'linux-x64', 'win32-x64']],
+        ['nativeEvidenceKinds', ['minimumHost', 'installerOwnership', 'signing', 'packageNamespace', 'hclSourceCorrespondence']]
+      ]) ? [] : ['catalog has unexpected exports or top-level effects']),
+    ...pluginPurityViolations(source, file),
+    ...loaderReferenceViolations(source, file)
+  ];
+}
 
 function nativeAdmissionHelperViolations(source: string, file: string): string[] {
   const body = recordsAt(parseProgram(source, file), 'body');
@@ -1423,10 +1472,10 @@ function nativeAdmissionHelperViolations(source: string, file: string): string[]
   const exports = body.filter(node => node.type !== 'ImportDeclaration');
   return [
     ...(JSON.stringify(imports) === JSON.stringify(expectedImports) ? [] : ['fixed admission dependency closure differs']),
-    ...(exports.length === 2 && exports.every(node => node.type === 'ExportNamedDeclaration' &&
+    ...(exports.length === 3 && exports.every(node => node.type === 'ExportNamedDeclaration' &&
       isAstRecord(node.declaration) && node.declaration.type === 'FunctionDeclaration') &&
       exports.map(node => isAstRecord(node.declaration) ? identifierName(node.declaration.id) : undefined).sort().join() ===
-      'assertNativePublicationEvidence,verifyNativeEvidenceSignature'
+      'assertNativePublicationEvidence,verifyNativeBytesSignature,verifyNativeEvidenceSignature'
       ? [] : ['admission has unexpected exports or top-level effects']),
     ...pluginPurityViolations(source, file),
     ...loaderReferenceViolations(source, file)
@@ -1441,6 +1490,7 @@ async function moduleLoadingContext(modules: ReadonlyMap<string, string>): Promi
     files?: string[];
   };
   let nativeAdmission: ModuleLoadingContext['nativeAdmission'];
+  let nativeCatalog: ModuleLoadingContext['nativeCatalog'];
   try {
     const details = await Promise.all(nativeAdmissionFiles.map(file => lstat(path.resolve(file))));
     if (details.every(detail => detail.isFile() && !detail.isSymbolicLink() && detail.nlink === 1)) {
@@ -1453,16 +1503,28 @@ async function moduleLoadingContext(modules: ReadonlyMap<string, string>): Promi
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
+  try {
+    const details = await Promise.all(nativeCatalogFiles.map(file => lstat(path.resolve(file))));
+    if (details.every(detail => detail.isFile() && !detail.isSymbolicLink() && detail.nlink === 1)) {
+      nativeCatalog = {
+        source: await readFile(path.resolve(nativeCatalogFiles[0]), 'utf8'),
+        packagedFiles: new Set(manifest.files ?? [])
+      };
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
   return {
     root: sourceRoot,
     present: new Set(modules.keys()),
     dependencies: new Set([...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.optionalDependencies ?? {})]),
     devDependencies: new Set(Object.keys(manifest.devDependencies ?? {})),
-    nativeAdmission
+    nativeAdmission,
+    nativeCatalog
   };
 }
 
-/** Fixed src/builtin/dependency resolution, plus the one reviewed deferred packaged helper. */
+/** Fixed src/builtin/dependency resolution and the two exact deferred packaged helper edges. */
 function moduleSpecifierViolation(
   specifier: string, file: string, context: ModuleLoadingContext, dynamic = false
 ): string | undefined {
@@ -1475,6 +1537,16 @@ function moduleSpecifierViolation(
     if (target !== path.resolve(context.root, '..', nativeAdmissionFiles[0])) return 'admission target differs';
     return nativeAdmissionHelperViolations(helper.source, target).length === 0
       ? undefined : 'admission helper is not the fixed pure dependency closure';
+  }
+  if (specifier === nativeCatalogSpecifier && relativeSource(file, context.root) === nativeCatalogImporter) {
+    if (!dynamic) return 'catalog edge must remain deferred';
+    const helper = context.nativeCatalog;
+    if (!helper) return 'packaged catalog helper/declaration is missing';
+    if (!nativeCatalogFiles.every(target => helper.packagedFiles.has(target))) return 'catalog dependency is not packaged';
+    const target = path.resolve(path.dirname(file), specifier);
+    if (target !== path.resolve(context.root, '..', nativeCatalogFiles[0])) return 'catalog target differs';
+    return nativeCatalogHelperViolations(helper.source, target).length === 0
+      ? undefined : 'catalog helper is not the fixed pure dependency closure';
   }
   if (specifier.startsWith('.')) {
     const target = resolveSourceImport(file, specifier, context.root);
@@ -1565,7 +1637,7 @@ describe('bundled plugin purity and module loading (2.6-G)', () => {
     expect(pluginModuleViolations(await sourceModules())).toEqual([]);
   });
 
-  it('resolves every authored runtime specifier to src, a builtin/dependency or the one reviewed packaged admission edge', async () => {
+  it('resolves every authored runtime specifier to src, a builtin/dependency or an exact reviewed packaged helper edge', async () => {
     const modules = await sourceModules();
     const context = await moduleLoadingContext(modules);
     const violations: string[] = [];
@@ -1620,6 +1692,52 @@ describe('bundled plugin purity and module loading (2.6-G)', () => {
     expect(loaderReferenceViolations(`const target = '${nativeAdmissionSpecifier}'; import(target);`, importer))
       .toEqual(['line 1: computed import() specifier']);
     expect(loaderReferenceViolations(`import(new URL('${nativeAdmissionSpecifier}', import.meta.url).href);`, importer))
+      .toEqual(['line 1: computed import() specifier']);
+  });
+
+  it('admits only the exact deferred transport catalog edge and its fixed pure locator closure', async () => {
+    const modules = await sourceModules();
+    const context = await moduleLoadingContext(modules);
+    const importer = sourcePath(nativeCatalogImporter);
+    expect(runtimeDependenciesOf(modules.get(importer)!, importer)
+      .filter(dependency => dependency.specifier === nativeCatalogSpecifier))
+      .toEqual([{ specifier: nativeCatalogSpecifier, target: undefined, dynamic: true }]);
+    const check = (current: ModuleLoadingContext) => moduleSpecifierViolation(nativeCatalogSpecifier, importer, current, true);
+    expect(check(context)).toBeUndefined();
+    expect(moduleSpecifierViolation(nativeCatalogSpecifier, importer, context)).toBe('catalog edge must remain deferred');
+    for (const wrongImporter of [nativeAdmissionImporter, 'domain/project/other.ts']) {
+      expect(moduleSpecifierViolation(nativeCatalogSpecifier, sourcePath(wrongImporter), context, true))
+        .toBe('relative specifier leaves src');
+    }
+    for (const specifier of [
+      '../../../distribution/native/native-release-admission.mjs',
+      '../../../distribution/native/other.mjs',
+      '../../../scripts/native-release-set.mjs',
+      '../../../distribution/native/../native/native-release-catalog.mjs'
+    ]) expect(moduleSpecifierViolation(specifier, importer, context, true)).toBe('relative specifier leaves src');
+    expect(check({ ...context, nativeCatalog: undefined })).toBe('packaged catalog helper/declaration is missing');
+    expect(context.nativeCatalog).toBeDefined();
+    const helper = context.nativeCatalog!;
+    for (const missing of nativeCatalogFiles) {
+      expect(check({ ...context, nativeCatalog: {
+        ...helper, packagedFiles: new Set(nativeCatalogFiles.filter(file => file !== missing))
+      } })).toBe('catalog dependency is not packaged');
+    }
+    for (const source of [
+      helper.source.replace('node:assert/strict', 'node:fs'),
+      helper.source.replace('liftoff-native-release.json', 'another.json'),
+      helper.source.replace("'win32-x64'", "'win32-arm64'"),
+      `${helper.source}\nexport const ambient = process.env;`,
+      `${helper.source}\nimport './another-helper.mjs';`,
+      helper.source.replace('return catalog;', "return import('./another-helper.mjs');"),
+      helper.source.replace('return catalog;', 'return eval("catalog");')
+    ]) {
+      expect(check({ ...context, nativeCatalog: { ...helper, source } }))
+        .toBe('catalog helper is not the fixed pure dependency closure');
+    }
+    expect(loaderReferenceViolations(`const target = '${nativeCatalogSpecifier}'; import(target);`, importer))
+      .toEqual(['line 1: computed import() specifier']);
+    expect(loaderReferenceViolations(`import(new URL('${nativeCatalogSpecifier}', import.meta.url).href);`, importer))
       .toEqual(['line 1: computed import() specifier']);
   });
 

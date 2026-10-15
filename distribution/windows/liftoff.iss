@@ -18,8 +18,8 @@ AppVersion={#PackageVersion}
 AppPublisher={#ApprovedPublisher}
 DefaultDirName={localappdata}\Programs\Liftoff
 PrivilegesRequired=lowest
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64os
+ArchitecturesInstallIn64BitMode=x64os
 MinVersion=10.0.14393
 DisableProgramGroupPage=yes
 CloseApplications=no
@@ -36,14 +36,10 @@ Source: "{#BundleDir}\*"; DestDir: "{app}\versions\{#PackageVersion}"; Flags: ig
 [Icons]
 Name: "{userprograms}\Liftoff"; Filename: "{app}\versions\{#PackageVersion}\bin\liftoff.exe"
 
-[Code]
-function InitializeSetup(): Boolean;
-begin
-  Result := IsWin64;
-  if not Result then
-    MsgBox('Liftoff requires qualified native Windows x64. No existing installation will be changed.', mbError, MB_OK);
-end;
+[Messages]
+WindowsVersionNotSupported=Liftoff requires native Windows x64, Windows 10 build 14393 or newer. No existing installation will be changed.
 
+[Code]
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';

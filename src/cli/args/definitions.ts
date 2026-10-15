@@ -110,7 +110,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
       'preserve-identity': booleanFlag('Explicitly reuse a tracked identity for this clone/worktree; bind this checkout locally', 'Consent'),
       'new-identity': booleanFlag('Explicitly replace a copied/forked identity with a new random project UUID after approval', 'Consent'),
       heartbeat: booleanFlag('Select only the separately approved CI reporting path; unavailable without qualified published pins', 'Command'),
-      repository: valueFlag('Exact repository root for separate heartbeat file authority', 'Project', 'path'),
+      repository: valueFlag('Exact repository root for separate heartbeat review/report binding; published tooling remains unqualified', 'Project', 'path'),
       json: booleanFlag('Emit one schema-1 result; bare mutation JSON previews only', 'Output'),
       ...helpFlag
     },

@@ -3,7 +3,7 @@ import type * as R from './record-contracts.js';
 import type * as M from './modern-record-contracts.js';
 import { modernActivationRecordValidators } from './record-validation.js';
 import { createModernActivationIdentityReader } from './modern-identity.js';
-import { modernActivationSourceContracts } from '../policy/identity.js';
+import { readableModernActivationSourceContract } from '../policy/identity.js';
 import { freezeModernValue, modernPhaseContractDigests } from './modern-graph.js';
 import { canonicalJson, canonicalSha256, isRecord, sha256Hex } from './canonical-json.js';
 import {
@@ -52,7 +52,7 @@ export function createModernActivationRecordContract(
   catalog: ManifestContractContext['catalog'], context: M.ModernActivationSourceInput
 ) {
   const identity = createModernActivationIdentityReader(catalog).validateReadableModernActivationIdentity(context);
-  const selected = modernActivationSourceContracts().find(source => source.identity.phaseGraphHash === identity.phaseGraphHash)!;
+  const selected = readableModernActivationSourceContract(identity.phaseGraphHash)!;
   const graph = selected.graph, phases = graph.phases.map(phase => phase.id);
   const digests = modernPhaseContractDigests(graph);
   const engine = modernActivationRecordValidators(catalog, context), decoder = engine.records;

@@ -129,6 +129,39 @@ describe('telemetry client', () => {
     });
   });
 
+  it('returns explicit delivered, disabled, and failure results without another aggregate', async () => {
+    const event = {
+      schemaVersion: 2, event: 'command_executed', command: 'update',
+      cliVersion: '0.12.3', outcome: 'attention-required'
+    } as const;
+    const delivered = vi.fn<TelemetryFetch>().mockResolvedValue(new Response(null, { status: 204 }));
+    const delivery = createTelemetryDelivery({ env: {}, fetch: delivered });
+    try {
+      await expect(reportCommandEvent(event, {
+        env: {}, endpoint: 'https://telemetry.example.test/api/events', delivery
+      })).resolves.toEqual({ status: 'delivered', attempted: true });
+      await expect(reportCommandEvent(event, {
+        env: {}, endpoint: 'https://telemetry.example.test/api/events', delivery
+      })).resolves.toEqual({ status: 'failed', reason: 'duplicate-channel', attempted: false });
+      expect(delivered).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(String(delivered.mock.calls[0][1]?.body))).toEqual(event);
+    } finally {
+      delivery.close();
+    }
+
+    const disabled = vi.fn<TelemetryFetch>();
+    await expect(reportCommandEvent(event, {
+      env: { DO_NOT_TRACK: '1' }, endpoint: 'https://telemetry.example.test/api/events', fetch: disabled
+    })).resolves.toEqual({ status: 'disabled', reason: 'global-opt-out', attempted: false });
+    expect(disabled).not.toHaveBeenCalled();
+
+    const failed = vi.fn<TelemetryFetch>().mockRejectedValue(new Error('offline'));
+    await expect(reportCommandEvent(event, {
+      env: {}, endpoint: 'https://telemetry.example.test/api/events', fetch: failed
+    })).resolves.toEqual({ status: 'failed', reason: 'network', attempted: true });
+    expect(failed).toHaveBeenCalledTimes(1);
+  });
+
   it('returns the explicit result and rejects a second command report without aggregate recursion', async () => {
     const event = createSemanticTelemetryEvent('update', '0.12.3', 'attention-required');
     const fetch = vi.fn<TelemetryFetch>().mockResolvedValue(new Response(null, { status: 204 }));

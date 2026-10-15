@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
@@ -14,6 +15,7 @@ import { canonicalJson } from '../src/domain/governance/activation/canonical-jso
 import { writeModernInstalledProject, writeModernSuccessor } from './fixtures/modern-installed-project.js';
 import { originalFiles } from './modern-openspec-fixtures.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
+import { workflowByteDigest } from '../src/governance-activation/workflow-binding.js';
 
 const roots: { path: string; dev: number; ino: number }[] = [];
 afterEach(async () => {
@@ -40,7 +42,99 @@ async function invoke(root: string, args: string[], jsonMode = true) {
   return { code, stdout: stdout.text(), stderr: stderr.text(), report: jsonMode && stdout.text() ? JSON.parse(stdout.text()) : null };
 }
 
+function workflowReviewRequest() {
+  const content = 'name: Isolated reviewed source\non: workflow_dispatch\njobs:\n  validate:\n    runs-on: ubuntu-latest\n    steps:\n      - run: node --check backend/application.js\n';
+  const createdAt = new Date();
+  return {
+    schemaVersion: 1, kind: 'review-workflow-source5', phaseId: 'bootstrap-workflow-source-ready',
+    executionId: randomUUID(), createdAt: createdAt.toISOString(),
+    expiresAt: new Date(createdAt.getTime() + 60 * 60 * 1000).toISOString(),
+    configuration: { schemaVersion: 1, phases: {}, budget: { currency: 'USD', fixedMonthlyCents: 0, usageMonthlyCents: 0 } },
+    origin: null, remainingFrom: null,
+    effects: [{ action: 'git.workflow-source.publish-reviewed', binding: {
+      repository: 'owner/repo', repositoryId: 123, ref: 'ci/liftoff-workflows-public-review',
+      parentSha: 'a'.repeat(40), sourceTransmissionApproved: true,
+      files: [{ path: '.github/workflows/review.yml', content, digest: workflowByteDigest(content), beforeDigest: null }]
+    } }]
+  };
+}
+
 describe('modern public governance inspection', () => {
+  it.each(['single-maintainer-gitflow', 'team-gitflow'] as const)(
+    'offers %s exact workflow review values, not approval, current prerequisites or execution', async profile => {
+      const f = await writeModernInstalledProject(await directory(), 'manual', profile);
+      await f.write(['governance', 'activation-state.json'], canonicalJson(f.state));
+      const inputFile = path.join(await directory(), 'workflow-review.json');
+      await fs.writeFile(inputFile, canonicalJson(workflowReviewRequest()));
+      const before = await originalFiles(f.root), old = vi.spyOn(historical, 'inspectGovernance');
+      const load = vi.spyOn(plans, 'loadGovernancePreview'), save = vi.spyOn(plans, 'saveGovernancePreview');
+      const result = await invoke(f.root, ['plan', '--scope', 'activation', '--inputs', inputFile]);
+      expect(result.code, result.stderr).toBe(2);
+      expect(result.report).toMatchObject({
+        schemaVersion: 1, kind: 'liftoff-modern-workflow-review', status: 'blocked', readOnly: true,
+        projectWrites: false, externalMetadataWrites: false, providerWrites: false, workloadExecution: false,
+        activationComplete: false, phaseComplete: false, matrixComplete: false, executionAuthorized: false,
+        recordedProgressIsCurrentProof: false,
+        review: { execution: 'not-authorized', prerequisites: { status: 'not-observed' },
+          plan: { identity: { profile }, approval: { required: true, envelopeId: null } } }
+      });
+      expect(result.report.blockers.map((blocker: { code: string }) => blocker.code))
+        .toContain('workflow-current-prerequisite-observer-unavailable');
+      expect(Date.parse(result.report.observations.beforeObservedAt)).toBeGreaterThanOrEqual(Date.parse(result.report.observations.startedAt));
+      expect(Date.parse(result.report.observations.afterObservedAt)).toBeLessThanOrEqual(Date.parse(result.report.observations.endedAt));
+      expect(old).not.toHaveBeenCalled(); expect(load).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
+      expect(await originalFiles(f.root)).toEqual(before);
+    });
+
+  it.each(['execute', 'plan', 'protected-stdin', 'recover-phase', 'revalidation-publication'] as const)(
+    'refuses workflow review with --%s before reading an input file', async flag => {
+      const f = await writeModernInstalledProject(await directory());
+      const read = vi.spyOn(inputs, 'readPublicGovernanceInputs');
+      const extra = flag === 'execute' || flag === 'protected-stdin' ? [`--${flag}`] :
+        [`--${flag}`, flag === 'recover-phase' ? 'dev-proof' : 'a'.repeat(64)];
+      const args = ['plan', '--scope', 'activation', '--inputs', 'must-not-be-read.json', ...extra];
+      if (flag === 'recover-phase') {
+        const result = await invoke(f.root, args);
+        expect(result.code).toBe(1);
+        expect(result.report.diagnostics.join(' ')).toContain('without approval, execution or recovery');
+      } else {
+        expect(() => parseArgs(['governance', ...args, '--json'])).toThrow(`Flag --${flag}`);
+      }
+      expect(read).not.toHaveBeenCalled();
+    });
+
+  it('does not turn a fresh project into an existing anchor or source publication plan', async () => {
+    const f = await writeModernInstalledProject(await directory());
+    const inputFile = path.join(await directory(), 'workflow-review.json');
+    await fs.writeFile(inputFile, canonicalJson(workflowReviewRequest()));
+    const before = await originalFiles(f.root);
+    const result = await invoke(f.root, ['plan', '--scope', 'activation', '--inputs', inputFile]);
+    expect(result.code).toBe(1);
+    expect(result.report.diagnostics.join(' ')).toContain('complete exact current installed snapshot');
+    expect(await originalFiles(f.root)).toEqual(before);
+  });
+
+  it('refuses physical installed-state replacement between the two actual observations', async () => {
+    const f = await writeModernInstalledProject(await directory());
+    await f.write(['governance', 'activation-state.json'], canonicalJson(f.state));
+    const inputFile = path.join(await directory(), 'workflow-review.json');
+    await fs.writeFile(inputFile, canonicalJson(workflowReviewRequest()));
+    const original = installed.inspectModernInstalledActivation;
+    let observations = 0;
+    vi.spyOn(installed, 'inspectModernInstalledActivation').mockImplementation(async root => {
+      if (++observations === 2) {
+        const target = path.join(root, 'governance', 'activation-state.json'), replacement = `${target}.replacement`;
+        await fs.writeFile(replacement, await fs.readFile(target));
+        await fs.rename(replacement, target);
+      }
+      return original(root);
+    });
+    const result = await invoke(f.root, ['plan', '--scope', 'activation', '--inputs', inputFile]);
+    expect(result.code).toBe(1);
+    expect(result.report.diagnostics.join(' ')).toContain('physical file identities changed');
+    expect(observations).toBe(2);
+  });
+
   it.each(['manual', 'openspec', 'spec-kit'] as const)(
     'keeps %s source inspection out of historical graphs and does not manufacture local proof', async workflow => {
       const f = await writeModernInstalledProject(await directory(), workflow);
@@ -95,6 +189,7 @@ describe('modern public governance inspection', () => {
     expect(result.code).toBe(1);
     expect(result.report).toMatchObject({ schemaVersion: 3, consistent: false, complete: null, outcome: 'invalid' });
     expect(result.report.diagnostics.join(' ')).toContain('inspection only');
+    expect(result.report.diagnostics.join(' ')).toContain('read-only workflow review via plan --scope activation --inputs');
     expect(load).not.toHaveBeenCalled();
     expect(inspect).not.toHaveBeenCalled();
     expect(await originalFiles(f.root)).toEqual(before);

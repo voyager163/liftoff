@@ -11,7 +11,9 @@ import { compatibilityMetadataSchemaVersion } from '../src/domain/governance/pol
 import { phaseCapabilities } from '../src/domain/governance/activation/capabilities.js';
 import { retiredFlatRootInfrastructureIdentities } from '../src/domain/project/infrastructure-layout.js';
 import { patterns } from '../src/application/project/catalog.js';
+import { buildCurrentProjectPlan } from '../src/application/project/planning.js';
 import { packagedSupportedStack } from '../src/adapters/packaged-assets/supported-stack.js';
+import { buildCurrentArtifacts } from '../src/templates.js';
 import { liftoffVersion } from '../src/version.js';
 
 const repositoryRoot = process.cwd();
@@ -30,6 +32,22 @@ const requiredDocs = [
   'docs/configuration-and-manifests.md',
   'docs/azure-deployment.md',
   'docs/troubleshooting.md'
+] as const;
+
+const maintainedReadmes = [
+  'README.md',
+  'infrastructure/opentofu/bootstrap/README.md',
+  'infrastructure/opentofu/telemetry/README.md',
+  'src/application/state-migration/README.md'
+] as const;
+
+const generatedReadmeLogicalNames = [
+  'root-readme',
+  'opentofu-readme',
+  'functions-readme',
+  'function-worker-readme',
+  'pattern-prompt-readme',
+  'repository-governance-guide'
 ] as const;
 
 async function repositoryFile(name: string): Promise<string> {
@@ -183,8 +201,8 @@ describe('public documentation', () => {
     expect(contrast('#b1bac4', '#0d1117')).toBeGreaterThan(4.5);
   });
 
-  it('ships every progressive guide and resolves all local Markdown links', async () => {
-    for (const file of ['README.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SECURITY.md', 'GOVERNANCE.md', 'SUPPORT.md', 'DEVELOPER.md', ...requiredDocs]) {
+  it('ships every progressive guide and resolves maintained local Markdown links', async () => {
+    for (const file of [...maintainedReadmes, 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SECURITY.md', 'GOVERNANCE.md', 'SUPPORT.md', 'DEVELOPER.md', ...requiredDocs]) {
       await access(path.join(repositoryRoot, file));
       await expectLocalLinksToResolve(file);
     }
@@ -194,6 +212,68 @@ describe('public documentation', () => {
     expect(packageJson.files).toContain('DEVELOPER.md');
     for (const file of ['CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SECURITY.md', 'GOVERNANCE.md', 'SUPPORT.md']) {
       expect(packageJson.files).toContain(file);
+    }
+  });
+
+  it('audits the explicit maintained and generated README inventory against current contracts', async () => {
+    const maintained = new Map(await Promise.all(
+      maintainedReadmes.map(async (file) => [file, await repositoryFile(file)] as const)
+    ));
+    const root = maintained.get('README.md')!;
+    const bootstrap = maintained.get('infrastructure/opentofu/bootstrap/README.md')!;
+    const telemetry = maintained.get('infrastructure/opentofu/telemetry/README.md')!;
+    const stateMigration = maintained.get('src/application/state-migration/README.md')!;
+    const compact = (content: string) => content.replace(/\s+/g, ' ');
+
+    expect(root).toContain('npm install -g @msn-control/liftoff@latest');
+    expect(root).not.toMatch(/brew install --cask|winget install/i);
+    expect(root).toContain('Planned work is not shipped support');
+    expect(compact(bootstrap)).toContain('default public CLI does not register production implementations');
+    expect(telemetry).toContain('not yet deployed');
+    expect(telemetry).toContain('No client is enrolled by enabling this endpoint');
+    expect(compact(stateMigration)).toContain(
+      'private API, not an enabled public existing-deployment migration command'
+    );
+    expect(compact(stateMigration)).toContain('address migration planning-only');
+
+    const artifacts = buildCurrentArtifacts(buildCurrentProjectPlan({
+      projectName: 'Documentation Audit',
+      projectType: 'genai',
+      pattern: 'rag',
+      cloud: 'azure',
+      environments: ['prod'],
+      agents: ['github-copilot'],
+      governanceProfile: 'team-gitflow'
+    }, { requireProjectName: true }));
+    const generated = new Map(generatedReadmeLogicalNames.map((logicalName) => {
+      const artifact = artifacts.find((entry) => entry.logicalName === logicalName);
+      expect(artifact, logicalName).toBeDefined();
+      return [logicalName, artifact!.content] as const;
+    }));
+    const generatedText = (logicalName: typeof generatedReadmeLogicalNames[number]) =>
+      compact(generated.get(logicalName)!);
+
+    expect(generatedText('root-readme')).toContain('Generation creates the current v8 project');
+    expect(generatedText('root-readme')).toContain('liftoff capabilities --json');
+    expect(generatedText('root-readme')).toContain(
+      '`/liftoff-setup` is an optional agent-native integration, not a shell command'
+    );
+    expect(generatedText('opentofu-readme')).toContain('public CLI has the phase contracts');
+    expect(generatedText('opentofu-readme')).toContain('live commands below are operator reference only');
+    expect(generatedText('functions-readme')).toContain('Keep reusable GenAI orchestration');
+    expect(generatedText('function-worker-readme')).toContain('does not index documents');
+    expect(generatedText('function-worker-readme')).toContain('not proof of completed processing');
+    expect(generatedText('pattern-prompt-readme')).toContain('generated runner does not load them');
+    expect(generatedText('repository-governance-guide')).toContain('Live enforcement: **not observed**');
+    expect(generatedText('repository-governance-guide')).toContain(
+      'There is no `liftoff setup` shell command'
+    );
+
+    for (const content of generated.values()) {
+      expect(content).not.toContain('Status: implemented');
+      expect(content).not.toContain('liftoff create');
+      expect(content).not.toContain('liftoff update --apply');
+      expect(content).not.toMatch(/anonymous project id/i);
     }
   });
 
@@ -889,8 +969,12 @@ describe('public documentation', () => {
     for (const phase of Object.entries(phaseCapabilities).filter(([, value]) => value.executor !== 'built-in').map(([id]) => id)) {
       expect(developer).toContain(`\`${phase}\``);
     }
-    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'unavailable')).toHaveLength(16);
-    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'injected-only')).toHaveLength(2);
+    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'unavailable')).toHaveLength(7);
+    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'injected-only')).toHaveLength(7);
+    for (const phase of ['application-prerequisites-ready', 'application-artifact-ready'] as const) {
+      expect(phaseCapabilities[phase]).toMatchObject({ executor: 'injected-only', retry: 'none' });
+      expect(phaseCapabilities[phase].blocker).toContain('production task13/task14 qualification is not available');
+    }
     expect(developer).not.toContain('activation inspection still uses');
     expect(developer).not.toContain('finish RAG publisher configuration');
     expect(developer).not.toContain('strengthen shared mutation locking');
@@ -936,6 +1020,23 @@ describe('public documentation', () => {
       ...Object.values(packagedSupportedStack.runtimes),
       ...Object.values(packagedSupportedStack.packageManagers)
     ]) expect(baseline).toContain(entry.version);
+  });
+
+  it('keeps read-only execution-ref admission separate from public and live application qualification', async () => {
+    const [azure, governance] = await Promise.all([
+      repositoryFile('docs/azure-deployment.md'), repositoryFile('docs/repository-governance.md')
+    ]);
+    for (const content of [azure, governance]) {
+      expect(content).toContain('liftoff-execution-<full-source-SHA>');
+      expect(content).toContain('read-only');
+      expect(content).toContain('Public-v8 activation');
+      expect(content).toContain('accepted/resumed observation');
+    }
+    expect(azure).toContain('not production qualification');
+    expect(azure).toContain('never creates tags, changes policy or falls back');
+    expect(azure).toContain('Policy administrators remain an external');
+    expect(governance).toContain('no tag creation');
+    expect(governance).toContain('disposable qualification remain unavailable');
   });
 
   it('documents exact new-output-only infrastructure retirement without granting migration authority', async () => {

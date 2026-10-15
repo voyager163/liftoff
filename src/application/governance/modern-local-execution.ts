@@ -297,11 +297,13 @@ export async function executeModernLocalExecution(root:string,fingerprint:string
     }
     if(performance.now()-start>=localExecutionPolicy.operationTimeoutMs)failed=true;
     const complete=!failed&&!uncertain&&inputsUnchanged&&cleanupComplete&&checks.every((check,index)=>check.status===(preview.checks[index].status==='inapplicable'?'inapplicable':'passed'));
+    const processFailed=[...checks,...preparationResults].some(check=>check.status==='failed'&&
+      ['nonzero-exit','process-failed','timeout','output-limit','cancelled'].includes(check.code));
     const body={kind:'liftoff-local-execution-result' as const,schemaVersion:1 as const,projectRoot:canonical,fingerprint:preview.fingerprint,operationId:preview.operationId,
       status:complete?'checks-verified' as const:uncertain?'uncertain' as const:workspace?'failed' as const:'blocked' as const,complete,startedAt,completedAt:new Date().toISOString(),
       checks,preparation:preparationResults,inputsUnchanged,cleanupComplete,retainedWorkspace:cleanupComplete?null:workspace?.directory??null,
       policyDigest:preview.policyDigest,baselineDigest:preview.baselineDigest,selectedPlanDigest:preview.selectedPlanDigest,
-      failureCode:complete?null:uncertain?'unsettled' as const:!inputsUnchanged?'admission-changed' as const:!cleanupComplete?'workspace-failed' as const:'process-failed' as const};
+      failureCode:complete?null:uncertain?'unsettled' as const:!inputsUnchanged?'admission-changed' as const:!cleanupComplete?'workspace-failed' as const:processFailed?'process-failed' as const:'execution-failed' as const};
     if(preview.schemaVersion===4&&consent.schemaVersion!==3)localInputFailure('Initialization consent changed during execution.');
     if(preview.schemaVersion===6&&consent.schemaVersion!==5)localInputFailure('Native Manual consent changed during execution.');
     const selectedBody=preview.schemaVersion===6?{...body,schemaVersion:5 as const,

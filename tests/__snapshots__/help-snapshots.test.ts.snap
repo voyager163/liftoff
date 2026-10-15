@@ -339,34 +339,38 @@ exports[`complete help screens > snapshots compact governance command help 1`] =
 "LIFTOFF / GOVERNANCE
 Historical projects retain schema-2 planning and execution. V8 projects retain
 schema-3 status, resume and verify inspection; recorded phases are not current
-proof. An exact --revalidation-publication selects existing successor proof,
-never approval or execution. Verify exits 0 for complete or inapplicable
-selected scope, 2 for consistent incomplete work, and 1 for inspection failure.
-For separate schema-7 v8 verification, select --scope local --local-operation
-verify: plan --inputs <request.json>, approve --plan <fingerprint> --inputs
-<consent.json>, then apply-next --plan <fingerprint> --execute. Planning probes
-installed tools and saves an external preview; approval separately saves
-consent. Without --execute, apply-next only inspects saved progress. Keep public
-request and consent files outside the project. Native Manual uses
-verify-manual-native and approve-manual-native with independent infrastructure
-preparation/network consent and the advertised qualified host/tool limits.
-Locked provider downloads and local validation grant no Azure/GitHub resource
-operations. Initialized OpenSpec requires explicit generated-baseline scope
-attestation; it is not domain verification; the private workspace is not a
-sandbox. Separate schema-5 completion uses --local-operation finalize for
-admitted Manual/Spec Kit verification, then --local-operation publish for exact
-target review, independent approval and execution. Both require their own closed
---inputs for plan/approve and exact --plan for apply-next. For publication,
-governance recover --plan <fingerprint> --execute recovers only that attributed
-transaction; without --execute it only inspects saved progress. Failure does not
-imply rollback. Separate schema-6 --local-operation revalidate-successor
-constructs or reviews exact records from completed verification of an existing
-supported successor; it requires independent publication approval and explicit
-execution/recovery. Committed incomplete revalidation stays active and exits 2.
-No successor creation, OpenSpec finalization, provider or whole-directory
-rollback authority is granted. Local operations otherwise exit 0 for a completed
-requested operation or nonexecuting inspection, and 1 for refusal, failure, or
-uncertainty.
+proof. V8 plan --scope activation --inputs <workflow-review.json> accepts only a
+closed schema-1 review-workflow-source5 request. It returns read-only exact
+review values and concrete missing current-prerequisite blockers, exits 2, saves
+no approval or preview, and permits no publication or dispatch. Modern workflow
+approve/apply-next remain unavailable. An exact --revalidation-publication
+selects existing successor proof, never approval or execution. Verify exits 0
+for complete or inapplicable selected scope, 2 for consistent incomplete work,
+and 1 for inspection failure. For separate schema-7 v8 verification, select
+--scope local --local-operation verify: plan --inputs <request.json>, approve
+--plan <fingerprint> --inputs <consent.json>, then apply-next --plan
+<fingerprint> --execute. Planning probes installed tools and saves an external
+preview; approval separately saves consent. Without --execute, apply-next only
+inspects saved progress. Keep public request and consent files outside the
+project. Native Manual uses verify-manual-native and approve-manual-native with
+independent infrastructure preparation/network consent and the advertised
+qualified host/tool limits. Locked provider downloads and local validation grant
+no Azure/GitHub resource operations. Initialized OpenSpec requires explicit
+generated-baseline scope attestation; it is not domain verification; the private
+workspace is not a sandbox. Separate schema-5 completion uses --local-operation
+finalize for admitted Manual/Spec Kit verification, then --local-operation
+publish for exact target review, independent approval and execution. Both
+require their own closed --inputs for plan/approve and exact --plan for
+apply-next. For publication, governance recover --plan <fingerprint> --execute
+recovers only that attributed transaction; without --execute it only inspects
+saved progress. Failure does not imply rollback. Separate schema-6
+--local-operation revalidate-successor constructs or reviews exact records from
+completed verification of an existing supported successor; it requires
+independent publication approval and explicit execution/recovery. Committed
+incomplete revalidation stays active and exits 2. No successor creation,
+OpenSpec finalization, provider or whole-directory rollback authority is
+granted. Local operations otherwise exit 0 for a completed requested operation
+or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.
 
 Usage
 ─────
@@ -696,7 +700,8 @@ Project options
 Option               Description
 ───────────────────  ───────────────────────────────────────────────────────────
 --project <path>     One exact Liftoff project root
---repository <path>  Exact repository root for separate heartbeat file authority
+--repository <path>  Exact repository root for separate heartbeat review/report
+                     binding; published tooling remains unqualified
 
 Command options
 ───────────────
@@ -1005,7 +1010,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain governance command help 1`] = `
-"LIFTOFF / GOVERNANCE - Historical projects retain schema-2 planning and execution. V8 projects retain schema-3 status, resume and verify inspection; recorded phases are not current proof. An exact --revalidation-publication selects existing successor proof, never approval or execution. Verify exits 0 for complete or inapplicable selected scope, 2 for consistent incomplete work, and 1 for inspection failure. For separate schema-7 v8 verification, select --scope local --local-operation verify: plan --inputs <request.json>, approve --plan <fingerprint> --inputs <consent.json>, then apply-next --plan <fingerprint> --execute. Planning probes installed tools and saves an external preview; approval separately saves consent. Without --execute, apply-next only inspects saved progress. Keep public request and consent files outside the project. Native Manual uses verify-manual-native and approve-manual-native with independent infrastructure preparation/network consent and the advertised qualified host/tool limits. Locked provider downloads and local validation grant no Azure/GitHub resource operations. Initialized OpenSpec requires explicit generated-baseline scope attestation; it is not domain verification; the private workspace is not a sandbox. Separate schema-5 completion uses --local-operation finalize for admitted Manual/Spec Kit verification, then --local-operation publish for exact target review, independent approval and execution. Both require their own closed --inputs for plan/approve and exact --plan for apply-next. For publication, governance recover --plan <fingerprint> --execute recovers only that attributed transaction; without --execute it only inspects saved progress. Failure does not imply rollback. Separate schema-6 --local-operation revalidate-successor constructs or reviews exact records from completed verification of an existing supported successor; it requires independent publication approval and explicit execution/recovery. Committed incomplete revalidation stays active and exits 2. No successor creation, OpenSpec finalization, provider or whole-directory rollback authority is granted. Local operations otherwise exit 0 for a completed requested operation or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.
+"LIFTOFF / GOVERNANCE - Historical projects retain schema-2 planning and execution. V8 projects retain schema-3 status, resume and verify inspection; recorded phases are not current proof. V8 plan --scope activation --inputs <workflow-review.json> accepts only a closed schema-1 review-workflow-source5 request. It returns read-only exact review values and concrete missing current-prerequisite blockers, exits 2, saves no approval or preview, and permits no publication or dispatch. Modern workflow approve/apply-next remain unavailable. An exact --revalidation-publication selects existing successor proof, never approval or execution. Verify exits 0 for complete or inapplicable selected scope, 2 for consistent incomplete work, and 1 for inspection failure. For separate schema-7 v8 verification, select --scope local --local-operation verify: plan --inputs <request.json>, approve --plan <fingerprint> --inputs <consent.json>, then apply-next --plan <fingerprint> --execute. Planning probes installed tools and saves an external preview; approval separately saves consent. Without --execute, apply-next only inspects saved progress. Keep public request and consent files outside the project. Native Manual uses verify-manual-native and approve-manual-native with independent infrastructure preparation/network consent and the advertised qualified host/tool limits. Locked provider downloads and local validation grant no Azure/GitHub resource operations. Initialized OpenSpec requires explicit generated-baseline scope attestation; it is not domain verification; the private workspace is not a sandbox. Separate schema-5 completion uses --local-operation finalize for admitted Manual/Spec Kit verification, then --local-operation publish for exact target review, independent approval and execution. Both require their own closed --inputs for plan/approve and exact --plan for apply-next. For publication, governance recover --plan <fingerprint> --execute recovers only that attributed transaction; without --execute it only inspects saved progress. Failure does not imply rollback. Separate schema-6 --local-operation revalidate-successor constructs or reviews exact records from completed verification of an existing supported successor; it requires independent publication approval and explicit execution/recovery. Committed incomplete revalidation stays active and exits 2. No successor creation, OpenSpec finalization, provider or whole-directory rollback authority is granted. Local operations otherwise exit 0 for a completed requested operation or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.
 
 Usage
 Usage: liftoff governance <status|plan|approve|apply-next|credential-enroll|recover|resume|verify|assess> [project-path]
@@ -1179,7 +1184,7 @@ Subcommands
 
 Project options
 Option: --project <path> | Description: One exact Liftoff project root
-Option: --repository <path> | Description: Exact repository root for separate heartbeat file authority
+Option: --repository <path> | Description: Exact repository root for separate heartbeat review/report binding; published tooling remains unqualified
 
 Command options
 Option: --check | Description: Review exact project and external consent writes without generating an identity
@@ -1536,7 +1541,11 @@ exports[`complete help screens > snapshots rich governance assessment help 1`] =
 exports[`complete help screens > snapshots rich governance command help 1`] = `
 "┌─ LIFTOFF / GOVERNANCE ───────────────────────────────────────────────────────────────────────┐
 │ Historical projects retain schema-2 planning and execution. V8 projects retain schema-3      │
-│ status, resume and verify inspection; recorded phases are not current proof. An exact        │
+│ status, resume and verify inspection; recorded phases are not current proof. V8 plan --scope │
+│ activation --inputs <workflow-review.json> accepts only a closed schema-1                    │
+│ review-workflow-source5 request. It returns read-only exact review values and concrete       │
+│ missing current-prerequisite blockers, exits 2, saves no approval or preview, and permits no │
+│ publication or dispatch. Modern workflow approve/apply-next remain unavailable. An exact     │
 │ --revalidation-publication selects existing successor proof, never approval or execution.    │
 │ Verify exits 0 for complete or inapplicable selected scope, 2 for consistent incomplete      │
 │ work, and 1 for inspection failure. For separate schema-7 v8 verification, select --scope    │
@@ -1834,9 +1843,10 @@ exports[`complete help screens > snapshots rich telemetry command help 1`] = `
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
 │ Option               Description                                                             │
-│ ───────────────────  ───────────────────────────────────────────────────────────             │
+│ ───────────────────  ─────────────────────────────────────────────────────────────────────── │
 │ --project <path>     One exact Liftoff project root                                          │
-│ --repository <path>  Exact repository root for separate heartbeat file authority             │
+│ --repository <path>  Exact repository root for separate heartbeat review/report binding;     │
+│                      published tooling remains unqualified                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
 │ Option       Description                                                                     │

@@ -255,11 +255,14 @@ credentials, billed infrastructure, and final enforcement retain independent
 authority. `liftoff governance approve --plan <fingerprint>` persists only the
 explicitly reviewed approval; setup never approves automatically or executes as
 a side effect of approval. Approve and apply-next refuse blocked or unavailable
-capabilities. Public credential readiness and enrollment are currently
-unavailable pending independently verified provider wiring: approve refuses the
-credential-ready plan, and `liftoff governance credential-enroll --plan <fingerprint>`
-refuses before reading any input. Never request or accept a credential through
-chat, arguments, or files.
+capabilities. For a ready credential plan, approval still does not read or write
+the credential. Only the developer-selected
+`liftoff governance credential-enroll --plan <fingerprint>` route may select the
+private non-echoing TTY; `--protected-stdin` is allowed only for an explicitly
+selected owner-controlled non-TTY secret channel. Never request or accept a
+credential through chat, arguments, `--inputs`, ordinary files, plans, evidence,
+or output, and never substitute plain `apply-next --execute` for the protected
+enrollment route.
 
 Schema-2 governance results distinguish `localSetup`, `migration`, `activation`,
 and `lifecycle`. `nextPlannablePhase` can precede approval; `nextReadyPhase`

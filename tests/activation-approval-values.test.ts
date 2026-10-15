@@ -8,6 +8,7 @@ import {
   canonicalApprovalEnvelopeScope, canonicalApprovalEnvelopeHash
 } from '../src/domain/governance/activation/approvals.js';
 import { validateApprovalEnvelope } from '../src/domain/governance/activation/validators.js';
+import { currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import type {
   ApprovalCostCeiling, ApprovalResourceScope, ApprovalDestinationScope
@@ -181,7 +182,7 @@ describe('original approval value characterization', () => {
   });
 
   it('retains current canonical approval projection, interval and approver hashing', () => {
-    const original = validateApprovalEnvelope(capturedApproval);
+    const original = validateApprovalEnvelope({ ...historyRecord(capturedApproval, 'approval'), identity: currentActivationIdentity });
     const envelope = {
       ...original,
       resources: [{ type: ' Azure ', identity: ' ExactCase ' }],
@@ -213,7 +214,7 @@ describe('original approval value characterization', () => {
       .not.toBe(canonicalApprovalEnvelopeHash(envelope));
     expect(canonicalApprovalEnvelopeHash({ ...envelope, approver: 'other' }))
       .not.toBe(canonicalApprovalEnvelopeHash(envelope));
-    expect(validateApprovalEnvelope(capturedApproval)).toEqual(original);
+    expect(validateApprovalEnvelope({ ...historyRecord(capturedApproval, 'approval'), identity: currentActivationIdentity })).toEqual(original);
   });
 });
 

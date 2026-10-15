@@ -23,7 +23,18 @@ function frameworkMeaning(selection: HandoffSelection): string {
   }`;
 }
 
-function supportBoundary(selection: HandoffSelection): string {
+function supportBoundary(selection: HandoffSelection, currentSource: boolean): string {
+  const installedCatalog = currentSource
+    ? `Project-independent \`liftoff capabilities --json\`, \`liftoff --help\`,
+\`liftoff --version\` and \`liftoff repair --capabilities --json\` describe the
+installed CLI without project discovery or execution. The general capability
+catalog is a read-only contract, not proof that this source is currently
+accepted; the repair capability report alone does not declare v8 manifest
+support. Do not invent a supported-manifest response field.`
+    : `Project-independent \`liftoff --help\`, \`liftoff --version\` and
+\`liftoff repair --capabilities --json\` describe the installed CLI; the repair
+capability report alone does not declare v8 manifest support.
+Do not invent a capabilities command or a supported-manifest response field.`;
   return `## Source contract, not execution permission
 
 This handoff targets manifest 8 and ${selection.profile === 'none' ? 'disabled governance' : `the ${selection.profile} modern governance source`}.
@@ -35,10 +46,7 @@ An existing read-only compatibility probe is
 \`liftoff governance status --scope local --json\` from the exact project.
 If it reports an unsupported manifest or identity, STOP: do not edit versions,
 retag proof, reinitialize, manufacture receipts or emulate an unavailable command.
-Project-independent \`liftoff --help\`, \`liftoff --version\` and
-\`liftoff repair --capabilities --json\` describe the installed CLI; the repair
-capability report alone does not declare v8 manifest support.
-Do not invent a capabilities command or a supported-manifest response field.
+${installedCatalog}
 
 Only a CLI that actually accepts this exact source and reports its applicable
 operation may supply a next action. Preserve its executable, argument array, cwd,
@@ -46,11 +54,24 @@ scope, approval requirements and disclosed effects. Missing producers remain
 blockers; nothing here authorizes execution, tool/dependency preparation, network
 access, publication, credentials, billed resources, enforcement or destructive work.
 
+Private workflow source/context-proof modules are not public execution support.
+Local workflow-write authority cannot authorize commit/push or dispatch. Exact
+publication and real green/controlled-red proof require separately allocated
+current authority and engine-owned durable checkpoints. A mutable branch SHA
+precheck cannot protect workflow selection at dispatch; require independent
+immutable execution-ref protection, not an undocumented SHA fallback. Missing
+protection or uncertain dispatch acceptance blocks; never install protections,
+repeat dispatch, or fabricate status/check success to make this handoff pass.
+
 ${frameworkMeaning(selection)}
 `;
 }
 
-export function renderModernGovernanceGuide(context: ModernGovernanceContext, graph: ModernPhaseGraph): string {
+export function renderModernGovernanceGuide(
+  context: ModernGovernanceContext,
+  graph: ModernPhaseGraph,
+  currentSource = true
+): string {
   const identity = context.governance.activationIdentity;
   if (identity.phaseGraphHash !== canonicalSha256(graph) ||
     graph.profileContract.profile !== identity.profile || graph.workflowContract.workflow !== identity.workflow) {
@@ -65,6 +86,19 @@ export function renderModernGovernanceGuide(context: ModernGovernanceContext, gr
   const review = graph.profileContract.pullRequestReview.kind === 'independent-human'
     ? 'Team requires one independent human approval on the actual current head. Authors, bots and stale approvals do not satisfy it.'
     : 'Single-maintainer requires zero additional human PR approvals; applicable automated exact-head checks remain required.';
+  const protectedCustody = graph.phases.some(phase =>
+    phase.id === 'bootstrap-state-disposed' &&
+    phase.label === 'Retained protected bootstrap state is disposed after day 30'
+  );
+  const protectedCustodyBoundary = protectedCustody ? `
+
+The engine implements strict same-operation-owned backend handover/disposal
+contracts and proof validation, but the installed public CLI registers no
+production protected handover or custody ports. That is an implementation
+integration and real-qualification gap, not a request awaiting approval.
+Authorization cannot instantiate a missing adapter. A future adapter must still
+prove the exact disposable host/cloud combination and scoped authority; it
+cannot expand into brownfield import, partition, relocation, or address migration.` : '';
   return `# Modern Liftoff governance handoff
 
 Profile: ${identity.profile}; policy: ${identity.policyVersion}; source: ${identity.liftoffVersion}.
@@ -72,7 +106,7 @@ Activation contract: ${identity.activationContractVersion}; graph: ${identity.ph
 Policy digest: ${identity.policyDigest}.
 Live enforcement: **not observed**. No branches, settings, tools, resources or providers were changed.
 
-${supportBoundary(selection)}
+${supportBoundary(selection, currentSource)}
 ## Selected integrations
 
 ${invocations}
@@ -97,7 +131,7 @@ Preserve existing CODEOWNERS and stronger controls; review any proposed reductio
 No mandatory deployment reviewers are introduced. Protected back-merges require
 their exact-head checks. Enforcement comes last after real green/red proof.
 Pre-existing deployment and OpenTofu state changes remain planning-only; absent
-state files do not establish safe adoption or authority to import, move or publish state.
+state files do not establish safe adoption or authority to import, move or publish state.${protectedCustodyBoundary}
 
 ## Actual graph requirements, not completed work
 
@@ -122,13 +156,14 @@ distinct outcomes; report committed-but-incomplete work without automatic downgr
 export function renderModernGovernanceIntegration(
   agent: CodingAgentId,
   operation: 'setup' | 'assessment' | 'repair',
-  selection: HandoffSelection
+  selection: HandoffSelection,
+  currentSource = true
 ): string {
   if (!selection.project.agents.some((selected) => selected === agent) || selection.profile === 'none' && operation !== 'repair') {
     throw new Error('Modern integration is not applicable to the selected agent/profile.');
   }
   const introduction = `${nativeIntegrationHeader(agent, operation)}
-${supportBoundary(selection)}
+${supportBoundary(selection, currentSource)}
 `;
   if (operation === 'repair') {
     return `${introduction}

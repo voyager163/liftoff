@@ -36,12 +36,16 @@ export function assertNativePublicationEvidence(record, evidence, approvedPolicy
   return evidence;
 }
 
-export function verifyNativeEvidenceSignature(bytes, signature, publicKey, expectedKeySha256) {
+export function verifyNativeBytesSignature(bytes, signature, publicKey, expectedKeySha256) {
   const key = createPublicKey(publicKey);
   assert.equal(key.asymmetricKeyType, 'ed25519', 'Native evidence requires the approved Ed25519 signing algorithm.');
   const der = key.export({ format: 'der', type: 'spki' });
   assert.match(expectedKeySha256 ?? '', /^[a-f0-9]{64}$/, 'Native signing principal is not approved.');
   assert.equal(createHash('sha256').update(der).digest('hex'), expectedKeySha256, 'Native signing principal differs.');
   assert.ok(verify(null, bytes, key, signature), 'Native qualification signature did not verify.');
+}
+
+export function verifyNativeEvidenceSignature(bytes, signature, publicKey, expectedKeySha256) {
+  verifyNativeBytesSignature(bytes, signature, publicKey, expectedKeySha256);
   return JSON.parse(bytes.toString('utf8'));
 }

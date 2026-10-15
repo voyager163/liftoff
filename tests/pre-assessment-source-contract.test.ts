@@ -13,7 +13,10 @@ import { supportedHostPlatforms } from '../src/domain/project/supported-stack.js
 import { readManifestPluginMetadata } from '../src/domain/project/manifest/plugins.js';
 import type { ProjectOptions, ManifestLayoutDescriptor } from '../src/domain/project/contracts.js';
 import {
-  modernPreAssessmentDeclarationsDigest, modernPreAssessmentSource, modernPreAssessmentSourceRevision
+  modernPreAssessmentDeclarationsDigest,
+  modernPreAssessmentGovernanceSourceContracts,
+  modernPreAssessmentSource,
+  modernPreAssessmentSourceRevision
 } from '../src/plugins/builtin/modern-pre-assessment.js';
 
 interface BeforeSource {
@@ -50,6 +53,8 @@ describe('genuine pre-assessment declaration and managed-body source contract', 
     };
     expect(canonicalJson(declarations)).toBe(canonicalJson(before.declarations));
     expect(`sha256:${canonicalSha256(declarations)}`).toBe(modernPreAssessmentDeclarationsDigest);
+    expect(`sha256:${createHash('sha256').update(modernPreAssessmentGovernanceSourceContracts).digest('hex')}`)
+      .toBe('sha256:b336953323f1099a429e35cb22a39c9dda48e884bc5e610bfa44424db914bcf6');
     expect(modernPreAssessmentSource.release).toEqual(before.release);
     const registry = modernPreAssessmentRegistry();
     expect(registry.registryDigest).toBe(before.registryDigest);
