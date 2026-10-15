@@ -165,6 +165,37 @@ describe('release-owned real context validator bodies, not phase qualification',
     await expect(lstat(owned)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('preserves a replacement real HOME directory and refuses false cleanup success after a settled child', async () => {
+    const parent = await mkdtemp(path.join(root, 'execution-parent-'));
+    for (const key of ['TMPDIR', 'TEMP', 'TMP']) vi.stubEnv(key, parent);
+    const value = await fixture([
+      'import { mkdirSync, renameSync, writeFileSync } from "node:fs";',
+      'import path from "node:path";',
+      'test("fixture replaces its allocated home without failing its test", () => {',
+      '  const allocated = process.env.HOME, moved = `${allocated}-moved`;',
+      '  writeFileSync(path.join(allocated, "original.txt"), "original allocated home");',
+      '  renameSync(allocated, moved);',
+      '  mkdirSync(allocated, { mode: 0o700 });',
+      '  writeFileSync(path.join(allocated, "replacement.txt"), "replacement must survive");',
+      '  mkdirSync(new URL("../build/", import.meta.url), { recursive: true });',
+      '  writeFileSync(new URL("../build/home-replacement.json", import.meta.url), JSON.stringify({ allocated, moved }));',
+      '});'
+    ].join('\n'));
+    const report = await executeWorkflowContextValidator(value.root, { validator: 'backend-tests', sourceSha: value.sourceSha });
+    const observed = JSON.parse(await readFile(path.join(value.root, ...value.backend, 'build/home-replacement.json'), 'utf8'));
+    const replacement = await readFile(path.join(observed.allocated, 'replacement.txt'), 'utf8').catch(error => {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null;
+      throw error;
+    });
+    const original = await readFile(path.join(observed.moved, 'original.txt'), 'utf8');
+    expect({ report, replacement, original }).toMatchObject({
+      report: { status: 'blocked', code: 'validator-cleanup', workloadExecution: true,
+        command: { status: 0, processTreeSettled: true }, retainedExecutionDirectory: observed.allocated },
+      replacement: 'replacement must survive', original: 'original allocated home'
+    });
+    expect(path.dirname(observed.allocated)).toBe(parent);
+  });
+
   it('does not replace an omitted frontend or worker with a vacuous successful validator', async () => {
     const value = await fixture();
     for (const validator of ['frontend-build', 'worker-tests', 'framework-source'] as const) {

@@ -75,6 +75,12 @@ provider, native-host, release or green/red matrix qualification. The source
 entry being present in a development npm pack is not a qualified published
 current5 recipe/tool subject or an automation `GITHUB_TOKEN` admission.
 
+Cleanup captures the allocated HOME's directory and ancestor creation identities
+before project execution and rechecks them after settlement. A missing, renamed,
+linked or replaced boundary blocks cleanup without deleting its replacement.
+The retained original pathname is diagnostic, not a claim that the moved
+allocation can still be located there or that cleanup succeeded.
+
 Publication binds one existing `ci/liftoff-workflows-*` review branch, one actual
 parent commit and exact regular per-file before/after byte digests. It commits
 only that inventory, never consumes unrelated developer-staged changes, never

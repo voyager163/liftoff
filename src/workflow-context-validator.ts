@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { observeProjectGitMetadata, gitConfigNullFile } from './adapters/assessment/live.js';
+import { assertWorkspaceDirectorySnapshot, captureWorkspaceDirectoryChain } from './adapters/filesystem/repair-workspaces.js';
 import { inspectModernLocalRuntime, planModernLocalRuntime } from './application/governance/modern-local-inputs.js';
+import { RepairWorkspaceError } from './application/repair/workspaces-types.js';
 import { projectCatalog } from './application/project/catalog.js';
 import { parseProjectManifest } from './application/project/manifest.js';
 import { resolveModernManifestSourceContext } from './application/project/source-context.js';
@@ -54,6 +56,12 @@ class ValidatorRefusal extends Error {
   constructor(readonly code: string, message: string, readonly status: 'failed' | 'blocked' = 'blocked') {
     super(message);
   }
+}
+
+function isWorkspaceCleanupError(error: unknown): boolean {
+  return error instanceof RepairWorkspaceError ||
+    error instanceof Error && 'code' in error && typeof error.code === 'string' &&
+      'syscall' in error && typeof error.syscall === 'string';
 }
 
 function readRequest(value: WorkflowContextValidatorRequest): WorkflowContextValidatorRequest {
@@ -184,10 +192,18 @@ export async function executeWorkflowContextValidator(
     const originalInputs = await assertCommittedInputs(projectRoot, local.inspection.snapshot,
       request.sourceSha, managedPaths, componentRoots);
     if (selected.command) {
-      const home = await mkdtemp(path.join(os.tmpdir(), 'liftoff-workflow-validator-'));
+      const home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'liftoff-workflow-validator-'));
       let settled = false;
       let commandFailed = false;
       retainedExecutionDirectory = home;
+      const homeBoundary = await captureWorkspaceDirectoryChain(home).then(async boundary => {
+        await assertWorkspaceDirectorySnapshot(boundary);
+        return boundary;
+      }).catch(error => {
+        if (!isWorkspaceCleanupError(error)) throw error;
+        throw new ValidatorRefusal('validator-cleanup',
+          'The allocated runner HOME identity could not be captured; its original pathname is retained for review and no workload was started.');
+      });
       try {
         const env: NodeJS.ProcessEnv = Object.fromEntries(Object.keys(process.env).map(key => [key, undefined]));
         for (const key of ['PATH', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'ComSpec', 'COMSPEC', 'PATHEXT', 'TMPDIR', 'TEMP', 'TMP']) {
@@ -215,10 +231,12 @@ export async function executeWorkflowContextValidator(
       } finally {
         if (settled) {
           try {
-            await rm(home, { recursive: true, force: true });
-          } catch {
+            await assertWorkspaceDirectorySnapshot(homeBoundary);
+            await rm(home, { recursive: true });
+          } catch (error) {
+            if (!isWorkspaceCleanupError(error)) throw error;
             throw new ValidatorRefusal('validator-cleanup',
-              'Settled validator execution could not remove its exact owned temporary home; the retained directory is not successful cleanup.');
+              'The original runner HOME identity or cleanup could not be verified. Its retained original pathname may be missing or replaced, and the allocated directory may have moved; a replacement is not cleanup authority.');
           }
           retainedExecutionDirectory = null;
         }
