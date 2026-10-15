@@ -7,6 +7,7 @@ import { readUpgradeBytes, type SelfUpgradeDependencies } from './upgrade-host.j
 import { commandFailed, readOnlyEnvironment } from '../../domain/distribution/liftoff-npm-installation.js';
 import { MacMigrationFailure, type MacNpmOwner, type MacNpmSelection } from '../../domain/distribution/mac-migration.js';
 import { isStableSemver } from '../../stable-release.js';
+import { NodeCommandRunner } from '../../process-runner.js';
 
 export const macMigrationHash = (value: Buffer | string) => createHash('sha256').update(value).digest('hex');
 
@@ -18,8 +19,63 @@ export function assertMigrationOutsideOldScope(packageRoot: string, files: reado
 
 export async function migrationFileIdentity(file: string, maximum = 8 * 1024 * 1024): Promise<string> {
   const bytes = await readUpgradeBytes(file, maximum);
+  const metadata = (await assertMigrationMetadata([file])).get(file);
   const stat = await lstat(file);
-  return JSON.stringify([file, stat.dev, stat.ino, stat.uid, stat.mode, stat.size, stat.mtimeMs, stat.ctimeMs, macMigrationHash(bytes)]);
+  return JSON.stringify([file, stat.dev, stat.ino, stat.uid, stat.gid, stat.mode, stat.size, stat.mtimeMs, stat.ctimeMs, macMigrationHash(bytes), metadata]);
+}
+
+export async function assertMigrationMetadata(files: readonly string[], maximumMs = 10_000): Promise<Map<string, string>> {
+  // Other platforms exercise source fixtures only; the real host gate refuses migration there.
+  const metadata = new Map(files.map(file => [file, macMigrationHash('[]')]));
+  if (process.platform !== 'darwin') return metadata;
+  const runner = new NodeCommandRunner();
+  const started = performance.now();
+  const observe = async (executable: string, args: string[]) => {
+    const remaining = maximumMs - (performance.now() - started);
+    if (remaining <= 0) throw new MacMigrationFailure('mac-metadata-deadline');
+    const result = await runner.run({ executable, args }, {
+      cwd: '/', env: { PATH: '/usr/bin:/bin', LC_ALL: 'C', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0' },
+      timeoutMs: Math.max(1, Math.min(10_000, Math.floor(remaining))),
+      maxOutputBytes: 2 * 1024 * 1024, ensureProcessTreeSettled: true
+    });
+    if (commandFailed(result) || result.processTreeSettled !== true || result.stderr) {
+      throw new MacMigrationFailure('mac-metadata-unavailable');
+    }
+    return result.stdout;
+  };
+  for (let offset = 0; offset < files.length; offset += 64) {
+    const selected = files.slice(offset, offset + 64);
+    if (selected.some(file => !path.isAbsolute(file) || /[\u0000-\u001f]/.test(file))) {
+      throw new MacMigrationFailure('invalid-metadata-path');
+    }
+    const lines = (await observe('/bin/ls', ['-dlenTO@', '--', ...selected])).trimEnd().split('\n');
+    const seen = new Set<string>(); const provenance: string[] = [];
+    for (let index = 0; index < lines.length; index += 1) {
+      const header = /^[dl-][rwx-]{9}([@ ])\s+\d+\s+\d+\s+\d+\s+-\s+\d+\s+[A-Z][a-z]{2}\s+\d+\s+\d\d:\d\d:\d\d\s+\d{4}\s+(.+)$/.exec(lines[index]);
+      const matches = selected.filter(file => header && (header[2] === file || header[2].startsWith(`${file} -> `)));
+      if (!header || matches.length !== 1 || seen.has(matches[0])) throw new MacMigrationFailure('unrecoverable-mac-metadata');
+      seen.add(matches[0]);
+      if (header[1] === '@') {
+        // This OS-created attribute is admitted only with its exact bytes, never ignored or stripped.
+        if (!/^\tcom\.apple\.provenance\t\s*11\s*$/.test(lines[++index] ?? '')) {
+          throw new MacMigrationFailure('unrecoverable-mac-metadata');
+        }
+        provenance.push(matches[0]);
+      }
+    }
+    if (seen.size !== selected.length) throw new MacMigrationFailure('mac-metadata-unavailable');
+    if (provenance.length) {
+      const values = (await observe('/usr/bin/xattr', ['-s', '-p', '-x', 'com.apple.provenance', ...provenance])).trimEnd().split('\n');
+      for (const file of provenance) {
+        if (provenance.length > 1 && values.shift() !== `${file}: `) throw new MacMigrationFailure('mac-metadata-unavailable');
+        const value = values.shift()?.trim();
+        if (!value || !/^[0-9A-F]{2}(?: [0-9A-F]{2}){10}$/.test(value)) throw new MacMigrationFailure('mac-metadata-unavailable');
+        metadata.set(file, macMigrationHash(`com.apple.provenance:${value.replaceAll(' ', '').toLowerCase()}`));
+      }
+      if (values.length) throw new MacMigrationFailure('mac-metadata-unavailable');
+    }
+  }
+  return metadata;
 }
 
 export async function migrationDirectory(directory: string, writable = false): Promise<string> {
@@ -28,8 +84,14 @@ export async function migrationDirectory(directory: string, writable = false): P
   }
   const stat = await lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink() || stat.mode & 0o7022) throw new MacMigrationFailure('unsafe-directory');
-  if (writable) await access(directory, constants.W_OK | constants.X_OK);
-  return JSON.stringify([directory, stat.dev, stat.ino, stat.uid, stat.mode]);
+  const metadata = (await assertMigrationMetadata([directory])).get(directory);
+  if (writable) {
+    if (stat.uid !== process.getuid?.() || stat.gid !== process.getgid?.() || (stat.mode & 0o700) !== 0o700) {
+      throw new MacMigrationFailure('unrecoverable-directory-permissions');
+    }
+    await access(directory, constants.W_OK | constants.X_OK);
+  }
+  return JSON.stringify([directory, stat.dev, stat.ino, stat.uid, stat.gid, stat.mode, metadata]);
 }
 
 export function migrationEnvironment(dependencies: SelfUpgradeDependencies, scratch: string, node: string): NodeJS.ProcessEnv {

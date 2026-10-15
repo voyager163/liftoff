@@ -159,6 +159,7 @@ async function restore(journal: MigrationJournal, store: MacMigrationJournalStor
     await symlink(journal.launcher.target, journal.owner.launcher);
     await syncMigrationDirectory(path.dirname(journal.owner.launcher));
     journal.restoration!.launcher = await migrationLauncher(journal.owner.launcher);
+    if (journal.restoration!.launcher.metadata !== journal.launcher.metadata) throw new MacMigrationFailure('restored-launcher-metadata-mismatch');
     delete journal.restoration!.launcherPending; await store.save(journal);
   }
   if ((await captureMigrationTree(journal.owner.packageRoot)).content !== journal.tree.content ||
@@ -234,6 +235,14 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
       throw new MacMigrationFailure('cask-scope-preflight-unproven');
     }
     const launcher = await migrationLauncher(owner.launcher);
+    const launcherProbe = path.join(scratch, 'recovery-launcher-probe');
+    await symlink(launcher.target, launcherProbe);
+    const probe = await migrationLauncher(launcherProbe);
+    if (JSON.stringify(await migrationLauncher(launcherProbe)) !== JSON.stringify(probe)) {
+      throw new MacMigrationFailure('recovery-launcher-probe-changed');
+    }
+    await unlink(launcherProbe);
+    if (probe.metadata !== launcher.metadata) throw new MacMigrationFailure('unrecoverable-launcher-metadata');
     const tree = await captureMigrationTree(owner.packageRoot);
     const recovery = await recoveryObservation(owner, request.recovery, tree, dependencies.upgrade, scratch);
     const policyIdentity = macMigrationHash(JSON.stringify(policy));

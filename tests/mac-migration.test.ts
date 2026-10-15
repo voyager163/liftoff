@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chmod, copyFile, lstat, mkdir, readFile, readlink, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { runMacMigration, defaultMacMigrationDependencies } from '../src/application/upgrade/mac-migration.js';
 import { parseMacMigration, macMigrationHelp, macMigrationMain } from '../src/cli/mac-migration.js';
 import { captureMigrationTree, MacMigrationJournalStore, migrationAbsent, migrationLauncher,
@@ -12,6 +13,7 @@ import { discoverMacNpmSelections, inspectMacNpmOwner, macMigrationHash as hash,
 import { macMigrationFixture } from './fixtures/mac-migration.js';
 import { MacMigrationFailure, type MacNpmManager } from '../src/domain/distribution/mac-migration.js';
 import { macMigrationBridge } from '../src/domain/distribution/mac-migration-bridge.js';
+import { getTelemetryConfigPath } from '../src/telemetry/config.js';
 
 type Fixture = Awaited<ReturnType<typeof macMigrationFixture>>;
 const fixtures: Fixture[] = [];
@@ -36,7 +38,210 @@ async function recover(value: Fixture) {
   return runMacMigration({ recover: { journalRoot: selected.root, journalSha256: selected.digest } }, value.dependencies);
 }
 
+async function configFixtureSnapshot(root: string) {
+  const entries: { path: string; mode: number; inode: number; mtimeMs: number; bytes?: string; target?: string }[] = [];
+  async function visit(file: string) {
+    const observed = await lstat(file);
+    const entry = { path: path.relative(root, file), mode: observed.mode & 0o777,
+      inode: observed.ino, mtimeMs: observed.mtimeMs };
+    if (observed.isDirectory()) {
+      entries.push(entry);
+      for (const name of (await readdir(file)).sort()) await visit(path.join(file, name));
+    } else if (observed.isSymbolicLink()) {
+      entries.push({ ...entry, target: await readlink(file) });
+    } else {
+      expect(observed.isFile()).toBe(true);
+      entries.push({ ...entry, bytes: (await readFile(file)).toString('hex') });
+    }
+  }
+  await visit(root);
+  return entries;
+}
+
+const configPreservationCases = (['DO_NOT_TRACK=1', 'LIFTOFF_TELEMETRY=0'] as const).flatMap(optOut =>
+  (['HOME', 'XDG_CONFIG_HOME'] as const).flatMap(location =>
+    (['unknown-fields', 'invalid-json', 'read-only-file', 'read-only-directory', 'absent'] as const).flatMap(configState =>
+      (['handover', 'settled-recovery'] as const).map(outcome => ({ optOut, location, configState, outcome })))));
+
 describe.skipIf(process.platform === 'win32')('private SOURCE-only Mac migration', () => {
+  it.for(configPreservationCases)(
+    'preserves caller config $optOut $location $configState through preview and $outcome',
+    { timeout: 30_000 },
+    async ({ optOut, location, configState, outcome }, context) => {
+      const value = await fixture();
+      const callerRoot = path.join(value.root, 'caller state');
+      const home = path.join(callerRoot, 'home');
+      const xdg = path.join(callerRoot, 'explicit config');
+      const project = path.join(callerRoot, 'project');
+      const unrelated = path.join(value.prefix, 'lib/node_modules/unrelated');
+      for (const directory of [home, xdg, project, unrelated, path.join(home, '.liftoff'),
+        path.join(project, '.liftoff'), path.join(callerRoot, 'cache'), path.join(callerRoot, 'state')]) {
+        await mkdir(directory, { recursive: true, mode: 0o700 });
+      }
+      for (const file of [path.join(home, '.npmrc'), path.join(home, '.liftoff/preferences'),
+        path.join(project, '.liftoff/preferences'), path.join(project, 'package.json'),
+        path.join(callerRoot, 'cache/unrelated'), path.join(callerRoot, 'state/unrelated'),
+        path.join(unrelated, 'package.json')]) {
+        await writeFile(file, `unchanged fixture ${path.relative(value.root, file)}\r\n`, { mode: 0o600 });
+      }
+      const caller: NodeJS.ProcessEnv = Object.freeze({
+        ...value.dependencies.upgrade.environment, HOME: home,
+        ...(location === 'XDG_CONFIG_HOME' ? { XDG_CONFIG_HOME: xdg } : {}),
+        XDG_CACHE_HOME: path.join(callerRoot, 'cache'), XDG_STATE_HOME: path.join(callerRoot, 'state'),
+        ...(optOut === 'DO_NOT_TRACK=1' ? { DO_NOT_TRACK: '1' } : { LIFTOFF_TELEMETRY: '0' }),
+        CI: 'false', NODE_OPTIONS: '--require=caller-only-loader', NODE_PATH: path.join(home, 'modules'),
+        npm_config_userconfig: path.join(home, '.npmrc'), npm_config_cache: path.join(callerRoot, 'cache'),
+        npm_config_registry: 'https://caller-fixture.invalid', HOMEBREW_NO_ANALYTICS: '0',
+        HOMEBREW_CACHE: path.join(callerRoot, 'cache'), HTTP_PROXY: 'http://caller-fixture.invalid',
+        LIFTOFF_CALLER_SENTINEL: 'do not inherit'
+      });
+      value.dependencies.upgrade.environment = caller;
+      const originalCaller = { ...caller };
+      const originalProcess = { ...process.env };
+      expect(caller).not.toHaveProperty(optOut === 'DO_NOT_TRACK=1' ? 'LIFTOFF_TELEMETRY' : 'DO_NOT_TRACK');
+      const config = path.join(location === 'HOME' ? path.join(home, '.config') : xdg, 'liftoff/config.json');
+      expect(getTelemetryConfigPath({ env: caller, platform: 'darwin', homedir: home })).toBe(config);
+      const unselected = path.join(location === 'HOME' ? xdg : path.join(home, '.config'), 'liftoff/config.json');
+      const valid = ' \r\n{\n  "future" : { "keep" : [1, "unknown"] },\n  "telemetry" : { "futurePreference" : true }\n}\t\r\n';
+      await mkdir(path.dirname(unselected), { recursive: true, mode: 0o700 });
+      await writeFile(unselected, valid, { mode: 0o600 });
+      const chmods: { file: string; mode: number }[] = [];
+      const scratch: string[] = [];
+      const cleaned: { directory: string; entries: Awaited<ReturnType<typeof configFixtureSnapshot>> }[] = [];
+      const makeNeutral = value.dependencies.upgrade.makeNeutralDirectory.bind(value.dependencies.upgrade);
+      const removeNeutral = value.dependencies.upgrade.removeNeutralDirectory.bind(value.dependencies.upgrade);
+      vi.spyOn(value.dependencies.upgrade, 'makeNeutralDirectory').mockImplementation(async () => {
+        const directory = await makeNeutral(); scratch.push(directory); return directory;
+      });
+      vi.spyOn(value.dependencies.upgrade, 'removeNeutralDirectory').mockImplementation(async directory => {
+        cleaned.push({ directory, entries: await configFixtureSnapshot(directory) });
+        await removeNeutral(directory);
+      });
+      const cask = value.dependencies.cask!;
+      if (outcome === 'settled-recovery') cask.installExact = async () => ({ settled: true, installed: false });
+      const install = vi.spyOn(cask, 'installExact');
+      const run = vi.spyOn(value.dependencies.upgrade.runner, 'run');
+      try {
+        if (configState !== 'absent') {
+          await mkdir(path.dirname(config), { recursive: true, mode: 0o700 });
+          await writeFile(config, configState === 'invalid-json' ? '\ufeff{ invalid config\r\n' : valid, { mode: 0o600 });
+          if (configState === 'read-only-file' || configState === 'read-only-directory') {
+            const file = configState === 'read-only-file' ? config : path.dirname(config);
+            chmods.push({ file, mode: (await lstat(file)).mode & 0o777 });
+            await chmod(file, configState === 'read-only-file' ? 0o400 : 0o500);
+          }
+        }
+        const before = { caller: await configFixtureSnapshot(callerRoot), unrelated: await configFixtureSnapshot(unrelated) };
+        const observations: { status: string; caller: typeof before.caller; unrelated: typeof before.unrelated }[] = [];
+        Object.assign(context.task.meta, { configPreservation: {
+          optOut, location, configState, outcome, config, callerEnvironment: originalCaller, before, observations,
+          environmentAndFilesystemFixtureOnlyNotLiveTransportProof: true
+        } });
+        const preserved = async (status: string) => {
+          const current = { caller: await configFixtureSnapshot(callerRoot), unrelated: await configFixtureSnapshot(unrelated) };
+          observations.push({ status, ...current });
+          expect(current).toEqual(before);
+          expect(value.dependencies.upgrade.environment).toBe(caller);
+          expect(caller).toEqual(originalCaller);
+          expect({ ...process.env }).toEqual(originalProcess);
+        };
+        const preview = await runMacMigration(value.request, value.dependencies);
+        expect(preview).toMatchObject({ status: 'ready', effects: 'none', blockers: [] });
+        expect(install).not.toHaveBeenCalled();
+        expect(run.mock.calls.some(([command]) => command.args.includes('uninstall'))).toBe(false);
+        await preserved(preview.status);
+        const result = await runMacMigration({ ...value.request, apply: { review: preview.review!,
+          journalRoot: path.join(value.root, 'private journal') } }, value.dependencies);
+        if (outcome === 'handover') {
+          expect(result).toMatchObject({ status: 'installed', effects: 'cask-installed', blockers: [],
+            verification: { owner: 'homebrew-cask', version: '0.13.0', assets: 'verified', path: 'selected' } });
+          expect(await migrationAbsent(value.oldPackage)).toBe(true);
+        } else {
+          expect(result).toMatchObject({ status: 'partial', effects: 'npm-removed', blockers: ['cask-install-failed'] });
+        }
+        await preserved(result.status);
+        expect(install).toHaveBeenCalledTimes(1);
+        const [brew, candidate, channel, operation, dispatch] = install.mock.calls[0];
+        expect(brew).toMatchObject({ executable: value.request.brew, prefix: value.brewPrefix });
+        expect(candidate).toMatchObject({ version: '0.13.0', target: 'darwin-arm64' });
+        expect(channel).toBe(value.channel.identity);
+        expect(operation).toMatch(/^[a-f0-9-]{36}$/);
+        expect(dispatch.signal).toBeInstanceOf(AbortSignal);
+        expect(dispatch.timeoutMs).toBe(120_000);
+        if (outcome === 'settled-recovery') {
+          const restored = await recover(value);
+          expect(restored).toMatchObject({ status: 'restored', blockers: [] });
+          expect((await captureMigrationTree(value.oldPackage)).content).toBe((await captureMigrationTree(value.recovery)).content);
+          expect(await readlink(value.oldLauncher)).toBe('../lib/node_modules/@msn-control/liftoff/dist/cli.js');
+          await preserved(restored.status);
+          expect(install).toHaveBeenCalledTimes(1);
+        }
+        const neutral = (environment: NodeJS.ProcessEnv, directory: string, node: string) => {
+          expect(scratch).toContain(directory);
+          expect(directory.startsWith(`${callerRoot}${path.sep}`)).toBe(false);
+          expect(environment).toMatchObject({
+            HOME: directory, TMPDIR: directory, XDG_CONFIG_HOME: path.join(directory, 'config'),
+            XDG_CACHE_HOME: path.join(directory, 'cache'), XDG_STATE_HOME: path.join(directory, 'state'),
+            PATH: `${path.dirname(node)}:/usr/bin:/bin:/usr/sbin:/sbin`,
+            DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0', CI: 'true', NODE_OPTIONS: '', NODE_PATH: '',
+            npm_config_userconfig: path.join(directory, 'absent.npmrc'),
+            npm_config_globalconfig: path.join(directory, 'absent-global.npmrc'),
+            npm_config_cache: path.join(directory, 'npm-cache'), npm_config_offline: 'true',
+            npm_config_ignore_scripts: 'true', npm_config_update_notifier: 'false', npm_config_audit: 'false', npm_config_fund: 'false',
+            HOMEBREW_NO_AUTO_UPDATE: '1', HOMEBREW_NO_ANALYTICS: '1', HOMEBREW_NO_INSTALL_CLEANUP: '1',
+            HOMEBREW_NO_ENV_HINTS: '1', HOMEBREW_NO_INSTALL_FROM_API: '1',
+            HOMEBREW_CACHE: path.join(directory, 'homebrew-cache'), HOMEBREW_LOGS: path.join(directory, 'homebrew-logs'),
+            HOMEBREW_TEMP: directory
+          });
+          for (const key of ['npm_config_registry', 'HTTP_PROXY', 'LIFTOFF_CALLER_SENTINEL']) {
+            expect(environment).not.toHaveProperty(key);
+          }
+        };
+        expect(run.mock.calls.length).toBeGreaterThan(0);
+        const runtime = path.join(value.source, 'runtime/node');
+        const processes = [];
+        for (const [index, [command, options]] of run.mock.calls.entries()) {
+          expect(options?.cwd).toBeDefined(); expect(options?.env).toBeDefined();
+          expect(options?.ensureProcessTreeSettled).toBe(true);
+          expect([value.node, value.request.brew, runtime, path.join(value.brewPrefix, 'bin/liftoff')]).toContain(command.executable);
+          neutral(options!.env!, options!.cwd!, [runtime, path.join(value.brewPrefix, 'bin/liftoff')].includes(command.executable)
+            ? runtime : value.node);
+          if (command.executable === value.request.brew) expect(command.args).toEqual(['--prefix']);
+          if (command.args[0] === value.npm) {
+            expect([
+              [value.npm, '--version'], [value.npm, 'root', '--global', '--prefix', value.prefix],
+              [value.npm, 'uninstall', '--global', '--prefix', value.prefix, '--ignore-scripts', '--no-audit', '--no-fund', '@msn-control/liftoff']
+            ]).toContainEqual(command.args);
+          } else if (command.executable !== value.request.brew) {
+            if (command.args[0] === '--input-type=module') {
+              expect(command.executable).toBe(runtime);
+              expect(command.args.slice(0, 2)).toEqual(['--input-type=module', '-e']);
+              expect(command.args.slice(3)).toEqual(['liftoff-native-owner-probe',
+                pathToFileURL(path.join(value.source, 'installation/native-bundle-contract.mjs')).href, value.source]);
+            } else expect(command.args.at(-1)).toBe('--version');
+          }
+          const executed = await run.mock.results[index].value;
+          expect(executed).toMatchObject({ status: 0, processTreeSettled: true });
+          processes.push({ command, cwd: options!.cwd, environment: options!.env, status: executed.status,
+            processTreeSettled: executed.processTreeSettled });
+        }
+        expect(run.mock.calls.filter(([command]) => command.args.includes('uninstall'))).toHaveLength(1);
+        neutral(dispatch.environment, dispatch.environment.HOME!, value.node);
+        expect(cleaned.map(value => value.directory)).toEqual(scratch);
+        for (const observed of cleaned) {
+          expect(observed.entries).toHaveLength(1);
+          expect(await migrationAbsent(observed.directory)).toBe(true);
+        }
+        Object.assign(context.task.meta, { configProcessEvidence: {
+          processes, syntheticCaskDispatch: { environment: dispatch.environment, timeoutMs: dispatch.timeoutMs,
+            signalAborted: dispatch.signal.aborted, brew, candidate, channel, operation },
+          cleanedNeutralScopes: cleaned, callerEnvironmentUnchanged: true, processEnvironmentUnchanged: true
+        } });
+      } finally {
+        for (const original of chmods) await chmod(original.file, original.mode);
+      }
+    });
+
   it.each<MacNpmManager>(['custom', 'nvm', 'volta', 'homebrew-node'])('previews and transfers one verified %s owner in paths with spaces', async manager => {
     const value = await fixture(manager, true);
     await mkdir(path.join(value.prefix, 'lib/node_modules/unrelated'));

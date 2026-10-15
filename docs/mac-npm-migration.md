@@ -79,6 +79,21 @@ permissions and inventories exceeding 8,192 entries, depth 32, 8 MiB per file,
 128 MiB total or the 30-second scan bound are blockers, not cleanup invitations.
 These limits deliberately refuse unproven installations.
 
+Old package entries and the old launcher must belong to the current user and
+primary group. Package and write-scope directories must retain owner
+read/write/search permissions; the utility never temporarily widens a read-only
+directory to make recovery work. Mixed-group scopes are refused, not silently
+reassigned. On macOS, bounded native observations also refuse ACLs, BSD file
+flags and unpreservable extended attributes. The OS-added 11-byte
+`com.apple.provenance` attribute is not ignored: its exact bytes are hashed into
+the reviewed inventory and checked across the independent recovery copy,
+journal backup and each restored entry. The launcher must pass an independent
+private recreation probe before approval. Different or unobservable provenance
+blocks transfer; recovery never strips it to force a match. File/directory modes,
+ownership, metadata and confined links are verified, not inferred from content
+hashes alone. New inodes and timestamps are not promised to reproduce the old
+filesystem objects; physical identities instead detect concurrent edits.
+
 Offline recovery is a separately supplied **complete package directory**,
 including installed dependencies. It must match the old package's complete
 content/mode/link inventory and execute the exact old `--version` successfully
@@ -93,6 +108,15 @@ Preview does not change installations, projects, user configuration or shared
 caches. Process working directories, HOME/XDG, temporary files, Homebrew
 cache/log paths and npm observation cache/config paths are private temporary
 scratch. Only the explicitly selected Volta root is passed to `volta which`.
+The caller's default `HOME/.config/liftoff/config.json` and explicit
+`XDG_CONFIG_HOME/liftoff/config.json` are outside that scratch scope. Preview,
+handover and selected recovery do not record a notice or consent, repair invalid
+JSON, normalize whitespace/unknown fields, or change read-only configuration
+permissions. Child process environments and the synthetic cask-provider
+dispatch context force both `DO_NOT_TRACK=1` and `LIFTOFF_TELEMETRY=0`
+independently of caller preferences; the original caller environment is not
+modified. These are environment/process guards, not a network sandbox or proof
+that arbitrary old installed code cannot send traffic.
 npm lifecycle scripts, audit/funding/update
 notifications, inherited loaders, Homebrew auto-update/analytics/install cleanup
 and environment hints are suppressed. Independent Homebrew approval does not
@@ -175,11 +199,24 @@ verified cask with unresolved PATH; help/ready/fully selected completion exits 0
 
 ```sh
 npm run build
-npx vitest run tests/mac-migration.test.ts tests/mac-migration-package.test.ts
+npx vitest run tests/mac-migration.test.ts tests/mac-migration-safety.test.ts \
+  tests/mac-migration-package.test.ts tests/mac-migration-package-report.test.ts \
+  tests/repository-policy.test.ts
 ```
 
 Private fixtures exercise manager layouts, space paths, cryptographically bound
 synthetic cask assets, preservation, interruptions and selected recovery.
+Config regression cases separately exercise each global opt-out, both actual
+config locations, unknown fields/whitespace, invalid JSON, read-only files and
+directories, and absent notice/consent state through preview, synthetic handover
+and settled-failure recovery. They compare exact private user-state bytes,
+modes and file identities, runner argv/cwd/environment and synthetic dispatch
+context. Version-printing fixture CLIs do not establish real client
+no-transport behavior.
+Actual private macOS safety cases add ACLs, extended attributes and file flags
+and verify refusal without stripping them; settled recovery checks supported
+directory/file modes and exact observed OS provenance. These cases do not
+qualify arbitrary metadata, mixed groups or a real Homebrew cask.
 They do not qualify real Homebrew/nvm/Volta hosts, publication, signing,
 notarization or minimum-host behavior. The optional installed-package suite
 requires `LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT` naming a current verified native

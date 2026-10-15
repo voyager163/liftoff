@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import { chmod, lstat, mkdir, open, readlink, realpath, rename, rmdir, symlink, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { readUpgradeBytes } from './upgrade-host.js';
-import { macMigrationHash, migrationDirectory, migrationFileIdentity, migrationNames } from './mac-npm-owner.js';
+import { assertMigrationMetadata, macMigrationHash, migrationDirectory, migrationFileIdentity, migrationNames } from './mac-npm-owner.js';
 import { MacMigrationFailure, type MacMigrationBrew, type MacNpmOwner } from '../../domain/distribution/mac-migration.js';
 import type { NativeCandidate } from '../../domain/distribution/native-upgrade.js';
 import { isStableSemver } from '../../stable-release.js';
@@ -15,6 +15,7 @@ export interface MigrationTreeEntry {
   sha256?: string;
   target?: string;
   physical: string;
+  metadata?: string;
 }
 
 export interface MigrationTree {
@@ -33,12 +34,14 @@ export async function captureMigrationTree(root: string): Promise<MigrationTree>
     }
     const file = relative ? path.join(root, relative) : root;
     const stat = await lstat(file);
-    if ((!stat.isSymbolicLink() && stat.mode & 0o7022) || stat.uid !== process.getuid?.()) {
+    if ((!stat.isSymbolicLink() && stat.mode & 0o7022) || stat.uid !== process.getuid?.() ||
+      stat.gid !== process.getgid?.()) {
       throw new MacMigrationFailure('unsafe-old-material');
     }
-    const physical = JSON.stringify([stat.dev, stat.ino, stat.mode, stat.size, stat.mtimeMs, stat.ctimeMs]);
+    const physical = JSON.stringify([stat.dev, stat.ino, stat.uid, stat.gid, stat.mode, stat.size, stat.mtimeMs, stat.ctimeMs]);
     if (stat.isDirectory() && !stat.isSymbolicLink()) {
       if (await realpath(file) !== file) throw new MacMigrationFailure('old-tree-escape');
+      if ((stat.mode & 0o700) !== 0o700) throw new MacMigrationFailure('unrecoverable-old-directory');
       entries.push({ path: relative, kind: 'directory', mode: stat.mode & 0o777, physical });
       for (const name of await migrationNames(file, 8192 - entries.length)) {
         if (/[/\\\u0000-\u001f]/.test(name) || name === '.' || name === '..') throw new MacMigrationFailure('unsafe-old-path');
@@ -58,6 +61,9 @@ export async function captureMigrationTree(root: string): Promise<MigrationTree>
     } else throw new MacMigrationFailure('unsafe-old-entry');
   };
   await visit('');
+  const metadata = await assertMigrationMetadata(entries.map(entry => path.join(root, entry.path)),
+    30_000 - (performance.now() - started));
+  for (const entry of entries) entry.metadata = metadata.get(path.join(root, entry.path));
   const content = macMigrationHash(JSON.stringify(entries.map(({ physical: _physical, ...entry }) => entry)));
   return { entries, content, physical: macMigrationHash(JSON.stringify(entries)) };
 }
@@ -117,14 +123,14 @@ export interface MigrationJournal {
   parentIdentities: string[];
   tree: MigrationTree;
   recoveryPhysical: string;
-  launcher: { target: string; physical: string };
+  launcher: { target: string; physical: string; metadata?: string };
   phase: 'prepared' | 'npm-intent' | 'npm-removed' | 'link-intent' | 'link-removed' |
     'cask-intent' | 'cask-settled' | 'verified' | 'restore-intent' | 'restored' | 'uncertain';
   restoration?: {
     completed: { path: string; identity: string }[];
     pending?: string;
     launcherPending?: boolean;
-    launcher?: { target: string; physical: string };
+    launcher?: { target: string; physical: string; metadata?: string };
   };
 }
 
@@ -140,13 +146,13 @@ export function migrationJournalUnsettled(journal: MigrationJournal): boolean {
 
 export function assertMigrationRecoveryJournalBudget(journal: MigrationJournal): void {
   const numbers = (count: number) => Array<string>(count).fill('0'.repeat(64));
-  const launcher = (target: string) => ({ target, physical: JSON.stringify([...numbers(5), target]) });
+  const launcher = (target: string) => ({ target, physical: JSON.stringify([...numbers(7), target]), metadata: '0'.repeat(64) });
   // Reserve the full ledger, including JSON escaping and bounded numeric identity fields, before uninstall.
   const completed = journal.tree.entries.map(entry => {
     const file = path.join(journal.owner.packageRoot, entry.path);
-    const identity = entry.kind === 'directory' ? JSON.stringify([file, ...numbers(4)]) :
+    const identity = entry.kind === 'directory' ? JSON.stringify([file, ...numbers(6)]) :
       entry.kind === 'link' ? JSON.stringify(launcher(entry.target!)) :
-        JSON.stringify([file, ...numbers(7), '0'.repeat(64)]);
+        JSON.stringify([file, ...numbers(9), '0'.repeat(64)]);
     return { path: entry.path, identity };
   });
   const pending = journal.tree.entries.reduce((longest, entry) =>
@@ -342,17 +348,20 @@ function assertJournalShape(journal: MigrationJournal): void {
       journal.policyIdentity, journal.recoveryPhysical, journal.tree?.content, journal.tree?.physical].every(digest) ||
     !Array.isArray(journal.parentIdentities) || journal.parentIdentities.length > 5 ||
     !journal.parentIdentities.every(value => typeof value === 'string' && value.length < 10000) ||
-    !closed(journal.launcher, ['target', 'physical']) ||
+    !closed(journal.launcher, ['target', 'physical'], ['metadata']) ||
     typeof journal.launcher.target !== 'string' || typeof journal.launcher.physical !== 'string' ||
+    journal.launcher.metadata !== undefined && !digest(journal.launcher.metadata) ||
     path.resolve(path.dirname(journal.owner.launcher), journal.launcher.target) !== journal.owner.binary ||
     !closed(journal.tree, ['entries', 'content', 'physical']) ||
     !Array.isArray(journal.tree.entries) || !journal.tree.entries.length || journal.tree.entries.length > 8192 ||
     journal.tree.entries[0].path !== '' || journal.tree.entries[0].kind !== 'directory' ||
     new Set(journal.tree.entries.map(entry => entry.path)).size !== journal.tree.entries.length ||
-    journal.tree.entries.some(entry => !closed(entry, ['path', 'kind', 'mode', 'physical'], ['sha256', 'target']) ||
+    journal.tree.entries.some(entry => !closed(entry, ['path', 'kind', 'mode', 'physical'], ['sha256', 'target', 'metadata']) ||
       !relative(entry.path) || !['file', 'directory', 'link'].includes(entry.kind) ||
       !Number.isInteger(entry.mode) || entry.mode < 0 || entry.mode > 0o777 ||
+      entry.kind === 'directory' && (entry.mode & 0o700) !== 0o700 ||
       typeof entry.physical !== 'string' || entry.kind === 'file' && !digest(entry.sha256) ||
+      entry.metadata !== undefined && !digest(entry.metadata) ||
       entry.kind === 'link' && (typeof entry.target !== 'string' || path.isAbsolute(entry.target) ||
         !path.resolve(path.dirname(path.join(journal.owner.packageRoot, entry.path)), entry.target)
           .startsWith(`${journal.owner.packageRoot}/`)))) throw new MacMigrationFailure('invalid-journal-shape');
@@ -367,6 +376,7 @@ function assertJournalShape(journal: MigrationJournal): void {
 }
 
 async function restoredEntryIdentity(file: string, entry: MigrationTreeEntry): Promise<string> {
+  if ((await assertMigrationMetadata([file])).get(file) !== entry.metadata) throw new MacMigrationFailure('restored-metadata-mismatch');
   if (entry.kind === 'directory') return migrationDirectory(file);
   if (entry.kind === 'link') return JSON.stringify(await migrationLauncher(file));
   return migrationFileIdentity(file);
@@ -422,9 +432,12 @@ export async function migrationAbsent(file: string): Promise<boolean> {
   }
 }
 
-export async function migrationLauncher(file: string): Promise<{ target: string; physical: string }> {
+export async function migrationLauncher(file: string): Promise<{ target: string; physical: string; metadata: string }> {
   const stat = await lstat(file);
-  if (!stat.isSymbolicLink()) throw new MacMigrationFailure('launcher-not-attributable');
+  if (!stat.isSymbolicLink() || stat.uid !== process.getuid?.() || stat.gid !== process.getgid?.()) {
+    throw new MacMigrationFailure('launcher-not-attributable');
+  }
+  const metadata = (await assertMigrationMetadata([file])).get(file)!;
   const target = await readlink(file);
-  return { target, physical: JSON.stringify([stat.dev, stat.ino, stat.uid, stat.mode, stat.ctimeMs, target]) };
+  return { target, physical: JSON.stringify([stat.dev, stat.ino, stat.uid, stat.gid, stat.mode, stat.ctimeMs, target, metadata]), metadata };
 }

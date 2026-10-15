@@ -34,7 +34,8 @@ describe('source repository setup policy', () => {
   });
   it.each([
     'missing', 'conditional', 'runner', 'node', 'architecture', 'go', 'install', 'download',
-    'build', 'filtered', 'unset-bundle', 'unset-archive', 'archive-after-tests', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
+    'build', 'filtered', 'unset-bundle', 'unset-migration-bundle', 'wrong-migration-bundle', 'missing-migration-cases',
+    'skip-migration-report', 'unset-archive', 'archive-after-tests', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
   ])('rejects incomplete runtime-inclusive qualification: %s', async fault => {
     const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-bundle'];
     if (fault === 'missing') delete workflow.jobs['qualify-native-bundle'];
@@ -48,6 +49,12 @@ describe('source repository setup policy', () => {
     if (fault === 'build') job.steps[6].run = 'npm run build';
     if (fault === 'filtered') job.steps[7].run = job.steps[7].run.replace('--allowOnly=false', '-t skipped');
     if (fault === 'unset-bundle') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_BUNDLE_ROOT', 'UNSELECTED_BUNDLE');
+    if (fault === 'unset-migration-bundle') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT', 'UNSELECTED_MIGRATION_BUNDLE');
+    if (fault === 'wrong-migration-bundle') job.steps[7].run = job.steps[7].run.replace(
+      'LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle"',
+      'LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/unverified-bundle"');
+    if (fault === 'missing-migration-cases') job.steps[7].run = job.steps[7].run.replace(/^  tests\/mac-migration-package.test.ts.*\n/m, '');
+    if (fault === 'skip-migration-report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/mac-migration-package-report.mjs.*\n/m, '');
     if (fault === 'unset-archive') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_ARCHIVE_ROOT', 'UNSELECTED_ARCHIVE');
     if (fault === 'archive-after-tests') {
       const archive = job.steps[7].run.split('\n')[0];
