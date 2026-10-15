@@ -7,6 +7,7 @@ import { inspectNpmFiles } from '../../adapters/distribution/npm.js';
 import { assertCaskOwnership, nativePolicy, createNativeUpgradePort } from '../../adapters/distribution/native.js';
 import { admitNativeStableMaterial } from '../../adapters/distribution/native-metadata.js';
 import type { MacMigrationCaskPort } from '../../adapters/distribution/mac-migration-cask.js';
+import { createHomebrewCaskPreparation } from '../../adapters/distribution/native-cask-plan.js';
 import {
   discoverMacNpmSelections, inspectMacNpmOwner, macMigrationHash, migrationDirectory, migrationEnvironment,
   migrationFileIdentity, migrationProbe, assertMigrationTools, assertMigrationOutsideOldScope
@@ -23,7 +24,7 @@ import {
   MacMigrationFailure, type MacMigrationBrew, type MacMigrationHost, type MacMigrationReport,
   type MacNpmOwner, type MacNpmSelection
 } from '../../domain/distribution/mac-migration.js';
-import type { NativeCandidate } from '../../domain/distribution/native-upgrade.js';
+import type { CaskPreparationPort, NativeCandidate } from '../../domain/distribution/native-upgrade.js';
 
 export interface MacMigrationRequest {
   selection?: MacNpmSelection;
@@ -37,6 +38,7 @@ export interface MacMigrationDependencies {
   upgrade: SelfUpgradeDependencies;
   host(): Promise<MacMigrationHost>;
   cask?: MacMigrationCaskPort;
+  preparation?: Pick<CaskPreparationPort, 'preview'>;
 }
 
 async function bounded<T>(read: (signal: AbortSignal) => Promise<T>, timeoutMs = 10_000): Promise<T> {
@@ -219,7 +221,19 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
     assertMigrationOutsideOldScope(owner.packageRoot,
       [await realpath(installedPackageRoot), await realpath(dependencies.upgrade.execPath)]);
     const brew = await brewObservation(request.brew, owner, dependencies.upgrade, scratch);
-    if (!dependencies.cask) throw new MacMigrationFailure('native-cask-provider-unqualified');
+    if (!dependencies.cask) {
+      report.blockers.push('native-cask-provider-unqualified');
+      const preparation = dependencies.preparation;
+      if (preparation) {
+        const prepared = await bounded(signal => preparation.preview(brew.prefix, signal));
+        if (prepared.destination.prefix !== brew.prefix) throw new MacMigrationFailure('cask-preparation-destination-mismatch');
+        report.preparation = prepared;
+        report.target = { cask: prepared.cask, version: prepared.target.version,
+          manifestSha256: prepared.target.manifestSha256, inventorySha256: prepared.target.inventorySha256 };
+        report.blockers.push(prepared.execution.reason);
+      }
+      return report;
+    }
     const cask = dependencies.cask;
     const policy = nativePolicy(cask.policy);
     if (!policy.approvedSigningKeySha256 || !policy.homebrew.cask || !policy.homebrew.sourceRepository ||
@@ -368,6 +382,13 @@ export function defaultMacMigrationDependencies(): MacMigrationDependencies {
   const upgrade = defaultSelfUpgradeDependencies();
   return {
     upgrade,
+    preparation: {
+      preview: async (prefix, signal) => {
+        const policy = nativePolicy(await upgrade.readJson(
+          path.join(installedPackageRoot, 'distribution/native/release-policy.json')));
+        return createHomebrewCaskPreparation(upgrade, policy).preview(prefix, signal);
+      }
+    },
     host: async () => {
       if (process.platform !== 'darwin') return { platform: process.platform, architecture: process.arch,
         nativeArchitecture: '', appleSilicon: '', translated: '', osVersion: '', runtimeVersion: process.versions.node };

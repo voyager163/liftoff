@@ -142,7 +142,7 @@ export function nativeBundleQualificationJob() {
         'LIFTOFF_NATIVE_ARCHIVE_ROOT="$RUNNER_TEMP/liftoff-native-archive" \\',
         'npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \\',
         '  tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \\',
-        '  tests/mac-migration-package.test.ts \\',
+        '  tests/mac-migration-package.test.ts tests/mac-migration-preparation.test.ts \\',
         '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
         '  --reporter=default --reporter=json --outputFile.json=qualification/native-bundle.json',
         'node scripts/native-bundle.mjs verify-report qualification/native-bundle.json',

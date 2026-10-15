@@ -130,7 +130,19 @@ authorize bootstrapping, tapping a new source, changing permissions or elevating
 
 One JSON report distinguishes selected npm ownership, exact target/assets,
 blockers and effects. Only a ready preview from a separately qualified provider
-can yield a review SHA-256. Apply additionally requires:
+can yield a review SHA-256.
+
+When no qualified installer exists, the default dependencies attempt only bounded
+canonical read-only cask preparation. Missing policy approvals refuse before
+destination or release reads. Its optional `preparation` report keeps
+authenticated target, observed destination and unverified local source bytes
+separate from an unknown channel and `exact_cask_execution_unproven` with a null
+command. Both preview and apply remain blocked, with no migration review digest,
+journal or npm removal. A preparation identity is not an apply approval.
+Recovery still requires its separately qualified provider; preparation or an
+observed absent destination cannot authorize restoration.
+
+Apply additionally requires:
 
 ```text
 <the identical reviewed owner, brew and recovery arguments>
@@ -211,6 +223,7 @@ verified cask with unresolved PATH; help/ready/fully selected completion exits 0
 npm run build
 npx vitest run tests/mac-migration.test.ts tests/mac-migration-safety.test.ts \
   tests/mac-migration-observation.test.ts \
+  tests/mac-migration-preparation.test.ts \
   tests/mac-migration-environment.test.ts tests/process-runner.test.ts \
   tests/mac-migration-npm-installed.test.ts \
   tests/mac-migration-package.test.ts tests/mac-migration-package-report.test.ts \

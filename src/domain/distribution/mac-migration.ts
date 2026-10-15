@@ -1,3 +1,5 @@
+import type { CaskInstallPreview } from './native-upgrade.js';
+
 export type MacNpmManager = 'homebrew-node' | 'nvm' | 'volta' | 'custom';
 
 export interface MacNpmSelection {
@@ -44,6 +46,7 @@ export interface MacMigrationReport {
   review?: string;
   selected?: { manager: MacNpmManager; version: string; packageRoot: string; npm: string; prefix: string };
   target?: { cask: string; version: string; manifestSha256: string; inventorySha256: string };
+  preparation?: CaskInstallPreview;
   journal?: { path: string; sha256: string };
   retainedScratch?: string;
   verification?: { owner: 'homebrew-cask'; version: string; assets: 'verified'; path: 'selected' | 'unresolved';
