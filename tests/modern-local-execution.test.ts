@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {afterAll,afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {isModernComposePluginVersionSupported,observeModernLocalTools} from '../src/adapters/process/modern-local-tools.js';
+import * as localTools from '../src/adapters/process/modern-local-tools.js';
 import {createApplicationEnvironment} from '../src/application/repair/application-environment.js';
 import {NodeCommandRunner} from '../src/process-runner.js';
 import {createLocalExecutionRecordStore} from '../src/adapters/filesystem/update-previews.js';
@@ -156,6 +157,53 @@ describe('actual local execution prerequisites and bounded effects',()=>{
       expect(JSON.stringify(result)).not.toContain('PRIVATE_UNTRUSTED_DIAGNOSTIC');
       expect(result.checks.find(check=>check.id==='backend-tests')).toMatchObject({status:'failed',code:'nonzero-exit'});
       expect(result.checks.find(check=>check.id==='frontend-build')?.status).toBe('blocked');
+    },60000);
+    nativeIt.each(['error','non-error'] as const)('separates a settled post-build %s in-process failure from successful subprocesses',async kind=>{
+      const f=await completeFixture(),preview=await prepareModernLocalExecution(f.project,{kind:'verify-local',preparation:[]});
+      await approveModernLocalExecution(f.project,preview.fingerprint,scopes);
+      const manifestBefore=await readFile(path.join(f.project,'liftoff.manifest.json'));
+      const originalRun=NodeCommandRunner.prototype.run,originalGuard=localTools.assertModernLocalToolsCurrent;
+      const observations:Awaited<ReturnType<NodeCommandRunner['run']>>[]=[];
+      let built=false,injected=false;
+      vi.spyOn(NodeCommandRunner.prototype,'run').mockImplementation(async function(this:NodeCommandRunner,command,options){
+        const observation=await originalRun.call(this,command,options);
+        observations.push(observation);
+        if(command.args.at(-1)==='build')built=true;
+        return observation;
+      });
+      vi.spyOn(localTools,'assertModernLocalToolsCurrent').mockImplementation(async(...args)=>{
+        if(built&&!injected){
+          injected=true;
+          throw kind==='error'?new Error('PRIVATE_IN_PROCESS_DIAGNOSTIC'):'PRIVATE_IN_PROCESS_DIAGNOSTIC';
+        }
+        await originalGuard(...args);
+      });
+      const result=await executeModernLocalExecution(f.project,preview.fingerprint);
+      expect(injected).toBe(true);
+      expect(observations.length).toBeGreaterThan(0);
+      expect(observations.every(observation=>observation.status===0&&observation.processTreeSettled===true&&
+        observation.processSpawned!==false&&!observation.signal&&!observation.timedOut&&!observation.outputLimitExceeded&&
+        !observation.aborted&&!observation.errorCode&&!observation.errorMessage)).toBe(true);
+      expect(result).toMatchObject({status:'failed',complete:false,inputsUnchanged:true,cleanupComplete:true,
+        retainedWorkspace:null,failureCode:'execution-failed'});
+      expect(result.checks.find(check=>check.id==='frontend-build')).toMatchObject({status:'passed',code:'passed'});
+      expect(result.checks.find(check=>check.id==='compose-config')).toMatchObject({status:'blocked',code:'not-run'});
+      expect(JSON.stringify(result)).not.toContain('PRIVATE_IN_PROCESS_DIAGNOSTIC');
+      expect((await inspectModernLocalExecution(f.project,preview.fingerprint)).result).toEqual(result);
+      expect(await readFile(path.join(f.project,'liftoff.manifest.json'))).toEqual(manifestBefore);
+      await expect(executeModernLocalExecution(f.project,preview.fingerprint)).rejects.toThrow(/already claimed/);
+      const body={...result,checks:result.checks.map(check=>check.id==='frontend-build'?
+        {...check,status:'failed',code:'execution-failed'}:check)};
+      const {resultDigest:_old,...changed}=body;
+      expect(()=>validateLocalExecutionResult({...changed,resultDigest:canonicalSha256(changed)},preview)).toThrow(/allowlisted codes/);
+    },60000);
+    nativeIt('preserves process-failed for an actual settled nonzero subprocess',async()=>{
+      const f=await completeFixture('none',true),preview=await prepareModernLocalExecution(f.project,{kind:'verify-local',preparation:[]});
+      await approveModernLocalExecution(f.project,preview.fingerprint,scopes);
+      const result=await executeModernLocalExecution(f.project,preview.fingerprint);
+      expect(result).toMatchObject({status:'failed',complete:false,cleanupComplete:true,failureCode:'process-failed'});
+      expect(result.checks.find(check=>check.id==='backend-tests')).toMatchObject({status:'failed',code:'nonzero-exit',processTreeSettled:true});
+      expect(JSON.stringify(result)).not.toContain('PRIVATE_UNTRUSTED_DIAGNOSTIC');
     },60000);
     nativeIt('executes real empty-lock offline preparation with separate consent and exact result correspondence',async()=>{
       const f=await completeFixture(),parts=['Source Space','backend'];
