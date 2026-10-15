@@ -94,6 +94,14 @@ The producer never installs or weakens protection. Exact private runner-group
 workflow admission preserves the repository-only assignment and existing
 workflow entries; it does not provision or broaden access.
 
+The neutral `workflow-runner-admission-observation.ts` module exposes that same
+binding validator and existing assignment/grant readback without importing the
+writer runtime. Its GET-only reader returns the actual selected workflows,
+including an unchanged before-set; callers must still compare the approved
+after-set. It issues no host qualification, prerequisite session or permission
+to patch runner access. The writer reuses this reader and retains its original
+intent, authority, no-repeat and after-set checks.
+
 Current provider permission admission is deliberately narrow: independently
 observed classic OAuth `repo`/`workflow` grants and actual repository push access.
 Fine-grained, installation and workflow-token grants are not inferred from a

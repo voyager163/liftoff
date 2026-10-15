@@ -27,8 +27,9 @@ import {
   type WorkflowExecutionRefInput
 } from '../src/governance-activation/workflow-execution-ref.js';
 import {
-  admitReviewedRunnerWorkflows, type WorkflowRunnerAdmissionInput
+  admitReviewedRunnerWorkflows, validateWorkflowRunnerAdmission, type WorkflowRunnerAdmissionInput
 } from '../src/governance-activation/workflow-runner-admission.js';
+import { validateWorkflowRunnerAdmission as neutralRunnerBinding } from '../src/governance-activation/workflow-runner-admission-observation.js';
 import { executeGitHubPhase } from '../src/governance-activation/phase-github.js';
 import {
   coverageNow, coverageState, coverageInspection, isolateUserLocalStorage, isolatedGitEnvironment,
@@ -460,6 +461,9 @@ describe('bounded exact-commit workflow context production', () => {
   }
 
   describe('exact existing execution-ref and runner admission prerequisites', () => {
+    it('reexports the same neutral runner binding validator without a second policy', () => {
+      expect(validateWorkflowRunnerAdmission).toBe(neutralRunnerBinding);
+    });
     it('creates only the approved commit/tree-named tag with intent, then observes without repeating', async () => {
       const f = await fixture();
       const { repository, repositoryId, sourceSha, treeSha, executionRef } = f.transport.binding;
