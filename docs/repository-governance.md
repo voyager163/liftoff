@@ -87,6 +87,9 @@ current5 recipe/tool subject or an automation `GITHUB_TOKEN` admission.
 Required proof jobs are independent. Each has exactly one named executable
 validator as its final ordinary step; trailing steps, duplicated validator names
 and required-job dependencies are refused before dispatch.
+Required context names and integration IDs remain literal own data, including
+names that match inherited JavaScript properties. Ref scopes recognize only the
+four declared GitFlow patterns; inherited object properties are not ref families.
 
 Cleanup captures the allocated HOME's directory and ancestor creation identities
 before project execution and rechecks them after settlement. A missing, renamed,

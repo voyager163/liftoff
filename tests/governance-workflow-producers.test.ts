@@ -1051,6 +1051,32 @@ describe('per-file workflow source publication authority', () => {
   });
 
   describe('source-derived protected context inventory', () => {
+    it('preserves actual inherited-property context names and their pinned integrations as own data', () => {
+      const source = rulesetSource();
+      const ruleset = JSON.parse(source[0]!.content.toString('utf8'));
+      const names = ['toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf'];
+      ruleset.rules[0].parameters.required_status_checks = names.map((context, index) => ({
+        context, integration_id: 15368 + index
+      }));
+      source[0]!.content = Buffer.from(JSON.stringify(ruleset));
+      const requirements = requiredWorkflowContextsFromSource(source, 'single-maintainer-gitflow');
+      for (const family of ['develop', 'main', 'release', 'hotfix'] as const) {
+        expect(requirements.families[family]).toEqual([...names].sort());
+        expect(Object.keys(requirements.integrations[family]).sort()).toEqual([...names].sort());
+        for (const [index, name] of names.entries()) {
+          expect(Object.getOwnPropertyDescriptor(requirements.integrations[family], name))
+            .toMatchObject({ value: 15368 + index, enumerable: true });
+        }
+      }
+    });
+    it.each(['toString', '__proto__'])('explicitly refuses inherited property %s as a protected ref pattern', pattern => {
+      const source = rulesetSource();
+      const ruleset = JSON.parse(source[0]!.content.toString('utf8'));
+      ruleset.conditions.ref_name.include = [pattern];
+      source[0]!.content = Buffer.from(JSON.stringify(ruleset));
+      expect(() => requiredWorkflowContextsFromSource(source, 'single-maintainer-gitflow'))
+        .toThrow('exact supported GitFlow families');
+    });
     it('preserves zero-review single-maintainer and one-current-independent-human team minima', () => {
       expect(requiredWorkflowContextsFromSource(rulesetSource(), 'single-maintainer-gitflow').families.main).toEqual(['Required validation']);
       expect(() => requiredWorkflowContextsFromSource(rulesetSource(), 'team-gitflow')).toThrow('profile');
