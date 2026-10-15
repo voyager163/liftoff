@@ -252,6 +252,22 @@ try {
     throw new Error(`Installed liftoff entrypoint not found at ${liftoffEntrypoint}`);
   }
   const installedPackageRoot = path.dirname(path.dirname(liftoffEntrypoint));
+  const contextValidator = path.join(installedPackageRoot, 'dist', 'workflow-context-validator.js');
+  const malformedValidator = runFailure(process.execPath, [contextValidator, '--validator', 'arbitrary-command'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  if (malformedValidator.status !== 2 || malformedValidator.stdout ||
+      !malformedValidator.stderr.includes('no validation was performed')) {
+    throw new Error('Installed context validator accepted an arbitrary command or failed its closed argument boundary.');
+  }
+  const unboundValidator = runFailure(process.execPath, [contextValidator, '--validator', 'source-integrity',
+    '--source-sha', 'a'.repeat(40)], { cwd: outsideDirectory, env: npmEnv });
+  const unboundReport = JSON.parse(unboundValidator.stdout);
+  if (unboundValidator.status !== 1 || unboundReport.status !== 'failed' ||
+      unboundReport.code !== 'validator-source-binding' || unboundReport.workloadExecution !== false ||
+      unboundReport.command !== null || unboundReport.phaseProof !== 'not-issued') {
+    throw new Error('Installed context validator did not refuse a missing exact Git source without workload execution or proof.');
+  }
   const installedAssetIssues = [
     ...await installedAssetByteIssues({ installedRoot: installedPackageRoot, sourceRoot: packageRoot }),
     ...await installedRetainedAssetIssues({ installedRoot: installedPackageRoot })
