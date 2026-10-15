@@ -27,8 +27,9 @@ export function resolveModernManagedCoreInput(value: unknown) {
 
 /** Produces source-only managed content. No framework tools, project writes, credentials or providers are invoked. */
 export function buildModernManagedCore(value: unknown): readonly ModernManagedCoreArtifact[] {
-  const { selection, plugins, activeLayout, source } = resolveModernManagedCoreInput(value);
+  const { selection, plugins, activeLayout, source, sourceRelease } = resolveModernManagedCoreInput(value);
   const leaf = selection, profile = selection.profile;
+  const hasCapabilityCatalog = sourceRelease !== 'pre-assessment';
   const contentByName = new Map<string, string>();
   const contracts = { catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract };
   if (profile !== 'none') {
@@ -48,7 +49,10 @@ export function buildModernManagedCore(value: unknown): readonly ModernManagedCo
     }
     contentByName.set('repository-governance-policy', policy);
     contentByName.set('repository-governance-context', canonicalJson(context));
-    contentByName.set('repository-governance-guide', renderModernGovernanceGuide(context, source.governanceSource.graph));
+    contentByName.set(
+      'repository-governance-guide',
+      renderModernGovernanceGuide(context, source.governanceSource.graph, hasCapabilityCatalog)
+    );
     contentByName.set('repository-governance-phase-graph', canonicalJson(source.governanceSource.graph));
     contentByName.set('repository-governance-compatibility', canonicalJson(compatibility));
     contentByName.set('repository-governance-credential-policy-schema', renderModernCredentialPolicySchema(projectCatalog, {
@@ -60,7 +64,10 @@ export function buildModernManagedCore(value: unknown): readonly ModernManagedCo
   for (const agent of leaf.project.agents) {
     for (const operation of profile === 'none' ? ['repair'] as const : ['setup', 'assessment', 'repair'] as const) {
       const integration = governanceAgentIntegrations[agent][operation];
-      contentByName.set(integration.logicalName, renderModernGovernanceIntegration(agent, operation, selection));
+      contentByName.set(
+        integration.logicalName,
+        renderModernGovernanceIntegration(agent, operation, selection, hasCapabilityCatalog)
+      );
     }
     const assessment = projectAssessmentAgentIntegrations[agent];
     if (source.managedArtifacts.some(artifact => artifact.logicalName === assessment.logicalName)) {

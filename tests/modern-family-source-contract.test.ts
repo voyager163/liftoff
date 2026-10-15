@@ -8,7 +8,9 @@ import {
   readableModernActivationSourceContracts, modernActivationSourceIdentityTables
 } from '../src/domain/governance/policy/identity.js';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
-import { resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
+import { resolveModernManifestV8Source, resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
+import { resolveModernProjectSourceContext } from '../src/application/project/source-context.js';
+import { buildModernManagedCore } from '../src/application/project/modern-managed-core.js';
 import { composeModernManifestPlugins } from '../src/application/project/plugins.js';
 import { modernSourceRegistry, modernPreWorkflowRegistry, modernPreAssessmentRegistry } from '../src/application/project/modern-plugins.js';
 import { readManifestPluginMetadata } from '../src/domain/project/manifest/plugins.js';
@@ -56,10 +58,14 @@ vi.mock('../src/domain/governance/policy/identity.js', async importOriginal => {
 });
 vi.mock('../src/application/project/manifest.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../src/application/project/manifest.js')>();
-  return { ...actual, resolveModernManifestV8SourceContract:
-    (...args: Parameters<typeof actual.resolveModernManifestV8SourceContract>) => {
+  return { ...actual,
+    resolveModernManifestV8SourceContract: (...args: Parameters<typeof actual.resolveModernManifestV8SourceContract>) => {
       if (tracking.collect) tracking.resolutions++;
       return actual.resolveModernManifestV8SourceContract(...args);
+    },
+    resolveModernManifestV8Source: (...args: Parameters<typeof actual.resolveModernManifestV8Source>) => {
+      if (tracking.collect) tracking.resolutions++;
+      return actual.resolveModernManifestV8Source(...args);
     } };
 });
 vi.mock('node:fs/promises', async importOriginal => {
@@ -194,6 +200,24 @@ describe.each(rows)('selected full family $family/$source.identity.profile/$sour
     expect(Object.isFrozen(input.recordedPlugins)).toBe(true);
     if (!('identity' in baseline.value.governanceSource)) throw new Error('Expected the complete enabled source row.');
     snapshots.push({ family: value.family, source: baseline.value.governanceSource, rowDigest: canonicalSha256(baseline.value.governanceSource) });
+  });
+  it('retains exact family identity and capability guidance through shared source metadata', () => {
+    const input = request(value);
+    const resolved = resolveModernManifestV8Source(input);
+    const releases = { current: 'current', preWorkflow: 'pre-workflow', preCustody: 'pre-assessment' } as const;
+    expect(resolved.release).toBe(releases[value.family]);
+    expect(resolved.contract.governanceSource).toEqual(value.source);
+    const sourceInput = {
+      selection: input.selection, plugins: input.recordedPlugins,
+      activeLayout: { schemaVersion: 1, state: 'unresolved', bindings: [] }
+    };
+    const context = resolveModernProjectSourceContext(sourceInput);
+    expect(context.sourceRelease).toBe(resolved.release);
+    expect(context.source).toEqual(resolved.contract);
+    const guide = buildModernManagedCore(sourceInput).find(file => file.logicalName === 'repository-governance-guide');
+    if (!guide) throw new Error('Expected the selected family governance guide.');
+    expect(guide.content.includes('`liftoff capabilities --json`')).toBe(value.family !== 'preCustody');
+    expect(guide.content).toContain(`Activation contract: ${value.source.identity.activationContractVersion};`);
   });
 });
 

@@ -672,7 +672,7 @@ function evaluateControl(
         families?.availability === 'observed'
       ) {
         observations.live = predicateObservation(
-          effectiveProtectedRefs(rules.value, branches.value, families.value, branch),
+          effectiveProtectedRefs(rules.value, branches.value, families.value, branch, target.profile),
           rules.source
         );
         observations.live.facts = jsonValue({
@@ -687,14 +687,22 @@ function evaluateControl(
       }
       break;
     }
-    case 'single-maintainer':
-      observations.declared = declaredRules(singleMaintainer);
-      observations.live = livePredicate(live, 'github.rulesets', singleMaintainer);
+    case 'single-maintainer': {
+      const repository = live.observations['github.repository'];
+      const branch = repository?.availability === 'observed' && isRecord(repository.value) && typeof repository.value.defaultBranch === 'string'
+        ? repository.value.defaultBranch : null;
+      observations.declared = declaredRules(value => singleMaintainer(value, project.state?.repository.defaultBranch ?? null));
+      observations.live = livePredicate(live, 'github.rulesets', value => singleMaintainer(value, branch));
       break;
-    case 'team-review':
-      observations.declared = declaredRules(teamReview);
-      observations.live = livePredicate(live, 'github.rulesets', teamReview);
+    }
+    case 'team-review': {
+      const repository = live.observations['github.repository'];
+      const branch = repository?.availability === 'observed' && isRecord(repository.value) && typeof repository.value.defaultBranch === 'string'
+        ? repository.value.defaultBranch : null;
+      observations.declared = declaredRules(value => teamReview(value, project.state?.repository.defaultBranch ?? null));
+      observations.live = livePredicate(live, 'github.rulesets', value => teamReview(value, branch));
       break;
+    }
     case 'tag-controls': {
       const app = live.observations['github.actions-app'];
       if (app?.availability === 'observed' && isRecord(app.value) && typeof app.value.id === 'number' &&

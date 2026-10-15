@@ -43,7 +43,11 @@ async function composeScopedLiveProject(input: {
   runner: CommandRunner;
   now?: () => Date;
 }): Promise<ProjectAssessmentReport> {
-  const before = await input.inspectLocal();
+  const { mode, project, target, snapshot: originalSnapshot, outcome, resultDigest, findings, diagnostics, limitations } =
+    await input.inspectLocal();
+  const before = structuredClone({
+    mode, project, target, snapshot: originalSnapshot, outcome, resultDigest, findings, diagnostics, limitations
+  });
   if (!before.target || before.mode !== 'local' || !before.snapshot.inputsStable || before.outcome === 'error') {
     throw new ApplicationInspectionError('A stable installed-target local report is required before live collection.');
   }

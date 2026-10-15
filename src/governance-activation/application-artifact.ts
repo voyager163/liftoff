@@ -25,6 +25,9 @@ import { runnerBinding } from './runner-readiness.js';
 import { azureObject, runAzureJson } from './azure-discovery.js';
 import { applicationReadbackProof as readbackProof } from './application-readiness.js';
 import { inspectAzureDeploymentOwnership } from './azure-deployment-ownership.js';
+import {
+  observeImmutableWorkflowExecutionRef, workflowExecutionRefName
+} from './workflow-execution-ref-observation.js';
 
 export interface VerifiedApplicationArtifact {
   sourceSha: string;
@@ -52,6 +55,7 @@ export function readVerifiedApplicationArtifact(inspection: GovernanceTransition
   }
   const payload = evidence.payload;
   const sha = sourceSha(payload.sourceSha);
+  const treeSha = sourceSha(payload.sourceTreeSha, 'Published complete source tree SHA');
   const workflowDigest = applicationText(payload.workflowDigest, /^[a-f0-9]{64}$/u, 'Published workflow byte digest');
   const imageDigest = digest(payload.artifactDigest);
   const registryResourceId = applicationText(payload.registryResourceId,
@@ -66,7 +70,10 @@ export function readVerifiedApplicationArtifact(inspection: GovernanceTransition
   const prerequisiteConfiguration = (inspection.activationInputs ?? inspection.state.activationInputs)?.phases['application-prerequisites-ready'];
   if (payload.immutableImage !== immutableImage || output.values.immutableImage !== immutableImage ||
     output.values.artifactDigest !== imageDigest || output.values.registryResourceId !== registryResourceId ||
-    expected?.sourceSha !== sha || expected.workflowDigest !== workflowDigest ||
+    expected?.sourceSha !== sha || expected.sourceTreeSha !== treeSha ||
+    payload.executionRef !== workflowExecutionRefName(sha) ||
+    output.values.sourceTreeSha !== treeSha || output.values.executionRef !== payload.executionRef ||
+    expected.workflowDigest !== workflowDigest ||
     expected.imageRepository !== imageRepository ||
     environment !== prerequisiteConfiguration?.environment ||
     registryResourceId !== verifiedOutput(inspection, 'application-prerequisites-ready', 'registryResourceId') ||
@@ -85,7 +92,7 @@ export function readVerifiedApplicationArtifact(inspection: GovernanceTransition
 
 export function applicationArtifactBinding(input: PhasePlanningInput | PhaseAdapterExecutionInput) {
   const config = applicationConfiguration(input, 'application-artifact-ready', [
-    'sourceSha', 'workflowPath', 'workflowDigest', 'contextPath', 'dockerfilePath', 'imageRepository',
+    'sourceSha', 'sourceTreeSha', 'workflowPath', 'workflowDigest', 'contextPath', 'dockerfilePath', 'imageRepository',
     'sourceTransmissionApproved', 'dependencyNetworkApproved', 'buildExecutionApproved'
   ]);
   if (config.sourceTransmissionApproved !== true || config.dependencyNetworkApproved !== true ||
@@ -114,6 +121,8 @@ export function applicationArtifactBinding(input: PhasePlanningInput | PhaseAdap
     repository: repository.name,
     repositoryId: positiveId(verifiedOutput(input.inspection, 'phase-0-complete', 'repositoryId')),
     ref: repository.defaultBranch, sourceSha: sourceSha(config.sourceSha),
+    sourceTreeSha: sourceSha(config.sourceTreeSha, 'Reviewed complete source tree SHA'),
+    executionRef: workflowExecutionRefName(sourceSha(config.sourceSha)),
     workflowPath, workflowDigest: applicationText(config.workflowDigest, /^[a-f0-9]{64}$/u, 'Reviewed raw workflow byte digest'),
     contextPath, dockerfilePath,
     imageRepository: applicationText(config.imageRepository, /^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u, 'Application image repository'),
@@ -168,11 +177,13 @@ export async function observeApplicationSource(input: PhaseAdapterExecutionInput
   input = applicationDeadlineInput(input);
   const binding = applicationArtifactBinding(input);
   const head = (await gitText(input, ['rev-parse', '--verify', 'HEAD'])).trim();
+  const completeTree = (await gitText(input, ['rev-parse', '--verify', `${binding.sourceSha}^{tree}`])).trim();
   const diff = await gitText(input, ['diff', binding.sourceSha, '--', binding.contextPath, binding.workflowPath]);
   const untracked = await gitText(input, ['ls-files', '--others', '--exclude-standard', '--', binding.contextPath]);
   const tree = await gitText(input, ['ls-tree', '-r', '-z', binding.sourceSha, '--', binding.contextPath, binding.workflowPath]);
   const entries = tree.split('\0').filter(Boolean);
-  if (head !== binding.sourceSha || diff || untracked || !entries.length || entries.length > 10_000 ||
+  if (head !== binding.sourceSha || completeTree !== binding.sourceTreeSha ||
+    diff || untracked || !entries.length || entries.length > 10_000 ||
     !entries.some((entry) => entry.endsWith(`\t${binding.dockerfilePath}`)) ||
     entries.some((entry) => {
       const match = entry.match(/^100(?:644|755) blob [a-f0-9]{40}\t(.+)$/u);
@@ -223,19 +234,23 @@ export async function observeApplicationSource(input: PhaseAdapterExecutionInput
   if (!isRecord(branch.object) || branch.object.sha !== binding.sourceSha) {
     return applicationError('application-remote-source', 'The approved remote source ref has moved; no build dispatch was permitted.');
   }
+  const executionRef = await observeImmutableWorkflowExecutionRef({ client }, {
+    repository: binding.repository, repositoryId: binding.repositoryId,
+    sourceSha: binding.sourceSha, treeSha: binding.sourceTreeSha, executionRef: binding.executionRef
+  });
   const group = await client.get(`/orgs/${binding.repository.split('/')[0]}/actions/runner-groups/${binding.runnerGroupId}`);
   if (group.id !== binding.runnerGroupId || group.name !== binding.runnerGroupName ||
     group.network_configuration_id !== binding.networkConfigurationId || group.restricted_to_workflows !== true ||
     !Array.isArray(group.selected_workflows) ||
-    !group.selected_workflows.includes(`${binding.repository}/${binding.workflowPath}@refs/heads/${binding.ref}`)) {
+    !group.selected_workflows.includes(`${binding.repository}/${binding.workflowPath}@refs/tags/${binding.executionRef}`)) {
     return applicationError('application-runner-unready',
       'The exact private-network runner group has not admitted this artifact workflow; task13 runner admission is not inferred, broadened or rewritten by task14.');
   }
-  return { binding, sourceTreeDigest: canonicalSha256(entries), workflowDigest: binding.workflowDigest };
+  return { binding, sourceTreeDigest: canonicalSha256(entries), workflowDigest: binding.workflowDigest, executionRef };
 }
 
 function boundRun(run: Record<string, unknown>, binding: ReturnType<typeof applicationArtifactBinding>, planCreatedAt: string) {
-  if (run.head_sha !== binding.sourceSha || run.head_branch !== binding.ref ||
+  if (run.head_sha !== binding.sourceSha || run.head_branch !== binding.executionRef ||
     run.path !== binding.workflowPath || run.display_title !== binding.runTitle ||
     run.event !== 'workflow_dispatch' || run.run_attempt !== 1 ||
     !isRecord(run.repository) || run.repository.id !== binding.repositoryId ||
@@ -272,6 +287,7 @@ function operationForAcceptedDispatch(
 
 function outputFor(binding: ReturnType<typeof applicationArtifactBinding>, handle: ExternalOperationState, values: PhaseOutputBindings['values'] = {}): PhaseOutputBindings {
   return { values: { artifactBindingDigest: binding.bindingDigest, sourceSha: binding.sourceSha,
+    sourceTreeSha: binding.sourceTreeSha, executionRef: binding.executionRef,
     workflowDigest: binding.workflowDigest, environment: binding.environment, registryResourceId: binding.registryId,
     imageRepository: binding.imageRepository, immutableTag: binding.tag, ...values },
     resources: [{ provider: 'github', resourceType: 'workflow-run', resourceId: handle.resourceId }] };
@@ -344,10 +360,15 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
         await observeApplicationSource(input);
         await input.recordApplicationDispatchIntent?.(dispatch);
         await assertApplicationAuthority(input, dispatch);
+        await observeImmutableWorkflowExecutionRef({ client }, {
+          repository: binding.repository, repositoryId: binding.repositoryId,
+          sourceSha: binding.sourceSha, treeSha: binding.sourceTreeSha, executionRef: binding.executionRef
+        });
+        await assertApplicationAuthority(input, dispatch);
         dispatchAttempted = true;
         const startedAt = (input.clock?.() ?? input.now).toISOString();
         const accepted = await client.write('POST', `/repos/${binding.repository}/actions/workflows/${binding.workflowPath.split('/').at(-1)}/dispatches`,
-          { ref: binding.ref, inputs: dispatchInputs(binding) });
+          { ref: binding.executionRef, inputs: dispatchInputs(binding) });
         if (accepted) {
           handle = operationForAcceptedDispatch(input, binding, accepted, startedAt);
           currentReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
@@ -369,8 +390,17 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
     if (!previous && currentReadback.length) {
       await input.recordApplicationProgress?.({ operation: handle, outputs, liveReadback: currentReadback });
     }
+    await observeImmutableWorkflowExecutionRef({ client }, {
+      repository: binding.repository, repositoryId: binding.repositoryId,
+      sourceSha: binding.sourceSha, treeSha: binding.sourceTreeSha, executionRef: binding.executionRef
+    });
     const run = await client.get(handle.resourceId);
-    boundRun(run, binding, dispatchedPlan.createdAt);
+    const observedRunId = boundRun(run, binding, dispatchedPlan.createdAt);
+    if (handle.resourceId !== `/repos/${binding.repository}/actions/runs/${observedRunId}` ||
+      handle.operationId !== `github-actions:${observedRunId}`) {
+      return applicationError('application-run-mismatch',
+        'Actual artifact workflow readback differs from the exact recorded workflow run handle; no replacement run or completion proof was adopted.');
+    }
     handle = { ...handle, observedAt: (input.clock?.() ?? input.now).toISOString() };
     const liveReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
       id: run.id, headSha: run.head_sha, workflowPath: run.path, runAttempt: run.run_attempt,
@@ -424,7 +454,7 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
     })) return applicationError('application-plan-stale', 'The exact immutable artifact readback operation changed after review.');
     await assertApplicationAuthority(input, readback);
     const immutable = await observeImmutableApplicationArtifact(input, outputs, handle);
-    await observeApplicationSource(input);
+    const finalSource = await observeApplicationSource(input);
     const imageResourceId = `${binding.registryId}/repositories/${binding.imageRepository}@${imageDigest}`;
     const acrRunResourceId = `${binding.registryId}/runs/${acrRunId}`;
     const completeOutputs: PhaseOutputBindings = {
@@ -444,6 +474,8 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
           workflowDigest: binding.workflowDigest, attestationVerificationDigest: immutable.attestationVerificationDigest
         })],
       evidencePayload: { kind: 'application-artifact-ready.v1', artifactBindingDigest: binding.bindingDigest,
+        sourceTreeSha: binding.sourceTreeSha, executionRef: binding.executionRef,
+        executionRefAdmission: finalSource.executionRef,
         sourceSha: binding.sourceSha, workflowDigest: binding.workflowDigest, workflowRunId: run.id,
         workflowJobId: job.id, registryResourceId: binding.registryId, artifactDigest: imageDigest,
         acrRunId, immutableImage: immutable.immutableImage,
@@ -466,21 +498,24 @@ export async function observeImmutableApplicationArtifact(
 ) {
   input = applicationDeadlineInput(input);
   const binding = applicationArtifactBinding(input);
-  if (outputs.values.artifactBindingDigest !== binding.bindingDigest ||
-    outputs.values.sourceSha !== binding.sourceSha || outputs.values.workflowDigest !== binding.workflowDigest ||
-    outputs.values.registryResourceId !== binding.registryId ||
-    typeof outputs.values.acrRunId !== 'string' || !/^[a-z0-9]{1,32}$/u.test(outputs.values.acrRunId)) {
+  const { artifactBindingDigest, sourceSha: outputSourceSha, workflowDigest, registryResourceId,
+    acrRunId, artifactDigest } = outputs.values;
+  const workflowRunResourceId = operation.resourceId;
+  if (artifactBindingDigest !== binding.bindingDigest ||
+    outputSourceSha !== binding.sourceSha || workflowDigest !== binding.workflowDigest ||
+    registryResourceId !== binding.registryId ||
+    typeof acrRunId !== 'string' || !/^[a-z0-9]{1,32}$/u.test(acrRunId)) {
     return applicationError('application-artifact-binding', 'Artifact publication changed source, environment, approved recipe, registry or actual build run.');
   }
-  const imageDigest = digest(outputs.values.artifactDigest);
+  const imageDigest = digest(artifactDigest);
   const image = `${binding.imageRepository}@${imageDigest}`;
   const tag = `${binding.imageRepository}:${binding.tag}`;
   const run = azureObject(await runAzureJson(input, [
     'acr', 'task', 'show-run', '--subscription', binding.subscriptionId, '--registry', binding.registryName,
-    '--run-id', outputs.values.acrRunId,
+    '--run-id', acrRunId,
     '--query', '{runId:runId,status:status,runType:runType,outputImages:outputImages}'
   ], 'Actual application ACR build run readback'), 'ACR build run');
-  if (run.runId !== outputs.values.acrRunId || run.status !== 'Succeeded' || run.runType !== 'QuickBuild' ||
+  if (run.runId !== acrRunId || run.status !== 'Succeeded' || run.runType !== 'QuickBuild' ||
     !Array.isArray(run.outputImages) || run.outputImages.length !== 1 ||
     !isRecord(run.outputImages[0]) || run.outputImages[0].registry !== binding.loginServer ||
     run.outputImages[0].repository !== binding.imageRepository || run.outputImages[0].tag !== binding.tag ||
@@ -518,7 +553,7 @@ export async function observeImmutableApplicationArtifact(
   let attestations: unknown;
   try { attestations = JSON.parse(verified.stdout); }
   catch { return applicationError('application-attestation-invalid', 'Artifact verification returned invalid bounded JSON; proof/log bytes were withheld.'); }
-  const expectedRun = `https://github.com${operation.resourceId.replace('/repos/', '/')}/attempts/1`;
+  const expectedRun = `https://github.com${workflowRunResourceId.replace('/repos/', '/')}/attempts/1`;
   const valid = Array.isArray(attestations) && attestations.length > 0 && attestations.length <= 10 &&
     attestations.some((entry) => {
       if (!isRecord(entry) || !isRecord(entry.verificationResult)) return false;

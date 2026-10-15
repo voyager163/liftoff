@@ -1,0 +1,5 @@
+projects
+| where TimeGenerated >= ago(1d * toint("${window_days}"))
+| summarize arg_max(TimeGenerated, PolicyProfile, PolicyVersion) by ProjectId
+| summarize ProjectsApprox = dcount(ProjectId, 2) by PolicyProfile, PolicyVersion
+| order by ProjectsApprox desc, PolicyProfile asc, PolicyVersion asc

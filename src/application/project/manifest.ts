@@ -111,14 +111,25 @@ export function resolveManifestV8SourceContract(input: unknown) {
 }
 
 export function resolveModernManifestV8SourceContract(input: unknown) {
+  return resolveModernManifestV8Source(input).contract;
+}
+
+export function resolveModernManifestV8Source(input: unknown) {
   const { contract, profile, workflow, current, preWorkflow } = resolveSourceContract(input, composeModernManifestPlugins);
+  const release = current ? 'current' as const : preWorkflow ? 'pre-workflow' as const : 'pre-assessment' as const;
   if (profile === 'none') {
-    return Object.freeze({ ...contract, governanceSource: Object.freeze({ profile: 'none' as const }) });
+    return Object.freeze({
+      contract: Object.freeze({ ...contract, governanceSource: Object.freeze({ profile: 'none' as const }) }),
+      release
+    });
   }
   const source = modernActivationSourceContractForFamily(
     current ? 'current' : preWorkflow ? 'preWorkflow' : 'preCustody', profile, workflow);
   if (!source) throw new FileSystemError('No authoritative modern governance source matches the selected profile and workflow.');
-  return Object.freeze({ ...contract, governanceSource: source });
+  return Object.freeze({
+    contract: Object.freeze({ ...contract, governanceSource: source }),
+    release
+  });
 }
 
 function resolveSourceContract(input: unknown, compose: typeof composeManifestPlugins) {

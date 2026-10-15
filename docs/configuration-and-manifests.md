@@ -298,6 +298,7 @@ times OpenSpec, Spec Kit and Manual, with six actual computed graph hashes.
 | Compatibility metadata | 5 |
 | Supersession / credential policy / migration journal | 2 |
 | Prepared successor preview / retained approval-only audit | 2 / 1 |
+| Single-maintainer policy / team policy | 7 / 1 |
 
 Contract5 changes only current workflow publication authority and the six computed
 source graphs: publication requires explicit commit/push/readback/admission
@@ -310,7 +311,9 @@ in the captured `modern-pre-workflow.ts` registry; its graph, original records a
 plans remain readable alongside the frozen pre-custody family. Neither source4
 family is current execution permission. Source5 has no automatic migration lane
 or public activation support; changing an identity does not upgrade old consent.
-| Single-maintainer policy / team policy | 7 / 1 |
+Shared source metadata retains the current, pre-workflow and pre-custody
+distinctions, including each family's capability guidance. Reading a retained
+family does not relabel it as the current project-telemetry bundle.
 
 `createManifestV8Reader` validates the complete source contract independently of
 the public historical-reader dispatch. Plugin API/content identity, finite
@@ -407,9 +410,11 @@ fresh proof remain independently required for local completion. A committed
 successor and successful revalidation are separate outcomes; failed follow-up
 must preserve the committed successor and source history, not downgrade them.
 
-The [protected state API](../src/application/state-migration/README.md) is a
-different private boundary. A local control-record successor does not read,
-import, move or rewrite deployed OpenTofu state.
+The packaged
+[private staging and bootstrap retention boundary](repository-governance.md#private-staging-and-bootstrap-retention)
+documents the protected-state handover scope. The generic protected state API
+remains a different private boundary. A local control-record successor does not
+read, import, move or rewrite deployed OpenTofu state.
 
 ## Artifact ownership
 

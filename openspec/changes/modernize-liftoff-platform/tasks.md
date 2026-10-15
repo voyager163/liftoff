@@ -194,14 +194,31 @@ Depends on 1 and 3. References: design D12; liftoff-cli-telemetry.
 
 Depends on 3-8 and 15. References: design D12; liftoff-cli-telemetry, liftoff-template-ownership.
 
-- [ ] 16.1 Implement explicit status/enrollment/disable/report CLI operations and disclosure versioning; verify install, generic yes, existing notices and copied repository records cannot opt a developer in.
-- [ ] 16.2 Create per-project random identity only during approved enrollment and bind local consent externally; verify deterministic rendering, clone/worktree identity preservation, independent monorepo IDs and deliberate fork/copy reenrollment.
+- [x] 16.1 Implement explicit status/enrollment/disable/report CLI operations and disclosure versioning; verify install, generic yes, existing notices and copied repository records cannot opt a developer in.
+- [x] 16.2 Create per-project random identity only during approved enrollment and bind local consent externally; verify deterministic rendering, clone/worktree identity preservation, independent monorepo IDs and deliberate fork/copy reenrollment.
 - [ ] 16.3 Preserve global opt-outs, invalid/read-only config and unknown fields across enrollment and installer migration; verify no notice/consent writes or transport occur when opted out.
 - [ ] 16.4 Add a separately approved monthly repository-scoped heartbeat workflow with explicit root inventory and pinned CLI/action/tooling; verify no application scripts, project scan, upgrade, repair or Azure deployment runs.
 - [ ] 16.5 Implement the narrow explicit CI heartbeat exception while retaining ordinary CI=true disablement; verify both global opt-outs always win and no event is sent for absent/disabled/unsupported project records.
 - [ ] 16.6 Implement reviewed heartbeat entry updates/removal for nested monorepo projects with explicit repository authority; verify other project entries and custom workflow bytes are preserved on Windows/macOS/Linux.
-- [ ] 16.7 Add bounded consent/identity/transport integration tests including moved checkout receipts and no telemetry on assessment/live/help/capabilities/status; verify measurement identity never becomes write approval or authentication.
-- [ ] 16.8 Document pseudonymity, first-observed/windowed metrics, heartbeat meaning/delays, disablement versus retention and operator-reviewed deletion; verify generated README/setup guidance never enrolls implicitly.
+- [x] 16.7 Add bounded consent/identity/transport integration tests including moved checkout receipts and no telemetry on assessment/live/help/capabilities/status; verify measurement identity never becomes write approval or authentication.
+- [x] 16.8 Document pseudonymity, first-observed/windowed metrics, heartbeat meaning/delays, disablement versus retention and operator-reviewed deletion; verify generated README/setup guidance never enrolls implicitly.
+
+Candidate enrollment/reporting, external consent/config preservation, deterministic
+heartbeat inventory/rendering and separately reviewed exact entry removal are
+implemented and locally tested. Task 16.3 remains incomplete because native
+installer migration is not qualified/wired. Tasks 16.4-16.6 remain incomplete:
+there is no qualified published heartbeat-capable Linux CLI archive/digest or
+registered repository-scoped activation/CI producer. Candidate syntax and
+unpublished deterministic test specimens are not publication qualification.
+Enablement and `report --heartbeat` refuse without writes/delivery; neither
+project enrollment nor a caller flag enables ordinary CI. No active cron was
+installed in this repository. Production ingestion and release/custody gates
+remain separate; all other groups retain their parent-branch task status.
+The four checked stage-16 tasks record composed SOURCE evidence only:
+the complete bounded affected selector, strict fixture imports, gateway tests,
+build/noEmit, static dashboard/OpenTofu checks and disposable installed npm
+smoke. Native Windows execution, published pins, live ingestion/query/UI and
+release-wide coverage were not qualified by this integration.
 
 ## 17. Extend the approved Azure telemetry deployment and Grafana dashboards
 
@@ -216,6 +233,15 @@ Depends on 9 and 15-16 for qualified candidate artifacts and client contracts, n
 - [ ] 17.7 After explicit operator approval, deploy backward-compatible gateway/table/DCR changes first, then Grafana; verify real identity access, synthetic ingestion/query, 180-day retention and continued absence of request/IP/console logging.
 - [ ] 17.8 Exercise approved feature disablement/dashboard rollback without destroying the protected group, workspace/data, backend or perimeter; verify existing anonymous ingestion remains operational and records survive.
 
+Tasks 17.2-17.6 have a bounded source-preparation layer: separate pinned
+OpenTofu resource/dashboard roots, workspace-scoped Logs identity, native
+Grafana panels/KQL, registered synthetic exclusions, paused query-availability
+and explicit monthly-expectation rules, portable offline tests and operator
+runbooks. All 17.x flags remain unchecked: qualified task-9/16 candidate
+prerequisites, actual SKU/provider/quota/cost and state ownership, verified
+ingestion-fault signal, real identity/query/UI scenarios and approved live
+deployment/rollback are unmet. Static source is not deployment qualification.
+
 ## 18. Qualify the integrated release and complete the change
 
 Depends on all prior stages. This group is integration verification, not a substitute for earlier tests/documentation.
@@ -223,7 +249,7 @@ Depends on all prior stages. This group is integration verification, not a subst
 - [ ] 18.1 Run the complete declared workload/workflow/agent/profile and native-host qualification matrix, including Manual/no-agent, preserved layouts, old manifests, clean installs and Apple Silicon handover; verify every advertised combination and explicit unsupported boundary.
 - [ ] 18.2 Run fresh independent CLI/gateway coverage, import boundaries, repository policy, template audits, generated-container/OpenTofu checks and installed native/npm smoke tests; verify all four metrics exceed 80% and every report identifies its exact revision/inventory.
 - [ ] 18.3 Verify a representative old Liftoff project and a non-Liftoff project through their complete separate migration journeys; confirm original code/Git/history and opt-outs are preserved except exact approved changes, and brownfield state remains untouched.
-- [ ] 18.4 Audit the explicit inventory of all four maintained READMEs, generated README sources and related guides against actual commands, schemas, capabilities and package links; verify no stale npm-primary, fake archive, wrong completion, unsupported public stateful or anonymous-project-ID claim remains.
+- [x] 18.4 Audit the explicit inventory of all four maintained READMEs, generated README sources and related guides against actual commands, schemas, capabilities and package links; verify no stale npm-primary, fake archive, wrong completion, unsupported public stateful or anonymous-project-ID claim remains.
 - [ ] 18.5 Verify release assembly uses the same qualified immutable source/artifacts across native channels and npm bridge, with native assets available before migration guidance and ingestion ready before project reporting; publish only with separate maintainer authorization.
 - [ ] 18.6 After authorized publication, qualify installed client enrollment/reporting and a separately enabled heartbeat in an explicitly approved disposable project using the exact published pins; verify actual ingestion/deduplication and opt-out behavior before claiming live end-to-end reporting.
 - [ ] 18.7 Check every proposal capability against its implemented scenarios and retained evidence, then run strict OpenSpec validation; mark only actually completed tasks and leave unavailable external qualification/deployment tasks explicitly incomplete rather than archiving or claiming full delivery.

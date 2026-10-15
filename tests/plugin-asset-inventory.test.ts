@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as declarationModule from '../src/plugins/builtin/assets.js';
-import { builtinAssets } from '../src/plugins/builtin/assets.js';
+import { builtinAssets, compiledPackageFiles } from '../src/plugins/builtin/assets.js';
 import type { ContributionOwner } from '../src/plugins/contracts.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
@@ -160,7 +160,9 @@ describe('packaged template asset declarations', () => {
   });
 
   it('keeps the declaration table a deeply frozen, data-only leaf', () => {
-    expect(Object.keys(declarationModule)).toEqual(['builtinAssets']);
+    expect(Object.keys(declarationModule).sort()).toEqual(['builtinAssets', 'compiledPackageFiles']);
+    expect(compiledPackageFiles).toEqual(['dist/**/*.js', 'dist/**/*.d.ts']);
+    expect(Object.isFrozen(compiledPackageFiles)).toBe(true);
     expect(Object.isFrozen(builtinAssets)).toBe(true);
     for (const asset of builtinAssets) {
       expect(Object.isFrozen(asset)).toBe(true);
@@ -246,6 +248,7 @@ describe('package asset declarations', () => {
     // Normalized like npm would read it, so separators, prefixes, patterns and portable case aliases
     // of the asset root (ASSETS/, Assets/) cannot hide an entry from the exact comparison below.
     const assetEntries = packageJson.files.filter((entry) => {
+      if (compiledPackageFiles.includes(entry)) return false;
       const normalized = entry.replaceAll('\\', '/').replace(/^(?:!|\.\/|\/)+/, '');
       return normalized.split('/')[0].normalize('NFKC').toLowerCase() === 'assets' || /[*?[\]{}()!+@]/.test(entry);
     });

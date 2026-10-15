@@ -29,7 +29,7 @@ const packageJson = JSON.parse(readFileSync(path.join(repositoryRoot, 'package.j
   files: string[];
 };
 const templatePaths = builtinAssets.map((asset) => asset.pathParts.join('/'));
-const required = requiredPackagedAssets as readonly string[];
+const required = requiredPackagedAssets;
 const nonAssetPaths = ['package.json', 'README.md', 'dist/cli.js', 'docs/getting-started.md'];
 const eggInfoPaths = ['PKG-INFO', 'SOURCES.txt', 'dependency_links.txt', 'requires.txt', 'top_level.txt']
   .map((name) => `assets/locks/python-genai/liftoff_template_python_genai.egg-info/${name}`);

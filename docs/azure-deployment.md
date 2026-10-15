@@ -172,6 +172,16 @@ protected bootstrap must retain its original opaque custody references and exact
 30-day disposal obligation. Missing task13 production storage, non-exporting
 keys, locking, runner admission or disposable qualification still blocks.
 
+Read-only `governance status --json`, `governance status --scope local --json`
+and `governance resume --json` describe these two application executors as
+`injected-only`, with the exact protected-source blocker. This is not production
+readiness or approval to run the source adapters. CLI review history covers each
+scope separately; its frozen captures, normalization, prior records, exit codes
+and stderr are preserved.
+Forward source integration retains both the application disclosure review and
+the six separately reviewed HCL fingerprint/planning-digest changes. Neither
+static contract data nor an installed package supplies execution authority.
+
 `application-prerequisites-ready` accepts only the selected declared environment,
 `registrySku: "Basic"` and explicit `assignRegistryRoles: true`, with nonzero
 fixed/usage cost ceilings. It creates the deterministic registry and workload
@@ -185,24 +195,36 @@ resource/role readback are required. Provider conditional creation and competing
 resource-creation scenarios still require real disposable qualification; source
 tests cannot qualify an Azure resource provider's concurrency behavior.
 
-**Execution-ref qualification remains blocked.** The current artifact route
-selects a mutable default-branch ref at dispatch. Earlier source/workflow checks,
-a reviewed job guard and later provenance refusal do not make that selection
-atomic or prevent an unreviewed replacement workflow's earlier transmission.
-Do not enable real artifact dispatch until the separately owned exact-commit
-execution-tag binding and admission interface is published, integrated and
-independently qualified. Missing or unknown tag update/delete/no-bypass protection
-cannot fall back to a mutable ref; policy administrators remain an external
-trust boundary. TASK14.1 source presence does not resolve this prerequisite.
+**Execution-ref source admission is read-only, not production qualification.**
+The artifact route accepts only the existing lightweight
+`liftoff-execution-<full-source-SHA>` tag, independently bound to the complete
+reviewed commit and tree. It rereads effective repository tag update/deletion
+protection with no bypass, provider grants, the commit tree and tag before
+dispatch and accepted/resumed observation. Missing tags, unknown or inherited
+policy, bypass, changed source/tree or unsupported credentials block; this
+producer never creates tags, changes policy or falls back to a branch/raw SHA.
+Exact current approval and lease are checked again after awaited tag admission,
+immediately before dispatch; provider observation cannot prolong write authority.
+The current admission supports independently observed classic OAuth `repo` and
+`workflow` grants plus repository push access, not inferred installation or
+fine-grained permissions. Policy administrators remain an external trust
+boundary. Public-v8 activation, protected production ports and real disposable
+execution-ref qualification remain separate blockers.
 
 `application-artifact-ready` requires an existing separately reviewed/published
 workflow and private-network runner admission. Its exact plan binds the complete
-Git source SHA, raw workflow byte digest, one observed source context and
+Git `sourceSha`, required complete `sourceTreeSha`, derived protected execution
+tag, raw workflow byte digest, one observed source context and
 Dockerfile, image repository, canonical registry resource, environment, principal,
 backend/runner identity and cost. `sourceTransmissionApproved`,
 `dependencyNetworkApproved` and `buildExecutionApproved` must each be explicitly
 true; resource approval alone cannot authorize them. Changed or uncommitted
 customizations are preserved and block rather than being reset or uploaded.
+The tree is obtained with `git rev-parse <sourceSha>^{tree}` and independently
+checked against both local Git and the provider commit. Runner admission must
+name `<repository>/<workflowPath>@refs/tags/<execution-tag>`, not a branch.
+Older plans without the exact tree/tag binding are stale and require review;
+accepted runs cannot be silently retagged under a new plan.
 
 The reviewed workflow protocol is one `publish` job named
 `Liftoff application artifact`, with the exact qualified runner group/label, a
@@ -230,6 +252,11 @@ and the immutable subject digest must match; caller annotations and user-control
 predicate metadata cannot replace them. Existing protected OCI authentication is
 required; there is no token login or ambient credential fallback. Only verified
 `<registry>/<repository>@sha256:<digest>` output can become artifact readiness.
+The read-only observer captures the original publication values and workflow-run
+resource ID before its first asynchronous read. Caller changes during ACR or
+attestation readback cannot select a replacement run, tag, source or digest:
+unchanged observations remain bound to the original inputs, and replacement
+provider proof is refused. This grants no dispatch or execution-ref authority.
 
 Confirmed provider handles are checkpointed privately before subsequent
 observation. Engine-owned dispatch intent is written only after preflight and
@@ -242,6 +269,11 @@ independent run discovery; malformed or cross-scope acceptance never invents a
 handle or permits redispatch. Unexpected response fields are not retained.
 Actual terminal run status is checkpointed before the fallible job inventory
 read, including when source changes prevent a later outcome from being saved.
+Every polled run ID must match the exact accepted or resumed workflow handle
+before status, jobs or attestation can advance publication. A different run
+with otherwise matching source and recipe cannot replace the recorded operation.
+Known terminal prerequisite deployments also refuse contradictory nonterminal
+readback during recovery; the original handle remains terminal, not pending.
 Known unsuccessful conclusions (including failure, cancellation and timeout)
 checkpoint a failed handle even if job readback is unavailable; unknown terminal
 conclusions explicitly block publication rather than implying success.
