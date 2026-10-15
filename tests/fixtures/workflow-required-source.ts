@@ -49,6 +49,7 @@ export async function createWorkflowRequiredSourceFixture(root: string,
   };
   const calls: { method: string; path: string }[] = [], errors: unknown[] = [];
   const hooks: { afterResponse?: (path: string) => void } = {}, routes = new Map<string, unknown>();
+  const replyHeaders = new Map<string, Record<string, string>>(), replyStatuses = new Map<string, number>();
   const server = createServer((request, reply) => {
     try {
       calls.push({ method: request.method ?? '', path: request.url ?? '' });
@@ -64,7 +65,9 @@ export async function createWorkflowRequiredSourceFixture(root: string,
         if (!file) throw new Error('Unexpected immutable source endpoint.');
         data = { type: 'file', path: file.path, encoding: 'base64', content: Buffer.from(file.content).toString('base64') };
       }
-      reply.writeHead(200, { 'content-type': 'application/json' }); reply.end(JSON.stringify(data));
+      reply.writeHead(replyStatuses.get(endpoint) ?? 200, {
+        'content-type': 'application/json', ...replyHeaders.get(endpoint)
+      }); reply.end(JSON.stringify(data));
     } catch (error) {
       errors.push(error); reply.writeHead(500, { 'content-type': 'application/json' }); reply.end('{}');
     }
@@ -84,7 +87,7 @@ export async function createWorkflowRequiredSourceFixture(root: string,
   const runtime = workflowObservationRuntime({ projectRoot, transport, runner: { async run() {
     processCalls++; throw new Error('Immutable source observation must not execute Git or project commands.');
   } } });
-  return { context, runtime, source, names, state, calls, hooks, transport, routes,
+  return { context, runtime, source, names, state, calls, hooks, transport, routes, replyHeaders, replyStatuses,
     processCalls: () => processCalls,
     close: async () => {
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));

@@ -176,6 +176,22 @@ commands and preserves the original read-only runtime/deadline. It is private
 compiler-input plumbing, not the completed semantic compiler or installed
 review/approval/apply composition, and changes no public help or JSON contract.
 
+Private `observeSource5WorkflowDependencyReview` reads the actual GitHub
+dependency diff for exact repository/base/head commit/tree selectors through
+the original read-only runtime. It verifies a bounded complete ancestor-to-head
+comparison, joins all bounded diff pages and repeats the complete inventory.
+Snapshot warnings, missing vulnerability metadata, duplicate changes/advisories,
+unsupported severities, provider errors or observation drift refuse a verdict;
+there is no warning retry, threshold override or status/check publication.
+Known advisories on added dependencies are counted at every severity and scope;
+removed dependencies are not treated as introduced vulnerabilities. Raw package
+and advisory payloads are withheld. An empty or clear diff means only that the
+provider diff reported no added known vulnerabilities: it is not full SCA,
+license evaluation, a fresh scan, current protected-ref qualification, a
+semantic context mapping or a prerequisite session. This private provider body
+does not admit either operator OAuth or automation tokens, execute project code,
+or change public review/effect routing, JSON/help, recipes or phase authority.
+
 Private `executeWorkflowTofuComponentFormatValidator(projectRoot, sourceSha,
 component)` validates one actual selected OpenTofu component. It reuses the
 captured-file formatter policy: only explicit present `.tf` paths are passed,
