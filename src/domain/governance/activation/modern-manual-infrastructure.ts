@@ -30,7 +30,7 @@ export const manualInfrastructurePolicy = Object.freeze({
   ]),
   temporaryDirectoryBytes: modernLocalBounds.depth * 3 + 'scratch'.length,
   temporaryDirectory: 'existing-owned-scratch-relative-to-approved-command-cwd',
-  additionalPureFunctions: Object.freeze(['regex', 'urlencode']),
+  additionalPureFunctions: Object.freeze(['object', 'regex', 'urlencode']),
   initArgs: Object.freeze(['init', '-backend=false', '-input=false', '-no-color', '-lockfile=readonly']),
   validateArgs: Object.freeze(['validate', '-no-color']),
   network: 'explicit-provider-distribution-consent-no-network-sandbox',

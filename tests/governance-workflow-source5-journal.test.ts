@@ -508,7 +508,10 @@ describe('full closed source5 journal inventory and retained truth', () => {
         { path: `governance/evidence/source5-${reviewed.control.controlKey}.json`, content: canonicalJson(evidence), beforeHash: null },
         { path: 'governance/activation-state.json', content: canonicalJson(state), beforeHash: canonicalSha256(value.installed.state) }
       ];
-      const altered = structuredClone(state); altered.phases['phase-0-complete'].blockers.push('unrelated rewrite');
+      const altered = structuredClone(state);
+      altered.phases['phase-0-complete'].blockers = [
+        ...altered.phases['phase-0-complete'].blockers, 'unrelated rewrite'
+      ];
       await expect(journal.saveFinalization({ kind: 'workflow-source5-finalization', files: files.map(file =>
         file.path === 'governance/activation-state.json' ? { ...file, content: canonicalJson(altered) } : file) })).rejects.toThrow(/unrelated/);
       expect(await journal.readFinalization()).toBeNull();

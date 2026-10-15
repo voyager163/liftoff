@@ -19,6 +19,7 @@ import type { Source5WorkflowPhase } from '../../src/governance-activation/workf
 import { createWorkflowSource5ControlStore, resolveUpdatePreviewLocation } from '../../src/adapters/filesystem/update-previews.js';
 import { writeModernInstalledProject } from './modern-installed-project.js';
 import { workflowByteDigest } from '../../src/governance-activation/workflow-binding.js';
+import type { WorkflowPublicationBinding } from '../../src/governance-activation/workflow-publication.js';
 
 /** Isolated current5 record/protocol fixtures, not host or live-provider qualification. */
 export async function workflowSource5JournalFixture(options: {
@@ -41,7 +42,8 @@ export async function workflowSource5JournalFixture(options: {
   const content = 'name: Isolated source fixture\non: workflow_dispatch\njobs:\n  validate:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo source-fixture\n';
   const binding = { repository: 'owner/repo', repositoryId: 123, ref: 'ci/liftoff-workflows-journal',
     parentSha: 'a'.repeat(40), sourceTransmissionApproved: true,
-    files: [{ path: '.github/workflows/source-fixture.yml', beforeDigest: null, digest: workflowByteDigest(content), content }] };
+    files: [{ path: '.github/workflows/source-fixture.yml', beforeDigest: null, digest: workflowByteDigest(content), content }]
+  } satisfies WorkflowPublicationBinding;
   function review(request: { phaseId?: Source5WorkflowPhase; origin?: Source5WorkflowOrigin;
     remainingFrom?: Source5WorkflowControlBinding['remainingFrom']; effects?:
     readonly { action: Source5WorkflowAction; binding: unknown }[] } = {}) {

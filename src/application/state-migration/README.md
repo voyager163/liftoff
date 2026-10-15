@@ -86,7 +86,10 @@ It must be paired with a custody capability that attests the exact runner/host,
 opaque protected workspace and storage, non-exporting external key reference,
 Azure blob-lease locking, writer quiescence, disposal support, and refusal of
 plaintext fallback. Retention records only digests of opaque artifact/key
-references. Day-30 disposal is also injected-only and succeeds only after the
+references. Host identities, protected references and proof timestamps must be
+actual strings; coercible JSON values and an invalid current clock cannot
+qualify custody or authorize protected-state dispatch.
+Day-30 disposal is also injected-only and succeeds only after the
 same custody identity is freshly requalified and returns exact payload-free
 deletion proof. The default public CLI registers neither capability. This narrow
 exception does not authorize arbitrary brownfield state access and does not
