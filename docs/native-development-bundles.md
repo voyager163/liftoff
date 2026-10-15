@@ -225,10 +225,17 @@ Reusable Group-10 contracts live in `src/domain/distribution/native-upgrade.ts`;
 `createNativeUpgradePort`, while `native-metadata.ts` admits independently signed
 material without release-builder imports. Cask/WinGet observations and owning
 channel reads are explicit abortable provider ports, bounded at the selected
-probe deadline. No production provider or deployed native stable endpoint is
-registered while the namespace/signing policy is null. A qualified provider must
-observe real manager receipts and source/certificate facts; returning fixture
-observations does not qualify it. WinGet source currently admits only observed
+probe deadline. A default Homebrew reader is wired behind the namespace policy:
+it reads the exact standard Caskroom receipt/staged version, canonical tap
+definition and approved local Git origin, with byte/directory/commit rechecks.
+It never executes Homebrew or Ruby or refreshes a source. The receipt format is
+derived from [Homebrew's pinned cask Tab implementation](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cask/tab.rb)
+and [metadata paths](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cask/metadata.rb).
+This is local attribution, not publisher authentication. The current null policy
+does not invoke that reader. No production WinGet reader or deployed native
+stable endpoint is registered; real manager/source/certificate facts and
+independent qualification remain required. Returning fixture observations does
+not qualify a provider. WinGet source currently admits only observed
 user-scope ownership; machine-scope installs are not migrated or elevated.
 Linux recovery delegates unchanged to the installed receipt/journal API and
 requires exact selected digests; it is not a macOS cask recovery authority.

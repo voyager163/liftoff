@@ -9,6 +9,7 @@ import { lookupNativeStableCandidate, type NativeStableSource } from './native-m
 import type { SelfUpgradeDependencies } from './upgrade-host.js';
 import { isStableSemver } from '../../stable-release.js';
 import { compareSemver } from '../../semver.js';
+import { readHomebrewCaskOwnership } from './native-cask.js';
 
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const sha256 = /^[a-f0-9]{64}$/;
@@ -99,7 +100,11 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, readers: NativeOwnerReaders = {}): NativeUpgradePort {
+export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, overrides: NativeOwnerReaders = {}): NativeUpgradePort {
+  const readers: NativeOwnerReaders = {
+    cask: (...args) => readHomebrewCaskOwnership(dependencies, ...args),
+    ...overrides
+  };
   const api = pathApiForPlatform(dependencies.platform);
   const probeTimeoutMs = dependencies.probeTimeoutMs ?? selfUpgradeProbeTimeoutMs;
   const admitted = new Map<string, string>();

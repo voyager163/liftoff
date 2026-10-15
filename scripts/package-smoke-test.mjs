@@ -464,9 +464,13 @@ try {
       pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-release-admission.mjs')).href)};
     import {admitNativeStableMaterial} from ${JSON.stringify(
       pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-metadata.js')).href)};
+    import {readHomebrewCaskOwnership} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-cask.js')).href)};
     const policy=JSON.parse(await readFile(${JSON.stringify(path.join(installedPackageRoot, 'distribution/native/release-policy.json'))},'utf8'));
     assert.equal(policy.approvedSigningKeySha256,null);
     await assert.rejects(()=>admitNativeStableMaterial({}, {}, policy),e=>e.reasonCode==='native_unqualified');
+    await assert.rejects(()=>readHomebrewCaskOwnership({}, {}, policy, '', new AbortController().signal),
+      e=>e.reasonCode==='native_unqualified');
     const {publicKey,privateKey}=generateKeyPairSync('ed25519');
     const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
     const approved=sha(publicKey.export({format:'der',type:'spki'}));

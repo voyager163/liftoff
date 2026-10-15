@@ -1006,6 +1006,17 @@ registry change instead of silently switching delivery policy. This fallback
 does not apply to arbitrary prefixes, Windows, or Linux.
 This is npm running with Homebrew-managed Node, **not Homebrew cask ownership**.
 
+The production cask ownership reader is wired but remains inert while the cask
+namespace/source policy is null. It requires the exact standard Caskroom staged
+version, Homebrew's installed receipt and canonical source definition, and the
+approved tap's local Git origin. It rechecks receipt/definition/config bytes,
+directory identities and the tap commit; it does not execute Homebrew or Ruby,
+refresh a source, or contact a repository. This proves local attribution only,
+not signing, publication, current channel availability or migration authority.
+Nonstandard, missing, contradictory or racing receipts fail closed. WinGet
+ownership remains an explicit provider port pending authoritative installed
+AppId/publisher/certificate/source observations.
+
 Canonical npm's stable `latest` metadata selects one exact target. The effective
 configured npm registry remains the delivery path and must expose that exact
 version. Liftoff never edits `.npmrc`, embeds registry credentials, forces a

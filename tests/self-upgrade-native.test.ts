@@ -438,8 +438,13 @@ describe('owner-aware orchestration and read-only doctor', () => {
       owner: platform === 'darwin' ? 'homebrew-cask' : 'winget',
       ...(platform === 'win32' ? { managerScope: 'user' } : {})
     });
-    await expect(createNativeUpgradePort(fixture.dependencies).inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral'))
+    await expect(createNativeUpgradePort(fixture.dependencies, { cask: undefined }).inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral'))
       .rejects.toMatchObject({ reasonCode: 'native_unavailable' });
+    if (platform === 'darwin') {
+      await expect(createNativeUpgradePort(fixture.dependencies, { stable: { readStable: async () => signedMaterial().material } })
+        .inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral'))
+        .rejects.toMatchObject({ reasonCode: 'unsupported_installation' });
+    }
     fixture.policy.homebrew.cask = null;
     fixture.policy.winget.packageIdentifier = null;
     await expect(port.inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral'))
