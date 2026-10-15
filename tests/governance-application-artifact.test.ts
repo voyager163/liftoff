@@ -566,12 +566,12 @@ describe('application source producers behind real prerequisites', () => {
     'rejects malformed prerequisite %s without inventing resources or roles', async (kind) => {
       const f = await fixture();
       const config = f.inputs.phases['application-prerequisites-ready']!;
-      if (kind === 'registrySku') config.registrySku = 'Premium';
-      if (kind === 'assignRegistryRoles') config.assignRegistryRoles = false;
-      if (kind === 'environment') config.environment = 'customer-prod';
+      if (kind === 'registrySku') Object.assign(config, { registrySku: 'Premium' });
+      if (kind === 'assignRegistryRoles') Object.assign(config, { assignRegistryRoles: false });
+      if (kind === 'environment') Object.assign(config, { environment: 'customer-prod' });
       if (kind === 'budget') f.inputs.budget!.usageMonthlyCents = 0;
-      if (kind === 'principal') f.input.inspection.state.phaseOutputs!['phase-0-complete']!.values.principalType = 'user';
-      if (kind === 'unknown') config.command = 'arbitrary-shell';
+      if (kind === 'principal') Object.assign(f.input.inspection.state.phaseOutputs!['phase-0-complete']!.values, { principalType: 'user' });
+      if (kind === 'unknown') Object.assign(config, { command: 'arbitrary-shell' });
       expect(await executeApplicationPrerequisites(f.input)).toMatchObject({ status: 'blocked' });
       expect(f.runner.writes).toEqual([]);
     }
@@ -818,7 +818,7 @@ describe('immutable application publication and independent readback', () => {
     expect(readVerifiedApplicationArtifact(inspection)).toMatchObject({ sourceSha: f.transport.binding.sourceSha,
       digest: imageDigest, environment: 'dev', registryResourceId: f.prerequisite.registryId,
       workflowRunId: 901, workflowJobId: 902, acrRunId: 'ca1' });
-    saved.phaseOutputs!['application-artifact-ready']!.values.artifactDigest = 'latest';
+    Object.assign(saved.phaseOutputs!['application-artifact-ready']!.values, { artifactDigest: 'latest' });
     expect(() => readVerifiedApplicationArtifact(inspection)).toThrow(/authoritative/);
   });
   it('refuses an earlier verified artifact after independently inspecting changed recipe or transmission consent', async () => {
@@ -1076,7 +1076,7 @@ describe('immutable application publication and independent readback', () => {
   });
   it('requires independent source, network and build consent instead of resource approval', async () => {
     const f = await fixture(true);
-    f.inputs.phases['application-artifact-ready']!.dependencyNetworkApproved = false;
+    Object.assign(f.inputs.phases['application-artifact-ready']!, { dependencyNetworkApproved: false });
     expect(() => applicationArtifactBinding(f.input)).toThrow(/each require explicit consent/);
     expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toEqual([]);
   });
