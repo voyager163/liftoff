@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +15,9 @@ import { resolveModernManifestSourceContext } from './application/project/source
 import { canonicalSha256, isRecord } from './domain/governance/activation/canonical-json.js';
 import { freezeModernValue } from './domain/governance/activation/modern-graph.js';
 import { capturedFileBytes } from './domain/governance/activation/modern-local-inputs.js';
+import { explicitTofuFormatCommand } from './domain/governance/activation/modern-tofu-format.js';
 import type { ModernLocalSnapshot } from './domain/governance/activation/modern-local-inputs.js';
+import type { ManifestLayoutComponentId } from './domain/project/contracts.js';
 import { copyModernLocalData, localPath, modernLocalBounds, ModernLocalInputError } from './domain/governance/activation/modern-local-inputs.js';
 import { actionReferences, pinnedActions } from './domain/governance/assessment/predicates.js';
 import { parseAssessmentWorkflow } from './domain/governance/assessment/yaml.js';
@@ -59,10 +61,12 @@ export interface WorkflowContextValidatorReport {
   };
 }
 
-type ExecutableValidator = WorkflowContextValidator | 'compose-config';
+export type WorkflowTofuFormatComponent = Extract<ManifestLayoutComponentId, `opentofu-${string}`>;
+type ExecutableValidator = WorkflowContextValidator | 'compose-config' | `tofu-format:${WorkflowTofuFormatComponent}`;
 type ExecutableValidatorReport<Validator extends ExecutableValidator> =
   Omit<WorkflowContextValidatorReport, 'validator'> & { readonly validator: Validator };
 export type WorkflowComposeConfigValidatorReport = ExecutableValidatorReport<'compose-config'>;
+export type WorkflowTofuComponentFormatValidatorReport = ExecutableValidatorReport<`tofu-format:${WorkflowTofuFormatComponent}`>;
 
 class ValidatorRefusal extends Error {
   constructor(readonly code: string, message: string, readonly status: 'failed' | 'blocked' = 'blocked') {
@@ -359,6 +363,17 @@ export async function executeWorkflowComposeConfigValidator(
   return executeSelectedValidator(projectRoot, { ...request, validator: 'compose-config' });
 }
 
+/** One actual component's captured .tf files, not recursive or full infrastructure validation. */
+export async function executeWorkflowTofuComponentFormatValidator(
+  projectRoot: string, sourceSha: string, component: WorkflowTofuFormatComponent
+): Promise<WorkflowTofuComponentFormatValidatorReport> {
+  const request = readRequest({ validator: 'source-integrity', sourceSha });
+  if (typeof component !== 'string' || !component.startsWith('opentofu-')) {
+    throw new ValidatorRefusal('validator-format-component', 'Formatting requires one actual selected OpenTofu component, not a caller path or command.');
+  }
+  return executeSelectedValidator(projectRoot, { ...request, validator: `tofu-format:${component}` });
+}
+
 async function executeSelectedValidator<Validator extends ExecutableValidator>(
   projectRoot: string, request: { readonly validator: Validator; readonly sourceSha: string }
 ): Promise<ExecutableValidatorReport<Validator>> {
@@ -414,14 +429,20 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
     const originalInputs = await assertCommittedInputs(projectRoot, local.inspection.snapshot,
       request.sourceSha, managedPaths, componentRoots);
     if (selected.command) {
-      const tools = request.validator === 'compose-config' ? await observeModernLocalTools(projectRoot, [selected], []) : null;
-      const compose = tools?.find(tool => tool.id === 'docker');
-      if (tools && !compose) {
-        throw new ValidatorRefusal('validator-compose-tool', 'The independently observed Docker CLI and Compose plugin are unavailable.');
+      const formatting = request.validator.startsWith('tofu-format:');
+      const selectedCommand = formatting
+        ? explicitTofuFormatCommand(selected.cwdPathParts, local.inspection.snapshot.files) : selected.command;
+      const tools = request.validator === 'compose-config' || formatting
+        ? await observeModernLocalTools(projectRoot, [{ ...selected, command: selectedCommand }], []) : null;
+      const tool = tools?.find(tool => tool.id === (formatting ? 'tofu' : 'docker'));
+      if (tools && !tool) {
+        throw new ValidatorRefusal(formatting ? 'validator-format-tool' : 'validator-compose-tool',
+          formatting ? 'The independently observed installed OpenTofu formatter is unavailable.' :
+            'The independently observed Docker CLI and Compose plugin are unavailable.');
       }
-      const executable = compose
-        ? { executable: compose.executablePath, args: [...compose.prefixArgs, ...selected.command.args.slice(1)] }
-        : selected.command;
+      const executable = tool
+        ? { executable: tool.executablePath, args: [...tool.prefixArgs,
+          ...selectedCommand.args.slice(formatting ? 0 : 1)] } : selectedCommand;
       const home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'liftoff-workflow-validator-'));
       let settled = false;
       let commandFailed = false;
@@ -446,13 +467,19 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
           npm_config_userconfig: path.join(home, 'npmrc'), npm_config_globalconfig: path.join(home, 'global-npmrc'),
           npm_config_cache: path.join(home, 'npm-cache')
         });
-        if (tools) {
+        if (request.validator === 'compose-config') {
           Object.assign(env, {
             DOCKER_CONFIG: path.join(home, 'docker'), DOCKER_HOST: `unix://${path.join(home, 'no-daemon.sock')}`,
             DOCKER_CLI_HINTS: 'false'
           });
-          await assertModernLocalToolsCurrent(projectRoot, home, tools);
         }
+        if (formatting) {
+          const config = path.join(home, 'tofu.rc');
+          await writeFile(config, '', { mode: 0o600, flag: 'wx' });
+          Object.assign(env, { TF_CLI_CONFIG_FILE: config, TF_DATA_DIR: path.join(home, 'tofu-data'),
+            TF_IN_AUTOMATION: '1', TF_INPUT: '0', CHECKPOINT_DISABLE: '1' });
+        }
+        if (tools) await assertModernLocalToolsCurrent(projectRoot, home, tools);
         const result = await runner.run(executable, {
           cwd: path.join(projectRoot, ...selected.cwdPathParts), env, timeoutMs: 180_000,
           maxOutputBytes: 1024 * 1024, ensureProcessTreeSettled: true, stream: false

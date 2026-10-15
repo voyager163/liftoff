@@ -138,6 +138,22 @@ separate and unavailable through this subcheck. There is no public
 native-host authority; unavailable or changed installed tools never fall back
 to operator Docker configuration or a caller-supplied successful observation.
 
+Private `executeWorkflowTofuComponentFormatValidator(projectRoot, sourceSha,
+component)` validates one actual selected OpenTofu component. It reuses the
+captured-file formatter policy: only explicit present `.tf` paths are passed,
+with `fmt -check -write=false`, never implicit recursion. The actual independently
+observed executable is rechecked around the settled child; its configuration,
+data directory and HOME are private, and inherited CLI flags cannot enable writes.
+Every selected component still needs its own subcheck, and the existing selected
+input checks must remain planned: a blocked recursive scope containing excluded
+inputs is not silently converted into an approved closed formatting scope.
+No module/provider initialization, backend, planning, apply, infrastructure
+completion or native-host qualification is supplied. Tool admission retains the
+existing 1.12 release line and minimum 1.12.6; that compatibility observation is
+not separately pinned native-host qualification. The subcheck has no public
+selector; its private report retains the existing shape and explicitly issues
+no phase proof.
+
 These are explicit runner operations, never operations performed by plan or
 `--live` review. Tests, builds and framework tools may execute project code and
 write outputs; provider-read-only workflow permissions do not make them a host

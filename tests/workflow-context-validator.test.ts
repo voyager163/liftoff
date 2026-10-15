@@ -5,7 +5,8 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   executeWorkflowActionReferenceValidator, executeWorkflowComposeConfigValidator,
-  executeWorkflowContextValidator, parseWorkflowContextValidatorArgs
+  executeWorkflowContextValidator, executeWorkflowTofuComponentFormatValidator, parseWorkflowContextValidatorArgs,
+  type WorkflowTofuFormatComponent
 } from '../src/workflow-context-validator.js';
 import { resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
 import { writeModernInstalledProject } from './fixtures/modern-installed-project.js';
@@ -666,5 +667,157 @@ describe('release-owned real context validator bodies, not phase qualification',
     } finally {
       run.mockRestore();
     }
+  });
+
+  it('formats every actual selected OpenTofu component through explicit captured-file commands only', async () => {
+    const value = await fixture();
+    const components = [...value.components.keys()].filter((id): id is WorkflowTofuFormatComponent => id.startsWith('opentofu-'));
+    expect(components.length).toBeGreaterThan(0);
+    const original = NodeCommandRunner.prototype.run;
+    const commands: string[][] = [];
+    const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(function (this: NodeCommandRunner, command, options) {
+      if (command.args[0] === 'fmt') commands.push([...command.args]);
+      return original.call(this, command, options);
+    });
+    try {
+      for (const component of components) {
+        expect(await executeWorkflowTofuComponentFormatValidator(value.root, value.sourceSha, component)).toMatchObject({
+          validator: `tofu-format:${component}`, status: 'passed', workloadExecution: true,
+          command: { status: 0, processTreeSettled: true }, retainedExecutionDirectory: null, phaseProof: 'not-issued'
+        });
+      }
+      expect(commands).toEqual(components.map(() => ['fmt', '-check', '-write=false', './main.tf']));
+    } finally { run.mockRestore(); }
+  });
+
+  it('uses the same real explicit formatter for formatted source and a genuinely unformatted committed HCL file', async () => {
+    const value = await fixture(), component = 'opentofu-application';
+    expect(await executeWorkflowTofuComponentFormatValidator(value.root, value.sourceSha, component))
+      .toMatchObject({ status: 'passed', command: { status: 0, processTreeSettled: true } });
+    const parts = [...value.components.get(component)!, 'main.tf'];
+    const unformatted = 'locals {\n enabled    =    true\n}\n';
+    await value.write(parts, unformatted);
+    git(value.root, 'add', '--', parts.join('/'));
+    git(value.root, 'commit', '--quiet', '-m', 'Introduce genuine HCL formatting drift');
+    vi.stubEnv('TF_CLI_ARGS_fmt', '-write=true');
+    const report = await executeWorkflowTofuComponentFormatValidator(value.root, git(value.root, 'rev-parse', 'HEAD'), component);
+    expect(report).toMatchObject({
+      status: 'failed', code: 'validator-command', workloadExecution: true,
+      command: { status: expect.any(Number), processTreeSettled: true }, retainedExecutionDirectory: null, phaseProof: 'not-issued'
+    });
+    expect(report.command!.status).not.toBe(0);
+    expect(await readFile(path.join(value.root, ...parts), 'utf8')).toBe(unformatted);
+    expect(JSON.stringify(report)).not.toContain('enabled');
+  });
+
+  it('passes every captured nested .tf file as an explicit nonrecursive argument', async () => {
+    const value = await fixture(), parts = value.components.get('opentofu-application')!;
+    await value.write([...parts, 'nested', 'additional.tf'], 'locals {\n  additional = true\n}\n');
+    git(value.root, 'add', '--', [...parts, 'nested', 'additional.tf'].join('/'));
+    git(value.root, 'commit', '--quiet', '-m', 'Include another actual captured HCL input');
+    const original = NodeCommandRunner.prototype.run;
+    let actual: readonly string[] | undefined;
+    const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(function (this: NodeCommandRunner, command, options) {
+      if (command.args[0] === 'fmt') actual = [...command.args];
+      return original.call(this, command, options);
+    });
+    try {
+      expect(await executeWorkflowTofuComponentFormatValidator(value.root, git(value.root, 'rev-parse', 'HEAD'), 'opentofu-application'))
+        .toMatchObject({ status: 'passed', command: { status: 0, processTreeSettled: true }, phaseProof: 'not-issued' });
+      expect(actual).toEqual(['fmt', '-check', '-write=false', './main.tf', './nested/additional.tf']);
+    } finally { run.mockRestore(); }
+  });
+
+  it('retains existing excluded-directory scope blockers instead of substituting an incomplete format check', async () => {
+    const value = await fixture(), parts = value.components.get('opentofu-application')!;
+    await value.write([...parts, 'nested', 'additional.tf'], 'locals {\n  additional = true\n}\n');
+    git(value.root, 'add', '--', [...parts, 'nested', 'additional.tf'].join('/'));
+    git(value.root, 'commit', '--quiet', '-m', 'Include another actual captured HCL input');
+    await value.write([...parts, '.terraform', 'ignored.tf'], 'not valid HCL {{{\n');
+    const planned = await planModernLocalRuntime(await inspectModernLocalRuntime(value.root));
+    expect(planned.localPlan!.checks.find(check => check.id === 'tofu-format:opentofu-application'))
+      .toMatchObject({
+        status: 'blocked',
+        reasons: ['Recursive OpenTofu format scope contains excluded inputs; Liftoff exclusions do not establish command-level ignore semantics.']
+      });
+    const original = NodeCommandRunner.prototype.run;
+    let formatCalls = 0;
+    const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(function (this: NodeCommandRunner, command, options) {
+      if (command.args[0] === 'fmt') formatCalls++;
+      return original.call(this, command, options);
+    });
+    try {
+      expect(await executeWorkflowTofuComponentFormatValidator(value.root, git(value.root, 'rev-parse', 'HEAD'), 'opentofu-application'))
+        .toMatchObject({ status: 'blocked', code: 'validator-inputs', workloadExecution: false, command: null, phaseProof: 'not-issued' });
+      expect(formatCalls).toBe(0);
+      expect(await readFile(path.join(value.root, ...parts, '.terraform', 'ignored.tf'), 'utf8')).toBe('not valid HCL {{{\n');
+    } finally { run.mockRestore(); }
+  });
+
+  it('refuses uncommitted format input instead of formatting different bytes under an original commit', async () => {
+    const value = await fixture();
+    await value.write([...value.components.get('opentofu-application')!, 'main.tf'], 'locals {\n enabled    =    true\n}\n');
+    expect(await executeWorkflowTofuComponentFormatValidator(value.root, value.sourceSha, 'opentofu-application'))
+      .toMatchObject({ status: 'failed', code: 'validator-source-mismatch', workloadExecution: false, command: null });
+  });
+
+  it('cannot select the private formatter publicly or accept a nonliteral source or non-OpenTofu component', async () => {
+    const value = await fixture(), run = vi.spyOn(NodeCommandRunner.prototype, 'run');
+    try {
+      // @ts-expect-error The public selector inventory deliberately excludes component formatting.
+      await expect(executeWorkflowContextValidator(value.root, { validator: 'tofu-format:opentofu-application', sourceSha: value.sourceSha }))
+        .rejects.toMatchObject({ code: 'validator-request' });
+      await expect(executeWorkflowTofuComponentFormatValidator(value.root, 'main', 'opentofu-application'))
+        .rejects.toMatchObject({ code: 'validator-request' });
+      // @ts-expect-error A backend component is not a finite OpenTofu component selector.
+      await expect(executeWorkflowTofuComponentFormatValidator(value.root, value.sourceSha, 'backend'))
+        .rejects.toMatchObject({ code: 'validator-format-component' });
+      expect(run).not.toHaveBeenCalled();
+    } finally { run.mockRestore(); }
+  });
+
+  it('retains unsupported component requests as blockers without executing an arbitrary cwd or command', async () => {
+    const value = await fixture(), original = NodeCommandRunner.prototype.run;
+    let formatCalls = 0;
+    const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(function (this: NodeCommandRunner, command, options) {
+      if (command.args[0] === 'fmt') formatCalls++;
+      return original.call(this, command, options);
+    });
+    try {
+      // @ts-expect-error Untrusted JavaScript cannot expand the actual selected component inventory.
+      expect(await executeWorkflowTofuComponentFormatValidator(value.root, value.sourceSha, 'opentofu-../../outside'))
+        .toMatchObject({ status: 'blocked', code: 'validator-inputs', workloadExecution: false, command: null });
+      expect(formatCalls).toBe(0);
+    } finally { run.mockRestore(); }
+  });
+
+  it('refuses copied formatter drift after a real successful settled child without modifying the host tool', async () => {
+    const value = await fixture(), planned = await planModernLocalRuntime(await inspectModernLocalRuntime(value.root));
+    const check = planned.localPlan!.checks.find(candidate => candidate.id === 'tofu-format:opentofu-application')!;
+    const observed = (await observeModernLocalTools(value.root, [check], [])).find(tool => tool.id === 'tofu')!;
+    const bin = await mkdtemp(path.join(root, 'copied-format-tool-')), executable = path.join(bin, 'tofu');
+    await copyFile(observed.executablePath, executable);
+    vi.stubEnv('PATH', [bin, process.env.PATH].join(path.delimiter));
+    const original = NodeCommandRunner.prototype.run;
+    let home = '', changed = false;
+    const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(async function (this: NodeCommandRunner, command, options) {
+      const result = await original.call(this, command, options);
+      if (command.executable === executable && command.args[0] === 'fmt' && result.status === 0 &&
+          result.processTreeSettled === true) {
+        const actualHome = options?.env?.HOME;
+        if (!actualHome) throw new Error('The actual formatter child has no private HOME.');
+        home = actualHome;
+        await appendFile(executable, '\n');
+        changed = true;
+      }
+      return result;
+    });
+    try {
+      await expect(executeWorkflowTofuComponentFormatValidator(value.root, value.sourceSha, 'opentofu-application'))
+        .rejects.toThrow('Installed local tool bytes or physical identity changed.');
+      expect(changed).toBe(true);
+      expect(path.basename(home)).toMatch(/^liftoff-workflow-validator-/u);
+      await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally { run.mockRestore(); }
   });
 });
