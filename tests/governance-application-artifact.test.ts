@@ -200,6 +200,7 @@ class ArtifactTransport implements GitHubActivationTransport {
   onRunRead: (() => Promise<void>) | undefined;
   onJobsRead: (() => Promise<void>) | undefined;
   onDispatch: (() => void) | undefined;
+  onExecutionTagRead: (() => void) | undefined;
   async request(request: GitHubRequest): Promise<GitHubResponse> {
     this.calls.push(request);
     let data: unknown;
@@ -207,6 +208,7 @@ class ArtifactTransport implements GitHubActivationTransport {
       type: 'file', encoding: 'base64', path: this.binding.workflowPath, content: Buffer.from(this.workflow).toString('base64')
     };
     else if (request.path.includes('/git/ref/tags/')) {
+      this.onExecutionTagRead?.();
       if (!this.executionTagPresent) return { status: 404, headers: {}, data: null };
       data = { ref: `refs/tags/${this.binding.executionRef}`,
         object: { type: 'commit', sha: this.executionTagSha ?? this.binding.sourceSha } };
@@ -899,6 +901,26 @@ describe('immutable application publication and independent readback', () => {
     f.input.recordApplicationDispatchIntent = async () => { f.transport.executionTagProtected = false; };
     expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked' });
     expect(f.transport.calls.every((entry) => entry.method === 'GET')).toBe(true);
+    expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
+  });
+  it('rechecks authority after awaited execution-tag admission before transmitting source through dispatch', async () => {
+    const f = await fixture(true);
+    let now = coverageNow;
+    let intentRecorded = false;
+    f.input.clock = () => now;
+    const intent = vi.fn(async () => { intentRecorded = true; });
+    f.input.recordApplicationDispatchIntent = intent;
+    f.transport.onExecutionTagRead = () => {
+      if (intentRecorded) now = new Date(Date.parse(f.input.plan.expiresAt) + 1000);
+    };
+    const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+    const outcome = await executeApplicationArtifactPublication(f.input);
+    expect(outcome).toMatchObject({ status: 'blocked' });
+    expect(intent).toHaveBeenCalledOnce();
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toEqual([]);
+    expect(progress).not.toHaveBeenCalled();
+    expect(outcome.operation).toBeUndefined();
+    expect(outcome.evidencePayload).toBeUndefined();
     expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
   });
   it.each(['accepted', 'resumed'] as const)(

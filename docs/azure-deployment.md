@@ -203,6 +203,8 @@ protection with no bypass, provider grants, the commit tree and tag before
 dispatch and accepted/resumed observation. Missing tags, unknown or inherited
 policy, bypass, changed source/tree or unsupported credentials block; this
 producer never creates tags, changes policy or falls back to a branch/raw SHA.
+Exact current approval and lease are checked again after awaited tag admission,
+immediately before dispatch; provider observation cannot prolong write authority.
 The current admission supports independently observed classic OAuth `repo` and
 `workflow` grants plus repository push access, not inferred installation or
 fine-grained permissions. Policy administrators remain an external trust

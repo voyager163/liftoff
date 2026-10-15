@@ -364,6 +364,7 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
           repository: binding.repository, repositoryId: binding.repositoryId,
           sourceSha: binding.sourceSha, treeSha: binding.sourceTreeSha, executionRef: binding.executionRef
         });
+        await assertApplicationAuthority(input, dispatch);
         dispatchAttempted = true;
         const startedAt = (input.clock?.() ?? input.now).toISOString();
         const accepted = await client.write('POST', `/repos/${binding.repository}/actions/workflows/${binding.workflowPath.split('/').at(-1)}/dispatches`,
