@@ -75,7 +75,14 @@ entry yet and cannot be substituted with its test/build results.
 
 The separate private `executeWorkflowActionReferenceValidator` body checks actual
 committed workflow source, local reusable workflows and recursively referenced
-local-action metadata with the existing immutable-action policy. Declared Docker
+local-action metadata with the existing immutable-action policy. Declared local
+Node main/pre/post entrypoint files are also bound to the exact committed regular
+single-link bytes/modes, without executing or analyzing their code. Untracked,
+missing, changed or unsafe entrypoints cannot qualify as committed action source.
+Both actual `action.yml` and `action.yaml` candidate paths are safely observed
+before interpretation and reobserved at completion. Their actual membership
+must equal the single committed metadata file; an untracked higher-priority
+shadow, alternate metadata, link or unsafe alias is not ignored. Declared Docker
 image references use that same policy; local Dockerfile interpretation remains
 blocked. It checks complete workflow membership and
 regular single-link bytes/modes before and after observation, rejects cycles,

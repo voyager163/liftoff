@@ -185,17 +185,26 @@ export async function executeWorkflowActionReferenceValidator(
         'The complete nonempty actual workflow inventory must match the reviewed commit; missing, untracked or unsafe sources cannot qualify.');
     }
     let bytes = 0;
-    async function source(name: string): Promise<ParsedWorkflow> {
+    async function snapshot(name: string) {
       remaining();
-      const blob = tree.get(name);
       const captured = await readBoundProjectFileSnapshot(root, name.split('/'), {
         maximumBytes: modernLocalBounds.fileBytes, linkPolicy: 'single-link',
         diagnostics: { pathLabel: 'Action-reference source', invalid() {
           throw new ValidatorRefusal('validator-actions-source', 'Action-reference source has an unsafe or changed filesystem boundary.');
         } }
       });
+      remaining();
+      return captured;
+    }
+    async function sourceText(name: string): Promise<string> {
+      const blob = tree.get(name);
+      if (!blob || !['100644', '100755'].includes(blob.mode)) {
+        throw new ValidatorRefusal('validator-actions-source',
+          'Each declared action source must already be one exact committed regular file.');
+      }
+      const captured = await snapshot(name);
       const content = captured.content;
-      if (!blob || !content || !['100644', '100755'].includes(blob.mode) ||
+      if (!content ||
         createHash('sha1').update(`blob ${content.length}\0`).update(content).digest('hex') !== blob.digest ||
         (captured.mode! & 0o111 ? '100755' : '100644') !== blob.mode) {
         throw new ValidatorRefusal('validator-actions-source',
@@ -206,13 +215,27 @@ export async function executeWorkflowActionReferenceValidator(
       if (inputs.size > modernLocalBounds.files || bytes > modernLocalBounds.totalBytes ||
         !Buffer.from(content.toString('utf8')).equals(content)) {
         throw new ValidatorRefusal('validator-actions-source',
-          'The complete action-reference closure exceeds the existing source bounds or is not UTF-8 YAML.');
+          'The complete action-reference closure exceeds the existing source bounds or is not UTF-8 text.');
       }
       remaining();
-      return parseAssessmentWorkflow(content.toString('utf8'), name);
+      return content.toString('utf8');
+    }
+    async function source(name: string): Promise<ParsedWorkflow> {
+      return parseAssessmentWorkflow(await sourceText(name), name);
+    }
+    async function localActionMetadata(parts: readonly string[]): Promise<string> {
+      const candidates = ['action.yml', 'action.yaml'].map(name => [...parts, name].join('/'));
+      const committed = candidates.filter(name => tree.has(name)), actual: string[] = [];
+      for (const name of candidates) if ((await snapshot(name)).content !== undefined) actual.push(name);
+      if (committed.length !== 1 || canonicalSha256(actual) !== canonicalSha256(committed)) {
+        throw new ValidatorRefusal('validator-actions-local',
+          'Actual local action metadata membership must exactly match one committed safe file; an untracked shadow or alternate metadata cannot qualify.');
+      }
+      return committed[0]!;
     }
     const views: ParsedWorkflow[] = [];
     const visiting = new Set<string>(), visited = new Set<string>();
+    const metadataSources = new Map<string, string>();
     async function visit(workflow: ParsedWorkflow): Promise<void> {
       if (visiting.has(workflow.path)) throw new ValidatorRefusal('validator-actions-cycle',
         'The actual local composite-action reference closure contains a cycle.');
@@ -249,14 +272,13 @@ export async function executeWorkflowActionReferenceValidator(
           await visit(await source(name));
           continue;
         }
-        const candidates = ['action.yml', 'action.yaml'].map(name => [...parts, name].join('/'))
-          .filter(name => tree.has(name));
-        if (candidates.length !== 1) throw new ValidatorRefusal('validator-actions-local',
-          'Each actual local action must have one unambiguous committed metadata file.');
-        if (visiting.has(candidates[0]!)) throw new ValidatorRefusal('validator-actions-cycle',
+        const directory = parts.join('/');
+        const metadata = metadataSources.get(directory) ?? await localActionMetadata(parts);
+        metadataSources.set(directory, metadata);
+        if (visiting.has(metadata)) throw new ValidatorRefusal('validator-actions-cycle',
           'The actual local composite-action reference closure contains a cycle.');
-        if (visited.has(candidates[0]!)) continue;
-        const action = await source(candidates[0]!);
+        if (visited.has(metadata)) continue;
+        const action = await source(metadata);
         const runs = action.value.runs;
         if (!isRecord(runs) || (runs.using === 'composite'
           ? !Array.isArray(runs.steps) || !runs.steps.length || !runs.steps.every(step => isRecord(step) &&
@@ -269,6 +291,17 @@ export async function executeWorkflowActionReferenceValidator(
               typeof runs.main !== 'string' || !runs.main.trim().length))) {
           throw new ValidatorRefusal('validator-actions-local', 'The actual local action metadata has no supported declared reference interpretation.');
         }
+        if (runs.using === 'node20' || runs.using === 'node24') {
+          for (const entry of [runs.main, runs.pre, runs.post]) {
+            if (entry === undefined) continue;
+            if (typeof entry !== 'string' || !entry.trim().length) {
+              throw new ValidatorRefusal('validator-actions-local',
+                'Declared local Node action entrypoints must name actual committed project files.');
+            }
+            const name = localPath([...parts, ...(entry.startsWith('./') ? entry.slice(2) : entry).split('/')]).join('/');
+            await sourceText(name);
+          }
+        }
         await visit({ ...action, value: { jobs: { localAction: {
           ...(runs.using === 'composite' ? { steps: runs.steps } :
             runs.using === 'docker' ? { steps: [{ uses: runs.image }] } : {})
@@ -279,7 +312,8 @@ export async function executeWorkflowActionReferenceValidator(
     }
     for (const name of paths) await visit(await source(name));
     const policy = pinnedActions(views);
-    for (const name of inputs.keys()) await source(name);
+    for (const directory of metadataSources.keys()) await localActionMetadata(directory.split('/'));
+    for (const name of inputs.keys()) await sourceText(name);
     const finalPaths = (await files.list(['.github', 'workflows'], ['.yml', '.yaml'])).map(parts => parts.join('/'));
     const final = await executeWorkflowContextValidator(root, { validator: 'source-integrity', sourceSha });
     remaining();

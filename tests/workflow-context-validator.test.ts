@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { link, lstat, mkdtemp, readFile, realpath, rm, symlink } from 'node:fs/promises';
+import { link, lstat, mkdtemp, readFile, realpath, rename, rm, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -9,6 +9,7 @@ import {
 import { resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
 import { writeModernInstalledProject } from './fixtures/modern-installed-project.js';
 import { writeModernLocalFixtureInputs } from './fixtures/modern-local-project.js';
+import * as boundFiles from '../src/adapters/filesystem/bound-project-files.js';
 
 describe('release-owned real context validator bodies, not phase qualification', () => {
   let root: string;
@@ -453,4 +454,89 @@ describe('release-owned real context validator bodies, not phase qualification',
       expect(JSON.stringify(report)).not.toContain('isolated-sensitive-fixture');
     }
   );
+
+  it.each(['missing', 'modified', 'untracked-pre', 'symlink-post'] as const)(
+    'does not call an actual %s Node action entrypoint committed source', async variant => {
+      const value = await actionFixture();
+      const directory = ['scripts', 'node-setup'];
+      await value.write(value.action, JSON.stringify({
+        name: 'Actual Node entrypoints', runs: { using: 'node24', main: 'index.js',
+          ...(variant === 'untracked-pre' ? { pre: 'pre.js' } : {}),
+          ...(variant === 'symlink-post' ? { post: 'post.js' } : {}) }
+      }));
+      if (variant !== 'missing') await value.write([...directory, 'index.js'], 'export const actualEntrypoint = true;\n');
+      if (variant === 'symlink-post') await value.write([...directory, 'post.js'], 'export const actualPost = true;\n');
+      git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual Node action source declaration');
+      if (variant === 'modified') await value.write([...directory, 'index.js'], 'export const actualEntrypoint = false;\n');
+      if (variant === 'untracked-pre') await value.write([...directory, 'pre.js'], 'export const untrackedPre = true;\n');
+      if (variant === 'symlink-post') {
+        const post = path.join(value.root, ...directory, 'post.js');
+        await rm(post); await symlink(path.join(value.root, ...directory, 'index.js'), post);
+      }
+      const report = await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD'));
+      expect(report.status).not.toBe('passed');
+      expect(report.workloadExecution).toBe(false);
+      expect(report.command).toBeNull();
+    }
+  );
+
+  it.each(['mutable', 'symlink'] as const)(
+    'refuses an actual untracked %s action.yml shadow beside committed action.yaml', async variant => {
+      const value = await actionFixture();
+      const yml = path.join(value.root, ...value.action);
+      const yaml = path.join(value.root, 'scripts', 'node-setup', 'action.yaml');
+      await rename(yml, yaml);
+      git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual committed safe action.yaml metadata');
+      const sourceSha = git(value.root, 'rev-parse', 'HEAD');
+      expect(await executeWorkflowActionReferenceValidator(value.root, sourceSha))
+        .toMatchObject({ status: 'passed', workloadExecution: false, command: null });
+      if (variant === 'symlink') await symlink(yaml, yml);
+      else {
+        value.metadata.runs.steps[0]!.uses = 'actions/setup-node@main';
+        await value.write(value.action, JSON.stringify(value.metadata));
+      }
+      const report = await executeWorkflowActionReferenceValidator(value.root, sourceSha);
+      expect(report.status).toBe('blocked');
+      expect(report.workloadExecution).toBe(false);
+      expect(report.command).toBeNull();
+    }
+  );
+
+  it.each(['node20', 'node24'])('binds all actual declared %s entrypoints without running them', async using => {
+    const value = await actionFixture();
+    await value.write(value.action, JSON.stringify({
+      name: 'Actual complete Node entrypoints', runs: { using, main: './index.js', pre: 'before.js', post: 'after.js' }
+    }));
+    for (const file of ['index.js', 'before.js', 'after.js']) {
+      await value.write(['scripts', 'node-setup', file], 'export const declaredLocalActionInput = true;\n');
+    }
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual complete committed Node action entrypoints');
+    expect(await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD')))
+      .toMatchObject({ status: 'passed', workloadExecution: false, command: null, phaseProof: 'not-issued' });
+  });
+
+  it('reobserves actual metadata membership after interpretation instead of retaining its initial safe inventory', async () => {
+    const value = await actionFixture(), yaml = ['scripts', 'node-setup', 'action.yaml'];
+    await rename(path.join(value.root, ...value.action), path.join(value.root, ...yaml));
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual initial safe alternate metadata');
+    const original = boundFiles.readBoundProjectFileSnapshot;
+    let metadataReads = 0, shadowWritten = false;
+    const reads = vi.spyOn(boundFiles, 'readBoundProjectFileSnapshot').mockImplementation(async (...args) => {
+      const captured = await original(...args);
+      if (args[0] === value.root && args[1].join('/') === yaml.join('/') && ++metadataReads === 2) {
+        value.metadata.runs.steps[0]!.uses = 'actions/setup-node@main';
+        await value.write(value.action, JSON.stringify(value.metadata));
+        shadowWritten = true;
+      }
+      return captured;
+    });
+    try {
+      const report = await executeWorkflowActionReferenceValidator(value.root, git(value.root, 'rev-parse', 'HEAD'));
+      expect(shadowWritten).toBe(true);
+      expect(report).toMatchObject({ status: 'blocked', code: 'validator-actions-local',
+        workloadExecution: false, command: null, phaseProof: 'not-issued' });
+    } finally {
+      reads.mockRestore();
+    }
+  });
 });
