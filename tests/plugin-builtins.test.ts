@@ -269,7 +269,7 @@ describe('built-in plugin descriptors', () => {
     for (const descriptor of builtinDescriptors) {
       expect(descriptor.apiVersion).toBe(1);
       expect(descriptor.contentVersion).toBe(descriptor.category === 'agent' ? 4 :
-        descriptor.id === 'node-fastify' ? 3 : descriptor.id === 'python-fastapi' ? 2 : 1);
+        descriptor.id === 'node-fastify' ? 4 : descriptor.id === 'python-fastapi' ? 2 : 1);
       expect(descriptor.hostPlatforms).toEqual([...supportedHostPlatforms]);
       expect([descriptor.sharedAssets, descriptor.checks, descriptor.recipes]).toEqual([[], [], []]);
     }

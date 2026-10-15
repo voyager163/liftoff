@@ -29,7 +29,8 @@
     "liftoff": "dist/cli.js"
   },
   "files": [
-    "dist",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
     "assets/governance/modern/source-contracts.json",
     "assets/governance/single-maintainer-gitflow/activation-v2-graph.json",
     "assets/governance/single-maintainer-gitflow/activation-v3-graph.json",
@@ -107,7 +108,7 @@
     "@inquirer/prompts": "^8.6.0",
     "cross-spawn": "^7.0.6",
     "picocolors": "^1.1.1",
-    "smol-toml": "1.8.0",
+    "smol-toml": "1.9.1",
     "yaml": "^2.9.0"
   }
 }

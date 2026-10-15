@@ -3,9 +3,21 @@
 // modules; the installed-package checks read files when they are called.
 import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { builtinAssets } from '../src/plugins/builtin/assets.ts';
+import { builtinAssets, compiledPackageFiles } from '../src/plugins/builtin/assets.ts';
 
 export const maximumUnpackedPackageBytes = 13 * 1024 * 1024;
+export { compiledPackageFiles };
+
+export function assertCompiledPackageFiles(packedPaths) {
+  if (!isStringList(packedPaths)) {
+    throw new TypeError('Packed paths must contain only strings.');
+  }
+  for (const entry of packedPaths) {
+    if (entry.startsWith('dist/') && !entry.endsWith('.js') && !entry.endsWith('.d.ts')) {
+      throw new Error(`Packed compiled output must contain only JavaScript and declarations: ${entry}`);
+    }
+  }
+}
 
 export function assertUnpackedPackageSize(bytes) {
   if (!Number.isSafeInteger(bytes) || bytes < 0) {
@@ -93,6 +105,9 @@ function hasAssetRoot(value) {
 }
 
 function affectsAssets(entry) {
+  if (compiledPackageFiles.includes(entry)) {
+    return false;
+  }
   if (typeof entry !== 'string' || patternCharacters.test(entry)) {
     return true;
   }

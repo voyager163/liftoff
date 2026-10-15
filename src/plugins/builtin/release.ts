@@ -16,7 +16,7 @@ import { deepFrozen } from './core.js';
 
 const assetSha256: Readonly<Record<string, Sha256Digest>> = {
   'node-backend-package-manifest': 'sha256:ce24c806c0ebc3f54b79647422b44afafb4cbe9ec4b2b062e934aa8fc78c4481',
-  'node-backend-package-lock': 'sha256:bbb0ca538b14a79382236cee07cf4200b83129d59176b58cf1f9df88e4c4393d',
+  'node-backend-package-lock': 'sha256:e4a88cada73456bf1b0a3923d5e814313358c91b0b9b2a13d5fbf41632231369',
   'go-backend-module': 'sha256:b4a00ccd7a9881c7e518dcbba83bd8ead0a852b29cb2509402f3c8c9af5bafac',
   'go-backend-checksums': 'sha256:c4c5f94664176df8c09e6fbf02a48391e606d135caec6b75932271333bbb4fb5',
   'python-standard-project': 'sha256:dc551853962b84bec527bb3463801b74ab9681b41d362653892243836a6e6935',
@@ -27,7 +27,7 @@ const assetSha256: Readonly<Record<string, Sha256Digest>> = {
   'opentofu-azure-versions': 'sha256:7f1b60e1d88e6e8f0bc3981fafbb33b9d1471b3fe028b2eaa757d01d7f7001af',
   'opentofu-azure-provider-lock': 'sha256:e4a061da79009c7e1c2f9cb356b3a4df0bb05802f9b98f30de79c351c280ef61',
   'frontend-package-manifest': 'sha256:8217179388207e3d8e8599544e7741b29beb6dded81f01bcf5d4356785a68561',
-  'frontend-package-lock': 'sha256:7e454f0ab739038e99569d174045673776b4565786b1f81764b4c3ee785638b5'
+  'frontend-package-lock': 'sha256:494f2312ba163062c10164df363c49b0987109b529f320381ec5795bbf0ea689'
 };
 
 interface PluginRecord {
@@ -40,7 +40,7 @@ interface PluginRecord {
 
 const pluginRecords: readonly PluginRecord[] = [
   { category: 'stack', id: 'python-fastapi', apiVersion: 1, contentVersion: 2, contentDigest: 'sha256:44f91983bc9b69360cb6c0f35c61b8e0132bd4bfd1f7c93c1bf696d525bed7ea' },
-  { category: 'stack', id: 'node-fastify', apiVersion: 1, contentVersion: 3, contentDigest: 'sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c' },
+  { category: 'stack', id: 'node-fastify', apiVersion: 1, contentVersion: 4, contentDigest: 'sha256:741c6dc7221d9178db1ea88dee47c98e3bdb1ba382ba432dc76f277c705feb92' },
   { category: 'stack', id: 'go-huma', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:89f2689d613fcd5708bf9a94b5138cc0d39fb3c0c18374c75a190e7ee8ba1432' },
   { category: 'cloud', id: 'azure', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7' },
   { category: 'workflow', id: 'openspec', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:8675a3187f44932c7bee9f9a8e5d3f307bcb36d66ced0f20593663221c509d5e' },
@@ -52,9 +52,9 @@ const pluginRecords: readonly PluginRecord[] = [
 
 /** Expected registry identities of the built-ins. Tests assert them; runtime never consults them. */
 export const builtinReleaseDigests = deepFrozen({
-  pluginSetDigest: 'sha256:a263187ff10f7c68714d3d1b958e486ee734753a8485ae367b82b00fcbbabe0b' as Sha256Digest,
-  coreContributionDigest: 'sha256:b46fee151601812c273ec4552c67fdb05c8a2a6125f11e0d9cd28f2e4dca169d' as Sha256Digest,
-  registryDigest: 'sha256:5d8cb413fb0dd5c1292831c863fab51a0c98318a1716f4c224cba86369c3f869' as Sha256Digest
+  pluginSetDigest: 'sha256:d79222120ab3f940f364a4a457116773a467bd2fc7f8f92df4c6a528e5b1bd09' as Sha256Digest,
+  coreContributionDigest: 'sha256:f8189ff22d635da4f8c5598e92159d3c4364684016a00e0df9af034a7503ae22' as Sha256Digest,
+  registryDigest: 'sha256:850a9fa5e0995ba80730da6eb316d24304e013e465d111b1d4eb0b330d6a23e5' as Sha256Digest
 });
 
 // A missing literal is reported by registry intake as a release mismatch at first use, never here.

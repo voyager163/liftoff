@@ -42,6 +42,13 @@ function number(value: unknown): number {
   return value;
 }
 
+function reviewCount(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new LiveFailure('invalid-response', 'Required review-count metadata was not a nonnegative safe integer.');
+  }
+  return value;
+}
+
 export function list(value: unknown): unknown[] {
   if (!Array.isArray(value) || value.length > maxEntries) {
     throw new LiveFailure('invalid-response', 'Expected bounded array metadata was unavailable.');
@@ -105,7 +112,7 @@ const ruleParameters = shape({
   dismiss_stale_reviews_on_push: boolean,
   require_code_owner_review: boolean,
   require_last_push_approval: boolean,
-  required_approving_review_count: number,
+  required_approving_review_count: reviewCount,
   required_review_thread_resolution: boolean,
   allowed_merge_methods: strings,
   operator: text, pattern: text, negate: boolean, name: text,
@@ -170,7 +177,7 @@ export const normalizeProtection = shape({
   required_pull_request_reviews: nullable(shape({
     dismissal_restrictions: actors,
     dismiss_stale_reviews: boolean, require_code_owner_reviews: boolean,
-    required_approving_review_count: number, require_last_push_approval: boolean,
+    required_approving_review_count: reviewCount, require_last_push_approval: boolean,
     bypass_pull_request_allowances: actors
   }, ['dismiss_stale_reviews', 'require_code_owner_reviews', 'required_approving_review_count'])),
   restrictions: nullable(actors),

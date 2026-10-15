@@ -183,7 +183,11 @@ remote opt-in for that redirect. Do not persist either override globally.
 The package smoke test builds, runs `npm pack`, checks the explicit package
 surface and size budget, installs the tarball into an isolated prefix, and
 executes the installed CLI, upgrade help, and an injected read-only self-upgrade
-check without selecting the host global prefix. The standard template verifier generates a Node.js
+check without selecting the host global prefix. Local builds retain source maps
+for debugging; npm and native package payloads include every emitted JavaScript
+module and TypeScript declaration, but exclude development source maps. Required
+assets remain explicit and the 13 MiB unpacked package budget is unchanged.
+The standard template verifier generates a Node.js
 backend with its Vue frontend, runs both locked installs, builds both projects,
 and runs the generated backend tests without permitting package metadata
 changes.
@@ -239,6 +243,46 @@ skipped or host-gated test as unrun. The gate runs Vitest with `CI=true`,
 and it accepts no test filters. `verify` re-judges a saved report against the
 current checkout; a different revision, change set, or inventory makes it stale,
 so rerun the gate instead of reusing an older or copied report.
+Saved verification also requires the V8 provider, a well-formed recorded Node
+version, and each tool's declared, locked, and installed versions to match the
+currently validated exact pins. Installed tool drift fails even if source and
+configuration files are unchanged. Reordering valid descriptors is harmless;
+the observed npm version may be null. Recorded versions are consistency data,
+not authentication of a process or qualification of its host, and the recorded
+Node patch version need not equal the verifier's current patch version.
+
+The test summary's `files` and `failedFiles` count Vitest file records.
+`numFailedTestSuites` also includes nested suites, so the gate checks that
+aggregate separately and labels it as suites, not files. Fully skipped files
+can have a raw `passed` file status; their skipped bodies remain in `unrun`
+and are not qualification evidence. This does not revise historical reports
+or turn a failed run into a pass.
+
+Test totals must be nonnegative safe integers and agree with the actual
+assertion records for passed, failed, skipped/pending, and todo tests. Missing
+assertion arrays or unknown file/assertion statuses fail closed, including when
+verifying saved evidence. Aggregate totals alone cannot establish that tests ran.
+The corpus must contain at least one executed assertion body. An entirely
+skipped, pending, or todo run fails even if module collection covers every source
+metric; registering tests or importing code is not test execution.
+Each inventoried test path must appear exactly once after path normalization,
+including across Windows project shards. Duplicate file records fail rather
+than silently deduplicating their counters, failures, or unrun evidence.
+Threshold comparisons use exact integer arithmetic after safe-integer count
+validation; large counts cannot pass through floating-point product rounding.
+Each source path must also occur exactly once after normalization in both
+coverage reports. Aliases cannot hide uncovered records behind a later member;
+ambiguous reports fail even when their retained totals and inventories match.
+Each final-report entry must also be an object with a nonempty string `path`
+that identifies the same source as its report key after normalization. Missing,
+malformed, escaping or contradictory payload identities fail; equivalent
+relative and absolute paths remain valid, and verification does not rewrite
+the reports. Fresh and saved gates also validate nonnegative safe-integer hit
+counters and their map membership, then use the pinned V8 provider's own
+summarizer to require each source's statement, branch, function and line counts
+to agree with its summary. Contradictory reports fail even when their aggregate
+percentages and saved evidence still agree. This is report consistency, not
+authentication of the coverage producer or proof that every reported hit ran.
 
 On macOS ARM64 with Node 24, the root Vitest configuration passes
 `--no-sparkplug` directly to test workers for ordinary and coverage runs. A
