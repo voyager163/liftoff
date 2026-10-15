@@ -3568,3 +3568,313 @@ publication readiness or landing state. No unfiltered full suite or coverage
 was rerun for this test-only successor, and the exact `ce84792f`
 qualification is not relabeled as qualification of `3ff7b31f`. OpenSpec
 remains 83/136 complete; tasks 18.1 and 18.2 remain unchecked.
+
+### Qualified coverage and failure-attribution integration, 2026-10-15
+
+The reviewed exact-8eb coverage projection through final tree `53d08df8` and
+the independent `a52c28b8` aggregate failure-attribution correction were
+integrated as source commit
+`9f9cb7941ea16726780b3e67505b94831eb4a723`. The seven changed paths are
+`CONTRIBUTING.md`, `docs/cli-reference.md`, `scripts/coverage-gate.mjs`,
+`src/application/governance/modern-local-execution.ts`,
+`src/domain/governance/activation/modern-local-runtime.ts`,
+`tests/coverage-gate.test.ts` and `tests/modern-local-execution.test.ts`.
+The later exact three-file protected-custody correction
+`f93a5c626de32c25f5eb42983a07a6cd27cbe52f` was then cherry-picked as
+`bd7635d8c15988f1d701dd281ad691045224e3ce`; all three resulting files were
+byte-identical to the reviewed owning commit.
+
+The first frozen `9f9cb794` full-suite attempt remains failed evidence. It
+used `/opt/homebrew/bin/openspec`, whose global package still reported
+OpenSpec 1.11.0 but had 273 files differing from the preserved qualified
+package and a total byte count of 11,849,959 instead of 11,862,860. The run
+therefore failed only the two native OpenSpec distribution-identity bodies:
+one file failed, 316 passed and five were skipped; 10,590 tests passed, two
+failed and 117 were skipped in 4,798.22 seconds. Coverage did not start.
+Rebinding to
+`files/macos-toolchain/openspec-qualified-cutoff-1.11.0/bin/openspec`
+made both bodies pass without any source, expectation, inventory or limit
+change. The failed receipt remains under
+`files/native-qualification-9f9cb794`; it is not qualification evidence.
+
+The first clean `bd7635d8` retry used that preserved qualified OpenSpec
+distribution. Its unfiltered one-worker suite passed 317 files with five
+fully skipped files and passed 10,602 tests with 117 skipped tests in
+4,127.01 seconds. Its first complete CLI coverage command also executed all
+322 files and all 10,719 test records without a test failure, and all four raw
+metrics exceeded the unchanged 80.01% floor. The new final-map validator
+nevertheless rejected five genuine pinned-provider records because V8 had
+emitted signed synthetic else-branch counters such as `[1024, -993]`. The
+failed report, summary, test result and evidence bytes are retained under
+`files/native-qualification-bd7635d8/failed-cli-report`, including their
+`sha256.txt`. This was an introduced validator defect; the passing percentages
+from that failed verdict are not qualification evidence.
+
+Commit `cdadc3911519af0e19d2e2dbd7b9ed22db614a23`, tree
+`8fb17cbc501bf62311da3b0176945760e1b8b403`, corrects only that defect. It
+accepts signed safe-integer branch-hit counters that the pinned V8 provider
+summarizes as uncovered while continuing to require nonnegative safe-integer
+statement/function counters, complete matching hit maps, exact path identity,
+and provider-derived agreement with the saved summary. The regression corpus
+now distinguishes valid signed provider output from malformed, unsafe or
+contradictory records. Syntax, affected strict checking, 155/155 coverage-gate
+tests, build, project no-emit, repository policy and strict OpenSpec validation
+passed before the final clean run.
+
+The complete clean qualification sequence then passed on exact committed
+`cdadc391` bytes using Node 24.21.0, npm 12.0.2, OpenTofu 1.12.6, CPython
+3.14.7, uv 0.12.7, Go 1.27.0 and the preserved OpenSpec 1.11.0 cutoff. The
+environment retained `CI=1`, `TERM=dumb`, `NO_COLOR=1`,
+`LIFTOFF_OPENSPEC_B_TESTS=1`, `OB1_VERSION_REMAINING=2`,
+`OB1_SUPPORT_REMAINING=10`, `LIFTOFF_OI_TESTS=1` and
+`LIFTOFF_HCL_TEST_LANE=native`; source-complete invocations retained one
+worker and every existing inventory, timeout and floor.
+
+- Supported-stack and build passed.
+- The unfiltered suite passed 317 files with five skipped files and 10,602
+  tests with 117 skipped tests in 3,976.07 seconds.
+- CLI coverage repeated the same test totals in 4,645.22 seconds and passed
+  511 executable source files with digest
+  `sha256:5890d41f355eb05a47162ff87bb11d5e2463547ae4bdea2ff024f5e5a2263fb3`.
+  Statements were 40,996/45,681 (89.7440%), branches 36,587/42,614
+  (85.8567%), functions 7,713/8,114 (95.0579%) and lines 36,339/39,555
+  (91.8695%). Independent saved-evidence verification passed.
+- The workflow's 15-file custody/history selection passed 485 tests with one
+  unchanged skip in 60.61 seconds.
+- Independent gateway coverage passed nine files and 211/211 tests in 3.57
+  seconds. Its four-source digest is
+  `sha256:3e32017987886b56fa30ecae1c890674c61f073b5d8b17bf1cfa43c9db8a2c8f`;
+  statements were 243/258 (94.1860%), branches 182/223 (81.6143%),
+  functions 64/68 (94.1176%) and lines 233/245 (95.1020%). Independent saved
+  verification passed.
+- Installed package smoke passed for `@msn-control/liftoff@0.12.3`.
+  Repository policy, strict noninteractive OpenSpec validation,
+  `git diff --check`, exact HEAD/tree/index identity and the final clean-tree
+  check also passed.
+
+The complete retained receipt is
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/native-qualification-cdadc391`.
+Its 29-file checksum ledger has SHA-256
+`76402ffa39ea4ec6982aff8e9071e9bbc63f09612d7de9f2835d145563446880`.
+The CLI and gateway evidence records have SHA-256 values
+`0b7497a0a0bf257c614cf2f6fbc1b6334c6603ca737a72f677abd6bcfa5408fc`
+and
+`3131316c5cf3ee85adc7d75d1f5951cbe633482fd5d68a14f90016949c936685`.
+
+This qualifies only the exact `cdadc391` source revision on the native Apple
+Silicon host and its independent local telemetry-gateway package. It does not
+qualify later Root unions, the five intentionally skipped native/disposable
+families, live cloud providers, publication, signing, deployment, landing or
+merge order. No OpenSpec planning checkbox was edited here; Root retains the
+authoritative ledger and dependency-order integration.
+
+### Original cdadc coverage report retention, 2026-10-16
+
+Before any later dependency or coverage work could replace the ignored report
+directories, the complete successful `cdadc391` CLI and gateway report sets
+were copied byte-for-byte into:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/retained-native-qualification-cdadc391-coverage-reports`
+
+The retention contains the five original files for each lane:
+`coverage-final.json`, `coverage-summary.json`, `coverage.txt`,
+`test-results.json` and `coverage-evidence.json`. All ten source files were
+available; their retained total is 30,601,495 bytes. The manifest has SHA-256
+`30cf39c76aa514b7e281a7ba0b5ba66a6ee71050ef166cbe7b74756b4ddbad65`
+and the checksum ledger has SHA-256
+`64b7f05d8f24a7cd85d8b8c2e1b4fa2d295d9c22663d70c1f6b7ba6f210cf7a4`.
+The retained evidence files remain exactly
+`0b7497a0a0bf257c614cf2f6fbc1b6334c6603ca737a72f677abd6bcfa5408fc`
+for CLI and
+`3131316c5cf3ee85adc7d75d1f5951cbe633482fd5d68a14f90016949c936685`
+for gateway. No test, coverage, verification or qualification command was
+rerun, and this retention does not transfer `cdadc391` qualification to any
+successor.
+
+### Scoped task 18.2 dependency-audit remediation, 2026-10-16
+
+Exact npm 12 diagnostics on parent
+`d3d13204d8a12bfe67f95cb5e0d29c01e84a2ca5` confirmed two genuine current
+findings: root runtime `smol-toml` 1.8.0 had moderate
+`GHSA-r4xh-jqrq-34v2`, and transitive `source-map-js` 1.2.1 had high
+`GHSA-68fv-2mgg-jv7q` in the root, telemetry gateway, packaged Node backend
+and packaged frontend lock inventories. The repository wrapper initially
+refused the non-direct `source-map-js` finding because npm reported an empty
+`effects` array; the raw reports remain the authoritative finding evidence.
+
+Commit `03000610af80f8d72f5346f5ccb34e426db4307c`, tree
+`6452f260991a623c3405d5708e023728e8115e43`, updates only the verified
+dependency closure and its exact current identities:
+
+- root `smol-toml` advances from 1.8.0 to 1.9.1 in the manifest, lock and the
+  two corresponding supported-stack fields;
+- `source-map-js` advances from 1.2.1 to 1.2.2 in exactly four locks;
+- no parent package, override, audit exception or unrelated dependency was
+  changed;
+- the packaged Node backend and frontend lock SHA-256 identities advance to
+  `e4a88cada73456bf1b0a3923d5e814313358c91b0b9b2a13d5fbf41632231369`
+  and
+  `494f2312ba163062c10164df363c49b0987109b529f320381ec5795bbf0ea689`;
+- `node-fastify` advances from content version 3/digest
+  `sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c`
+  to version 4/digest
+  `sha256:741c6dc7221d9178db1ea88dee47c98e3bdb1ba382ba432dc76f277c705feb92`;
+- the current built-in and modern registry literals advance to the exact
+  recomputed values recorded in the retained contract delta;
+- the immutable pre-assessment declaration/source capture, historical release
+  files and frozen source fixtures are unchanged. A bounded compatibility
+  bridge composes those frozen declarations with the current reviewed template
+  closure while the old version-3 metadata is matched only as an exact
+  metadata family; it never restores old executable template bytes or grants
+  execution authority;
+- only generator records `1/node-backend-lock` and `1/frontend-lock`, plus
+  four induced CLI/rendered-artifact records, advance. Every complete
+  `priorChange` chain is nested unchanged and no frozen baseline was
+  regenerated.
+
+Fresh validation on the successor passed:
+
+- supported-stack coherence, build and project-wide no-emit;
+- six current/historical release-contract files, 178/178 tests;
+- the complete affected dependency/template/import/package/source set,
+  27 files and 635 passed tests with one unchanged skip;
+- exact generator and frozen contract baseline checks, 23/23 tests;
+- the repository audit wrapper, reporting all four npm inventories clean;
+- four independent npm 12 raw audits, each with an empty vulnerability object
+  and zero info/low/moderate/high/critical/total findings;
+- generated standard Node backend/frontend install, build, test and Drizzle
+  metadata verification;
+- installed package smoke and release-identity verification;
+- repository policy, strict noninteractive OpenSpec validation and
+  `git diff --check`.
+
+The live supported-stack freshness command remains failed evidence, not a
+baseline-refresh instruction. It encountered widespread external request
+timeouts, unavailable MinIO authorization, and unrelated current upstream
+container/action digest drift. Those external pins were not changed and the
+command was not rerun after the scoped source passed.
+
+The sealed remediation evidence is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/dependency-audit-remediation-d3d13204`
+
+Its final manifest has SHA-256
+`8eea96962dd2f4290c91a7720ba60dbc95cb76563b6bfb90902e25ecd76b452b`,
+its checksum ledger has SHA-256
+`ce15689f86307abf32cf80a92391f27d4a9a9b0fc3080142f7fd5e36a2538979`,
+and its exact contract delta has SHA-256
+`b449db379f083b7c2141b1064578f386c628348aeefb3e53c21f0609633fe214`.
+The four zero-finding raw audit files have SHA-256 values
+`ec03483f63274aa0ad8def8e1b49c31e392799f453037f1fcf2dceddbf1e99cf`,
+`62bfb3b9578a6c8f5fd6391d5a22c34c16299445e2e8a98e16d2bbab176475a7`,
+`836f5d1799154a294707df10937b34332602eb5a29206cfbff4e631f066f61a2`
+and
+`7f6f0b8ea6a4a2435d48667848a20c09eea6b68f7a1169e4c26235c654a53ebc`
+for root, gateway, Node backend and frontend respectively.
+
+This is scoped dependency remediation, not a fresh unfiltered full-suite or
+coverage qualification. It does not complete task 18.2 in the authoritative
+Root ledger, alter publication/provider state, ready or merge pull request
+#168, retarget/restack the dependency chain, or authorize landing.
+
+### Task 18.2 generated-lock contract-ledger correction, 2026-10-16
+
+Draft pull request #168 CI run `38802595572` tested exact documentation head
+`f01b4623f9d7f62ac6dac7dd90a2a5457815bdeb`. Both Ubuntu platform shards
+duplicated the native plugin-path qualification and failed the same 57
+`plugin-generation-parity` cases. The generated bytes were deterministic and
+the source dependency identities were already correct; the scoped task-18.2
+validation had omitted `tests/plugin-generation-parity.test.ts`, so the
+reviewed-change ledger covered the representative frozen contract cases but
+not every matrix case induced by the two updated lock assets.
+
+Commit `9feb1c635b11e4f7b293a9f26dc6d35d71df7e45`, tree
+`ccfe7f50d0b6f9ce1c57923a244ea38d0b24703c`, corrects only
+`tests/fixtures/contract-baseline-changes.json`. Exactly 57 existing
+`plugin-generation` records whose plans contain the generated Node backend or
+frontend lock advance under task 18.2. Each successor retains the same key,
+frozen-baseline digest and original `previous` hashes, binds its prior current
+digest, and nests the complete previous record byte-for-byte as `priorChange`.
+No record was appended or removed, no frozen baseline was regenerated, and no
+unaffected matrix case changed. The corrected ledger is 1,673,431 bytes with
+SHA-256
+`aef216907200f063942408ad5e514ef8be13f19069ba8544c233979d8290b0ed`.
+
+Clean committed validation passed:
+
+- an independent structural comparison against parent `f01b4623` found exactly
+  57 changed top-level records and verified every predecessor object,
+  baseline digest and original-generation hash unchanged;
+- the exact duplicated CI plugin-path selection plus the contract baseline
+  passed five files, 226 tests and one unchanged skip;
+- build and project-wide no-emit passed;
+- the template dependency audit remained clean for all four npm inventories;
+- installed package smoke, repository policy, strict noninteractive OpenSpec
+  validation and the commit diff check passed.
+
+Two command-attribution limits remain explicit. The first local strict OpenSpec
+attempt used unsupported option `--non-interactive`; repository policy had
+already passed, the command changed no bytes, and the corrected
+`--no-interactive` invocation passed. The first evidence-only structural helper
+assigned but did not export its evidence directory and failed before reading
+the ledger with `ENOENT undefined/ledger-before.json`; the corrected helper
+then passed without a source change. Both failures are retained rather than
+relabeled.
+
+The additive evidence directory is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/dependency-audit-parity-correction-f01b4623`
+
+Its manifest has SHA-256
+`7b9ba6350b53e7db7d62069081111c72b2df395a915454bc5cd58df0dc1ebf28`
+and its checksum ledger has SHA-256
+`17abf0c528f45c6205a3284cac3e8e5a607ea982212da96a51c85d831fa2a642`.
+The packet retains both failed Ubuntu job logs, the initial local parity
+failure, the exact 57-record enumeration and all corrected focused validation.
+
+This correction does not borrow the exact-`cdadc391` complete qualification for
+the dependency-adjusted successor. It does not complete task 18.2, change an
+OpenSpec checkbox, ready or merge pull request #168, or imply provider,
+publication, deployment, native-signing, readiness, retarget or restack effect.
+
+### Task 18.2 project-telemetry identity correction, 2026-10-16
+
+Replacement pull request #168 run `38805200563` confirmed the 57-record
+plugin-generation correction, then exposed one further scoped omission in both
+Ubuntu and macOS shard 2. The same 11
+`tests/project-telemetry-source.test.ts` expectations still named the
+pre-remediation modern registry digest
+`sha256:1e9632b5200f945536955f1078ca4194c4f9a56bd712d810ec69f8faac7d61b0`.
+Production correctly returned the already reviewed current registry digest
+`sha256:452f988fcfe33b30fc6477ded97490ecc3968a52f2257f33886d05ed4ce0cc63`
+from `modernSourceRegistry()`. The failure reproduced locally as exactly 11
+failed and 28 passed tests; no runtime or source-registry correction was
+required.
+
+Commit `b003800f4ba8287b4c120c64c88d11ef282c3f15`, tree
+`22ed31e95ca642246fe3936b82a2823714848457`, changes only the one test
+constant to the reviewed current registry identity. Clean committed validation
+passed:
+
+- `tests/project-telemetry-source.test.ts`,
+  `tests/telemetry-contract.test.ts` and
+  `tests/modern-source-registry.test.ts`: three files and 109/109 tests;
+- build and project-wide no-emit;
+- the all-four-inventory template dependency audit;
+- repository policy, strict noninteractive OpenSpec validation and the exact
+  commit diff check.
+
+The additive evidence directory is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/dependency-audit-telemetry-identity-correction-8abac600`
+
+It retains both cross-host failed job logs and the clean committed correction
+checks. Its manifest has SHA-256
+`a3ba0cdf339567174a468e3b480d336d1ab5cfe43e751cc5f7cb622062ae579b`
+and its checksum ledger has SHA-256
+`7321c3c02b340ab11b9993292c86eac601198ffe187c6ba2be069d84d200acab`.
+
+This is a test identity correction induced by the scoped dependency release
+identity. It changes no telemetry policy, schema, transport, consent, project
+identity, production byte or task flag. It is not a fresh full-suite/coverage
+qualification and has no publication, provider, readiness or landing effect.

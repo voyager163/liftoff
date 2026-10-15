@@ -1,0 +1,957 @@
+{
+  "kind": "original-custody4-metadata-only-before-dependency-composition",
+  "sourceCommit": "7e2b74e7e1adc8346c41a17a0c31e000250bdd3f",
+  "sourceTree": "66affa04d8c0eab4dbadfe925da58e4c4736afaf",
+  "registry": {
+    "pluginSetDigest": "sha256:16942ffaa2ee9ec4459e91935f550fce39ec97f5cfe146331713b3bd06ba4113",
+    "coreContributionDigest": "sha256:6ad4e1c51410ecc5f9f8189482dc36f258c0125b272f60bf4a46f06410da547c",
+    "registryDigest": "sha256:1e9632b5200f945536955f1078ca4194c4f9a56bd712d810ec69f8faac7d61b0"
+  },
+  "cases": [
+    {
+      "profile": "single-maintainer-gitflow",
+      "workflow": "manual",
+      "frontend": false,
+      "request": {
+        "selection": {
+          "project": {
+            "name": "Original custody4 metadata",
+            "workload": {
+              "kind": "standard",
+              "apiStack": "node-fastify",
+              "cloud": "azure",
+              "region": "eastus",
+              "frontend": false,
+              "environments": [
+                "dev"
+              ]
+            },
+            "specWorkflow": "manual",
+            "agents": []
+          },
+          "framework": {
+            "state": "not-required"
+          },
+          "profile": "single-maintainer-gitflow"
+        },
+        "recordedPlugins": {
+          "schemaVersion": 1,
+          "resolutionDigest": "sha256:ade8f6daf771a311aa2a52e481dbba233a346772058df8f6659a096b48897845",
+          "selections": [
+            {
+              "category": "stack",
+              "id": "node-fastify",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c"
+            },
+            {
+              "category": "cloud",
+              "id": "azure",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+            },
+            {
+              "category": "workflow",
+              "id": "manual",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:0a97939a6f22ff7a388d41136fc513ddd1f043e2ef2f9a3f3694a3557ca0b3e9"
+            }
+          ]
+        }
+      },
+      "sourceIdentity": {
+        "liftoffVersion": "0.13.0-dev.0",
+        "manifestArtifactVersion": 8,
+        "activationContractVersion": 4,
+        "phaseGraphSchemaVersion": 3,
+        "activationStateSchemaVersion": 4,
+        "evidenceHeaderSchemaVersion": 4,
+        "approvalEnvelopeSchemaVersion": 4,
+        "supersessionSchemaVersion": 2,
+        "credentialPolicySchemaVersion": 2,
+        "profile": "single-maintainer-gitflow",
+        "policyVersion": "7",
+        "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+        "workflow": "manual",
+        "phaseGraphHash": "fdca569a2d3cb99ab7de02d1b62088f2bcc28284852ec7eac6bb802970a9f497"
+      }
+    },
+    {
+      "profile": "single-maintainer-gitflow",
+      "workflow": "manual",
+      "frontend": true,
+      "request": {
+        "selection": {
+          "project": {
+            "name": "Original custody4 metadata",
+            "workload": {
+              "kind": "standard",
+              "apiStack": "node-fastify",
+              "cloud": "azure",
+              "region": "eastus",
+              "frontend": true,
+              "environments": [
+                "dev"
+              ]
+            },
+            "specWorkflow": "manual",
+            "agents": []
+          },
+          "framework": {
+            "state": "not-required"
+          },
+          "profile": "single-maintainer-gitflow"
+        },
+        "recordedPlugins": {
+          "schemaVersion": 1,
+          "resolutionDigest": "sha256:980081a4efe260bb9e9ab2d06f70f093c92b078a67fdb1dd413339c636bdaee1",
+          "selections": [
+            {
+              "category": "stack",
+              "id": "node-fastify",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c"
+            },
+            {
+              "category": "cloud",
+              "id": "azure",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+            },
+            {
+              "category": "workflow",
+              "id": "manual",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:0a97939a6f22ff7a388d41136fc513ddd1f043e2ef2f9a3f3694a3557ca0b3e9"
+            }
+          ]
+        }
+      },
+      "sourceIdentity": {
+        "liftoffVersion": "0.13.0-dev.0",
+        "manifestArtifactVersion": 8,
+        "activationContractVersion": 4,
+        "phaseGraphSchemaVersion": 3,
+        "activationStateSchemaVersion": 4,
+        "evidenceHeaderSchemaVersion": 4,
+        "approvalEnvelopeSchemaVersion": 4,
+        "supersessionSchemaVersion": 2,
+        "credentialPolicySchemaVersion": 2,
+        "profile": "single-maintainer-gitflow",
+        "policyVersion": "7",
+        "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+        "workflow": "manual",
+        "phaseGraphHash": "fdca569a2d3cb99ab7de02d1b62088f2bcc28284852ec7eac6bb802970a9f497"
+      }
+    },
+    {
+      "profile": "single-maintainer-gitflow",
+      "workflow": "openspec",
+      "frontend": false,
+      "request": {
+        "selection": {
+          "project": {
+            "name": "Original custody4 metadata",
+            "workload": {
+              "kind": "standard",
+              "apiStack": "node-fastify",
+              "cloud": "azure",
+              "region": "eastus",
+              "frontend": false,
+              "environments": [
+                "dev"
+              ]
+            },
+            "specWorkflow": "openspec",
+            "agents": [
+              "github-copilot"
+            ]
+          },
+          "framework": {
+            "state": "initialized",
+            "adapter": "openspec",
+            "contractVersion": "1.11.0"
+          },
+          "profile": "single-maintainer-gitflow"
+        },
+        "recordedPlugins": {
+          "schemaVersion": 1,
+          "resolutionDigest": "sha256:21a56b93b8dc9274460255cbb0c0d40ef5f72807afbb3560798525fda5a5c302",
+          "selections": [
+            {
+              "category": "stack",
+              "id": "node-fastify",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c"
+            },
+            {
+              "category": "cloud",
+              "id": "azure",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+            },
+            {
+              "category": "workflow",
+              "id": "openspec",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:8675a3187f44932c7bee9f9a8e5d3f307bcb36d66ced0f20593663221c509d5e"
+            },
+            {
+              "category": "agent",
+              "id": "github-copilot",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:e60e0ec46c170b90888c87bc498a7e6bd4febd4118952f828082fba71f6d90a2"
+            }
+          ]
+        }
+      },
+      "sourceIdentity": {
+        "liftoffVersion": "0.13.0-dev.0",
+        "manifestArtifactVersion": 8,
+        "activationContractVersion": 4,
+        "phaseGraphSchemaVersion": 3,
+        "activationStateSchemaVersion": 4,
+        "evidenceHeaderSchemaVersion": 4,
+        "approvalEnvelopeSchemaVersion": 4,
+        "supersessionSchemaVersion": 2,
+        "credentialPolicySchemaVersion": 2,
+        "profile": "single-maintainer-gitflow",
+        "policyVersion": "7",
+        "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+        "workflow": "openspec",
+        "phaseGraphHash": "0ef03f910c0ea7f7894f88544b78d4cc5bf3434e9225ee45be9990def17f344f"
+      }
+    },
+    {
+      "profile": "single-maintainer-gitflow",
+      "workflow": "openspec",
+      "frontend": true,
+      "request": {
+        "selection": {
+          "project": {
+            "name": "Original custody4 metadata",
+            "workload": {
+              "kind": "standard",
+              "apiStack": "node-fastify",
+              "cloud": "azure",
+              "region": "eastus",
+              "frontend": true,
+              "environments": [
+                "dev"
+              ]
+            },
+            "specWorkflow": "openspec",
+            "agents": [
+              "github-copilot"
+            ]
+          },
+          "framework": {
+            "state": "initialized",
+            "adapter": "openspec",
+            "contractVersion": "1.11.0"
+          },
+          "profile": "single-maintainer-gitflow"
+        },
+        "recordedPlugins": {
+          "schemaVersion": 1,
+          "resolutionDigest": "sha256:f6066bb73de3b9fdeb0d85a2bd8e6a65fd7faa35e950ee4e98a04e748e47fd03",
+          "selections": [
+            {
+              "category": "stack",
+              "id": "node-fastify",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c"
+            },
+            {
+              "category": "cloud",
+              "id": "azure",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+            },
+            {
+              "category": "workflow",
+              "id": "openspec",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:8675a3187f44932c7bee9f9a8e5d3f307bcb36d66ced0f20593663221c509d5e"
+            },
+            {
+              "category": "agent",
+              "id": "github-copilot",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:e60e0ec46c170b90888c87bc498a7e6bd4febd4118952f828082fba71f6d90a2"
+            }
+          ]
+        }
+      },
+      "sourceIdentity": {
+        "liftoffVersion": "0.13.0-dev.0",
+        "manifestArtifactVersion": 8,
+        "activationContractVersion": 4,
+        "phaseGraphSchemaVersion": 3,
+        "activationStateSchemaVersion": 4,
+        "evidenceHeaderSchemaVersion": 4,
+        "approvalEnvelopeSchemaVersion": 4,
+        "supersessionSchemaVersion": 2,
+        "credentialPolicySchemaVersion": 2,
+        "profile": "single-maintainer-gitflow",
+        "policyVersion": "7",
+        "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+        "workflow": "openspec",
+        "phaseGraphHash": "0ef03f910c0ea7f7894f88544b78d4cc5bf3434e9225ee45be9990def17f344f"
+      }
+    },
+    {
+      "profile": "single-maintainer-gitflow",
+      "workflow": "spec-kit",
+      "frontend": false,
+      "request": {
+        "selection": {
+          "project": {
+            "name": "Original custody4 metadata",
+            "workload": {
+              "kind": "standard",
+              "apiStack": "node-fastify",
+              "cloud": "azure",
+              "region": "eastus",
+              "frontend": false,
+              "environments": [
+                "dev"
+              ]
+            },
+            "specWorkflow": "spec-kit",
+            "agents": [
+              "github-copilot"
+            ],
+            "defaultAgent": "github-copilot"
+          },
+          "framework": {
+            "state": "initialized",
+            "adapter": "spec-kit",
+            "contractVersion": "1.0.1"
+          },
+          "profile": "single-maintainer-gitflow"
+        },
+        "recordedPlugins": {
+          "schemaVersion": 1,
+          "resolutionDigest": "sha256:25d5ba1553d4d2157b8631be5fac95aabc9856085f5da31719477e79a53525bb",
+          "selections": [
+            {
+              "category": "stack",
+              "id": "node-fastify",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c"
+            },
+            {
+              "category": "cloud",
+              "id": "azure",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+            },
+            {
+              "category": "workflow",
+              "id": "spec-kit",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:420fd4584bf02e8efc65bf9893848a4748ce676c030095de9ef1fba20ca7a137"
+            },
+            {
+              "category": "agent",
+              "id": "github-copilot",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:e60e0ec46c170b90888c87bc498a7e6bd4febd4118952f828082fba71f6d90a2"
+            }
+          ]
+        }
+      },
+      "sourceIdentity": {
+        "liftoffVersion": "0.13.0-dev.0",
+        "manifestArtifactVersion": 8,
+        "activationContractVersion": 4,
+        "phaseGraphSchemaVersion": 3,
+        "activationStateSchemaVersion": 4,
+        "evidenceHeaderSchemaVersion": 4,
+        "approvalEnvelopeSchemaVersion": 4,
+        "supersessionSchemaVersion": 2,
+        "credentialPolicySchemaVersion": 2,
+        "profile": "single-maintainer-gitflow",
+        "policyVersion": "7",
+        "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+        "workflow": "spec-kit",
+        "phaseGraphHash": "8b480c017168fe4cb48da4f73a1cadfed2ee2e1cd5329f1eca363ffcddd778e8"
+      }
+    },
+    {
+      "profile": "single-maintainer-gitflow",
+      "workflow": "spec-kit",
+      "frontend": true,
+      "request": {
+        "selection": {
+          "project": {
+            "name": "Original custody4 metadata",
+            "workload": {
+              "kind": "standard",
+              "apiStack": "node-fastify",
+              "cloud": "azure",
+              "region": "eastus",
+              "frontend": true,
+              "environments": [
+                "dev"
+              ]
+            },
+            "specWorkflow": "spec-kit",
+            "agents": [
+              "github-copilot"
+            ],
+            "defaultAgent": "github-copilot"
+          },
+          "framework": {
+            "state": "initialized",
+            "adapter": "spec-kit",
+            "contractVersion": "1.0.1"
+          },
+          "profile": "single-maintainer-gitflow"
+        },
+        "recordedPlugins": {
+          "schemaVersion": 1,
+          "resolutionDigest": "sha256:8546c469dedd183fbbec8c10a67f9464656ad93310ab32c3c3f2ec9ef1fc1ee2",
+          "selections": [
+            {
+              "category": "stack",
+              "id": "node-fastify",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c"
+            },
+            {
+              "category": "cloud",
+              "id": "azure",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+            },
+            {
+              "category": "workflow",
+              "id": "spec-kit",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:420fd4584bf02e8efc65bf9893848a4748ce676c030095de9ef1fba20ca7a137"
+            },
+            {
+              "category": "agent",
+              "id": "github-copilot",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:e60e0ec46c170b90888c87bc498a7e6bd4febd4118952f828082fba71f6d90a2"
+            }
+          ]
+        }
+      },
+      "sourceIdentity": {
+        "liftoffVersion": "0.13.0-dev.0",
+        "manifestArtifactVersion": 8,
+        "activationContractVersion": 4,
+        "phaseGraphSchemaVersion": 3,
+        "activationStateSchemaVersion": 4,
+        "evidenceHeaderSchemaVersion": 4,
+        "approvalEnvelopeSchemaVersion": 4,
+        "supersessionSchemaVersion": 2,
+        "credentialPolicySchemaVersion": 2,
+        "profile": "single-maintainer-gitflow",
+        "policyVersion": "7",
+        "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+        "workflow": "spec-kit",
+        "phaseGraphHash": "8b480c017168fe4cb48da4f73a1cadfed2ee2e1cd5329f1eca363ffcddd778e8"
+      }
+    },
+    {
+      "profile": "team-gitflow",
+      "workflow": "manual",
+      "frontend": false,
+      "request": {
+        "selection": {
+          "project": {
+            "name": "Original custody4 metadata",
+            "workload": {
+              "kind": "standard",
+              "apiStack": "node-fastify",
+              "cloud": "azure",
+              "region": "eastus",
+              "frontend": false,
+              "environments": [
+                "dev"
+              ]
+            },
+            "specWorkflow": "manual",
+            "agents": []
+          },
+          "framework": {
+            "state": "not-required"
+          },
+          "profile": "team-gitflow"
+        },
+        "recordedPlugins": {
+          "schemaVersion": 1,
+          "resolutionDigest": "sha256:63aef48f626a3463e02b712d4f7bcb06a6b4ed7fed7598c287d5384a1cae246e",
+          "selections": [
+            {
+              "category": "stack",
+              "id": "node-fastify",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c"
+            },
+            {
+              "category": "cloud",
+              "id": "azure",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+            },
+            {
+              "category": "workflow",
+              "id": "manual",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:0a97939a6f22ff7a388d41136fc513ddd1f043e2ef2f9a3f3694a3557ca0b3e9"
+            }
+          ]
+        }
+      },
+      "sourceIdentity": {
+        "liftoffVersion": "0.13.0-dev.0",
+        "manifestArtifactVersion": 8,
+        "activationContractVersion": 4,
+        "phaseGraphSchemaVersion": 3,
+        "activationStateSchemaVersion": 4,
+        "evidenceHeaderSchemaVersion": 4,
+        "approvalEnvelopeSchemaVersion": 4,
+        "supersessionSchemaVersion": 2,
+        "credentialPolicySchemaVersion": 2,
+        "profile": "team-gitflow",
+        "policyVersion": "1",
+        "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+        "workflow": "manual",
+        "phaseGraphHash": "995be894df80e81ad7e9ee78643fd0db836479d131df1e379d08c4cd47128286"
+      }
+    },
+    {
+      "profile": "team-gitflow",
+      "workflow": "manual",
+      "frontend": true,
+      "request": {
+        "selection": {
+          "project": {
+            "name": "Original custody4 metadata",
+            "workload": {
+              "kind": "standard",
+              "apiStack": "node-fastify",
+              "cloud": "azure",
+              "region": "eastus",
+              "frontend": true,
+              "environments": [
+                "dev"
+              ]
+            },
+            "specWorkflow": "manual",
+            "agents": []
+          },
+          "framework": {
+            "state": "not-required"
+          },
+          "profile": "team-gitflow"
+        },
+        "recordedPlugins": {
+          "schemaVersion": 1,
+          "resolutionDigest": "sha256:aea3c0a5e3b372fd8e4d28f4fba83b3ad77d7d2b376bb820d7f82822a805bd46",
+          "selections": [
+            {
+              "category": "stack",
+              "id": "node-fastify",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c"
+            },
+            {
+              "category": "cloud",
+              "id": "azure",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+            },
+            {
+              "category": "workflow",
+              "id": "manual",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:0a97939a6f22ff7a388d41136fc513ddd1f043e2ef2f9a3f3694a3557ca0b3e9"
+            }
+          ]
+        }
+      },
+      "sourceIdentity": {
+        "liftoffVersion": "0.13.0-dev.0",
+        "manifestArtifactVersion": 8,
+        "activationContractVersion": 4,
+        "phaseGraphSchemaVersion": 3,
+        "activationStateSchemaVersion": 4,
+        "evidenceHeaderSchemaVersion": 4,
+        "approvalEnvelopeSchemaVersion": 4,
+        "supersessionSchemaVersion": 2,
+        "credentialPolicySchemaVersion": 2,
+        "profile": "team-gitflow",
+        "policyVersion": "1",
+        "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+        "workflow": "manual",
+        "phaseGraphHash": "995be894df80e81ad7e9ee78643fd0db836479d131df1e379d08c4cd47128286"
+      }
+    },
+    {
+      "profile": "team-gitflow",
+      "workflow": "openspec",
+      "frontend": false,
+      "request": {
+        "selection": {
+          "project": {
+            "name": "Original custody4 metadata",
+            "workload": {
+              "kind": "standard",
+              "apiStack": "node-fastify",
+              "cloud": "azure",
+              "region": "eastus",
+              "frontend": false,
+              "environments": [
+                "dev"
+              ]
+            },
+            "specWorkflow": "openspec",
+            "agents": [
+              "github-copilot"
+            ]
+          },
+          "framework": {
+            "state": "initialized",
+            "adapter": "openspec",
+            "contractVersion": "1.11.0"
+          },
+          "profile": "team-gitflow"
+        },
+        "recordedPlugins": {
+          "schemaVersion": 1,
+          "resolutionDigest": "sha256:7f296695df26403aa0fb425c70b0feacf0e6d679c7edf2b417ace0b32aeb9a34",
+          "selections": [
+            {
+              "category": "stack",
+              "id": "node-fastify",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c"
+            },
+            {
+              "category": "cloud",
+              "id": "azure",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+            },
+            {
+              "category": "workflow",
+              "id": "openspec",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:8675a3187f44932c7bee9f9a8e5d3f307bcb36d66ced0f20593663221c509d5e"
+            },
+            {
+              "category": "agent",
+              "id": "github-copilot",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:e60e0ec46c170b90888c87bc498a7e6bd4febd4118952f828082fba71f6d90a2"
+            }
+          ]
+        }
+      },
+      "sourceIdentity": {
+        "liftoffVersion": "0.13.0-dev.0",
+        "manifestArtifactVersion": 8,
+        "activationContractVersion": 4,
+        "phaseGraphSchemaVersion": 3,
+        "activationStateSchemaVersion": 4,
+        "evidenceHeaderSchemaVersion": 4,
+        "approvalEnvelopeSchemaVersion": 4,
+        "supersessionSchemaVersion": 2,
+        "credentialPolicySchemaVersion": 2,
+        "profile": "team-gitflow",
+        "policyVersion": "1",
+        "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+        "workflow": "openspec",
+        "phaseGraphHash": "7b5cd8b6c9c8e2358e2f56a848e9e9cbcba04b97607e148e6e73eec82183f23e"
+      }
+    },
+    {
+      "profile": "team-gitflow",
+      "workflow": "openspec",
+      "frontend": true,
+      "request": {
+        "selection": {
+          "project": {
+            "name": "Original custody4 metadata",
+            "workload": {
+              "kind": "standard",
+              "apiStack": "node-fastify",
+              "cloud": "azure",
+              "region": "eastus",
+              "frontend": true,
+              "environments": [
+                "dev"
+              ]
+            },
+            "specWorkflow": "openspec",
+            "agents": [
+              "github-copilot"
+            ]
+          },
+          "framework": {
+            "state": "initialized",
+            "adapter": "openspec",
+            "contractVersion": "1.11.0"
+          },
+          "profile": "team-gitflow"
+        },
+        "recordedPlugins": {
+          "schemaVersion": 1,
+          "resolutionDigest": "sha256:4e722561049bf28f7bc9b69b74cf08738395583fa6b3b078de2e918671739fa5",
+          "selections": [
+            {
+              "category": "stack",
+              "id": "node-fastify",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c"
+            },
+            {
+              "category": "cloud",
+              "id": "azure",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+            },
+            {
+              "category": "workflow",
+              "id": "openspec",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:8675a3187f44932c7bee9f9a8e5d3f307bcb36d66ced0f20593663221c509d5e"
+            },
+            {
+              "category": "agent",
+              "id": "github-copilot",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:e60e0ec46c170b90888c87bc498a7e6bd4febd4118952f828082fba71f6d90a2"
+            }
+          ]
+        }
+      },
+      "sourceIdentity": {
+        "liftoffVersion": "0.13.0-dev.0",
+        "manifestArtifactVersion": 8,
+        "activationContractVersion": 4,
+        "phaseGraphSchemaVersion": 3,
+        "activationStateSchemaVersion": 4,
+        "evidenceHeaderSchemaVersion": 4,
+        "approvalEnvelopeSchemaVersion": 4,
+        "supersessionSchemaVersion": 2,
+        "credentialPolicySchemaVersion": 2,
+        "profile": "team-gitflow",
+        "policyVersion": "1",
+        "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+        "workflow": "openspec",
+        "phaseGraphHash": "7b5cd8b6c9c8e2358e2f56a848e9e9cbcba04b97607e148e6e73eec82183f23e"
+      }
+    },
+    {
+      "profile": "team-gitflow",
+      "workflow": "spec-kit",
+      "frontend": false,
+      "request": {
+        "selection": {
+          "project": {
+            "name": "Original custody4 metadata",
+            "workload": {
+              "kind": "standard",
+              "apiStack": "node-fastify",
+              "cloud": "azure",
+              "region": "eastus",
+              "frontend": false,
+              "environments": [
+                "dev"
+              ]
+            },
+            "specWorkflow": "spec-kit",
+            "agents": [
+              "github-copilot"
+            ],
+            "defaultAgent": "github-copilot"
+          },
+          "framework": {
+            "state": "initialized",
+            "adapter": "spec-kit",
+            "contractVersion": "1.0.1"
+          },
+          "profile": "team-gitflow"
+        },
+        "recordedPlugins": {
+          "schemaVersion": 1,
+          "resolutionDigest": "sha256:3c92d359e524be82a3815df99b33292984f80ae7139864e10f7fcfffdba53159",
+          "selections": [
+            {
+              "category": "stack",
+              "id": "node-fastify",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c"
+            },
+            {
+              "category": "cloud",
+              "id": "azure",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+            },
+            {
+              "category": "workflow",
+              "id": "spec-kit",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:420fd4584bf02e8efc65bf9893848a4748ce676c030095de9ef1fba20ca7a137"
+            },
+            {
+              "category": "agent",
+              "id": "github-copilot",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:e60e0ec46c170b90888c87bc498a7e6bd4febd4118952f828082fba71f6d90a2"
+            }
+          ]
+        }
+      },
+      "sourceIdentity": {
+        "liftoffVersion": "0.13.0-dev.0",
+        "manifestArtifactVersion": 8,
+        "activationContractVersion": 4,
+        "phaseGraphSchemaVersion": 3,
+        "activationStateSchemaVersion": 4,
+        "evidenceHeaderSchemaVersion": 4,
+        "approvalEnvelopeSchemaVersion": 4,
+        "supersessionSchemaVersion": 2,
+        "credentialPolicySchemaVersion": 2,
+        "profile": "team-gitflow",
+        "policyVersion": "1",
+        "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+        "workflow": "spec-kit",
+        "phaseGraphHash": "9a78984aebdbc05ebe6d74f96f318fced136aa21e47845c60f464c158d6c1a9e"
+      }
+    },
+    {
+      "profile": "team-gitflow",
+      "workflow": "spec-kit",
+      "frontend": true,
+      "request": {
+        "selection": {
+          "project": {
+            "name": "Original custody4 metadata",
+            "workload": {
+              "kind": "standard",
+              "apiStack": "node-fastify",
+              "cloud": "azure",
+              "region": "eastus",
+              "frontend": true,
+              "environments": [
+                "dev"
+              ]
+            },
+            "specWorkflow": "spec-kit",
+            "agents": [
+              "github-copilot"
+            ],
+            "defaultAgent": "github-copilot"
+          },
+          "framework": {
+            "state": "initialized",
+            "adapter": "spec-kit",
+            "contractVersion": "1.0.1"
+          },
+          "profile": "team-gitflow"
+        },
+        "recordedPlugins": {
+          "schemaVersion": 1,
+          "resolutionDigest": "sha256:5ae264302ccf164d34fff49915d8d703a73a645b4270ab1ada9eb27ef8a3429d",
+          "selections": [
+            {
+              "category": "stack",
+              "id": "node-fastify",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c"
+            },
+            {
+              "category": "cloud",
+              "id": "azure",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+            },
+            {
+              "category": "workflow",
+              "id": "spec-kit",
+              "apiVersion": 1,
+              "contentVersion": 1,
+              "contentDigest": "sha256:420fd4584bf02e8efc65bf9893848a4748ce676c030095de9ef1fba20ca7a137"
+            },
+            {
+              "category": "agent",
+              "id": "github-copilot",
+              "apiVersion": 1,
+              "contentVersion": 3,
+              "contentDigest": "sha256:e60e0ec46c170b90888c87bc498a7e6bd4febd4118952f828082fba71f6d90a2"
+            }
+          ]
+        }
+      },
+      "sourceIdentity": {
+        "liftoffVersion": "0.13.0-dev.0",
+        "manifestArtifactVersion": 8,
+        "activationContractVersion": 4,
+        "phaseGraphSchemaVersion": 3,
+        "activationStateSchemaVersion": 4,
+        "evidenceHeaderSchemaVersion": 4,
+        "approvalEnvelopeSchemaVersion": 4,
+        "supersessionSchemaVersion": 2,
+        "credentialPolicySchemaVersion": 2,
+        "profile": "team-gitflow",
+        "policyVersion": "1",
+        "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+        "workflow": "spec-kit",
+        "phaseGraphHash": "9a78984aebdbc05ebe6d74f96f318fced136aa21e47845c60f464c158d6c1a9e"
+      }
+    }
+  ],
+  "limits": "Original release metadata and exact source identity only. No old lock/template/executable bytes, project execution, current telemetry, approval/session or phase authority."
+}

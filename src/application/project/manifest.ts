@@ -23,7 +23,9 @@ import { canonicalJson } from '../../domain/governance/activation/canonical-json
 import { capturedFileBytes } from '../../domain/governance/activation/modern-local-inputs.js';
 import type { InstalledLocalSnapshot } from '../../domain/governance/activation/modern-local-runtime.js';
 import { modernLocalInputExclusion } from '../../domain/governance/activation/modern-local-exclusions.js';
-import { matchesHistoricalModernPlugins, modernPreAssessmentRegistry, modernPreWorkflowRegistry } from './modern-plugins.js';
+import {
+  matchesHistoricalModernPlugins, matchesPreWorkflowModernPlugins, modernPreAssessmentRegistry, modernPreWorkflowRegistry
+} from './modern-plugins.js';
 import type { PluginSelection } from '../../plugins/contracts.js';
 import { projectAssessmentAgentIntegrations } from '../../domain/project/catalog.js';
 
@@ -167,7 +169,7 @@ function resolveSourceContract(input: unknown, compose: typeof composeManifestPl
       throw new FileSystemError('Manifest v8 source plugin metadata does not match the exact installed release-owned source contract.');
     }
     const retained = composeModernManifestPlugins(pluginSelection, values, modernPreWorkflowRegistry());
-    preWorkflow = manifestPluginMetadataMatches(recorded, bindingContextForComposition(retained).plugins);
+    preWorkflow = matchesPreWorkflowModernPlugins(recorded, retained.resolution);
     if (!preWorkflow && !matchesHistoricalModernPlugins(recorded, composition.resolution)) {
       throw new FileSystemError('Manifest v8 source plugin metadata does not match the exact installed release-owned source contract.');
     }

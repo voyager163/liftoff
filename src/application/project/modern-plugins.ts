@@ -7,14 +7,17 @@ import { modernRelease } from '../../plugins/builtin/modern-release.js';
 import { modernHistoricalRelease } from '../../plugins/builtin/modern-historical-release.js';
 import { modernPreviousRelease } from '../../plugins/builtin/modern-previous-release.js';
 import {
-  modernPreWorkflowGovernanceSourceContracts, modernPreWorkflowSource
+  modernPreWorkflowDeclarationsDigest, modernPreWorkflowGovernanceSourceContracts, modernPreWorkflowSource
 } from '../../plugins/builtin/modern-pre-workflow.js';
 import {
   modernPreAssessmentDeclarationsDigest,
   modernPreAssessmentGovernanceSourceContracts,
   modernPreAssessmentSource
 } from '../../plugins/builtin/modern-pre-assessment.js';
-import { pluginRegistryLimits, type PackagedAssetBytes, type PluginRegistry, type PluginResolution } from '../../plugins/contracts.js';
+import {
+  pluginRegistryLimits, type AssetDigest, type PackagedAssetBytes, type PluginRegistry, type PluginRegistryInput,
+  type PluginResolution, type ResolvedPlugin
+} from '../../plugins/contracts.js';
 import { createPluginRegistry, pluginResolutionDigest } from '../../plugins/registry.js';
 import { manifestPluginMetadataMatches, readManifestPluginMetadata, type ManifestPluginMetadata } from '../../domain/project/manifest/plugins.js';
 
@@ -84,6 +87,33 @@ const readModernPreAssessmentAssets: ModernAssetReader = (declarations, bounds) 
     : asset);
 };
 
+// Frozen source declarations compose with the current template closure; recorded predecessor metadata stays separate.
+function createModernCompatibilityRegistry(
+  source: Omit<PluginRegistryInput, 'assets'>, assets: readonly PackagedAssetBytes[]
+): PluginRegistry {
+  const currentFrontendAssets = new Map(modernRelease.sharedAssets
+    .filter((asset) => asset.id === 'frontend-package-manifest' || asset.id === 'frontend-package-lock')
+    .map((asset) => [asset.id, asset]));
+  const currentNode = modernRelease.plugins.find((plugin) =>
+    plugin.category === 'stack' && plugin.id === 'node-fastify');
+  if (currentFrontendAssets.size !== 2 || currentNode === undefined) {
+    throw new Error('Current template release is missing the retained modern compatibility closure.');
+  }
+  return createPluginRegistry({
+    ...source,
+    descriptors: source.descriptors.map(descriptor => descriptor.category === 'stack' && descriptor.id === 'node-fastify'
+      ? { ...descriptor, contentVersion: currentNode.contentVersion } : descriptor),
+    release: {
+      ...source.release,
+      sharedAssets: source.release.sharedAssets.map((asset) =>
+        currentFrontendAssets.get(asset.id) ?? asset),
+      plugins: source.release.plugins.map((plugin) =>
+        plugin.category === 'stack' && plugin.id === 'node-fastify' ? currentNode : plugin)
+    },
+    assets
+  });
+}
+
 export function createModernPreAssessmentRegistry(read: ModernAssetReader = readModernPreAssessmentAssets): PluginRegistry {
   const declarations = [
     ...modernPreAssessmentSource.core.sharedAssets.map(asset => ({ ...asset, owner: { kind: 'core' as const } })),
@@ -97,7 +127,7 @@ export function createModernPreAssessmentRegistry(read: ModernAssetReader = read
     maxPathParts: pluginRegistryLimits.maxPathParts,
     maxPartLength: pluginRegistryLimits.maxStringLength
   });
-  return createPluginRegistry({ ...modernPreAssessmentSource, assets });
+  return createModernCompatibilityRegistry(modernPreAssessmentSource, assets);
 }
 
 export function modernPreAssessmentRegistry(): PluginRegistry {
@@ -105,7 +135,7 @@ export function modernPreAssessmentRegistry(): PluginRegistry {
   return preAssessmentRegistry;
 }
 
-/** Exact custody source4 registry for original-record interpretation, never execution permission. */
+/** Custody4 declarations with current template bytes; original metadata remains separate from execution. */
 export function modernPreWorkflowRegistry(): PluginRegistry {
   if (!preWorkflowRegistry) {
     const declarations = [
@@ -121,15 +151,23 @@ export function modernPreWorkflowRegistry(): PluginRegistry {
       maxPartLength: pluginRegistryLimits.maxStringLength
     }).map(asset => asset.pathParts.join('/') === 'assets/governance/modern/source-contracts.json'
       ? { ...asset, bytes: Buffer.from(modernPreWorkflowGovernanceSourceContracts, 'utf8') } : asset);
-    preWorkflowRegistry = createPluginRegistry({ ...modernPreWorkflowSource, assets: bytes });
+    preWorkflowRegistry = createModernCompatibilityRegistry(modernPreWorkflowSource, bytes);
   }
   return preWorkflowRegistry;
 }
 
-/** Recognizes exact pinned source families, never old template bytes or execution permission. */
-export function matchesHistoricalModernPlugins(recorded: ManifestPluginMetadata, resolution: PluginResolution): boolean {
-  const source = modernPreAssessmentRegistry();
-  const historicalResolution = source.resolveSelection(resolution.selection, { platform: resolution.hostPlatform });
+interface ModernMetadataFamily {
+  readonly declarationsDigest: string;
+  readonly sharedAssets: readonly AssetDigest[];
+  readonly plugins: readonly ResolvedPlugin[];
+}
+
+function matchesRetainedModernPlugins(
+  recorded: ManifestPluginMetadata, resolution: PluginResolution,
+  declarations: Omit<PluginRegistryInput, 'assets'>, registry: PluginRegistry,
+  expectedDeclarationsDigest: string, families: readonly ModernMetadataFamily[]
+): boolean {
+  const historicalResolution = registry.resolveSelection(resolution.selection, { platform: resolution.hostPlatform });
   const currentResolution = modernSourceRegistry().resolveSelection(resolution.selection, { platform: resolution.hostPlatform });
   const semantic = ({ hostPlatform: _host, ...value }: PluginResolution) => canonicalJson(value);
   if (semantic(resolution) !== semantic(currentResolution) && semantic(resolution) !== semantic(historicalResolution)) {
@@ -143,17 +181,26 @@ export function matchesHistoricalModernPlugins(recorded: ManifestPluginMetadata,
   });
   if (manifestPluginMetadataMatches(recorded, historicalMetadata)) return true;
   const declarationsDigest = `sha256:${canonicalSha256({
-    descriptors: modernPreAssessmentSource.descriptors.map(({ contentVersion: _version, ...descriptor }) => descriptor),
-    core: modernPreAssessmentSource.core, selectionSpace: modernPreAssessmentSource.selectionSpace,
-    operations: modernPreAssessmentSource.operations
+    descriptors: declarations.descriptors.map(({ contentVersion: _version, ...descriptor }) => descriptor),
+    core: declarations.core, selectionSpace: declarations.selectionSpace, operations: declarations.operations
   })}`;
-  if (declarationsDigest !== modernPreAssessmentDeclarationsDigest) {
+  if (declarationsDigest !== expectedDeclarationsDigest) {
     throw new Error('Frozen modern source declarations do not match their captured identity.');
   }
-  return [modernHistoricalRelease, modernPreviousRelease].some((family) => {
+  const originalFamily = {
+    declarationsDigest: expectedDeclarationsDigest,
+    sharedAssets: declarations.release.sharedAssets.map(({ id, sha256 }) => ({ id, sha256 })),
+    plugins: declarations.release.plugins.map(
+      ({ category, id, apiVersion, contentVersion, contentDigest }) =>
+        ({ category, id, apiVersion, contentVersion, contentDigest })
+    )
+  };
+  return [...families, originalFamily].some((family) => {
+    const familySharedAssets = [...family.sharedAssets]
+      .sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+    const historicalSharedAssetIds = historicalResolution.sharedAssets.map(({ id }) => id).sort();
     if (declarationsDigest !== family.declarationsDigest ||
-        canonicalJson(historicalResolution.sharedAssets) !== canonicalJson([...family.sharedAssets]
-          .sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0))) {
+        canonicalJson(historicalSharedAssetIds) !== canonicalJson(familySharedAssets.map(({ id }) => id))) {
       return false;
     }
     const plugins = historicalResolution.plugins.map((plugin) => family.plugins.find((entry) =>
@@ -162,12 +209,25 @@ export function matchesHistoricalModernPlugins(recorded: ManifestPluginMetadata,
     const { hostPlatform: _host, digest: _digest, ...historicalSemantic } = historicalResolution;
     const historical = plugins.filter((plugin) => plugin !== undefined);
     return manifestPluginMetadataMatches(recorded, readManifestPluginMetadata({
-      schemaVersion: 1,
-      resolutionDigest: pluginResolutionDigest({ ...historicalSemantic, plugins: historical }),
+      schemaVersion: 1, resolutionDigest: pluginResolutionDigest({
+        ...historicalSemantic, sharedAssets: familySharedAssets, plugins: historical
+      }),
       selections: historical
     }, {
       stack: resolution.selection.stack, cloud: resolution.selection.cloud,
       workflow: resolution.selection.workflow, agents: resolution.selection.agents
     }));
   });
+}
+
+/** Recognizes exact original custody4 metadata, never the current5 family or execution permission. */
+export function matchesPreWorkflowModernPlugins(recorded: ManifestPluginMetadata, resolution: PluginResolution): boolean {
+  return matchesRetainedModernPlugins(recorded, resolution, modernPreWorkflowSource, modernPreWorkflowRegistry(),
+    modernPreWorkflowDeclarationsDigest, []);
+}
+
+/** Recognizes exact pinned source families, never old template bytes or execution permission. */
+export function matchesHistoricalModernPlugins(recorded: ManifestPluginMetadata, resolution: PluginResolution): boolean {
+  return matchesRetainedModernPlugins(recorded, resolution, modernPreAssessmentSource, modernPreAssessmentRegistry(),
+    modernPreAssessmentDeclarationsDigest, [modernHistoricalRelease, modernPreviousRelease]);
 }

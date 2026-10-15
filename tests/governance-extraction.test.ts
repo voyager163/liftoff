@@ -113,7 +113,63 @@ function setLeaf(value: unknown, segments: string[], replacement: unknown): void
   Reflect.set(parent, segments.at(-1)!, replacement);
 }
 
-function assertBoundedInfrastructureCliChanges(key: string, result: CliResult, text: string, baseline: unknown) {
+function assertBoundedDependencyCliChanges(key: string, result: CliResult, text: string, baseline: unknown) {
+  const changes: Record<string, readonly { segments: readonly string[]; before: string; after: string }[]> = {
+    'status-json': [{
+      segments: ['blockerFingerprint'],
+      before: '1f2144a069c1d6ec4c24ba98268d219a300fd40001fb38178fd89deff454b62b',
+      after: '22defc6448a20ac45ca2e64b433baadbef55d7cce3b056806166e78e0b9673af'
+    }],
+    'status-local-json': [{
+      segments: ['blockerFingerprint'],
+      before: 'f6f553b888e0e61d4e39763cba34b2df2e5a5ff02716544b06098a4c8be7ce22',
+      after: '92ddd067b6cbbda2a64232ee4a027461ebef2184ca691978930ae2087a115445'
+    }],
+    'resume-json': [{
+      segments: ['blockerFingerprint'],
+      before: 'f6f553b888e0e61d4e39763cba34b2df2e5a5ff02716544b06098a4c8be7ce22',
+      after: '92ddd067b6cbbda2a64232ee4a027461ebef2184ca691978930ae2087a115445'
+    }],
+    'plan-json': [
+      { segments: ['plan', 'baselineDigest'],
+        before: '812d3d259db037e768371e60a04b6b02cdb2a4bbedabf6aa3c8ad240bc64f572',
+        after: 'a7dd3a29b4fc589b85b29c0cbbe91486a9a052a56a17dc0b88939be1f5548c8e' },
+      { segments: ['plan', 'inputDigest'],
+        before: '9e946fa21ddcd717ed73a6e28d88295fc91c47d9ec2395cc9e3066a20c44385a',
+        after: '9e8f3f10b6534ec01ad254fe477c0efb44c212a2225f3f94f684ed1225ed3b35' },
+      { segments: ['plan', 'transitionDigest'],
+        before: 'ab342b18e493921cbf2d3ba7f4791a5d454f2c1477756b8e3f3e1db6c4605804',
+        after: '78457d3b3ddc4b619bb7d1cde09e281bea03c198a756a9c89d665cab0bd09865' }
+    ]
+  };
+  const beforeStdout: Record<string, string> = {
+    'status-json': 'b15f662f521133b7d93217d7eec6d56b3b56a80db2d7d17dcede63b3fa7bf746',
+    'status-local-json': '3eb0da2a85712bb3755984b5ee1102027cc6b819a1a581538ffad98922d69153',
+    'resume-json': '3fb3049d5d06095d8d628a66927498ccfb8a75a7479dc7d76b8e9650f3ba2a7c',
+    'plan-json': 'd174cbf496049f105e466a374a00c375b4b7f0c1b97e6cec94fe33ef5eeae7b1'
+  };
+  const review = cliReviews.find((entry) => entry.key === key)!;
+  if (!Object.hasOwn(changes, key)) return { result, text, review };
+  const payload: unknown = JSON.parse(text);
+  expect(`${JSON.stringify(payload, null, 2)}\n`).toBe(text);
+  for (const { segments, before, after } of changes[key]!) {
+    const actual = segments.reduce<unknown>((value, segment) =>
+      value !== null && typeof value === 'object' ? Reflect.get(value, segment) : undefined, payload);
+    expect(actual, `${key} dependency ${segments.join('/')}`).toBe(after);
+    setLeaf(payload, [...segments], before);
+  }
+  const recovered = `${JSON.stringify(payload, null, 2)}\n`;
+  expect(sha256(recovered), `${key} only the six reviewed dependency leaves may differ`).toBe(beforeStdout[key]);
+  expect(review.priorCurrentSha256).toBe(review.priorChange?.currentSha256);
+  const recoveredResult = withStdout(result, recovered);
+  expect(baselineComparison('governance-extraction-cli', key, recoveredResult, baseline, [review.priorChange!]).status)
+    .toBe('recorded-change');
+  return { result: recoveredResult, text: recovered, review: review.priorChange! };
+}
+
+function assertBoundedInfrastructureCliChanges(
+  key: string, result: CliResult, text: string, baseline: unknown, review: CliReview
+) {
   const changes: Record<string, readonly { segments: readonly string[]; before: string; after: string }[]> = {
     'status-json': [{
       segments: ['blockerFingerprint'],
@@ -148,7 +204,6 @@ function assertBoundedInfrastructureCliChanges(key: string, result: CliResult, t
     'resume-json': 'c2876816df7660228b122c86057e2c8940d3f9bfb9c2a672bf5a672120358775',
     'plan-json': 'b5da567ee1ca6705f9eb644543486718d0589e2a67550da96deba7b046de1aeb'
   };
-  const review = cliReviews.find((entry) => entry.key === key)!;
   if (!Object.hasOwn(changes, key)) return { result, text, review };
   const payload: unknown = JSON.parse(text);
   expect(`${JSON.stringify(payload, null, 2)}\n`).toBe(text);
@@ -263,7 +318,9 @@ describe('governance responsibility extraction parity', () => {
     for (const { key } of cliReviews) {
       const result = currentResults[key] as CliResult;
       const text = stdout[key]!;
-      const prior = assertBoundedInfrastructureCliChanges(key, result, text, recordedResults[key]);
+      const dependency = assertBoundedDependencyCliChanges(key, result, text, recordedResults[key]);
+      const prior = assertBoundedInfrastructureCliChanges(
+        key, dependency.result, dependency.text, recordedResults[key], dependency.review);
       assertBoundedApplicationCliChanges(key, prior.result, prior.text, recordedResults[key], prior.review);
       const verdict = (candidate: CliResult) => baselineComparison(
         'governance-extraction-cli', key, candidate, recordedResults[key], cliReviews).status;

@@ -266,6 +266,21 @@ remain readable diagnostic/planning families. Source5 does not enable public
 execution or automatic migration. The public/legacy executor now reports this
 explicit workflow prerequisite blocker instead of silently returning no producer.
 
+Content-only dependency updates keep retained factories on the current verified
+Node/frontend template bytes. Exact original custody4 plugin and resolution
+metadata is matched separately against frozen declarations and release metadata,
+with the complete selected semantics checked before recognition. It is not a
+registry containing old executable bytes, nor a new registry pretending to have
+an old digest. Original custody4 identities remain custody4, not source5; their
+readability grants no current telemetry, execution or phase authority.
+Pre-assessment managed handoffs retain their captured bodies instead of gaining
+new workflow guidance from a newer source family.
+
+Dependency-induced governance fingerprints and plan digests have exact
+before/after checks that recover the previous outputs by reverting only the
+reviewed leaves. Earlier HCL/application histories and the frozen extraction
+capture and harness remain unchanged.
+
 Current v8 projects can inspect an exact workflow review through
 `liftoff governance plan --scope activation --inputs <workflow-review.json> --json`.
 The public JSON file must be a singly linked regular file no larger than 64 KiB.
