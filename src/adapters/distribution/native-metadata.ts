@@ -12,6 +12,8 @@ export interface NativeStableMaterial {
   /** Downloaded deployed asset bytes, not local existence or asserted availability. */
   assets: ReadonlyMap<string, Buffer>;
   platformEvidence: ReadonlyMap<string, Buffer>;
+  archiveSignature?: Buffer;
+  archivePublicKey?: Buffer;
   stableTag: string;
   draft: boolean;
   prerelease: boolean;
@@ -19,7 +21,7 @@ export interface NativeStableMaterial {
 }
 
 export interface NativeStableSource {
-  readStable(installation: NativeInstallation, signal: AbortSignal): Promise<NativeStableMaterial>;
+  readStable(target: Pick<NativeInstallation, 'target'>, signal: AbortSignal): Promise<NativeStableMaterial>;
 }
 
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -29,9 +31,20 @@ const object = (value: unknown): Record<string, unknown> => {
 };
 const sha256 = /^[a-f0-9]{64}$/;
 
-export async function admitNativeStableMaterial(
-  material: NativeStableMaterial, installation: Pick<NativeInstallation, 'target'>, policy: NativeReleasePolicy
-): Promise<NativeCandidate> {
+interface NativeStableRecord extends Record<string, unknown> {
+  repository: NativeReleasePolicy['repository'];
+  version: string;
+  target: string;
+  commit: string;
+  manifestSha256: string;
+  inventorySha256: string;
+  files: unknown[];
+}
+
+export async function authenticateNativeStableMetadata(
+  material: Pick<NativeStableMaterial, 'record' | 'qualification' | 'signature' | 'publicKey' | 'stableTag' | 'draft' | 'prerelease'>,
+  installation: Pick<NativeInstallation, 'target'>, policy: NativeReleasePolicy
+): Promise<{ record: NativeStableRecord; evidence: Record<string, unknown> }> {
   if (!policy.approvedSigningKeySha256) throw new SelfUpgradeFailure('blocked', 'native_unqualified');
   try {
     if (material.record.length === 0 || material.record.length > 8 * 1024 * 1024 ||
@@ -50,6 +63,20 @@ export async function admitNativeStableMaterial(
     const evidence = object(admission.verifyNativeEvidenceSignature(material.qualification, material.signature,
       material.publicKey, policy.approvedSigningKeySha256));
     admission.assertNativePublicationEvidence(record, evidence, policy);
+    return { record: { ...record, repository: policy.repository, version: record.version,
+      target: installation.target, commit: record.commit, manifestSha256: record.manifestSha256,
+      inventorySha256: record.inventorySha256, files: record.files }, evidence };
+  } catch {
+    throw new SelfUpgradeFailure('failed', 'native_invalid');
+  }
+}
+
+export async function admitNativeStableMaterial(
+  material: NativeStableMaterial, installation: Pick<NativeInstallation, 'target'>, policy: NativeReleasePolicy
+): Promise<NativeCandidate> {
+  if (!policy.approvedSigningKeySha256) throw new SelfUpgradeFailure('blocked', 'native_unqualified');
+  try {
+    const { record, evidence } = await authenticateNativeStableMetadata(material, installation, policy);
     const names = [`liftoff-${record.version}-${record.target}.tar.gz`, 'sbom.cdx.json', 'provenance.json', 'NOTICE'];
     let windowsInstaller: NativeCandidate['windowsInstaller'];
     const releaseBase = `https://github.com/${policy.repository}/releases/download/v${record.version}/`;
@@ -124,7 +151,7 @@ export async function admitNativeStableMaterial(
 }
 
 export async function lookupNativeStableCandidate(
-  installation: NativeInstallation, policy: NativeReleasePolicy, source: NativeStableSource,
+  installation: Pick<NativeInstallation, 'target'>, policy: NativeReleasePolicy, source: NativeStableSource,
   timeoutMs = stableReleaseLookupTimeoutMs
 ): Promise<NativeCandidate> {
   if (!policy.approvedSigningKeySha256) throw new SelfUpgradeFailure('blocked', 'native_unqualified');

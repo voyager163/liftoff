@@ -6,6 +6,7 @@ import type { NativeBundleInventory, NativeReleasePolicy } from '../../domain/di
 import { isStableSemver } from '../../stable-release.js';
 import type { CaskOwnershipObservation } from './native.js';
 import type { SelfUpgradeDependencies } from './upgrade-host.js';
+import { createCaskFileObservation } from './native-cask-files.js';
 
 const sha256 = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const invalid = () => new SelfUpgradeFailure('blocked', 'unsupported_installation');
@@ -33,43 +34,12 @@ export async function readHomebrewCaskOwnership(
   if (!prefix || installation.packageRoot !== path.posix.join(installation.bundleRoot, 'application') ||
     installation.launcher !== path.posix.join(installation.bundleRoot, 'bin', 'liftoff')) throw invalid();
   if (!dependencies.readBytes) throw new SelfUpgradeFailure('blocked', 'native_unavailable');
-  const readBytes = dependencies.readBytes;
   const caskRoot = path.posix.join(prefix, 'Caskroom', token);
   const tapRoot = path.posix.join(prefix, 'Library', 'Taps', owner, `homebrew-${tapName}`);
   const receiptPath = path.posix.join(caskRoot, '.metadata', 'INSTALL_RECEIPT.json');
   const configPath = path.posix.join(tapRoot, '.git', 'config');
-  const directories = new Map<string, string>();
-  const fileBytes = new Map<string, { bytes: Buffer; maximum: number }>();
-  const checkSignal = () => {
-    if (signal.aborted) throw new SelfUpgradeFailure('failed', 'native_unavailable');
-  };
-  const directoryIdentity = async (directory: string) => {
-    checkSignal();
-    const stat = await dependencies.lstat(directory);
-    if (!stat.isDirectory() || stat.isSymbolicLink() || await dependencies.realpath(directory) !== directory) throw invalid();
-    checkSignal();
-    return JSON.stringify([stat.dev, stat.ino, stat.uid, stat.mode]);
-  };
-  const inspectDirectories = async (directory: string) => {
-    const relative = path.posix.relative(prefix, directory);
-    if (relative.startsWith('..') || path.posix.isAbsolute(relative)) throw invalid();
-    for (const item of [prefix, ...relative.split('/').map((_, index, parts) =>
-      path.posix.join(prefix, ...parts.slice(0, index + 1)))]) {
-      const identity = await directoryIdentity(item);
-      const before = directories.get(item);
-      if (before && before !== identity) throw changed();
-      directories.set(item, identity);
-    }
-  };
-  const file = async (filename: string, maximum: number) => {
-    await inspectDirectories(path.posix.dirname(filename));
-    const stat = await dependencies.lstat(filename);
-    if (!stat.isFile() || stat.isSymbolicLink() || await dependencies.realpath(filename) !== filename) throw invalid();
-    const bytes = await readBytes(filename, maximum);
-    if (bytes.length > maximum) throw invalid();
-    checkSignal();
-    return bytes;
-  };
+  const observation = createCaskFileObservation(dependencies, prefix, signal);
+  const { checkSignal, inspectDirectories, file } = observation;
   const environment = Object.fromEntries(Object.entries(readOnlyEnvironment(dependencies, neutralDirectory))
     .filter(([key]) => !/^git_/i.test(key)));
   Object.assign(environment, { GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_OPTIONAL_LOCKS: '0' });
@@ -90,7 +60,6 @@ export async function readHomebrewCaskOwnership(
   try {
     await inspectDirectories(installation.bundleRoot);
     const receiptBytes = await file(receiptPath, 256 * 1024);
-    fileBytes.set(receiptPath, { bytes: receiptBytes, maximum: 256 * 1024 });
     let receipt: Record<string, unknown>;
     try { receipt = record(JSON.parse(receiptBytes.toString('utf8'))); }
     catch { throw new SelfUpgradeFailure('blocked', 'native_invalid'); }
@@ -104,8 +73,7 @@ export async function readHomebrewCaskOwnership(
       definitionRelative.startsWith('..') || path.posix.isAbsolute(definitionRelative) ||
       path.posix.basename(definitionPath) !== `${token}.rb`) throw invalid();
     const definitionBytes = await file(definitionPath, 256 * 1024);
-    fileBytes.set(definitionPath, { bytes: definitionBytes, maximum: 256 * 1024 });
-    fileBytes.set(configPath, { bytes: await file(configPath, 64 * 1024), maximum: 64 * 1024 });
+    await file(configPath, 64 * 1024);
     const remote = await git('config', '--no-includes', '--local', '--get-all', 'remote.origin.url');
     const approvedRemotes = [
       `https://github.com/${repository}`, `https://github.com/${repository}.git`,
@@ -115,12 +83,7 @@ export async function readHomebrewCaskOwnership(
     if (!approvedRemotes.some(value => value.toLowerCase() === remote.toLowerCase())) throw invalid();
     const tapCommit = await git('rev-parse', '--verify', 'HEAD');
     if (!/^[a-f0-9]{40}$/.test(tapCommit)) throw invalid();
-    for (const [filename, before] of fileBytes) {
-      if (!before.bytes.equals(await file(filename, before.maximum))) throw changed();
-    }
-    for (const [directory, before] of directories) {
-      if (await directoryIdentity(directory) !== before) throw changed();
-    }
+    await observation.recheck();
     if (await git('rev-parse', '--verify', 'HEAD') !== tapCommit) throw changed();
     return {
       fullToken, sourceRepository: repository, installedVersion: installation.version,

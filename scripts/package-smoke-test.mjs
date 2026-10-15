@@ -185,7 +185,10 @@ try {
   assertPackageContains(packResult, 'dist/commands.js');
   assertPackageContains(packResult, 'dist/package-identity.js');
   assertPackageContains(packResult, 'dist/self-upgrade.js');
-  for (const asset of ['native-release-admission.mjs', 'release-policy.json', 'platforms.json']) {
+  for (const asset of [
+    'native-release-admission.mjs', 'native-release-admission.d.mts',
+    'native-release-catalog.mjs', 'native-release-catalog.d.mts', 'release-policy.json', 'platforms.json'
+  ]) {
     assertPackageContains(packResult, `distribution/native/${asset}`);
   }
   assertPackageContains(packResult, 'dist/stable-release.js');
@@ -450,7 +453,10 @@ try {
     throw new Error('Installed self-upgrade module failed its isolated injected check');
   }
 
-  for (const asset of ['native-release-admission.mjs', 'release-policy.json', 'platforms.json']) {
+  for (const asset of [
+    'native-release-admission.mjs', 'native-release-admission.d.mts',
+    'native-release-catalog.mjs', 'native-release-catalog.d.mts', 'release-policy.json', 'platforms.json'
+  ]) {
     const relative = path.join('distribution', 'native', asset);
     if (!(await readFile(path.join(installedPackageRoot, relative))).equals(await readFile(path.join(packageRoot, relative)))) {
       throw new Error(`Installed native admission material differs: ${asset}`);
@@ -466,11 +472,27 @@ try {
       pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-metadata.js')).href)};
     import {readHomebrewCaskOwnership} from ${JSON.stringify(
       pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-cask.js')).href)};
+    import {createNativeStableSource} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-transport.js')).href)};
+    import {createHomebrewCaskPreparation} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-cask-plan.js')).href)};
+    import {assertNativeReleaseCatalog,nativeReleaseCatalogFilename,nativeReleaseTargets} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-release-catalog.mjs')).href)};
     const policy=JSON.parse(await readFile(${JSON.stringify(path.join(installedPackageRoot, 'distribution/native/release-policy.json'))},'utf8'));
     assert.equal(policy.approvedSigningKeySha256,null);
     await assert.rejects(()=>admitNativeStableMaterial({}, {}, policy),e=>e.reasonCode==='native_unqualified');
     await assert.rejects(()=>readHomebrewCaskOwnership({}, {}, policy, '', new AbortController().signal),
       e=>e.reasonCode==='native_unqualified');
+    const source=createNativeStableSource(policy,{fetch:async()=>{throw new Error('Unqualified metadata must not fetch.');}});
+    await assert.rejects(()=>source.readStable({target:'linux-x64'},new AbortController().signal),
+      e=>e.reasonCode==='native_unqualified');
+    const preparation=createHomebrewCaskPreparation({},policy);
+    await assert.rejects(()=>preparation.preview('/opt/homebrew',new AbortController().signal),
+      e=>e.reasonCode==='native_unqualified');
+    assert.equal(preparation.installExact,undefined);
+    assert.equal(nativeReleaseCatalogFilename,'liftoff-native-release.json');
+    assert.deepEqual([...nativeReleaseTargets],['darwin-arm64','linux-arm64','linux-x64','win32-x64']);
+    assert.throws(()=>assertNativeReleaseCatalog({}));
     const {publicKey,privateKey}=generateKeyPairSync('ed25519');
     const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
     const approved=sha(publicKey.export({format:'der',type:'spki'}));

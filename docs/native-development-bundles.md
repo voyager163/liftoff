@@ -320,6 +320,43 @@ user-scope ownership; machine-scope installs are not migrated or elevated.
 Linux recovery delegates unchanged to the installed receipt/journal API and
 requires exact selected digests; it is not a macOS cask recovery authority.
 
+`createNativeStableSource` in `native-transport.ts` is a bounded read-only material
+reader, not an installer or package-manager availability reader. It uses the
+canonical GitHub stable release and flat catalog, verifies the selected signed
+envelope before large subject downloads, and independently checks tag/main/run
+identity with final ref/release readbacks. It downloads only the selected target,
+rejects unsafe redirects and oversized streams, and preserves the two-second
+metadata deadline. Returned bytes still require `lookupNativeStableCandidate` /
+`admitNativeStableMaterial`; no staging root or manager execution permission is
+created. This factory is not yet registered as the CLI's production stable reader.
+The npm package includes both inert catalog files; no builder is imported.
+
+Absent-cask preparation is distinct from upgrading an installed owner.
+`createHomebrewCaskPreparation` in `native-cask-plan.ts` exposes
+`observeDestination(prefix, signal)` and `preview(prefix, signal)`. Stable lookup
+accepts a target-only request, so a migration caller need not forge a
+`NativeInstallation`. The preview authenticates target material, rechecks canonical
+destination/presence facts, and optionally observes bounded local cask bytes in
+the flat or first-letter tap layout. Those bytes are explicitly
+`unverified-local-bytes`; neither a matching filename nor their hash proves tap
+origin, safe Ruby, channel availability, writable destinations, signing or host
+qualification. An occupied path is not installed ownership. Callers must use fresh
+policy and observations; preview identities are not later effect authority.
+
+Every preview retains `channel.status: unknown`,
+`preflight.exactExecutionProven: false`, and
+`execution: { status: blocked, reason: exact_cask_execution_unproven, command: null }`.
+There is no install/uninstall method. A migration must stop before removing npm.
+The inspected [Homebrew install parser](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cmd/install.rb)
+has no cask version selector; [`version-install`](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cmd/version-install.rb)
+is formula-only and may create a personal tap. The
+[cask path loader](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cask/cask_loader.rb)
+applies loadability/trust policy, then reopens and evaluates Ruby. A prehashed
+temporary `.rb`, an unpinned token, `--dry-run` or a no-auto-update setting is
+therefore not established exact-source execution authority. Preparation never
+executes Homebrew/Ruby/Git, creates a tap, changes trust/settings, writes a cask,
+or supplies an unbound fallback command.
+
 The pinned HCL npm package omits standalone license notices. The builder supplies its
 upstream MPL notice and the notices for the seven modules recorded in the original WASM,
 including Go's license. Module zip checksums were checked against the embedded Go module

@@ -62,6 +62,53 @@ export interface NativeUpgradePort {
     neutralDirectory: string): Promise<void>;
 }
 
+export interface CaskDestinationObservation {
+  prefix: '/opt/homebrew' | '/usr/local';
+  caskRoot: string;
+  launcher: string;
+  cask: { state: 'absent' | 'occupied'; identity: string };
+  selectedLauncher: { state: 'absent' | 'occupied'; identity: string };
+  /** Local path observation only, never installation or removal authority. */
+  identity: string;
+}
+
+export interface CaskInstallPreview {
+  schemaVersion: 1;
+  kind: 'liftoff-homebrew-cask-install-preview';
+  effects: 'none';
+  target: NativeCandidate;
+  cask: string;
+  expectedSourceRepository: string;
+  destination: CaskDestinationObservation & { versionRoot: string; stagedLauncher: string };
+  source: { state: 'absent' } | {
+    state: 'observed';
+    path: string;
+    bytes: number;
+    sha256: string;
+    authority: 'unverified-local-bytes';
+  };
+  channel: { status: 'unknown' };
+  preflight: {
+    nativeAppleSilicon: true;
+    canonicalDirectories: true;
+    caskAbsent: boolean;
+    launcherAbsent: boolean;
+    exactExecutionProven: false;
+  };
+  execution: {
+    status: 'blocked';
+    reason: 'exact_cask_execution_unproven';
+    command: null;
+  };
+  /** Binds the preview's facts, not permission for a later effect. */
+  identity: string;
+}
+
+export interface CaskPreparationPort {
+  observeDestination(prefix: string, signal: AbortSignal): Promise<CaskDestinationObservation>;
+  preview(prefix: string, signal: AbortSignal): Promise<CaskInstallPreview>;
+}
+
 export function nativeManagerHandoff(installation: NativeInstallation, version: string): UpgradeHandoff | undefined {
   if (installation.owner === 'winget' && installation.managerId && installation.managerSource && installation.managerScope === 'user') {
     return {

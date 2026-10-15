@@ -1,4 +1,4 @@
-import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { copyFile, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -9,74 +9,15 @@ import { bundleInventory } from '../scripts/native-bundle-contract.mjs';
 import { inspectOwnedInstallation, installOwnedBundle } from '../scripts/native-install.mjs';
 import { runSelfUpgrade } from '../src/application/upgrade/self-upgrade.js';
 import { cliInstallationLayer } from '../src/application/diagnose/doctor.js';
-import { admitNativeStableMaterial, lookupNativeStableCandidate, type NativeStableMaterial } from '../src/adapters/distribution/native-metadata.js';
+import { admitNativeStableMaterial, lookupNativeStableCandidate } from '../src/adapters/distribution/native-metadata.js';
 import { assertCaskOwnership, assertWinGetOwnership, createNativeUpgradePort, nativePolicy } from '../src/adapters/distribution/native.js';
 import { SelfUpgradeFailure, selfUpgradeExitCode, selfUpgradeRemedy } from '../src/domain/distribution/liftoff-upgrade.js';
-import type { NativeCandidate, NativeInstallation, NativeReleasePolicy, NativeUpgradePort } from '../src/domain/distribution/native-upgrade.js';
+import type { NativeCandidate, NativeInstallation, NativeUpgradePort } from '../src/domain/distribution/native-upgrade.js';
 import { upgradeWorld } from './fixtures/installer-upgrade.js';
+import { nativeInstallation as installation, signedMaterial } from './fixtures/native-stable-material.js';
 
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const json = (value: unknown) => Buffer.from(JSON.stringify(value));
-const installation: NativeInstallation = {
-  owner: 'liftoff-native', version: '0.12.3', target: 'linux-x64', packageRoot: '/fixture/versions/old/application',
-  bundleRoot: '/fixture/versions/old', launcher: '/fixture/versions/old/bin/liftoff',
-  runtime: '/fixture/versions/old/runtime/node', prefix: '/fixture', current: 'versions/old',
-  manifestSha256: 'a'.repeat(64), inventorySha256: 'b'.repeat(64), sourceCommit: 'c'.repeat(40), identity: 'fixture-local-owner'
-};
-
-function signedMaterial() {
-  const key = generateKeyPairSync('ed25519');
-  const keyDigest = hash(key.publicKey.export({ type: 'spki', format: 'der' }));
-  const policy: NativeReleasePolicy = {
-    schemaVersion: 1, repository: 'voyager163/liftoff', approvedSigningKeySha256: keyDigest,
-    homebrew: { cask: null, sourceRepository: null, developerTeamId: null },
-    winget: { packageIdentifier: null, publisher: null, installerAppId: null, certificateSha256: null },
-    linux: { archiveSigningKeySha256: keyDigest }
-  };
-  const archive = 'liftoff-0.13.0-linux-x64.tar.gz';
-  const assets = new Map<string, Buffer>([
-    [archive, Buffer.from('fixture deployed archive')],
-    ['sbom.cdx.json', json({ bomFormat: 'CycloneDX', specVersion: '1.6',
-      components: [{ name: '@msn-control/liftoff', version: '0.13.0' }, { name: 'node' }, { name: 'fixture-dependency' }],
-      properties: [{ name: 'liftoff:sourceCommit', value: 'd'.repeat(40) },
-        { name: 'liftoff:inventorySha256', value: 'e'.repeat(64) }] })],
-    ['NOTICE', Buffer.from('Fixture-only license notices')]
-  ]);
-  assets.set('provenance.json', json({
-    _type: 'https://in-toto.io/Statement/v1', predicateType: 'https://slsa.dev/provenance/v1',
-    subject: [{ name: archive, digest: { sha256: hash(assets.get(archive)!) } }],
-    predicate: { buildDefinition: { externalParameters: {
-      repository: policy.repository, commit: 'd'.repeat(40), packageVersion: '0.13.0', target: { platform: 'linux', architecture: 'x64' }
-    } } }
-  }));
-  const record = {
-    schemaVersion: 1, kind: 'liftoff-native-release-candidate', repository: policy.repository, commit: 'd'.repeat(40),
-    version: '0.13.0', target: 'linux-x64', manifestSha256: 'f'.repeat(64), inventorySha256: 'e'.repeat(64),
-    files: [archive, 'sbom.cdx.json', 'provenance.json', 'NOTICE'].map(filename => ({
-      filename, bytes: assets.get(filename)!.length, sha256: hash(assets.get(filename)!), mode: 0o644
-    }))
-  };
-  const platformEvidence = new Map(['minimumHost', 'installerOwnership', 'signing', 'packageNamespace', 'hclSourceCorrespondence']
-    .map(name => [name, json({ fixtureOnly: true, name })]));
-  const qualification = {
-    ...record, qualification: Object.fromEntries([...platformEvidence.keys()].map(name => [name, true])),
-    evidenceDigests: Object.fromEntries([...platformEvidence].map(([name, bytes]) => [name, hash(bytes)])),
-    platformSigningIdentity: keyDigest
-  };
-  const material: NativeStableMaterial = {
-    record: json(record), qualification: json(qualification), signature: sign(null, json(qualification), key.privateKey),
-    publicKey: Buffer.from(key.publicKey.export({ type: 'spki', format: 'pem' })), assets, platformEvidence,
-    stableTag: 'v0.13.0', draft: false, prerelease: false,
-    bundleRoot: path.resolve(os.tmpdir(), 'liftoff-virtual-candidate')
-  };
-  const resign = () => {
-    material.record = json(record);
-    material.qualification = json(qualification);
-    material.signature = sign(null, material.qualification, key.privateKey);
-  };
-  return { material, policy, record, qualification, assets, platformEvidence, resign };
-}
-
 function managerObservationFixture(platform: 'darwin' | 'win32') {
   const api = platform === 'win32' ? path.win32 : path.posix;
   const root = platform === 'win32' ? 'C:\\virtual\\fixture-native' : '/virtual/fixture-native';
