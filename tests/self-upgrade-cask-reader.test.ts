@@ -125,27 +125,37 @@ describe('production Homebrew cask reader on explicit filesystem/process ports',
     fixture.world.neutralDirectory = directory;
     const runner = new NodeCommandRunner();
     let children = 0;
-    fixture.dependencies.runner = { run: vi.fn<CommandRunner['run']>(async (command, options) => {
-      expect(options?.inheritEnvironment).toBe(false);
+    const results: { kind: 'inherited' | 'isolated'; result: CommandResult }[] = [];
+    const run = vi.fn<CommandRunner['run']>(async (command, options) => {
       const child = { executable: process.execPath, args: ['-e', inspector] };
       if (children === 0) {
         const inherited = await runner.run(child, { ...options, inheritEnvironment: undefined, ensureProcessTreeSettled: false });
-        expect(inherited.status).toBe(0);
-        expect(JSON.parse(inherited.stdout)).toMatchObject(parentOnly);
+        results.push({ kind: 'inherited', result: inherited });
       }
       const observed = await runner.run(child, options);
-      expect(observed.status).toBe(0);
-      expect(JSON.parse(observed.stdout)).toEqual({
-        ...Object.fromEntries(Object.keys(parentOnly).map(key => [key, null])),
-        npm_config_registry: 'https://fixture-mirror.test/npm', DO_NOT_TRACK: '1',
-        LIFTOFF_TELEMETRY: '0', NODE_OPTIONS: '', NODE_PATH: ''
-      });
+      results.push({ kind: 'isolated', result: observed });
       children++;
       return fixture.run(command, options);
-    }) };
+    });
+    fixture.dependencies.runner = { run };
     try {
       expect(await fixture.observe()).toMatchObject({ sourceRepository: 'fixture/homebrew-tools' });
       expect(children).toBe(3);
+      for (const [, options] of run.mock.calls) expect(options?.inheritEnvironment).toBe(false);
+      expect(results.map(({ kind }) => kind)).toEqual(['inherited', 'isolated', 'isolated', 'isolated']);
+      for (const { kind, result } of results) {
+        expect(result.status, JSON.stringify({
+          kind, errorCode: result.errorCode, errorMessage: result.errorMessage, stdout: result.stdout,
+          stderr: result.stderr, timedOut: result.timedOut, signal: result.signal,
+          processSpawned: result.processSpawned, processTreeSettled: result.processTreeSettled
+        })).toBe(0);
+        if (kind === 'inherited') expect(JSON.parse(result.stdout)).toMatchObject(parentOnly);
+        else expect(JSON.parse(result.stdout)).toEqual({
+          ...Object.fromEntries(Object.keys(parentOnly).map(key => [key, null])),
+          npm_config_registry: 'https://fixture-mirror.test/npm', DO_NOT_TRACK: '1',
+          LIFTOFF_TELEMETRY: '0', NODE_OPTIONS: '', NODE_PATH: ''
+        });
+      }
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
