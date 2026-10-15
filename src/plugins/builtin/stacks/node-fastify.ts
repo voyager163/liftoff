@@ -4,7 +4,7 @@ import { builtinDescriptor, projectArtifact } from '../core.js';
 export const nodeFastifyPlugin = builtinDescriptor({
   category: 'stack',
   id: 'node-fastify',
-  contentVersion: 3,
+  contentVersion: 4,
   supports: [{ workload: ['standard'] }],
   artifacts: ([
     ['node-backend-package', 'backend', ['backend', 'package.json']],

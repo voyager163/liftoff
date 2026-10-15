@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { createModernPreAssessmentRegistry, modernPreAssessmentRegistry } from '../src/application/project/modern-plugins.js';
+import {
+  createModernPreAssessmentRegistry,
+  matchesHistoricalModernPlugins,
+  modernPreAssessmentRegistry,
+  modernSourceRegistry
+} from '../src/application/project/modern-plugins.js';
 import { parseProjectManifest } from '../src/application/project/manifest.js';
 import { buildModernManagedCore } from '../src/application/project/modern-managed-core.js';
 import { createManifestV8Candidate } from '../src/application/project/manifest-writer.js';
@@ -10,7 +15,6 @@ import { renderProjectAssessmentIntegration } from '../src/generators/governance
 import { modernProjectSourceInput, resolveModernManifestSourceContext } from '../src/application/project/source-context.js';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { supportedHostPlatforms } from '../src/domain/project/supported-stack.js';
-import { readManifestPluginMetadata } from '../src/domain/project/manifest/plugins.js';
 import type { ProjectOptions, ManifestLayoutDescriptor } from '../src/domain/project/contracts.js';
 import {
   modernPreAssessmentDeclarationsDigest,
@@ -39,7 +43,7 @@ const bytes = readFileSync(new URL('./fixtures/pre-assessment-guidance-source.js
 const before: BeforeSource = JSON.parse(bytes.toString('utf8'));
 
 describe('genuine pre-assessment declaration and managed-body source contract', () => {
-  it('pins the original capture and reconstructs its real registry instead of reusing target declarations', () => {
+  it('pins the original capture while composing it with the current reviewed template release', () => {
     expect(createHash('sha256').update(bytes).digest('hex'))
       .toBe('b69ab1ecc4b7aca46d186abee998bb5c8f4c57e5a58a15781afbf2a255025d8c');
     expect(before.sourceHead).toBe(modernPreAssessmentSourceRevision);
@@ -57,8 +61,15 @@ describe('genuine pre-assessment declaration and managed-body source contract', 
       .toBe('sha256:b336953323f1099a429e35cb22a39c9dda48e884bc5e610bfa44424db914bcf6');
     expect(modernPreAssessmentSource.release).toEqual(before.release);
     const registry = modernPreAssessmentRegistry();
-    expect(registry.registryDigest).toBe(before.registryDigest);
-    expect(registry.pluginSetDigest).toBe(before.pluginSetDigest);
+    expect(before.registryDigest).toBe('sha256:3f586dc05020ab6f8f5f8c312098fef7e2a1a0ff3a802d60c1f0366ef25023a1');
+    expect(before.pluginSetDigest).toBe('sha256:b37f1ea2319bdf25e2fda09faa271639c48007acdcbd80aaf540835a210eab73');
+    expect(registry.registryDigest).toBe('sha256:b09ff9e46519eb78e3acaa811b7687e017f5cd36c923ecf0c439c3daa8477f18');
+    expect(registry.pluginSetDigest).toBe('sha256:593f115d00e9065567b063d306511a5aa7d3a0e21ee17811e94aa09f69daf79f');
+    expect(registry.coreContributionDigest).toBe('sha256:a4710c6c0be752760b7bf068e794974aba443d05510bd5ca634a4e1ed3064677');
+    expect(registry.inventory.find(plugin => plugin.id === 'node-fastify')).toMatchObject({
+      contentVersion: 4,
+      contentDigest: 'sha256:741c6dc7221d9178db1ea88dee47c98e3bdb1ba382ba432dc76f277c705feb92'
+    });
     expect(modernPreAssessmentRegistry()).toBe(registry);
     expect(Object.isFrozen(modernPreAssessmentSource)).toBe(true);
     expect(Object.isFrozen(modernPreAssessmentSource.descriptors[0].artifacts)).toBe(true);
@@ -88,12 +99,8 @@ describe('genuine pre-assessment declaration and managed-body source contract', 
         governanceProfile: manifest.governance.profile, environments: workload.environments
       };
       for (const platform of supportedHostPlatforms) {
-        const resolution = modernPreAssessmentRegistry().resolveSelection(selection, { platform });
-        expect(readManifestPluginMetadata({
-          schemaVersion: 1, resolutionDigest: resolution.digest, selections: resolution.plugins
-        }, {
-          stack: selection.stack, cloud: selection.cloud, workflow: selection.workflow, agents: selection.agents
-        })).toEqual(manifest.plugins);
+        const target = modernSourceRegistry().resolveSelection(selection, { platform });
+        expect(matchesHistoricalModernPlugins(manifest.plugins, target)).toBe(true);
       }
       const managed = buildModernManagedCore(input);
       expect(managed.map(artifact => ({
