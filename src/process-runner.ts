@@ -7,6 +7,7 @@ import type { ExternalCommand } from './domain/project/contracts.js';
 export interface RunCommandOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  inheritEnvironment?: boolean;
   stdin?: string | Uint8Array;
   timeoutMs?: number;
   maxOutputBytes?: number;
@@ -184,7 +185,8 @@ export class NodeCommandRunner implements CommandRunner {
       const ownsProcessGroup = (bounded || options.ensureProcessTreeSettled === true) && process.platform !== 'win32';
       const child = spawn(command.executable, command.args, {
         cwd: options.cwd,
-        env: options.env ? { ...process.env, ...options.env } : process.env,
+        env: options.inheritEnvironment === false ? { ...options.env } :
+          options.env ? { ...process.env, ...options.env } : process.env,
         shell: false,
         detached: ownsProcessGroup,
         stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
