@@ -116,6 +116,10 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
             description:
               'Historical projects retain schema-2 planning and execution. V8 projects retain ' +
               'schema-3 status, resume and verify inspection; recorded phases are not current proof. ' +
+              'V8 plan --scope activation --inputs <workflow-review.json> accepts only a closed schema-1 ' +
+              'review-workflow-source5 request. It returns read-only exact review values and concrete ' +
+              'missing current-prerequisite blockers, exits 2, saves no approval or preview, and permits ' +
+              'no publication or dispatch. Modern workflow approve/apply-next remain unavailable. ' +
               'An exact --revalidation-publication selects existing successor proof, never approval ' +
               'or execution. Verify exits 0 for complete or inapplicable selected scope, 2 for ' +
               'consistent incomplete work, and 1 for inspection failure. ' +

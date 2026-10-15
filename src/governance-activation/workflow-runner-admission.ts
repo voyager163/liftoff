@@ -20,13 +20,10 @@ export type WorkflowRunnerAdmissionInput = WorkflowEffectInput & {
   recordRunnerAdmissionIntent?: (intent: { bindingDigest: string; planDigest: string }) => Promise<void>;
 };
 
-export async function admitReviewedRunnerWorkflows(
-  input: WorkflowRunnerAdmissionInput, binding: WorkflowRunnerAdmissionBinding
-): Promise<{ bindingDigest: string; observationDigest: string }> {
+export function validateWorkflowRunnerAdmission(binding: WorkflowRunnerAdmissionBinding): WorkflowRunnerAdmissionBinding {
   binding = captureWorkflowBinding(binding);
   githubRepository(binding.repository);
   positiveId(binding.repositoryId); positiveId(binding.groupId);
-  const organization = binding.repository.split('/')[0]!;
   const pattern = new RegExp(`^${binding.repository.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}/\\.github/workflows/[A-Za-z0-9_-]+\\.ya?ml@refs/(?:heads/(?:develop|main|release/[A-Za-z0-9_./-]+|hotfix/[A-Za-z0-9_./-]+)|tags/liftoff-execution-[a-f0-9]{40})$`, 'u');
   if (!binding.groupName || !binding.networkConfigurationId ||
     !binding.afterWorkflows.length || binding.afterWorkflows.length > 32 ||
@@ -36,6 +33,14 @@ export async function admitReviewedRunnerWorkflows(
     binding.beforeWorkflows.some((workflow) => !binding.afterWorkflows.includes(workflow))) {
     return workflowFailure('workflow-runner-admission', 'Admission can only add exact workflows/refs in the qualified repository-owned private runner group; it cannot remove assignments, widen repositories, or create a runner.');
   }
+  return binding;
+}
+
+export async function admitReviewedRunnerWorkflows(
+  input: WorkflowRunnerAdmissionInput, binding: WorkflowRunnerAdmissionBinding
+): Promise<{ bindingDigest: string; observationDigest: string }> {
+  binding = validateWorkflowRunnerAdmission(binding);
+  const organization = binding.repository.split('/')[0]!;
   const operation = workflowOperation(input, 'github.workflow-source.admit-reviewed', binding);
   const bindingDigest = canonicalSha256(binding);
   const intent = input.runnerAdmissionIntent && captureWorkflowBinding(input.runnerAdmissionIntent);

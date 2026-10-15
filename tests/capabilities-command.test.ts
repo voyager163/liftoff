@@ -81,6 +81,11 @@ describe('project-independent capability discovery', () => {
       manifestRead: [8], governanceReport: 3, execution: false,
       commands: ['validate', 'doctor', 'dev', 'infra', 'governance status', 'governance resume', 'governance verify']
     });
+    expect(report.schemas.modernWorkflowReview).toMatchObject({
+      manifestRead: [8], report: 1, selector: 'governance plan --scope activation --inputs <workflow-review.json>',
+      request: 'review-workflow-source5', readOnly: true, blockedExit: 2,
+      approval: false, execution: false, externalMetadataWrites: false, providerOperations: false
+    });
     expect(report.schemas.modernLocalVerification).toMatchObject({
       manifestRead: [8], report: 7, selector: 'governance <plan|approve|apply-next> --scope local --local-operation verify',
       requests: ['verify-local', 'verify-manual-native', 'verify-openspec-local', 'verify-openspec-initialized', 'verify-openspec-archived'],

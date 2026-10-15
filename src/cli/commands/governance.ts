@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { readPublicActivationInputs } from '../../adapters/filesystem/governance-records.js';
+import { readPublicActivationInputs, readPublicGovernanceInputs } from '../../adapters/filesystem/governance-records.js';
 import { findProjectRoot } from '../../adapters/filesystem/project-discovery.js';
 import {
   type GovernanceInspection,
@@ -143,8 +143,26 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
     const { inspectModernGovernance, modernGovernanceReportSchemaVersion } =
       await import('../../application/governance/modern-inspection.js');
     try {
+      if (subcommand === 'plan' && typeof parsed.flags.inputs === 'string') {
+        if (scope !== 'activation' || ['plan', 'recover-phase', 'execute', 'protected-stdin', 'revalidation-publication']
+          .some(flag => Object.hasOwn(parsed.flags, flag))) {
+          throw new Error('A modern workflow review requires --scope activation and --inputs only, without approval, execution or recovery selectors.');
+        }
+        const { parseSource5WorkflowReviewRequest } = await import('../../governance-activation/workflow-source5-review.js');
+        const { inspectModernWorkflowReview } = await import('../../application/governance/modern-workflow-review.js');
+        const request = await readPublicGovernanceInputs(path.resolve(context.cwd, parsed.flags.inputs), 'Activation', parseSource5WorkflowReviewRequest);
+        const report = await inspectModernWorkflowReview(projectRoot, manifest, request);
+        if (jsonMode) json(presentation, report);
+        else {
+          presentation.status('pending', 'Workflow review', `${request.phaseId}: review values only; execution is blocked.`);
+          presentation.definitions('Unapproved review', [{ label: 'Fingerprint', value: report.review.fingerprint }]);
+          for (const blocker of report.blockers) presentation.status('warning', 'Prerequisite', blocker.message);
+        }
+        context.outcome?.record('attention-required');
+        return 2;
+      }
       if (subcommand !== 'status' && subcommand !== 'resume' && subcommand !== 'verify') {
-        throw new Error('Modern governance currently exposes status, resume and verify inspection only; historical plans and approvals cannot execute v8 work.');
+        throw new Error('Modern governance currently exposes status, resume and verify inspection only, plus read-only workflow review via plan --scope activation --inputs; historical plans and approvals cannot execute v8 work.');
       }
       if (['inputs', 'plan', 'recover-phase', 'execute', 'protected-stdin'].some(flag => Object.hasOwn(parsed.flags, flag))) {
         throw new Error('Modern inspection accepts no activation inputs, execution or approval flags.');

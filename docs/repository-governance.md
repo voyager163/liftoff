@@ -123,7 +123,39 @@ remain readable diagnostic/planning families. Source5 does not enable public
 execution or automatic migration. The public/legacy executor now reports this
 explicit workflow prerequisite blocker instead of silently returning no producer.
 
-The unregistered source5 bridge uses a separate private control schema1 and the
+Current v8 projects can inspect an exact workflow review through
+`liftoff governance plan --scope activation --inputs <workflow-review.json> --json`.
+The public JSON file must be a singly linked regular file no larger than 64 KiB.
+Its closed fields are `schemaVersion: 1`, `kind: "review-workflow-source5"`,
+`phaseId`, `executionId` (a new UUIDv4), `createdAt`, `expiresAt`, the explicit
+activation `configuration`, `origin`, `remainingFrom` and the complete `effects`
+array of `{ action, binding }` entries. Publication uses a null origin and
+remainingFrom; later source-bound review retains the exact original publication
+plan/proof/commit/tree references. No future SHA slots or implicit budget are
+created. The review keeps the original graph dependencies and exact per-file
+before/after bytes, repository, source, workflow and operation bindings.
+
+This route is **read-only and blocked**, exits 2, and saves no preview, consent,
+approval, ledger or project file. It reobserves the installed source and physical
+file identities, preserves both actual observation times, and rejects drift.
+It does not call tools or providers. A fingerprint identifies review values only,
+not a stored approved plan. Modern workflow approve/apply-next remain unavailable
+until independently current prerequisite producers are composed. Azure
+staging/promotion/rollback peers cannot be replaced by GitHub job success;
+applicable protected handover, custody and current qualified native-host proof
+remain mandatory. Group/network/workflow assignment alone does not qualify a
+host. Capability discovery and command help advertise this same restricted scope.
+
+The deterministic review builder and whole-plan component runner are distinct
+source interfaces. The runner uses the original sealed journal's complete ordered
+inventory, accepts no caller subset/checkpoints/observation mode, validates all
+bindings before the first component, and stops at a pending entry while reporting
+the untouched remaining operation digests. A failed entry throws without starting
+later entries or erasing earlier receipts. Individual current observations never
+become whole-matrix or phase completion; the runner cannot issue approval,
+finalize metadata or discharge independent prerequisite/peer obligations.
+
+The private source5 effect bridge uses a separate private control schema1 and the
 closed `workflow-source5-{plan,approval,journal,operation,proof}` namespaces
 outside the project and repository. Controls are canonical, project-bound,
 HMAC-sealed objects; restart validates the exact original issuance, not imported
