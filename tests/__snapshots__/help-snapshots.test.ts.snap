@@ -700,7 +700,8 @@ Project options
 Option               Description
 ───────────────────  ───────────────────────────────────────────────────────────
 --project <path>     One exact Liftoff project root
---repository <path>  Exact repository root for separate heartbeat file authority
+--repository <path>  Exact repository root for separate heartbeat review/report
+                     binding; published tooling remains unqualified
 
 Command options
 ───────────────
@@ -1183,7 +1184,7 @@ Subcommands
 
 Project options
 Option: --project <path> | Description: One exact Liftoff project root
-Option: --repository <path> | Description: Exact repository root for separate heartbeat file authority
+Option: --repository <path> | Description: Exact repository root for separate heartbeat review/report binding; published tooling remains unqualified
 
 Command options
 Option: --check | Description: Review exact project and external consent writes without generating an identity
@@ -1842,9 +1843,10 @@ exports[`complete help screens > snapshots rich telemetry command help 1`] = `
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
 │ Option               Description                                                             │
-│ ───────────────────  ───────────────────────────────────────────────────────────             │
+│ ───────────────────  ─────────────────────────────────────────────────────────────────────── │
 │ --project <path>     One exact Liftoff project root                                          │
-│ --repository <path>  Exact repository root for separate heartbeat file authority             │
+│ --repository <path>  Exact repository root for separate heartbeat review/report binding;     │
+│                      published tooling remains unqualified                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
 │ Option       Description                                                                     │

@@ -236,13 +236,19 @@ async function writeSeed(root: string, projectName: string): Promise<void> {
 }
 
 function emptyPhases(): UserActivationState['phases'] {
-  return Object.fromEntries(phaseIds.map((phaseId) => [phaseId, {
+  return phaseFixtureRecord<UserActivationState['phases'][PhaseId]>(() => ({
     state: 'pending',
     updatedAt: now.toISOString(),
     evidence: [],
     approvals: [],
     blockers: []
-  }])) as UserActivationState['phases'];
+  }));
+}
+
+function phaseFixtureRecord<T>(value: (phaseId: PhaseId) => T): Record<PhaseId, T> {
+  const record = {} as Record<PhaseId, T>;
+  for (const phaseId of phaseIds) record[phaseId] = value(phaseId);
+  return record;
 }
 
 function validState(overrides: Partial<UserActivationState> = {}): UserActivationState {
@@ -427,11 +433,11 @@ class Phase0Runner extends ReadyInitRunner {
           args === 'symbolic-ref --quiet --short HEAD' ? 'develop' :
             args === 'remote -v' ? 'origin https://github.com/owner/phase0.git (fetch)\norigin https://github.com/owner/phase0.git (push)' :
               args === 'remote get-url --push --all origin' ? 'https://github.com/owner/phase0.git' : '';
-      return this.result(command, { stdout });
+      return this.phase0Result(command, { stdout });
     }
     if (command.executable === 'gh') {
       this.calls.push(command);
-      return this.result(command, {
+      return this.phase0Result(command, {
         stdout: `HTTP/2.0 200 OK\r\n\r\n${JSON.stringify({
           id: 123,
           full_name: 'owner/phase0',
@@ -446,12 +452,12 @@ class Phase0Runner extends ReadyInitRunner {
     }
     if (command.executable === 'az' && command.args[0] === 'account') {
       this.calls.push(command);
-      return this.result(command, { stdout: '{"id":"sub"}\n' });
+      return this.phase0Result(command, { stdout: '{"id":"sub"}\n' });
     }
     return await super.run(command, options);
   }
 
-  private result(command: ExternalCommand, values: Partial<CommandResult> = {}): CommandResult {
+  private phase0Result(command: ExternalCommand, values: Partial<CommandResult> = {}): CommandResult {
     return {
       command,
       displayCommand: [command.executable, ...command.args].join(' '),
@@ -545,10 +551,10 @@ async function inspectionFor(input: {
     contexts,
     readiness: {
       nextReadyPhase: input.phaseId,
-      phases: Object.fromEntries(phaseIds.map((phaseId) => [phaseId, {
+      phases: phaseFixtureRecord<GovernanceTransitionInspection['readiness']['phases'][PhaseId]>((phaseId) => ({
         state: phaseId === input.phaseId ? 'ready' : 'blocked',
         blockers: []
-      }])) as GovernanceTransitionInspection['readiness']['phases']
+      }))
     },
     sourceOfTruth: input.source ?? sourceSelected()
   };
