@@ -324,6 +324,10 @@ describe('operator, privacy and non-destructive boundaries', () => {
       'ingestion_fault_alerts_enabled', 'empty timeseries', 'not end-to-end ingestion health', 'sensitive']) {
       expect(operator.replace(/\s+/g, ' ')).toContain(term);
     }
+    for (const term of ['2 Standard Units', '4 Standard Units', 'USD 67.41', 'USD 73.41',
+      'USD 134.82', 'USD 140.82', 'one unit', 'not a subscription quote or approved budget']) {
+      expect(operator.replace(/\s+/g, ' ')).toContain(term);
+    }
     expect(bootstrap).toContain('Grafana does not own the state boundary');
     for (const term of ['unavailable', 'expired', 'disabled', 'stale/unknown', 'forge', 'not a census', 'Schema-1', 'synthetic']) expect(privacy).toContain(term);
     expect(tasks.match(/- \[x\] 17\./g)).toBeNull();

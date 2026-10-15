@@ -222,15 +222,31 @@ use separately redacted summaries for review, never paste raw state into PRs.
 
 The public [Azure Retail Prices API](https://prices.azure.com/api/retail/prices?$filter=contains(productName,%27Grafana%27)%20and%20armRegionName%20eq%20%27koreacentral%27)
 returned Korea Central USD consumption meters on 2026-10-13:
-Standard Node **$0.04617/hour** (about **$33.70 for 730 hours**),
+Standard Node **$0.04617/hour** (about **$33.70 per billed unit for 730 hours**),
 Standard User **$6/month**, and optional Standard Zone Redundancy
 **$0.055485/hour** (about **$40.50 for 730 hours**). Zone redundancy is off in
-this source. These meters have no ARM size mapping and are **not an X1/X2
-quote or cost approval**. Required node counts, active-user charges, discounts,
-tax, workspace query/ingestion and the existing gateway/ACR costs must be
-qualified with the actual SKU and subscription before approval. Do not assume
-an Essential price qualifies Standard. No billable resources are provisioned
-by these static checks.
+this source. These API meters alone have no ARM size mapping and are **not an X1/X2
+quote or cost approval**.
+
+The [official Microsoft pricing table](https://azure.microsoft.com/en-us/pricing/details/managed-grafana/),
+retrieved on 2026-10-15, explicitly maps **Standard X1 to 2 Standard Units** and
+**Standard X2 to 4 Standard Units**. Applying the Korea Central retail unit
+rate above gives these steady-state illustrations for 730 hours:
+
+| Proposed size | Billed instance units | Instance only | With one billed active user |
+| --- | --- | --- | --- |
+| Standard X1 | 2 Standard Units | USD 67.41 | USD 73.41 |
+| Standard X2 | 4 Standard Units | USD 134.82 | USD 140.82 |
+
+The USD 33.70 figure is for **one unit**, not an X1 instance. Optional zone
+redundancy adds one zone-redundancy unit for X1 or two for X2; it remains off.
+These are retail arithmetic, **not a subscription quote or approved budget**.
+Actual regional SKU/version availability and quota, subscription offer/discounts,
+tax, billed active-user counts, workspace query/ingestion and existing
+gateway/ACR costs remain separately qualified/approved inputs. Any introductory
+free period advertised on the pricing page is not assumed available to this
+subscription. Do not assume an Essential price qualifies Standard. No billable
+resources are provisioned by these static checks.
 
 The Grafana inputs intentionally have no SKU-size/major/name defaults. Obtain
 fresh authorized metadata, actual cost/region/quota/provider proof, exact
