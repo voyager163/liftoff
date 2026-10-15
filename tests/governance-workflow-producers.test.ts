@@ -48,6 +48,19 @@ beforeAll(async () => {
 });
 afterAll(async () => { await storage.restore(); await rm(scratch, { recursive: true, force: true }); });
 
+it('preserves owner observer and safe-control reexports as the same neutral function identities', async () => {
+  const neutral = await import('../src/governance-activation/workflow-execution-ref-observation.js');
+  const original = await import('../src/governance-activation/workflow-execution-ref.js');
+  const values = await import('../src/governance-activation/workflow-control-values.js');
+  const bindings = await import('../src/governance-activation/workflow-binding.js');
+  expect(original.observeImmutableWorkflowExecutionRef).toBe(neutral.observeImmutableWorkflowExecutionRef);
+  expect(original.observeWorkflowExecutionBarrier).toBe(neutral.observeWorkflowExecutionBarrier);
+  expect(original.observeWorkflowProviderAdmission).toBe(neutral.observeWorkflowProviderAdmission);
+  expect(original.workflowExecutionRefName).toBe(neutral.workflowExecutionRefName);
+  expect(bindings.captureWorkflowBinding).toBe(values.captureWorkflowBinding);
+  expect(bindings.workflowFailure).toBe(values.workflowFailure);
+});
+
 function recipe() {
   return stringify({
     name: 'Isolated actual validator', 'run-name': 'Liftoff context proof ${{ inputs.proof_id }}',

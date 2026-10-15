@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto';
 import { devNull } from 'node:os';
-import { GitHubActivationError } from '../adapters/github/activation-rest.js';
-import { freezeModernValue } from '../domain/governance/activation/modern-graph.js';
-import { assertModernRecordData, assertSafeControlRecord } from '../domain/governance/activation/source-values.js';
 import type { GitHubResponse } from '../adapters/github/activation-rest.js';
 import { isRecord } from '../domain/governance/activation/canonical-json.js';
 import type { WorkflowProofCheckpoint } from './workflow-context-proof.js';
+import { captureWorkflowBinding, workflowFailure } from './workflow-control-values.js';
+export { captureWorkflowBinding, workflowFailure } from './workflow-control-values.js';
 
 export const workflowTerminalConclusions = [
   'success', 'failure', 'cancelled', 'timed_out', 'action_required', 'neutral', 'skipped', 'stale', 'startup_failure'
@@ -25,15 +24,6 @@ export function readWorkflowDispatchHandle(
   return { runId: Number(data.workflow_run_id), runUrl: data.run_url, htmlUrl: data.html_url };
 }
 
-export function workflowFailure(code: string, message: string): never {
-  throw new GitHubActivationError(code, message);
-}
-export function captureWorkflowBinding<T>(value: T): T {
-  assertModernRecordData(value, 'workflow binding');
-  assertSafeControlRecord(value, () => workflowFailure('workflow-sensitive',
-    'Workflow control bindings must be plain payload-free public data; sensitive or executable content is prohibited.'));
-  return freezeModernValue(structuredClone(value));
-}
 export async function recordWorkflowCheckpoint<T>(writer: (checkpoint: T) => Promise<void>, checkpoint: T): Promise<void> {
   try { await writer(captureWorkflowBinding(checkpoint)); } catch {
     return workflowFailure('workflow-durability', 'The exact workflow checkpoint was not durably confirmed. Diagnostics were withheld; retain partial effects and never repeat uncertain work.');
