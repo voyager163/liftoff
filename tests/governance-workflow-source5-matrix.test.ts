@@ -10,6 +10,9 @@ import {
 import {
   readCurrentWorkflowContextProof, verifyProtectedWorkflowProofMatrix, verifySource5WorkflowProofMatrix
 } from '../src/governance-activation/workflow-context-proof.js';
+import {
+  observeSource5WorkflowPlanMatrix, type Source5WorkflowPlanComponentFields
+} from '../src/governance-activation/workflow-source5-components.js';
 import { workflowSource5MatrixFixture } from './fixtures/workflow-source5-matrix.js';
 
 const fixtures: Awaited<ReturnType<typeof workflowSource5MatrixFixture>>[] = [];
@@ -56,6 +59,11 @@ async function fixture(options: Parameters<typeof workflowSource5MatrixFixture>[
 function originalFixture() {
   if (!prepared || !original) throw new Error('The explicit original fixture and fresh held observation lease preparation did not complete.');
   return { fixture: prepared, session: original };
+}
+function planFields(entry: Observation['entries'][number]): Source5WorkflowPlanComponentFields {
+  const input = entry.input;
+  return { projectRoot: input.projectRoot, plan: input.plan, phase: input.phase, authority: input.authority,
+    lease: input.lease, now: input.now, runner: input.runner, transport: input.transport, profile: input.profile };
 }
 async function prepareObservation(value: MatrixFixture): Promise<MatrixSession> {
   let ready!: (value: Observation) => void, refuse!: (error: unknown) => void, release!: () => void;
@@ -126,6 +134,65 @@ describe('complete source5 per-entry independently current matrix', () => {
       expect(value.calls.every(call => call.method === 'GET')).toBe(true);
       for (const stored of original) expect(await readFile(stored.path)).toEqual(stored.bytes);
       expect(value.errors).toEqual([]);
+    });
+  });
+  it('reconstructs the whole original matrix from the journal without accepting caller proof or carrier inventories', async () => {
+    const { fixture: value, session } = originalFixture();
+    await session.read(async ({ entries, journal }) => {
+      const originals = await Promise.all(entries.map(async entry => {
+        const stored = (await value.store.read('proof', journal.proofKey(entry.input.operation)))!;
+        return { path: stored.path, bytes: await readFile(stored.path) };
+      }));
+      const result = await observeSource5WorkflowPlanMatrix(planFields(entries[0]!), journal, value.requirements);
+      expect(result).toMatchObject({ phaseComplete: false, controlKey: value.control.controlKey,
+        planDigest: value.plan.planDigest, matrix: { kind: 'green-red-required-contexts.v2' } });
+      expect(result.matrix.proofDigests).toEqual(value.proofs.map(proof => canonicalSha256({
+        bindingDigest: proof.bindingDigest, observationDigest: proof.observationDigest, planDigest: proof.planDigest
+      })));
+      expect(value.calls.filter(call => call.path.includes('/actions/runs/') && !call.path.includes('/jobs'))).toHaveLength(12);
+      expect(value.calls.every(call => call.method === 'GET')).toBe(true);
+      expect(await journal.readFinalization()).toBeNull();
+      for (const stored of originals) expect(await readFile(stored.path)).toEqual(stored.bytes);
+      expect(value.errors).toEqual([]);
+    });
+  });
+  it('withholds journal-derived matrix completion after actual run drift without replacing original receipts', async () => {
+    const { fixture: value, session } = originalFixture();
+    await session.read(async ({ entries, journal }) => {
+      const originals = await Promise.all(entries.map(async entry => {
+        const stored = (await value.store.read('proof', journal.proofKey(entry.input.operation)))!;
+        return { path: stored.path, bytes: await readFile(stored.path) };
+      }));
+      value.state.driftRunId = value.proofs[1]!.runId;
+      await expect(observeSource5WorkflowPlanMatrix(planFields(entries[0]!), journal, value.requirements)).rejects.toThrow();
+      expect(value.calls.some(call => call.path.includes(`/actions/runs/${value.state.driftRunId}`))).toBe(true);
+      expect(value.calls.every(call => call.method === 'GET')).toBe(true);
+      expect(await journal.readFinalization()).toBeNull();
+      for (const stored of originals) expect(await readFile(stored.path)).toEqual(stored.bytes);
+      expect(value.errors).toEqual([]);
+    });
+  });
+  it.each(['operation', 'proofs', 'entries', 'observationOnly', 'reviewedPlans'] as const)(
+    'rejects caller-selected whole-matrix %s before provider reads', async field => {
+      const { fixture: value, session } = originalFixture();
+      await session.read(async ({ entries, journal }) => {
+        const fields = planFields(entries[0]!);
+        Reflect.set(fields, field, entries);
+        await expect(observeSource5WorkflowPlanMatrix(fields, journal, value.requirements)).rejects.toThrow();
+        expect(value.calls).toEqual([]);
+      });
+    });
+  it('keeps journal and carrier preparation inside one original observation deadline', async () => {
+    const { fixture: value, session } = originalFixture();
+    await session.read(async ({ entries, journal }) => {
+      const started = Date.now();
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(started + 180_000).mockReturnValueOnce(started);
+      try {
+        await expect(observeSource5WorkflowPlanMatrix(planFields(entries[0]!), journal, value.requirements))
+          .rejects.toThrow(/three-minute deadline/);
+        expect(value.calls).toEqual([]);
+      } finally { clock.mockRestore(); }
+      expect(await journal.readFinalization()).toBeNull();
     });
   });
   it('refuses another original entry through the first carrier, including the legacy one-runtime matrix path, before provider reads', async () => {
@@ -377,6 +444,18 @@ describe('complete source5 per-entry independently current matrix', () => {
       await expect(verifySource5WorkflowProofMatrix(entries, value.requirements)).rejects.toThrow();
       expect(removed).toBe(true); expect(value.calls.every(call => call.method === 'GET')).toBe(true);
       expect(await value.store.read('proof', journal.proofKey(entries[0]!.input.operation))).toBeNull();
+    });
+  });
+  it('refuses journal-derived observation before provider reads when an original component receipt was lost', async () => {
+    const { fixture: value, session } = originalFixture();
+    await session.read(async ({ entries, journal }) => {
+      const key = journal.proofKey(entries[0]!.input.operation);
+      expect(await value.store.read('proof', key)).toBeNull();
+      await expect(observeSource5WorkflowPlanMatrix(planFields(entries[0]!), journal, value.requirements))
+        .rejects.toThrow(/progress pointer contradicts its immutable event receipts/);
+      expect(value.calls).toEqual([]);
+      expect(await value.store.read('proof', key)).toBeNull();
+      expect(await journal.readFinalization()).toBeNull();
     });
   });
 

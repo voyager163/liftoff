@@ -155,6 +155,14 @@ later entries or erasing earlier receipts. Individual current observations never
 become whole-matrix or phase completion; the runner cannot issue approval,
 finalize metadata or discharge independent prerequisite/peer obligations.
 
+Whole-matrix observation reconstructs every observation-only carrier and original
+proof from that same journal, not a caller-supplied carrier or proof list. It
+requires every component to be complete before provider reads and independently
+rechecks the complete four-family green/per-context-red matrix and immutable
+ruleset source. Carrier preparation and provider reads share the original bounded
+observation window. It performs no dispatch, replaces no original observation
+timestamp or receipt, and cannot finalize a phase.
+
 The private source5 effect bridge uses a separate private control schema1 and the
 closed `workflow-source5-{plan,approval,journal,operation,proof}` namespaces
 outside the project and repository. Controls are canonical, project-bound,
