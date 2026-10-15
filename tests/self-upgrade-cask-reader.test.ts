@@ -115,7 +115,7 @@ describe('production Homebrew cask reader on explicit filesystem/process ports',
       GIT_DIR: '/parent-only-fixture', GIT_CONFIG_PARAMETERS: 'fixture-parent-config',
       GIT_ASKPASS: '/parent-only-never-executed-helper', GH_TOKEN: 'fixture-parent-only-not-a-credential',
       GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'fixture.key', GIT_CONFIG_VALUE_0: 'fixture-value',
-      HTTP_PROXY: 'http://parent-proxy.invalid', NPM_CONFIG_REGISTRY: 'https://parent-registry.invalid',
+      HTTP_PROXY: 'http://parent-proxy.invalid', NPM_CONFIG_USERCONFIG: '/parent-only-never-read/npmrc',
       LIFTOFF_CASK_PARENT_ONLY_FIXTURE: 'fixture-parent-only'
     };
     for (const [key, value] of Object.entries(parentOnly)) vi.stubEnv(key, value);
@@ -129,7 +129,7 @@ describe('production Homebrew cask reader on explicit filesystem/process ports',
       expect(options?.inheritEnvironment).toBe(false);
       const child = { executable: process.execPath, args: ['-e', inspector] };
       if (children === 0) {
-        const inherited = await runner.run(child, { ...options, inheritEnvironment: undefined });
+        const inherited = await runner.run(child, { ...options, inheritEnvironment: undefined, ensureProcessTreeSettled: false });
         expect(inherited.status).toBe(0);
         expect(JSON.parse(inherited.stdout)).toMatchObject(parentOnly);
       }
