@@ -15,6 +15,7 @@ import {
   assertSource5WorkflowIntent, createSource5WorkflowEffectInput, recordSource5WorkflowStage
 } from '../src/governance-activation/workflow-source5-ports.js';
 import * as workflowPorts from '../src/governance-activation/workflow-source5-ports.js';
+import * as workflowAuthority from '../src/governance-activation/workflow-source5-authority.js';
 import { workflowObservationRuntime, workflowRuntime } from '../src/governance-activation/workflow-runtime.js';
 import { workflowGitCommand } from '../src/governance-activation/workflow-binding.js';
 import { executeWorkflowSourcePublication } from '../src/governance-activation/workflow-publication.js';
@@ -89,6 +90,127 @@ async function nativeGitFixture() {
 }
 
 describe('engine-owned source5 carriers and exact intent effects', () => {
+  for (const observationOnly of [false, true]) {
+    it.each([
+      { startedAt: 0, waited: 25_000, allowed: true },
+      { startedAt: 0, waited: 30_000, allowed: false },
+      { startedAt: 0, waited: 30_001, allowed: false },
+      { startedAt: 170_000, waited: 5_000, allowed: true },
+      { startedAt: 170_000, waited: 10_000, allowed: false },
+      { startedAt: 170_000, waited: 10_001, allowed: false }
+    ])(`bounds unresolved Git authority preparation (observation=${observationOnly}) against %j`, async window => {
+      const service = services(), { value, native, env } = await nativeGitFixture();
+      const file = value.binding.files[0]!, commands: RunCommandOptions[] = [];
+      const args = observationOnly ? ['config', '--list', '--name-only'] :
+        ['--literal-pathspecs', 'add', '--', file.path];
+      const runner: CommandRunner = { async run(command, options) {
+        expect(command).toEqual(workflowGitCommand(args));
+        commands.push(options ?? {});
+        const result = await native.run(command, { ...options, env: { ...options?.env, ...env } });
+        expect(result.status).toBe(0);
+        return result;
+      } };
+      await withSource5WorkflowLease(value.projectRoot, async lease => {
+        const log = await journal(value, lease);
+        const carrier = await createSource5WorkflowEffectInput({
+          ...await fields(value, lease, runner, service.transport, observationOnly), clock: () => value.now
+        }, log);
+        if (!observationOnly) {
+          await carrier.recordWorkflowPublication({ bindingDigest: canonicalSha256(value.binding),
+            planDigest: value.plan.planDigest, stage: 'writing' });
+          await mkdir(path.dirname(path.join(value.projectRoot, file.path)), { recursive: true });
+          await writeFile(path.join(value.projectRoot, file.path), file.content);
+        }
+        const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+        const authorityWaits: Promise<void>[] = [], original = workflowAuthority.assertSource5WorkflowAuthority;
+        let paused = false, elapsed = 0;
+        const observed = vi.spyOn(workflowAuthority, 'assertSource5WorkflowAuthority').mockImplementation((...args) => {
+          const pending = original(...args).then(async () => {
+            if (!paused) { paused = true; entered.resolve(); await release.promise; }
+          });
+          authorityWaits.push(pending); return pending;
+        });
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const started = Date.now(), clock = vi.spyOn(Date, 'now').mockImplementation(() => started + elapsed);
+        let state = 'pending', failure: unknown;
+        const runtime = workflowRuntime(carrier);
+        elapsed = window.startedAt;
+        const response = runtime.git(args);
+        const settled = response.then(() => { state = 'fulfilled'; }, error => { state = 'rejected'; failure = error; });
+        try {
+          await entered.promise;
+          elapsed += window.waited;
+          await vi.advanceTimersByTimeAsync(window.waited);
+          expect(state).toBe(window.allowed ? 'pending' : 'rejected');
+          expect(commands).toHaveLength(0);
+          if (window.allowed) {
+            release.resolve(); await settled;
+            expect(state).toBe('fulfilled');
+            expect(commands).toHaveLength(1);
+            expect(commands[0]!.timeoutMs).toBe(5_000);
+          } else {
+            expect(failure).toMatchObject({ code: 'workflow-git' });
+          }
+        } finally {
+          release.resolve();
+          await settled;
+          await Promise.allSettled(authorityWaits);
+          clock.mockRestore(); vi.useRealTimers(); observed.mockRestore();
+        }
+        expect(commands).toHaveLength(window.allowed ? 1 : 0);
+        expect(service.requests).toHaveLength(0);
+        expect((await log.events(value.operation)).map(event => event.stage))
+          .toEqual(observationOnly ? [] : ['publication-writing']);
+      });
+    });
+
+    it(`awaits the original started Git runner after preparation (observation=${observationOnly})`, async () => {
+      const service = services(), { value, native, env } = await nativeGitFixture();
+      const file = value.binding.files[0]!;
+      const args = observationOnly ? ['config', '--list', '--name-only'] :
+        ['--literal-pathspecs', 'add', '--', file.path];
+      const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+      const runner: CommandRunner = { async run(command, options) {
+        expect(command).toEqual(workflowGitCommand(args));
+        const result = await native.run(command, { ...options, env: { ...options?.env, ...env } });
+        expect(result.status).toBe(0);
+        entered.resolve(); await release.promise;
+        return result;
+      } };
+      await withSource5WorkflowLease(value.projectRoot, async lease => {
+        const log = await journal(value, lease);
+        const carrier = await createSource5WorkflowEffectInput({
+          ...await fields(value, lease, runner, service.transport, observationOnly), clock: () => value.now
+        }, log);
+        if (!observationOnly) {
+          await carrier.recordWorkflowPublication({ bindingDigest: canonicalSha256(value.binding),
+            planDigest: value.plan.planDigest, stage: 'writing' });
+          await mkdir(path.dirname(path.join(value.projectRoot, file.path)), { recursive: true });
+          await writeFile(path.join(value.projectRoot, file.path), file.content);
+        }
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const started = Date.now();
+        let elapsed = 0, state = 'pending', failure: unknown;
+        const clock = vi.spyOn(Date, 'now').mockImplementation(() => started + elapsed);
+        const settled = workflowRuntime(carrier).git(args)
+          .then(() => { state = 'fulfilled'; }, error => { state = 'rejected'; failure = error; });
+        try {
+          await entered.promise;
+          elapsed = 30_000;
+          await vi.advanceTimersByTimeAsync(30_000);
+          expect(state).toBe('pending');
+          release.resolve(); await settled;
+          expect(state).toBe('rejected');
+          expect(failure).toMatchObject({ code: 'workflow-git' });
+          await lease.assertHeld();
+        } finally {
+          release.resolve(); await settled;
+          clock.mockRestore(); vi.useRealTimers();
+        }
+      });
+    });
+  }
+
   const preparationWindows = [
     { startedAt: 0, preparedAt: 25_000, allowed: true },
     { startedAt: 0, preparedAt: 30_000, allowed: false },

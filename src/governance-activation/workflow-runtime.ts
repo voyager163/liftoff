@@ -13,7 +13,7 @@ import type { CommandRunner } from '../process-runner.js';
 import type { Source5WorkflowEffectInput } from './workflow-source5-ports.js';
 import {
   isSource5WorkflowEffectInput, assertSource5WorkflowEffectContext,
-  requestSource5WorkflowEffect, runSource5WorkflowGitEffect
+  requestSource5WorkflowEffect, runSource5WorkflowGitEffect, prepareSource5WorkflowObservation
 } from './workflow-source5-ports.js';
 import { assertSource5WorkflowAuthority } from './workflow-source5-authority.js';
 import { source5WorkflowActions, source5WorkflowOperation } from './workflow-source5-operations.js';
@@ -110,7 +110,7 @@ export function workflowRuntime(input: WorkflowEffectInput): WorkflowRuntime {
       return requestSource5WorkflowEffect(input, request, deadline);
     }
     if (isSource5WorkflowEffectInput(input)) {
-      await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: false });
+      await prepareSource5WorkflowObservation(input, deadline);
     }
     if (Date.now() >= deadline) {
       return workflowFailure('workflow-deadline', 'Workflow provider preparation exhausted its original bounded deadline before the request could start.');
@@ -120,7 +120,7 @@ export function workflowRuntime(input: WorkflowEffectInput): WorkflowRuntime {
   const gitWithDeadline = isSource5WorkflowEffectInput(input) ?
     async (args: readonly string[], deadline: number): ReturnType<CommandRunner['run']> => {
       if (!readableGit(args)) return runSource5WorkflowGitEffect(input, args, deadline);
-      await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: false });
+      await prepareSource5WorkflowObservation(input, deadline);
       const command = workflowGitCommand(args), remaining = deadline - Date.now();
       if (remaining <= 0 || remaining > 30_000) {
         return workflowFailure('workflow-deadline', 'Workflow Git preparation exhausted its original bounded deadline before the process could start.');

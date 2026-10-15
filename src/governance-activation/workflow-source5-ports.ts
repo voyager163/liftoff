@@ -1,6 +1,7 @@
 import type { ModernPhaseGraph } from '../domain/governance/activation/modern-graph.js';
 import type { ModernSavedTransitionPlan, ModernTransitionOperation } from '../domain/governance/activation/modern-record-contracts.js';
 import type { GitHubActivationTransport, GitHubRequest, GitHubResponse } from '../adapters/github/activation-rest.js';
+import { GitHubActivationError } from '../adapters/github/activation-rest.js';
 import type { CommandRunner } from '../process-runner.js';
 import type { ProjectMutationLease } from '../adapters/filesystem/project-lock.js';
 import type { Source5WorkflowAuthority, Source5WorkflowPhase } from './workflow-source5-authority.js';
@@ -276,11 +277,7 @@ export async function requestSource5WorkflowEffect(
     return workflowFailure('workflow-source5-intent', 'An exact provider effect cannot carry unreviewed transport fields.');
   }
   assertSource5WorkflowEffectContext(input);
-  await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
-  source5WorkflowRemainingMs(deadline);
-  await assertSource5WorkflowIntent(input, request);
-  await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
-  source5WorkflowRemainingMs(deadline);
+  await prepareSource5WorkflowEffect(input, request, deadline);
   const response = await input.transport.request(request);
   await recordSource5WorkflowResponse(input, request, response);
   source5WorkflowRemainingMs(deadline);
@@ -293,6 +290,40 @@ function source5WorkflowRemainingMs(deadline: number): number {
     return workflowFailure('workflow-deadline', 'Workflow preparation and I/O must remain within the same original bounded runtime deadline.');
   }
   return remaining;
+}
+
+async function source5WorkflowPreparation(deadline: number, prepare: () => Promise<void>): Promise<void> {
+  const remaining = source5WorkflowRemainingMs(deadline);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new GitHubActivationError('workflow-deadline',
+        'Workflow authority or intent preparation exceeded its original deadline; this attempt cannot start provider or Git work.')), remaining);
+    });
+    await Promise.race([timeout, prepare()]);
+    source5WorkflowRemainingMs(deadline);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+async function prepareSource5WorkflowEffect(
+  input: Source5WorkflowEffectInput, request: Parameters<typeof assertSource5WorkflowIntent>[1], deadline: number
+): Promise<void> {
+  await source5WorkflowPreparation(deadline, async () => {
+    await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
+    source5WorkflowRemainingMs(deadline);
+    await assertSource5WorkflowIntent(input, request);
+    source5WorkflowRemainingMs(deadline);
+    await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
+  });
+}
+
+export async function prepareSource5WorkflowObservation(
+  input: Source5WorkflowEffectInput, deadline: number
+): Promise<void> {
+  assertSource5WorkflowEffectContext(input);
+  await source5WorkflowPreparation(deadline, async () => {
+    await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: false });
+  });
 }
 
 async function recordSource5WorkflowResponse(
@@ -344,10 +375,7 @@ export async function runSource5WorkflowGitEffect(
   source5WorkflowRemainingMs(deadline);
   args = captureWorkflowBinding(args);
   assertSource5WorkflowEffectContext(input);
-  await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
-  source5WorkflowRemainingMs(deadline);
-  await assertSource5WorkflowIntent(input, { git: args });
-  await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
+  await prepareSource5WorkflowEffect(input, { git: args }, deadline);
   const command = workflowGitCommand(args);
   const result = await input.runner.run(command, workflowGitOptions(input.projectRoot, source5WorkflowRemainingMs(deadline)));
   if (result.status === 0 && !result.timedOut && !result.outputLimitExceeded && !result.errorCode && !result.aborted) {
