@@ -155,6 +155,11 @@ run on qualified darwin/arm64 Node24.21.0; elsewhere they are explicitly named
 unrun cases, not successful formatting. An always-run capability control observes
 the actual refusal and verifies that no formatter command or phase proof was
 substituted. Linux Docker configuration does not qualify Linux HCL interpretation.
+The Terraform module-closure refusal control also requires that unchanged qualified
+tuple: its original body must execute there and is explicitly unrun elsewhere.
+A separate always-run control observes the actual input-capability refusal before
+Checkov, with no scanner invocation, workload command or phase proof. It does not
+claim that Checkov inspected or rejected a module on an unsupported runtime.
 
 Private `observeSource5WorkflowRequirementSource` reads the complete immutable
 ruleset source using the original current5 context and read-only observation

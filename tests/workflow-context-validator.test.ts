@@ -13,6 +13,7 @@ import { writeModernInstalledProject } from './fixtures/modern-installed-project
 import { writeModernLocalFixtureInputs } from './fixtures/modern-local-project.js';
 import * as boundFiles from '../src/adapters/filesystem/bound-project-files.js';
 import { observeModernLocalTools } from '../src/adapters/process/modern-local-tools.js';
+import { WorkflowCheckovInvocation } from '../src/adapters/process/workflow-checkov.js';
 import { inspectModernLocalRuntime, planModernLocalRuntime } from '../src/application/governance/modern-local-inputs.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
 import { hclComputationPolicy } from '../src/adapters/hcl/isolated-parser.js';
@@ -115,7 +116,28 @@ describe('release-owned real context validator bodies, not phase qualification',
     expect(result.inputDigest).toMatch(/^[a-f0-9]{64}$/u);
   });
 
-  it('refuses unproved Terraform module closure before starting the private scanner', async () => {
+  it('retains actual HCL capability refusal before private Terraform scanning without substituting a module rejection', async () => {
+    const value = await fixture();
+    const component = [...value.components.keys()].find((id): id is WorkflowTofuFormatComponent => id.startsWith('opentofu-'));
+    if (!component) throw new Error('The actual fixture has no OpenTofu component.');
+    const planned = await planModernLocalRuntime(await inspectModernLocalRuntime(value.root));
+    const check = planned.localPlan!.checks.find(check => check.id === `tofu-format:${component}`)!;
+    expect(check.status).toBe(qualifiedHcl ? 'planned' : 'blocked');
+    const scanner = vi.spyOn(WorkflowCheckovInvocation.prototype, 'execute');
+    try {
+      if (!qualifiedHcl) {
+        expect(check.reasons).toEqual([
+          'Isolated HCL computation is unavailable: this runtime is not the qualified darwin/arm64 Node24.21.0 tuple.'
+        ]);
+        expect(await executeWorkflowCheckovComponentValidator(value.root, value.sourceSha, component))
+          .toMatchObject({ status: 'blocked', code: 'validator-inputs', command: null, workloadExecution: false,
+            retainedExecutionDirectory: null, phaseProof: 'not-issued' });
+      }
+      expect(scanner).not.toHaveBeenCalled();
+    } finally { scanner.mockRestore(); }
+  });
+
+  nativeHclIt('refuses unproved Terraform module closure before starting the private scanner', async () => {
     const value = await fixture();
     const component = [...value.components.keys()].find((id): id is WorkflowTofuFormatComponent => id.startsWith('opentofu-'));
     if (!component) throw new Error('The actual fixture has no OpenTofu component.');
