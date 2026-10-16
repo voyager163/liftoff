@@ -653,16 +653,19 @@ source inventory, tool versions, and invocation, and neither can satisfy the
 other. Code coverage is not native, packaged, generated-project, or live-provider
 qualification.
 
-Ordinary Linux platform shards and the Linux CLI coverage job bootstrap Docker
-29.8.2 and Compose 5.5.1 with `scripts/prepare-ci-local-tools.mjs`. The helper
-checks the upstream archive and separate native ELF checksums, installs only the
-Docker client and Compose into a new runner-owned private prefix, and probes each
-binary independently before selecting its `bin` directory. Original paths,
+Ordinary Linux x64 and macOS ARM64 platform shards, plus CLI coverage on macOS,
+bootstrap Docker 29.8.2 and Compose 5.5.1 with
+`scripts/prepare-ci-local-tools.mjs`. The helper checks the upstream archive and
+separate native binary checksums and ELF64/Mach-O64 host headers. macOS reuses the
+reviewed `nativeContainerToolProfile` pins without changing the dispatch-only
+native custody workflow. It installs only the Docker client and Compose into a
+new runner-owned private prefix, and probes each binary independently before
+selecting its `bin` directory. Original paths,
 full-width file IDs, hashes and actual versions are recorded in the job log.
 It does not install a daemon, change user Docker configuration, qualify process
 settlement, or create authenticated tool/program subjects. The actual validators
 still perform their own admission, version, selection and settlement checks;
-Linux preparation does not extend the qualified HCL runtime tuple. Native
+CI preparation does not extend the qualified HCL runtime tuple. Native
 qualification, release publication and minimum-host gates remain separate.
 
 ## Focused commands

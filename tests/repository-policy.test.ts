@@ -36,10 +36,11 @@ describe('source repository setup policy', () => {
     expect(setup.with['node-version']).toBe('24.21.0');
   });
 
-  it.each(['test-shards', 'coverage-cli'])('requires pinned Linux tool preparation in %s', async id => {
+  it.each(['Linux', 'macOS'].flatMap(platform =>
+    ['test-shards', 'coverage-cli'].map(id => ({ platform, id }))))('requires pinned $platform tool preparation in $id', async ({ platform, id }) => {
     for (const fault of ['missing', 'conditional', 'ignored', 'replaced', 'late', 'duplicate']) {
       const workflow = await readWorkflow('ci.yml'), steps = workflow.jobs[id].steps;
-      const index = steps.findIndex((step: { name?: string }) => step.name === 'Prepare pinned Linux Docker and Compose');
+      const index = steps.findIndex((step: { name?: string }) => step.name === `Prepare pinned ${platform} Docker and Compose`);
       if (fault === 'missing') steps.splice(index, 1);
       if (fault === 'conditional') steps[index].if = 'false';
       if (fault === 'ignored') steps[index]['continue-on-error'] = true;
@@ -74,6 +75,26 @@ describe('source repository setup policy', () => {
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('CI local-tool preparation accepts no arguments.');
+    expect(result.stdout).toBe('');
+    expect(await readdir(directory)).toEqual([]);
+  });
+
+  it.each(['actions', 'os', 'architecture'])('refuses mismatched CI %s before creating files or running tools', async fault => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ci-host-refusal-'));
+    fixtures.push(directory);
+    const env = { ...process.env, GITHUB_ACTIONS: 'true',
+      RUNNER_OS: process.platform === 'darwin' ? 'macOS' : 'Linux',
+      RUNNER_ARCH: process.arch === 'arm64' ? 'ARM64' : 'X64',
+      RUNNER_TEMP: directory, GITHUB_PATH: path.join(directory, 'path') };
+    if (fault === 'actions') env.GITHUB_ACTIONS = 'false';
+    if (fault === 'os') env.RUNNER_OS = 'Windows';
+    if (fault === 'architecture') env.RUNNER_ARCH = 'unsupported';
+    const result = spawnSync(process.execPath, ['scripts/prepare-ci-local-tools.mjs'], {
+      cwd: root, encoding: 'utf8', timeout: 5000, env
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('requires a Linux x64 or macOS ARM64 GitHub Actions runner.');
     expect(result.stdout).toBe('');
     expect(await readdir(directory)).toEqual([]);
   });

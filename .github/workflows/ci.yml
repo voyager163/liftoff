@@ -252,6 +252,10 @@ jobs:
         if: runner.os == 'Linux'
         run: node scripts/prepare-ci-local-tools.mjs
 
+      - name: Prepare pinned macOS Docker and Compose
+        if: runner.os == 'macOS'
+        run: node scripts/prepare-ci-local-tools.mjs
+
       - name: Prefer the selected npm distribution on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -445,6 +449,10 @@ jobs:
 
       - name: Prepare pinned Linux Docker and Compose
         if: runner.os == 'Linux'
+        run: node scripts/prepare-ci-local-tools.mjs
+
+      - name: Prepare pinned macOS Docker and Compose
+        if: runner.os == 'macOS'
         run: node scripts/prepare-ci-local-tools.mjs
 
       - name: Install dependencies
