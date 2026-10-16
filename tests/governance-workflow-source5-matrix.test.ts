@@ -1,7 +1,10 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readFile, rm, unlink } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { GitHubActivationError } from '../src/adapters/github/activation-rest.js';
+import { NodeCommandRunner } from '../src/process-runner.js';
 import * as workflowRuntime from '../src/governance-activation/workflow-runtime.js';
 import * as workflowPorts from '../src/governance-activation/workflow-source5-ports.js';
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
@@ -14,7 +17,7 @@ import {
 import {
   observeSource5WorkflowPlanMatrix, type Source5WorkflowPlanComponentFields
 } from '../src/governance-activation/workflow-source5-components.js';
-import { workflowSource5MatrixFixture } from './fixtures/workflow-source5-matrix.js';
+import { matrixValidatorFailure, workflowSource5MatrixFixture } from './fixtures/workflow-source5-matrix.js';
 
 const fixtures: Awaited<ReturnType<typeof workflowSource5MatrixFixture>>[] = [];
 type MatrixFixture = Awaited<ReturnType<typeof workflowSource5MatrixFixture>>;
@@ -135,6 +138,47 @@ describe('complete source5 per-entry independently current matrix', () => {
       expect(value.calls.every(call => call.method === 'GET')).toBe(true);
       for (const stored of original) expect(await readFile(stored.path)).toEqual(stored.bytes);
       expect(value.errors).toEqual([]);
+    });
+  });
+
+  describe('owned constant-file matrix diagnostics', () => {
+    it('preserves actual bounded result fields without serializing unrelated inputs or submitting more work', async () => {
+      const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-matrix-diagnostic-'));
+      const runner = new NodeCommandRunner(), run = vi.spyOn(runner, 'run');
+      try {
+        const input = path.join(root, 'validate.mjs'), text = 'export const valid = ;\n';
+        await writeFile(input, text, { flag: 'wx', mode: 0o600 });
+        const result = await runner.run({ executable: process.execPath, args: ['--check', input] },
+          { cwd: root, env: { HOME: root, NODE_OPTIONS: '' }, timeoutMs: 5000, maxOutputBytes: 4096,
+            stream: false, ensureProcessTreeSettled: true });
+        const original = structuredClone(result);
+        expect(result.status).not.toBe(0);
+        expect(result.status).not.toBeNull();
+        expect(result.processTreeSettled).toBe(true);
+        expect(result.timedOut).toBe(false);
+        expect(Buffer.byteLength(result.stdout + result.stderr)).toBeLessThanOrEqual(4096);
+        expect(await readFile(input, 'utf8')).toBe(text);
+        const selector = { family: 'develop', mode: 'green', jobId: 'validate',
+          get unrelatedConfiguration(): never { throw new Error('Unrelated configuration must not be inspected.'); }
+        } as const;
+        for (const reason of ['settlement', 'input-readback', 'expectation'] as const) {
+          const error = matrixValidatorFailure(reason, selector, result);
+          const diagnostic = JSON.parse(error.message.split('\nOwned matrix fixture diagnostic: ')[1]!);
+          expect(diagnostic).toEqual({
+            fixture: { family: 'develop', mode: 'green', jobId: 'validate' },
+            runtime: { node: process.version, platform: process.platform, arch: process.arch },
+            result: { stdout: result.stdout, stderr: result.stderr, status: result.status, signal: result.signal,
+              processSpawned: result.processSpawned ?? null, processTreeSettled: result.processTreeSettled ?? null,
+              errorCode: result.errorCode ?? null, errorMessage: result.errorMessage ?? null,
+              timedOut: result.timedOut, aborted: result.aborted ?? null, outputLimitExceeded: result.outputLimitExceeded ?? null }
+          });
+          expect(result).toEqual(original);
+        }
+        expect(run).toHaveBeenCalledTimes(1);
+      } finally {
+        run.mockRestore();
+        await rm(root, { recursive: true, force: true });
+      }
     });
   });
   it('reconstructs the whole original matrix from the journal without accepting caller proof or carrier inventories', async () => {

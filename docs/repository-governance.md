@@ -552,6 +552,11 @@ It performs no dispatch, replaces no original observation
 timestamp or receipt, and cannot finalize a phase.
 Cross-platform matrix fixtures run genuine syntax/JSON validators against owned
 source files. File-backed validation does not certify native stdin transport.
+Their refusals retain only the finite fixture selector, actual Node/platform/arch
+and the original bounded result fields/stdout/stderr, not commands, ambient
+environment or unrelated configuration. Diagnostics do not change the invocation,
+input readback, settlement guards, five-second/4-KiB limits or expected outcomes;
+a numeric Windows status is not an observed POSIX signal.
 
 The private source5 effect bridge uses a separate private control schema1 and the
 closed `workflow-source5-{plan,approval,journal,operation,proof}` namespaces
