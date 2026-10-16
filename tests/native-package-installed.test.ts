@@ -322,6 +322,13 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
       assert.equal(observed.glibcVersion, '2.28');
       assertNativeHost(observed);
       assert.throws(() => assertNativeHost(observed, { publicInstallation: true }), /minimum host/);
+      const tmpfs = (await readFile('/proc/mounts', 'utf8')).split('\\n').map(row => row.split(' '))
+        .find(row => row[1] === '/tmp');
+      assert.ok(tmpfs);
+      assert.equal(tmpfs[2], 'tmpfs');
+      const tmpfsMountOptions = tmpfs[3].split(',');
+      for (const option of ['rw', 'nosuid', 'nodev']) assert.ok(tmpfsMountOptions.includes(option));
+      assert.ok(!tmpfsMountOptions.includes('noexec'));
       await mkdir('/tmp/home');
       await mkdir('/tmp/foreign cwd');
       const invoke = (command, args) => {
@@ -360,7 +367,7 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
       assert.equal(await inspectOwnedInstallation(prefix), null);
       assert.deepEqual(await bundleInventory('/liftoff'), manifest.inventory);
       assert.equal(digest(await readFile('/liftoff/bundle.json')), ${JSON.stringify(manifestSha256)});
-      console.log(JSON.stringify({ observed, version, libraries, plans, controllerResolved: true,
+      console.log(JSON.stringify({ observed, version, libraries, plans, tmpfsMountOptions, controllerResolved: true,
         hclExecuted: false, hclQualifiedRuntimeRefused: true,
         developmentInstallRecovered: true, actualKernel: os.release(), minimumKernelQualified: false,
         minimumHostQualified: false, publicDistributionQualified: false }));
@@ -368,7 +375,7 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
     const result = execute(docker, ['run', '--rm', '--pull=never', '--network=none', '--read-only',
       '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=64', '--memory=1g', '--cpus=2',
       '--user', `${process.getuid!()}:${process.getgid!()}`,
-      '--tmpfs', '/tmp:rw,nosuid,nodev,size=536870912,mode=1777',
+      '--tmpfs', '/tmp:rw,nosuid,nodev,exec,size=536870912,mode=1777',
       '--mount', `type=bind,source=${bundle},target=/liftoff,readonly`,
       '--env', 'HOME=/tmp/home', '--env', 'XDG_CONFIG_HOME=/tmp/home', '--env', 'PATH=/empty',
       '--env', 'CI=true', '--env', 'LIFTOFF_TELEMETRY=0', '--env', 'DO_NOT_TRACK=1',

@@ -117,7 +117,9 @@ image pinned in `nativeLinuxUserspaceImages` in `scripts/native-package-report.m
 CI pulls that immutable image before the tests; tests never pull, request emulation or
 run a package manager. The daemon and image architectures must match the bundle.
 The container has no network, a read-only root/bundle,
-no capabilities and only disposable user-owned tmpfs writes. It runs the exact
+no capabilities and only disposable user-owned tmpfs writes. That private tmpfs
+explicitly permits execution of the copied development install while retaining
+`nosuid` and `nodev`; the case verifies its real mount options. It runs the exact
 bundle's startup, all installed plans, controller lookup, the existing isolated-HCL
 qualified-runtime refusal and interrupted
 development install/recovery against actual glibc 2.28/libstdc++ 8.5 userspace.
