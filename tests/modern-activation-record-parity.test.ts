@@ -5,7 +5,7 @@ import * as Current from '../src/domain/governance/activation/types.js';
 import type { CurrentActivationIdentity } from '../src/domain/governance/policy/identity.js';
 import { capturedV3Records } from './fixtures/activation-v3/fixture.js';
 import { historyArray, historyRecord } from '../src/governance-activation/history-contracts.js';
-import { canonicalPhaseGraphHash } from '../src/domain/governance/activation/graph.js';
+import { canonicalPhaseGraphHash, currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
 import { assertSafeControlRecord } from '../src/domain/governance/activation/source-values.js';
 import { assertSafeHistoricalRecord, ActivationHistoryError } from '../src/governance-activation/historical-safety.js';
 
@@ -36,14 +36,28 @@ describe('unchanged current/released factory shapes and runtime meaning', () => 
   });
   it('preserves current/released data normalization and existing malformed error precedence', () => {
     const original = capturedV3Records(), current = currentActivationRecordValidators(), released = releasedV3RecordValidators(historicalV3PhaseGraph());
-    for (const api of [current, released]) {
-      expect(api.validateUserActivationState(original.state)).toEqual(original.state);
-      expect(api.validateCredentialPolicy(original.credential)).toEqual(original.credential);
-      const plan = historyArray(original.plans, 'plans')[0];
+    const releasedPlan = historyArray(original.plans, 'plans')[0];
+    const releasedApproval = historyArray(original.approvals, 'approvals')[0];
+    const cases = [
+      { api: released, state: original.state, credential: original.credential, plan: releasedPlan, approval: releasedApproval },
+      {
+        api: current,
+        state: { ...historyRecord(original.state, 'state'), identity: currentActivationIdentity },
+        credential: { ...historyRecord(original.credential, 'credential'), identity: currentActivationIdentity },
+        plan: {
+          ...historyRecord(releasedPlan, 'plan'),
+          identity: currentActivationIdentity,
+          graphHash: currentActivationIdentity.phaseGraphHash
+        },
+        approval: { ...historyRecord(releasedApproval, 'approval'), identity: currentActivationIdentity }
+      }
+    ] as const;
+    for (const { api, state, credential, plan, approval } of cases) {
+      expect(api.validateUserActivationState(state)).toEqual(state);
+      expect(api.validateCredentialPolicy(credential)).toEqual(credential);
       expect(api.validateSavedTransitionPlan(plan)).toEqual(plan);
       expect(() => api.validateSavedTransitionPlan({ ...historyRecord(plan, 'plan'), schemaVersion: 3, identity: null }))
         .toThrow('transitionPlan.schemaVersion must be 2.');
-      const approval = historyArray(original.approvals, 'approvals')[0];
       expect(api.validateApprovalEnvelope(approval)).toEqual(approval);
       expect(() => api.validateApprovalEnvelope({ ...historyRecord(approval, 'approval'), schemaVersion: 4, expiresAt: 'invalid' }))
         .toThrow('approvalEnvelope.schemaVersion must be 3.');
@@ -54,7 +68,8 @@ describe('unchanged current/released factory shapes and runtime meaning', () => 
     record.fromGraphHash = 'f'.repeat(64);
     historyRecord(record.fromIdentity, 'identity').phaseGraphHash = 'f'.repeat(64);
     expect(currentActivationRecordValidators().validateGraphReconciliationRecord(record,
-      new Set(['f'.repeat(64), canonicalPhaseGraphHash])).fromGraphHash).toBe('f'.repeat(64));
+      new Set(['f'.repeat(64), canonicalPhaseGraphHash,
+        historyRecord(record.toIdentity, 'toIdentity').phaseGraphHash as string])).fromGraphHash).toBe('f'.repeat(64));
     expect(() => currentActivationRecordValidators().validateGraphReconciliationRecord(record)).toThrow(/recognized graph hash/);
   });
 

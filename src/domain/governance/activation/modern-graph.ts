@@ -25,7 +25,7 @@ export interface ModernPhaseGraph {
   readonly versions: {
     readonly liftoffVersion: ModernStaticVersions['liftoffVersion'];
     readonly policyVersion: ModernProfileIdentity['policyVersion'];
-    readonly activationContractVersion: 4;
+    readonly activationContractVersion: ModernStaticVersions['activationContractVersion'];
     readonly phaseGraphSchemaVersion: 3;
   };
   readonly profileContract: ModernProfileContract & {
@@ -76,10 +76,13 @@ function workflowContract(workflow: ModernWorkflow): ModernWorkflowContract {
 
 /** Pure source graph construction; registration and concrete schema allocation belong to identity.ts. */
 export function buildModernPhaseGraph(
-  versions: ModernStaticVersions, profile: ModernProfileContract, workflow: ModernWorkflow
+  versions: ModernStaticVersions,
+  profile: ModernProfileContract,
+  workflow: ModernWorkflow,
+  disposalContract: 'protected-custody' | 'local-bootstrap' = 'protected-custody'
 ): ModernPhaseGraph {
   const contract = workflowContract(workflow);
-  const phases = buildPhaseDefinitions(versions).map((original): ModernPhaseGraphNode => {
+  const phases = buildPhaseDefinitions(versions, 'released-v3', disposalContract).map((original): ModernPhaseGraphNode => {
     const id = phaseId(original.id);
     const local = original.id.startsWith('seed-');
     const mapMutation = (mutation: ModernMutationClass): readonly ModernMutationClass[] => {
@@ -99,6 +102,10 @@ export function buildModernPhaseGraph(
       'local-complete': workflow === 'manual' ? 'Native local completion is recorded' :
         workflow === 'openspec' ? 'Verified OpenSpec source is synced and archived' : 'Verified Spec Kit source is finalized'
     };
+    const publication = versions.activationContractVersion === 5 &&
+      (id === 'bootstrap-workflow-source-ready' || id === 'workflow-source-ready');
+    const proof = versions.activationContractVersion === 5 &&
+      ['dev-proof', 'staging-qualified', 'production-rehearsed', 'green-red-proof'].includes(id);
     return {
       ...original, id, label: labels[id] ?? original.label,
       dependencies: original.dependencies.map(dependency => ({
@@ -110,8 +117,23 @@ export function buildModernPhaseGraph(
       applicability: original.applicability.kind === 'always' ? original.applicability : {
         ...original.applicability, exclusiveWith: original.applicability.exclusiveWith.map(phaseId)
       },
-      allowedMutations: { local: original.allowedMutations.local.flatMap(mapMutation), remote: original.allowedMutations.remote.flatMap(mapMutation) },
-      evidence: { ...original.evidence, ...(local ? { schema: `${id}.v1` } : {}) },
+      allowedMutations: {
+        local: publication ? [...new Set<ModernMutationClass>([
+          ...original.allowedMutations.local.flatMap(mapMutation), 'read-worktree', 'git-commit'
+        ])] : original.allowedMutations.local.flatMap(mapMutation),
+        remote: publication ? [...new Set<ModernMutationClass>([
+          ...original.allowedMutations.remote.flatMap(mapMutation).filter(mutation => mutation !== 'none'),
+          'git-push', 'github-read', 'github-write'
+        ])] : original.allowedMutations.remote.flatMap(mapMutation)
+      },
+      evidence: {
+        ...original.evidence, ...(local ? { schema: `${id}.v1` } : {}),
+        ...(publication || proof ? { schema: `${id}.v2` } : {}),
+        ...(publication ? { liveReadbackProviders: ['github' as const] } : {})
+      },
+      approvalGate: publication && id === 'workflow-source-ready'
+        ? { ...original.approvalGate, kind: 'activation-plan', required: true }
+        : original.approvalGate,
       rollback: {
         ...original.rollback, target: original.rollback.target === null ? null : phaseId(original.rollback.target),
         ...(local ? { description: 'Preserve the reviewed source and report incomplete local work; never fabricate completion.' } : {})

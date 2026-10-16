@@ -22,7 +22,7 @@ async function project(version: 1 | 2 | 3 = 3, workflow: 'openspec' | 'spec-kit'
   await writeModernHistoricalSource(f.root, version, false, selectedWorkflow);
   const original = parseManifest(JSON.parse(await fs.readFile(path.join(f.root, 'liftoff.manifest.json'), 'utf8')));
   const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({ project: original.project, framework: original.framework });
-  const target = selected(leaf, 'single-maintainer-gitflow');
+  const target = selected(leaf, 'single-maintainer-gitflow', 'retained-custody4');
   const source = resolveModernManifestV8SourceContract({ selection: target.selection, recordedPlugins: target.plugins });
   const components = new Map<ManifestLayoutComponentId, string[]>(source.layoutDescriptor.components.map(id =>
     [id, ['Source Space', id.replace(':', ' ')]]));

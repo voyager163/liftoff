@@ -616,27 +616,48 @@ describe('fine-grained PAT fallback enrollment', () => {
     }
   });
 
+  it('rejects a PAT already inside the required rotation lead window', async () => {
+    const nearExpiry = '2026-10-01T00:00:00.000Z';
+    const { error, events, written } = await enroll(patScenario({
+      token: {
+        'GET /user': ok(
+          { login: 'octo-owner' },
+          200,
+          { 'github-authentication-token-expiration': '2026-10-01 00:00:00 UTC' }
+        )
+      },
+      main: {
+        [listPage('/orgs/acme/personal-access-tokens?owner[]=octo-owner')]: ok([
+          patGrant({ created_at: '2026-09-01T00:00:00.000Z', token_expires_at: nearExpiry })
+        ])
+      }
+    }));
+    expect((error as GitHubActivationError).code).toBe('credential-expiry');
+    expect(events.some((event) => event.includes('/repositories'))).toBe(false);
+    expect(written).toEqual([]);
+  });
+
   it('rejects grants outside the exact read-only, selected-repository, 30-day policy', async () => {
     const header = (value?: string) => ({ token: { 'GET /user': ok({ login: 'octo-owner' }, 200,
       value === undefined ? {} : { 'x-github-authentication-token-expiration': value }) } });
     const grantCase = (grants: unknown[]) => ({ main: { [listPage('/orgs/acme/personal-access-tokens?owner[]=octo-owner')]: ok(grants) } });
-    const cases: Array<Partial<Pick<Scenario, 'token' | 'main'>>> = [
-      grantCase([patGrant({ repository_selection: 'all' })]),
-      grantCase([patGrant({ token_expired: true })]),
-      grantCase([patGrant({ token_name: 'widget-deploy-write' })]),
-      grantCase([patGrant({ owner: { login: 'intruder' } })]),
-      grantCase([patGrant({ permissions: { repository: { metadata: 'read', contents: 'write' }, organization: {
+    const cases: Array<[Partial<Pick<Scenario, 'token' | 'main'>>, string]> = [
+      [grantCase([patGrant({ repository_selection: 'all' })]), 'credential-scope'],
+      [grantCase([patGrant({ token_expired: true })]), 'credential-scope'],
+      [grantCase([patGrant({ token_name: 'widget-deploy-write' })]), 'credential-scope'],
+      [grantCase([patGrant({ owner: { login: 'intruder' } })]), 'credential-scope'],
+      [grantCase([patGrant({ permissions: { repository: { metadata: 'read', contents: 'write' }, organization: {
         organization_hosted_runners: 'read', organization_network_configurations: 'read'
-      }, other: {} } })]),
-      grantCase([patGrant({ created_at: '2026-09-23T00:00:00.000Z' })]),
-      grantCase([patGrant({ created_at: '2026-08-01T00:00:00.000Z', token_expires_at: '2026-08-31T00:00:00.000Z' })]),
-      grantCase([patGrant(), patGrant({ id: 903, token_id: 5151 })]),
-      header(),
-      header('2026-10-25 00:00:00 UTC')
+      }, other: {} } })]), 'credential-scope'],
+      [grantCase([patGrant({ created_at: '2026-09-23T00:00:00.000Z' })]), 'credential-scope'],
+      [grantCase([patGrant({ created_at: '2026-08-01T00:00:00.000Z', token_expires_at: '2026-08-31T00:00:00.000Z' })]), 'credential-expiry'],
+      [grantCase([patGrant(), patGrant({ id: 903, token_id: 5151 })]), 'credential-scope'],
+      [header(), 'credential-scope'],
+      [header('2026-10-25 00:00:00 UTC'), 'credential-scope']
     ];
-    for (const overrides of cases) {
+    for (const [overrides, code] of cases) {
       const { error, events, written } = await enroll(patScenario(overrides));
-      expect((error as GitHubActivationError).code).toBe('credential-scope');
+      expect((error as GitHubActivationError).code).toBe(code);
       expect(events.some((event) => event.includes('/repositories'))).toBe(false);
       expect(written).toEqual([]);
     }

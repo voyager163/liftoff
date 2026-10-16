@@ -20,10 +20,11 @@ import {
 import type { ActivationInputSnapshot } from '../src/domain/governance/activation/inputs.js';
 import type { CommandResult, CommandRunner } from '../src/process-runner.js';
 import {
-  LocalOnlyRunner, coverageActivationInputs, coverageInspection, coverageNow, coverageState, coverageSubscription,
+  AbsentAzureEnvironmentRunner, LocalOnlyRunner, coverageActivationInputs, coverageInspection, coverageNow, coverageState, coverageSubscription,
   isolateUserLocalStorage, isolatedGitEnvironment, issuePriorApproval, readState, resetDirectory, scratchDirectory,
   selectedSource, treeFingerprint, writeCoverageProject
 } from './fixtures/governance-coverage/transition-project.js';
+import { configureApplicationFixture } from './fixtures/governance-coverage/application-project.js';
 
 const scratch = scratchDirectory('transition-recovery');
 const activationInputs = coverageActivationInputs();
@@ -80,7 +81,7 @@ function verifyOperation(plan: SavedTransitionPlan): TransitionOperation {
 describe('reviewed plan freshness', () => {
   it('refuses changed, rebound, or expired reviewed previews before saving a plan or invoking a producer', async () => {
     const root = await project('reviewed');
-    const runner = new LocalOnlyRunner(gitEnvironment);
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const inspection = await existingPrivatePath(root);
     const reviewed = (await buildSavedTransitionPlan({ inspection, runner, now: coverageNow }))!;
     const { calls, adapters } = injected('existing-private-path', () => ({ status: 'blocked', blocker: 'must not run', completedOperations: [] }));
@@ -99,7 +100,7 @@ describe('reviewed plan freshness', () => {
 
   it('keeps the saved plan as audit but runs no producer when reinspection shows changed operations', async () => {
     const root = await project('stale-after-save');
-    const runner = new LocalOnlyRunner(gitEnvironment);
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const inspection = await existingPrivatePath(root);
     const otherInputs = { ...activationInputs, azure: { ...activationInputs.azure!, subscriptionId: '00000000-0000-4000-8000-000000000009' } };
     const changed = await existingPrivatePath(root, { state: coverageState({ activationInputs: otherInputs }), activationInputs: otherInputs });
@@ -121,7 +122,7 @@ describe('reviewed plan freshness', () => {
 
   it('names every freshness dimension that changed after the reviewed plan was saved', async () => {
     const root = await project('freshness');
-    const runner = new LocalOnlyRunner(gitEnvironment);
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const saved = (await buildSavedTransitionPlan({ inspection: await existingPrivatePath(root), runner, now: coverageNow }))!;
     expect(comparePlanFreshness(saved, saved)).toEqual([]);
     expect(comparePlanFreshness(saved, null)).toEqual(['No phase remained ready after saving the transition plan.']);
@@ -141,7 +142,7 @@ describe('reviewed plan freshness', () => {
 
   it('requires an anchored committed state and exact guards before local revalidation takes the project lock', async () => {
     const root = await project('local-revalidation');
-    const runner = new LocalOnlyRunner(gitEnvironment);
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const state = coverageState();
     const inspection = await coverageInspection({ root, phaseId: 'seed-valid', state, scope: 'local' });
     const loaded = { state, content: canonicalJson(state), contentHash: hex('loaded'), schemaVersion: 3 };
@@ -180,7 +181,7 @@ describe('source-of-truth and adapter integrity boundaries', () => {
 
   it.each(sources)('records an %s source-of-truth blocker without invoking the producer', async (_label, source, blocker) => {
     const root = await project('source');
-    const runner = new LocalOnlyRunner(gitEnvironment);
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const inspection = await existingPrivatePath(root, { source });
     const { calls, adapters } = injected('existing-private-path', () => ({ status: 'blocked', blocker: 'must not run', completedOperations: [] }));
 
@@ -232,7 +233,7 @@ describe('source-of-truth and adapter integrity boundaries', () => {
 
   it.each(refusals)('refuses an adapter outcome claiming %s before persisting state or evidence', async (_label, execute, expected) => {
     const root = await project('adapter-integrity');
-    const runner = new LocalOnlyRunner(gitEnvironment);
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const inspection = await existingPrivatePath(root);
     const { calls, adapters } = injected('existing-private-path', execute);
 
@@ -246,7 +247,7 @@ describe('source-of-truth and adapter integrity boundaries', () => {
 
   it('rejects completed evidence whose readback is outside the reviewed destinations without writing state', async () => {
     const root = await project('evidence-rejected');
-    const runner = new LocalOnlyRunner(gitEnvironment);
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const inspection = await existingPrivatePath(root);
     const { adapters } = injected('existing-private-path', (input) => ({
       status: 'completed', resultState: 'verified', evidencePayload: { kind: 'existing-private-path.v1' },
@@ -259,14 +260,16 @@ describe('source-of-truth and adapter integrity boundaries', () => {
 
     expect(result).toMatchObject({ applied: false, reason: 'blocked', evidence: null, stateHash: '' });
     expect(result.message).toMatch(/^Completed outcome rejected: .*outside the reviewed plan destinations/u);
-    expect(result.executedOperations.map((operation) => operation.actionId)).toEqual(['azure.existing-private-path.verify']);
+    expect(result.executedOperations.map((operation) => operation.actionId)).toEqual([
+      'azure.deployment.classify-ownership', 'azure.existing-private-path.verify'
+    ]);
     expect(await readState(root)).toBeUndefined();
     expect(await exists(path.join(root, 'governance', 'evidence'))).toBe(false);
   });
 
   it('binds verified provider outputs into evidence and state only after independent readback matches the plan', async () => {
     const root = await project('verified-outputs');
-    const runner = new LocalOnlyRunner(gitEnvironment);
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const inspection = await existingPrivatePath(root);
     const outputs = { values: { backendResourceGroup: 'rg-state' }, resources: [{ provider: 'azure' as const, resourceType: 'resource-group', resourceId: resourceGroup }] };
     const { adapters } = injected('existing-private-path', (input) => ({
@@ -280,13 +283,26 @@ describe('source-of-truth and adapter integrity boundaries', () => {
     expect(result).toMatchObject({ applied: true, authorized: true, reason: 'phase-executed', executedPhase: 'existing-private-path',
       evidence: { result: 'verified' } });
     expect(result.executedOperations.map((operation) => operation.actionId)).toEqual([
-      'azure.existing-private-path.verify', 'governance.evidence.write', 'governance.activation-state.write'
+      'azure.deployment.classify-ownership', 'azure.existing-private-path.verify',
+      'governance.evidence.write', 'governance.activation-state.write'
     ]);
     const evidence = JSON.parse(await readFile(path.join(root, ...result.evidence!.pathParts), 'utf8'));
     const plan = JSON.parse(await readFile(path.join(root, ...result.savedPlan!.pathParts), 'utf8')) as SavedTransitionPlan;
-    expect(evidence.payload).toEqual({
+    expect(evidence.payload).toMatchObject({
       kind: 'existing-private-path.v1', statePath: 'existing-private', planDigest: plan.planDigest,
-      savedPlanDigest: canonicalSha256(plan), outputBindings: outputs
+      savedPlanDigest: canonicalSha256(plan), outputBindings: outputs,
+      deploymentOwnership: {
+        kind: 'deployment-ownership.v1',
+        scope: 'new-environment-activation',
+        classificationDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        environments: [{
+          environment: 'dev',
+          status: 'new-environment',
+          resourceGroupId: null,
+          observedResourceCount: 0,
+          operationProofDigest: null
+        }]
+      }
     });
     const state = (await readState(root))!;
     expect(state.phases['existing-private-path']).toMatchObject({ state: 'verified', executionPlanDigest: plan.planDigest });
@@ -295,7 +311,7 @@ describe('source-of-truth and adapter integrity boundaries', () => {
 
   it('leaves no activation record for a producer-requested state-free retry after read-only work', async () => {
     const root = await project('state-free-retry');
-    const runner = new LocalOnlyRunner(gitEnvironment);
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const inspection = await existingPrivatePath(root);
     const { adapters } = injected('existing-private-path', (input) => ({
       status: 'blocked', blocker: 'Provider throttled the read; retry later.', retryableWithoutStateMutation: true,
@@ -306,23 +322,29 @@ describe('source-of-truth and adapter integrity boundaries', () => {
 
     expect(result).toMatchObject({ applied: false, reason: 'blocked', blockers: ['Provider throttled the read; retry later.'], evidence: null });
     expect(result.stateHash).toBe(activationStateContentHash(canonicalJson(inspection.state)));
-    expect(result.executedOperations.map((operation) => operation.actionId)).toEqual(['azure.existing-private-path.verify']);
+    expect(result.executedOperations.map((operation) => operation.actionId)).toEqual([
+      'azure.deployment.classify-ownership', 'azure.existing-private-path.verify'
+    ]);
     expect(await readState(root)).toBeUndefined();
   });
 
   it('retains the running checkpoint but records no success when approval changes before outcome persistence', async () => {
     const root = await project('approval-changed');
-    const runner = new LocalOnlyRunner(gitEnvironment);
-    const state = coverageState({ activationInputs });
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
+    const applicationInputs = structuredClone(activationInputs);
+    const state = coverageState({ activationInputs: applicationInputs });
+    configureApplicationFixture(applicationInputs, state);
     const planned = await buildSavedTransitionPlan({
-      inspection: await coverageInspection({ root, phaseId: 'provider-ready', state, activationInputs }), runner, now: coverageNow
+      inspection: await coverageInspection({ root, phaseId: 'application-prerequisites-ready', state, activationInputs: applicationInputs }), runner, now: coverageNow
     });
     const approval = await issuePriorApproval(root, state, planned!);
-    const approved = await coverageInspection({ root, phaseId: 'provider-ready', state, approvals: [approval], activationInputs });
-    const revoked = await coverageInspection({ root, phaseId: 'provider-ready', state, approvals: [], activationInputs });
+    const approved = await coverageInspection({ root, phaseId: 'application-prerequisites-ready', state, approvals: [approval], activationInputs: applicationInputs });
+    const revoked = await coverageInspection({ root, phaseId: 'application-prerequisites-ready', state, approvals: [], activationInputs: applicationInputs });
     let reinspections = 0;
-    const { calls, adapters } = injected('provider-ready', () => ({
-      status: 'completed', resultState: 'verified', evidencePayload: { kind: 'provider-ready.v1' }, completedOperations: []
+    const { calls, adapters } = injected('application-prerequisites-ready', (input) => ({
+      status: 'completed', resultState: 'verified', evidencePayload: { kind: 'application-prerequisites-ready.v1' },
+      liveReadback: [readbackProof(input, 'azure', 'subscription', `/subscriptions/${coverageSubscription}`, { reachable: true })],
+      completedOperations: []
     }));
 
     const result = await executeApplyNext({
@@ -335,10 +357,108 @@ describe('source-of-truth and adapter integrity boundaries', () => {
       blockers: ['Approval changed or expired before outcome persistence; no successful outcome was recorded.']
     });
     const statePath = path.join(root, 'governance', 'activation-state.json');
-    expect((await readState(root))!.phases['provider-ready']).toMatchObject({ state: 'running', evidence: [], approvals: [approval.id] });
+    expect((await readState(root))!.phases['application-prerequisites-ready']).toMatchObject({ state: 'running', evidence: [], approvals: [approval.id] });
     expect(result.stateHash).toBe(activationStateContentHash(await readFile(statePath)));
     expect(await exists(path.join(root, 'governance', 'evidence'))).toBe(false);
     expect(runner.providerCalls).toEqual([]);
+  });
+
+  it('persists sanitized failed evidence and owned outputs when a remote effect precedes failure', async () => {
+    const root = await project('partial-remote-failure');
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
+    const applicationInputs = structuredClone(activationInputs);
+    const state = coverageState({ activationInputs: applicationInputs });
+    configureApplicationFixture(applicationInputs, state);
+    const planned = await buildSavedTransitionPlan({
+      inspection: await coverageInspection({
+        root,
+        phaseId: 'application-prerequisites-ready',
+        state,
+        activationInputs: applicationInputs
+      }),
+      runner,
+      now: coverageNow
+    });
+    const approval = await issuePriorApproval(root, state, planned!);
+    const inspection = await coverageInspection({
+      root,
+      phaseId: 'application-prerequisites-ready',
+      state,
+      approvals: [approval],
+      activationInputs: applicationInputs
+    });
+    const completedResource = `/subscriptions/${coverageSubscription}/resourceGroups/rg-partial/providers/Microsoft.ManagedIdentity/userAssignedIdentities/app`;
+    const blocker = 'Azure apply stopped after the managed identity committed; inspect current ownership before recovery.';
+    const { adapters } = injected('application-prerequisites-ready', (input) => ({
+      status: 'blocked',
+      resultState: 'failed',
+      blocker,
+      evidencePayload: { kind: 'application-prerequisites-ready.v1', privateDetail: 'withheld' },
+      liveReadback: [readbackProof(input, 'azure', 'Microsoft.ManagedIdentity/userAssignedIdentities', completedResource, {
+        id: completedResource,
+        provisioningState: 'Succeeded'
+      })],
+      outputs: {
+        values: { committedResourceCount: 1 },
+        resources: [{
+          provider: 'azure',
+          resourceType: 'Microsoft.ManagedIdentity/userAssignedIdentities',
+          resourceId: completedResource
+        }]
+      },
+      completedOperations: [
+        input.plan.operations.find((operation) => operation.actionId === 'azure.prerequisites.apply')!
+      ],
+      cleanupWarnings: ['The committed managed identity was retained for ownership-reviewed recovery.']
+    }));
+
+    const result = await executeApplyNext({
+      inspection,
+      reinspect: async () => inspection,
+      runner,
+      now: coverageNow,
+      adapters
+    });
+
+    expect(result).toMatchObject({
+      applied: false,
+      reason: 'blocked',
+      blockers: [blocker],
+      evidence: { result: 'failed' }
+    });
+    expect(result.executedOperations.map((operation) => operation.actionId)).toEqual(expect.arrayContaining([
+      'azure.deployment.classify-ownership',
+      'azure.prerequisites.apply',
+      'governance.evidence.write',
+      'governance.activation-state.write'
+    ]));
+    const evidence = JSON.parse(await readFile(path.join(root, ...result.evidence!.pathParts), 'utf8'));
+    expect(evidence.payload).toMatchObject({
+      kind: 'partial-failure.v1',
+      phaseId: 'application-prerequisites-ready',
+      blockerDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      providerPayloadDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      completedOperations: [{
+        actionId: 'azure.prerequisites.apply',
+        mutationClass: 'azure-resource-provision',
+        operationDigest: expect.stringMatching(/^[a-f0-9]{64}$/u)
+      }],
+      outputBindings: {
+        values: { committedResourceCount: 1 },
+        resources: [{ resourceId: completedResource }]
+      }
+    });
+    expect(JSON.stringify(evidence.payload)).not.toContain(blocker);
+    expect(JSON.stringify(evidence.payload)).not.toContain('privateDetail');
+    const savedState = (await readState(root))!;
+    expect(savedState.phases['application-prerequisites-ready']).toMatchObject({
+      state: 'blocked',
+      evidence: [{ evidenceId: result.evidence!.evidenceId, result: 'failed' }],
+      blockers: [blocker]
+    });
+    expect(savedState.phaseOutputs?.['application-prerequisites-ready']).toMatchObject({
+      resources: [{ resourceId: completedResource }]
+    });
   });
 });
 

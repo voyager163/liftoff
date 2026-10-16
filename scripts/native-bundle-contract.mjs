@@ -97,6 +97,15 @@ export async function readBundleFile(file, maximum = 8 * 1024 * 1024) {
   return checkedFile(file, maximum, true);
 }
 
+/**
+ * @template {boolean} Capture
+ * @param {string} file
+ * @param {number} maximum
+ * @param {Capture} capture
+ * @returns {Promise<Capture extends true
+ *   ? { identity: { bytes: number, sha256: string, mode: number }, content: Buffer }
+ *   : { bytes: number, sha256: string, mode: number }>}
+ */
 async function checkedFile(file, maximum, capture) {
   const before = await lstat(file);
   assert.ok(before.isFile() && before.nlink === 1, `Bundle input must be a single-link regular file: ${file}`);

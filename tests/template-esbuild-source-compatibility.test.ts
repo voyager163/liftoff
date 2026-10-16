@@ -174,10 +174,10 @@ describe('content-only esbuild refresh preserves complete historical source fami
     expect(canonicalJson(manifest)).toBe(before);
   });
 
-  it('binds the actual installed Node contribution to only the qualified asset refresh', () => {
+  it('binds the actual installed Node contribution to the reviewed dependency refresh', () => {
     const registry = modernSourceRegistry();
     expect(registry.inventory.find(plugin => plugin.id === 'node-fastify')).toMatchObject({
-      contentVersion: 3, contentDigest: 'sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c'
+      contentVersion: 4, contentDigest: 'sha256:741c6dc7221d9178db1ea88dee47c98e3bdb1ba382ba432dc76f277c705feb92'
     });
     const assets = registry.assetsFor({ kind: 'plugin', category: 'stack', id: 'node-fastify' });
     expect(JSON.parse(assets.own['node-backend-package-manifest']).overrides)

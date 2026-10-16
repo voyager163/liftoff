@@ -56,3 +56,9 @@ variable "alerts_enabled" {
   type        = bool
   default     = false
 }
+
+variable "ingestion_fault_alerts_enabled" {
+  description = "Additionally unpause the DCR-only transformation metric rule after real MSI metric queries and private notification routing are qualified. Missing metrics are not zero faults or end-to-end ingestion health."
+  type        = bool
+  default     = false
+}

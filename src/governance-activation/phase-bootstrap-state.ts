@@ -1,12 +1,19 @@
-import type { PhaseAdapterExecutionInput, PhaseAdapterOutcome } from './transition-ports.js';
+import type {
+  PhaseAdapterExecutionInput,
+  PhaseAdapterOutcome,
+  ProtectedStateDisposalProof
+} from './transition-ports.js';
 import { latestRecordWithPayload, evidenceHeaderDigest } from '../domain/governance/activation/evidence.js';
 import { isRecord, canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import { cloneState, safeTimestamp } from './transition-records.js';
 import { validateArtifactPathParts } from '../domain/project/paths.js';
-import { resolveProjectPath } from '../adapters/filesystem/project-paths.js';
-import { stat } from 'node:fs/promises';
-import { errorMessage } from './transition-process.js';
-import { captureProjectFileSnapshot } from '../adapters/filesystem/project-transaction.js';
+import {
+  assertMatchingProtectedStateCustody,
+  assertProtectedStateCustodyProof,
+  protectedStateBackupInventory,
+  protectedStateBackupsFromPayload,
+  protectedStateCustodyFromPayload
+} from './protected-state-custody.js';
 
 const dayMs = 24 * 60 * 60 * 1000;
 const remoteImportPayloadKind = 'remote-import-verified.v1';
@@ -54,6 +61,32 @@ function pathPartLists(value: unknown, label: string): string[][] {
   return value.map((entry, index) => validateArtifactPathParts(entry, `${label}[${index}]`));
 }
 
+function disposalBody(
+  proof: ProtectedStateDisposalProof
+): Omit<ProtectedStateDisposalProof, 'disposalDigest'> {
+  const { disposalDigest: _disposalDigest, ...body } = proof;
+  return body;
+}
+
+function disposalBlocked(reason: string): string {
+  switch (reason) {
+    case 'unsupported-host':
+      return 'The retained bootstrap state cannot be disposed from an unsupported execution host.';
+    case 'protected-storage-unavailable':
+      return 'Protected bootstrap storage is unavailable; disposal cannot fall back to project files.';
+    case 'key-unavailable':
+      return 'The exact retained non-exporting key reference is unavailable.';
+    case 'locking-unavailable':
+      return 'The exact retained locking capability is unavailable.';
+    case 'writer-active':
+      return 'Bootstrap state disposal requires verified writer quiescence.';
+    case 'artifact-missing':
+      return 'Protected bootstrap artifacts were missing before exact disposal could be verified.';
+    default:
+      return 'Protected bootstrap custody could not verify exact due-time disposal.';
+  }
+}
+
 export async function executeBootstrapStateDisposal(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
   if (input.phase.id !== 'bootstrap-state-disposed') return null;
   const retention = input.inspection.state.bootstrapState;
@@ -87,7 +120,45 @@ export async function executeBootstrapStateDisposal(input: PhaseAdapterExecution
   if (!isRecord(importRecord.payload) || importRecord.payload.kind !== remoteImportPayloadKind) {
     return { status: 'blocked', blocker: 'Destructive disposal requires verified remote backend and no-change evidence.', completedOperations: [] };
   }
-  if (canonicalSha256(retention.encryptedStatePathParts) !== canonicalSha256(importRecord.payload.encryptedStatePathParts) ||
+  const custody = protectedStateCustodyFromPayload(importRecord.payload.custody);
+  const backups = protectedStateBackupsFromPayload(importRecord.payload.backups);
+  if (!custody || !backups) {
+    return { status: 'blocked', blocker: 'Destructive disposal requires the original qualified protected custody and backup references.', completedOperations: [] };
+  }
+  const bindingDigest = importRecord.payload.bindingDigest;
+  const backendBindingDigest = importRecord.payload.backendBindingDigest;
+  const runnerId = importRecord.payload.runnerId;
+  const runnerLabel = importRecord.payload.runnerLabel;
+  const bootstrapBindingDigest =
+    input.inspection.state.phaseOutputs?.['remote-import-verified']?.values.bootstrapBindingDigest;
+  if (typeof bindingDigest !== 'string' || typeof backendBindingDigest !== 'string' ||
+    typeof bootstrapBindingDigest !== 'string' ||
+    typeof runnerId !== 'number' || typeof runnerLabel !== 'string') {
+    return { status: 'blocked', blocker: 'Destructive disposal requires exact retained runner, backend, and bootstrap bindings.', completedOperations: [] };
+  }
+  const retainedRunner = {
+    id: runnerId,
+    label: runnerLabel,
+    groupId: custody.runnerGroupId,
+    networkConfigurationId: custody.networkConfigurationId
+  };
+  try {
+    assertProtectedStateCustodyProof(custody, {
+      bindingDigest,
+      runner: retainedRunner
+    }, input.now);
+  } catch {
+    return { status: 'blocked', blocker: 'The retained protected custody proof is invalid or expired.', completedOperations: [] };
+  }
+  let protectedInventory: ReturnType<typeof protectedStateBackupInventory>;
+  try {
+    protectedInventory = protectedStateBackupInventory(backups, custody);
+  } catch {
+    return { status: 'blocked', blocker: 'The retained protected backup inventory is invalid.', completedOperations: [] };
+  }
+  if (canonicalSha256(retention.encryptedStatePathParts) !== canonicalSha256(protectedInventory.encryptedStatePathParts) ||
+    canonicalSha256(retention.encryptionKeyPathParts) !== canonicalSha256(protectedInventory.encryptionKeyPathParts) ||
+    canonicalSha256(retention.encryptedStatePathParts) !== canonicalSha256(importRecord.payload.encryptedStatePathParts) ||
     canonicalSha256(retention.encryptionKeyPathParts) !== canonicalSha256(importRecord.payload.encryptionKeyPathParts)) {
     return { status: 'blocked', blocker: 'Disposal paths differ from the immutable verified import inventory.', completedOperations: [] };
   }
@@ -97,33 +168,82 @@ export async function executeBootstrapStateDisposal(input: PhaseAdapterExecution
     typeof noChangePlanDigest !== 'string' || !/^[a-f0-9]{64}$/u.test(noChangePlanDigest)) {
     return { status: 'blocked', blocker: 'Destructive disposal requires payload-free remote backend and no-change plan digests.', completedOperations: [] };
   }
-  const allPaths = [...retention.encryptedStatePathParts, ...retention.encryptionKeyPathParts]
-    .map((parts) => validateArtifactPathParts([...parts], 'Bootstrap disposal path'));
-  const incompleteCleanup: string[] = [];
-  for (const parts of allPaths) {
-    try {
-      const target = await resolveProjectPath(input.inspection.projectRoot, parts);
-      const details = await stat(target);
-      if (!details.isFile()) incompleteCleanup.push(`${parts.join('/')} is not a regular file.`);
-    } catch (error) {
-      incompleteCleanup.push(`${parts.join('/')} was already absent before disposal: ${errorMessage(error)}`);
-    }
+  const custodyPort = input.adapters.protectedStateCustody;
+  if (!custodyPort) {
+    return { status: 'blocked', blocker: 'Bootstrap disposal requires the same explicitly registered protected custody capability.', completedOperations: [] };
+  }
+  const qualification = await custodyPort.qualify({
+    schemaVersion: 1,
+    bindingDigest,
+    repository: input.inspection.state.repository.name,
+    runner: retainedRunner,
+    backendBindingDigest,
+    bootstrapBindingDigest,
+    retentionDays: 30
+  });
+  if (qualification.status === 'blocked') {
+    return { status: 'blocked', blocker: disposalBlocked(qualification.reason), completedOperations: [] };
+  }
+  try {
+    assertProtectedStateCustodyProof(qualification.proof, {
+      bindingDigest,
+      runner: retainedRunner
+    }, input.now);
+    assertMatchingProtectedStateCustody(qualification.proof, custody);
+  } catch {
+    return { status: 'blocked', blocker: 'Current protected custody differs from the immutable retained host, storage, key, or locking authority.', completedOperations: [] };
+  }
+  const disposal = await custodyPort.dispose({
+    schemaVersion: 1,
+    repository: input.inspection.state.repository.name,
+    remoteImportEvidenceId: importRecord.evidenceId,
+    remoteImportEvidenceDigest: retention.remoteImportEvidenceDigest,
+    remoteBackendDigest,
+    noChangePlanDigest,
+    disposeAfter: retention.disposeAfter,
+    requestedAt: input.now.toISOString(),
+    custody,
+    backups
+  });
+  if (disposal.status === 'blocked') {
+    return { status: 'blocked', blocker: disposalBlocked(disposal.reason), completedOperations: [] };
+  }
+  const artifactRefs = backups.map((backup) => backup.encryptedStateRef);
+  const keyRefs = [...new Set(backups.map((backup) => backup.encryptionKeyRef))];
+  const disposedAt = Date.parse(disposal.proof.disposedAt);
+  if (disposal.proof.kind !== 'protected-state-disposal.v1' ||
+    disposal.proof.remoteImportEvidenceId !== importRecord.evidenceId ||
+    disposal.proof.remoteImportEvidenceDigest !== retention.remoteImportEvidenceDigest ||
+    disposal.proof.custodyQualificationDigest !== custody.qualificationDigest ||
+    disposal.proof.payloadFree !== true ||
+    !Number.isFinite(disposedAt) ||
+    disposedAt < Date.parse(retention.disposeAfter) ||
+    disposedAt > input.now.getTime() ||
+    canonicalSha256(disposal.proof.deletedArtifactRefs) !== canonicalSha256(artifactRefs) ||
+    canonicalSha256(disposal.proof.deletedKeyRefs) !== canonicalSha256(keyRefs) ||
+    disposal.proof.disposalDigest !== canonicalSha256(disposalBody(disposal.proof))) {
+    return { status: 'blocked', blocker: 'Protected custody returned incomplete or contradictory disposal evidence.', completedOperations: [] };
   }
   const state = cloneState(input.inspection.state);
   state.bootstrapState = {
     ...retention, status: 'disposed', disposedAt: input.now.toISOString(),
-    deletionEvidenceId: `${input.phase.id}-${safeTimestamp(input.now.toISOString())}`, incompleteCleanup
+    deletionEvidenceId: `${input.phase.id}-${safeTimestamp(input.now.toISOString())}`, incompleteCleanup: []
   };
-  const filePreconditions = await Promise.all(allPaths.map((parts) => captureProjectFileSnapshot(input.inspection.projectRoot, parts)));
   return {
     status: 'completed', resultState: 'disposed', stateOverride: state,
     evidencePayload: {
-      kind: bootstrapStateDisposedPayloadKind, deletedPathParts: allPaths,
-      remoteBackendDigest, noChangePlanDigest, incompleteCleanup, payloadFree: true
+      kind: bootstrapStateDisposedPayloadKind,
+      deletedPathParts: [
+        ...retention.encryptedStatePathParts,
+        ...retention.encryptionKeyPathParts
+      ],
+      deletedArtifactRefs: artifactRefs,
+      deletedKeyRefs: keyRefs,
+      custodyQualificationDigest: custody.qualificationDigest,
+      disposalDigest: disposal.proof.disposalDigest,
+      remoteBackendDigest, noChangePlanDigest, incompleteCleanup: [], payloadFree: true
     },
-    fileMutations: allPaths.map((parts) => ({ type: 'delete', pathParts: parts })),
-    filePreconditions,
     completedOperations: input.plan.operations.filter((op) => op.actionId === 'local.bootstrap-state.dispose'),
-    cleanupWarnings: incompleteCleanup
+    cleanupWarnings: []
   };
 }

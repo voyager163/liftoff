@@ -16,6 +16,11 @@ import {extractVersion,matchesReleaseLine,compareVersionCores} from '../../domai
 import {canonicalWorkspaceBoundary,deleteCapturedWorkspace,workspaceFileIdentity} from '../filesystem/repair-workspaces.js';
 import type {RepairWorkspaceRole,RepairWorkspaceFileIdentity} from '../../application/repair/workspaces-types.js';
 export class LocalToolSettlementError extends ModernLocalInputError {}
+export const modernComposePluginRequirement={minimumVersion:'5.5.1',releaseLine:'5'} as const;
+export function isModernComposePluginVersionSupported(version:string):boolean{
+  return matchesReleaseLine(version,modernComposePluginRequirement.releaseLine)&&
+    compareVersionCores(version,modernComposePluginRequirement.minimumVersion)>=0;
+}
 
 async function neutral(root:string) {
   const original=await canonicalWorkspaceBoundary(root);
@@ -97,7 +102,8 @@ export async function observeModernLocalTools(root:string,checks:readonly Modern
         const compose=await runner.run({executable:plugin.path,args:['version','--short']},{cwd:owned.directory,env,timeoutMs:15000,maxOutputBytes:8192,ensureProcessTreeSettled:true,stream:false});
         unsettled=compose.processTreeSettled!==true&&compose.processSpawned!==false;
         const composeVersion=extractVersion(compose.stdout,'docker');
-        if(compose.status!==0||compose.signal||compose.errorCode||compose.timedOut||compose.outputLimitExceeded||compose.processTreeSettled!==true||!composeVersion)localInputFailure('Compose plugin version/settlement is unavailable.');
+        if(compose.status!==0||compose.signal||compose.errorCode||compose.timedOut||compose.outputLimitExceeded||compose.processTreeSettled!==true||!composeVersion||
+          !isModernComposePluginVersionSupported(composeVersion))localInputFailure('Compose plugin version/settlement is unavailable or unsupported.');
         versions.compose=composeVersion;version=composeVersion;probe={executable:plugin.path,args:['version','--short']};
       }
       const body={id,launcherPath:resolution.resolvedPath,executablePath,prefixArgs,version,versions,files,probe};

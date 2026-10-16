@@ -57,13 +57,15 @@ export async function observeProjectGitMetadata(root: string, runner: CommandRun
   return { facts, digest: metadataDigest(facts) };
 }
 
-export async function inspectProjectLiveMetadata(input: {
+export async function inspectProjectLiveMetadata(request: {
   root: string;
   profile: ProjectAssessmentProfile;
   environments: readonly string[];
   runner?: CommandRunner;
   now?: () => Date;
 }): Promise<ProjectLiveMetadata> {
+  const { root, profile, runner: requestedRunner, now } = request;
+  const input = { root, profile, runner: requestedRunner, now, environments: [...request.environments] };
   const runner = input.runner ?? new NodeCommandRunner();
   const original = await observeProjectGitMetadata(input.root, runner);
   const before = original.facts;

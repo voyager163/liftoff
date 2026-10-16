@@ -104,6 +104,10 @@ exports[`maintenance presentation > snapshots plain doctor layers and remedies 1
 
 CLI
 [ok] version: Liftoff 0.12.3
+[warn] installation owner: unknown
+[warn] cli freshness: CLI upgrade was blocked (unsupported_installation). (unsupported_installation) - Identify and repair the manager that owns the running CLI, then run liftoff doctor and liftoff upgrade --check. Do not install over an unknown owner or migrate managers implicitly.
+[warn] upstream availability: unknown
+[warn] channel availability: unknown
 [ok] Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+. This is not evidence that external node or npm is installed.
 
 Environment
@@ -138,7 +142,7 @@ Runtime
 Cloud - azure
 [ok] azure auth: authenticated
 
-[error] Doctor summary: 1 failure(s), 2 warning(s)
+[error] Doctor summary: 1 failure(s), 6 warning(s)
 ",
 }
 `;
@@ -298,6 +302,13 @@ exports[`maintenance presentation > snapshots rich doctor layers and remedies 1`
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ CLI ────────────────────────────────────────────────────────────────────────────────────────┐
 │ ✓ version: Liftoff 0.12.3                                                                    │
+│ ! installation owner: unknown                                                                │
+│ ! cli freshness: CLI upgrade was blocked (unsupported_installation).                         │
+│ (unsupported_installation) - Identify and repair the manager that owns the running CLI, then │
+│ run liftoff doctor and liftoff upgrade --check. Do not install over an unknown owner or      │
+│ migrate managers implicitly.                                                                 │
+│ ! upstream availability: unknown                                                             │
+│ ! channel availability: unknown                                                              │
 │ ✓ Liftoff runtime: Running Liftoff runtime: Node.js <running-version>; requires 24.20.0+.    │
 │ This is not evidence that external node or npm is installed.                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -337,7 +348,7 @@ exports[`maintenance presentation > snapshots rich doctor layers and remedies 1`
 ┌─ Cloud - azure ──────────────────────────────────────────────────────────────────────────────┐
 │ ✓ azure auth: authenticated                                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-× Doctor summary: 1 failure(s), 2 warning(s)
+× Doctor summary: 1 failure(s), 6 warning(s)
 ",
 }
 `;

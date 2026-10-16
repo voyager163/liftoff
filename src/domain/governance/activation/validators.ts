@@ -11,6 +11,8 @@ import {
   liftoffActivationPackageVersion,
   phaseGraphSchemaVersion,
   isHistoricalActivationIdentity,
+  isReleasedV3ActivationIdentity,
+  releasedV3ActivationIdentity,
   type ReadableActivationIdentity
 } from '../policy/identity.js';
 import type {
@@ -117,6 +119,7 @@ export function validatePublicActivationInputs(value: unknown): ActivationConfig
 /** Manifest readability is not execution compatibility; historical vectors are never retagged. */
 export function validateReadableActivationIdentity(value: unknown): ReadableActivationIdentity {
   if (isHistoricalActivationIdentity(value)) return { ...value };
+  if (isReleasedV3ActivationIdentity(value)) return { ...releasedV3ActivationIdentity };
   return validateActivationIdentity(value);
 }
 

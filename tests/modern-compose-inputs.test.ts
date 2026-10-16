@@ -10,7 +10,7 @@ import { buildCurrentProjectPlan } from '../src/application/project/planning.js'
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { buildCurrentArtifacts } from '../src/templates.js';
 import { writeArtifacts } from '../src/file-system.js';
-import { observeModernLocalTools } from '../src/adapters/process/modern-local-tools.js';
+import { isModernComposePluginVersionSupported, observeModernLocalTools } from '../src/adapters/process/modern-local-tools.js';
 import { createApplicationEnvironment } from '../src/application/repair/application-environment.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
 import type { ModernLocalCheck } from '../src/domain/governance/activation/modern-local-inputs.js';
@@ -27,6 +27,14 @@ if (lane === 'native' && !qualified) throw new Error('Native Compose qualificati
 const nativeIt = it.skipIf(lane === 'portable' || !qualified);
 
 describe('closed current Compose input interpretation', () => {
+  it.each(['5.5.1', '5.6.0', '5.99.12'])('admits supported Compose plugin version %s', version => {
+    expect(isModernComposePluginVersionSupported(version)).toBe(true);
+  });
+
+  it.each(['5.5.0', '4.99.99', '6.0.0'])('rejects unsupported Compose plugin version %s', version => {
+    expect(isModernComposePluginVersionSupported(version)).toBe(false);
+  });
+
   it.each(['node', 'python', 'go'] as const)('binds actual generated Manual %s Compose without reading environment values', apiStack => {
     const plan = buildCurrentProjectPlan({
       projectName: 'Current Native', projectType: 'standard', apiStack, specWorkflow: 'manual',
@@ -172,7 +180,10 @@ describe('closed current Compose input interpretation', () => {
     };
     const tools = await observeModernLocalTools(project, [check], []);
     const tool = tools.find(candidate => candidate.id === 'docker')!;
-    expect(tool.versions.compose).toBe('5.5.1');
+    const composeVersion = tool.versions.compose!;
+    expect(tool.version).toBe(composeVersion);
+    expect(isModernComposePluginVersionSupported(composeVersion)).toBe(true);
+    expect(path.basename(tool.executablePath)).toBe('docker-compose');
     const base = await createApplicationEnvironment(process.env, project, root, root);
     Object.assign(base, {
       DOCKER_CONFIG: path.join(root, 'home', 'docker'),

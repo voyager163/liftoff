@@ -172,10 +172,15 @@ roles. It reads the existing `rg-liftoff-prod` and
 edit DCRs, publish an image, or manage the state perimeter. AzureRM is pinned to
 5.3.0; automatic provider registration is disabled. The instance is fixed to
 Korea Central, protected with `prevent_destroy`, and uses a system identity
-with **Log Analytics Reader at that workspace only**, not subscription-wide
-Monitoring Reader. Viewer/editor/admin role entries are existing Entra object
+with **Log Analytics Reader at that workspace only**, plus **Monitoring Reader
+at the existing DCR only** for native transformation metrics, never
+subscription-wide Monitoring Reader. This additional DCR-scoped read grant
+needs its own reviewed plan/approval; it is not inherited from an earlier
+Logs-only plan. The DCR must also remain in Korea Central.
+Viewer/editor/admin role entries are existing Entra object
 IDs at the Grafana instance scope, reviewed independently; an empty map grants
-nobody access. The identity has query access, not ingestion or state access.
+nobody access. The identity has Logs/metric read access, not ingestion or state
+access.
 
 The separate `dashboards/` root pins Grafana provider 4.49.0 and provisions the
 folder, Azure Monitor Logs MSI datasource, native dashboard JSON and paused
@@ -190,6 +195,10 @@ Provisioning uses an existing operator's short-lived Entra token privately in
 Never print it, put it in tfvars, save it in a dashboard, or commit it. No token
 is needed for the backend-free checks below.
 
+The same native Azure Monitor datasource also supports the independently
+paused DCR transformation-error rule. It does not add a second data pipeline
+or a custom fault producer.
+
 ### Gates and recurring cost
 
 Read-only metadata observed on 2026-10-13 found only the six-column command
@@ -201,17 +210,43 @@ or role changed, state payload read, event uploaded or production plan run.
 Protected state ownership/lineage and approved writer/network access also
 remain unqualified. Do not infer these prerequisites from configuration.
 
+Separately authorized read-only preparation on 2026-10-15 produced a
+non-replacing telemetry schema plan and a local-empty-state proposed Grafana
+plan. Neither was applied and no provider was registered. The subscription
+SKU response was an empty list: this is inconclusive, not proof of availability
+or unavailability. The later DCR metric permission/rule source requires a new
+reviewed plan; it does not inherit either earlier plan's qualification.
+Saved plans and full JSON can contain sensitive workspace values even with
+local authentication disabled. Keep them private and permission-restricted;
+use separately redacted summaries for review, never paste raw state into PRs.
+
 The public [Azure Retail Prices API](https://prices.azure.com/api/retail/prices?$filter=contains(productName,%27Grafana%27)%20and%20armRegionName%20eq%20%27koreacentral%27)
 returned Korea Central USD consumption meters on 2026-10-13:
-Standard Node **$0.04617/hour** (about **$33.70 for 730 hours**),
+Standard Node **$0.04617/hour** (about **$33.70 per billed unit for 730 hours**),
 Standard User **$6/month**, and optional Standard Zone Redundancy
 **$0.055485/hour** (about **$40.50 for 730 hours**). Zone redundancy is off in
-this source. These meters have no ARM size mapping and are **not an X1/X2
-quote or cost approval**. Required node counts, active-user charges, discounts,
-tax, workspace query/ingestion and the existing gateway/ACR costs must be
-qualified with the actual SKU and subscription before approval. Do not assume
-an Essential price qualifies Standard. No billable resources are provisioned
-by these static checks.
+this source. These API meters alone have no ARM size mapping and are **not an X1/X2
+quote or cost approval**.
+
+The [official Microsoft pricing table](https://azure.microsoft.com/en-us/pricing/details/managed-grafana/),
+retrieved on 2026-10-15, explicitly maps **Standard X1 to 2 Standard Units** and
+**Standard X2 to 4 Standard Units**. Applying the Korea Central retail unit
+rate above gives these steady-state illustrations for 730 hours:
+
+| Proposed size | Billed instance units | Instance only | With one billed active user |
+| --- | --- | --- | --- |
+| Standard X1 | 2 Standard Units | USD 67.41 | USD 73.41 |
+| Standard X2 | 4 Standard Units | USD 134.82 | USD 140.82 |
+
+The USD 33.70 figure is for **one unit**, not an X1 instance. Optional zone
+redundancy adds one zone-redundancy unit for X1 or two for X2; it remains off.
+These are retail arithmetic, **not a subscription quote or approved budget**.
+Actual regional SKU/version availability and quota, subscription offer/discounts,
+tax, billed active-user counts, workspace query/ingestion and existing
+gateway/ACR costs remain separately qualified/approved inputs. Any introductory
+free period advertised on the pricing page is not assumed available to this
+subscription. Do not assume an Essential price qualifies Standard. No billable
+resources are provisioned by these static checks.
 
 The Grafana inputs intentionally have no SKU-size/major/name defaults. Obtain
 fresh authorized metadata, actual cost/region/quota/provider proof, exact
@@ -277,6 +312,10 @@ After separate operator approval (not performed by this source layer):
    configuration, not silence. Populate `expected_heartbeats` only for genuinely
    enabled, qualified reporting, with its UTC monitoring-start timestamp.
    Qualify private notification routing before unpausing `alerts_enabled`.
+   Independently qualify the exact Grafana managed identity's DCR metric
+   access, native query/error/empty displays and positive bounded fault
+   evaluation before also enabling `ingestion_fault_alerts_enabled`. Neither
+   switch grants Azure roles, changes ingestion or registers providers.
 
 ### Definitions and alert limits
 
@@ -295,14 +334,36 @@ command table independently, so legacy-only data remains readable without a
 project table. Anonymous events have no project identifier: those event counts
 are not project counts and cannot be classified by synthetic project ID.
 
-Alerts evaluate every 15 minutes and default **paused**. Query errors retain
+Reporting-availability and heartbeat alerts evaluate every 15 minutes and
+default **paused**. Query errors retain
 Grafana's `DatasourceError`, and missing results retain `NoData`; successful
 queries with no command events return zero **faults**, not a failure.
 The availability probe verifies only command-table query/permission access.
-It is not a gateway upload/ingestion-health signal. **Verified ingestion-fault
-alerting is unavailable** until a real privacy-safe fault producer is qualified;
-there is no invented fault stream, body/console logging, or low-CLI-volume
-threshold. Task 17.5 consequently remains incomplete.
+It is not a gateway upload/ingestion-health signal.
+
+The separate DCR rule queries Azure Monitor's actual
+`TransformationErrors_Count` metric, not command/event volume or an invented
+fault table. Authorized read-only metadata established Count aggregation,
+one-minute granularity and `InputStreamId`/`ErrorType` dimensions for the
+existing DCR. The source uses the native Grafana 12 Azure Monitor metric-query
+contract and aggregates the DCR metric without splitting/filtering dimensions.
+It evaluates every minute, sums Count points over a **15-minute window**, and
+requires positive errors for a **5-minute pending** period. Late metrics or
+faults outside that window can be missed; this is not a completeness guarantee.
+Both `alerts_enabled` and the separate, default-false
+`ingestion_fault_alerts_enabled` must be enabled. Global pause always wins.
+Missing results remain `NoData`, query/auth errors remain `Error`, and no
+missing/null series is explicitly filled with zero. The observed read-only
+metric query returned an **empty timeseries**, not proof of zero faults.
+
+This signal covers DCR transformation errors only: it is **not end-to-end
+ingestion health**, gateway rejection/auth/network/queue health, a delivery
+success rate, or a project activity/deployment signal. It creates no request,
+body, IP or console logging and no contact/notification destination.
+**Verified ingestion-fault alerting remains a live qualification gate** until
+the actual Grafana identity/query, missing/error states, positive fault
+evaluation and approved private routing are exercised. Source/mock success
+does not complete task 17.5's production verification or any deployment gate.
 
 Explicit monthly expectations use a maximum 31-day interval plus 9-day grace
 (40 days), then a 15-minute pending period. Overdue is `now > due`, not `>=`.

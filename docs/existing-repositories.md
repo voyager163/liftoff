@@ -180,7 +180,8 @@ or restore the requested native and framework integrations, including when
 governance is disabled. Unowned custom integrations and neighboring skills are
 not overwritten by repair or force.
 
-Supported historical projects preview a manifest-v8 managed-core successor.
+Supported historical projects without activation records preview a
+manifest-v8 managed-core successor.
 After a matching check and explicit approval, update adopts safe policy,
 context, guide, phase graph, compatibility metadata, credential-policy schema
 and selected-agent setup integrations. An omitted governance setting retains
@@ -200,8 +201,12 @@ deactivate GitHub settings. Workflow changes use `liftoff workflow set`;
 ordinary update and force cannot execute either lane.
 
 Review the exact profile/workflow contract and actual operation descriptors in
-the preview, including history preservation. Supported activation-v1/v2/v3
-sources retain original state, receipts, plans, approvals and source metadata
+the preview, including history preservation. Only an explicitly declared
+source/target activation lane can publish an activation-v1/v2/v3 successor.
+The current5 target has no such lane and refuses without publishing a preview
+or changing project/history bytes; force and a supplied fingerprint cannot
+substitute for the missing preview or lane. The retained successor contracts
+preserve original state, receipts, plans, approvals and source metadata
 in in-project history before a linked current successor is created. Sources
 without activation preserve their original manifest separately without
 inventing activation state. Historical records stay non-executable; updating
@@ -212,6 +217,10 @@ outstanding. Use the separately reviewed
 postcommit failures preserve the successor rather than downgrading it.
 Unsupported source formats and application/infrastructure migrations remain
 separate blockers.
+
+Already-linked retained family4 sources remain eligible only for exact
+same-intent maintenance, not implicit current5 reselection. See
+[current modernization contracts](configuration-and-manifests.md#current-modernization-contracts).
 
 The manifest-v8 successor retains legacy non-core artifacts as project
 provenance without writing, restoring, moving, or deleting their paths.

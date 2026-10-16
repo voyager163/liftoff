@@ -41,7 +41,14 @@ liftoff upgrade --check
 liftoff upgrade
 ```
 
-`upgrade` replaces only the supported global CLI installation. It does not read
+`upgrade` replaces only the verified owning global CLI installation. Existing
+npm users keep their prefix and approved scoped mirror/account configuration;
+neither the check nor apply migrates to a different manager. Native cask, WinGet
+and Linux archive distribution remains **unqualified**; native source and local
+receipts are not publisher approval or evidence of public availability.
+`liftoff doctor` uses the same read-only ownership/freshness inspection and reports
+offline or indeterminate metadata explicitly, without a telemetry notice or delivery.
+Upgrade does not read
 or update a generated project. Inspect Liftoff-managed core maintenance
 separately with `liftoff update --check`; production template modernization is
 a reviewed project change.
@@ -197,10 +204,13 @@ preview managed-core work with `liftoff update --check`, then run
 `liftoff update` and approve the matching plan. Check leaves project bytes
 unchanged and saves a disclosed preview receipt outside the repository. Missing
 or stale previews block apply. Automation uses
-`--approve-plan <fingerprint>`; `--json` only selects formatting. Supported
-activation-v1/v2 migration preserves original in-project records and creates a
-linked v3 activation. Failed revalidation remains blocked and resumable, not
-reset to an older contract. Application source, dependencies, schemas,
+`--approve-plan <fingerprint>`; `--json` only selects formatting. On builds
+advertising `schemas.currentUpdate`, an exact supported activation-v1/v2/v3
+source preserves original in-project records before publishing linked
+state4/journal2 and v8 metadata. Local revalidation requires its own separately
+approved verification and exact-byte publication; update does not reuse old
+success flags or execute that work. Failed revalidation remains blocked and
+resumable, not reset to an older contract. Application source, dependencies, schemas,
 containers, environments, documentation, and infrastructure remain
 project-owned, including when `--force` is used.
 

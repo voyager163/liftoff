@@ -157,13 +157,25 @@ returns nothing; it does not parse JSON, select a signing principal or grant
 installation authority. The existing JSON verifier delegates to the same checks
 before parsing, preserving its results and failures. Native bundles carry this
 inert module, its adjacent `.d.mts` declaration and release-policy/platforms JSON
-in `installation/`; importing admission
-does not import a builder, inspect Git or execute a release operation. CLI-specific
-npm packaging/import integration remains separate owner-aware upgrade work.
+in `installation/`; importing admission does not import a builder, inspect Git or
+execute a release operation.
+The npm package also carries the inert module, declaration and adjacent JSON under
+`distribution/native/`; installed runtime-only foreign-directory smoke checks
+exercise signer/source/inventory binding without builder or checkout imports.
+CLI admission defers loading through one exact literal package-relative edge.
+The architectural guard admits only that importer/target, checks the helper's
+fixed pure builtin/data dependency closure and packaged presence, and continues
+to reject computed, escaping, URL, evaluation and unrelated external edges.
+
 The adjacent inert `native-release-catalog.mjs` validates flat immutable artifact
 locators; it does not authenticate a publisher, inspect a channel or grant installation.
 Its adjacent `.d.mts` declaration provides the typed locator contract; both are
 bound to the builder inputs and copied into the native bundle's `installation/`.
+
+Strict TypeScript consumers distinguish `bundleFile` identities from
+`readBundleFile` identities plus captured bytes. Builder and recovery interfaces
+retain their optional Windows launcher and selected stale-lock inputs; these
+compiler contracts do not grant signing, installation or release authority.
 
 The existing canonical prefix must belong to the invoking user and be private.
 Version directories are `versions/<package-version>-<bundle-manifest-sha256>`;
@@ -181,7 +193,9 @@ verified version and receipt. A dead-process lock additionally requires the
 selected `.native-install-lock/owner.json` digest and positive process absence;
 active, reused-PID, unknown, changed or ownerless locks are retained. Partial-copy
 damage or missing receipts remain explicit incomplete recovery, not a success.
-No broad prefix sweep, version deletion, manager migration or upgrade is provided.
+No broad prefix sweep, version deletion or manager migration is provided.
+Owner-aware upgrade source reuses these contracts for Linux replacement and
+digest-selected recovery, but refuses public apply while policy remains unqualified.
 
 ## Exact artifact handoff and public release blockers
 
@@ -290,8 +304,85 @@ cask install/uninstall, signed Windows installer/WinGet submission, public Linux
 signature, minimum-host qualification or publication has been performed.
 These require exact source-bound operator authority and real evidence; broad
 implementation consent does not authorize accounts, credentials, external taps,
-settings changes, release uploads or unsigned fallbacks. Current `liftoff upgrade`
-and npm-to-Homebrew migration are unchanged and remain separate groups 10/11.
+settings changes, release uploads or unsigned fallbacks. Group 10 adds owner-aware
+upgrade/doctor source, schema-2 availability/effects/verification and safe manager
+handoff interfaces; it does **not** qualify these public channels or complete
+real-manager/minimum-host tasks. Group 11 now supplies
+[standalone npm-to-Homebrew migration source](mac-npm-migration.md), including
+an independent development package, exact selected-owner preflight, private
+journal/recovery and injected exact-cask handover. Its production cask provider
+is deliberately unregistered. Source fixtures and development packaging do not
+enable actual/public migration or complete Group 11 qualification.
+
+Reusable Group-10 contracts live in `src/domain/distribution/native-upgrade.ts`;
+`NativeBundleInventory` contains unattributed local facts, while
+`NativeInstallation` adds ownership only after receipt or manager validation.
+`native.ts` exposes strict policy/manager ownership assertions and
+`createNativeUpgradePort`, while `native-metadata.ts` admits independently signed
+material without release-builder imports. Cask/WinGet observations and owning
+channel reads are explicit abortable provider ports, bounded at the selected
+probe deadline. A default Homebrew reader is wired behind the namespace policy:
+it reads the exact standard Caskroom receipt/staged version, canonical tap
+definition and approved local Git origin, with byte/directory/commit rechecks.
+It never executes Homebrew or Ruby or refreshes a source. The receipt format is
+derived from [Homebrew's pinned cask Tab implementation](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cask/tab.rb)
+and [metadata paths](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cask/metadata.rb).
+This is local attribution, not publisher authentication. The current null policy
+does not invoke that reader. No production WinGet reader is registered, and no
+qualified deployed native stable release is established; real manager/source/certificate facts and
+independent qualification remain required. Returning fixture observations does
+not qualify a provider. WinGet source currently admits only observed
+user-scope ownership; machine-scope installs are not migrated or elevated.
+Linux recovery delegates unchanged to the installed receipt/journal API and
+requires exact selected digests; it is not a macOS cask recovery authority.
+
+Cask Git probes and native verification subprocesses explicitly opt out of
+ambient environment inheritance. Omitted parent variables are not restored over
+their supplied environment; explicitly selected settings remain preserved.
+Real harmless child controls contrast the unchanged default merge with these
+opt-ins, including filtered Git variables and telemetry-disabled verification.
+Their filesystem/signing fixtures still do not qualify a real manager or host.
+
+`createNativeStableSource` in `native-transport.ts` is a bounded read-only material
+reader, not an installer or package-manager availability reader. It uses the
+canonical GitHub stable release and flat catalog, verifies the selected signed
+envelope before large subject downloads, and independently checks tag/main/run
+identity with final ref/release readbacks. It downloads only the selected target,
+rejects unsafe redirects and oversized streams, and preserves the two-second
+metadata deadline. Returned bytes still require `lookupNativeStableCandidate` /
+`admitNativeStableMaterial`; no staging root or manager execution permission is
+created. The upgrade port uses this default only behind approved policy;
+an explicit `stable: undefined` still disables it. The current null policy
+refuses before HTTP. Linux candidate admission independently verifies original
+archive bytes with the shared raw-byte primitive and the separately approved
+archive key, in addition to the qualification-envelope key and subject hashes.
+The npm package includes both inert catalog files; no builder is imported.
+
+Absent-cask preparation is distinct from upgrading an installed owner.
+`createHomebrewCaskPreparation` in `native-cask-plan.ts` exposes
+`observeDestination(prefix, signal)` and `preview(prefix, signal)`. Stable lookup
+accepts a target-only request, so a migration caller need not forge a
+`NativeInstallation`. The preview authenticates target material, rechecks canonical
+destination/presence facts, and optionally observes bounded local cask bytes in
+the flat or first-letter tap layout. Those bytes are explicitly
+`unverified-local-bytes`; neither a matching filename nor their hash proves tap
+origin, safe Ruby, channel availability, writable destinations, signing or host
+qualification. An occupied path is not installed ownership. Callers must use fresh
+policy and observations; preview identities are not later effect authority.
+
+Every preview retains `channel.status: unknown`,
+`preflight.exactExecutionProven: false`, and
+`execution: { status: blocked, reason: exact_cask_execution_unproven, command: null }`.
+There is no install/uninstall method. A migration must stop before removing npm.
+The inspected [Homebrew install parser](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cmd/install.rb)
+has no cask version selector; [`version-install`](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cmd/version-install.rb)
+is formula-only and may create a personal tap. The
+[cask path loader](https://github.com/Homebrew/brew/blob/f8d1b25f33e032707f151123aca0eac3a239c676/Library/Homebrew/cask/cask_loader.rb)
+applies loadability/trust policy, then reopens and evaluates Ruby. A prehashed
+temporary `.rb`, an unpinned token, `--dry-run` or a no-auto-update setting is
+therefore not established exact-source execution authority. Preparation never
+executes Homebrew/Ruby/Git, creates a tap, changes trust/settings, writes a cask,
+or supplies an unbound fallback command.
 
 The pinned HCL npm package omits standalone license notices. The builder supplies its
 upstream MPL notice and the notices for the seven modules recorded in the original WASM,

@@ -67,7 +67,7 @@ For an existing Liftoff project, use `liftoff update --check`, separately scoped
 Do not initialize over an application or reinitialize a project to fix a blocker.
 
 For maintenance, `liftoff upgrade --check` previews a CLI upgrade; `liftoff update --check` previews managed project changes before explicit approval.
-An upgrade replaces the CLI only; generated projects use `liftoff update` separately for reviewed project maintenance. Application files remain project-owned.
+An upgrade replaces only the verified owning CLI installation; generated projects use `liftoff update` separately for reviewed project maintenance. Application files remain project-owned. Existing global npm installations retain their approved prefix, scoped mirror and account settings. Native owner-aware source is present, but public Homebrew cask, WinGet and Linux native channels remain unqualified and refuse automatic replacement; no manager migration is implied.
 Builds advertising `schemas.currentUpdate` preview v8 successors or maintenance.
 For an explicit current-v8 governance change, `liftoff update --check` reports a
 separate exact profile plan; `--force` cannot apply it. Workflow changes route to

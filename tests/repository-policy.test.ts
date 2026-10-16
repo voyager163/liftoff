@@ -7,7 +7,8 @@ import {
   checkIssueForm, checkPromotion, checkRepositoryPolicy, checkWorkflow,
   communityFiles, workflowFiles, checkIsolatedHclReport, checkIsolatedHclRuntime,
   isolatedHclQualificationJob, isolatedHclTestCommand, checkPluginPathReport, pluginPathTestCommand,
-  nativeBundleQualificationJob, nativePlatformQualificationJob
+  nativeBundleQualificationJob, nativePlatformQualificationJob,
+  checkNativeCustodyQualificationJob, nativeCustodyWorkflowFile
 } from '../scripts/check-repository-policy.mjs';
 
 const root = process.cwd();
@@ -26,6 +27,89 @@ function pullRequest(base: string, head: string, owner = 'voyager163/liftoff') {
 }
 
 describe('source repository setup policy', () => {
+  it('pins a dispatch-only native custody qualification without changing ordinary CI', async () => {
+    const workflow = await readWorkflow(nativeCustodyWorkflowFile);
+    expect(workflow.on.workflow_dispatch).toBeNull();
+    expect(Object.keys(workflow.jobs)).toEqual(['policy', 'qualify-native-custody']);
+    expect(workflow.jobs['qualify-native-custody'].if).toBe("${{ github.event_name == 'workflow_dispatch' }}");
+    expect(() => checkNativeCustodyQualificationJob(workflow.jobs['qualify-native-custody'])).not.toThrow();
+    expect(() => checkWorkflow(nativeCustodyWorkflowFile, workflow)).not.toThrow();
+    expect((await readWorkflow('ci.yml')).jobs['qualify-native-custody']).toBeUndefined();
+  });
+  it.each([
+    'trigger', 'runner', 'timeout', 'node', 'architecture', 'npm', 'npm-identity', 'native-budget', 'opentofu',
+    'docker-download', 'docker-checksum', 'compose-download', 'compose-checksum', 'compose-layout', 'compose-evidence',
+    'openspec', 'openspec-cutoff', 'openspec-profile', 'gateway-install',
+    'full-suite-filter', 'coverage-workers', 'coverage-verifier',
+    'focused-file', 'package', 'policy', 'clean', 'missing-evidence'
+  ])('rejects incomplete hosted native custody qualification: %s', async fault => {
+    const workflow = await readWorkflow(nativeCustodyWorkflowFile);
+    const job = workflow.jobs['qualify-native-custody'];
+    const step = (name: string) => job.steps.find((candidate: { name?: string }) => candidate.name === name);
+    if (fault === 'trigger') job.if = "${{ github.event_name == 'push' }}";
+    if (fault === 'runner') job['runs-on'] = 'macos-latest';
+    if (fault === 'timeout') job['timeout-minutes'] = 60;
+    if (fault === 'node') job.steps[1].with['node-version'] = '24.20.0';
+    if (fault === 'architecture') job.steps[1].with.architecture = 'x64';
+    if (fault === 'npm') step('Select supported npm').run = 'npm install --global npm@latest';
+    if (fault === 'npm-identity') {
+      step('Verify native toolchain').run = step('Verify native toolchain').run.replace(
+        "assert.equal(path.basename(npmLauncher), 'npm-cli.js');",
+        ''
+      );
+    }
+    if (fault === 'native-budget') delete job.env.OB1_SUPPORT_REMAINING;
+    if (fault === 'opentofu') job.steps[4].with.tofu_version = '1.13.1';
+    if (fault === 'docker-download') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('docker-29.8.2.tgz', 'docker-latest.tgz');
+    }
+    if (fault === 'docker-checksum') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('5ffa2bafbabe0734', '0ffa2bafbabe0734');
+    }
+    if (fault === 'compose-download') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('v5.5.1', 'v5.6.0');
+    }
+    if (fault === 'compose-checksum') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('998735c9b6fe68a4', '098735c9b6fe68a4');
+    }
+    if (fault === 'compose-layout') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('cli-plugins/docker-compose', 'plugins/docker-compose');
+    }
+    if (fault === 'compose-evidence') delete step('Record hosted native qualification evidence').env.NATIVE_COMPOSE_EXECUTABLE;
+    if (fault === 'openspec') step('Install pinned OpenSpec').run = 'npm install @fission-ai/openspec@latest';
+    if (fault === 'openspec-cutoff') {
+      step('Install pinned OpenSpec').run =
+        step('Install pinned OpenSpec').run.replace('2026-09-26T23:59:59Z', '2026-09-27T23:59:59Z');
+    }
+    if (fault === 'openspec-profile') {
+      step('Install pinned OpenSpec').run =
+        step('Install pinned OpenSpec').run.replace('node scripts/native-custody-qualification.mjs verify-openspec-profile \\\n', '');
+    }
+    if (fault === 'gateway-install') {
+      step('Install dependencies').run =
+        step('Install dependencies').run.replace('npm ci --prefix services/telemetry-ingest', '');
+    }
+    if (fault === 'full-suite-filter') step('Run unfiltered full suite').run += ' -t custody';
+    if (fault === 'coverage-workers') {
+      step('Run source-complete CLI coverage').run =
+        step('Run source-complete CLI coverage').run.replace('--max-workers 1', '--max-workers 2');
+    }
+    if (fault === 'coverage-verifier') step('Verify source-complete coverage evidence').run = 'true';
+    if (fault === 'focused-file') {
+      step('Run focused custody and history checks').run =
+        step('Run focused custody and history checks').run.replace('tests/contract-baseline.test.ts \\\n', '');
+    }
+    if (fault === 'package') step('Run package smoke').run = 'npm pack';
+    if (fault === 'policy') step('Run repository policy').if = '${{ success() }}';
+    if (fault === 'clean') step('Verify final clean bytes').run = 'git diff --check';
+    if (fault === 'missing-evidence') job.steps.pop();
+    expect(() => checkWorkflow(nativeCustodyWorkflowFile, workflow)).toThrow();
+  });
   it('pins the complete runtime-inclusive development qualification without changing release publication', async () => {
     const workflow = await readWorkflow('ci.yml');
     expect(workflow.jobs['qualify-native-bundle']).toEqual(nativeBundleQualificationJob());
@@ -34,7 +118,8 @@ describe('source repository setup policy', () => {
   });
   it.each([
     'missing', 'conditional', 'runner', 'node', 'architecture', 'go', 'install', 'download',
-    'build', 'filtered', 'unset-bundle', 'unset-archive', 'archive-after-tests', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
+    'build', 'filtered', 'unset-bundle', 'unset-migration-bundle', 'wrong-migration-bundle', 'missing-migration-cases',
+    'skip-migration-report', 'unset-archive', 'archive-after-tests', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
   ])('rejects incomplete runtime-inclusive qualification: %s', async fault => {
     const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-bundle'];
     if (fault === 'missing') delete workflow.jobs['qualify-native-bundle'];
@@ -48,6 +133,12 @@ describe('source repository setup policy', () => {
     if (fault === 'build') job.steps[6].run = 'npm run build';
     if (fault === 'filtered') job.steps[7].run = job.steps[7].run.replace('--allowOnly=false', '-t skipped');
     if (fault === 'unset-bundle') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_BUNDLE_ROOT', 'UNSELECTED_BUNDLE');
+    if (fault === 'unset-migration-bundle') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT', 'UNSELECTED_MIGRATION_BUNDLE');
+    if (fault === 'wrong-migration-bundle') job.steps[7].run = job.steps[7].run.replace(
+      'LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle"',
+      'LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/unverified-bundle"');
+    if (fault === 'missing-migration-cases') job.steps[7].run = job.steps[7].run.replace(/^  tests\/mac-migration-package.test.ts.*\n/m, '');
+    if (fault === 'skip-migration-report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/mac-migration-package-report.mjs.*\n/m, '');
     if (fault === 'unset-archive') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_ARCHIVE_ROOT', 'UNSELECTED_ARCHIVE');
     if (fault === 'archive-after-tests') {
       const archive = job.steps[7].run.split('\n')[0];

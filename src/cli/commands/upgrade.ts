@@ -27,11 +27,17 @@ export function renderSelfUpgradeResult(
 ): void {
   const details = [
     { label: 'Current CLI', value: value.currentVersion },
+    ...(value.installationOwner ? [{ label: 'Installation owner', value: value.installationOwner }] : []),
+    ...(value.upstream ? [{ label: 'Upstream availability', value: `${value.upstream.status}${value.upstream.version ? ` (${value.upstream.version})` : ''}` }] : []),
+    ...(value.channel ? [{ label: 'Channel availability', value: `${value.channel.status}${value.channel.version ? ` (${value.channel.version})` : ''}` }] : []),
+    ...(value.effects ? [{ label: 'Installation effects', value: value.effects }] : []),
+    ...(value.verification ? [{ label: 'Verification', value: value.verification }] : []),
+    ...(value.restartRequired ? [{ label: 'Restart required', value: 'yes' }] : []),
     ...(value.installationTarget
       ? [{ label: 'Installation target', value: value.installationTarget }]
       : []),
     ...('targetVersion' in value && value.targetVersion
-      ? [{ label: 'Canonical target', value: value.targetVersion }]
+      ? [{ label: 'Stable target', value: value.targetVersion }]
       : []),
     ...('registryKind' in value && value.registryKind
       ? [{ label: 'Delivery registry', value: value.registryKind }]
@@ -55,16 +61,19 @@ export function renderSelfUpgradeResult(
       );
       return;
     case 'blocked':
-    case 'failed': {
+    case 'failed':
+    case 'handoff-required': {
       presentation.status(
-        value.status === 'blocked' ? 'warning' : 'error',
-        value.status === 'blocked' ? 'CLI upgrade blocked' : 'CLI upgrade failed',
+        value.status === 'failed' ? 'error' : 'warning',
+        value.status === 'blocked' ? 'CLI upgrade blocked' :
+          value.status === 'handoff-required' ? 'CLI upgrade requires handoff' : 'CLI upgrade failed',
         selfUpgradeSummary(value)
       );
       const remedy = selfUpgradeRemedy(value);
       if (remedy) {
         presentation.remedy(remedy);
       }
+      if (value.handoff) presentation.command(formatCommand(value.handoff));
       return;
     }
     default: {
@@ -83,7 +92,7 @@ export const upgradeCommand = async (
   if (!json) {
     context.presentation.commandIdentity(
       'upgrade',
-      'Replace the supported global Liftoff CLI installation'
+      'Upgrade only the verified owning Liftoff installation'
     );
   }
   const value = await executeUpgrade({ mode, json }, context, json ? undefined : {
@@ -91,6 +100,7 @@ export const upgradeCommand = async (
     onInstallCommand: (command) => context.presentation.command(formatCommand(command))
   });
   context.outcome?.record(value.status === 'update-available' ? 'attention-required' :
+    value.status === 'handoff-required' ? 'attention-required' :
     value.status === 'failed' || value.status === 'blocked' ? 'failure' : 'success');
   if (json) {
     context.presentation.rawStdout(`${JSON.stringify(value, null, 2)}\n`);

@@ -14,7 +14,7 @@ export type ModernMutationClass = Released.ReleasedMutationClassV3 |
 export interface ModernStaticVersions {
   readonly liftoffVersion: '0.13.0-dev.0';
   readonly manifestArtifactVersion: 8;
-  readonly activationContractVersion: 4;
+  readonly activationContractVersion: 4 | 5;
   readonly phaseGraphSchemaVersion: 3;
   readonly activationStateSchemaVersion: 4;
   readonly evidenceHeaderSchemaVersion: 4;

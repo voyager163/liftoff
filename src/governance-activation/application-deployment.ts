@@ -1,0 +1,2861 @@
+import { createHash } from 'node:crypto';
+import { canonicalSha256, isRecord } from '../domain/governance/activation/canonical-json.js';
+import type {
+  ExternalOperationState, LiveReadbackProof
+} from '../domain/governance/activation/types.js';
+import type {
+  PhaseAdapterExecutionInput, PhasePlanningInput
+} from './transition-ports.js';
+import {
+  applicationBudget, applicationEnvironment, applicationError, applicationReadbackProof
+} from './application-readiness.js';
+import {
+  applicationPrerequisiteBinding
+} from './application-prerequisites.js';
+import {
+  readVerifiedApplicationArtifact, type VerifiedApplicationArtifact
+} from './application-artifact.js';
+import { azureBackendConfiguration } from './azure-backend-readiness.js';
+import {
+  activationInputPathIsObserved, isSensitiveActivationPath
+} from './inputs.js';
+import {
+  azureObject, expectedAzureEnvironmentBindings, runAzureJson
+} from './azure-discovery.js';
+import { parseHcl } from '../adapters/hcl/semantic.js';
+
+const sourceModePattern = /^100(?:644|755)$/u;
+const sourceObjectPattern = /^[a-f0-9]{40}$/u;
+const digestPattern = /^[a-f0-9]{64}$/u;
+const maximumSourceFiles = 512;
+const maximumSourceBytes = 8 * 1024 * 1024;
+const maximumFileBytes = 1024 * 1024;
+const maximumHealthBodyBytes = 64 * 1024;
+const maximumFreshHealthAgeMilliseconds = 5 * 60 * 1000;
+
+export interface ApplicationDeploymentStateTransition {
+  resourceType: string;
+  resourceId: string;
+  disposition: 'move' | 'import' | 'retain-external';
+  fromAddress: string | null;
+  toAddress: string | null;
+}
+
+export interface ApplicationAuthoritativeRecord {
+  phaseId: 'bootstrap-local' | 'remote-import-verified' | 'application-prerequisites-ready' |
+    'application-artifact-ready';
+  evidenceId: string;
+  headerDigest: string;
+  bindingDigest: string;
+}
+
+export interface ApplicationOwnedResourceConfiguration {
+  resourceType: string;
+  resourceId: string;
+  stateAddress: string;
+  authoritativeRecord: ApplicationAuthoritativeRecord;
+  attributes: Readonly<Record<string, unknown>>;
+  configurationDigest: string;
+}
+
+export interface ApplicationDeploymentBinding {
+  schemaVersion: 1;
+  phaseId: 'application-foundation';
+  sourceSha: string;
+  environment: string;
+  subscriptionId: string;
+  tenantId: string;
+  region: string;
+  resourceGroup: string;
+  resourceGroupId: string;
+  applicationRoot: string;
+  applicationModule: string;
+  providerLockPath: string;
+  localBackendPath: string;
+  remoteBackendExamplePath: string;
+  environmentVariablesPath: string;
+  artifactBindingDigest: string;
+  artifactDigest: string;
+  immutableImage: string;
+  prerequisiteBindingDigest: string;
+  registryId: string;
+  identityId: string;
+  workloadPrincipalId: string;
+  workloadClientId: string;
+  pullRoleId: string;
+  pushRoleId: string;
+  backendBindingDigest: string;
+  bootstrapBindingDigest: string;
+  custodyIdentityDigest: string;
+  custodyQualificationDigest: string;
+  retentionObligationDigest: string;
+  authoritativeRecords: {
+    bootstrap: ApplicationAuthoritativeRecord;
+    prerequisites: ApplicationAuthoritativeRecord;
+    artifact: ApplicationAuthoritativeRecord;
+  };
+  expectedResourceNames: Record<string, string>;
+  requiredResourceIds: readonly string[];
+  stateTransitions: readonly ApplicationDeploymentStateTransition[];
+  ownedResourceConfigurations: readonly ApplicationOwnedResourceConfiguration[];
+  ownedResourceConfigurationDigest: string;
+  variableOverrides: ApplicationDeploymentVariableOverrides;
+  protectedVariableNames: readonly ['postgres_admin_password'];
+  healthTargets: readonly {
+    component: 'backend';
+    method: 'GET';
+    path: '/health';
+    mediaType: 'application/json';
+    parsedBodyDigest: string;
+  }[];
+  budget: {
+    currency: string;
+    fixedMonthlyCents: number;
+    usageMonthlyCents: number;
+  };
+  requirements: {
+    newEnvironmentOnly: true;
+    sameOperationOwnedPrerequisitesOnly: true;
+    protectedExecutionRequired: true;
+    protectedRemoteBackendRequired: true;
+    localStateFallback: false;
+    plaintextStateFallback: false;
+    arbitraryStateImport: false;
+    sourceReplacement: false;
+    immutableArtifactRequired: true;
+    uncertainRedispatch: false;
+  };
+  bindingDigest: string;
+}
+
+export interface ApplicationActivationOwnership {
+  bootstrap_binding_digest: string;
+  prerequisite_binding_digest: string;
+}
+
+export interface ApplicationDeploymentVariableOverrides {
+  backend_image: string;
+  environment: string;
+  location: string;
+  resource_suffix: string;
+  liftoff_activation_ownership: ApplicationActivationOwnership;
+}
+
+export interface ApplicationDeploymentSourceFile {
+  path: string;
+  mode: '100644' | '100755';
+  objectId: string;
+  bytes: number;
+  sha256: string;
+}
+
+export interface ObservedApplicationDeploymentSource {
+  binding: ApplicationDeploymentBinding;
+  files: readonly ApplicationDeploymentSourceFile[];
+  executionFiles: readonly ApplicationDeploymentSourceFile[];
+  sourceInventoryDigest: string;
+  executionInventoryDigest: string;
+  providerLockDigest: string;
+  localBackendDigest: string;
+  backendOverlay: {
+    path: 'backend.tf';
+    bytes: number;
+    sha256: string;
+  };
+  variableOverlay: {
+    path: 'liftoff.auto.tfvars.json';
+    digest: string;
+    keys: readonly string[];
+  };
+  requiredProtectedVariables: readonly ['postgres_admin_password'];
+}
+
+export interface ProtectedApplicationPlanProof {
+  schemaVersion: 1;
+  kind: 'protected-application-plan.v1';
+  bindingDigest: string;
+  sourceInventoryDigest: string;
+  executionInventoryDigest: string;
+  providerLockDigest: string;
+  backendOverlaySha256: string;
+  variableOverlayDigest: string;
+  planDigest: string;
+  plannedAt: string;
+  changes: {
+    add: number;
+    change: 0;
+    destroy: 0;
+  };
+  resourceIds: readonly string[];
+  stateTransitions: readonly ApplicationDeploymentStateTransition[];
+  ownedResourceConfigurations: readonly {
+    resourceId: string;
+    stateAddress: string;
+    configurationDigest: string;
+  }[];
+  state: {
+    originalAuthorityDigest: string;
+    mappingBatchDigest: string;
+    lineage: string;
+    serial: number;
+    stateDigest: string;
+    unmappedStateDigest: string;
+  };
+  cost: {
+    currency: string;
+    fixedMonthlyCents: number;
+    usageMonthlyCents: number;
+  };
+  protectedInputs: readonly {
+    name: 'postgres_admin_password';
+    source: 'qualified-protected-input';
+    valueIncluded: false;
+  }[];
+  checks: {
+    initializedProtectedBackend: true;
+    validatedConfiguration: true;
+    providerLockVerified: true;
+    artifactDigestBound: true;
+    sourceUnchanged: true;
+    plaintextStateAbsent: true;
+    existingDeploymentAdoption: false;
+  };
+}
+
+export interface ProtectedApplicationCompletionProof {
+  schemaVersion: 1;
+  kind: 'protected-application-apply.v1';
+  bindingDigest: string;
+  planDigest: string;
+  sourceInventoryDigest: string;
+  operation: ExternalOperationState;
+  originalStateAuthorityDigest: string;
+  mappingBatchDigest: string;
+  stateLineage: string;
+  stateSerial: number;
+  preApplyStateDigest: string;
+  stateDigest: string;
+  unmappedStateDigest: string;
+  appliedResourceIds: readonly string[];
+  outputs: {
+    backendUrl: string;
+    immutableImage: string;
+  };
+  health: readonly {
+    component: 'backend';
+    method: 'GET';
+    path: '/health';
+    endpoint: string;
+    status: 200;
+    bodyBytes: number;
+    bodySha256: string;
+    observedAt: string;
+    healthy: true;
+  }[];
+  noChangePlanDigest: string;
+  completedAt: string;
+  checks: {
+    protectedBackend: true;
+    exactPlanApplied: true;
+    providerReadbackComplete: true;
+    noChangePlan: true;
+    plaintextStateAbsent: true;
+    sourceUnchanged: true;
+  };
+}
+
+export interface ApplicationDeploymentReadback {
+  observed: {
+    kind: 'application-foundation-readback.v1';
+    bindingDigest: string;
+    sourceInventoryDigest: string;
+    planDigest: string;
+    operationId: string;
+    resourceGroupId: string;
+    backendResourceId: string;
+    backendUrl: string;
+    immutableImage: string;
+    revision: unknown;
+    health: {
+      endpoint: string;
+      status: 200;
+      mediaType: 'application/json';
+      bodyBytes: number;
+      bodySha256: string;
+      parsedBodyDigest: string;
+      observedAt: string;
+    };
+    noChangePlanDigest: string;
+    appliedResourceCount: number;
+  };
+  liveReadback: readonly LiveReadbackProof[];
+}
+
+export interface ProtectedApplicationExecutionProvenance {
+  executionHostId: string;
+  runnerId: number;
+  runnerLabel: string;
+  runnerGroupId: number;
+  networkConfigurationId: string;
+  runnerQualificationDigest: string;
+  networkQualificationDigest: string;
+  custodyIdentityDigest: string;
+  custodyQualificationDigest: string;
+  workflow: {
+    repositoryId: number;
+    repository: string;
+    path: string;
+    executionRef: string;
+    ref: string;
+    sourceSha: string;
+    treeSha: string;
+    workflowDigest: string;
+    executionSourceDigest: string;
+  };
+  authorityDigest: string;
+  provenanceDigest: string;
+}
+
+export interface ProtectedApplicationExecutionAuthority {
+  hostId: string;
+  runnerId: number;
+  runnerLabel: string;
+  runnerGroupId: number;
+  networkConfigurationId: string;
+  runnerQualificationDigest: string;
+  networkQualificationDigest: string;
+  custodyIdentityDigest: string;
+  custodyQualificationDigest: string;
+  workflow: {
+    repositoryId: number;
+    repository: string;
+    path: string;
+    executionRef: string;
+    ref: string;
+    sourceSha: string;
+    treeSha: string;
+    tagObjectType: 'commit';
+    workflowDigest: string;
+    executionSourceDigest: string;
+    barrierStatus: 'active-update-deletion-no-bypass';
+    barrierBindingDigest: string;
+    providerTagObservationDigest: string;
+    providerAdmissionStatus: 'current';
+    providerAdmissionDigest: string;
+  };
+  authorityDigest: string;
+}
+
+export interface ApplicationOriginalStateAuthority {
+  kind: 'protected-application-original-state.v1';
+  backendBindingDigest: string;
+  remoteBackendDigest: string;
+  handoverEvidenceId: string;
+  handoverHeaderDigest: string;
+  stateLineage: string;
+  stateSerial: number;
+  stateDigest: string;
+  unmappedStateDigest: string;
+  observedAt: string;
+  authorityDigest: string;
+}
+
+export interface FreshApplicationHealthObservation {
+  kind: 'protected-application-health.v1';
+  bindingDigest: string;
+  sourceInventoryDigest: string;
+  executionAuthorityDigest: string;
+  provenanceDigest: string;
+  operationId: string;
+  component: 'backend';
+  method: 'GET';
+  path: '/health';
+  endpoint: string;
+  revision: string;
+  immutableImage: string;
+  status: number;
+  mediaType: string;
+  bodyBytes: number;
+  bodySha256: string;
+  parsedBodyDigest: string;
+  observedAt: string;
+  observationDigest: string;
+}
+
+export interface ApplicationOriginalInvocation {
+  phaseId: 'application-foundation' | 'staging-qualified' | 'production-rehearsed';
+  graphHash: string;
+  stateHash: string | null;
+  baselineDigest: string;
+  inputDigest: string;
+  transitionDigest: string;
+  planDigest: string;
+  operationDigest: string;
+  approvalEnvelopeId: string;
+  approvalEnvelopeHash: string;
+  createdAt: string;
+  expiresAt: string;
+  invocationDigest: string;
+}
+
+export interface ApplicationStateMappingProof {
+  resourceType: string;
+  resourceId: string;
+  disposition: 'move' | 'import';
+  fromAddress: string | null;
+  toAddress: string;
+  authoritativeRecord: ApplicationAuthoritativeRecord;
+  expectedConfigurationDigest: string;
+  originalStateAuthorityDigest: string;
+  mappingBatchDigest: string;
+  mappingIndex: number;
+  mappingCount: number;
+  before: {
+    stateLineage: string;
+    stateSerial: number;
+    stateDigest: string;
+    backupArtifactDigest: string;
+    backupKeyRefDigest: string;
+    lockProofDigest: string;
+    writerQuiescenceDigest: string;
+  };
+  after: {
+    stateLineage: string;
+    stateSerial: number;
+    stateDigest: string;
+    lockProofDigest: string;
+    writerQuiescenceDigest: string;
+  };
+  unmappedStateDigestBefore: string;
+  unmappedStateDigestAfter: string;
+  observedConfigurationDigest: string;
+  resourceMutationPerformed: false;
+  custodyIdentityDigest: string;
+  custodyQualificationDigest: string;
+  retentionObligationDigest: string;
+  proofDigest: string;
+}
+
+interface ProtectedApplicationExecutionBase {
+  schemaVersion: 1;
+  binding: ApplicationDeploymentBinding;
+  source: ObservedApplicationDeploymentSource;
+  provenance: ProtectedApplicationExecutionProvenance;
+  executionAuthority: ProtectedApplicationExecutionAuthority;
+  invocation: ApplicationOriginalInvocation;
+}
+
+interface ProtectedApplicationWriteBase extends ProtectedApplicationExecutionBase {
+  mode: 'write';
+  action: 'application-foundation';
+  plan: ProtectedApplicationPlanProof;
+  stateAuthority: ApplicationOriginalStateAuthority;
+  intent: ProtectedApplicationExecutionIntent;
+  effects: {
+    azureResourceProvision: true;
+    azureRead: true;
+    protectedBackendRead: true;
+    protectedBackendWrite: true;
+    stateMappings: readonly ApplicationDeploymentStateTransition[];
+    arbitraryImport: false;
+    resourceGroupReplacement: false;
+    externalPushRoleRetained: true;
+  };
+}
+
+export interface ProtectedApplicationWriteDispatchRequest
+  extends ProtectedApplicationWriteBase {
+  execution: 'dispatch';
+  previousOperation: null;
+}
+
+export interface ProtectedApplicationWriteObservationRequest
+  extends ProtectedApplicationWriteBase {
+  execution: 'observe';
+  previousOperation: ExternalOperationState | null;
+  observationReason: 'accepted-handle' | 'intent-without-handle';
+  retainedCheckpoints: ProtectedApplicationRetainedCheckpoints;
+}
+
+export type ProtectedApplicationWriteRequest =
+  | ProtectedApplicationWriteDispatchRequest
+  | ProtectedApplicationWriteObservationRequest;
+
+export interface ProtectedApplicationReadRequest extends ProtectedApplicationExecutionBase {
+  mode: 'read-only';
+  action: 'staging-qualified' | 'production-rehearsed';
+  execution: 'observe';
+  previousOperation: ExternalOperationState;
+  admittedOperation: ExternalOperationState;
+  admittedCompletionDigest: string;
+  expectedPlanDigest: string;
+  expectedHealthDigest: string;
+  permissions: {
+    azureRead: true;
+    stateRead: false;
+    stateWrite: false;
+    dispatch: false;
+    import: false;
+    move: false;
+    apply: false;
+  };
+}
+
+export interface ProtectedApplicationExecutionIntent {
+  kind: 'protected-application-intent.v1';
+  requestDigest: string;
+  invocationDigest: string;
+  provenanceDigest: string;
+  executionAuthorityDigest: string;
+  stateAuthorityDigest: string;
+  bindingDigest: string;
+  sourceInventoryDigest: string;
+  protectedPlanDigest: string;
+  intentId: string;
+  recordedAt: string;
+  checkpointDigest: string;
+}
+
+export interface ProtectedApplicationAcceptedCheckpoint {
+  kind: 'protected-application-accepted.v1';
+  requestDigest: string;
+  intentCheckpointDigest: string;
+  operation: ExternalOperationState;
+  acceptedAt: string;
+  checkpointDigest: string;
+}
+
+export interface ProtectedApplicationTerminalCheckpoint {
+  kind: 'protected-application-terminal.v1';
+  requestDigest: string;
+  intentCheckpointDigest: string;
+  acceptedCheckpointDigest: string;
+  operation: ExternalOperationState;
+  terminalAt: string;
+  checkpointDigest: string;
+}
+
+export interface ProtectedApplicationExecutionCheckpoints {
+  recordIntent(checkpoint: ProtectedApplicationExecutionIntent): Promise<void>;
+  recordAccepted(checkpoint: ProtectedApplicationAcceptedCheckpoint): Promise<void>;
+  recordTerminal(checkpoint: ProtectedApplicationTerminalCheckpoint): Promise<void>;
+}
+
+export interface ProtectedApplicationRetainedCheckpoints {
+  intent: ProtectedApplicationExecutionIntent | null;
+  accepted: ProtectedApplicationAcceptedCheckpoint | null;
+  terminal: ProtectedApplicationTerminalCheckpoint | null;
+}
+
+export type ProtectedApplicationExecutionFailureReason =
+  | 'capability-unavailable'
+  | 'stale-binding'
+  | 'stale-invocation'
+  | 'stale-execution-source'
+  | 'ownership-unverified'
+  | 'protected-input-unavailable'
+  | 'backend-unavailable'
+  | 'mapping-unverified'
+  | 'configuration-mismatch'
+  | 'concurrency-conflict'
+  | 'checkpoint-failed'
+  | 'cost-exceeded'
+  | 'health-unverified'
+  | 'verification-failed'
+  | 'operation-failed';
+
+const protectedApplicationFailureReasons = new Set<string>([
+  'capability-unavailable',
+  'stale-binding',
+  'stale-invocation',
+  'stale-execution-source',
+  'ownership-unverified',
+  'protected-input-unavailable',
+  'backend-unavailable',
+  'mapping-unverified',
+  'configuration-mismatch',
+  'concurrency-conflict',
+  'checkpoint-failed',
+  'cost-exceeded',
+  'health-unverified',
+  'verification-failed',
+  'operation-failed'
+]);
+
+function isProtectedApplicationFailureReason(
+  value: unknown
+): value is ProtectedApplicationExecutionFailureReason {
+  return typeof value === 'string' &&
+    protectedApplicationFailureReasons.has(value);
+}
+
+export type ProtectedApplicationNoEffectResult = {
+  status: 'blocked';
+  effect: 'none';
+  reason: ProtectedApplicationExecutionFailureReason;
+};
+
+export type ProtectedApplicationWriteResult =
+  | ProtectedApplicationNoEffectResult
+  | {
+    status: 'uncertain';
+    effect: 'intent';
+    reason: ProtectedApplicationExecutionFailureReason;
+    intent: ProtectedApplicationExecutionIntent;
+  }
+  | {
+    status: 'accepted';
+    effect: 'accepted';
+    operation: ExternalOperationState;
+    intent: ProtectedApplicationExecutionIntent;
+    accepted: ProtectedApplicationAcceptedCheckpoint;
+  }
+  | {
+    status: 'failed';
+    effect: 'accepted' | 'terminal';
+    reason: ProtectedApplicationExecutionFailureReason;
+    operation: ExternalOperationState;
+    intent: ProtectedApplicationExecutionIntent;
+    accepted: ProtectedApplicationAcceptedCheckpoint;
+    terminal?: ProtectedApplicationTerminalCheckpoint;
+  }
+  | {
+    status: 'completed';
+    effect: 'terminal';
+    action: 'application-foundation';
+    operation: ExternalOperationState;
+    intent: ProtectedApplicationExecutionIntent;
+    accepted: ProtectedApplicationAcceptedCheckpoint;
+    terminal: ProtectedApplicationTerminalCheckpoint;
+    provenance: ProtectedApplicationExecutionProvenance;
+    plan: ProtectedApplicationPlanProof;
+    mappings: readonly ApplicationStateMappingProof[];
+    completion: ProtectedApplicationCompletionProof;
+  };
+
+export type ProtectedApplicationReadResult =
+  | ProtectedApplicationNoEffectResult
+  | {
+    status: 'completed';
+    effect: 'none';
+    action: 'staging-qualified' | 'production-rehearsed';
+    operation: ExternalOperationState;
+    provenance: ProtectedApplicationExecutionProvenance;
+    admittedCompletionDigest: string;
+    observation: ApplicationDeploymentReadback;
+  };
+
+export interface ProtectedApplicationExecutionPort {
+  dispatch(
+    request: ProtectedApplicationWriteDispatchRequest,
+    checkpoints: ProtectedApplicationExecutionCheckpoints
+  ): Promise<ProtectedApplicationWriteResult>;
+  observeWrite(
+    request: ProtectedApplicationWriteObservationRequest,
+    checkpoints: Pick<
+      ProtectedApplicationExecutionCheckpoints,
+      'recordAccepted' | 'recordTerminal'
+    >
+  ): Promise<ProtectedApplicationWriteResult>;
+  observeRead(
+    request: ProtectedApplicationReadRequest
+  ): Promise<ProtectedApplicationReadResult>;
+}
+
+function exactDigest(value: unknown, label: string): string {
+  if (typeof value !== 'string' || !digestPattern.test(value)) {
+    return applicationError('application-deployment-binding', `${label} is absent or invalid.`);
+  }
+  return value;
+}
+
+function sha256(value: Buffer | string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function requiredResourceIds(
+  groupId: string,
+  names: ReturnType<typeof applicationEnvironment>['resources'],
+  prerequisite: ReturnType<typeof applicationPrerequisiteBinding>
+): string[] {
+  const storage = `${groupId}/providers/Microsoft.Storage/storageAccounts/${names.storage}`;
+  const serviceBus = `${groupId}/providers/Microsoft.ServiceBus/namespaces/${names.serviceBus}`;
+  const postgres = `${groupId}/providers/Microsoft.DBforPostgreSQL/flexibleServers/${names.postgres}`;
+  return [
+    groupId,
+    prerequisite.registryId,
+    prerequisite.identityId,
+    prerequisite.roles[0]!.id,
+    `${groupId}/providers/Microsoft.App/managedEnvironments/${names.containerAppEnvironment}`,
+    `${groupId}/providers/Microsoft.App/containerApps/${names.backendContainerApp}`,
+    postgres,
+    `${postgres}/firewallRules/AllowAzureServices`,
+    `${groupId}/providers/Microsoft.Cache/Redis/${names.redis}`,
+    storage,
+    `${storage}/blobServices/default/containers/documents`,
+    serviceBus,
+    `${serviceBus}/queues/events`,
+    `${groupId}/providers/Microsoft.Communication/communicationServices/${names.communication}`,
+    `${groupId}/providers/Microsoft.KeyVault/vaults/${names.keyVault}`
+  ];
+}
+
+function stateTransitions(
+  prerequisite: ReturnType<typeof applicationPrerequisiteBinding>
+): ApplicationDeploymentStateTransition[] {
+  return [
+    {
+      resourceType: 'Microsoft.Resources/resourceGroups',
+      resourceId: prerequisite.groupId,
+      disposition: 'move',
+      fromAddress: 'azurerm_resource_group.bootstrap',
+      toAddress: 'module.application.azurerm_resource_group.main'
+    },
+    {
+      resourceType: 'Microsoft.ContainerRegistry/registries',
+      resourceId: prerequisite.registryId,
+      disposition: 'import',
+      fromAddress: null,
+      toAddress: 'module.application.azurerm_container_registry.main'
+    },
+    {
+      resourceType: 'Microsoft.ManagedIdentity/userAssignedIdentities',
+      resourceId: prerequisite.identityId,
+      disposition: 'import',
+      fromAddress: null,
+      toAddress: 'module.application.azurerm_user_assigned_identity.app'
+    },
+    {
+      resourceType: 'Microsoft.Authorization/roleAssignments',
+      resourceId: prerequisite.roles[0]!.id,
+      disposition: 'import',
+      fromAddress: null,
+      toAddress: 'module.application.azurerm_role_assignment.acr_pull'
+    },
+    {
+      resourceType: 'Microsoft.Authorization/roleAssignments',
+      resourceId: prerequisite.roles[1]!.id,
+      disposition: 'retain-external',
+      fromAddress: null,
+      toAddress: null
+    }
+  ];
+}
+
+function authoritativeRecord(
+  input: PhasePlanningInput | PhaseAdapterExecutionInput,
+  phaseId: ApplicationAuthoritativeRecord['phaseId'],
+  bindingDigest: string
+): ApplicationAuthoritativeRecord {
+  const reference = input.inspection.state.phases[phaseId].evidence.at(-1);
+  if (!reference || reference.phaseId !== phaseId || reference.result !== 'verified' ||
+    !reference.evidenceId || !digestPattern.test(reference.headerDigest)) {
+    return applicationError(
+      'application-deployment-record',
+      `Application deployment requires the authoritative verified ${phaseId} evidence reference.`
+    );
+  }
+
+  return {
+    phaseId,
+    evidenceId: reference.evidenceId,
+    headerDigest: reference.headerDigest,
+    bindingDigest
+  };
+}
+
+export function validateApplicationActivationOwnership(
+  binding: Pick<ApplicationDeploymentBinding, 'bootstrapBindingDigest' | 'prerequisiteBindingDigest'>,
+  value: unknown
+): ApplicationActivationOwnership {
+  if (!isRecord(value) ||
+    Object.keys(value).sort().join('\0') !==
+      ['bootstrap_binding_digest', 'prerequisite_binding_digest'].join('\0') ||
+    typeof value.bootstrap_binding_digest !== 'string' ||
+    typeof value.prerequisite_binding_digest !== 'string' ||
+    !digestPattern.test(value.bootstrap_binding_digest) ||
+    !digestPattern.test(value.prerequisite_binding_digest) ||
+    value.bootstrap_binding_digest !== binding.bootstrapBindingDigest ||
+    value.prerequisite_binding_digest !== binding.prerequisiteBindingDigest) {
+    return applicationError(
+      'application-deployment-configuration',
+      'Protected application ownership requires the exact original bootstrap and prerequisite binding digests in one closed two-field object.'
+    );
+  }
+  return {
+    bootstrap_binding_digest: value.bootstrap_binding_digest,
+    prerequisite_binding_digest: value.prerequisite_binding_digest
+  };
+}
+
+function guid(value: unknown, label: string): string {
+  if (typeof value !== 'string' ||
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(value)) {
+    return applicationError('application-deployment-binding', `${label} is absent or invalid.`);
+  }
+  return value.toLowerCase();
+}
+
+function ownedResourceConfiguration(
+  resourceType: string,
+  resourceId: string,
+  stateAddress: string,
+  authoritative: ApplicationAuthoritativeRecord,
+  attributes: Readonly<Record<string, unknown>>
+): ApplicationOwnedResourceConfiguration {
+  const value = {
+    resourceType,
+    resourceId,
+    stateAddress,
+    authoritativeRecord: authoritative,
+    attributes
+  };
+  return { ...value, configurationDigest: canonicalSha256(value) };
+}
+
+export function bindApplicationDeployment(
+  input: PhasePlanningInput | PhaseAdapterExecutionInput,
+  artifact: VerifiedApplicationArtifact
+): ApplicationDeploymentBinding {
+  const workload = input.inspection.manifest.project.workload;
+  if (workload.frontend || workload.kind !== 'standard') {
+    return applicationError(
+      'application-workload-unqualified',
+      'The current immutable-artifact producer qualifies one backend image only; frontend and worker-bearing workloads remain blocked until every deployable artifact has independent immutable publication proof.'
+    );
+  }
+  const environment = applicationEnvironment(input, artifact.environment);
+  const prerequisite = applicationPrerequisiteBinding(input);
+  const backend = azureBackendConfiguration(input, 'bootstrap-local');
+  const budget = applicationBudget(input);
+  const custodyIdentityDigest = exactDigest(
+    input.inspection.state.phaseOutputs?.['remote-import-verified']?.values.custodyIdentityDigest,
+    'Protected custody identity digest'
+  );
+  const custodyQualificationDigest = exactDigest(
+    input.inspection.state.phaseOutputs?.['remote-import-verified']?.values.custodyQualificationDigest,
+    'Protected custody qualification digest'
+  );
+  const bootstrapBindingDigest = exactDigest(
+    input.inspection.state.phaseOutputs?.['bootstrap-local']?.values.bootstrapBindingDigest,
+    'Original bootstrap binding digest'
+  );
+  const retainedBootstrapBindingDigest = exactDigest(
+    input.inspection.state.phaseOutputs?.['remote-import-verified']?.values.bootstrapBindingDigest,
+    'Retained bootstrap binding digest'
+  );
+  if (retainedBootstrapBindingDigest !== bootstrapBindingDigest) {
+    return applicationError(
+      'application-deployment-custody',
+      'Protected bootstrap continuity does not match the original verified bootstrap binding.'
+    );
+  }
+  if (!input.inspection.state.bootstrapState ||
+    input.inspection.state.bootstrapState.status !== 'retained') {
+    return applicationError(
+      'application-deployment-custody',
+      'Application state mapping requires the retained protected bootstrap custody and disposal obligation.'
+    );
+  }
+  const retentionObligationDigest = canonicalSha256(input.inspection.state.bootstrapState);
+  const workloadPrincipalId = guid(
+    input.inspection.state.phaseOutputs?.['application-prerequisites-ready']?.values.workloadPrincipalId,
+    'Application workload principal ID'
+  );
+  const workloadClientId = guid(
+    input.inspection.state.phaseOutputs?.['application-prerequisites-ready']?.values.workloadClientId,
+    'Application workload client ID'
+  );
+  const loginServer = `${prerequisite.registryName}.azurecr.io`;
+  if (artifact.environment !== prerequisite.environment ||
+    artifact.registryResourceId !== prerequisite.registryId ||
+    artifact.immutableImage !== `${loginServer}/${artifact.imageRepository}@${artifact.digest}` ||
+    prerequisite.backendBindingDigest !== backend.bindingDigest) {
+    return applicationError(
+      'application-deployment-binding',
+      'Application deployment requires the exact verified artifact, registry, environment and protected backend established by its predecessor phases.'
+    );
+  }
+  if (!input.inspection.state.phaseOutputs?.['bootstrap-local']?.resources.some((resource) =>
+    resource.provider === 'azure' &&
+    resource.resourceType === 'Microsoft.Resources/resourceGroups' &&
+    resource.resourceId.toLowerCase() === prerequisite.groupId.toLowerCase())) {
+    return applicationError(
+      'application-deployment-ownership',
+      'The selected application resource group is not the exact same-operation-owned protected bootstrap group.'
+    );
+  }
+  const applicationRoot =
+    `infrastructure/opentofu/azure/environments/${environment.environment}`;
+  const applicationModule = 'infrastructure/opentofu/azure/modules/application';
+  const authoritativeRecords = {
+    bootstrap: authoritativeRecord(
+      input, 'bootstrap-local', bootstrapBindingDigest
+    ),
+    prerequisites: authoritativeRecord(
+      input, 'application-prerequisites-ready', prerequisite.bindingDigest
+    ),
+    artifact: authoritativeRecord(
+      input, 'application-artifact-ready', artifact.artifactBindingDigest
+    )
+  };
+  const ownedResourceConfigurations = [
+    ownedResourceConfiguration(
+      'Microsoft.Resources/resourceGroups',
+      prerequisite.groupId,
+      'module.application.azurerm_resource_group.main',
+      authoritativeRecords.bootstrap,
+      {
+        name: prerequisite.resourceGroup,
+        location: prerequisite.region,
+        tags: {
+          'liftoff-managed-by': 'liftoff',
+          'liftoff-phase': 'bootstrap-local',
+          'liftoff-environment': prerequisite.environment,
+          'liftoff-binding': bootstrapBindingDigest
+        }
+      }
+    ),
+    ownedResourceConfiguration(
+      'Microsoft.ContainerRegistry/registries',
+      prerequisite.registryId,
+      'module.application.azurerm_container_registry.main',
+      authoritativeRecords.prerequisites,
+      {
+        name: prerequisite.registryName,
+        resourceGroup: prerequisite.resourceGroup,
+        location: prerequisite.region,
+        sku: 'Basic',
+        adminEnabled: false,
+        tags: {
+          'liftoff-binding': prerequisite.bindingDigest,
+          'liftoff-environment': prerequisite.environment
+        }
+      }
+    ),
+    ownedResourceConfiguration(
+      'Microsoft.ManagedIdentity/userAssignedIdentities',
+      prerequisite.identityId,
+      'module.application.azurerm_user_assigned_identity.app',
+      authoritativeRecords.prerequisites,
+      {
+        name: prerequisite.identityName,
+        resourceGroup: prerequisite.resourceGroup,
+        location: prerequisite.region,
+        tenantId: prerequisite.tenantId,
+        principalId: workloadPrincipalId,
+        clientId: workloadClientId,
+        tags: {
+          'liftoff-binding': prerequisite.bindingDigest,
+          'liftoff-environment': prerequisite.environment
+        }
+      }
+    ),
+    ownedResourceConfiguration(
+      'Microsoft.Authorization/roleAssignments',
+      prerequisite.roles[0]!.id,
+      'module.application.azurerm_role_assignment.acr_pull',
+      authoritativeRecords.prerequisites,
+      {
+        scope: prerequisite.registryId,
+        roleDefinitionId: prerequisite.roles[0]!.roleDefinitionId,
+        principalId: workloadPrincipalId,
+        principalType: 'ServicePrincipal'
+      }
+    )
+  ];
+  const base = {
+    schemaVersion: 1 as const,
+    phaseId: 'application-foundation' as const,
+    sourceSha: artifact.sourceSha,
+    environment: environment.environment,
+    subscriptionId: prerequisite.subscriptionId,
+    tenantId: prerequisite.tenantId,
+    region: prerequisite.region,
+    resourceGroup: prerequisite.resourceGroup,
+    resourceGroupId: prerequisite.groupId,
+    applicationRoot,
+    applicationModule,
+    providerLockPath: `${applicationRoot}/.terraform.lock.hcl`,
+    localBackendPath: `${applicationRoot}/backend.local.tf`,
+    remoteBackendExamplePath: `${applicationRoot}/backend.remote.example.tf`,
+    environmentVariablesPath: `${applicationRoot}/${environment.environment}.tfvars`,
+    artifactBindingDigest: artifact.artifactBindingDigest,
+    artifactDigest: artifact.digest,
+    immutableImage: artifact.immutableImage,
+    prerequisiteBindingDigest: prerequisite.bindingDigest,
+    registryId: prerequisite.registryId,
+    identityId: prerequisite.identityId,
+    workloadPrincipalId,
+    workloadClientId,
+    pullRoleId: prerequisite.roles[0]!.id,
+    pushRoleId: prerequisite.roles[1]!.id,
+    backendBindingDigest: backend.bindingDigest,
+    bootstrapBindingDigest,
+    custodyIdentityDigest,
+    custodyQualificationDigest,
+    retentionObligationDigest,
+    authoritativeRecords,
+    expectedResourceNames: environment.resources,
+    requiredResourceIds: requiredResourceIds(prerequisite.groupId, environment.resources, prerequisite),
+    stateTransitions: stateTransitions(prerequisite),
+    ownedResourceConfigurations,
+    ownedResourceConfigurationDigest: canonicalSha256(ownedResourceConfigurations),
+    variableOverrides: {
+      backend_image: artifact.immutableImage,
+      environment: environment.environment,
+      location: prerequisite.region,
+      resource_suffix: environment.resourceSuffix,
+      liftoff_activation_ownership: {
+        bootstrap_binding_digest: bootstrapBindingDigest,
+        prerequisite_binding_digest: prerequisite.bindingDigest
+      }
+    },
+    protectedVariableNames: ['postgres_admin_password'] as const,
+    healthTargets: [{
+      component: 'backend' as const,
+      method: 'GET' as const,
+      path: '/health' as const,
+      mediaType: 'application/json' as const,
+      parsedBodyDigest: canonicalSha256({ status: 'ok' })
+    }],
+    budget,
+    requirements: {
+      newEnvironmentOnly: true as const,
+      sameOperationOwnedPrerequisitesOnly: true as const,
+      protectedExecutionRequired: true as const,
+      protectedRemoteBackendRequired: true as const,
+      localStateFallback: false as const,
+      plaintextStateFallback: false as const,
+      arbitraryStateImport: false as const,
+      sourceReplacement: false as const,
+      immutableArtifactRequired: true as const,
+      uncertainRedispatch: false as const
+    }
+  };
+  return { ...base, bindingDigest: canonicalSha256(base) };
+}
+
+export function applicationDeploymentBinding(
+  input: PhasePlanningInput | PhaseAdapterExecutionInput
+): ApplicationDeploymentBinding {
+  return bindApplicationDeployment(input, readVerifiedApplicationArtifact(input.inspection));
+}
+
+export function applicationDeploymentExecutionMode(
+  input: PhaseAdapterExecutionInput,
+  binding = applicationDeploymentBinding(input)
+): {
+  mode: 'dispatch' | 'observe';
+  previousOperation: ExternalOperationState | null;
+} {
+  const state = input.inspection.state.phases['application-foundation'];
+  const previous = state.operation;
+  if (!previous) {
+    if (state.executionPlanDigest) {
+      return applicationError(
+        'application-deployment-uncertain',
+        'A prior protected application execution recorded authority without a confirmed provider handle; inspect exact state and partial effects instead of redispatching.'
+      );
+    }
+    return { mode: 'dispatch', previousOperation: null };
+  }
+  if (previous.provider !== 'azure' ||
+    previous.actionId !== 'azure.application-foundation.apply' ||
+    previous.resourceId.toLowerCase() !== binding.resourceGroupId.toLowerCase() ||
+    previous.planDigest !== state.executionPlanDigest ||
+    !previous.operationId || previous.operationId.length > 2048 ||
+    /[\u0000-\u001f\u007f]/u.test(previous.operationId)) {
+    return applicationError(
+      'application-deployment-operation',
+      'The recorded application operation is not the exact protected deployment handle; it cannot be observed, replaced or redispatched.'
+    );
+  }
+  return { mode: 'observe', previousOperation: previous };
+}
+
+function actualBackendOverlay(
+  input: PhasePlanningInput | PhaseAdapterExecutionInput,
+  binding: ApplicationDeploymentBinding
+): string {
+  const backend = azureBackendConfiguration(input, 'bootstrap-local');
+  if (backend.bindingDigest !== binding.backendBindingDigest) {
+    return applicationError('application-backend-stale', 'The protected backend changed after deployment binding.');
+  }
+  return `terraform {
+  backend "azurerm" {
+    resource_group_name  = "${backend.resourceGroup}"
+    storage_account_name = "${backend.storageAccount}"
+    container_name       = "${backend.container}"
+    key                  = "${backend.key}"
+    use_azuread_auth     = true
+  }
+}
+`;
+}
+
+async function gitText(
+  input: PhasePlanningInput | PhaseAdapterExecutionInput,
+  args: readonly string[],
+  maxOutputBytes = 1024 * 1024
+): Promise<string> {
+  const result = await input.runner.run({ executable: 'git', args: [...args] }, {
+    cwd: input.inspection.projectRoot,
+    timeoutMs: 30_000,
+    maxOutputBytes,
+    stream: false,
+    env: { GIT_TERMINAL_PROMPT: '0', GIT_PAGER: 'cat' }
+  });
+  if (result.status !== 0 || result.timedOut || result.outputLimitExceeded ||
+    result.aborted || result.errorCode) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment source could not be observed within its Git deadline and byte bound; diagnostics were withheld.'
+    );
+  }
+  return result.stdout;
+}
+
+function exactLocalBackend(binding: ApplicationDeploymentBinding): string {
+  return `terraform {
+  backend "local" {
+    path = "state/${binding.environment}.tfstate"
+  }
+}`;
+}
+
+const activationOwnershipVariableHcl = `variable "liftoff_activation_ownership" {
+  type = object({
+    bootstrap_binding_digest    = string
+    prerequisite_binding_digest = string
+  })
+  default     = null
+  nullable    = true
+  description = "Protected activation ownership bindings. Leave null for ordinary or independently governed use."
+}
+`;
+
+const activationOwnershipLocalsHcl = `locals {
+  liftoff_bootstrap_binding_digest = var.liftoff_activation_ownership == null ? null : regex(
+    "^[a-f0-9]{64}$",
+    var.liftoff_activation_ownership.bootstrap_binding_digest
+  )
+  liftoff_prerequisite_binding_digest = var.liftoff_activation_ownership == null ? null : regex(
+    "^[a-f0-9]{64}$",
+    var.liftoff_activation_ownership.prerequisite_binding_digest
+  )
+  liftoff_resource_group_ownership_tags = var.liftoff_activation_ownership == null ? null : {
+    "liftoff-managed-by" = "liftoff"
+    "liftoff-phase"      = "bootstrap-local"
+    "liftoff-environment" = var.environment
+    "liftoff-binding"     = local.liftoff_bootstrap_binding_digest
+  }
+  liftoff_application_ownership_tags = var.liftoff_activation_ownership == null ? null : {
+    "liftoff-environment" = var.environment
+    "liftoff-binding"     = local.liftoff_prerequisite_binding_digest
+  }
+}
+`;
+
+function hclObject(value: unknown, label: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    return applicationError(
+      'application-deployment-source',
+      `Application deployment ${label} is absent or not one supported HCL object.`
+    );
+  }
+  return value;
+}
+
+function hclSingle(value: unknown, label: string): Record<string, unknown> {
+  if (!Array.isArray(value) || value.length !== 1 || !isRecord(value[0])) {
+    return applicationError(
+      'application-deployment-source',
+      `Application deployment ${label} is absent or duplicated.`
+    );
+  }
+  return value[0];
+}
+
+function hclNamedBlock(
+  parsed: Record<string, unknown>,
+  kind: string,
+  type: string,
+  name: string,
+  label: string
+): Record<string, unknown> {
+  const kinds = hclObject(parsed[kind], label);
+  const types = hclObject(kinds[type], label);
+  return hclSingle(types[name], label);
+}
+
+function hclLabeledBlock(
+  parsed: Record<string, unknown>,
+  kind: string,
+  name: string,
+  label: string
+): Record<string, unknown> {
+  const blocks = hclObject(parsed[kind], label);
+  return hclSingle(blocks[name], label);
+}
+
+function exactEndingTemplate(
+  value: string,
+  suffix: string,
+  replacement: string,
+  label: string
+): string {
+  if (!value.endsWith(suffix) || value.length === suffix.length) {
+    return applicationError(
+      'application-deployment-source',
+      `Application deployment ${label} is not derived from the exact bound environment identity.`
+    );
+  }
+  return `${value.slice(0, -suffix.length)}${replacement}`;
+}
+
+function ownedConfiguration(
+  binding: ApplicationDeploymentBinding,
+  resourceType: string
+): ApplicationOwnedResourceConfiguration {
+  const matches = binding.ownedResourceConfigurations.filter((item) =>
+    item.resourceType === resourceType);
+  if (matches.length !== 1) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment owned-resource configuration is incomplete or ambiguous.'
+    );
+  }
+  return matches[0]!;
+}
+
+async function validateApplicationDeploymentHcl(
+  binding: ApplicationDeploymentBinding,
+  contents: ReadonlyMap<string, string>
+): Promise<void> {
+  const moduleVariablesPath = `${binding.applicationModule}/variables.tf`;
+  const moduleMainPath = `${binding.applicationModule}/main.tf`;
+  const rootVariablesPath = `${binding.applicationRoot}/variables.tf`;
+  const rootMainPath = `${binding.applicationRoot}/main.tf`;
+  const required = [moduleVariablesPath, moduleMainPath, rootVariablesPath, rootMainPath];
+  if (required.some((file) => !contents.has(file))) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment ownership configuration files are incomplete.'
+    );
+  }
+  let parsed: readonly Record<string, unknown>[];
+  try {
+    parsed = await Promise.all([
+      ...required.map((file) => parseHcl(contents.get(file)!, file)),
+      parseHcl(activationOwnershipVariableHcl, 'activation ownership variable contract'),
+      parseHcl(activationOwnershipLocalsHcl, 'activation ownership tag contract')
+    ]);
+  } catch {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment ownership configuration is invalid or cannot be inspected safely.'
+    );
+  }
+  const [
+    moduleVariables, moduleMain, rootVariables, rootMain,
+    expectedVariable, expectedLocals
+  ] = parsed;
+  const expectedVariableBlock = hclLabeledBlock(
+    expectedVariable!, 'variable', 'liftoff_activation_ownership', 'ownership variable contract'
+  );
+  const actualModuleVariable = hclLabeledBlock(
+    moduleVariables!,
+    'variable',
+    'liftoff_activation_ownership',
+    'module ownership variable'
+  );
+  const actualRootVariable = hclLabeledBlock(
+    rootVariables!,
+    'variable',
+    'liftoff_activation_ownership',
+    'root ownership variable'
+  );
+  if (canonicalSha256(actualModuleVariable) !== canonicalSha256(expectedVariableBlock) ||
+    canonicalSha256(actualRootVariable) !== canonicalSha256(expectedVariableBlock)) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment requires the exact nullable closed ownership variable contract.'
+    );
+  }
+  const actualLocals = hclSingle(moduleMain!.locals, 'ownership tag locals');
+  const expectedLocalValues = hclSingle(expectedLocals!.locals, 'ownership tag contract');
+  if (canonicalSha256(actualLocals) !== canonicalSha256(expectedLocalValues)) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment ownership tags do not match the null-safe protected ownership contract.'
+    );
+  }
+  const rootModule = hclLabeledBlock(rootMain!, 'module', 'application', 'application root module');
+  if (rootModule.source !== '../../modules/application' ||
+    rootModule.liftoff_activation_ownership !== '${var.liftoff_activation_ownership}') {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment root does not forward the exact protected ownership object to the owned module.'
+    );
+  }
+
+  const resourceGroupConfiguration = ownedConfiguration(
+    binding, 'Microsoft.Resources/resourceGroups'
+  );
+  const registryConfiguration = ownedConfiguration(
+    binding, 'Microsoft.ContainerRegistry/registries'
+  );
+  const identityConfiguration = ownedConfiguration(
+    binding, 'Microsoft.ManagedIdentity/userAssignedIdentities'
+  );
+  const groupName = String(resourceGroupConfiguration.attributes.name);
+  const registryName = String(registryConfiguration.attributes.name);
+  const identityName = String(identityConfiguration.attributes.name);
+  const resourceGroup = hclNamedBlock(
+    moduleMain!, 'resource', 'azurerm_resource_group', 'main', 'owned resource group'
+  );
+  const registry = hclNamedBlock(
+    moduleMain!, 'resource', 'azurerm_container_registry', 'main', 'owned registry'
+  );
+  const identity = hclNamedBlock(
+    moduleMain!, 'resource', 'azurerm_user_assigned_identity', 'app', 'owned application identity'
+  );
+  if (canonicalSha256(resourceGroup) !== canonicalSha256({
+    name: exactEndingTemplate(
+      groupName, `-${binding.environment}`, '-${var.environment}', 'resource-group name'
+    ),
+    location: '${var.location}',
+    tags: '${local.liftoff_resource_group_ownership_tags}'
+  }) ||
+    canonicalSha256(registry) !== canonicalSha256({
+      name: exactEndingTemplate(
+        registryName, binding.variableOverrides.resource_suffix,
+        '${var.resource_suffix}', 'registry name'
+      ),
+      resource_group_name: '${azurerm_resource_group.main.name}',
+      location: '${azurerm_resource_group.main.location}',
+      sku: 'Basic',
+      admin_enabled: false,
+      tags: '${local.liftoff_application_ownership_tags}'
+    }) ||
+    canonicalSha256(identity) !== canonicalSha256({
+      name: exactEndingTemplate(
+        identityName, `-${binding.environment}`, '-${var.environment}', 'identity name'
+      ),
+      resource_group_name: '${azurerm_resource_group.main.name}',
+      location: '${azurerm_resource_group.main.location}',
+      tags: '${local.liftoff_application_ownership_tags}'
+    })) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment owned resource names, locations, provider attributes or ownership tags differ from the authoritative records.'
+    );
+  }
+  const roleAssignments = hclObject(
+    hclObject(moduleMain!.resource, 'owned role assignments').azurerm_role_assignment,
+    'owned role assignments'
+  );
+  const pull = hclSingle(roleAssignments.acr_pull, 'owned AcrPull role');
+  if (canonicalSha256(pull) !== canonicalSha256({
+    scope: '${azurerm_container_registry.main.id}',
+    role_definition_name: 'AcrPull',
+    principal_id: '${azurerm_user_assigned_identity.app.principal_id}'
+  }) ||
+    Object.entries(roleAssignments).some(([name, blocks]) =>
+      name.toLowerCase().includes('acr_push') ||
+      Array.isArray(blocks) && blocks.some((block) =>
+        isRecord(block) && block.role_definition_name === 'AcrPush'))) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment HCL must retain exact AcrPull while leaving AcrPush externally owned and absent.'
+    );
+  }
+}
+
+function sourceEntry(entry: string): {
+  mode: '100644' | '100755';
+  objectId: string;
+  path: string;
+} {
+  const match = entry.match(/^(100(?:644|755)) blob ([a-f0-9]{40})\t(.+)$/u);
+  if (!match || !sourceModePattern.test(match[1]!) || !sourceObjectPattern.test(match[2]!)) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment source contains unsupported modes, links, submodules or malformed Git entries.'
+    );
+  }
+  return {
+    mode: match[1] as '100644' | '100755',
+    objectId: match[2]!,
+    path: match[3]!
+  };
+}
+
+export async function observeApplicationDeploymentSource(
+  input: PhasePlanningInput | PhaseAdapterExecutionInput,
+  binding = applicationDeploymentBinding(input)
+): Promise<ObservedApplicationDeploymentSource> {
+  const head = (await gitText(input, ['rev-parse', '--verify', 'HEAD'])).trim();
+  const diff = await gitText(input, [
+    'diff', binding.sourceSha, '--', binding.applicationRoot, binding.applicationModule
+  ]);
+  const untracked = await gitText(input, [
+    'ls-files', '--others', '--exclude-standard', '--',
+    binding.applicationRoot, binding.applicationModule
+  ]);
+  const tree = await gitText(input, [
+    'ls-tree', '-r', '-z', binding.sourceSha, '--',
+    binding.applicationRoot, binding.applicationModule
+  ], 2 * 1024 * 1024);
+  const entries = tree.split('\0').filter(Boolean).map(sourceEntry);
+  const required = new Set([
+    `${binding.applicationModule}/versions.tf`,
+    `${binding.applicationModule}/variables.tf`,
+    `${binding.applicationModule}/main.tf`,
+    `${binding.applicationModule}/outputs.tf`,
+    `${binding.applicationRoot}/versions.tf`,
+    binding.providerLockPath,
+    `${binding.applicationRoot}/providers.tf`,
+    `${binding.applicationRoot}/variables.tf`,
+    `${binding.applicationRoot}/main.tf`,
+    `${binding.applicationRoot}/outputs.tf`,
+    binding.localBackendPath,
+    binding.remoteBackendExamplePath,
+    binding.environmentVariablesPath
+  ]);
+  if (head !== binding.sourceSha || diff || untracked ||
+    entries.length < required.size || entries.length > maximumSourceFiles ||
+    [...required].some((requiredPath) => !entries.some((entry) => entry.path === requiredPath)) ||
+    entries.some((entry) => {
+      const parts = entry.path.split('/');
+      return !activationInputPathIsObserved(parts) ||
+        isSensitiveActivationPath(parts, input.inspection.sensitivePathExclusions ?? []) ||
+        ![binding.applicationRoot, binding.applicationModule]
+          .some((root) => entry.path.startsWith(`${root}/`)) ||
+        /(?:^|\/)(?:\.terraform|state)(?:\/|$)|\.tfstate(?:\.|$)|\.tfplan$/u.test(entry.path) ||
+        entry.path === `${binding.applicationRoot}/backend.tf` ||
+        /\.auto\.tfvars(?:\.json)?$/u.test(entry.path);
+    })) {
+    return applicationError(
+      'application-deployment-source',
+      'Application deployment requires the exact clean committed environment root and module; custom files are preserved only when they are bounded, tracked, non-sensitive and do not replace protected backend or variable overlays.'
+    );
+  }
+  let totalBytes = 0;
+  const files: ApplicationDeploymentSourceFile[] = [];
+  const contents = new Map<string, string>();
+  for (const entry of entries) {
+    const content = await gitText(input, ['show', `${binding.sourceSha}:${entry.path}`], maximumFileBytes);
+    const bytes = Buffer.byteLength(content);
+    totalBytes += bytes;
+    if (bytes > maximumFileBytes || totalBytes > maximumSourceBytes) {
+      return applicationError(
+        'application-deployment-source',
+        'Application deployment source exceeds the bounded file or complete inventory limit.'
+      );
+    }
+    contents.set(entry.path, content);
+    files.push({
+      ...entry,
+      bytes,
+      sha256: sha256(Buffer.from(content, 'utf8'))
+    });
+  }
+  if (contents.get(binding.localBackendPath)?.replace(/\r\n/gu, '\n').trim() !==
+    exactLocalBackend(binding) ||
+    contents.get(binding.remoteBackendExamplePath)?.split(/\r?\n/u)
+      .some((line) => line.trim() && !line.trim().startsWith('#')) ||
+    [...contents.entries()].some(([file, content]) =>
+      file.endsWith('.tfvars') &&
+      /^\s*(?:postgres_admin_password|liftoff_activation_ownership)\s*=/mu.test(content))) {
+    return applicationError(
+      'application-deployment-source',
+      'The local backend placeholder, remote example or committed variables contain unsupported execution configuration or protected values.'
+    );
+  }
+  await validateApplicationDeploymentHcl(binding, contents);
+  validateApplicationActivationOwnership(
+    binding, binding.variableOverrides.liftoff_activation_ownership
+  );
+  const executionFiles = files.filter((file) => file.path !== binding.localBackendPath);
+  const overlay = actualBackendOverlay(input, binding);
+  const variables = canonicalSha256(binding.variableOverrides);
+  return {
+    binding,
+    files,
+    executionFiles,
+    sourceInventoryDigest: canonicalSha256(files),
+    executionInventoryDigest: canonicalSha256(executionFiles),
+    providerLockDigest: files.find((file) => file.path === binding.providerLockPath)!.sha256,
+    localBackendDigest: files.find((file) => file.path === binding.localBackendPath)!.sha256,
+    backendOverlay: {
+      path: 'backend.tf',
+      bytes: Buffer.byteLength(overlay),
+      sha256: sha256(overlay)
+    },
+    variableOverlay: {
+      path: 'liftoff.auto.tfvars.json',
+      digest: variables,
+      keys: Object.keys(binding.variableOverrides).sort()
+    },
+    requiredProtectedVariables: binding.protectedVariableNames
+  };
+}
+
+function exactTransitions(
+  actual: readonly ApplicationDeploymentStateTransition[],
+  expected: readonly ApplicationDeploymentStateTransition[]
+): boolean {
+  return canonicalSha256(actual) === canonicalSha256(expected);
+}
+
+function finiteCents(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function exactKeys(value: object, keys: readonly string[]): boolean {
+  return canonicalSha256(Object.keys(value).sort()) === canonicalSha256([...keys].sort());
+}
+
+export function validateProtectedApplicationExecutionProvenance(
+  binding: ApplicationDeploymentBinding,
+  provenance: ProtectedApplicationExecutionProvenance,
+  authority: ProtectedApplicationExecutionAuthority
+): ProtectedApplicationExecutionProvenance {
+  const { provenanceDigest, ...digestInput } = provenance;
+  const { authorityDigest, ...authorityInput } = authority;
+  const authorityTuple = {
+    executionHostId: authority.hostId,
+    runnerId: authority.runnerId,
+    runnerLabel: authority.runnerLabel,
+    runnerGroupId: authority.runnerGroupId,
+    networkConfigurationId: authority.networkConfigurationId,
+    runnerQualificationDigest: authority.runnerQualificationDigest,
+    networkQualificationDigest: authority.networkQualificationDigest,
+    custodyIdentityDigest: authority.custodyIdentityDigest,
+    custodyQualificationDigest: authority.custodyQualificationDigest,
+    workflow: {
+      repositoryId: authority.workflow.repositoryId,
+      repository: authority.workflow.repository,
+      path: authority.workflow.path,
+      executionRef: authority.workflow.executionRef,
+      ref: authority.workflow.ref,
+      sourceSha: authority.workflow.sourceSha,
+      treeSha: authority.workflow.treeSha,
+      workflowDigest: authority.workflow.workflowDigest,
+      executionSourceDigest: authority.workflow.executionSourceDigest
+    },
+    authorityDigest
+  };
+  if (!exactKeys(provenance, [
+    'executionHostId', 'runnerId', 'runnerLabel', 'runnerGroupId',
+    'networkConfigurationId', 'runnerQualificationDigest',
+    'networkQualificationDigest', 'custodyIdentityDigest',
+    'custodyQualificationDigest', 'workflow', 'authorityDigest',
+    'provenanceDigest'
+  ]) ||
+    !exactKeys(provenance.workflow, [
+      'repositoryId', 'repository', 'path', 'executionRef', 'ref',
+      'sourceSha', 'treeSha', 'workflowDigest', 'executionSourceDigest'
+    ]) ||
+    !exactKeys(authority, [
+      'hostId', 'runnerId', 'runnerLabel', 'runnerGroupId',
+      'networkConfigurationId', 'runnerQualificationDigest',
+      'networkQualificationDigest', 'custodyIdentityDigest',
+      'custodyQualificationDigest', 'workflow', 'authorityDigest'
+    ]) ||
+    !exactKeys(authority.workflow, [
+        'repositoryId', 'repository', 'path', 'executionRef', 'ref',
+        'sourceSha', 'treeSha', 'tagObjectType', 'workflowDigest',
+        'executionSourceDigest', 'barrierStatus', 'barrierBindingDigest',
+        'providerTagObservationDigest', 'providerAdmissionStatus',
+        'providerAdmissionDigest'
+    ]) ||
+    !provenance.executionHostId || provenance.executionHostId.length > 512 ||
+    !Number.isSafeInteger(provenance.runnerId) || provenance.runnerId <= 0 ||
+    !provenance.runnerLabel || provenance.runnerLabel.length > 256 ||
+    !Number.isSafeInteger(provenance.runnerGroupId) || provenance.runnerGroupId <= 0 ||
+    !provenance.networkConfigurationId ||
+    provenance.networkConfigurationId.length > 512 ||
+    !digestPattern.test(provenance.runnerQualificationDigest) ||
+    !digestPattern.test(provenance.networkQualificationDigest) ||
+    provenance.custodyIdentityDigest !== binding.custodyIdentityDigest ||
+    provenance.custodyQualificationDigest !== binding.custodyQualificationDigest ||
+    !Number.isSafeInteger(provenance.workflow.repositoryId) ||
+    provenance.workflow.repositoryId <= 0 ||
+    !provenance.workflow.repository || provenance.workflow.repository.length > 256 ||
+    !/^\.github\/workflows\/[A-Za-z0-9_.-]+\.ya?ml$/u.test(provenance.workflow.path) ||
+    provenance.workflow.executionRef !==
+      `liftoff-execution-${provenance.workflow.sourceSha}` ||
+    provenance.workflow.ref !== authority.workflow.ref ||
+    provenance.workflow.ref !==
+      `refs/tags/liftoff-execution-${provenance.workflow.sourceSha}` ||
+    !/^refs\/tags\/liftoff-execution-[a-f0-9]{40}$/u.test(provenance.workflow.ref) ||
+    provenance.workflow.sourceSha !== binding.sourceSha ||
+    !/^[a-f0-9]{40}$/u.test(provenance.workflow.treeSha) ||
+    authority.workflow.tagObjectType !== 'commit' ||
+    authority.workflow.barrierStatus !== 'active-update-deletion-no-bypass' ||
+    authority.workflow.providerAdmissionStatus !== 'current' ||
+    !digestPattern.test(provenance.workflow.workflowDigest) ||
+    !digestPattern.test(provenance.workflow.executionSourceDigest) ||
+    !digestPattern.test(authority.workflow.barrierBindingDigest) ||
+    !digestPattern.test(authority.workflow.providerTagObservationDigest) ||
+    !digestPattern.test(authority.workflow.providerAdmissionDigest) ||
+    canonicalSha256(authorityInput) !== authorityDigest ||
+    canonicalSha256(provenance) !== canonicalSha256({
+      ...authorityTuple,
+      provenanceDigest
+    }) ||
+    provenance.authorityDigest !== authorityDigest ||
+    canonicalSha256(digestInput) !== provenanceDigest) {
+    return applicationError(
+      'application-deployment-provenance',
+      'Protected application execution changed its qualified host, runner, network, custody or immutable current workflow source.'
+    );
+  }
+  return provenance;
+}
+
+export function validateApplicationOriginalInvocation(
+  invocation: ApplicationOriginalInvocation
+): ApplicationOriginalInvocation {
+  const { invocationDigest, ...digestInput } = invocation;
+  if (!exactKeys(invocation, [
+    'phaseId', 'graphHash', 'stateHash', 'baselineDigest', 'inputDigest',
+    'transitionDigest', 'planDigest', 'operationDigest', 'approvalEnvelopeId',
+    'approvalEnvelopeHash', 'createdAt', 'expiresAt', 'invocationDigest'
+  ]) ||
+    !['application-foundation', 'staging-qualified', 'production-rehearsed']
+      .includes(invocation.phaseId) ||
+    !digestPattern.test(invocation.graphHash) ||
+    invocation.stateHash !== null && !digestPattern.test(invocation.stateHash) ||
+    !digestPattern.test(invocation.baselineDigest) ||
+    !digestPattern.test(invocation.inputDigest) ||
+    !digestPattern.test(invocation.transitionDigest) ||
+    !digestPattern.test(invocation.planDigest) ||
+    !digestPattern.test(invocation.operationDigest) ||
+    !invocation.approvalEnvelopeId || invocation.approvalEnvelopeId.length > 256 ||
+    !digestPattern.test(invocation.approvalEnvelopeHash) ||
+    !Number.isFinite(Date.parse(invocation.createdAt)) ||
+    !Number.isFinite(Date.parse(invocation.expiresAt)) ||
+    Date.parse(invocation.createdAt) >= Date.parse(invocation.expiresAt) ||
+    canonicalSha256(digestInput) !== invocationDigest) {
+    return applicationError(
+      'application-deployment-invocation',
+      'Protected application execution is not bound to the exact original current plan, operation and approval invocation.'
+    );
+  }
+  return invocation;
+}
+
+export function validateApplicationOriginalStateAuthority(
+  binding: ApplicationDeploymentBinding,
+  authority: ApplicationOriginalStateAuthority
+): ApplicationOriginalStateAuthority {
+  const { authorityDigest, ...digestInput } = authority;
+  if (!exactKeys(authority, [
+    'kind', 'backendBindingDigest', 'remoteBackendDigest',
+    'handoverEvidenceId', 'handoverHeaderDigest', 'stateLineage',
+    'stateSerial', 'stateDigest', 'unmappedStateDigest', 'observedAt',
+    'authorityDigest'
+  ]) ||
+    authority.kind !== 'protected-application-original-state.v1' ||
+    authority.backendBindingDigest !== binding.backendBindingDigest ||
+    !digestPattern.test(authority.remoteBackendDigest) ||
+    !authority.handoverEvidenceId || authority.handoverEvidenceId.length > 256 ||
+    !digestPattern.test(authority.handoverHeaderDigest) ||
+    !authority.stateLineage || authority.stateLineage.length > 256 ||
+    !Number.isSafeInteger(authority.stateSerial) || authority.stateSerial <= 0 ||
+    !digestPattern.test(authority.stateDigest) ||
+    !digestPattern.test(authority.unmappedStateDigest) ||
+    !Number.isFinite(Date.parse(authority.observedAt)) ||
+    canonicalSha256(digestInput) !== authorityDigest) {
+    return applicationError(
+      'application-deployment-state',
+      'Application state mapping is not bound to the authoritative imported backend state identity.'
+    );
+  }
+  return authority;
+}
+
+export function validateProtectedApplicationPlanProof(
+  binding: ApplicationDeploymentBinding,
+  source: ObservedApplicationDeploymentSource,
+  stateAuthority: ApplicationOriginalStateAuthority,
+  proof: ProtectedApplicationPlanProof
+): ProtectedApplicationPlanProof {
+  validateApplicationOriginalStateAuthority(binding, stateAuthority);
+  const { planDigest, ...digestInput } = proof;
+  const resourceIds = new Set(proof.resourceIds.map((resourceId) => resourceId.toLowerCase()));
+  const groupPrefix = `${binding.resourceGroupId}/`.toLowerCase();
+  if (!exactKeys(proof, [
+    'schemaVersion', 'kind', 'bindingDigest', 'sourceInventoryDigest',
+    'executionInventoryDigest', 'providerLockDigest', 'backendOverlaySha256',
+    'variableOverlayDigest', 'planDigest', 'plannedAt', 'changes', 'resourceIds',
+    'stateTransitions', 'ownedResourceConfigurations', 'state', 'cost',
+    'protectedInputs', 'checks'
+  ]) ||
+    !exactKeys(proof.changes, ['add', 'change', 'destroy']) ||
+    !exactKeys(proof.cost, ['currency', 'fixedMonthlyCents', 'usageMonthlyCents']) ||
+    !exactKeys(proof.state, [
+      'originalAuthorityDigest', 'mappingBatchDigest', 'lineage', 'serial',
+      'stateDigest', 'unmappedStateDigest'
+    ]) ||
+    !exactKeys(proof.checks, [
+      'initializedProtectedBackend', 'validatedConfiguration', 'providerLockVerified',
+      'artifactDigestBound', 'sourceUnchanged', 'plaintextStateAbsent',
+      'existingDeploymentAdoption'
+    ]) ||
+    proof.protectedInputs.some((entry) =>
+      !exactKeys(entry, ['name', 'source', 'valueIncluded'])) ||
+    proof.ownedResourceConfigurations.some((entry) =>
+      !exactKeys(entry, ['resourceId', 'stateAddress', 'configurationDigest'])) ||
+    proof.schemaVersion !== 1 || proof.kind !== 'protected-application-plan.v1' ||
+    proof.bindingDigest !== binding.bindingDigest ||
+    proof.sourceInventoryDigest !== source.sourceInventoryDigest ||
+    proof.executionInventoryDigest !== source.executionInventoryDigest ||
+    proof.providerLockDigest !== source.providerLockDigest ||
+    proof.backendOverlaySha256 !== source.backendOverlay.sha256 ||
+    proof.variableOverlayDigest !== source.variableOverlay.digest ||
+    !digestPattern.test(proof.planDigest) ||
+    canonicalSha256(digestInput) !== planDigest ||
+    !Number.isFinite(Date.parse(proof.plannedAt)) ||
+    !Number.isSafeInteger(proof.changes.add) || proof.changes.add <= 0 ||
+    proof.changes.change !== 0 || proof.changes.destroy !== 0 ||
+    !exactTransitions(proof.stateTransitions, binding.stateTransitions) ||
+    proof.state.originalAuthorityDigest !== stateAuthority.authorityDigest ||
+    !digestPattern.test(proof.state.mappingBatchDigest) ||
+    proof.state.lineage !== stateAuthority.stateLineage ||
+    !Number.isSafeInteger(proof.state.serial) ||
+    proof.state.serial <= stateAuthority.stateSerial ||
+    !digestPattern.test(proof.state.stateDigest) ||
+    proof.state.unmappedStateDigest !== stateAuthority.unmappedStateDigest ||
+    canonicalSha256(proof.ownedResourceConfigurations) !== canonicalSha256(
+      binding.ownedResourceConfigurations.map((resource) => ({
+        resourceId: resource.resourceId,
+        stateAddress: resource.stateAddress,
+        configurationDigest: resource.configurationDigest
+      }))
+    ) ||
+    proof.resourceIds.length > 256 ||
+    proof.resourceIds.length !== resourceIds.size ||
+    binding.requiredResourceIds.some((resourceId) => !resourceIds.has(resourceId.toLowerCase())) ||
+    proof.resourceIds.some((resourceId) =>
+      resourceId.toLowerCase() !== binding.resourceGroupId.toLowerCase() &&
+      !resourceId.toLowerCase().startsWith(groupPrefix)) ||
+    proof.cost.currency !== binding.budget.currency ||
+    !finiteCents(proof.cost.fixedMonthlyCents) ||
+    !finiteCents(proof.cost.usageMonthlyCents) ||
+    proof.cost.fixedMonthlyCents > binding.budget.fixedMonthlyCents ||
+    proof.cost.usageMonthlyCents > binding.budget.usageMonthlyCents ||
+    canonicalSha256(proof.protectedInputs) !== canonicalSha256([{
+      name: 'postgres_admin_password',
+      source: 'qualified-protected-input',
+      valueIncluded: false
+    }]) ||
+    !proof.checks.initializedProtectedBackend ||
+    !proof.checks.validatedConfiguration ||
+    !proof.checks.providerLockVerified ||
+    !proof.checks.artifactDigestBound ||
+    !proof.checks.sourceUnchanged ||
+    !proof.checks.plaintextStateAbsent ||
+    proof.checks.existingDeploymentAdoption) {
+    return applicationError(
+      'application-deployment-plan',
+      'Protected OpenTofu planning changed source, backend, state mapping, immutable artifact, cost, resource scope or secret handling; no apply is permitted.'
+    );
+  }
+  return proof;
+}
+
+export function validateApplicationStateMappingProofs(
+  binding: ApplicationDeploymentBinding,
+  stateAuthority: ApplicationOriginalStateAuthority,
+  plan: ProtectedApplicationPlanProof,
+  proofs: readonly ApplicationStateMappingProof[]
+): readonly ApplicationStateMappingProof[] {
+  validateApplicationOriginalStateAuthority(binding, stateAuthority);
+  const expected = binding.ownedResourceConfigurations.map((configuration) => {
+    const transition = binding.stateTransitions.find((candidate) =>
+      candidate.resourceId.toLowerCase() === configuration.resourceId.toLowerCase());
+    if (!transition || transition.disposition === 'retain-external' ||
+      !transition.toAddress) {
+      return applicationError(
+        'application-deployment-mapping',
+        'Owned application resource configuration is missing its fixed state mapping.'
+      );
+    }
+    return { configuration, transition };
+  });
+  if (proofs.length !== expected.length) {
+    return applicationError(
+      'application-deployment-mapping',
+      'Protected application state proof omitted or added an owned state mapping.'
+    );
+  }
+  const first = proofs[0]!;
+  const expectedBatchDigest = canonicalSha256({
+    originalStateAuthorityDigest: stateAuthority.authorityDigest,
+    before: first.before,
+    after: first.after,
+    unmappedStateDigestBefore: first.unmappedStateDigestBefore,
+    unmappedStateDigestAfter: first.unmappedStateDigestAfter,
+    mappings: expected.map(({ configuration, transition }) => ({
+      resourceId: configuration.resourceId,
+      fromAddress: transition.fromAddress,
+      toAddress: transition.toAddress,
+      configurationDigest: configuration.configurationDigest
+    }))
+  });
+  for (const [index, { configuration, transition }] of expected.entries()) {
+    const proof = proofs.find((candidate) =>
+      candidate.resourceId.toLowerCase() === configuration.resourceId.toLowerCase());
+    if (!proof) {
+      return applicationError(
+        'application-deployment-mapping',
+        'Protected application state proof omitted an exact owned resource.'
+      );
+    }
+    const { proofDigest, ...digestInput } = proof;
+    if (!exactKeys(proof, [
+      'resourceType', 'resourceId', 'disposition', 'fromAddress', 'toAddress',
+      'authoritativeRecord', 'expectedConfigurationDigest',
+      'originalStateAuthorityDigest', 'mappingBatchDigest', 'mappingIndex',
+      'mappingCount', 'before', 'after',
+      'unmappedStateDigestBefore', 'unmappedStateDigestAfter',
+      'observedConfigurationDigest', 'resourceMutationPerformed',
+      'custodyIdentityDigest', 'custodyQualificationDigest',
+      'retentionObligationDigest', 'proofDigest'
+    ]) ||
+      !exactKeys(proof.authoritativeRecord, [
+        'phaseId', 'evidenceId', 'headerDigest', 'bindingDigest'
+      ]) ||
+      !exactKeys(proof.before, [
+        'stateLineage', 'stateSerial', 'stateDigest', 'backupArtifactDigest',
+        'backupKeyRefDigest', 'lockProofDigest', 'writerQuiescenceDigest'
+      ]) ||
+      !exactKeys(proof.after, [
+        'stateLineage', 'stateSerial', 'stateDigest', 'lockProofDigest',
+        'writerQuiescenceDigest'
+      ]) ||
+      proof.resourceType !== configuration.resourceType ||
+      proof.resourceId.toLowerCase() !== configuration.resourceId.toLowerCase() ||
+      proof.disposition !== transition.disposition ||
+      proof.fromAddress !== transition.fromAddress ||
+      proof.toAddress !== transition.toAddress ||
+      canonicalSha256(proof.authoritativeRecord) !==
+        canonicalSha256(configuration.authoritativeRecord) ||
+      proof.expectedConfigurationDigest !== configuration.configurationDigest ||
+      proof.observedConfigurationDigest !== configuration.configurationDigest ||
+      proof.originalStateAuthorityDigest !== stateAuthority.authorityDigest ||
+      proof.mappingBatchDigest !== plan.state.mappingBatchDigest ||
+      proof.mappingBatchDigest !== expectedBatchDigest ||
+      proof.mappingIndex !== index ||
+      proof.mappingCount !== expected.length ||
+      canonicalSha256(proof.before) !== canonicalSha256(first.before) ||
+      canonicalSha256(proof.after) !== canonicalSha256(first.after) ||
+      proof.before.stateLineage !== stateAuthority.stateLineage ||
+      proof.before.stateSerial !== stateAuthority.stateSerial ||
+      proof.before.stateDigest !== stateAuthority.stateDigest ||
+      proof.unmappedStateDigestBefore !== stateAuthority.unmappedStateDigest ||
+      proof.after.stateLineage !== plan.state.lineage ||
+      proof.after.stateSerial !== plan.state.serial ||
+      proof.after.stateDigest !== plan.state.stateDigest ||
+      proof.unmappedStateDigestAfter !== plan.state.unmappedStateDigest ||
+      !proof.before.stateLineage ||
+      proof.before.stateLineage !== proof.after.stateLineage ||
+      !Number.isSafeInteger(proof.before.stateSerial) || proof.before.stateSerial <= 0 ||
+      !Number.isSafeInteger(proof.after.stateSerial) ||
+      proof.after.stateSerial <= proof.before.stateSerial ||
+      [
+        proof.before.stateDigest,
+        proof.before.backupArtifactDigest,
+        proof.before.backupKeyRefDigest,
+        proof.before.lockProofDigest,
+        proof.before.writerQuiescenceDigest,
+        proof.after.stateDigest,
+        proof.after.lockProofDigest,
+        proof.after.writerQuiescenceDigest,
+        proof.unmappedStateDigestBefore,
+        proof.unmappedStateDigestAfter,
+        proof.proofDigest
+      ].some((digest) => !digestPattern.test(digest)) ||
+      proof.unmappedStateDigestBefore !== proof.unmappedStateDigestAfter ||
+      proof.resourceMutationPerformed ||
+      proof.custodyIdentityDigest !== binding.custodyIdentityDigest ||
+      proof.custodyQualificationDigest !== binding.custodyQualificationDigest ||
+      proof.retentionObligationDigest !== binding.retentionObligationDigest ||
+      canonicalSha256(digestInput) !== proofDigest) {
+      return applicationError(
+        'application-deployment-mapping',
+        'Protected application state mapping changed resource identity, configuration, unmapped state, custody, locking, backup or writer quiescence.'
+      );
+    }
+  }
+  return proofs;
+}
+
+function exactApplicationOperation(
+  binding: ApplicationDeploymentBinding,
+  operation: ExternalOperationState,
+  governancePlanDigest?: string
+): boolean {
+  return operation.provider === 'azure' &&
+    operation.actionId === 'azure.application-foundation.apply' &&
+    operation.resourceId.toLowerCase() === binding.resourceGroupId.toLowerCase() &&
+    typeof operation.planDigest === 'string' &&
+    digestPattern.test(operation.planDigest) &&
+    (governancePlanDigest === undefined || operation.planDigest === governancePlanDigest) &&
+    Boolean(operation.operationId) &&
+    operation.operationId.length <= 2048 &&
+    !/[\u0000-\u001f\u007f]/u.test(operation.operationId);
+}
+
+function writeEffects(binding: ApplicationDeploymentBinding) {
+  return {
+    azureResourceProvision: true as const,
+    azureRead: true as const,
+    protectedBackendRead: true as const,
+    protectedBackendWrite: true as const,
+    stateMappings: binding.stateTransitions,
+    arbitraryImport: false as const,
+    resourceGroupReplacement: false as const,
+    externalPushRoleRetained: true as const
+  };
+}
+
+function executionRequestDigest(
+  binding: ApplicationDeploymentBinding,
+  source: ObservedApplicationDeploymentSource,
+  plan: ProtectedApplicationPlanProof,
+  provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  stateAuthority: ApplicationOriginalStateAuthority,
+  invocation: ApplicationOriginalInvocation
+): string {
+  return canonicalSha256({
+    action: 'application-foundation',
+    bindingDigest: binding.bindingDigest,
+    sourceInventoryDigest: source.sourceInventoryDigest,
+    executionInventoryDigest: source.executionInventoryDigest,
+    protectedPlanDigest: plan.planDigest,
+    provenanceDigest: provenance.provenanceDigest,
+    executionAuthorityDigest: executionAuthority.authorityDigest,
+    stateAuthorityDigest: stateAuthority.authorityDigest,
+    invocationDigest: invocation.invocationDigest,
+    effects: writeEffects(binding)
+  });
+}
+
+export function protectedApplicationExecutionIntent(
+  binding: ApplicationDeploymentBinding,
+  source: ObservedApplicationDeploymentSource,
+  plan: ProtectedApplicationPlanProof,
+  provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  stateAuthority: ApplicationOriginalStateAuthority,
+  invocation: ApplicationOriginalInvocation,
+  recordedAt: string
+): ProtectedApplicationExecutionIntent {
+  validateProtectedApplicationPlanProof(binding, source, stateAuthority, plan);
+  validateProtectedApplicationExecutionProvenance(
+    binding, provenance, executionAuthority
+  );
+  validateApplicationOriginalInvocation(invocation);
+  if (invocation.phaseId !== 'application-foundation' ||
+    !Number.isFinite(Date.parse(recordedAt))) {
+    return applicationError(
+      'application-deployment-invocation',
+      'Application write intent changed the approved phase or has no exact pre-effect checkpoint time.'
+    );
+  }
+  const requestDigest = executionRequestDigest(
+    binding, source, plan, provenance, executionAuthority, stateAuthority,
+    invocation
+  );
+  const value = {
+    kind: 'protected-application-intent.v1' as const,
+    requestDigest,
+    invocationDigest: invocation.invocationDigest,
+    provenanceDigest: provenance.provenanceDigest,
+    executionAuthorityDigest: executionAuthority.authorityDigest,
+    stateAuthorityDigest: stateAuthority.authorityDigest,
+    bindingDigest: binding.bindingDigest,
+    sourceInventoryDigest: source.sourceInventoryDigest,
+    protectedPlanDigest: plan.planDigest,
+    intentId: `application-foundation:${requestDigest}`,
+    recordedAt
+  };
+  return { ...value, checkpointDigest: canonicalSha256(value) };
+}
+
+export function validateProtectedApplicationExecutionIntent(
+  binding: ApplicationDeploymentBinding,
+  source: ObservedApplicationDeploymentSource,
+  plan: ProtectedApplicationPlanProof,
+  provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  stateAuthority: ApplicationOriginalStateAuthority,
+  invocation: ApplicationOriginalInvocation,
+  intent: ProtectedApplicationExecutionIntent
+): ProtectedApplicationExecutionIntent {
+  const expected = protectedApplicationExecutionIntent(
+    binding, source, plan, provenance, executionAuthority, stateAuthority,
+    invocation, intent.recordedAt
+  );
+  if (!exactKeys(intent, [
+    'kind', 'requestDigest', 'invocationDigest', 'provenanceDigest',
+    'executionAuthorityDigest', 'stateAuthorityDigest',
+    'bindingDigest', 'sourceInventoryDigest', 'protectedPlanDigest',
+    'intentId', 'recordedAt', 'checkpointDigest'
+  ]) || canonicalSha256(intent) !== canonicalSha256(expected)) {
+    return applicationError(
+      'application-deployment-checkpoint',
+      'Application pre-effect intent changed its request, approval, execution source or checkpoint identity.'
+    );
+  }
+  return intent;
+}
+
+export function protectedApplicationDispatchRequest(
+  binding: ApplicationDeploymentBinding,
+  source: ObservedApplicationDeploymentSource,
+  plan: ProtectedApplicationPlanProof,
+  provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  stateAuthority: ApplicationOriginalStateAuthority,
+  invocation: ApplicationOriginalInvocation,
+  intent: ProtectedApplicationExecutionIntent
+): ProtectedApplicationWriteDispatchRequest {
+  validateProtectedApplicationExecutionIntent(
+    binding, source, plan, provenance, executionAuthority, stateAuthority,
+    invocation, intent
+  );
+  return {
+    schemaVersion: 1,
+    mode: 'write',
+    action: 'application-foundation',
+    execution: 'dispatch',
+    binding,
+    source,
+    provenance,
+    executionAuthority,
+    invocation,
+    previousOperation: null,
+    plan,
+    stateAuthority,
+    intent,
+    effects: writeEffects(binding)
+  };
+}
+
+export function protectedApplicationWriteObservationRequest(
+  binding: ApplicationDeploymentBinding,
+  source: ObservedApplicationDeploymentSource,
+  plan: ProtectedApplicationPlanProof,
+  provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  stateAuthority: ApplicationOriginalStateAuthority,
+  invocation: ApplicationOriginalInvocation,
+  retainedCheckpoints: ProtectedApplicationRetainedCheckpoints
+): ProtectedApplicationWriteObservationRequest {
+  const intent = retainedCheckpoints.intent;
+  if (!intent) {
+    return applicationError(
+      'application-deployment-checkpoint',
+      'Application observation requires the independently retained pre-effect intent.'
+    );
+  }
+  validateProtectedApplicationExecutionIntent(
+    binding, source, plan, provenance, executionAuthority, stateAuthority,
+    invocation, intent
+  );
+  if (retainedCheckpoints.accepted) {
+    validateProtectedApplicationAcceptedCheckpoint(
+      {
+        schemaVersion: 1,
+        mode: 'write',
+        action: 'application-foundation',
+        execution: 'observe',
+        binding,
+        source,
+        provenance,
+        executionAuthority,
+        invocation,
+        previousOperation: retainedCheckpoints.accepted.operation,
+        observationReason: 'accepted-handle',
+        retainedCheckpoints,
+        plan,
+        stateAuthority,
+        intent,
+        effects: writeEffects(binding)
+      },
+      retainedCheckpoints.accepted
+    );
+  }
+  if (retainedCheckpoints.terminal) {
+    if (!retainedCheckpoints.accepted) {
+      return applicationError(
+        'application-deployment-checkpoint',
+        'Application terminal recovery requires its independently retained accepted-handle checkpoint.'
+      );
+    }
+    validateProtectedApplicationTerminalCheckpoint(
+      {
+        schemaVersion: 1,
+        mode: 'write',
+        action: 'application-foundation',
+        execution: 'observe',
+        binding,
+        source,
+        provenance,
+        executionAuthority,
+        invocation,
+        previousOperation: retainedCheckpoints.terminal.operation,
+        observationReason: 'accepted-handle',
+        retainedCheckpoints,
+        plan,
+        stateAuthority,
+        intent,
+        effects: writeEffects(binding)
+      },
+      retainedCheckpoints.accepted,
+      retainedCheckpoints.terminal
+    );
+  }
+  const previousOperation = retainedCheckpoints.terminal?.operation ??
+    retainedCheckpoints.accepted?.operation ?? null;
+  if (previousOperation && !exactApplicationOperation(
+    binding, previousOperation, invocation.planDigest
+  )) {
+    return applicationError(
+      'application-deployment-invocation',
+      'Application observation changed the recorded provider handle.'
+    );
+  }
+  return {
+    schemaVersion: 1,
+    mode: 'write',
+    action: 'application-foundation',
+    execution: 'observe',
+    binding,
+    source,
+    provenance,
+    executionAuthority,
+    invocation,
+    previousOperation,
+    observationReason: previousOperation
+      ? 'accepted-handle'
+      : 'intent-without-handle',
+    retainedCheckpoints,
+    plan,
+    stateAuthority,
+    intent,
+    effects: writeEffects(binding)
+  };
+}
+
+export function protectedApplicationReadRequest(
+  action: ProtectedApplicationReadRequest['action'],
+  binding: ApplicationDeploymentBinding,
+  source: ObservedApplicationDeploymentSource,
+  plan: ProtectedApplicationPlanProof,
+  completion: ProtectedApplicationCompletionProof,
+  provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  stateAuthority: ApplicationOriginalStateAuthority,
+  invocation: ApplicationOriginalInvocation
+): ProtectedApplicationReadRequest {
+  validateProtectedApplicationCompletionProof(
+    binding, source, stateAuthority, plan, completion
+  );
+  validateProtectedApplicationExecutionProvenance(
+    binding, provenance, executionAuthority
+  );
+  validateApplicationOriginalInvocation(invocation);
+  if (invocation.phaseId !== action ||
+    !exactApplicationOperation(binding, completion.operation)) {
+    return applicationError(
+      'application-deployment-invocation',
+      'Application read-only execution changed the approved phase or admitted deployment handle.'
+    );
+  }
+  return {
+    schemaVersion: 1,
+    mode: 'read-only',
+    action,
+    execution: 'observe',
+    binding,
+    source,
+    provenance,
+    executionAuthority,
+    invocation,
+    previousOperation: completion.operation,
+    admittedOperation: completion.operation,
+    admittedCompletionDigest: canonicalSha256(completion),
+    expectedPlanDigest: plan.planDigest,
+    expectedHealthDigest: canonicalSha256(binding.healthTargets),
+    permissions: {
+      azureRead: true,
+      stateRead: false,
+      stateWrite: false,
+      dispatch: false,
+      import: false,
+      move: false,
+      apply: false
+    }
+  };
+}
+
+function sameOperationIdentity(
+  left: ExternalOperationState,
+  right: ExternalOperationState
+): boolean {
+  return left.provider === right.provider &&
+    left.actionId === right.actionId &&
+    left.operationId === right.operationId &&
+    left.resourceId.toLowerCase() === right.resourceId.toLowerCase() &&
+    left.startedAt === right.startedAt &&
+    left.planDigest === right.planDigest;
+}
+
+export function protectedApplicationAcceptedCheckpoint(
+  request: ProtectedApplicationWriteRequest,
+  operation: ExternalOperationState,
+  acceptedAt: string
+): ProtectedApplicationAcceptedCheckpoint {
+  if (!exactApplicationOperation(
+    request.binding, operation, request.invocation.planDigest
+  ) || !Number.isFinite(Date.parse(acceptedAt))) {
+    return applicationError(
+      'application-deployment-checkpoint',
+      'Application acceptance checkpoint changed the original operation or has no exact acceptance time.'
+    );
+  }
+  const value = {
+    kind: 'protected-application-accepted.v1' as const,
+    requestDigest: request.intent.requestDigest,
+    intentCheckpointDigest: request.intent.checkpointDigest,
+    operation,
+    acceptedAt
+  };
+  return { ...value, checkpointDigest: canonicalSha256(value) };
+}
+
+export function validateProtectedApplicationAcceptedCheckpoint(
+  request: ProtectedApplicationWriteRequest,
+  checkpoint: ProtectedApplicationAcceptedCheckpoint
+): ProtectedApplicationAcceptedCheckpoint {
+  const expected = protectedApplicationAcceptedCheckpoint(
+    request, checkpoint.operation, checkpoint.acceptedAt
+  );
+  if (!exactKeys(checkpoint, [
+    'kind', 'requestDigest', 'intentCheckpointDigest', 'operation',
+    'acceptedAt', 'checkpointDigest'
+  ]) || canonicalSha256(checkpoint) !== canonicalSha256(expected)) {
+    return applicationError(
+      'application-deployment-checkpoint',
+      'Application accepted-handle checkpoint changed the original intent or provider operation.'
+    );
+  }
+  return checkpoint;
+}
+
+export function protectedApplicationTerminalCheckpoint(
+  request: ProtectedApplicationWriteRequest,
+  accepted: ProtectedApplicationAcceptedCheckpoint,
+  operation: ExternalOperationState,
+  terminalAt: string
+): ProtectedApplicationTerminalCheckpoint {
+  validateProtectedApplicationAcceptedCheckpoint(request, accepted);
+  if (!sameOperationIdentity(accepted.operation, operation) ||
+    !['completed', 'failed'].includes(operation.status) ||
+    !Number.isFinite(Date.parse(terminalAt))) {
+    return applicationError(
+      'application-deployment-checkpoint',
+      'Application terminal checkpoint changed the accepted handle or lacks an exact terminal provider status.'
+    );
+  }
+  const value = {
+    kind: 'protected-application-terminal.v1' as const,
+    requestDigest: request.intent.requestDigest,
+    intentCheckpointDigest: request.intent.checkpointDigest,
+    acceptedCheckpointDigest: accepted.checkpointDigest,
+    operation,
+    terminalAt
+  };
+  return { ...value, checkpointDigest: canonicalSha256(value) };
+}
+
+export function validateProtectedApplicationTerminalCheckpoint(
+  request: ProtectedApplicationWriteRequest,
+  accepted: ProtectedApplicationAcceptedCheckpoint,
+  checkpoint: ProtectedApplicationTerminalCheckpoint
+): ProtectedApplicationTerminalCheckpoint {
+  const expected = protectedApplicationTerminalCheckpoint(
+    request, accepted, checkpoint.operation, checkpoint.terminalAt
+  );
+  if (!exactKeys(checkpoint, [
+    'kind', 'requestDigest', 'intentCheckpointDigest',
+    'acceptedCheckpointDigest', 'operation', 'terminalAt', 'checkpointDigest'
+  ]) || canonicalSha256(checkpoint) !== canonicalSha256(expected)) {
+    return applicationError(
+      'application-deployment-checkpoint',
+      'Application terminal checkpoint changed the accepted handle, intent or terminal provider status.'
+    );
+  }
+  return checkpoint;
+}
+
+function validateRetainedApplicationCheckpoints(
+  request: ProtectedApplicationWriteRequest,
+  retained: ProtectedApplicationRetainedCheckpoints
+): ProtectedApplicationRetainedCheckpoints {
+  if (!exactKeys(retained, ['intent', 'accepted', 'terminal']) ||
+    retained.intent && canonicalSha256(retained.intent) !==
+      canonicalSha256(request.intent) ||
+    retained.accepted && !retained.intent ||
+    retained.terminal && !retained.accepted) {
+    return applicationError(
+      'application-deployment-checkpoint',
+      'Retained application checkpoints are incomplete or differ from the original write intent.'
+    );
+  }
+  if (retained.intent) {
+    validateProtectedApplicationExecutionIntent(
+      request.binding,
+      request.source,
+      request.plan,
+      request.provenance,
+      request.executionAuthority,
+      request.stateAuthority,
+      request.invocation,
+      retained.intent
+    );
+  }
+  if (retained.accepted) {
+    validateProtectedApplicationAcceptedCheckpoint(request, retained.accepted);
+  }
+  if (retained.terminal) {
+    validateProtectedApplicationTerminalCheckpoint(
+      request, retained.accepted!, retained.terminal
+    );
+  }
+  if (request.execution === 'observe') {
+    const expectedOperation = retained.terminal?.operation ??
+      retained.accepted?.operation ?? null;
+    if (canonicalSha256(request.retainedCheckpoints) !== canonicalSha256(retained) ||
+      request.previousOperation === null !== (expectedOperation === null) ||
+      request.previousOperation && expectedOperation &&
+        canonicalSha256(request.previousOperation) !==
+          canonicalSha256(expectedOperation)) {
+      return applicationError(
+        'application-deployment-checkpoint',
+        'Application observation is not bound to the independently retained original handle and terminal truth.'
+      );
+    }
+  }
+  return retained;
+}
+
+export function validateProtectedApplicationWriteResult(
+  request: ProtectedApplicationWriteRequest,
+  result: ProtectedApplicationWriteResult,
+  retainedCheckpoints: ProtectedApplicationRetainedCheckpoints
+): ProtectedApplicationWriteResult {
+  validateRetainedApplicationCheckpoints(request, retainedCheckpoints);
+  if (!['blocked', 'uncertain', 'accepted', 'failed', 'completed']
+    .includes(result.status)) {
+    return applicationError(
+      'application-deployment-result',
+      'Application write result has an unknown runtime status discriminant.'
+    );
+  }
+  if (result.status === 'blocked') {
+    if (request.execution !== 'dispatch' || retainedCheckpoints.intent !== null ||
+      result.effect !== 'none' ||
+      !isProtectedApplicationFailureReason(result.reason) ||
+      !exactKeys(result, ['status', 'effect', 'reason'])) {
+      return applicationError(
+        'application-deployment-result',
+        'No-effect blocking is permitted only before the first dispatch effect.'
+      );
+    }
+    return result;
+  }
+  if (result.status === 'uncertain') {
+    if (retainedCheckpoints.intent === null ||
+      retainedCheckpoints.accepted !== null ||
+      request.execution === 'observe' && request.previousOperation !== null ||
+      result.effect !== 'intent' ||
+      !isProtectedApplicationFailureReason(result.reason) ||
+      canonicalSha256(result.intent) !== canonicalSha256(retainedCheckpoints.intent) ||
+      !exactKeys(result, ['status', 'effect', 'reason', 'intent'])) {
+      return applicationError(
+        'application-deployment-result',
+        'An intent-only recovery must preserve the exact pre-effect checkpoint and cannot redispatch.'
+      );
+    }
+    return result;
+  }
+  if (!result.operation || !result.intent || !result.accepted) {
+    return applicationError(
+      'application-deployment-result',
+      'Application effects require the durable original intent and accepted provider handle.'
+    );
+  }
+  if (!retainedCheckpoints.accepted ||
+    canonicalSha256(result.accepted) !==
+      canonicalSha256(retainedCheckpoints.accepted) ||
+    canonicalSha256(result.intent) !==
+      canonicalSha256(retainedCheckpoints.intent)) {
+    return applicationError(
+      'application-deployment-result',
+      'Application effect results must use independently retained intent and accepted-handle checkpoints.'
+    );
+  }
+  validateProtectedApplicationAcceptedCheckpoint(request, result.accepted);
+  if (!sameOperationIdentity(result.operation, result.accepted.operation) ||
+    canonicalSha256(result.intent) !== canonicalSha256(request.intent)) {
+    return applicationError(
+      'application-deployment-result',
+      'Application result changed the accepted provider handle or original intent.'
+    );
+  }
+  if (result.status === 'accepted') {
+    if (retainedCheckpoints.terminal !== null ||
+      result.effect !== 'accepted' || result.operation.status !== 'running' ||
+      !exactKeys(result, ['status', 'effect', 'operation', 'intent', 'accepted'])) {
+      return applicationError(
+        'application-deployment-result',
+        'An accepted application result must preserve a running provider handle for observation.'
+      );
+    }
+    return result;
+  }
+  if (result.status === 'failed') {
+    const terminal = result.terminal;
+    if (!exactKeys(result, [
+      'status', 'effect', 'reason', 'operation', 'intent', 'accepted',
+      ...(terminal ? ['terminal'] : [])
+    ]) ||
+      !['accepted', 'terminal'].includes(result.effect) ||
+      !isProtectedApplicationFailureReason(result.reason) ||
+      result.effect === 'accepted' && (terminal !== undefined ||
+        result.operation.status !== 'running' ||
+        retainedCheckpoints.terminal !== null) ||
+      result.effect === 'terminal' && (!terminal ||
+        !['completed', 'failed'].includes(result.operation.status) ||
+        !retainedCheckpoints.terminal)) {
+      return applicationError(
+        'application-deployment-result',
+        'Post-acceptance failure must preserve either the running handle or its durable terminal checkpoint.'
+      );
+    }
+    if (terminal) {
+      if (canonicalSha256(terminal) !==
+        canonicalSha256(retainedCheckpoints.terminal)) {
+        return applicationError(
+          'application-deployment-result',
+          'Post-terminal failure must use the independently retained original terminal checkpoint.'
+        );
+      }
+      validateProtectedApplicationTerminalCheckpoint(request, result.accepted, terminal);
+      if (!sameOperationIdentity(result.operation, terminal.operation) ||
+        result.operation.status !== terminal.operation.status) {
+        return applicationError(
+          'application-deployment-result',
+          'Post-terminal verification failure changed the durable terminal operation.'
+        );
+      }
+    }
+    return result;
+  }
+  if (result.status !== 'completed') {
+    return applicationError(
+      'application-deployment-result',
+      'Application write result has an unknown runtime status discriminant.'
+    );
+  }
+  if (!result.terminal || !result.provenance || !result.plan ||
+    !result.mappings || !result.completion) {
+    return applicationError(
+      'application-deployment-result',
+      'Completed application execution requires terminal-before-readback durability and complete proof.'
+    );
+  }
+  if (!retainedCheckpoints.terminal ||
+    canonicalSha256(result.terminal) !==
+      canonicalSha256(retainedCheckpoints.terminal)) {
+    return applicationError(
+      'application-deployment-result',
+      'Completed application execution must use the independently retained original terminal checkpoint.'
+    );
+  }
+  validateProtectedApplicationTerminalCheckpoint(
+    request, result.accepted, result.terminal
+  );
+  validateProtectedApplicationExecutionProvenance(
+    request.binding, result.provenance, request.executionAuthority
+  );
+  validateProtectedApplicationPlanProof(
+    request.binding, request.source, request.stateAuthority, result.plan
+  );
+  validateApplicationStateMappingProofs(
+    request.binding, request.stateAuthority, request.plan, result.mappings
+  );
+  validateProtectedApplicationCompletionProof(
+    request.binding, request.source, request.stateAuthority, result.plan,
+    result.completion
+  );
+  if (result.effect !== 'terminal' ||
+    result.action !== 'application-foundation' ||
+    result.operation.status !== 'completed' ||
+    !sameOperationIdentity(result.operation, result.terminal.operation) ||
+    result.terminal.operation.status !== 'completed' ||
+    !sameOperationIdentity(result.operation, result.completion.operation) ||
+    result.plan.planDigest !== request.plan.planDigest ||
+    result.provenance.provenanceDigest !== request.provenance.provenanceDigest ||
+    !exactKeys(result, [
+      'status', 'effect', 'action', 'operation', 'intent', 'accepted',
+      'terminal', 'provenance', 'plan', 'mappings', 'completion'
+    ])) {
+    return applicationError(
+      'application-deployment-result',
+      'Completed application execution changed its durable checkpoints, protected plan, mappings, provenance or completion proof.'
+    );
+  }
+  return result;
+}
+
+export function validateProtectedApplicationReadResult(
+  request: ProtectedApplicationReadRequest,
+  result: ProtectedApplicationReadResult,
+  expectedObservation: ApplicationDeploymentReadback
+): ProtectedApplicationReadResult {
+  if (!['blocked', 'completed'].includes(result.status)) {
+    return applicationError(
+      'application-deployment-result',
+      'Application read result has an unknown runtime status discriminant.'
+    );
+  }
+  if (result.status === 'blocked') {
+    if (result.effect !== 'none' ||
+      !isProtectedApplicationFailureReason(result.reason) ||
+      !exactKeys(result, ['status', 'effect', 'reason'])) {
+      return applicationError(
+        'application-deployment-result',
+        'Read-only blocking cannot report or imply a provider effect.'
+      );
+    }
+    return result;
+  }
+  if (result.status !== 'completed' ||
+    result.effect !== 'none' ||
+    result.action !== request.action ||
+    !sameOperationIdentity(result.operation, request.admittedOperation) ||
+    result.operation.status !== request.admittedOperation.status ||
+    result.provenance.provenanceDigest !== request.provenance.provenanceDigest ||
+    result.admittedCompletionDigest !== request.admittedCompletionDigest ||
+    canonicalSha256(result.observation) !== canonicalSha256(expectedObservation) ||
+    !exactKeys(result, [
+      'status', 'effect', 'action', 'operation', 'provenance',
+      'admittedCompletionDigest', 'observation'
+    ])) {
+    return applicationError(
+      'application-deployment-result',
+      'Read-only result changed the admitted handle, provenance, completion or independently observed health proof.'
+    );
+  }
+  return result;
+}
+
+function httpsUrl(value: string, label: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return applicationError('application-deployment-readback', `${label} is not a valid URL.`);
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password ||
+    parsed.search || parsed.hash || parsed.port) {
+    return applicationError('application-deployment-readback', `${label} is not an exact credential-free HTTPS endpoint.`);
+  }
+  return parsed;
+}
+
+export function validateProtectedApplicationCompletionProof(
+  binding: ApplicationDeploymentBinding,
+  source: ObservedApplicationDeploymentSource,
+  stateAuthority: ApplicationOriginalStateAuthority,
+  plan: ProtectedApplicationPlanProof,
+  proof: ProtectedApplicationCompletionProof
+): ProtectedApplicationCompletionProof {
+  validateProtectedApplicationPlanProof(binding, source, stateAuthority, plan);
+  const operation = proof.operation;
+  const health = proof.health[0];
+  const backend = httpsUrl(proof.outputs.backendUrl, 'Application backend output');
+  const endpoint = health ? httpsUrl(health.endpoint, 'Application backend health endpoint') : null;
+  const applied = new Set(proof.appliedResourceIds.map((resourceId) => resourceId.toLowerCase()));
+  if (!exactKeys(proof, [
+    'schemaVersion', 'kind', 'bindingDigest', 'planDigest',
+    'sourceInventoryDigest', 'operation', 'originalStateAuthorityDigest',
+    'mappingBatchDigest', 'stateLineage', 'stateSerial',
+    'preApplyStateDigest', 'stateDigest', 'unmappedStateDigest',
+    'appliedResourceIds', 'outputs', 'health', 'noChangePlanDigest',
+    'completedAt', 'checks'
+  ]) ||
+    !exactKeys(proof.outputs, ['backendUrl', 'immutableImage']) ||
+    !exactKeys(proof.checks, [
+      'protectedBackend', 'exactPlanApplied', 'providerReadbackComplete',
+      'noChangePlan', 'plaintextStateAbsent', 'sourceUnchanged'
+    ]) ||
+    proof.health.some((entry) => !exactKeys(entry, [
+      'component', 'method', 'path', 'endpoint', 'status', 'bodyBytes',
+      'bodySha256', 'observedAt', 'healthy'
+    ])) ||
+    proof.schemaVersion !== 1 || proof.kind !== 'protected-application-apply.v1' ||
+    proof.bindingDigest !== binding.bindingDigest ||
+    proof.planDigest !== plan.planDigest ||
+    proof.sourceInventoryDigest !== source.sourceInventoryDigest ||
+    operation.provider !== 'azure' ||
+    operation.actionId !== 'azure.application-foundation.apply' ||
+    operation.status !== 'completed' ||
+    operation.resourceId.toLowerCase() !== binding.resourceGroupId.toLowerCase() ||
+    typeof operation.planDigest !== 'string' ||
+    !digestPattern.test(operation.planDigest) ||
+    proof.originalStateAuthorityDigest !== stateAuthority.authorityDigest ||
+    proof.mappingBatchDigest !== plan.state.mappingBatchDigest ||
+    proof.stateLineage !== plan.state.lineage ||
+    !Number.isSafeInteger(proof.stateSerial) ||
+    proof.stateSerial <= plan.state.serial ||
+    proof.preApplyStateDigest !== plan.state.stateDigest ||
+    !digestPattern.test(proof.stateDigest) ||
+    proof.unmappedStateDigest !== plan.state.unmappedStateDigest ||
+    proof.appliedResourceIds.length > 256 ||
+    proof.appliedResourceIds.length !== applied.size ||
+    plan.resourceIds.some((resourceId) => !applied.has(resourceId.toLowerCase())) ||
+    proof.outputs.immutableImage !== binding.immutableImage ||
+    backend.pathname !== '/' ||
+    proof.health.length !== 1 || !health ||
+    health.component !== 'backend' || health.method !== 'GET' ||
+    health.path !== '/health' || health.status !== 200 || health.healthy !== true ||
+    !endpoint || endpoint.origin !== backend.origin || endpoint.pathname !== '/health' ||
+    !Number.isSafeInteger(health.bodyBytes) || health.bodyBytes < 0 ||
+    health.bodyBytes > maximumHealthBodyBytes || !digestPattern.test(health.bodySha256) ||
+    !Number.isFinite(Date.parse(health.observedAt)) ||
+    !digestPattern.test(proof.noChangePlanDigest) ||
+    !Number.isFinite(Date.parse(proof.completedAt)) ||
+    !proof.checks.protectedBackend || !proof.checks.exactPlanApplied ||
+    !proof.checks.providerReadbackComplete || !proof.checks.noChangePlan ||
+    !proof.checks.plaintextStateAbsent || !proof.checks.sourceUnchanged) {
+    return applicationError(
+      'application-deployment-completion',
+      'Application completion is not bound to the exact protected plan, immutable image, resource inventory, no-change state and successful bounded workload health observation.'
+    );
+  }
+  return proof;
+}
+
+function text(value: unknown, label: string): string {
+  if (typeof value !== 'string' || !value || value.length > 1024) {
+    return applicationError('application-deployment-readback', `${label} is absent or invalid.`);
+  }
+  return value;
+}
+
+function isTopLevelResource(groupId: string, resourceId: string): boolean {
+  const prefix = `${groupId}/providers/`.toLowerCase();
+  if (!resourceId.toLowerCase().startsWith(prefix)) return false;
+  return resourceId.slice(prefix.length).split('/').length === 3;
+}
+
+function validateFreshApplicationHealthObservation(
+  binding: ApplicationDeploymentBinding,
+  source: ObservedApplicationDeploymentSource,
+  completion: ProtectedApplicationCompletionProof,
+  provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  expectedEndpoint: string,
+  expectedRevision: string,
+  readbackObservedAt: Date,
+  health: FreshApplicationHealthObservation
+): FreshApplicationHealthObservation {
+  validateProtectedApplicationExecutionProvenance(
+    binding, provenance, executionAuthority
+  );
+  const target = binding.healthTargets[0]!;
+  const { observationDigest, ...digestInput } = health;
+  const observedAt = Date.parse(health.observedAt);
+  const readbackTime = readbackObservedAt.getTime();
+  if (!exactKeys(health, [
+    'kind', 'bindingDigest', 'sourceInventoryDigest',
+    'executionAuthorityDigest', 'provenanceDigest', 'operationId',
+    'component', 'method', 'path', 'endpoint', 'revision', 'immutableImage',
+    'status', 'mediaType', 'bodyBytes', 'bodySha256', 'parsedBodyDigest',
+    'observedAt', 'observationDigest'
+  ]) ||
+    health.kind !== 'protected-application-health.v1' ||
+    health.bindingDigest !== binding.bindingDigest ||
+    health.sourceInventoryDigest !== source.sourceInventoryDigest ||
+    health.provenanceDigest !== provenance.provenanceDigest ||
+    health.executionAuthorityDigest !== executionAuthority.authorityDigest ||
+    health.operationId !== completion.operation.operationId ||
+    health.component !== target.component ||
+    health.method !== target.method ||
+    health.path !== target.path ||
+    health.endpoint !== expectedEndpoint ||
+    health.revision !== expectedRevision ||
+    health.immutableImage !== binding.immutableImage ||
+    health.status !== 200 ||
+    health.mediaType !== target.mediaType ||
+    health.parsedBodyDigest !== target.parsedBodyDigest ||
+    !Number.isSafeInteger(health.bodyBytes) || health.bodyBytes <= 0 ||
+    health.bodyBytes > maximumHealthBodyBytes ||
+    !digestPattern.test(health.bodySha256) ||
+    !Number.isFinite(observedAt) ||
+    !Number.isFinite(readbackTime) ||
+    observedAt <= Date.parse(completion.completedAt) ||
+    observedAt > readbackTime ||
+    readbackTime - observedAt > maximumFreshHealthAgeMilliseconds ||
+    canonicalSha256(digestInput) !== observationDigest) {
+    return applicationError(
+      'application-deployment-health',
+      'Fresh application health is not a bounded current HTTP observation of the exact source-declared response contract.'
+    );
+  }
+  return health;
+}
+
+export async function observeApplicationDeploymentReadback(
+  input: PhaseAdapterExecutionInput,
+  source: ObservedApplicationDeploymentSource,
+  stateAuthority: ApplicationOriginalStateAuthority,
+  plan: ProtectedApplicationPlanProof,
+  completion: ProtectedApplicationCompletionProof,
+  provenance: ProtectedApplicationExecutionProvenance,
+  executionAuthority: ProtectedApplicationExecutionAuthority,
+  freshHealth: FreshApplicationHealthObservation
+): Promise<ApplicationDeploymentReadback> {
+  const binding = source.binding;
+  validateProtectedApplicationCompletionProof(
+    binding, source, stateAuthority, plan, completion
+  );
+  const group = azureObject(await runAzureJson(input, [
+    'group', 'show',
+    '--subscription', binding.subscriptionId,
+    '--name', binding.resourceGroup,
+    '--query', '{id:id,name:name,location:location,provisioningState:properties.provisioningState}'
+  ], 'Application resource group readback'), 'Application resource group');
+  const appId = `${binding.resourceGroupId}/providers/Microsoft.App/containerApps/${binding.expectedResourceNames.backendContainerApp}`;
+  const app = azureObject(await runAzureJson(input, [
+    'containerapp', 'show',
+    '--subscription', binding.subscriptionId,
+    '--ids', appId,
+    '--query', '{id:id,name:name,location:location,provisioningState:properties.provisioningState,' +
+      'latestRevisionName:properties.latestRevisionName,ingress:properties.configuration.ingress,' +
+      'template:properties.template,identity:identity}'
+  ], 'Application container readback'), 'Application container');
+  const revisions = await runAzureJson(input, [
+    'containerapp', 'revision', 'list',
+    '--subscription', binding.subscriptionId,
+    '--name', binding.expectedResourceNames.backendContainerApp,
+    '--resource-group', binding.resourceGroup,
+    '--query', '[].{name:name,active:properties.active,healthState:properties.healthState,' +
+      'provisioningState:properties.provisioningState,runningState:properties.runningState,' +
+      'trafficWeight:properties.trafficWeight,containers:properties.template.containers}'
+  ], 'Application revision readback');
+  const inventory = await runAzureJson(input, [
+    'resource', 'list',
+    '--subscription', binding.subscriptionId,
+    '--resource-group', binding.resourceGroup,
+    '--query', '[].{id:id}'
+  ], 'Application resource inventory readback');
+  const ingress = azureObject(app.ingress, 'Application ingress');
+  const template = azureObject(app.template, 'Application template');
+  const identity = azureObject(app.identity, 'Application identity');
+  const identities = isRecord(identity.userAssignedIdentities)
+    ? Object.keys(identity.userAssignedIdentities) : [];
+  const containers = Array.isArray(template.containers) ? template.containers : [];
+  const backendContainer = containers.find((container) =>
+    isRecord(container) && container.name === 'backend');
+  const latestRevision = text(
+    app.latestRevisionName, 'Application latest revision name'
+  );
+  const currentRevision = Array.isArray(revisions)
+    ? revisions.find((revision) => isRecord(revision) &&
+      revision.name === latestRevision) : null;
+  const revisionContainers = isRecord(currentRevision) &&
+    Array.isArray(currentRevision.containers) ? currentRevision.containers : [];
+  const inventoryIds = Array.isArray(inventory) ? inventory.map((entry) =>
+    isRecord(entry) ? text(entry.id, 'Application inventory resource ID') : '') : [];
+  const fqdn = text(ingress.fqdn, 'Application ingress FQDN');
+  const expectedHealthEndpoint = `https://${fqdn}/health`;
+  const readbackObservedAt = input.clock?.() ?? input.now;
+  const health = validateFreshApplicationHealthObservation(
+    binding, source, completion, provenance, executionAuthority,
+    expectedHealthEndpoint, latestRevision, readbackObservedAt, freshHealth
+  );
+  if (text(group.id, 'Application resource group ID').toLowerCase() !== binding.resourceGroupId.toLowerCase() ||
+    group.name !== binding.resourceGroup || group.location !== binding.region ||
+    group.provisioningState !== 'Succeeded' ||
+    text(app.id, 'Application container ID').toLowerCase() !== appId.toLowerCase() ||
+    app.name !== binding.expectedResourceNames.backendContainerApp ||
+    app.location !== binding.region || app.provisioningState !== 'Succeeded' ||
+    ingress.external !== true || !Array.isArray(ingress.traffic) ||
+    !ingress.traffic.some((entry) => isRecord(entry) &&
+      entry.latestRevision === true && entry.weight === 100) ||
+    !isRecord(backendContainer) || backendContainer.image !== binding.immutableImage ||
+    !identities.some((id) => id.toLowerCase() ===
+      `${binding.resourceGroupId}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/${binding.expectedResourceNames.identity}`.toLowerCase()) ||
+    !isRecord(currentRevision) || currentRevision.active !== true ||
+    currentRevision.healthState !== 'Healthy' ||
+    currentRevision.provisioningState !== 'Provisioned' ||
+    currentRevision.runningState !== 'Running' ||
+    currentRevision.trafficWeight !== 100 ||
+    !revisionContainers.some((container) =>
+      isRecord(container) && container.name === 'backend' &&
+      container.image === binding.immutableImage) ||
+    completion.appliedResourceIds
+      .filter((resourceId) => isTopLevelResource(binding.resourceGroupId, resourceId))
+      .some((resourceId) =>
+      !inventoryIds.some((observed) => observed.toLowerCase() === resourceId.toLowerCase())) ||
+    completion.outputs.backendUrl !== `https://${fqdn}` ||
+    health.endpoint !== expectedHealthEndpoint) {
+    return applicationError(
+      'application-deployment-readback',
+      'Azure application readback changed resource identity, region, immutable image, managed identity, active traffic, revision health or complete applied inventory.'
+    );
+  }
+  const observed = {
+    kind: 'application-foundation-readback.v1' as const,
+    bindingDigest: binding.bindingDigest,
+    sourceInventoryDigest: source.sourceInventoryDigest,
+    planDigest: plan.planDigest,
+    operationId: completion.operation.operationId,
+    resourceGroupId: binding.resourceGroupId,
+    backendResourceId: appId,
+    backendUrl: completion.outputs.backendUrl,
+    immutableImage: binding.immutableImage,
+    revision: latestRevision,
+    health: {
+      endpoint: health.endpoint,
+      status: 200 as const,
+      mediaType: 'application/json' as const,
+      bodyBytes: health.bodyBytes,
+      bodySha256: health.bodySha256,
+      parsedBodyDigest: health.parsedBodyDigest,
+      observedAt: health.observedAt
+    },
+    noChangePlanDigest: completion.noChangePlanDigest,
+    appliedResourceCount: completion.appliedResourceIds.length
+  };
+  return {
+    observed,
+    liveReadback: [
+      applicationReadbackProof(input, 'azure', 'resource-group', binding.resourceGroupId, group),
+      applicationReadbackProof(input, 'azure', 'container-app', appId, observed)
+    ]
+  };
+}

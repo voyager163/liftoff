@@ -175,6 +175,7 @@ async function assertHclInputs(application, lock, inputs) {
   assert.deepEqual(actual, expected, 'HCL embedded dependency inventory differs from its notice inventory.');
 }
 
+/** @param {{ output: string, runtimeArchive: string, windowsLauncher?: string, npmCli?: string }} options */
 export async function buildNativeBundle({ output, runtimeArchive, windowsLauncher, npmCli = process.env.npm_execpath }) {
   const host = nativeBundleHost();
   assert.ok(npmCli && path.isAbsolute(npmCli), 'Run the development build through npm; npm_execpath is required.');

@@ -115,7 +115,7 @@ Depends on 2-5. References: design D3; liftoff-native-distribution, liftoff-npm-
 - [ ] 9.4 Produce a signed Windows x64 installer and WinGet manifests under a verified approved ID; verify stock policy behavior, executable locking, native paths and packaged controller assets in Windows CI.
 - [ ] 9.5 Produce verified Linux x64/arm64 archives and a user-local installer with declared glibc/runtime floors; verify signatures/checksums, atomic owned installation and refusal of unqualified musl/platform combinations.
 - [ ] 9.6 Extend immutable release manifests, exact-artifact handoff, SBOM/notices and provenance for every native asset; verify changed digests/source/version or absent signing evidence block publication without changing existing npm account settings.
-- [x] 9.7 Add native package smoke tests and missing-asset/foreign-cwd fixtures on each advertised platform; verify tests never alter the developer's real global installation.
+- [ ] 9.7 Add native package smoke tests and missing-asset/foreign-cwd fixtures on each advertised platform; verify tests never alter the developer's real global installation.
 - [ ] 9.8 Refresh installation/prerequisite/root README guidance and release-maintainer instructions as artifacts become qualified; verify actual package IDs/commands and no unqualified support claims.
 
 ## 10. Implement installation-owner-aware upgrade and doctor
@@ -147,23 +147,23 @@ Depends on 9-10. References: design D5; liftoff-native-distribution, liftoff-npm
 Depends on 3-8. References: design D10-D11; liftoff-governance-activation-engine, liftoff-infrastructure-governance, liftoff-repository-governance-profile.
 
 - [x] 12.1 Replace placeholder/injected-only advertised discovery paths with bounded actual GitHub/Azure reads; verify exact repository, tenant, subscription, principal, environment and resource binding rather than trusting default account or matching names.
-- [ ] 12.2 Derive minimal provider namespaces/features from approved resource types and inspect/register only authorized prerequisites; verify terminal Registered readback precedes dependent writes and shared registrations survive rollback.
-- [ ] 12.3 Implement exact approval persistence, expiry/source binding and protected credential enrollment/use proof; verify no credential in chat/argv/source/public receipts and a policy file alone cannot establish readiness.
-- [ ] 12.4 Enforce new-environment versus same-operation-owned versus pre-existing deployment classification before every effect; verify unknown/occupied/brownfield cases remain planning-only without duplicate resources or sensitive state reads.
-- [ ] 12.5 Implement bounded asynchronous handles, current reobservation and sanitized partial-failure records; verify retry observes existing operations without redispatch and stale ownership blocks compensation.
-- [ ] 12.6 Update Azure/governance/setup guidance with real prerequisites, profile differences and exact producer limits; verify no unsupported public stateful command is advertised and no credentials are needed for local completion.
+- [x] 12.2 Derive minimal provider namespaces/features from approved resource types and inspect/register only authorized prerequisites; verify terminal Registered readback precedes dependent writes and shared registrations survive rollback.
+- [x] 12.3 Implement exact approval persistence, expiry/source binding and protected credential enrollment/use proof; verify no credential in chat/argv/source/public receipts and a policy file alone cannot establish readiness.
+- [x] 12.4 Enforce new-environment versus same-operation-owned versus pre-existing deployment classification before every effect; verify unknown/occupied/brownfield cases remain planning-only without duplicate resources or sensitive state reads.
+- [x] 12.5 Implement bounded asynchronous handles, current reobservation and sanitized partial-failure records; verify retry observes existing operations without redispatch and stale ownership blocks compensation.
+- [x] 12.6 Update Azure/governance/setup guidance with real prerequisites, profile differences and exact producer limits; verify no unsupported public stateful command is advertised and no credentials are needed for local completion.
 
 ## 13. Qualify protected new-environment backend and execution prerequisites
 
 Depends on 12. References: design D11; liftoff-governance-activation-engine, liftoff-infrastructure-governance.
 
-- [ ] 13.1 Implement verified reuse of an approved private backend/execution path without adopting unknown deployment state; verify identity, reachability, locking/versioning and readback conditions with positive/negative tests.
-- [ ] 13.2 Implement only the minimal separately approved new-environment bootstrap when reachability requires it; verify scoped names, cost, permissions and owned operation records before billable writes.
-- [ ] 13.3 Complete applicable repository-dedicated hosted-runner/network prerequisites with exact labels, routing, DNS and one approved egress mode; verify real reachability and keep unavailable org/account capabilities explicit blockers.
-- [ ] 13.4 Qualify protected state handling/handover only for resources created by the same approved bootstrap, with backups, exact mapping/concurrency, no-change verification and retention; verify the public API still rejects arbitrary pre-existing state import/partition/relocation.
-- [ ] 13.5 Preserve due-time/custody/disposal obligations and unsupported-host admission; verify absent protected storage/keys/locking blocks rather than falling back to plaintext or an unapproved execution host.
+- [x] 13.1 Implement verified reuse of an approved private backend/execution path without adopting unknown deployment state; verify identity, reachability, locking/versioning and readback conditions with positive/negative tests.
+- [x] 13.2 Implement only the minimal separately approved new-environment bootstrap when reachability requires it; verify scoped names, cost, permissions and owned operation records before billable writes.
+- [x] 13.3 Complete applicable repository-dedicated hosted-runner/network prerequisites with exact labels, routing, DNS and one approved egress mode; verify real reachability and keep unavailable org/account capabilities explicit blockers.
+- [x] 13.4 Qualify protected state handling/handover only for resources created by the same approved bootstrap, with backups, exact mapping/concurrency, no-change verification and retention; verify the public API still rejects arbitrary pre-existing state import/partition/relocation.
+- [x] 13.5 Preserve due-time/custody/disposal obligations and unsupported-host admission; verify absent protected storage/keys/locking blocks rather than falling back to plaintext or an unapproved execution host.
 - [ ] 13.6 Run explicitly approved disposable native/cloud qualification for each advertised execution combination; verify reports separate real outcomes from mocks and preserve partial checkpoints on failure.
-- [ ] 13.7 Update generated infrastructure/bootstrap guidance and state-migration README with the narrow new-owned-bootstrap exception and deferred brownfield scope; verify examples use actual qualified hosts and commands.
+- [x] 13.7 Update generated infrastructure/bootstrap guidance and state-migration README with the narrow new-owned-bootstrap exception and deferred brownfield scope; verify examples use actual qualified hosts and commands.
 
 ## 14. Complete application deployment qualification and enforcement
 
@@ -214,6 +214,11 @@ Enablement and `report --heartbeat` refuse without writes/delivery; neither
 project enrollment nor a caller flag enables ordinary CI. No active cron was
 installed in this repository. Production ingestion and release/custody gates
 remain separate; all other groups retain their parent-branch task status.
+The four checked stage-16 tasks record composed SOURCE evidence only:
+the complete bounded affected selector, strict fixture imports, gateway tests,
+build/noEmit, static dashboard/OpenTofu checks and disposable installed npm
+smoke. Native Windows execution, published pins, live ingestion/query/UI and
+release-wide coverage were not qualified by this integration.
 
 ## 17. Extend the approved Azure telemetry deployment and Grafana dashboards
 
@@ -244,7 +249,7 @@ Depends on all prior stages. This group is integration verification, not a subst
 - [ ] 18.1 Run the complete declared workload/workflow/agent/profile and native-host qualification matrix, including Manual/no-agent, preserved layouts, old manifests, clean installs and Apple Silicon handover; verify every advertised combination and explicit unsupported boundary.
 - [ ] 18.2 Run fresh independent CLI/gateway coverage, import boundaries, repository policy, template audits, generated-container/OpenTofu checks and installed native/npm smoke tests; verify all four metrics exceed 80% and every report identifies its exact revision/inventory.
 - [ ] 18.3 Verify a representative old Liftoff project and a non-Liftoff project through their complete separate migration journeys; confirm original code/Git/history and opt-outs are preserved except exact approved changes, and brownfield state remains untouched.
-- [ ] 18.4 Audit the explicit inventory of all four maintained READMEs, generated README sources and related guides against actual commands, schemas, capabilities and package links; verify no stale npm-primary, fake archive, wrong completion, unsupported public stateful or anonymous-project-ID claim remains.
+- [x] 18.4 Audit the explicit inventory of all four maintained READMEs, generated README sources and related guides against actual commands, schemas, capabilities and package links; verify no stale npm-primary, fake archive, wrong completion, unsupported public stateful or anonymous-project-ID claim remains.
 - [ ] 18.5 Verify release assembly uses the same qualified immutable source/artifacts across native channels and npm bridge, with native assets available before migration guidance and ingestion ready before project reporting; publish only with separate maintainer authorization.
 - [ ] 18.6 After authorized publication, qualify installed client enrollment/reporting and a separately enabled heartbeat in an explicitly approved disposable project using the exact published pins; verify actual ingestion/deduplication and opt-out behavior before claiming live end-to-end reporting.
 - [ ] 18.7 Check every proposal capability against its implemented scenarios and retained evidence, then run strict OpenSpec validation; mark only actually completed tasks and leave unavailable external qualification/deployment tasks explicitly incomplete rather than archiving or claiming full delivery.

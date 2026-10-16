@@ -238,6 +238,7 @@ export async function verifyNativeQualification(record, readArtifact, readEviden
   return evidence;
 }
 
+/** @param {unknown} [approvedPolicy] */
 export function nativePackageDefinitions(record, evidence, approvedPolicy = policy) {
   assertNativePublicationEvidence(record, evidence, approvedPolicy);
   assert.match(record.version, /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/);

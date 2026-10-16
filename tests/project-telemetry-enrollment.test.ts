@@ -17,6 +17,9 @@ import { reportProjectObservation } from '../src/application/telemetry/project-r
 import { projectTelemetryDimensions } from '../src/application/project/telemetry.js';
 import { isProjectTelemetryEvent } from '../src/telemetry/contract.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
+import { runSelfUpgrade } from '../src/self-upgrade.js';
+import { upgradeWorld } from './fixtures/installer-upgrade.js';
+import * as telemetryConfig from '../src/telemetry/config.js';
 
 const roots: string[] = [];
 const generated = buildCurrentArtifacts(buildCurrentProjectPlan({
@@ -401,9 +404,63 @@ describe('explicit project enrollment and external checkout consent', () => {
       ['assess', '--json'], ['assess', '--live', '--json'], ['assess', '--help'], ['help', 'assess'],
       ['governance', 'assess', '--json'], ['governance', 'assess', '--help'],
       ['capabilities', '--json'], ['repair', '--capabilities', '--json'], ['repair', '--inspect-layout', '--json'],
-      ['telemetry', 'status', '--json'], ['telemetry', '--help'], ['help', 'telemetry']
+      ['telemetry', 'status', '--json'], ['telemetry', '--help'], ['help', 'telemetry'],
+      ['doctor', '--help'], ['help', 'doctor'], ['upgrade', '--help'], ['help', 'upgrade']
     ]) await invoke(argv, f.project, f.env);
     expect(fetch).not.toHaveBeenCalled(); expect(await captureTreeState(f.root)).toEqual(before);
+  });
+
+  it('keeps actual owner-aware doctor free of disclosure and both reporting channels in an enrolled checkout', async () => {
+    const f = await fixture(); await approve('enroll', f.project, f.env);
+    const upgrade = upgradeWorld(), before = await captureTreeState(f.root);
+    const notice = vi.spyOn(telemetryConfig, 'readTelemetryNoticeVersion');
+    const fetch = vi.spyOn(globalThis, 'fetch'), stdout = new CaptureStream(), stderr = new CaptureStream();
+    const code = await runCli({
+      argv: ['doctor', '--json'], cwd: f.project, env: f.env, stdout, stderr,
+      execute: (parsed, context) => runCommand(parsed, {
+        ...context,
+        runner: { run: async command => ({
+          command, displayCommand: 'isolated diagnostic', status: 127, signal: null,
+          stdout: '', stderr: '', timedOut: false, processSpawned: false
+        }) },
+        selfUpgrade: request => runSelfUpgrade({
+          ...request, runningPackageRoot: upgrade.request.runningPackageRoot
+        }, upgrade.dependencies)
+      })
+    });
+    expect(code).toBe(1);
+    expect(JSON.parse(stdout.text()).summary.failures).toBeGreaterThan(0);
+    expect(notice).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+    expect(upgrade.world.installed).toBe(false);
+    expect(await captureTreeState(f.root)).toEqual(before);
+  });
+
+  it('reports actual owner-aware upgrade availability only as one anonymous aggregate without project reporting', async () => {
+    const f = await fixture(); await approve('enroll', f.project, f.env);
+    await recordTelemetryNotice({ env: f.env });
+    const upgrade = upgradeWorld(), before = await captureTreeState(f.root);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    const stdout = new CaptureStream(), stderr = new CaptureStream();
+    const code = await runCli({
+      argv: ['upgrade', '--check', '--json'], cwd: f.project, env: f.env, stdout, stderr,
+      execute: (parsed, context) => runCommand(parsed, {
+        ...context, selfUpgrade: request => runSelfUpgrade({
+          ...request, runningPackageRoot: upgrade.request.runningPackageRoot
+        }, upgrade.dependencies)
+      })
+    });
+    expect(code).toBe(2);
+    expect(JSON.parse(stdout.text())).toMatchObject({
+      schemaVersion: 2, installationOwner: 'npm', status: 'update-available', effects: 'none'
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(String(fetch.mock.calls[0][0])).toMatch(/\/api\/events$/u);
+    expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual({
+      schemaVersion: 2, event: 'command_executed', command: 'upgrade',
+      cliVersion: '0.12.3', outcome: 'attention-required'
+    });
+    expect(upgrade.world.installed).toBe(false);
+    expect(await captureTreeState(f.root)).toEqual(before);
   });
 
   it('bounds ordinary reporting to the same command deadline without changing ordinary output or exit', async () => {
@@ -428,5 +485,7 @@ describe('explicit project enrollment and external checkout consent', () => {
     ['telemetry', 'status', '.', '--project', '.'], ['telemetry', 'heartbeat', 'invalid'],
     ['telemetry', 'heartbeat', 'status', '--check'], ['telemetry', 'heartbeat', 'status', '--approve-plan', 'a'.repeat(64)],
     ['telemetry', 'heartbeat', 'status', '.', '--project', '.']
-  ])('rejects invalid authority before project access: %j', argv => { expect(() => parseArgs(argv)).toThrow(); });
+  ].map(argv => ({ argv })))('rejects invalid authority before project access: $argv', ({ argv }) => {
+    expect(() => parseArgs(argv)).toThrow();
+  });
 });

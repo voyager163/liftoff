@@ -12,8 +12,8 @@ import { nativeMaterials, nativePackageDefinitions, assertNativePublicationEvide
 import { parse } from 'yaml';
 import { pathToFileURL } from 'node:url';
 import { installOwnedBundle, inspectOwnedInstallation, recoverOwnedInstallation } from '../scripts/native-install.mjs';
-import inputs from '../distribution/native/inputs.json';
-import policy from '../distribution/native/release-policy.json';
+import inputs from '../distribution/native/inputs.json' with { type: 'json' };
+import policy from '../distribution/native/release-policy.json' with { type: 'json' };
 import { assertNativePackageReport, nativePackageCommonCases, nativePackagePlatformCases } from '../scripts/native-package-report.mjs';
 
 const roots: string[] = [];
@@ -275,7 +275,7 @@ describe('native exact-artifact and signing gates (synthetic contract data, not 
 });
 
 describe('installed native report admission (synthetic report shapes)', () => {
-  function report(platform: string) {
+  function report(platform: keyof typeof nativePackagePlatformCases) {
     const applicable = [...nativePackageCommonCases, ...nativePackagePlatformCases[platform]];
     return { success: true, numFailedTests: 0, numFailedTestSuites: 0, testResults: [{
       name: '/fixture/tests/native-package-installed.test.ts',
@@ -283,7 +283,7 @@ describe('installed native report admission (synthetic report shapes)', () => {
         .map(title => ({ title, status: applicable.includes(title) ? 'passed' : 'skipped' }))
     }] };
   }
-  it.each(['linux', 'darwin', 'win32'])('requires every applicable actual installed case on %s', platform => {
+  it.each(['linux', 'darwin', 'win32'] as const)('requires every applicable actual installed case on %s', platform => {
     expect(assertNativePackageReport(report(platform), platform).passed).toBe(
       nativePackageCommonCases.length + nativePackagePlatformCases[platform].length);
   });
