@@ -17,9 +17,33 @@ import {canonicalWorkspaceBoundary,deleteCapturedWorkspace,workspaceFileIdentity
 import type {RepairWorkspaceRole,RepairWorkspaceFileIdentity} from '../../application/repair/workspaces-types.js';
 export class LocalToolSettlementError extends ModernLocalInputError {}
 export const modernComposePluginRequirement={minimumVersion:'5.5.1',releaseLine:'5'} as const;
+export const modernLinuxComposePluginPaths=Object.freeze([
+  '/usr/local/lib/docker/cli-plugins/docker-compose',
+  '/usr/local/libexec/docker/cli-plugins/docker-compose',
+  '/usr/lib/docker/cli-plugins/docker-compose',
+  '/usr/libexec/docker/cli-plugins/docker-compose'
+]);
 export function isModernComposePluginVersionSupported(version:string):boolean{
   return matchesReleaseLine(version,modernComposePluginRequirement.releaseLine)&&
     compareVersionCores(version,modernComposePluginRequirement.minimumVersion)>=0;
+}
+
+async function installedComposePlugin(dockerExecutable:string,root:string,staging:string){
+  const bin=path.dirname(dockerExecutable);
+  const system=process.platform==='linux'?modernLinuxComposePluginPaths:[];
+  const prefix=[
+    path.resolve(bin,'../cli-plugins/docker-compose'),
+    path.resolve(bin,'../../lib/docker/cli-plugins/docker-compose'),
+    path.resolve(bin,'../lib/docker/cli-plugins/docker-compose'),
+    path.resolve(bin,'../libexec/docker/cli-plugins/docker-compose')
+  ];
+  // Closed private bundles do not borrow a machine-wide plugin ahead of their own.
+  const candidates=system.length&&['/usr/bin','/usr/local/bin'].includes(bin)?[...system,...prefix]:[...prefix,...system];
+  for(const candidate of new Set(candidates)){
+    try{return await toolFile(candidate,root,staging,true);}
+    catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+  }
+  return localInputFailure('The actual installed Compose plugin identity is unavailable; Docker CLI version alone is insufficient.');
 }
 
 async function neutral(root:string) {
@@ -89,14 +113,7 @@ export async function observeModernLocalTools(root:string,checks:readonly Modern
       const versions:Record<string,string>={[id]:version};
       if(id==='docker'){
         // The CLI version does not identify the separately executed Compose plugin.
-        const candidates=[path.resolve(path.dirname(resolution.realPath),'../cli-plugins/docker-compose'),
-          path.resolve(path.dirname(resolution.realPath),'../../lib/docker/cli-plugins/docker-compose')];
-        let plugin;
-        for(const candidate of candidates){
-          try{plugin=await toolFile(candidate,root,owned.staging,true);break;}
-          catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
-        }
-        if(!plugin)localInputFailure('The actual installed Compose plugin identity is unavailable; Docker CLI version alone is insufficient.');
+        const plugin=await installedComposePlugin(resolution.realPath,root,owned.staging);
         files.push(plugin);executablePath=plugin.path;
         unsettled=true;
         const compose=await runner.run({executable:plugin.path,args:['version','--short']},{cwd:owned.directory,env,timeoutMs:15000,maxOutputBytes:8192,ensureProcessTreeSettled:true,stream:false});
@@ -136,6 +153,9 @@ export async function assertModernLocalToolsCurrent(root:string,workspace:string
     }
     if(await realpath(tool.launcherPath)!==tool.files[0]?.path)localInputFailure('Installed local tool launcher changed.');
     for(const file of tool.files)if(canonicalSha256(await toolFile(file.path,root,workspace,false))!==canonicalSha256(file))localInputFailure('Installed local tool bytes or physical identity changed.');
+    if(tool.id==='docker'&&canonicalSha256(await installedComposePlugin(tool.files[0].path,root,workspace))!==canonicalSha256(tool.files[1])){
+      localInputFailure('Installed Compose plugin selection or physical identity changed.');
+    }
     if(['node','npm','python','uv','go'].includes(tool.id)){
       const requirement=applicationToolRequirement(tool.id as ApplicationToolId);
       if(!matchesReleaseLine(tool.version,requirement.releaseLine)||compareVersionCores(tool.version,requirement.minimumVersion)<0)localInputFailure('Local tool version changed from packaged requirement.');

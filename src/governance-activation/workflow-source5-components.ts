@@ -272,6 +272,17 @@ function assertOriginalContextProof(
   }, events, planDigest);
 }
 
+async function settleOriginalReads<T>(reads: readonly (() => Promise<T>)[]): Promise<T[]> {
+  const values: T[] = [];
+  let failure: { error: unknown } | undefined;
+  await Promise.all(reads.map(async (read, index) => {
+    try { values[index] = await read(); }
+    catch (error) { failure ??= { error }; }
+  }));
+  if (failure) throw failure.error;
+  return values;
+}
+
 /** Reconstructs observation carriers from original receipts, never caller-selected proof values. */
 export async function observeSource5WorkflowPlanMatrix(
   fields: Source5WorkflowPlanComponentFields, journal: Source5WorkflowJournal,
@@ -286,8 +297,7 @@ export async function observeSource5WorkflowPlanMatrix(
   const { control, effects } = source5WorkflowPlanInventory(fields.plan);
   await journal.assertInventory();
   runtime.assertWithinDeadline();
-  const originals: { operation: Source5WorkflowEffectFields['operation']; proof: WorkflowContextProof }[] = [];
-  for (const operation of effects) {
+  const originals = await settleOriginalReads(effects.map(operation => async () => {
     const events = await journal.events(operation);
     runtime.assertWithinDeadline();
     const completed = events.find(event => event.stage === 'component-completed');
@@ -296,20 +306,17 @@ export async function observeSource5WorkflowPlanMatrix(
     }
     const proof = completed.data.proof;
     assertOriginalContextProof(proof, operation, events, fields.plan.planDigest);
-    originals.push({ operation, proof });
-  }
-  const entries: {
-    input: Awaited<ReturnType<typeof createSource5WorkflowEffectInput>>; proof: WorkflowContextProof;
-  }[] = [];
-  for (const original of originals) {
+    return { operation, proof };
+  }));
+  const entries = await settleOriginalReads(originals.map(original => async () => {
     runtime.assertWithinDeadline();
     const input = await createSource5WorkflowEffectInput({
       ...fields, operation: original.operation, transport: runtime.client.transport,
       kind: 'source5-workflow-effect.v1', observationOnly: true, reviewedPlans: [journal.plan]
     }, journal);
     runtime.assertWithinDeadline();
-    entries.push({ input, proof: original.proof });
-  }
+    return { input, proof: original.proof };
+  }));
   const matrix = await verifySource5WorkflowProofMatrix(entries, requirements);
   runtime.assertWithinDeadline();
   return captureWorkflowBinding({

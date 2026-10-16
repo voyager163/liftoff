@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -10,7 +10,10 @@ import { buildCurrentProjectPlan } from '../src/application/project/planning.js'
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { buildCurrentArtifacts } from '../src/templates.js';
 import { writeArtifacts } from '../src/file-system.js';
-import { isModernComposePluginVersionSupported, observeModernLocalTools } from '../src/adapters/process/modern-local-tools.js';
+import {
+  assertModernLocalToolsCurrent, isModernComposePluginVersionSupported,
+  modernLinuxComposePluginPaths, observeModernLocalTools
+} from '../src/adapters/process/modern-local-tools.js';
 import { createApplicationEnvironment } from '../src/application/repair/application-environment.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
 import type { ModernLocalCheck } from '../src/domain/governance/activation/modern-local-inputs.js';
@@ -19,7 +22,7 @@ import { runSettledFixtureCommand } from './fixtures/settled-command.js';
 
 const compose = (value: string) => `services:\n  app:\n    image: example\n    environment:\n      VALUE: ${JSON.stringify(value)}\n`;
 const roots: string[] = [];
-afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
+afterEach(async () => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 const lane = process.env.LIFTOFF_HCL_TEST_LANE ?? 'auto';
 if (!['auto', 'portable', 'native'].includes(lane)) throw new Error('Unknown native Compose qualification lane.');
 const qualified = process.platform === 'darwin' && process.arch === 'arm64' && process.versions.node === '24.21.0';
@@ -27,6 +30,16 @@ if (lane === 'native' && !qualified) throw new Error('Native Compose qualificati
 const nativeIt = it.skipIf(lane === 'portable' || !qualified);
 
 describe('closed current Compose input interpretation', () => {
+  it('retains the finite immutable Docker Linux system-plugin precedence without user-configured search paths', () => {
+    expect(modernLinuxComposePluginPaths).toEqual([
+      '/usr/local/lib/docker/cli-plugins/docker-compose',
+      '/usr/local/libexec/docker/cli-plugins/docker-compose',
+      '/usr/lib/docker/cli-plugins/docker-compose',
+      '/usr/libexec/docker/cli-plugins/docker-compose'
+    ]);
+    expect(Object.isFrozen(modernLinuxComposePluginPaths)).toBe(true);
+    expect(Reflect.set(modernLinuxComposePluginPaths, 0, '/caller-selected/docker-compose')).toBe(false);
+  });
   it.each(['5.5.1', '5.6.0', '5.99.12'])('admits supported Compose plugin version %s', version => {
     expect(isModernComposePluginVersionSupported(version)).toBe(true);
   });
@@ -167,6 +180,54 @@ describe('closed current Compose input interpretation', () => {
     expect(() => validateModernComposeInputs(bad)).toThrow(/accessors/);
     expect(getter).not.toHaveBeenCalled();
   });
+
+  nativeIt.each(['cli-plugins', 'lib/docker/cli-plugins', 'libexec/docker/cli-plugins'])(
+    'observes actual copied native Compose at the closed installation-prefix layout %s', async layout => {
+      const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff-compose-layout-')));
+      roots.push(root);
+      const project = path.join(root, 'project'), staging = path.join(root, 'staging');
+      const prefix = path.join(root, 'tools', 'usr'), bin = path.join(prefix, 'bin');
+      await mkdir(project);
+      await mkdir(staging);
+      await mkdir(bin, { recursive: true });
+      const check: ModernLocalCheck = {
+        id: 'compose-config', status: 'planned', inputPaths: [], reasons: [],
+        command: { executable: 'docker', args: ['compose', 'config', '-q'] }, cwdPathParts: [],
+        env: {}, prerequisites: [], effects: ['configuration only']
+      };
+      const original = (await observeModernLocalTools(project, [check], [])).find(tool => tool.id === 'docker')!;
+      const directory = path.join(prefix, layout), plugin = path.join(directory, 'docker-compose');
+      await mkdir(directory, { recursive: true });
+      await copyFile(original.files[0]!.path, path.join(bin, 'docker'));
+      await copyFile(original.executablePath, plugin);
+      vi.stubEnv('PATH', [bin, process.env.PATH].join(path.delimiter));
+      const observed = (await observeModernLocalTools(project, [check], [])).find(tool => tool.id === 'docker')!;
+      expect(observed.executablePath).toBe(plugin);
+      expect(observed.files[1]!.digest).toBe(original.files[1]!.digest);
+      expect(observed.versions).toEqual(original.versions);
+      await assertModernLocalToolsCurrent(project, staging, [observed]);
+      if (layout === 'libexec/docker/cli-plugins') {
+        const preferred = path.join(prefix, 'lib', 'docker', 'cli-plugins');
+        await mkdir(preferred, { recursive: true });
+        const preferredPlugin = path.join(preferred, 'docker-compose');
+        await copyFile(original.executablePath, preferredPlugin);
+        await expect(assertModernLocalToolsCurrent(project, staging, [observed]))
+          .rejects.toThrow('Installed Compose plugin selection or physical identity changed.');
+        expect((await observeModernLocalTools(project, [check], [])).find(tool => tool.id === 'docker')!.executablePath)
+          .toBe(preferredPlugin);
+        await copyFile(process.execPath, preferredPlugin);
+        const run = NodeCommandRunner.prototype.run, probes: string[] = [];
+        const calls = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(function (this: NodeCommandRunner, command, options) {
+          if (command.args[0] === 'version') probes.push(command.executable);
+          return run.call(this, command, options);
+        });
+        try {
+          await expect(observeModernLocalTools(project, [check], []))
+            .rejects.toThrow('Compose plugin version/settlement is unavailable or unsupported.');
+          expect(probes).toEqual([preferredPlugin]);
+        } finally { calls.mockRestore(); }
+      }
+    });
 
   nativeIt('configures actual generated Compose on the bound native plugin without inherited project values or dotenv', async () => {
     const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff-closed-compose-')));

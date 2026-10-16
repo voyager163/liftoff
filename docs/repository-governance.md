@@ -137,6 +137,22 @@ separate and unavailable through this subcheck. There is no public
 `compose-config` selector. Independent program observations are not qualified
 native-host authority; unavailable or changed installed tools never fall back
 to operator Docker configuration or a caller-supplied successful observation.
+For system-installed Linux Docker, plugin observation uses Docker29.8.2's finite
+system directory precedence: `/usr/local/lib`, `/usr/local/libexec`, `/usr/lib`,
+then `/usr/libexec`, each under `docker/cli-plugins`. Existing independently
+observed private installation prefixes remain separate from system discovery.
+The first present candidate must itself pass native-file, version and settlement
+checks; a rejected candidate is not replaced by a lower-priority plugin.
+Consumption rechecks both the program files and the selected plugin, including
+the appearance of a new higher-priority candidate. No user Docker configuration,
+caller plugin directory or host installation is admitted.
+
+The private component formatter retains the isolated HCL parser's exact qualified
+runtime tuple. Its five real execution/source-drift/program-drift controls must
+run on qualified darwin/arm64 Node24.21.0; elsewhere they are explicitly named
+unrun cases, not successful formatting. An always-run capability control observes
+the actual refusal and verifies that no formatter command or phase proof was
+substituted. Linux Docker configuration does not qualify Linux HCL interpretation.
 
 Private `observeSource5WorkflowRequirementSource` reads the complete immutable
 ruleset source using the original current5 context and read-only observation
@@ -515,7 +531,11 @@ proof from that same journal, not a caller-supplied carrier or proof list. It
 requires every component to be complete before provider reads and independently
 rechecks the complete four-family green/per-context-red matrix and immutable
 ruleset source. Carrier preparation and provider reads share the original bounded
-observation window. It performs no dispatch, replaces no original observation
+observation window. Independent original ledger and observation-carrier reads
+settle together before returning; a refusal drains its siblings and preserves the
+first observed error without starting provider readback. Every entry still
+performs its original lease, installed-scope, issuance and ownership checks.
+It performs no dispatch, replaces no original observation
 timestamp or receipt, and cannot finalize a phase.
 
 The private source5 effect bridge uses a separate private control schema1 and the

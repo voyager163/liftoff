@@ -15,6 +15,12 @@ import * as boundFiles from '../src/adapters/filesystem/bound-project-files.js';
 import { observeModernLocalTools } from '../src/adapters/process/modern-local-tools.js';
 import { inspectModernLocalRuntime, planModernLocalRuntime } from '../src/application/governance/modern-local-inputs.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
+import { hclComputationPolicy } from '../src/adapters/hcl/isolated-parser.js';
+
+const qualifiedHcl = process.platform === hclComputationPolicy.qualifiedRuntime.platform &&
+  process.arch === hclComputationPolicy.qualifiedRuntime.arch &&
+  process.versions.node === hclComputationPolicy.qualifiedRuntime.node;
+const nativeHclIt = it.skipIf(!qualifiedHcl);
 
 describe('release-owned real context validator bodies, not phase qualification', () => {
   let root: string;
@@ -733,7 +739,36 @@ describe('release-owned real context validator bodies, not phase qualification',
     }
   });
 
-  it('formats every actual selected OpenTofu component through explicit captured-file commands only', async () => {
+  it('retains the actual isolated HCL runtime refusal before private formatting without substituting execution', async () => {
+    const value = await fixture(), planned = await planModernLocalRuntime(await inspectModernLocalRuntime(value.root));
+    const formatting = planned.localPlan!.checks.filter(check => check.id.startsWith('tofu-format:'));
+    expect(formatting.length).toBeGreaterThan(0);
+    const original = NodeCommandRunner.prototype.run;
+    const formats: string[][] = [];
+    const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(function (this: NodeCommandRunner, command, options) {
+      if (command.args[0] === 'fmt') formats.push([...command.args]);
+      return original.call(this, command, options);
+    });
+    try {
+      for (const check of formatting) {
+        expect(check.status).toBe(qualifiedHcl ? 'planned' : 'blocked');
+        if (!qualifiedHcl) {
+          const component = [...value.components.keys()].find((id): id is WorkflowTofuFormatComponent =>
+            id.startsWith('opentofu-') && check.id === `tofu-format:${id}`);
+          if (!component) throw new Error('The actual formatter check has no selected component.');
+          expect(check.reasons).toEqual([
+            'Isolated HCL computation is unavailable: this runtime is not the qualified darwin/arm64 Node24.21.0 tuple.'
+          ]);
+          expect(await executeWorkflowTofuComponentFormatValidator(value.root, value.sourceSha, component))
+            .toMatchObject({ status: 'blocked', code: 'validator-inputs', command: null, workloadExecution: false,
+              retainedExecutionDirectory: null, phaseProof: 'not-issued' });
+        }
+      }
+      expect(formats).toEqual([]);
+    } finally { run.mockRestore(); }
+  });
+
+  nativeHclIt('formats every actual selected OpenTofu component through explicit captured-file commands only', async () => {
     const value = await fixture();
     const components = [...value.components.keys()].filter((id): id is WorkflowTofuFormatComponent => id.startsWith('opentofu-'));
     expect(components.length).toBeGreaterThan(0);
@@ -754,7 +789,7 @@ describe('release-owned real context validator bodies, not phase qualification',
     } finally { run.mockRestore(); }
   });
 
-  it('uses the same real explicit formatter for formatted source and a genuinely unformatted committed HCL file', async () => {
+  nativeHclIt('uses the same real explicit formatter for formatted source and a genuinely unformatted committed HCL file', async () => {
     const value = await fixture(), component = 'opentofu-application';
     expect(await executeWorkflowTofuComponentFormatValidator(value.root, value.sourceSha, component))
       .toMatchObject({ status: 'passed', command: { status: 0, processTreeSettled: true } });
@@ -774,7 +809,7 @@ describe('release-owned real context validator bodies, not phase qualification',
     expect(JSON.stringify(report)).not.toContain('enabled');
   });
 
-  it('passes every captured nested .tf file as an explicit nonrecursive argument', async () => {
+  nativeHclIt('passes every captured nested .tf file as an explicit nonrecursive argument', async () => {
     const value = await fixture(), parts = value.components.get('opentofu-application')!;
     await value.write([...parts, 'nested', 'additional.tf'], 'locals {\n  additional = true\n}\n');
     git(value.root, 'add', '--', [...parts, 'nested', 'additional.tf'].join('/'));
@@ -818,7 +853,7 @@ describe('release-owned real context validator bodies, not phase qualification',
     } finally { run.mockRestore(); }
   });
 
-  it('refuses uncommitted format input instead of formatting different bytes under an original commit', async () => {
+  nativeHclIt('refuses uncommitted format input instead of formatting different bytes under an original commit', async () => {
     const value = await fixture();
     await value.write([...value.components.get('opentofu-application')!, 'main.tf'], 'locals {\n enabled    =    true\n}\n');
     expect(await executeWorkflowTofuComponentFormatValidator(value.root, value.sourceSha, 'opentofu-application'))
@@ -855,7 +890,7 @@ describe('release-owned real context validator bodies, not phase qualification',
     } finally { run.mockRestore(); }
   });
 
-  it('refuses copied formatter drift after a real successful settled child without modifying the host tool', async () => {
+  nativeHclIt('refuses copied formatter drift after a real successful settled child without modifying the host tool', async () => {
     const value = await fixture(), planned = await planModernLocalRuntime(await inspectModernLocalRuntime(value.root));
     const check = planned.localPlan!.checks.find(candidate => candidate.id === 'tofu-format:opentofu-application')!;
     const observed = (await observeModernLocalTools(value.root, [check], [])).find(tool => tool.id === 'tofu')!;
