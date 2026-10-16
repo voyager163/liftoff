@@ -118,11 +118,14 @@ CI pulls that immutable image before the tests; tests never pull, request emulat
 run a package manager. The daemon and image architectures must match the bundle.
 The container has no network, a read-only root/bundle,
 no capabilities and only disposable user-owned tmpfs writes. It runs the exact
-bundle's startup, all installed plans, HCL/controller lookup and interrupted
+bundle's startup, all installed plans, controller lookup, the existing isolated-HCL
+qualified-runtime refusal and interrupted
 development install/recovery against actual glibc 2.28/libstdc++ 8.5 userspace.
 It records the real shared host kernel and explicitly leaves minimum-kernel,
 minimum-host and public-distribution qualification false. A containerized userspace
 result is not a run on Linux kernel 4.18 or proof of real release signing.
+The isolated parser remains restricted to its qualified Darwin/ARM64 Node 24.21.0
+tuple; Linux execution is refused, not newly qualified by this case.
 Every target also extracts its exact
 native archive with the absolute native archive tool into a new private fixture,
 reverifies the unchanged complete inventory (including native filesystem modes),

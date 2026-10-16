@@ -344,8 +344,8 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
       const plans = ${JSON.stringify(installedPlanCases)}.map(plan => ({
         id: plan.id, stdout: invoke('/liftoff/bin/liftoff', ['plan', ...plan.args])
       }));
-      assert.deepEqual((await parseIsolatedHcl(['locals { enabled = true }\\n']))[0].parsed,
-        { locals: [{ enabled: true }] });
+      await assert.rejects(parseIsolatedHcl(['locals { enabled = true }\\n']),
+        /Isolated HCL computation is unavailable: this runtime is not the qualified darwin/);
       assert.equal(await verifyWindowsJobControllerAsset(),
         '/liftoff/application/assets/repair/windows-job-controller.ps1');
       const prefix = '/tmp/private-prefix';
@@ -360,7 +360,8 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
       assert.equal(await inspectOwnedInstallation(prefix), null);
       assert.deepEqual(await bundleInventory('/liftoff'), manifest.inventory);
       assert.equal(digest(await readFile('/liftoff/bundle.json')), ${JSON.stringify(manifestSha256)});
-      console.log(JSON.stringify({ observed, version, libraries, plans, controllerResolved: true, hclExecuted: true,
+      console.log(JSON.stringify({ observed, version, libraries, plans, controllerResolved: true,
+        hclExecuted: false, hclQualifiedRuntimeRefused: true,
         developmentInstallRecovered: true, actualKernel: os.release(), minimumKernelQualified: false,
         minimumHostQualified: false, publicDistributionQualified: false }));
     `;
@@ -381,7 +382,8 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
     }
     expect(proof).toMatchObject({
       observed: { platform: 'linux', architecture, runtimeVersion: '24.21.0', glibcVersion: '2.28' },
-      version: `Liftoff ${manifest.package.version}`, controllerResolved: true, hclExecuted: true,
+      version: `Liftoff ${manifest.package.version}`, controllerResolved: true,
+      hclExecuted: false, hclQualifiedRuntimeRefused: true,
       developmentInstallRecovered: true, minimumKernelQualified: false, minimumHostQualified: false,
       publicDistributionQualified: false
     });
