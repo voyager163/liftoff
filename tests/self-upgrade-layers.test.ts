@@ -1,7 +1,7 @@
-import { link, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, mkdtemp, open, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '../src/application/context.js';
 import { executeUpgrade } from '../src/application/upgrade/use-case.js';
 import { checkConfiguredRegistryTarget, runSelfUpgrade, type SelfUpgradeRequest } from '../src/application/upgrade/self-upgrade.js';
@@ -21,8 +21,16 @@ import type { CommandResult, CommandRunner, RunCommandOptions } from '../src/pro
 import type { ExternalCommand } from '../src/domain/project/contracts.js';
 import { CaptureStream } from './helpers.js';
 
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const filesystem = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...filesystem, lstat: vi.fn(filesystem.lstat), open: vi.fn(filesystem.open) };
+});
+
 const temporary: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
+  vi.mocked(lstat).mockReset();
+  vi.mocked(open).mockReset();
   await Promise.all(temporary.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
@@ -146,6 +154,29 @@ describe('npm-lane rules', () => {
     await expect(resolveSelectedLiftoff({ PATH: 'relative/bin' }, 'linux')).rejects.toThrow('Ambiguous executable');
   });
 
+  it('refuses an opened upgrade file whose complete inode aliases the selected inode as a Number', async () => {
+    const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf-upgrade-exact-material-')));
+    temporary.push(root);
+    const file = path.join(root, 'metadata.json');
+    await writeFile(file, '{}');
+    const nativeLstat = vi.mocked(lstat).getMockImplementation();
+    const nativeOpen = vi.mocked(open).getMockImplementation();
+    if (!nativeLstat || !nativeOpen) throw new Error('The native upgrade material reader is unavailable.');
+    const selected = 2n ** 60n, opened = selected + 1n;
+    expect(Number(selected)).toBe(Number(opened));
+    vi.mocked(lstat).mockImplementation(async (...args) =>
+      Object.assign(await nativeLstat(...args), { ino: args[1]?.bigint === true ? selected : Number(selected) }));
+    vi.mocked(open).mockImplementationOnce(async (...args) => {
+      const handle = await nativeOpen(...args);
+      const nativeStat = handle.stat.bind(handle);
+      vi.spyOn(handle, 'stat').mockImplementation(async options =>
+        Object.assign(await nativeStat(options), { ino: options?.bigint === true ? opened : Number(opened) }));
+      return handle;
+    });
+    await expect(readUpgradeBytes(file, 2)).rejects.toThrow('Upgrade material changed during inspection.');
+    expect(await readFile(file, 'utf8')).toBe('{}');
+  });
+
   it('cleans only the originally selected private scratch directory and retains a changed replacement', async () => {
     const dependencies = defaultSelfUpgradeDependencies();
     const directory = await dependencies.makeNeutralDirectory();
@@ -158,6 +189,28 @@ describe('npm-lane rules', () => {
     expect(await readFile(path.join(directory, 'foreign.txt'), 'utf8')).toBe('retain');
     const owned = await dependencies.makeNeutralDirectory();
     await dependencies.removeNeutralDirectory(owned);
+  });
+
+  it('retains changed scratch identities whose complete inode values alias as Numbers', async () => {
+    const original = vi.mocked(lstat).getMockImplementation();
+    if (!original) throw new Error('The native scratch metadata reader is unavailable.');
+    const identities = [2n ** 60n, 2n ** 60n + 1n];
+    expect(Number(identities[0])).toBe(Number(identities[1]));
+    let reads = 0;
+    vi.mocked(lstat).mockImplementation(async (...args) => {
+      const observed = await original(...args);
+      const identity = identities[reads++];
+      if (identity === undefined) throw new Error('Unexpected scratch identity read.');
+      return Object.assign(observed, { ino: args[1]?.bigint === true ? identity : Number(identity) });
+    });
+    const dependencies = defaultSelfUpgradeDependencies();
+    const directory = await dependencies.makeNeutralDirectory();
+    temporary.push(directory);
+    const file = path.join(directory, 'foreign.txt');
+    await writeFile(file, 'retain exact-identity replacement');
+    await expect(dependencies.removeNeutralDirectory(directory)).rejects.toThrow('scratch ownership changed');
+    expect(await readFile(file, 'utf8')).toBe('retain exact-identity replacement');
+    expect(reads).toBe(2);
   });
   it.each([
     ['https://registry.npmjs.org', 'canonical'],

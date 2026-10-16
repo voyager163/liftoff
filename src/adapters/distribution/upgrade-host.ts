@@ -1,4 +1,4 @@
-import type { Stats } from 'node:fs';
+import type { BigIntStats, Stats } from 'node:fs';
 import { lstat, mkdtemp, open, readlink, realpath, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import os from 'node:os';
@@ -35,28 +35,28 @@ export interface SelfUpgradeDependencies {
 
 export async function readUpgradeBytes(filePath: string, maximum: number): Promise<Buffer> {
   if (!Number.isSafeInteger(maximum) || maximum < 0) throw new Error('Invalid upgrade material bound.');
-  const before = await lstat(filePath);
-  if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || before.size > maximum) {
+  const before = await lstat(filePath, { bigint: true });
+  if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1n || before.size > BigInt(maximum)) {
     throw new Error('Upgrade material must be a bounded single-link regular file.');
   }
   const handle = await open(filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   try {
-    const same = (observed: Stats) => {
-      for (const key of ['dev', 'ino', 'size', 'mode', 'nlink', 'mtimeMs', 'ctimeMs'] as const) {
+    const same = (observed: BigIntStats) => {
+      for (const key of ['dev', 'ino', 'size', 'mode', 'nlink', 'mtimeNs', 'ctimeNs'] as const) {
         if (observed[key] !== before[key]) throw new Error('Upgrade material changed during inspection.');
       }
     };
-    same(await handle.stat());
-    const bytes = Buffer.alloc(before.size);
+    same(await handle.stat({ bigint: true }));
+    const bytes = Buffer.alloc(Number(before.size));
     let offset = 0;
     while (offset < bytes.length) {
       const read = await handle.read(bytes, offset, bytes.length - offset, offset);
       if (read.bytesRead === 0) throw new Error('Upgrade material was truncated.');
       offset += read.bytesRead;
     }
-    same(await handle.stat());
-    same(await lstat(filePath));
-    if (bytes.length !== before.size || bytes.length > maximum) throw new Error('Upgrade material changed.');
+    same(await handle.stat({ bigint: true }));
+    same(await lstat(filePath, { bigint: true }));
+    if (BigInt(bytes.length) !== before.size || bytes.length > maximum) throw new Error('Upgrade material changed.');
     return bytes;
   } finally {
     await handle.close();
@@ -64,20 +64,20 @@ export async function readUpgradeBytes(filePath: string, maximum: number): Promi
 }
 
 export function defaultSelfUpgradeDependencies(environment: NodeJS.ProcessEnv = process.env): SelfUpgradeDependencies {
-  const scratch = new Map<string, Stats>();
+  const scratch = new Map<string, BigIntStats>();
   return {
     runner: new NodeCommandRunner(),
     lookupStableRelease,
     makeNeutralDirectory: async () => {
       const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff-upgrade-')));
-      scratch.set(directory, await lstat(directory));
+      scratch.set(directory, await lstat(directory, { bigint: true }));
       return directory;
     },
     removeNeutralDirectory: async directory => {
       const expected = scratch.get(directory);
-      const actual = await lstat(directory);
+      const actual = await lstat(directory, { bigint: true });
       if (!expected || !actual.isDirectory() || actual.isSymbolicLink() || await realpath(directory) !== directory ||
-        (['dev', 'ino', 'uid', 'mode'] as const).some(key => actual[key] !== expected[key])) {
+        (['dev', 'ino', 'uid', 'gid', 'mode', 'birthtimeNs'] as const).some(key => actual[key] !== expected[key])) {
         throw new Error('Upgrade scratch ownership changed; material retained.');
       }
       await rm(directory, { recursive: true });

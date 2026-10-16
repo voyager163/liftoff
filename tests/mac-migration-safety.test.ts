@@ -22,6 +22,12 @@ async function system(executable: string, args: string[]) {
   return result.stdout;
 }
 
+async function observedProvenance(file: string) {
+  const attributes = (await system('/usr/bin/xattr', ['-s', file])).trim().split(/\r?\n/u);
+  if (!attributes.includes('com.apple.provenance')) return { status: 'absent' } as const;
+  return { status: 'present', hex: await system('/usr/bin/xattr', ['-s', '-p', '-x', 'com.apple.provenance', file]) } as const;
+}
+
 async function assertBeforeUninstall(value: Fixture, blocker?: string) {
   const run = vi.spyOn(value.dependencies.upgrade.runner, 'run');
   const result = await runMacMigration(value.request, value.dependencies);
@@ -94,8 +100,7 @@ describe.skipIf(process.platform === 'win32')('bounded migration recovery materi
     }
     const expected = await captureMigrationTree(value.oldPackage);
     const provenanceFiles = [path.join(value.oldPackage, 'dist'), path.join(value.oldPackage, 'dist/dependency.js'), value.oldLauncher];
-    const provenance = process.platform === 'darwin' ? await Promise.all(provenanceFiles.map(file =>
-      system('/usr/bin/xattr', ['-s', '-p', '-x', 'com.apple.provenance', file]))) : [];
+    const provenance = process.platform === 'darwin' ? await Promise.all(provenanceFiles.map(observedProvenance)) : [];
     value.dependencies.cask!.installExact = async () => ({ settled: true, installed: false });
     const preview = await runMacMigration(value.request, value.dependencies);
     expect(preview.status, JSON.stringify({ preview, observations })).toBe('ready');
@@ -109,10 +114,9 @@ describe.skipIf(process.platform === 'win32')('bounded migration recovery materi
     expect((await lstat(path.join(value.oldPackage, 'dist'))).mode & 0o777).toBe(0o700);
     expect((await lstat(path.join(value.oldPackage, 'dist/dependency.js'))).mode & 0o777).toBe(0o400);
     if (process.platform === 'darwin') {
-      expect(await Promise.all(provenanceFiles.map(file =>
-        system('/usr/bin/xattr', ['-s', '-p', '-x', 'com.apple.provenance', file])))).toEqual(provenance);
+      expect(await Promise.all(provenanceFiles.map(observedProvenance))).toEqual(provenance);
     }
-    Object.assign(task.meta, { metadataPreservation: { observedProvenanceHex: provenance,
+    Object.assign(task.meta, { metadataPreservation: { observedProvenance: provenance,
       originalInventory: expected.entries, restoredInventory: (await captureMigrationTree(value.oldPackage)).entries,
       qualification: 'Actual private filesystem/process metadata readback; synthetic cask failure, no public provider.' } });
   });

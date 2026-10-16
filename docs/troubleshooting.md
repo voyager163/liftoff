@@ -107,6 +107,11 @@ Liftoff reports `failed` even when the owning installer exited zero unless insta
 repair command printed in the result. Liftoff does not claim an automatic
 rollback after npm may have partially changed global state.
 
+Upgrade material reads and neutral-scratch cleanup compare complete native
+file identities using bigint metadata, not rounded JavaScript Numbers. Changed
+scratch identity or ownership blocks cleanup and retains the replacement.
+Do not delete retained material merely because the pathname is unchanged.
+
 Schema-2 `effects: possible` or `verification: failed` is not an upgraded completion.
 For native installations, use the owning manager and a new-shell `liftoff doctor`
 plus `liftoff upgrade --check`; an npm repair command is not native authority.

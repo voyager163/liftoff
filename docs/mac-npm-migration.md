@@ -89,7 +89,10 @@ flags and unpreservable extended attributes. The OS-added 11-byte
 the reviewed inventory and checked across the independent recovery copy,
 journal backup and each restored entry. The launcher must pass an independent
 private recreation probe before approval. Different or unobservable provenance
-blocks transfer; recovery never strips it to force a match. File/directory modes,
+blocks transfer; recovery never strips it to force a match. An attribute observed
+as absent must remain absent; neither recovery nor its native fixture assumes
+macOS creates provenance on every entry or fabricates an attribute to test it.
+File/directory modes,
 ownership, metadata and confined links are verified, not inferred from content
 hashes alone. New inodes and timestamps are not promised to reproduce the old
 filesystem objects; physical identities instead detect concurrent edits.
