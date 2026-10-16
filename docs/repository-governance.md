@@ -212,6 +212,28 @@ semantic context mapping or a prerequisite session. This private provider body
 does not admit either operator OAuth or automation tokens, execute project code,
 or change public review/effect routing, JSON/help, recipes or phase authority.
 
+Private `observeSource5WorkflowCodeScanning` independently reads the exact
+repository, protected-family ref and immutable commit/tree before and after
+two complete bounded code-scanning analysis inventories. It does not filter
+by a proposed CodeQL tool name/GUID or drop unknown tools, older commits or
+zero-rule analyses. Every record remains represented by its ID, exact metadata
+digest and actual counters; uploader keys, environment, category, tool metadata
+and diagnostic contents are withheld behind digests/explicit flags. Documented
+empty metadata strings and absent optional tool fields stay distinct and are
+not replaced with invented subjects. Source
+matches are descriptive, not currentness/session authority. Malformed, duplicate,
+foreign, truncated, changed or inaccessible responses refuse rather than become
+empty successful scans. The result is always blocked: empty/historical
+inventories, source-analysis diagnostics and missing authenticated program,
+query/language coverage and original-report subjects have explicit reasons.
+The existing GitHub read transport fixes its JSON media type; this observer
+does not silently widen it to SARIF. GitHub's custom SARIF response is itself
+only a subset of uploaded data, not authenticated original publisher/program
+provenance. Positive rule counts, zero results or a `CodeQL` label therefore
+qualify neither CodeQL nor a required context. No scan/upload/Autofix operation,
+public selector, declaration source, accepted integration mapping or phase
+authority is issued by this private metadata reader.
+
 Private `executeWorkflowTofuComponentFormatValidator(projectRoot, sourceSha,
 component)` validates one actual selected OpenTofu component. It reuses the
 captured-file formatter policy: only explicit present `.tf` paths are passed,
