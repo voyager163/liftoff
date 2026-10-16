@@ -1,22 +1,13 @@
-import { types } from 'node:util';
-import { githubRef, githubRepository, positiveId } from '../adapters/github/activation-rest.js';
 import { canonicalSha256, isRecord } from '../domain/governance/activation/canonical-json.js';
 import { freezeModernValue } from '../domain/governance/activation/modern-graph.js';
-import { captureWorkflowBinding, workflowFailure } from './workflow-control-values.js';
-import { protectedWorkflowFamilyForRef } from './workflow-context-proof.js';
-import { workflowRequirementObservationClient } from './workflow-requirement-source-observation.js';
-import { assertSource5WorkflowContext } from './workflow-source5-context.js';
+import { workflowFailure } from './workflow-control-values.js';
+import { captureWorkflowProviderSourceObservation } from './workflow-provider-source-observation.js';
+import type { Source5WorkflowProviderSource } from './workflow-provider-source-observation.js';
 import type { Source5WorkflowContext } from './workflow-source5-context.js';
 import { assertWorkflowObservationRuntime } from './workflow-runtime.js';
 import type { WorkflowRuntime } from './workflow-runtime.js';
 
-export interface Source5CodeScanningSource {
-  readonly repository: string;
-  readonly repositoryId: number;
-  readonly ref: string;
-  readonly sourceSha: string;
-  readonly treeSha: string;
-}
+export type Source5CodeScanningSource = Source5WorkflowProviderSource;
 
 function boundedText(value: unknown): value is string {
   return metadataText(value) && value.length > 0;
@@ -45,48 +36,9 @@ export async function observeSource5WorkflowCodeScanning(input: {
   readonly runtime: WorkflowRuntime;
   readonly source: Source5CodeScanningSource;
 }) {
-  if (typeof input !== 'object' || input === null || types.isProxy(input) ||
-    ![Object.prototype, null].includes(Object.getPrototypeOf(input)) ||
-    Reflect.ownKeys(input).length !== 3 ||
-    Reflect.ownKeys(input).some(key => typeof key !== 'string' || !['context', 'runtime', 'source'].includes(key)) ||
-    Object.values(Object.getOwnPropertyDescriptors(input)).some(field =>
-      !field.enumerable || !Object.hasOwn(field, 'value'))) {
-    return workflowFailure('workflow-code-scanning-request',
-      'Code-scanning observation accepts only the constructed current5 context, original read-only runtime and exact repository/ref/commit/tree references.');
-  }
-  const { context, runtime } = input;
-  assertSource5WorkflowContext(context);
-  assertWorkflowObservationRuntime(runtime);
-  const source = captureWorkflowBinding(input.source);
-  if (!isRecord(source) || canonicalSha256(Object.keys(source).sort()) !==
-    canonicalSha256(['ref', 'repository', 'repositoryId', 'sourceSha', 'treeSha']) ||
-    [source.sourceSha, source.treeSha].some(value => typeof value !== 'string' || !/^[a-f0-9]{40}$/u.test(value)) ||
-    typeof source.ref !== 'string' || !protectedWorkflowFamilyForRef(source.ref)) {
-    return workflowFailure('workflow-code-scanning-reference',
-      'Code-scanning observation requires one literal protected-family branch, full immutable commit/tree and exact repository ID/name; reports, tool selectors and result overrides are not inputs.');
-  }
-  githubRepository(source.repository); positiveId(source.repositoryId); githubRef(source.ref);
-  const client = workflowRequirementObservationClient(runtime), prefix = `/repos/${source.repository}`;
-  const ref = `refs/heads/${source.ref}`;
-  async function repository() {
-    const actual = await client.get(prefix);
-    if (actual.id !== source.repositoryId || actual.full_name !== source.repository) {
-      return workflowFailure('workflow-code-scanning-repository', 'The actual analysis repository differs from the exact selected ID/name.');
-    }
-  }
-  async function commit() {
-    const actual = await client.get(`${prefix}/git/commits/${source.sourceSha}`);
-    if (actual.sha !== source.sourceSha || !isRecord(actual.tree) || actual.tree.sha !== source.treeSha) {
-      return workflowFailure('workflow-code-scanning-commit', 'The actual analysis source commit/tree differs from the exact immutable subject.');
-    }
-  }
-  async function branch() {
-    const actual = await client.get(`${prefix}/git/ref/heads/${source.ref}`);
-    if (actual.ref !== ref || !isRecord(actual.object) || actual.object.type !== 'commit' || actual.object.sha !== source.sourceSha) {
-      return workflowFailure('workflow-code-scanning-ref', 'The actual protected-family ref does not name the selected exact source commit.');
-    }
-  }
-  await repository(); await commit(); await branch();
+  const observation = captureWorkflowProviderSourceObservation(input, 'code-scanning');
+  const { context, runtime, source, client, prefix, ref } = observation;
+  await observation.before();
   async function inventory() {
     const entries = await client.list(`${prefix}/code-scanning/analyses?ref=${ref}`);
     const ids = new Set<number>();
@@ -122,7 +74,7 @@ export async function observeSource5WorkflowCodeScanning(input: {
     return workflowFailure('workflow-code-scanning-changed',
       'The actual complete code-scanning analysis inventory changed during observation; no stale or partial metadata was substituted.');
   }
-  await branch(); await commit(); await repository();
+  await observation.after();
   const selected = first.analyses.filter(analysis => analysis.matchesSelectedSource);
   const result = freezeModernValue({
     status: 'blocked' as const, source, graphHash: canonicalSha256(context.records.graph),

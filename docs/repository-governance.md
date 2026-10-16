@@ -234,6 +234,24 @@ qualify neither CodeQL nor a required context. No scan/upload/Autofix operation,
 public selector, declaration source, accepted integration mapping or phase
 authority is issued by this private metadata reader.
 
+Private `observeSource5WorkflowSecretProtectionHistory` reads the platform's
+actual latest-scan metadata twice, with the same independent repository,
+protected-ref and commit/tree readback. The shared reference guard preserves
+the code-scanning reader's original admission and before/after ordering.
+All five documented scan buckets, custom-pattern records and unknown fields
+remain represented; absent buckets, actual empty arrays and explicit null
+timestamps are distinct. Pattern details and unsupported fields are withheld
+behind digests. Malformed, oversized, inaccessible or changed responses refuse.
+This endpoint exposes latest scan types/statuses/timestamps, not a commit
+selector, original source-bound report or complete detector inventory.
+A completed label, recent timestamp, successful endpoint access, enabled flag
+or empty bucket therefore yields no clean-scan or licensing verdict. The reader
+always blocks pending authenticated exact-source scan/coverage subjects and a
+platform-supported explicitly approved non-credential negative control.
+It retrieves no alert secrets or locations, performs no scans/bypasses/writes,
+admits no substitute scanner, and issues no declaration source, integration
+mapping, currentness/session authority or phase proof.
+
 Private `executeWorkflowTofuComponentFormatValidator(projectRoot, sourceSha,
 component)` validates one actual selected OpenTofu component. It reuses the
 captured-file formatter policy: only explicit present `.tf` paths are passed,
