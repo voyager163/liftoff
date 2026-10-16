@@ -5,6 +5,61 @@ another machine. It records the repository state, decisions, validation,
 remaining work, and cautions needed to continue the OpenSpec change
 `modernize-liftoff-platform` without reconstructing the prior conversation.
 
+## Root qualification recovery, 2026-10-16
+
+This checkpoint is a test-only successor to owning Root
+`9b4547227c60e2eee9689f49d8c39bea9f873868`, tree
+`ba6b10ea6e0e30f731c1e33df53cb6990ff4026d`, on
+`feature/state-custody-readiness`. It does not intake the later private
+Checkov SOURCE milestone or change production admission rules.
+
+- The mutable Homebrew Node path now resolves to Node 24.22.0, and its prior
+  canonical Node 24.21.0 executable is absent. The running canonical CLI
+  coverage attempt used that unqualified runtime and was stopped. Its partial
+  streams and four observed process settlements are retained; there is no
+  completed-suite result or coverage qualification from that attempt.
+- The original uninstrumented full-suite attempt remains an independently
+  retained `ENOTCONN` failure without a final assertion report. Its cause is
+  not established. Do not retrospectively attribute it to tool drift or invent
+  assertion counts.
+- The clean-9b45 gateway run retains its actual 211 passing cases and four
+  passing coverage metrics. Its original evidence records Node 24.22.0 and
+  unavailable npm-version observation, not the pinned native runtime tuple.
+  Do not reinterpret that report as Node 24.21.0/npm 12 qualification.
+- The already-retained Node 24.21.0 Darwin/arm64 archive was rehashed against
+  `bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057`
+  and restored only under the Root session's owned artifact prefix. Its
+  executable SHA-256 is
+  `e4b5a3af0e05c75de2eae013904145f40fe7fc2a6e6f17510128bf45cca4e79b`;
+  the existing npm 12.0.2 tool is selected through an owned-prefix link.
+  No global tools, source policy, deadlines, pools or thresholds changed.
+- The 24 failures in `tests/update-prepared-successor.test.ts` independently
+  reproduced on restored Node 24.21.0/npm 12.0.2. They were a separate fixture
+  selection defect: retained family-4 successor cases selected the current
+  family-5 registry, for which automatic successor lanes intentionally remain
+  unallocated. The fixture now explicitly selects the existing pre-workflow
+  registry. A new application-level control verifies the actual family-4
+  selection, the distinct current family-5 selection, and refusal of the latter
+  without preview, audit or project effects.
+- The coherent three-file baseline was 125 passed/24 failed. After the
+  fixture-only correction, the same three files pass 150/0/0: all 149 prior
+  literal identities and multiplicities remain, all 125 prior passes remain,
+  the 24 original failures pass, and one current-family refusal control is
+  added. Strict typing covers three roots and 627 actual distinct regular
+  compiler files, including JSON; project noEmit, repository policy, strict
+  OpenSpec validation and whitespace checks pass. Qualification receipt
+  `root-prepared-family4-fixture-qualification.json` has SHA-256
+  `5181bc449767d0f93e90f65080612c34475aa4281ccd75967ba994bfa6c41f49`.
+  The original reviewer-only revision-bookkeeping refusal is retained
+  separately; it started no test commands.
+
+These are scoped fixture checks, not a completed current Root full-suite,
+CLI-coverage or native qualification. The original frozen released records,
+family allocations, public routing, protected journals and task flags remain
+unchanged. OpenSpec progress remains 87/136; tasks 14.3 and 18.2 stay unchecked.
+Continue qualification serially with the owned, pinned runtime rather than
+the mutable Homebrew path.
+
 ## Start here
 
 - Repository: `voyager163/liftoff`
