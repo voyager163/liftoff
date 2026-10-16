@@ -3878,3 +3878,63 @@ This is a test identity correction induced by the scoped dependency release
 identity. It changes no telemetry policy, schema, transport, consent, project
 identity, production byte or task flag. It is not a fresh full-suite/coverage
 qualification and has no publication, provider, readiness or landing effect.
+
+### Task 18.2 governance registry-ledger correction, 2026-10-16
+
+Fresh pull request #168 run `38809462363` passed the two previously failing
+shard-2 jobs, then macOS shard 1 exposed four further normalized governance
+JSON records containing the same reviewed modern registry identity. The
+darwin-only governance extraction parity test first reported `status-json`;
+complete current-snapshot enumeration then identified the bounded set:
+`status-json`, `status-local-json`, `resume-json` and `plan-json`. No other
+governance extraction key differed. The induced changes are limited to the
+recorded stdout byte count and SHA-256 for the first three, and stdout SHA-256
+for `plan-json`; exits, stderr and all other normalized fields remain exact.
+
+Commit `e82cc0c77ad00606188d4691013b543fe377032e`, tree
+`da019043b62d34249289ccb6200520436888d95f`, changes only those four
+existing entries in `tests/fixtures/contract-baseline-changes.json`. Every
+successor preserves its key, frozen-baseline digest and complete former record
+as `priorChange`; no record was added or removed and the frozen capture was not
+regenerated. The resulting ledger SHA-256 is
+`d194aec39b230a5452a0531938dd96eaacd267d91ad6ee4c0442bf87e97c8158`.
+
+Clean committed validation passed:
+
+- governance extraction, contract baseline, project telemetry source and
+  modern source registry: four files, 119 passed and one unchanged skip;
+- independent parent/successor structure verification of exactly four records;
+- build and project-wide no-emit;
+- all-four-inventory template dependency audit;
+- repository policy, strict noninteractive OpenSpec validation and exact
+  commit diff check.
+
+The additive evidence directory is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/dependency-audit-governance-registry-correction-1f9a1d1c`
+
+Its manifest has SHA-256
+`22e8adcac26bdf5d376c7a179a985df0d7bb6d2e2379702db6802d20ee2ecf77`
+and its checksum ledger has SHA-256
+`7adbfe0d37091767fb31e18ad6d1d927e7e959f39acf2a97b09b7d6077077cf1`.
+
+Replacement pull request #168 run `38815462840` then passed all 20 jobs
+on exact pushed documentation head
+`6d87dee383548a17c4dee3a62579ccec7af61272`, tree
+`bd06bbf9b59f765bc3ac20cad53f8ecfaca95280`. The run-level evidence
+directory is:
+
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/dependency-audit-ci-success-6d87dee3`
+
+Its manifest has SHA-256
+`2219d6032b38e442cf009e7cee938630c7b0aed1b916b50bc53ab4e7b3f85755`
+and its checksum ledger has SHA-256
+`38de9c9c2e3a3d3fb7c1ac13649b7e7db8646f6bfb28fdbd0a5ef29f615c0352`.
+The successful required PR CI does not transfer the earlier
+`cdadc3911519af0e19d2e2dbd7b9ed22db614a23` complete local
+CLI/gateway coverage qualification to this dependency-adjusted successor.
+
+This correction records only the already-reviewed dependency-induced registry
+identity. It changes no governance runtime, capability, blocker, authority,
+task checkbox, provider or publication state and is not a fresh complete
+qualification.
