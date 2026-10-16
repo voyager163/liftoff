@@ -19,11 +19,14 @@ terraform {
   backend "azurerm" {}
 }
 
-provider "azapi" {}
+provider "azapi" {
+  skip_provider_registration = true
+}
 
 provider "azurerm" {
-  subscription_id     = var.subscription_id
-  storage_use_azuread = true
+  subscription_id                 = var.subscription_id
+  resource_provider_registrations = "none"
+  storage_use_azuread             = true
 
   features {
     resource_group {
