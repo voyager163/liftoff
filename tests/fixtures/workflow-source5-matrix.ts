@@ -5,7 +5,7 @@ import { stringify } from 'yaml';
 import { canonicalSha256 } from '../../src/domain/governance/activation/canonical-json.js';
 import type { GitHubActivationTransport, GitHubRequest } from '../../src/adapters/github/activation-rest.js';
 import { NodeCommandRunner } from '../../src/process-runner.js';
-import type { CommandRunner } from '../../src/process-runner.js';
+import type { CommandResult, CommandRunner } from '../../src/process-runner.js';
 import type { ProjectMutationLease } from '../../src/adapters/filesystem/project-lock.js';
 import {
   issueSource5WorkflowApproval, restoreSource5WorkflowAuthority, source5WorkflowOriginalPlanValue, withSource5WorkflowLease
@@ -23,11 +23,27 @@ import { workflowSource5JournalFixture } from './workflow-source5-journal.js';
 const contexts = [
   { jobId: 'validate', name: 'Required validation', validationStep: 'Validate source' },
   { jobId: 'package', name: 'Required packaging', validationStep: 'Validate package' }
-];
+] as const;
 const valid = ['export const valid = true;\n', '{"name":"isolated"}\n'];
 const invalid = ['export const valid = ;\n', '{broken}\n'];
 const paths = ['backend/application.js', 'backend/package.json'];
 const noGit: CommandRunner = { async run() { throw new Error('Matrix observation must not submit a process or Git effect.'); } };
+
+export function matrixValidatorFailure(reason: 'settlement' | 'input-readback' | 'expectation',
+  selector: Pick<WorkflowContextBinding, 'family' | 'mode'> & { jobId: typeof contexts[number]['jobId'] },
+  result: CommandResult): Error {
+  const message = reason === 'settlement' ? 'An isolated bounded validator did not settle.' :
+    reason === 'input-readback' ? 'An original file-backed validator input changed during execution.' :
+      `The isolated actual validator did not detect only its own reviewed violation: ${selector.family}/${selector.mode}/${selector.jobId}, status ${result.status}.`;
+  return new Error(`${message}\nOwned matrix fixture diagnostic: ${JSON.stringify({
+    fixture: { family: selector.family, mode: selector.mode, jobId: selector.jobId },
+    runtime: { node: process.version, platform: process.platform, arch: process.arch },
+    result: { stdout: result.stdout, stderr: result.stderr, status: result.status, signal: result.signal,
+      processSpawned: result.processSpawned ?? null, processTreeSettled: result.processTreeSettled ?? null,
+      errorCode: result.errorCode ?? null, errorMessage: result.errorMessage ?? null,
+      timedOut: result.timedOut, aborted: result.aborted ?? null, outputLimitExceeded: result.outputLimitExceeded ?? null }
+  })}`);
+}
 
 /** Original fixture provenance and loopback/process observations, not live workflow qualification. */
 export async function workflowSource5MatrixFixture(options: {
@@ -128,14 +144,17 @@ async function prepareMatrixFixture(seed: Awaited<ReturnType<typeof workflowSour
         ['--check', input] : ['-e', "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))", input] },
       { cwd: seed.root, env: { HOME: seed.storage.homedir, NODE_OPTIONS: '' },
         timeoutMs: 5000, maxOutputBytes: 4096, stream: false, ensureProcessTreeSettled: true });
+      const selector = { family: binding.family, mode: binding.mode, jobId: context.jobId };
       if (result.timedOut || result.outputLimitExceeded || result.errorCode || result.aborted || result.status === null ||
           result.signal || result.processTreeSettled !== true) {
-        throw new Error('An isolated bounded validator did not settle.');
+        throw matrixValidatorFailure('settlement', selector, result);
       }
-      if (await readFile(input, 'utf8') !== text) throw new Error('An original file-backed validator input changed during execution.');
+      if (await readFile(input, 'utf8') !== text) {
+        throw matrixValidatorFailure('input-readback', selector, result);
+      }
       const conclusion = result.status === 0 ? 'success' : 'failure';
       if (conclusion !== (binding.violation?.context === context.name ? 'failure' : 'success')) {
-        throw new Error(`The isolated actual validator did not detect only its own reviewed violation: ${binding.family}/${binding.mode}/${context.jobId}, status ${result.status}.`);
+        throw matrixValidatorFailure('expectation', selector, result);
       }
       outcome.push(conclusion);
     }
