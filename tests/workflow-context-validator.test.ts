@@ -1,11 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { appendFile, copyFile, link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink } from 'node:fs/promises';
+import { appendFile, chmod, copyFile, link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   executeWorkflowActionReferenceValidator, executeWorkflowCheckovComponentValidator, executeWorkflowCheckovDockerfileValidator, executeWorkflowComposeConfigValidator,
-  executeWorkflowContextValidator, executeWorkflowTofuComponentFormatValidator, parseWorkflowContextValidatorArgs,
+  executeWorkflowContextValidator, executeWorkflowCheckovWorkflowValidator, executeWorkflowTofuComponentFormatValidator, parseWorkflowContextValidatorArgs,
   type WorkflowTofuFormatComponent
 } from '../src/workflow-context-validator.js';
 import { resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
@@ -883,5 +883,57 @@ describe('release-owned real context validator bodies, not phase qualification',
       expect(path.basename(home)).toMatch(/^liftoff-workflow-validator-/u);
       await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' });
     } finally { run.mockRestore(); }
+  });
+
+  describe('actual committed workflow-file Checkov input closure, not action execution', () => {
+    const parts = ['.github', 'workflows', 'scan.yml'];
+    async function workflowFixture() {
+      const value = await fixture();
+      await value.write(parts, 'name: Source fixture\non: workflow_dispatch\npermissions: read-all\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo fixture\n');
+      git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual workflow source fixture');
+      return { ...value, sourceSha: git(value.root, 'rev-parse', 'HEAD') };
+    }
+    it('does not substitute application validation when no workflow files are selected', async () => {
+      const value = await fixture();
+      const result = await executeWorkflowCheckovWorkflowValidator(value.root, value.sourceSha);
+      expect(result).toMatchObject({ status: 'blocked', code: 'validator-checkov-workflows-membership',
+        workloadExecution: false, command: null, phaseProof: 'not-issued' });
+      expect(Object.keys(result)).toHaveLength(13);
+    });
+    it('refuses a missing real scanner without executing workflow steps or another validator', async () => {
+      const value = await workflowFixture();
+      vi.stubEnv('PATH', ['/usr/bin', '/bin'].join(path.delimiter));
+      const result = await executeWorkflowCheckovWorkflowValidator(value.root, value.sourceSha);
+      expect(result).toMatchObject({ status: 'blocked', code: 'validator-checkov',
+        workloadExecution: false, command: null, retainedExecutionDirectory: null });
+      expect(result.message).toContain('unavailable');
+    });
+    it.each(['extra', 'deleted', 'changed', 'nested', 'executable', 'symlink', 'hardlink'] as const)(
+      'refuses actual %s workflow membership/bytes/mode before scanner execution', async variant => {
+        const value = await workflowFixture(), file = path.join(value.root, ...parts);
+        if (variant === 'extra') await value.write(['.github', 'workflows', 'untracked.yaml'], 'name: Extra\n');
+        if (variant === 'deleted') await rm(file);
+        if (variant === 'changed') await appendFile(file, '\n# Uncommitted workflow change.\n');
+        if (variant === 'nested') await value.write(['.github', 'workflows', 'nested', 'other.yml'], 'name: Unsupported nested input\n');
+        if (variant === 'executable') await chmod(file, 0o755);
+        if (variant === 'symlink' || variant === 'hardlink') {
+          const outside = path.join(value.root, 'outside-workflow');
+          await rename(file, outside);
+          if (variant === 'symlink') await symlink(outside, file);
+          else await link(outside, file);
+        }
+        if (variant === 'executable' || variant === 'symlink' || variant === 'hardlink') {
+          git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '--allow-empty', '-m', 'Unsafe workflow source fixture');
+        }
+        const result = await executeWorkflowCheckovWorkflowValidator(value.root, git(value.root, 'rev-parse', 'HEAD'));
+        expect(result.status).not.toBe('passed');
+        expect(result).toMatchObject({ workloadExecution: false, command: null,
+          retainedExecutionDirectory: null, phaseProof: 'not-issued' });
+      });
+    it('keeps workflow scanning private and requires the exact full commit before observation', async () => {
+      expect(() => parseWorkflowContextValidatorArgs(['--validator', 'checkov-workflows', '--source-sha', 'a'.repeat(40)])).toThrow();
+      await expect(executeWorkflowCheckovWorkflowValidator('/unobserved', 'develop'))
+        .rejects.toMatchObject({ code: 'validator-request' });
+    });
   });
 });

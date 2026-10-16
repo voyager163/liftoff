@@ -253,6 +253,24 @@ instruction findings; repeated instructions have distinct source-span identities
 while duplicate findings, omitted files, suppression and empty coverage refuse.
 This private body is not a public selector or a complete container qualification.
 
+Private `executeWorkflowCheckovWorkflowValidator(projectRoot, sourceSha)`
+analyzes the complete actual top-level committed `.github/workflows/*.yml` and
+`*.yaml` inventory. Missing, untracked, nested, linked, executable or changed
+workflow inputs refuse; exact regular-file bytes/modes/membership are read
+before and after the settled scanner, within its original cutoff. This is
+workflow-file analysis only: it never executes workflow steps, resolves/downloads
+actions or reusable workflows, publishes a report, or qualifies their referenced
+code. Action-reference closure and complete context semantics remain separate.
+The supported Checkov Actions runner leaves `resource_count` at zero even with
+real findings; no positive resource count is invented. Every selected workflow
+must instead have actual nonempty findings, with consistent counts/exit status
+and bounded framework-specific resource/span identities. The exact `[0,1]`
+synthetic trigger span is accepted only for the runner's `CKV_GHA_7` trigger
+record; zero source lines remain invalid for other findings and frameworks.
+Changing a workflow file to demonstrate an actual finding is development
+scanner evidence, not an admissible current5 controlled-red source. The public
+five selectors, private thirteen-key report and blocked declaration are unchanged.
+
 The implemented development compatibility profile is Checkov 3.3.20 in an
 isolated POSIX Python 3.14 virtual environment, not a released/supported-stack
 or native-host admission. A fixed `-I -S -B` bootstrap imports explicit observed

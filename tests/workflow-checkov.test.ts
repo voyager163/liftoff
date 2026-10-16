@@ -16,6 +16,83 @@ describe('private Checkov protocol validation, not scanner or proof substitution
     file_abs_path: file, file_line_range: [1, 20]
   });
 
+  describe('private GitHub Actions Checkov protocol, not workflow execution or a controlled-red source', () => {
+    const file = path.resolve('fixture-only', '.github/workflows/ci.yml');
+    const finding = (resource = 'on(Source fixture)', checkId = 'CKV_GHA_7', lines = [0, 1], result = 'PASSED') => ({
+      check_id: checkId, check_result: { result }, resource, file_abs_path: file, file_line_range: lines
+    });
+    function report(failed = false) {
+      return { check_type: 'github_actions',
+        results: { passed_checks: [finding()], failed_checks: failed ? [finding('permissions', 'CKV2_GHA_1', [3, 4], 'FAILED')] : [],
+          skipped_checks: [], parsing_errors: [] },
+        summary: { passed: 1, failed: failed ? 1 : 0, skipped: 0, parsing_errors: 0,
+          resource_count: 0, checkov_version: '3.3.20' } };
+    }
+    function command(value: unknown, status = 0): CommandResult {
+      return { command: { executable: 'not-executed-protocol-data', args: [] }, displayCommand: 'not executed',
+        status, signal: null, stdout: JSON.stringify(value), stderr: '', timedOut: false,
+        processTreeSettled: true, processSpawned: true };
+    }
+    it.each([false, true])('requires actual nonempty Actions findings despite the unused zero resource counter (%s)', failed => {
+      expect(checkWorkflowCheckovResult(command(report(failed), failed ? 1 : 0), [file], 'github_actions'))
+        .toBe(failed ? 'failed' : 'passed');
+      expect(() => checkWorkflowCheckovResult(command(report(failed), failed ? 0 : 1), [file], 'github_actions')).toThrow();
+      expect(() => checkWorkflowCheckovResult(command(report(failed)), [file])).toThrow();
+    });
+    it('requires actual findings for every explicit workflow and rejects an invented populated counter', () => {
+      const value = report();
+      expect(() => checkWorkflowCheckovResult(command(value), [file, path.resolve('other/.github/workflows/empty.yml')], 'github_actions')).toThrow(/Every selected workflow/u);
+      value.summary.resource_count = 1;
+      expect(() => checkWorkflowCheckovResult(command(value), [file], 'github_actions')).toThrow(/counter shape/u);
+      value.summary.resource_count = 0;
+      value.results.passed_checks = []; value.summary.passed = 0;
+      expect(() => checkWorkflowCheckovResult(command(value), [file], 'github_actions')).toThrow(/empty/u);
+    });
+    it('keeps real job/step identities distinct but refuses duplicate and contradictory source findings', () => {
+      const value = report();
+      value.results.passed_checks.push(finding('jobs(__proto__).steps[1](First)', 'CKV_GHA_3', [8, 10]),
+        finding('jobs(__proto__).steps[2](Second)', 'CKV_GHA_3', [11, 13]));
+      value.summary.passed = 3;
+      expect(checkWorkflowCheckovResult(command(value), [file], 'github_actions')).toBe('passed');
+      value.results.passed_checks.push(finding()); value.summary.passed++;
+      expect(() => checkWorkflowCheckovResult(command(value), [file], 'github_actions')).toThrow(/Duplicate/u);
+      const contradictory = report(true);
+      contradictory.results.failed_checks[0] = finding('on(Source fixture)', 'CKV_GHA_7', [0, 1], 'FAILED');
+      expect(() => checkWorkflowCheckovResult(command(contradictory, 1), [file], 'github_actions')).toThrow(/Duplicate/u);
+    });
+    it.each([
+      { check_id: 'CKV_AZURE_10' }, { resource: 'arbitrary' }, { resource: 'jobs(../outside)' },
+      { resource: 'jobs(test).steps[0]' }, { file_abs_path: path.resolve('other/.github/workflows/ci.yml') },
+      { check_id: 'CKV_GHA_3' }, { file_line_range: [0, 0] }, { file_line_range: [-1, 1] },
+      { file_line_range: [3, 2] }
+    ])('refuses other-framework, foreign-file and invalid resource/span identity %j', patch => {
+      const value = report();
+      value.results.passed_checks[0] = { ...finding(), ...patch };
+      expect(() => checkWorkflowCheckovResult(command(value), [file], 'github_actions')).toThrow();
+    });
+    it.each([
+      { skipped: 1 }, { parsing_errors: 1 }, { passed: 0 }, { resource_count: -1 }, { checkov_version: '3.3.29' }
+    ])('refuses suppressed, unparsed or inconsistent Actions reports %j', patch => {
+      const value = report(); Object.assign(value.summary, patch);
+      expect(() => checkWorkflowCheckovResult(command(value), [file], 'github_actions')).toThrow();
+    });
+    it('does not open public selectors, composite metadata, arbitrary paths or image execution', async () => {
+      for (const selector of ['github_actions', 'checkov-workflows']) {
+        expect(() => parseWorkflowContextValidatorArgs(['--validator', selector, '--source-sha', 'a'.repeat(40)])).toThrow();
+      }
+      const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff-gha-file-kind-')));
+      const run = vi.spyOn(NodeCommandRunner.prototype, 'run');
+      try {
+        for (const name of ['ci.yml', '.github/actions/action.yml', '.github/workflows/nested/ci.yml', 'source.tf', 'Dockerfile']) {
+          const selected = new WorkflowCheckovInvocation(root, root, [path.join(root, name)], performance.now() + 180_000, 'github_actions');
+          await expect(selected.execute({})).rejects.toThrow(/finite scanner framework/u);
+          expect(selected.processSpawned).toBe(false);
+        }
+        expect(run).not.toHaveBeenCalled();
+      } finally { run.mockRestore(); await rm(root, { recursive: true }); }
+    });
+  });
+
   function report(failed = false) {
     return { check_type: 'terraform',
       results: { passed_checks: failed ? [] : [finding()], failed_checks: failed ? [finding('FAILED')] : [],

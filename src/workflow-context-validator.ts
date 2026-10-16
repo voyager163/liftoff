@@ -66,7 +66,7 @@ export interface WorkflowContextValidatorReport {
 export type WorkflowTofuFormatComponent = Extract<ManifestLayoutComponentId, `opentofu-${string}`>;
 const dockerfileComponents = ['backend', 'frontend', 'function-worker'] as const satisfies readonly ManifestLayoutComponentId[];
 export type WorkflowDockerfileComponent = typeof dockerfileComponents[number];
-type ExecutableValidator = WorkflowContextValidator | 'compose-config' | `tofu-format:${WorkflowTofuFormatComponent}` |
+type ExecutableValidator = WorkflowContextValidator | 'compose-config' | 'checkov-workflows' | `tofu-format:${WorkflowTofuFormatComponent}` |
   `checkov-terraform:${WorkflowTofuFormatComponent}` | `checkov-dockerfile:${WorkflowDockerfileComponent}`;
 type ExecutableValidatorReport<Validator extends ExecutableValidator> =
   Omit<WorkflowContextValidatorReport, 'validator'> & { readonly validator: Validator };
@@ -74,6 +74,7 @@ export type WorkflowComposeConfigValidatorReport = ExecutableValidatorReport<'co
 export type WorkflowTofuComponentFormatValidatorReport = ExecutableValidatorReport<`tofu-format:${WorkflowTofuFormatComponent}`>;
 export type WorkflowCheckovComponentValidatorReport = ExecutableValidatorReport<`checkov-terraform:${WorkflowTofuFormatComponent}`>;
 export type WorkflowCheckovDockerfileValidatorReport = ExecutableValidatorReport<`checkov-dockerfile:${WorkflowDockerfileComponent}`>;
+export type WorkflowCheckovWorkflowValidatorReport = ExecutableValidatorReport<'checkov-workflows'>;
 
 class ValidatorRefusal extends Error {
   constructor(readonly code: string, message: string, readonly status: 'failed' | 'blocked' = 'blocked') {
@@ -165,6 +166,52 @@ async function assertCommittedInputs(root: string, snapshot: ModernLocalSnapshot
   return canonicalSha256(files.map(file => ({
     pathParts: file.pathParts, digest: file.digest, mode: file.mode
   })));
+}
+
+async function captureCommittedWorkflowInputs(root: string, sourceSha: string, deadline: number) {
+  function remaining() {
+    const value = deadline - performance.now();
+    if (value <= 0) throw new ValidatorRefusal('validator-checkov-deadline', 'The original workflow scanner cutoff expired.');
+    return Math.min(10_000, value);
+  }
+  remaining();
+  const tree = await readCommittedTree(root, sourceSha, remaining());
+  const committed = [...tree.keys()].filter(name => /^\.github\/workflows\/[^/]+\.ya?ml$/u.test(name)).sort();
+  const files = new AssessmentFiles(root);
+  remaining();
+  const paths = (await files.list(['.github', 'workflows'], ['']))
+    .map(parts => parts.join('/')).filter(name => /\.ya?ml$/u.test(name)).sort();
+  if (!paths.length || paths.length > modernLocalBounds.files ||
+      canonicalSha256(paths) !== canonicalSha256(committed)) {
+    throw new ValidatorRefusal('validator-checkov-workflows-membership',
+      'The complete actual workflow-file inventory must match the exact commit; missing, nested or untracked workflows cannot be omitted.');
+  }
+  let bytes = 0;
+  const inputs = [];
+  for (const name of paths) {
+    remaining();
+    const blob = tree.get(name)!;
+    if (blob.mode !== '100644') throw new ValidatorRefusal('validator-checkov-workflows-source',
+      'Workflow analysis requires committed ordinary non-executable files.');
+    const snapshot = await readBoundProjectFileSnapshot(root, name.split('/'), {
+      maximumBytes: modernLocalBounds.fileBytes, linkPolicy: 'single-link',
+      diagnostics: { pathLabel: 'Checkov workflow source', invalid() {
+        throw new ValidatorRefusal('validator-checkov-workflows-source', 'Workflow source has an unsafe or changed filesystem boundary.');
+      } }
+    });
+    const content = snapshot.content;
+    if (!content || snapshot.mode! & 0o111 ||
+      createHash('sha1').update(`blob ${content.length}\0`).update(content).digest('hex') !== blob.digest) {
+      throw new ValidatorRefusal('validator-checkov-workflows-source',
+        'Actual workflow bytes, absence or mode differ from the exact committed source.', 'failed');
+    }
+    if ((bytes += content.length) > modernLocalBounds.totalBytes || !Buffer.from(content.toString('utf8')).equals(content)) {
+      throw new ValidatorRefusal('validator-checkov-workflows-source', 'Workflow inputs exceed the existing source bounds or are not UTF-8 text.');
+    }
+    inputs.push({ path: name, ...blob });
+  }
+  remaining();
+  return { files: paths.map(name => path.join(root, name)), digest: canonicalSha256(inputs) };
 }
 
 export type WorkflowActionReferenceValidatorReport = Omit<WorkflowContextValidatorReport, 'validator'> & {
@@ -403,6 +450,14 @@ export async function executeWorkflowCheckovDockerfileValidator(
   return executeSelectedValidator(projectRoot, { ...request, validator: `checkov-dockerfile:${component}` });
 }
 
+/** Explicit committed workflow-file analysis only; never executes or resolves an action/reusable workflow. */
+export async function executeWorkflowCheckovWorkflowValidator(
+  projectRoot: string, sourceSha: string
+): Promise<WorkflowCheckovWorkflowValidatorReport> {
+  const request = readRequest({ validator: 'source-integrity', sourceSha });
+  return executeSelectedValidator(projectRoot, { ...request, validator: 'checkov-workflows' });
+}
+
 async function executeSelectedValidator<Validator extends ExecutableValidator>(
   projectRoot: string, request: { readonly validator: Validator; readonly sourceSha: string }
 ): Promise<ExecutableValidatorReport<Validator>> {
@@ -412,8 +467,9 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
   let command: WorkflowContextValidatorReport['command'] = null;
   const terraformScanning = request.validator.startsWith('checkov-terraform:');
   const dockerfileScanning = request.validator.startsWith('checkov-dockerfile:');
-  const scanning = terraformScanning || dockerfileScanning;
-  const scannerFramework = dockerfileScanning ? 'dockerfile' : 'terraform';
+  const workflowScanning = request.validator === 'checkov-workflows';
+  const scanning = terraformScanning || dockerfileScanning || workflowScanning;
+  const scannerFramework = workflowScanning ? 'github_actions' : dockerfileScanning ? 'dockerfile' : 'terraform';
   const scannerDeadline = scanning ? performance.now() + 180_000 : null;
   let scannerVerdict: 'passed' | 'failed' | null = null;
   const report = (status: WorkflowContextValidatorReport['status'], code: string, message: string) =>
@@ -461,7 +517,7 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
     graphHash = context.records.identity.phaseGraphHash;
     inputDigest = local.baselineDigest;
     const consistency = local.checks.find(check => check.id === 'source-consistency');
-    const selected = request.validator === 'source-integrity' || dockerfileScanning ? consistency :
+    const selected = request.validator === 'source-integrity' || dockerfileScanning || workflowScanning ? consistency :
       local.checks.find(check => check.id === (terraformScanning
         ? request.validator.replace('checkov-terraform:', 'tofu-format:') : request.validator));
     if (consistency?.status !== 'planned' || selected?.status !== 'planned') {
@@ -474,6 +530,9 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
     const originalInputs = await assertCommittedInputs(projectRoot, local.inspection.snapshot,
       request.sourceSha, managedPaths, componentRoots);
     let scannerFiles: readonly string[] | null = null;
+    const workflowInputs = workflowScanning
+      ? await captureCommittedWorkflowInputs(projectRoot, request.sourceSha, scannerDeadline!) : null;
+    if (workflowInputs) scannerFiles = workflowInputs.files;
     if (dockerfileScanning) {
       const component = request.validator.slice('checkov-dockerfile:'.length);
       const binding = source.activeLayout.bindings.find(binding => binding.kind === 'component' && binding.component === component);
@@ -483,7 +542,7 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
       if (!file || !capturedFileBytes(file)) throw new ValidatorRefusal('validator-checkov-scope', 'The selected component has no actual captured committed Dockerfile.');
       scannerFiles = [path.resolve(projectRoot, ...parts)];
     }
-    if (selected.command || dockerfileScanning) {
+    if (selected.command || dockerfileScanning || workflowScanning) {
       const formatting = request.validator.startsWith('tofu-format:');
       const selectedCommand = formatting || terraformScanning
         ? explicitTofuFormatCommand(selected.cwdPathParts, local.inspection.snapshot.files) : selected.command;
@@ -561,7 +620,8 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
           scanner = new WorkflowCheckovInvocation(projectRoot, home, scannerFiles, scannerDeadline!, scannerFramework);
           const execution = await scanner.execute(env);
           result = execution.result;
-          inputDigest = canonicalSha256({ baselineDigest: local.baselineDigest, programDigest: execution.programDigest });
+          inputDigest = canonicalSha256({ baselineDigest: local.baselineDigest, programDigest: execution.programDigest,
+            ...(workflowInputs ? { workflowDigest: workflowInputs.digest } : {}) });
         } else {
           if (!executable) throw new ValidatorRefusal('validator-body', 'The selected context has no executable validator body.');
           result = await runner.run(executable, {
@@ -609,6 +669,9 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
       throw new ValidatorRefusal('validator-source-drift',
         'The exact selected source membership, bytes, absence or modes changed during validation.', 'failed');
     }
+    if (workflowInputs && (await captureCommittedWorkflowInputs(projectRoot, request.sourceSha, scannerDeadline!)).digest !== workflowInputs.digest) {
+      throw new ValidatorRefusal('validator-source-drift', 'The exact committed workflow input inventory changed during analysis.', 'failed');
+    }
     const metadata = await observeProjectGitMetadata(projectRoot, metadataRunner);
     if (metadata.digest !== before.digest) {
       throw new ValidatorRefusal('validator-source-drift', 'The exact Git root, HEAD or repository binding changed during validation.', 'failed');
@@ -618,12 +681,17 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
     }
     if (scannerVerdict === 'failed') {
       return report('failed', 'validator-checkov-findings',
-        'The actual component scanner found unsuppressed policy failures in exact committed inputs; this is not hosted controlled-red or phase qualification.');
+        workflowScanning
+          ? 'The actual scanner found unsuppressed policy failures in exact committed workflow files; this is not an admissible current5 workflow red, hosted execution or phase qualification.'
+          : 'The actual component scanner found unsuppressed policy failures in exact committed inputs; this is not hosted controlled-red or phase qualification.');
     }
     return report('passed', 'validator-passed', 'The selected real validator passed for its exact committed inputs; this result issues no phase or provider qualification.');
   } catch (error) {
     if (error instanceof ValidatorRefusal) return report(error.status, error.code, error.message);
     if (error instanceof WorkflowCheckovRefusal) return report('blocked', 'validator-checkov', error.message);
+    if (workflowScanning && (error instanceof AssessmentInputError || error instanceof FileSystemError)) {
+      return report('blocked', 'validator-checkov-workflows-source', 'Actual workflow input membership could not be safely observed; no source or scanner success was substituted.');
+    }
     throw error;
   }
 }

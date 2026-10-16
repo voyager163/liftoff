@@ -15,7 +15,8 @@ const pythonProbe = 'import json,sys;print(json.dumps({"version":list(sys.versio
 const bootstrap = 'import json,runpy,sys;sys.path[:]=json.loads(sys.argv[1]);sys.argv=sys.argv[2:];runpy.run_path(sys.argv[0],run_name="__main__")';
 const limits = Object.freeze({ roots: 32, files: 32768, directories: 8192, links: 128,
   depth: 32, bytes: 512 * 1024 * 1024, fileBytes: 64 * 1024 * 1024 });
-export type WorkflowCheckovFramework = 'terraform' | 'dockerfile';
+const frameworks = ['terraform', 'dockerfile', 'github_actions'] as const;
+export type WorkflowCheckovFramework = typeof frameworks[number];
 
 export class WorkflowCheckovRefusal extends Error {}
 function refuse(message: string): never { throw new WorkflowCheckovRefusal(message); }
@@ -81,14 +82,14 @@ export function workflowCheckovInventoryRoots(roots: readonly string[]): readonl
 export function checkWorkflowCheckovResult(
   result: CommandResult, selectedFiles: readonly string[], framework: WorkflowCheckovFramework = 'terraform'
 ): 'passed' | 'failed' {
-  if (framework !== 'terraform' && framework !== 'dockerfile') refuse('The private scanner framework is unsupported.');
+  if (!frameworks.includes(framework)) refuse('The private scanner framework is unsupported.');
   if (!complete(result) || ![0, 1].includes(result.status ?? -1)) {
     refuse('The actual scanner did not finish with bounded output and its original process tree settled.');
   }
   const report = json(result.stdout);
   if (!isRecord(report) || report.check_type !== framework || !isRecord(report.results) ||
       !isRecord(report.summary) || report.summary.checkov_version !== version) {
-    refuse(`A single ${framework === 'terraform' ? 'Terraform' : 'Dockerfile'} report from the supported observed Checkov development version is required.`);
+    refuse(`A single ${framework === 'terraform' ? 'Terraform' : framework === 'dockerfile' ? 'Dockerfile' : 'GitHub Actions'} report from the supported observed Checkov development version is required.`);
   }
   const results = report.results, summary = report.summary;
   const passed = results.passed_checks, failed = results.failed_checks;
@@ -99,7 +100,8 @@ export function checkWorkflowCheckovResult(
   if (skipped.length || errors.length || summary.skipped !== 0 || summary.parsing_errors !== 0 ||
       summary.passed !== passed.length || summary.failed !== failed.length ||
       typeof summary.resource_count !== 'number' || !Number.isSafeInteger(summary.resource_count) ||
-      summary.resource_count <= 0 || passed.length + failed.length === 0) {
+      summary.resource_count < 0 || framework !== 'github_actions' && summary.resource_count === 0 ||
+      passed.length + failed.length === 0) {
     refuse('Skipped, suppressed, unparsed, empty or inconsistent scanner coverage cannot pass or establish a controlled red.');
   }
   if (result.status !== (failed.length ? 1 : 0)) {
@@ -107,7 +109,7 @@ export function checkWorkflowCheckovResult(
   }
   if (!selectedFiles.length || new Set(selectedFiles).size !== selectedFiles.length ||
       selectedFiles.some(file => !safeAbsolute(file))) refuse('An exact nonempty scanner input inventory is required.');
-  const files = new Set(selectedFiles), identities = new Set<string>(), resources = new Set<string>();
+  const files = new Set(selectedFiles), identities = new Set<string>(), resources = new Set<string>(), coveredFiles = new Set<string>();
   for (const [checks, expected] of [[passed, 'PASSED'], [failed, 'FAILED']] as const) {
     for (const check of checks) {
       if (!isRecord(check) || typeof check.check_id !== 'string' || !/^CKV(?:2)?_[A-Z0-9_]+$/u.test(check.check_id) ||
@@ -115,7 +117,10 @@ export function checkWorkflowCheckovResult(
           !safeAbsolute(check.file_abs_path) || !files.has(check.file_abs_path) ||
           typeof check.resource !== 'string' || !check.resource || check.resource.length > 1024 ||
           !Array.isArray(check.file_line_range) || check.file_line_range.length !== 2 ||
-          !check.file_line_range.every(line => Number.isSafeInteger(line) && line > 0) ||
+          !check.file_line_range.every(line => Number.isSafeInteger(line) && line >= 0) ||
+          check.file_line_range[0] === 0 && !(framework === 'github_actions' &&
+            check.check_id === 'CKV_GHA_7' && /^on(?:\([^\u0000-\u001f\u007f]*\))?$/u.test(check.resource) &&
+            check.file_line_range[1] === 1) ||
           check.file_line_range[0] > check.file_line_range[1]) {
         refuse('A scanner finding has missing, contradictory or out-of-scope source identity.');
       }
@@ -125,15 +130,24 @@ export function checkWorkflowCheckovResult(
             .test(check.resource.slice(check.file_abs_path.length + 1)))) {
         refuse('A Dockerfile finding must identify its actual file and one supported instruction, not another framework or resource.');
       }
+      if (framework === 'github_actions' && (!/^CKV(?:2)?_GHA_[0-9]+$/u.test(check.check_id) ||
+          !/^(?:jobs(?:\([A-Za-z_][A-Za-z0-9_-]*\)(?:\.steps\[[1-9][0-9]*\](?:\([^\u0000-\u001f\u007f]*\))?)?)?|permissions|on(?:\([^\u0000-\u001f\u007f]*\))?)$/u.test(check.resource))) {
+        refuse('A GitHub Actions finding must identify an actual workflow policy resource, not another framework or input kind.');
+      }
       const resource = framework === 'dockerfile' ? check.file_abs_path : `${check.file_abs_path}\0${check.resource}`;
-      const identity = framework === 'dockerfile'
+      const identity = framework !== 'terraform'
         ? `${resource}\0${check.resource}\0${check.check_id}\0${check.file_line_range.join(':')}`
         : `${resource}\0${check.check_id}`;
       if (identities.has(identity)) refuse('Duplicate scanner findings cannot inflate coverage.');
-      identities.add(identity); resources.add(resource);
+      identities.add(identity); resources.add(resource); coveredFiles.add(check.file_abs_path);
     }
   }
-  if (resources.size !== summary.resource_count) refuse('The actual checked resource inventory is incomplete.');
+  // This version's Actions runner never populates Report.resources; findings, not that zero counter, cover files.
+  if (framework === 'github_actions') {
+    if (summary.resource_count !== 0 || coveredFiles.size !== files.size) {
+      refuse('Every selected workflow must have actual nonempty findings and the supported Actions counter shape.');
+    }
+  } else if (resources.size !== summary.resource_count) refuse('The actual checked resource inventory is incomplete.');
   if (framework === 'dockerfile' && resources.size !== files.size) refuse('Every selected Dockerfile must have actual nonempty checked coverage.');
   return failed.length ? 'failed' : 'passed';
 }
@@ -152,7 +166,7 @@ export class WorkflowCheckovInvocation {
     files: readonly string[], private readonly deadline: number,
     private readonly framework: WorkflowCheckovFramework = 'terraform'
   ) {
-    if (framework !== 'terraform' && framework !== 'dockerfile') refuse('The private scanner framework is unsupported.');
+    if (!frameworks.includes(framework)) refuse('The private scanner framework is unsupported.');
     this.files = Object.freeze([...files]);
     if (!Number.isFinite(deadline) || deadline > performance.now() + 180_000) refuse('A scanner invocation cannot extend its original bounded preparation/execution cutoff.');
     Object.freeze(this);
@@ -297,7 +311,9 @@ export class WorkflowCheckovInvocation {
     }
     if (!this.files.length || this.files.some(file => !safeAbsolute(file) ||
         !applicationWithin(this.projectRoot, file) ||
-        (this.framework === 'terraform' ? !file.endsWith('.tf') : path.basename(file) !== 'Dockerfile'))) {
+        (this.framework === 'terraform' ? !file.endsWith('.tf') : this.framework === 'dockerfile'
+          ? path.basename(file) !== 'Dockerfile'
+          : !/^\.github\/workflows\/[^/]+\.ya?ml$/u.test(path.relative(this.projectRoot, file).split(path.sep).join('/'))))) {
       refuse('Only actual captured project files matching the selected finite scanner framework can enter the private scanner.');
     }
     const launcher = await this.#launcher();
