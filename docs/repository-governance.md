@@ -176,6 +176,26 @@ commands and preserves the original read-only runtime/deadline. It is private
 compiler-input plumbing, not the completed semantic compiler or installed
 review/approval/apply composition, and changes no public help or JSON contract.
 
+Private `declareSource5WorkflowSources` owns one finite intended semantic
+declaration for future paired workflow/ruleset sources. Its fourteen proposed
+full job/check identities are not the observed required inventory, an approved
+integration mapping or completed executable recipes. It accepts only the
+constructed current5 context and preserves that graph's exact single-maintainer
+zero-human-review or team one-current-independent-human-review policy.
+Every intended recipe has specific missing program, actual integration,
+complete-job, runner/action/tool, genuine negative-source and semantic-evidence
+obligations. Approved current5 release subjects and actual integration subjects
+are unavailable: the result is explicitly blocked, with **no publication
+sources or effects**, no complete jobs, no guessed integration IDs and no
+prerequisite/session authority. There are no placeholder workflows or rulesets,
+and an older published package or development build cannot fill the release
+slot. Actual arbitrary names/integration IDs, including `__proto__`, remain in
+the independent source reader; a CodeQL-named backend-test job stays blocked.
+This private refusal boundary is not completion of rendering, independent
+whole-body semantic compilation, the issuer, installed orchestration or14.3.
+The existing publication paths, exact per-file approval/readback and public
+review/effect, protected journal and joint-finalization boundaries are unchanged.
+
 Private `observeSource5WorkflowDependencyReview` reads the actual GitHub
 dependency diff for exact repository/base/head commit/tree selectors through
 the original read-only runtime. It verifies a bounded complete ancestor-to-head

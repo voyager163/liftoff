@@ -8,6 +8,7 @@ import {
 } from '../src/domain/governance/activation/workflow-validator-program.js';
 import { workflowContextValidators as publicValidators } from '../src/workflow-context-validator.js';
 import { workflowByteDigest } from '../src/governance-activation/workflow-binding.js';
+import { declareSource5WorkflowSources } from '../src/governance-activation/workflow-source5-declaration.js';
 import { observeSource5WorkflowRecipeInputs } from '../src/governance-activation/workflow-source5-recipe-inputs.js';
 import type { Source5WorkflowRecipeReference } from '../src/governance-activation/workflow-source5-recipe-inputs.js';
 import { createWorkflowRequiredSourceFixture } from './fixtures/workflow-required-source.js';
@@ -150,6 +151,35 @@ describe('actual immutable recipe inputs with complete literal context/integrati
         { method: 'GET', path: `/repos/owner/repo/git/ref/heads/${value.reference.ref}` },
         { method: 'GET', path: `/repos/owner/repo/git/ref/heads/${value.reference.ref}` }
       ]);
+    } finally { await value.close(); }
+  });
+
+  it('keeps a CodeQL-named backend job, arbitrary actual contexts and __proto__ present and blocked beside the intended declaration', async () => {
+    const value = await fixture();
+    value.names[0] = 'Liftoff / CodeQL';
+    value.definition.jobs.job0!.name = value.names[0];
+    const ruleset = value.state.files[0]!;
+    ruleset.content = ruleset.content.replace('Repository workflows / Actual backend behavioral tests', value.names[0]);
+    value.source.files[0]!.digest = workflowByteDigest(ruleset.content);
+    value.update();
+    try {
+      const declaration = declareSource5WorkflowSources({ context: value.context });
+      expect(value.calls).toEqual([]);
+      const result = await observeSource5WorkflowRecipeInputs({
+        context: value.context, runtime: value.runtime, source: value.source, workflow: value.reference
+      });
+      expect(result.status).toBe('blocked');
+      expect(result.workflow.contexts.map(item => [item.name, item.integrationId])).toEqual(value.names.map((name, index) => [name, 700 + index]));
+      expect(result.workflow.contexts[0]).toMatchObject({ name: 'Liftoff / CodeQL', validatorSyntax: 'backend-tests' });
+      expect(result.workflow.contexts.at(-1)?.name).toBe('__proto__');
+      expect(result.qualifiedExecutableRecipe).toBeNull();
+      expect(result.prerequisiteSession).toBeNull();
+      expect(result.blockers.filter(item => item.code === 'workflow-recipe-semantic-catalog-unavailable').map(item => item.context)).toEqual(value.names);
+      expect(declaration.publicationSources).toEqual([]);
+      expect(declaration.declaration.recipes.every(recipe => recipe.integrationId === null && recipe.completeJob === null)).toBe(true);
+      expect(value.calls).toHaveLength(9);
+      expect(value.calls.every(call => call.method === 'GET')).toBe(true);
+      expect(value.processCalls()).toBe(0);
     } finally { await value.close(); }
   });
 
