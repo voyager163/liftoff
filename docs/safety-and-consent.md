@@ -188,8 +188,10 @@ immutable evidence, credential policies, active OpenSpec changes, and bootstrap
 retention/disposal records. If the current activation identity is future,
 unsupported, or graph-incompatible, update and setup block with a remedy instead
 of downgrading or rewriting state.
-Exact supported historical v1/v2/v3 can use the reviewed successor lane, not in-place
-retagging. Original records are copied byte-for-byte into immutable in-project
+Exact historical v1/v2/v3 successors require an explicitly declared source/target
+lane, not in-place retagging. The current5 target has no such lane; manifest-v8
+support, force and a supplied fingerprint do not authorize a successor.
+Under the retained successor contracts, original records are copied byte-for-byte into immutable in-project
 history before their exact active paths are retired or replaced. A linked current
 activation obtains fresh evidence; historical approvals never become current
 permission. Unavailable revalidation remains an explicit blocker.

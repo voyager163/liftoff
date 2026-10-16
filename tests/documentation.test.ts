@@ -530,6 +530,11 @@ describe('public documentation', () => {
     expect(workloads).toContain('repository-governance');
     expect(cli).toContain('--governance single-maintainer-gitflow|team-gitflow|none');
     expect(existing).toContain('manifest-v8 managed-core successor');
+    for (const source of [existing, safety, cli]) {
+      expect(source.replace(/\s+/gu, ' ')).toContain('current5 target has no');
+    }
+    expect(manifests.replace(/\s+/gu, ' ')).toContain('No automatic fallback to a retained target is performed.');
+    expect(troubleshooting).toContain('current5 has none');
     expect(prerequisites).toMatch(/no additional initialization\s+prerequisite/);
     expect(safety).toMatch(/never authorizes agent execution/);
     expect(structure).toContain('.liftoff/');

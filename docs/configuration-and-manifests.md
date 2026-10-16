@@ -311,6 +311,11 @@ in the captured `modern-pre-workflow.ts` registry; its graph, original records a
 plans remain readable alongside the frozen pre-custody family. Neither source4
 family is current execution permission. Source5 has no automatic migration lane
 or public activation support; changing an identity does not upgrade old consent.
+In particular, activation-v1/v2/v3 sources cannot obtain a current5 successor
+preview or publication. Manifest-v8 and update-report support alone do not
+declare that lane. Already-linked retained family4 sources can undergo exact
+same-intent maintenance; selecting current5 instead cannot change their recorded
+plugins or layout. No automatic fallback to a retained target is performed.
 Shared source metadata retains the current, pre-workflow and pre-custody
 distinctions, including each family's capability guidance. Reading a retained
 family does not relabel it as the current project-telemetry bundle.

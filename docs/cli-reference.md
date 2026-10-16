@@ -1595,9 +1595,12 @@ not that writer contract.
 Future versions, individually known but unsupported tuples, and unknown
 phase-graph hashes block and report an upgrade or
 reconciliation remedy instead of downgrading or fabricating evidence.
-Exact known activation-v1 identity remains non-executable. On builds advertising
-`schemas.currentUpdate`, the supported reviewed historical successor lane
-preserves that original history while publishing linked state4/journal2 and v8 metadata.
+Exact known activation-v1 identity remains non-executable. Advertising
+`schemas.currentUpdate` does not itself declare an activation successor lane.
+The retained historical-successor contracts preserve original history while
+publishing linked state4/journal2 and v8 metadata. The current5 target has no
+historical activation-v1/v2/v3 lane; check refuses before publishing a preview,
+and force or a supplied fingerprint cannot bypass a missing preview or lane.
 Fresh local proof requires separate verification and exact-byte publication;
 merely reading a historical identity or updating a core file does not perform
 or authorize the migration.

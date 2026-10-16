@@ -457,7 +457,7 @@ features are shared subscription capabilities and remain retained.
 | `phase-blocked` | Read the phase, proof, and authority blocker; unavailable production or enrollment capabilities remain blocked. |
 | `evidence-stale` | Obtain fresh proof through supported, authorized execution from current inputs; never edit receipts or reuse stale headers as current inputs. |
 | `credential-expiring` | Rotate before the recorded lead time using the same App or PAT policy. |
-| `reconciliation-required` | Review `liftoff update --check`. An exact supported v1 source can use the approved history-preserving successor lane; unknown formats remain blocked. Never edit JSON to acknowledge identity. |
+| `reconciliation-required` | Review `liftoff update --check`. Activation-v1/v2/v3 successors require an explicitly declared source/target lane; current5 has none. Preserve original records and do not force, retag or fall back to a retained target. Unknown formats remain blocked. |
 | `identity-incompatible` | Upgrade when the supported tuple requires a newer CLI. A historical receipt never becomes executable through force, retagging, or an invented mapping. |
 | `enforcement-incomplete` | Prove exact required contexts green and deliberately red, then approve final enforcement before ruleset mutation. |
 | `disposal-pending` | Review retention, exact imported paths, destructive scope, and proof. Execution requires valid authority; there is no public approval-entry shortcut. |

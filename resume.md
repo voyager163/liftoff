@@ -5,6 +5,70 @@ another machine. It records the repository state, decisions, validation,
 remaining work, and cautions needed to continue the OpenSpec change
 `modernize-liftoff-platform` without reconstructing the prior conversation.
 
+## Canonical assertion recovery, 2026-10-16
+
+This preserving test/documentation correction follows Root
+`645f35e77553a7102bd917dca9defd52bdcde4c3`, tree
+`a2dab10f693a2e5f5b3ebe8ac2a07626fcc1c62e`. Production source, admission,
+family allocations, public routing, frozen records and task flags are unchanged.
+No later Checkov or declaration SOURCE milestone is intaken.
+
+- The completed exact-clean 645f canonical CLI run failed: 362 executed test
+  files, 12,588 registered cases, 12,397 passed, 48 failed and 143 pending.
+  No fresh CLI coverage summary or final coverage JSON was produced. The
+  complete original report, streams, command/input records and explicit missing
+  files are preserved in `root-645f35e7-canonical-results/receipt.json`,
+  SHA-256 `ad92a6900d684b87b193205c705aae1d7da66e1818c0b399eef9cb4e5e38af54`.
+  This is distinct from the earlier incomplete IPC and unqualified-runtime runs.
+- The separately completed clean-645f gateway run passed all 211 cases in nine
+  files. Its actual statement/branch/function/line counts are respectively
+  245/262, 191/234, 64/68 and 235/248, each above 80.01%. Both raw gate reports
+  record Node 24.21.0 and `npm: null`; the enclosing wrapper separately observed
+  npm 12.0.2 before/after. Do not rewrite those fields or transfer this result
+  to the next commit.
+- The 34 active-maintenance failures selected current5 plugins for already
+  linked retained family4 sources. Their fixture now explicitly selects the
+  existing retained registry and checks its recorded identity, plugins and
+  layout. Three added controls prove current5 reselection still refuses without
+  project or external-preview effects. The production same-intent guard is
+  unchanged.
+- Reader isolation now mocks the actual `modernActivationSourceIdentityTables`
+  construction seam. Its original historical-isolation and modern-unavailable
+  assertions remain unchanged; the stale mock of a different exported factory
+  no longer masks which reader was selected.
+- The three obsolete public historical-to-current5 publication expectations are
+  explicitly replaced, not relabeled as preserved positive cases. Each new
+  refusal case checks preview, bare apply, force and supplied-fingerprint modes,
+  actual unchanged project/home inventories, no plan and no completion claim.
+  Apply without a saved preview remains `preview-missing`; its conservative
+  requested/uncertain report fields are not fabricated as known no-effects.
+  Independent explicit retained-family4 publication positives remain exercised.
+- Ten Manual prerequisite failures were environmental. Adding the existing
+  Python 3.14 bin path first exposed a separate incompatible global uv 0.13.1.
+  Selecting the existing checksum-bound uv 0.12.7 prefix made those same ten
+  unchanged cases pass. No installation, global-tool mutation, policy/budget
+  relaxation, added skip or native network-engine permission was used.
+- Coherent nine-file verification passes 307 cases with zero failures and 15
+  unchanged explicit engine-lane skips. Of the 319 original literal cases,
+  256 prior passes remain passed, 45 prior failures now pass and 15 skips remain;
+  the three obsolete failed public positives are replaced by three differently
+  named refusal cases, alongside three new same-intent controls. No aliases or
+  assertion-preservation claim is made for the replaced positives.
+  Strict compilation covers nine roots and 806 distinct actual regular files,
+  including JSON. Project noEmit, policy, strict OpenSpec and whitespace checks
+  pass. Receipt `root-canonical-recovery-qualified-qualification.json` has
+  SHA-256 `aca17ff957d36aa5864db5bb1fcca074506a5b235585f2c29151eb1fd29853c2`.
+- The user-interrupted first qualification, both new refusal-test assertion
+  mistakes and the new regression's initial correlated-union typing refusal
+  remain separately retained with their original inputs/streams. They are not
+  original production defects or completed qualification. The final regression
+  uses the existing validating project reader rather than a cast.
+
+These are bounded recovery checks, not fresh complete CLI coverage or native,
+provider, currentness or release qualification. Rebuild the development fixtures
+and rerun independent canonical CLI/gateway gates on the exact committed
+successor. Progress remains 87/136; tasks 14.3 and 18.2 remain unchecked.
+
 ## Root qualification recovery, 2026-10-16
 
 This checkpoint is a test-only successor to owning Root
