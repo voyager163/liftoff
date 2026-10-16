@@ -182,12 +182,17 @@ export function nativePlatformQualificationJob() {
         'curl --fail --location --proto \'=https\' --proto-redir \'=https\' --max-time 180 \\',
         '  "$url" --output "$RUNNER_TEMP/liftoff-platform-runtime"', ''
       ].join('\n') },
+      { name: 'Prepare pinned Linux qualification userspace', if: "runner.os == 'Linux'", shell: 'bash', run: [
+        'image="$(node --input-type=module -e \'import { nativeLinuxUserspaceImages } from "./scripts/native-package-report.mjs"; console.log(nativeLinuxUserspaceImages[process.arch])\')"',
+        'docker pull "$image"', ''
+      ].join('\n') },
       { name: 'Build and qualify the isolated native package', shell: 'bash', run: [
         'launcher=()',
         'if [ "$RUNNER_OS" = Windows ]; then launcher=(--windows-launcher "$RUNNER_TEMP/liftoff-launcher.exe"); fi',
         'npm run build:native -- build --runtime-archive "$RUNNER_TEMP/liftoff-platform-runtime" \\',
         '  --output "$RUNNER_TEMP/liftoff-native-bundle" "${launcher[@]}"',
         'node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-native-bundle" "$RUNNER_TEMP/liftoff-native-archive"',
+        'if [ "$RUNNER_OS" = Linux ]; then export LIFTOFF_NATIVE_DOCKER_EXECUTABLE="$(command -v docker)"; fi',
         'LIFTOFF_NATIVE_PACKAGE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
         'LIFTOFF_NATIVE_ARCHIVE_ROOT="$RUNNER_TEMP/liftoff-native-archive" \\',
         'npx vitest run tests/native-bundle.test.ts tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \\',

@@ -220,7 +220,8 @@ describe('source repository setup policy', () => {
       delete workflow.jobs[id].steps[0].with.ref;
       expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
     });
-  it.each(['missing', 'matrix', 'runner', 'conditional', 'compiler', 'runtime', 'filtered', 'report', 'archive', 'unset-archive', 'upload'])(
+  it.each(['missing', 'matrix', 'runner', 'conditional', 'compiler', 'runtime', 'userspace', 'userspace-condition',
+    'userspace-pin', 'filtered', 'report', 'archive', 'unset-archive', 'upload'])(
     'rejects incomplete native platform packaging: %s', async fault => {
       const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-platform-packages'];
       if (fault === 'missing') delete workflow.jobs['qualify-native-platform-packages'];
@@ -229,11 +230,14 @@ describe('source repository setup policy', () => {
       if (fault === 'conditional') job.if = 'false';
       if (fault === 'compiler') job.steps[4].run += ' || true';
       if (fault === 'runtime') job.steps[1].with['node-version'] = 'latest';
-      if (fault === 'filtered') job.steps[6].run += ' -t skipped';
-      if (fault === 'report') job.steps[6].run = job.steps[6].run.replace(/^node scripts\/native-package-report.*\n/m, '');
-      if (fault === 'archive') job.steps[6].run = job.steps[6].run.replace(/^node scripts\/native-release.*\n/m, '');
-      if (fault === 'unset-archive') job.steps[6].run = job.steps[6].run.replace('LIFTOFF_NATIVE_ARCHIVE_ROOT', 'UNSELECTED_ARCHIVE');
-      if (fault === 'upload') job.steps[7].with['if-no-files-found'] = 'ignore';
+      if (fault === 'userspace') job.steps.splice(6, 1);
+      if (fault === 'userspace-condition') job.steps[6].if = 'false';
+      if (fault === 'userspace-pin') job.steps[6].run = 'docker pull rockylinux/rockylinux:latest';
+      if (fault === 'filtered') job.steps[7].run += ' -t skipped';
+      if (fault === 'report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/native-package-report.*\n/m, '');
+      if (fault === 'archive') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/native-release.*\n/m, '');
+      if (fault === 'unset-archive') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_ARCHIVE_ROOT', 'UNSELECTED_ARCHIVE');
+      if (fault === 'upload') job.steps[8].with['if-no-files-found'] = 'ignore';
       expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
     });
   it.each([

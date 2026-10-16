@@ -307,6 +307,14 @@ describe('installed native report admission (synthetic report shapes)', () => {
     else roundtrip.status = fault;
     expect(() => assertNativePackageReport(selected, 'win32')).toThrow();
   });
+  it.each(['missing', 'failed', 'skipped'])('requires actual pinned Linux userspace execution: %s', fault => {
+    const selected = report('linux'), suite = selected.testResults[0];
+    const title = 'runs the actual Linux bundle and owned recovery in pinned glibc 2.28 userspace without public or minimum-kernel credit';
+    const userspace = suite.assertionResults.find(test => test.title === title)!;
+    if (fault === 'missing') suite.assertionResults = suite.assertionResults.filter(test => test !== userspace);
+    else userspace.status = fault;
+    expect(() => assertNativePackageReport(selected, 'linux')).toThrow();
+  });
 });
 
 describe.skipIf(process.platform === 'win32')('user-local owned installer transactions (synthetic files)', () => {

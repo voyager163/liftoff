@@ -111,7 +111,24 @@ distribution. Windows/Linux use `LIFTOFF_NATIVE_PACKAGE_ROOT` with
 tests/native-package-installed.test.ts` and the cross-platform report gate.
 Windows cases run the real installed controller and running-image locking.
 Linux cases exercise the actual bundle's isolated owned installation/recovery and
-test-only Ed25519 bootstrap authentication. Every target also extracts its exact
+test-only Ed25519 bootstrap authentication. Linux qualification additionally requires
+Docker with a native same-architecture Linux daemon and the exact Rocky Linux 8.10
+image pinned in `nativeLinuxUserspaceImages` in `scripts/native-package-report.mjs`.
+CI pulls that immutable image before the tests; tests never pull, request emulation or
+run a package manager. The daemon and image architectures must match the bundle.
+The container has no network, a read-only root/bundle,
+no capabilities and only disposable user-owned tmpfs writes. That private tmpfs
+explicitly permits execution of the copied development install while retaining
+`nosuid` and `nodev`; the case verifies its real mount options. It runs the exact
+bundle's startup, all installed plans, controller lookup, the existing isolated-HCL
+qualified-runtime refusal and interrupted
+development install/recovery against actual glibc 2.28/libstdc++ 8.5 userspace.
+It records the real shared host kernel and explicitly leaves minimum-kernel,
+minimum-host and public-distribution qualification false. A containerized userspace
+result is not a run on Linux kernel 4.18 or proof of real release signing.
+The isolated parser remains restricted to its qualified Darwin/ARM64 Node 24.21.0
+tuple; Linux execution is refused, not newly qualified by this case.
+Every target also extracts its exact
 native archive with the absolute native archive tool into a new private fixture,
 reverifies the unchanged complete inventory (including native filesystem modes),
 runs the extracted launcher outside the checkout with no global tools, and refuses

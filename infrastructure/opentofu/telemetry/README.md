@@ -79,6 +79,13 @@ No client is enrolled by enabling this endpoint. Keep synthetic UUIDs in an
 operator-controlled exclusion inventory rather than an additional payload field.
 These offline tests do not prove Azure deployment or real identity access.
 
+Both Azure providers explicitly disable automatic registration in this root:
+AzureRM uses `resource_provider_registrations = "none"` and AzAPI uses
+`skip_provider_registration = true`. The Grafana root also disables automatic
+registration. Provider registration remains a separately approved operator
+prerequisite, never an incidental effect of a plan or provider initialization.
+Do not override these settings to work around an unregistered provider.
+
 Set `project_ingestion_enabled=false` in the same reviewed production variable
 file to stop project ingestion while retaining both tables and command delivery.
 This flag only controls the project-stream environment setting, not resource
