@@ -593,6 +593,12 @@ Local-tool metadata workspaces use the actual Windows temporary directory rather
 than a drive-relative POSIX `/tmp` assumption; macOS and Linux retain their existing
 neutral parents. Physical identity, process settlement and owned cleanup checks
 still apply before returning tool observations.
+The three real Compose regression cases retain bounded failure diagnostics before
+an unfinished suite can lose its final report: a finite case selector, actual
+runtime, call-through counts, parsed metadata versions, and original process
+status/settlement flags and output byte counts. They do not log executable paths,
+arguments, environments, configuration or raw output. Unobserved flags remain
+null; diagnostics issue no additional commands or native qualification.
 
 The private source5 effect bridge uses a separate private control schema1 and the
 closed `workflow-source5-{plan,approval,journal,operation,proof}` namespaces

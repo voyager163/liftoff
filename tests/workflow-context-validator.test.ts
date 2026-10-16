@@ -19,11 +19,78 @@ import { NodeCommandRunner } from '../src/process-runner.js';
 import { encodeWindowsEnvironmentBlock } from '../src/adapters/process/windows-job-protocol.js';
 import { resolveTargetExecutableCommand } from '../src/adapters/process/windows-job-runner.js';
 import { hclComputationPolicy } from '../src/adapters/hcl/isolated-parser.js';
+import { extractVersion } from '../src/domain/workstation/versions.js';
 
 const qualifiedHcl = process.platform === hclComputationPolicy.qualifiedRuntime.platform &&
   process.arch === hclComputationPolicy.qualifiedRuntime.arch &&
   process.versions.node === hclComputationPolicy.qualifiedRuntime.node;
 const nativeHclIt = it.skipIf(!qualifiedHcl);
+
+type ComposeDiagnosticContext = 'configuration' | 'closed-inputs' | 'plugin-drift' | 'owned-syntax-control';
+type ActualCommandResult = Awaited<ReturnType<NodeCommandRunner['run']>>;
+type ActualCommand = Parameters<NodeCommandRunner['run']>[0];
+type ActualCommandOptions = Parameters<NodeCommandRunner['run']>[1];
+const composeDiagnosticRefusals = new Set([
+  'Missing independently installed docker tool; no installation is implicit.',
+  'Installed docker metadata observation failed; no check is authorized.',
+  'Installed docker version is not supported.',
+  'The actual installed Compose plugin identity is unavailable; Docker CLI version alone is insufficient.',
+  'Compose plugin version/settlement is unavailable or unsupported.',
+  'Installed local tool bytes or physical identity changed.',
+  'Installed local tool launcher changed.',
+  'Installed Compose plugin selection or physical identity changed.',
+  'Tool process settlement unknown; owned metadata workspace retained.'
+]);
+function composeDiagnosticCode(value: unknown): string | null {
+  return typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/u.test(value) ? value : null;
+}
+function composeDiagnosticCommand(context: ComposeDiagnosticContext, command: ActualCommand, result: ActualCommandResult) {
+  const name = path.basename(command.executable).toLowerCase(), args = command.args;
+  const kind = context === 'owned-syntax-control' && command.executable === process.execPath &&
+    args.length === 2 && args[0] === '--check' ? 'owned-syntax-control' :
+    /^docker(?:\.exe)?$/u.test(name) && args.length === 1 && args[0] === '--version' ? 'docker-version' :
+    /^docker-compose(?:\.exe)?$/u.test(name) && args.length === 2 && args[0] === 'version' &&
+      args[1] === '--short' ? 'compose-version' :
+    /^docker-compose(?:\.exe)?$/u.test(name) && args.includes('config') ? 'compose-configuration' : null;
+  if (!kind) return null;
+  const version = kind === 'docker-version' || kind === 'compose-version' ? extractVersion(result.stdout, 'docker') : null;
+  return { kind, version: version && /^\d{1,6}\.\d{1,6}\.\d{1,6}(?:[-+][A-Za-z0-9.-]{1,64})?$/u.test(version) ? version : null,
+    result: { status: result.status, signal: result.signal, processSpawned: result.processSpawned ?? null,
+      processTreeSettled: result.processTreeSettled ?? null, timedOut: result.timedOut ?? null,
+      outputLimitExceeded: result.outputLimitExceeded ?? null, aborted: result.aborted ?? null,
+      errorCode: composeDiagnosticCode(result.errorCode),
+      stdoutBytes: Buffer.byteLength(result.stdout), stderrBytes: Buffer.byteLength(result.stderr) } };
+}
+async function withComposeDiagnostics<T>(context: ComposeDiagnosticContext, body: () => Promise<T>,
+  afterResult?: (command: ActualCommand, options: ActualCommandOptions, result: ActualCommandResult) => Promise<void>): Promise<T> {
+  const observations: NonNullable<ReturnType<typeof composeDiagnosticCommand>>[] = [];
+  let callThroughCount = 0, omittedObservations = 0;
+  const original = NodeCommandRunner.prototype.run;
+  const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(async function (this: NodeCommandRunner, command, options) {
+    callThroughCount++;
+    const result = await original.call(this, command, options);
+    const observation = composeDiagnosticCommand(context, command, result);
+    if (observation) {
+      if (observations.length < 16) observations.push(observation);
+      else omittedObservations++;
+    }
+    await afterResult?.(command, options, result);
+    return result;
+  });
+  try {
+    return await body();
+  } catch (error) {
+    console.info('Bounded Compose fixture diagnostic: ' + JSON.stringify({
+      context, runtime: { node: process.version, platform: process.platform, arch: process.arch },
+      callThroughCount, omittedObservations, observations,
+      exceptionCode: typeof error === 'object' && error !== null && 'code' in error ? composeDiagnosticCode(error.code) : null,
+      refusal: error instanceof Error && composeDiagnosticRefusals.has(error.message) ? error.message : null
+    }));
+    throw error;
+  } finally {
+    run.mockRestore();
+  }
+}
 
 describe('release-owned real context validator bodies, not phase qualification', () => {
   let root: string;
@@ -788,7 +855,46 @@ describe('release-owned real context validator bodies, not phase qualification',
     }
   });
 
-  it('runs the same real Compose configuration command for valid source and an actual missing-service dependency', async () => {
+  it('retains actual bounded Compose diagnostic fields without serializing inputs or submitting extra commands', async () => {
+    const value = await fixture(), filename = path.join(value.root, 'private-diagnostic-source.mjs');
+    await value.write(['private-diagnostic-source.mjs'], 'const PRIVATE_DIAGNOSTIC_SOURCE = ;\n');
+    const failure = new Error('Original owned diagnostic control failure');
+    let actual: ActualCommandResult | undefined;
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
+    try {
+      await expect(withComposeDiagnostics('owned-syntax-control', async () => {
+        actual = await new NodeCommandRunner().run({ executable: process.execPath, args: ['--check', filename] },
+          { cwd: value.root, timeoutMs: 5000, maxOutputBytes: 4096, ensureProcessTreeSettled: true, stream: false });
+        throw failure;
+      })).rejects.toBe(failure);
+      if (!actual) throw new Error('The owned syntax control returned no actual command result.');
+      expect(actual).toMatchObject({ processSpawned: true, processTreeSettled: true, timedOut: false });
+      expect(actual.status).toBe(1);
+      expect(actual.errorCode ?? null).toBeNull();
+      expect(log).toHaveBeenCalledTimes(1);
+      const text = log.mock.calls[0]![0];
+      if (typeof text !== 'string') throw new Error('The diagnostic control emitted a non-text record.');
+      expect(text.startsWith('Bounded Compose fixture diagnostic: ')).toBe(true);
+      const diagnostic = JSON.parse(text.slice('Bounded Compose fixture diagnostic: '.length));
+      expect(diagnostic).toEqual({
+        context: 'owned-syntax-control', runtime: { node: process.version, platform: process.platform, arch: process.arch },
+        callThroughCount: 1, omittedObservations: 0, refusal: null, exceptionCode: null,
+        observations: [{ kind: 'owned-syntax-control', version: null, result: {
+          status: actual.status, signal: actual.signal, processSpawned: actual.processSpawned ?? null,
+          processTreeSettled: actual.processTreeSettled ?? null, timedOut: actual.timedOut ?? null,
+          outputLimitExceeded: actual.outputLimitExceeded ?? null, aborted: actual.aborted ?? null,
+          errorCode: null, stdoutBytes: Buffer.byteLength(actual.stdout), stderrBytes: Buffer.byteLength(actual.stderr)
+        } }]
+      });
+      for (const privateValue of [filename, value.root, 'PRIVATE_DIAGNOSTIC_SOURCE', failure.message])
+        expect(text).not.toContain(privateValue);
+      expect(Buffer.byteLength(text)).toBeLessThanOrEqual(8192);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('runs the same real Compose configuration command for valid source and an actual missing-service dependency', async () => withComposeDiagnostics('configuration', async () => {
     const value = await fixture();
     const green = await executeWorkflowComposeConfigValidator(value.root, value.sourceSha);
     expect(green).toMatchObject({
@@ -809,7 +915,7 @@ describe('release-owned real context validator bodies, not phase qualification',
     });
     expect(red.command!.status).not.toBe(0);
     expect(JSON.stringify(red)).not.toContain('missing-service');
-  });
+  }));
 
   it('refuses changed uncommitted Compose source before running its configuration validator', async () => {
     const value = await fixture();
@@ -818,7 +924,7 @@ describe('release-owned real context validator bodies, not phase qualification',
       .toMatchObject({ status: 'failed', code: 'validator-source-mismatch', workloadExecution: false, command: null });
   });
 
-  it('does not read a real untracked dotenv file or implicit Compose override into its closed configuration check', async () => {
+  it('does not read a real untracked dotenv file or implicit Compose override into its closed configuration check', async () => withComposeDiagnostics('closed-inputs', async () => {
     const value = await fixture();
     await value.write(['.env'], 'PRIVATE_FIXTURE_VALUE="unterminated\n');
     await value.write(['compose.override.yml'], 'services:\n  app:\n    depends_on:\n      - missing-implicit-service\n');
@@ -828,7 +934,7 @@ describe('release-owned real context validator bodies, not phase qualification',
       retainedExecutionDirectory: null, phaseProof: 'not-issued'
     });
     expect(JSON.stringify(report)).not.toContain('PRIVATE_FIXTURE_VALUE');
-  });
+  }));
 
   it('does not admit the private Compose subcheck through public execution or accept a nonliteral source commit', async () => {
     const value = await fixture(), run = vi.spyOn(NodeCommandRunner.prototype, 'run');
@@ -845,20 +951,24 @@ describe('release-owned real context validator bodies, not phase qualification',
   });
 
   it('refuses actual copied plugin drift after a successful settled configuration child without changing installed host programs', async () => {
-    const value = await fixture(), planned = await planModernLocalRuntime(await inspectModernLocalRuntime(value.root));
-    const check = planned.localPlan!.checks.find(candidate => candidate.id === 'compose-config')!;
-    const observed = (await observeModernLocalTools(value.root, [check], [])).find(tool => tool.id === 'docker')!;
-    const bundle = await mkdtemp(path.join(root, 'copied-compose-tools-'));
-    await mkdir(path.join(bundle, 'bin'));
-    await mkdir(path.join(bundle, 'cli-plugins'));
-    const plugin = path.join(bundle, 'cli-plugins', 'docker-compose');
-    await copyFile(observed.files[0]!.path, path.join(bundle, 'bin', 'docker'));
-    await copyFile(observed.executablePath, plugin);
-    vi.stubEnv('PATH', [path.join(bundle, 'bin'), process.env.PATH].join(path.delimiter));
-    const original = NodeCommandRunner.prototype.run;
-    let home = '', changed = false;
-    const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(async function (this: NodeCommandRunner, command, options) {
-      const result = await original.call(this, command, options);
+    let plugin = '', home = '', changed = false;
+    await withComposeDiagnostics('plugin-drift', async () => {
+      const value = await fixture(), planned = await planModernLocalRuntime(await inspectModernLocalRuntime(value.root));
+      const check = planned.localPlan!.checks.find(candidate => candidate.id === 'compose-config')!;
+      const observed = (await observeModernLocalTools(value.root, [check], [])).find(tool => tool.id === 'docker')!;
+      const bundle = await mkdtemp(path.join(root, 'copied-compose-tools-'));
+      await mkdir(path.join(bundle, 'bin'));
+      await mkdir(path.join(bundle, 'cli-plugins'));
+      plugin = path.join(bundle, 'cli-plugins', 'docker-compose');
+      await copyFile(observed.files[0]!.path, path.join(bundle, 'bin', 'docker'));
+      await copyFile(observed.executablePath, plugin);
+      vi.stubEnv('PATH', [path.join(bundle, 'bin'), process.env.PATH].join(path.delimiter));
+      await expect(executeWorkflowComposeConfigValidator(value.root, value.sourceSha))
+        .rejects.toThrow('Installed local tool bytes or physical identity changed.');
+      expect(changed).toBe(true);
+      expect(path.basename(home)).toMatch(/^liftoff-workflow-validator-/u);
+      await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' });
+    }, async (command, options, result) => {
       if (command.executable === plugin && command.args.includes('config') && result.status === 0 &&
           result.processTreeSettled === true) {
         const actualHome = options?.env?.HOME;
@@ -867,17 +977,7 @@ describe('release-owned real context validator bodies, not phase qualification',
         await appendFile(plugin, '\n');
         changed = true;
       }
-      return result;
     });
-    try {
-      await expect(executeWorkflowComposeConfigValidator(value.root, value.sourceSha))
-        .rejects.toThrow('Installed local tool bytes or physical identity changed.');
-      expect(changed).toBe(true);
-      expect(path.basename(home)).toMatch(/^liftoff-workflow-validator-/u);
-      await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' });
-    } finally {
-      run.mockRestore();
-    }
   });
 
   it('retains the actual isolated HCL runtime refusal before private formatting without substituting execution', async () => {
