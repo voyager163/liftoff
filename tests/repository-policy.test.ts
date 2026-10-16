@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { parse } from 'yaml';
@@ -10,6 +12,7 @@ import {
   nativeBundleQualificationJob, nativePlatformQualificationJob,
   checkNativeCustodyQualificationJob, nativeCustodyWorkflowFile
 } from '../scripts/check-repository-policy.mjs';
+import { readPinnedCiTool } from '../scripts/prepare-ci-local-tools.mjs';
 
 const root = process.cwd();
 const fixtures: string[] = [];
@@ -31,6 +34,48 @@ describe('source repository setup policy', () => {
     const workflow = await readWorkflow('ci.yml');
     const setup = workflow.jobs[job].steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/setup-node@'));
     expect(setup.with['node-version']).toBe('24.21.0');
+  });
+
+  it.each(['test-shards', 'coverage-cli'])('requires pinned Linux tool preparation in %s', async id => {
+    for (const fault of ['missing', 'conditional', 'ignored', 'replaced', 'late', 'duplicate']) {
+      const workflow = await readWorkflow('ci.yml'), steps = workflow.jobs[id].steps;
+      const index = steps.findIndex((step: { name?: string }) => step.name === 'Prepare pinned Linux Docker and Compose');
+      if (fault === 'missing') steps.splice(index, 1);
+      if (fault === 'conditional') steps[index].if = 'false';
+      if (fault === 'ignored') steps[index]['continue-on-error'] = true;
+      if (fault === 'replaced') steps[index].run = 'docker --version';
+      if (fault === 'late') steps.push(...steps.splice(index, 1));
+      if (fault === 'duplicate') steps.push(structuredClone(steps[index]));
+      expect(() => checkWorkflow('ci.yml', workflow), `${id}/${fault}`).toThrow();
+    }
+  });
+
+  it('reads pinned CI bytes independently and rejects changed contents, symlinks and directories', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ci-tool-test-'));
+    fixtures.push(directory);
+    const file = path.join(directory, 'tool'), bytes = Buffer.from('checksum control; not a native execution');
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    await writeFile(file, bytes);
+    expect((await readPinnedCiTool(file, sha256)).observation).toMatchObject({ sha256, bytes: bytes.length });
+    await writeFile(file, Buffer.from('changed'));
+    await expect(readPinnedCiTool(file, sha256)).rejects.toThrow('checksum mismatch');
+    const link = path.join(directory, 'link');
+    await symlink(file, link, 'file');
+    await expect(readPinnedCiTool(link, sha256)).rejects.toThrow('regular, non-symlink');
+    await expect(readPinnedCiTool(directory, sha256)).rejects.toThrow('regular, non-symlink');
+  });
+
+  it('refuses extra bootstrap arguments before creating files or running tools', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ci-tool-refusal-'));
+    fixtures.push(directory);
+    const result = spawnSync(process.execPath, ['scripts/prepare-ci-local-tools.mjs', '--unexpected'], {
+      cwd: root, encoding: 'utf8', timeout: 5000, env: { ...process.env, RUNNER_TEMP: directory }
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('CI local-tool preparation accepts no arguments.');
+    expect(result.stdout).toBe('');
+    expect(await readdir(directory)).toEqual([]);
   });
 
   it('pins a dispatch-only native custody qualification without changing ordinary CI', async () => {
