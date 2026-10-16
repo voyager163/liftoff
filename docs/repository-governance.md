@@ -576,10 +576,12 @@ Missing-scanner fixtures preserve Git in their reduced search path: Windows uses
 the directory of the actual resolved Git executable, not POSIX system directories.
 They verify Git remains visible and the scanner launcher is absent before invoking
 the validator, so a Git lookup failure cannot substitute for a scanner refusal.
-The workload environment allowlist retains both defined `PATH` and `Path` spellings,
-including case-sensitive worker snapshots of a Windows environment. Its regression
-checks the actual emitted options and native resolver against a real Go invocation;
-portable execution of that control does not establish native Windows qualification.
+The workload environment allowlist copies only actually enumerated keys, retaining
+a defined `PATH` or `Path` without manufacturing duplicate aliases on case-insensitive
+hosts. Missing-scanner fixtures likewise use only one defined Windows search-path key.
+Portable worker/host models check actual workload options, native resolution and the
+unchanged native environment encoder against real Go invocation. They do not establish
+native Windows qualification.
 An additional Windows-only diagnostic repeats one owned syntax-check file under
 the original minimal environment, that environment plus the host's actual
 `SystemRoot`, and surrounding ambient-environment controls. All comparisons retain

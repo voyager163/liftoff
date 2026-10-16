@@ -16,6 +16,7 @@ import { observeModernLocalTools } from '../src/adapters/process/modern-local-to
 import { WorkflowCheckovInvocation } from '../src/adapters/process/workflow-checkov.js';
 import { inspectModernLocalRuntime, planModernLocalRuntime } from '../src/application/governance/modern-local-inputs.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
+import { encodeWindowsEnvironmentBlock } from '../src/adapters/process/windows-job-protocol.js';
 import { resolveTargetExecutableCommand } from '../src/adapters/process/windows-job-runner.js';
 import { hclComputationPolicy } from '../src/adapters/hcl/isolated-parser.js';
 
@@ -43,7 +44,11 @@ describe('release-owned real context validator bodies, not phase qualification',
       if (!command) throw new Error('The missing-scanner fixture requires an actual installed Git executable.');
       selected = path.dirname(command.executable);
     }
-    return { ...process.env, PATH: selected, ...(platform === 'win32' ? { Path: selected } : {}) };
+    const env = { ...process.env };
+    if (platform === 'win32') {
+      for (const key of Object.keys(env)) if (key.toLowerCase() === 'path') delete env[key];
+    }
+    return { ...env, PATH: selected };
   }
   async function fixture(testSource = '', frontend = false, workflow: 'manual' | 'spec-kit' = 'manual',
     apiStack: 'node-fastify' | 'go-huma' = 'node-fastify') {
@@ -120,23 +125,29 @@ describe('release-owned real context validator bodies, not phase qualification',
     if (!command) throw new Error('The reduced-path regression requires an actual installed Git executable.');
     const selected = missingScannerEnvironment(root, 'win32');
     expect(selected.PATH).toBe(path.dirname(command.executable));
-    expect(selected.Path).toBe(selected.PATH);
+    const aliases = Object.fromEntries(Object.entries(selected).filter(([key]) => key.toLowerCase() === 'path'));
+    expect(() => encodeWindowsEnvironmentBlock(aliases)).not.toThrow();
+    expect(Object.keys(aliases)).toEqual(['PATH']);
     const actual = execFileSync('git', ['--version'], {
       cwd: root, encoding: 'utf8', env: selected
     });
     expect(actual).toMatch(/^git version /);
   });
 
-  it('preserves a defined Path-only worker environment in actual workload options without claiming native Windows execution', async () => {
+  it.each(['case-sensitive worker', 'case-insensitive host'] as const)(
+    'preserves a defined Path-only %s in actual workload options without claiming native Windows execution', async model => {
     const value = await fixture('', false, 'manual', 'go-huma');
     const ambient = process.env, actualPath = ambient.PATH ?? ambient.Path;
     if (!actualPath) throw new Error('The Path-only workload regression requires an actual tool search path.');
     const workerEnvironment: NodeJS.ProcessEnv = { ...ambient, Path: actualPath };
     delete workerEnvironment.PATH;
     const observations: { pathPreserved: boolean; targetVisible: boolean }[] = [];
+    const environments: NodeJS.ProcessEnv[] = [];
     const original = NodeCommandRunner.prototype.run;
     const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(async function (this: NodeCommandRunner, command, options) {
       if (options?.timeoutMs === 180_000 && options.maxOutputBytes === 1024 * 1024) {
+        if (!options.env) throw new Error('The workload regression requires the actual explicit environment.');
+        environments.push(options.env);
         observations.push({
           pathPreserved: options.env?.Path === actualPath,
           targetVisible: resolveTargetExecutableCommand(command, options.env, options.cwd) !== null
@@ -146,9 +157,16 @@ describe('release-owned real context validator bodies, not phase qualification',
       return original.call(this, command, options);
     });
     try {
-      process.env = workerEnvironment;
+      process.env = model === 'case-sensitive worker' ? workerEnvironment : new Proxy(workerEnvironment, {
+        get(target, key) {
+          if (typeof key !== 'string') return Reflect.get(target, key);
+          const alias = Object.keys(target).find(name => name.toLowerCase() === key.toLowerCase());
+          return alias === undefined ? undefined : target[alias];
+        }
+      });
       const result = await executeWorkflowContextValidator(value.root, { validator: 'backend-tests', sourceSha: value.sourceSha });
       expect(observations).toEqual([{ pathPreserved: true, targetVisible: true }]);
+      for (const environment of environments) expect(() => encodeWindowsEnvironmentBlock(environment)).not.toThrow();
       expect(result).toMatchObject({ status: 'passed', workloadExecution: true, phaseProof: 'not-issued',
         command: { status: 0, processTreeSettled: true }, retainedExecutionDirectory: null });
     } finally {
