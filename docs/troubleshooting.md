@@ -537,10 +537,13 @@ separate reviewed migration.
 Approved historical infrastructure validation uses backend-disabled private
 staging and requires explicit process-tree settlement before deleting provider
 outputs. Unknown settlement retains staging and blocks the project transaction.
-A cleanup failure never authorizes repair or hides an earlier validation failure;
-both failures are retained internally, with only fixed validation diagnostics
-reported. Do not retry deletion, remove an active provider executable, or assume
-an `EBUSY` error identifies the process holding it.
+Only after confirmed settlement, cleanup permits three bounded native filesystem
+retries with a 100 ms linear backoff. A cleanup failure never authorizes repair or
+hides an earlier validation failure; both failures are retained internally, with
+only fixed diagnostics and recognized filesystem error codes reported. Private
+paths and provider diagnostics are not echoed. Do not manually retry deletion,
+remove an active provider executable, or assume an `EBUSY` error identifies the
+process holding it.
 
 ## Windows native verification cannot admit a target
 

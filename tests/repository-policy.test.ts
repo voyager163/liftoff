@@ -27,6 +27,12 @@ function pullRequest(base: string, head: string, owner = 'voyager163/liftoff') {
 }
 
 describe('source repository setup policy', () => {
+  it.each(['test-shards', 'coverage-cli'])('selects qualified Node24.21.0 for CLI job %s', async job => {
+    const workflow = await readWorkflow('ci.yml');
+    const setup = workflow.jobs[job].steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/setup-node@'));
+    expect(setup.with['node-version']).toBe('24.21.0');
+  });
+
   it('pins a dispatch-only native custody qualification without changing ordinary CI', async () => {
     const workflow = await readWorkflow(nativeCustodyWorkflowFile);
     expect(workflow.on.workflow_dispatch).toBeNull();

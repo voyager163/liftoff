@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, cp, lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runMacMigration } from '../src/application/upgrade/mac-migration.js';
 import { captureMigrationTree, migrationAbsent } from '../src/adapters/distribution/mac-migration-state.js';
@@ -19,7 +19,20 @@ describe.skipIf(process.platform === 'win32' || !npm || path.basename(npm) !== '
     it.for(cases)('preserves exact scope through actual npm uninstall, $outcome, shared launcher $sharedLauncher',
       { timeout: 30_000 }, async ({ outcome, sharedLauncher }, { task }) => {
         const value = await macMigrationFixture('custom', sharedLauncher); fixtures.push(value);
-        value.request.selection = { npm: await realpath(npm!), node: await realpath(process.execPath),
+        const originals = { npm: await realpath(npm!), node: await realpath(process.execPath) };
+        const tools = path.join(value.root, 'actual tools');
+        await mkdir(path.join(tools, 'bin'), { recursive: true, mode: 0o700 });
+        await cp(path.dirname(path.dirname(originals.npm)), path.join(tools, 'npm'), {
+          recursive: true, verbatimSymlinks: true, errorOnExist: true, force: false
+        });
+        const selected = { npm: path.join(tools, 'npm/bin/npm-cli.js'), node: path.join(tools, 'bin/node') };
+        await copyFile(originals.node, selected.node);
+        await chmod(selected.node, 0o755);
+        await chmod(path.join(tools, 'npm'), 0o700);
+        await chmod(path.dirname(selected.npm), 0o700);
+        expect(macMigrationHash(await readFile(selected.npm))).toBe(macMigrationHash(await readFile(originals.npm)));
+        expect(macMigrationHash(await readFile(selected.node))).toBe(macMigrationHash(await readFile(originals.node)));
+        value.request.selection = { ...selected,
           prefix: value.prefix, manager: 'custom' };
         const before = await captureMigrationTree(value.oldPackage);
         const unrelated = path.join(value.prefix, 'lib/node_modules/unrelated/package.json');
@@ -36,7 +49,7 @@ describe.skipIf(process.platform === 'win32' || !npm || path.basename(npm) !== '
           const result = await actualRun(command, options); processes.push({ result, options }); return result;
         });
         if (outcome === 'settled-recovery') value.dependencies.cask!.installExact = async () => ({ settled: true, installed: false });
-        const evidence = { actualNpm: value.request.selection.npm, actualNode: value.request.selection.node,
+        const evidence = { actualNpm: value.request.selection.npm, actualNode: value.request.selection.node, originalTools: originals,
           privatePrefix: value.prefix, processes, outcome, sharedLauncher, preserved,
           syntheticOldClientAndCask: true, realHostGlobalInstallationTouched: false };
         Object.assign(task.meta, { actualNpmSettlement: evidence });

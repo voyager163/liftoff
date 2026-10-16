@@ -6,6 +6,7 @@ import type { CommandRunner } from '../../process-runner.js';
 import { commandFailure } from './discovery.js';
 import type { InfrastructureRepairCandidate } from './infrastructure.js';
 import { packagedSupportedStack } from '../../adapters/packaged-assets/supported-stack.js';
+import { errorCode } from '../../adapters/filesystem/errors.js';
 import { compareVersionCores, extractVersion, isPrereleaseVersion } from '../../domain/workstation/versions.js';
 
 export const repairValidationPolicy = {
@@ -105,15 +106,18 @@ export async function validateRepairCandidate(
       { cause: failure?.error });
   }
   try {
-    await rm(staging, { recursive: true, force: true });
+    await rm(staging, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   } catch (error) {
+    const code = errorCode(error);
+    const detail = code && ['EACCES', 'EBUSY', 'EMFILE', 'ENFILE', 'ENOTEMPTY', 'EPERM', 'EIO'].includes(code)
+      ? ` (${code})` : '';
     if (failure) {
       const primary = failure.error instanceof RepairValidationError ? failure.error.message : 'Isolated OpenTofu validation failed.';
       throw new AggregateError([failure.error, error],
-        `${primary} Private staging cleanup also failed; no project transaction is authorized.`,
+        `${primary} Private staging cleanup also failed${detail}; no project transaction is authorized.`,
         { cause: failure.error });
     }
-    throw new Error('Private OpenTofu staging cleanup failed; no project transaction is authorized.', { cause: error });
+    throw new Error(`Private OpenTofu staging cleanup failed${detail}; no project transaction is authorized.`, { cause: error });
   }
   if (failure) throw failure.error;
 }

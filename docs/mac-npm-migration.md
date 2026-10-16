@@ -247,8 +247,11 @@ Clock-controlled observation cases check the exact elapsed deadline, timely
 success and preservation after a late installation result. They use private
 process/filesystem fixtures, not real elapsed-wall-time or live-cask proof.
 When `npm_execpath` explicitly selects an npm CLI, four additional disposable
-prefix cases use that actual owning npm to uninstall only the fixture package,
-with separate/shared launcher paths and handover/settled recovery. They verify
+prefix cases copy the complete selected npm package and actual Node executable
+into fixture-owned private tool directories before uninstalling only the fixture
+package. The selected executable bytes are compared with their originals; host
+tool-cache directory permissions are neither trusted nor modified. Separate/shared
+launcher paths and handover/settled recovery verify
 unrelated package bytes and read-only preferences survive. The old client and
 cask remain synthetic in those cases; actual npm filesystem settlement is not
 real Homebrew, historical-client, minimum-host or no-transport qualification.
