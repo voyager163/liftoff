@@ -132,7 +132,8 @@ describe('private scanner invocation refusals do not launch a fake successful sc
     expect(selected.processTreeSettled).toBe(true);
     expect(selected.processSpawned).toBe(false);
   });
-  it.each([Infinity, NaN, performance.now() + 3600_000])('refuses unbounded or renewed preparation cutoffs %s', deadline => {
+  it.each(['Infinity', 'NaN', 'renewed'] as const)('refuses unbounded or renewed preparation cutoffs %s', kind => {
+    const deadline = kind === 'Infinity' ? Infinity : kind === 'NaN' ? NaN : performance.now() + 3600_000;
     expect(() => new WorkflowCheckovInvocation('/unused', '/unused', [], deadline)).toThrow(/cutoff/u);
   });
   it('reports missing installed Checkov without installing, substituting or invoking a command', async () => {
