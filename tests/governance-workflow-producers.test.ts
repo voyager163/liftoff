@@ -1,6 +1,6 @@
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { createServer } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { parse, stringify } from 'yaml';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
@@ -699,11 +699,33 @@ describe('bounded exact-commit workflow context production', () => {
     if (!address || typeof address === 'string') throw new Error('Isolated HTTP fixture did not bind.');
     f.input.adapters = { githubActivation: { transport: {
       async request(request) {
-        const response = await fetch(`http://127.0.0.1:${address.port}${request.path}`, {
-          method: request.method, signal: AbortSignal.timeout(1000),
-          ...(request.body === undefined ? {} : { body: JSON.stringify(request.body) })
+        return new Promise<GitHubResponse>((resolve, reject) => {
+          const outgoing = httpRequest(`http://127.0.0.1:${address.port}${request.path}`, {
+            method: request.method, signal: AbortSignal.timeout(1000), agent: false
+          }, response => {
+            const chunks: Buffer[] = [];
+            let bytes = 0;
+            response.on('error', reject);
+            response.on('data', (chunk: Buffer) => {
+              bytes += chunk.length;
+              if (bytes > 1024 * 1024) {
+                response.destroy(new Error('The isolated HTTP fixture response exceeds its byte bound.'));
+                return;
+              }
+              chunks.push(chunk);
+            });
+            response.on('end', () => {
+              try {
+                if (response.statusCode === undefined) throw new Error('The isolated HTTP fixture response has no status.');
+                resolve({ status: response.statusCode, headers: Object.fromEntries(Object.entries(response.headers)
+                  .map(([key, value]) => [key, Array.isArray(value) ? value.join(', ') : value ?? ''])),
+                data: JSON.parse(Buffer.concat(chunks).toString('utf8')) });
+              } catch (error) { reject(error); }
+            });
+          });
+          outgoing.on('error', reject);
+          outgoing.end(request.body === undefined ? undefined : JSON.stringify(request.body));
         });
-        return { status: response.status, headers: Object.fromEntries(response.headers), data: await response.json() };
       }
     } } };
     try {

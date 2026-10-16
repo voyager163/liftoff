@@ -137,6 +137,35 @@ separate and unavailable through this subcheck. There is no public
 `compose-config` selector. Independent program observations are not qualified
 native-host authority; unavailable or changed installed tools never fall back
 to operator Docker configuration or a caller-supplied successful observation.
+For system-installed Linux Docker, plugin observation uses Docker29.8.2's finite
+system directory precedence: `/usr/local/lib`, `/usr/local/libexec`, `/usr/lib`,
+then `/usr/libexec`, each under `docker/cli-plugins`. Existing independently
+observed private installation prefixes remain separate from system discovery.
+The first candidate found by Docker's follow-link existence stat must itself
+pass native-file, version and settlement checks. An initially dangling link is
+absent under that stat, but failures after a successful stat, including capture
+disappearance, are never treated as absence or replaced by a lower-priority plugin.
+Consumption rechecks both the program files and the selected plugin, including
+the appearance of a new higher-priority candidate. No user Docker configuration,
+caller plugin directory or host installation is admitted.
+
+The private component formatter retains the isolated HCL parser's exact qualified
+runtime tuple. Its five real execution/source-drift/program-drift controls must
+run on qualified darwin/arm64 Node24.21.0; elsewhere they are explicitly named
+unrun cases, not successful formatting. An always-run capability control observes
+the actual refusal and verifies that no formatter command or phase proof was
+substituted. Linux Docker configuration does not qualify Linux HCL interpretation.
+The Terraform module-closure refusal control also requires that unchanged qualified
+tuple: its original body must execute there and is explicitly unrun elsewhere.
+A separate always-run control observes the actual input-capability refusal before
+Checkov, with no scanner invocation, workload command or phase proof. It does not
+claim that Checkov inspected or rejected a module on an unsupported runtime.
+
+Settled immutable Git reads preserve the actual invocation environment, including
+executable discovery, before clearing inherited Git overrides and applying the
+same neutral configuration as metadata reads. Call-through inventory controls
+retain complete NUL-delimited output and settlement checks; local observation
+does not qualify Windows execution or a current5 native tool subject.
 
 Private `observeSource5WorkflowRequirementSource` reads the complete immutable
 ruleset source using the original current5 context and read-only observation
@@ -176,6 +205,26 @@ commands and preserves the original read-only runtime/deadline. It is private
 compiler-input plumbing, not the completed semantic compiler or installed
 review/approval/apply composition, and changes no public help or JSON contract.
 
+Private `declareSource5WorkflowSources` owns one finite intended semantic
+declaration for future paired workflow/ruleset sources. Its fourteen proposed
+full job/check identities are not the observed required inventory, an approved
+integration mapping or completed executable recipes. It accepts only the
+constructed current5 context and preserves that graph's exact single-maintainer
+zero-human-review or team one-current-independent-human-review policy.
+Every intended recipe has specific missing program, actual integration,
+complete-job, runner/action/tool, genuine negative-source and semantic-evidence
+obligations. Approved current5 release subjects and actual integration subjects
+are unavailable: the result is explicitly blocked, with **no publication
+sources or effects**, no complete jobs, no guessed integration IDs and no
+prerequisite/session authority. There are no placeholder workflows or rulesets,
+and an older published package or development build cannot fill the release
+slot. Actual arbitrary names/integration IDs, including `__proto__`, remain in
+the independent source reader; a CodeQL-named backend-test job stays blocked.
+This private refusal boundary is not completion of rendering, independent
+whole-body semantic compilation, the issuer, installed orchestration or14.3.
+The existing publication paths, exact per-file approval/readback and public
+review/effect, protected journal and joint-finalization boundaries are unchanged.
+
 Private `observeSource5WorkflowDependencyReview` reads the actual GitHub
 dependency diff for exact repository/base/head commit/tree selectors through
 the original read-only runtime. It verifies a bounded complete ancestor-to-head
@@ -192,6 +241,48 @@ semantic context mapping or a prerequisite session. This private provider body
 does not admit either operator OAuth or automation tokens, execute project code,
 or change public review/effect routing, JSON/help, recipes or phase authority.
 
+Private `observeSource5WorkflowCodeScanning` independently reads the exact
+repository, protected-family ref and immutable commit/tree before and after
+two complete bounded code-scanning analysis inventories. It does not filter
+by a proposed CodeQL tool name/GUID or drop unknown tools, older commits or
+zero-rule analyses. Every record remains represented by its ID, exact metadata
+digest and actual counters; uploader keys, environment, category, tool metadata
+and diagnostic contents are withheld behind digests/explicit flags. Documented
+empty metadata strings and absent optional tool fields stay distinct and are
+not replaced with invented subjects. Source
+matches are descriptive, not currentness/session authority. Malformed, duplicate,
+foreign, truncated, changed or inaccessible responses refuse rather than become
+empty successful scans. The result is always blocked: empty/historical
+inventories, source-analysis diagnostics and missing authenticated program,
+query/language coverage and original-report subjects have explicit reasons.
+The existing GitHub read transport fixes its JSON media type; this observer
+does not silently widen it to SARIF. GitHub's custom SARIF response is itself
+only a subset of uploaded data, not authenticated original publisher/program
+provenance. Positive rule counts, zero results or a `CodeQL` label therefore
+qualify neither CodeQL nor a required context. No scan/upload/Autofix operation,
+public selector, declaration source, accepted integration mapping or phase
+authority is issued by this private metadata reader.
+
+Private `observeSource5WorkflowSecretProtectionHistory` reads the platform's
+actual latest-scan metadata twice, with the same independent repository,
+protected-ref and commit/tree readback. The shared reference guard preserves
+the code-scanning reader's original admission and before/after ordering.
+All five documented scan buckets, custom-pattern records and unknown fields
+remain represented; absent buckets, actual empty arrays and explicit null
+timestamps are distinct. Pattern details and unsupported fields are withheld
+behind digests. Custom-pattern envelopes are opaque objects, not assumed to
+share the ordinary scan-record fields. Malformed, oversized, inaccessible or
+changed responses refuse.
+This endpoint exposes latest scan types/statuses/timestamps, not a commit
+selector, original source-bound report or complete detector inventory.
+A completed label, recent timestamp, successful endpoint access, enabled flag
+or empty bucket therefore yields no clean-scan or licensing verdict. The reader
+always blocks pending authenticated exact-source scan/coverage subjects and a
+platform-supported explicitly approved non-credential negative control.
+It retrieves no alert secrets or locations, performs no scans/bypasses/writes,
+admits no substitute scanner, and issues no declaration source, integration
+mapping, currentness/session authority or phase proof.
+
 Private `executeWorkflowTofuComponentFormatValidator(projectRoot, sourceSha,
 component)` validates one actual selected OpenTofu component. It reuses the
 captured-file formatter policy: only explicit present `.tf` paths are passed,
@@ -207,6 +298,86 @@ existing 1.12 release line and minimum 1.12.6; that compatibility observation is
 not separately pinned native-host qualification. The subcheck has no public
 selector; its private report retains the existing shape and explicitly issues
 no phase proof.
+
+Private `executeWorkflowCheckovComponentValidator(projectRoot, sourceSha,
+component)` runs the actual Checkov Terraform policies against the same finite,
+explicit captured `.tf` scope. It rechecks committed inputs after both policy
+success and policy failure. Module references and function expressions are
+conservatively refused until their actual input/evaluation closure is qualified;
+this lexical refusal also rejects comment/string lookalikes and is not a second
+Terraform parser. Nonempty, ordinary in-scope findings must agree with the real
+process exit and resource/check counts; skipped or suppressed checks,
+parse failures, empty coverage, soft-fail disagreement and incomplete output
+block qualification rather than becoming a green or controlled-red result.
+The existing thirteen-key private report and five public selectors are unchanged.
+
+Private `executeWorkflowCheckovDockerfileValidator(projectRoot, sourceSha,
+component)` analyzes only the actual bound `backend`, `frontend` or
+`function-worker` component's committed `Dockerfile`. An absent/unselected file,
+uncommitted input or unsafe source membership refuses before scanning. The
+finite `dockerfile` framework does not enable the separate `sca_image` image
+referencer: this body never builds, pulls, publishes or vulnerability-scans an
+image, and it does not execute Dockerfile instructions or infer image provenance.
+The same bounded program inventory, original deadline, private HOME and final
+source/Git readback apply. Dockerfile coverage counts actual checked files, not
+instruction findings; repeated instructions have distinct source-span identities,
+while duplicate findings, omitted files, suppression and empty coverage refuse.
+This private body is not a public selector or a complete container qualification.
+
+Private `executeWorkflowCheckovWorkflowValidator(projectRoot, sourceSha)`
+analyzes the complete actual top-level committed `.github/workflows/*.yml` and
+`*.yaml` inventory. Missing, untracked, nested, linked, executable or changed
+workflow inputs refuse; exact regular-file bytes/modes/membership are read
+before and after the settled scanner, within its original cutoff. This is
+workflow-file analysis only: it never executes workflow steps, resolves/downloads
+actions or reusable workflows, publishes a report, or qualifies their referenced
+code. Action-reference closure and complete context semantics remain separate.
+The supported Checkov Actions runner leaves `resource_count` at zero even with
+real findings; no positive resource count is invented. Every selected workflow
+must instead have actual nonempty findings, with consistent counts/exit status
+and bounded framework-specific resource/span identities. The exact `[0,1]`
+synthetic trigger span is accepted only for the runner's `CKV_GHA_7` trigger
+record; zero source lines remain invalid for other findings and frameworks.
+Changing a workflow file to demonstrate an actual finding is development
+scanner evidence, not an admissible current5 controlled-red source. The public
+five selectors, private thirteen-key report and blocked declaration are unchanged.
+
+The implemented development compatibility profile is Checkov 3.3.20 in an
+isolated POSIX Python 3.14 virtual environment, not a released/supported-stack
+or native-host admission. A fixed `-I -S -B` bootstrap imports explicit observed
+roots; no shell trampoline, executable `.pth` hook, user site, project Python
+path or operator Checkov configuration is executed. The bounded selected import
+roots, standard-library files, launcher, interpreter-bin membership, declared file-link targets
+and virtual-environment configuration are observed before and after scanning.
+Declared import roots under a traversal-skipped `site-packages` directory are
+inventoried independently, including their package bytes and membership. Only
+roots actually covered by an ancestor traversal are elided; an undeclared global
+site directory remains excluded by the isolated bootstrap.
+Unsupported path hooks, directory links or outside-prefix file links refuse;
+there is no automatic installation or fallback to a different program.
+This observed import inventory is not native linked-library closure, an approved
+immutable release/tool subject or execution confinement. Downloads, external
+module downloads and result uploads are disabled in the scanner invocation;
+its HOME, cache, temporary files and configuration are private. One absolute
+180-second preparation/execution cutoff is retained across observations.
+
+The real local verification is separate from Vitest's unchanged 30-second cases
+and skips: after a build, run `node scripts/verify-workflow-checkov.mjs` with the
+isolated scanner prefix on invocation-only `PATH`. Its dependency declaration is
+`tests/fixtures/workflow-checkov-requirements.txt`; restore it only into a
+separately owned unseeded `python3.14 -m venv --without-pip` environment, with a
+stripped environment, private HOME/XDG/cache and `uv pip install --no-config --no-cache --link-mode copy
+--only-binary :all: --index-url https://pypi.org/simple --python <owned-python>
+--requirement tests/fixtures/workflow-checkov-requirements.txt`.
+The verifier installs nothing. It builds actual current5 fixtures and checks
+restricted SSH ingress, genuine public-SSH failure, suppression/empty refusal,
+post-child source drift and owned-HOME replacement, without changing policy or
+inventing child results. It also analyzes genuine backend/frontend/selected-worker
+Dockerfiles, root-user failure, repeated `RUN` instructions, suppression/empty
+refusal, source drift and HOME replacement. `RUN` text is analyzed, never executed.
+These are local component cases, not hosted protected-ref
+green/red, full IaC/Dockerfile/Actions Checkov coverage, approved recipe,
+prerequisite session, license/SCA, native-host or phase qualification.
 
 These are explicit runner operations, never operations performed by plan or
 `--live` review. Tests, builds and framework tools may execute project code and
@@ -388,8 +559,14 @@ proof from that same journal, not a caller-supplied carrier or proof list. It
 requires every component to be complete before provider reads and independently
 rechecks the complete four-family green/per-context-red matrix and immutable
 ruleset source. Carrier preparation and provider reads share the original bounded
-observation window. It performs no dispatch, replaces no original observation
+observation window. Independent original ledger and observation-carrier reads
+settle together before returning; a refusal drains its siblings and preserves the
+first observed error without starting provider readback. Every entry still
+performs its original lease, installed-scope, issuance and ownership checks.
+It performs no dispatch, replaces no original observation
 timestamp or receipt, and cannot finalize a phase.
+Cross-platform matrix fixtures run genuine syntax/JSON validators against owned
+source files. File-backed validation does not certify native stdin transport.
 
 The private source5 effect bridge uses a separate private control schema1 and the
 closed `workflow-source5-{plan,approval,journal,operation,proof}` namespaces

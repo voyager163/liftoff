@@ -3,6 +3,7 @@ import { readFile, rm, unlink } from 'node:fs/promises';
 import { setImmediate } from 'node:timers/promises';
 import { GitHubActivationError } from '../src/adapters/github/activation-rest.js';
 import * as workflowRuntime from '../src/governance-activation/workflow-runtime.js';
+import * as workflowPorts from '../src/governance-activation/workflow-source5-ports.js';
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import {
   source5WorkflowAuthorityValue, withSource5WorkflowLease
@@ -171,6 +172,48 @@ describe('complete source5 per-entry independently current matrix', () => {
       for (const stored of originals) expect(await readFile(stored.path)).toEqual(stored.bytes);
       expect(value.errors).toEqual([]);
     });
+  });
+  it('drains every original concurrent carrier read and preserves its first temporal refusal before yielding the held lease', async () => {
+    const { fixture: value, session } = originalFixture();
+    await session.read(async ({ entries, journal }) => {
+      const first = new Error('Original carrier refusal'), later = new Error('Later carrier refusal');
+      let release!: () => void, reached!: () => void, failed!: () => void, settled = false;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      const waiting = new Promise<void>(resolve => { reached = resolve; });
+      const refused = new Promise<void>(resolve => { failed = resolve; });
+      const original = workflowPorts.createSource5WorkflowEffectInput;
+      const observed = new Set<string>();
+      const read = vi.spyOn(workflowPorts, 'createSource5WorkflowEffectInput').mockImplementation(async (...args) => {
+        const input = await original(...args);
+        observed.add(input.operation.actionId);
+        if (input.operation.actionId === entries[0]!.input.operation.actionId) {
+          failed(); throw first;
+        }
+        if (input.operation.actionId === entries[1]!.input.operation.actionId) {
+          reached(); await held; throw later;
+        }
+        return input;
+      });
+      const result = observeSource5WorkflowPlanMatrix(planFields(entries[0]!), journal, value.requirements);
+      void result.then(() => { settled = true; }, () => { settled = true; });
+      try {
+        await Promise.all([waiting, refused]);
+        await setImmediate();
+        expect(settled).toBe(false);
+        expect(value.calls).toEqual([]);
+        release();
+        await expect(result).rejects.toBe(first);
+        expect(observed).toEqual(new Set(entries.map(entry => entry.input.operation.actionId)));
+        expect(read).toHaveBeenCalledTimes(entries.length);
+        expect(await journal.readFinalization()).toBeNull();
+        expect(session.pending).toBe(true);
+      } finally {
+        release();
+        await Promise.allSettled([result]);
+        read.mockRestore();
+      }
+    });
+    expect(session.pending).toBe(false);
   });
   it.each(['operation', 'proofs', 'entries', 'observationOnly', 'reviewedPlans'] as const)(
     'rejects caller-selected whole-matrix %s before provider reads', async field => {

@@ -1,11 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { appendFile, copyFile, link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink } from 'node:fs/promises';
+import { appendFile, chmod, copyFile, link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
-  executeWorkflowActionReferenceValidator, executeWorkflowComposeConfigValidator,
-  executeWorkflowContextValidator, executeWorkflowTofuComponentFormatValidator, parseWorkflowContextValidatorArgs,
+  executeWorkflowActionReferenceValidator, executeWorkflowCheckovComponentValidator, executeWorkflowCheckovDockerfileValidator, executeWorkflowComposeConfigValidator,
+  executeWorkflowContextValidator, executeWorkflowCheckovWorkflowValidator, executeWorkflowTofuComponentFormatValidator, parseWorkflowContextValidatorArgs,
   type WorkflowTofuFormatComponent
 } from '../src/workflow-context-validator.js';
 import { resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
@@ -13,8 +13,16 @@ import { writeModernInstalledProject } from './fixtures/modern-installed-project
 import { writeModernLocalFixtureInputs } from './fixtures/modern-local-project.js';
 import * as boundFiles from '../src/adapters/filesystem/bound-project-files.js';
 import { observeModernLocalTools } from '../src/adapters/process/modern-local-tools.js';
+import { WorkflowCheckovInvocation } from '../src/adapters/process/workflow-checkov.js';
 import { inspectModernLocalRuntime, planModernLocalRuntime } from '../src/application/governance/modern-local-inputs.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
+import { resolveTargetExecutableCommand } from '../src/adapters/process/windows-job-runner.js';
+import { hclComputationPolicy } from '../src/adapters/hcl/isolated-parser.js';
+
+const qualifiedHcl = process.platform === hclComputationPolicy.qualifiedRuntime.platform &&
+  process.arch === hclComputationPolicy.qualifiedRuntime.arch &&
+  process.versions.node === hclComputationPolicy.qualifiedRuntime.node;
+const nativeHclIt = it.skipIf(!qualifiedHcl);
 
 describe('release-owned real context validator bodies, not phase qualification', () => {
   let root: string;
@@ -109,6 +117,91 @@ describe('release-owned real context validator bodies, not phase qualification',
     expect(result.inputDigest).toMatch(/^[a-f0-9]{64}$/u);
   });
 
+  it('retains actual HCL capability refusal before private Terraform scanning without substituting a module rejection', async () => {
+    const value = await fixture();
+    const component = [...value.components.keys()].find((id): id is WorkflowTofuFormatComponent => id.startsWith('opentofu-'));
+    if (!component) throw new Error('The actual fixture has no OpenTofu component.');
+    const planned = await planModernLocalRuntime(await inspectModernLocalRuntime(value.root));
+    const check = planned.localPlan!.checks.find(check => check.id === `tofu-format:${component}`)!;
+    expect(check.status).toBe(qualifiedHcl ? 'planned' : 'blocked');
+    const scanner = vi.spyOn(WorkflowCheckovInvocation.prototype, 'execute');
+    try {
+      if (!qualifiedHcl) {
+        expect(check.reasons).toEqual([
+          'Isolated HCL computation is unavailable: this runtime is not the qualified darwin/arm64 Node24.21.0 tuple.'
+        ]);
+        expect(await executeWorkflowCheckovComponentValidator(value.root, value.sourceSha, component))
+          .toMatchObject({ status: 'blocked', code: 'validator-inputs', command: null, workloadExecution: false,
+            retainedExecutionDirectory: null, phaseProof: 'not-issued' });
+      }
+      expect(scanner).not.toHaveBeenCalled();
+    } finally { scanner.mockRestore(); }
+  });
+
+  nativeHclIt('refuses unproved Terraform module closure before starting the private scanner', async () => {
+    const value = await fixture();
+    const component = [...value.components.keys()].find((id): id is WorkflowTofuFormatComponent => id.startsWith('opentofu-'));
+    if (!component) throw new Error('The actual fixture has no OpenTofu component.');
+    const parts = value.components.get(component)!;
+    await value.write([...parts, 'modules', 'captured', 'main.tf'], 'locals {\n  captured = true\n}\n');
+    await value.write([...parts, 'main.tf'], 'module "captured" {\n  source = "./modules/captured"\n}\n');
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Unqualified module input closure');
+    const result = await executeWorkflowCheckovComponentValidator(value.root, git(value.root, 'rev-parse', 'HEAD'), component);
+    expect(result).toMatchObject({
+      status: 'blocked', code: 'validator-checkov', workloadExecution: false, command: null,
+      retainedExecutionDirectory: null, phaseProof: 'not-issued'
+    });
+    expect(result.message).toContain('input/evaluation closure');
+  });
+
+  it.each(['backend', 'frontend', 'function-worker'] as const)(
+    'requires an actual captured committed Dockerfile for %s, not a substituted check', async component => {
+      const value = await fixture('', true);
+      const result = await executeWorkflowCheckovDockerfileValidator(value.root, value.sourceSha, component);
+      expect(result).toMatchObject({ status: 'blocked', code: 'validator-checkov-scope', workloadExecution: false,
+        command: null, phaseProof: 'not-issued', retainedExecutionDirectory: null });
+      expect(Object.keys(result)).toHaveLength(13);
+    });
+
+  it('does not substitute an unselected component or missing installed scanner with another command', async () => {
+    const value = await fixture();
+    const missing = await executeWorkflowCheckovDockerfileValidator(value.root, value.sourceSha, 'frontend');
+    expect(missing).toMatchObject({ status: 'blocked', code: 'validator-checkov-scope', workloadExecution: false });
+    await value.write([...value.backend, 'Dockerfile'], 'FROM alpine:3.20\nUSER 1000\n');
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Captured Dockerfile without a scanner prerequisite');
+    vi.stubEnv('PATH', ['/usr/bin', '/bin'].join(path.delimiter));
+    const absent = await executeWorkflowCheckovDockerfileValidator(value.root, git(value.root, 'rev-parse', 'HEAD'), 'backend');
+    expect(absent).toMatchObject({ status: 'blocked', code: 'validator-checkov', workloadExecution: false,
+      command: null, phaseProof: 'not-issued', retainedExecutionDirectory: null });
+    expect(absent.message).toContain('unavailable');
+  });
+
+  it('rejects an uncommitted Dockerfile before scanner execution', async () => {
+    const value = await fixture();
+    await value.write([...value.backend, 'Dockerfile'], 'FROM alpine:3.20\nUSER 1000\n');
+    const result = await executeWorkflowCheckovDockerfileValidator(value.root, value.sourceSha, 'backend');
+    expect(result).toMatchObject({ status: 'failed', code: 'validator-source-mismatch', workloadExecution: false,
+      command: null, retainedExecutionDirectory: null, phaseProof: 'not-issued' });
+  });
+
+  it.each(['symlink', 'hardlink'] as const)('refuses a committed Dockerfile %s before scanner execution', async kind => {
+    const value = await fixture();
+    const outside = path.join(value.root, 'outside-Dockerfile'), target = path.join(value.root, ...value.backend, 'Dockerfile');
+    await value.write(['outside-Dockerfile'], 'FROM alpine:3.20\nUSER 1000\n');
+    if (kind === 'symlink') await symlink(outside, target);
+    else await link(outside, target);
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Unsafe Dockerfile membership');
+    const result = await executeWorkflowCheckovDockerfileValidator(value.root, git(value.root, 'rev-parse', 'HEAD'), 'backend');
+    expect(result).toMatchObject({ status: 'blocked', workloadExecution: false, command: null,
+      retainedExecutionDirectory: null, phaseProof: 'not-issued' });
+  });
+
+  it.each(['../backend', 'database', 'opentofu-application', '__proto__', 'backend/Dockerfile'])(
+    'rejects caller Dockerfile paths or unsupported components before source observation (%s)', async component => {
+      await expect(Reflect.apply(executeWorkflowCheckovDockerfileValidator, undefined,
+        ['/uninspected', 'a'.repeat(40), component])).rejects.toThrow(/actual selected application component/u);
+    });
+
   it('uses the same actual test command for genuine passing and broken committed application source', async () => {
     const value = await fixture();
     const green = await executeWorkflowContextValidator(value.root, { validator: 'backend-tests', sourceSha: value.sourceSha });
@@ -160,6 +253,38 @@ describe('release-owned real context validator bodies, not phase qualification',
     })).toMatchObject({
       status: 'failed', code: 'validator-source-mismatch', workloadExecution: false, command: null
     });
+  });
+
+  it('retains actual Git executable visibility and neutral configuration in every settled immutable tree read', async () => {
+    const value = await fixture(), original = NodeCommandRunner.prototype.run;
+    vi.stubEnv('GIT_DIR', path.join(root, 'unadmitted-git-override'));
+    const observations: { targetVisible: boolean; gitOverrideCleared: boolean; configNeutral: boolean;
+      settled: boolean; nulTerminated: boolean }[] = [];
+    const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(async function (this: NodeCommandRunner, command, options) {
+      const result = await original.call(this, command, options);
+      if (command.executable === 'git' && command.args.includes('ls-tree')) {
+        observations.push({
+          targetVisible: resolveTargetExecutableCommand(command, options?.env, options?.cwd) !== null,
+          gitOverrideCleared: options?.env?.GIT_DIR === undefined,
+          configNeutral: options?.env?.GIT_CONFIG_NOSYSTEM === '1' &&
+            options.env.GIT_CONFIG_GLOBAL === (process.platform === 'win32' ? 'NUL' : os.devNull) &&
+            options.env.GIT_CONFIG_COUNT === '0',
+          settled: result.status === 0 && result.processTreeSettled === true &&
+            result.signal === null && !result.timedOut && !result.errorCode && !result.outputLimitExceeded,
+          nulTerminated: result.stdout.endsWith('\0')
+        });
+      }
+      return result;
+    });
+    try {
+      expect(await executeWorkflowContextValidator(value.root, { validator: 'source-integrity', sourceSha: value.sourceSha }))
+        .toMatchObject({ status: 'passed', workloadExecution: false, command: null, phaseProof: 'not-issued' });
+      expect(observations).toEqual(Array.from({ length: 2 }, () => ({
+        targetVisible: true, gitOverrideCleared: true, configNeutral: true, settled: true, nulTerminated: true
+      })));
+    } finally {
+      run.mockRestore();
+    }
   });
 
   it('refuses uncommitted application bytes before project code can execute', async () => {
@@ -669,7 +794,36 @@ describe('release-owned real context validator bodies, not phase qualification',
     }
   });
 
-  it('formats every actual selected OpenTofu component through explicit captured-file commands only', async () => {
+  it('retains the actual isolated HCL runtime refusal before private formatting without substituting execution', async () => {
+    const value = await fixture(), planned = await planModernLocalRuntime(await inspectModernLocalRuntime(value.root));
+    const formatting = planned.localPlan!.checks.filter(check => check.id.startsWith('tofu-format:'));
+    expect(formatting.length).toBeGreaterThan(0);
+    const original = NodeCommandRunner.prototype.run;
+    const formats: string[][] = [];
+    const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(function (this: NodeCommandRunner, command, options) {
+      if (command.args[0] === 'fmt') formats.push([...command.args]);
+      return original.call(this, command, options);
+    });
+    try {
+      for (const check of formatting) {
+        expect(check.status).toBe(qualifiedHcl ? 'planned' : 'blocked');
+        if (!qualifiedHcl) {
+          const component = [...value.components.keys()].find((id): id is WorkflowTofuFormatComponent =>
+            id.startsWith('opentofu-') && check.id === `tofu-format:${id}`);
+          if (!component) throw new Error('The actual formatter check has no selected component.');
+          expect(check.reasons).toEqual([
+            'Isolated HCL computation is unavailable: this runtime is not the qualified darwin/arm64 Node24.21.0 tuple.'
+          ]);
+          expect(await executeWorkflowTofuComponentFormatValidator(value.root, value.sourceSha, component))
+            .toMatchObject({ status: 'blocked', code: 'validator-inputs', command: null, workloadExecution: false,
+              retainedExecutionDirectory: null, phaseProof: 'not-issued' });
+        }
+      }
+      expect(formats).toEqual([]);
+    } finally { run.mockRestore(); }
+  });
+
+  nativeHclIt('formats every actual selected OpenTofu component through explicit captured-file commands only', async () => {
     const value = await fixture();
     const components = [...value.components.keys()].filter((id): id is WorkflowTofuFormatComponent => id.startsWith('opentofu-'));
     expect(components.length).toBeGreaterThan(0);
@@ -690,7 +844,7 @@ describe('release-owned real context validator bodies, not phase qualification',
     } finally { run.mockRestore(); }
   });
 
-  it('uses the same real explicit formatter for formatted source and a genuinely unformatted committed HCL file', async () => {
+  nativeHclIt('uses the same real explicit formatter for formatted source and a genuinely unformatted committed HCL file', async () => {
     const value = await fixture(), component = 'opentofu-application';
     expect(await executeWorkflowTofuComponentFormatValidator(value.root, value.sourceSha, component))
       .toMatchObject({ status: 'passed', command: { status: 0, processTreeSettled: true } });
@@ -710,7 +864,7 @@ describe('release-owned real context validator bodies, not phase qualification',
     expect(JSON.stringify(report)).not.toContain('enabled');
   });
 
-  it('passes every captured nested .tf file as an explicit nonrecursive argument', async () => {
+  nativeHclIt('passes every captured nested .tf file as an explicit nonrecursive argument', async () => {
     const value = await fixture(), parts = value.components.get('opentofu-application')!;
     await value.write([...parts, 'nested', 'additional.tf'], 'locals {\n  additional = true\n}\n');
     git(value.root, 'add', '--', [...parts, 'nested', 'additional.tf'].join('/'));
@@ -754,7 +908,7 @@ describe('release-owned real context validator bodies, not phase qualification',
     } finally { run.mockRestore(); }
   });
 
-  it('refuses uncommitted format input instead of formatting different bytes under an original commit', async () => {
+  nativeHclIt('refuses uncommitted format input instead of formatting different bytes under an original commit', async () => {
     const value = await fixture();
     await value.write([...value.components.get('opentofu-application')!, 'main.tf'], 'locals {\n enabled    =    true\n}\n');
     expect(await executeWorkflowTofuComponentFormatValidator(value.root, value.sourceSha, 'opentofu-application'))
@@ -791,7 +945,7 @@ describe('release-owned real context validator bodies, not phase qualification',
     } finally { run.mockRestore(); }
   });
 
-  it('refuses copied formatter drift after a real successful settled child without modifying the host tool', async () => {
+  nativeHclIt('refuses copied formatter drift after a real successful settled child without modifying the host tool', async () => {
     const value = await fixture(), planned = await planModernLocalRuntime(await inspectModernLocalRuntime(value.root));
     const check = planned.localPlan!.checks.find(candidate => candidate.id === 'tofu-format:opentofu-application')!;
     const observed = (await observeModernLocalTools(value.root, [check], [])).find(tool => tool.id === 'tofu')!;
@@ -819,5 +973,57 @@ describe('release-owned real context validator bodies, not phase qualification',
       expect(path.basename(home)).toMatch(/^liftoff-workflow-validator-/u);
       await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' });
     } finally { run.mockRestore(); }
+  });
+
+  describe('actual committed workflow-file Checkov input closure, not action execution', () => {
+    const parts = ['.github', 'workflows', 'scan.yml'];
+    async function workflowFixture() {
+      const value = await fixture();
+      await value.write(parts, 'name: Source fixture\non: workflow_dispatch\npermissions: read-all\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo fixture\n');
+      git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Actual workflow source fixture');
+      return { ...value, sourceSha: git(value.root, 'rev-parse', 'HEAD') };
+    }
+    it('does not substitute application validation when no workflow files are selected', async () => {
+      const value = await fixture();
+      const result = await executeWorkflowCheckovWorkflowValidator(value.root, value.sourceSha);
+      expect(result).toMatchObject({ status: 'blocked', code: 'validator-checkov-workflows-membership',
+        workloadExecution: false, command: null, phaseProof: 'not-issued' });
+      expect(Object.keys(result)).toHaveLength(13);
+    });
+    it('refuses a missing real scanner without executing workflow steps or another validator', async () => {
+      const value = await workflowFixture();
+      vi.stubEnv('PATH', ['/usr/bin', '/bin'].join(path.delimiter));
+      const result = await executeWorkflowCheckovWorkflowValidator(value.root, value.sourceSha);
+      expect(result).toMatchObject({ status: 'blocked', code: 'validator-checkov',
+        workloadExecution: false, command: null, retainedExecutionDirectory: null });
+      expect(result.message).toContain('unavailable');
+    });
+    it.each(['extra', 'deleted', 'changed', 'nested', 'executable', 'symlink', 'hardlink'] as const)(
+      'refuses actual %s workflow membership/bytes/mode before scanner execution', async variant => {
+        const value = await workflowFixture(), file = path.join(value.root, ...parts);
+        if (variant === 'extra') await value.write(['.github', 'workflows', 'untracked.yaml'], 'name: Extra\n');
+        if (variant === 'deleted') await rm(file);
+        if (variant === 'changed') await appendFile(file, '\n# Uncommitted workflow change.\n');
+        if (variant === 'nested') await value.write(['.github', 'workflows', 'nested', 'other.yml'], 'name: Unsupported nested input\n');
+        if (variant === 'executable') await chmod(file, 0o755);
+        if (variant === 'symlink' || variant === 'hardlink') {
+          const outside = path.join(value.root, 'outside-workflow');
+          await rename(file, outside);
+          if (variant === 'symlink') await symlink(outside, file);
+          else await link(outside, file);
+        }
+        if (variant === 'executable' || variant === 'symlink' || variant === 'hardlink') {
+          git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '--allow-empty', '-m', 'Unsafe workflow source fixture');
+        }
+        const result = await executeWorkflowCheckovWorkflowValidator(value.root, git(value.root, 'rev-parse', 'HEAD'));
+        expect(result.status).not.toBe('passed');
+        expect(result).toMatchObject({ workloadExecution: false, command: null,
+          retainedExecutionDirectory: null, phaseProof: 'not-issued' });
+      });
+    it('keeps workflow scanning private and requires the exact full commit before observation', async () => {
+      expect(() => parseWorkflowContextValidatorArgs(['--validator', 'checkov-workflows', '--source-sha', 'a'.repeat(40)])).toThrow();
+      await expect(executeWorkflowCheckovWorkflowValidator('/unobserved', 'develop'))
+        .rejects.toMatchObject({ code: 'validator-request' });
+    });
   });
 });
