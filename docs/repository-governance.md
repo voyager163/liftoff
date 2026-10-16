@@ -138,6 +138,76 @@ separate and unavailable through this subcheck. There is no public
 native-host authority; unavailable or changed installed tools never fall back
 to operator Docker configuration or a caller-supplied successful observation.
 
+Private `observeSource5WorkflowRequirementSource` reads the complete immutable
+ruleset source using the original current5 context and read-only observation
+runtime. File/digest references are selectors: the actual commit/tree inventory
+must match completely, including tag-rule files, without unsupported nested,
+symlink or executable members. It reuses the matrix's same source reader and
+retains actual full context names and integration IDs on all four families;
+unknown names never disappear or become semantic mappings. The original runtime
+and absolute deadline are rechecked across reads, without project execution or
+new observation budgets. Its descriptive result explicitly does not validate
+the original plan, current branch heads or required-context semantics and has no
+prerequisite session or execution authority. Neither copied data nor the source
+reader's namespace is a qualified native/Azure producer or executable recipe.
+This private source-composition input is not wired into public review or effects.
+
+Private `observeSource5WorkflowRecipeInputs` additionally reads one selected
+family's actual immutable workflow, checks ordinary committed file membership
+and byte identity, and reobserves its exact protected ref before returning.
+Its complete real job/context names must equal that family's complete required
+source inventory, retaining each integration ID. It reuses the existing proof
+workflow structural checks; missing, extra, renamed, conditional or fail-open
+jobs cannot become an executable recipe. Other families remain present in the
+source inventory, not silently qualified by this one-family observation.
+
+The finite syntax recognizer shares the unchanged five public validator
+selectors. It accepts only their literal local CLI invocation with the exact
+shell and cleared Node environment; arbitrary commands, echo/forced exits and
+private selectors are not registered bodies. Syntax is not immutable executable
+provenance: a project-owned `node_modules` path, pinned checkout reference,
+workflow permissions or matching job name does not qualify the package, setup,
+toolchain, native host or context semantics. Every literal context therefore
+retains an explicit missing release-owned semantic/executable-subject blocker;
+unrecognized bodies have an additional blocker. The descriptive result is
+always blocked, with no qualified executable recipe, prerequisite session or
+execution authority. It cannot be submitted back as authority, runs no project
+commands and preserves the original read-only runtime/deadline. It is private
+compiler-input plumbing, not the completed semantic compiler or installed
+review/approval/apply composition, and changes no public help or JSON contract.
+
+Private `observeSource5WorkflowDependencyReview` reads the actual GitHub
+dependency diff for exact repository/base/head commit/tree selectors through
+the original read-only runtime. It verifies a bounded complete ancestor-to-head
+comparison, joins all bounded diff pages and repeats the complete inventory.
+Snapshot warnings, missing vulnerability metadata, duplicate changes/advisories,
+unsupported severities, provider errors or observation drift refuse a verdict;
+there is no warning retry, threshold override or status/check publication.
+Known advisories on added dependencies are counted at every severity and scope;
+removed dependencies are not treated as introduced vulnerabilities. Raw package
+and advisory payloads are withheld. An empty or clear diff means only that the
+provider diff reported no added known vulnerabilities: it is not full SCA,
+license evaluation, a fresh scan, current protected-ref qualification, a
+semantic context mapping or a prerequisite session. This private provider body
+does not admit either operator OAuth or automation tokens, execute project code,
+or change public review/effect routing, JSON/help, recipes or phase authority.
+
+Private `executeWorkflowTofuComponentFormatValidator(projectRoot, sourceSha,
+component)` validates one actual selected OpenTofu component. It reuses the
+captured-file formatter policy: only explicit present `.tf` paths are passed,
+with `fmt -check -write=false`, never implicit recursion. The actual independently
+observed executable is rechecked around the settled child; its configuration,
+data directory and HOME are private, and inherited CLI flags cannot enable writes.
+Every selected component still needs its own subcheck, and the existing selected
+input checks must remain planned: a blocked recursive scope containing excluded
+inputs is not silently converted into an approved closed formatting scope.
+No module/provider initialization, backend, planning, apply, infrastructure
+completion or native-host qualification is supplied. Tool admission retains the
+existing 1.12 release line and minimum 1.12.6; that compatibility observation is
+not separately pinned native-host qualification. The subcheck has no public
+selector; its private report retains the existing shape and explicitly issues
+no phase proof.
+
 These are explicit runner operations, never operations performed by plan or
 `--live` review. Tests, builds and framework tools may execute project code and
 write outputs; provider-read-only workflow permissions do not make them a host
