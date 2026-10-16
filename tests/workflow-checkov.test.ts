@@ -176,3 +176,91 @@ describe('declared Checkov import-root inventory coverage, not program or phase 
     expect(roots).toEqual([standard, nested, path.join(standard, 'lib-dynload')]);
   });
 });
+
+describe('private Dockerfile Checkov protocol, not image or execution authority', () => {
+  const file = path.resolve('fixture-only', 'Dockerfile');
+  const finding = (line: number, result = 'PASSED') => ({
+    check_id: 'CKV2_DOCKER_1', check_result: { result }, resource: `${file}.RUN`,
+    file_abs_path: file, file_line_range: [line, line]
+  });
+  function report(failed = false) {
+    return { check_type: 'dockerfile',
+      results: { passed_checks: [finding(6)], failed_checks: failed ? [finding(7, 'FAILED')] : [],
+        skipped_checks: [], parsing_errors: [] },
+      summary: { passed: 1, failed: failed ? 1 : 0, skipped: 0, parsing_errors: 0,
+        resource_count: 1, checkov_version: '3.3.20' } };
+  }
+  function command(value: unknown, status = 0): CommandResult {
+    return { command: { executable: 'not-executed-protocol-data', args: [] }, displayCommand: 'not executed',
+      status, signal: null, stdout: JSON.stringify(value), stderr: '', timedOut: false,
+      processTreeSettled: true, processSpawned: true };
+  }
+  it.each([false, true])('requires actual Dockerfile framework and exit/finding agreement (%s)', failed => {
+    expect(checkWorkflowCheckovResult(command(report(failed), failed ? 1 : 0), [file], 'dockerfile'))
+      .toBe(failed ? 'failed' : 'passed');
+    expect(() => checkWorkflowCheckovResult(command(report(failed), failed ? 0 : 1), [file], 'dockerfile')).toThrow();
+    expect(() => checkWorkflowCheckovResult(command(report(failed)), [file])).toThrow();
+  });
+  it('counts checked files, not instruction findings, as Dockerfile resources', () => {
+    const value = report();
+    value.results.passed_checks.push(finding(7)); value.summary.passed++;
+    expect(checkWorkflowCheckovResult(command(value), [file], 'dockerfile')).toBe('passed');
+    expect(() => checkWorkflowCheckovResult(command(value), [file, path.resolve('different', 'Dockerfile')], 'dockerfile'))
+      .toThrow(/Every selected Dockerfile/u);
+    value.summary.resource_count = 2;
+    expect(() => checkWorkflowCheckovResult(command(value), [file], 'dockerfile')).toThrow(/resource inventory/u);
+  });
+  it('refuses duplicate or contradictory findings for the same instruction and source span', () => {
+    const value = report();
+    value.results.passed_checks.push(finding(6)); value.summary.passed++;
+    expect(() => checkWorkflowCheckovResult(command(value), [file], 'dockerfile')).toThrow(/Duplicate/u);
+    const contradictory = report(true);
+    contradictory.results.failed_checks[0] = finding(6, 'FAILED');
+    expect(() => checkWorkflowCheckovResult(command(contradictory, 1), [file], 'dockerfile')).toThrow(/Duplicate/u);
+  });
+  it.each([
+    { check_id: 'CKV_AZURE_10' }, { check_id: 'CKV_DOCKER_external' }, { resource: `${file}.UNKNOWN` },
+    { resource: `${path.resolve('other', 'Dockerfile')}.RUN` }, { resource: `${file}.RUN.extra` },
+    { file_abs_path: path.resolve('outside', 'Dockerfile') }, { file_line_range: [0, 1] }
+  ])('refuses out-of-scope Dockerfile finding identity %j', patch => {
+    const value = report();
+    const changed = { ...value, results: { ...value.results, passed_checks: [{ ...finding(6), ...patch }] } };
+    expect(() => checkWorkflowCheckovResult(command(changed), [file], 'dockerfile')).toThrow();
+  });
+  it.each([
+    { skipped: 1 }, { parsing_errors: 1 }, { passed: 0 }, { resource_count: 0 },
+    { checkov_version: '3.3.29' }
+  ])('refuses empty, suppressed, malformed or unsupported Dockerfile coverage %j', patch => {
+    const value = report(); Object.assign(value.summary, patch);
+    expect(() => checkWorkflowCheckovResult(command(value), [file], 'dockerfile')).toThrow();
+  });
+  it('refuses unfinished Dockerfile processes and other framework reports', () => {
+    for (const patch of [{ processTreeSettled: false }, { processSpawned: false }, { timedOut: true },
+      { outputLimitExceeded: true }, { signal: 'SIGTERM' as const }, { status: 2 }]) {
+      expect(() => checkWorkflowCheckovResult({ ...command(report()), ...patch }, [file], 'dockerfile')).toThrow();
+    }
+    expect(() => checkWorkflowCheckovResult(command({ ...report(), check_type: 'terraform' }), [file], 'dockerfile')).toThrow();
+  });
+  it('does not open a public selector, arbitrary framework or image option', () => {
+    for (const selector of ['checkov-dockerfile', 'checkov-dockerfile:backend', 'sca_image']) {
+      expect(() => parseWorkflowContextValidatorArgs(['--validator', selector, '--source-sha', 'a'.repeat(40)])).toThrow();
+    }
+    expect(() => Reflect.apply(checkWorkflowCheckovResult, undefined, [command(report()), [file], 'all'])).toThrow();
+    expect(() => Reflect.construct(WorkflowCheckovInvocation,
+      ['/unused', '/unused', [file], performance.now() + 180_000, 'sca_image'])).toThrow();
+  });
+  it.each(['terraform', 'dockerfile'] as const)('refuses a mismatched file kind before any %s child', async framework => {
+    const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff-checkov-file-kind-')));
+    const run = vi.spyOn(NodeCommandRunner.prototype, 'run');
+    try {
+      const selected = new WorkflowCheckovInvocation(root, root,
+        [path.join(root, framework === 'dockerfile' ? 'source.tf' : 'Dockerfile')], performance.now() + 180_000, framework);
+      await expect(selected.execute({})).rejects.toThrow(/finite scanner framework/u);
+      expect(run).not.toHaveBeenCalled();
+      expect(selected.processSpawned).toBe(false);
+    } finally {
+      run.mockRestore();
+      await rm(root, { recursive: true });
+    }
+  });
+});

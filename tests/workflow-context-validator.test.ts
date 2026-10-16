@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
-  executeWorkflowActionReferenceValidator, executeWorkflowCheckovComponentValidator, executeWorkflowComposeConfigValidator,
+  executeWorkflowActionReferenceValidator, executeWorkflowCheckovComponentValidator, executeWorkflowCheckovDockerfileValidator, executeWorkflowComposeConfigValidator,
   executeWorkflowContextValidator, executeWorkflowTofuComponentFormatValidator, parseWorkflowContextValidatorArgs,
   type WorkflowTofuFormatComponent
 } from '../src/workflow-context-validator.js';
@@ -124,6 +124,54 @@ describe('release-owned real context validator bodies, not phase qualification',
     });
     expect(result.message).toContain('input/evaluation closure');
   });
+
+  it.each(['backend', 'frontend', 'function-worker'] as const)(
+    'requires an actual captured committed Dockerfile for %s, not a substituted check', async component => {
+      const value = await fixture('', true);
+      const result = await executeWorkflowCheckovDockerfileValidator(value.root, value.sourceSha, component);
+      expect(result).toMatchObject({ status: 'blocked', code: 'validator-checkov-scope', workloadExecution: false,
+        command: null, phaseProof: 'not-issued', retainedExecutionDirectory: null });
+      expect(Object.keys(result)).toHaveLength(13);
+    });
+
+  it('does not substitute an unselected component or missing installed scanner with another command', async () => {
+    const value = await fixture();
+    const missing = await executeWorkflowCheckovDockerfileValidator(value.root, value.sourceSha, 'frontend');
+    expect(missing).toMatchObject({ status: 'blocked', code: 'validator-checkov-scope', workloadExecution: false });
+    await value.write([...value.backend, 'Dockerfile'], 'FROM alpine:3.20\nUSER 1000\n');
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Captured Dockerfile without a scanner prerequisite');
+    vi.stubEnv('PATH', ['/usr/bin', '/bin'].join(path.delimiter));
+    const absent = await executeWorkflowCheckovDockerfileValidator(value.root, git(value.root, 'rev-parse', 'HEAD'), 'backend');
+    expect(absent).toMatchObject({ status: 'blocked', code: 'validator-checkov', workloadExecution: false,
+      command: null, phaseProof: 'not-issued', retainedExecutionDirectory: null });
+    expect(absent.message).toContain('unavailable');
+  });
+
+  it('rejects an uncommitted Dockerfile before scanner execution', async () => {
+    const value = await fixture();
+    await value.write([...value.backend, 'Dockerfile'], 'FROM alpine:3.20\nUSER 1000\n');
+    const result = await executeWorkflowCheckovDockerfileValidator(value.root, value.sourceSha, 'backend');
+    expect(result).toMatchObject({ status: 'failed', code: 'validator-source-mismatch', workloadExecution: false,
+      command: null, retainedExecutionDirectory: null, phaseProof: 'not-issued' });
+  });
+
+  it.each(['symlink', 'hardlink'] as const)('refuses a committed Dockerfile %s before scanner execution', async kind => {
+    const value = await fixture();
+    const outside = path.join(value.root, 'outside-Dockerfile'), target = path.join(value.root, ...value.backend, 'Dockerfile');
+    await value.write(['outside-Dockerfile'], 'FROM alpine:3.20\nUSER 1000\n');
+    if (kind === 'symlink') await symlink(outside, target);
+    else await link(outside, target);
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Unsafe Dockerfile membership');
+    const result = await executeWorkflowCheckovDockerfileValidator(value.root, git(value.root, 'rev-parse', 'HEAD'), 'backend');
+    expect(result).toMatchObject({ status: 'blocked', workloadExecution: false, command: null,
+      retainedExecutionDirectory: null, phaseProof: 'not-issued' });
+  });
+
+  it.each(['../backend', 'database', 'opentofu-application', '__proto__', 'backend/Dockerfile'])(
+    'rejects caller Dockerfile paths or unsupported components before source observation (%s)', async component => {
+      await expect(Reflect.apply(executeWorkflowCheckovDockerfileValidator, undefined,
+        ['/uninspected', 'a'.repeat(40), component])).rejects.toThrow(/actual selected application component/u);
+    });
 
   it('uses the same actual test command for genuine passing and broken committed application source', async () => {
     const value = await fixture();

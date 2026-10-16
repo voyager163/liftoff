@@ -220,6 +220,19 @@ parse failures, empty coverage, soft-fail disagreement and incomplete output
 block qualification rather than becoming a green or controlled-red result.
 The existing thirteen-key private report and five public selectors are unchanged.
 
+Private `executeWorkflowCheckovDockerfileValidator(projectRoot, sourceSha,
+component)` analyzes only the actual bound `backend`, `frontend` or
+`function-worker` component's committed `Dockerfile`. An absent/unselected file,
+uncommitted input or unsafe source membership refuses before scanning. The
+finite `dockerfile` framework does not enable the separate `sca_image` image
+referencer: this body never builds, pulls, publishes or vulnerability-scans an
+image, and it does not execute Dockerfile instructions or infer image provenance.
+The same bounded program inventory, original deadline, private HOME and final
+source/Git readback apply. Dockerfile coverage counts actual checked files, not
+instruction findings; repeated instructions have distinct source-span identities,
+while duplicate findings, omitted files, suppression and empty coverage refuse.
+This private body is not a public selector or a complete container qualification.
+
 The implemented development compatibility profile is Checkov 3.3.20 in an
 isolated POSIX Python 3.14 virtual environment, not a released/supported-stack
 or native-host admission. A fixed `-I -S -B` bootstrap imports explicit observed
@@ -250,7 +263,10 @@ stripped environment, private HOME/XDG/cache and `uv pip install --no-config --n
 The verifier installs nothing. It builds actual current5 fixtures and checks
 restricted SSH ingress, genuine public-SSH failure, suppression/empty refusal,
 post-child source drift and owned-HOME replacement, without changing policy or
-inventing child results. These are local component cases, not hosted protected-ref
+inventing child results. It also analyzes genuine backend/frontend/selected-worker
+Dockerfiles, root-user failure, repeated `RUN` instructions, suppression/empty
+refusal, source drift and HOME replacement. `RUN` text is analyzed, never executed.
+These are local component cases, not hosted protected-ref
 green/red, full IaC/Dockerfile/Actions Checkov coverage, approved recipe,
 prerequisite session, license/SCA, native-host or phase qualification.
 

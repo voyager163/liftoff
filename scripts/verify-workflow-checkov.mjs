@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { NodeCommandRunner } from '../dist/process-runner.js';
-import { executeWorkflowCheckovComponentValidator } from '../dist/workflow-context-validator.js';
+import { executeWorkflowCheckovComponentValidator, executeWorkflowCheckovDockerfileValidator } from '../dist/workflow-context-validator.js';
 import { canonicalSha256 } from '../dist/domain/governance/activation/canonical-json.js';
 import { captureWorkspaceDirectoryChain, assertWorkspaceDirectorySnapshot } from '../dist/adapters/filesystem/repair-workspaces.js';
 
@@ -19,6 +19,9 @@ let settled = true;
 let summary;
 let mutation = null, swapped = null;
 let activeCase = null;
+async function output(value) {
+  await new Promise((resolve, reject) => process.stdout.write(`${JSON.stringify(value)}\n`, error => error ? reject(error) : resolve()));
+}
 const env = Object.fromEntries(Object.keys(process.env).map(key => [key, undefined]));
 Object.assign(env, { PATH: process.env.PATH, HOME: root, USERPROFILE: root, XDG_CONFIG_HOME: root,
   XDG_CACHE_HOME: root, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull, GIT_TERMINAL_PROMPT: '0' });
@@ -28,7 +31,7 @@ NodeCommandRunner.prototype.run = async function (command, options) {
     settled = false;
     unsettledCommands.push({ executable: command.executable, args: command.args, requestedSettlement: options?.ensureProcessTreeSettled });
   }
-  if (command.args.includes('--framework') && command.args.includes('terraform') && command.args.includes('--skip-download')) {
+  if (command.args.includes('--framework') && (command.args.includes('terraform') || command.args.includes('dockerfile')) && command.args.includes('--skip-download')) {
     scans.push(result);
     if (mutation) {
       assert.equal(result.status, 0); assert.equal(result.processTreeSettled, true);
@@ -39,7 +42,7 @@ NodeCommandRunner.prototype.run = async function (command, options) {
         assert.equal(home, options.env.HOME);
         assert(path.basename(home).startsWith('liftoff-workflow-validator-'));
         const original = await lstat(home, { bigint: true });
-        const moved = path.join(root, 'original-scanner-home');
+        const moved = path.join(root, command.args.includes('dockerfile') ? 'original-dockerfile-scanner-home' : 'original-scanner-home');
         await rename(home, moved); await mkdir(home);
         await writeFile(path.join(home, 'replacement-marker'), 'Isolated replacement; not validator cleanup authority.\n');
         swapped = { home, moved, original, boundary: await captureWorkspaceDirectoryChain(home) };
@@ -166,7 +169,99 @@ ${suppress ? '  #checkov:skip=CKV_AZURE_10:Deliberately suppressed fixture findi
       sourceBytes: body, ownership });
     activeCase = null;
   }
-  summary = { scope: 'real local current5 component scanner only', cases,
+  async function dockerfileFixture(label, options) {
+    const directory = path.join(root, label);
+    await mkdir(directory);
+    const seed = await writeModernInstalledProject(directory, 'manual', 'single-maintainer-gitflow', options);
+    const source = resolveModernManifestV8SourceContract({ selection: seed.input.selection, recordedPlugins: seed.input.plugins });
+    const components = new Map(source.layoutDescriptor.components.map(component => [component, ['source', component.replace(':', '-')]]));
+    const fixture = await writeModernInstalledProject(directory, 'manual', 'single-maintainer-gitflow', {
+      ...options, activeLayout: { schemaVersion: 1, state: 'bound', bindings: [
+        ...[...components].map(([component, pathParts]) => ({ kind: 'component', component, pathParts })),
+        { kind: 'artifact', logicalName: 'docker-compose', pathParts: ['compose.yml'] }
+      ] }
+    });
+    await writeModernLocalFixtureInputs(fixture.input.selection, components, ['compose.yml'], fixture.write);
+    await git(directory, 'init', '--quiet');
+    await git(directory, 'remote', 'add', 'origin', 'https://github.com/fixture-owner/fixture-repo.git');
+    return { ...fixture, components };
+  }
+  const application = await dockerfileFixture('dockerfile-application', { frontend: true });
+  const worker = await dockerfileFixture('dockerfile-worker', { pattern: 'rag' });
+  const green = 'FROM alpine:3.20\nUSER 1000\nWORKDIR /app\nHEALTHCHECK CMD ["true"]\nCMD ["true"]\n';
+  for (const [variant, component] of [
+    ['green', 'backend'], ['frontend-green', 'frontend'], ['worker-green', 'function-worker'],
+    ['root-user', 'backend'], ['repeated-run', 'backend'], ['suppressed', 'backend'],
+    ['empty', 'backend'], ['source-drift', 'backend'], ['home-swap', 'backend']
+  ]) {
+    const selected = component === 'function-worker' ? worker : application;
+    const parts = selected.components.get(component);
+    assert(parts, 'The actual selected fixture must declare the requested application component.');
+    const file = [...parts, 'Dockerfile'];
+    const source = variant === 'empty' ? '' : variant === 'root-user' || variant === 'suppressed'
+      ? (variant === 'suppressed' ? '#checkov:skip=CKV_DOCKER_8:Deliberate fixture suppression; must not qualify.\n' : '') +
+        green.replace('USER 1000', 'USER root')
+      : variant === 'repeated-run' ? green + 'RUN echo first\nRUN echo second\n' : green;
+    await selected.write(file, source);
+    await git(selected.root, 'add', '.');
+    await git(selected.root, 'commit', '--quiet', '--allow-empty', '-m', `Real Dockerfile scanner scenario: ${variant}`);
+    const sha = await git(selected.root, 'rev-parse', 'HEAD'), count = scans.length, start = performance.now();
+    if (variant === 'source-drift' || variant === 'home-swap') mutation = { kind: variant, file: path.join(selected.root, ...file) };
+    const result = await executeWorkflowCheckovDockerfileValidator(selected.root, sha, component);
+    const expected = variant === 'root-user' || variant === 'source-drift' ? 'failed'
+      : ['suppressed', 'empty', 'home-swap'].includes(variant) ? 'blocked' : 'passed';
+    assert.equal(scans.length, count + 1);
+    const scan = scans.at(-1), actual = JSON.parse(scan.stdout);
+    activeCase = { variant: `dockerfile-${variant}`, component, result, actualScannerResult: scan };
+    assert.equal(result.status, expected, JSON.stringify(result));
+    assert.equal(Object.keys(result).length, 13);
+    assert.equal(result.phaseProof, 'not-issued'); assert.equal(result.workloadExecution, true);
+    assert.equal(result.command.stdoutDigest, canonicalSha256(scan.stdout));
+    assert.equal(scan.processTreeSettled, true);
+    if (variant === 'empty') {
+      assert.deepEqual(actual, { passed: 0, failed: 0, skipped: 0, parsing_errors: 0,
+        resource_count: 0, checkov_version: '3.3.20' });
+      assert.equal(scan.status, 0); assert.equal(result.code, 'validator-checkov');
+      assert.equal(result.retainedExecutionDirectory, null);
+      cases.push({ variant: `dockerfile-${variant}`, component, sourceSha: sha, durationMs: performance.now() - start,
+        result, reportShape: 'summary-only-zero-coverage', sourceBytes: source, actualScannerResult: scan });
+      activeCase = null;
+      continue;
+    }
+    assert.equal(actual.check_type, 'dockerfile'); assert.equal(actual.summary.checkov_version, '3.3.20');
+    assert.equal(actual.summary.skipped, variant === 'suppressed' ? 1 : 0);
+    assert.equal(actual.summary.parsing_errors, 0);
+    assert.equal(actual.summary.failed, variant === 'root-user' ? 1 : 0);
+    assert.equal(actual.summary.resource_count, 1);
+    if (variant === 'root-user') {
+      assert.equal(scan.status, 1); assert.equal(result.code, 'validator-checkov-findings');
+      assert.deepEqual(actual.results.failed_checks.map(check => check.check_id), ['CKV_DOCKER_8']);
+    } else assert.equal(scan.status, 0);
+    if (variant === 'empty' || variant === 'suppressed') assert.equal(result.code, 'validator-checkov');
+    if (variant === 'source-drift') assert.equal(result.code, 'validator-source-mismatch');
+    if (variant === 'repeated-run') {
+      assert.equal(actual.summary.passed, 42);
+      const runs = actual.results.passed_checks.filter(check => check.check_id === 'CKV2_DOCKER_1');
+      assert.deepEqual(runs.map(check => check.file_line_range), [[6, 6], [7, 7]]);
+      assert.equal(new Set(runs.map(check => check.resource)).size, 1);
+    }
+    let ownership;
+    if (variant === 'home-swap') {
+      assert.equal(result.code, 'validator-cleanup'); assert(swapped);
+      assert.equal(result.retainedExecutionDirectory, swapped.home);
+      assert.equal(await readFile(path.join(swapped.home, 'replacement-marker'), 'utf8'), 'Isolated replacement; not validator cleanup authority.\n');
+      const moved = await lstat(swapped.moved, { bigint: true });
+      assert.equal(moved.dev, swapped.original.dev); assert.equal(moved.ino, swapped.original.ino);
+      assert.equal(await readFile(path.join(swapped.moved, 'checkov.yml'), 'utf8'), '{}\n');
+      await assertWorkspaceDirectorySnapshot(swapped.boundary); await rm(swapped.home, { recursive: true });
+      ownership = { replacementPreservedAtValidatorReturn: true, originalHomePreservedAtValidatorReturn: true,
+        testHarnessDisposedOwnReplacementAfterObservation: true };
+    } else assert.equal(result.retainedExecutionDirectory, null);
+    cases.push({ variant: `dockerfile-${variant}`, component, sourceSha: sha, durationMs: performance.now() - start,
+      result, summary: actual.summary, sourceBytes: source, actualScannerResult: scan, ownership });
+    activeCase = null;
+  }
+  summary = { scope: 'real local current5 component scanners only', cases,
     hostedQualification: false, nativeQualification: false, phaseProof: 'not-issued' };
 } finally {
   NodeCommandRunner.prototype.run = originalRun;
@@ -176,9 +271,9 @@ ${suppress ? '  #checkov:skip=CKV_AZURE_10:Deliberately suppressed fixture findi
   } else {
     process.stderr.write(`Verification was incomplete or its original process tree was not fully observed settled; retained fixture directory: ${root}\n`);
     process.exitCode = 1;
-    process.stdout.write(`${JSON.stringify({ verificationCompleted: false, cases, activeCase,
-      allObservedProcessesSettled: settled, unsettledCommands, retainedVerificationDirectory: root })}\n`);
+    await output({ verificationCompleted: false, cases, activeCase,
+      allObservedProcessesSettled: settled, unsettledCommands, retainedVerificationDirectory: root });
   }
 }
-process.stdout.write(`${JSON.stringify({ ...summary, allObservedProcessesSettled: settled,
-  unsettledCommands, retainedVerificationDirectory: settled ? null : root })}\n`);
+await output({ ...summary, allObservedProcessesSettled: settled,
+  unsettledCommands, retainedVerificationDirectory: settled ? null : root });

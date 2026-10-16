@@ -15,6 +15,7 @@ const pythonProbe = 'import json,sys;print(json.dumps({"version":list(sys.versio
 const bootstrap = 'import json,runpy,sys;sys.path[:]=json.loads(sys.argv[1]);sys.argv=sys.argv[2:];runpy.run_path(sys.argv[0],run_name="__main__")';
 const limits = Object.freeze({ roots: 32, files: 32768, directories: 8192, links: 128,
   depth: 32, bytes: 512 * 1024 * 1024, fileBytes: 64 * 1024 * 1024 });
+export type WorkflowCheckovFramework = 'terraform' | 'dockerfile';
 
 export class WorkflowCheckovRefusal extends Error {}
 function refuse(message: string): never { throw new WorkflowCheckovRefusal(message); }
@@ -78,15 +79,16 @@ export function workflowCheckovInventoryRoots(roots: readonly string[]): readonl
 
 /** Protocol checking only: a caller-supplied JSON report is never execution or proof authority. */
 export function checkWorkflowCheckovResult(
-  result: CommandResult, selectedFiles: readonly string[]
+  result: CommandResult, selectedFiles: readonly string[], framework: WorkflowCheckovFramework = 'terraform'
 ): 'passed' | 'failed' {
+  if (framework !== 'terraform' && framework !== 'dockerfile') refuse('The private scanner framework is unsupported.');
   if (!complete(result) || ![0, 1].includes(result.status ?? -1)) {
     refuse('The actual scanner did not finish with bounded output and its original process tree settled.');
   }
   const report = json(result.stdout);
-  if (!isRecord(report) || report.check_type !== 'terraform' || !isRecord(report.results) ||
+  if (!isRecord(report) || report.check_type !== framework || !isRecord(report.results) ||
       !isRecord(report.summary) || report.summary.checkov_version !== version) {
-    refuse('A single Terraform report from the supported observed Checkov development version is required.');
+    refuse(`A single ${framework === 'terraform' ? 'Terraform' : 'Dockerfile'} report from the supported observed Checkov development version is required.`);
   }
   const results = report.results, summary = report.summary;
   const passed = results.passed_checks, failed = results.failed_checks;
@@ -117,13 +119,22 @@ export function checkWorkflowCheckovResult(
           check.file_line_range[0] > check.file_line_range[1]) {
         refuse('A scanner finding has missing, contradictory or out-of-scope source identity.');
       }
-      const resource = `${check.file_abs_path}\0${check.resource}`;
-      const identity = `${resource}\0${check.check_id}`;
+      if (framework === 'dockerfile' && (!/^CKV(?:2)?_DOCKER_[0-9]+$/u.test(check.check_id) ||
+          !check.resource.startsWith(`${check.file_abs_path}.`) ||
+          !/^(?:FROM|RUN|CMD|LABEL|MAINTAINER|EXPOSE|ENV|ADD|COPY|ENTRYPOINT|VOLUME|USER|WORKDIR|ARG|ONBUILD|STOPSIGNAL|HEALTHCHECK|SHELL)?$/u
+            .test(check.resource.slice(check.file_abs_path.length + 1)))) {
+        refuse('A Dockerfile finding must identify its actual file and one supported instruction, not another framework or resource.');
+      }
+      const resource = framework === 'dockerfile' ? check.file_abs_path : `${check.file_abs_path}\0${check.resource}`;
+      const identity = framework === 'dockerfile'
+        ? `${resource}\0${check.resource}\0${check.check_id}\0${check.file_line_range.join(':')}`
+        : `${resource}\0${check.check_id}`;
       if (identities.has(identity)) refuse('Duplicate scanner findings cannot inflate coverage.');
       identities.add(identity); resources.add(resource);
     }
   }
   if (resources.size !== summary.resource_count) refuse('The actual checked resource inventory is incomplete.');
+  if (framework === 'dockerfile' && resources.size !== files.size) refuse('Every selected Dockerfile must have actual nonempty checked coverage.');
   return failed.length ? 'failed' : 'passed';
 }
 
@@ -138,8 +149,10 @@ export class WorkflowCheckovInvocation {
   private readonly files: readonly string[];
   constructor(
     private readonly projectRoot: string, private readonly home: string,
-    files: readonly string[], private readonly deadline: number
+    files: readonly string[], private readonly deadline: number,
+    private readonly framework: WorkflowCheckovFramework = 'terraform'
   ) {
+    if (framework !== 'terraform' && framework !== 'dockerfile') refuse('The private scanner framework is unsupported.');
     this.files = Object.freeze([...files]);
     if (!Number.isFinite(deadline) || deadline > performance.now() + 180_000) refuse('A scanner invocation cannot extend its original bounded preparation/execution cutoff.');
     Object.freeze(this);
@@ -283,7 +296,10 @@ export class WorkflowCheckovInvocation {
       refuse('The actual project and execution HOME must be canonical paths.');
     }
     if (!this.files.length || this.files.some(file => !safeAbsolute(file) ||
-        !applicationWithin(this.projectRoot, file) || !file.endsWith('.tf'))) refuse('Only actual captured project .tf files can enter the private scanner.');
+        !applicationWithin(this.projectRoot, file) ||
+        (this.framework === 'terraform' ? !file.endsWith('.tf') : path.basename(file) !== 'Dockerfile'))) {
+      refuse('Only actual captured project files matching the selected finite scanner framework can enter the private scanner.');
+    }
     const launcher = await this.#launcher();
     const launcherIdentity = await toolFile(launcher, this.projectRoot, this.home, false);
     const pythonAlias = readWorkflowCheckovPythonLauncher(await text(path.dirname(launcher), [path.basename(launcher)], 65536));
@@ -329,7 +345,7 @@ export class WorkflowCheckovInvocation {
     const config = path.join(this.home, 'checkov.yml'), modules = path.join(this.home, 'no-external-modules');
     await writeFile(config, '{}\n', { flag: 'wx', mode: 0o600 });
     const result = await this.#run(pythonAlias, ['-I', '-S', '-B', '-c', bootstrap, JSON.stringify(paths), launcher,
-      '--framework', 'terraform', '--file', ...this.files, '--output', 'json', '--skip-download',
+      '--framework', this.framework, '--file', ...this.files, '--output', 'json', '--skip-download',
       '--download-external-modules', 'false', '--external-modules-download-path', modules,
       '--skip-results-upload', '--config-file', config], env);
     if (!this.#settled) refuse('The original scanner process tree did not settle; its execution HOME must be retained.');
@@ -345,6 +361,7 @@ export class WorkflowCheckovInvocation {
         await this.#capture(roots, programPrefixes) !== before) refuse('The observed scanner program, interpreter, import paths or complete bounded program inventory changed.');
     this.#remaining();
     return freezeModernValue({ result, programDigest: canonicalSha256({ version, python: observed.version, paths, before,
-      launcherIdentity, interpreterIdentity, configuration, bootstrap, argvPolicy: 'all-terraform-checks-no-download-no-upload-no-user-config' }) });
+      launcherIdentity, interpreterIdentity, configuration, bootstrap,
+      argvPolicy: `all-${this.framework}-checks-no-download-no-upload-no-user-config` }) });
   }
 }
