@@ -43,13 +43,15 @@ export async function observeSource5WorkflowSecretProtectionHistory(input: {
       return {
         bucket, presence: 'present' as const,
         entries: entries.map(entry => {
-          if (!isRecord(entry) ||
-            Object.hasOwn(entry, 'type') && !text(entry.type) ||
+          if (!isRecord(entry)) invalidHistory();
+          const metadataDigest = canonicalSha256(entry);
+          if (bucket === 'custom_pattern_backfill_scans') return { metadataDigest };
+          if (Object.hasOwn(entry, 'type') && !text(entry.type) ||
             Object.hasOwn(entry, 'status') && !text(entry.status) ||
             Object.hasOwn(entry, 'started_at') && !timestamp(entry.started_at) ||
             Object.hasOwn(entry, 'completed_at') && !timestamp(entry.completed_at)) invalidHistory();
           return {
-            metadataDigest: canonicalSha256(entry),
+            metadataDigest,
             ...(Object.hasOwn(entry, 'type') ? { typeDigest: canonicalSha256(entry.type) } : {}),
             ...(Object.hasOwn(entry, 'status') ? { statusDigest: canonicalSha256(entry.status) } : {}),
             ...(timestamp(entry.started_at) ? { startedAt: entry.started_at } : {}),

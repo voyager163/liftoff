@@ -241,7 +241,9 @@ the code-scanning reader's original admission and before/after ordering.
 All five documented scan buckets, custom-pattern records and unknown fields
 remain represented; absent buckets, actual empty arrays and explicit null
 timestamps are distinct. Pattern details and unsupported fields are withheld
-behind digests. Malformed, oversized, inaccessible or changed responses refuse.
+behind digests. Custom-pattern envelopes are opaque objects, not assumed to
+share the ordinary scan-record fields. Malformed, oversized, inaccessible or
+changed responses refuse.
 This endpoint exposes latest scan types/statuses/timestamps, not a commit
 selector, original source-bound report or complete detector inventory.
 A completed label, recent timestamp, successful endpoint access, enabled flag

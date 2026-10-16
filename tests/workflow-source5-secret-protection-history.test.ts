@@ -47,7 +47,8 @@ describe('actual latest Secret Protection history, never exact-source scan or li
         execution: 'not-authorized', unknownFields: []
       });
       expect(result.buckets).toEqual(buckets.map(bucket => ({ bucket, presence: 'present',
-        entries: [{ metadataDigest: canonicalSha256(scan()), typeDigest: canonicalSha256('git'),
+        entries: [bucket === 'custom_pattern_backfill_scans' ? { metadataDigest: canonicalSha256(scan()) }
+          : { metadataDigest: canonicalSha256(scan()), typeDigest: canonicalSha256('git'),
           statusDigest: canonicalSha256('completed'), startedAt: scan().started_at, completedAt: scan().completed_at }] })));
       expect(Object.isFrozen(result)).toBe(true); expect(Object.isFrozen(result.buckets[0]!.entries![0])).toBe(true);
       expect(value.calls).toEqual([
@@ -76,6 +77,20 @@ describe('actual latest Secret Protection history, never exact-source scan or li
         metadataDigest: canonicalSha256({ private: 'private-future-metadata' }) }]);
       expect(JSON.stringify(result)).not.toMatch(/private-|private-pattern|private-scope/);
       expect(result.blockers.some(item => item.code === 'workflow-secret-protection-history-fields-unsupported')).toBe(true);
+    } finally { await value.close(); }
+  });
+  it('retains opaque custom-pattern envelopes without guessing the ordinary scan-record schema', async () => {
+    const value = await fixture();
+    try {
+      const custom = { pattern_name: 'private-pattern', scans: [scan()],
+        type: { private: 'opaque-custom-type' }, status: { private: 'opaque-custom-status' },
+        started_at: { private: 'opaque-custom-time' } };
+      value.routes.set(value.historyPath, { custom_pattern_backfill_scans: [custom] });
+      const result = await value.request();
+      expect(result.buckets.find(bucket => bucket.bucket === 'custom_pattern_backfill_scans')!.entries)
+        .toEqual([{ metadataDigest: canonicalSha256(custom) }]);
+      expect(result).toMatchObject({ status: 'blocked', scanVerdict: 'not-issued', licensedProgramSubjects: null });
+      expect(JSON.stringify(result)).not.toMatch(/private-pattern|opaque-custom/);
     } finally { await value.close(); }
   });
   it.each(['develop', 'main', 'release/1.2.3', 'hotfix/1.2.4'])(
