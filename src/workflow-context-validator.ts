@@ -114,7 +114,7 @@ function completed(result: CommandResult): boolean {
 
 function validatorGitOptions(root: string, timeoutMs: number) {
   const options = workflowGitOptions(root, timeoutMs);
-  const env: NodeJS.ProcessEnv = { ...options.env };
+  const env: NodeJS.ProcessEnv = { ...process.env, ...options.env };
   for (const key of Object.keys(process.env)) if (key.toUpperCase().startsWith('GIT_')) env[key] = undefined;
   Object.assign(env, { GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: gitConfigNullFile(),
     GIT_CONFIG_COUNT: '0', GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_NO_REPLACE_OBJECTS: '1' });

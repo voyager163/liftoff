@@ -16,6 +16,7 @@ import { observeModernLocalTools } from '../src/adapters/process/modern-local-to
 import { WorkflowCheckovInvocation } from '../src/adapters/process/workflow-checkov.js';
 import { inspectModernLocalRuntime, planModernLocalRuntime } from '../src/application/governance/modern-local-inputs.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
+import { resolveTargetExecutableCommand } from '../src/adapters/process/windows-job-runner.js';
 import { hclComputationPolicy } from '../src/adapters/hcl/isolated-parser.js';
 
 const qualifiedHcl = process.platform === hclComputationPolicy.qualifiedRuntime.platform &&
@@ -252,6 +253,38 @@ describe('release-owned real context validator bodies, not phase qualification',
     })).toMatchObject({
       status: 'failed', code: 'validator-source-mismatch', workloadExecution: false, command: null
     });
+  });
+
+  it('retains actual Git executable visibility and neutral configuration in every settled immutable tree read', async () => {
+    const value = await fixture(), original = NodeCommandRunner.prototype.run;
+    vi.stubEnv('GIT_DIR', path.join(root, 'unadmitted-git-override'));
+    const observations: { targetVisible: boolean; gitOverrideCleared: boolean; configNeutral: boolean;
+      settled: boolean; nulTerminated: boolean }[] = [];
+    const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(async function (this: NodeCommandRunner, command, options) {
+      const result = await original.call(this, command, options);
+      if (command.executable === 'git' && command.args.includes('ls-tree')) {
+        observations.push({
+          targetVisible: resolveTargetExecutableCommand(command, options?.env, options?.cwd) !== null,
+          gitOverrideCleared: options?.env?.GIT_DIR === undefined,
+          configNeutral: options?.env?.GIT_CONFIG_NOSYSTEM === '1' &&
+            options.env.GIT_CONFIG_GLOBAL === (process.platform === 'win32' ? 'NUL' : os.devNull) &&
+            options.env.GIT_CONFIG_COUNT === '0',
+          settled: result.status === 0 && result.processTreeSettled === true &&
+            result.signal === null && !result.timedOut && !result.errorCode && !result.outputLimitExceeded,
+          nulTerminated: result.stdout.endsWith('\0')
+        });
+      }
+      return result;
+    });
+    try {
+      expect(await executeWorkflowContextValidator(value.root, { validator: 'source-integrity', sourceSha: value.sourceSha }))
+        .toMatchObject({ status: 'passed', workloadExecution: false, command: null, phaseProof: 'not-issued' });
+      expect(observations).toEqual(Array.from({ length: 2 }, () => ({
+        targetVisible: true, gitOverrideCleared: true, configNeutral: true, settled: true, nulTerminated: true
+      })));
+    } finally {
+      run.mockRestore();
+    }
   });
 
   it('refuses uncommitted application bytes before project code can execute', async () => {

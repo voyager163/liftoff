@@ -161,6 +161,12 @@ A separate always-run control observes the actual input-capability refusal befor
 Checkov, with no scanner invocation, workload command or phase proof. It does not
 claim that Checkov inspected or rejected a module on an unsupported runtime.
 
+Settled immutable Git reads preserve the actual invocation environment, including
+executable discovery, before clearing inherited Git overrides and applying the
+same neutral configuration as metadata reads. Call-through inventory controls
+retain complete NUL-delimited output and settlement checks; local observation
+does not qualify Windows execution or a current5 native tool subject.
+
 Private `observeSource5WorkflowRequirementSource` reads the complete immutable
 ruleset source using the original current5 context and read-only observation
 runtime. File/digest references are selectors: the actual commit/tree inventory
