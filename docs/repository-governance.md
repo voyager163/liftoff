@@ -208,6 +208,48 @@ not separately pinned native-host qualification. The subcheck has no public
 selector; its private report retains the existing shape and explicitly issues
 no phase proof.
 
+Private `executeWorkflowCheckovComponentValidator(projectRoot, sourceSha,
+component)` runs the actual Checkov Terraform policies against the same finite,
+explicit captured `.tf` scope. It rechecks committed inputs after both policy
+success and policy failure. Module references and function expressions are
+conservatively refused until their actual input/evaluation closure is qualified;
+this lexical refusal also rejects comment/string lookalikes and is not a second
+Terraform parser. Nonempty, ordinary in-scope findings must agree with the real
+process exit and resource/check counts; skipped or suppressed checks,
+parse failures, empty coverage, soft-fail disagreement and incomplete output
+block qualification rather than becoming a green or controlled-red result.
+The existing thirteen-key private report and five public selectors are unchanged.
+
+The implemented development compatibility profile is Checkov 3.3.20 in an
+isolated POSIX Python 3.14 virtual environment, not a released/supported-stack
+or native-host admission. A fixed `-I -S -B` bootstrap imports explicit observed
+roots; no shell trampoline, executable `.pth` hook, user site, project Python
+path or operator Checkov configuration is executed. The bounded selected import
+roots, standard-library files, launcher, interpreter-bin membership, declared file-link targets
+and virtual-environment configuration are observed before and after scanning.
+Unsupported path hooks, directory links or outside-prefix file links refuse;
+there is no automatic installation or fallback to a different program.
+This observed import inventory is not native linked-library closure, an approved
+immutable release/tool subject or execution confinement. Downloads, external
+module downloads and result uploads are disabled in the scanner invocation;
+its HOME, cache, temporary files and configuration are private. One absolute
+180-second preparation/execution cutoff is retained across observations.
+
+The real local verification is separate from Vitest's unchanged 30-second cases
+and skips: after a build, run `node scripts/verify-workflow-checkov.mjs` with the
+isolated scanner prefix on invocation-only `PATH`. Its dependency declaration is
+`tests/fixtures/workflow-checkov-requirements.txt`; restore it only into a
+separately owned unseeded `python3.14 -m venv --without-pip` environment, with a
+stripped environment, private HOME/XDG/cache and `uv pip install --no-config --no-cache --link-mode copy
+--only-binary :all: --index-url https://pypi.org/simple --python <owned-python>
+--requirement tests/fixtures/workflow-checkov-requirements.txt`.
+The verifier installs nothing. It builds actual current5 fixtures and checks
+restricted SSH ingress, genuine public-SSH failure, suppression/empty refusal,
+post-child source drift and owned-HOME replacement, without changing policy or
+inventing child results. These are local component cases, not hosted protected-ref
+green/red, full IaC/Dockerfile/Actions Checkov coverage, approved recipe,
+prerequisite session, license/SCA, native-host or phase qualification.
+
 These are explicit runner operations, never operations performed by plan or
 `--live` review. Tests, builds and framework tools may execute project code and
 write outputs; provider-read-only workflow permissions do not make them a host

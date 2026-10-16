@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
-  executeWorkflowActionReferenceValidator, executeWorkflowComposeConfigValidator,
+  executeWorkflowActionReferenceValidator, executeWorkflowCheckovComponentValidator, executeWorkflowComposeConfigValidator,
   executeWorkflowContextValidator, executeWorkflowTofuComponentFormatValidator, parseWorkflowContextValidatorArgs,
   type WorkflowTofuFormatComponent
 } from '../src/workflow-context-validator.js';
@@ -107,6 +107,22 @@ describe('release-owned real context validator bodies, not phase qualification',
       graphHash: value.api!.identity.phaseGraphHash
     });
     expect(result.inputDigest).toMatch(/^[a-f0-9]{64}$/u);
+  });
+
+  it('refuses unproved Terraform module closure before starting the private scanner', async () => {
+    const value = await fixture();
+    const component = [...value.components.keys()].find((id): id is WorkflowTofuFormatComponent => id.startsWith('opentofu-'));
+    if (!component) throw new Error('The actual fixture has no OpenTofu component.');
+    const parts = value.components.get(component)!;
+    await value.write([...parts, 'modules', 'captured', 'main.tf'], 'locals {\n  captured = true\n}\n');
+    await value.write([...parts, 'main.tf'], 'module "captured" {\n  source = "./modules/captured"\n}\n');
+    git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Unqualified module input closure');
+    const result = await executeWorkflowCheckovComponentValidator(value.root, git(value.root, 'rev-parse', 'HEAD'), component);
+    expect(result).toMatchObject({
+      status: 'blocked', code: 'validator-checkov', workloadExecution: false, command: null,
+      retainedExecutionDirectory: null, phaseProof: 'not-issued'
+    });
+    expect(result.message).toContain('input/evaluation closure');
   });
 
   it('uses the same actual test command for genuine passing and broken committed application source', async () => {

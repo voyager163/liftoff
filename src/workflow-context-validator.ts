@@ -7,6 +7,9 @@ import { observeProjectGitMetadata, gitConfigNullFile } from './adapters/assessm
 import { assertWorkspaceDirectorySnapshot, captureWorkspaceDirectoryChain } from './adapters/filesystem/repair-workspaces.js';
 import { readBoundProjectFileSnapshot } from './adapters/filesystem/bound-project-files.js';
 import { assertModernLocalToolsCurrent, observeModernLocalTools } from './adapters/process/modern-local-tools.js';
+import {
+  assertWorkflowCheckovLiteralScope, checkWorkflowCheckovResult, WorkflowCheckovInvocation, WorkflowCheckovRefusal
+} from './adapters/process/workflow-checkov.js';
 import { inspectModernLocalRuntime, planModernLocalRuntime } from './application/governance/modern-local-inputs.js';
 import { RepairWorkspaceError } from './application/repair/workspaces-types.js';
 import { projectCatalog } from './application/project/catalog.js';
@@ -15,7 +18,7 @@ import { resolveModernManifestSourceContext } from './application/project/source
 import { canonicalSha256, isRecord } from './domain/governance/activation/canonical-json.js';
 import { freezeModernValue } from './domain/governance/activation/modern-graph.js';
 import { capturedFileBytes } from './domain/governance/activation/modern-local-inputs.js';
-import { explicitTofuFormatCommand } from './domain/governance/activation/modern-tofu-format.js';
+import { explicitTofuFormatCommand, explicitTofuFormatPolicy } from './domain/governance/activation/modern-tofu-format.js';
 import type { ModernLocalSnapshot } from './domain/governance/activation/modern-local-inputs.js';
 import type { ManifestLayoutComponentId } from './domain/project/contracts.js';
 import { copyModernLocalData, localPath, modernLocalBounds, ModernLocalInputError } from './domain/governance/activation/modern-local-inputs.js';
@@ -27,7 +30,7 @@ import { FileSystemError } from './domain/project/errors.js';
 import { createSource5WorkflowContext } from './governance-activation/workflow-source5-context.js';
 import { workflowGitCommand, workflowGitOptions } from './governance-activation/workflow-binding.js';
 import { NodeCommandRunner } from './process-runner.js';
-import type { CommandResult } from './process-runner.js';
+import type { CommandResult, CommandRunner } from './process-runner.js';
 import { workflowContextValidators } from './domain/governance/activation/workflow-validator-program.js';
 import type { WorkflowContextValidator } from './domain/governance/activation/workflow-validator-program.js';
 export { workflowContextValidators };
@@ -61,11 +64,13 @@ export interface WorkflowContextValidatorReport {
 }
 
 export type WorkflowTofuFormatComponent = Extract<ManifestLayoutComponentId, `opentofu-${string}`>;
-type ExecutableValidator = WorkflowContextValidator | 'compose-config' | `tofu-format:${WorkflowTofuFormatComponent}`;
+type ExecutableValidator = WorkflowContextValidator | 'compose-config' | `tofu-format:${WorkflowTofuFormatComponent}` |
+  `checkov-terraform:${WorkflowTofuFormatComponent}`;
 type ExecutableValidatorReport<Validator extends ExecutableValidator> =
   Omit<WorkflowContextValidatorReport, 'validator'> & { readonly validator: Validator };
 export type WorkflowComposeConfigValidatorReport = ExecutableValidatorReport<'compose-config'>;
 export type WorkflowTofuComponentFormatValidatorReport = ExecutableValidatorReport<`tofu-format:${WorkflowTofuFormatComponent}`>;
+export type WorkflowCheckovComponentValidatorReport = ExecutableValidatorReport<`checkov-terraform:${WorkflowTofuFormatComponent}`>;
 
 class ValidatorRefusal extends Error {
   constructor(readonly code: string, message: string, readonly status: 'failed' | 'blocked' = 'blocked') {
@@ -373,6 +378,17 @@ export async function executeWorkflowTofuComponentFormatValidator(
   return executeSelectedValidator(projectRoot, { ...request, validator: `tofu-format:${component}` });
 }
 
+/** A local component-only policy subcheck, not full Checkov coverage or a public selector. */
+export async function executeWorkflowCheckovComponentValidator(
+  projectRoot: string, sourceSha: string, component: WorkflowTofuFormatComponent
+): Promise<WorkflowCheckovComponentValidatorReport> {
+  const request = readRequest({ validator: 'source-integrity', sourceSha });
+  if (typeof component !== 'string' || !component.startsWith('opentofu-')) {
+    throw new ValidatorRefusal('validator-checkov-component', 'Scanning requires one actual selected OpenTofu component, not a caller path or command.');
+  }
+  return executeSelectedValidator(projectRoot, { ...request, validator: `checkov-terraform:${component}` });
+}
+
 async function executeSelectedValidator<Validator extends ExecutableValidator>(
   projectRoot: string, request: { readonly validator: Validator; readonly sourceSha: string }
 ): Promise<ExecutableValidatorReport<Validator>> {
@@ -380,6 +396,9 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
   let workloadExecution = false;
   let retainedExecutionDirectory: string | null = null;
   let command: WorkflowContextValidatorReport['command'] = null;
+  const scanning = request.validator.startsWith('checkov-terraform:');
+  const scannerDeadline = scanning ? performance.now() + 180_000 : null;
+  let scannerVerdict: 'passed' | 'failed' | null = null;
   const report = (status: WorkflowContextValidatorReport['status'], code: string, message: string) =>
     freezeModernValue({ ...request, status, code, message, graphHash, inputDigest, workloadExecution,
       executionBoundary: 'not-a-sandbox' as const,
@@ -387,7 +406,16 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
       phaseProof: 'not-issued' as const, retainedExecutionDirectory, command });
   try {
     const runner = new NodeCommandRunner();
-    const before = await observeProjectGitMetadata(projectRoot, runner);
+    const metadataRunner: CommandRunner = scanning ? {
+      async run(command, options) {
+        const remaining = Math.floor(scannerDeadline! - performance.now());
+        if (remaining <= 0) throw new ValidatorRefusal('validator-checkov-deadline', 'The original scanner cutoff expired before source metadata observation.');
+        const result = await runner.run(command, { ...options, ensureProcessTreeSettled: true,
+          timeoutMs: Math.min(options?.timeoutMs ?? 10_000, remaining) });
+        return result.processTreeSettled === true ? result : { ...result, errorCode: result.errorCode ?? 'GIT_METADATA_INCOMPLETE' };
+      }
+    } : runner;
+    const before = await observeProjectGitMetadata(projectRoot, metadataRunner);
     if (!before.facts.isRepository || before.facts.head !== request.sourceSha || before.facts.originState !== 'verified') {
       throw new ValidatorRefusal('validator-source-binding',
         'Validation requires the exact Git root/HEAD and one matching credential-free GitHub origin.', 'failed');
@@ -417,7 +445,8 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
     inputDigest = local.baselineDigest;
     const consistency = local.checks.find(check => check.id === 'source-consistency');
     const selected = request.validator === 'source-integrity' ? consistency :
-      local.checks.find(check => check.id === request.validator);
+      local.checks.find(check => check.id === (scanning
+        ? request.validator.replace('checkov-terraform:', 'tofu-format:') : request.validator));
     if (consistency?.status !== 'planned' || selected?.status !== 'planned') {
       throw new ValidatorRefusal('validator-inputs',
         'The actual selected validator input closure is incomplete, unsupported or inapplicable; no check was substituted.');
@@ -429,8 +458,19 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
       request.sourceSha, managedPaths, componentRoots);
     if (selected.command) {
       const formatting = request.validator.startsWith('tofu-format:');
-      const selectedCommand = formatting
+      const selectedCommand = formatting || scanning
         ? explicitTofuFormatCommand(selected.cwdPathParts, local.inspection.snapshot.files) : selected.command;
+      if (scanning) {
+        const names = new Set(selectedCommand.args.slice(explicitTofuFormatPolicy.args.length)
+          .map(name => path.posix.normalize(path.posix.join(...selected.cwdPathParts, name))));
+        const inputs = local.inspection.snapshot.files.filter(file => names.has(file.pathParts.join('/')));
+        if (inputs.length !== names.size) throw new ValidatorRefusal('validator-checkov-scope', 'The exact selected scanner file inventory is incomplete.');
+        assertWorkflowCheckovLiteralScope(inputs.map(file => {
+          const bytes = capturedFileBytes(file);
+          if (!bytes) throw new ValidatorRefusal('validator-checkov-scope', 'A selected scanner file is absent.');
+          return bytes.toString('utf8');
+        }));
+      }
       const tools = request.validator === 'compose-config' || formatting
         ? await observeModernLocalTools(projectRoot, [{ ...selected, command: selectedCommand }], []) : null;
       const tool = tools?.find(tool => tool.id === (formatting ? 'tofu' : 'docker'));
@@ -445,6 +485,13 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
       const home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'liftoff-workflow-validator-'));
       let settled = false;
       let commandFailed = false;
+      let scanner: WorkflowCheckovInvocation | null = null;
+      let scannerFiles: readonly string[] | null = null;
+      const recordCommand = (result: CommandResult) => ({
+        status: result.status, signal: result.signal, timedOut: result.timedOut,
+        outputLimitExceeded: result.outputLimitExceeded === true, processTreeSettled: result.processTreeSettled === true,
+        stdoutDigest: canonicalSha256(result.stdout), stderrDigest: canonicalSha256(result.stderr)
+      });
       retainedExecutionDirectory = home;
       const homeBoundary = await captureWorkspaceDirectoryChain(home).then(async boundary => {
         await assertWorkspaceDirectorySnapshot(boundary);
@@ -478,21 +525,34 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
           Object.assign(env, { TF_CLI_CONFIG_FILE: config, TF_DATA_DIR: path.join(home, 'tofu-data'),
             TF_IN_AUTOMATION: '1', TF_INPUT: '0', CHECKPOINT_DISABLE: '1' });
         }
+        if (scanning) Object.assign(env, { TMPDIR: home, TMP: home, TEMP: home });
         if (tools) await assertModernLocalToolsCurrent(projectRoot, home, tools);
-        const result = await runner.run(executable, {
-          cwd: path.join(projectRoot, ...selected.cwdPathParts), env, timeoutMs: 180_000,
-          maxOutputBytes: 1024 * 1024, ensureProcessTreeSettled: true, stream: false
-        });
+        let result: CommandResult;
+        if (scanning) {
+          scannerFiles = selectedCommand.args.slice(explicitTofuFormatPolicy.args.length)
+            .map(name => path.resolve(projectRoot, ...selected.cwdPathParts, name));
+          scanner = new WorkflowCheckovInvocation(projectRoot, home, scannerFiles, scannerDeadline!);
+          const execution = await scanner.execute(env);
+          result = execution.result;
+          inputDigest = canonicalSha256({ baselineDigest: local.baselineDigest, programDigest: execution.programDigest });
+        } else {
+          result = await runner.run(executable, {
+            cwd: path.join(projectRoot, ...selected.cwdPathParts), env, timeoutMs: 180_000,
+            maxOutputBytes: 1024 * 1024, ensureProcessTreeSettled: true, stream: false
+          });
+        }
         workloadExecution = result.processSpawned === true;
         settled = result.processTreeSettled === true;
-        command = {
-          status: result.status, signal: result.signal, timedOut: result.timedOut,
-          outputLimitExceeded: result.outputLimitExceeded === true, processTreeSettled: result.processTreeSettled === true,
-          stdoutDigest: canonicalSha256(result.stdout), stderrDigest: canonicalSha256(result.stderr)
-        };
+        command = recordCommand(result);
+        if (scannerFiles) scannerVerdict = checkWorkflowCheckovResult(result, scannerFiles);
         commandFailed = !completed(result);
         if (tools) await assertModernLocalToolsCurrent(projectRoot, home, tools);
       } finally {
+        if (scanner) {
+          settled = scanner.processTreeSettled;
+          workloadExecution = scanner.processSpawned;
+          if (scanner.validationResult) command = recordCommand(scanner.validationResult);
+        }
         if (settled) {
           try {
             await assertWorkspaceDirectorySnapshot(homeBoundary);
@@ -505,7 +565,7 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
           retainedExecutionDirectory = null;
         }
       }
-      if (commandFailed) {
+      if (commandFailed && !scanning) {
         return report('failed', 'validator-command', 'The actual validator did not exit successfully with its original process tree settled; raw project output was withheld.');
       }
     } else if (request.validator !== 'source-integrity' && request.validator !== 'framework-source') {
@@ -521,13 +581,21 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
       throw new ValidatorRefusal('validator-source-drift',
         'The exact selected source membership, bytes, absence or modes changed during validation.', 'failed');
     }
-    const metadata = await observeProjectGitMetadata(projectRoot, runner);
+    const metadata = await observeProjectGitMetadata(projectRoot, metadataRunner);
     if (metadata.digest !== before.digest) {
       throw new ValidatorRefusal('validator-source-drift', 'The exact Git root, HEAD or repository binding changed during validation.', 'failed');
+    }
+    if (scannerDeadline !== null && performance.now() >= scannerDeadline) {
+      throw new ValidatorRefusal('validator-checkov-deadline', 'The original absolute scanner preparation/execution cutoff expired; no fresh scan qualification was issued.');
+    }
+    if (scannerVerdict === 'failed') {
+      return report('failed', 'validator-checkov-findings',
+        'The actual component scanner found unsuppressed policy failures in exact committed inputs; this is not hosted controlled-red or phase qualification.');
     }
     return report('passed', 'validator-passed', 'The selected real validator passed for its exact committed inputs; this result issues no phase or provider qualification.');
   } catch (error) {
     if (error instanceof ValidatorRefusal) return report(error.status, error.code, error.message);
+    if (error instanceof WorkflowCheckovRefusal) return report('blocked', 'validator-checkov', error.message);
     throw error;
   }
 }
