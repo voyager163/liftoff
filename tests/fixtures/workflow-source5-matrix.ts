@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
-import { rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { stringify } from 'yaml';
 import { canonicalSha256 } from '../../src/domain/governance/activation/canonical-json.js';
 import type { GitHubActivationTransport, GitHubRequest } from '../../src/adapters/github/activation-rest.js';
@@ -115,21 +116,26 @@ async function prepareMatrixFixture(seed: Awaited<ReturnType<typeof workflowSour
     workflowDrift: false, tagDrift: false, protectedRefDrift: false, rulesetDrift: false, treeDrift: false,
     rulesetDriftIndex: -1, invalidTagRulesetIndex: -1 };
   const validators = new NodeCommandRunner();
+  const validatorRoot = await mkdtemp(path.join(seed.root, 'matrix-validator-inputs-'));
   const outcomes: ('success' | 'failure')[][] = [];
-  for (const binding of bindings) {
+  for (const [bindingIndex, binding] of bindings.entries()) {
     const outcome: ('success' | 'failure')[] = [];
     for (const [index, context] of contexts.entries()) {
       const text = binding.violation?.context === context.name ? invalid[index]! : valid[index]!;
+      const input = path.join(validatorRoot, `${bindingIndex}-${context.jobId}.${index === 0 ? 'mjs' : 'json'}`);
+      await writeFile(input, text, { flag: 'wx', mode: 0o600 });
       const result = await validators.run({ executable: process.execPath, args: index === 0 ?
-        ['--check', '--input-type=module'] : ['-e', "JSON.parse(require('node:fs').readFileSync(0, 'utf8'))"] },
-      { cwd: seed.root, env: { HOME: seed.storage.homedir, NODE_OPTIONS: '' }, stdin: text,
+        ['--check', input] : ['-e', "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))", input] },
+      { cwd: seed.root, env: { HOME: seed.storage.homedir, NODE_OPTIONS: '' },
         timeoutMs: 5000, maxOutputBytes: 4096, stream: false, ensureProcessTreeSettled: true });
-      if (result.timedOut || result.outputLimitExceeded || result.errorCode || result.aborted || result.status === null) {
+      if (result.timedOut || result.outputLimitExceeded || result.errorCode || result.aborted || result.status === null ||
+          result.signal || result.processTreeSettled !== true) {
         throw new Error('An isolated bounded validator did not settle.');
       }
+      if (await readFile(input, 'utf8') !== text) throw new Error('An original file-backed validator input changed during execution.');
       const conclusion = result.status === 0 ? 'success' : 'failure';
       if (conclusion !== (binding.violation?.context === context.name ? 'failure' : 'success')) {
-        throw new Error('The isolated actual validator did not detect only its own reviewed violation.');
+        throw new Error(`The isolated actual validator did not detect only its own reviewed violation: ${binding.family}/${binding.mode}/${context.jobId}, status ${result.status}.`);
       }
       outcome.push(conclusion);
     }

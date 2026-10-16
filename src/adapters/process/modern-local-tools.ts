@@ -1,4 +1,4 @@
-import {lstat,mkdir,mkdtemp,readFile,realpath} from 'node:fs/promises';
+import {lstat,mkdir,mkdtemp,readFile,realpath,stat} from 'node:fs/promises';
 import path from 'node:path';
 import {NodeCommandRunner} from '../../process-runner.js';
 import {nativeExecutableObserver} from '../filesystem/executables.js';
@@ -40,8 +40,12 @@ async function installedComposePlugin(dockerExecutable:string,root:string,stagin
   // Closed private bundles do not borrow a machine-wide plugin ahead of their own.
   const candidates=system.length&&['/usr/bin','/usr/local/bin'].includes(bin)?[...system,...prefix]:[...prefix,...system];
   for(const candidate of new Set(candidates)){
-    try{return await toolFile(candidate,root,staging,true);}
-    catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
+    try{await stat(candidate);}
+    catch(error){
+      if(typeof error==='object'&&error!==null&&'code'in error&&error.code==='ENOENT')continue;
+      throw error;
+    }
+    return toolFile(candidate,root,staging,true);
   }
   return localInputFailure('The actual installed Compose plugin identity is unavailable; Docker CLI version alone is insufficient.');
 }

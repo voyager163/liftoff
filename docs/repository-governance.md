@@ -141,8 +141,10 @@ For system-installed Linux Docker, plugin observation uses Docker29.8.2's finite
 system directory precedence: `/usr/local/lib`, `/usr/local/libexec`, `/usr/lib`,
 then `/usr/libexec`, each under `docker/cli-plugins`. Existing independently
 observed private installation prefixes remain separate from system discovery.
-The first present candidate must itself pass native-file, version and settlement
-checks; a rejected candidate is not replaced by a lower-priority plugin.
+The first candidate found by Docker's follow-link existence stat must itself
+pass native-file, version and settlement checks. An initially dangling link is
+absent under that stat, but failures after a successful stat, including capture
+disappearance, are never treated as absence or replaced by a lower-priority plugin.
 Consumption rechecks both the program files and the selected plugin, including
 the appearance of a new higher-priority candidate. No user Docker configuration,
 caller plugin directory or host installation is admitted.
@@ -537,6 +539,8 @@ first observed error without starting provider readback. Every entry still
 performs its original lease, installed-scope, issuance and ownership checks.
 It performs no dispatch, replaces no original observation
 timestamp or receipt, and cannot finalize a phase.
+Cross-platform matrix fixtures run genuine syntax/JSON validators against owned
+source files. File-backed validation does not certify native stdin transport.
 
 The private source5 effect bridge uses a separate private control schema1 and the
 closed `workflow-source5-{plan,approval,journal,operation,proof}` namespaces

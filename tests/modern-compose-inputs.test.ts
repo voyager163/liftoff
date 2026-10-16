@@ -1,4 +1,4 @@
-import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +15,7 @@ import {
   modernLinuxComposePluginPaths, observeModernLocalTools
 } from '../src/adapters/process/modern-local-tools.js';
 import { createApplicationEnvironment } from '../src/application/repair/application-environment.js';
+import * as toolchain from '../src/application/repair/application-toolchain.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
 import type { ModernLocalCheck } from '../src/domain/governance/activation/modern-local-inputs.js';
 import type { ProjectOptions } from '../src/domain/project/contracts.js';
@@ -227,6 +228,64 @@ describe('closed current Compose input interpretation', () => {
           expect(probes).toEqual([preferredPlugin]);
         } finally { calls.mockRestore(); }
       }
+    });
+
+  nativeIt.each(['initial-dangling', 'observation-capture-loss', 'consumption-capture-loss'] as const)(
+    'preserves initial-stat semantics for actual private copied Compose %s', async scenario => {
+      const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff-compose-capture-')));
+      roots.push(root);
+      const project = path.join(root, 'project'), staging = path.join(root, 'staging');
+      const prefix = path.join(root, 'tools', 'usr'), bin = path.join(prefix, 'bin');
+      const lower = path.join(prefix, 'libexec', 'docker', 'cli-plugins', 'docker-compose');
+      const preferred = path.join(prefix, 'lib', 'docker', 'cli-plugins', 'docker-compose');
+      await mkdir(project);
+      await mkdir(staging);
+      await mkdir(bin, { recursive: true });
+      await mkdir(path.dirname(lower), { recursive: true });
+      await mkdir(path.dirname(preferred), { recursive: true });
+      const check: ModernLocalCheck = {
+        id: 'compose-config', status: 'planned', inputPaths: [], reasons: [],
+        command: { executable: 'docker', args: ['compose', 'config', '-q'] }, cwdPathParts: [],
+        env: {}, prerequisites: [], effects: ['configuration only']
+      };
+      const host = (await observeModernLocalTools(project, [check], [])).find(tool => tool.id === 'docker')!;
+      await copyFile(host.files[0]!.path, path.join(bin, 'docker'));
+      await copyFile(host.executablePath, lower);
+      vi.stubEnv('PATH', [bin, process.env.PATH].join(path.delimiter));
+      const original = (await observeModernLocalTools(project, [check], [])).find(tool => tool.id === 'docker')!;
+      expect(original.executablePath).toBe(lower);
+      if (scenario === 'initial-dangling') {
+        await symlink(path.join(path.dirname(preferred), 'missing-target'), preferred);
+        expect((await observeModernLocalTools(project, [check], [])).find(tool => tool.id === 'docker')!.executablePath)
+          .toBe(lower);
+        await assertModernLocalToolsCurrent(project, staging, [original]);
+      } else {
+        await copyFile(host.executablePath, preferred);
+        let removed = false;
+        const capture = toolchain.toolFile, run = NodeCommandRunner.prototype.run, probes: string[] = [];
+        const files = vi.spyOn(toolchain, 'toolFile').mockImplementation(async (...args) => {
+          const observed = await capture(...args);
+          if (args[0] === preferred && !removed) {
+            expect(observed.path).toBe(preferred);
+            expect(observed.digest).toBe(host.files[1]!.digest);
+            await unlink(preferred);
+            removed = true;
+            return capture(...args);
+          }
+          return observed;
+        });
+        const commands = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(function (this: NodeCommandRunner, command, options) {
+          if (command.args[0] === 'version') probes.push(command.executable);
+          return run.call(this, command, options);
+        });
+        try {
+          await expect(scenario === 'observation-capture-loss' ? observeModernLocalTools(project, [check], []) :
+            assertModernLocalToolsCurrent(project, staging, [original])).rejects.toMatchObject({ code: 'ENOENT' });
+          expect(removed).toBe(true);
+          expect(probes).toEqual([]);
+        } finally { files.mockRestore(); commands.mockRestore(); }
+      }
+      expect(await toolchain.toolFile(lower, project, staging, true)).toEqual(original.files[1]);
     });
 
   nativeIt('configures actual generated Compose on the bound native plugin without inherited project values or dotenv', async () => {
