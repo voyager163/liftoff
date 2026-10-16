@@ -172,6 +172,36 @@ afterEach(async () => {
 });
 
 describe('external command runner', () => {
+  it.each([undefined, true, false])('honors explicit environment inheritance %s without changing its default', async inheritEnvironment => {
+    const name = 'LIFTOFF_RUNNER_PARENT_ONLY_FIXTURE';
+    const previous = process.env[name];
+    try {
+      process.env[name] = 'parent';
+      const result = await new NodeCommandRunner().run({ executable: process.execPath,
+        args: ['-e', `console.log(JSON.stringify({parent:process.env.${name} ?? null,selected:process.env.LIFTOFF_RUNNER_SELECTED_FIXTURE}))`] },
+      { inheritEnvironment, env: { LIFTOFF_RUNNER_SELECTED_FIXTURE: 'selected' }, timeoutMs: 10_000 });
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({ parent: inheritEnvironment === false ? null : 'parent', selected: 'selected' });
+      expect(process.env[name]).toBe('parent');
+    } finally {
+      if (previous === undefined) delete process.env[name]; else process.env[name] = previous;
+    }
+  });
+
+  it('can launch with an explicitly empty environment instead of implicitly restoring its parent', async () => {
+    const name = 'LIFTOFF_RUNNER_PARENT_ONLY_FIXTURE';
+    const previous = process.env[name];
+    try {
+      process.env[name] = 'parent';
+      const result = await new NodeCommandRunner().run({ executable: process.execPath,
+        args: ['-e', `console.log(JSON.stringify(process.env.${name} ?? null))`] },
+      { inheritEnvironment: false, timeoutMs: 10_000 });
+      expect(result.status).toBe(0); expect(JSON.parse(result.stdout)).toBeNull();
+    } finally {
+      if (previous === undefined) delete process.env[name]; else process.env[name] = previous;
+    }
+  });
+
   it('passes hostile-looking arguments literally without shell interpolation', async () => {
     const root = await testRoot('literal-args');
     const sentinel = path.join(root, 'shell-expanded');

@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import {
+  assertCompiledPackageFiles,
   assertUnpackedPackageSize,
   formatSmokeIssues,
   installedAssetByteIssues,
@@ -185,6 +186,12 @@ try {
   assertPackageContains(packResult, 'dist/commands.js');
   assertPackageContains(packResult, 'dist/package-identity.js');
   assertPackageContains(packResult, 'dist/self-upgrade.js');
+  for (const asset of [
+    'native-release-admission.mjs', 'native-release-admission.d.mts',
+    'native-release-catalog.mjs', 'native-release-catalog.d.mts', 'release-policy.json', 'platforms.json'
+  ]) {
+    assertPackageContains(packResult, `distribution/native/${asset}`);
+  }
   assertPackageContains(packResult, 'dist/stable-release.js');
   assertPackageContains(packResult, 'dist/genai-templates.js');
   assertPackageExcludes(packResult, 'dist/power-apps-assets.js');
@@ -202,6 +209,7 @@ try {
   assertPackageContains(packResult, 'dist/domain/assessment/report.js');
   assertPackageContains(packResult, 'dist/cli/commands/assess.js');
   assertPackageContains(packResult, 'dist/supported-stack.js');
+  assertCompiledPackageFiles(packResult.files.map((file) => file.path));
   const declaredPackage = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
   const packedAssetIssues = packagedAssetIssues({
     packedPaths: packResult.files.map((file) => file.path),
@@ -250,6 +258,22 @@ try {
     throw new Error(`Installed liftoff entrypoint not found at ${liftoffEntrypoint}`);
   }
   const installedPackageRoot = path.dirname(path.dirname(liftoffEntrypoint));
+  const contextValidator = path.join(installedPackageRoot, 'dist', 'workflow-context-validator.js');
+  const malformedValidator = runFailure(process.execPath, [contextValidator, '--validator', 'arbitrary-command'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  if (malformedValidator.status !== 2 || malformedValidator.stdout ||
+      !malformedValidator.stderr.includes('no validation was performed')) {
+    throw new Error('Installed context validator accepted an arbitrary command or failed its closed argument boundary.');
+  }
+  const unboundValidator = runFailure(process.execPath, [contextValidator, '--validator', 'source-integrity',
+    '--source-sha', 'a'.repeat(40)], { cwd: outsideDirectory, env: npmEnv });
+  const unboundReport = JSON.parse(unboundValidator.stdout);
+  if (unboundValidator.status !== 1 || unboundReport.status !== 'failed' ||
+      unboundReport.code !== 'validator-source-binding' || unboundReport.workloadExecution !== false ||
+      unboundReport.command !== null || unboundReport.phaseProof !== 'not-issued') {
+    throw new Error('Installed context validator did not refuse a missing exact Git source without workload execution or proof.');
+  }
   const installedAssetIssues = [
     ...await installedAssetByteIssues({ installedRoot: installedPackageRoot, sourceRoot: packageRoot }),
     ...await installedRetainedAssetIssues({ installedRoot: installedPackageRoot })
@@ -330,6 +354,19 @@ try {
       JSON.stringify(installedCapabilities.schemas.projectAssessment.modes) !== '["local","live"]') {
     throw new Error('Installed capabilities lost the bounded local/live metadata and no-conformance contract.');
   }
+  const workflowCapabilities = installedCapabilities.schemas?.modernWorkflowReview;
+  if (workflowCapabilities?.report !== 1 || workflowCapabilities.request !== 'review-workflow-source5' ||
+      workflowCapabilities.readOnly !== true || workflowCapabilities.blockedExit !== 2 ||
+      workflowCapabilities.approval !== false || workflowCapabilities.execution !== false ||
+      workflowCapabilities.externalMetadataWrites !== false || workflowCapabilities.providerOperations !== false) {
+    throw new Error('Installed workflow review capability must remain read-only and explicitly blocked before effects.');
+  }
+  const governanceHelp = run(process.execPath, [liftoffEntrypoint, 'governance', '--help'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  if (!governanceHelp.stdout.includes('review-workflow-source5') || !governanceHelp.stdout.includes('exits 2')) {
+    throw new Error('Installed governance help lost the nonexecuting workflow-review boundary.');
+  }
   for (const flag of ['--check', '--live', '--subscription', '--approve-plan', '--recover', '--json',
     '--capabilities', '--inspect-layout', '--application-patch', '--verify-plan', '--allow-network', '--allow-dependency-preparation']) {
     if (!repairHelp.stdout.includes(flag)) throw new Error(`Installed repair help is missing ${flag}.`);
@@ -368,7 +405,7 @@ try {
     env: npmEnv
   });
   if (
-    !upgradeHelp.stdout.includes('supported global npm Liftoff CLI') ||
+    !upgradeHelp.stdout.includes('verified owning CLI installation') ||
     !upgradeHelp.stdout.includes('--check') ||
     !upgradeHelp.stdout.includes('--json') ||
     !upgradeHelp.stdout.includes('project templates use update separately')
@@ -384,7 +421,8 @@ try {
       pathToFileURL(path.join(installedPackageRoot, 'dist', 'self-upgrade.js')).href
     )};
     const calls = [];
-    const result = await runSelfUpgrade({
+    let deliveryMetadata = { name: '@msn-control/liftoff', version: ${JSON.stringify(packResult.version)} };
+    const inspect = () => runSelfUpgrade({
       mode: 'check',
       currentVersion: ${JSON.stringify(packResult.version)},
       stdout: process.stdout,
@@ -395,7 +433,7 @@ try {
       runner: {
         run: async (command) => {
           calls.push(command);
-          if (command.args.join(' ') !== 'root --global') {
+          if (!['root', 'config', 'view'].includes(command.args[0])) {
             throw new Error('Injected current-version check attempted an unexpected command.');
           }
           return {
@@ -403,7 +441,9 @@ try {
             displayCommand: command.executable + ' ' + command.args.join(' '),
             status: 0,
             signal: null,
-            stdout: ${JSON.stringify(`${isolatedGlobalRoot}\n`)},
+            stdout: command.args[0] === 'root' ? ${JSON.stringify(`${isolatedGlobalRoot}\n`)} :
+              command.args[0] === 'config' ? (command.args[2] === '@msn-control:registry' ? 'undefined' : 'https://registry.npmjs.org/') :
+              JSON.stringify(deliveryMetadata),
             stderr: '',
             timedOut: false
           };
@@ -413,23 +453,105 @@ try {
         name: '@msn-control/liftoff',
         version: ${JSON.stringify(packResult.version)}
       }),
-      environment: { LIFTOFF_TELEMETRY: '0' }
+      environment: process.env
     });
-    if (result.status !== 'current' || calls.length !== 1) process.exit(1);
-    process.stdout.write(JSON.stringify(result));
+    const result = await inspect();
+    if (result.status !== 'current' || result.schemaVersion !== 2 || result.installationOwner !== 'npm' ||
+      result.channel.status !== 'available' || result.effects !== 'none' || calls.length !== 4) {
+      throw new Error('Installed owner check failed: '+JSON.stringify(result));
+    }
+    calls.length = 0;
+    deliveryMetadata = { name: '@foreign/liftoff', version: ${JSON.stringify(packResult.version)} };
+    const invalid = await inspect();
+    if (invalid.status !== 'failed' || invalid.reasonCode !== 'registry_invalid' ||
+      invalid.installationOwner !== 'npm' || invalid.upstream.status !== 'available' ||
+      invalid.channel.status !== 'unknown' || invalid.effects !== 'none' || calls.length !== 4) {
+      throw new Error('Installed owner check misclassified invalid channel metadata: '+JSON.stringify(invalid));
+    }
+    process.stdout.write(JSON.stringify({ current: result, invalid }));
   `;
   const injectedCheck = run(
     process.execPath,
     ['--input-type=module', '-e', injectedCheckScript],
-    { cwd: outsideDirectory, env: npmEnv }
+    { cwd: outsideDirectory, env: { ...npmEnv, PATH: `${path.dirname(liftoffBinary)}${path.delimiter}${npmEnv.PATH ?? ''}` } }
   );
   const injectedResult = JSON.parse(injectedCheck.stdout);
   if (
-    injectedResult.status !== 'current' ||
-    injectedResult.currentVersion !== packResult.version
+    injectedResult.current.status !== 'current' ||
+    injectedResult.current.currentVersion !== packResult.version ||
+    injectedResult.invalid.reasonCode !== 'registry_invalid'
   ) {
     throw new Error('Installed self-upgrade module failed its isolated injected check');
   }
+
+  for (const asset of [
+    'native-release-admission.mjs', 'native-release-admission.d.mts',
+    'native-release-catalog.mjs', 'native-release-catalog.d.mts', 'release-policy.json', 'platforms.json'
+  ]) {
+    const relative = path.join('distribution', 'native', asset);
+    if (!(await readFile(path.join(installedPackageRoot, relative))).equals(await readFile(path.join(packageRoot, relative)))) {
+      throw new Error(`Installed native admission material differs: ${asset}`);
+    }
+  }
+  const runtimeAdmission = `
+    import assert from 'node:assert/strict';
+    import {createHash,generateKeyPairSync,sign} from 'node:crypto';
+    import {readFile} from 'node:fs/promises';
+    import {gzipSync} from 'node:zlib';
+    import {assertNativePublicationEvidence,verifyNativeBytesSignature,verifyNativeEvidenceSignature} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-release-admission.mjs')).href)};
+    import {admitNativeStableMaterial} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-metadata.js')).href)};
+    import {readHomebrewCaskOwnership} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-cask.js')).href)};
+    import {createNativeStableSource} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-transport.js')).href)};
+    import {createHomebrewCaskPreparation} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-cask-plan.js')).href)};
+    import {assertNativeReleaseCatalog,nativeReleaseCatalogFilename,nativeReleaseTargets} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-release-catalog.mjs')).href)};
+    const policy=JSON.parse(await readFile(${JSON.stringify(path.join(installedPackageRoot, 'distribution/native/release-policy.json'))},'utf8'));
+    assert.equal(policy.approvedSigningKeySha256,null);
+    await assert.rejects(()=>admitNativeStableMaterial({}, {}, policy),e=>e.reasonCode==='native_unqualified');
+    await assert.rejects(()=>readHomebrewCaskOwnership({}, {}, policy, '', new AbortController().signal),
+      e=>e.reasonCode==='native_unqualified');
+    const source=createNativeStableSource(policy,{fetch:async()=>{throw new Error('Unqualified metadata must not fetch.');}});
+    await assert.rejects(()=>source.readStable({target:'linux-x64'},new AbortController().signal),
+      e=>e.reasonCode==='native_unqualified');
+    const preparation=createHomebrewCaskPreparation({},policy);
+    await assert.rejects(()=>preparation.preview('/opt/homebrew',new AbortController().signal),
+      e=>e.reasonCode==='native_unqualified');
+    assert.equal(preparation.installExact,undefined);
+    assert.equal(nativeReleaseCatalogFilename,'liftoff-native-release.json');
+    assert.deepEqual([...nativeReleaseTargets],['darwin-arm64','linux-arm64','linux-x64','win32-x64']);
+    assert.throws(()=>assertNativeReleaseCatalog({}));
+    const {publicKey,privateKey}=generateKeyPairSync('ed25519');
+    const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
+    const approved=sha(publicKey.export({format:'der',type:'spki'}));
+    const binary=gzipSync(Buffer.from('Private installed raw-byte fixture, not a native release.'));
+    const binarySignature=sign(null,binary,privateKey);
+    const pem=publicKey.export({format:'pem',type:'spki'});
+    assert.equal(verifyNativeBytesSignature(binary,binarySignature,pem,approved),undefined);
+    const changed=Buffer.from(binary);changed[0]^=1;
+    assert.throws(()=>verifyNativeBytesSignature(changed,binarySignature,pem,approved));
+    assert.throws(()=>verifyNativeEvidenceSignature(binary,binarySignature,pem,approved),SyntaxError);
+    const record={repository:policy.repository,commit:'a'.repeat(40),version:'0.13.0',target:'linux-x64',
+      manifestSha256:'b'.repeat(64),inventorySha256:'c'.repeat(64),files:[]};
+    const checks=['minimumHost','installerOwnership','signing','packageNamespace','hclSourceCorrespondence'];
+    const evidence={...record,qualification:Object.fromEntries(checks.map(key=>[key,true])),
+      evidenceDigests:Object.fromEntries(checks.map(key=>[key,'d'.repeat(64)])),platformSigningIdentity:approved};
+    const bytes=Buffer.from(JSON.stringify(evidence));
+    const verified=verifyNativeEvidenceSignature(bytes,sign(null,bytes,privateKey),publicKey.export({format:'pem',type:'spki'}),approved);
+    const fixturePolicy={...policy,approvedSigningKeySha256:approved,linux:{archiveSigningKeySha256:approved}};
+    assertNativePublicationEvidence(record,verified,fixturePolicy);
+    assert.throws(()=>assertNativePublicationEvidence({...record,inventorySha256:'0'.repeat(64)},verified,fixturePolicy));
+    assert.throws(()=>assertNativePublicationEvidence({...record,commit:'0'.repeat(40)},verified,fixturePolicy));
+    assert.throws(()=>verifyNativeEvidenceSignature(bytes,sign(null,bytes,privateKey),publicKey.export({format:'pem',type:'spki'}),'0'.repeat(64)));
+    console.log('Installed runtime-only native admission and inventory binding verified; public policy remains unqualified.');
+  `;
+  run(process.execPath, ['--input-type=module', '-e', runtimeAdmission], {
+    cwd: outsideDirectory, env: { PATH: path.dirname(process.execPath), DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0', CI: 'true', NODE_OPTIONS: '', NODE_PATH: '' }
+  });
 
   const removedApply = runFailure(process.execPath, [liftoffEntrypoint, 'update', '--apply'], {
     cwd: outsideDirectory,
@@ -624,6 +746,61 @@ try {
   const { buildCurrentProjectPlan: installedCurrentPlan } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'planning.js')).href);
   const { buildArtifacts: installedArtifacts, buildCurrentArtifacts: installedCurrentArtifacts } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'templates.js')).href);
   const { writeArtifacts: installedWrite } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'file-system.js')).href);
+  const workflowProject = path.join(tempRoot, 'workflow review current project');
+  await installedWrite(workflowProject, installedCurrentArtifacts(installedCurrentPlan({
+    projectName: 'Workflow Review Smoke', projectType: 'standard', apiStack: 'node',
+    specWorkflow: 'manual', agents: [], governanceProfile: 'single-maintainer-gitflow', environments: ['dev']
+  }, { requireProjectName: true })));
+  const { loadProjectManifest } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'manifest.js')).href);
+  const { resolveModernManifestSourceContext } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'source-context.js')).href);
+  const { projectCatalog } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'catalog.js')).href);
+  const { createModernActivationRecordContract } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'domain', 'governance', 'activation', 'modern-records.js')).href);
+  const workflowManifest = await loadProjectManifest(workflowProject), workflowSource = resolveModernManifestSourceContext(workflowManifest);
+  const workflowRecords = createModernActivationRecordContract(projectCatalog, {
+    recordedIdentity: workflowManifest.governance.activationIdentity, profile: workflowManifest.governance.profile,
+    policyVersion: workflowManifest.governance.policyVersion,
+    selection: { ...workflowSource.selection, profile: workflowManifest.governance.profile },
+    pluginResolutionDigest: workflowSource.plugins.resolutionDigest,
+    activeLayoutDigest: workflowManifest.governance.activationIdentity.activeLayoutDigest
+  });
+  const workflowNow = new Date();
+  const pendingWorkflowState = workflowRecords.createInitialState({
+    repository: { id: `local:${randomUUID()}`, name: workflowManifest.project.name, defaultBranch: 'develop' },
+    applicability: { statePath: 'none', privateStagingDast: 'unknown', credentialRequired: 'unknown' },
+    createdAt: workflowNow.toISOString()
+  });
+  await mkdir(path.join(workflowProject, 'governance'), { recursive: true });
+  await writeFile(path.join(workflowProject, 'governance', 'activation-state.json'), JSON.stringify(pendingWorkflowState));
+  const workflowContent = 'name: Isolated reviewed source\non: workflow_dispatch\njobs:\n  validate:\n    runs-on: ubuntu-latest\n    steps:\n      - run: node --check backend/application.js\n';
+  const workflowRequest = path.join(tempRoot, 'workflow-review.json');
+  await writeFile(workflowRequest, JSON.stringify({
+    schemaVersion: 1, kind: 'review-workflow-source5', phaseId: 'bootstrap-workflow-source-ready', executionId: randomUUID(),
+    createdAt: workflowNow.toISOString(), expiresAt: new Date(workflowNow.getTime() + 60 * 60 * 1000).toISOString(),
+    configuration: { schemaVersion: 1, phases: {}, budget: { currency: 'USD', fixedMonthlyCents: 0, usageMonthlyCents: 0 } },
+    origin: null, remainingFrom: null, effects: [{ action: 'git.workflow-source.publish-reviewed', binding: {
+      repository: 'owner/repo', repositoryId: 123, ref: 'ci/liftoff-workflows-installed-review',
+      parentSha: 'a'.repeat(40), sourceTransmissionApproved: true,
+      files: [{ path: '.github/workflows/review.yml', content: workflowContent,
+        digest: createHash('sha256').update(workflowContent).digest('hex'), beforeDigest: null }]
+    } }]
+  }));
+  const workflowBefore = await treeDigest(workflowProject), workflowHomeBefore = await treeDigest(homeDirectory);
+  const workflowReview = runFailure(process.execPath, [liftoffEntrypoint, 'governance', 'plan', workflowProject,
+    '--scope', 'activation', '--inputs', workflowRequest, '--json'], { cwd: outsideDirectory, env: npmEnv });
+  const workflowReport = JSON.parse(workflowReview.stdout);
+  if (workflowReview.status !== 2 || workflowReport.kind !== 'liftoff-modern-workflow-review' ||
+      workflowReport.status !== 'blocked' || workflowReport.readOnly !== true ||
+      workflowReport.projectWrites !== false || workflowReport.externalMetadataWrites !== false ||
+      workflowReport.providerWrites !== false || workflowReport.workloadExecution !== false ||
+      workflowReport.executionAuthorized !== false || workflowReport.phaseComplete !== false ||
+      workflowReport.matrixComplete !== false || workflowReport.recordedProgressIsCurrentProof !== false ||
+      workflowReport.review?.execution !== 'not-authorized' ||
+      workflowReport.review?.prerequisites?.status !== 'not-observed' ||
+      workflowReport.review?.plan?.approval?.envelopeId !== null ||
+      !workflowReport.blockers?.some(blocker => blocker.code === 'workflow-current-prerequisite-observer-unavailable') ||
+      await treeDigest(workflowProject) !== workflowBefore || await treeDigest(homeDirectory) !== workflowHomeBefore) {
+    throw new Error(`Installed workflow review violated its nonexecuting prerequisite boundary: ${workflowReview.stdout}`);
+  }
   const assessmentBody = await readFile(path.join(installedPackageRoot, 'assets', 'skills', 'assessment.md'), 'utf8');
   const assessmentIntegrations = [
     { agent: 'github-copilot', logicalName: 'liftoff-assess-copilot', pathParts: ['.github', 'prompts', 'liftoff-assess.prompt.md'], invocation: '/liftoff-assess' },

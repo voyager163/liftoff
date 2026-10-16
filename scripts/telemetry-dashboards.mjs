@@ -7,14 +7,16 @@ const datasource = { type: 'grafana-azure-monitor-datasource', uid: 'liftoff-azu
 
 export async function buildTelemetryDashboard() {
   const common = await readFile(path.join(root, 'queries', 'projects.kql'), 'utf8');
-  const panels = [{
+  const measurementPanel = {
     id: 1, type: 'text', title: 'Measurement and availability',
     gridPos: { x: 0, y: 0, w: 24, h: 6 },
     options: {
       mode: 'markdown',
       content: '**Opted-in observed projects, not a census.** One random ID per root/manifest; clones/worktrees share it, independent monorepo roots differ. Forgeable IDs are not authentication or compliance proof.\n\n**Operator-configured project reporting: @reporting_configuration@.** Display/expectation only; does not change clients or ingestion. Query/permission/table errors are **unavailable**, never zero. Successful empty queries mean no retained events; history may have expired. Silence cannot establish individual disablement or abandonment.\n\n**180-day retained history.** First-observed is earliest retained observation, not lifetime enrollment. Distinct counts are approximate (`dcount(..., 2)`, nominal 0.4% standard error). Latest-observed dimensions are not conformance; equal-time ties are unspecified. Source counts overlap. Monthly grace is **31 + 9 = 40 days**, not daily activity.'
     }
-  }];
+  };
+  const panels = [];
+  /** @type {Array<[string, string, number, number, number, number, boolean]>} */
   const definitions = [
     ['status', 'Retained project data status', 0, 6, 24, 4, false],
     ['counts', 'Opted-in projects - 30 / 90 / 180 days (approximate)', 0, 10, 24, 5, false],
@@ -33,7 +35,7 @@ export async function buildTelemetryDashboard() {
     if (!['semantic-outcomes', 'legacy-outcomes', 'command-status'].includes(key)) query = `${common}\n${query}`;
     if (key === 'freshness') query += '\n| summarize ExpectedProjects = count(), OverdueExpectations = countif(Overdue) by Freshness\n| order by Freshness asc';
     panels.push({
-      id: panels.length + 1, type: series ? 'timeseries' : 'table', title,
+      id: panels.length + 2, type: series ? 'timeseries' : 'table', title,
       description: key === 'freshness'
         ? 'Only operator-registered expectations. Empty inventory is unconfigured, not healthy. Never infer disablement or abandonment from silence.'
         : ['semantic-outcomes', 'legacy-outcomes', 'command-status'].includes(key)
@@ -69,7 +71,7 @@ export async function buildTelemetryDashboard() {
       current: { text: '30', value: '30' },
       options: [30, 90, 180].map((days) => ({ text: String(days), value: String(days), selected: days === 30 }))
     }] },
-    annotations: { list: [] }, links: [], panels
+    annotations: { list: [] }, links: [], panels: [measurementPanel, ...panels]
   };
 }
 

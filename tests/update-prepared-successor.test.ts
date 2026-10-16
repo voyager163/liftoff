@@ -21,9 +21,10 @@ import {
 import { previewModernSuccessorUpdate, applyModernSuccessorUpdate } from '../src/application/update/use-case.js';
 import { inspectModernSuccessorUpdate } from '../src/application/update/inspection.js';
 import { prepareModernSuccessorReview } from '../src/application/update/review-plan.js';
-import { parseManifest } from '../src/application/project/manifest.js';
+import { parseManifest, resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { composeModernManifestPlugins } from '../src/application/project/plugins.js';
+import { modernPreWorkflowRegistry, modernSourceRegistry } from '../src/application/project/modern-plugins.js';
 import { createManifestV8ProjectReader } from '../src/domain/project/manifest/v8-project.js';
 import { readManifestPluginMetadata } from '../src/domain/project/manifest/plugins.js';
 import { toSafeProjectName } from '../src/domain/project/planning.js';
@@ -158,7 +159,7 @@ describe('versioned prepared successor preview values', () => {
   });
 });
 
-function modernSelection(value: unknown): ModernManagedCoreInput {
+function modernSelection(value: unknown, registry = modernPreWorkflowRegistry()): ModernManagedCoreInput {
   const manifest = parseManifest(value);
   const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({
     project: manifest.project, framework: manifest.framework
@@ -169,7 +170,7 @@ function modernSelection(value: unknown): ModernManagedCoreInput {
     ...(workload.kind === 'genai' ? { variant: workload.pattern } : {}),
     workflow: leaf.project.specWorkflow, agents: leaf.project.agents, frontend: workload.frontend ? 'included' : 'omitted',
     governanceProfile: profile, environments: workload.environments
-  }, { safeProjectName: toSafeProjectName(leaf.project.name) }).resolution;
+  }, { safeProjectName: toSafeProjectName(leaf.project.name) }, registry).resolution;
   return {
     selection: { ...leaf, profile },
     plugins: readManifestPluginMetadata({ schemaVersion: 1, resolutionDigest: resolution.digest, selections: resolution.plugins }, {
@@ -255,6 +256,19 @@ async function interruptPublication(fixture: Awaited<ReturnType<typeof historica
 }
 
 describe('actual guarded prepared successor publication', () => {
+  it('refuses an unallocated current source5 successor without preview, audit or project effects', async () => {
+    const fixture = await historicalProject(3), before = await projectBytes(fixture.root);
+    const current = modernSelection(capturedV3Records().manifest, modernSourceRegistry());
+    const source = (input: ModernManagedCoreInput) => resolveModernManifestV8SourceContract({
+      selection: input.selection, recordedPlugins: input.plugins
+    }).governanceSource;
+    expect(source(fixture.selection)).toHaveProperty('identity.activationContractVersion', 4);
+    expect(source(current)).toHaveProperty('identity.activationContractVersion', 5);
+    await expect(previewModernSuccessorUpdate(fixture.root, current, fixture.options)).rejects.toThrow(/modern successor lane/u);
+    expect(await projectBytes(fixture.root)).toEqual(before);
+    expect(await fs.readdir(path.join(path.dirname(fixture.root), 'home'))).toEqual([]);
+  });
+
   it.each([1, 2, 3] as const)('publishes the exact reviewed v%s successor while preserving original bytes and pending progress', async version => {
     const fixture = await historicalProject(version), before = await projectBytes(fixture.root);
     const preview = await previewModernSuccessorUpdate(fixture.root, fixture.selection, fixture.options);

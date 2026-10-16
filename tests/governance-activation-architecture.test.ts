@@ -24,7 +24,7 @@ describe('activation orchestration boundaries', () => {
     const functions = declarations.filter((node: any) => node.type === 'FunctionDeclaration').map((node: any) => node.id.name);
     for (const handler of [
       'executeSeedOperations', 'gitCommitOperations', 'gitPushOperations', 'executeGitOperations',
-      'executeGitHubDiscovery', 'observeAzurePhase0', 'executeActivationApproval', 'executeCredentialReady', 'executeRulesetPhase',
+      'executeGitHubDiscovery', 'observeAzurePhase0', 'executeActivationApproval', 'executeCredentialEnrollment', 'executeRulesetPhase',
       'remoteImportRetention', 'executeBootstrapStateDisposal', 'saveTransitionPlan', 'writeOutcomeTransaction'
     ]) expect(functions).not.toContain(handler);
     const imports = ast.body.filter((node: any) => node.type === 'ImportDeclaration').map((node: any) => node.source.value);
@@ -45,7 +45,8 @@ describe('activation orchestration boundaries', () => {
       ['phase-publication', ['gitCommitOperations', 'gitPushOperations', 'executeGitOperations']],
       ['github-discovery', ['executeGitHubDiscovery']],
       ['azure-discovery', ['observeAzurePhase0']],
-      ['phase-governance', ['executeActivationApproval', 'executeCredentialReady', 'executeRulesetPhase']],
+      ['phase-governance', ['executeActivationApproval', 'executeRulesetPhase']],
+      ['phase-github', ['executeCredentialEnrollment']],
       ['phase-bootstrap-state', ['remoteImportRetention', 'executeBootstrapStateDisposal']],
       ['seed-lifecycle', ['executeSeedOperations', 'runSeedBaselineChecks', 'archiveGeneratedSeedForPhase']]
     ] as const) {

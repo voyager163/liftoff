@@ -18,7 +18,9 @@ import { governanceAgentIntegrations, governanceArtifactPaths } from '../src/dom
 import type { ProjectOptions } from '../src/domain/project/contracts.js';
 import { repairContractVersion, repairRecipes, repairSchemaVersions } from '../src/domain/repair/identity.js';
 import { currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
-import { historicalActivationIdentities } from '../src/domain/governance/policy/identity.js';
+import {
+  historicalActivationIdentities, releasedV3ActivationIdentity
+} from '../src/domain/governance/policy/identity.js';
 import { validateGovernanceCompatibilityMetadata } from '../src/governance-activation/compatibility.js';
 import { historicalMetadataPathParts } from '../src/governance-activation/history-contracts.js';
 import { finalizeActivationHistoryMigration, planActivationHistoryMigration } from '../src/governance-activation/migration-history.js';
@@ -35,7 +37,8 @@ import { liftoffVersion } from '../src/version.js';
 import { CaptureStream } from './helpers.js';
 import { writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 import {
-  cleanupUpdateTestRoots, createReviewedUpdateFixture, createUpdateTestRoot, fingerprintUpdateTestProject, updateTestPreviewOptions
+  cleanupUpdateTestRoots, createReviewedUpdateFixture, createUpdateTestRoot, fingerprintUpdateTestProject,
+  installReleasedV3ManagedGovernance, updateTestPreviewOptions
 } from './reviewed-update-helpers.js';
 
 const agentIds = ['github-copilot', 'claude', 'codex'] as const;
@@ -570,18 +573,26 @@ describe('retained schema-3 reviewed additive native repair installation', () =>
   it('includes maintained repair integrations in immutable activation history without retagging old proof', async () => {
     const root = await createUpdateTestRoot();
     const historical = await writeHistoricalV1Fixture(root);
+    await installReleasedV3ManagedGovernance(root);
     const maintained = buildRepositoryGovernanceArtifacts(buildProjectPlan(options({ agents: ['copilot'] }), { requireProjectName: true }));
     const repair = maintained.find((entry) => entry.logicalName === 'liftoff-repair-copilot')!;
     const compatibility = maintained.find((entry) => entry.logicalName === 'repository-governance-compatibility')!;
+    const releasedCompatibility = JSON.parse(compatibility.content);
+    releasedCompatibility.activation.currentCompatibleTuples = [releasedV3ActivationIdentity];
+    releasedCompatibility.activation.recognizedGraphHashes = [releasedV3ActivationIdentity.phaseGraphHash];
+    releasedCompatibility.activation.successorMigrations = releasedCompatibility.activation.successorMigrations.map(
+      (migration: Record<string, unknown>) => ({ ...migration, toIdentity: releasedV3ActivationIdentity })
+    );
+    const releasedCompatibilityContent = `${JSON.stringify(releasedCompatibility, null, 2)}\n`;
     await writeProjectFile(root, repair.pathParts, repair.content);
-    await writeProjectFile(root, compatibility.pathParts, compatibility.content);
+    await writeProjectFile(root, compatibility.pathParts, releasedCompatibilityContent);
     const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
     manifest.liftoffVersion = liftoffVersion;
     manifest.managedArtifacts.push({
       logicalName: repair.logicalName, category: repair.category, pathParts: repair.pathParts, contentHash: sha(repair.content)
     });
     manifest.managedArtifacts.find((entry: { logicalName: string }) =>
-      entry.logicalName === compatibility.logicalName).contentHash = sha(compatibility.content);
+      entry.logicalName === compatibility.logicalName).contentHash = sha(releasedCompatibilityContent);
     await writeProjectFile(root, ['liftoff.manifest.json'], `${JSON.stringify(manifest, null, 2)}\n`);
     const before = await fingerprintUpdateTestProject(root);
     const planned = await planActivationHistoryMigration(root);

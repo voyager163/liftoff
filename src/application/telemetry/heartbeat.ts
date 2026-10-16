@@ -1,16 +1,16 @@
 import path from 'node:path';
 import type { ExecutionContext } from '../context.js';
 import { observeProjectTelemetry } from './project-reporting.js';
-import { readTelemetryFile, telemetryJson, telemetryRoot, telemetrySnapshotIdentity } from '../../adapters/filesystem/telemetry-consent.js';
-import { applyProjectFileTransaction } from '../../adapters/filesystem/project-transaction.js';
+import { telemetrySnapshotIdentity } from '../../adapters/filesystem/telemetry-consent.js';
+import { assertHeartbeatTargetsWritable, readHeartbeatRepository } from '../../adapters/filesystem/telemetry-heartbeat.js';
+import { applyHeartbeatPlan, buildHeartbeatEnablementPlan, heartbeatRemovalTarget, heartbeatReviewBindings, heartbeatSelectedRoot } from './heartbeat-plan.js';
 import { FileSystemError } from '../../domain/project/errors.js';
 import {
   heartbeatInventoryPath, heartbeatPublicationBlocker, heartbeatWorkflowPath,
-  parseHeartbeatInventory, updateHeartbeatEntry
+  qualifiedHeartbeatTooling
 } from '../../domain/project/telemetry-heartbeat.js';
 import { telemetryReviewFingerprint } from '../../domain/project/telemetry-consent.js';
 import { telemetryDisabledResult } from '../../telemetry/delivery.js';
-import { NodeCommandRunner } from '../../process-runner.js';
 import { requestUpdateApproval } from '../update/approval.js';
 
 export async function runHeartbeat(request: {
@@ -28,30 +28,20 @@ export async function runHeartbeat(request: {
   const disabled = telemetryDisabledResult(env);
   if (disabled) { output(disabled); return 0; }
   if (!request.repository) throw new FileSystemError('Heartbeat review requires --repository with the exact repository root; project consent is not repository file authority.');
-  const repository = await telemetryRoot(path.resolve(context.cwd, request.repository));
-  const git = await (context.runner ?? new NodeCommandRunner()).run({
-    executable: 'git', args: ['-c', 'core.fsmonitor=false', 'rev-parse', '--show-toplevel']
-  }, { cwd: repository.root, env, timeoutMs: 5_000, maxOutputBytes: 8192 });
-  if (git.status !== 0 || git.timedOut || git.outputLimitExceeded ||
-      (await telemetryRoot(git.stdout.trim())).root !== repository.root) {
-    throw new FileSystemError('Heartbeat repository boundary could not be independently verified.');
-  }
+  const tooling = qualifiedHeartbeatTooling;
+  const repository = await readHeartbeatRepository(path.resolve(context.cwd, request.repository), env,
+    request.operation === 'enable' && tooling !== undefined);
   const project = await observeProjectTelemetry(context.cwd, request.project, env);
-  const relative = path.relative(repository.root, project.root);
-  if (path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)) {
-    throw new FileSystemError('The selected project is outside the reviewed repository.');
-  }
-  const pathParts = relative === '' ? [] : relative.split(path.sep);
-  const inventoryFile = await readTelemetryFile(repository.root, heartbeatInventoryPath, 64 * 1024);
-  const workflowFile = await readTelemetryFile(repository.root, heartbeatWorkflowPath, 256 * 1024);
-  const inventory = inventoryFile.content === undefined ? undefined : parseHeartbeatInventory(telemetryJson(inventoryFile.content, 'Heartbeat inventory'));
+  const pathParts = heartbeatSelectedRoot(repository.root, project.root);
+  const { inventoryFile, workflowFile, inventory } = repository;
   const entry = inventory?.entries.find(entry => JSON.stringify(entry.pathParts) === JSON.stringify(pathParts));
   if (entry && entry.projectId !== project.record?.projectId) throw new FileSystemError('Heartbeat inventory and selected project identity disagree; neither is write approval.');
   if (request.operation === 'status') {
-    output({ status: 'disabled', configuredEntry: entry !== undefined, reportingQualified: false, blocker: heartbeatPublicationBlocker });
+    output({ status: entry && tooling && project.record?.enabled && project.consent ? 'configured' : 'disabled',
+      configuredEntry: entry !== undefined, reportingQualified: false, blocker: heartbeatPublicationBlocker });
     return 0;
   }
-  if (request.operation === 'enable') {
+  if (request.operation === 'enable' && !tooling) {
     output({
       status: 'blocked', reason: project.record?.enabled && project.consent ? 'publication-not-qualified' : 'project-consent-required',
       blocker: heartbeatPublicationBlocker, repositoryRoot: repository.root, selectedRoot: pathParts,
@@ -60,45 +50,40 @@ export async function runHeartbeat(request: {
     });
     return 2;
   }
-  if (!entry || !inventory) { output({ status: 'disabled', reason: 'entry-absent' }); return 0; }
-  if (!workflowFile.content) throw new FileSystemError('Declared heartbeat workflow is absent; no unrelated workflow was replaced.');
-  const updated = updateHeartbeatEntry(inventory, workflowFile.content.toString('utf8'), entry, 'remove');
-  const plan = {
-    schemaVersion: 1, kind: 'liftoff-heartbeat-removal', repositoryRoot: repository.root, physical: repository.physical,
-    projectRoot: project.root, projectPhysical: project.physical, selectedRoot: pathParts,
-    manifest: telemetrySnapshotIdentity(project.manifest), record: telemetrySnapshotIdentity(project.recordFile),
-    inventory: telemetrySnapshotIdentity(inventoryFile), workflow: telemetrySnapshotIdentity(workflowFile),
-    targetInventory: updated.inventory, targetWorkflow: updated.workflow
-  };
+  if (request.operation === 'enable' &&
+      (!request.project || path.resolve(context.cwd, request.project) !== project.root)) {
+    throw new FileSystemError('Heartbeat enablement requires the explicit canonical selected project root.');
+  }
+  if (request.operation === 'disable' && (!entry || !inventory)) { output({ status: 'disabled', reason: 'entry-absent' }); return 0; }
+  await assertHeartbeatTargetsWritable(repository);
+  const bindings = heartbeatReviewBindings(repository, project);
+  const plan = request.operation === 'enable'
+    ? buildHeartbeatEnablementPlan(repository, project, tooling!)
+    : (() => {
+      if (!workflowFile.content || !inventory || !entry) throw new FileSystemError('Declared heartbeat workflow is absent; no unrelated workflow was replaced.');
+      return { schemaVersion: 1, kind: 'liftoff-heartbeat-removal', ...bindings,
+        inventory: telemetrySnapshotIdentity(inventoryFile), workflow: telemetrySnapshotIdentity(workflowFile),
+        ...heartbeatRemovalTarget(inventory, workflowFile.content, entry) };
+    })();
   const fingerprint = telemetryReviewFingerprint(plan);
   if (!request.json || request.check || !request.approvePlan) output({ status: 'review-required', fingerprint, plan });
   if (request.check || request.json && !request.approvePlan) return 2;
   const approval = await requestUpdateApproval({ fingerprint, approvePlan: request.approvePlan,
-    message: `Remove only this exact heartbeat entry from the separately reviewed repository (${fingerprint})?`
+    message: `${request.operation === 'enable' ? 'Enable monthly observations for' : 'Remove'} only this exact heartbeat entry in the separately reviewed repository (${fingerprint})?`
   }, { ...context, approveUpdatePlan: context.approveTelemetryPlan });
   if (approval.status !== 'approved') { output({ status: approval.status, fingerprint }); return approval.status === 'mismatch' ? 1 : 2; }
-  await applyProjectFileTransaction(repository.root, [
-    { type: 'write', pathParts: [...heartbeatWorkflowPath], content: updated.workflow, mode: workflowFile.mode },
-    { type: 'write', pathParts: [...heartbeatInventoryPath], content: `${JSON.stringify(updated.inventory, null, 2)}\n`, mode: inventoryFile.mode }
-  ], {
-    preconditions: [inventoryFile, workflowFile],
-    onBeforeMutation: async () => {
+  await applyHeartbeatPlan(repository, plan, fingerprint, async () => {
       if (telemetryDisabledResult(env)) throw new FileSystemError('Telemetry was disabled after review; no heartbeat writes are permitted.');
       const currentProject = await observeProjectTelemetry(context.cwd, request.project, env);
-      if (currentProject.root !== project.root || currentProject.physical !== project.physical ||
-          JSON.stringify(telemetrySnapshotIdentity(currentProject.manifest)) !== JSON.stringify(plan.manifest) ||
-          JSON.stringify(telemetrySnapshotIdentity(currentProject.recordFile)) !== JSON.stringify(plan.record) ||
-          (await telemetryRoot(repository.root)).physical !== repository.physical) {
+      const currentRepository = await readHeartbeatRepository(repository.root, env, request.operation === 'enable');
+      await assertHeartbeatTargetsWritable(currentRepository);
+      if (JSON.stringify(heartbeatReviewBindings(currentRepository, currentProject)) !== JSON.stringify(bindings) ||
+          request.operation === 'enable' && (!currentProject.consent || qualifiedHeartbeatTooling !== tooling)) {
         throw new FileSystemError('Heartbeat project/repository review changed; obtain fresh scoped approval.');
       }
-    }
   });
-  const savedInventory = await readTelemetryFile(repository.root, heartbeatInventoryPath);
-  const savedWorkflow = await readTelemetryFile(repository.root, heartbeatWorkflowPath);
-  if (savedWorkflow.content?.toString('utf8') !== updated.workflow ||
-      savedInventory.content?.toString('utf8') !== `${JSON.stringify(updated.inventory, null, 2)}\n`) {
-    throw new FileSystemError('Heartbeat entry removal did not read back; committed progress needs inspection.');
-  }
-  output({ status: 'disabled', entryRemoved: true, otherEntriesPreserved: true, customWorkflowBytesPreserved: true });
+  output({ status: request.operation === 'enable' ? 'enabled' : 'disabled',
+    entryRemoved: request.operation === 'disable', entryEnabled: request.operation === 'enable',
+    ownedFilesRemoved: plan.removeOwnedFiles, otherEntriesPreserved: true, customWorkflowBytesPreserved: true });
   return 0;
 }

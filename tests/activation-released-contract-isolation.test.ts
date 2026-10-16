@@ -209,7 +209,12 @@ describe('published journal-1 contract', () => {
   });
 
   it('keeps the current journal decoder behavior and output separate from published decoding', () => {
-    for (const family of [1, 2] as const) expect(validateMigrationJournal(v3Journal(family))).toEqual(v3Journal(family));
+    for (const family of [1, 2] as const) {
+      const current = { ...v3Journal(family), targetIdentity: currentActivationIdentity };
+      expect(validateMigrationJournal(current)).toEqual(current);
+      expectHistoryError(() => validateMigrationJournal(v3Journal(family)),
+        'unsupported-migration-target', 'migrationJournal.targetIdentity');
+    }
     expectHistoryError(() => validateMigrationJournal(v2Journal()), 'invalid-history-record', 'migrationJournal.laneId');
     expectHistoryError(() => validateHistoricalV2SourceMigrationJournal(v3Journal()), 'invalid-history-record', 'historicalMigrationJournal.laneId');
     expectHistoryError(() => validateHistoricalV3SourceMigrationJournal({ ...v3Journal(2), laneId: 'activation-v1-to-v3' }),

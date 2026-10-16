@@ -4,6 +4,9 @@ import {
   type ProjectTelemetryEvent,
   type TelemetryCommandEvent
 } from './contract.js';
+import {
+  heartbeatReportProofAllows, type HeartbeatReportProof
+} from '../adapters/filesystem/telemetry-heartbeat.js';
 
 export const maximumTelemetryDeliveryMs = 1_000;
 export const maximumTelemetryPayloadBytes = 1_024;
@@ -12,7 +15,7 @@ export type TelemetryFetch = (input: string | URL | Request, init?: RequestInit)
 type StopReason = 'budget-expired' | 'closed' | 'invalid-budget';
 export type TelemetryDeliveryResult =
   | { readonly status: 'delivered'; readonly attempted: true }
-  | { readonly status: 'disabled'; readonly attempted: false; readonly reason: 'global-opt-out' | 'ordinary-ci' }
+  | { readonly status: 'disabled'; readonly attempted: false; readonly reason: 'global-opt-out' | 'ordinary-ci' | 'heartbeat-not-qualified' }
   | { readonly status: 'failed'; readonly attempted: boolean; readonly reason:
       StopReason | 'invalid-payload' | 'invalid-endpoint' | 'http-rejected' | 'network' | 'duplicate-channel' };
 
@@ -28,7 +31,7 @@ interface PreparedDelivery<T> {
 // These inputs are not consent or release-ownership proofs; callers validate those independently.
 export interface PreparedTelemetrySlots {
   readonly command?: PreparedDelivery<TelemetryCommandEvent>;
-  readonly project?: PreparedDelivery<ProjectTelemetryEvent>;
+  readonly project?: PreparedDelivery<ProjectTelemetryEvent> & { readonly heartbeatProof?: HeartbeatReportProof };
 }
 
 export interface TelemetryDeliveryResults {
@@ -114,10 +117,27 @@ export function createTelemetryDelivery(options: TelemetryDeliveryOptions = {}):
 
   async function send(
     channel: 'command' | 'project',
-    prepared: PreparedDelivery<TelemetryCommandEvent | ProjectTelemetryEvent>
+    prepared: PreparedDelivery<TelemetryCommandEvent | ProjectTelemetryEvent> & { readonly heartbeatProof?: HeartbeatReportProof }
   ): Promise<TelemetryDeliveryResult> {
     const disabled = telemetryDisabledResult(env);
-    if (disabled) return disabled;
+    if (disabled?.reason === 'global-opt-out' || disabled && channel !== 'project') return disabled;
+    if (disabled && !prepared.heartbeatProof) return disabled;
+    let heartbeat: boolean;
+    try {
+      heartbeat = channel === 'project' && isProjectTelemetryEvent(prepared.event) && prepared.event.source === 'ci-heartbeat';
+    } catch {
+      return { status: 'failed', reason: 'invalid-payload', attempted: false };
+    }
+    if (disabled || heartbeat) {
+      const verification = await withinBudget(() => heartbeatReportProofAllows(prepared.heartbeatProof, prepared.event, env));
+      const afterVerification = telemetryDisabledResult(env);
+      if (afterVerification?.reason === 'global-opt-out') return afterVerification;
+      if (verification.status === 'failed') {
+        return { status: 'failed', reason: verification.reason === 'operation-failed' ? 'invalid-payload' : verification.reason, attempted: false };
+      }
+      if (!verification.value) return afterVerification ?? disabled ??
+        { status: 'disabled', reason: 'heartbeat-not-qualified', attempted: false };
+    }
     if (claimed[channel]) return { status: 'failed', reason: 'duplicate-channel', attempted: false };
     claimed[channel] = true;
     const reason = currentStop();
@@ -147,7 +167,14 @@ export function createTelemetryDelivery(options: TelemetryDeliveryOptions = {}):
     let attempted = false;
     const outcome = await withinBudget(async (): Promise<TelemetryDeliveryResult> => {
       const disabled = telemetryDisabledResult(env);
-      if (disabled) return disabled;
+      if (disabled?.reason === 'global-opt-out') return disabled;
+      if (disabled || heartbeat) {
+        const allowed = channel === 'project' && await heartbeatReportProofAllows(prepared.heartbeatProof, prepared.event, env);
+        const afterVerification = telemetryDisabledResult(env);
+        if (afterVerification?.reason === 'global-opt-out') return afterVerification;
+        if (!allowed) return afterVerification ?? disabled ??
+          { status: 'disabled', reason: 'heartbeat-not-qualified', attempted: false };
+      }
       const before = currentStop();
       if (before) return { status: 'failed', reason: before, attempted: false };
       attempted = true;

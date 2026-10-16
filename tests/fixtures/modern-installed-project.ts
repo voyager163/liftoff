@@ -3,6 +3,7 @@ import path from 'node:path';
 import { projectCatalog } from '../../src/application/project/catalog.js';
 import { parseManifest, resolveModernManifestV8SourceContract } from '../../src/application/project/manifest.js';
 import { composeModernManifestPlugins } from '../../src/application/project/plugins.js';
+import { modernPreWorkflowRegistry } from '../../src/application/project/modern-plugins.js';
 import { buildModernManagedCore } from '../../src/application/project/modern-managed-core.js';
 import { createManifestV8Candidate } from '../../src/application/project/manifest-writer.js';
 import { createManifestV8ProjectReader, type ManifestV8ProjectLeaf } from '../../src/domain/project/manifest/v8-project.js';
@@ -33,13 +34,15 @@ export function localInputsPlanFixture(api: ReturnType<typeof createModernActiva
   };
 }
 
-export function selected(leaf: ManifestV8ProjectLeaf, profile: 'none' | 'single-maintainer-gitflow' | 'team-gitflow') {
+export function selected(leaf: ManifestV8ProjectLeaf, profile: 'none' | 'single-maintainer-gitflow' | 'team-gitflow',
+  family: 'current' | 'retained-custody4' = 'current') {
   const work = leaf.project.workload;
   const resolution = composeModernManifestPlugins({
     workload: work.kind, ...(work.kind === 'genai' ? { variant: work.pattern } : {}), stack: work.apiStack, cloud: work.cloud,
     workflow: leaf.project.specWorkflow, agents: leaf.project.agents, frontend: work.frontend ? 'included' : 'omitted',
     environments: work.environments, governanceProfile: profile
-  }, { safeProjectName: toSafeProjectName(leaf.project.name) }).resolution;
+  }, { safeProjectName: toSafeProjectName(leaf.project.name) },
+  family === 'retained-custody4' ? modernPreWorkflowRegistry() : undefined).resolution;
   const plugins = readManifestPluginMetadata({ schemaVersion: 1, resolutionDigest: resolution.digest, selections: resolution.plugins },
     { stack: work.apiStack, cloud: work.cloud, workflow: leaf.project.specWorkflow, agents: leaf.project.agents });
   return { selection: { ...leaf, profile }, plugins, activeLayout: { schemaVersion: 1 as const, state: 'unresolved' as const, bindings: [] as const } };
@@ -140,7 +143,7 @@ export async function writeModernSuccessor(directory: string, version: 1 | 2 | 3
   const original = await readModernActivationSuccessorSource(directory);
   const originalManifest = parseManifest(parseHistoryJson(original.captures.find(file => file.pathParts.join('/') === 'liftoff.manifest.json')!.content!, 'source manifest'));
   const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({ project: originalManifest.project, framework: originalManifest.framework });
-  const selection = selected(leaf, 'single-maintainer-gitflow');
+  const selection = selected(leaf, 'single-maintainer-gitflow', 'retained-custody4');
   const activeLayout: ManifestActiveLayout = options.layout ?? (overlap
     ? { schemaVersion: 1, state: 'bound', bindings: [{ kind: 'component', component: 'backend', pathParts: ['protected'] }] } : selection.activeLayout);
   const input = { ...selection, activeLayout }, core = buildModernManagedCore(input);

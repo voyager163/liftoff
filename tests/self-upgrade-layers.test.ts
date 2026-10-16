@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { link, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -6,9 +6,9 @@ import type { ExecutionContext } from '../src/application/context.js';
 import { executeUpgrade } from '../src/application/upgrade/use-case.js';
 import { checkConfiguredRegistryTarget, runSelfUpgrade, type SelfUpgradeRequest } from '../src/application/upgrade/self-upgrade.js';
 import {
-  inspectGlobalInstallation, npmGlobalRoot, reconfirmHomebrewInstallation, runExactGlobalInstall, verifyReplacement
+  assertNpmExecutableSelection, inspectGlobalInstallation, npmGlobalRoot, reconfirmHomebrewInstallation, runExactGlobalInstall, verifyReplacement
 } from '../src/adapters/distribution/npm.js';
-import { defaultSelfUpgradeDependencies, type SelfUpgradeDependencies } from '../src/adapters/distribution/upgrade-host.js';
+import { defaultSelfUpgradeDependencies, readUpgradeBytes, resolveSelectedLiftoff, type SelfUpgradeDependencies } from '../src/adapters/distribution/upgrade-host.js';
 import { canonicalManualInstallCommand, exactGlobalInstallCommand, npmExecutableForPlatform } from '../src/domain/distribution/liftoff-package.js';
 import {
   canonicalFailureReason, SelfUpgradeFailure, selfUpgradeExitCode, selfUpgradeRemedy, selfUpgradeResult, selfUpgradeSummary,
@@ -90,10 +90,11 @@ describe('schema-1 upgrade contract rules', () => {
     const value = selfUpgradeResult({ mode: 'check', currentVersion: '0.12.3' }, 'update-available', 'update_available', {
       registryKind: 'configured', targetVersion: '0.13.0', installationTarget: 'homebrew-opt'
     });
-    expect(JSON.stringify(value)).toBe('{"schemaVersion":1,"mode":"check","status":"update-available","currentVersion":"0.12.3",' +
-      '"reasonCode":"update_available","installationTarget":"homebrew-opt","targetVersion":"0.13.0","registryKind":"configured"}');
+    expect(JSON.stringify(value)).toBe('{"schemaVersion":2,"mode":"check","status":"update-available","currentVersion":"0.12.3",' +
+      '"reasonCode":"update_available","installationOwner":"unknown","upstream":{"status":"unknown"},"channel":{"status":"unknown"},' +
+      '"effects":"none","verification":"not-run","installationTarget":"homebrew-opt","targetVersion":"0.13.0","registryKind":"configured"}');
     expect(Object.keys(selfUpgradeResult({ mode: 'apply', currentVersion: '0.12.3' }, 'current', 'current')))
-      .toEqual(['schemaVersion', 'mode', 'status', 'currentVersion', 'reasonCode']);
+      .toEqual(['schemaVersion', 'mode', 'status', 'currentVersion', 'reasonCode', 'installationOwner', 'upstream', 'channel', 'effects', 'verification']);
   });
 
   it('maps every canonical lookup failure code and rejects an unknown one', () => {
@@ -109,6 +110,55 @@ describe('schema-1 upgrade contract rules', () => {
 });
 
 describe('npm-lane rules', () => {
+  it('accepts exact current and legacy npm Windows shims, but refuses appended commands and foreign executable selection', async () => {
+    const binary = 'C:\\fixture\\node_modules\\@msn-control\\liftoff\\dist\\cli.js';
+    const selected = 'C:\\fixture\\liftoff.cmd';
+    const modern = [
+      '@ECHO off', 'GOTO start', ':find_dp0', 'SET dp0=%~dp0', 'EXIT /b', ':start', 'SETLOCAL', 'CALL :find_dp0', '',
+      'IF EXIST "%dp0%\\node.exe" (', '  SET "_prog=%dp0%\\node.exe"', ') ELSE (', '  SET "_prog=node"', ')', '',
+      'endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & set PATHEXT=%PATHEXT:;.JS;=;% & "%_prog%"  "%dp0%\\node_modules\\@msn-control\\liftoff\\dist\\cli.js" %*', ''
+    ].join('\n');
+    const legacy = modern.replace('  SET "_prog=node"\n)', '  SET "_prog=node"\n  SET PATHEXT=%PATHEXT:;.JS;=;%\n)')
+      .replace(' & set PATHEXT=%PATHEXT:;.JS;=;% & ', ' & ');
+    const request = { currentVersion: '0.12.3', runningExecutable: binary };
+    const dependencies = { ...defaultSelfUpgradeDependencies(), platform: 'win32' as const,
+      realpath: async (file: string) => file, resolveLiftoff: async () => selected };
+    for (const content of [modern, modern.replace(/\n/g, '\r\n'), legacy]) {
+      await expect(assertNpmExecutableSelection(binary, request, { ...dependencies,
+        readBytes: async () => Buffer.from(content) })).resolves.toBeUndefined();
+    }
+    await expect(assertNpmExecutableSelection(binary, request, { ...dependencies,
+      readBytes: async () => Buffer.from(modern + 'echo foreign\n') })).rejects.toMatchObject({ reasonCode: 'executable_selection' });
+    await expect(assertNpmExecutableSelection(binary, { ...request, runningExecutable: 'C:\\foreign\\cli.js' }, dependencies))
+      .rejects.toMatchObject({ reasonCode: 'executable_selection' });
+  });
+
+  it('bounds regular-file reads and refuses linked, oversized or ambiguous material', async () => {
+    const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf-upgrade-material-')));
+    temporary.push(root);
+    const file = path.join(root, 'metadata.json');
+    await writeFile(file, '{}');
+    expect(await readUpgradeBytes(file, 2)).toEqual(Buffer.from('{}'));
+    await expect(readUpgradeBytes(file, 1)).rejects.toThrow('bounded single-link');
+    await expect(readUpgradeBytes(file, -1)).rejects.toThrow('Invalid upgrade material bound');
+    await link(file, path.join(root, 'other.json'));
+    await expect(readUpgradeBytes(file, 2)).rejects.toThrow('single-link');
+    await expect(resolveSelectedLiftoff({ PATH: 'relative/bin' }, 'linux')).rejects.toThrow('Ambiguous executable');
+  });
+
+  it('cleans only the originally selected private scratch directory and retains a changed replacement', async () => {
+    const dependencies = defaultSelfUpgradeDependencies();
+    const directory = await dependencies.makeNeutralDirectory();
+    const retained = `${directory}-retained`;
+    temporary.push(directory, retained);
+    await rename(directory, retained);
+    await mkdir(directory, { mode: 0o700 });
+    await writeFile(path.join(directory, 'foreign.txt'), 'retain');
+    await expect(dependencies.removeNeutralDirectory(directory)).rejects.toThrow('scratch ownership changed');
+    expect(await readFile(path.join(directory, 'foreign.txt'), 'utf8')).toBe('retain');
+    const owned = await dependencies.makeNeutralDirectory();
+    await dependencies.removeNeutralDirectory(owned);
+  });
   it.each([
     ['https://registry.npmjs.org', 'canonical'],
     ['https://registry.npmjs.org/', 'canonical'],
@@ -141,7 +191,8 @@ describe('npm-lane rules', () => {
     const base: CommandResult = { command: { executable: 'npm', args: [] }, displayCommand: 'npm', status: 0, signal: null, stdout: '', stderr: '', timedOut: false };
     expect(commandFailed(base)).toBe(false);
     for (const overrides of [{ status: 1 }, { status: null }, { timedOut: true }, { signal: 'SIGTERM' as const },
-      { errorCode: 'ENOENT' }, { errorMessage: 'spawn failure' }]) {
+      { errorCode: 'ENOENT' }, { errorMessage: 'spawn failure' }, { outputLimitExceeded: true },
+      { aborted: true }, { processTreeSettled: false }]) {
       expect(commandFailed({ ...base, ...overrides }), JSON.stringify(overrides)).toBe(true);
     }
   });
@@ -149,7 +200,8 @@ describe('npm-lane rules', () => {
   it('isolates only the npm cache inside the neutral directory', () => {
     const environment = { PATH: '/fixture/bin', npm_config_cache: '/fixture/ambient', NPM_CONFIG_PREFIX: '/fixture/prefix' };
     expect(readOnlyEnvironment({ environment }, path.join('/', 'neutral'))).toEqual({
-      ...environment, npm_config_cache: path.join('/', 'neutral', 'npm-cache')
+      ...environment, npm_config_cache: path.join('/', 'neutral', 'npm-cache'), npm_config_update_notifier: 'false',
+      DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0', CI: 'true', NODE_OPTIONS: '', NODE_PATH: ''
     });
     expect(environment.npm_config_cache).toBe('/fixture/ambient');
   });
@@ -165,6 +217,23 @@ describe('npm-lane rules', () => {
     expect(pathIsContained('C:\\Users\\Dev', 'D:\\Users\\Dev', 'win32')).toBe(false);
     expect(comparisonPath('C:\\Users\\Dev', 'win32')).toBe('c:\\users\\dev');
     expect(comparisonPath('/Users/Dev', 'darwin')).toBe('/Users/Dev');
+  });
+
+  it('removes case-variant startup/reporting/cache overrides while preserving account, prefix and mirror settings', () => {
+    const environment = {
+      NPM_CONFIG_CACHE: '/foreign-cache', node_options: '--require=foreign', Node_Path: '/foreign-modules',
+      do_not_track: '0', liftoff_telemetry: '1', ci: 'false', npm_config_registry: 'https://fixture-mirror.test',
+      NPM_CONFIG_PREFIX: '/fixture-prefix', NPM_CONFIG_USERCONFIG: '/fixture-account', PATH: '/fixture-bin'
+    };
+    const isolated = readOnlyEnvironment({ environment }, '/private-neutral');
+    expect(isolated).toMatchObject({ npm_config_cache: path.join('/private-neutral', 'npm-cache'),
+      NODE_OPTIONS: '', NODE_PATH: '', CI: 'true', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0',
+      npm_config_registry: environment.npm_config_registry, NPM_CONFIG_PREFIX: environment.NPM_CONFIG_PREFIX,
+      NPM_CONFIG_USERCONFIG: environment.NPM_CONFIG_USERCONFIG, PATH: environment.PATH });
+    for (const key of ['NPM_CONFIG_CACHE', 'node_options', 'Node_Path', 'do_not_track', 'liftoff_telemetry', 'ci']) {
+      expect(isolated).not.toHaveProperty(key);
+    }
+    expect(environment.NPM_CONFIG_CACHE).toBe('/foreign-cache');
   });
 });
 
@@ -194,7 +263,7 @@ async function npmGlobalFixture(bin: unknown = 'dist/cli.js', version = '0.13.0'
 }
 
 function host(runner: CommandRunner, overrides: Partial<SelfUpgradeDependencies> = {}): SelfUpgradeDependencies {
-  return { ...defaultSelfUpgradeDependencies(), runner, execPath: process.execPath, environment: { PATH: '/fixture/bin' }, ...overrides };
+  return { ...defaultSelfUpgradeDependencies(), resolveLiftoff: undefined, runner, execPath: process.execPath, environment: { PATH: '/fixture/bin' }, ...overrides };
 }
 
 describe('npm compatibility adapter on private filesystem fixtures', () => {
@@ -203,7 +272,8 @@ describe('npm compatibility adapter on private filesystem fixtures', () => {
     const runner = recordingRunner(() => ({ stdout: `${fixture.globalRoot}\n` }));
     const request = { currentVersion: '0.12.3', runningPackageRoot: fixture.packageRoot };
     expect(await inspectGlobalInstallation(request, fixture.neutralDirectory, host(runner))).toEqual({
-      npmExecutable: npmExecutableForPlatform(process.platform), packageRoot: fixture.packageRoot
+      npmExecutable: npmExecutableForPlatform(process.platform), packageRoot: fixture.packageRoot,
+      binary: path.join(fixture.packageRoot, 'dist', 'cli.js'), identity: expect.any(String)
     });
     expect(runner.calls.map(({ command, options }) => [command.args, options?.cwd, options?.timeoutMs]))
       .toEqual([[['root', '--global'], fixture.neutralDirectory, 30_000]]);
@@ -220,7 +290,7 @@ describe('npm compatibility adapter on private filesystem fixtures', () => {
     const runner = recordingRunner(() => ({ stdout: `${fixture.globalRoot}\n` }));
     await expect(inspectGlobalInstallation({ currentVersion: '0.12.3' }, fixture.neutralDirectory, host(runner)))
       .rejects.toMatchObject({ status: 'blocked', reasonCode: 'unsupported_installation' });
-    expect(runner.calls.map(({ command }) => command.args)).toEqual([['root', '--global']]);
+    expect(runner.calls).toEqual([]);
   });
 
   it.each<[string, (root: string) => Partial<CommandResult>]>([
@@ -310,8 +380,10 @@ describe('npm compatibility adapter on private filesystem fixtures', () => {
       const runner = recordingRunner(() => ({}));
       await runExactGlobalInstall(command, '/neutral', host(runner, { environment: { PATH: '/fixture/bin' } }), { json, stdout, stderr });
       expect(runner.calls).toEqual([{ command, options: {
-        cwd: '/neutral', env: { PATH: '/fixture/bin', npm_config_cache: path.join('/neutral', 'npm-cache') },
-        timeoutMs: 600_000, stream: true, stdout: json ? stderr : stdout, stderr
+        cwd: '/neutral', env: { PATH: '/fixture/bin', npm_config_cache: path.join('/neutral', 'npm-cache'),
+          npm_config_update_notifier: 'false', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0', CI: 'true', NODE_OPTIONS: '', NODE_PATH: '' },
+        timeoutMs: 600_000, maxOutputBytes: 8 * 1024 * 1024, ensureProcessTreeSettled: true,
+        stream: true, stdout: json ? stderr : stdout, stderr
       } }]);
     }
   });
@@ -329,20 +401,21 @@ describe('upgrade orchestration boundaries', () => {
     mode: 'check', currentVersion: '0.12.3', stdout: new CaptureStream(), stderr: new CaptureStream(), json: true
   });
 
-  it('propagates a missing neutral directory without cleanup, and the use case reports the stable failure shape', async () => {
+  it('reports a missing neutral directory without commands, effects or cleanup', async () => {
     let removed = 0;
     const overrides: Partial<SelfUpgradeDependencies> = {
       makeNeutralDirectory: async () => { throw new Error('fixture neutral directory failure'); },
       removeNeutralDirectory: async () => { removed++; },
       runner: recordingRunner(() => { throw new Error('no command expected'); })
     };
-    await expect(runSelfUpgrade(request(), overrides)).rejects.toThrow('fixture neutral directory failure');
+    expect(await runSelfUpgrade(request(), overrides)).toMatchObject({ status: 'failed', reasonCode: 'neutral_directory_unavailable', effects: 'none' });
     const context = {
       cwd: '/', stdout: new CaptureStream(), stderr: new CaptureStream(), env: {},
       selfUpgrade: (value: SelfUpgradeRequest) => runSelfUpgrade(value, overrides)
     } as unknown as ExecutionContext;
     expect(await executeUpgrade({ mode: 'apply', json: true }, context)).toEqual({
-      schemaVersion: 1, mode: 'apply', status: 'failed', currentVersion: expect.any(String), reasonCode: 'verification_failed'
+      schemaVersion: 2, mode: 'apply', status: 'failed', currentVersion: expect.any(String), reasonCode: 'neutral_directory_unavailable',
+      installationOwner: 'unknown', upstream: { status: 'unknown' }, channel: { status: 'unknown' }, effects: 'none', verification: 'not-run'
     });
     expect(removed).toBe(0);
   });

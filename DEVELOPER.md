@@ -91,7 +91,7 @@ Current deterministic setup contract, published by Liftoff 0.12.0:
   "policyVersion": "6",
   "activationContractVersion": 3,
   "phaseGraphSchemaVersion": 2,
-  "phaseGraphHash": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703",
+  "phaseGraphHash": "243c2df5b113d59183287f2dac0091389a64c3798670f11ee064547ceea7a97b",
   "activationStateSchemaVersion": 3,
   "evidenceHeaderSchemaVersion": 3,
   "approvalEnvelopeSchemaVersion": 3,
@@ -529,6 +529,30 @@ it as an external tool. Development manifests remain unsigned local consistency
 records, with explicit false release/installer/OS-floor qualification fields.
 Pinned HCL notices preserve its embedded module inventory and its upstream
 modified-source disclosure; they are not a reproducible-build attestation.
+
+Native development assembly covers Apple Silicon macOS, Windows x64 and glibc
+Linux x64/arm64, with target-specific installed CI and no global installation
+changes. `native-release.mjs` produces exact-source archive/SBOM/notices/unsigned
+provenance handoffs. The existing `release-artifact.mjs verify-native` route
+retains qualified tag/main ancestry and requires independently signed platform
+evidence. The approved namespace/key policy remains unconfigured; neither that
+route nor the gated cask/WinGet definition renderer publishes anything.
+The non-publishing `release-artifact.mjs assemble-native` / `verify-native-set`
+tools additionally require all four authenticated native handoffs and the exact
+npm bridge tarball from the same source/version/run. Their flat catalog preserves
+original signed bytes and avoids colliding sidecar names. Linux admission verifies
+the detached archive signature against its separately approved key; a signed
+operator claim alone is insufficient. The inert catalog validator is not publisher
+authentication or channel-availability evidence. The native guide documents its
+layout, exact-digest inputs, cross-host byte/native-mode distinction and remaining
+publication prerequisites.
+Linux receipt/journal interfaces and their recovery limits are documented in
+the native guide for owner-aware upgrade work. Group 11's
+[standalone Mac npm migration](docs/mac-npm-migration.md) reuses the existing
+native admission, ownership and packaged/licensed inventory APIs. Its
+independent runtime-inclusive development package does not rely on an old
+Liftoff command. Public migration and npm bridge publication remain blocked;
+no cask provider is registered and the published npm bin is unchanged.
 
 - Validate the canonical graph, graph hash, per-phase contract digests, and
   compatibility metadata together.
@@ -2251,33 +2275,237 @@ other-platform qualification remain separate gates.
 ## Activation completeness and separate follow-up plan
 
 The activation engine is not yet an end-to-end production provisioning engine.
-Of its 29 declared phases, 11 have built-in handler paths, 2 require an injected
-GitHub ruleset adapter that the public CLI does not currently supply, and 16
+Of its 29 declared phases, 15 have built-in handler paths, 7 require an explicit injected capability
+that the public CLI does not currently supply, and 7
 fall back to an explicit missing-production-adapter blocker.
 
 The missing production phase handlers are `bootstrap-workflow-source-ready`,
-`provider-ready`, `state-path-selected`, `existing-private-path`, `bootstrap-local`,
-`runner-ready`, `private-backend-proof`, `remote-import-verified`,
-`application-prerequisites-ready`, `application-artifact-ready`,
 `application-foundation`, `workflow-source-ready`, `dev-proof`,
 `staging-qualified`, `production-rehearsed`, and `green-red-proof`.
-`rulesets-applied` and `live-readback` have adapter contracts but need production wiring.
+`rulesets-applied` and `live-readback` require the GitHub ruleset adapter.
+`private-backend-proof`, `remote-import-verified`, and
+`bootstrap-state-disposed` require private protected-state capabilities. Handover
+must be paired with qualified custody; due-time disposal must requalify the same
+host, protected workspace/storage, non-exporting key reference, Azure blob-lease
+locking, and writer-quiescence identity.
 
 Built-in handler presence does not establish a complete user journey.
 `liftoff governance approve` persists exact approval envelopes, but it refuses a
 phase whose capability is unavailable or blocked before writing any approval,
 authority record, or plan. `governance apply-next --execute` likewise stops before
 any saved plan, intent, or producer effect for such a phase and reports its
-blocker; an earlier approval does not change that. Only an explicitly injected
-trusted phase adapter, or the GitHub ruleset adapter for `rulesets-applied` and
-`live-readback`, can execute those phases, and that test seam is not production
-qualification. `provider-ready` and `state-path-selected` no longer report
-synthetic verified success, provider registration, or a selected state path; they
-stay blocked as missing production adapters. `credential-ready` and the public
-`governance credential-enroll` path remain unavailable pending independent
-credential readback: they refuse before reading a credential or writing a remote
-secret or secret-derived credential policy. The enrollment adapter revokes only the
-ephemeral token it minted and reports when that revocation cannot be confirmed.
+blocker; an earlier approval does not change that. Only an explicitly injected trusted phase adapter, the GitHub ruleset adapter
+for `rulesets-applied` and `live-readback`, or the paired private
+protected-state handover/custody capabilities can execute those phases.
+Those injected seams are not public production qualification. `provider-ready` now derives its exact namespace and supported
+feature prerequisites from reviewed resource types, proves live registration
+permissions, registers only authorized missing prerequisites, and requires terminal
+`Registered` readback. Successful registrations are retained subscription
+capabilities and are never unregistered by repository rollback. Registration
+polling is capped at 60 observations and five-second intervals. A nonterminal
+result saves one exact external-operation handle, sanitized readback, and partial
+outputs; resume must present the immutable handle identity with a strictly newer
+matching provider observation, does not redispatch registration, and rejects
+operations older than 24 hours or observations older than ten minutes.
+
+TASK14.1's `application-prerequisites-ready` and `application-artifact-ready`
+source producers (`application-prerequisites.ts`, `application-artifact.ts` and
+`application-readiness.ts`) supply concrete Azure CLI/ARM and existing GitHub REST
+transport source producers behind the paired protected capabilities. They retain
+the current graph/record schemas and frozen families; stricter concrete recipe
+inputs invalidate an old placeholder plan rather than executing or rewriting it.
+Application continuity consumes independently validated prior owned inventories;
+unknown resources never become owned merely because a name or tag matches.
+Private `recordApplicationDispatchIntent` persists intent at the actual dispatch
+boundary, not during preflight. `recordApplicationProgress` checkpoints validate real scoped provider
+handles before subsequent observation, so source/authority drift cannot erase a
+confirmed dispatch. `applicationObservationOnly` is a nonserialized internal
+restriction for read-only prerequisite polling, not adoption or write authority.
+`readVerifiedApplicationArtifact` returns `VerifiedApplicationArtifact` only
+from authoritative current source/registry/environment/digest receipts;
+`observeImmutableApplicationArtifact` provides independent actual readback.
+These interfaces do not implement or authorize workflow source publication or
+application deployment.
+
+TASK14.3 supplies separate private source interfaces:
+`planWorkflowSourcePublication`/`executeWorkflowSourcePublication` bind exact
+per-file source and an existing non-protected review ref;
+`observeImmutableWorkflowExecutionRef`/`bindImmutableWorkflowExecutionRef`
+require an independently protected commit-named execution tag;
+`admitReviewedRunnerWorkflows` preserves exact repository-only private admission;
+`executeWorkflowContextProof` retains dispatch intent and actual accepted handles;
+`requiredWorkflowContextsFromSource`/`verifyProtectedWorkflowProofMatrix` derive
+the complete protected-family context inventory and independently read real
+green and validator-caused red jobs/checks. The transient checkpoint writers are
+not the application-scoped task-14.1 callbacks. Current legacy local authority
+and public v8 inspection cannot invoke them or manufacture their durable ports.
+The approved current-only source5 allocation advances activation contract4 to5
+and the six source graphs, not state/evidence-header/approval4 or the other wire
+versions. Exact custody source4 declarations/table/release are captured in
+`modern-pre-workflow.ts`; all frozen releases and pre-custody captures are
+unchanged. Source5 has no automatic migration lane or public execution path.
+The legacy/public workflow route returns an explicit prerequisite blocker;
+private checkpoints do not create an engine capability or substitute for
+protected handover/custody and current authorized native-host qualification.
+Reviewed execution bindings include repository ID, full commit and tree SHA,
+exact commit-named tag and immutable recipe. API2026-03-10 HTTP200 dispatch
+handles are scope-validated and persisted before polling; legacy204 retries
+remain read-only. Real qualification remains separate from these source values.
+
+These producers never use an undocumented SHA-dispatch fallback. Mutable branch
+readback plus a guard in the original recipe cannot prevent replacement workflow
+effects at dispatch. Missing active immutable tag update/deletion
+protection with no bypass is a blocker, not permission to install a ruleset.
+Blocking all tag updates covers non-fast-forward changes without assuming an
+unsupported tag rule. Barrier/provider admission is separate from the source
+binding; policy administration is a trust boundary, not atomicity guaranteed by
+two readbacks. Supported classic OAuth grants are observed independently;
+unsupported fine-grained, installation and workflow-token admission stays blocked.
+Pending/uncertain dispatch is observed without repeat POST; an unowned existing
+run is not adopted. No statuses or checks are written to manufacture proof.
+Source publication is a review-ref milestone, not a protected-branch merge,
+deployment, package/signing proof or final enforcement. See
+`docs/repository-governance.md` for the exact source-only boundaries.
+
+Artifact dispatch now requires an existing protected lightweight
+`liftoff-execution-<full-source-SHA>` tag, exact reviewed `sourceTreeSha`,
+independent repository protection/provider-grant/commit/tag readback and
+tag-specific runner admission. The shared observer is read-only: no tag or
+policy writer, task14.3 authority, branch or raw-SHA fallback is borrowed.
+Old mutable-ref plans are stale, not silently upgraded. Admission is repeated
+before dispatch and accepted/resumed observation; this source integration
+does not qualify public-v8 execution or the missing production host/ports.
+
+Actual committed workflow bytes, separate transmission/network/build consent,
+the admitted private-network hosted runner, ACR QuickBuild output image and
+locked tag/digest, plus `gh attestation verify` certificate signer/source/run
+bindings are required. Never accept the final job step name or SLSA predicate
+annotations as ownership proof. Both handover/custody ports remain mandatory;
+existing-private application execution has no qualified custody binding, and an
+ambient workstation cannot use a remote host assertion as permission to write.
+The source tests exercise isolated provider/HTTP/process seams only. Full
+source-complete/native exact-head qualification, protected task13 wiring and
+real disposable publication scenarios remain external blockers; TASK14.1 stays
+unchecked. See the maintained Azure/operator guidance for the exact recipe
+protocol and unsupported combinations.
+
+Blocked execution after a validated external operation or completed remote write
+persists `partial-failure.v1` evidence while leaving the phase blocked. The
+record stores digests instead of raw blocker, provider payload, completed
+operation, or cleanup text and preserves owned outputs for later classification.
+Terminal handles cannot enter ordinary retry. Explicit recovery remains bound to
+the reviewed recovery plan and current deployment-ownership proof; state rollback
+must never claim retained cloud effects were reversed.
+
+Protected deployment/state plans now prepend the built-in read-only
+`azure.deployment.classify-ownership` guard. The engine executes it after plan
+freshness and source checks but before execution intent or an injected/built-in
+phase adapter. Fresh bounded Azure observation classifies each expected
+environment as absent/new, exact same-operation-owned, or pre-existing/unknown.
+Same-operation proof requires the current phase's non-failed Azure operation,
+both current plan digests, and recorded output IDs covering the resource group
+and every observed resource. Pre-existing/unknown scope returns the saved plan
+without writing activation state or invoking backend-state, import, registry, or
+provisioning effects. The successful classification operation, sanitized
+payload, and Azure readback are merged into final phase evidence.
+
+`state-path-selected` and `existing-private-path` now provide the first narrow
+production backend-readiness path. Reviewed `state-path-selected` inputs must
+name only `existing-private`, the exact resource group, storage account,
+container, blob key, and Azure principal object ID. The approved plan also binds
+the current opaque execution-host identity. Selection verifies that exact
+subscription, tenant, principal, host, packaged OpenTofu version/platform, and
+private OAuth-only storage account before persisting the branch choice.
+`existing-private-path` reobserves those bindings, requires HTTPS with public and
+shared-key access disabled, verifies blob versioning and soft-delete retention,
+proves the container is privately reachable and available for Azure blob-lease
+locking, and requires the exact target blob key to be absent. It calls only the
+bounded existence readback and never downloads, imports, relocates, or adopts an
+existing state object. An occupied target remains planning-only.
+
+The separately approved `bootstrap-local` path now qualifies one bounded
+new-environment network foundation for the exact selected backend. Reviewed
+inputs bind one declared environment, non-overlapping virtual-network, delegated
+runner, and private-endpoint CIDRs, the Azure-cloud-specific private Blob DNS
+zone, and exactly one egress mode: `nat-gateway`. The infrastructure-cost
+approval must carry nonzero fixed and usage ceilings. Execution revalidates the
+exact Azure identity, backend account, qualified OpenTofu host, effective
+deployment/network/private-endpoint permissions, absent deterministic
+subscription deployment name, and deployment ownership before dispatching one
+subscription-scoped ARM deployment. Pending work persists the immutable Azure
+deployment handle and exact planned resource IDs; resume reads that deployment
+without redispatch. Terminal success independently reads every scoped resource
+back. The phase does not create a GitHub runner, import or read state, provision
+application resources, or adopt an occupied deployment. Runner establishment,
+private backend proof, and protected state handover remain later phases.
+
+`runner-ready` now provides the bounded production successor to that network
+foundation. Its reviewed inputs fix the GitHub organization database ID,
+environment, `ubuntu-latest` GitHub-owned image, `4-core` size, NAT-gateway
+egress, and maximum concurrency of one; the existing infrastructure-cost
+approval supplies nonzero fixed and usage ceilings. Execution requires current
+`GitHub.Network` registration proof, exact Azure permissions, the verified
+delegated subnet/NAT/private-DNS bindings, an exact private repository identity,
+available larger-runner licensing and machine capacity, and both packaged
+preflight workflows on the verified default branch. It creates one Azure
+`GitHub.Network/networkSettings` resource, one Actions network configuration,
+one repository-selected workflow-restricted runner group, and one larger runner
+with static public IP disabled. Deterministic occupied names are never adopted.
+Every Azure and GitHub resource is independently read back, including repository
+assignment. A `Provisioning` runner persists one immutable GitHub operation
+handle with an absolute provider poll URL; resume reobserves the exact recorded
+network, group, and runner IDs without repeating POST or PUT. Terminal
+non-ready, contradictory, unsupported, or identity-drifted observations block
+instead of establishing readiness. This phase does not dispatch a workflow or
+claim private backend reachability; `private-backend-proof` remains separate.
+
+`private-backend-proof` and `remote-import-verified` now have one narrow private
+producer contract for the bootstrap-owned path. The producer request is derived
+only from current verified `bootstrap-local` and `runner-ready` outputs: the exact
+repository and runner IDs, private backend binding, twelve bootstrap resource
+dispositions, absent target requirement, Azure blob-lease locking, authenticated
+encrypted backups, zero-change planning, and 30-day retention. Before either
+phase can dispatch, the custody adapter must attest the exact runner and host,
+an opaque protected workspace and storage reference, a non-exporting external
+key reference, Azure blob-lease locking, writer quiescence, disposal support,
+and explicit refusal of plaintext fallback. The mapping admits
+nine imported resources, one private-endpoint embedded child, and two retained
+ARM deployment records; unknown, duplicate, extra, or pre-existing scope blocks.
+Pending execution persists one immutable GitHub Actions run handle and resume
+cannot change it. Completion requires exact runner/job/source bindings, an absent
+target, concurrency and backend digests, opaque encrypted artifact/key references under
+that custody, the complete mapping, and a zero-add/change/destroy plan.
+`remote-import-verified` must retain the same custody identity established by
+`private-backend-proof`; a refreshed observation may advance its timestamp but
+cannot change host, workspace, storage, key, lock, runner, or quiescence.
+
+`remote-ready` retains only digests of those opaque references for exactly 30
+days. `bootstrap-state-disposed` is injected-only: it cannot delete project
+files, cannot run early, and cannot infer success from missing material. It
+revalidates the immutable import evidence, exact retained artifact/key
+references, and a current attestation for the same custody identity before
+calling the protected disposal capability. Success requires payload-free proof
+that every retained artifact and unique key reference was deleted at or after
+the due time. Unsupported hosts, expired or changed custody, missing protected
+storage or keys, lost locking, active writers, and incomplete deletion remain
+blocked and recoverable.
+
+The default public CLI still blocks these phases without the private capabilities
+and exposes no arbitrary
+existing-state import, partition, relocation, or address-migration command.
+
+`credential-ready` is now a
+built-in production phase. Its reviewed public configuration selects an existing
+approved selected-repository GitHub App or a justified fine-grained PAT fallback;
+the credential value is read only from a private non-echoing TTY or explicitly
+selected non-TTY `--protected-stdin`. Execution rechecks the exact unexpired
+approval before input, token minting, and the Actions secret write, verifies exact
+repository/permission/expiry/use scope plus independent secret metadata readback,
+and persists only a payload-free policy and matching evidence. Plain
+`apply-next --execute` does not select the protected channel; use the dedicated
+`governance credential-enroll --plan <fingerprint>` command. A policy file alone
+never establishes readiness. The enrollment adapter revokes only the ephemeral
+installation token it minted and reports when that revocation cannot be confirmed.
 Current activation inspection now binds real
 baseline/input snapshots, reviewed plans, state references, and evidence bodies.
 Historical placeholder-bound records remain diagnostic-only, never current
@@ -2285,19 +2513,16 @@ proof. Do not fabricate state, approvals, or evidence to get past capability gap
 
 Complete this work separately from the read-only assessment feature:
 
-1. Implement secure credential enrollment with independent readback before
-   `credential-ready` can be approved or executed, with narrow consent and
-   selected-agent command contracts.
-2. Define a separately reviewed reconciliation workflow for historical activation
+1. Define a separately reviewed reconciliation workflow for historical activation
    identities and placeholder-bound history
    without rewriting immutable evidence or inventing completion.
-3. Supply production implementations for the missing phase adapters and the
+2. Supply production implementations for the missing phase adapters and the
    GitHub ruleset adapter, enforcing resource, permission, cost, and destructive
    bounds at execution.
-4. Design phase-specific production retry/rollback behavior without blanket
+3. Design phase-specific production retry/rollback behavior without blanket
    remote or destructive retries. Explicit local seed/baseline/finalization
    recovery and cooperating-writer locking are already implemented.
-5. Prove the entire activation and upgrade/reconciliation path with
+4. Prove the entire activation and upgrade/reconciliation path with
    end-to-end positive and negative cases, then gated live readback where
    explicitly authorized.
 

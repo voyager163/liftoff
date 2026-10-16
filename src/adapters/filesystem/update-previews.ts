@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { constants } from 'node:fs';
 import type { Stats } from 'node:fs';
 import { lstat, mkdir, open, realpath, rename, unlink } from 'node:fs/promises';
@@ -38,6 +38,7 @@ import type {
 } from '../../application/update/transaction-approval.js';
 import { canonicalJson } from '../../domain/governance/activation/canonical-json.js';
 import { copyModernLocalData } from '../../domain/governance/activation/modern-local-inputs.js';
+import { assertModernRecordData, assertSafeControlRecord } from '../../domain/governance/activation/source-values.js';
 import { errorCode, errorMessage } from './errors.js';
 
 export type { UpdateTransactionApprovalStore } from '../../application/update/transaction-approval.js';
@@ -437,18 +438,20 @@ async function withCleanup<T>(action: () => Promise<T>, cleanup: () => Promise<v
   return result;
 }
 
-async function readText(storage: Storage, filePath: string, snapshot: DirectorySnapshot): Promise<string | undefined> {
+async function readText(
+  storage: Storage, filePath: string, snapshot: DirectorySnapshot, maximumBytes = maximumReceiptBytes
+): Promise<string | undefined> {
   await assertDirectories(storage, snapshot);
   const before = await inspect(storage.fs, filePath);
   if (!before) return undefined;
   privateFile(storage, before, filePath);
-  if (before.size > maximumReceiptBytes) throw storageError(`Preview receipt exceeds its size limit: ${filePath}`);
+  if (before.size > maximumBytes) throw storageError(`Preview receipt exceeds its size limit: ${filePath}`);
   const handle = await io('open for reading', filePath, () => storage.fs.openFile(filePath, 'read', 0o600));
   return withCleanup(async () => {
     const opened = await io('inspect opened file', filePath, () => handle.stat());
     privateFile(storage, opened, filePath);
     if (!sameFile(before, opened)) throw storageError(`Preview file changed while opening: ${filePath}`);
-    const content = await io('read', filePath, () => handle.readText(maximumReceiptBytes));
+    const content = await io('read', filePath, () => handle.readText(maximumBytes));
     const after = await inspect(storage.fs, filePath);
     if (!after || !sameFile(before, after) || before.size !== after.size ||
         before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
@@ -600,26 +603,226 @@ async function writeAtomicMetadata(
   filePath: string,
   content: string,
   before: string | undefined,
-  durable = false
+  durable = false,
+  maximumBytes = maximumReceiptBytes,
+  validateBeforeReplace?: () => Promise<void>
 ): Promise<void> {
-  if (Buffer.byteLength(content) > maximumReceiptBytes) throw storageError('User-local update metadata exceeds its size limit.');
+  if (Buffer.byteLength(content) > maximumBytes) throw storageError('User-local update metadata exceeds its size limit.');
   const temporaryPath = storage.paths.join(storage.location.directory, `.${storage.paths.basename(filePath)}.${randomUUID()}.tmp`);
   await exclusiveFile(storage, temporaryPath, snapshot, async (handle, owned, close) => {
     await io('write', temporaryPath, () => handle.writeText(content));
     await io('flush', temporaryPath, () => handle.sync());
     await close();
     await assertOwnedFile(storage, temporaryPath, owned);
-    if (await readText(storage, temporaryPath, snapshot) !== content) {
+    if (await readText(storage, temporaryPath, snapshot, maximumBytes) !== content) {
       throw storageError(`User-local update temporary contents changed before replacement: ${temporaryPath}`);
     }
-    if (await readText(storage, filePath, snapshot) !== before) {
+    if (await readText(storage, filePath, snapshot, maximumBytes) !== before) {
       throw storageError(`User-local update metadata changed before replacement: ${filePath}`);
     }
     await assertDirectories(storage, snapshot);
+    if (validateBeforeReplace) await validateBeforeReplace();
     await io('atomically replace receipt or seal', filePath, () => storage.fs.replaceFile(temporaryPath, filePath));
     if (durable) {
       await assertDirectories(storage, snapshot);
       await io('flush approval seal directory', storage.location.directory, () => storage.fs.syncDirectory(storage.location.directory));
+    }
+  });
+}
+
+export const workflowSource5ControlNamespaces = Object.freeze(['plan', 'approval', 'journal', 'operation', 'proof'] as const);
+export type WorkflowSource5ControlNamespace = typeof workflowSource5ControlNamespaces[number];
+export const workflowSource5ControlLimits = Object.freeze({
+  plan: 16 * 1024 * 1024, approval: 64 * 1024, journal: 64 * 1024,
+  operation: 64 * 1024, proof: 16 * 1024 * 1024
+});
+export interface WorkflowSource5StoredControl {
+  readonly projectRoot: string;
+  readonly projectKey: string;
+  readonly path: string;
+  readonly rawDigest: string;
+  readonly revision: number;
+  readonly previousDigest: string | null;
+  readonly value: unknown;
+  readonly encodedBytes: number;
+}
+
+/** Separate, sealed SOURCE-only controls. Existing preview/consent stores retain their limits. */
+export function createWorkflowSource5ControlStore(projectRoot: string, options: UpdatePreviewOptions = {}) {
+  const captured = { ...options, ...(options.env ? { env: { ...options.env } } : {}) };
+  const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+  const keyFor = (projectKey: string) => hash(canonicalJson({ kind: 'workflow-source5-seal-key', projectKey }));
+  const namespace = (name: WorkflowSource5ControlNamespace) => {
+    if (!workflowSource5ControlNamespaces.includes(name)) throw storageError('Unknown workflow source5 control namespace.');
+    return `workflow-source5-${name}`;
+  };
+  const location = async (name: WorkflowSource5ControlNamespace, key: string) => {
+    namespace(name);
+    if (!/^[a-f0-9]{64}$/u.test(key)) throw storageError('Workflow control keys must be exact SHA-256 digests.');
+    const storage = await storageFor(projectRoot, captured);
+    if (key === keyFor(storage.location.projectKey)) throw storageError('The workflow issuer key is not a caller-selected record.');
+    const filePath = storage.paths.join(storage.location.directory,
+      `${namespace(name)}-${storage.location.projectKey}-${key}.json`);
+    return { storage, filePath };
+  };
+  function body(storage: Storage, name: WorkflowSource5ControlNamespace, key: string, value: unknown,
+    revision: number, previousDigest: string | null) {
+    assertModernRecordData(value, 'workflow control');
+    assertSafeControlRecord(value, () => { throw storageError('Workflow controls contain prohibited sensitive data.'); });
+    if (!Number.isSafeInteger(revision) || revision < 1 ||
+      previousDigest !== null && !/^[a-f0-9]{64}$/u.test(previousDigest)) {
+      throw storageError('Workflow control revision or previous digest is invalid.');
+    }
+    return { kind: 'liftoff-workflow-source5-control', schemaVersion: 1,
+      namespace: namespace(name), key, projectRoot: storage.location.projectRoot,
+      projectKey: storage.location.projectKey, revision, previousDigest, value };
+  }
+  function encoded(storage: Storage, name: WorkflowSource5ControlNamespace, key: string, value: unknown,
+    revision: number, previousDigest: string | null, secret?: Buffer) {
+    const payload = body(storage, name, key, value, revision, previousDigest);
+    const seal = secret ? createHmac('sha256', secret).update(canonicalJson(payload)).digest('hex') : '0'.repeat(64);
+    const content = canonicalJson({ ...payload, seal });
+    if (Buffer.byteLength(content) > workflowSource5ControlLimits[name]) {
+      throw storageError(`Complete sealed workflow ${name} object exceeds its size limit.`);
+    }
+    return content;
+  }
+  async function issuer(storage: Storage, snapshot: DirectorySnapshot, create: boolean): Promise<Buffer | null> {
+    const filePath = storage.paths.join(storage.location.directory,
+      `workflow-source5-approval-${storage.location.projectKey}-${keyFor(storage.location.projectKey)}.json`);
+    let content = await readText(storage, filePath, snapshot);
+    if (content === undefined) {
+      if (!create) return null;
+      content = canonicalJson({ kind: 'liftoff-workflow-source5-issuer', schemaVersion: 1,
+        projectRoot: storage.location.projectRoot, projectKey: storage.location.projectKey,
+        key: randomBytes(32).toString('hex') });
+      await writeAtomicMetadata(storage, snapshot, filePath, content, undefined, true);
+      if (await readText(storage, filePath, snapshot) !== content) throw storageError('Workflow issuer save was not durably confirmed.');
+    }
+    let value: unknown;
+    try { value = JSON.parse(content); } catch { throw storageError('Malformed workflow issuer; diagnostics withheld.'); }
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) throw storageError('Invalid workflow issuer.');
+    const record = value as Record<string, unknown>;
+    if (canonicalJson(Object.keys(record).sort()) !== canonicalJson(['key', 'kind', 'projectKey', 'projectRoot', 'schemaVersion']) ||
+      record.kind !== 'liftoff-workflow-source5-issuer' || record.schemaVersion !== 1 ||
+      record.projectRoot !== storage.location.projectRoot || record.projectKey !== storage.location.projectKey ||
+      typeof record.key !== 'string' || !/^[a-f0-9]{64}$/u.test(record.key) || canonicalJson(record) !== content) {
+      throw storageError('Workflow issuer is not the unchanged project-bound private key.');
+    }
+    return Buffer.from(record.key, 'hex');
+  }
+  function decode(storage: Storage, name: WorkflowSource5ControlNamespace, key: string,
+    filePath: string, content: string, secret: Buffer): WorkflowSource5StoredControl {
+    let value: unknown;
+    try { value = JSON.parse(content); } catch { throw storageError('Malformed sealed workflow control; diagnostics withheld.'); }
+    assertModernRecordData(value, 'sealed workflow control');
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) throw storageError('Invalid sealed workflow control.');
+    const record = value as Record<string, unknown>;
+    if (typeof record.seal !== 'string' || !/^[a-f0-9]{64}$/u.test(record.seal) ||
+      typeof record.revision !== 'number' || !(record.previousDigest === null || typeof record.previousDigest === 'string')) {
+      throw storageError('Invalid workflow seal/revision.');
+    }
+    const expected = encoded(storage, name, key, record.value, record.revision, record.previousDigest, secret);
+    const parsed = JSON.parse(expected) as { seal: string };
+    if (content !== canonicalJson(record) || !timingSafeEqual(Buffer.from(record.seal, 'hex'), Buffer.from(parsed.seal, 'hex')) ||
+      expected !== content) throw storageError('Workflow control seal, scope or canonical bytes changed.');
+    return Object.freeze({ projectRoot: storage.location.projectRoot, projectKey: storage.location.projectKey,
+      path: filePath, rawDigest: hash(content), revision: record.revision, previousDigest: record.previousDigest,
+      value: structuredClone(record.value), encodedBytes: Buffer.byteLength(content) });
+  }
+  return Object.freeze({
+    async issuerDescription() {
+      const storage = await storageFor(projectRoot, captured);
+      return Object.freeze({ namespace: 'approval' as const, key: keyFor(storage.location.projectKey),
+        maximumEncodedBytes: Buffer.byteLength(canonicalJson({ kind: 'liftoff-workflow-source5-issuer', schemaVersion: 1,
+          projectRoot: storage.location.projectRoot, projectKey: storage.location.projectKey, key: '0'.repeat(64) })),
+        maximumRevisions: 1 });
+    },
+    async measure(name: WorkflowSource5ControlNamespace, key: string, value: unknown, revision = 1,
+      previousDigest: string | null = null): Promise<number> {
+      const { storage } = await location(name, key);
+      return Buffer.byteLength(encoded(storage, name, key, value, revision, previousDigest));
+    },
+    async digest(name: WorkflowSource5ControlNamespace, key: string, value: unknown, revision = 1,
+      previousDigest: string | null = null): Promise<string> {
+      const { storage } = await location(name, key);
+      const snapshot = await directories(storage, false);
+      const secret = snapshot && await issuer(storage, snapshot, false);
+      if (!secret) throw storageError('Original workflow issuer is missing; descriptive validation cannot recreate it.');
+      return hash(encoded(storage, name, key, value, revision, previousDigest, secret));
+    },
+    async read(name: WorkflowSource5ControlNamespace, key: string): Promise<WorkflowSource5StoredControl | null> {
+      const { storage, filePath } = await location(name, key);
+      const snapshot = await directories(storage, false);
+      if (!snapshot) return null;
+      const content = await readText(storage, filePath, snapshot, workflowSource5ControlLimits[name]);
+      if (content === undefined) return null;
+      const secret = await issuer(storage, snapshot, false);
+      if (!secret) throw storageError('Workflow control has no independently persisted local issuer.');
+      return decode(storage, name, key, filePath, content, secret);
+    },
+    async save(name: WorkflowSource5ControlNamespace, key: string, value: unknown,
+      expectedDigest: string | null): Promise<WorkflowSource5StoredControl> {
+      if (expectedDigest !== null && !/^[a-f0-9]{64}$/u.test(expectedDigest)) throw storageError('Invalid workflow CAS digest.');
+      const { storage, filePath } = await location(name, key);
+      encoded(storage, name, key, value, 1, expectedDigest);
+      const snapshot = await directories(storage, true);
+      if (!snapshot) throw storageError('Workflow control storage could not be created.');
+      return withStoreLock(storage, snapshot, async () => {
+        const before = await readText(storage, filePath, snapshot, workflowSource5ControlLimits[name]);
+        if ((before === undefined ? null : hash(before)) !== expectedDigest) throw storageError('Workflow control CAS refused concurrent/stale bytes.');
+        if (before !== undefined && !['journal', 'operation'].includes(name)) throw storageError('Workflow plan/approval/proof records are immutable.');
+        const secret = await issuer(storage, snapshot, true);
+        if (!secret) throw storageError('Workflow issuer could not be established.');
+        const previous = before === undefined ? null : decode(storage, name, key, filePath, before, secret);
+        const content = encoded(storage, name, key, value, (previous?.revision ?? 0) + 1, expectedDigest, secret);
+        await writeAtomicMetadata(storage, snapshot, filePath, content, before, true, workflowSource5ControlLimits[name]);
+        if (await readText(storage, filePath, snapshot, workflowSource5ControlLimits[name]) !== content) {
+          throw storageError('Workflow save could not be durably confirmed; preserve unresolved intent.');
+        }
+        return decode(storage, name, key, filePath, content, secret);
+      });
+    },
+    async finalizeJournal(key: string, active: unknown, finalProofKey: string, expectedDigest: string,
+      validateBeforeWrite: () => Promise<void>): Promise<WorkflowSource5StoredControl> {
+      if (!/^[a-f0-9]{64}$/u.test(expectedDigest) || !/^[a-f0-9]{64}$/u.test(finalProofKey) ||
+        typeof active !== 'object' || active === null || Array.isArray(active)) {
+        throw storageError('Final index reconciliation requires the existing exact active projection.');
+      }
+      const projection = active as Record<string, unknown>;
+      if (projection.kind !== 'workflow-source5-journal' || projection.controlKey !== key ||
+        projection.status !== 'active' || projection.finalProofKey !== null || projection.finalizationKey !== finalProofKey) {
+        throw storageError('Final index reconciliation cannot create or retag original control metadata.');
+      }
+      const { storage, filePath } = await location('journal', key);
+      const snapshot = await directories(storage, false);
+      if (!snapshot) throw storageError('Original workflow storage is missing; finalization cannot recreate it.');
+      return withStoreLock(storage, snapshot, async () => {
+        const before = await readText(storage, filePath, snapshot, workflowSource5ControlLimits.journal);
+        const secret = await issuer(storage, snapshot, false);
+        if (!before || !secret || hash(before) !== expectedDigest) {
+          throw storageError('Existing-only final index CAS refused missing or changed original metadata.');
+        }
+        const previous = decode(storage, 'journal', key, filePath, before, secret);
+        if (previous.revision !== 1 || previous.previousDigest !== null ||
+          before !== encoded(storage, 'journal', key, active, 1, null, secret)) {
+          throw storageError('Final index CAS requires the exact original first revision and predecessor.');
+        }
+        await validateBeforeWrite();
+        const retainedSecret = await issuer(storage, snapshot, false);
+        if (!retainedSecret || !timingSafeEqual(secret, retainedSecret) ||
+          await readText(storage, filePath, snapshot, workflowSource5ControlLimits.journal) !== before) {
+          throw storageError('Original issuer or active index changed before final index CAS.');
+        }
+        const content = encoded(storage, 'journal', key,
+          { ...projection, status: 'finalized', finalProofKey }, 2, previous.rawDigest, secret);
+        await writeAtomicMetadata(storage, snapshot, filePath, content, before, true,
+          workflowSource5ControlLimits.journal, validateBeforeWrite);
+        if (await readText(storage, filePath, snapshot, workflowSource5ControlLimits.journal) !== content) {
+          throw storageError('Final index CAS confirmation is unresolved; retain the original finalization and events.');
+        }
+        return decode(storage, 'journal', key, filePath, content, secret);
+      });
     }
   });
 }

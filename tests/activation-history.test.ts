@@ -21,6 +21,7 @@ import {
   validateHistoricalEvidenceRecord, validateHistoricalSavedTransitionPlan, historicalApprovalEnvelopeHash,
   type HistoricalInventoryOptions
 } from '../src/governance-activation/historical-state.js';
+import { historicalV3PhaseGraph } from '../src/governance-activation/historical-v3.js';
 import {
   finalizeActivationHistoryMigration, inspectActivationMigrationHistory, planActivationHistoryMigration,
   readActivationHistoryIndex, readMigrationJournal, type ActivationHistoryMutation,
@@ -362,7 +363,7 @@ describe('exact, read-only history planning', () => {
     const { root } = await fixtureRoot();
     await writeJson(root, '.liftoff/governance/phase-graph.json', { ...canonicalPhaseGraph, schemaVersion: 9 });
     expect(await planActivationHistoryMigration(root)).toMatchObject({ status: 'blocked', reasonCode: 'unsupported-historical-graph' });
-    await writeJson(root, '.liftoff/governance/phase-graph.json', canonicalPhaseGraph);
+    await writeJson(root, '.liftoff/governance/phase-graph.json', historicalV3PhaseGraph());
     expect((await eligible(root)).inventory.state.identity).toEqual(historicalActivationIdentity);
     await writeJson(root, '.liftoff/governance/compatibility.json', { schemaVersion: 3, activation: { successorMigrations: [] } });
     expect((await planActivationHistoryMigration(root)).status).toBe('blocked');

@@ -30,18 +30,12 @@ import {
 import {
   compareSemver
 } from '../../semver.js';
+import { runSelfUpgrade } from '../upgrade/self-upgrade.js';
+import { stableReleaseLookupTimeoutMs } from '../../stable-release.js';
+import { selfUpgradeRemedy, selfUpgradeResult, selfUpgradeSummary, type SelfUpgradeResult } from '../../domain/distribution/liftoff-upgrade.js';
 import {
-  checkConfiguredRegistryTarget,
-  type ConfiguredRegistryTargetLookup
-} from '../upgrade/self-upgrade.js';
-import {
-  canonicalManualInstallCommand,
-  canonicalNpmRegistry
+  canonicalManualInstallCommand
 } from '../../domain/distribution/liftoff-package.js';
-import {
-  lookupStableRelease,
-  type StableRelease
-} from '../../stable-release.js';
 import {
   packagedSupportedStack as supportedStack
 } from '../../adapters/packaged-assets/supported-stack.js';
@@ -459,46 +453,21 @@ async function cloudLayer(cloud: string, runner: CommandRunner): Promise<DoctorL
   return { title: `Cloud - ${cloud}`, checks };
 }
 
-async function cliLayer(
-  releaseLookup: () => Promise<StableRelease>,
-  configuredRegistryLookup: ConfiguredRegistryTargetLookup
-): Promise<DoctorLayer> {
+export function cliInstallationLayer(inspection: SelfUpgradeResult): DoctorLayer {
   const checks: DoctorCheck[] = [
-    { label: 'version', severity: 'ok', detail: `Liftoff ${liftoffVersion}` }
+    { label: 'version', severity: 'ok', detail: `Liftoff ${liftoffVersion}` },
+    { id: 'cli-installation-owner', label: 'installation owner', severity: inspection.installationOwner === 'unknown' ? 'warn' : 'ok',
+      detail: inspection.installationOwner ?? 'unknown' }
   ];
-  let latest: string;
-  try {
-    latest = (await releaseLookup()).version;
-  } catch {
-    return { title: 'CLI', checks };
-  }
-
-  if (compareSemver(latest, liftoffVersion) > 0) {
-    let registryState: Awaited<ReturnType<ConfiguredRegistryTargetLookup>> = {
-      status: 'unavailable'
-    };
-    try {
-      registryState = await configuredRegistryLookup(latest);
-    } catch {
-      // Canonical freshness remains useful when local npm registry inspection fails.
-    }
-    const manual = canonicalManualInstallCommand(latest);
-    checks.push({
-      label: 'cli freshness',
-      severity: 'warn',
-      detail: registryState.status === 'stale'
-        ? `Liftoff ${latest} is published, but the configured npm registry does not expose it`
-        : `Liftoff ${latest} is published, this CLI is ${liftoffVersion}`,
-      remedy: registryState.status === 'stale'
-        ? 'ask the managed registry owner to synchronize the canonical target, then run liftoff upgrade --check'
-        : `run liftoff upgrade --check, then liftoff upgrade; manual fallback where canonical npm is permitted: ${manual}`
-    });
-  } else {
-    checks.push({
-      label: 'cli freshness',
-      severity: 'ok',
-      detail: `running ${liftoffVersion}, latest stable ${latest}`
-    });
+  checks.push({
+    id: 'cli-freshness', label: 'cli freshness', severity: inspection.status === 'current' ? 'ok' : 'warn',
+    state: inspection.status, detail: `${selfUpgradeSummary(inspection)} (${inspection.reasonCode})`,
+    ...(inspection.status === 'update-available' ? { remedy: 'Run liftoff upgrade --check, then liftoff upgrade; preserve the installation owner.' } :
+      selfUpgradeRemedy(inspection) ? { remedy: selfUpgradeRemedy(inspection) } : {})
+  });
+  for (const [label, availability] of [['upstream availability', inspection.upstream], ['channel availability', inspection.channel]] as const) {
+    checks.push({ label, severity: availability?.status === 'available' ? 'ok' : 'warn',
+      detail: `${availability?.status ?? 'unknown'}${availability?.version ? ` (${availability.version})` : ''}` });
   }
   return { title: 'CLI', checks };
 }
@@ -738,16 +707,20 @@ export async function diagnoseProject(request: DoctorRequest, context: Execution
     }
   }
 
-  const releaseLookup = context.stableReleaseLookup ?? (() =>
-    lookupStableRelease({ registry: canonicalNpmRegistry }));
-  const configuredRegistryLookup =
-    context.configuredRegistryTargetLookup ??
-    ((targetVersion) => checkConfiguredRegistryTarget(targetVersion, {
-      runner,
-      environment: context.env ?? process.env
-    }));
   const runtime = observeRunningRuntime();
-  const cli = await cliLayer(releaseLookup, configuredRegistryLookup);
+  const upgradeRequest = { mode: 'check' as const, currentVersion: liftoffVersion, json: true,
+    stdout: context.stdout, stderr: context.stderr };
+  let inspection: SelfUpgradeResult;
+  try {
+    inspection = context.selfUpgrade
+    ? await context.selfUpgrade(upgradeRequest)
+    : await runSelfUpgrade(upgradeRequest, { runner, environment: context.env ?? process.env,
+      probeTimeoutMs: stableReleaseLookupTimeoutMs,
+      ...(context.stableReleaseLookup ? { lookupStableRelease: context.stableReleaseLookup } : {}) });
+  } catch {
+    inspection = selfUpgradeResult(upgradeRequest, 'failed', 'inspection_unavailable');
+  }
+  const cli = cliInstallationLayer(inspection);
   cli.checks.push({
     id: 'liftoff-runtime',
     label: 'Liftoff runtime',

@@ -51,8 +51,8 @@ export function expectBoundedCapabilitySkill(content: string, operation: 'setup'
     const modernGuidance = content.slice(modernStart, historicalStart);
     // Only this reviewed v8 branch is outside the original historical bounds.
     expect(createHash('sha256').update(modernGuidance).digest('hex'))
-      .toBe('dc8942ea3bfae14017327dc15b990605ece1941b2ac028405a219211eeb84c85');
-    expect(content.length).toBeLessThan(5_500);
+      .toBe('41ff8e313ec0110c4bda2a91d551ac4f7c22b0fc70f66eb5a333de8a671719ae');
+    expect(content.length).toBeLessThan(6_000);
     const advertisement = 'governance 2,\nupdate 3 or update 4. Update 4 additionally requires `schemas.currentUpdate`\n'
       + 'with report 4, manifestWrite 8, separateConsent and explicitRecovery.';
     expect(content).toContain(advertisement);

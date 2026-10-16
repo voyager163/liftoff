@@ -613,13 +613,28 @@ describe('publication through the transition engine', () => {
     }, /Independent repository\/ref readback differs from the reviewed local publication/u]
   ] as const)('refuses %s without recording success or a remote binding', async (_label, prepare, expected) => {
     const { root, result } = await publish('engine-refusal', prepare);
-    expect(result).toMatchObject({ applied: false, reason: 'blocked', evidence: null });
+    expect(result).toMatchObject({
+      applied: false,
+      reason: 'blocked',
+      evidence: { result: 'failed' }
+    });
     expect(result.message).toMatch(expected);
     const state = (await readState(root))!;
     expect(state.phases.pushed.state).toBe('blocked');
+    expect(state.phases.pushed.evidence).toEqual([
+      expect.objectContaining({ evidenceId: result.evidence!.evidenceId, result: 'failed' })
+    ]);
     expect(state.remoteBinding).toBeUndefined();
     expect(state.phaseOutputs?.pushed).toBeUndefined();
     expect(result.executedOperations.map((operation) => operation.actionId)).toContain('github.repository.ensure');
+    const evidence = JSON.parse(await readFile(path.join(root, ...result.evidence!.pathParts), 'utf8'));
+    expect(evidence.payload).toMatchObject({
+      kind: 'partial-failure.v1',
+      phaseId: 'pushed',
+      blockerDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      providerPayloadDigest: expect.stringMatching(/^[a-f0-9]{64}$/u)
+    });
+    expect(JSON.stringify(evidence.payload)).not.toMatch(expected);
   });
 });
 

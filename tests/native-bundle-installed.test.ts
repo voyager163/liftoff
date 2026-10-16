@@ -28,6 +28,13 @@ let failed = false;
 let setupComplete = false;
 let probeSequence = 0;
 let environment: NodeJS.ProcessEnv;
+const copiedBundles: string[] = [];
+
+async function verifyFixtureIdentity() {
+  const current = await lstat(fixtureRoot);
+  expect(current.isDirectory()).toBe(true);
+  expect({ dev: current.dev, ino: current.ino }).toEqual({ dev: fixtureIdentity.dev, ino: fixtureIdentity.ino });
+}
 
 function execute(executable: string, args: string[], cwd = outside, env = environment) {
   const result = spawnSync(executable, args, {
@@ -115,13 +122,21 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
     environment = { ...environment, LIFTOFF_NATIVE_PROBE_LOG: probeLog };
   });
 
-  afterEach(({ task }) => { if (task.result?.state !== 'pass') failed = true; });
+  afterEach(async ({ task }) => {
+    if (task.result?.state !== 'pass') failed = true;
+    if (failed || copiedBundles.length === 0) return;
+    try {
+      await verifyFixtureIdentity();
+      await Promise.all(copiedBundles.splice(0).map(directory => rm(directory, { recursive: true })));
+    } catch (error) {
+      failed = true;
+      throw error;
+    }
+  });
 
   afterAll(async () => {
     if (!setupComplete || failed) return;
-    const current = await lstat(fixtureRoot);
-    expect(current.isDirectory()).toBe(true);
-    expect({ dev: current.dev, ino: current.ino }).toEqual({ dev: fixtureIdentity.dev, ino: fixtureIdentity.ino });
+    await verifyFixtureIdentity();
     await verifyNativeBundle(bundle);
     await rm(fixtureRoot, { recursive: true });
   });
@@ -262,6 +277,7 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
   it('refuses missing template, controller and HCL material without borrowing checkout or global assets', async () => {
     const damaged = path.join(fixtureRoot, 'damaged bundle');
     await cp(bundle, damaged, { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
+    copiedBundles.push(damaged);
     await verifyNativeBundle(damaged);
     for (const missing of [
       'assets/plugins/go-huma/go-backend/go.mod',
@@ -291,6 +307,7 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
   it('rejects edited release claims, runtime pins, package identity and license inventories', async () => {
     const damaged = path.join(fixtureRoot, 'edited manifest bundle');
     await cp(bundle, damaged, { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
+    copiedBundles.push(damaged);
     const file = path.join(damaged, 'bundle.json');
     const bytes = await readFile(file);
     const original = await verifyNativeBundle(damaged);
@@ -321,6 +338,7 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
   it('rejects non-executable and changed private runtime bytes even with a recomputed inventory', async () => {
     const damaged = path.join(fixtureRoot, 'changed runtime bundle');
     await cp(bundle, damaged, { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
+    copiedBundles.push(damaged);
     const file = path.join(damaged, 'bundle.json');
     const bytes = await readFile(file);
     const original = await verifyNativeBundle(damaged);

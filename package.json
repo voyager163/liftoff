@@ -29,7 +29,14 @@
     "liftoff": "dist/cli.js"
   },
   "files": [
-    "dist",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "distribution/native/native-release-admission.mjs",
+    "distribution/native/native-release-admission.d.mts",
+    "distribution/native/native-release-catalog.mjs",
+    "distribution/native/native-release-catalog.d.mts",
+    "distribution/native/release-policy.json",
+    "distribution/native/platforms.json",
     "assets/governance/modern/source-contracts.json",
     "assets/governance/single-maintainer-gitflow/activation-v2-graph.json",
     "assets/governance/single-maintainer-gitflow/activation-v3-graph.json",
@@ -74,6 +81,7 @@
   "scripts": {
     "build": "node scripts/clean-build.mjs && tsc -p tsconfig.json",
     "build:native": "node scripts/native-bundle.mjs",
+    "build:migration": "node scripts/mac-migration-package.mjs",
     "test": "vitest run",
     "coverage:cli": "node scripts/coverage-gate.mjs run cli",
     "coverage:gateway": "node scripts/coverage-gate.mjs run gateway",
@@ -109,7 +117,7 @@
     "@inquirer/prompts": "^8.6.0",
     "cross-spawn": "^7.0.6",
     "picocolors": "^1.1.1",
-    "smol-toml": "1.8.0",
+    "smol-toml": "1.9.1",
     "yaml": "^2.9.0"
   }
 }

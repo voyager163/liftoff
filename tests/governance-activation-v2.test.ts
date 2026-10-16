@@ -116,11 +116,15 @@ describe('activation-v2 authoritative contracts', () => {
     expect(selectLatestPhaseEvidence([proof, record('failed')], context).selected).toBeNull();
   });
 
-  it('declares the 26-phase production capability inventory honestly', () => {
+  it('declares the 29-phase production capability inventory honestly', () => {
     expect(Object.keys(phaseCapabilities)).toHaveLength(29);
-    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'built-in')).toHaveLength(11);
-    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'injected-only')).toHaveLength(2);
-    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'unavailable')).toHaveLength(16);
+    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'built-in')).toHaveLength(15);
+    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'injected-only')).toHaveLength(7);
+    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'unavailable')).toHaveLength(7);
+    for (const phase of ['application-prerequisites-ready', 'application-artifact-ready'] as const) {
+      expect(phaseCapabilities[phase]).toMatchObject({ executor: 'injected-only', retry: 'none' });
+      expect(phaseCapabilities[phase].blocker).toContain('production task13/task14 qualification is not available');
+    }
     expect(canonicalPhaseGraph.phases.find((phase) => phase.id === 'activation-approved')!.allowedMutations.local)
       .toContain('write-openspec-governance');
     const dependency = canonicalPhaseGraph.phases.find((phase) => phase.id === 'remote-ready')!.dependencies[0]!;

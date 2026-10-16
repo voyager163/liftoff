@@ -96,10 +96,11 @@ function harness(
   };
   const entry = (file: string) => {
     const found = files.get(file);
-    if (!found) throw new Error('Missing private fixture path.');
+    if (!found) throw Object.assign(new Error('Missing private fixture path.'), { code: 'ENOENT' });
     return found;
   };
   const dependencies: SelfUpgradeDependencies = {
+    resolveLiftoff: undefined,
     runner,
     platform: 'darwin',
     execPath: node,
@@ -108,7 +109,7 @@ function harness(
       npm_config_cache: path.posix.join('/', 'private', 'fixture-cache'),
       NPM_CONFIG_PREFIX: cellar
     }),
-    lookupStableRelease: vi.fn(async () => ({ name: '@msn-control/liftoff', version: '0.12.0' })),
+    lookupStableRelease: vi.fn<SelfUpgradeDependencies['lookupStableRelease']>(async () => ({ name: '@msn-control/liftoff', version: '0.12.0' })),
     makeNeutralDirectory: vi.fn(async () => neutralDirectory),
     removeNeutralDirectory: vi.fn(async () => {}),
     realpath: vi.fn(async (file: string) => entry(file).resolved ?? file),
@@ -141,9 +142,11 @@ describe('verified Homebrew npm prefix recovery', () => {
     const before = JSON.stringify({ files: [...f.files], metadata: f.metadata, env: f.dependencies.environment });
     const result = await runSelfUpgrade(f.request, f.dependencies);
     expect(result).toEqual({
-      schemaVersion: 1, mode: 'check', status: 'update-available',
+      schemaVersion: 2, mode: 'check', status: 'update-available',
       currentVersion: '0.11.3', targetVersion: '0.12.0',
-      registryKind: 'canonical', reasonCode: 'update_available', installationTarget: target
+      registryKind: 'canonical', reasonCode: 'update_available', installationTarget: target,
+      installationOwner: 'npm', upstream: { status: 'available', version: '0.12.0' },
+      channel: { status: 'available', version: '0.12.0' }, effects: 'none', verification: 'not-run'
     });
     expect(selfUpgradeExitCode(result)).toBe(2);
     expect(f.installations).toEqual([]);
@@ -172,7 +175,7 @@ describe('verified Homebrew npm prefix recovery', () => {
     expect(install.command).toEqual(buildGlobalNpmInstallCommand('0.12.0', 'darwin', target));
     expect(displayed).toHaveBeenCalledWith(install.command);
     expect(install.options).toMatchObject({ timeoutMs: 600_000, stdout: f.request.stderr, stderr: f.request.stderr });
-    expect(f.calls.filter(({ command }) => command.args[0] === 'root')).toHaveLength(4);
+    expect(f.calls.filter(({ command }) => command.args[0] === 'root')).toHaveLength(8);
     const verification = f.calls.find(({ command }) => command.executable === f.node)!;
     expect(verification.command.args).toEqual([f.binary, '--version']);
     expect(verification.options).toMatchObject({ timeoutMs: 15_000, env: { LIFTOFF_TELEMETRY: '0' } });
@@ -287,7 +290,7 @@ describe('verified Homebrew npm prefix recovery', () => {
     f.behavior.scopedRegistry = 'https://mirror.example.test/npm/';
     f.behavior.viewResult = { status: 1, stderr: 'E404 target not found' };
     expect(await runSelfUpgrade(f.request, f.dependencies)).toMatchObject({
-      status: 'blocked', reasonCode: 'registry_stale', registryKind: 'configured'
+      status: 'blocked', reasonCode: 'registry_absent', registryKind: 'configured'
     });
     expect(f.calls.filter(({ command }) => command.args[0] === 'config').map(({ command }) => command.args))
       .toEqual([

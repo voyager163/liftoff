@@ -18,6 +18,7 @@ import {
 import {
   phaseIds,
   phaseScope,
+  type LiveReadbackProof,
   type PhaseEvidenceRecord,
   type SavedTransitionPlan,
   type UserActivationState
@@ -760,7 +761,7 @@ describe('read-only assessment command', () => {
   it.each([2, 3, 4, 5, 6] as const)('assesses supported manifest schema %s without migration', async (version) => {
     const root = await fixture({ projectType: 'genai', pattern: 'prompt', apiStack: 'python' });
     const manifest = await loadManifest(root);
-    if (manifest.project.workload.kind === 'power-apps-code-app' || manifest.governance.profile === 'none' || manifest.governance.profile === 'unspecified') throw new Error('Wrong legacy fixture.');
+    if (manifest.governance.profile === 'none' || manifest.governance.profile === 'unspecified') throw new Error('Wrong legacy fixture.');
     const workload = manifest.project.workload;
     const historicalManaged = manifest.managedArtifacts.filter((entry) =>
       !entry.logicalName.startsWith('liftoff-governance-assess-') &&
@@ -1079,7 +1080,7 @@ describe('read-only assessment command', () => {
       sourceDigest: 'c'.repeat(64),
       readbackDigest: 'c'.repeat(64),
       matches: true
-    }];
+    }] satisfies readonly LiveReadbackProof[];
     const evidence: PhaseEvidenceRecord = {
       evidenceId: 'phase0-applicability',
       header: {
@@ -1419,7 +1420,7 @@ describe('read-only assessment command', () => {
       sourceDigest: 'c'.repeat(64),
       readbackDigest: 'c'.repeat(64),
       matches: true
-    }];
+    }] satisfies readonly LiveReadbackProof[];
     const record: PhaseEvidenceRecord = {
       evidenceId: 'bound-discovery',
       header: {
@@ -1609,7 +1610,7 @@ describe('read-only assessment command', () => {
       sourceDigest: 'c'.repeat(64),
       readbackDigest: 'c'.repeat(64),
       matches: true
-    };
+    } satisfies LiveReadbackProof;
     const payload = {
       kind: 'provider-ready.v1',
       planDigest: plan.planDigest,
@@ -1661,7 +1662,7 @@ describe('read-only assessment command', () => {
       evidenceReferences: current.phases[phaseId].evidence,
       reviewedPlans: [plan],
       liveReadbackProviders: ['azure']
-    };
+    } satisfies EvidenceFreshnessContext;
     const providerSelection = selectLatestPhaseEvidence(
       [evidence],
       providerContext

@@ -12,15 +12,26 @@ import {
 } from '../src/governance-activation/index.js';
 import { executeAzurePhase } from '../src/governance-activation/phase-azure.js';
 import { executeGitHubPhase } from '../src/governance-activation/phase-github.js';
-import { approveGovernancePreview, saveGovernancePreview } from '../src/governance-activation/public-plans.js';
+import { readbackProof } from '../src/governance-activation/transition-records.js';
 import {
-  LocalOnlyRunner, coverageActivationInputs, coverageInspection, coverageNow, coverageState, coverageSubscription,
+  AbsentAzureEnvironmentRunner, LocalOnlyRunner, coverageActivationInputs, coverageInspection, coverageNow, coverageState, coverageSubscription,
   isolateUserLocalStorage, isolatedGitEnvironment, issuePriorApproval, readState, resetDirectory, scratchDirectory,
-  treeFingerprint, userLocalRecordNames, writeCoverageProject
+  treeFingerprint, writeCoverageProject
 } from './fixtures/governance-coverage/transition-project.js';
 
 const scratch = scratchDirectory('provider-denial');
 const activationInputs = coverageActivationInputs();
+const credentialActivationInputs = {
+  ...activationInputs,
+  phases: {
+    'credential-ready': {
+      kind: 'fine-grained-pat',
+      tokenId: 4242,
+      owner: 'octo-owner',
+      appUnavailableReason: 'The organization has no approved preflight App.'
+    }
+  }
+} as const;
 const fineGrainedPat = ['github', 'pat', 'SYNTHETIC', 'DENIAL', 'VALUE', 'FOR', 'TESTS', 'ONLY', '0123456789ABCDEF0123'].join('_');
 let storage: Awaited<ReturnType<typeof isolateUserLocalStorage>>;
 let gitEnvironment: NodeJS.ProcessEnv;
@@ -76,16 +87,24 @@ function phase(phaseId: PhaseId) {
 }
 
 function credentialState(): UserActivationState {
-  return coverageState({ applicability: { statePath: 'none', privateStagingDast: false, credentialRequired: true } });
+  const state = coverageState({
+    applicability: { statePath: 'none', privateStagingDast: false, credentialRequired: true },
+    phaseOutputs: { 'phase-0-complete': { values: { repositoryId: 555 }, resources: [] } }
+  });
+  state.phases['phase-0-complete'] = {
+    state: 'verified', updatedAt: coverageNow.toISOString(), evidence: [], approvals: [], blockers: []
+  };
+  return state;
 }
 
 async function approvedInspection(root: string, phaseId: PhaseId, state: UserActivationState, runner: LocalOnlyRunner) {
+  const inputs = phaseId === 'credential-ready' ? credentialActivationInputs : activationInputs;
   const planned = await buildSavedTransitionPlan({
-    inspection: await coverageInspection({ root, phaseId, state, activationInputs }), runner, now: coverageNow
+    inspection: await coverageInspection({ root, phaseId, state, activationInputs: inputs }), runner, now: coverageNow
   });
   expect(planned?.phaseId).toBe(phaseId);
   const approvals = phase(phaseId).approvalGate.required ? [await issuePriorApproval(root, state, planned!)] : [];
-  return coverageInspection({ root, phaseId, state, approvals, activationInputs });
+  return coverageInspection({ root, phaseId, state, approvals, activationInputs: inputs });
 }
 
 describe('public capability table', () => {
@@ -96,12 +115,13 @@ describe('public capability table', () => {
       expect(capability.blocker, phaseId).toMatch(/\S/u);
       expect(capability.retry, phaseId).toBe('none');
     }
-    expect(phaseCapabilities['provider-ready'].executor).toBe('unavailable');
+    expect(phaseCapabilities['provider-ready'].executor).toBe('built-in');
+    expect(phaseCapabilities['runner-ready'].executor).toBe('built-in');
     expect(phaseCapabilities['rulesets-applied'].executor).toBe('injected-only');
-    expect(phaseCapabilities['credential-ready'].blocker).toMatch(/public credential enrollment are unavailable/u);
+    expect(phaseCapabilities['credential-ready']).toEqual({ executor: 'built-in', retry: 'none' });
   });
 
-  it('keeps read-only preview usable while surfacing the capability blocker without writes', async () => {
+  it('keeps provider preview fail-closed when reviewed provider inputs are absent', async () => {
     const root = await project('preview');
     const runner = new LocalOnlyRunner(gitEnvironment);
     const before = await treeFingerprint(root);
@@ -111,41 +131,16 @@ describe('public capability table', () => {
     });
     expect(preview).toMatchObject({
       reason: 'blocked', selectedPhase: 'provider-ready', noWrites: true, savedPlan: null,
-      blockers: [phaseCapabilities['provider-ready'].blocker]
+      blockers: ['Provider readiness requires reviewed provider-ready inputs with resourceTypes and azureRmRegistrationMode.']
     });
-    expect(preview.proposedMutations.operations.map((operation) => operation.actionId)).toContain('azure.provider.ensure-ready');
+    expect(preview.proposedMutations.operations).toEqual([]);
     expect(await treeFingerprint(root)).toBe(before);
     expect(runner.providerCalls).toEqual([]);
   });
 });
 
-describe('public approval refuses unsupported capabilities', () => {
-  it.each(['provider-ready', 'state-path-selected', 'credential-ready'] as const)(
-    'saves an external preview for %s but issues no approval, authority record, or project file',
-    async (phaseId) => {
-      const root = await project(`approve-${phaseId}`);
-      const runner = new LocalOnlyRunner(gitEnvironment);
-      const state = phaseId === 'credential-ready' ? credentialState() : coverageState();
-      const inspection = await coverageInspection({ root, phaseId, state, activationInputs });
-      const saved = await saveGovernancePreview(inspection, { runner, now: coverageNow });
-      expect(saved?.preview.plan).toMatchObject({ phaseId, approval: { evaluation: { approvalRequired: true } } });
-      const before = await treeFingerprint(root);
-      const recordsBefore = await userLocalRecordNames(storage.root);
-
-      await expect(approveGovernancePreview({
-        projectRoot: root, fingerprint: saved!.preview.fingerprint, inspect: async () => inspection, runner, now: coverageNow
-      })).rejects.toThrow(phaseCapabilities[phaseId].blocker!);
-
-      expect(await treeFingerprint(root)).toBe(before);
-      expect(await userLocalRecordNames(storage.root)).toEqual(recordsBefore);
-      expect(recordsBefore.some((name) => name.startsWith('governance-approval-'))).toBe(false);
-      expect(runner.providerCalls).toEqual([]);
-    }
-  );
-});
-
 describe('execution guard for phases without a real executor', () => {
-  it.each(['provider-ready', 'state-path-selected', 'runner-ready', 'rulesets-applied', 'live-readback'] as const)(
+  it.each(['rulesets-applied', 'live-readback'] as const)(
     'blocks %s even with previously issued authority before saving a plan, writing intent, or invoking a producer',
     async (phaseId) => {
       const root = await project(`execute-${phaseId}`);
@@ -190,26 +185,23 @@ describe('execution guard for phases without a real executor', () => {
     }
   );
 
-  it('blocks credential enrollment with prior authority before any plan, intent, state, input, secret, policy, or evidence effect', async () => {
+  it('requires the dedicated credential enrollment command before any plan, intent, state, input, secret, policy, or evidence effect', async () => {
     const root = await project('credential-enroll');
     const runner = new LocalOnlyRunner(gitEnvironment);
     const inspection = await approvedInspection(root, 'credential-ready', credentialState(), runner);
     privateTerminal();
     const before = await treeFingerprint(root);
 
-    for (const credentialEnrollment of [{ protectedStdin: false }, { protectedStdin: true }, undefined]) {
-      const result = await executeApplyNext({
-        inspection, reinspect: async () => inspection, runner, now: coverageNow,
-        ...(credentialEnrollment ? { credentialEnrollment } : {})
-      });
+    const result = await executeApplyNext({
+      inspection, reinspect: async () => inspection, runner, now: coverageNow
+    });
 
-      const blocker = phaseCapabilities['credential-ready'].blocker!;
-      expect(result).toMatchObject({
-        applied: false, authorized: false, reason: 'blocked', message: blocker, blockers: [blocker],
-        executedPhase: null, savedPlan: null, evidence: null, stateHash: null, executedOperations: []
-      });
-      expect(JSON.stringify(result)).not.toContain(fineGrainedPat);
-    }
+    const blocker = 'Credential enrollment must be explicitly invoked with governance credential-enroll after reviewing and approving the credential-ready plan. No protected input was read.';
+    expect(result).toMatchObject({
+      applied: false, authorized: false, reason: 'blocked', message: blocker, blockers: [blocker],
+      executedPhase: null, savedPlan: null, evidence: null, stateHash: null, executedOperations: []
+    });
+    expect(JSON.stringify(result)).not.toContain(fineGrainedPat);
     expect(await treeFingerprint(root)).toBe(before);
     expect(await readState(root)).toBeUndefined();
     expect(await exists(path.join(root, 'governance', 'plans'))).toBe(false);
@@ -241,37 +233,23 @@ describe('execution guard for phases without a real executor', () => {
 });
 
 describe('producers cannot manufacture provider proof when invoked directly', () => {
-  it.each(['provider-ready', 'state-path-selected'] as const)('returns an explicit blocked outcome from the Azure %s producer', async (phaseId) => {
-    const root = await project(`azure-${phaseId}`);
-    const runner = new LocalOnlyRunner(gitEnvironment);
-    const inspection = await coverageInspection({ root, phaseId, state: coverageState({ activationInputs }), activationInputs });
-    const plan = (await buildSavedTransitionPlan({ inspection, runner, now: coverageNow }))!;
-    const before = await treeFingerprint(root);
-
-    const outcome = await executeAzurePhase({ inspection, plan, phase: phase(phaseId), runner, adapters: {}, now: coverageNow });
-
-    expect(outcome).toEqual({ status: 'blocked', blocker: phaseCapabilities[phaseId].blocker, completedOperations: [] });
-    expect(await treeFingerprint(root)).toBe(before);
-    expect(runner.providerCalls).toEqual([]);
-  });
-
   it('refuses direct credential enrollment before selecting or reading any input channel', async () => {
     const root = await project('credential-direct');
     const runner = new LocalOnlyRunner(gitEnvironment);
-    const inspection = await coverageInspection({ root, phaseId: 'credential-ready', state: credentialState() });
+    const inspection = await coverageInspection({
+      root, phaseId: 'credential-ready', state: credentialState(), activationInputs: credentialActivationInputs
+    });
     const plan = (await buildSavedTransitionPlan({ inspection, runner, now: coverageNow }))!;
     privateTerminal();
     const before = await treeFingerprint(root);
 
-    for (const protectedStdin of [false, true]) {
-      const outcome = await executeGitHubPhase({
-        inspection, plan, phase: phase('credential-ready'), runner, adapters: {}, now: coverageNow, credentialEnrollment: { protectedStdin }
-      });
-      expect(outcome).toEqual({
-        status: 'blocked', completedOperations: [],
-        blocker: expect.stringContaining(phaseCapabilities['credential-ready'].blocker!)
-      });
-    }
+    const outcome = await executeGitHubPhase({
+      inspection, plan, phase: phase('credential-ready'), runner, adapters: {}, now: coverageNow
+    });
+    expect(outcome).toEqual({
+      status: 'blocked', completedOperations: [],
+      blocker: 'Credential enrollment must be explicitly invoked with governance credential-enroll after reviewing and approving the credential-ready plan. No protected input was read.'
+    });
     expect(password).not.toHaveBeenCalled();
     expect(runner.providerCalls).toEqual([]);
     expect(await treeFingerprint(root)).toBe(before);
@@ -285,26 +263,43 @@ describe('pending external operations', () => {
     startedAt: coverageNow.toISOString(), observedAt: coverageNow.toISOString(), status: 'running'
   };
 
-  function adapter(outcomes: PhaseAdapterOutcome[], seen: Array<ExternalOperationState | null>): GovernancePhaseAdapter {
+  function adapter(
+    outcomes: Array<PhaseAdapterOutcome | ((input: Parameters<GovernancePhaseAdapter['execute']>[0]) => PhaseAdapterOutcome)>,
+    seen: Array<ExternalOperationState | null>
+  ): GovernancePhaseAdapter {
     return {
       phaseId: 'existing-private-path',
       async execute(input) {
         seen.push(input.inspection.state.phases['existing-private-path'].operation ?? null);
         const next = outcomes.shift();
         if (!next) throw new Error('The injected producer was invoked more often than reviewed.');
-        return next;
+        return typeof next === 'function' ? next(input) : next;
       }
     };
   }
 
   it('records a running provider operation for resume and resumes only the exact reviewed operation set', async () => {
     const root = await project('pending-resume');
-    const runner = new LocalOnlyRunner(gitEnvironment);
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const seen: Array<ExternalOperationState | null> = [];
-    const failed = { ...handle, status: 'failed' as const, observedAt: new Date(coverageNow.getTime() + 120_000).toISOString() };
+    const failed = { ...handle, status: 'failed' as const, observedAt: new Date(coverageNow.getTime() + 60_000).toISOString() };
     const adapters = { phases: { 'existing-private-path': adapter([
-      { status: 'pending', operation: handle, completedOperations: [] },
-      { status: 'blocked', blocker: 'Provider operation op-123 failed; inspect the owned resource before recovery.', operation: failed, completedOperations: [] }
+      {
+        status: 'pending',
+        operation: handle,
+        outputs: {
+          values: { observedResourceCount: 1 },
+          resources: [{ provider: 'azure', resourceType: 'resource-group', resourceId: handle.resourceId }]
+        },
+        completedOperations: []
+      },
+      (input) => ({
+        status: 'blocked',
+        blocker: 'Provider operation op-123 failed; inspect the owned resource before recovery.',
+        operation: failed,
+        liveReadback: [readbackProof(input, 'azure', 'external-operation', failed.resourceId, failed)],
+        completedOperations: []
+      })
     ], seen) } };
     const inspection = await coverageInspection({ root, phaseId: 'existing-private-path', state: coverageState({ activationInputs }), activationInputs });
 
@@ -315,10 +310,16 @@ describe('pending external operations', () => {
       nextReadyPhase: 'existing-private-path', evidence: null
     });
     expect(pending.blockers[0]).toContain('op-123 is running; resume polls this operation without redispatch');
-    expect(pending.executedOperations.map((operation) => operation.actionId)).toEqual(['governance.activation-state.write']);
+    expect(pending.executedOperations.map((operation) => operation.actionId)).toEqual([
+      'azure.deployment.classify-ownership', 'governance.activation-state.write'
+    ]);
     const savedPlan = validateSavedTransitionPlan(JSON.parse(await readFile(path.join(root, ...pending.savedPlan!.pathParts), 'utf8')));
     const running = (await readState(root))!.phases['existing-private-path'];
     expect(running).toMatchObject({ state: 'running', executionPlanDigest: savedPlan.planDigest, operation: { ...handle, planDigest: savedPlan.planDigest } });
+    expect((await readState(root))!.phaseOutputs?.['existing-private-path']).toMatchObject({
+      values: { observedResourceCount: 1 },
+      resources: [{ resourceId: handle.resourceId }]
+    });
     expect(await exists(path.join(root, 'governance', 'evidence'))).toBe(false);
 
     const loaded = (await loadActivationState(root))!;
@@ -341,19 +342,157 @@ describe('pending external operations', () => {
 
     expect(seen[1]).toMatchObject({ operationId: 'op-123', status: 'running', planDigest: savedPlan.planDigest });
     expect(resumed).toMatchObject({
-      applied: false, reason: 'blocked', evidence: null,
+      applied: false, reason: 'blocked', evidence: { result: 'failed' },
       blockers: ['Provider operation op-123 failed; inspect the owned resource before recovery.']
     });
     expect((await readState(root))!.phases['existing-private-path']).toMatchObject({
-      state: 'blocked', evidence: [], operation: { operationId: 'op-123', status: 'failed', planDigest: savedPlan.planDigest }
+      state: 'blocked', evidence: [{ result: 'failed' }],
+      operation: { operationId: 'op-123', status: 'failed', planDigest: savedPlan.planDigest }
     });
     expect(runner.providerCalls).toEqual([]);
+
+    const terminalLoaded = (await loadActivationState(root))!;
+    const terminal = await coverageInspection({
+      root,
+      phaseId: 'existing-private-path',
+      state: terminalLoaded.state,
+      reviewedPlans: [savedPlan],
+      activationInputs
+    });
+    terminal.loadedState = terminalLoaded;
+    await expect(executeApplyNext({
+      inspection: terminal,
+      reinspect: async () => terminal,
+      runner,
+      now: new Date(coverageNow.getTime() + 120_000),
+      adapters: { phases: { 'existing-private-path': adapter([], []) } }
+    })).rejects.toThrow(/terminal external operation requires explicit recovery/u);
+    expect(runner.providerCalls).toEqual([]);
+  });
+
+  it.each([
+    ['a replaced provider handle', (stored: ExternalOperationState, input: Parameters<GovernancePhaseAdapter['execute']>[0]) => {
+      const changed = {
+        ...stored,
+        operationId: 'op-replaced',
+        observedAt: new Date(coverageNow.getTime() + 60_000).toISOString(),
+        status: 'failed' as const
+      };
+      return {
+        status: 'blocked' as const,
+        blocker: 'Provider operation failed.',
+        operation: changed,
+        liveReadback: [readbackProof(input, 'azure', 'external-operation', changed.resourceId, changed)],
+        completedOperations: []
+      };
+    }, /does not match the exact recorded provider handle/u],
+    ['a stale observation', (stored: ExternalOperationState, input: Parameters<GovernancePhaseAdapter['execute']>[0]) => {
+      const stale = { ...stored, status: 'failed' as const };
+      return {
+        status: 'blocked' as const,
+        blocker: 'Provider operation failed.',
+        operation: stale,
+        liveReadback: [readbackProof(input, 'azure', 'external-operation', stale.resourceId, stale)],
+        completedOperations: []
+      };
+    }, /was not freshly reobserved/u],
+    ['no current provider readback', (stored: ExternalOperationState) => ({
+      status: 'blocked' as const,
+      blocker: 'Provider operation failed.',
+      operation: {
+        ...stored,
+        observedAt: new Date(coverageNow.getTime() + 60_000).toISOString(),
+        status: 'failed' as const
+      },
+      completedOperations: []
+    }), /requires a current matching provider readback/u],
+    ['a future-dated provider readback', (stored: ExternalOperationState, input: Parameters<GovernancePhaseAdapter['execute']>[0]) => {
+      const failed = {
+        ...stored,
+        observedAt: new Date(coverageNow.getTime() + 60_000).toISOString(),
+        status: 'failed' as const
+      };
+      return {
+        status: 'blocked' as const,
+        blocker: 'Provider operation failed.',
+        operation: failed,
+        liveReadback: [{
+          ...readbackProof(input, 'azure', 'external-operation', failed.resourceId, failed),
+          observedAt: new Date(coverageNow.getTime() + 180_001).toISOString()
+        }],
+        completedOperations: []
+      };
+    }, /requires a current matching provider readback/u]
+  ] as const)('rejects resume with %s before changing the checkpoint', async (_label, resumedOutcome, expected) => {
+    const root = await project('pending-continuity');
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
+    const initialInspection = await coverageInspection({
+      root,
+      phaseId: 'existing-private-path',
+      state: coverageState({ activationInputs }),
+      activationInputs
+    });
+    const initialAdapters = {
+      phases: {
+        'existing-private-path': adapter([{
+          status: 'pending',
+          operation: handle,
+          completedOperations: []
+        }], [])
+      }
+    };
+    const pending = await executeApplyNext({
+      inspection: initialInspection,
+      reinspect: async () => initialInspection,
+      runner,
+      now: coverageNow,
+      adapters: initialAdapters
+    });
+    const savedPlan = validateSavedTransitionPlan(
+      JSON.parse(await readFile(path.join(root, ...pending.savedPlan!.pathParts), 'utf8'))
+    );
+    const loaded = (await loadActivationState(root))!;
+    const resumable = await coverageInspection({
+      root,
+      phaseId: 'existing-private-path',
+      state: loaded.state,
+      reviewedPlans: [savedPlan],
+      activationInputs
+    });
+    resumable.loadedState = loaded;
+    const stored = loaded.state.phases['existing-private-path'].operation!;
+    const adapters = {
+      phases: {
+        'existing-private-path': adapter([
+          (input) => resumedOutcome(stored, input)
+        ], [])
+      }
+    };
+    const stateBytes = await readFile(path.join(root, 'governance', 'activation-state.json'));
+
+    await expect(executeApplyNext({
+      inspection: resumable,
+      reinspect: async () => resumable,
+      runner,
+      now: new Date(coverageNow.getTime() + 60_000),
+      adapters
+    })).rejects.toThrow(expected);
+
+    expect(await readFile(path.join(root, 'governance', 'activation-state.json'))).toEqual(stateBytes);
   });
 
   it.each([
     ['without a concrete handle', { status: 'pending', completedOperations: [] } satisfies PhaseAdapterOutcome, /concrete resumable external operation handle/],
     ['with a non-running handle', { status: 'pending', operation: { ...handle, status: 'completed' }, completedOperations: [] } satisfies PhaseAdapterOutcome,
       /concrete resumable external operation handle/],
+    ['with an over-age handle', {
+      status: 'pending',
+      operation: {
+        ...handle,
+        startedAt: new Date(coverageNow.getTime() - (25 * 60 * 60 * 1_000)).toISOString()
+      },
+      completedOperations: []
+    } satisfies PhaseAdapterOutcome, /handle is stale/u],
     ['for an unreviewed action', { status: 'pending', operation: { ...handle, actionId: 'azure.bootstrap-local.apply' }, completedOperations: [] } satisfies PhaseAdapterOutcome,
       /no corresponding action in the reviewed plan/],
     ['with a state-free retry after an external handle',
@@ -361,7 +500,7 @@ describe('pending external operations', () => {
       /cannot request a state-free retry/]
   ])('refuses a pending outcome %s without persisting fabricated progress', async (_label, outcome, expected) => {
     const root = await project('pending-invalid');
-    const runner = new LocalOnlyRunner(gitEnvironment);
+    const runner = new AbsentAzureEnvironmentRunner(gitEnvironment);
     const inspection = await coverageInspection({ root, phaseId: 'existing-private-path', state: coverageState({ activationInputs }), activationInputs });
     const adapters = { phases: { 'existing-private-path': adapter([outcome as PhaseAdapterOutcome], []) } };
 
