@@ -159,6 +159,13 @@ export class NodeCommandRunner implements CommandRunner {
       };
     }
     if (options.ensureProcessTreeSettled && process.platform === 'win32') {
+      if (options.stdin !== undefined) {
+        return {
+          command, displayCommand, status: null, signal: null, stdout: '', stderr: '', timedOut: false,
+          processSpawned: false, processTreeSettled: false, errorCode: 'UNSUPPORTED_PROCESS_INPUT',
+          errorMessage: 'The Windows settled process controller does not support stdin input; use an explicit file-backed command.'
+        };
+      }
       const { runWindowsJobCommand } = await import('./adapters/process/windows-job-runner.js');
       return runWindowsJobCommand(command, options);
     }

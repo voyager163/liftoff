@@ -419,6 +419,34 @@ describe('external command runner', () => {
     await expect(access(sentinel)).rejects.toThrow();
   });
 
+  it.each([
+    { name: 'text', stdin: 'private-input-fixture' },
+    { name: 'bytes', stdin: Buffer.from('private-input-fixture') },
+    { name: 'empty text', stdin: '' },
+    { name: 'empty bytes', stdin: new Uint8Array() }
+  ])('refuses unsupported Windows settled stdin $name before dispatch without echoing it', async ({ stdin }) => {
+    const root = await testRoot('unsupported-windows-input');
+    const sentinel = path.join(root, 'must-not-exist');
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+    if (!platform) throw new Error('The process platform descriptor is unavailable.');
+    Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
+    try {
+      const result = await new NodeCommandRunner().run({
+        executable: process.execPath,
+        args: ['-e', 'require("node:fs").writeFileSync(process.argv[1], "unexpected")', sentinel]
+      }, { stdin, ensureProcessTreeSettled: true, timeoutMs: 5000, maxOutputBytes: 4096, stream: false });
+      expect(result).toMatchObject({
+        status: null, signal: null, stdout: '', stderr: '', timedOut: false,
+        processSpawned: false, processTreeSettled: false, errorCode: 'UNSUPPORTED_PROCESS_INPUT',
+        errorMessage: 'The Windows settled process controller does not support stdin input; use an explicit file-backed command.'
+      });
+      expect(JSON.stringify(result)).not.toContain('private-input-fixture');
+      await expect(access(sentinel)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+    }
+  });
+
   it('removes cancellation listeners after successful completion without altering output', async () => {
     const controller = new AbortController();
     const result = await new NodeCommandRunner().run({

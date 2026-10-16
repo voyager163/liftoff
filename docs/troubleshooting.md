@@ -558,6 +558,13 @@ assuming a DLL exists in `PSHOME`. Policy denial happens before compiler or
 Console method calls; Liftoff does not elevate or bypass execution policy.
 Do not substitute a downloaded compiler DLL or cached Win32 helper.
 
+`UNSUPPORTED_PROCESS_INPUT` means a command supplied stdin while requesting
+Windows process-tree settlement. The admitted controller has no stdin channel,
+so Liftoff refuses before dispatch rather than running against empty input.
+Use an approved file-backed validator where its command supports one; do not
+move credentials into argv or disable settlement to bypass the refusal. This
+does not add native stdin support or change ordinary non-settled stdin commands.
+
 A `LIFTOFF_CONTROLLER_BOOTSTRAP` diagnostic reports only a fixed assembly,
 type, cmdlet-binding, or compilation stage. Failure before compilation does not
 identify compiler expense or the host's underlying cause. The 15-second startup
