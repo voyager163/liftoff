@@ -572,6 +572,21 @@ and the original bounded result fields/stdout/stderr, not commands, ambient
 environment or unrelated configuration. Diagnostics do not change the invocation,
 input readback, settlement guards, five-second/4-KiB limits or expected outcomes;
 a numeric Windows status is not an observed POSIX signal.
+Missing-scanner fixtures preserve Git in their reduced search path: Windows uses
+the directory of the actual resolved Git executable, not POSIX system directories.
+They verify Git remains visible and the scanner launcher is absent before invoking
+the validator, so a Git lookup failure cannot substitute for a scanner refusal.
+The workload environment allowlist retains both defined `PATH` and `Path` spellings,
+including case-sensitive worker snapshots of a Windows environment. Its regression
+checks the actual emitted options and native resolver against a real Go invocation;
+portable execution of that control does not establish native Windows qualification.
+An additional Windows-only diagnostic repeats one owned syntax-check file under
+the original minimal environment, that environment plus the host's actual
+`SystemRoot`, and surrounding ambient-environment controls. All comparisons retain
+the same file, arguments, working directory, runner and five-second/4-KiB bounds;
+only finite result fields are logged, never environment values. Non-Windows hosts
+leave it explicitly unrun. This is a cause-investigation control, not a production
+environment change, original-matrix success or native validator qualification.
 
 The private source5 effect bridge uses a separate private control schema1 and the
 closed `workflow-source5-{plan,approval,journal,operation,proof}` namespaces

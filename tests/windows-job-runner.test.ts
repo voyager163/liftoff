@@ -6,6 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApplicationResolvedPreparation } from '../src/application/repair/application-preparation-types.js';
+import { environmentValue } from '../src/domain/workstation/executables.js';
+import { NodeCommandRunner } from '../src/process-runner.js';
 import {
   buildWindowsControllerHostEnvironment,
   runWindowsJobCommand,
@@ -972,6 +974,40 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
       status: 0, processSpawned: true, processTreeSettled: true,
       timedOut: false, stdout: 'native controller ready'
     });
+  });
+
+  it.runIf(process.platform === 'win32')('records bounded native initialization comparisons without changing target environment semantics or qualifying validators', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-native-init-comparison-'));
+    tempDirs.push(directory);
+    const input = path.join(directory, 'validate.mjs'), text = 'export const valid = true;\n';
+    await writeFile(input, text, { flag: 'wx', mode: 0o600 });
+    const ambient = { ...process.env }, systemRoot = environmentValue(ambient, 'SystemRoot', 'win32');
+    if (!systemRoot) throw new Error('The native initialization comparison requires the actual host SystemRoot.');
+    const minimal = { HOME: directory, NODE_OPTIONS: '' }, runner = new NodeCommandRunner();
+    const samples = ['ambient-before', 'minimal-first', 'systemroot-first',
+      'minimal-repeat', 'systemroot-repeat', 'ambient-after'] as const;
+    for (const sample of samples) {
+      const env = sample.startsWith('ambient') ? { ...ambient, ...minimal } :
+        sample.startsWith('systemroot') ? { ...minimal, SystemRoot: systemRoot } : { ...minimal };
+      const result = await runner.run({ executable: process.execPath, args: ['--check', input] }, {
+        cwd: directory, env, timeoutMs: 5000, maxOutputBytes: 4096,
+        stream: false, ensureProcessTreeSettled: true
+      });
+      console.info(`Bounded native initialization comparison: ${JSON.stringify({
+        sample, runtime: { node: process.version, platform: process.platform, arch: process.arch },
+        inputSha256: createHash('sha256').update(text).digest('hex'),
+        result: { status: result.status, signal: result.signal, stdout: result.stdout, stderr: result.stderr,
+          processSpawned: result.processSpawned ?? null, processTreeSettled: result.processTreeSettled ?? null,
+          timedOut: result.timedOut, outputLimitExceeded: result.outputLimitExceeded ?? null,
+          aborted: result.aborted ?? null, errorCode: result.errorCode ?? null, errorMessage: result.errorMessage ?? null }
+      })}`);
+      expect(result).toMatchObject({ processSpawned: true, processTreeSettled: true, timedOut: false });
+      expect(result.status).not.toBeNull();
+      expect(result.outputLimitExceeded).not.toBe(true);
+      expect(Buffer.byteLength(result.stdout + result.stderr)).toBeLessThanOrEqual(4096);
+      expect(await readFile(input, 'utf8')).toBe(text);
+      if (sample.startsWith('ambient')) expect(result.status).toBe(0);
+    }
   });
 
   it('ensures environmentValue does not let undefined Path shadow valid PATH and rejects conflicting aliases', async () => {

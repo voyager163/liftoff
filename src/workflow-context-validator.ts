@@ -590,7 +590,7 @@ async function executeSelectedValidator<Validator extends ExecutableValidator>(
       });
       try {
         const env: NodeJS.ProcessEnv = Object.fromEntries(Object.keys(process.env).map(key => [key, undefined]));
-        for (const key of ['PATH', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'ComSpec', 'COMSPEC', 'PATHEXT', 'TMPDIR', 'TEMP', 'TMP']) {
+        for (const key of ['PATH', 'Path', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'ComSpec', 'COMSPEC', 'PATHEXT', 'TMPDIR', 'TEMP', 'TMP']) {
           if (process.env[key] !== undefined) env[key] = process.env[key];
         }
         Object.assign(env, selected.env, {

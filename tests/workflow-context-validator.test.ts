@@ -36,6 +36,15 @@ describe('release-owned real context validator bodies, not phase qualification',
       '-c', 'user.name=Isolated validator fixture', '-c', 'user.email=validator@example.invalid', ...args],
     { cwd, encoding: 'utf8', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } }).trim();
   }
+  function missingScannerEnvironment(cwd: string, platform = process.platform): NodeJS.ProcessEnv {
+    let selected = ['/usr/bin', '/bin'].join(path.delimiter);
+    if (platform === 'win32') {
+      const command = resolveTargetExecutableCommand({ executable: 'git', args: [] }, process.env, cwd);
+      if (!command) throw new Error('The missing-scanner fixture requires an actual installed Git executable.');
+      selected = path.dirname(command.executable);
+    }
+    return { ...process.env, PATH: selected, ...(platform === 'win32' ? { Path: selected } : {}) };
+  }
   async function fixture(testSource = '', frontend = false, workflow: 'manual' | 'spec-kit' = 'manual',
     apiStack: 'node-fastify' | 'go-huma' = 'node-fastify') {
     const projectRoot = await mkdtemp(path.join(root, 'project-'));
@@ -106,6 +115,58 @@ describe('release-owned real context validator bodies, not phase qualification',
     ]) expect(() => parseWorkflowContextValidatorArgs(argv)).toThrow();
   });
 
+  it('derives the Windows missing-scanner search path from actual Git without claiming native Windows execution', () => {
+    const command = resolveTargetExecutableCommand({ executable: 'git', args: [] }, process.env, root);
+    if (!command) throw new Error('The reduced-path regression requires an actual installed Git executable.');
+    const selected = missingScannerEnvironment(root, 'win32');
+    expect(selected.PATH).toBe(path.dirname(command.executable));
+    expect(selected.Path).toBe(selected.PATH);
+    const actual = execFileSync('git', ['--version'], {
+      cwd: root, encoding: 'utf8', env: selected
+    });
+    expect(actual).toMatch(/^git version /);
+  });
+
+  it('preserves a defined Path-only worker environment in actual workload options without claiming native Windows execution', async () => {
+    const value = await fixture('', false, 'manual', 'go-huma');
+    const ambient = process.env, actualPath = ambient.PATH ?? ambient.Path;
+    if (!actualPath) throw new Error('The Path-only workload regression requires an actual tool search path.');
+    const workerEnvironment: NodeJS.ProcessEnv = { ...ambient, Path: actualPath };
+    delete workerEnvironment.PATH;
+    const observations: { pathPreserved: boolean; targetVisible: boolean }[] = [];
+    const original = NodeCommandRunner.prototype.run;
+    const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(async function (this: NodeCommandRunner, command, options) {
+      if (options?.timeoutMs === 180_000 && options.maxOutputBytes === 1024 * 1024) {
+        observations.push({
+          pathPreserved: options.env?.Path === actualPath,
+          targetVisible: resolveTargetExecutableCommand(command, options.env, options.cwd) !== null
+        });
+        process.env = ambient;
+      }
+      return original.call(this, command, options);
+    });
+    try {
+      process.env = workerEnvironment;
+      const result = await executeWorkflowContextValidator(value.root, { validator: 'backend-tests', sourceSha: value.sourceSha });
+      expect(observations).toEqual([{ pathPreserved: true, targetVisible: true }]);
+      expect(result).toMatchObject({ status: 'passed', workloadExecution: true, phaseProof: 'not-issued',
+        command: { status: 0, processTreeSettled: true }, retainedExecutionDirectory: null });
+    } finally {
+      process.env = ambient;
+      run.mockRestore();
+    }
+  });
+
+  it('refuses a Windows missing-scanner search path when no actual Git can be resolved', () => {
+    const ambient = process.env, absent = path.join(root, 'no-installed-tools');
+    try {
+      process.env = { ...ambient, PATH: absent, Path: absent };
+      expect(() => missingScannerEnvironment(root, 'win32')).toThrow('requires an actual installed Git executable');
+    } finally {
+      process.env = ambient;
+    }
+  });
+
   it('validates actual selected committed source without executing project commands or issuing phase proof', async () => {
     const value = await fixture();
     const result = await executeWorkflowContextValidator(value.root, { validator: 'source-integrity', sourceSha: value.sourceSha });
@@ -169,11 +230,18 @@ describe('release-owned real context validator bodies, not phase qualification',
     expect(missing).toMatchObject({ status: 'blocked', code: 'validator-checkov-scope', workloadExecution: false });
     await value.write([...value.backend, 'Dockerfile'], 'FROM alpine:3.20\nUSER 1000\n');
     git(value.root, 'add', '.'); git(value.root, 'commit', '--quiet', '-m', 'Captured Dockerfile without a scanner prerequisite');
-    vi.stubEnv('PATH', ['/usr/bin', '/bin'].join(path.delimiter));
-    const absent = await executeWorkflowCheckovDockerfileValidator(value.root, git(value.root, 'rev-parse', 'HEAD'), 'backend');
-    expect(absent).toMatchObject({ status: 'blocked', code: 'validator-checkov', workloadExecution: false,
-      command: null, phaseProof: 'not-issued', retainedExecutionDirectory: null });
-    expect(absent.message).toContain('unavailable');
+    const ambient = process.env;
+    try {
+      process.env = missingScannerEnvironment(value.root);
+      expect(resolveTargetExecutableCommand({ executable: 'git', args: [] }, process.env, value.root)).not.toBeNull();
+      expect(resolveTargetExecutableCommand({ executable: 'uv', args: [] }, process.env, value.root)).toBeNull();
+      const absent = await executeWorkflowCheckovDockerfileValidator(value.root, git(value.root, 'rev-parse', 'HEAD'), 'backend');
+      expect(absent).toMatchObject({ status: 'blocked', code: 'validator-checkov', workloadExecution: false,
+        command: null, phaseProof: 'not-issued', retainedExecutionDirectory: null });
+      expect(absent.message).toContain('unavailable');
+    } finally {
+      process.env = ambient;
+    }
   });
 
   it('rejects an uncommitted Dockerfile before scanner execution', async () => {
@@ -992,11 +1060,18 @@ describe('release-owned real context validator bodies, not phase qualification',
     });
     it('refuses a missing real scanner without executing workflow steps or another validator', async () => {
       const value = await workflowFixture();
-      vi.stubEnv('PATH', ['/usr/bin', '/bin'].join(path.delimiter));
-      const result = await executeWorkflowCheckovWorkflowValidator(value.root, value.sourceSha);
-      expect(result).toMatchObject({ status: 'blocked', code: 'validator-checkov',
-        workloadExecution: false, command: null, retainedExecutionDirectory: null });
-      expect(result.message).toContain('unavailable');
+      const ambient = process.env;
+      try {
+        process.env = missingScannerEnvironment(value.root);
+        expect(resolveTargetExecutableCommand({ executable: 'git', args: [] }, process.env, value.root)).not.toBeNull();
+        expect(resolveTargetExecutableCommand({ executable: 'uv', args: [] }, process.env, value.root)).toBeNull();
+        const result = await executeWorkflowCheckovWorkflowValidator(value.root, value.sourceSha);
+        expect(result).toMatchObject({ status: 'blocked', code: 'validator-checkov',
+          workloadExecution: false, command: null, retainedExecutionDirectory: null });
+        expect(result.message).toContain('unavailable');
+      } finally {
+        process.env = ambient;
+      }
     });
     it.each(['extra', 'deleted', 'changed', 'nested', 'executable', 'symlink', 'hardlink'] as const)(
       'refuses actual %s workflow membership/bytes/mode before scanner execution', async variant => {
