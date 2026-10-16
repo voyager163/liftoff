@@ -13,6 +13,7 @@ import { archiveNativeBundle, verifyNativeArchive } from '../scripts/native-rele
 import { inspectOwnedInstallation, installOwnedBundle, recoverOwnedInstallation } from '../scripts/native-install.mjs';
 import { assertNativeHost, observeNativeHost } from '../distribution/native/host.mjs';
 import { installedPlanCases, planContractIssues } from '../scripts/package-smoke-contract.mjs';
+import { nativeLinuxUserspaceImages } from '../scripts/native-package-report.mjs';
 
 const supplied = process.env.LIFTOFF_NATIVE_PACKAGE_ROOT;
 const windows = process.platform === 'win32';
@@ -282,6 +283,113 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
     await writeFile(signatureFile, Buffer.alloc(64));
     expect(bootstrap().status).not.toBe(0);
     expect(await bundleInventory(prefix)).toEqual(before);
+  }, 120_000);
+  it.runIf(process.platform === 'linux')('runs the actual Linux bundle and owned recovery in pinned glibc 2.28 userspace without public or minimum-kernel credit', async () => {
+    const architecture: unknown = manifest.platform.architecture;
+    expect(architecture === 'x64' || architecture === 'arm64').toBe(true);
+    if (architecture !== 'x64' && architecture !== 'arm64') throw new Error('Unsupported Linux userspace architecture.');
+    const image = nativeLinuxUserspaceImages[architecture];
+    const docker = process.env.LIFTOFF_NATIVE_DOCKER_EXECUTABLE ?? '/usr/bin/docker';
+    expect(path.isAbsolute(docker)).toBe(true);
+    const daemon = execute(docker, ['info', '--format', '{{json .Architecture}}']);
+    expect(daemon.status, daemon.stderr).toBe(0);
+    expect(JSON.parse(daemon.stdout)).toBe(architecture === 'x64' ? 'x86_64' : 'aarch64');
+    const inspected = execute(docker, ['image', 'inspect', image, '--format', '{{json .}}']);
+    expect(inspected.status, inspected.stderr).toBe(0);
+    const imageIdentity = JSON.parse(inspected.stdout);
+    expect(imageIdentity.Os).toBe('linux');
+    expect(imageIdentity.Architecture).toBe(architecture === 'x64' ? 'amd64' : 'arm64');
+    expect(imageIdentity.RepoDigests).toContain(image.replace('docker.io/', ''));
+    const manifestSha256 = (await bundleFile(path.join(bundle, 'bundle.json'))).sha256;
+    const code = `
+      import assert from 'node:assert/strict';
+      import os from 'node:os';
+      import { mkdir, readFile } from 'node:fs/promises';
+      import { spawnSync } from 'node:child_process';
+      import { createHash } from 'node:crypto';
+      import { assertNativeHost, observeNativeHost } from '/liftoff/installation/host.mjs';
+      import { bundleFile, bundleInventory } from '/liftoff/installation/native-bundle-contract.mjs';
+      import { installOwnedBundle, inspectOwnedInstallation, recoverOwnedInstallation } from '/liftoff/installation/native-install.mjs';
+      import { parseIsolatedHcl } from '/liftoff/application/dist/adapters/hcl/isolated-parser.js';
+      import { verifyWindowsJobControllerAsset } from '/liftoff/application/dist/adapters/process/windows-job-runner.js';
+      const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+      const original = await readFile('/liftoff/bundle.json');
+      assert.equal(digest(original), ${JSON.stringify(manifestSha256)});
+      const manifest = JSON.parse(original.toString('utf8'));
+      const observed = observeNativeHost();
+      assert.equal(observed.platform, 'linux');
+      assert.equal(observed.architecture, ${JSON.stringify(architecture)});
+      assert.equal(observed.glibcVersion, '2.28');
+      assertNativeHost(observed);
+      assert.throws(() => assertNativeHost(observed, { publicInstallation: true }), /minimum host/);
+      await mkdir('/tmp/home');
+      await mkdir('/tmp/foreign cwd');
+      const invoke = (command, args) => {
+        const result = spawnSync(command, args, { cwd: '/tmp/foreign cwd', env: process.env,
+          shell: false, encoding: 'utf8', timeout: 10000, maxBuffer: 4 * 1024 * 1024 });
+        assert.equal(result.error, undefined);
+        assert.equal(result.signal, null);
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+        return result.stdout;
+      };
+      const version = invoke('/liftoff/bin/liftoff', ['--version']).trim();
+      assert.equal(version, 'Liftoff ' + manifest.package.version);
+      const libraries = invoke('/usr/bin/rpm', ['-q', '--qf', '%{NAME}:%{VERSION}-%{RELEASE}.%{ARCH}\\n',
+        'glibc', 'libstdc++']).trim().split('\\n');
+      assert.ok(libraries.some(value => value.startsWith('glibc:2.28-')));
+      assert.ok(libraries.some(value => value.startsWith('libstdc++:8.5.0-')));
+      assert.ok(invoke('/liftoff/bin/liftoff', ['--help']).includes('liftoff'));
+      const capabilities = JSON.parse(invoke('/liftoff/bin/liftoff', ['capabilities', '--json']));
+      assert.equal(capabilities.runtime.nativeDistribution, false);
+      const plans = ${JSON.stringify(installedPlanCases)}.map(plan => ({
+        id: plan.id, stdout: invoke('/liftoff/bin/liftoff', ['plan', ...plan.args])
+      }));
+      assert.deepEqual((await parseIsolatedHcl(['locals { enabled = true }\\n']))[0].parsed,
+        { locals: [{ enabled: true }] });
+      assert.equal(await verifyWindowsJobControllerAsset(),
+        '/liftoff/application/assets/repair/windows-job-controller.ps1');
+      const prefix = '/tmp/private-prefix';
+      await mkdir(prefix, { mode: 0o700 });
+      const args = { source: '/liftoff', prefix, expectedManifestSha256: ${JSON.stringify(manifestSha256)},
+        expectedCurrent: null, development: true, admitHost: () => assertNativeHost(observeNativeHost()) };
+      await assert.rejects(installOwnedBundle({ ...args, interruptAt: 'after-switch' }), /Interrupted/);
+      assert.ok((await inspectOwnedInstallation(prefix)).startsWith('versions/' + manifest.package.version + '-'));
+      assert.equal(invoke(prefix + '/bin/liftoff', ['--version']).trim(), version);
+      const expectedJournalSha256 = (await bundleFile(prefix + '/.native-install-transaction.json')).sha256;
+      await recoverOwnedInstallation({ prefix, expectedJournalSha256 });
+      assert.equal(await inspectOwnedInstallation(prefix), null);
+      assert.deepEqual(await bundleInventory('/liftoff'), manifest.inventory);
+      assert.equal(digest(await readFile('/liftoff/bundle.json')), ${JSON.stringify(manifestSha256)});
+      console.log(JSON.stringify({ observed, version, libraries, plans, controllerResolved: true, hclExecuted: true,
+        developmentInstallRecovered: true, actualKernel: os.release(), minimumKernelQualified: false,
+        minimumHostQualified: false, publicDistributionQualified: false }));
+    `;
+    const result = execute(docker, ['run', '--rm', '--pull=never', '--network=none', '--read-only',
+      '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=64', '--memory=1g', '--cpus=2',
+      '--user', `${process.getuid!()}:${process.getgid!()}`,
+      '--tmpfs', '/tmp:rw,nosuid,nodev,size=536870912,mode=1777',
+      '--mount', `type=bind,source=${bundle},target=/liftoff,readonly`,
+      '--env', 'HOME=/tmp/home', '--env', 'XDG_CONFIG_HOME=/tmp/home', '--env', 'PATH=/empty',
+      '--env', 'CI=true', '--env', 'LIFTOFF_TELEMETRY=0', '--env', 'DO_NOT_TRACK=1',
+      '--env', 'NO_COLOR=1', '--workdir', '/tmp', '--entrypoint', '/liftoff/runtime/node',
+      image, '--input-type=module', '-e', code]);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    const proof = JSON.parse(result.stdout);
+    expect(proof.plans).toHaveLength(installedPlanCases.length);
+    for (const plan of installedPlanCases) {
+      expect(planContractIssues(proof.plans.find((entry: { id: string }) => entry.id === plan.id).stdout, plan)).toEqual([]);
+    }
+    expect(proof).toMatchObject({
+      observed: { platform: 'linux', architecture, runtimeVersion: '24.21.0', glibcVersion: '2.28' },
+      version: `Liftoff ${manifest.package.version}`, controllerResolved: true, hclExecuted: true,
+      developmentInstallRecovered: true, minimumKernelQualified: false, minimumHostQualified: false,
+      publicDistributionQualified: false
+    });
+    console.log(JSON.stringify({ kind: 'liftoff-native-linux-userspace', commit: manifest.source.commit,
+      target: `linux-${architecture}`, manifestSha256, inventorySha256: manifest.inventory.sha256,
+      image, imageId: imageIdentity.Id, ...proof, plans: proof.plans.map((entry: { id: string }) => entry.id),
+      releaseReady: false }));
+    await verifyNativeBundle(bundle);
   }, 120_000);
   it.runIf(process.platform === 'darwin')('refuses public macOS installation while minimum-host and signing qualification remain absent', () => {
     expect(() => assertNativeHost(observeNativeHost(), { publicInstallation: true })).toThrow('minimum host');

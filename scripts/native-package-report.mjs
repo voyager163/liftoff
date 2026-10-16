@@ -5,6 +5,11 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { verifyNativeBundle } from './native-bundle.mjs';
 
+export const nativeLinuxUserspaceImages = Object.freeze({
+  x64: 'docker.io/rockylinux/rockylinux@sha256:f5529992e67440c1a4ae7788244d4381c6909159a88eacd95b7523ae47ced82e',
+  arm64: 'docker.io/rockylinux/rockylinux@sha256:f514765516176a9aa4729ee83964e5a1900df95fd4bc7182cca64c7199b7eec7'
+});
+
 export const nativePackageCommonCases = [
   'starts the pinned runtime and installed CLI from a foreign cwd with no global tools',
   'runs every installed plan and preserves literal arguments without ambient startup code',
@@ -16,7 +21,8 @@ export const nativePackageCommonCases = [
 ];
 export const nativePackagePlatformCases = {
   linux: ['installs and recovers the actual Linux bundle within an isolated private prefix',
-    'authenticates Linux bootstrap input and still refuses unqualified public installation before prefix writes'],
+    'authenticates Linux bootstrap input and still refuses unqualified public installation before prefix writes',
+    'runs the actual Linux bundle and owned recovery in pinned glibc 2.28 userspace without public or minimum-kernel credit'],
   darwin: ['refuses public macOS installation while minimum-host and signing qualification remain absent'],
   win32: ['refuses replacement of a running Windows image and retains the original bytes',
     'settles an actual installed Windows controller job without changing execution policy']
