@@ -32,6 +32,693 @@ unsupported account capabilities, unverified private access, and incomplete
 observations remain explicit blockers. Retained-state disposal is separate
 lifecycle work, not a 30-day delay before initial activation can complete.
 
+### Private workflow publication and context-proof source
+
+TASK14.3's private `workflow-publication.ts`, `workflow-execution-ref.ts`,
+`workflow-runner-admission.ts`, `workflow-context-proof.ts` and
+`workflow-requirements.ts` provide bounded literal Git/GitHub source interfaces.
+They are not a public activation command or evidence that a repository is ready.
+The legacy ungated local workflow write is not permission to commit, push,
+create execution refs, admit workflows, or dispatch checks. Current v8 public
+activation remains inspection-only; unsupported plans remain blocked.
+
+The private `workflow-source5-prerequisites.ts` selector derives its dependency
+alternatives, applicability, approval gate, invalidation inputs and provider
+obligations from the exact constructed current5 graph. It retains the original
+saved-plan, evidence-header/body and approval commitments and exact namespace
+paths/raw digests from the validated installed record closure. Multiple original
+saved records sharing one semantic plan authority remain separate references,
+not an arbitrary first match. Its immutable output is explicitly `not-observed`
+and `not-authorized`: it is a reference inventory, not a prerequisite session,
+fresh producer observation or permission to execute.
+
+The separate private `observeSource5WorkflowPrerequisites` reads the real installed
+closure before and after selecting those references. It accepts no installed DTO,
+reader callback, host/peer proof bag or caller currentness timestamps. Dependency
+alternatives and provider obligations stay graph-selected; accepted stored
+approval/outcome formats still require their own current producer reader.
+Unavailable readers and Azure completion peers remain explicit blockers, and no
+prerequisite session is issued. This private observation is not yet wired into
+public review or approval/apply routing and does not qualify a native host.
+
+The private `observeWorkflowContextProviderProof` can independently reread a
+retained run's source, immutable execution admission, jobs, checks and actual
+validator cause without requiring an already issued effect. It accepts only a
+closed retained reference and an original first-party read-only observation
+runtime. Runtime or transport substitution and expiry invalidate that runtime;
+the reader neither creates a new time budget nor renews the original dispatch
+window. The exact GitHub Actions application lookup is a bounded GET-only route,
+not general application access.
+
+These are provider facts, not proof of original plan ownership or release-owned
+context semantics. The returned prerequisite session is always null and execution
+is explicitly not authorized. Historical terminal metadata remains readable
+without acquiring fresh qualification. The original authoritative reader still
+requires its original plan and current source5 carrier before and after readback;
+the new reader cannot dispatch, journal, issue approval or finalize a phase.
+It retains the existing independently observed operator classic-OAuth admission;
+automation `GITHUB_TOKEN` and other unsupported credential modes are not inferred
+or substituted. Isolated HTTP fixture outcomes are not real hosted green/red,
+native-host, Azure-peer or four-family qualification.
+
+The packaged source entry `dist/workflow-context-validator.js` supplies finite
+real validator bodies for source integrity, backend tests, worker tests, frontend
+builds and framework source. It accepts only `--validator <subject> --source-sha
+<full-commit>` and reuses the existing current5 source/input interpretation and
+literal commands. Selected source membership, bytes and executable modes must
+match the actual Git commit before execution and remain unchanged afterward;
+deleted, untracked, excluded-but-committed or modified component inputs cannot
+become a successful exact-source result. Omitted or uninterpretable validators
+block instead of passing vacuously. Infrastructure, security-report,
+artifact/release and deployment verification bodies are not supplied by this
+entry yet and cannot be substituted with its test/build results.
+
+Backend fixture controls execute both actual Node and Go test commands. Genuine
+committed application regressions fail their unchanged behavioral tests, rather
+than an injected exit or replacement test. These isolated controls do not
+qualify a runtime/release subject or any protected-ref proof.
+
+The separate private `executeWorkflowActionReferenceValidator` body checks actual
+committed workflow source, local reusable workflows and recursively referenced
+local-action metadata with the existing immutable-action policy. Declared local
+Node main/pre/post entrypoint files are also bound to the exact committed regular
+single-link bytes/modes, without executing or analyzing their code. Untracked,
+missing, changed or unsafe entrypoints cannot qualify as committed action source.
+Both actual `action.yml` and `action.yaml` candidate paths are safely observed
+before interpretation and reobserved at completion. Their actual membership
+must equal the single committed metadata file; an untracked higher-priority
+shadow, alternate metadata, link or unsafe alias is not ignored. Declared Docker
+image references use that same policy; local Dockerfile interpretation remains
+blocked. It checks complete workflow membership and
+regular single-link bytes/modes before and after observation, rejects cycles,
+dynamic references and missing metadata, and performs no project or workflow
+execution. An official SLSA tag remains blocked without an independently current
+scoped exception reader; copied approvals cannot authorize it. This private body
+has no public CLI selector or currentness/phase authority and does not attest
+remote action authenticity or analyze arbitrary action code. Its local-action
+negative controls are source tests, not approved four-family proof subjects.
+
+Exact-commit source reads disable local Git replacement objects. A replacement
+must not redefine the immutable commit whose selected inputs are being checked.
+
+The private `executeWorkflowComposeConfigValidator` subcheck uses the actual
+selected `compose-config` command and captured source closure. It reuses the
+existing independent CLI/plugin observer, executes the exact supported Compose
+plugin with the selected `config -q` arguments, and reobserves its program files.
+Execution uses the same bounded runner, stripped
+environment and identity-checked owned HOME as the five public validators.
+Docker configuration is private and the daemon address names a nonexistent owned
+socket. Dotenv input is disabled and only the selected Compose file is used;
+no container build/start or backend initialization is authorized. This is a real
+runner operation, not plan-time metadata or a sandbox. It is only configuration
+validation: OpenTofu formatting, locked provider/module initialization and
+validation, native-host qualification and infrastructure phase proof remain
+separate and unavailable through this subcheck. There is no public
+`compose-config` selector. Independent program observations are not qualified
+native-host authority; unavailable or changed installed tools never fall back
+to operator Docker configuration or a caller-supplied successful observation.
+For system-installed Linux Docker, plugin observation uses Docker29.8.2's finite
+system directory precedence: `/usr/local/lib`, `/usr/local/libexec`, `/usr/lib`,
+then `/usr/libexec`, each under `docker/cli-plugins`. Existing independently
+observed private installation prefixes remain separate from system discovery.
+The first candidate found by Docker's follow-link existence stat must itself
+pass native-file, version and settlement checks. An initially dangling link is
+absent under that stat, but failures after a successful stat, including capture
+disappearance, are never treated as absence or replaced by a lower-priority plugin.
+Consumption rechecks both the program files and the selected plugin, including
+the appearance of a new higher-priority candidate. No user Docker configuration,
+caller plugin directory or host installation is admitted.
+
+The private component formatter retains the isolated HCL parser's exact qualified
+runtime tuple. Its five real execution/source-drift/program-drift controls must
+run on qualified darwin/arm64 Node24.21.0; elsewhere they are explicitly named
+unrun cases, not successful formatting. An always-run capability control observes
+the actual refusal and verifies that no formatter command or phase proof was
+substituted. Linux Docker configuration does not qualify Linux HCL interpretation.
+The Terraform module-closure refusal control also requires that unchanged qualified
+tuple: its original body must execute there and is explicitly unrun elsewhere.
+A separate always-run control observes the actual input-capability refusal before
+Checkov, with no scanner invocation, workload command or phase proof. It does not
+claim that Checkov inspected or rejected a module on an unsupported runtime.
+
+Settled immutable Git reads preserve the actual invocation environment, including
+executable discovery, before clearing inherited Git overrides and applying the
+same neutral configuration as metadata reads. Call-through inventory controls
+retain complete NUL-delimited output and settlement checks; local observation
+does not qualify Windows execution or a current5 native tool subject.
+
+Private `observeSource5WorkflowRequirementSource` reads the complete immutable
+ruleset source using the original current5 context and read-only observation
+runtime. File/digest references are selectors: the actual commit/tree inventory
+must match completely, including tag-rule files, without unsupported nested,
+symlink or executable members. It reuses the matrix's same source reader and
+retains actual full context names and integration IDs on all four families;
+unknown names never disappear or become semantic mappings. The original runtime
+and absolute deadline are rechecked across reads, without project execution or
+new observation budgets. Its descriptive result explicitly does not validate
+the original plan, current branch heads or required-context semantics and has no
+prerequisite session or execution authority. Neither copied data nor the source
+reader's namespace is a qualified native/Azure producer or executable recipe.
+This private source-composition input is not wired into public review or effects.
+
+Private `observeSource5WorkflowRecipeInputs` additionally reads one selected
+family's actual immutable workflow, checks ordinary committed file membership
+and byte identity, and reobserves its exact protected ref before returning.
+Its complete real job/context names must equal that family's complete required
+source inventory, retaining each integration ID. It reuses the existing proof
+workflow structural checks; missing, extra, renamed, conditional or fail-open
+jobs cannot become an executable recipe. Other families remain present in the
+source inventory, not silently qualified by this one-family observation.
+
+The finite syntax recognizer shares the unchanged five public validator
+selectors. It accepts only their literal local CLI invocation with the exact
+shell and cleared Node environment; arbitrary commands, echo/forced exits and
+private selectors are not registered bodies. Syntax is not immutable executable
+provenance: a project-owned `node_modules` path, pinned checkout reference,
+workflow permissions or matching job name does not qualify the package, setup,
+toolchain, native host or context semantics. Every literal context therefore
+retains an explicit missing release-owned semantic/executable-subject blocker;
+unrecognized bodies have an additional blocker. The descriptive result is
+always blocked, with no qualified executable recipe, prerequisite session or
+execution authority. It cannot be submitted back as authority, runs no project
+commands and preserves the original read-only runtime/deadline. It is private
+compiler-input plumbing, not the completed semantic compiler or installed
+review/approval/apply composition, and changes no public help or JSON contract.
+
+Private `declareSource5WorkflowSources` owns one finite intended semantic
+declaration for future paired workflow/ruleset sources. Its fourteen proposed
+full job/check identities are not the observed required inventory, an approved
+integration mapping or completed executable recipes. It accepts only the
+constructed current5 context and preserves that graph's exact single-maintainer
+zero-human-review or team one-current-independent-human-review policy.
+Every intended recipe has specific missing program, actual integration,
+complete-job, runner/action/tool, genuine negative-source and semantic-evidence
+obligations. Approved current5 release subjects and actual integration subjects
+are unavailable: the result is explicitly blocked, with **no publication
+sources or effects**, no complete jobs, no guessed integration IDs and no
+prerequisite/session authority. There are no placeholder workflows or rulesets,
+and an older published package or development build cannot fill the release
+slot. Actual arbitrary names/integration IDs, including `__proto__`, remain in
+the independent source reader; a CodeQL-named backend-test job stays blocked.
+This private refusal boundary is not completion of rendering, independent
+whole-body semantic compilation, the issuer, installed orchestration or14.3.
+The existing publication paths, exact per-file approval/readback and public
+review/effect, protected journal and joint-finalization boundaries are unchanged.
+
+Private `observeSource5WorkflowDependencyReview` reads the actual GitHub
+dependency diff for exact repository/base/head commit/tree selectors through
+the original read-only runtime. It verifies a bounded complete ancestor-to-head
+comparison, joins all bounded diff pages and repeats the complete inventory.
+Snapshot warnings, missing vulnerability metadata, duplicate changes/advisories,
+unsupported severities, provider errors or observation drift refuse a verdict;
+there is no warning retry, threshold override or status/check publication.
+Known advisories on added dependencies are counted at every severity and scope;
+removed dependencies are not treated as introduced vulnerabilities. Raw package
+and advisory payloads are withheld. An empty or clear diff means only that the
+provider diff reported no added known vulnerabilities: it is not full SCA,
+license evaluation, a fresh scan, current protected-ref qualification, a
+semantic context mapping or a prerequisite session. This private provider body
+does not admit either operator OAuth or automation tokens, execute project code,
+or change public review/effect routing, JSON/help, recipes or phase authority.
+
+Private `observeSource5WorkflowCodeScanning` independently reads the exact
+repository, protected-family ref and immutable commit/tree before and after
+two complete bounded code-scanning analysis inventories. It does not filter
+by a proposed CodeQL tool name/GUID or drop unknown tools, older commits or
+zero-rule analyses. Every record remains represented by its ID, exact metadata
+digest and actual counters; uploader keys, environment, category, tool metadata
+and diagnostic contents are withheld behind digests/explicit flags. Documented
+empty metadata strings and absent optional tool fields stay distinct and are
+not replaced with invented subjects. Source
+matches are descriptive, not currentness/session authority. Malformed, duplicate,
+foreign, truncated, changed or inaccessible responses refuse rather than become
+empty successful scans. The result is always blocked: empty/historical
+inventories, source-analysis diagnostics and missing authenticated program,
+query/language coverage and original-report subjects have explicit reasons.
+The existing GitHub read transport fixes its JSON media type; this observer
+does not silently widen it to SARIF. GitHub's custom SARIF response is itself
+only a subset of uploaded data, not authenticated original publisher/program
+provenance. Positive rule counts, zero results or a `CodeQL` label therefore
+qualify neither CodeQL nor a required context. No scan/upload/Autofix operation,
+public selector, declaration source, accepted integration mapping or phase
+authority is issued by this private metadata reader.
+
+Private `observeSource5WorkflowSecretProtectionHistory` reads the platform's
+actual latest-scan metadata twice, with the same independent repository,
+protected-ref and commit/tree readback. The shared reference guard preserves
+the code-scanning reader's original admission and before/after ordering.
+All five documented scan buckets, custom-pattern records and unknown fields
+remain represented; absent buckets, actual empty arrays and explicit null
+timestamps are distinct. Pattern details and unsupported fields are withheld
+behind digests. Custom-pattern envelopes are opaque objects, not assumed to
+share the ordinary scan-record fields. Malformed, oversized, inaccessible or
+changed responses refuse.
+This endpoint exposes latest scan types/statuses/timestamps, not a commit
+selector, original source-bound report or complete detector inventory.
+A completed label, recent timestamp, successful endpoint access, enabled flag
+or empty bucket therefore yields no clean-scan or licensing verdict. The reader
+always blocks pending authenticated exact-source scan/coverage subjects and a
+platform-supported explicitly approved non-credential negative control.
+It retrieves no alert secrets or locations, performs no scans/bypasses/writes,
+admits no substitute scanner, and issues no declaration source, integration
+mapping, currentness/session authority or phase proof.
+
+Private `executeWorkflowTofuComponentFormatValidator(projectRoot, sourceSha,
+component)` validates one actual selected OpenTofu component. It reuses the
+captured-file formatter policy: only explicit present `.tf` paths are passed,
+with `fmt -check -write=false`, never implicit recursion. The actual independently
+observed executable is rechecked around the settled child; its configuration,
+data directory and HOME are private, and inherited CLI flags cannot enable writes.
+Every selected component still needs its own subcheck, and the existing selected
+input checks must remain planned: a blocked recursive scope containing excluded
+inputs is not silently converted into an approved closed formatting scope.
+No module/provider initialization, backend, planning, apply, infrastructure
+completion or native-host qualification is supplied. Tool admission retains the
+existing 1.12 release line and minimum 1.12.6; that compatibility observation is
+not separately pinned native-host qualification. The subcheck has no public
+selector; its private report retains the existing shape and explicitly issues
+no phase proof.
+
+Private `executeWorkflowCheckovComponentValidator(projectRoot, sourceSha,
+component)` runs the actual Checkov Terraform policies against the same finite,
+explicit captured `.tf` scope. It rechecks committed inputs after both policy
+success and policy failure. Module references and function expressions are
+conservatively refused until their actual input/evaluation closure is qualified;
+this lexical refusal also rejects comment/string lookalikes and is not a second
+Terraform parser. Nonempty, ordinary in-scope findings must agree with the real
+process exit and resource/check counts; skipped or suppressed checks,
+parse failures, empty coverage, soft-fail disagreement and incomplete output
+block qualification rather than becoming a green or controlled-red result.
+The existing thirteen-key private report and five public selectors are unchanged.
+
+Private `executeWorkflowCheckovDockerfileValidator(projectRoot, sourceSha,
+component)` analyzes only the actual bound `backend`, `frontend` or
+`function-worker` component's committed `Dockerfile`. An absent/unselected file,
+uncommitted input or unsafe source membership refuses before scanning. The
+finite `dockerfile` framework does not enable the separate `sca_image` image
+referencer: this body never builds, pulls, publishes or vulnerability-scans an
+image, and it does not execute Dockerfile instructions or infer image provenance.
+The same bounded program inventory, original deadline, private HOME and final
+source/Git readback apply. Dockerfile coverage counts actual checked files, not
+instruction findings; repeated instructions have distinct source-span identities,
+while duplicate findings, omitted files, suppression and empty coverage refuse.
+This private body is not a public selector or a complete container qualification.
+
+Private `executeWorkflowCheckovWorkflowValidator(projectRoot, sourceSha)`
+analyzes the complete actual top-level committed `.github/workflows/*.yml` and
+`*.yaml` inventory. Missing, untracked, nested, linked, executable or changed
+workflow inputs refuse; exact regular-file bytes/modes/membership are read
+before and after the settled scanner, within its original cutoff. This is
+workflow-file analysis only: it never executes workflow steps, resolves/downloads
+actions or reusable workflows, publishes a report, or qualifies their referenced
+code. Action-reference closure and complete context semantics remain separate.
+The supported Checkov Actions runner leaves `resource_count` at zero even with
+real findings; no positive resource count is invented. Every selected workflow
+must instead have actual nonempty findings, with consistent counts/exit status
+and bounded framework-specific resource/span identities. The exact `[0,1]`
+synthetic trigger span is accepted only for the runner's `CKV_GHA_7` trigger
+record; zero source lines remain invalid for other findings and frameworks.
+Changing a workflow file to demonstrate an actual finding is development
+scanner evidence, not an admissible current5 controlled-red source. The public
+five selectors, private thirteen-key report and blocked declaration are unchanged.
+
+The implemented development compatibility profile is Checkov 3.3.20 in an
+isolated POSIX Python 3.14 virtual environment, not a released/supported-stack
+or native-host admission. A fixed `-I -S -B` bootstrap imports explicit observed
+roots; no shell trampoline, executable `.pth` hook, user site, project Python
+path or operator Checkov configuration is executed. The bounded selected import
+roots, standard-library files, launcher, interpreter-bin membership, declared file-link targets
+and virtual-environment configuration are observed before and after scanning.
+Declared import roots under a traversal-skipped `site-packages` directory are
+inventoried independently, including their package bytes and membership. Only
+roots actually covered by an ancestor traversal are elided; an undeclared global
+site directory remains excluded by the isolated bootstrap.
+Unsupported path hooks, directory links or outside-prefix file links refuse;
+there is no automatic installation or fallback to a different program.
+This observed import inventory is not native linked-library closure, an approved
+immutable release/tool subject or execution confinement. Downloads, external
+module downloads and result uploads are disabled in the scanner invocation;
+its HOME, cache, temporary files and configuration are private. One absolute
+180-second preparation/execution cutoff is retained across observations.
+
+The real local verification is separate from Vitest's unchanged 30-second cases
+and skips: after a build, run `node scripts/verify-workflow-checkov.mjs` with the
+isolated scanner prefix on invocation-only `PATH`. Its dependency declaration is
+`tests/fixtures/workflow-checkov-requirements.txt`; restore it only into a
+separately owned unseeded `python3.14 -m venv --without-pip` environment, with a
+stripped environment, private HOME/XDG/cache and `uv pip install --no-config --no-cache --link-mode copy
+--only-binary :all: --index-url https://pypi.org/simple --python <owned-python>
+--requirement tests/fixtures/workflow-checkov-requirements.txt`.
+The verifier installs nothing. It builds actual current5 fixtures and checks
+restricted SSH ingress, genuine public-SSH failure, suppression/empty refusal,
+post-child source drift and owned-HOME replacement, without changing policy or
+inventing child results. It also analyzes genuine backend/frontend/selected-worker
+Dockerfiles, root-user failure, repeated `RUN` instructions, suppression/empty
+refusal, source drift and HOME replacement. `RUN` text is analyzed, never executed.
+These are local component cases, not hosted protected-ref
+green/red, full IaC/Dockerfile/Actions Checkov coverage, approved recipe,
+prerequisite session, license/SCA, native-host or phase qualification.
+
+These are explicit runner operations, never operations performed by plan or
+`--live` review. Tests, builds and framework tools may execute project code and
+write outputs; provider-read-only workflow permissions do not make them a host
+or network sandbox. Their child environment omits inherited credentials and
+uses an owned temporary tool home, which is removed only after original process
+settlement. Unsettled execution or failed cleanup retains its directory and
+refuses success. Reports withhold raw project output and issue no phase,
+provider, native-host, release or green/red matrix qualification. The source
+entry being present in a development npm pack is not a qualified published
+current5 recipe/tool subject or an automation `GITHUB_TOKEN` admission.
+
+Required proof jobs are independent. Each has exactly one named executable
+validator as its final ordinary step; trailing steps, duplicated validator names
+and required-job dependencies are refused before dispatch.
+Required context names and integration IDs remain literal own data, including
+names that match inherited JavaScript properties. Ref scopes recognize only the
+four declared GitFlow patterns; inherited object properties are not ref families.
+
+Cleanup captures the allocated HOME's directory and ancestor creation identities
+before project execution and rechecks them after settlement. A missing, renamed,
+linked or replaced boundary blocks cleanup without deleting its replacement.
+The retained original pathname is diagnostic, not a claim that the moved
+allocation can still be located there or that cleanup succeeded.
+
+Publication binds one existing `ci/liftoff-workflows-*` review branch, one actual
+parent commit and exact regular per-file before/after byte digests. It commits
+only that inventory, never consumes unrelated developer-staged changes, never
+directly pushes protected branches, and independently reads the resulting
+commit/tree, ref and immutable file bytes. A source-review publication is not a
+protected-branch merge. Artifact production still requires its own immutable
+recipe readback after the separately authorized merge.
+
+GitHub documents workflow dispatch refs as branches or tags, not an immutable
+SHA fallback. A mutable branch precheck and an original workflow's SHA guard
+cannot prevent a replacement recipe from executing earlier effects. Dispatch
+therefore requires a separately approved `liftoff-execution-<full-commit-SHA>`
+tag and independently read active repository tag update/deletion protection
+with no bypass. Blocking all updates also blocks non-fast-forward changes; no
+unsupported extra tag rule is invented. A commit-named tag without that barrier is insufficient.
+The producer never installs or weakens protection. Exact private runner-group
+workflow admission preserves the repository-only assignment and existing
+workflow entries; it does not provision or broaden access.
+
+The neutral `workflow-runner-admission-observation.ts` module exposes that same
+binding validator and existing assignment/grant readback without importing the
+writer runtime. Its GET-only reader returns the actual selected workflows,
+including an unchanged before-set; callers must still compare the approved
+after-set. It issues no host qualification, prerequisite session or permission
+to patch runner access. The writer reuses this reader and retains its original
+intent, authority, no-repeat and after-set checks.
+
+Current provider permission admission is deliberately narrow: independently
+observed classic OAuth `repo`/`workflow` grants and actual repository push access.
+Fine-grained, installation and workflow-token grants are not inferred from a
+repository role or caller annotation; unsupported credentials block before
+dispatch. Current barrier/provider admission is bound separately from the source
+tag and protected context. Administrator or policy changes are a separate trust
+boundary: repeated observations do not promise absolute immutability or atomic
+execution. Missing an independently qualified existing barrier/group during the
+early bootstrap phase is a prerequisite blocker, not permission to create one
+early, add a dependency cycle, or undermine rulesets-last sequencing.
+Inherited/organization rule admission remains unsupported by this narrow
+repository producer and blocks rather than silently omitting inherited policy.
+Runner-group PATCH additionally requires observed classic `admin:org` scope,
+active administrator membership and a non-inherited writable selected group.
+Group/network identity readback is not runner or private-network qualification.
+The future current5 engine bridge must independently admit the existing qualified
+group/host; this source interface cannot manufacture TASK14.2 evidence.
+
+The engine must durably record original dispatch intent before POST and the
+actual accepted workflow/run ID before further observation. Uncertain acceptance,
+invisible runs, ambiguous runs and missing original authority never cause an
+automatic repeat dispatch. Explicit dispatch handles `GITHUB_TOKEN`-suppressed
+push triggers; inferred push-triggered success does not qualify.
+The pinned REST API2026-03-10 returns HTTP200 with `workflow_run_id`, `run_url`
+and `html_url`; all three must identify the exact approved repository. The accepted
+handle is checkpointed before metadata polling. Legacy empty HTTP204 is
+read-only discovery of the original intent, never permission to POST again.
+Actual terminal provider conclusions are durably retained before fallible job
+inventory or final freshness reads. Unknown outcomes and missing later proof
+stay blocked; source drift cannot relabel actual terminal provider truth.
+
+Proof binds real workflow jobs to their own GitHub Actions check-run URLs,
+application and check suite, complete SHA, immutable recipe, first attempt and
+actual protected ref family. Green requires success, not skipped/neutral/
+cancelled. Controlled red requires the unchanged recipe, one exact reviewed
+nonsensitive source violation and failure of the real required validator, with
+successful setup rather than an unrelated infrastructure failure.
+Every proof job starts with a pinned checkout of `inputs.source_sha`, a clean
+worktree and disabled credential persistence; extra unbound jobs cannot qualify.
+The complete matrix shares one three-minute observation deadline, and restored
+checkpoints preserve the original plan, dispatch time and actual accepted handle.
+Provider and literal Git results received at or after their existing 30-second
+operation limit or the shared deadline are refused even if a delayed timer has
+not fired. Receipt-time refusal does not establish cancellation or drainage of
+an underlying transport or undo an uncertain accepted effect.
+Authority and intent preparation consume that same operation budget. An expired
+operation cannot start its provider request or literal Git process, and Git
+receives only the remaining budget rather than a restarted timeout. Actual
+acceptance is retained before a later deadline refusal; the original attempt
+cannot be repeated.
+Waiting for asynchronous authority or intent preparation is itself bounded by
+that original cutoff. A timed-out preparation cannot later start provider or
+Git work. This does not cancel or settle a stalled authority read. Once a Git
+runner has started, its original promise remains awaited rather than being
+detached by the preparation timer; its native timeout and settlement contract
+remain unchanged.
+Red runs use their own protected execution tag derived from the exact healthy
+protected commit; they do not move the protected branch to a failing commit.
+Each red parent/ref must match its corresponding independently current green.
+Every required context needs its own red proof on every applicable `develop`, `main`, `release/**`
+and `hotfix/**` family. Independent current readback checks the complete committed
+ruleset inventory; caller-selected contexts or old success annotations are not
+enforcement permission. No status or check is written to fabricate proof.
+
+These source interfaces do not qualify deployment, protected handover/custody,
+an authorized native host, release promotion, ruleset enforcement or package
+publication. Single-maintainer still means zero human PR reviews; team still
+means one current independent human PR approval, not self/bot/stale approval.
+No mandatory deployment reviewer is introduced. TASK14.3 remains incomplete
+without separately authorized live source and green/red qualification.
+The approved source5 allocation changes activation contract4 to5 and the six
+source graphs only; state/evidence-header/approval4 and all other listed wire
+versions are unchanged. Frozen releases, pre-custody source4 and custody source4
+remain readable diagnostic/planning families. Source5 does not enable public
+execution or automatic migration. The public/legacy executor now reports this
+explicit workflow prerequisite blocker instead of silently returning no producer.
+
+Current v8 projects can inspect an exact workflow review through
+`liftoff governance plan --scope activation --inputs <workflow-review.json> --json`.
+The public JSON file must be a singly linked regular file no larger than 64 KiB.
+Its closed fields are `schemaVersion: 1`, `kind: "review-workflow-source5"`,
+`phaseId`, `executionId` (a new UUIDv4), `createdAt`, `expiresAt`, the explicit
+activation `configuration`, `origin`, `remainingFrom` and the complete `effects`
+array of `{ action, binding }` entries. Publication uses a null origin and
+remainingFrom; later source-bound review retains the exact original publication
+plan/proof/commit/tree references. No future SHA slots or implicit budget are
+created. The review keeps the original graph dependencies and exact per-file
+before/after bytes, repository, source, workflow and operation bindings.
+
+This route is **read-only and blocked**, exits 2, and saves no preview, consent,
+approval, ledger or project file. It reobserves the installed source and physical
+file identities, preserves both actual observation times, and rejects drift.
+It does not call tools or providers. A fingerprint identifies review values only,
+not a stored approved plan. Modern workflow approve/apply-next remain unavailable
+until independently current prerequisite producers are composed. Azure
+staging/promotion/rollback peers cannot be replaced by GitHub job success;
+applicable protected handover, custody and current qualified native-host proof
+remain mandatory. Group/network/workflow assignment alone does not qualify a
+host. Capability discovery and command help advertise this same restricted scope.
+
+The deterministic review builder and whole-plan component runner are distinct
+source interfaces. The runner uses the original sealed journal's complete ordered
+inventory, accepts no caller subset/checkpoints/observation mode, validates all
+bindings before the first component, and stops at a pending entry while reporting
+the untouched remaining operation digests. A failed entry throws without starting
+later entries or erasing earlier receipts. Individual current observations never
+become whole-matrix or phase completion; the runner cannot issue approval,
+finalize metadata or discharge independent prerequisite/peer obligations.
+
+Whole-matrix observation reconstructs every observation-only carrier and original
+proof from that same journal, not a caller-supplied carrier or proof list. It
+requires every component to be complete before provider reads and independently
+rechecks the complete four-family green/per-context-red matrix and immutable
+ruleset source. Carrier preparation and provider reads share the original bounded
+observation window. Independent original ledger and observation-carrier reads
+settle together before returning; a refusal drains its siblings and preserves the
+first observed error without starting provider readback. Every entry still
+performs its original lease, installed-scope, issuance and ownership checks.
+It performs no dispatch, replaces no original observation
+timestamp or receipt, and cannot finalize a phase.
+Cross-platform matrix fixtures run genuine syntax/JSON validators against owned
+source files. File-backed validation does not certify native stdin transport.
+Their refusals retain only the finite fixture selector, actual Node/platform/arch
+and the original bounded result fields/stdout/stderr, not commands, ambient
+environment or unrelated configuration. Diagnostics do not change the invocation,
+input readback, settlement guards, five-second/4-KiB limits or expected outcomes;
+a numeric Windows status is not an observed POSIX signal.
+
+The private source5 effect bridge uses a separate private control schema1 and the
+closed `workflow-source5-{plan,approval,journal,operation,proof}` namespaces
+outside the project and repository. Controls are canonical, project-bound,
+HMAC-sealed objects; restart validates the exact original issuance, not imported
+project approvals or structurally similar runtime objects. The private local
+issuer and operating-system user remain a trust boundary, not an attestation of
+a qualified host. A live engine-issued lease/capability is also required.
+Issuance, restart and each capability assertion independently read the existing
+installed current5 state under that lease. Its local repository anchor and state
+digest, the canonical root and resolved project key must exactly match the
+reviewed plan, checkpoint inventory and authority. Missing or changed state
+blocks; callers cannot create an anchor or substitute a scope assertion.
+Index, approval and operation objects are limited to64KiB; original plan/proof
+objects to16MiB, counting the **complete encoded sealed disk object**. Existing
+preview/consent stores keep their64KiB limit. Failed saves throw and preserve
+unresolved progress; CAS refuses stale/concurrent replacement. These interfaces
+do not register a producer, qualify a host, or open public execution.
+
+The private ownership primitive seals the complete reviewed original plan before
+issuance. Each workflow entry keeps a stable key derived from that original
+plan, operation, current5 identity, phase, actual root, project key and existing
+anchor. Remaining-only reviews retain that original entry rather than
+renaming attempted work. A reservation is discoverable from the stable entry
+and next generation: once durable, it immediately retires the previous owner,
+including when the pointer CAS or its confirmation fails. The new owner needs
+exact CAS readback and an immutable confirmation under the live native lease.
+Missing, conflicting, malformed or outstanding ownership history blocks both
+owners; no automatic takeover or compensation is implemented.
+
+Only entries with no durable intent, progress, acceptance, terminal or component
+record anywhere in their reviewed ancestry can transfer. Issuance, restoration
+and first-intent checks validate ownership independently. First intent also
+checks the actual raw installed snapshot, separately from the canonical modern
+state digest. Later ownership-bound checkpoint persistence does not depend on
+a new installed-state read, so a subsequent failure cannot erase original
+acceptance or terminal truth.
+
+Ownership has a fixed 64-transfer bound. Its sealed manifest lists all 131
+concrete owner/confirmation/reservation/manifest keys, including itself, and
+measures the complete encoded worst-case objects, revision and previous-digest
+growth before ownership is established. This is a bounded ownership
+**subinventory**, not qualification of the complete engine. The private journal
+now separately seals a closed full metadata manifest: original plans, issuer
+and authority, index, owner histories, every allowed progress/event key,
+original publication read dependencies, recovery baseline and finalization.
+It measures actual complete sealed worst-case bytes and revision/digest growth
+before effects; its total encoded footprint is not a disk-space or qualified-host
+attestation. Its concrete key cardinality is independently bounded to 21,994
+(including itself), within the unchanged safe-record node budget and namespace
+caps. Oversized or unrepresentable inventories block rather than widening
+existing stores or hiding keys behind suffix/directory permissions.
+
+Opening or initializing a journal requires its exact separately sealed original
+review. Initialization never creates that plan or recreates missing history,
+even when old authority and ownership records remain.
+Observation rejects a missing control index before writing any ledger; it cannot
+create partial metadata that blocks a later explicitly initialized fresh review.
+The journal requires exact independently sealed publication A provenance before
+a source-bound B review. Immutable intent/accepted/terminal/component receipts
+survive failed cursor CAS or lost confirmation. Missing or changed index,
+manifest, reservation or original read dependencies block; retained intent
+cannot recreate a lost ledger. Completion requires canonical exact inventoried
+plan/approval bytes, the original individual component receipts, modern evidence
+validation and precisely the state derived from the original modern outcome.
+Publication A alone cannot finalize. Finalized status also requires independent
+exact-byte observation of every reserved project destination; there is no
+cross-filesystem atomicity claim. These are source metadata/protocol guards,
+not independently qualified live evidence producers or an execution engine.
+Same-lease exact-byte completion is not restart reconciliation after partial
+project writes. That narrow recovery remains an engine obligation; original
+authority and ownership state checks are not relaxed.
+
+Separately, the reviewed logical
+mutation inventory counts every operation plus its nested effects, including
+checkpoint and exact project-metadata writes, and cannot exceed 272. A
+132-dispatch plan has 271 logical entries; that count is not evidence that its
+sealed storage fits. Private effect carriers now share the held native lease's
+stable ORIGINAL-entry gate with ownership preparation and first-intent writes.
+An active branded gate can claim that entry only once; structural, expired or
+foreign gates do not mint carriers. The runtime consumes each exact inventoried
+file/Git/provider effect once after its durable original intent. Provider and
+push acceptance are retained before fallible readback, and original commit
+handles precede parent/inventory checks. Observation carriers cannot introduce
+intent or perform writes; their reads still require current held-lease authority.
+Intent consumption rechecks current issued, unexpired authority after asynchronous
+inventory and ownership validation. Actual provider/Git submission rechecks it
+again after intent consumption; each source-file mutation checks it before writing.
+Expiry is re-evaluated after authority's asynchronous reads. These pre-effect
+checks do not add fallible installed-state or time checks when retaining already
+accepted/terminal truth.
+These isolated source/process/HTTP guards are not complete engine or live
+qualification. A private component driver now derives observation-only versus
+first-effect mode from the original sealed entry, mints its own carrier, invokes
+the exact indexed producer and retains its component internally. It captures
+closed original runtime fields before asynchronous reads and rejects caller
+checkpoint callbacks, accessors, prototype/symbol fields and observation modes.
+Workflow
+components require a separate current run/jobs/checks/source reread after terminal
+observation. Restart preserves original proof bytes, IDs, dispatch time and plan;
+a fresh observation is reported separately, never written over the original.
+Read-only publication observation requires the already recorded commit handle
+and rechecks its parent, exact inventory and immutable bytes. It never adopts a
+target-shaped HEAD or repeats commit/push work. These isolated component guards
+do not compose phase prerequisites or finalize a phase.
+A private complete-matrix reader requires the exact original ordered green/red
+component inventory and internally branded observation-only carriers from one
+original journal and held native lease. The first entry's carrier cannot stand
+in for another entry. It independently rereads every entry's actual
+run/jobs/checks/source and verifies complete immutable ruleset files, all four
+protected families, individual validator-caused reds and pinned integration
+identities on both green and red members. Original issuance, ownership and
+component chains are checked around readback; current observations cannot
+overwrite original IDs, dispatch/observation times, plans or proof bytes.
+Independent families may read concurrently, with separate per-entry authority
+checks and one unchanged three-minute budget. Every started ruleset read promise
+is awaited before its family refuses, preserving the exact first temporal
+rejection and successful input ordering. Family read promises settle before
+returning or refusing. This does not establish cancellation or drainage of
+underlying transports after a bounded timeout race. There are no Git/provider/file writes, status
+substitutions, new intent or terminal-bookkeeping capabilities in this path.
+Isolated matrix tests seed original publication/dispatch ledger formats and use
+bounded real Node validators to drive loopback responses. They are not actual
+publisher-created commits, GitHub dispatches or live green/red qualification.
+Full planner/prerequisite composition, final outcome persistence and engine
+admission remain separate obligations.
+
+Identity readers consume fresh frozen scalar identity projections rather than
+unused full graph copies; full-contract readers retain their original deep
+copies. After complete identity validation, record and metadata constructors
+deep-copy and freeze only the selected registered full source row, using the
+same readable-family ordering without a scope or authority cache. These static
+copies contain no project or approval authority and do not replace any
+independent current scope, ownership, or proof validation.
+
+A separate private branded terminal-bookkeeping reader can inspect an already
+sealed original finalization without any saves. It is not a journal, issued
+authority, ownership object or effect carrier. Its descriptive ownership
+inventory has no prepare/transfer/write methods; ordinary acquisition still
+requires the actual original canonical and raw installed scope. Terminal
+reconciliation requires retained original issuance, full original plan,
+manifest/reservation, publication dependencies, ownership confirmations and
+individual component chains. It independently reads exact target bytes and
+installed source/history/custody relations. Expiry does not refresh approval or
+authorize effects; a missing original issuance still refuses bookkeeping.
+Reconciliation is a metadata mutation, not read-only inspection: only the
+existing original revision-one active index may CAS to its reserved revision-two
+canonical finalized projection. It rechecks retained inputs and target bytes
+around CAS/readback, never creates a missing issuer/index, never rewrites project
+files and never undoes accepted-but-unconfirmed ledger truth. An already
+canonical finalized index is no-save readback. This isolated boundary is not
+admission of the complete engine, public execution or native/live qualification.
+Final-index reconciliation repeats held-native-lease, exact original-chain,
+target-byte and active-index validation after staging and reading temporary
+metadata, immediately before the atomic replacement. Loss before replacement
+preserves the revision-one index; failures after accepted replacement still
+retain the revision-two truth without compensation.
+The private planner/engine remains unregistered and incomplete.
+Staging/production workflow components cannot
+finalize independent Azure peer obligations, and source5 controls cannot
+authorize activation6.
+
 ## Managed files and user-owned state
 
 Enabled governance adds managed-core files:
@@ -95,8 +782,32 @@ Current v8 manifests use the exact packaged assessment catalog for their recorde
 profile and workflow. Single-maintainer policy 7 and team policy 1 remain
 separate targets. Team review assessment accepts stronger controls such as two
 approvals, code-owner review, or last-push approval; it never recommends weakening
-them to the minimum. Historical activation proof remains diagnostic-only and
+them to the minimum. A current approval rule must cover each protected main,
+develop, release and hotfix family; a rule for an unrelated branch cannot supply
+that coverage. Uninterpretable scope or wildcard-family exclusions remain
+not-observed rather than aligned. Historical activation proof remains
+diagnostic-only and
 cannot satisfy a different profile or current target identity.
+
+Single-maintainer assessment requires pull request rule coverage for those same
+protected families while retaining policy 7's zero-review requirement across
+observed active branch rules. An unrelated zero-review rule cannot supply missing
+coverage. Unknown family scope remains not-observed, and a required human review
+remains a conflict, not permission to weaken an existing protection.
+
+Live classic branch protection uses the selected assessment profile: required
+approvals, code-owner review, and last-push approval remain conflicts for the
+single-maintainer target but are not conflicts for the team target. Team minimum
+review coverage is still evaluated across the scoped active rulesets; a classic
+zero-review setting does not weaken an independently proven ruleset minimum.
+Force-push, deletion, required-check, stale-review, and incomplete-metadata
+checks remain unchanged. Assessment never rewrites the observed protection.
+
+Declared and observed review counts must be nonnegative safe integers. Fractional,
+negative, unsafe, or nonnumeric counts remain not-observed rather than satisfying
+a review requirement or being treated as an interpretable policy conflict.
+Malformed provider counts also produce a scoped invalid-response diagnostic.
+Valid zero and stronger integer settings retain their selected-profile meaning.
 
 `/liftoff-governance-assess` is separate from `/liftoff-setup`, which remains the
 primary post-init path. Both OpenSpec and Spec Kit receive only their selected
@@ -112,6 +823,16 @@ The optional `--governance` comparison is read-only. It does not change the
 manifest, configuration, live rules, evidence, or recorded profile. Without the
 flag, a supported Liftoff project uses its recorded profile; an ordinary Git
 repository uses the installed single-maintainer target.
+
+The whole-project assessment producer captures its requested comparison before
+filesystem observation. Its scoped live reader retains the original root,
+profile, declared environment inventory and clock across asynchronous reads, and
+the coordinator snapshots its initial local report before collecting metadata.
+Later caller mutations do not redirect reads or relabel the resulting report;
+they are not reverted. Existing local, manifest and Git reobservations still
+detect observed drift, not atomic confinement. This source-level input binding
+does not add current-profile evaluators, activation proof, provider permissions
+or mutation authority; unsupported mandatory observations remain partial.
 
 The same CLI command works in an ordinary Git repository without initialization,
 a manifest, or generated slash commands. An explicit path is authoritative;
@@ -885,16 +1606,37 @@ placeholder, candidate tag or caller-supplied source annotation. Partial handles
 survive a later source/authority change; failed or uncertain effects are observed,
 not automatically repeated or undone.
 
-The current artifact route still selects a mutable default-branch ref at
-dispatch. Pre-dispatch readback and later proof refusal cannot prevent an
-unreviewed replacement workflow's earlier transmission. Real dispatch remains
-unqualified pending the separately owned immutable execution-tag binding and
-admission integration; source tests do not establish that missing barrier.
+The artifact route dispatches only the existing protected lightweight
+`liftoff-execution-<full-source-SHA>` tag bound to its own reviewed complete
+source/tree/recipe. A shared read-only observer rechecks effective no-bypass
+tag update/deletion protection, provider grants, source tree and tag before
+dispatch and accepted/resumed observation. Runner admission must select that
+tag. Missing, unsupported or changed admission blocks; no tag creation,
+policy mutation, mutable branch fallback or task14.3 authority is borrowed.
+Old plans require review instead of retagging. Public-v8 activation, actual
+protected execution ports/host and disposable qualification remain unavailable.
 
 See [Azure application readiness](azure-deployment.md#application-readiness-source-boundary)
 for declarative recipe inputs, operator boundaries and remaining real
 qualification blockers. The original exact 30-day protected retention/disposal
 obligation remains unchanged; TASK14.1 is not checked by source tests.
+
+## Maintainer boundary: injected ruleset observation
+
+Ruleset enforcement and its final `live-readback` phase still require an
+explicitly injected GitHub ruleset adapter; there is no default production
+ruleset writer or reader. The observation path retains the original repository,
+saved source digest, evidence header, read-operation inventory, plan expiry,
+clock, lease assertion and reader method before its first await. Changing
+caller-owned phase, repository, identity, context, plan or adapter objects during
+lease validation or provider observation cannot turn that read into enforcement
+or relabel its proof. Caller changes are not restored. Expiry, lease failure and
+source/readback digest mismatch still refuse completion; ordinary enforcement
+retains its separately required approval checks.
+
+This source boundary does not qualify live GitHub ruleset behavior, add a
+production adapter, grant provider writes or complete TASK14.4. Full production
+execution and its independent evidence remain separate requirements.
 
 ## Commands
 

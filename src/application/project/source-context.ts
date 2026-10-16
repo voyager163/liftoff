@@ -10,7 +10,7 @@ import { validateManifestActiveLayout } from '../../domain/project/manifest/layo
 import type { ModernGovernanceProfile } from '../../domain/governance/activation/modern-record-contracts.js';
 import { assertModernRecordData } from '../../domain/governance/activation/source-values.js';
 import { projectCatalog } from './catalog.js';
-import { resolveModernManifestV8SourceContract } from './manifest.js';
+import { resolveModernManifestV8Source, resolveModernManifestV8SourceContract } from './manifest.js';
 import { composeModernManifestPlugins } from './plugins.js';
 import { toSafeProjectName } from '../../domain/project/planning.js';
 
@@ -22,6 +22,7 @@ export interface ModernProjectSourceInput {
 
 export interface ModernProjectSourceContext extends ModernProjectSourceInput {
   readonly source: ReturnType<typeof resolveModernManifestV8SourceContract>;
+  readonly sourceRelease: ReturnType<typeof resolveModernManifestV8Source>['release'];
 }
 
 /** Source metadata only; neither original generation paths nor inspection or execution authority. */
@@ -42,9 +43,10 @@ export function resolveModernProjectSourceContext(value: unknown): ModernProject
     stack: leaf.project.workload.apiStack, cloud: leaf.project.workload.cloud,
     workflow: leaf.project.specWorkflow, agents: leaf.project.agents
   });
-  const source = resolveModernManifestV8SourceContract({ selection, recordedPlugins: plugins });
+  const resolved = resolveModernManifestV8Source({ selection, recordedPlugins: plugins });
+  const source = resolved.contract;
   const activeLayout = validateManifestActiveLayout(input.activeLayout, source.layoutDescriptor);
-  return { selection, plugins, activeLayout, source };
+  return { selection, plugins, activeLayout, source, sourceRelease: resolved.release };
 }
 
 export function modernProjectSourceInput(manifest: LiftoffManifestV8): ModernProjectSourceInput {

@@ -3,6 +3,36 @@
 This guide covers release-owned compatibility, deterministic setup, and package
 publishing. General contribution setup remains in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Project reporting consent boundary
+
+`application/telemetry/project-reporting.ts` owns explicit status/enroll/disable/
+report and ordinary-command project eligibility. `domain/project/telemetry-consent.ts`
+owns the independently versioned disclosure/record/review contract;
+`adapters/filesystem/telemetry-consent.ts` uses bounded single-link reads,
+exact checkout/config snapshots, external consent locking, project transactions,
+atomic publication and readback. Tracked UUIDs are measurements, not authentication,
+write approval or installed readiness. No UUID belongs in deterministic rendering.
+The existing one-second `telemetry/delivery.ts` transport remains the only delivery
+budget; one project slot cannot recursively emit an aggregate.
+
+`domain/project/telemetry-heartbeat.ts` provides candidate immutable tooling,
+explicit-root rendering and exact byte-preserving entry updates. The installed
+`application/telemetry/heartbeat.ts` refuses enablement because no actual qualified
+published producer is registered, but permits independently reviewed removal of
+an existing exact entry. Candidate rendering/fixtures never qualify an artifact,
+publication, production ingestion or the CI exception. Keep those gates unchecked;
+do not populate `qualifiedHeartbeatTooling` with guessed URLs, tags or digests.
+
+Run bounded related tests with:
+
+```bash
+npx vitest run tests/project-telemetry-enrollment.test.ts tests/project-telemetry-heartbeat.test.ts tests/telemetry-config.test.ts tests/cli-telemetry.test.ts tests/telemetry-delivery.test.ts --maxWorkers=1 --no-file-parallelism
+```
+
+Generated README/setup guidance remains unenrolled. Current assets/source-contract
+identities, frozen historical renderers and every prior reviewed-change chain are
+independent of consent and must not be refreshed to bless reporting.
+
 ## Stabilization acceptance matrix
 
 The `stabilize-and-modularize-liftoff` change separates retirement, mechanical
@@ -2273,12 +2303,54 @@ from authoritative current source/registry/environment/digest receipts;
 These interfaces do not implement or authorize workflow source publication or
 application deployment.
 
-The current artifact dispatch still selects a mutable default-branch ref.
-Pre-dispatch checks, a reviewed workflow guard and later provenance refusal
-do not close the ref-selection race. Do not enable real dispatch before the
-separately owned immutable execution-tag binding and admission interface is
-published, integrated and independently qualified; no mutable-ref fallback
-is production-safe.
+TASK14.3 supplies separate private source interfaces:
+`planWorkflowSourcePublication`/`executeWorkflowSourcePublication` bind exact
+per-file source and an existing non-protected review ref;
+`observeImmutableWorkflowExecutionRef`/`bindImmutableWorkflowExecutionRef`
+require an independently protected commit-named execution tag;
+`admitReviewedRunnerWorkflows` preserves exact repository-only private admission;
+`executeWorkflowContextProof` retains dispatch intent and actual accepted handles;
+`requiredWorkflowContextsFromSource`/`verifyProtectedWorkflowProofMatrix` derive
+the complete protected-family context inventory and independently read real
+green and validator-caused red jobs/checks. The transient checkpoint writers are
+not the application-scoped task-14.1 callbacks. Current legacy local authority
+and public v8 inspection cannot invoke them or manufacture their durable ports.
+The approved current-only source5 allocation advances activation contract4 to5
+and the six source graphs, not state/evidence-header/approval4 or the other wire
+versions. Exact custody source4 declarations/table/release are captured in
+`modern-pre-workflow.ts`; all frozen releases and pre-custody captures are
+unchanged. Source5 has no automatic migration lane or public execution path.
+The legacy/public workflow route returns an explicit prerequisite blocker;
+private checkpoints do not create an engine capability or substitute for
+protected handover/custody and current authorized native-host qualification.
+Reviewed execution bindings include repository ID, full commit and tree SHA,
+exact commit-named tag and immutable recipe. API2026-03-10 HTTP200 dispatch
+handles are scope-validated and persisted before polling; legacy204 retries
+remain read-only. Real qualification remains separate from these source values.
+
+These producers never use an undocumented SHA-dispatch fallback. Mutable branch
+readback plus a guard in the original recipe cannot prevent replacement workflow
+effects at dispatch. Missing active immutable tag update/deletion
+protection with no bypass is a blocker, not permission to install a ruleset.
+Blocking all tag updates covers non-fast-forward changes without assuming an
+unsupported tag rule. Barrier/provider admission is separate from the source
+binding; policy administration is a trust boundary, not atomicity guaranteed by
+two readbacks. Supported classic OAuth grants are observed independently;
+unsupported fine-grained, installation and workflow-token admission stays blocked.
+Pending/uncertain dispatch is observed without repeat POST; an unowned existing
+run is not adopted. No statuses or checks are written to manufacture proof.
+Source publication is a review-ref milestone, not a protected-branch merge,
+deployment, package/signing proof or final enforcement. See
+`docs/repository-governance.md` for the exact source-only boundaries.
+
+Artifact dispatch now requires an existing protected lightweight
+`liftoff-execution-<full-source-SHA>` tag, exact reviewed `sourceTreeSha`,
+independent repository protection/provider-grant/commit/tag readback and
+tag-specific runner admission. The shared observer is read-only: no tag or
+policy writer, task14.3 authority, branch or raw-SHA fallback is borrowed.
+Old mutable-ref plans are stale, not silently upgraded. Admission is repeated
+before dispatch and accepted/resumed observation; this source integration
+does not qualify public-v8 execution or the missing production host/ports.
 
 Actual committed workflow bytes, separate transmission/network/build consent,
 the admitted private-network hosted runner, ACR QuickBuild output image and

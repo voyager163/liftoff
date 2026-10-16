@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import {
+  assertCompiledPackageFiles,
   assertUnpackedPackageSize,
   formatSmokeIssues,
   installedAssetByteIssues,
@@ -202,6 +203,7 @@ try {
   assertPackageContains(packResult, 'dist/domain/assessment/report.js');
   assertPackageContains(packResult, 'dist/cli/commands/assess.js');
   assertPackageContains(packResult, 'dist/supported-stack.js');
+  assertCompiledPackageFiles(packResult.files.map((file) => file.path));
   const declaredPackage = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
   const packedAssetIssues = packagedAssetIssues({
     packedPaths: packResult.files.map((file) => file.path),
@@ -250,6 +252,22 @@ try {
     throw new Error(`Installed liftoff entrypoint not found at ${liftoffEntrypoint}`);
   }
   const installedPackageRoot = path.dirname(path.dirname(liftoffEntrypoint));
+  const contextValidator = path.join(installedPackageRoot, 'dist', 'workflow-context-validator.js');
+  const malformedValidator = runFailure(process.execPath, [contextValidator, '--validator', 'arbitrary-command'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  if (malformedValidator.status !== 2 || malformedValidator.stdout ||
+      !malformedValidator.stderr.includes('no validation was performed')) {
+    throw new Error('Installed context validator accepted an arbitrary command or failed its closed argument boundary.');
+  }
+  const unboundValidator = runFailure(process.execPath, [contextValidator, '--validator', 'source-integrity',
+    '--source-sha', 'a'.repeat(40)], { cwd: outsideDirectory, env: npmEnv });
+  const unboundReport = JSON.parse(unboundValidator.stdout);
+  if (unboundValidator.status !== 1 || unboundReport.status !== 'failed' ||
+      unboundReport.code !== 'validator-source-binding' || unboundReport.workloadExecution !== false ||
+      unboundReport.command !== null || unboundReport.phaseProof !== 'not-issued') {
+    throw new Error('Installed context validator did not refuse a missing exact Git source without workload execution or proof.');
+  }
   const installedAssetIssues = [
     ...await installedAssetByteIssues({ installedRoot: installedPackageRoot, sourceRoot: packageRoot }),
     ...await installedRetainedAssetIssues({ installedRoot: installedPackageRoot })
@@ -310,6 +328,17 @@ try {
   const installedCapabilities = JSON.parse(run(process.execPath, [liftoffEntrypoint, 'capabilities', '--json'], {
     cwd: outsideDirectory, env: npmEnv
   }).stdout);
+  const telemetryHelp = run(process.execPath, [liftoffEntrypoint, 'telemetry', '--help'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  if (!telemetryHelp.stdout.includes('--preserve-identity') || !telemetryHelp.stdout.includes('--new-identity') ||
+      !telemetryHelp.stdout.includes('--approve-plan') || !telemetryHelp.stdout.includes('--repository') ||
+      installedCapabilities.boundaries?.projectTelemetryEnrollment !== true ||
+      installedCapabilities.schemas?.projectTelemetry?.externalCheckoutConsent !== true ||
+      installedCapabilities.schemas?.projectTelemetry?.heartbeat?.enableAvailable !== false ||
+      installedCapabilities.schemas?.projectTelemetry?.heartbeat?.ciReportingAvailable !== false) {
+    throw new Error('Installed telemetry help/capabilities lost explicit consent or overstated heartbeat publication.');
+  }
   if (installedCapabilities.schemas?.projectAssessment?.report !== 1 ||
       installedCapabilities.schemas.projectAssessment.readOnly !== true ||
       installedCapabilities.schemas.projectAssessment.liveMetadata !== true ||
@@ -318,6 +347,19 @@ try {
       JSON.stringify(installedCapabilities.schemas.projectAssessment.liveProviders) !== '["github"]' ||
       JSON.stringify(installedCapabilities.schemas.projectAssessment.modes) !== '["local","live"]') {
     throw new Error('Installed capabilities lost the bounded local/live metadata and no-conformance contract.');
+  }
+  const workflowCapabilities = installedCapabilities.schemas?.modernWorkflowReview;
+  if (workflowCapabilities?.report !== 1 || workflowCapabilities.request !== 'review-workflow-source5' ||
+      workflowCapabilities.readOnly !== true || workflowCapabilities.blockedExit !== 2 ||
+      workflowCapabilities.approval !== false || workflowCapabilities.execution !== false ||
+      workflowCapabilities.externalMetadataWrites !== false || workflowCapabilities.providerOperations !== false) {
+    throw new Error('Installed workflow review capability must remain read-only and explicitly blocked before effects.');
+  }
+  const governanceHelp = run(process.execPath, [liftoffEntrypoint, 'governance', '--help'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  if (!governanceHelp.stdout.includes('review-workflow-source5') || !governanceHelp.stdout.includes('exits 2')) {
+    throw new Error('Installed governance help lost the nonexecuting workflow-review boundary.');
   }
   for (const flag of ['--check', '--live', '--subscription', '--approve-plan', '--recover', '--json',
     '--capabilities', '--inspect-layout', '--application-patch', '--verify-plan', '--allow-network', '--allow-dependency-preparation']) {
@@ -613,6 +655,61 @@ try {
   const { buildCurrentProjectPlan: installedCurrentPlan } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'planning.js')).href);
   const { buildArtifacts: installedArtifacts, buildCurrentArtifacts: installedCurrentArtifacts } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'templates.js')).href);
   const { writeArtifacts: installedWrite } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'file-system.js')).href);
+  const workflowProject = path.join(tempRoot, 'workflow review current project');
+  await installedWrite(workflowProject, installedCurrentArtifacts(installedCurrentPlan({
+    projectName: 'Workflow Review Smoke', projectType: 'standard', apiStack: 'node',
+    specWorkflow: 'manual', agents: [], governanceProfile: 'single-maintainer-gitflow', environments: ['dev']
+  }, { requireProjectName: true })));
+  const { loadProjectManifest } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'manifest.js')).href);
+  const { resolveModernManifestSourceContext } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'source-context.js')).href);
+  const { projectCatalog } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'project', 'catalog.js')).href);
+  const { createModernActivationRecordContract } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'domain', 'governance', 'activation', 'modern-records.js')).href);
+  const workflowManifest = await loadProjectManifest(workflowProject), workflowSource = resolveModernManifestSourceContext(workflowManifest);
+  const workflowRecords = createModernActivationRecordContract(projectCatalog, {
+    recordedIdentity: workflowManifest.governance.activationIdentity, profile: workflowManifest.governance.profile,
+    policyVersion: workflowManifest.governance.policyVersion,
+    selection: { ...workflowSource.selection, profile: workflowManifest.governance.profile },
+    pluginResolutionDigest: workflowSource.plugins.resolutionDigest,
+    activeLayoutDigest: workflowManifest.governance.activationIdentity.activeLayoutDigest
+  });
+  const workflowNow = new Date();
+  const pendingWorkflowState = workflowRecords.createInitialState({
+    repository: { id: `local:${randomUUID()}`, name: workflowManifest.project.name, defaultBranch: 'develop' },
+    applicability: { statePath: 'none', privateStagingDast: 'unknown', credentialRequired: 'unknown' },
+    createdAt: workflowNow.toISOString()
+  });
+  await mkdir(path.join(workflowProject, 'governance'), { recursive: true });
+  await writeFile(path.join(workflowProject, 'governance', 'activation-state.json'), JSON.stringify(pendingWorkflowState));
+  const workflowContent = 'name: Isolated reviewed source\non: workflow_dispatch\njobs:\n  validate:\n    runs-on: ubuntu-latest\n    steps:\n      - run: node --check backend/application.js\n';
+  const workflowRequest = path.join(tempRoot, 'workflow-review.json');
+  await writeFile(workflowRequest, JSON.stringify({
+    schemaVersion: 1, kind: 'review-workflow-source5', phaseId: 'bootstrap-workflow-source-ready', executionId: randomUUID(),
+    createdAt: workflowNow.toISOString(), expiresAt: new Date(workflowNow.getTime() + 60 * 60 * 1000).toISOString(),
+    configuration: { schemaVersion: 1, phases: {}, budget: { currency: 'USD', fixedMonthlyCents: 0, usageMonthlyCents: 0 } },
+    origin: null, remainingFrom: null, effects: [{ action: 'git.workflow-source.publish-reviewed', binding: {
+      repository: 'owner/repo', repositoryId: 123, ref: 'ci/liftoff-workflows-installed-review',
+      parentSha: 'a'.repeat(40), sourceTransmissionApproved: true,
+      files: [{ path: '.github/workflows/review.yml', content: workflowContent,
+        digest: createHash('sha256').update(workflowContent).digest('hex'), beforeDigest: null }]
+    } }]
+  }));
+  const workflowBefore = await treeDigest(workflowProject), workflowHomeBefore = await treeDigest(homeDirectory);
+  const workflowReview = runFailure(process.execPath, [liftoffEntrypoint, 'governance', 'plan', workflowProject,
+    '--scope', 'activation', '--inputs', workflowRequest, '--json'], { cwd: outsideDirectory, env: npmEnv });
+  const workflowReport = JSON.parse(workflowReview.stdout);
+  if (workflowReview.status !== 2 || workflowReport.kind !== 'liftoff-modern-workflow-review' ||
+      workflowReport.status !== 'blocked' || workflowReport.readOnly !== true ||
+      workflowReport.projectWrites !== false || workflowReport.externalMetadataWrites !== false ||
+      workflowReport.providerWrites !== false || workflowReport.workloadExecution !== false ||
+      workflowReport.executionAuthorized !== false || workflowReport.phaseComplete !== false ||
+      workflowReport.matrixComplete !== false || workflowReport.recordedProgressIsCurrentProof !== false ||
+      workflowReport.review?.execution !== 'not-authorized' ||
+      workflowReport.review?.prerequisites?.status !== 'not-observed' ||
+      workflowReport.review?.plan?.approval?.envelopeId !== null ||
+      !workflowReport.blockers?.some(blocker => blocker.code === 'workflow-current-prerequisite-observer-unavailable') ||
+      await treeDigest(workflowProject) !== workflowBefore || await treeDigest(homeDirectory) !== workflowHomeBefore) {
+    throw new Error(`Installed workflow review violated its nonexecuting prerequisite boundary: ${workflowReview.stdout}`);
+  }
   const assessmentBody = await readFile(path.join(installedPackageRoot, 'assets', 'skills', 'assessment.md'), 'utf8');
   const assessmentIntegrations = [
     { agent: 'github-copilot', logicalName: 'liftoff-assess-copilot', pathParts: ['.github', 'prompts', 'liftoff-assess.prompt.md'], invocation: '/liftoff-assess' },
@@ -888,6 +985,49 @@ try {
   if (unsupported.status !== 2 || unsupportedReport.projectIdentity?.stateSource !== 'unsupported' ||
       await treeDigest(assessmentProject) !== unsupportedBefore) {
     throw new Error('Installed assessment did not preserve and explain unsupported activation state.');
+  }
+
+  const telemetryProject = path.join(tempRoot, 'telemetry consent current project');
+  await installedWrite(telemetryProject, installedCurrentArtifacts(installedCurrentPlan({
+    projectName: 'Installed consent specimen', projectType: 'standard', apiStack: 'node',
+    specWorkflow: 'manual', agents: [], governanceProfile: 'none', environments: ['dev']
+  }, { requireProjectName: true })));
+  const telemetryEnv = { ...npmEnv, LIFTOFF_TELEMETRY: '1' };
+  delete telemetryEnv.CI; delete telemetryEnv.DO_NOT_TRACK;
+  const consentBefore = await treeDigest(telemetryProject), consentHomeBefore = await treeDigest(homeDirectory);
+  const installedStatus = JSON.parse(run(process.execPath, [liftoffEntrypoint, 'telemetry', 'status', '--json'], {
+    cwd: telemetryProject, env: telemetryEnv
+  }).stdout);
+  const installedPreview = runFailure(process.execPath, [liftoffEntrypoint, 'telemetry', 'enroll', '--check', '--json'], {
+    cwd: telemetryProject, env: telemetryEnv
+  });
+  const consentPlan = JSON.parse(installedPreview.stdout);
+  if (installedStatus.status !== 'disabled' || installedPreview.status !== 2 || consentPlan.status !== 'review-required' ||
+      await treeDigest(telemetryProject) !== consentBefore || await treeDigest(homeDirectory) !== consentHomeBefore) {
+    throw new Error('Installed telemetry status/enrollment preview implicitly enrolled or wrote disclosure state.');
+  }
+  const installedEnrollment = JSON.parse(run(process.execPath, [
+    liftoffEntrypoint, 'telemetry', 'enroll', '--approve-plan', consentPlan.fingerprint, '--json'
+  ], { cwd: telemetryProject, env: telemetryEnv }).stdout);
+  const enrolledStatus = JSON.parse(run(process.execPath, [liftoffEntrypoint, 'telemetry', 'status', '--json'], {
+    cwd: telemetryProject, env: telemetryEnv
+  }).stdout);
+  if (installedEnrollment.status !== 'enrolled' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(installedEnrollment.projectId) ||
+      enrolledStatus.status !== 'enabled' || enrolledStatus.projectId !== installedEnrollment.projectId) {
+    throw new Error('Installed exact enrollment did not return its random approved project identity.');
+  }
+  const consentAfter = await treeDigest(telemetryProject), consentHomeAfter = await treeDigest(homeDirectory);
+  const heartbeatReport = JSON.parse(run(process.execPath, [
+    liftoffEntrypoint, 'telemetry', 'report', '--heartbeat', '--json'
+  ], { cwd: telemetryProject, env: telemetryEnv }).stdout);
+  const optedOutReport = JSON.parse(run(process.execPath, [
+    liftoffEntrypoint, 'telemetry', 'report', '--json'
+  ], { cwd: telemetryProject, env: npmEnv }).stdout);
+  if (heartbeatReport.reason !== 'heartbeat-not-qualified' || heartbeatReport.attempted !== false ||
+      optedOutReport.status !== 'disabled' || optedOutReport.attempted !== false ||
+      await treeDigest(telemetryProject) !== consentAfter || await treeDigest(homeDirectory) !== consentHomeAfter) {
+    throw new Error('Installed unqualified heartbeat or global opt-out changed consent/reporting state.');
   }
 
   if (suppliedTarball && createHash('sha256').update(await readFile(suppliedTarball)).digest('hex') !== suppliedDigest) {

@@ -27,7 +27,7 @@ import { createScopedUserLocalRecordStore } from '../src/adapters/filesystem/upd
 import { canonicalApprovalEnvelopeHash } from '../src/domain/governance/activation/approvals.js';
 import { NodeCommandRunner, type CommandRunner, type CommandResult, type RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/types.js';
-import type { GitHubActivationTransport, GitHubRequest } from '../src/adapters/github/activation-rest.js';
+import type { GitHubActivationTransport, GitHubRequest, GitHubResponse } from '../src/adapters/github/activation-rest.js';
 import { GitHubActivationError } from '../src/adapters/github/activation-rest.js';
 import type {
   PhaseAdapterExecutionInput, ProtectedStateCustodyProof, ProtectedStateCustodyPort, ProtectedStateHandoverPort
@@ -189,22 +189,55 @@ class ArtifactTransport implements GitHubActivationTransport {
   duplicate = false;
   invisible = false;
   movedSource = false;
+  executionTagPresent = true;
+  executionTagProtected = true;
+  executionTagBypass = false;
+  executionTagSha: string | undefined;
+  executionTreeSha: string | undefined;
+  providerScopes = 'repo, workflow';
+  runnerUsesBranch = false;
   dispatchResponse: Record<string, unknown> | null = null;
   onRunRead: (() => Promise<void>) | undefined;
   onJobsRead: (() => Promise<void>) | undefined;
-  async request(request: GitHubRequest) {
+  onDispatch: (() => void) | undefined;
+  onExecutionTagRead: (() => void) | undefined;
+  async request(request: GitHubRequest): Promise<GitHubResponse> {
     this.calls.push(request);
     let data: unknown;
     if (request.path.includes('/contents/')) data = {
       type: 'file', encoding: 'base64', path: this.binding.workflowPath, content: Buffer.from(this.workflow).toString('base64')
     };
+    else if (request.path.includes('/git/ref/tags/')) {
+      this.onExecutionTagRead?.();
+      if (!this.executionTagPresent) return { status: 404, headers: {}, data: null };
+      data = { ref: `refs/tags/${this.binding.executionRef}`,
+        object: { type: 'commit', sha: this.executionTagSha ?? this.binding.sourceSha } };
+    }
     else if (request.path.includes('/git/ref/')) data = { object: { sha: this.movedSource ? 'f'.repeat(40) : this.binding.sourceSha } };
+    else if (request.path.includes('/git/commits/')) data = {
+      sha: this.binding.sourceSha, tree: { sha: this.executionTreeSha ?? this.binding.sourceTreeSha }
+    };
+    else if (request.path.includes('/rulesets?includes_parents=true')) data = this.executionTagProtected ? [{
+      id: 11, source_type: 'Repository', source: this.binding.repository
+    }] : [];
+    else if (request.path.endsWith('/rulesets/11')) data = {
+      id: 11, source_type: 'Repository', source: this.binding.repository, target: 'tag', enforcement: 'active',
+      bypass_actors: this.executionTagBypass ? [{ actor_id: 1 }] : [],
+      conditions: { ref_name: { include: ['refs/tags/liftoff-execution-*'], exclude: [] } },
+      rules: [{ type: 'update' }, { type: 'deletion' }]
+    };
+    else if (request.path === '/repos/owner/repo') data = {
+      id: 123, full_name: this.binding.repository, permissions: { push: true }
+    };
     else if (request.path.includes('/runner-groups/')) data = {
       id: 333, name: this.binding.runnerGroupName, network_configuration_id: 'NC_fixture', restricted_to_workflows: true,
-      selected_workflows: [`owner/repo/${this.binding.workflowPath}@refs/heads/develop`]
+      selected_workflows: [this.runnerUsesBranch
+        ? `owner/repo/${this.binding.workflowPath}@refs/heads/develop`
+        : `owner/repo/${this.binding.workflowPath}@refs/tags/${this.binding.executionRef}`]
     };
     else if (request.method === 'POST') {
       this.dispatched = true;
+      this.onDispatch?.();
       return { status: this.dispatchResponse ? 200 : 204, headers: {}, data: this.dispatchResponse };
     } else if (request.path.includes('/jobs')) {
       await this.onJobsRead?.();
@@ -218,10 +251,10 @@ class ArtifactTransport implements GitHubActivationTransport {
       if (this.duplicate && runs.length) runs.push(this.run());
       data = { total_count: runs.length, workflow_runs: runs };
     } else { await this.onRunRead?.(); data = this.run(); }
-    return { status: 200, headers: {}, data };
+    return { status: 200, headers: { 'x-oauth-scopes': this.providerScopes }, data };
   }
   run() { return {
-    id: 901, head_sha: this.binding.sourceSha, head_branch: 'develop', path: this.binding.workflowPath,
+    id: 901, head_sha: this.binding.sourceSha, head_branch: this.binding.executionRef, path: this.binding.workflowPath,
     display_title: this.binding.runTitle, event: 'workflow_dispatch', run_attempt: 1, repository: { id: 123 },
     created_at: coverageNow.toISOString(), status: this.runStatus, conclusion: this.conclusion
   }; }
@@ -271,8 +304,9 @@ async function fixture(artifact = false) {
       const value = await runner.run({ executable: 'git', args }, { cwd: root }); expect(value.status).toBe(0);
     }
     const sha = (await runner.run({ executable: 'git', args: ['rev-parse', 'HEAD'] }, { cwd: root })).stdout.trim();
+    const treeSha = (await runner.run({ executable: 'git', args: ['rev-parse', `${sha}^{tree}`] }, { cwd: root })).stdout.trim();
     f.inputs.phases['application-artifact-ready'] = { ...f.inputs.phases['application-artifact-ready'],
-      sourceSha: sha, workflowDigest: createHash('sha256').update(transport.workflow).digest('hex') };
+      sourceSha: sha, sourceTreeSha: treeSha, workflowDigest: createHash('sha256').update(transport.workflow).digest('hex') };
   }
   f.inspection = await coverageInspection({ root, phaseId: f.phase.id, state: f.state, activationInputs: f.inputs });
   const preview = (await buildSavedTransitionPlan(f))!;
@@ -562,16 +596,43 @@ describe('application source producers behind real prerequisites', () => {
       provider: 'azure', resourceType: 'Microsoft.Resources/deployments', resourceId: f.prerequisite.deploymentId
     }]);
   });
+  it.each(['Succeeded', 'Failed'] as const)(
+    'blocks regressing nonterminal readback of a known %s prerequisite deployment without redispatch', async (state) => {
+      const f = await fixture();
+      f.runner.deploymentState = state;
+      f.runner.failExport = true;
+      const first = await executeApplicationPrerequisites(f.input);
+      const terminalStatus = state === 'Succeeded' ? 'completed' : 'failed';
+      expect(first).toMatchObject({ status: 'blocked', operation: { status: terminalStatus } });
+      const operation = { ...first.operation!, planDigest: f.input.plan.planDigest };
+      f.input.inspection.state.phases[f.phase.id].operation = operation;
+      f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+      f.runner.deploymentState = 'Running';
+      const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+      const next = await executeApplicationPrerequisites({
+        ...f.input, now: new Date(coverageNow.getTime() + 1000), recovery: true
+      });
+      expect(next).toMatchObject({
+        status: 'blocked', blocker: expect.stringMatching(/terminal.*nonterminal/),
+        operation: { operationId: operation.operationId, startedAt: operation.startedAt,
+          planDigest: operation.planDigest, status: terminalStatus }
+      });
+      expect(next.evidencePayload).toBeUndefined();
+      expect(next.outputs?.values.workloadPrincipalId).toBeUndefined();
+      expect(progress).not.toHaveBeenCalled();
+      expect(f.runner.writes).toHaveLength(1);
+    }
+  );
   it.each(['registrySku', 'assignRegistryRoles', 'environment', 'budget', 'principal', 'unknown'] as const)(
     'rejects malformed prerequisite %s without inventing resources or roles', async (kind) => {
       const f = await fixture();
       const config = f.inputs.phases['application-prerequisites-ready']!;
-      if (kind === 'registrySku') config.registrySku = 'Premium';
-      if (kind === 'assignRegistryRoles') config.assignRegistryRoles = false;
-      if (kind === 'environment') config.environment = 'customer-prod';
+      if (kind === 'registrySku') Object.assign(config, { registrySku: 'Premium' });
+      if (kind === 'assignRegistryRoles') Object.assign(config, { assignRegistryRoles: false });
+      if (kind === 'environment') Object.assign(config, { environment: 'customer-prod' });
       if (kind === 'budget') f.inputs.budget!.usageMonthlyCents = 0;
-      if (kind === 'principal') f.input.inspection.state.phaseOutputs!['phase-0-complete']!.values.principalType = 'user';
-      if (kind === 'unknown') config.command = 'arbitrary-shell';
+      if (kind === 'principal') Object.assign(f.input.inspection.state.phaseOutputs!['phase-0-complete']!.values, { principalType: 'user' });
+      if (kind === 'unknown') Object.assign(config, { command: 'arbitrary-shell' });
       expect(await executeApplicationPrerequisites(f.input)).toMatchObject({ status: 'blocked' });
       expect(f.runner.writes).toEqual([]);
     }
@@ -800,12 +861,153 @@ describe('immutable application publication and independent readback', () => {
     const outcome = await executeApplicationArtifactPublication(f.input);
     expect(outcome, JSON.stringify(outcome)).toMatchObject({ status: 'completed', resultState: 'verified',
       outputs: { values: { artifactDigest: imageDigest, immutableImage: `${f.transport.binding.loginServer}/application/backend@${imageDigest}` } } });
+    expect(outcome.evidencePayload).toMatchObject({
+      executionRefAdmission: { kind: 'immutable-workflow-execution-ref.v1',
+        binding: { sourceSha: f.transport.binding.sourceSha, treeSha: f.transport.binding.sourceTreeSha,
+          executionRef: f.transport.binding.executionRef }, protectingRulesetIds: [11] }
+    });
     expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.input.plan.operations.find((entry) => entry.actionId === 'github.artifact.build-dispatch')?.inputs)
+      .toMatchObject({ sourceSha: f.transport.binding.sourceSha, sourceTreeSha: f.transport.binding.sourceTreeSha,
+        executionRef: f.transport.binding.executionRef });
+    expect(f.transport.calls.find((entry) => entry.method === 'POST')?.body)
+      .toMatchObject({ ref: `liftoff-execution-${f.transport.binding.sourceSha}` });
     expect(outcome.liveReadback?.map((entry) => entry.provider)).toEqual(['github', 'azure', 'azure']);
     const verification = f.runner.calls.find((entry) => entry.executable === 'gh')!;
     expect(verification.args).toContain('--source-digest');
     expect(verification.args).not.toContain('--token');
   });
+  it.each(['missing-tag', 'unprotected', 'bypass', 'tag-source', 'commit-tree', 'provider-grants', 'branch-runner'] as const)(
+    'refuses %s execution-ref admission without tag/policy writes or mutable-ref fallback', async (kind) => {
+      const f = await fixture(true);
+      if (kind === 'missing-tag') f.transport.executionTagPresent = false;
+      if (kind === 'unprotected') f.transport.executionTagProtected = false;
+      if (kind === 'bypass') f.transport.executionTagBypass = true;
+      if (kind === 'tag-source') f.transport.executionTagSha = 'f'.repeat(40);
+      if (kind === 'commit-tree') f.transport.executionTreeSha = 'f'.repeat(40);
+      if (kind === 'provider-grants') f.transport.providerScopes = 'repo';
+      if (kind === 'branch-runner') f.transport.runnerUsesBranch = true;
+      const outcome = await executeApplicationArtifactPublication(f.input);
+      expect(outcome).toMatchObject({ status: 'blocked' });
+      expect(outcome.evidencePayload).toBeUndefined();
+      expect(outcome.outputs?.values.immutableImage).toBeUndefined();
+      expect(f.transport.calls.every((entry) => entry.method === 'GET')).toBe(true);
+      expect(f.runner.writes).toEqual([]);
+      expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
+    }
+  );
+  it('reobserves execution-ref admission after durable intent and before actual dispatch', async () => {
+    const f = await fixture(true);
+    f.input.recordApplicationDispatchIntent = async () => { f.transport.executionTagProtected = false; };
+    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked' });
+    expect(f.transport.calls.every((entry) => entry.method === 'GET')).toBe(true);
+    expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
+  });
+  it('rechecks authority after awaited execution-tag admission before transmitting source through dispatch', async () => {
+    const f = await fixture(true);
+    let now = coverageNow;
+    let intentRecorded = false;
+    f.input.clock = () => now;
+    const intent = vi.fn(async () => { intentRecorded = true; });
+    f.input.recordApplicationDispatchIntent = intent;
+    f.transport.onExecutionTagRead = () => {
+      if (intentRecorded) now = new Date(Date.parse(f.input.plan.expiresAt) + 1000);
+    };
+    const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+    const outcome = await executeApplicationArtifactPublication(f.input);
+    expect(outcome).toMatchObject({ status: 'blocked' });
+    expect(intent).toHaveBeenCalledOnce();
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toEqual([]);
+    expect(progress).not.toHaveBeenCalled();
+    expect(outcome.operation).toBeUndefined();
+    expect(outcome.evidencePayload).toBeUndefined();
+    expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
+  });
+  it.each(['accepted', 'resumed'] as const)(
+    'refuses changed execution-ref admission at %s observation while retaining the actual invocation', async (kind) => {
+      const f = await fixture(true);
+      if (kind === 'accepted') {
+        f.transport.dispatchResponse = { workflow_run_id: 901,
+          run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
+          html_url: 'https://github.com/owner/repo/actions/runs/901' };
+        f.transport.onDispatch = () => { f.transport.executionTagProtected = false; };
+      } else {
+        f.transport.runStatus = 'in_progress';
+        const first = await executeApplicationArtifactPublication(f.input);
+        expect(first).toMatchObject({ status: 'pending', operation: { operationId: 'github-actions:901' } });
+        f.input.inspection.state.phases[f.phase.id].operation = {
+          ...first.operation!, planDigest: f.input.plan.planDigest
+        };
+        f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+        f.transport.executionTagProtected = false;
+      }
+      const outcome = await executeApplicationArtifactPublication(f.input);
+      expect(outcome).toMatchObject({
+        status: kind === 'accepted' ? 'pending' : 'blocked',
+        blocker: expect.stringMatching(/independently read repository tag-update/)
+      });
+      if (kind === 'accepted') expect(outcome.operation).toMatchObject({
+        operationId: 'github-actions:901', status: 'running'
+      });
+      else expect(f.input.inspection.state.phases[f.phase.id].operation).toMatchObject({
+        operationId: 'github-actions:901', status: 'running'
+      });
+      expect(outcome.evidencePayload).toBeUndefined();
+      expect(outcome.outputs?.values.immutableImage).toBeUndefined();
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+      expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
+    }
+  );
+  it('rejects a legacy plan lacking its complete source-tree and execution-tag binding before provider reads', async () => {
+    const f = await fixture(true);
+    const dispatch = f.input.plan.operations.find((entry) => entry.actionId === 'github.artifact.build-dispatch')!;
+    const { sourceTreeSha, executionRef, ...legacyInputs } = dispatch.inputs;
+    expect(sourceTreeSha).toBe(f.transport.binding.sourceTreeSha);
+    expect(executionRef).toBe(f.transport.binding.executionRef);
+    Object.assign(dispatch, { inputs: legacyInputs });
+    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({
+      status: 'blocked', blocker: expect.stringMatching(/changed exact source/)
+    });
+    expect(f.transport.calls).toEqual([]);
+    expect(f.runner.writes).toEqual([]);
+  });
+  it.each(['accepted', 'resumed'] as const)(
+    'refuses a different actual workflow run at the exact %s publication handle', async (kind) => {
+      const f = await fixture(true);
+      if (kind === 'resumed') {
+        f.transport.runStatus = 'in_progress';
+        const pending = await executeApplicationArtifactPublication(f.input);
+        expect(pending).toMatchObject({ status: 'pending', operation: { operationId: 'github-actions:901' } });
+        f.input.inspection.state.phases[f.phase.id].operation = {
+          ...pending.operation!, planDigest: f.input.plan.planDigest
+        };
+        f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+        f.transport.runStatus = 'completed';
+      } else {
+        f.transport.dispatchResponse = {
+          workflow_run_id: 901, run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
+          html_url: 'https://github.com/owner/repo/actions/runs/901'
+        };
+      }
+      const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+      const run = f.transport.run.bind(f.transport);
+      vi.spyOn(f.transport, 'run').mockImplementation(() => ({ ...run(), id: 999 }));
+      const jobReads = f.transport.calls.filter((entry) => entry.path.includes('/jobs')).length;
+      const outcome = await executeApplicationArtifactPublication(f.input);
+      expect(outcome).toMatchObject({
+        status: kind === 'accepted' ? 'pending' : 'blocked',
+        blocker: expect.stringMatching(/exact.*workflow.*handle/),
+        ...(kind === 'accepted' ? { operation: { operationId: 'github-actions:901', status: 'running' } } : {})
+      });
+      expect(outcome.evidencePayload).toBeUndefined();
+      expect(outcome.outputs?.values.immutableImage).toBeUndefined();
+      expect(progress.mock.calls.every(([entry]) => entry.operation.operationId === 'github-actions:901' &&
+        entry.operation.status === 'running')).toBe(true);
+      expect(f.transport.calls.filter((entry) => entry.path.includes('/jobs'))).toHaveLength(jobReads);
+      expect(f.runner.calls.filter((entry) => entry.executable === 'gh')).toEqual([]);
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    }
+  );
   it('persists real producer output through the engine and exposes a strict downstream immutable artifact interface', async () => {
     const f = await fixture(true);
     const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
@@ -818,7 +1020,7 @@ describe('immutable application publication and independent readback', () => {
     expect(readVerifiedApplicationArtifact(inspection)).toMatchObject({ sourceSha: f.transport.binding.sourceSha,
       digest: imageDigest, environment: 'dev', registryResourceId: f.prerequisite.registryId,
       workflowRunId: 901, workflowJobId: 902, acrRunId: 'ca1' });
-    saved.phaseOutputs!['application-artifact-ready']!.values.artifactDigest = 'latest';
+    Object.assign(saved.phaseOutputs!['application-artifact-ready']!.values, { artifactDigest: 'latest' });
     expect(() => readVerifiedApplicationArtifact(inspection)).toThrow(/authoritative/);
   });
   it('refuses an earlier verified artifact after independently inspecting changed recipe or transmission consent', async () => {
@@ -943,6 +1145,132 @@ describe('immutable application publication and independent readback', () => {
       resourceId: '/repos/owner/repo/actions/runs/901', status: 'completed', startedAt: coverageNow.toISOString(), observedAt: coverageNow.toISOString()
     })).rejects.toThrow();
   });
+  it.each(['acr-run', 'tag', 'digest', 'attestation', 'final-tag'] as const)(
+    'retains original artifact inputs while the %s read is awaiting a response', async (boundary) => {
+      const f = await fixture(true);
+      const binding = f.transport.binding;
+      const values = { artifactBindingDigest: binding.bindingDigest, sourceSha: binding.sourceSha,
+        workflowDigest: binding.workflowDigest, registryResourceId: binding.registryId,
+        acrRunId: 'ca1', artifactDigest: imageDigest };
+      const outputs = { values, resources: [] };
+      const operation = {
+        provider: 'github' as const, actionId: 'github.artifact.build-dispatch', operationId: 'github-actions:901',
+        resourceId: '/repos/owner/repo/actions/runs/901', status: 'completed' as const,
+        startedAt: coverageNow.toISOString(), observedAt: coverageNow.toISOString(), planDigest: f.input.plan.planDigest
+      };
+      const original = structuredClone(await observeImmutableApplicationArtifact(f.input, outputs, operation));
+      const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+      const run = f.runner.run.bind(f.runner);
+      let tagReads = 0;
+      const calls: ExternalCommand[] = [];
+      vi.spyOn(f.runner, 'run').mockImplementation(async (command, options) => {
+        calls.push(command);
+        const key = command.args.join(' ');
+        const tagRead = key.startsWith('acr repository show ') && argument(command, '--image') === `${binding.imageRepository}:${binding.tag}`;
+        if (tagRead) tagReads++;
+        const selected = boundary === 'acr-run' ? key.startsWith('acr task show-run ')
+          : boundary === 'attestation' ? command.executable === 'gh'
+          : boundary === 'digest' ? key.startsWith('acr repository show ') && argument(command, '--image') === `${binding.imageRepository}@${imageDigest}`
+          : tagRead && tagReads === (boundary === 'tag' ? 1 : 2);
+        if (selected) { entered.resolve(); await release.promise; }
+        return run(command, options);
+      });
+      const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+      const intent = vi.spyOn(f.input, 'recordApplicationDispatchIntent');
+      const phase = structuredClone(f.input.inspection.state.phases[f.phase.id]);
+      const pending = observeImmutableApplicationArtifact(f.input, outputs, operation);
+      await entered.promise;
+      try {
+        Object.assign(values, { artifactBindingDigest: 'e'.repeat(64), sourceSha: 'f'.repeat(40),
+          workflowDigest: 'e'.repeat(64), registryResourceId: `${binding.registryId}-replacement`,
+          acrRunId: 'ca2', artifactDigest: `sha256:${'e'.repeat(64)}` });
+        outputs.values = { ...values, acrRunId: 'ca3' };
+        Object.assign(operation, { operationId: 'github-actions:999', resourceId: '/repos/owner/repo/actions/runs/999',
+          startedAt: new Date(coverageNow.getTime() + 1000).toISOString(), planDigest: 'f'.repeat(64) });
+        Object.assign(f.inputs.phases['application-artifact-ready']!, {
+          sourceSha: 'f'.repeat(40), workflowDigest: 'e'.repeat(64), imageRepository: 'application/replacement'
+        });
+      } finally { release.resolve(); }
+      expect(await pending).toEqual(original);
+      expect(argument(calls[0]!, '--run-id')).toBe('ca1');
+      expect(calls.filter((command) => command.args.join(' ').startsWith('acr repository show '))
+        .map((command) => argument(command, '--image'))).toEqual([
+        `${binding.imageRepository}:${binding.tag}`, `${binding.imageRepository}@${imageDigest}`,
+        `${binding.imageRepository}:${binding.tag}`
+      ]);
+      expect(calls.find((command) => command.executable === 'gh')!.args).toContain(binding.sourceSha);
+      expect(calls).toHaveLength(5);
+      expect(f.transport.calls).toEqual([]);
+      expect(f.runner.writes).toEqual([]);
+      expect(progress).not.toHaveBeenCalled();
+      expect(intent).not.toHaveBeenCalled();
+      expect(f.input.inspection.state.phases[f.phase.id]).toEqual(phase);
+      expect(operation.operationId).toBe('github-actions:999');
+      expect(outputs.values.acrRunId).toBe('ca3');
+      expect(f.inputs.phases['application-artifact-ready']!.imageRepository).toBe('application/replacement');
+    }
+  );
+  it.each(['acr-run', 'operation', 'tag', 'digest', 'source'] as const)(
+    'refuses replacement %s proof after caller inputs change during the original read', async (replacement) => {
+      const f = await fixture(true);
+      const binding = f.transport.binding;
+      const values = { artifactBindingDigest: binding.bindingDigest, sourceSha: binding.sourceSha,
+        workflowDigest: binding.workflowDigest, registryResourceId: binding.registryId,
+        acrRunId: 'ca1', artifactDigest: imageDigest };
+      const operation = {
+        provider: 'github' as const, actionId: 'github.artifact.build-dispatch', operationId: 'github-actions:901',
+        resourceId: '/repos/owner/repo/actions/runs/901', status: 'completed' as const,
+        startedAt: coverageNow.toISOString(), observedAt: coverageNow.toISOString(), planDigest: f.input.plan.planDigest
+      };
+      const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+      const run = f.runner.run.bind(f.runner);
+      const calls: ExternalCommand[] = [];
+      vi.spyOn(f.runner, 'run').mockImplementation(async (command, options) => {
+        calls.push(command);
+        const selected = ['operation', 'source'].includes(replacement)
+          ? command.executable === 'gh' : command.args.join(' ').startsWith('acr task show-run ');
+        if (selected) { entered.resolve(); await release.promise; }
+        const observed = await run(command, options);
+        if (selected && replacement === 'acr-run') {
+          return { ...observed, stdout: JSON.stringify({ ...JSON.parse(observed.stdout), runId: 'ca2' }) };
+        }
+        return observed;
+      });
+      const pending = observeImmutableApplicationArtifact(f.input, { values, resources: [] }, operation);
+      const rejected = expect(pending).rejects.toThrow(
+        ['operation', 'source'].includes(replacement) ? /certificate does not bind/ : /ACR publication run does not own/
+      );
+      await entered.promise;
+      try {
+        if (replacement === 'acr-run') values.acrRunId = 'ca2';
+        if (replacement === 'operation') {
+          operation.operationId = 'github-actions:999';
+          operation.resourceId = '/repos/owner/repo/actions/runs/999';
+          f.runner.attestationRun = '999';
+        }
+        if (replacement === 'tag') {
+          Object.assign(f.inputs.phases['application-artifact-ready']!, { imageRepository: 'application/replacement' });
+          f.runner.artifact = { ...binding, tag: `${binding.tag}-replacement` };
+        }
+        if (replacement === 'digest') {
+          values.artifactDigest = `sha256:${'e'.repeat(64)}`;
+          f.runner.actualDigest = values.artifactDigest;
+        }
+        if (replacement === 'source') {
+          values.sourceSha = 'f'.repeat(40);
+          Object.assign(f.inputs.phases['application-artifact-ready']!, { sourceSha: values.sourceSha });
+          f.runner.attestationSource = values.sourceSha;
+        }
+      } finally { release.resolve(); }
+      await rejected;
+      expect(argument(calls[0]!, '--run-id')).toBe('ca1');
+      expect(calls).toHaveLength(['operation', 'source'].includes(replacement) ? 4 : 1);
+      expect(f.transport.calls).toEqual([]);
+      expect(f.runner.writes).toEqual([]);
+      expect(f.input.inspection.state.phases[f.phase.id].state).not.toBe('verified');
+      expect(operation).toMatchObject({ startedAt: coverageNow.toISOString(), planDigest: f.input.plan.planDigest });
+    }
+  );
   it('withholds completion after a failed job and retains its actual operation for recovery', async () => {
     const f = await fixture(true); f.transport.conclusion = 'failure';
     expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked',
@@ -950,7 +1278,7 @@ describe('immutable application publication and independent readback', () => {
   });
   it('requires independent source, network and build consent instead of resource approval', async () => {
     const f = await fixture(true);
-    f.inputs.phases['application-artifact-ready']!.dependencyNetworkApproved = false;
+    Object.assign(f.inputs.phases['application-artifact-ready']!, { dependencyNetworkApproved: false });
     expect(() => applicationArtifactBinding(f.input)).toThrow(/each require explicit consent/);
     expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toEqual([]);
   });

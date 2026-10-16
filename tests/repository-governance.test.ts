@@ -16,8 +16,7 @@ import {
   validateGovernanceContext,
   validateGovernancePolicy
 } from '../src/repository-governance.js';
-import { buildArtifacts } from '../src/templates.js';
-import { renderGovernanceGuide } from '../src/generators/governance/guides.js';
+import { buildArtifacts, buildCurrentArtifacts } from '../src/templates.js';
 import { liftoffVersion } from '../src/version.js';
 import { managedCoreLogicalNames } from '../src/artifact-lifecycle.js';
 import {
@@ -672,16 +671,18 @@ describe('repository governance artifacts', () => {
     expect(guide).toContain('Historical proof cannot satisfy another profile');
     expect(guide).toContain('Single-maintainer GitFlow requires zero additional human PR approvals');
 
-    const teamGuide = renderGovernanceGuide(buildCurrentProjectPlan({
+    const teamGuide = buildCurrentArtifacts(buildCurrentProjectPlan({
       projectName: 'Governed App',
       pattern: 'rag',
       cloud: 'azure',
       agents: ['copilot', 'claude'],
       governanceProfile: 'team-gitflow'
-    }, { requireProjectName: true }));
-    expect(teamGuide).toContain('Team GitFlow requires one current independent human PR approval');
-    expect(teamGuide).toContain('self, bot-only, and stale approval do not satisfy it');
-    expect(teamGuide).toContain('Neither profile invents a deployment reviewer');
+    }, { requireProjectName: true })).find(
+      artifact => artifact.logicalName === 'repository-governance-guide'
+    )!.content;
+    expect(teamGuide).toContain('Team requires one independent human approval on the actual current head');
+    expect(teamGuide).toContain('Authors, bots and stale approvals do not satisfy it');
+    expect(teamGuide).toContain('No mandatory deployment reviewers are introduced');
   });
 
   it('renders identical bytes and path identities repeatedly', () => {

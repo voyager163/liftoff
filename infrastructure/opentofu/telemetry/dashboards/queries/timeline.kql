@@ -1,0 +1,4 @@
+projects
+| where TimeGenerated >= ago(1d * toint("${window_days}"))
+| summarize ObservedProjectsApprox = dcount(ProjectId, 2) by bin(TimeGenerated, 1d), Source
+| order by TimeGenerated asc

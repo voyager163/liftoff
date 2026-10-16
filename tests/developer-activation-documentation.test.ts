@@ -94,8 +94,9 @@ describe('developer activation-completeness guidance', () => {
       '`VerifiedApplicationArtifact`', '`observeImmutableApplicationArtifact`',
       'old placeholder plan', 'TASK14.1 stays\nunchecked',
       'do not implement or authorize workflow source publication',
-      'mutable default-branch ref', 'immutable execution-tag binding',
-      'no mutable-ref fallback'
+      '`liftoff-execution-<full-source-SHA>`', '`sourceTreeSha`',
+      'Old mutable-ref plans are stale', 'no tag or\npolicy writer',
+      'branch or raw-SHA fallback', 'does not qualify public-v8 execution'
     ]) expect(completeness).toContain(phrase);
     expect(phaseCapabilities['application-prerequisites-ready'].executor).toBe('injected-only');
     expect(phaseCapabilities['application-artifact-ready'].executor).toBe('injected-only');
@@ -153,7 +154,8 @@ describe('developer activation-completeness guidance', () => {
       const identity = source.identity;
       expect(manifests).toContain(`\`${identity.liftoffVersion}\``);
       expect(manifests).toContain(`| Manifest | ${identity.manifestArtifactVersion} |`);
-      expect(manifests).toContain(`| Activation contract / state / evidence header / approval envelope | ${identity.activationContractVersion} |`);
+      expect(manifests).toContain(`| Activation contract | ${identity.activationContractVersion} |`);
+      expect(manifests).toContain(`| State / evidence header / approval envelope | ${identity.activationStateSchemaVersion} |`);
       expect(manifests).toContain(`| Phase graph / saved transition plan | ${source.savedPlanSchemaVersion} |`);
       expect(manifests).toContain(`| Compatibility metadata | ${source.compatibilityMetadataSchemaVersion} |`);
     }

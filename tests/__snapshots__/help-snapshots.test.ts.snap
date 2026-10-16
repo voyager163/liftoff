@@ -248,20 +248,22 @@ migrate  Adopt an existing project
 
 Maintenance
 ───────────
-Command   Description
-────────  ──────────────────────────────────────────────────────────────────────
-assess    Read-only whole-project comparison against explicitly displayed
-          installed targets
-adopt     Preview reviewed in-place adoption for a supported non-Liftoff
-          application
-workflow  Review an explicit development-workflow transition
-validate  Validate a generated project manifest
-update    Preview and explicitly approve scoped project updates
-repair    Review and repair supported project files with separate default-No
-          approval
-upgrade   Replace the supported global npm Liftoff CLI; project templates use
-          update separately
-doctor    Check local and project readiness
+Command    Description
+─────────  ─────────────────────────────────────────────────────────────────────
+telemetry  Explicit pseudonymous project consent and reporting; status is
+           side-effect-free
+assess     Read-only whole-project comparison against explicitly displayed
+           installed targets
+adopt      Preview reviewed in-place adoption for a supported non-Liftoff
+           application
+workflow   Review an explicit development-workflow transition
+validate   Validate a generated project manifest
+update     Preview and explicitly approve scoped project updates
+repair     Review and repair supported project files with separate default-No
+           approval
+upgrade    Replace the supported global npm Liftoff CLI; project templates use
+           update separately
+doctor     Check local and project readiness
 
 Reference
 ─────────
@@ -337,34 +339,38 @@ exports[`complete help screens > snapshots compact governance command help 1`] =
 "LIFTOFF / GOVERNANCE
 Historical projects retain schema-2 planning and execution. V8 projects retain
 schema-3 status, resume and verify inspection; recorded phases are not current
-proof. An exact --revalidation-publication selects existing successor proof,
-never approval or execution. Verify exits 0 for complete or inapplicable
-selected scope, 2 for consistent incomplete work, and 1 for inspection failure.
-For separate schema-7 v8 verification, select --scope local --local-operation
-verify: plan --inputs <request.json>, approve --plan <fingerprint> --inputs
-<consent.json>, then apply-next --plan <fingerprint> --execute. Planning probes
-installed tools and saves an external preview; approval separately saves
-consent. Without --execute, apply-next only inspects saved progress. Keep public
-request and consent files outside the project. Native Manual uses
-verify-manual-native and approve-manual-native with independent infrastructure
-preparation/network consent and the advertised qualified host/tool limits.
-Locked provider downloads and local validation grant no Azure/GitHub resource
-operations. Initialized OpenSpec requires explicit generated-baseline scope
-attestation; it is not domain verification; the private workspace is not a
-sandbox. Separate schema-5 completion uses --local-operation finalize for
-admitted Manual/Spec Kit verification, then --local-operation publish for exact
-target review, independent approval and execution. Both require their own closed
---inputs for plan/approve and exact --plan for apply-next. For publication,
-governance recover --plan <fingerprint> --execute recovers only that attributed
-transaction; without --execute it only inspects saved progress. Failure does not
-imply rollback. Separate schema-6 --local-operation revalidate-successor
-constructs or reviews exact records from completed verification of an existing
-supported successor; it requires independent publication approval and explicit
-execution/recovery. Committed incomplete revalidation stays active and exits 2.
-No successor creation, OpenSpec finalization, provider or whole-directory
-rollback authority is granted. Local operations otherwise exit 0 for a completed
-requested operation or nonexecuting inspection, and 1 for refusal, failure, or
-uncertainty.
+proof. V8 plan --scope activation --inputs <workflow-review.json> accepts only a
+closed schema-1 review-workflow-source5 request. It returns read-only exact
+review values and concrete missing current-prerequisite blockers, exits 2, saves
+no approval or preview, and permits no publication or dispatch. Modern workflow
+approve/apply-next remain unavailable. An exact --revalidation-publication
+selects existing successor proof, never approval or execution. Verify exits 0
+for complete or inapplicable selected scope, 2 for consistent incomplete work,
+and 1 for inspection failure. For separate schema-7 v8 verification, select
+--scope local --local-operation verify: plan --inputs <request.json>, approve
+--plan <fingerprint> --inputs <consent.json>, then apply-next --plan
+<fingerprint> --execute. Planning probes installed tools and saves an external
+preview; approval separately saves consent. Without --execute, apply-next only
+inspects saved progress. Keep public request and consent files outside the
+project. Native Manual uses verify-manual-native and approve-manual-native with
+independent infrastructure preparation/network consent and the advertised
+qualified host/tool limits. Locked provider downloads and local validation grant
+no Azure/GitHub resource operations. Initialized OpenSpec requires explicit
+generated-baseline scope attestation; it is not domain verification; the private
+workspace is not a sandbox. Separate schema-5 completion uses --local-operation
+finalize for admitted Manual/Spec Kit verification, then --local-operation
+publish for exact target review, independent approval and execution. Both
+require their own closed --inputs for plan/approve and exact --plan for
+apply-next. For publication, governance recover --plan <fingerprint> --execute
+recovers only that attributed transaction; without --execute it only inspects
+saved progress. Failure does not imply rollback. Separate schema-6
+--local-operation revalidate-successor constructs or reviews exact records from
+completed verification of an existing supported successor; it requires
+independent publication approval and explicit execution/recovery. Committed
+incomplete revalidation stays active and exits 2. No successor creation,
+OpenSpec finalization, provider or whole-directory rollback authority is
+granted. Local operations otherwise exit 0 for a completed requested operation
+or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.
 
 Usage
 ─────
@@ -673,6 +679,64 @@ docs/cli-reference.md#repair-modes.
 "
 `;
 
+exports[`complete help screens > snapshots compact telemetry command help 1`] = `
+"LIFTOFF / TELEMETRY
+Explicit pseudonymous project consent and reporting; status is side-effect-free
+
+Usage
+─────
+liftoff telemetry <status|enroll|disable|report|heartbeat> [project-path]
+
+Subcommands
+───────────
+- status
+- enroll
+- disable
+- report
+- heartbeat
+
+Project options
+───────────────
+Option               Description
+───────────────────  ───────────────────────────────────────────────────────────
+--project <path>     One exact Liftoff project root
+--repository <path>  Exact repository root for separate heartbeat file authority
+
+Command options
+───────────────
+Option       Description
+───────────  ───────────────────────────────────────────────────────────────────
+--check      Review exact project and external consent writes without generating
+             an identity
+--heartbeat  Select only the separately approved CI reporting path; unavailable
+             without qualified published pins
+
+Consent options
+───────────────
+Option                        Description
+────────────────────────────  ──────────────────────────────────────────────────
+--approve-plan <fingerprint>  Approve the full current 64-hex telemetry review
+                              fingerprint
+--preserve-identity           Explicitly reuse a tracked identity for this
+                              clone/worktree; bind this checkout locally
+--new-identity                Explicitly replace a copied/forked identity with a
+                              new random project UUID after approval
+
+Output options
+──────────────
+Option  Description
+──────  ──────────────────────────────────────────────────────────
+--json  Emit one schema-1 result; bare mutation JSON previews only
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
 exports[`complete help screens > snapshots compact update command help 1`] = `
 "LIFTOFF / UPDATE
 Start with \`liftoff update --check\`, then run \`liftoff update\` to approve the
@@ -894,6 +958,7 @@ Command: plan | Description: Preview generated artifacts
 Command: migrate | Description: Adopt an existing project
 
 Maintenance
+Command: telemetry | Description: Explicit pseudonymous project consent and reporting; status is side-effect-free
 Command: assess | Description: Read-only whole-project comparison against explicitly displayed installed targets
 Command: adopt | Description: Preview reviewed in-place adoption for a supported non-Liftoff application
 Command: workflow | Description: Review an explicit development-workflow transition
@@ -944,7 +1009,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain governance command help 1`] = `
-"LIFTOFF / GOVERNANCE - Historical projects retain schema-2 planning and execution. V8 projects retain schema-3 status, resume and verify inspection; recorded phases are not current proof. An exact --revalidation-publication selects existing successor proof, never approval or execution. Verify exits 0 for complete or inapplicable selected scope, 2 for consistent incomplete work, and 1 for inspection failure. For separate schema-7 v8 verification, select --scope local --local-operation verify: plan --inputs <request.json>, approve --plan <fingerprint> --inputs <consent.json>, then apply-next --plan <fingerprint> --execute. Planning probes installed tools and saves an external preview; approval separately saves consent. Without --execute, apply-next only inspects saved progress. Keep public request and consent files outside the project. Native Manual uses verify-manual-native and approve-manual-native with independent infrastructure preparation/network consent and the advertised qualified host/tool limits. Locked provider downloads and local validation grant no Azure/GitHub resource operations. Initialized OpenSpec requires explicit generated-baseline scope attestation; it is not domain verification; the private workspace is not a sandbox. Separate schema-5 completion uses --local-operation finalize for admitted Manual/Spec Kit verification, then --local-operation publish for exact target review, independent approval and execution. Both require their own closed --inputs for plan/approve and exact --plan for apply-next. For publication, governance recover --plan <fingerprint> --execute recovers only that attributed transaction; without --execute it only inspects saved progress. Failure does not imply rollback. Separate schema-6 --local-operation revalidate-successor constructs or reviews exact records from completed verification of an existing supported successor; it requires independent publication approval and explicit execution/recovery. Committed incomplete revalidation stays active and exits 2. No successor creation, OpenSpec finalization, provider or whole-directory rollback authority is granted. Local operations otherwise exit 0 for a completed requested operation or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.
+"LIFTOFF / GOVERNANCE - Historical projects retain schema-2 planning and execution. V8 projects retain schema-3 status, resume and verify inspection; recorded phases are not current proof. V8 plan --scope activation --inputs <workflow-review.json> accepts only a closed schema-1 review-workflow-source5 request. It returns read-only exact review values and concrete missing current-prerequisite blockers, exits 2, saves no approval or preview, and permits no publication or dispatch. Modern workflow approve/apply-next remain unavailable. An exact --revalidation-publication selects existing successor proof, never approval or execution. Verify exits 0 for complete or inapplicable selected scope, 2 for consistent incomplete work, and 1 for inspection failure. For separate schema-7 v8 verification, select --scope local --local-operation verify: plan --inputs <request.json>, approve --plan <fingerprint> --inputs <consent.json>, then apply-next --plan <fingerprint> --execute. Planning probes installed tools and saves an external preview; approval separately saves consent. Without --execute, apply-next only inspects saved progress. Keep public request and consent files outside the project. Native Manual uses verify-manual-native and approve-manual-native with independent infrastructure preparation/network consent and the advertised qualified host/tool limits. Locked provider downloads and local validation grant no Azure/GitHub resource operations. Initialized OpenSpec requires explicit generated-baseline scope attestation; it is not domain verification; the private workspace is not a sandbox. Separate schema-5 completion uses --local-operation finalize for admitted Manual/Spec Kit verification, then --local-operation publish for exact target review, independent approval and execution. Both require their own closed --inputs for plan/approve and exact --plan for apply-next. For publication, governance recover --plan <fingerprint> --execute recovers only that attributed transaction; without --execute it only inspects saved progress. Failure does not imply rollback. Separate schema-6 --local-operation revalidate-successor constructs or reviews exact records from completed verification of an existing supported successor; it requires independent publication approval and explicit execution/recovery. Committed incomplete revalidation stays active and exits 2. No successor creation, OpenSpec finalization, provider or whole-directory rollback authority is granted. Local operations otherwise exit 0 for a completed requested operation or nonexecuting inspection, and 1 for refusal, failure, or uncertainty.
 
 Usage
 Usage: liftoff governance <status|plan|approve|apply-next|credential-enroll|recover|resume|verify|assess> [project-path]
@@ -1099,6 +1164,41 @@ Repair approval and native help
 - Recovery cleans only authenticated CLI-created disposable workspace identities with safely established ownership; never patch staging, live projects, global caches or original-byte backups. Earlier approved effects remain visible after later cancellation.
 - Open the selected project in Copilot or Claude and invoke /liftoff-repair; in Codex use $liftoff-repair or its skill picker. These are coding-agent integrations, not shell commands.
 - If the native integration is missing, run liftoff update --check for that project and review its separate managed update. See docs/cli-reference.md#repair-modes.
+
+"
+`;
+
+exports[`complete help screens > snapshots plain telemetry command help 1`] = `
+"LIFTOFF / TELEMETRY - Explicit pseudonymous project consent and reporting; status is side-effect-free
+
+Usage
+Usage: liftoff telemetry <status|enroll|disable|report|heartbeat> [project-path]
+
+Subcommands
+- status
+- enroll
+- disable
+- report
+- heartbeat
+
+Project options
+Option: --project <path> | Description: One exact Liftoff project root
+Option: --repository <path> | Description: Exact repository root for separate heartbeat file authority
+
+Command options
+Option: --check | Description: Review exact project and external consent writes without generating an identity
+Option: --heartbeat | Description: Select only the separately approved CI reporting path; unavailable without qualified published pins
+
+Consent options
+Option: --approve-plan <fingerprint> | Description: Approve the full current 64-hex telemetry review fingerprint
+Option: --preserve-identity | Description: Explicitly reuse a tracked identity for this clone/worktree; bind this checkout locally
+Option: --new-identity | Description: Explicitly replace a copied/forked identity with a new random project UUID after approval
+
+Output options
+Option: --json | Description: Emit one schema-1 result; bare mutation JSON previews only
+
+General options
+Option: --help | Description: Show command-specific help
 
 "
 `;
@@ -1363,17 +1463,18 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ migrate  Adopt an existing project                                                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Maintenance ────────────────────────────────────────────────────────────────────────────────┐
-│ Command   Description                                                                        │
-│ ────────  ────────────────────────────────────────────────────────────────────────────────── │
-│ assess    Read-only whole-project comparison against explicitly displayed installed targets  │
-│ adopt     Preview reviewed in-place adoption for a supported non-Liftoff application         │
-│ workflow  Review an explicit development-workflow transition                                 │
-│ validate  Validate a generated project manifest                                              │
-│ update    Preview and explicitly approve scoped project updates                              │
-│ repair    Review and repair supported project files with separate default-No approval        │
-│ upgrade   Replace the supported global npm Liftoff CLI; project templates use update         │
-│           separately                                                                         │
-│ doctor    Check local and project readiness                                                  │
+│ Command    Description                                                                       │
+│ ─────────  ───────────────────────────────────────────────────────────────────────────────── │
+│ telemetry  Explicit pseudonymous project consent and reporting; status is side-effect-free   │
+│ assess     Read-only whole-project comparison against explicitly displayed installed targets │
+│ adopt      Preview reviewed in-place adoption for a supported non-Liftoff application        │
+│ workflow   Review an explicit development-workflow transition                                │
+│ validate   Validate a generated project manifest                                             │
+│ update     Preview and explicitly approve scoped project updates                             │
+│ repair     Review and repair supported project files with separate default-No approval       │
+│ upgrade    Replace the supported global npm Liftoff CLI; project templates use update        │
+│            separately                                                                        │
+│ doctor     Check local and project readiness                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Reference ──────────────────────────────────────────────────────────────────────────────────┐
 │ Command       Description                                                                    │
@@ -1439,7 +1540,11 @@ exports[`complete help screens > snapshots rich governance assessment help 1`] =
 exports[`complete help screens > snapshots rich governance command help 1`] = `
 "┌─ LIFTOFF / GOVERNANCE ───────────────────────────────────────────────────────────────────────┐
 │ Historical projects retain schema-2 planning and execution. V8 projects retain schema-3      │
-│ status, resume and verify inspection; recorded phases are not current proof. An exact        │
+│ status, resume and verify inspection; recorded phases are not current proof. V8 plan --scope │
+│ activation --inputs <workflow-review.json> accepts only a closed schema-1                    │
+│ review-workflow-source5 request. It returns read-only exact review values and concrete       │
+│ missing current-prerequisite blockers, exits 2, saves no approval or preview, and permits no │
+│ publication or dispatch. Modern workflow approve/apply-next remain unavailable. An exact     │
 │ --revalidation-publication selects existing successor proof, never approval or execution.    │
 │ Verify exits 0 for complete or inapplicable selected scope, 2 for consistent incomplete      │
 │ work, and 1 for inspection failure. For separate schema-7 v8 verification, select --scope    │
@@ -1717,6 +1822,55 @@ exports[`complete help screens > snapshots rich repair command help 1`] = `
 │ commands.                                                                                    │
 │ • If the native integration is missing, run liftoff update --check for that project and      │
 │ review its separate managed update. See docs/cli-reference.md#repair-modes.                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
+exports[`complete help screens > snapshots rich telemetry command help 1`] = `
+"┌─ LIFTOFF / TELEMETRY ────────────────────────────────────────────────────────────────────────┐
+│ Explicit pseudonymous project consent and reporting; status is side-effect-free              │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff telemetry <status|enroll|disable|report|heartbeat> [project-path]                    │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Subcommands ────────────────────────────────────────────────────────────────────────────────┐
+│ • status                                                                                     │
+│ • enroll                                                                                     │
+│ • disable                                                                                    │
+│ • report                                                                                     │
+│ • heartbeat                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option               Description                                                             │
+│ ───────────────────  ───────────────────────────────────────────────────────────             │
+│ --project <path>     One exact Liftoff project root                                          │
+│ --repository <path>  Exact repository root for separate heartbeat file authority             │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option       Description                                                                     │
+│ ───────────  ─────────────────────────────────────────────────────────────────────────────── │
+│ --check      Review exact project and external consent writes without generating an identity │
+│ --heartbeat  Select only the separately approved CI reporting path; unavailable without      │
+│              qualified published pins                                                        │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                        Description                                                    │
+│ ────────────────────────────  ────────────────────────────────────────────────────────────── │
+│ --approve-plan <fingerprint>  Approve the full current 64-hex telemetry review fingerprint   │
+│ --preserve-identity           Explicitly reuse a tracked identity for this clone/worktree;   │
+│                               bind this checkout locally                                     │
+│ --new-identity                Explicitly replace a copied/forked identity with a new random  │
+│                               project UUID after approval                                    │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────────────────────────────────────                           │
+│ --json  Emit one schema-1 result; bare mutation JSON previews only                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 "
 `;

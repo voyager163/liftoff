@@ -1,0 +1,4 @@
+LiftoffCommandEvents_CL
+| where TimeGenerated >= ago(180d) and TimeGenerated <= now()
+| summarize RetainedEvents = count()
+| project TimeGenerated = now(), Value = 0

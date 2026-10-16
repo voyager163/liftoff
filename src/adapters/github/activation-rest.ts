@@ -28,8 +28,9 @@ export class GitHubActivationError extends Error {
   }
 }
 
-export function apiPath(value: string): string {
-  if (!/^\/(?:repos|orgs|user|users|app|installation|applications)(?:\/|$|\?)/u.test(value) ||
+export function apiPath(value: string, method: GitHubMethod = 'GET'): string {
+  if (!(value === '/apps/github-actions' && method === 'GET' ||
+    /^\/(?:repos|orgs|user|users|app|installation|applications)(?:\/|$|\?)/u.test(value)) ||
     /[\s\\#\u0000-\u001f\u007f]/u.test(value) || /(?:%2e|%2f|%5c)/iu.test(value) ||
     value.split('?')[0]!.split('/').some((part) => part === '..' || part === '.')) {
     throw new GitHubActivationError('invalid-endpoint', 'GitHub requests must use a fixed, scoped REST endpoint.');
@@ -160,7 +161,7 @@ async function runBinaryGitHub(args: readonly string[], cwd: string): Promise<Bu
 export function createGitHubCliTransport(runner: CommandRunner, projectRoot: string): GitHubActivationTransport {
   return {
     async request(request) {
-      const endpoint = apiPath(request.path);
+      const endpoint = apiPath(request.path, request.method);
       const args = ['api', '--hostname', 'github.com', '--method', request.method,
         '--header', `X-GitHub-Api-Version: ${apiVersion}`, '--header', 'Accept: application/vnd.github+json', '--include', endpoint];
       if (request.binary) {
@@ -194,7 +195,7 @@ export function createAuthenticatedGitHubTransport(
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
       try {
-        const response = await fetcher(`https://api.github.com${apiPath(request.path)}`, {
+        const response = await fetcher(`https://api.github.com${apiPath(request.path, request.method)}`, {
           method: request.method, redirect: 'error', signal: controller.signal,
           headers: {
             Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': apiVersion,

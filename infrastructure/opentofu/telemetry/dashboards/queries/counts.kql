@@ -1,0 +1,16 @@
+let firstObserved = projects | summarize FirstSeen = min(TimeGenerated) by ProjectId;
+let windowCounts = (days:int) {
+    projects
+    | where TimeGenerated >= ago(1d * days)
+    | summarize ObservedProjectsApprox = dcount(ProjectId, 2)
+    | extend WindowDays = days
+    | join kind=inner (
+        firstObserved
+        | where FirstSeen >= ago(1d * days)
+        | summarize FirstObservedProjectsApprox = dcount(ProjectId, 2)
+        | extend WindowDays = days
+    ) on WindowDays
+    | project WindowDays, ObservedProjectsApprox, FirstObservedProjectsApprox
+};
+union windowCounts(30), windowCounts(90), windowCounts(180)
+| order by WindowDays asc

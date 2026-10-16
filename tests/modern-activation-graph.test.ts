@@ -31,7 +31,7 @@ describe('actual static modern source policies and graphs, not execution qualifi
       expect(canonical).toBe(canonicalJson(source.graph));
       expect(source.identity.phaseGraphHash).toBe(hash(canonical));
       expect(source.identity).toMatchObject({
-        liftoffVersion: '0.13.0-dev.0', manifestArtifactVersion: 8, activationContractVersion: 4,
+        liftoffVersion: '0.13.0-dev.0', manifestArtifactVersion: 8, activationContractVersion: 5,
         phaseGraphSchemaVersion: 3, activationStateSchemaVersion: 4, evidenceHeaderSchemaVersion: 4,
         approvalEnvelopeSchemaVersion: 4, supersessionSchemaVersion: 2, credentialPolicySchemaVersion: 2
       });

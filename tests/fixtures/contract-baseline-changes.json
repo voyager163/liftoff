@@ -137,11 +137,11 @@
     {
       "surface": "cli-json",
       "key": "update --check --json",
-      "task": "14.2",
-      "reason": "Task 14.2 adds the bounded private nullable two-digest ownership source contract and generated HCL forwarding/tagging guidance. Ordinary, Manual, governance-none and not-yet-activated generation keep ownership null and emit no reserved tags; protected values remain ephemeral and exact. Only reviewed generator variables, forwarding, owned tags, README bytes and induced content, artifact, manifest and update-plan digests change; identities, paths, provider locks, tfvars, frozen baselines and every prior record remain unchanged.",
+      "task": "14.3",
+      "reason": "Compose the accepted Source5 declaration/context/graph and workflow publication/proof-boundary guidance with the retained task-18.4 capability catalog and task-14.2 ownership disclosures. Independent immutable-parent/current two-root captures show only content digests/lengths of the existing normal/force managed metadata, guides and enclosing manifests change. Operation shape/order/paths, schemas, volatility and effect authority remain unchanged. This is a SOURCE preview disposition, not workflow execution or migration permission; the complete prior record and frozen captures remain preserved.",
       "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
-      "currentSha256": "557a862cc73b531448ee43c88cb71cc45721787d6dd77ae34de2d714c0f85c0c",
-      "priorCurrentSha256": "5967bdae4bdbc667436db9b29b2b5ba427c577d7eeb3350cede3672ad25c0d80",
+      "currentSha256": "bed5eb31b85881231ce9a8318a5f72584a9b7e6adeee915537fec2de7a6ec612",
+      "priorCurrentSha256": "d8891c94656d0206e0c0bef1af1e8fb679c77674b51b552c0ff6698b43ef9105",
       "addedVolatilePointers": [
         "/plans/0/fingerprint",
         "/plans/1/fingerprint",
@@ -150,11 +150,11 @@
       "priorChange": {
         "surface": "cli-json",
         "key": "update --check --json",
-        "task": "13.7",
-        "reason": "Task 13.7 updates only current-v8 generated infrastructure and governance guidance to label production protected handover/custody adapters unavailable, distinguish the implementation gap from external authority and qualification, and keep brownfield state work planning-only. Historical generators, released records, graph identity, operations, volatility and frozen baselines remain unchanged.",
+        "task": "18.4",
+        "reason": "Task 18.4 corrects generated governance handoff documentation to use the registered project-independent read-only capability catalog while preserving source-only, current-project acceptance, unsupported-field and execution-authority boundaries. Only the generated guide bytes and their induced artifact, manifest and update-plan digests change; command behavior, schemas, identities, paths, effects, volatility, frozen baselines and every prior record remain unchanged.",
         "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
-        "currentSha256": "5967bdae4bdbc667436db9b29b2b5ba427c577d7eeb3350cede3672ad25c0d80",
-        "priorCurrentSha256": "da27734934695c89f35a8564de582c6157434308c6608d722b9473aa6313cdfb",
+        "currentSha256": "d8891c94656d0206e0c0bef1af1e8fb679c77674b51b552c0ff6698b43ef9105",
+        "priorCurrentSha256": "557a862cc73b531448ee43c88cb71cc45721787d6dd77ae34de2d714c0f85c0c",
         "addedVolatilePointers": [
           "/plans/0/fingerprint",
           "/plans/1/fingerprint",
@@ -163,11 +163,11 @@
         "priorChange": {
           "surface": "cli-json",
           "key": "update --check --json",
-          "task": "13.5",
-          "reason": "Task 13.5 binds protected state work and day-30 disposal to the same qualified host, encrypted storage, non-exporting key, lease-lock and writer-quiescence custody; plaintext project-file fallback is removed while frozen released-v3 records remain unchanged.",
+          "task": "14.2",
+          "reason": "Task 14.2 adds the bounded private nullable two-digest ownership source contract and generated HCL forwarding/tagging guidance. Ordinary, Manual, governance-none and not-yet-activated generation keep ownership null and emit no reserved tags; protected values remain ephemeral and exact. Only reviewed generator variables, forwarding, owned tags, README bytes and induced content, artifact, manifest and update-plan digests change; identities, paths, provider locks, tfvars, frozen baselines and every prior record remain unchanged.",
           "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
-          "currentSha256": "da27734934695c89f35a8564de582c6157434308c6608d722b9473aa6313cdfb",
-          "priorCurrentSha256": "2789aaf7d92d43b1b7c08b89ad8e7dc691d33795a32fcef75a3bc4935f5df816",
+          "currentSha256": "557a862cc73b531448ee43c88cb71cc45721787d6dd77ae34de2d714c0f85c0c",
+          "priorCurrentSha256": "5967bdae4bdbc667436db9b29b2b5ba427c577d7eeb3350cede3672ad25c0d80",
           "addedVolatilePointers": [
             "/plans/0/fingerprint",
             "/plans/1/fingerprint",
@@ -176,11 +176,11 @@
           "priorChange": {
             "surface": "cli-json",
             "key": "update --check --json",
-            "task": "13.4",
-            "reason": "Task 13.4 advances current governance output for exact same-bootstrap private backend proof and protected state handover through an injected capability. The public CLI remains fail-closed for arbitrary existing-state migration, and frozen released-v3 contracts remain unchanged.",
+            "task": "13.7",
+            "reason": "Task 13.7 updates only current-v8 generated infrastructure and governance guidance to label production protected handover/custody adapters unavailable, distinguish the implementation gap from external authority and qualification, and keep brownfield state work planning-only. Historical generators, released records, graph identity, operations, volatility and frozen baselines remain unchanged.",
             "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
-            "currentSha256": "2789aaf7d92d43b1b7c08b89ad8e7dc691d33795a32fcef75a3bc4935f5df816",
-            "priorCurrentSha256": "23af5f9cc80b9fec851dc78d419e7f8e7269739972b848669b1f1da1415f5cff",
+            "currentSha256": "5967bdae4bdbc667436db9b29b2b5ba427c577d7eeb3350cede3672ad25c0d80",
+            "priorCurrentSha256": "da27734934695c89f35a8564de582c6157434308c6608d722b9473aa6313cdfb",
             "addedVolatilePointers": [
               "/plans/0/fingerprint",
               "/plans/1/fingerprint",
@@ -189,11 +189,11 @@
             "priorChange": {
               "surface": "cli-json",
               "key": "update --check --json",
-              "task": "13.3",
-              "reason": "Task 13.3 advances the current activation graph for the reviewed Azure/GitHub hosted-runner producer and updates managed governance guidance. The generated-v7 update check now binds the exact current graph/guidance successor rather than reusing the prior normal/force plan volatility; frozen release captures and the released v3 graph asset remain unchanged.",
+              "task": "13.5",
+              "reason": "Task 13.5 binds protected state work and day-30 disposal to the same qualified host, encrypted storage, non-exporting key, lease-lock and writer-quiescence custody; plaintext project-file fallback is removed while frozen released-v3 records remain unchanged.",
               "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
-              "currentSha256": "23af5f9cc80b9fec851dc78d419e7f8e7269739972b848669b1f1da1415f5cff",
-              "priorCurrentSha256": "2836d86c4a8a8536971e77ecb5b29d396f441bb637013f9e836a09f93504bfbe",
+              "currentSha256": "da27734934695c89f35a8564de582c6157434308c6608d722b9473aa6313cdfb",
+              "priorCurrentSha256": "2789aaf7d92d43b1b7c08b89ad8e7dc691d33795a32fcef75a3bc4935f5df816",
               "addedVolatilePointers": [
                 "/plans/0/fingerprint",
                 "/plans/1/fingerprint",
@@ -202,11 +202,11 @@
               "priorChange": {
                 "surface": "cli-json",
                 "key": "update --check --json",
-                "task": "12.6",
-                "reason": "Task 12.6 updates current generated setup/governance guidance with profile-specific approval meaning, local credential independence, exact capability-advertised producer limits, deployment-ownership gating and asynchronous recovery rules. Only managed guidance and induced plan/manifest digests change; command authority, operations, volatility and historical captures remain unchanged.",
+                "task": "13.4",
+                "reason": "Task 13.4 advances current governance output for exact same-bootstrap private backend proof and protected state handover through an injected capability. The public CLI remains fail-closed for arbitrary existing-state migration, and frozen released-v3 contracts remain unchanged.",
                 "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
-                "currentSha256": "2836d86c4a8a8536971e77ecb5b29d396f441bb637013f9e836a09f93504bfbe",
-                "priorCurrentSha256": "29bb7cf4353d1487daab85b423efd988b0c4751a957ba8294e9581555a1468cd",
+                "currentSha256": "2789aaf7d92d43b1b7c08b89ad8e7dc691d33795a32fcef75a3bc4935f5df816",
+                "priorCurrentSha256": "23af5f9cc80b9fec851dc78d419e7f8e7269739972b848669b1f1da1415f5cff",
                 "addedVolatilePointers": [
                   "/plans/0/fingerprint",
                   "/plans/1/fingerprint",
@@ -215,11 +215,11 @@
                 "priorChange": {
                   "surface": "cli-json",
                   "key": "update --check --json",
-                  "task": "12.3",
-                  "reason": "Task 12.3 updates the current generated governance guide from the former fail-closed credential refusal to the reviewed protected enrollment command. Update previews therefore bind the new managed-core guide and manifest digests; update authority, operations, volatility, historical captures and application files are unchanged.",
+                  "task": "13.3",
+                  "reason": "Task 13.3 advances the current activation graph for the reviewed Azure/GitHub hosted-runner producer and updates managed governance guidance. The generated-v7 update check now binds the exact current graph/guidance successor rather than reusing the prior normal/force plan volatility; frozen release captures and the released v3 graph asset remain unchanged.",
                   "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
-                  "currentSha256": "29bb7cf4353d1487daab85b423efd988b0c4751a957ba8294e9581555a1468cd",
-                  "priorCurrentSha256": "6bf25c2582a4bc0079835391182d953809da2e4820040c490340c4d3b668859a",
+                  "currentSha256": "23af5f9cc80b9fec851dc78d419e7f8e7269739972b848669b1f1da1415f5cff",
+                  "priorCurrentSha256": "2836d86c4a8a8536971e77ecb5b29d396f441bb637013f9e836a09f93504bfbe",
                   "addedVolatilePointers": [
                     "/plans/0/fingerprint",
                     "/plans/1/fingerprint",
@@ -228,11 +228,11 @@
                   "priorChange": {
                     "surface": "cli-json",
                     "key": "update --check --json",
-                    "task": "8.7",
-                    "reason": "Task 8.7 adds separately labeled current-v8 profile-transition routing, exact approval and journal-selected recovery without expanding ordinary update or force authority.",
+                    "task": "12.6",
+                    "reason": "Task 12.6 updates current generated setup/governance guidance with profile-specific approval meaning, local credential independence, exact capability-advertised producer limits, deployment-ownership gating and asynchronous recovery rules. Only managed guidance and induced plan/manifest digests change; command authority, operations, volatility and historical captures remain unchanged.",
                     "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
-                    "currentSha256": "6bf25c2582a4bc0079835391182d953809da2e4820040c490340c4d3b668859a",
-                    "priorCurrentSha256": "2264e8e8e50be74959a1d80e94acd692efdd74e371322a9df184d1ff40ae0571",
+                    "currentSha256": "2836d86c4a8a8536971e77ecb5b29d396f441bb637013f9e836a09f93504bfbe",
+                    "priorCurrentSha256": "29bb7cf4353d1487daab85b423efd988b0c4751a957ba8294e9581555a1468cd",
                     "addedVolatilePointers": [
                       "/plans/0/fingerprint",
                       "/plans/1/fingerprint",
@@ -241,11 +241,11 @@
                     "priorChange": {
                       "surface": "cli-json",
                       "key": "update --check --json",
-                      "task": "3.7",
-                      "reason": "The schema-4 v8 successor preview now includes task 5.5/6.7's exact selected Copilot whole-project assessment write and coherent compatibility, context, credential-policy and manifest metadata for the new current declaration family. Two isolated roots/clocks and the actual compiled accepted develop implementation confirm that only this captured JSON surface changes. Both normal/force plans add exactly one write; every original operation outside those four metadata paths remains identical. Original policy/graph and setup/governance-assessment/repair bodies remain unchanged. The three additional volatile pointers remain exact, and the complete previous reviewed record and frozen baseline are preserved.",
+                      "task": "12.3",
+                      "reason": "Task 12.3 updates the current generated governance guide from the former fail-closed credential refusal to the reviewed protected enrollment command. Update previews therefore bind the new managed-core guide and manifest digests; update authority, operations, volatility, historical captures and application files are unchanged.",
                       "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
-                      "currentSha256": "2264e8e8e50be74959a1d80e94acd692efdd74e371322a9df184d1ff40ae0571",
-                      "priorCurrentSha256": "6268384197918285b5f1801a1d87ed62348e6374299764a50f15eb399dc5d365",
+                      "currentSha256": "29bb7cf4353d1487daab85b423efd988b0c4751a957ba8294e9581555a1468cd",
+                      "priorCurrentSha256": "6bf25c2582a4bc0079835391182d953809da2e4820040c490340c4d3b668859a",
                       "addedVolatilePointers": [
                         "/plans/0/fingerprint",
                         "/plans/1/fingerprint",
@@ -254,11 +254,11 @@
                       "priorChange": {
                         "surface": "cli-json",
                         "key": "update --check --json",
-                        "task": "3.7",
-                        "reason": "The actual generated-v7 fixture now receives a schema-4 v8 successor preview rather than a schema-3 current result. Two isolated captures expose only the new project/preparation-bound normal and force fingerprints and receipt path as additional volatile values. The exact masked report and volatile pointer set are digest-bound; original captures, historical schemas and all other volatility rules remain unchanged. The exact current digest additionally binds the reviewed shared v8 setup instructions and task 4.6's active-layout repair guide. Relative to the previous accepted result, only the repair guide content digest/length and its enclosing manifest digest change in each normal/force plan.",
+                        "task": "8.7",
+                        "reason": "Task 8.7 adds separately labeled current-v8 profile-transition routing, exact approval and journal-selected recovery without expanding ordinary update or force authority.",
                         "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
-                        "currentSha256": "6268384197918285b5f1801a1d87ed62348e6374299764a50f15eb399dc5d365",
-                        "priorCurrentSha256": "96105ab165cbc3b1867d1729c6f3c0aba5de048fdfb09593ac6dfd1924987ea1",
+                        "currentSha256": "6bf25c2582a4bc0079835391182d953809da2e4820040c490340c4d3b668859a",
+                        "priorCurrentSha256": "2264e8e8e50be74959a1d80e94acd692efdd74e371322a9df184d1ff40ae0571",
                         "addedVolatilePointers": [
                           "/plans/0/fingerprint",
                           "/plans/1/fingerprint",
@@ -268,14 +268,42 @@
                           "surface": "cli-json",
                           "key": "update --check --json",
                           "task": "3.7",
-                          "reason": "The actual generated-v7 fixture now receives a schema-4 v8 successor preview rather than a schema-3 current result. Two isolated captures expose only the new project/preparation-bound normal and force fingerprints and receipt path as additional volatile values. The exact masked report and volatile pointer set are digest-bound; original captures, historical schemas and all other volatility rules remain unchanged.",
+                          "reason": "The schema-4 v8 successor preview now includes task 5.5/6.7's exact selected Copilot whole-project assessment write and coherent compatibility, context, credential-policy and manifest metadata for the new current declaration family. Two isolated roots/clocks and the actual compiled accepted develop implementation confirm that only this captured JSON surface changes. Both normal/force plans add exactly one write; every original operation outside those four metadata paths remains identical. Original policy/graph and setup/governance-assessment/repair bodies remain unchanged. The three additional volatile pointers remain exact, and the complete previous reviewed record and frozen baseline are preserved.",
                           "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
-                          "currentSha256": "f19ed08929cc7ac2f82c59ae25b10c341107f301fab932848e016873655668f5",
+                          "currentSha256": "2264e8e8e50be74959a1d80e94acd692efdd74e371322a9df184d1ff40ae0571",
+                          "priorCurrentSha256": "6268384197918285b5f1801a1d87ed62348e6374299764a50f15eb399dc5d365",
                           "addedVolatilePointers": [
                             "/plans/0/fingerprint",
                             "/plans/1/fingerprint",
                             "/receipt/path"
-                          ]
+                          ],
+                          "priorChange": {
+                            "surface": "cli-json",
+                            "key": "update --check --json",
+                            "task": "3.7",
+                            "reason": "The actual generated-v7 fixture now receives a schema-4 v8 successor preview rather than a schema-3 current result. Two isolated captures expose only the new project/preparation-bound normal and force fingerprints and receipt path as additional volatile values. The exact masked report and volatile pointer set are digest-bound; original captures, historical schemas and all other volatility rules remain unchanged. The exact current digest additionally binds the reviewed shared v8 setup instructions and task 4.6's active-layout repair guide. Relative to the previous accepted result, only the repair guide content digest/length and its enclosing manifest digest change in each normal/force plan.",
+                            "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
+                            "currentSha256": "6268384197918285b5f1801a1d87ed62348e6374299764a50f15eb399dc5d365",
+                            "priorCurrentSha256": "96105ab165cbc3b1867d1729c6f3c0aba5de048fdfb09593ac6dfd1924987ea1",
+                            "addedVolatilePointers": [
+                              "/plans/0/fingerprint",
+                              "/plans/1/fingerprint",
+                              "/receipt/path"
+                            ],
+                            "priorChange": {
+                              "surface": "cli-json",
+                              "key": "update --check --json",
+                              "task": "3.7",
+                              "reason": "The actual generated-v7 fixture now receives a schema-4 v8 successor preview rather than a schema-3 current result. Two isolated captures expose only the new project/preparation-bound normal and force fingerprints and receipt path as additional volatile values. The exact masked report and volatile pointer set are digest-bound; original captures, historical schemas and all other volatility rules remain unchanged.",
+                              "baselineSha256": "45cfc3ee41bdc4bb0a8bf8ced076cf685e479d74018f2fbd120f855cf6758a45",
+                              "currentSha256": "f19ed08929cc7ac2f82c59ae25b10c341107f301fab932848e016873655668f5",
+                              "addedVolatilePointers": [
+                                "/plans/0/fingerprint",
+                                "/plans/1/fingerprint",
+                                "/receipt/path"
+                              ]
+                            }
+                          }
                         }
                       }
                     }
@@ -458,72 +486,96 @@
     {
       "surface": "cli-text",
       "key": "help",
-      "task": "8.1",
-      "reason": "Register the schema-1 workflow set planning command in the Maintenance group. It advertises exact source/target/agent/input/check/expiry review and approval/recovery selection while explicitly reporting that no transition executor or project-write authority is available yet.",
+      "task": "16.1",
+      "reason": "Register explicit project telemetry status, enrollment, disablement and report review in Maintenance without implicit consent. Separately scoped heartbeat activation is explicitly blocked pending genuine qualified publication. Only the current general help stdout changes; preserve the complete prior reviewed chain and all frozen artifacts, historical identities and source contracts.",
       "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-      "currentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
-      "priorCurrentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
+      "currentSha256": "6f24339179e67a688ca3d6965746a8912a66eabdf875b7c0e2b3d28ca9a10924",
+      "priorCurrentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "help",
-        "task": "7.1",
-        "reason": "Add the implemented schema-1 read-only adopt preview to the Maintenance group. Existing help, assessment, generation, update/repair authority and historical schemas remain unchanged; registration does not advertise executable adoption publication.",
+        "task": "8.1",
+        "reason": "Register the schema-1 workflow set planning command in the Maintenance group. It advertises exact source/target/agent/input/check/expiry review and approval/recovery selection while explicitly reporting that no transition executor or project-write authority is available yet.",
         "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-        "currentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
-        "priorCurrentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+        "currentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
+        "priorCurrentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
         "changed": [
           "/stdout"
         ],
         "priorChange": {
           "surface": "cli-text",
           "key": "help",
-          "task": "6.3",
-          "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
+          "task": "7.1",
+          "reason": "Add the implemented schema-1 read-only adopt preview to the Maintenance group. Existing help, assessment, generation, update/repair authority and historical schemas remain unchanged; registration does not advertise executable adoption publication.",
           "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-          "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
-          "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+          "currentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
+          "priorCurrentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
           "changed": [
             "/stdout"
-          ]
+          ],
+          "priorChange": {
+            "surface": "cli-text",
+            "key": "help",
+            "task": "6.3",
+            "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
+            "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
+            "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+            "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+            "changed": [
+              "/stdout"
+            ]
+          }
         }
       }
     },
     {
       "surface": "cli-text",
       "key": "--help",
-      "task": "8.1",
-      "reason": "Register the schema-1 workflow set planning command in the Maintenance group. It advertises exact source/target/agent/input/check/expiry review and approval/recovery selection while explicitly reporting that no transition executor or project-write authority is available yet.",
+      "task": "16.1",
+      "reason": "Register explicit project telemetry status, enrollment, disablement and report review in Maintenance without implicit consent. Separately scoped heartbeat activation is explicitly blocked pending genuine qualified publication. Only the current general help stdout changes; preserve the complete prior reviewed chain and all frozen artifacts, historical identities and source contracts.",
       "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-      "currentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
-      "priorCurrentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
+      "currentSha256": "6f24339179e67a688ca3d6965746a8912a66eabdf875b7c0e2b3d28ca9a10924",
+      "priorCurrentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "--help",
-        "task": "7.1",
-        "reason": "Add the implemented schema-1 read-only adopt preview to the Maintenance group. Existing help, assessment, generation, update/repair authority and historical schemas remain unchanged; registration does not advertise executable adoption publication.",
+        "task": "8.1",
+        "reason": "Register the schema-1 workflow set planning command in the Maintenance group. It advertises exact source/target/agent/input/check/expiry review and approval/recovery selection while explicitly reporting that no transition executor or project-write authority is available yet.",
         "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-        "currentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
-        "priorCurrentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+        "currentSha256": "b9439e4b862c33284f204dea2855909eaf5083f28d8f73308f5559e896f3cec1",
+        "priorCurrentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
         "changed": [
           "/stdout"
         ],
         "priorChange": {
           "surface": "cli-text",
           "key": "--help",
-          "task": "6.3",
-          "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
+          "task": "7.1",
+          "reason": "Add the implemented schema-1 read-only adopt preview to the Maintenance group. Existing help, assessment, generation, update/repair authority and historical schemas remain unchanged; registration does not advertise executable adoption publication.",
           "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
-          "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
-          "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+          "currentSha256": "323965b33de5ef7b936a30c9e0b381d0be442de2c7cc57d5552bd40e78b19863",
+          "priorCurrentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
           "changed": [
             "/stdout"
-          ]
+          ],
+          "priorChange": {
+            "surface": "cli-text",
+            "key": "--help",
+            "task": "6.3",
+            "reason": "Add the implemented bounded read-only assess command to the Maintenance group, retaining task 5.1's project-independent capabilities command in Reference. The original frozen capture, existing command-specific help, generation and historical schemas remain unchanged.",
+            "baselineSha256": "cc202b8be6944e7d85d09220182b6d7d300e02c1f35d2f601b5a2ab56036f9b5",
+            "currentSha256": "44a2f9aedd98183ec33bb4ea4c0190efcb0a5372320231d6b8e9e737379413f4",
+            "priorCurrentSha256": "bdc2a3f3546781028d6fea0b6b069aa7921a2b609912630dda7906bb0d8ce6f3",
+            "changed": [
+              "/stdout"
+            ]
+          }
         }
       }
     },
@@ -562,389 +614,480 @@
     {
       "surface": "cli-text",
       "key": "governance --help",
-      "task": "8.6",
-      "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
+      "task": "14.3",
+      "reason": "Task 14.3 SOURCE-only disclosure adds the closed schema-1 read-only Source5 workflow review request, exact unapproved values and concrete prerequisite blockers, exit 2, no saved approval/preview and no publication/dispatch. The prior assessment/local-operation help, original capture and complete reviewed chain remain preserved; modern workflow approve/apply-next remain unavailable.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
+      "currentSha256": "85e44700060961b0ae9d4596bbb06f72225793702560801b215da135f1e5f100",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "governance --help",
-        "task": "4.5",
-        "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
+        "task": "8.6",
+        "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
         "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-        "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
+        "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
         "changed": [
           "/stdout"
         ],
         "priorChange": {
           "surface": "cli-text",
           "key": "governance --help",
-          "task": "3.7",
-          "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+          "task": "4.5",
+          "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
           "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-          "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+          "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
           "changed": [
             "/stdout"
-          ]
-        }
+          ],
+          "priorChange": {
+            "surface": "cli-text",
+            "key": "governance --help",
+            "task": "3.7",
+            "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+            "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+            "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+            "changed": [
+              "/stdout"
+            ]
+          }
+        },
+        "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
       },
-      "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
+      "priorCurrentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130"
     },
     {
       "surface": "cli-text",
       "key": "governance status --help",
-      "task": "8.6",
-      "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
+      "task": "14.3",
+      "reason": "Task 14.3 SOURCE-only disclosure adds the closed schema-1 read-only Source5 workflow review request, exact unapproved values and concrete prerequisite blockers, exit 2, no saved approval/preview and no publication/dispatch. The prior assessment/local-operation help, original capture and complete reviewed chain remain preserved; modern workflow approve/apply-next remain unavailable.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
+      "currentSha256": "85e44700060961b0ae9d4596bbb06f72225793702560801b215da135f1e5f100",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "governance status --help",
-        "task": "4.5",
-        "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
+        "task": "8.6",
+        "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
         "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-        "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
+        "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
         "changed": [
           "/stdout"
         ],
         "priorChange": {
           "surface": "cli-text",
           "key": "governance status --help",
-          "task": "3.7",
-          "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+          "task": "4.5",
+          "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
           "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-          "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+          "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
           "changed": [
             "/stdout"
-          ]
-        }
+          ],
+          "priorChange": {
+            "surface": "cli-text",
+            "key": "governance status --help",
+            "task": "3.7",
+            "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+            "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+            "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+            "changed": [
+              "/stdout"
+            ]
+          }
+        },
+        "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
       },
-      "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
+      "priorCurrentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130"
     },
     {
       "surface": "cli-text",
       "key": "governance plan --help",
-      "task": "8.6",
-      "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
+      "task": "14.3",
+      "reason": "Task 14.3 SOURCE-only disclosure adds the closed schema-1 read-only Source5 workflow review request, exact unapproved values and concrete prerequisite blockers, exit 2, no saved approval/preview and no publication/dispatch. The prior assessment/local-operation help, original capture and complete reviewed chain remain preserved; modern workflow approve/apply-next remain unavailable.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
+      "currentSha256": "85e44700060961b0ae9d4596bbb06f72225793702560801b215da135f1e5f100",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "governance plan --help",
-        "task": "4.5",
-        "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
+        "task": "8.6",
+        "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
         "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-        "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
+        "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
         "changed": [
           "/stdout"
         ],
         "priorChange": {
           "surface": "cli-text",
           "key": "governance plan --help",
-          "task": "3.7",
-          "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+          "task": "4.5",
+          "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
           "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-          "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+          "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
           "changed": [
             "/stdout"
-          ]
-        }
+          ],
+          "priorChange": {
+            "surface": "cli-text",
+            "key": "governance plan --help",
+            "task": "3.7",
+            "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+            "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+            "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+            "changed": [
+              "/stdout"
+            ]
+          }
+        },
+        "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
       },
-      "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
+      "priorCurrentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130"
     },
     {
       "surface": "cli-text",
       "key": "governance approve --help",
-      "task": "8.6",
-      "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
+      "task": "14.3",
+      "reason": "Task 14.3 SOURCE-only disclosure adds the closed schema-1 read-only Source5 workflow review request, exact unapproved values and concrete prerequisite blockers, exit 2, no saved approval/preview and no publication/dispatch. The prior assessment/local-operation help, original capture and complete reviewed chain remain preserved; modern workflow approve/apply-next remain unavailable.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
+      "currentSha256": "85e44700060961b0ae9d4596bbb06f72225793702560801b215da135f1e5f100",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "governance approve --help",
-        "task": "4.5",
-        "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
+        "task": "8.6",
+        "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
         "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-        "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
+        "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
         "changed": [
           "/stdout"
         ],
         "priorChange": {
           "surface": "cli-text",
           "key": "governance approve --help",
-          "task": "3.7",
-          "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+          "task": "4.5",
+          "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
           "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-          "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+          "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
           "changed": [
             "/stdout"
-          ]
-        }
+          ],
+          "priorChange": {
+            "surface": "cli-text",
+            "key": "governance approve --help",
+            "task": "3.7",
+            "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+            "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+            "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+            "changed": [
+              "/stdout"
+            ]
+          }
+        },
+        "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
       },
-      "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
+      "priorCurrentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130"
     },
     {
       "surface": "cli-text",
       "key": "governance apply-next --help",
-      "task": "8.6",
-      "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
+      "task": "14.3",
+      "reason": "Task 14.3 SOURCE-only disclosure adds the closed schema-1 read-only Source5 workflow review request, exact unapproved values and concrete prerequisite blockers, exit 2, no saved approval/preview and no publication/dispatch. The prior assessment/local-operation help, original capture and complete reviewed chain remain preserved; modern workflow approve/apply-next remain unavailable.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
+      "currentSha256": "85e44700060961b0ae9d4596bbb06f72225793702560801b215da135f1e5f100",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "governance apply-next --help",
-        "task": "4.5",
-        "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
+        "task": "8.6",
+        "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
         "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-        "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
+        "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
         "changed": [
           "/stdout"
         ],
         "priorChange": {
           "surface": "cli-text",
           "key": "governance apply-next --help",
-          "task": "3.7",
-          "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+          "task": "4.5",
+          "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
           "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-          "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+          "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
           "changed": [
             "/stdout"
-          ]
-        }
+          ],
+          "priorChange": {
+            "surface": "cli-text",
+            "key": "governance apply-next --help",
+            "task": "3.7",
+            "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+            "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+            "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+            "changed": [
+              "/stdout"
+            ]
+          }
+        },
+        "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
       },
-      "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
+      "priorCurrentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130"
     },
     {
       "surface": "cli-text",
       "key": "governance credential-enroll --help",
-      "task": "8.6",
-      "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
+      "task": "14.3",
+      "reason": "Task 14.3 SOURCE-only disclosure adds the closed schema-1 read-only Source5 workflow review request, exact unapproved values and concrete prerequisite blockers, exit 2, no saved approval/preview and no publication/dispatch. The prior assessment/local-operation help, original capture and complete reviewed chain remain preserved; modern workflow approve/apply-next remain unavailable.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
+      "currentSha256": "85e44700060961b0ae9d4596bbb06f72225793702560801b215da135f1e5f100",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "governance credential-enroll --help",
-        "task": "4.5",
-        "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
+        "task": "8.6",
+        "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
         "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-        "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
+        "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
         "changed": [
           "/stdout"
         ],
         "priorChange": {
           "surface": "cli-text",
           "key": "governance credential-enroll --help",
-          "task": "3.7",
-          "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+          "task": "4.5",
+          "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
           "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-          "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+          "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
           "changed": [
             "/stdout"
-          ]
-        }
+          ],
+          "priorChange": {
+            "surface": "cli-text",
+            "key": "governance credential-enroll --help",
+            "task": "3.7",
+            "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+            "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+            "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+            "changed": [
+              "/stdout"
+            ]
+          }
+        },
+        "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
       },
-      "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
+      "priorCurrentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130"
     },
     {
       "surface": "cli-text",
       "key": "governance recover --help",
-      "task": "8.6",
-      "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
+      "task": "14.3",
+      "reason": "Task 14.3 SOURCE-only disclosure adds the closed schema-1 read-only Source5 workflow review request, exact unapproved values and concrete prerequisite blockers, exit 2, no saved approval/preview and no publication/dispatch. The prior assessment/local-operation help, original capture and complete reviewed chain remain preserved; modern workflow approve/apply-next remain unavailable.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
+      "currentSha256": "85e44700060961b0ae9d4596bbb06f72225793702560801b215da135f1e5f100",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "governance recover --help",
-        "task": "4.5",
-        "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
+        "task": "8.6",
+        "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
         "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-        "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
+        "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
         "changed": [
           "/stdout"
         ],
         "priorChange": {
           "surface": "cli-text",
           "key": "governance recover --help",
-          "task": "3.7",
-          "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+          "task": "4.5",
+          "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
           "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-          "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+          "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
           "changed": [
             "/stdout"
-          ]
-        }
+          ],
+          "priorChange": {
+            "surface": "cli-text",
+            "key": "governance recover --help",
+            "task": "3.7",
+            "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+            "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+            "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+            "changed": [
+              "/stdout"
+            ]
+          }
+        },
+        "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
       },
-      "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
+      "priorCurrentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130"
     },
     {
       "surface": "cli-text",
       "key": "governance resume --help",
-      "task": "8.6",
-      "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
+      "task": "14.3",
+      "reason": "Task 14.3 SOURCE-only disclosure adds the closed schema-1 read-only Source5 workflow review request, exact unapproved values and concrete prerequisite blockers, exit 2, no saved approval/preview and no publication/dispatch. The prior assessment/local-operation help, original capture and complete reviewed chain remain preserved; modern workflow approve/apply-next remain unavailable.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
+      "currentSha256": "85e44700060961b0ae9d4596bbb06f72225793702560801b215da135f1e5f100",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "governance resume --help",
-        "task": "4.5",
-        "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
+        "task": "8.6",
+        "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
         "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-        "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
+        "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
         "changed": [
           "/stdout"
         ],
         "priorChange": {
           "surface": "cli-text",
           "key": "governance resume --help",
-          "task": "3.7",
-          "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+          "task": "4.5",
+          "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
           "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-          "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+          "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
           "changed": [
             "/stdout"
-          ]
-        }
+          ],
+          "priorChange": {
+            "surface": "cli-text",
+            "key": "governance resume --help",
+            "task": "3.7",
+            "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+            "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+            "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+            "changed": [
+              "/stdout"
+            ]
+          }
+        },
+        "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
       },
-      "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
+      "priorCurrentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130"
     },
     {
       "surface": "cli-text",
       "key": "governance verify --help",
-      "task": "8.6",
-      "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
+      "task": "14.3",
+      "reason": "Task 14.3 SOURCE-only disclosure adds the closed schema-1 read-only Source5 workflow review request, exact unapproved values and concrete prerequisite blockers, exit 2, no saved approval/preview and no publication/dispatch. The prior assessment/local-operation help, original capture and complete reviewed chain remain preserved; modern workflow approve/apply-next remain unavailable.",
       "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-      "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
+      "currentSha256": "85e44700060961b0ae9d4596bbb06f72225793702560801b215da135f1e5f100",
       "changed": [
         "/stdout"
       ],
       "priorChange": {
         "surface": "cli-text",
         "key": "governance verify --help",
-        "task": "4.5",
-        "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
+        "task": "8.6",
+        "reason": "Task 8.6 adds explicit profile-aware governance assessment help while preserving the read-only and no-provider-authority boundary.",
         "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-        "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
+        "currentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130",
         "changed": [
           "/stdout"
         ],
         "priorChange": {
           "surface": "cli-text",
           "key": "governance verify --help",
-          "task": "3.7",
-          "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+          "task": "4.5",
+          "reason": "Advance the verification report label from schema4 to schema7 and describe the separately registered native Manual request/consent, independent infrastructure preparation/network scope, qualified host/tool limits and absence of Azure/GitHub resource authority. Historical inspection, completion5, successor revalidation6 and all other help text remain unchanged. Preserve original captures and the prior reviewed help identity.",
           "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
-          "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+          "currentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4",
           "changed": [
             "/stdout"
-          ]
-        }
+          ],
+          "priorChange": {
+            "surface": "cli-text",
+            "key": "governance verify --help",
+            "task": "3.7",
+            "reason": "Preserve historical schema-2, schema-3 inspection, schema-4 verification and schema-5 completion; add separate schema-6 existing-successor revalidation with exact publication consent, attributed recovery and committed-incomplete exit 2. Credential refusal and frozen captures remain unchanged.",
+            "baselineSha256": "e8590abeb9cc2c349ae9d670f2c0552a589398677206b6e54e573a0d653aafa9",
+            "currentSha256": "150d7f2a16060524f29751de31687bfa7a71277a001619ae40b22eafa4fd643c",
+            "changed": [
+              "/stdout"
+            ]
+          }
+        },
+        "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
       },
-      "priorCurrentSha256": "8eccd8fec3a27997a2318f156063459641065a54c539ee4e4a03d95bc89ae2a4"
+      "priorCurrentSha256": "1716822322bc40bcc7de7f215780b7a7a84f11be9aa49e7d336d879fac06b130"
     },
     {
       "surface": "cli-json",
       "key": "governance assess --json",
-      "task": "14.2",
-      "reason": "Task 14.2 adds the bounded private nullable two-digest ownership source contract and generated HCL forwarding/tagging guidance. Ordinary, Manual, governance-none and not-yet-activated generation keep ownership null and emit no reserved tags; protected values remain ephemeral and exact. Only reviewed generator variables, forwarding, owned tags, README bytes and induced content, artifact, manifest and update-plan digests change; identities, paths, provider locks, tfvars, frozen baselines and every prior record remain unchanged.",
+      "task": "14.3",
+      "reason": "The read-only assessment target now names the already-allocated current Source5 contract and exact selected graph, rather than retained Source4: only target activationContractVersion/graph hashes and the matching finding expected identity change. No observed record, finding outcome, policy, schema, receipt, execution permission or historical identity is rewritten. This SOURCE interpretation disposition does not complete task 14.3; all prior records and frozen captures remain preserved.",
       "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-      "currentSha256": "5f4a726e21f05c4767fa35ecae59cce73ee779b72fe971c487680cffdfa0baa8",
-      "priorCurrentSha256": "1f9f5002ab9efd2e9426a36663ce9ba8fa2e59ad5f7a65d08726456d6ce749c4",
+      "currentSha256": "3d4121a8e2e11d145a214040de676d215512aedea0448411df649e4ba4415a6c",
+      "priorCurrentSha256": "5f4a726e21f05c4767fa35ecae59cce73ee779b72fe971c487680cffdfa0baa8",
       "priorChange": {
         "surface": "cli-json",
         "key": "governance assess --json",
-        "task": "13.5",
-        "reason": "Task 13.5 binds protected state work and day-30 disposal to the same qualified host, encrypted storage, non-exporting key, lease-lock and writer-quiescence custody; plaintext project-file fallback is removed while frozen released-v3 records remain unchanged.",
+        "task": "14.2",
+        "reason": "Task 14.2 adds the bounded private nullable two-digest ownership source contract and generated HCL forwarding/tagging guidance. Ordinary, Manual, governance-none and not-yet-activated generation keep ownership null and emit no reserved tags; protected values remain ephemeral and exact. Only reviewed generator variables, forwarding, owned tags, README bytes and induced content, artifact, manifest and update-plan digests change; identities, paths, provider locks, tfvars, frozen baselines and every prior record remain unchanged.",
         "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-        "currentSha256": "1f9f5002ab9efd2e9426a36663ce9ba8fa2e59ad5f7a65d08726456d6ce749c4",
-        "priorCurrentSha256": "6a10cf0577f5eed5227bcfee54887f7614b3e1713f2da7c9f941fb4806ff7e8a",
+        "currentSha256": "5f4a726e21f05c4767fa35ecae59cce73ee779b72fe971c487680cffdfa0baa8",
+        "priorCurrentSha256": "1f9f5002ab9efd2e9426a36663ce9ba8fa2e59ad5f7a65d08726456d6ce749c4",
         "priorChange": {
           "surface": "cli-json",
           "key": "governance assess --json",
-          "task": "13.4",
-          "reason": "Task 13.4 advances current governance output for exact same-bootstrap private backend proof and protected state handover through an injected capability. The public CLI remains fail-closed for arbitrary existing-state migration, and frozen released-v3 contracts remain unchanged.",
+          "task": "13.5",
+          "reason": "Task 13.5 binds protected state work and day-30 disposal to the same qualified host, encrypted storage, non-exporting key, lease-lock and writer-quiescence custody; plaintext project-file fallback is removed while frozen released-v3 records remain unchanged.",
           "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-          "currentSha256": "6a10cf0577f5eed5227bcfee54887f7614b3e1713f2da7c9f941fb4806ff7e8a",
-          "priorCurrentSha256": "d19ed95dab820ff42ccb8bf924e5a058e74ff4335e1ccfb465aa58432c728b53",
+          "currentSha256": "1f9f5002ab9efd2e9426a36663ce9ba8fa2e59ad5f7a65d08726456d6ce749c4",
+          "priorCurrentSha256": "6a10cf0577f5eed5227bcfee54887f7614b3e1713f2da7c9f941fb4806ff7e8a",
           "priorChange": {
             "surface": "cli-json",
             "key": "governance assess --json",
-            "task": "13.3",
-            "reason": "Task 13.3 updates read-only assessment expectations for the exact evidence-bound hosted-runner label and the current runner capability/graph identity. No provider mutation or private-backend proof is inferred.",
+            "task": "13.4",
+            "reason": "Task 13.4 advances current governance output for exact same-bootstrap private backend proof and protected state handover through an injected capability. The public CLI remains fail-closed for arbitrary existing-state migration, and frozen released-v3 contracts remain unchanged.",
             "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-            "currentSha256": "d19ed95dab820ff42ccb8bf924e5a058e74ff4335e1ccfb465aa58432c728b53",
-            "priorCurrentSha256": "7eceb8a1ace3a02fd674ce0c6fa2fec23a5865fb09513ee61324b1ec91c71701",
+            "currentSha256": "6a10cf0577f5eed5227bcfee54887f7614b3e1713f2da7c9f941fb4806ff7e8a",
+            "priorCurrentSha256": "d19ed95dab820ff42ccb8bf924e5a058e74ff4335e1ccfb465aa58432c728b53",
             "priorChange": {
               "surface": "cli-json",
               "key": "governance assess --json",
-              "task": "12.6",
-              "reason": "Task 12.6 updates current generated setup/governance guidance with profile-specific approval meaning, local credential independence, exact capability-advertised producer limits, deployment-ownership gating and asynchronous recovery rules. Only managed guidance and induced plan/manifest digests change; command authority, operations, volatility and historical captures remain unchanged.",
+              "task": "13.3",
+              "reason": "Task 13.3 updates read-only assessment expectations for the exact evidence-bound hosted-runner label and the current runner capability/graph identity. No provider mutation or private-backend proof is inferred.",
               "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-              "currentSha256": "7eceb8a1ace3a02fd674ce0c6fa2fec23a5865fb09513ee61324b1ec91c71701",
-              "priorCurrentSha256": "9fc59277684978e70c1378bef8fa4bc895b72fed16f1a7bd502e990e53e74fd5",
+              "currentSha256": "d19ed95dab820ff42ccb8bf924e5a058e74ff4335e1ccfb465aa58432c728b53",
+              "priorCurrentSha256": "7eceb8a1ace3a02fd674ce0c6fa2fec23a5865fb09513ee61324b1ec91c71701",
               "priorChange": {
                 "surface": "cli-json",
                 "key": "governance assess --json",
-                "task": "12.3",
-                "reason": "Task 12.3 updates the current governance capability observation and payload-free credential guidance after production protected enrollment became available. Assessment remains read-only, records no credential value, and makes no readiness claim without current policy/evidence/readback.",
+                "task": "12.6",
+                "reason": "Task 12.6 updates current generated setup/governance guidance with profile-specific approval meaning, local credential independence, exact capability-advertised producer limits, deployment-ownership gating and asynchronous recovery rules. Only managed guidance and induced plan/manifest digests change; command authority, operations, volatility and historical captures remain unchanged.",
                 "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-                "currentSha256": "9fc59277684978e70c1378bef8fa4bc895b72fed16f1a7bd502e990e53e74fd5",
-                "priorCurrentSha256": "49d4214775cd9839a4654a2cba1cd3329b1b8f534f2a63047d21214085d61c9b",
+                "currentSha256": "7eceb8a1ace3a02fd674ce0c6fa2fec23a5865fb09513ee61324b1ec91c71701",
+                "priorCurrentSha256": "9fc59277684978e70c1378bef8fa4bc895b72fed16f1a7bd502e990e53e74fd5",
                 "priorChange": {
                   "surface": "cli-json",
                   "key": "governance assess --json",
-                  "task": "12.2",
-                  "reason": "The installed-package assessment now reports the running CLI package version independently from the activation source identity, and the reviewed package-smoke contract raises only the unpacked npm archive ceiling to 13 MiB. Assessment findings, classifications, provenance locations, schemas, exit codes, and frozen historical captures remain unchanged.",
+                  "task": "12.3",
+                  "reason": "Task 12.3 updates the current governance capability observation and payload-free credential guidance after production protected enrollment became available. Assessment remains read-only, records no credential value, and makes no readiness claim without current policy/evidence/readback.",
                   "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-                  "currentSha256": "49d4214775cd9839a4654a2cba1cd3329b1b8f534f2a63047d21214085d61c9b",
-                  "changed": [
-                    "/json/findings/15/expected",
-                    "/json/findings/15/observations/declared/source/digest",
-                    "/json/findings/15/observations/declared/value",
-                    "/json/findings/15/observations/recorded/source/digest",
-                    "/json/findings/15/observations/recorded/value",
-                    "/json/findings/17/expected",
-                    "/json/findings/17/observations/declared/source/digest",
-                    "/json/findings/17/observations/declared/value",
-                    "/json/findings/17/observations/recorded/source/digest",
-                    "/json/findings/17/observations/recorded/value",
-                    "/json/findings/23/expected",
-                    "/json/findings/23/observations/declared/source/digest",
-                    "/json/findings/23/observations/declared/value",
-                    "/json/findings/23/observations/recorded/source/digest",
-                    "/json/findings/23/observations/recorded/value",
-                    "/json/snapshot/worktreeDigest"
-                  ],
+                  "currentSha256": "9fc59277684978e70c1378bef8fa4bc895b72fed16f1a7bd502e990e53e74fd5",
+                  "priorCurrentSha256": "49d4214775cd9839a4654a2cba1cd3329b1b8f534f2a63047d21214085d61c9b",
                   "priorChange": {
                     "surface": "cli-json",
                     "key": "governance assess --json",
-                    "task": "8.7",
-                    "reason": "Task 8.7 adds separately labeled current-v8 profile-transition routing, exact approval and journal-selected recovery without expanding ordinary update or force authority.",
+                    "task": "12.2",
+                    "reason": "The installed-package assessment now reports the running CLI package version independently from the activation source identity, and the reviewed package-smoke contract raises only the unpacked npm archive ceiling to 13 MiB. Assessment findings, classifications, provenance locations, schemas, exit codes, and frozen historical captures remain unchanged.",
                     "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-                    "currentSha256": "2fcd3963cb5a77617f0d014e79ac1256dcbf8ab6aac806efedb7b41d127dd4b4",
+                    "currentSha256": "49d4214775cd9839a4654a2cba1cd3329b1b8f534f2a63047d21214085d61c9b",
                     "changed": [
                       "/json/findings/15/expected",
                       "/json/findings/15/observations/declared/source/digest",
@@ -966,10 +1109,10 @@
                     "priorChange": {
                       "surface": "cli-json",
                       "key": "governance assess --json",
-                      "task": "3.7",
-                      "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged.",
+                      "task": "8.7",
+                      "reason": "Task 8.7 adds separately labeled current-v8 profile-transition routing, exact approval and journal-selected recovery without expanding ordinary update or force authority.",
                       "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-                      "currentSha256": "a01c95b46d4d7176d43db54b1cf150eab2a1add6e13e8a7841739c1446dc3321",
+                      "currentSha256": "2fcd3963cb5a77617f0d014e79ac1256dcbf8ab6aac806efedb7b41d127dd4b4",
                       "changed": [
                         "/json/findings/15/expected",
                         "/json/findings/15/observations/declared/source/digest",
@@ -991,10 +1134,10 @@
                       "priorChange": {
                         "surface": "cli-json",
                         "key": "governance assess --json",
-                        "task": "5.4",
-                        "reason": "Retain task1.5 guide correction and record actual capability-first setup/assessment hashes and the fixture worktree digest. All report semantics, classifications, provenance locations, exit codes, schemas and volatile pointers remain unchanged.",
+                        "task": "3.7",
+                        "reason": "Extend the separately recorded task 5.4 capability-first guidance with the reviewed public v8 update protocol: exact preview approval, explicit recovery, preserved committed/uncertain effects and a separate modern verification/completion/revalidation branch. The full historical instruction body stays exact and is explicitly historical-only. Only shared setup text and induced rendered content/manifest/worktree digests change in this extension; paths, ownership, graph identities, original snapshots and prior review records remain unchanged.",
                         "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-                        "currentSha256": "3f1f14d5195255bc540ba08142644f2177c492b03c39008ba58d225bf8857561",
+                        "currentSha256": "a01c95b46d4d7176d43db54b1cf150eab2a1add6e13e8a7841739c1446dc3321",
                         "changed": [
                           "/json/findings/15/expected",
                           "/json/findings/15/observations/declared/source/digest",
@@ -1016,29 +1159,55 @@
                         "priorChange": {
                           "surface": "cli-json",
                           "key": "governance assess --json",
-                          "task": "1.5",
-                          "reason": "Reviewed credential-capability safety correction: the managed-core governance guide and setup-launcher text now state that credential enrollment is unavailable, so the managed-core hashes recorded in the fixture manifest and the fixture worktree digest change. Findings remain aligned (expected equals recorded).",
+                          "task": "5.4",
+                          "reason": "Retain task1.5 guide correction and record actual capability-first setup/assessment hashes and the fixture worktree digest. All report semantics, classifications, provenance locations, exit codes, schemas and volatile pointers remain unchanged.",
                           "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
-                          "currentSha256": "701188b9b7de72bea1c78eaefa82bcbdb4eafe9254a2fcfc6f1693cb3cda9409",
+                          "currentSha256": "3f1f14d5195255bc540ba08142644f2177c492b03c39008ba58d225bf8857561",
                           "changed": [
-                            "/json/snapshot/worktreeDigest",
+                            "/json/findings/15/expected",
+                            "/json/findings/15/observations/declared/source/digest",
+                            "/json/findings/15/observations/declared/value",
+                            "/json/findings/15/observations/recorded/source/digest",
+                            "/json/findings/15/observations/recorded/value",
                             "/json/findings/17/expected",
-                            "/json/findings/17/observations/recorded/value",
-                            "/json/findings/17/observations/recorded/source/digest",
-                            "/json/findings/17/observations/declared/value",
                             "/json/findings/17/observations/declared/source/digest",
+                            "/json/findings/17/observations/declared/value",
+                            "/json/findings/17/observations/recorded/source/digest",
+                            "/json/findings/17/observations/recorded/value",
                             "/json/findings/23/expected",
-                            "/json/findings/23/observations/recorded/value",
-                            "/json/findings/23/observations/recorded/source/digest",
+                            "/json/findings/23/observations/declared/source/digest",
                             "/json/findings/23/observations/declared/value",
-                            "/json/findings/23/observations/declared/source/digest"
-                          ]
+                            "/json/findings/23/observations/recorded/source/digest",
+                            "/json/findings/23/observations/recorded/value",
+                            "/json/snapshot/worktreeDigest"
+                          ],
+                          "priorChange": {
+                            "surface": "cli-json",
+                            "key": "governance assess --json",
+                            "task": "1.5",
+                            "reason": "Reviewed credential-capability safety correction: the managed-core governance guide and setup-launcher text now state that credential enrollment is unavailable, so the managed-core hashes recorded in the fixture manifest and the fixture worktree digest change. Findings remain aligned (expected equals recorded).",
+                            "baselineSha256": "bcfb81afec2d87529bfc24ecd3fe0b5eab4229a34691c66cf6e1ad9a70c1b488",
+                            "currentSha256": "701188b9b7de72bea1c78eaefa82bcbdb4eafe9254a2fcfc6f1693cb3cda9409",
+                            "changed": [
+                              "/json/snapshot/worktreeDigest",
+                              "/json/findings/17/expected",
+                              "/json/findings/17/observations/recorded/value",
+                              "/json/findings/17/observations/recorded/source/digest",
+                              "/json/findings/17/observations/declared/value",
+                              "/json/findings/17/observations/declared/source/digest",
+                              "/json/findings/23/expected",
+                              "/json/findings/23/observations/recorded/value",
+                              "/json/findings/23/observations/recorded/source/digest",
+                              "/json/findings/23/observations/declared/value",
+                              "/json/findings/23/observations/declared/source/digest"
+                            ]
+                          }
                         }
-                      }
+                      },
+                      "priorCurrentSha256": "a01c95b46d4d7176d43db54b1cf150eab2a1add6e13e8a7841739c1446dc3321"
                     },
-                    "priorCurrentSha256": "a01c95b46d4d7176d43db54b1cf150eab2a1add6e13e8a7841739c1446dc3321"
-                  },
-                  "priorCurrentSha256": "2fcd3963cb5a77617f0d014e79ac1256dcbf8ab6aac806efedb7b41d127dd4b4"
+                    "priorCurrentSha256": "2fcd3963cb5a77617f0d014e79ac1256dcbf8ab6aac806efedb7b41d127dd4b4"
+                  }
                 }
               }
             }
@@ -17743,7 +17912,7 @@
         "surface": "governance-extraction-cli",
         "key": "status-json",
         "task": "14.1",
-        "reason": "Task 14.1 advances the current application staging and production capability disclosure from unavailable to injected-only while retaining an explicit fail-closed blocker for missing qualified protected handover, custody, exact approved resources and execution-host proof. Frozen released-v3 output and all prior reviewed change records remain unchanged.",
+        "reason": "Actual immutable 13.5 and 14.1 executions with the unchanged frozen harness differ only in the two application phases' unavailable-to-injected-only executor labels, their exact protected-source capability/phase/global blocker messages and the resulting blockerFingerprint. Exits, stderr and every other normalized CLI field are identical. This source-only disclosure grants no production, protected-state, immutable-ref or live qualification; all original captures and prior review records remain unchanged.",
         "baselineSha256": "d476e69c6a42b79faaff3428f4ec0e2335fc51e33545461c93b48080093c901a",
         "currentSha256": "14e590c4ea93b568a2c11ef2b94fd00dedad9141dd02feedbe74fd51f5630c5e",
         "changed": [
@@ -17855,7 +18024,7 @@
         "surface": "governance-extraction-cli",
         "key": "status-local-json",
         "task": "14.1",
-        "reason": "Task 14.1 advances the current local-scope application staging and production capability disclosure from unavailable to injected-only while retaining an explicit fail-closed blocker for missing qualified protected handover, custody, exact approved resources and execution-host proof. Frozen released-v3 output and all prior reviewed change records remain unchanged.",
+        "reason": "Actual immutable 13.5 and 14.1 executions with the unchanged frozen harness differ only in the two application phases' unavailable-to-injected-only executor labels and their exact protected-source capability/phase blocker messages. Exits, stderr and every other normalized CLI field are identical. This source-only disclosure grants no production, protected-state, immutable-ref or live qualification; all original captures and prior review records remain unchanged.",
         "baselineSha256": "2a41068f55ac3771f4f7bc01b79ef8d10df067e1c89fb1d268229845e8007917",
         "currentSha256": "ee80eb595d53a16f7bd60ca17e7187b299b69f9cf651cd96de15f9b739b70970",
         "changed": [
@@ -17967,7 +18136,7 @@
         "surface": "governance-extraction-cli",
         "key": "resume-json",
         "task": "14.1",
-        "reason": "Task 14.1 advances the current application staging and production resume capability disclosure from unavailable to injected-only while retaining an explicit fail-closed blocker for missing qualified protected handover, custody, exact approved resources and execution-host proof. Frozen released-v3 output and all prior reviewed change records remain unchanged.",
+        "reason": "Actual immutable 13.5 and 14.1 executions with the unchanged frozen harness differ only in the two application phases' unavailable-to-injected-only executor labels and their exact protected-source capability/phase blocker messages. Exits, stderr and every other normalized CLI field are identical. This source-only disclosure grants no production, protected-state, immutable-ref or live qualification; all original captures and prior review records remain unchanged.",
         "baselineSha256": "c21c0f2ecd3e5ca0368e2a4b0af70f7ce28ae39c842738d9a1e056d5a67e51bb",
         "currentSha256": "3e12bcfcf1d44b75bc85699973d643965d25a15089855d228eea0a7ce5cf67f7",
         "changed": [

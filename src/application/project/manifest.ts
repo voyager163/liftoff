@@ -17,16 +17,13 @@ import { exactRecord, isRecord } from '../../domain/project/manifest/fields.js';
 import { FileSystemError } from '../../domain/project/errors.js';
 import { toSafeProjectName } from '../../domain/project/planning.js';
 import { retiredFlatRootInfrastructureIdentities } from '../../domain/project/infrastructure-layout.js';
-import {
-  modernActivationSourceContracts,
-  preCustodyModernActivationSourceContracts
-} from '../../domain/governance/policy/identity.js';
+import { modernActivationSourceContractForFamily } from '../../domain/governance/policy/identity.js';
 import { createManifestV8Reader, type LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import { canonicalJson } from '../../domain/governance/activation/canonical-json.js';
 import { capturedFileBytes } from '../../domain/governance/activation/modern-local-inputs.js';
 import type { InstalledLocalSnapshot } from '../../domain/governance/activation/modern-local-runtime.js';
 import { modernLocalInputExclusion } from '../../domain/governance/activation/modern-local-exclusions.js';
-import { matchesHistoricalModernPlugins, modernPreAssessmentRegistry } from './modern-plugins.js';
+import { matchesHistoricalModernPlugins, modernPreAssessmentRegistry, modernPreWorkflowRegistry } from './modern-plugins.js';
 import type { PluginSelection } from '../../plugins/contracts.js';
 import { projectAssessmentAgentIntegrations } from '../../domain/project/catalog.js';
 
@@ -114,15 +111,25 @@ export function resolveManifestV8SourceContract(input: unknown) {
 }
 
 export function resolveModernManifestV8SourceContract(input: unknown) {
-  const { contract, profile, workflow, current } = resolveSourceContract(input, composeModernManifestPlugins);
+  return resolveModernManifestV8Source(input).contract;
+}
+
+export function resolveModernManifestV8Source(input: unknown) {
+  const { contract, profile, workflow, current, preWorkflow } = resolveSourceContract(input, composeModernManifestPlugins);
+  const release = current ? 'current' as const : preWorkflow ? 'pre-workflow' as const : 'pre-assessment' as const;
   if (profile === 'none') {
-    return Object.freeze({ ...contract, governanceSource: Object.freeze({ profile: 'none' as const }) });
+    return Object.freeze({
+      contract: Object.freeze({ ...contract, governanceSource: Object.freeze({ profile: 'none' as const }) }),
+      release
+    });
   }
-  const sources = current ? modernActivationSourceContracts() : preCustodyModernActivationSourceContracts();
-  const source = sources.find((source) =>
-    source.identity.profile === profile && source.identity.workflow === workflow);
+  const source = modernActivationSourceContractForFamily(
+    current ? 'current' : preWorkflow ? 'preWorkflow' : 'preCustody', profile, workflow);
   if (!source) throw new FileSystemError('No authoritative modern governance source matches the selected profile and workflow.');
-  return Object.freeze({ ...contract, governanceSource: source });
+  return Object.freeze({
+    contract: Object.freeze({ ...contract, governanceSource: source }),
+    release
+  });
 }
 
 function resolveSourceContract(input: unknown, compose: typeof composeManifestPlugins) {
@@ -154,11 +161,18 @@ function resolveSourceContract(input: unknown, compose: typeof composeManifestPl
   let composition = compose(pluginSelection, values);
   let installed = bindingContextForComposition(composition);
   const current = manifestPluginMetadataMatches(recorded, installed.plugins);
+  let preWorkflow = false;
   if (!current) {
-    if (compose !== composeModernManifestPlugins || !matchesHistoricalModernPlugins(recorded, composition.resolution)) {
+    if (compose !== composeModernManifestPlugins) {
       throw new FileSystemError('Manifest v8 source plugin metadata does not match the exact installed release-owned source contract.');
     }
-    composition = composeModernManifestPlugins(pluginSelection, values, modernPreAssessmentRegistry());
+    const retained = composeModernManifestPlugins(pluginSelection, values, modernPreWorkflowRegistry());
+    preWorkflow = manifestPluginMetadataMatches(recorded, bindingContextForComposition(retained).plugins);
+    if (!preWorkflow && !matchesHistoricalModernPlugins(recorded, composition.resolution)) {
+      throw new FileSystemError('Manifest v8 source plugin metadata does not match the exact installed release-owned source contract.');
+    }
+    composition = preWorkflow ? retained :
+      composeModernManifestPlugins(pluginSelection, values, modernPreAssessmentRegistry());
     installed = bindingContextForComposition(composition);
   }
   const context = current ? installed : Object.freeze({ ...installed, plugins: recorded });
@@ -178,7 +192,7 @@ function resolveSourceContract(input: unknown, compose: typeof composeManifestPl
     requiredHandoffLogicalNames: Object.freeze(requiredHandoffLogicalNames),
     readableProjectLogicalNames: Object.freeze(readableProjectLogicalNames)
   });
-  return { contract, profile, workflow: project.specWorkflow, current };
+  return { contract, profile, workflow: project.specWorkflow, current, preWorkflow };
 }
 
 function componentRootsForComposition({ resolution }: ProjectPluginComposition): readonly {

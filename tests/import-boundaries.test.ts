@@ -696,6 +696,7 @@ const pluginRuntimeConsumers: ReadonlyMap<string, readonly string[]> = new Map([
     'plugins/builtin/modern-historical-release.ts',
     'plugins/builtin/modern-previous-release.ts',
     'plugins/builtin/modern-pre-assessment.ts',
+    'plugins/builtin/modern-pre-workflow.ts',
     'plugins/builtin/index.ts',
     'plugins/contracts.ts',
     'plugins/registry.ts'

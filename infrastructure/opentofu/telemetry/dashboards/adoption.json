@@ -1,0 +1,600 @@
+{
+  "uid": "liftoff-observed-adoption",
+  "title": "Liftoff - opted-in observed adoption",
+  "description": "Directional, retained observations and reporting availability; not a census, lifetime adoption, developer activity or deployment health.",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "timezone": "utc",
+  "tags": [
+    "liftoff",
+    "opted-in",
+    "retained-observations"
+  ],
+  "refresh": "",
+  "time": {
+    "from": "now-180d",
+    "to": "now"
+  },
+  "timepicker": {
+    "hidden": true
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "window_days",
+        "label": "Distribution window (days)",
+        "type": "custom",
+        "query": "30,90,180",
+        "multi": false,
+        "includeAll": false,
+        "current": {
+          "text": "30",
+          "value": "30"
+        },
+        "options": [
+          {
+            "text": "30",
+            "value": "30",
+            "selected": true
+          },
+          {
+            "text": "90",
+            "value": "90",
+            "selected": false
+          },
+          {
+            "text": "180",
+            "value": "180",
+            "selected": false
+          }
+        ]
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Measurement and availability",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 6
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Opted-in observed projects, not a census.** One random ID per root/manifest; clones/worktrees share it, independent monorepo roots differ. Forgeable IDs are not authentication or compliance proof.\n\n**Operator-configured project reporting: @reporting_configuration@.** Display/expectation only; does not change clients or ingestion. Query/permission/table errors are **unavailable**, never zero. Successful empty queries mean no retained events; history may have expired. Silence cannot establish individual disablement or abandonment.\n\n**180-day retained history.** First-observed is earliest retained observation, not lifetime enrollment. Distinct counts are approximate (`dcount(..., 2)`, nominal 0.4% standard error). Latest-observed dimensions are not conformance; equal-time ties are unspecified. Source counts overlap. Monthly grace is **31 + 9 = 40 days**, not daily activity."
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Retained project data status",
+      "description": "A native query error means unavailable. Empty dimensions are no observations, not a query-success fallback. Project counts exclude registered synthetic IDs.",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 24,
+        "h": 4
+      },
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "liftoff-azure-logs"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unavailable / no retained value",
+          "decimals": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "liftoff-azure-logs"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "@workspace_resource_id@"
+            ],
+            "query": "let syntheticIds = dynamic(@synthetic_ids@);\nlet projects = LiftoffProjectEvents_CL\n| where TimeGenerated >= ago(180d) and TimeGenerated <= now()\n| where SchemaVersion == 2 and EventName == \"project_observed\"\n| where Source in (\"cli\", \"ci-heartbeat\")\n| where ProjectId !in (syntheticIds);\n\nprojects\n| summarize RetainedEvents = count(), LastObserved = max(TimeGenerated)\n| extend State = iff(RetainedEvents == 0, \"empty - no retained observations; earlier records may have expired\", \"observations available; silence is not disablement\")\n| project State, RetainedEvents, LastObserved, RetentionDays = 180\n",
+            "resultFormat": "table",
+            "dashboardTime": false,
+            "mode": "raw"
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Opted-in projects - 30 / 90 / 180 days (approximate)",
+      "description": "A native query error means unavailable. Empty dimensions are no observations, not a query-success fallback. Project counts exclude registered synthetic IDs.",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 5
+      },
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "liftoff-azure-logs"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unavailable / no retained value",
+          "decimals": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "liftoff-azure-logs"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "@workspace_resource_id@"
+            ],
+            "query": "let syntheticIds = dynamic(@synthetic_ids@);\nlet projects = LiftoffProjectEvents_CL\n| where TimeGenerated >= ago(180d) and TimeGenerated <= now()\n| where SchemaVersion == 2 and EventName == \"project_observed\"\n| where Source in (\"cli\", \"ci-heartbeat\")\n| where ProjectId !in (syntheticIds);\n\nlet firstObserved = projects | summarize FirstSeen = min(TimeGenerated) by ProjectId;\nlet windowCounts = (days:int) {\n    projects\n    | where TimeGenerated >= ago(1d * days)\n    | summarize ObservedProjectsApprox = dcount(ProjectId, 2)\n    | extend WindowDays = days\n    | join kind=inner (\n        firstObserved\n        | where FirstSeen >= ago(1d * days)\n        | summarize FirstObservedProjectsApprox = dcount(ProjectId, 2)\n        | extend WindowDays = days\n    ) on WindowDays\n    | project WindowDays, ObservedProjectsApprox, FirstObservedProjectsApprox\n};\nunion windowCounts(30), windowCounts(90), windowCounts(180)\n| order by WindowDays asc\n",
+            "resultFormat": "table",
+            "dashboardTime": false,
+            "mode": "raw"
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Daily observations by source (approximate, not active developers)",
+      "description": "A native query error means unavailable. Empty dimensions are no observations, not a query-success fallback. Project counts exclude registered synthetic IDs.",
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "liftoff-azure-logs"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unavailable / no retained value",
+          "decimals": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "liftoff-azure-logs"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "@workspace_resource_id@"
+            ],
+            "query": "let syntheticIds = dynamic(@synthetic_ids@);\nlet projects = LiftoffProjectEvents_CL\n| where TimeGenerated >= ago(180d) and TimeGenerated <= now()\n| where SchemaVersion == 2 and EventName == \"project_observed\"\n| where Source in (\"cli\", \"ci-heartbeat\")\n| where ProjectId !in (syntheticIds);\n\nprojects\n| where TimeGenerated >= ago(1d * toint(\"${window_days}\"))\n| summarize ObservedProjectsApprox = dcount(ProjectId, 2) by bin(TimeGenerated, 1d), Source\n| order by TimeGenerated asc\n",
+            "resultFormat": "time_series",
+            "dashboardTime": false,
+            "mode": "raw"
+          }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Latest observed CLI version per project (approximate)",
+      "description": "A native query error means unavailable. Empty dimensions are no observations, not a query-success fallback. Project counts exclude registered synthetic IDs.",
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "liftoff-azure-logs"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unavailable / no retained value",
+          "decimals": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "liftoff-azure-logs"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "@workspace_resource_id@"
+            ],
+            "query": "let syntheticIds = dynamic(@synthetic_ids@);\nlet projects = LiftoffProjectEvents_CL\n| where TimeGenerated >= ago(180d) and TimeGenerated <= now()\n| where SchemaVersion == 2 and EventName == \"project_observed\"\n| where Source in (\"cli\", \"ci-heartbeat\")\n| where ProjectId !in (syntheticIds);\n\nprojects\n| where TimeGenerated >= ago(1d * toint(\"${window_days}\"))\n| summarize arg_max(TimeGenerated, CliVersion) by ProjectId\n| summarize ProjectsApprox = dcount(ProjectId, 2) by CliVersion\n| order by ProjectsApprox desc, CliVersion asc\n",
+            "resultFormat": "table",
+            "dashboardTime": false,
+            "mode": "raw"
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Latest observed policy per project (approximate, not conformance)",
+      "description": "A native query error means unavailable. Empty dimensions are no observations, not a query-success fallback. Project counts exclude registered synthetic IDs.",
+      "gridPos": {
+        "x": 12,
+        "y": 23,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "liftoff-azure-logs"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unavailable / no retained value",
+          "decimals": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "liftoff-azure-logs"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "@workspace_resource_id@"
+            ],
+            "query": "let syntheticIds = dynamic(@synthetic_ids@);\nlet projects = LiftoffProjectEvents_CL\n| where TimeGenerated >= ago(180d) and TimeGenerated <= now()\n| where SchemaVersion == 2 and EventName == \"project_observed\"\n| where Source in (\"cli\", \"ci-heartbeat\")\n| where ProjectId !in (syntheticIds);\n\nprojects\n| where TimeGenerated >= ago(1d * toint(\"${window_days}\"))\n| summarize arg_max(TimeGenerated, PolicyProfile, PolicyVersion) by ProjectId\n| summarize ProjectsApprox = dcount(ProjectId, 2) by PolicyProfile, PolicyVersion\n| order by ProjectsApprox desc, PolicyProfile asc, PolicyVersion asc\n",
+            "resultFormat": "table",
+            "dashboardTime": false,
+            "mode": "raw"
+          }
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Latest observed complete registry digest (approximate)",
+      "description": "A native query error means unavailable. Empty dimensions are no observations, not a query-success fallback. Project counts exclude registered synthetic IDs.",
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 24,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "liftoff-azure-logs"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unavailable / no retained value",
+          "decimals": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "liftoff-azure-logs"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "@workspace_resource_id@"
+            ],
+            "query": "let syntheticIds = dynamic(@synthetic_ids@);\nlet projects = LiftoffProjectEvents_CL\n| where TimeGenerated >= ago(180d) and TimeGenerated <= now()\n| where SchemaVersion == 2 and EventName == \"project_observed\"\n| where Source in (\"cli\", \"ci-heartbeat\")\n| where ProjectId !in (syntheticIds);\n\nprojects\n| where TimeGenerated >= ago(1d * toint(\"${window_days}\"))\n| summarize arg_max(TimeGenerated, TemplateSetDigest) by ProjectId\n| summarize ProjectsApprox = dcount(ProjectId, 2) by TemplateSetDigest\n| order by ProjectsApprox desc, TemplateSetDigest asc\n",
+            "resultFormat": "table",
+            "dashboardTime": false,
+            "mode": "raw"
+          }
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "CLI / CI-heartbeat observations (overlapping project counts)",
+      "description": "A native query error means unavailable. Empty dimensions are no observations, not a query-success fallback. Project counts exclude registered synthetic IDs.",
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "liftoff-azure-logs"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unavailable / no retained value",
+          "decimals": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "liftoff-azure-logs"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "@workspace_resource_id@"
+            ],
+            "query": "let syntheticIds = dynamic(@synthetic_ids@);\nlet projects = LiftoffProjectEvents_CL\n| where TimeGenerated >= ago(180d) and TimeGenerated <= now()\n| where SchemaVersion == 2 and EventName == \"project_observed\"\n| where Source in (\"cli\", \"ci-heartbeat\")\n| where ProjectId !in (syntheticIds);\n\nprojects\n| where TimeGenerated >= ago(1d * toint(\"${window_days}\"))\n| summarize ProjectsApprox = dcount(ProjectId, 2), Observations = count(), LastObserved = max(TimeGenerated) by Source\n| order by Source asc\n",
+            "resultFormat": "table",
+            "dashboardTime": false,
+            "mode": "raw"
+          }
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Explicit expected monthly reporting - freshness / unknown",
+      "description": "Only operator-registered expectations. Empty inventory is unconfigured, not healthy. Never infer disablement or abandonment from silence.",
+      "gridPos": {
+        "x": 12,
+        "y": 37,
+        "w": 12,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "liftoff-azure-logs"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unavailable / no retained value",
+          "decimals": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "liftoff-azure-logs"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "@workspace_resource_id@"
+            ],
+            "query": "let syntheticIds = dynamic(@synthetic_ids@);\nlet projects = LiftoffProjectEvents_CL\n| where TimeGenerated >= ago(180d) and TimeGenerated <= now()\n| where SchemaVersion == 2 and EventName == \"project_observed\"\n| where Source in (\"cli\", \"ci-heartbeat\")\n| where ProjectId !in (syntheticIds);\n\nlet expected = datatable(ProjectId:string, ExpectedSince:datetime) [@expected_heartbeats@];\nexpected\n| where ExpectedSince <= now() and ProjectId !in (syntheticIds)\n| join kind=leftouter (\n    projects\n    | where Source == \"ci-heartbeat\"\n    | summarize LastHeartbeat = max(TimeGenerated) by ProjectId\n) on ProjectId\n| extend Due = max_of(ExpectedSince, coalesce(LastHeartbeat, ExpectedSince)) + 40d\n| extend Overdue = now() > Due\n| extend Freshness = case(\n    isnull(LastHeartbeat), \"unknown - no retained heartbeat; never received or expired\",\n    Overdue, \"stale reporting - monthly plus grace exceeded\",\n    \"within monthly reporting grace\")\n\n| summarize ExpectedProjects = count(), OverdueExpectations = countif(Overdue) by Freshness\n| order by Freshness asc",
+            "resultFormat": "table",
+            "dashboardTime": false,
+            "mode": "raw"
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Command data availability - legacy / semantic presence",
+      "description": "A native query error means unavailable. Anonymous command events contain no project identifier: not project counts and no per-project synthetic classification.",
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 24,
+        "h": 4
+      },
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "liftoff-azure-logs"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unavailable / no retained value",
+          "decimals": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "liftoff-azure-logs"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "@workspace_resource_id@"
+            ],
+            "query": "LiftoffCommandEvents_CL\n| where TimeGenerated >= ago(180d) and TimeGenerated <= now()\n| where EventName == \"command_executed\" and SchemaVersion in (1, 2)\n| summarize RetainedCommandEvents = count(), LegacyEvents = countif(SchemaVersion == 1), SemanticEvents = countif(SchemaVersion == 2), LastCommandObserved = max(TimeGenerated)\n| extend State = iff(RetainedCommandEvents == 0, \"empty - no retained command events; not proof of ingestion failure\", \"command table query available; not end-to-end ingestion proof\")\n| project State, RetainedCommandEvents, LegacyEvents, SemanticEvents, LastCommandObserved\n",
+            "resultFormat": "table",
+            "dashboardTime": false,
+            "mode": "raw"
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Schema 2 - semantic command outcomes",
+      "description": "A native query error means unavailable. Anonymous command events contain no project identifier: not project counts and no per-project synthetic classification.",
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "liftoff-azure-logs"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unavailable / no retained value",
+          "decimals": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "liftoff-azure-logs"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "@workspace_resource_id@"
+            ],
+            "query": "LiftoffCommandEvents_CL\n| where TimeGenerated >= ago(1d * toint(\"${window_days}\")) and TimeGenerated <= now()\n| where EventName == \"command_executed\" and SchemaVersion == 2\n| where Outcome in (\"success\", \"attention-required\", \"cancelled\", \"failure\")\n| summarize Events = count() by Command, Outcome\n| order by Command asc, Outcome asc\n",
+            "resultFormat": "table",
+            "dashboardTime": false,
+            "mode": "raw"
+          }
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Schema 1 - zero / nonzero exits (legacy)",
+      "description": "A native query error means unavailable. Anonymous command events contain no project identifier: not project counts and no per-project synthetic classification.",
+      "gridPos": {
+        "x": 12,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "liftoff-azure-logs"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unavailable / no retained value",
+          "decimals": 0,
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "liftoff-azure-logs"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "@workspace_resource_id@"
+            ],
+            "query": "LiftoffCommandEvents_CL\n| where TimeGenerated >= ago(1d * toint(\"${window_days}\")) and TimeGenerated <= now()\n| where EventName == \"command_executed\" and SchemaVersion == 1\n| where Outcome in (\"success\", \"failure\")\n| extend LegacyMeaning = iff(Outcome == \"success\", \"zero exit\", \"nonzero exit - not semantic failure\")\n| summarize Events = count() by Command, LegacyMeaning\n| order by Command asc, LegacyMeaning asc\n",
+            "resultFormat": "table",
+            "dashboardTime": false,
+            "mode": "raw"
+          }
+        }
+      ]
+    }
+  ]
+}

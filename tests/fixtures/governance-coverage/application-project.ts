@@ -79,7 +79,8 @@ export async function applicationPlanningFixture(
   const prerequisite = applicationPrerequisiteBinding({ ...initial, inspection });
   if (phaseId === 'application-artifact-ready') {
     inputs.phases['application-artifact-ready'] = {
-      sourceSha: 'a'.repeat(40), workflowPath: '.github/workflows/application-artifact.yml',
+      sourceSha: 'a'.repeat(40), sourceTreeSha: 'b'.repeat(40),
+      workflowPath: '.github/workflows/application-artifact.yml',
       workflowDigest: 'b'.repeat(64), contextPath: 'backend', dockerfilePath: 'backend/Dockerfile',
       imageRepository: 'application/backend', sourceTransmissionApproved: true,
       dependencyNetworkApproved: true, buildExecutionApproved: true,

@@ -5,9 +5,11 @@ import { projectTelemetryDimensions, type ProjectTelemetryDimensions } from '../
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { createManifestV8Candidate } from '../src/application/project/manifest-writer.js';
 import { composeModernManifestPlugins } from '../src/application/project/plugins.js';
-import { modernSourceRegistry } from '../src/application/project/modern-plugins.js';
+import { modernSourceRegistry, modernPreWorkflowRegistry, modernPreAssessmentRegistry } from '../src/application/project/modern-plugins.js';
+import { resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
 import { createManifestV8ProjectReader } from '../src/domain/project/manifest/v8-project.js';
-import type { LiftoffManifestV8 } from '../src/domain/project/manifest/v8.js';
+import { readManifestPluginMetadata } from '../src/domain/project/manifest/plugins.js';
+import { createManifestV8Reader, type LiftoffManifestV8 } from '../src/domain/project/manifest/v8.js';
 import { canonicalJson } from '../src/domain/governance/activation/canonical-json.js';
 import { modernActivationSourceContracts } from '../src/domain/governance/policy/identity.js';
 import { toSafeProjectName } from '../src/domain/project/planning.js';
@@ -17,7 +19,10 @@ import * as telemetryContract from '../src/telemetry/contract.js';
 
 const profiles = ['none', 'single-maintainer-gitflow', 'team-gitflow'] as const;
 const workflows = ['manual', 'openspec', 'spec-kit'] as const;
-const registryDigest = 'sha256:1e9632b5200f945536955f1078ca4194c4f9a56bd712d810ec69f8faac7d61b0';
+const registryDigest = 'sha256:b6aa24a6125d11db671acb8e720159da3886438a28ebf77a760c1f20a6abc3d5';
+const manifestReader = createManifestV8Reader({
+  catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract
+});
 
 function fixture(options: {
   profile?: (typeof profiles)[number];
@@ -156,6 +161,29 @@ describe('release-owned project telemetry dimensions', () => {
       'tests', 'fixtures', 'contract-baseline-0.12.3', 'manifests', `${version}-standard-go.json`
     ), 'utf8'));
     expect(() => projectTelemetryDimensions(manifest)).toThrow();
+  });
+
+  it.each([
+    ['pre-workflow', modernPreWorkflowRegistry],
+    ['pre-custody', modernPreAssessmentRegistry]
+  ] as const)('does not relabel a valid retained %s v8 source as the current telemetry bundle', (_family, registry) => {
+    const manifest = fixture().manifest, workload = manifest.project.workload;
+    const resolution = composeModernManifestPlugins({
+      workload: workload.kind, stack: workload.apiStack, cloud: workload.cloud,
+      workflow: manifest.project.specWorkflow, agents: manifest.project.agents,
+      frontend: workload.frontend ? 'included' : 'omitted', governanceProfile: manifest.governance.profile,
+      environments: workload.environments
+    }, { safeProjectName: toSafeProjectName(manifest.project.name) }, registry()).resolution;
+    const plugins = readManifestPluginMetadata({
+      schemaVersion: 1, resolutionDigest: resolution.digest, selections: resolution.plugins
+    }, {
+      stack: workload.apiStack, cloud: workload.cloud, workflow: manifest.project.specWorkflow,
+      agents: manifest.project.agents
+    });
+    const historical = { ...manifest, plugins };
+    expect(manifestReader.parseManifestV8(historical)).toEqual(historical);
+    expect(() => projectTelemetryDimensions(historical))
+      .toThrow('Historical source plugin metadata cannot establish the installed project telemetry bundle.');
   });
 
   it.each([
