@@ -227,6 +227,10 @@ roots; no shell trampoline, executable `.pth` hook, user site, project Python
 path or operator Checkov configuration is executed. The bounded selected import
 roots, standard-library files, launcher, interpreter-bin membership, declared file-link targets
 and virtual-environment configuration are observed before and after scanning.
+Declared import roots under a traversal-skipped `site-packages` directory are
+inventoried independently, including their package bytes and membership. Only
+roots actually covered by an ancestor traversal are elided; an undeclared global
+site directory remains excluded by the isolated bootstrap.
 Unsupported path hooks, directory links or outside-prefix file links refuse;
 there is no automatic installation or fallback to a different program.
 This observed import inventory is not native linked-library closure, an approved

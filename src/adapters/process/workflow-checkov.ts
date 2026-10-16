@@ -69,6 +69,13 @@ async function namesIn(directory: string): Promise<string[]> {
   return names.sort();
 }
 
+/** A declared root beneath a traversal skip needs its own inventory. */
+export function workflowCheckovInventoryRoots(roots: readonly string[]): readonly string[] {
+  return roots.filter((root, index) => !roots.some((parent, parentIndex) =>
+    parentIndex !== index && parent !== root && applicationWithin(parent, root) &&
+    path.relative(parent, root).split(path.sep)[0] !== 'site-packages'));
+}
+
 /** Protocol checking only: a caller-supplied JSON report is never execution or proof authority. */
 export function checkWorkflowCheckovResult(
   result: CommandResult, selectedFiles: readonly string[]
@@ -257,8 +264,7 @@ export class WorkflowCheckovInvocation {
       if (physical(await lstat(directory, { bigint: true })) !== physical(before) ||
           canonicalSha256(await namesIn(directory)) !== canonicalSha256(names)) refuse('The scanner directory membership changed.');
     };
-    for (const root of roots.filter((root, index) => !roots.some((parent, parentIndex) =>
-      parentIndex !== index && parent !== root && applicationWithin(parent, root)))) {
+    for (const root of workflowCheckovInventoryRoots(roots)) {
       const stat = await lstat(root);
       const boundary = await captureWorkspaceDirectoryChain(stat.isDirectory() ? root : path.dirname(root));
       await assertWorkspaceDirectorySnapshot(boundary);

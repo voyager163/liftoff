@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   assertWorkflowCheckovLiteralScope, checkWorkflowCheckovResult, readWorkflowCheckovPythonLauncher,
-  WorkflowCheckovInvocation, WorkflowCheckovRefusal
+  WorkflowCheckovInvocation, WorkflowCheckovRefusal, workflowCheckovInventoryRoots
 } from '../src/adapters/process/workflow-checkov.js';
 import { parseWorkflowContextValidatorArgs } from '../src/workflow-context-validator.js';
 import { NodeCommandRunner, type CommandResult } from '../src/process-runner.js';
@@ -15,6 +15,7 @@ describe('private Checkov protocol validation, not scanner or proof substitution
     check_id, check_result: { result }, resource: 'azurerm_network_security_group.fixture',
     file_abs_path: file, file_line_range: [1, 20]
   });
+
   function report(failed = false) {
     return { check_type: 'terraform',
       results: { passed_checks: failed ? [] : [finding()], failed_checks: failed ? [finding('FAILED')] : [],
@@ -144,5 +145,34 @@ describe('private scanner invocation refusals do not launch a fake successful sc
     expect(run).not.toHaveBeenCalled();
     expect(selected.validationResult).toBeNull();
     expect(selected.processTreeSettled).toBe(true);
+  });
+});
+
+describe('declared Checkov import-root inventory coverage, not program or phase authority', () => {
+  const standard = path.resolve('fixture-only', 'python3.14');
+  const nested = path.join(standard, 'site-packages');
+  it.each(['standard-first', 'import-first'] as const)('retains the declared nested import root in %s order', order => {
+    const roots = order === 'standard-first' ? [standard, nested] : [nested, standard];
+    expect(workflowCheckovInventoryRoots(roots)).toEqual(roots);
+  });
+  it('retains a declared import deeper below an otherwise skipped global site directory', () => {
+    const declared = path.join(nested, 'package', 'site-packages');
+    expect(workflowCheckovInventoryRoots([standard, declared])).toEqual([standard, declared]);
+  });
+  it('retains an explicitly declared site directory beneath another imported site directory', () => {
+    const declared = path.join(nested, 'site-packages');
+    expect(workflowCheckovInventoryRoots([standard, nested, declared])).toEqual([standard, nested, declared]);
+  });
+  it('does not repeat ordinary nested roots already covered by the parent traversal', () => {
+    expect(workflowCheckovInventoryRoots([standard, path.join(standard, 'lib-dynload')])).toEqual([standard]);
+    expect(workflowCheckovInventoryRoots([standard, nested, path.join(nested, 'package')])).toEqual([standard, nested]);
+  });
+  it('does not add an undeclared global site directory to the isolated import inventory', () => {
+    expect(workflowCheckovInventoryRoots([standard])).toEqual([standard]);
+  });
+  it('preserves the caller root sequence without mutating or inventing roots', () => {
+    const roots = Object.freeze([standard, nested, path.join(standard, 'lib-dynload')]);
+    expect(workflowCheckovInventoryRoots(roots)).toEqual([standard, nested]);
+    expect(roots).toEqual([standard, nested, path.join(standard, 'lib-dynload')]);
   });
 });
