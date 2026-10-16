@@ -1,4 +1,5 @@
 import {lstat,mkdir,mkdtemp,readFile,realpath,stat} from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import {NodeCommandRunner} from '../../process-runner.js';
 import {nativeExecutableObserver} from '../filesystem/executables.js';
@@ -52,7 +53,7 @@ async function installedComposePlugin(dockerExecutable:string,root:string,stagin
 
 async function neutral(root:string) {
   const original=await canonicalWorkspaceBoundary(root);
-  const parent=await realpath(process.platform==='darwin'?'/private/tmp':'/tmp');
+  const parent=await realpath(process.platform==='win32'?os.tmpdir():process.platform==='darwin'?'/private/tmp':'/tmp');
   const directory=await mkdtemp(path.join(parent,'liftoff-local-tools-')),identity=await lstat(directory);
   if(identity.isSymbolicLink()||!identity.isDirectory())localInputFailure('Unsafe local tool observation workspace.');
   const identities={} as Record<RepairWorkspaceRole,{path:string;identity:RepairWorkspaceFileIdentity}>;

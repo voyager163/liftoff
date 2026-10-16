@@ -35,7 +35,7 @@ const posixWorkspaceIt=it.skipIf(process.platform==='win32');
 const executed:string[]=[];beforeEach(({task})=>{executed.push(task.name);});
 afterAll(()=>{if(mode==='native')expect(executed.some(name=>name.startsWith('executes the real full none'))).toBe(true);
   console.info('MR2_B_TEST_INVENTORY '+JSON.stringify({mode,qualified,native,executed,
-    nativeUnrun:native?[]:['actual tool observation','owned process settlement','full real approval/check execution and failure paths'],
+    nativeUnrun:native?[]:['remaining guarded tool/process cases','full real approval/check execution and failure paths'],
     claim:mode==='portable'?'Portable contract/workspace checks only, not other-platform execution qualification.':'Actual current-host owned fixtures only.'}));});
 const roots:string[]=[];
 const scopes={projectCode:true as const,hostCapabilitiesAcknowledged:true as const,dependencyPreparation:false,dependencyNetwork:false,workflowFinalization:false as const,publishLocalRecords:false as const};
@@ -86,6 +86,28 @@ function operation(root:string):LocalExecutionPreview{
   const exact={...body,checks:[check]};return {...exact,fingerprint:localExecutionDigest(exact)};
 }
 describe('actual local execution prerequisites and bounded effects',()=>{
+  it.skipIf(mode==='portable')('allocates and cleans actual Node metadata probes under the native neutral temporary parent',async()=>{
+    const {project}=await fixture(),parent=await realpath(process.platform==='win32'?os.tmpdir():process.platform==='darwin'?'/private/tmp':'/tmp');
+    const observations:{cwd:string;result:Awaited<ReturnType<NodeCommandRunner['run']>>}[]=[];
+    const original=NodeCommandRunner.prototype.run;
+    const run=vi.spyOn(NodeCommandRunner.prototype,'run').mockImplementation(async function(this:NodeCommandRunner,command,options){
+      const result=await original.call(this,command,options);
+      if(command.args.length===1&&command.args[0]==='--version'&&options?.cwd)observations.push({cwd:options.cwd,result});
+      return result;
+    });
+    try{
+      const tools=await observeModernLocalTools(project,[nodeCheck],[]);
+      expect(tools.map(tool=>tool.id)).toEqual(['node']);
+      expect(observations).toHaveLength(1);
+      for(const observation of observations){
+        const directory=path.dirname(observation.cwd);
+        expect(path.dirname(directory)).toBe(parent);
+        expect(path.basename(directory)).toMatch(/^liftoff-local-tools-/);
+        expect(observation.result).toMatchObject({status:0,processSpawned:true,processTreeSettled:true,timedOut:false});
+        await expect(lstat(directory)).rejects.toMatchObject({code:'ENOENT'});
+      }
+    }finally{run.mockRestore();}
+  });
   nativeIt('independently resolves actual installed Node for metadata, not a complete baseline',async()=>{
     const {project}=await fixture(),tools=await observeModernLocalTools(project,[nodeCheck],[]);
     expect(tools.map(tool=>tool.id)).toEqual(['node']);

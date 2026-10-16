@@ -589,6 +589,10 @@ the same file, arguments, working directory, runner and five-second/4-KiB bounds
 only finite result fields are logged, never environment values. Non-Windows hosts
 leave it explicitly unrun. This is a cause-investigation control, not a production
 environment change, original-matrix success or native validator qualification.
+Local-tool metadata workspaces use the actual Windows temporary directory rather
+than a drive-relative POSIX `/tmp` assumption; macOS and Linux retain their existing
+neutral parents. Physical identity, process settlement and owned cleanup checks
+still apply before returning tool observations.
 
 The private source5 effect bridge uses a separate private control schema1 and the
 closed `workflow-source5-{plan,approval,journal,operation,proof}` namespaces
