@@ -5,7 +5,8 @@ import type {
   CaskDestinationObservation, CaskInstallPreview, CaskPreparationPort, NativeReleasePolicy
 } from '../../domain/distribution/native-upgrade.js';
 import { createCaskFileObservation } from './native-cask-files.js';
-import { lookupNativeStableCandidate, type NativeStableSource } from './native-metadata.js';
+import { authenticatedNativeCaskDefinition, lookupNativeStableCandidate, snapshotNativeStableMaterial,
+  type NativeStableMaterial, type NativeStableSource } from './native-metadata.js';
 import { createNativeStableSource } from './native-transport.js';
 import { nativePolicy } from './native.js';
 import type { SelfUpgradeDependencies } from './upgrade-host.js';
@@ -97,9 +98,15 @@ export function createHomebrewCaskPreparation(
         throw new SelfUpgradeFailure('blocked', 'native_unqualified');
       }
       const destination = await observe(prefix, observed);
+      let material: NativeStableMaterial | undefined;
       const candidate = await lookupNativeStableCandidate({ target: 'darwin-arm64' }, approved, {
-        readStable: (target, boundedSignal) => stable.readStable(target, AbortSignal.any([observed, boundedSignal]))
+        readStable: async (target, boundedSignal) => {
+          material = snapshotNativeStableMaterial(await stable.readStable(target, AbortSignal.any([observed, boundedSignal])));
+          return material;
+        }
       });
+      if (!material) throw new SelfUpgradeFailure('failed', 'native_unavailable');
+      const definition = await authenticatedNativeCaskDefinition(material, candidate, approved);
       const target = { ...candidate };
       delete target.bundleRoot;
       const [owner, tap] = fullToken.split('/');
@@ -129,6 +136,11 @@ export function createHomebrewCaskPreparation(
         cask: fullToken, expectedSourceRepository: repository,
         destination: { ...destination, versionRoot, stagedLauncher: path.posix.join(versionRoot, 'bin', 'liftoff') },
         source: caskSource, channel: { status: 'unknown' },
+        releaseDefinition: {
+          authority: 'authenticated-release-definition', filename: definition.filename,
+          bytes: definition.bytes, sha256: definition.sha256, candidateIdentity: target.identity,
+          selectedSource: caskSource.state === 'absent' ? 'absent' : caskSource.sha256 === definition.sha256 ? 'exact' : 'different'
+        },
         preflight: { nativeAppleSilicon: true, canonicalDirectories: true,
           caskAbsent: destination.cask.state === 'absent', launcherAbsent: destination.selectedLauncher.state === 'absent',
           exactExecutionProven: false },

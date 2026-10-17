@@ -1134,7 +1134,12 @@ Version verification disables telemetry and Node startup overrides and checks
 the selected launcher. Windows source uses a version-bound, ID/source/user-scope
 WinGet handoff outside the running executable, with a new shell and postverification.
 Homebrew cannot pin a cask upgrade to the reviewed version, so no unbound brew
-upgrade is executed. Linux source reuses receipt-bound immutable version
+upgrade is executed. For an attributed cask, the read-only channel compares the
+selected tap definition with canonical bytes derived from independently
+authenticated release material. A match does not grant exact installation
+authority; differing or missing local definitions remain unknown, not guessed
+package absence or lag.
+Linux source reuses receipt-bound immutable version
 replacement and exact journal/selected-dead-lock recovery, never prefix sweeps.
 Its default source independently reobserves the authenticated exact archive
 channel. Apply stages a bounded signed snapshot, validates all TAR members and

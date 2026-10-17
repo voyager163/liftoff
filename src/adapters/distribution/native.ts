@@ -4,8 +4,9 @@ import { pathToFileURL } from 'node:url';
 import { installedPackageRoot } from '../packaged-assets/package-root.js';
 import { commandFailed, comparisonPath, pathApiForPlatform, readOnlyEnvironment } from '../../domain/distribution/liftoff-npm-installation.js';
 import { SelfUpgradeFailure, selfUpgradeInstallTimeoutMs, selfUpgradeProbeTimeoutMs, selfUpgradeVerificationTimeoutMs } from '../../domain/distribution/liftoff-upgrade.js';
-import type { NativeBundleInventory, NativeCandidate, NativeInstallation, NativeReleasePolicy, NativeUpgradePort } from '../../domain/distribution/native-upgrade.js';
-import { lookupNativeStableCandidate, type NativeStableMaterial, type NativeStableSource } from './native-metadata.js';
+import type { NativeBundleInventory, NativeCandidate, NativeChannelObservation, NativeInstallation, NativeReleasePolicy, NativeUpgradePort } from '../../domain/distribution/native-upgrade.js';
+import { authenticatedNativeCaskDefinition, lookupNativeStableCandidate, snapshotNativeStableMaterial,
+  type NativeStableMaterial, type NativeStableSource } from './native-metadata.js';
 import type { SelfUpgradeDependencies } from './upgrade-host.js';
 import { isStableSemver } from '../../stable-release.js';
 import { compareSemver } from '../../semver.js';
@@ -50,6 +51,9 @@ export interface CaskOwnershipObservation {
   installedVersion: string;
   bundleRoot: string;
   launcher: string;
+  receiptSha256?: string;
+  definitionSha256?: string;
+  tapCommit?: string;
 }
 
 export interface WinGetOwnershipObservation {
@@ -169,14 +173,7 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
     const candidate = await lookupNativeStableCandidate(installation, approved, {
       readStable: async (target, signal) => {
         const material = await source.readStable(target, signal);
-        snapshot = {
-          ...material, record: Buffer.from(material.record), qualification: Buffer.from(material.qualification),
-          signature: Buffer.from(material.signature), publicKey: Buffer.from(material.publicKey),
-          assets: new Map([...material.assets].map(([name, content]) => [name, Buffer.from(content)])),
-          platformEvidence: new Map([...material.platformEvidence].map(([name, content]) => [name, Buffer.from(content)])),
-          ...(material.archiveSignature ? { archiveSignature: Buffer.from(material.archiveSignature) } : {}),
-          ...(material.archivePublicKey ? { archivePublicKey: Buffer.from(material.archivePublicKey) } : {})
-        };
+        snapshot = snapshotNativeStableMaterial(material);
         return snapshot;
       }
     });
@@ -372,13 +369,14 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
       return Object.freeze(candidate);
     },
     channel: async (installation, candidate, directory) => {
-      let observation;
+      let observation: NativeChannelObservation;
       if (readers.channel) {
         observation = await observe(signal => readers.channel!(installation, candidate, directory, signal), true);
       } else {
         const state = admitted.get(candidate.identity);
-        if (Object.hasOwn(overrides, 'channel') || installation.owner !== 'liftoff-native' ||
-          !/^linux-(?:x64|arm64)$/.test(installation.target) || !state ||
+        const cask = installation.owner === 'homebrew-cask' && installation.target === 'darwin-arm64';
+        const linux = installation.owner === 'liftoff-native' && /^linux-(?:x64|arm64)$/.test(installation.target);
+        if (Object.hasOwn(overrides, 'channel') || !linux && !cask || cask && !readers.cask || !state ||
           state.description !== JSON.stringify(candidate)) throw new SelfUpgradeFailure('blocked', 'channel_unavailable');
         const approved = await policy();
         if (JSON.stringify(approved) !== state.policy) throw new SelfUpgradeFailure('blocked', 'channel_changed');
@@ -388,15 +386,34 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
             return { status: 'lagging', version: fresh.candidate.version };
           }
           if (fresh.state.description !== state.description) throw new SelfUpgradeFailure('blocked', 'channel_changed');
+          if (cask) {
+            const definition = await authenticatedNativeCaskDefinition(fresh.state.material, candidate, approved);
+            const owner = await observe(signal => readers.cask!(installation, approved, directory, signal), true);
+            assertCaskOwnership(owner, installation, approved);
+            if (!owner.definitionSha256 || !sha256.test(owner.definitionSha256) ||
+              !owner.receiptSha256 || !sha256.test(owner.receiptSha256) || !owner.tapCommit || !commit.test(owner.tapCommit)) {
+              throw new SelfUpgradeFailure('blocked', 'channel_unavailable');
+            }
+            if (owner.definitionSha256 !== definition.sha256 || JSON.stringify(await policy()) !== state.policy) {
+              throw new SelfUpgradeFailure('blocked', 'channel_changed');
+            }
+            observation = { status: 'available', version: candidate.version, exactApply: false,
+              artifactSha256: candidate.archiveSha256,
+              identity: digest(Buffer.from(JSON.stringify(['homebrew-cask', candidate.identity, definition.sha256, owner]))) };
+          } else {
+            observation = { status: 'available', version: candidate.version, exactApply: true,
+              artifactSha256: candidate.archiveSha256,
+              identity: digest(Buffer.from(JSON.stringify(['liftoff-native', installation.target, candidate.identity, candidate.archiveSha256]))) };
+          }
           admitted.set(candidate.identity, fresh.state);
-          observation = { status: 'available' as const, version: candidate.version, exactApply: true,
-            artifactSha256: candidate.archiveSha256,
-            identity: digest(Buffer.from(JSON.stringify(['liftoff-native', installation.target, candidate.identity, candidate.archiveSha256]))) };
         } catch (error) {
           if (error instanceof SelfUpgradeFailure) {
             if (error.reasonCode === 'native_timeout') throw new SelfUpgradeFailure('failed', 'channel_timeout');
             if (error.reasonCode === 'native_invalid') throw new SelfUpgradeFailure('failed', 'channel_invalid');
             if (error.reasonCode === 'native_unavailable') throw new SelfUpgradeFailure('failed', 'channel_unavailable');
+            if (error.reasonCode === 'unsupported_installation' || error.reasonCode === 'owner_changed') {
+              throw new SelfUpgradeFailure('blocked', 'channel_changed');
+            }
           }
           throw error;
         }
