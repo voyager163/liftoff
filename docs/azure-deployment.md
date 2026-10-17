@@ -194,6 +194,11 @@ readback, collision inspection, independent deployed-recipe export and exact
 resource/role readback are required. Provider conditional creation and competing
 resource-creation scenarios still require real disposable qualification; source
 tests cannot qualify an Azure resource provider's concurrency behavior.
+Both the actual registry and workload identity must retain the exact
+`liftoff-binding` and `liftoff-environment` tags. Missing, changed or malformed
+environment metadata blocks qualification; readback never fills in an expected
+tag in place of the observed provider value. A failed readback retains the
+accepted deployment handle and cannot trigger a replacement deployment.
 
 **Execution-ref source admission is read-only, not production qualification.**
 The artifact route accepts only the existing lightweight

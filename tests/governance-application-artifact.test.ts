@@ -21,6 +21,7 @@ import {
 import { protectedStateCustodyRequest } from '../src/governance-activation/protected-state-handover.js';
 import { loadActivationState, writeActivationState } from '../src/governance-activation/activation-state.js';
 import { readReviewedTransitionPlans } from '../src/governance-activation/proof-records.js';
+import { isRecord } from '../src/domain/governance/activation/canonical-json.js';
 import { protectedStateCustodyIdentityDigest } from '../src/governance-activation/protected-state-custody.js';
 import { readbackProof } from '../src/governance-activation/transition-records.js';
 import { nativeStateHostId } from '../src/adapters/state/native-system.js';
@@ -156,12 +157,13 @@ class ApplicationRunner implements CommandRunner {
     if (key.startsWith('acr show ')) return result(command, {
       id: this.prerequisite!.registryId, name: this.prerequisite!.registryName, location: 'eastus', sku: 'Basic',
       adminUserEnabled: false, provisioningState: 'Succeeded', loginServer: `${this.prerequisite!.registryName}.azurecr.io`,
-      tags: { 'liftoff-binding': this.prerequisite!.bindingDigest, 'unrelated-sensitive-tag': 'withheld-fixture-value' }
+      tags: { 'liftoff-binding': this.prerequisite!.bindingDigest, 'liftoff-environment': this.prerequisite!.environment,
+        'unrelated-sensitive-tag': 'withheld-fixture-value' }
     });
     if (key.startsWith('identity show ')) return result(command, {
       id: this.prerequisite!.identityId, name: this.prerequisite!.identityName, location: 'eastus',
       tenantId: coverageTenant, principalId: applicationFixtureWorkloadPrincipal, clientId: applicationFixtureWorkloadClient,
-      tags: { 'liftoff-binding': this.prerequisite!.bindingDigest }
+      tags: { 'liftoff-binding': this.prerequisite!.bindingDigest, 'liftoff-environment': this.prerequisite!.environment }
     });
     if (key.includes('/roleAssignments/')) {
       const role = this.prerequisite!.roles.find((entry) => argument(command, '--url').includes(entry.id))!;
@@ -470,6 +472,35 @@ describe('application source producers behind real prerequisites', () => {
     expect(f.runner.writes).toHaveLength(1);
     expect(JSON.stringify(outcome)).not.toContain('withheld-fixture-value');
     expect(f.runner.options.filter((entry) => entry.timeoutMs).every((entry) => entry.timeoutMs! <= 30_000 && entry.stream === false)).toBe(true);
+  });
+  it.each(['registry', 'identity'].flatMap(resource => [
+    { resource, drift: 'missing', value: undefined },
+    { resource, drift: 'changed', value: 'staging' },
+    { resource, drift: 'null', value: null },
+    { resource, drift: 'nonstring', value: false }
+  ]))('refuses $resource $drift environment metadata rather than manufacturing an approved readback tag', async ({ resource, value }) => {
+    const f = await fixture();
+    const run = f.runner.run.bind(f.runner);
+    vi.spyOn(f.runner, 'run').mockImplementation(async (command, options) => {
+      const observed = await run(command, options);
+      if (command.args.join(' ').startsWith(resource === 'registry' ? 'acr show ' : 'identity show ')) {
+        const body: unknown = JSON.parse(observed.stdout);
+        if (!isRecord(body) || !isRecord(body.tags)) throw new Error('Isolated provider fixture has invalid tag metadata.');
+        const tags = { ...body.tags };
+        if (value === undefined) delete tags['liftoff-environment'];
+        else tags['liftoff-environment'] = value;
+        return result(command, { ...body, tags });
+      }
+      return observed;
+    });
+    const outcome = await executeApplicationPrerequisites(f.input);
+    expect(outcome).toMatchObject({
+      status: 'blocked', blocker: expect.stringMatching(/prerequisite/), operation: { status: 'completed' }
+    });
+    expect(outcome.evidencePayload).toBeUndefined();
+    expect(outcome.outputs?.values.loginServer).toBeUndefined();
+    expect(outcome.outputs?.values.workloadPrincipalId).toBeUndefined();
+    expect(f.runner.writes).toHaveLength(1);
   });
   it.each(['ports', 'authority', 'permission', 'provider', 'collision', 'ownership'] as const)('refuses %s before dispatch', async (kind) => {
     const f = await fixture();

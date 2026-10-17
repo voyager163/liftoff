@@ -162,12 +162,14 @@ export async function observeApplicationPrerequisites(input: PhaseAdapterExecuti
     registry.location !== binding.region || registry.sku !== 'Basic' || registry.adminUserEnabled !== false ||
     registry.provisioningState !== 'Succeeded' || !isRecord(registry.tags) ||
     registry.tags['liftoff-binding'] !== binding.bindingDigest ||
+    registry.tags['liftoff-environment'] !== binding.environment ||
     typeof registry.loginServer !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)?\.azurecr\.io$/u.test(registry.loginServer) ||
     identity.id !== binding.identityId || identity.name !== binding.identityName ||
     identity.location !== binding.region || identity.tenantId !== binding.tenantId ||
     typeof identity.principalId !== 'string' || !guid.test(identity.principalId) ||
     typeof identity.clientId !== 'string' || !guid.test(identity.clientId) ||
-    !isRecord(identity.tags) || identity.tags['liftoff-binding'] !== binding.bindingDigest) {
+    !isRecord(identity.tags) || identity.tags['liftoff-binding'] !== binding.bindingDigest ||
+    identity.tags['liftoff-environment'] !== binding.environment) {
     return applicationError('application-prerequisite-readback', 'Registry or workload identity differs from the exact approved owned prerequisite.');
   }
   const roles = [];
@@ -193,11 +195,11 @@ export async function observeApplicationPrerequisites(input: PhaseAdapterExecuti
   return { binding, registry: {
     id: registry.id, name: registry.name, location: registry.location, loginServer: registry.loginServer,
     sku: registry.sku, adminUserEnabled: registry.adminUserEnabled, provisioningState: registry.provisioningState,
-    tags: { 'liftoff-binding': binding.bindingDigest, 'liftoff-environment': binding.environment }
+    tags: { 'liftoff-binding': registry.tags['liftoff-binding'], 'liftoff-environment': registry.tags['liftoff-environment'] }
   }, identity: {
     id: identity.id, name: identity.name, location: identity.location, tenantId: identity.tenantId,
     principalId: identity.principalId, clientId: identity.clientId,
-    tags: { 'liftoff-binding': binding.bindingDigest, 'liftoff-environment': binding.environment }
+    tags: { 'liftoff-binding': identity.tags['liftoff-binding'], 'liftoff-environment': identity.tags['liftoff-environment'] }
   }, roles };
 }
 
