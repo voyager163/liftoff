@@ -2,8 +2,9 @@ import { deepStrictEqual } from 'node:assert';
 import { createHash } from 'node:crypto';
 import { chmod, lstat, mkdir, realpath, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { TransformOptions } from 'node:stream';
 import { promisify } from 'node:util';
-import { gunzip } from 'node:zlib';
+import { gunzip, type ZlibOptions } from 'node:zlib';
 import type { NativeCandidate } from '../../domain/distribution/native-upgrade.js';
 import { SelfUpgradeFailure, selfUpgradeInstallTimeoutMs } from '../../domain/distribution/liftoff-upgrade.js';
 import type { SelfUpgradeDependencies } from './upgrade-host.js';
@@ -217,8 +218,9 @@ export async function stageAuthenticatedNativeArchive(options: {
   const archive = Buffer.from(options.archive), signature = Buffer.from(options.signature), publicKey = Buffer.from(options.publicKey);
   const candidate = { ...options.candidate };
   const started = performance.now();
+  const operationSignal = AbortSignal.any([signal, AbortSignal.timeout(selfUpgradeInstallTimeoutMs)]);
   const check = () => {
-    if (signal.aborted || performance.now() - started >= selfUpgradeInstallTimeoutMs) {
+    if (operationSignal.aborted || performance.now() - started >= selfUpgradeInstallTimeoutMs) {
       throw new SelfUpgradeFailure('failed', 'native_install_timeout');
     }
   };
@@ -230,7 +232,8 @@ export async function stageAuthenticatedNativeArchive(options: {
       signature.length !== 64 || publicKey.length === 0 || publicKey.length > 4096) throw invalid();
     verifyNativeBytesSignature(archive, signature, publicKey, expectedKeySha256);
     const maximum = contract.nativeBundleLimits.totalBytes + contract.nativeBundleLimits.entries * 16_384 + 8 * 1024 * 1024;
-    const members = parseArchive(await decompress(archive, { maxOutputLength: maximum }), contract, check);
+    const inflateOptions: ZlibOptions & Pick<TransformOptions, 'signal'> = { maxOutputLength: maximum, signal: operationSignal };
+    const members = parseArchive(await decompress(archive, inflateOptions), contract, check);
     validateMembers(members, contract);
     const manifestMember = members.get('bundle.json');
     if (manifestMember?.kind !== 'file' || manifestMember.content.length > 8 * 1024 * 1024 ||
