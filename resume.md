@@ -80,16 +80,36 @@ from this packet and explicitly recorded so it cannot be attributed to
 Neither commit completes an OpenSpec task. Progress remains 87/136 and no
 source, coverage, readiness, provider or phase-completion claim is made. Root
 has received the two bounded commits for preserving intake. The shared heavy
-lane was explicitly released at 2026-10-17T04:44:19Z; Source exact
-`f720a151ba41944f168c3f7fe09129f16245267c` currently owns the reserved
-original-program build/pack/install plus ten-consumer run. After its explicit
-release, allow the already queued bounded application-prerequisite V8 selector,
-then restore this worktree's isolated dependencies and run the failed surfaces.
-A later exclusive exact-clean successor run must repeat supported-stack, build,
-the unfiltered one-worker suite, gateway coverage plus verification, CLI
-source-complete coverage plus verification, repository policy and strict
-OpenSpec. Root's later `.13` and raw-JS inventory need a separate combined
-qualification and cannot inherit this `.12` evidence.
+lane was explicitly released by this session at 2026-10-17T04:44:19Z. Source
+exact `f720a151ba41944f168c3f7fe09129f16245267c`, tree
+`1249bb2fa40ace4ca8df33d89f244280cbbb365f`, then completed its one real
+original-program build/pack/private-install plus ten genuine consumers from
+2026-10-17T04:47:01.095Z through 2026-10-17T04:49:36.198Z: 10 passed, zero
+failed, with 21 regex-unselected request cases. It used the required official
+gzip producer input with SHA-256 beginning `bed7eea`, retained the prior xz
+checksum refusal separately, reverified unchanged HEAD/tree/files/modes and
+explicitly released the lane.
+
+The queued application prerequisite selector then ran only exact
+`1486a43b0e5c0c780841233d6202ad557f259f38` from
+2026-10-17T04:51:50.282Z through 2026-10-17T04:52:41.301Z. Its sole V8 include
+was `src/governance-activation/application-prerequisites.ts`; all 142 owning
+tests passed. Statements were 146/160 (91.25%), branches 150/168 (89.28%),
+functions 21/21 (100%) and lines 141/154 (91.55%), above the unchanged 80.01%
+floor. This is targeted evidence only, not full or global coverage. Receipt
+`files/task141-acceptance/prerequisite-v8-1486/receipt.json` in session
+`68be53ea-3101-4b13-b2a8-e520cecb7a48` has SHA-256
+`45e2990af4463eef02b8bca57af03ccc07983d6bb247723fae2b4ee69c35709f`.
+That session reverified all 1,724 source bytes/modes and released the lane with
+no child process left.
+
+This continuation now owns the exclusive lane. Restore only this worktree's
+isolated dependencies and run the failed surfaces first. The exact-clean
+successor run must then repeat supported-stack, build, the unfiltered
+one-worker suite, gateway coverage plus verification, CLI source-complete
+coverage plus verification, repository policy and strict OpenSpec. Root's later
+`.13` and raw-JS inventory need a separate combined qualification and cannot
+inherit this `.12` evidence.
 
 ## Canonical assertion recovery, 2026-10-16
 
