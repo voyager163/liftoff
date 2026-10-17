@@ -19,7 +19,10 @@ param(
     [string]$WorkspaceId,
 
     [Parameter(Mandatory = $true)]
-    [string]$InvocationId
+    [string]$InvocationId,
+
+    [Parameter(Mandatory = $false)]
+    [string]$InteropAssemblyPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -358,9 +361,30 @@ try {
     $writeErrorType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.WriteErrorCommand', $true)
     $bootstrapStage = 'write-error-cmdlet'
     $writeErrorCmdlet = [System.Management.Automation.CmdletInfo]::new('Write-Error', $writeErrorType)
-    $bootstrapStage = 'compile'
-    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: compiling")
-    & $compilerCmdlet -TypeDefinition $win32TypeDef -ErrorAction Stop
+    if ([string]::IsNullOrEmpty($InteropAssemblyPath)) {
+        $bootstrapStage = 'compile'
+        [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: compiling")
+        & $compilerCmdlet -TypeDefinition $win32TypeDef -ErrorAction Stop
+    } else {
+        $bootstrapStage = 'interop-path'
+        if (-not [System.IO.Path]::IsPathRooted($InteropAssemblyPath)) {
+            throw 'Win32 interop assembly path must be rooted.'
+        }
+        $exactInteropAssemblyPath = [System.IO.Path]::GetFullPath($InteropAssemblyPath)
+        if (-not [System.IO.File]::Exists($exactInteropAssemblyPath)) {
+            $bootstrapStage = 'compile'
+            [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: compiling")
+            & $compilerCmdlet -TypeDefinition $win32TypeDef -OutputAssembly $exactInteropAssemblyPath -OutputType Library -ErrorAction Stop
+        }
+        $bootstrapStage = 'interop-load'
+        [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: loading-interop")
+        $interopAssembly = [System.Reflection.Assembly]::LoadFile($exactInteropAssemblyPath)
+        $bootstrapStage = 'interop-identity'
+        $nativeType = $interopAssembly.GetType('Win32JobNative', $true)
+        if ($nativeType.Assembly.Location -cne $exactInteropAssemblyPath) {
+            throw 'Win32 interop assembly identity does not match the private invocation path.'
+        }
+    }
 } catch {
     [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_BOOTSTRAP: $bootstrapStage")
     [Console]::Error.WriteLine("Failed to load Win32 Job API definitions. Check the built-in compiler, LanguageMode and ExecutionPolicy.")
