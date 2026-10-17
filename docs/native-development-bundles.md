@@ -263,6 +263,13 @@ Strict TypeScript consumers distinguish `bundleFile` identities from
 `readBundleFile` identities plus captured bytes. Builder and recovery interfaces
 retain their optional Windows launcher and selected stale-lock inputs; these
 compiler contracts do not grant signing, installation or release authority.
+The canonical implementation and its declaration are shipped under
+`distribution/native/native-bundle-contract.mjs` and `.d.mts`.
+`scripts/native-bundle-contract.mjs` only re-exports that same implementation.
+The native builder captures both canonical files and copies/verifies their exact
+bytes under `installation/`; it never installs the compatibility wrapper there.
+Installed CLI consumers use the fixed package-relative canonical module, not a
+constructed file URL or an alternate verifier.
 
 The existing canonical prefix must belong to the invoking user and be private.
 Version directories are `versions/<package-version>-<bundle-manifest-sha256>`;

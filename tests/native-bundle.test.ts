@@ -12,6 +12,8 @@ import {
 import {
   buildNativeBundle, buildNativeProgram, fetchNativeInput, nativeBundleArguments, readNativeProgramAssembly
 } from '../scripts/native-bundle.mjs';
+import * as canonicalContract from '../distribution/native/native-bundle-contract.mjs';
+import * as compatibleContract from '../scripts/native-bundle-contract.mjs';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -38,6 +40,14 @@ function dependencyLock() {
 }
 
 describe('native development bundle contracts', () => {
+  it('keeps the script contract as exact canonical packaged exports without another verifier implementation', async () => {
+    expect(Object.keys(compatibleContract)).toEqual(Object.keys(canonicalContract));
+    for (const [name, value] of Object.entries(canonicalContract)) {
+      expect(Reflect.get(compatibleContract, name)).toBe(value);
+    }
+    expect(await readFile(new URL('../scripts/native-bundle-contract.mjs', import.meta.url), 'utf8'))
+      .toBe("export * from '../distribution/native/native-bundle-contract.mjs';\n");
+  });
   it.runIf(process.env.LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE)(
     'retains the real original packed program and rejects changed installed and runtime references', async () => {
       const runtimeInput = process.env.LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE;

@@ -30,6 +30,7 @@ const builderPaths = [
   'distribution/native/native-release-catalog.mjs', 'distribution/native/native-release-catalog.d.mts',
   'distribution/native/native-program-assembly.mjs', 'distribution/native/native-program-assembly.d.mts',
   'distribution/native/native-cask-definition.mjs', 'distribution/native/native-cask-definition.d.mts',
+  'distribution/native/native-bundle-contract.mjs', 'distribution/native/native-bundle-contract.d.mts',
   'scripts/native-release-set.mjs', 'scripts/native-release-set.d.mts', 'scripts/release-artifact.mjs',
   'distribution/linux/install.sh',
   'scripts/native-bundle.mjs', 'scripts/native-bundle-contract.mjs',
@@ -421,10 +422,11 @@ async function buildNativeBundleInvocation({ output, runtimeArchive, windowsLaun
   if (launcherInput) assert.deepEqual(await bundleFile(windowsLauncher), launcherInput, 'Windows launcher changed during build.');
   await mkdir(path.join(bundle, 'installation'));
   for (const name of ['host.mjs', 'platforms.json', 'release-policy.json', 'native-release-admission.mjs', 'native-release-admission.d.mts',
-    'native-release-catalog.mjs', 'native-release-catalog.d.mts', 'native-cask-definition.mjs', 'native-cask-definition.d.mts']) {
+    'native-release-catalog.mjs', 'native-release-catalog.d.mts', 'native-cask-definition.mjs', 'native-cask-definition.d.mts',
+    'native-bundle-contract.mjs', 'native-bundle-contract.d.mts']) {
     await copyFile(path.join(repositoryRoot, 'distribution/native', name), path.join(bundle, 'installation', name), constants.COPYFILE_EXCL);
   }
-  for (const name of ['native-install.mjs', 'native-bundle-contract.mjs']) {
+  for (const name of ['native-install.mjs']) {
     await copyFile(path.join(repositoryRoot, 'scripts', name), path.join(bundle, 'installation', name), constants.COPYFILE_EXCL);
   }
 
@@ -506,11 +508,12 @@ export async function verifyNativeBundle(directory) {
     ? manifest.launcherInput.sha256
     : (await bundleFile(path.join(repositoryRoot, 'distribution/native/launcher.sh'))).sha256, 'Launcher bytes differ.');
   for (const name of ['host.mjs', 'platforms.json', 'release-policy.json', 'native-release-admission.mjs', 'native-release-admission.d.mts',
-    'native-release-catalog.mjs', 'native-release-catalog.d.mts', 'native-cask-definition.mjs', 'native-cask-definition.d.mts']) {
+    'native-release-catalog.mjs', 'native-release-catalog.d.mts', 'native-cask-definition.mjs', 'native-cask-definition.d.mts',
+    'native-bundle-contract.mjs', 'native-bundle-contract.d.mts']) {
     assert.equal((await bundleFile(path.join(root, 'installation', name))).sha256,
       (await bundleFile(path.join(repositoryRoot, 'distribution/native', name))).sha256, 'Installed host admission differs.');
   }
-  for (const name of ['native-install.mjs', 'native-bundle-contract.mjs']) {
+  for (const name of ['native-install.mjs']) {
     assert.equal((await bundleFile(path.join(root, 'installation', name))).sha256,
       (await bundleFile(path.join(repositoryRoot, 'scripts', name))).sha256, 'Installed ownership contract differs.');
   }

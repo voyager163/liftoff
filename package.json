@@ -39,6 +39,8 @@
     "distribution/native/native-program-assembly.d.mts",
     "distribution/native/native-cask-definition.mjs",
     "distribution/native/native-cask-definition.d.mts",
+    "distribution/native/native-bundle-contract.mjs",
+    "distribution/native/native-bundle-contract.d.mts",
     "distribution/native/release-policy.json",
     "distribution/native/platforms.json",
     "assets/governance/modern/source-contracts.json",

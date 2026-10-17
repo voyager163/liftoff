@@ -190,7 +190,8 @@ try {
     'native-release-admission.mjs', 'native-release-admission.d.mts',
     'native-release-catalog.mjs', 'native-release-catalog.d.mts',
     'native-program-assembly.mjs', 'native-program-assembly.d.mts',
-    'native-cask-definition.mjs', 'native-cask-definition.d.mts', 'release-policy.json', 'platforms.json'
+    'native-cask-definition.mjs', 'native-cask-definition.d.mts',
+    'native-bundle-contract.mjs', 'native-bundle-contract.d.mts', 'release-policy.json', 'platforms.json'
   ]) {
     assertPackageContains(packResult, `distribution/native/${asset}`);
   }
@@ -505,7 +506,8 @@ try {
     'native-release-admission.mjs', 'native-release-admission.d.mts',
     'native-release-catalog.mjs', 'native-release-catalog.d.mts',
     'native-program-assembly.mjs', 'native-program-assembly.d.mts',
-    'native-cask-definition.mjs', 'native-cask-definition.d.mts', 'release-policy.json', 'platforms.json'
+    'native-cask-definition.mjs', 'native-cask-definition.d.mts',
+    'native-bundle-contract.mjs', 'native-bundle-contract.d.mts', 'release-policy.json', 'platforms.json'
   ]) {
     const relative = path.join('distribution', 'native', asset);
     if (!(await readFile(path.join(installedPackageRoot, relative))).equals(await readFile(path.join(packageRoot, relative)))) {
@@ -521,6 +523,8 @@ try {
       pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-release-admission.mjs')).href)};
     import {nativeCaskDefinition} from ${JSON.stringify(
       pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-cask-definition.mjs')).href)};
+    import {bundlePath,readBundleFile} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-bundle-contract.mjs')).href)};
     import {readNativeProgramAssembly} from ${JSON.stringify(
       pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-program-assembly.mjs')).href)};
     import {admitNativeStableMaterial} from ${JSON.stringify(
@@ -535,6 +539,11 @@ try {
       pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-release-catalog.mjs')).href)};
     const policy=JSON.parse(await readFile(${JSON.stringify(path.join(installedPackageRoot, 'distribution/native/release-policy.json'))},'utf8'));
     assert.equal(policy.approvedSigningKeySha256,null);
+    assert.equal(bundlePath('application/package.json'),'application/package.json');
+    assert.throws(()=>bundlePath('../outside'));
+    const contractBytes=await readBundleFile(${JSON.stringify(path.join(installedPackageRoot, 'package.json'))});
+    assert.equal(contractBytes.identity.bytes,contractBytes.content.length);
+    assert.equal(contractBytes.identity.sha256,createHash('sha256').update(contractBytes.content).digest('hex'));
     assert.equal(typeof nativeCaskDefinition,'function');
     assert.throws(()=>nativeCaskDefinition({},{}));
     await assert.rejects(()=>readNativeProgramAssembly({}),/original invocations/);
