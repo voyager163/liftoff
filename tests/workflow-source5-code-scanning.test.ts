@@ -24,15 +24,15 @@ describe('complete actual code-scanning metadata, never CodeQL or original-repor
   beforeAll(async () => { root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff-code-scanning-'))); });
   afterAll(async () => { if (root) await rm(root, { recursive: true, force: true }); });
   async function fixture(workflow: 'manual' | 'openspec' | 'spec-kit' = 'manual',
-    profile: 'single-maintainer-gitflow' | 'team-gitflow' = 'single-maintainer-gitflow') {
+    profile: 'single-maintainer-gitflow' | 'team-gitflow' = 'single-maintainer-gitflow', ref = 'develop') {
     const value = await createWorkflowRequiredSourceFixture(root, workflow, profile);
     const source = { repository: value.source.repository, repositoryId: value.source.repositoryId,
-      sourceSha: value.source.sourceSha, treeSha: value.source.treeSha, ref: 'develop' };
-    const branchPath = '/repos/owner/repo/git/ref/heads/develop';
-    const branch = { ref: 'refs/heads/develop', object: { type: 'commit', sha: source.sourceSha } };
-    const listPath = '/repos/owner/repo/code-scanning/analyses?ref=refs/heads/develop';
+      sourceSha: value.source.sourceSha, treeSha: value.source.treeSha, ref };
+    const branchPath = `/repos/owner/repo/git/ref/heads/${ref}`;
+    const branch = { ref: `refs/heads/${ref}`, object: { type: 'commit', sha: source.sourceSha } };
+    const listPath = `/repos/owner/repo/code-scanning/analyses?ref=refs/heads/${ref}`;
     const page = (number: number) => `${listPath}&per_page=100&page=${number}`;
-    const entries = [analysis()];
+    const entries = [{ ...analysis(), ref: `refs/heads/${ref}` }];
     value.routes.set(branchPath, branch); value.routes.set(page(1), entries);
     return { ...value, source, entries, branch, branchPath, listPath, page,
       request: () => observeSource5WorkflowCodeScanning({ context: value.context, runtime: value.runtime, source }) };
@@ -256,8 +256,8 @@ describe('complete actual code-scanning metadata, never CodeQL or original-repor
 
   describe('fixed read-only provider SARIF subsets, never original-report or CodeQL authority', () => {
     async function sarifFixture(workflow: 'manual' | 'openspec' | 'spec-kit' = 'manual',
-      profile: 'single-maintainer-gitflow' | 'team-gitflow' = 'single-maintainer-gitflow') {
-      const value = await fixture(workflow, profile);
+      profile: 'single-maintainer-gitflow' | 'team-gitflow' = 'single-maintainer-gitflow', ref = 'develop') {
+      const value = await fixture(workflow, profile, ref);
       const reportPath = '/repos/owner/repo/code-scanning/analyses/17';
       const report = {
         version: '2.1.0', $schema: 'https://untrusted.invalid/private-schema',
@@ -307,6 +307,20 @@ describe('complete actual code-scanning metadata, never CodeQL or original-repor
             ? 'application/sarif+json' : 'application/vnd.github+json');
         }
         expect(value.processCalls()).toBe(0);
+      } finally { await value.close(); }
+    });
+
+    it.each(['main', 'release/1.2.3', 'hotfix/urgent'])('preserves exact %s family binding without treating its SARIF subset as proof', async ref => {
+      const value = await sarifFixture('manual', 'single-maintainer-gitflow', ref);
+      try {
+        const result = await value.requestSarif();
+        expect(result).toMatchObject({ status: 'blocked', source: { ref }, originalSarif: 'not-observed',
+          selectedSourceAnalyses: 1, requiredContextSemantics: 'not-validated', prerequisiteSession: null, phaseProof: 'not-issued' });
+        expect(value.calls.filter(call => call.path.includes('/git/ref/heads/')).map(call => call.path))
+          .toEqual(Array(4).fill(`/repos/owner/repo/git/ref/heads/${ref}`));
+        expect(value.calls.filter(call => call.path.includes('analyses?')).map(call => call.path))
+          .toEqual(Array(4).fill(`/repos/owner/repo/code-scanning/analyses?ref=refs/heads/${ref}&per_page=100&page=1`));
+        expect(result.providerSarifSubsets[0]!.analysisMetadataDigest).toBe(canonicalSha256(value.entries[0]));
       } finally { await value.close(); }
     });
 
