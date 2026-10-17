@@ -147,6 +147,18 @@ describe('complete native + npm release assembly (ephemeral synthetic signing on
     expect(source).toContain('SignedUninstaller=yes');
     expect(source).toContain('SignTool=liftoff');
     expect(source).toContain('CloseApplications=no');
+    expect(source).toContain('PrivilegesRequired=lowest');
+    expect(source).toContain('#include BundleHashesFile');
+    expect(source).toContain('#include BundleFilesFile');
+    expect(source).not.toContain('recursesubdirs');
+    expect(source).toContain('DestDir: "{app}\\bin"');
+    expect(source).toContain('Flags: preservestringtype; Check: AppendUserPath');
+    expect(source).not.toContain('uninsdeletevalue');
+    expect(source).toContain('function ReviewedUserPath');
+    expect(source).toContain('Current <> OriginalPath');
+    expect(source).toContain('function ReviewUninstall');
+    expect(source).toContain('not PlainTree');
+    expect(source).toContain('not LauncherClosed');
   });
 
   it('assembles unique immutable locators without changing signed JSON, then reauthenticates all targets and npm', async () => {
