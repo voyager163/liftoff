@@ -303,29 +303,31 @@ describe('self-upgrade effect parity', () => {
   });
 });
 
+// Keep historical table widths fixed; requests still carry the actual CLI version.
+const presentationVersion = '0.12.3';
 const results: Record<string, SelfUpgradeResult> = {
-  current: { schemaVersion: 1, mode: 'check', status: 'current', currentVersion: liftoffVersion, reasonCode: 'current' },
+  current: { schemaVersion: 1, mode: 'check', status: 'current', currentVersion: presentationVersion, reasonCode: 'current' },
   available: {
-    schemaVersion: 1, mode: 'check', status: 'update-available', currentVersion: liftoffVersion,
+    schemaVersion: 1, mode: 'check', status: 'update-available', currentVersion: presentationVersion,
     reasonCode: 'update_available', targetVersion: '99.0.0', registryKind: 'configured'
   },
   upgraded: {
-    schemaVersion: 1, mode: 'apply', status: 'upgraded', currentVersion: liftoffVersion,
+    schemaVersion: 1, mode: 'apply', status: 'upgraded', currentVersion: presentationVersion,
     reasonCode: 'upgrade_complete', targetVersion: '99.0.0', registryKind: 'canonical'
   },
   stale: {
-    schemaVersion: 1, mode: 'apply', status: 'blocked', currentVersion: liftoffVersion,
+    schemaVersion: 1, mode: 'apply', status: 'blocked', currentVersion: presentationVersion,
     reasonCode: 'registry_stale', targetVersion: '99.0.0', registryKind: 'configured'
   },
   homebrewBlocked: {
-    schemaVersion: 1, mode: 'apply', status: 'blocked', currentVersion: liftoffVersion,
+    schemaVersion: 1, mode: 'apply', status: 'blocked', currentVersion: presentationVersion,
     reasonCode: 'unsupported_installation', installationTarget: 'homebrew-opt'
   },
   installFailed: {
-    schemaVersion: 1, mode: 'apply', status: 'failed', currentVersion: liftoffVersion,
+    schemaVersion: 1, mode: 'apply', status: 'failed', currentVersion: presentationVersion,
     reasonCode: 'npm_install_failed', targetVersion: '99.0.0', registryKind: 'configured', installationTarget: 'homebrew-usr-local'
   },
-  unverified: { schemaVersion: 1, mode: 'apply', status: 'failed', currentVersion: liftoffVersion, reasonCode: 'verification_failed' }
+  unverified: { schemaVersion: 1, mode: 'apply', status: 'failed', currentVersion: presentationVersion, reasonCode: 'verification_failed' }
 };
 
 function executor(result: SelfUpgradeResult | 'throw', requests: unknown[]): SelfUpgradeExecutor {
@@ -404,7 +406,7 @@ describe('upgrade command presentation parity', () => {
         env: terminal?.env ?? {}
       }
     });
-    const normalize = (value: string) => value.replaceAll(liftoffVersion, '<cli-version>');
+    const normalize = (value: string) => value.replaceAll(liftoffVersion, '<cli-version>').replaceAll(presentationVersion, '<cli-version>');
     observations[name] = { code, stdout: normalize(stdout.text()), stderr: normalize(stderr.text()), requests };
   });
 });
