@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { macMigrationFixture } from './fixtures/mac-migration.js';
 import { runMacMigration } from '../src/application/upgrade/mac-migration.js';
@@ -12,17 +12,22 @@ afterEach(async () => {
 
 describe('synthetic Mac migration fixture contracts, not genuine native qualification', () => {
   it('copies the canonical distribution contract rather than a script compatibility wrapper', async () => {
-    const value = await macMigrationFixture(); fixtures.push(value);
+    const value = await macMigrationFixture('custom', false, false, undefined, { recovery: 'omitted' }); fixtures.push(value);
+    expect(value.recoveryPreparation).toBe('omitted');
+    expect(value.request).not.toHaveProperty('recovery');
+    await expect(access(value.recovery)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await readFile(path.join(value.source, 'installation/native-bundle-contract.mjs')))
       .toEqual(await readFile('distribution/native/native-bundle-contract.mjs'));
   });
   it('derives truthful prerelease context from selected fixture metadata without relaxing stable admission', async () => {
-    const input = await macMigrationFixture(); fixtures.push(input);
+    const input = await macMigrationFixture('custom', false, false, undefined, { recovery: 'omitted' }); fixtures.push(input);
     const manifestPath = path.join(input.source, 'bundle.json');
     const syntheticManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     syntheticManifest.package.version = '0.13.0-dev.0';
     await writeFile(manifestPath, JSON.stringify(syntheticManifest));
-    const value = await macMigrationFixture('custom', false, false, input.source); fixtures.push(value);
+    const value = await macMigrationFixture('custom', false, false, input.source, { recovery: 'omitted' }); fixtures.push(value);
+    expect(value.recoveryPreparation).toBe('omitted');
+    expect(value.request).not.toHaveProperty('recovery');
     expect(JSON.parse(value.material.record.toString()).version).toBe('0.13.0-dev.0');
     expect(value.material).toMatchObject({ stableTag: 'v0.13.0-dev.0', prerelease: true });
     expect(value.channel).toMatchObject({ version: '0.13.0-dev.0', exactApply: false });
