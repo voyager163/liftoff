@@ -199,6 +199,10 @@ Both the actual registry and workload identity must retain the exact
 environment metadata blocks qualification; readback never fills in an expected
 tag in place of the observed provider value. A failed readback retains the
 accepted deployment handle and cannot trigger a replacement deployment.
+Observation of an original accepted deployment does not require new registry,
+identity or role-assignment write grants. Its current provider reads and protected
+host/authority checks must still succeed; missing read access never authorizes
+redispatch or a fallback identity.
 
 **Execution-ref source admission is read-only, not production qualification.**
 The artifact route accepts only the existing lightweight
