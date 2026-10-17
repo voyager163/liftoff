@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import { open, readFile, unlink } from 'node:fs/promises';
+import { constants, existsSync, type BigIntStats } from 'node:fs';
+import { lstat, mkdtemp, open, readFile, rm, unlink, writeFile, type FileHandle } from 'node:fs/promises';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -25,9 +25,10 @@ import {
 } from './windows-job-protocol.js';
 
 export const windowsJobControllerAssetPathParts = ['assets', 'repair', 'windows-job-controller.ps1'] as const;
-export const windowsJobControllerAssetDigest = 'f12e941b5a1d053dd20bfefefdab40af7b0ccd9a380c4032310c51c5fbe53434';
+export const windowsJobControllerAssetDigest = '77d63fa0c72a1f860008358fe7ed6e80a08e4040d6c700ea58ab64dae6b6e9e5';
 const controllerStartupTimeoutMs = 15_000;
 const controllerSettlementGraceMs = 5_000;
+const controllerInteropAssemblyMaximumBytes = 1024 * 1024;
 const controllerAdmissionStages = [
   'frame-header-read', 'frame-payload-read', 'frame-json', 'frame-returned',
   'environment-decode', 'environment-digest', 'environment-allocate', 'environment-verified',
@@ -37,6 +38,338 @@ const controllerAdmissionStages = [
   'job-membership', 'job-membership-verified', 'resume-thread', 'resume-thread-returned', 'launch-returned',
   'ack-write', 'ack-written'
 ] as const;
+
+export interface WindowsJobInteropAssemblyIdentity {
+  controllerAssetDigest: string;
+  powershellPath: string;
+}
+
+export type WindowsJobInteropAssemblyReservation =
+  | { kind: 'producer'; publish(bytes: Buffer): void; fail(error: Error): void }
+  | { kind: 'consumer'; bytes: Buffer };
+
+type WindowsJobInteropAssemblyResult =
+  | { ok: true; bytes: Buffer }
+  | { ok: false; error: Error };
+
+type WindowsJobInteropAssemblyEntry =
+  | {
+      state: 'preparing';
+      identity: string;
+      result: Promise<WindowsJobInteropAssemblyResult>;
+      resolve(result: WindowsJobInteropAssemblyResult): void;
+    }
+  | { state: 'ready'; identity: string; bytes: Buffer };
+
+function windowsJobInteropAssemblyIdentity(identity: WindowsJobInteropAssemblyIdentity): string {
+  return createHash('sha256').update(JSON.stringify([
+    'liftoff-windows-job-interop-v1',
+    identity.controllerAssetDigest,
+    identity.powershellPath
+  ])).digest('hex');
+}
+
+function verifiedWindowsJobInteropAssembly(bytes: Buffer): Buffer {
+  if (bytes.length < 2 || bytes.length > controllerInteropAssemblyMaximumBytes ||
+    bytes[0] !== 0x4d || bytes[1] !== 0x5a) {
+    throw new Error('Windows Job controller produced an invalid bounded interop assembly.');
+  }
+  return Buffer.from(bytes);
+}
+
+export class WindowsJobInteropAssemblyCache {
+  private entry: WindowsJobInteropAssemblyEntry | null = null;
+
+  async reserve(identity: WindowsJobInteropAssemblyIdentity): Promise<WindowsJobInteropAssemblyReservation> {
+    const exactIdentity = windowsJobInteropAssemblyIdentity(identity);
+    if (this.entry?.identity !== exactIdentity) {
+      if (this.entry?.state === 'preparing') {
+        throw new Error('Windows Job interop preparation identity changed while the original producer was active.');
+      }
+      this.entry = null;
+    }
+    if (this.entry?.state === 'ready') {
+      return { kind: 'consumer', bytes: Buffer.from(this.entry.bytes) };
+    }
+    if (this.entry?.state === 'preparing') {
+      const result = await this.entry.result;
+      if (!result.ok) throw result.error;
+      return { kind: 'consumer', bytes: Buffer.from(result.bytes) };
+    }
+
+    let resolve!: (result: WindowsJobInteropAssemblyResult) => void;
+    const result = new Promise<WindowsJobInteropAssemblyResult>((complete) => { resolve = complete; });
+    const preparing: WindowsJobInteropAssemblyEntry = { state: 'preparing', identity: exactIdentity, result, resolve };
+    this.entry = preparing;
+    let active = true;
+    return {
+      kind: 'producer',
+      publish: (bytes) => {
+        if (!active || this.entry !== preparing) throw new Error('Windows Job interop producer is no longer current.');
+        try {
+          const verified = verifiedWindowsJobInteropAssembly(bytes);
+          this.entry = { state: 'ready', identity: exactIdentity, bytes: verified };
+          active = false;
+          resolve({ ok: true, bytes: Buffer.from(verified) });
+        } catch (error) {
+          const failure = error instanceof Error ? error : new Error(String(error));
+          this.entry = null;
+          active = false;
+          resolve({ ok: false, error: failure });
+          throw failure;
+        }
+      },
+      fail: (error) => {
+        if (!active || this.entry !== preparing) return;
+        this.entry = null;
+        active = false;
+        resolve({ ok: false, error });
+      }
+    };
+  }
+}
+
+const windowsJobInteropAssemblyCache = new WindowsJobInteropAssemblyCache();
+
+class WindowsJobInteropPreparationStoppedError extends Error {
+  constructor(readonly reason: 'timeout' | 'aborted') {
+    super(reason === 'timeout'
+      ? 'Windows Job interop preparation exceeded the controller startup deadline.'
+      : 'Windows Job interop preparation was aborted.');
+  }
+}
+
+export interface WindowsJobInteropPreparationOperations {
+  createPrivateDirectory(prefix: string): Promise<string>;
+  writePrivateFile(filePath: string, bytes: Buffer, signal: AbortSignal): Promise<void>;
+  removePrivateDirectory(directory: string): Promise<boolean>;
+}
+
+const windowsJobInteropPreparationOperations: WindowsJobInteropPreparationOperations = {
+  createPrivateDirectory: (prefix) => mkdtemp(prefix),
+  writePrivateFile: async (filePath, bytes, signal) => {
+    await writeFile(filePath, bytes, { flag: 'wx', mode: 0o600, signal });
+  },
+  removePrivateDirectory: async (directory) => {
+    try {
+      await rm(directory, { recursive: true, force: true, maxRetries: 4, retryDelay: 50 });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+};
+
+export type WindowsJobInteropPreparationResult =
+  | {
+      ok: true;
+      reservation: WindowsJobInteropAssemblyReservation;
+      directory: string;
+      assemblyPath: string;
+      remainingStartupMs: number;
+      cleanup(): Promise<boolean>;
+    }
+  | {
+      ok: false;
+      reason: 'timeout' | 'aborted' | 'failed';
+      cleanupStatus: 'complete' | 'failed' | 'pending';
+      cleanup: Promise<boolean>;
+    };
+
+export async function prepareWindowsJobInteropAssembly(options: {
+  identity: WindowsJobInteropAssemblyIdentity;
+  startupTimeoutMs: number;
+  signal?: AbortSignal;
+  cache?: WindowsJobInteropAssemblyCache;
+  operations?: WindowsJobInteropPreparationOperations;
+}): Promise<WindowsJobInteropPreparationResult> {
+  const cache = options.cache ?? windowsJobInteropAssemblyCache;
+  const operations = options.operations ?? windowsJobInteropPreparationOperations;
+  const deadline = performance.now() + options.startupTimeoutMs;
+  const operationAbort = new AbortController();
+  const pending = new Set<Promise<unknown>>();
+  let directory: string | null = null;
+  let reservation: WindowsJobInteropAssemblyReservation | null = null;
+  let stopped: WindowsJobInteropPreparationStoppedError | null = null;
+  let timeout: NodeJS.Timeout | undefined;
+  let abortHandler: (() => void) | undefined;
+  let rejectStopped!: (error: WindowsJobInteropPreparationStoppedError) => void;
+  const stoppedPromise = new Promise<never>((_resolve, reject) => { rejectStopped = reject; });
+  void stoppedPromise.catch(() => {});
+
+  const stop = (reason: 'timeout' | 'aborted') => {
+    if (stopped) return;
+    stopped = new WindowsJobInteropPreparationStoppedError(reason);
+    operationAbort.abort();
+    rejectStopped(stopped);
+  };
+  timeout = setTimeout(() => stop('timeout'), Math.max(0, options.startupTimeoutMs));
+  if (options.signal) {
+    abortHandler = () => stop('aborted');
+    if (options.signal.aborted) abortHandler();
+    else options.signal.addEventListener('abort', abortHandler, { once: true });
+  }
+
+  const disposeStopWatch = () => {
+    if (timeout) clearTimeout(timeout);
+    timeout = undefined;
+    if (abortHandler && options.signal) options.signal.removeEventListener('abort', abortHandler);
+    abortHandler = undefined;
+  };
+  const runOperation = async <T>(start: () => Promise<T>, observe?: (value: T) => void): Promise<T> => {
+    if (stopped) throw stopped;
+    const observed = start().then((value) => {
+      observe?.(value);
+      return value;
+    });
+    pending.add(observed);
+    observed.then(() => pending.delete(observed), () => pending.delete(observed));
+    const value = await Promise.race([observed, stoppedPromise]);
+    if (stopped) throw stopped;
+    return value;
+  };
+  const cleanup = async (): Promise<boolean> => {
+    await Promise.allSettled([...pending]);
+    return directory ? operations.removePrivateDirectory(directory) : true;
+  };
+
+  try {
+    reservation = await runOperation(
+      () => cache.reserve(options.identity),
+      (acquired) => {
+        reservation = acquired;
+        if (stopped && acquired.kind === 'producer') {
+          acquired.fail(new Error('Windows Job interop preparation stopped before producer acquisition completed.'));
+        }
+      }
+    );
+    directory = await runOperation(
+      () => operations.createPrivateDirectory(path.join(tmpdir(), 'liftoff-job-interop-')),
+      (created) => { directory = created; }
+    );
+    const assemblyPath = path.join(directory, 'Win32JobNative.dll');
+    if (reservation.kind === 'consumer') {
+      const consumerBytes = reservation.bytes;
+      await runOperation(() => operations.writePrivateFile(
+        assemblyPath,
+        consumerBytes,
+        operationAbort.signal
+      ));
+    }
+    const remainingStartupMs = Math.floor(deadline - performance.now());
+    if (remainingStartupMs <= 0) {
+      stop('timeout');
+      throw stopped;
+    }
+    disposeStopWatch();
+    return {
+      ok: true,
+      reservation,
+      directory,
+      assemblyPath,
+      remainingStartupMs,
+      cleanup
+    };
+  } catch (error) {
+    disposeStopWatch();
+    operationAbort.abort();
+    if (reservation?.kind === 'producer') {
+      reservation.fail(new Error('Windows Job interop preparation did not reach authenticated readiness.'));
+    }
+    const cleanupPending = pending.size > 0;
+    const cleanupPromise = cleanup();
+    let cleanupStatus: 'complete' | 'failed' | 'pending' = 'pending';
+    if (!cleanupPending) cleanupStatus = await cleanupPromise ? 'complete' : 'failed';
+    return {
+      ok: false,
+      reason: error instanceof WindowsJobInteropPreparationStoppedError ? error.reason : 'failed',
+      cleanupStatus,
+      cleanup: cleanupPromise
+    };
+  }
+}
+
+export interface WindowsJobInteropReadableFile {
+  stat(): Promise<BigIntStats>;
+  read(buffer: Buffer, offset: number, length: number, position: number): Promise<{ bytesRead: number }>;
+  close(): Promise<void>;
+}
+
+export interface WindowsJobInteropCaptureOperations {
+  lstat(filePath: string): Promise<BigIntStats>;
+  open(filePath: string): Promise<WindowsJobInteropReadableFile>;
+}
+
+const windowsJobInteropCaptureOperations: WindowsJobInteropCaptureOperations = {
+  lstat: (filePath) => lstat(filePath, { bigint: true }),
+  open: async (filePath) => {
+    const handle: FileHandle = await open(filePath, constants.O_RDONLY);
+    return {
+      stat: () => handle.stat({ bigint: true }),
+      read: (buffer, offset, length, position) => handle.read(buffer, offset, length, position),
+      close: () => handle.close()
+    };
+  }
+};
+
+function sameInteropPhysicalFile(left: BigIntStats, right: BigIntStats): boolean {
+  return left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.mode === right.mode &&
+    left.nlink === right.nlink &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs;
+}
+
+export async function captureWindowsJobInteropAssembly(
+  filePath: string,
+  signal?: AbortSignal,
+  operations: WindowsJobInteropCaptureOperations = windowsJobInteropCaptureOperations
+): Promise<Buffer> {
+  const throwIfAborted = () => {
+    if (signal?.aborted) throw new Error('Windows Job interop capture was aborted.');
+  };
+  throwIfAborted();
+  const pathStat = await operations.lstat(filePath);
+  throwIfAborted();
+  if (!pathStat.isFile() || pathStat.isSymbolicLink() || pathStat.nlink !== 1n) {
+    throw new Error('Windows Job controller interop assembly is not a private regular file.');
+  }
+  if (pathStat.size < 2n || pathStat.size > BigInt(controllerInteropAssemblyMaximumBytes)) {
+    throw new Error('Windows Job controller interop assembly exceeds the bounded capture size.');
+  }
+
+  let file: WindowsJobInteropReadableFile | null = null;
+  try {
+    file = await operations.open(filePath);
+    throwIfAborted();
+    const openedStat = await file.stat();
+    if (!openedStat.isFile() || openedStat.nlink !== 1n || !sameInteropPhysicalFile(pathStat, openedStat)) {
+      throw new Error('Windows Job controller interop assembly changed before bounded capture.');
+    }
+    const size = Number(openedStat.size);
+    const bytes = Buffer.alloc(size);
+    let offset = 0;
+    while (offset < size) {
+      throwIfAborted();
+      const { bytesRead } = await file.read(bytes, offset, size - offset, offset);
+      if (bytesRead <= 0) throw new Error('Windows Job controller interop assembly ended during bounded capture.');
+      offset += bytesRead;
+    }
+    throwIfAborted();
+    const overflow = Buffer.alloc(1);
+    const overflowRead = await file.read(overflow, 0, 1, size);
+    const capturedStat = await file.stat();
+    throwIfAborted();
+    if (overflowRead.bytesRead !== 0 || !sameInteropPhysicalFile(openedStat, capturedStat)) {
+      throw new Error('Windows Job controller interop assembly changed during bounded capture.');
+    }
+    return verifiedWindowsJobInteropAssembly(bytes);
+  } finally {
+    await file?.close();
+  }
+}
 
 export interface WindowsJobRunnerOptions {
   assetPath?: string;
@@ -354,6 +687,96 @@ export async function runWindowsJobCommand(
   session.admitScope(invocation, nonce);
   const invocationId = session.getInvocationId()!;
 
+  let interopReservation: WindowsJobInteropAssemblyReservation | null = null;
+  let interopAssemblyPath: string | null = null;
+  let interopCleanup: (() => Promise<boolean>) | null = null;
+  let controllerStartupBudgetMs = controllerStartupTimeoutMs;
+  if (process.platform === 'win32' &&
+    !runnerOptions.assetPath &&
+    !runnerOptions.powershellPath &&
+    !runnerOptions.skipAssetVerification) {
+    const preparation = await prepareWindowsJobInteropAssembly({
+      identity: {
+        controllerAssetDigest: windowsJobControllerAssetDigest,
+        powershellPath
+      },
+      startupTimeoutMs: controllerStartupTimeoutMs,
+      signal: options.signal
+    });
+    if (!preparation.ok) {
+      if (preparation.cleanupStatus === 'pending') {
+        void preparation.cleanup.then((cleaned) => {
+          if (!cleaned) {
+            process.emitWarning(
+              'Windows Job interop preparation cleanup failed after the startup operation was cancelled.'
+            );
+          }
+        });
+      }
+      const cleanupSuffix = preparation.cleanupStatus === 'failed'
+        ? ' Failed to clean up temporary Windows Job interop preparation files.'
+        : preparation.cleanupStatus === 'pending'
+          ? ' Late preparation work was quarantined; cleanup remains pending and will be reported if it fails.'
+          : '';
+      if (preparation.reason === 'aborted') {
+        return {
+          command,
+          displayCommand,
+          status: null,
+          signal: 'SIGABRT',
+          stdout: '',
+          stderr: '',
+          timedOut: false,
+          processTreeSettled: false,
+          processSpawned: false,
+          errorCode: 'ABORTED',
+          errorMessage: `Command was aborted during Windows Job controller preparation.${cleanupSuffix}`
+        };
+      }
+      const timedOut = preparation.reason === 'timeout';
+      return {
+        command,
+        displayCommand,
+        status: null,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut,
+        processTreeSettled: false,
+        processSpawned: false,
+        errorCode: timedOut ? 'SUPERVISOR_TIMEOUT' : 'CONTROLLER_LAUNCH_FAILED',
+        errorMessage: timedOut
+          ? `Supervisor timeout: Windows Job Object controller exceeded ${controllerStartupTimeoutMs}ms during startup without reporting settlement (controller=not-reported, admission=not-reported, connected=false, authenticated=false, state=${session.getState()}).${cleanupSuffix}`
+          : `Failed to prepare the verified Windows Job interop assembly before target execution.${cleanupSuffix}`
+      };
+    }
+    interopReservation = preparation.reservation;
+    interopAssemblyPath = preparation.assemblyPath;
+    interopCleanup = preparation.cleanup;
+    controllerStartupBudgetMs = preparation.remainingStartupMs;
+    if (options.signal?.aborted) {
+      if (interopReservation.kind === 'producer') {
+        interopReservation.fail(new Error('Windows Job interop preparation was aborted before controller launch.'));
+      }
+      const cleaned = await interopCleanup();
+      return {
+        command,
+        displayCommand,
+        status: null,
+        signal: 'SIGABRT',
+        stdout: '',
+        stderr: '',
+        timedOut: false,
+        processTreeSettled: false,
+        processSpawned: false,
+        errorCode: 'ABORTED',
+        errorMessage: cleaned
+          ? 'Command was aborted before Windows Job controller launch.'
+          : 'Command was aborted before Windows Job controller launch. Failed to clean up temporary Windows Job interop preparation files.'
+      };
+    }
+  }
+
   return new Promise<CommandResult>((resolve) => {
     let clientSocket: net.Socket | null = null;
     let psProcess: ChildProcess | null = null;
@@ -365,6 +788,9 @@ export async function runWindowsJobCommand(
     let incomingBuffer = Buffer.alloc(0);
     let supervisorTimer: NodeJS.Timeout | null = null;
     let abortHandler: (() => void) | null = null;
+    let interopPublished = interopReservation?.kind !== 'producer';
+    let interopCleanupFailed = false;
+    const interopCaptureAbort = new AbortController();
 
     const safeUnlink = async (file: string): Promise<boolean> => {
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -382,6 +808,10 @@ export async function runWindowsJobCommand(
     const finish = async (result: Partial<CommandResult> & { processTreeSettled: boolean; processSpawned: boolean }) => {
       if (settled) return;
       settled = true;
+      interopCaptureAbort.abort();
+      if (interopReservation?.kind === 'producer' && !interopPublished) {
+        interopReservation.fail(new Error('Windows Job interop producer stopped before authenticated readiness.'));
+      }
 
       if (supervisorTimer) {
         clearTimeout(supervisorTimer);
@@ -400,6 +830,11 @@ export async function runWindowsJobCommand(
           const timer = setTimeout(r, 1000);
           psProcess?.once('exit', () => { clearTimeout(timer); r(); });
         });
+      }
+      if (interopCleanup) {
+        interopCleanupFailed = !(await interopCleanup());
+        interopCleanup = null;
+        interopAssemblyPath = null;
       }
 
       let capturedStdout = result.stdout ?? '';
@@ -421,7 +856,7 @@ export async function runWindowsJobCommand(
 
       const stdoutCleaned = await safeUnlink(stdoutFile);
       const stderrCleaned = await safeUnlink(stderrFile);
-      const cleanupFailed = !stdoutCleaned || !stderrCleaned;
+      const cleanupFailed = !stdoutCleaned || !stderrCleaned || interopCleanupFailed;
 
       const determinedSpawned = result.processSpawned ?? (
         session.getState() === 'root-started' ||
@@ -434,7 +869,7 @@ export async function runWindowsJobCommand(
         ? (result.errorCode ?? 'LOG_CLEANUP_FAILED')
         : result.errorCode;
       const effectiveErrorMessage = cleanupFailed
-        ? `${result.errorMessage ? `${result.errorMessage} ` : ''}Failed to clean up temporary execution log files.`
+        ? `${result.errorMessage ? `${result.errorMessage} ` : ''}Failed to clean up temporary execution files.`
         : result.errorMessage;
 
       resolve({
@@ -470,19 +905,20 @@ export async function runWindowsJobCommand(
       if (settled || !(timeoutMs > 0 && Number.isFinite(timeoutMs))) return;
       if (supervisorTimer) clearTimeout(supervisorTimer);
       supervisorTimer = setTimeout(() => {
-        const controllerStage = [...psStderr.matchAll(/LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|connecting|connected)/gu)].at(-1)?.[1] ?? 'not-reported';
+        const controllerStage = [...psStderr.matchAll(/LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|loading-interop|connecting|connected)/gu)].at(-1)?.[1] ?? 'not-reported';
         const controllerAdmissionCandidate = [...psStderr.matchAll(/^LIFTOFF_CONTROLLER_ADMISSION: ([^\r\n]*)\r?$/gmu)].at(-1)?.[1];
         const controllerAdmissionStage = controllerAdmissionStages.find(stage => stage === controllerAdmissionCandidate) ?? 'not-reported';
+        const reportedBudgetMs = phase === 'startup' ? controllerStartupTimeoutMs : budgetMs;
         void finish({
           timedOut: true,
           processTreeSettled: false,
           processSpawned: spawnRequestDispatched,
           errorCode: 'SUPERVISOR_TIMEOUT',
-          errorMessage: `Supervisor timeout: Windows Job Object controller exceeded ${budgetMs}ms during ${phase} without reporting settlement (controller=${controllerStage}, admission=${controllerAdmissionStage}, connected=${connected}, authenticated=${authenticated}, state=${session.getState()}).`
+          errorMessage: `Supervisor timeout: Windows Job Object controller exceeded ${reportedBudgetMs}ms during ${phase} without reporting settlement (controller=${controllerStage}, admission=${controllerAdmissionStage}, connected=${connected}, authenticated=${authenticated}, state=${session.getState()}).`
         });
       }, budgetMs);
     }
-    armSupervisor(controllerStartupTimeoutMs, 'startup');
+    armSupervisor(controllerStartupBudgetMs, 'startup');
 
     const server = net.createServer((socket) => {
       if (connected) {
@@ -499,7 +935,7 @@ export async function runWindowsJobCommand(
           incomingBuffer = Buffer.from(remainder);
 
           for (const msg of messages) {
-            handleIncomingMessage(msg);
+            void handleIncomingMessage(msg);
           }
         } catch (err) {
           void finish({
@@ -536,7 +972,7 @@ export async function runWindowsJobCommand(
 
     server.maxConnections = 1;
 
-    function handleIncomingMessage(raw: unknown) {
+    async function handleIncomingMessage(raw: unknown) {
       if (settled) return;
       if (typeof raw !== 'object' || raw === null) return;
       const r = raw as Record<string, unknown>;
@@ -565,6 +1001,29 @@ export async function runWindowsJobCommand(
           return;
         }
 
+        if (interopReservation?.kind === 'producer' && !interopPublished) {
+          try {
+            if (!interopAssemblyPath) throw new Error('Missing private interop assembly path.');
+            const bytes = await captureWindowsJobInteropAssembly(
+              interopAssemblyPath,
+              interopCaptureAbort.signal
+            );
+            if (settled || interopCaptureAbort.signal.aborted) return;
+            interopReservation.publish(bytes);
+            interopPublished = true;
+          } catch {
+            if (settled) return;
+            void finish({
+              processTreeSettled: false,
+              processSpawned: false,
+              errorCode: 'CONTROLLER_LAUNCH_FAILED',
+              errorMessage: 'Windows Job controller did not produce the expected bounded interop assembly.'
+            });
+            return;
+          }
+        }
+
+        if (settled) return;
         try {
           // Controller is authenticated; send the spawn request now
           const spawnReq = session.requestRootStart();
@@ -657,7 +1116,8 @@ export async function runWindowsJobCommand(
         '-WorkspaceId',
         workspaceId,
         '-InvocationId',
-        invocationId
+        invocationId,
+        ...(interopAssemblyPath ? ['-InteropAssemblyPath', interopAssemblyPath] : [])
       ];
 
       const hostEnv = buildWindowsControllerHostEnvironment();
