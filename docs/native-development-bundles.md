@@ -156,6 +156,19 @@ replacement rejection. A prebuilt bundle or installed npm smoke does not replace
 it. Its unset selector is a named unrun control, not original-program
 qualification. CI policy rejects an absent selector or a different archive path;
 the existing twenty-minute job and five-minute case deadlines are unchanged.
+
+After the installed and migration reports, that same CI lane runs
+`tests/workflow-source5-program-content.test.ts` in a separate process with the
+same pinned runtime archive. It builds its own original program and consumes
+the original in-process reference across all six workflow/profile combinations;
+it does not reconstruct that reference from the earlier bundle or report.
+`node scripts/check-repository-policy.mjs --workflow-program-report qualification/workflow-program-content.json`
+requires all 31 literal cases, including the ten genuine cases, to pass without
+skips, duplicates or filtering. The existing evidence upload retains the separate
+report even when a later check fails. This wiring is not itself a successful
+hosted run, delivery or protected-host/custody qualification, and does not issue
+workflow, required-context or release authority.
+
 An unset bundle variable
 skips the opt-in suite and cannot qualify a bundle. Startup and planning use an empty
 PATH outside the checkout. Real Manual Go initialization uses the explicitly selected

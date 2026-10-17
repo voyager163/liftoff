@@ -88,6 +88,43 @@ export function checkPluginPathReport(report, platform = process.platform) {
   assert.equal(report.numPassedTests, passed);
   assert.equal(report.numTotalTests, passed + skipped);
 }
+const programBoundaryGroup = 'private original-program input boundary without manufactured assembly facts';
+const genuineProgramGroup = 'genuine original current5 program construction and consumption';
+export const workflowProgramContentCases = Object.freeze([
+  ...['path', 'installedRoot', 'archive', 'manifest', 'receipt', 'reader', 'callback', 'authenticated', 'observedAt']
+    .map(field => `${programBoundaryGroup} rejects caller-selected ${field} before original assembly observation`),
+  ...['ordinary', 'copy', 'json', 'proxy', 'accessor']
+    .map(kind => `${programBoundaryGroup} refuses ${kind} counterfeit original assembly without invoking hooks`),
+  ...['context-copy', 'runtime-copy', 'proxy', 'accessor', 'extra-symbol', 'hidden-field']
+    .map(kind => `${programBoundaryGroup} refuses ${kind} request reconstruction without invoking hooks`),
+  `${programBoundaryGroup} refuses a fabricated content token and proxy without reading their properties or returning archive bytes`,
+  `${genuineProgramGroup} builds, packs and installs the actual versioned program before issuing any Source content token`,
+  ...['manual', 'openspec', 'spec-kit'].flatMap(workflow =>
+    ['single-maintainer-gitflow', 'team-gitflow'].map(profile =>
+      `${genuineProgramGroup} binds actual original archive and complete installed content for ${workflow}/${profile} without issuing release authority`)),
+  `${genuineProgramGroup} rejects copied tokens, foreign original contexts/runtimes and getter-bearing substitutes`,
+  `${genuineProgramGroup} freshly consumes original runtime, validator and independent archive bytes without trusting the readback as a token`,
+  `${genuineProgramGroup} captures original request references before caller substitution and refuses same-byte physical output replacement`
+]);
+export function checkWorkflowProgramContentReport(report) {
+  assert.equal(report.success, true, 'Original program consumer qualification must succeed.');
+  assert.equal(report.numFailedTests, 0);
+  assert.equal(report.numFailedTestSuites, 0);
+  assert.equal(report.numPendingTests, 0, 'Genuine original program consumer cases cannot be skipped.');
+  assert.equal(report.numPassedTests, workflowProgramContentCases.length);
+  assert.equal(report.numTotalTests, workflowProgramContentCases.length);
+  assert.ok(Array.isArray(report.testResults) && report.testResults.length === 1,
+    'A separate complete original program consumer report is required.');
+  const suite = report.testResults[0];
+  assert.ok(typeof suite.name === 'string' &&
+    suite.name.replaceAll('\\', '/').endsWith('/tests/workflow-source5-program-content.test.ts'),
+  'The exact original program consumer suite is required.');
+  assert.ok(Array.isArray(suite.assertionResults), 'Original program consumer cases are missing.');
+  assert.deepEqual(suite.assertionResults.map(test => test.fullName).sort(), [...workflowProgramContentCases].sort(),
+    'Original program consumer cases are missing, duplicated or unexpected.');
+  assert.ok(suite.assertionResults.every(test => test.status === 'passed'),
+    'Every original program consumer case must run and pass.');
+}
 export const isolatedHclTestFiles = [
   'tests/modern-local-inputs.test.ts', 'tests/modern-local-check-plans.test.ts', 'tests/isolated-hcl-parser.test.ts'
 ];
@@ -167,12 +204,17 @@ export function nativeBundleQualificationJob() {
         '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
         '  --reporter=default --reporter=json --outputFile.json="$journey_report"',
         'node scripts/mac-migration-journey-report.mjs "$journey_report" "$RUNNER_TEMP/liftoff-native-bundle" "$journey" \\',
-        '  > "qualification/mac-migration-${journey}-outcome.json"', ''
+        '  > "qualification/mac-migration-${journey}-outcome.json"',
+        'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/liftoff-node-runtime.tgz" \\',
+        'npx vitest run tests/workflow-source5-program-content.test.ts \\',
+        '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
+        '  --reporter=default --reporter=json --outputFile.json=qualification/workflow-program-content.json',
+        'node scripts/check-repository-policy.mjs --workflow-program-report qualification/workflow-program-content.json', ''
       ].join('\n') },
       { name: 'Store development qualification evidence', if: independentStepCondition,
         uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
         with: { name: 'liftoff-native-bundle-ci-${{ github.run_id }}-${{ github.run_attempt }}',
-          path: 'qualification/native-bundle.json\nqualification/mac-migration-*.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n${{ runner.temp }}/liftoff-native-archive/\n',
+          path: 'qualification/native-bundle.json\nqualification/mac-migration-*.json\nqualification/workflow-program-content.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n${{ runner.temp }}/liftoff-native-archive/\n',
           'if-no-files-found': 'error', 'retention-days': 14 } }
     ]
   };
@@ -698,6 +740,11 @@ export async function checkRepositoryPolicy(root = process.cwd()) {
 
 async function main() {
   const args = process.argv.slice(2);
+  if (args.length === 2 && args[0] === '--workflow-program-report') {
+    checkWorkflowProgramContentReport(JSON.parse(await readFile(args[1], 'utf8')));
+    console.log('All 31 original program consumer cases passed, including 10 genuine cases; no host, workflow or release authority is issued.');
+    return;
+  }
   if (args.length === 2 && args[0] === '--plugin-path-report') {
     checkPluginPathReport(JSON.parse(await readFile(args[1], 'utf8')));
     console.log(`All applicable native plugin path cases passed on ${process.platform}; other hosts require their own reports.`);

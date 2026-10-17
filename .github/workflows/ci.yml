@@ -86,6 +86,11 @@ jobs:
             --reporter=default --reporter=json --outputFile.json="$journey_report"
           node scripts/mac-migration-journey-report.mjs "$journey_report" "$RUNNER_TEMP/liftoff-native-bundle" "$journey" \
             > "qualification/mac-migration-${journey}-outcome.json"
+          LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/liftoff-node-runtime.tgz" \
+          npx vitest run tests/workflow-source5-program-content.test.ts \
+            --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \
+            --reporter=default --reporter=json --outputFile.json=qualification/workflow-program-content.json
+          node scripts/check-repository-policy.mjs --workflow-program-report qualification/workflow-program-content.json
       - name: Store development qualification evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -94,6 +99,7 @@ jobs:
           path: |
             qualification/native-bundle.json
             qualification/mac-migration-*.json
+            qualification/workflow-program-content.json
             ${{ runner.temp }}/liftoff-native-bundle/bundle.json
             ${{ runner.temp }}/liftoff-native-archive/
           if-no-files-found: error
