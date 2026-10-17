@@ -5,52 +5,33 @@ another machine. It records the repository state, decisions, validation,
 remaining work, and cautions needed to continue the OpenSpec change
 `modernize-liftoff-platform` without reconstructing the prior conversation.
 
-## Windows application diagnostic correction, 2026-10-17
+## Windows diagnostic intake and hosted qualification, 2026-10-17
 
-Root assigned a source-only correction on exact composed base
-`6053b551f447478a90d324034ae2180bf05222e6`, tree
-`d88cd8dbd5ba356ed56c2329775f229a2c7a1707`, parent
-`979a727ff35ddec1909339fe9f425651fee1c138`. The base was preserving-merged
-without conflicts as `b001c48d1011557d421825a387499d721e0cf949`; neither allocated
-path had changed in `6053b551`.
+The current composition preserves CI candidate `6053b551` and source correction
+`6c379b916540f3ac7558d484e6a08300b27743b2`, rather than rewriting either.
+`SUPERVISOR_TIMEOUT` no longer claims that target execution or the declared
+application timeout elapsed; PowerShell launch failure uses fixed guidance
+without interpolating private exception text. Genuine target timeouts and
+existing precedence, cleanup and authority semantics remain unchanged.
 
-Source commit `6c379b916540f3ac7558d484e6a08300b27743b2`, tree
-`642c5c295738e8bf468d87237855721b706fe1f9`, changes only
-`src/application/repair/application-diagnostics.ts` and
-`tests/repair-application.test.ts`:
+The source owner's original controls failed 3/3, the corrected controls passed
+3/3, and its clean committed eight-file portable closure passed 381 tests with
+four existing native-only cases unrun. These are bounded source results, not a
+Windows startup repair or composed coverage qualification.
 
-- `SUPERVISOR_TIMEOUT` is classified before the generic target-timeout branch.
-  It retains the closed `timed-out` kind and `cleanupUnsafe: false`, but fixed
-  guidance now states that trustworthy target launch and settlement evidence
-  was not returned. It does not claim that the declared check started, that
-  the application timeout elapsed, or which controller clock expired.
-- `POWERSHELL_SPAWN_FAILED` now uses fixed Windows PowerShell 5.1 launch
-  guidance and never interpolates the untrusted `errorMessage`.
-- Existing process-tree-termination and output-limit precedence is unchanged,
-  and genuine `ETIMEDOUT` still reports the reviewed command timeout.
+Original hosted run `39023881630`, attempt 1, remains bound to `979a727f`.
+Its CLI coverage job `117370930657` was cancelled: the authenticated check
+annotation explicitly records the 45-minute maximum. No complete CLI coverage
+report was produced, so the local exact-979a V8 result cannot stand in for that
+hosted gate. The complete Linux and macOS main-report pairs independently
+match all 384 original test files: Linux 13,419 passed / 0 failed / 515 unrun;
+macOS 13,669 / 0 / 265. Preserve these host-specific omissions separately from
+the local 13,707 / 0 / 227 record and the supplemental OpenSpec/native reports.
 
-The three new controls failed against the original production bytes exactly as
-intended: 0 passed, 3 failed, 165 selector-skipped. After the correction they
-passed 3/3. On clean committed bytes, the complete eight-file portable owning,
-repair-preparation and adoption-verification closure passed 381 tests with
-zero failures; the four existing native-only preparation cases were honestly
-skipped under `LIFTOFF_HCL_TEST_LANE=portable`. Strict ES2024/NodeNext no-emit
-for that selected import graph, project no-emit, repository policy and
-`git diff --check` also passed with Node 24.21.0 and npm 12.0.2. Both telemetry
-opt-outs were set.
-
-Evidence is retained under
-`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/application-diagnostics-6053`.
-`receipt.json` has SHA-256
-`36aa29a7e52d3593c435c64ee30f344063fda7b080271a6c7f1b75a71bc10aa9`;
-the evidence ledger has SHA-256
-`b7a5cee57a5966823d4e1d7bd3d4df7031e603acfe7a6447dafe38e3d7b78706`.
-No controller, process-runner, clock, timeout bound, retry, cleanup,
-execution-policy, API, phase metadata, consent, receipt or diagnostic-kind
-change was made. No full suite, V8 coverage, genuine/native distribution,
-cloud, framework, package publication, push or PR mutation ran. No OpenSpec
-checkbox changed; progress remains 87/136. Root should preserve
-`6c379b916540f3ac7558d484e6a08300b27743b2` as this bounded source delta.
+The serialized Windows precheck candidate remains unqualified on its actual
+Windows lane. Source observation performance and Linux test prerequisites have
+separate bounded allocations; no timeout, coverage floor, safety guard or
+OpenSpec checkbox was relaxed. Programme progress remains 87/136.
 
 ## Unpublished telemetry suppression, 2026-10-17
 
@@ -150,8 +131,10 @@ six each in `tests/modern-openspec-execution.test.ts` and
 byte-identical at `8fb50e2e` and `979a727f`; the difference was the explicit
 test-tool profile, not a source regression.
 
-The ambient Homebrew `node@24` link had advanced to `24.22.0`, which the exact
-runtime guards correctly refuse. The owning-session profile restored the
+The continuation owner's ambient Homebrew `node@24` link had advanced to
+`24.22.0`, which the exact runtime guards correctly refuse. Root's fourteen
+unrun cases instead reflected absent explicit profile flags, not runtime
+drift. The owning-session profile restored the
 already-retained official Node `24.21.0` archive with SHA-256
 `bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057`
 and executable SHA-256
