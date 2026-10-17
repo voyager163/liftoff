@@ -5,6 +5,96 @@ another machine. It records the repository state, decisions, validation,
 remaining work, and cautions needed to continue the OpenSpec change
 `modernize-liftoff-platform` without reconstructing the prior conversation.
 
+## Admitted hosted CLI and bounded corrections, 2026-10-17
+
+Original run `39035255541`, attempt 1, is terminal **failure**, bound to
+`380db882dce66271d2cf2c1de3959b482cf12789`, tree
+`294fc83798ddd788075e30d59421ab6fcbd778bf`: 23 jobs, 17 successful,
+six failed and none cancelled. Three final OS gates propagate the shared
+platform-matrix failure; they do not establish failed Linux or macOS main
+suites. All 26 original artifact identities are retained.
+
+The original hosted CLI gate produced a complete authenticated artifact,
+`12102532641`, API/ZIP SHA256
+`735bf687675708d2876c40fb7130da2f15b4b075f1ede302e1f57caefa169ca3`.
+Its 384 files reported 13,423 passed / 0 failed / 519 named unrun.
+All 583 source entries, including the five shipped raw JavaScript modules,
+match the original Git inputs; independent raw-map derivation confirms:
+
+| Component | Statements | Branches | Functions | Lines |
+| --- | --- | --- | --- | --- |
+| Hosted CLI | 45,968/53,605 (85.7531%) | 41,771/50,865 (82.1213%) | 8,587/9,355 (91.7904%) | 40,954/46,243 (88.5625%) |
+| Hosted gateway | 245/262 (93.5114%) | 191/234 (81.6239%) | 64/68 (94.1176%) | 235/248 (94.7580%) |
+
+Each metric exceeds the unchanged 80.01% floor. CLI invocation elapsed time
+was 39m16.015s; its whole job took 40m10s within the unchanged 45-minute
+ceiling. This is actual bounded hosted qualification, not a causal speedup
+claim. The independent gateway reported 213/0/0 across nine files and all
+four source entries. The isolated native HCL report separately passed
+276/0/0; its original report and unchanged pure checker were admitted.
+Root's first pure-checker invocation omitted the required native test lane
+and was rejected; the corrected explicit profile passed without executing
+the parser again.
+
+The two Linux main shards form a disjoint complete 384-file union:
+13,427/0/515. The macOS pair likewise covers all 384 files: 13,677/0/265.
+The CLI's four additional unrun cases are the explicit real-OpenSpec
+seed-lifecycle cases, not additional passes. These profiles do not relabel
+the separate local full/V8 record of 13,715/0/227 or transfer the historical
+14-case actual OpenSpec supplement.
+
+Windows startup precheck actually passed 3/0/86 unselected, but this does not
+prove every later controller starts. Windows shard 1 main reported
+6,212/60/423: one executable Git-mode fixture failure, one 30-second Source5
+matrix observation timeout, and 58 subsequent unsettled-lease guard refusals.
+Keep those refusals and held-lease settlement intact. Windows shard 2 boundary
+reported 2,057/1/25: actual application verification exhausted the 15-second
+supervisor startup budget while its PowerShell controller was still
+compiling. Target launch and settlement were not established. Its main stage
+was skipped and platform-report upload failed; no second main report exists.
+The earlier HOME, syntax-status, Compose and Mac-fixture main-shard controls
+therefore remain unexecuted on this successor.
+
+All four original native artifacts were independently checked, but the Mac
+job failed its separate programme report: 30/1/0 of 31, with the original
+manual/single-maintainer case timing out at 30,098.44125ms against its
+unchanged 30,000ms deadline. Its 199/0/7 native and 16/0/0 historical
+prerelease-refusal subsets do not replace that failure. The subsequent
+programme-report checker was not reached; evidence upload succeeded.
+The failed four-platform packet and all 74 linked subjects are retained.
+Minimum-host, signing, public-manager, stable-positive, authenticated-delivery
+and whole-job custody qualifications remain false.
+
+Two bounded corrections are now preserving-integrated locally, not pushed:
+`977dedd440fa43622235ac556070c7a41adc1494` through `c5fb4b5b` explicitly sets
+and verifies genuine Git index/tree mode 100755 with `core.fileMode=false`,
+rather than assuming filesystem chmod changes the Git index. Root's composed
+four-file closure passed 275/0/0 with its strict JS-aware graph, project
+no-emit, policy and diff gates. No production export guard changed and this
+is not a Windows rerun.
+
+`484ce3eb7de914d2ba7e71bb57e9643764cd1c2f` through `bfefada4` changes only
+assembly file-capture scheduling to fixed-four settled batches, plus ten
+owning controls. Existing directory brackets and every fresh source/tool/
+output pass, physical/byte/mode/namespace guard and original-order error
+remain. Started siblings drain before rejection; a failed batch can honestly
+perform up to three additional already-started reads. The owner's complete
+31-case parent/candidate local pairs passed, with 18.02% lower complete-case
+duration sum in one shared-host pair, not causal hosted repair.
+Its clean owning closure is 89/0/1, including the unchanged Linux-only alias
+skip; the private driver's mistaken zero-skip postcondition remains a
+separate retained error. Its strict TypeScript graph includes JavaScript
+but does not claim full JavaScript semantic checking.
+
+Before this handoff update, the combined unpublished head is `bfefada4`,
+tree `a914c3865accad37e22acf4c77600f16f50e4e60`. Fresh combined programme,
+owning, documentation and source-complete qualification are still required.
+Public draft PR 175 remains at `380db882`. Original report admissions do not
+qualify this successor. No retry, deadline increase, publication, live cloud
+effect or OpenSpec checkbox credit is recorded. Progress remains 87/136;
+the Windows matrix/controller failures and first-party production wiring
+remain work, not all external approval gates.
+
 ## Composed Windows candidates and rejected optimization, 2026-10-17
 
 Preserving merge `c59f59be6a20324021ca4448c62e2e005a4dd6e9`, tree
