@@ -612,13 +612,18 @@ hosts. Missing-scanner fixtures likewise use only one defined Windows search-pat
 Portable worker/host models check actual workload options, native resolution and the
 unchanged native environment encoder against real Go invocation. They do not establish
 native Windows qualification.
-An additional Windows-only diagnostic repeats one owned syntax-check file under
-the original minimal environment, that environment plus the host's actual
-`SystemRoot`, and surrounding ambient-environment controls. All comparisons retain
-the same file, arguments, working directory, runner and five-second/4-KiB bounds;
-only finite result fields are logged, never environment values. Non-Windows hosts
-leave it explicitly unrun. This is a cause-investigation control, not a production
-environment change, original-matrix success or native validator qualification.
+A Windows-only native regression runs owned valid/invalid syntax and JSON files
+with that same supported validator allowlist. Missing, empty or conflicting
+`SystemRoot` refuses before the first runner call. Every actual command retains
+literal file-backed arguments, its owned working directory, five-second/4-KiB
+bounds, settlement checks and exact input readback. Green requires status0; red
+requires status1 and `SyntaxError`. Only finite fixture/runtime/result fields are
+logged, never environment values. Non-Windows hosts leave this case explicitly
+unrun; portable controls do not qualify its native execution.
+The former unsupported-minimal-environment comparison remains historical evidence,
+including its CSPRNG assertion, timeout and separate `EBUSY` cleanup refusal.
+Later supported-input success neither reclassifies those outcomes nor establishes
+the original cleanup cause, original-matrix success or full native qualification.
 Local-tool metadata workspaces use the actual Windows temporary directory rather
 than a drive-relative POSIX `/tmp` assumption; macOS and Linux retain their existing
 neutral parents. Physical identity, process settlement and owned cleanup checks
