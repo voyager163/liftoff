@@ -6,6 +6,8 @@ import {
   createSemanticTelemetryEvent,
   createTelemetryEvent,
   createTelemetryStorageRecord,
+  isProjectTelemetryEvent,
+  isTelemetryCommandEvent,
   isTelemetryCliVersion,
   isProjectTelemetryDigest,
   isProjectTelemetryId,
@@ -135,6 +137,7 @@ describe('telemetry contract', () => {
     expect(isTelemetryCliVersion('1.2.3-beta')).toBe(true);
     expect(isTelemetryCliVersion('1.2.3-beta.1')).toBe(true);
     expect(isTelemetryCliVersion('1.2.3-rc.0')).toBe(true);
+    expect(isTelemetryCliVersion('0.13.0-dev.0')).toBe(false);
     expect(isTelemetryCliVersion('1.2.3+build.01')).toBe(false);
     expect(isTelemetryCliVersion('1.2.3+install-550e8400-e29b-41d4-a716-446655440000')).toBe(false);
     expect(isTelemetryCliVersion('1.2.3-preview.private')).toBe(false);
@@ -144,6 +147,23 @@ describe('telemetry contract', () => {
     expect(isTelemetryCliVersion('/private/project')).toBe(false);
     expect(isTelemetryCliVersion('0.12.3\n')).toBe(false);
     expect(isTelemetryCliVersion(`${'1'.repeat(65)}.0.0`)).toBe(false);
+    expect(isTelemetryCommandEvent({
+      schemaVersion: 2,
+      event: 'command_executed',
+      command: 'update',
+      cliVersion: '0.13.0-dev.0',
+      outcome: 'success'
+    })).toBe(false);
+    expect(isProjectTelemetryEvent({
+      schemaVersion: 2,
+      event: 'project_observed',
+      projectId: '550e8400-e29b-41d4-a716-446655440000',
+      cliVersion: '0.13.0-dev.0',
+      policyProfile: 'none',
+      policyVersion: 'none',
+      templateSetDigest: `sha256:${'a'.repeat(64)}`,
+      source: 'cli'
+    })).toBe(false);
   });
 
   it('keeps explicit semantic attention, cancellation and partial failure separate from legacy exit codes', () => {

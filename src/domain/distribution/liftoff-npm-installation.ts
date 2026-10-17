@@ -14,6 +14,8 @@ import {
 } from './liftoff-upgrade.js';
 
 interface PathApi {
+  basename(value: string): string;
+  dirname(value: string): string;
   isAbsolute(value: string): boolean;
   join(...parts: string[]): string;
   relative(from: string, to: string): string;
@@ -94,9 +96,17 @@ export function readOnlyEnvironment(
   dependencies: { environment: NodeJS.ProcessEnv },
   neutralDirectory: string
 ): NodeJS.ProcessEnv {
+  const isolatedKeys = new Set(['npm_config_cache', 'npm_config_update_notifier', 'do_not_track',
+    'liftoff_telemetry', 'ci', 'node_options', 'node_path']);
   return {
-    ...dependencies.environment,
-    npm_config_cache: path.join(neutralDirectory, 'npm-cache')
+    ...Object.fromEntries(Object.entries(dependencies.environment).filter(([key]) => !isolatedKeys.has(key.toLowerCase()))),
+    npm_config_cache: path.join(neutralDirectory, 'npm-cache'),
+    npm_config_update_notifier: 'false',
+    DO_NOT_TRACK: '1',
+    LIFTOFF_TELEMETRY: '0',
+    CI: 'true',
+    NODE_OPTIONS: '',
+    NODE_PATH: ''
   };
 }
 
@@ -104,6 +114,9 @@ export function commandFailed(command: CommandResult): boolean {
   return command.errorCode !== undefined ||
     command.errorMessage !== undefined ||
     command.timedOut ||
+    command.outputLimitExceeded === true ||
+    command.aborted === true ||
+    command.processTreeSettled === false ||
     command.signal !== null ||
     command.status !== 0;
 }

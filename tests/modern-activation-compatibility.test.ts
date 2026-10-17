@@ -59,7 +59,8 @@ describe('compatibility5 with actual complete v8 root and source context', () =>
       expect(result.manifest.readableSourceVersions).toEqual([2, 3, 4, 5, 6, 7, 8]);
       expect(result.activation.execution).toBe('source-contract-only');
       expect(result.activation.targetPhaseContracts).toHaveLength(29);
-      expect(result.activation.successorLanes).toHaveLength(profile === 'single-maintainer-gitflow' && workflow !== 'manual' ? 3 : 0);
+      expect(result.activation.targetIdentity.activationContractVersion).toBe(5);
+      expect(result.activation.successorLanes).toHaveLength(0);
       for (const lane of result.activation.successorLanes) {
         expect(lane.sourceWorkflow).toBe(workflow); expect(lane.profileTransition).toBe('preserve');
         expect(lane.targetIdentity).toEqual(result.activation.targetIdentity);
@@ -169,7 +170,7 @@ describe('compatibility5 with actual complete v8 root and source context', () =>
   it('keeps external legacy uncertainty without manufacturing current initialization', () => {
     const value = manifest('single-maintainer-gitflow', 'spec-kit', true);
     expect(api.readSourceManifest(value).framework).toEqual({ state: 'legacy', adapter: 'spec-kit' });
-    expect(api.buildModernCompatibilityMetadata(value).activation.successorLanes).toHaveLength(3);
+    expect(api.buildModernCompatibilityMetadata(value).activation.successorLanes).toHaveLength(0);
   });
   it.each(['managed', 'plugins', 'layout', 'policy', 'observation', 'history'] as const)('requires complete root validity for %s', field => {
     const value = manifest('single-maintainer-gitflow', 'openspec');
@@ -183,7 +184,9 @@ describe('compatibility5 with actual complete v8 root and source context', () =>
   });
   it.each(['lane', 'identity', 'phase', 'inventory', 'schema', 'authority'] as const)('rejects forged %s compatibility', field => {
     const source = manifest('single-maintainer-gitflow', 'openspec'), metadata = structuredClone(api.buildModernCompatibilityMetadata(source));
-    if (field === 'lane') Reflect.set(metadata.activation.successorLanes[0], 'sourceWorkflow', 'manual');
+    if (field === 'lane') Reflect.set(metadata.activation, 'successorLanes', [{
+      id: 'activation-v3-to-v4', targetIdentity: metadata.activation.targetIdentity
+    }]);
     if (field === 'identity') Reflect.set(metadata.activation.targetIdentity, 'profile', 'team-gitflow');
     if (field === 'phase') Reflect.set(metadata.activation.targetPhaseContracts[0], 'digest', 'f'.repeat(64));
     if (field === 'inventory') Reflect.set(metadata.managedCore.inventory[0], 'pathParts', ['elsewhere']);

@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {Readable} from 'node:stream';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-import {runCli} from '../src/cli.js';
+import {runReleasedTelemetryCli as runCli} from './fixtures/released-telemetry.js';
 import {runCommand} from '../src/commands.js';
 import {CaptureStream,ttyCaptureStream} from './helpers.js';
 import type {SemanticTelemetryEvent} from '../src/telemetry/contract.js';

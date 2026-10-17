@@ -6,11 +6,26 @@ import {
   expectStatus, githubName, githubRef, githubRepository, object, positiveId, safeGitHubFailure, text,
   type GitHubActivationTransport, type GitHubRequest, type GitHubResponse
 } from '../src/adapters/github/activation-rest.js';
+import { NodeCommandRunner } from '../src/process-runner.js';
 import type { CommandResult, CommandRunner, RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/types.js';
 
 const projectRoot = path.join(process.cwd(), '.cache', `governance-github-rest-${process.pid}`);
 const credentialMarker = ['credential', 'marker', 'for', 'rest', 'tests'].join('-');
+const analysisPath = '/repos/o/r/code-scanning/analyses/17';
+const invalidSarifRequests: unknown[] = [
+  ...['POST', 'PUT', 'PATCH', 'DELETE'].map(method => ({ method, path: analysisPath, representation: 'code-scanning-sarif' })),
+  { method: 'GET', path: analysisPath, representation: 'code-scanning-sarif', body: {} },
+  { method: 'GET', path: analysisPath, representation: 'code-scanning-sarif', binary: true },
+  ...['/user', '/repos/o/r/code-scanning/analyses', `${analysisPath}?ref=main`,
+    '/repos/o/r/code-scanning/analyses/0', '/repos/o/r/code-scanning/analyses/01',
+    '/repos/o/r/code-scanning/analyses/9007199254740992', '/repos/o/r/code-scanning/analyses/1e2',
+    '/repos/o/r/code-scanning/analyses/%31', '/repos/o..x/r/code-scanning/analyses/17',
+    'https://untrusted.invalid/code-scanning/analyses/17'
+  ].map(path => ({ method: 'GET', path, representation: 'code-scanning-sarif' })),
+  ...['application/sarif+json', 'application/json\r\nAuthorization: private', true, null]
+    .map(representation => ({ method: 'GET', path: analysisPath, representation }))
+];
 
 function thrown(action: () => unknown): GitHubActivationError {
   try {
@@ -180,6 +195,29 @@ describe('GitHub CLI activation transport', () => {
     expect(runner.calls[0]!.options?.stdin).toBeUndefined();
   });
 
+  it('requests only the fixed SARIF analysis representation without widening default JSON reads', async () => {
+    const runner = new CannedRunner({ stdout: 'HTTP/2 200 OK\r\n\r\n{"version":"2.1.0","runs":[]}' });
+    const client = new GitHubActivationClient(createGitHubCliTransport(runner, projectRoot));
+    await expect(client.codeScanningSarif('o/r', 17)).resolves.toEqual({ version: '2.1.0', runs: [] });
+    expect(runner.calls[0]!.command.args).toEqual([
+      'api', '--hostname', 'github.com', '--method', 'GET', '--header', 'X-GitHub-Api-Version: 2026-03-10',
+      '--header', 'Accept: application/sarif+json', '--include', analysisPath
+    ]);
+    expect(runner.calls[0]!.options).toMatchObject({ timeoutMs: 30_000, maxOutputBytes: 4 * 1024 * 1024, stream: false });
+    expect(runner.calls[0]!.options?.stdin).toBeUndefined();
+    await client.get(analysisPath);
+    expect(runner.calls[1]!.command.args).toContain('Accept: application/vnd.github+json');
+  });
+
+  it('refuses every foreign, ambiguous, write, binary or arbitrary-media SARIF request before gh', async () => {
+    const runner = new CannedRunner({ stdout: 'HTTP/2 200 OK\r\n\r\n{}' });
+    const transport = createGitHubCliTransport(runner, projectRoot);
+    for (const request of invalidSarifRequests) {
+      await expect(Reflect.apply(transport.request, transport, [request])).rejects.toBeInstanceOf(GitHubActivationError);
+    }
+    expect(runner.calls).toEqual([]);
+  });
+
   it('parses informational, LF-only, empty, and non-success responses for the caller to interpret', async () => {
     const cases: Array<[string, GitHubResponse]> = [
       ['HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 204 No Content\r\nX-Test: a:b\r\n\r\n', response(204, null, { 'x-test': 'a:b' })],
@@ -219,6 +257,47 @@ describe('GitHub CLI activation transport', () => {
       expect(error).toMatchObject({ code: 'bounded-request' });
       expect(error.message).toBe('GitHub request was not completed within its bounded execution window.');
     }
+  });
+
+  it.each([
+    { status: 9 }, { status: 2 }, { status: 4 }, { status: null }, { signal: 'SIGTERM' as const }
+  ])('refuses a complete-looking SARIF success after unconfirmed gh completion %j', async completion => {
+    const runner = new CannedRunner({
+      stdout: 'HTTP/2 200 OK\r\n\r\n{"version":"2.1.0","runs":[]}',
+      stderr: credentialMarker, ...completion
+    });
+    const client = new GitHubActivationClient(createGitHubCliTransport(runner, projectRoot));
+    const error = await rejected(() => client.codeScanningSarif('o/r', 17));
+    expect(error.code).toBe('bounded-request');
+    expect(error.message).not.toContain(credentialMarker);
+    expect(runner.calls).toHaveLength(1);
+  });
+
+  it('does not turn cancelled, crashed or unknown-status 404 output into optional absence', async () => {
+    for (const completion of [{ status: 2 }, { status: 4 }, { status: 9 }, { status: null }, { signal: 'SIGTERM' as const }]) {
+      const runner = new CannedRunner({ stdout: 'HTTP/2 404 Not Found\r\n\r\n{"message":"Not Found"}', ...completion });
+      const client = new GitHubActivationClient(createGitHubCliTransport(runner, projectRoot));
+      await expect(client.optional('/repos/o/r')).rejects.toMatchObject({ code: 'bounded-request' });
+      expect(runner.calls).toHaveLength(1);
+    }
+  });
+
+  it('preserves ordinary gh HTTP-error exits without promoting an uncertain successful write or retrying it', async () => {
+    for (const status of [400, 401, 403, 404, 422, 429, 503]) {
+      const runner = new CannedRunner({ status: 1, stdout: `HTTP/2 ${status} Provider Error\r\n\r\n{"message":"withheld"}` });
+      await expect(createGitHubCliTransport(runner, projectRoot).request({ method: 'GET', path: '/repos/o/r' }))
+        .resolves.toMatchObject({ status, data: { message: 'withheld' } });
+    }
+    for (const status of [401, 403]) {
+      const runner = new CannedRunner({ status: 4, stdout: `HTTP/2 ${status} Authentication Error\r\n\r\n{}` });
+      await expect(createGitHubCliTransport(runner, projectRoot).request({ method: 'GET', path: '/repos/o/r' }))
+        .resolves.toMatchObject({ status });
+    }
+    const runner = new CannedRunner({ status: 9, stdout: 'HTTP/2 204 No Content\r\n\r\n', stderr: credentialMarker });
+    const client = new GitHubActivationClient(createGitHubCliTransport(runner, projectRoot));
+    await expect(client.write('POST', '/repos/o/r/actions/workflows/17/dispatches', { ref: 'immutable-ref' }))
+      .rejects.toMatchObject({ code: 'bounded-request' });
+    expect(runner.calls).toHaveLength(1);
   });
 
   it('refuses unscoped endpoints and archive writes before running gh', async () => {
@@ -275,6 +354,42 @@ describe('protected-credential GitHub transport', () => {
     expect(calls[0]!.init.body).toBeUndefined();
   });
 
+  it('uses the fixed SARIF header with the same protected origin, credential and abort signal', async () => {
+    const { fetcher, calls } = fetchStub(() => new Response('{"version":"2.1.0","runs":[]}', {
+      headers: { 'content-type': 'application/json' }
+    }));
+    const client = new GitHubActivationClient(createAuthenticatedGitHubTransport(Buffer.from(credentialMarker), fetcher));
+    await expect(client.codeScanningSarif('o/r', 17)).resolves.toEqual({ version: '2.1.0', runs: [] });
+    expect(calls[0]).toMatchObject({
+      url: `https://api.github.com${analysisPath}`,
+      init: { method: 'GET', redirect: 'error', headers: {
+        Accept: 'application/sarif+json', 'X-GitHub-Api-Version': '2026-03-10',
+        Authorization: `Bearer ${credentialMarker}`, 'Content-Type': 'application/json'
+      } }
+    });
+    expect(calls[0]!.init.body).toBeUndefined();
+    expect(calls[0]!.init.signal).toBeInstanceOf(AbortSignal);
+    expect(calls[0]!.url).not.toContain(credentialMarker);
+    await client.get(analysisPath);
+    expect(calls[1]!.init.headers).toMatchObject({ Accept: 'application/vnd.github+json' });
+  });
+
+  it('refuses invalid SARIF representation requests before sending a credential', async () => {
+    const { fetcher, calls } = fetchStub(() => new Response('{}'));
+    const transport = createAuthenticatedGitHubTransport(Buffer.from(credentialMarker), fetcher);
+    for (const request of invalidSarifRequests) {
+      await expect(Reflect.apply(transport.request, transport, [request])).rejects.toBeInstanceOf(GitHubActivationError);
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it('retains the four-MiB protected response bound for SARIF, without returning partial data', async () => {
+    const { fetcher, calls } = fetchStub(() => new Response(' '.repeat(4 * 1024 * 1024 + 1)));
+    const client = new GitHubActivationClient(createAuthenticatedGitHubTransport(Buffer.from(credentialMarker), fetcher));
+    await expect(client.codeScanningSarif('o/r', 17)).rejects.toMatchObject({ code: 'bounded-request' });
+    expect(calls[0]!.init.signal!.aborted).toBe(true);
+  });
+
   it('refuses archive downloads and unscoped endpoints before sending the credential', async () => {
     const { fetcher, calls } = fetchStub(() => new Response('{}'));
     const transport = createAuthenticatedGitHubTransport(Buffer.from(credentialMarker), fetcher);
@@ -314,6 +429,27 @@ describe('protected-credential GitHub transport', () => {
 });
 
 describe('GitHub activation client status and pagination contracts', () => {
+  it('preserves exact SARIF request identity, provider failures and object-only responses', async () => {
+    const transport = new ScriptedTransport(() => response(200, { version: '2.1.0', runs: [] }));
+    const client = new GitHubActivationClient(transport);
+    for (const [repository, id] of [['o..x/r', 17], ['o/r', 0], ['o/r', 1.5], ['o/r', Number.MAX_SAFE_INTEGER + 1]] as const) {
+      await expect(client.codeScanningSarif(repository, id)).rejects.toBeInstanceOf(GitHubActivationError);
+    }
+    expect(transport.requests).toEqual([]);
+    await client.codeScanningSarif('o/r', 17);
+    expect(transport.requests).toEqual([{ method: 'GET', path: analysisPath, representation: 'code-scanning-sarif' }]);
+    for (const status of [401, 403, 404, 422, 429, 503]) {
+      const failed = new GitHubActivationClient(new ScriptedTransport(() => response(status, { private: credentialMarker })));
+      const error = await rejected(() => failed.codeScanningSarif('o/r', 17));
+      expect(error).toMatchObject({ code: 'provider-response', status });
+      expect(error.message).not.toContain(credentialMarker);
+    }
+    for (const value of [null, [], 'private report']) {
+      const malformed = new GitHubActivationClient(new ScriptedTransport(() => response(200, value)));
+      await expect(malformed.codeScanningSarif('o/r', 17)).rejects.toMatchObject({ code: 'invalid-response' });
+    }
+  });
+
   it('reads required and optional resources with exact status handling', async () => {
     const statuses = [response(200, { id: 1 }), response(404), response(200, []), response(404), response(200, { id: 2 }), response(403)];
     const client = new GitHubActivationClient(new ScriptedTransport((_request, index) => statuses[index]!));
@@ -411,7 +547,17 @@ describe.skipIf(process.platform === 'win32')('bounded GitHub CLI archive reads'
       'printf \'GH_PROMPT_DISABLED=%s GH_DEBUG=%s\\n\' "$GH_PROMPT_DISABLED" "$GH_DEBUG" >> "$FAKE_GH_ARGS"',
       'case "$FAKE_GH_MODE" in',
       '  archive) printf \'HTTP/2.0 200 OK\\r\\ncontent-type: application/zip\\r\\n\\r\\nPK\\003\\004\\000\\377archive\' ;;',
+      '  sarif) printf \'HTTP/2.0 200 OK\\r\\ncontent-type: application/sarif+json\\r\\n\\r\\n{"version":"2.1.0","runs":[]}\' ;;',
+      '  sarif-failed|sarif-cancelled|sarif-signalled)',
+      '    printf \'HTTP/2.0 200 OK\\r\\ncontent-type: application/sarif+json\\r\\n\\r\\n{"version":"2.1.0","runs":[]}\'',
+      '    case "$FAKE_GH_MODE" in sarif-failed) exit 9 ;; sarif-cancelled) exit 2 ;; sarif-signalled) kill -TERM "$$" ;; esac ;;',
+      '  archive-failed|archive-cancelled|archive-signalled)',
+      '    printf \'HTTP/2.0 200 OK\\r\\ncontent-type: application/zip\\r\\n\\r\\nPK\\003\\004\\000\\377archive\'',
+      '    case "$FAKE_GH_MODE" in archive-failed) exit 9 ;; archive-cancelled) exit 2 ;; archive-signalled) kill -TERM "$$" ;; esac ;;',
       '  missing) printf \'HTTP/2.0 404 Not Found\\r\\n\\r\\n{"message":"Not Found"}\' ;;',
+      '  missing-failed|missing-cancelled)',
+      '    printf \'HTTP/2.0 404 Not Found\\r\\n\\r\\n{"message":"Not Found"}\'',
+      '    case "$FAKE_GH_MODE" in missing-failed) exit 1 ;; missing-cancelled) exit 2 ;; esac ;;',
       '  oversized) cat "$FAKE_GH_PAYLOAD" ;;',
       'esac',
       ''
@@ -453,6 +599,53 @@ describe.skipIf(process.platform === 'win32')('bounded GitHub CLI archive reads'
     expect(args).not.toContain('--input');
     expect(args).toContain('GH_PROMPT_DISABLED=1 GH_DEBUG=');
     expect(noRunner.calls).toEqual([]);
+  });
+
+  it('runs the actual bounded text process with literal SARIF argv and disabled gh diagnostics', async () => {
+    useFakeGh('sarif');
+    const client = new GitHubActivationClient(createGitHubCliTransport(new NodeCommandRunner(), projectRoot));
+    await expect(client.codeScanningSarif('o/r', 17)).resolves.toEqual({ version: '2.1.0', runs: [] });
+    expect((await readFile(argsFile, 'utf8')).split('\n')).toEqual([
+      'api', '--hostname', 'github.com', '--method', 'GET', '--header', 'X-GitHub-Api-Version: 2026-03-10',
+      '--header', 'Accept: application/sarif+json', '--include', analysisPath,
+      'GH_PROMPT_DISABLED=1 GH_DEBUG=', ''
+    ]);
+  });
+
+  it('stops actual oversized SARIF process output without a partial-report fallback', async () => {
+    useFakeGh('oversized');
+    const client = new GitHubActivationClient(createGitHubCliTransport(new NodeCommandRunner(), projectRoot));
+    await expect(client.codeScanningSarif('o/r', 17)).rejects.toMatchObject({ code: 'bounded-request' });
+  });
+
+  it.each(['failed', 'cancelled', 'signalled'])('refuses actual %s text and archive processes despite complete-looking HTTP200 output', async mode => {
+    useFakeGh(`sarif-${mode}`);
+    const client = new GitHubActivationClient(createGitHubCliTransport(new NodeCommandRunner(), projectRoot));
+    const text = await Promise.allSettled([client.codeScanningSarif('o/r', 17)]);
+    useFakeGh(`archive-${mode}`);
+    const archive = await Promise.allSettled([createGitHubCliTransport(noRunner, projectRoot).request({
+      method: 'GET', path: '/repos/o/r/zipball/abc', binary: true
+    })]);
+    expect([...text, ...archive]).toMatchObject([
+      { status: 'rejected', reason: { code: 'bounded-request' } },
+      { status: 'rejected', reason: { code: 'bounded-request' } }
+    ]);
+  });
+
+  it('distinguishes actual ordinary-error404 from cancelled404 before optional absence or archive observation', async () => {
+    const client = new GitHubActivationClient(createGitHubCliTransport(new NodeCommandRunner(), projectRoot));
+    const archives = createGitHubCliTransport(noRunner, projectRoot);
+    useFakeGh('missing-failed');
+    await expect(client.optional('/repos/o/r')).resolves.toBeNull();
+    await expect(archives.request({ method: 'GET', path: '/repos/o/r/zipball/abc', binary: true }))
+      .resolves.toMatchObject({ status: 404, data: { message: 'Not Found' } });
+    useFakeGh('missing-cancelled');
+    const text = await Promise.allSettled([client.optional('/repos/o/r')]);
+    const archive = await Promise.allSettled([archives.request({ method: 'GET', path: '/repos/o/r/zipball/abc', binary: true })]);
+    expect([...text, ...archive]).toMatchObject([
+      { status: 'rejected', reason: { code: 'bounded-request' } },
+      { status: 'rejected', reason: { code: 'bounded-request' } }
+    ]);
   });
 
   it('parses a missing archive as a JSON status for the caller', async () => {

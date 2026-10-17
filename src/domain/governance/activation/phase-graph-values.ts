@@ -10,7 +10,8 @@ type TerminalPhaseState = ReleasedTerminalPhaseStateV3;
 /** Shared definitions only; the caller owns source versions and execution compatibility. */
 export function buildPhaseDefinitions(versions: {
   evidenceHeaderSchemaVersion: number; approvalEnvelopeSchemaVersion: number;
-}): readonly PhaseGraphNode[] {
+}, contract: 'current' | 'released-v3' = 'current',
+disposalContract: 'protected-custody' | 'local-bootstrap' = 'protected-custody'): readonly PhaseGraphNode[] {
   const { evidenceHeaderSchemaVersion, approvalEnvelopeSchemaVersion } = versions;
   const terminalVerified = ['verified', 'failed'] as const satisfies readonly TerminalPhaseState[];
   const terminalApproved = ['approved', 'failed'] as const satisfies readonly TerminalPhaseState[];
@@ -257,8 +258,17 @@ export function buildPhaseDefinitions(versions: {
           inapplicableWhen: 'statePath!=bootstrap-local',
           exclusiveWith: []
         },
-        allowedMutations: mutations(['write-evidence'], ['github-read', 'github-write', 'github-workflow-dispatch']),
-        evidence: evidence('runner-ready.v1', true, ['github']),
+        allowedMutations: mutations(
+          ['write-evidence'],
+          contract === 'released-v3'
+            ? ['github-read', 'github-write', 'github-workflow-dispatch']
+            : ['azure-network-provision', 'azure-read', 'github-read', 'github-write']
+        ),
+        evidence: evidence(
+          'runner-ready.v1',
+          true,
+          contract === 'released-v3' ? ['github'] : ['azure', 'github']
+        ),
         approvalGate: approval('infrastructure-cost', true),
         invalidationInputs: ['runner-inventory', 'approval-envelope'],
         rollback: rollback('reverse-to', 'bootstrap-local', 'Remove repository runner assignment before network resources.'),
@@ -293,8 +303,24 @@ export function buildPhaseDefinitions(versions: {
           inapplicableWhen: 'statePath!=bootstrap-local',
           exclusiveWith: []
         },
-        allowedMutations: mutations(['write-evidence'], ['azure-state-import', 'azure-read', 'backend-state-read', 'backend-state-write']),
-        evidence: evidence('remote-import-verified.v1', true, ['azure']),
+        allowedMutations: mutations(
+          ['write-evidence'],
+          contract === 'released-v3'
+            ? ['azure-state-import', 'azure-read', 'backend-state-read', 'backend-state-write']
+            : [
+              'github-read',
+              'github-workflow-dispatch',
+              'azure-state-import',
+              'azure-read',
+              'backend-state-read',
+              'backend-state-write'
+            ]
+        ),
+        evidence: evidence(
+          'remote-import-verified.v1',
+          true,
+          contract === 'released-v3' ? ['azure'] : ['github', 'azure']
+        ),
         approvalGate: approval('infrastructure-cost', true),
         invalidationInputs: ['remote-state', 'approval-envelope'],
         rollback: rollback('reverse-to', 'private-backend-proof', 'Failed import leaves local state retained for remediation.'),
@@ -452,7 +478,9 @@ export function buildPhaseDefinitions(versions: {
       },
       {
         id: 'bootstrap-state-disposed',
-        label: 'Retained local bootstrap state is disposed after day 30',
+        label: disposalContract === 'protected-custody'
+          ? 'Retained protected bootstrap state is disposed after day 30'
+          : 'Retained local bootstrap state is disposed after day 30',
         dependencies: [dep(['live-readback'], 'Disposal is scheduled only after live enforcement readback.')],
         applicability: {
           kind: 'conditional',
@@ -465,7 +493,9 @@ export function buildPhaseDefinitions(versions: {
         evidence: evidence('bootstrap-state-disposed.v1'),
         approvalGate: approval('destructive-disposal', true),
         invalidationInputs: ['remote-state', 'approval-envelope'],
-        rollback: rollback('dispose', null, 'Deletion destroys only the local encryption key and records no payload.'),
+        rollback: rollback('dispose', null, disposalContract === 'protected-custody'
+          ? 'Deletion destroys only the exact protected artifacts and non-exporting key reference under the qualified custody authority and records no payload.'
+          : 'Deletion destroys only the local encryption key and records no payload.'),
         terminalStates: ['disposed', 'failed', 'inapplicable']
       }
     ] as const;

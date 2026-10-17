@@ -63,7 +63,11 @@ export function createModernGovernanceContextContract(context: ManifestV8ReaderC
     };
     const activationIdentity = identityReader.validateReadableModernActivationIdentity({
       ...identityInput,
-      recordedIdentity: identityReader.identityForSource({ ...identityInput, sourceVersion: row.identity.liftoffVersion })
+      recordedIdentity: identityReader.identityForReadableSource({
+        ...identityInput,
+        sourceVersion: row.identity.liftoffVersion,
+        phaseGraphHash: row.identity.phaseGraphHash
+      })
     });
     if (Object.entries(row.identity).some(([key, value]) => Reflect.get(activationIdentity, key) !== value) ||
       canonicalSha256(row.graph) !== activationIdentity.phaseGraphHash) {

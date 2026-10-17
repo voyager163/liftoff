@@ -127,8 +127,18 @@ describe('current real-project generation', () => {
       expect(currentTest).toContain('yield\n    get_settings.cache_clear()');
       expect(legacyTest).not.toContain('_liftoff_isolated_settings');
     }
-    expect(current.find(artifact => artifact.logicalName === 'opentofu-readme')!.content)
+    const currentInfrastructureGuide = current.find(artifact => artifact.logicalName === 'opentofu-readme')!.content;
+    expect(currentInfrastructureGuide)
       .toContain('Manual does not require OpenSpec, Spec Kit, a framework archive, or an agent');
+    expect(currentInfrastructureGuide).toContain('same recorded operation');
+    expect(currentInfrastructureGuide).toContain('does not currently register production protected');
+    expect(currentInfrastructureGuide).toContain('approval alone cannot enable');
+    expect(currentInfrastructureGuide).toContain('Pre-existing deployment/state adoption, import, partition, relocation');
+    expect(currentInfrastructureGuide).toContain('operator reference only');
+    expect(currentInfrastructureGuide).toContain('bootstrap is not protected remote-state bootstrap');
+    for (const phrase of ['liftoff-execution-<full-source-SHA>', 'sourceTreeSha',
+      'Admission is read-only', 'branch or raw-SHA fallback',
+      'disposable execution-ref qualification remain unavailable']) expect(currentInfrastructureGuide).toContain(phrase);
     expect(manifest.activeLayout.bindings).toEqual(expect.arrayContaining([
       { kind: 'component', component: 'backend', pathParts: ['backend'] },
       { kind: 'component', component: 'database', pathParts: ['database'] },

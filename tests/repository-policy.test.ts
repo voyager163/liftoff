@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { parse } from 'yaml';
@@ -7,8 +9,11 @@ import {
   checkIssueForm, checkPromotion, checkRepositoryPolicy, checkWorkflow,
   communityFiles, workflowFiles, checkIsolatedHclReport, checkIsolatedHclRuntime,
   isolatedHclQualificationJob, isolatedHclTestCommand, checkPluginPathReport, pluginPathTestCommand,
-  nativeBundleQualificationJob
+  checkWorkflowProgramContentReport, workflowProgramContentCases,
+  nativeBundleQualificationJob, nativePlatformQualificationJob,
+  checkNativeCustodyQualificationJob, nativeCustodyWorkflowFile
 } from '../scripts/check-repository-policy.mjs';
+import { readPinnedCiTool } from '../scripts/prepare-ci-local-tools.mjs';
 
 const root = process.cwd();
 const fixtures: string[] = [];
@@ -26,6 +31,185 @@ function pullRequest(base: string, head: string, owner = 'voyager163/liftoff') {
 }
 
 describe('source repository setup policy', () => {
+  it.each(['test-shards', 'coverage-cli'])('selects qualified Node24.21.0 for CLI job %s', async job => {
+    const workflow = await readWorkflow('ci.yml');
+    const setup = workflow.jobs[job].steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/setup-node@'));
+    expect(setup.with['node-version']).toBe('24.21.0');
+  });
+
+  it('serializes the native Windows settlement precheck without changing its selected cases', async () => {
+    const workflow = await readWorkflow('ci.yml');
+    const step = workflow.jobs['test-shards'].steps.find(
+      (candidate: { name?: string }) => candidate.name === 'Verify native Windows process settlement'
+    );
+    expect(step.id).toBe('windows-process');
+    expect(step.if).toBe("runner.os == 'Windows' && matrix.shard == 1");
+    expect(step.run.trim()).toBe([
+      'npx vitest run',
+      'tests/windows-job-runner.test.ts tests/repair-preparation.test.ts',
+      'tests/adoption-verification-execution.test.ts',
+      '-t "settles a real native Node command|detects unref descendant|runs exact checks in a disposable copy"',
+      '--maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false',
+      '--reporter=dot --reporter=json --outputFile.json=qualification/windows-process-tests.json'
+    ].join(' '));
+    const evidence = workflow.jobs['test-shards'].steps.find(
+      (candidate: { name?: string }) => candidate.name === 'Store Windows process settlement evidence'
+    );
+    expect(evidence.if).toBe("${{ !cancelled() && (steps.windows-process.outcome == 'success' || steps.windows-process.outcome == 'failure') }}");
+    expect(evidence.with).toEqual({
+      name: 'liftoff-windows-process-tests-${{ github.run_id }}-${{ github.run_attempt }}',
+      path: 'qualification/windows-process-tests.json',
+      'if-no-files-found': 'error',
+      'retention-days': 14
+    });
+  });
+
+  it.each(['Linux', 'macOS'].flatMap(platform =>
+    ['test-shards', 'coverage-cli'].map(id => ({ platform, id }))))('requires pinned $platform tool preparation in $id', async ({ platform, id }) => {
+    for (const fault of ['missing', 'conditional', 'ignored', 'replaced', 'late', 'duplicate']) {
+      const workflow = await readWorkflow('ci.yml'), steps = workflow.jobs[id].steps;
+      const index = steps.findIndex((step: { name?: string }) => step.name === `Prepare pinned ${platform} Docker and Compose`);
+      if (fault === 'missing') steps.splice(index, 1);
+      if (fault === 'conditional') steps[index].if = 'false';
+      if (fault === 'ignored') steps[index]['continue-on-error'] = true;
+      if (fault === 'replaced') steps[index].run = 'docker --version';
+      if (fault === 'late') steps.push(...steps.splice(index, 1));
+      if (fault === 'duplicate') steps.push(structuredClone(steps[index]));
+      expect(() => checkWorkflow('ci.yml', workflow), `${id}/${fault}`).toThrow();
+    }
+  });
+
+  it('reads pinned CI bytes independently and rejects changed contents, symlinks and directories', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ci-tool-test-'));
+    fixtures.push(directory);
+    const file = path.join(directory, 'tool'), bytes = Buffer.from('checksum control; not a native execution');
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    await writeFile(file, bytes);
+    expect((await readPinnedCiTool(file, sha256)).observation).toMatchObject({ sha256, bytes: bytes.length });
+    await writeFile(file, Buffer.from('changed'));
+    await expect(readPinnedCiTool(file, sha256)).rejects.toThrow('checksum mismatch');
+    const link = path.join(directory, 'link');
+    await symlink(file, link, 'file');
+    await expect(readPinnedCiTool(link, sha256)).rejects.toThrow('regular, non-symlink');
+    await expect(readPinnedCiTool(directory, sha256)).rejects.toThrow('regular, non-symlink');
+  });
+
+  it('refuses extra bootstrap arguments before creating files or running tools', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ci-tool-refusal-'));
+    fixtures.push(directory);
+    const result = spawnSync(process.execPath, ['scripts/prepare-ci-local-tools.mjs', '--unexpected'], {
+      cwd: root, encoding: 'utf8', timeout: 5000, env: { ...process.env, RUNNER_TEMP: directory }
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('CI local-tool preparation accepts no arguments.');
+    expect(result.stdout).toBe('');
+    expect(await readdir(directory)).toEqual([]);
+  });
+
+  it.each(['actions', 'os', 'architecture'])('refuses mismatched CI %s before creating files or running tools', async fault => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ci-host-refusal-'));
+    fixtures.push(directory);
+    const env = { ...process.env, GITHUB_ACTIONS: 'true',
+      RUNNER_OS: process.platform === 'darwin' ? 'macOS' : 'Linux',
+      RUNNER_ARCH: process.arch === 'arm64' ? 'ARM64' : 'X64',
+      RUNNER_TEMP: directory, GITHUB_PATH: path.join(directory, 'path') };
+    if (fault === 'actions') env.GITHUB_ACTIONS = 'false';
+    if (fault === 'os') env.RUNNER_OS = 'Windows';
+    if (fault === 'architecture') env.RUNNER_ARCH = 'unsupported';
+    const result = spawnSync(process.execPath, ['scripts/prepare-ci-local-tools.mjs'], {
+      cwd: root, encoding: 'utf8', timeout: 5000, env
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('requires a Linux x64 or macOS ARM64 GitHub Actions runner.');
+    expect(result.stdout).toBe('');
+    expect(await readdir(directory)).toEqual([]);
+  });
+
+  it('pins a dispatch-only native custody qualification without changing ordinary CI', async () => {
+    const workflow = await readWorkflow(nativeCustodyWorkflowFile);
+    expect(workflow.on.workflow_dispatch).toBeNull();
+    expect(Object.keys(workflow.jobs)).toEqual(['policy', 'qualify-native-custody']);
+    expect(workflow.jobs['qualify-native-custody'].if).toBe("${{ github.event_name == 'workflow_dispatch' }}");
+    expect(() => checkNativeCustodyQualificationJob(workflow.jobs['qualify-native-custody'])).not.toThrow();
+    expect(() => checkWorkflow(nativeCustodyWorkflowFile, workflow)).not.toThrow();
+    expect((await readWorkflow('ci.yml')).jobs['qualify-native-custody']).toBeUndefined();
+  });
+  it.each([
+    'trigger', 'runner', 'timeout', 'node', 'architecture', 'npm', 'npm-identity', 'native-budget', 'opentofu',
+    'docker-download', 'docker-checksum', 'compose-download', 'compose-checksum', 'compose-layout', 'compose-evidence',
+    'openspec', 'openspec-cutoff', 'openspec-profile', 'gateway-install',
+    'full-suite-filter', 'coverage-workers', 'coverage-verifier',
+    'focused-file', 'package', 'policy', 'clean', 'missing-evidence'
+  ])('rejects incomplete hosted native custody qualification: %s', async fault => {
+    const workflow = await readWorkflow(nativeCustodyWorkflowFile);
+    const job = workflow.jobs['qualify-native-custody'];
+    const step = (name: string) => job.steps.find((candidate: { name?: string }) => candidate.name === name);
+    if (fault === 'trigger') job.if = "${{ github.event_name == 'push' }}";
+    if (fault === 'runner') job['runs-on'] = 'macos-latest';
+    if (fault === 'timeout') job['timeout-minutes'] = 60;
+    if (fault === 'node') job.steps[1].with['node-version'] = '24.20.0';
+    if (fault === 'architecture') job.steps[1].with.architecture = 'x64';
+    if (fault === 'npm') step('Select supported npm').run = 'npm install --global npm@latest';
+    if (fault === 'npm-identity') {
+      step('Verify native toolchain').run = step('Verify native toolchain').run.replace(
+        "assert.equal(path.basename(npmLauncher), 'npm-cli.js');",
+        ''
+      );
+    }
+    if (fault === 'native-budget') delete job.env.OB1_SUPPORT_REMAINING;
+    if (fault === 'opentofu') job.steps[4].with.tofu_version = '1.13.1';
+    if (fault === 'docker-download') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('docker-29.8.2.tgz', 'docker-latest.tgz');
+    }
+    if (fault === 'docker-checksum') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('5ffa2bafbabe0734', '0ffa2bafbabe0734');
+    }
+    if (fault === 'compose-download') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('v5.5.1', 'v5.6.0');
+    }
+    if (fault === 'compose-checksum') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('998735c9b6fe68a4', '098735c9b6fe68a4');
+    }
+    if (fault === 'compose-layout') {
+      step('Install qualified Docker and Compose').run =
+        step('Install qualified Docker and Compose').run.replace('cli-plugins/docker-compose', 'plugins/docker-compose');
+    }
+    if (fault === 'compose-evidence') delete step('Record hosted native qualification evidence').env.NATIVE_COMPOSE_EXECUTABLE;
+    if (fault === 'openspec') step('Install pinned OpenSpec').run = 'npm install @fission-ai/openspec@latest';
+    if (fault === 'openspec-cutoff') {
+      step('Install pinned OpenSpec').run =
+        step('Install pinned OpenSpec').run.replace('2026-09-26T23:59:59Z', '2026-09-27T23:59:59Z');
+    }
+    if (fault === 'openspec-profile') {
+      step('Install pinned OpenSpec').run =
+        step('Install pinned OpenSpec').run.replace('node scripts/native-custody-qualification.mjs verify-openspec-profile \\\n', '');
+    }
+    if (fault === 'gateway-install') {
+      step('Install dependencies').run =
+        step('Install dependencies').run.replace('npm ci --prefix services/telemetry-ingest', '');
+    }
+    if (fault === 'full-suite-filter') step('Run unfiltered full suite').run += ' -t custody';
+    if (fault === 'coverage-workers') {
+      step('Run source-complete CLI coverage').run =
+        step('Run source-complete CLI coverage').run.replace('--max-workers 1', '--max-workers 2');
+    }
+    if (fault === 'coverage-verifier') step('Verify source-complete coverage evidence').run = 'true';
+    if (fault === 'focused-file') {
+      step('Run focused custody and history checks').run =
+        step('Run focused custody and history checks').run.replace('tests/contract-baseline.test.ts \\\n', '');
+    }
+    if (fault === 'package') step('Run package smoke').run = 'npm pack';
+    if (fault === 'policy') step('Run repository policy').if = '${{ success() }}';
+    if (fault === 'clean') step('Verify final clean bytes').run = 'git diff --check';
+    if (fault === 'missing-evidence') job.steps.pop();
+    expect(() => checkWorkflow(nativeCustodyWorkflowFile, workflow)).toThrow();
+  });
   it('pins the complete runtime-inclusive development qualification without changing release publication', async () => {
     const workflow = await readWorkflow('ci.yml');
     expect(workflow.jobs['qualify-native-bundle']).toEqual(nativeBundleQualificationJob());
@@ -34,7 +218,14 @@ describe('source repository setup policy', () => {
   });
   it.each([
     'missing', 'conditional', 'runner', 'node', 'architecture', 'go', 'install', 'download',
-    'build', 'filtered', 'unset-bundle', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
+    'build', 'filtered', 'unset-bundle', 'unset-migration-bundle', 'wrong-migration-bundle', 'missing-migration-cases',
+    'skip-migration-report', 'historical-download', 'historical-checksum', 'unset-historical-client',
+    'missing-journey-cases', 'skip-journey-report', 'wrong-journey-bundle',
+    'unverified-journey-selection', 'wrong-selector-bundle', 'missing-prerelease-cases', 'wrong-refusal-outcome',
+    'missing-journey-evidence', 'unset-archive', 'unset-program-runtime', 'wrong-program-runtime',
+    'missing-program-consumer', 'filtered-program-consumer', 'unset-consumer-runtime', 'wrong-consumer-runtime',
+    'missing-consumer-report-gate', 'ignored-consumer-report-gate', 'missing-consumer-evidence',
+    'archive-after-tests', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
   ])('rejects incomplete runtime-inclusive qualification: %s', async fault => {
     const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-bundle'];
     if (fault === 'missing') delete workflow.jobs['qualify-native-bundle'];
@@ -48,12 +239,103 @@ describe('source repository setup policy', () => {
     if (fault === 'build') job.steps[6].run = 'npm run build';
     if (fault === 'filtered') job.steps[7].run = job.steps[7].run.replace('--allowOnly=false', '-t skipped');
     if (fault === 'unset-bundle') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_BUNDLE_ROOT', 'UNSELECTED_BUNDLE');
+    if (fault === 'unset-migration-bundle') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT', 'UNSELECTED_MIGRATION_BUNDLE');
+    if (fault === 'wrong-migration-bundle') job.steps[7].run = job.steps[7].run.replace(
+      'LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle"',
+      'LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/unverified-bundle"');
+    if (fault === 'missing-migration-cases') job.steps[7].run = job.steps[7].run.replace(/^  tests\/mac-migration-package.test.ts.*\n/m, '');
+    if (fault === 'skip-migration-report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/mac-migration-package-report.mjs.*\n/m, '');
+    if (fault === 'historical-download') job.steps[5].run = job.steps[5].run.replace('liftoff-0.3.4.tgz', 'liftoff-latest.tgz');
+    if (fault === 'historical-checksum') job.steps[5].run = job.steps[5].run.replace('05793480c44632b3', '15793480c44632b3');
+    if (fault === 'unset-historical-client') job.steps[7].run = job.steps[7].run.replace(
+      'LIFTOFF_MAC_MIGRATION_HISTORICAL_TARBALL', 'UNSELECTED_HISTORICAL_CLIENT');
+    if (fault === 'missing-journey-cases') job.steps[7].run = job.steps[7].run.replace(
+      'tests/mac-migration-journey.test.ts', 'tests/mac-migration.test.ts');
+    if (fault === 'skip-journey-report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/mac-migration-journey-report.mjs.*\n/m, '');
+    if (fault === 'wrong-journey-bundle') job.steps[7].run = job.steps[7].run.replace(
+      'mac-migration-journey-report.mjs "$journey_report" "$RUNNER_TEMP/liftoff-native-bundle"',
+      'mac-migration-journey-report.mjs "$journey_report" "$RUNNER_TEMP/stale-native-bundle"');
+    if (fault === 'unverified-journey-selection') job.steps[7].run = job.steps[7].run.replace(
+      /^journey=.*\n/m, 'journey=stable-handover\n');
+    if (fault === 'wrong-selector-bundle') job.steps[7].run = job.steps[7].run.replace(
+      'select "$RUNNER_TEMP/liftoff-native-bundle"', 'select "$RUNNER_TEMP/stale-native-bundle"');
+    if (fault === 'missing-prerelease-cases') job.steps[7].run = job.steps[7].run.replace(
+      'tests/mac-migration-prerelease.test.ts', 'tests/mac-migration-journey.test.ts');
+    if (fault === 'wrong-refusal-outcome') job.steps[7].run = job.steps[7].run.replace('prerelease-refusal)', 'stable-handover)');
+    if (fault === 'missing-journey-evidence') job.steps[8].with.path = job.steps[8].with.path.replace(
+      'qualification/mac-migration-*.json\n', '');
+    if (fault === 'unset-archive') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_ARCHIVE_ROOT', 'UNSELECTED_ARCHIVE');
+    if (fault === 'unset-program-runtime') job.steps[7].run = job.steps[7].run.replace(
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE', 'UNSELECTED_PROGRAM_RUNTIME');
+    if (fault === 'wrong-program-runtime') job.steps[7].run = job.steps[7].run.replace(
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/liftoff-node-runtime.tgz"',
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/unverified-runtime.tgz"');
+    if (fault === 'missing-program-consumer') job.steps[7].run = job.steps[7].run.replace(
+      'tests/workflow-source5-program-content.test.ts', 'tests/workflow-source5-declaration.test.ts');
+    if (fault === 'filtered-program-consumer') job.steps[7].run = job.steps[7].run.replace(
+      'vitest run tests/workflow-source5-program-content.test.ts', 'vitest run tests/workflow-source5-program-content.test.ts -t boundary');
+    if (fault === 'unset-consumer-runtime') job.steps[7].run = job.steps[7].run.replace(
+      /LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE=.*\n(?=npx vitest run tests\/workflow-source5-program-content)/,
+      '');
+    if (fault === 'wrong-consumer-runtime') job.steps[7].run = job.steps[7].run.replace(
+      /LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE=.*\n(?=npx vitest run tests\/workflow-source5-program-content)/,
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/stale-runtime.tgz" \\\n');
+    if (fault === 'missing-consumer-report-gate') job.steps[7].run = job.steps[7].run.replace(
+      /^node scripts\/check-repository-policy.mjs --workflow-program-report.*\n/m, '');
+    if (fault === 'ignored-consumer-report-gate') job.steps[7].run = job.steps[7].run.replace(
+      '--workflow-program-report qualification/workflow-program-content.json',
+      '--workflow-program-report qualification/workflow-program-content.json || true');
+    if (fault === 'missing-consumer-evidence') job.steps[8].with.path = job.steps[8].with.path.replace(
+      'qualification/workflow-program-content.json\n', '');
+    if (fault === 'archive-after-tests') {
+      const archive = job.steps[7].run.split('\n')[0];
+      job.steps[7].run = job.steps[7].run.slice(archive.length + 1) + archive + '\n';
+    }
     if (fault === 'skip-report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/native-bundle.mjs verify-report.*\n/m, '');
     if (fault === 'conditional-cases') job.steps[7].if = 'false';
     if (fault === 'missing-upload') job.steps.pop();
     if (fault === 'ignored-report') job.steps[8].with['if-no-files-found'] = 'ignore';
     expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
   });
+  it('pins complete Linux x64/arm64 and Windows native package qualification without enabling publication', async () => {
+    const workflow = await readWorkflow('ci.yml');
+    expect(workflow.jobs['qualify-native-platform-packages']).toEqual(nativePlatformQualificationJob());
+    expect((await readWorkflow('release.yml')).jobs['qualify-native-platform-packages']).toBeUndefined();
+  });
+  it.each(['qualify-native-bundle', 'qualify-native-platform-packages'])(
+    'requires complete release-set failure/recovery contracts in %s', async id => {
+      const workflow = await readWorkflow('ci.yml');
+      const step = workflow.jobs[id].steps.find((value: { run?: string }) => value.run?.includes('tests/native-release-set.test.ts'));
+      expect(step).toBeDefined();
+      step.run = step.run.replace('tests/native-release-set.test.ts ', '');
+      expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
+    });
+  it.each(['qualify-native-bundle', 'qualify-native-platform-packages', 'coverage-cli', 'coverage-gateway'])(
+    'rejects synthetic-merge or unbound source checkout in %s qualification', async id => {
+      const workflow = await readWorkflow('ci.yml');
+      delete workflow.jobs[id].steps[0].with.ref;
+      expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
+    });
+  it.each(['missing', 'matrix', 'runner', 'conditional', 'compiler', 'runtime', 'userspace', 'userspace-condition',
+    'userspace-pin', 'filtered', 'report', 'archive', 'unset-archive', 'upload'])(
+    'rejects incomplete native platform packaging: %s', async fault => {
+      const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-platform-packages'];
+      if (fault === 'missing') delete workflow.jobs['qualify-native-platform-packages'];
+      if (fault === 'matrix') job.strategy.matrix.include.pop();
+      if (fault === 'runner') job.strategy.matrix.include[0].os = 'ubuntu-latest';
+      if (fault === 'conditional') job.if = 'false';
+      if (fault === 'compiler') job.steps[4].run += ' || true';
+      if (fault === 'runtime') job.steps[1].with['node-version'] = 'latest';
+      if (fault === 'userspace') job.steps.splice(6, 1);
+      if (fault === 'userspace-condition') job.steps[6].if = 'false';
+      if (fault === 'userspace-pin') job.steps[6].run = 'docker pull rockylinux/rockylinux:latest';
+      if (fault === 'filtered') job.steps[7].run += ' -t skipped';
+      if (fault === 'report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/native-package-report.*\n/m, '');
+      if (fault === 'archive') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/native-release.*\n/m, '');
+      if (fault === 'unset-archive') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_ARCHIVE_ROOT', 'UNSELECTED_ARCHIVE');
+      if (fault === 'upload') job.steps[8].with['if-no-files-found'] = 'ignore';
+      expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
+    });
   it.each([
     'missing-platform', 'conditional-job', 'filtered-command', 'conditional-command',
     'missing-verifier', 'conditional-verifier', 'missing-upload', 'success-only-upload', 'ignored-report'
@@ -115,6 +397,37 @@ describe('source repository setup policy', () => {
     return { success: true, numFailedTests: 0, numPendingTests: platform === 'win32' ? 0 : 1,
       numPassedTests: platform === 'win32' ? 205 : 204, numTotalTests: 205, testResults };
   }
+  function programContentReport() {
+    return { success: true, numFailedTests: 0, numFailedTestSuites: 0, numPendingTests: 0,
+      numPassedTests: workflowProgramContentCases.length, numTotalTests: workflowProgramContentCases.length,
+      testResults: [{ name: '/fixture/tests/workflow-source5-program-content.test.ts',
+        assertionResults: workflowProgramContentCases.map(fullName => ({ fullName, status: 'passed' })) }] };
+  }
+  it('checks the literal original program report contract without manufacturing an assembly or qualification', () => {
+    expect(workflowProgramContentCases).toHaveLength(31);
+    expect(() => checkWorkflowProgramContentReport(programContentReport())).not.toThrow();
+  });
+  it.each([
+    'failed-report', 'failed-suite', 'failed-count', 'pending-count', 'passed-count', 'total-count', 'empty',
+    'foreign-suite', 'duplicate-suite', 'missing-case', 'duplicate-case', 'unexpected-case', 'failed-case', 'skipped-genuine'
+  ])('rejects incomplete original program consumer report: %s', fault => {
+    const report = programContentReport(), suite = report.testResults[0];
+    if (fault === 'failed-report') report.success = false;
+    if (fault === 'failed-suite') report.numFailedTestSuites++;
+    if (fault === 'failed-count') report.numFailedTests++;
+    if (fault === 'pending-count') report.numPendingTests++;
+    if (fault === 'passed-count') report.numPassedTests--;
+    if (fault === 'total-count') report.numTotalTests--;
+    if (fault === 'empty') report.testResults = [];
+    if (fault === 'foreign-suite') suite.name = '/fixture/tests/workflow-source5-declaration.test.ts';
+    if (fault === 'duplicate-suite') report.testResults.push(structuredClone(suite));
+    if (fault === 'missing-case') suite.assertionResults.pop();
+    if (fault === 'duplicate-case') suite.assertionResults[1] = suite.assertionResults[0];
+    if (fault === 'unexpected-case') suite.assertionResults[0].fullName = 'unrelated passing case';
+    if (fault === 'failed-case') suite.assertionResults[0].status = 'failed';
+    if (fault === 'skipped-genuine') suite.assertionResults[21].status = 'skipped';
+    expect(() => checkWorkflowProgramContentReport(report)).toThrow();
+  });
   it.each(['win32', 'darwin', 'linux'] as const)('validates native plugin report shape without claiming execution on %s', platform => {
     expect(() => checkPluginPathReport(pluginReport(platform), platform)).not.toThrow();
   });

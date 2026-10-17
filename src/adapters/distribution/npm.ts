@@ -29,21 +29,27 @@ import {
 } from '../../domain/distribution/liftoff-npm-installation.js';
 import type { CommandResult } from '../../process-runner.js';
 import type { SelfUpgradeDependencies } from './upgrade-host.js';
+import { isStableSemver } from '../../stable-release.js';
+import { compareSemver } from '../../semver.js';
 
 export interface InstallationInspection {
   npmExecutable: string;
   packageRoot: string;
   installationTarget?: SelfUpgradeInstallationTarget;
+  binary?: string;
+  identity?: string;
 }
 
 export interface RegistryInspection {
   kind: SelfUpgradeRegistryKind;
+  identity: string;
 }
 
 /** Structural subsets of the application request, so this adapter never depends on application types. */
 interface InstallationRequest {
   currentVersion: string;
   runningPackageRoot?: string;
+  runningExecutable?: string;
 }
 
 interface InstallOutput {
@@ -53,6 +59,78 @@ interface InstallOutput {
 }
 
 const sourcePackageRoot = installedPackageRoot;
+
+export async function inspectNpmFiles(
+  packageRoot: string,
+  version: string,
+  dependencies: SelfUpgradeDependencies
+): Promise<{ binary: string; identity: string }> {
+  const api = pathApiForPlatform(dependencies.platform);
+  try {
+    const details = await dependencies.lstat(packageRoot);
+    if (!details.isDirectory() || details.isSymbolicLink() ||
+      comparisonPath(await dependencies.realpath(packageRoot), dependencies.platform) !== comparisonPath(packageRoot, dependencies.platform)) {
+      throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
+    }
+    const metadataPath = api.join(packageRoot, 'package.json');
+    const metadataDetails = await dependencies.lstat(metadataPath);
+    if (!metadataDetails.isFile() || metadataDetails.isSymbolicLink()) throw new Error('Unsafe metadata.');
+    const metadata = await dependencies.readJson(metadataPath);
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) throw new Error('Invalid metadata.');
+    const record = metadata as Record<string, unknown>;
+    const bin = record.bin;
+    if (record.name !== liftoffPackageName || record.version !== version || !bin ||
+      typeof bin !== 'object' || Array.isArray(bin)) throw new Error('Invalid package.');
+    const declared = (bin as Record<string, unknown>)[liftoffBinaryName];
+    if (typeof declared !== 'string' || !declared || api.isAbsolute(declared) ||
+      declared.split(/[/\\]/).some(part => !part || part === '.' || part === '..')) throw new Error('Unsafe binary.');
+    const binary = api.resolve(packageRoot, declared);
+    const stat = await dependencies.lstat(binary);
+    if (!pathIsContained(packageRoot, binary, dependencies.platform) || !stat.isFile() || stat.isSymbolicLink() ||
+      comparisonPath(await dependencies.realpath(binary), dependencies.platform) !== comparisonPath(binary, dependencies.platform)) {
+      throw new Error('Unsafe binary.');
+    }
+    return { binary, identity: JSON.stringify([packageRoot, metadata, details.dev, details.ino,
+      metadataDetails.dev, metadataDetails.ino, metadataDetails.size, metadataDetails.mtimeMs, metadataDetails.ctimeMs,
+      stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs]) };
+  } catch (error) {
+    if (error instanceof SelfUpgradeFailure) throw error;
+    throw new SelfUpgradeFailure('blocked', 'invalid_package');
+  }
+}
+
+export async function assertNpmExecutableSelection(
+  binary: string, request: InstallationRequest, dependencies: SelfUpgradeDependencies
+): Promise<void> {
+  const running = request.runningExecutable ?? (!request.runningPackageRoot ? dependencies.runningExecutable : undefined);
+  try {
+    if (running && comparisonPath(await dependencies.realpath(running), dependencies.platform) !==
+      comparisonPath(binary, dependencies.platform)) throw new Error('Running executable differs.');
+    if (dependencies.resolveLiftoff) {
+      const selected = await dependencies.resolveLiftoff();
+      if (!selected) throw new Error('Selected launcher is missing.');
+      if (dependencies.platform === 'win32' && /\.cmd$/i.test(selected)) {
+        if (!dependencies.readBytes) throw new Error('Unable to inspect npm shim.');
+        const content = (await dependencies.readBytes(selected, 16 * 1024)).toString('utf8');
+        const relative = path.win32.relative(path.win32.dirname(selected), binary);
+        const expected = [
+          '@ECHO off', 'GOTO start', ':find_dp0', 'SET dp0=%~dp0', 'EXIT /b', ':start', 'SETLOCAL', 'CALL :find_dp0', '',
+          'IF EXIST "%dp0%\\node.exe" (', '  SET "_prog=%dp0%\\node.exe"', ') ELSE (', '  SET "_prog=node"',
+          ')', '',
+          `endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & set PATHEXT=%PATHEXT:;.JS;=;% & "%_prog%"  "%dp0%\\${relative}" %*`, ''
+        ].join('\n');
+        const legacy = expected.replace('  SET "_prog=node"\n)', '  SET "_prog=node"\n  SET PATHEXT=%PATHEXT:;.JS;=;%\n)')
+          .replace(' & set PATHEXT=%PATHEXT:;.JS;=;% & ', ' & ');
+        if (!relative || relative.startsWith('..') || ![expected, legacy].includes(content.replace(/\r\n/g, '\n'))) {
+          throw new Error('Selected npm shim differs.');
+        }
+      } else if (comparisonPath(await dependencies.realpath(selected), dependencies.platform) !==
+        comparisonPath(binary, dependencies.platform)) throw new Error('Selected launcher differs.');
+    }
+  } catch {
+    throw new SelfUpgradeFailure('blocked', 'executable_selection');
+  }
+}
 
 async function homebrewInstallationTarget(
   globalRoot: string,
@@ -133,13 +211,26 @@ export async function inspectGlobalInstallation(
   neutralDirectory: string,
   dependencies: SelfUpgradeDependencies
 ): Promise<InstallationInspection> {
+  const pathApi = pathApiForPlatform(dependencies.platform);
+  let checkoutMarker: Stats | undefined;
+  try {
+    checkoutMarker = await dependencies.lstat(pathApi.join(request.runningPackageRoot ?? sourcePackageRoot, '.git'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
+    }
+  }
+  if (checkoutMarker) throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
   const npmExecutable = npmExecutableForPlatform(dependencies.platform);
   const rootResult = await dependencies.runner.run(
     { executable: npmExecutable, args: ['root', '--global'] },
     {
       cwd: neutralDirectory,
       env: readOnlyEnvironment(dependencies, neutralDirectory),
-      timeoutMs: selfUpgradeProbeTimeoutMs
+      inheritEnvironment: false,
+      timeoutMs: dependencies.probeTimeoutMs ?? selfUpgradeProbeTimeoutMs,
+      maxOutputBytes: 2 * 1024 * 1024,
+      ensureProcessTreeSettled: true
     }
   );
   if (rootResult.errorCode === 'ENOENT') {
@@ -152,7 +243,6 @@ export async function inspectGlobalInstallation(
   if (rootLines.length !== 1) {
     throw new SelfUpgradeFailure('blocked', 'invalid_global_root');
   }
-  const pathApi = pathApiForPlatform(dependencies.platform);
   const reportedRoot = rootLines[0];
   if (!pathApi.isAbsolute(reportedRoot)) {
     throw new SelfUpgradeFailure('blocked', 'invalid_global_root');
@@ -167,6 +257,11 @@ export async function inspectGlobalInstallation(
     );
   } catch {
     throw new SelfUpgradeFailure('blocked', 'invalid_global_root');
+  }
+  if (comparisonPath(globalRoot, dependencies.platform) !== comparisonPath(reportedRoot, dependencies.platform) ||
+    comparisonPath(runningRoot, dependencies.platform) !==
+      comparisonPath(request.runningPackageRoot ?? sourcePackageRoot, dependencies.platform)) {
+    throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
   }
   let packageRoot = expectedGlobalPackageRoot(globalRoot, dependencies.platform);
   let installationTarget: SelfUpgradeInstallationTarget | undefined;
@@ -211,6 +306,19 @@ export async function inspectGlobalInstallation(
       throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
     }
   }
+  const files = await inspectNpmFiles(packageRoot, request.currentVersion, dependencies);
+  const ancestors = [];
+  for (const directory of [pathApi.dirname(pathApi.dirname(packageRoot)), pathApi.dirname(packageRoot)]) {
+    const details = await dependencies.lstat(directory);
+    if (!details.isDirectory() || details.isSymbolicLink() ||
+      comparisonPath(await dependencies.realpath(directory), dependencies.platform) !== comparisonPath(directory, dependencies.platform)) {
+      throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
+    }
+    ancestors.push([directory, details.dev, details.ino]);
+  }
+  files.identity = JSON.stringify([files.identity, ancestors]);
+  await assertNpmExecutableSelection(files.binary, request, dependencies);
+  Object.assign(installation, files);
   return installation;
 }
 
@@ -224,14 +332,17 @@ async function configuredUpgradeRegistry(
   const options = {
     cwd: neutralDirectory,
     env: readOnlyEnvironment(dependencies, neutralDirectory),
-    timeoutMs
+    inheritEnvironment: false,
+    timeoutMs,
+    maxOutputBytes: 2 * 1024 * 1024,
+    ensureProcessTreeSettled: true
   };
   const scopedRegistryResult = await dependencies.runner.run(
     npmCommand(npmExecutable, ['config', 'get', liftoffScopedRegistryKey], installationTarget),
     options
   );
   if (commandFailed(scopedRegistryResult)) {
-    throw new SelfUpgradeFailure('failed', 'registry_unavailable');
+    throw new SelfUpgradeFailure('failed', scopedRegistryResult.timedOut ? 'registry_timeout' : 'registry_unavailable');
   }
 
   const scopedRegistry = scopedRegistryResult.stdout.trim();
@@ -246,7 +357,7 @@ async function configuredUpgradeRegistry(
       options
     );
     if (commandFailed(defaultRegistryResult)) {
-      throw new SelfUpgradeFailure('failed', 'registry_unavailable');
+      throw new SelfUpgradeFailure('failed', defaultRegistryResult.timedOut ? 'registry_timeout' : 'registry_unavailable');
     }
     configuredRegistry = defaultRegistryResult.stdout.trim();
   }
@@ -259,7 +370,7 @@ export async function inspectRegistryParity(
   npmExecutable: string,
   neutralDirectory: string,
   dependencies: SelfUpgradeDependencies,
-  timeoutMs = selfUpgradeProbeTimeoutMs,
+  timeoutMs = dependencies.probeTimeoutMs ?? selfUpgradeProbeTimeoutMs,
   installationTarget?: SelfUpgradeInstallationTarget
 ): Promise<RegistryInspection> {
   const active = await configuredUpgradeRegistry(npmExecutable, neutralDirectory, dependencies, timeoutMs);
@@ -273,7 +384,10 @@ export async function inspectRegistryParity(
   const options = {
     cwd: neutralDirectory,
     env: readOnlyEnvironment(dependencies, neutralDirectory),
-    timeoutMs
+    inheritEnvironment: false,
+    timeoutMs,
+    maxOutputBytes: 2 * 1024 * 1024,
+    ensureProcessTreeSettled: true
   };
   const targetResult = await dependencies.runner.run(
     npmCommand(npmExecutable, [
@@ -288,9 +402,36 @@ export async function inspectRegistryParity(
   if (commandFailed(targetResult)) {
     const notFound = targetResult.status === 1 &&
       /\b(?:E404|404|not found|no match)\b/i.test(targetResult.stderr);
+    if (notFound && targetResult.signal === null && !targetResult.errorCode && !targetResult.errorMessage &&
+      !targetResult.timedOut && !targetResult.outputLimitExceeded && !targetResult.aborted &&
+      targetResult.processTreeSettled !== false) {
+      const packageResult = await dependencies.runner.run(npmCommand(npmExecutable,
+        ['view', liftoffPackageName, 'name', 'version', '--json'], installationTarget), options);
+      if (commandFailed(packageResult)) {
+        const absent = packageResult.status === 1 && packageResult.signal === null && !packageResult.errorCode &&
+          !packageResult.errorMessage && !packageResult.timedOut && !packageResult.outputLimitExceeded &&
+          !packageResult.aborted && packageResult.processTreeSettled !== false &&
+          /\b(?:E404|404|not found|no match)\b/i.test(packageResult.stderr);
+        throw new SelfUpgradeFailure(absent ? 'blocked' : 'failed',
+          packageResult.timedOut ? 'registry_timeout' : absent ? 'registry_absent' : 'registry_unavailable', kind);
+      }
+      let available: unknown;
+      try { available = JSON.parse(packageResult.stdout); }
+      catch { throw new SelfUpgradeFailure('failed', 'registry_invalid', kind); }
+      if (Array.isArray(available) && available.length === 1) [available] = available;
+      if (!available || typeof available !== 'object' || Array.isArray(available) ||
+        (available as Record<string, unknown>).name !== liftoffPackageName ||
+        !isStableSemver((available as Record<string, unknown>).version)) {
+        throw new SelfUpgradeFailure('failed', 'registry_invalid', kind);
+      }
+      if (compareSemver(String((available as Record<string, unknown>).version), targetVersion) >= 0) {
+        throw new SelfUpgradeFailure('failed', 'registry_invalid', kind);
+      }
+      throw new SelfUpgradeFailure('blocked', 'registry_stale', kind);
+    }
     throw new SelfUpgradeFailure(
       notFound ? 'blocked' : 'failed',
-      notFound ? 'registry_stale' : 'registry_unavailable',
+      targetResult.timedOut ? 'registry_timeout' : notFound ? 'registry_stale' : 'registry_unavailable',
       kind
     );
   }
@@ -310,10 +451,14 @@ export async function inspectRegistryParity(
     throw new SelfUpgradeFailure('failed', 'registry_invalid', kind);
   }
   const record = metadata as Record<string, unknown>;
-  if (record.name !== liftoffPackageName || record.version !== targetVersion) {
+  if (record.name !== liftoffPackageName || !isStableSemver(record.version) ||
+    compareSemver(record.version, targetVersion) > 0) {
+    throw new SelfUpgradeFailure('failed', 'registry_invalid', kind);
+  }
+  if (record.version !== targetVersion) {
     throw new SelfUpgradeFailure('blocked', 'registry_stale', kind);
   }
-  return { kind };
+  return { kind, identity: delivery.url };
 }
 
 export async function npmGlobalRoot(
@@ -327,7 +472,10 @@ export async function npmGlobalRoot(
     {
       cwd: neutralDirectory,
       env: readOnlyEnvironment(dependencies, neutralDirectory),
-      timeoutMs: selfUpgradeProbeTimeoutMs
+      inheritEnvironment: false,
+      timeoutMs: dependencies.probeTimeoutMs ?? selfUpgradeProbeTimeoutMs,
+      maxOutputBytes: 2 * 1024 * 1024,
+      ensureProcessTreeSettled: true
     }
   );
   if (commandFailed(rootResult)) {
@@ -369,7 +517,10 @@ export function runExactGlobalInstall(
   return dependencies.runner.run(installCommand, {
     cwd: neutralDirectory,
     env: readOnlyEnvironment(dependencies, neutralDirectory),
+    inheritEnvironment: false,
     timeoutMs: selfUpgradeInstallTimeoutMs,
+    maxOutputBytes: 8 * 1024 * 1024,
+    ensureProcessTreeSettled: true,
     stream: true,
     stdout: output.json ? output.stderr : output.stdout,
     stderr: output.stderr
@@ -451,6 +602,7 @@ export async function verifyReplacement(
   ) {
     throw new SelfUpgradeFailure('failed', 'verification_failed');
   }
+  await assertNpmExecutableSelection(canonicalBinary, { currentVersion: targetVersion, runningPackageRoot: packageRoot }, dependencies);
   const versionResult = await dependencies.runner.run(
     {
       executable: dependencies.execPath,
@@ -458,13 +610,11 @@ export async function verifyReplacement(
     },
     {
       cwd: neutralDirectory,
-      env: {
-        ...dependencies.environment,
-        CI: 'true',
-        DO_NOT_TRACK: '1',
-        LIFTOFF_TELEMETRY: '0'
-      },
-      timeoutMs: selfUpgradeVerificationTimeoutMs
+      env: readOnlyEnvironment(dependencies, neutralDirectory),
+      inheritEnvironment: false,
+      timeoutMs: selfUpgradeVerificationTimeoutMs,
+      maxOutputBytes: 2 * 1024 * 1024,
+      ensureProcessTreeSettled: true
     }
   );
   if (

@@ -6,6 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApplicationResolvedPreparation } from '../src/application/repair/application-preparation-types.js';
+import { environmentValue } from '../src/domain/workstation/executables.js';
+import { NodeCommandRunner } from '../src/process-runner.js';
+import { matrixValidatorEnvironment } from './fixtures/workflow-source5-validator-environment.js';
 import {
   buildWindowsControllerHostEnvironment,
   runWindowsJobCommand,
@@ -972,6 +975,56 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
       status: 0, processSpawned: true, processTreeSettled: true,
       timedOut: false, stdout: 'native controller ready'
     });
+  });
+
+  it.runIf(process.platform === 'win32')('runs supported native syntax and JSON green/red inputs without accepting initialization failure or changing target environment semantics', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-native-validator-environment-'));
+    tempDirs.push(directory);
+    const controls = [
+      { jobId: 'validate', mode: 'green', extension: 'mjs', text: 'export const valid = true;\n', status: 0 },
+      { jobId: 'validate', mode: 'controlled-red', extension: 'mjs', text: 'export const valid = ;\n', status: 1 },
+      { jobId: 'package', mode: 'green', extension: 'json', text: '{"name":"isolated"}\n', status: 0 },
+      { jobId: 'package', mode: 'controlled-red', extension: 'json', text: '{broken}\n', status: 1 }
+    ] as const;
+    type Control = typeof controls[number];
+    const input = (control: Control) => path.join(directory, `${control.jobId}-${control.mode}.${control.extension}`);
+    for (const control of controls) await writeFile(input(control), control.text, { flag: 'wx', mode: 0o600 });
+    const runner = new NodeCommandRunner(), run = vi.spyOn(runner, 'run');
+    const execute = (control: Control, ambient: NodeJS.ProcessEnv = process.env) => runner.run({
+      executable: process.execPath, args: control.jobId === 'validate' ? ['--check', input(control)] :
+        ['-e', "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))", input(control)]
+    }, {
+      cwd: directory, env: matrixValidatorEnvironment(directory, 'win32', ambient),
+      timeoutMs: 5000, maxOutputBytes: 4096,
+      stream: false, ensureProcessTreeSettled: true
+    });
+    const systemRoot = matrixValidatorEnvironment(directory).SystemRoot;
+    for (const ambient of [{}, { SystemRoot: '' }, { SystemRoot: systemRoot, SYSTEMROOT: 'conflicting-fixture-root' }]) {
+      expect(() => execute(controls[0], ambient)).toThrow(/actual host SystemRoot|Conflicting case-insensitive environment aliases/);
+    }
+    expect(run).not.toHaveBeenCalled();
+    for (const control of controls) {
+      const result = await execute(control);
+      console.info(`Bounded native validator regression: ${JSON.stringify({
+        fixture: { jobId: control.jobId, mode: control.mode },
+        runtime: { node: process.version, platform: process.platform, arch: process.arch },
+        inputSha256: createHash('sha256').update(control.text).digest('hex'),
+        result: { status: result.status, signal: result.signal, stdout: result.stdout, stderr: result.stderr,
+          processSpawned: result.processSpawned ?? null, processTreeSettled: result.processTreeSettled ?? null,
+          timedOut: result.timedOut, outputLimitExceeded: result.outputLimitExceeded ?? null,
+          aborted: result.aborted ?? null, errorCode: result.errorCode ?? null, errorMessage: result.errorMessage ?? null }
+      })}`);
+      expect(result.status, result.stderr).toBe(control.status);
+      expect(result.signal).toBeNull();
+      expect(result).toMatchObject({ processSpawned: true, processTreeSettled: true, timedOut: false });
+      expect(result.errorCode).toBeUndefined();
+      expect(result.aborted).not.toBe(true);
+      expect(result.outputLimitExceeded).not.toBe(true);
+      if (control.status === 1) expect(result.stderr).toMatch(/\bSyntaxError:/u);
+      expect(Buffer.byteLength(result.stdout + result.stderr)).toBeLessThanOrEqual(4096);
+      expect(await readFile(input(control), 'utf8')).toBe(control.text);
+    }
+    expect(run).toHaveBeenCalledTimes(4);
   });
 
   it('ensures environmentValue does not let undefined Path shadow valid PATH and rejects conflicting aliases', async () => {

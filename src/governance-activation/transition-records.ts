@@ -210,13 +210,17 @@ export function blockedState(input: {
   blocker: string;
   now: Date;
   operation?: ExternalOperationState;
+  evidenceReference?: UserActivationState['phases'][PhaseId]['evidence'][number];
+  outputs?: PhaseOutputBindings;
   executionStarted?: boolean;
 }): UserActivationState {
   const base = cloneState(input.inspection.state);
   base.phases[input.phase.id] = {
     state: 'blocked',
     updatedAt: input.now.toISOString(),
-    evidence: base.phases[input.phase.id].evidence,
+    evidence: input.evidenceReference
+      ? [...base.phases[input.phase.id].evidence, input.evidenceReference]
+      : base.phases[input.phase.id].evidence,
     approvals: appendUnique(base.phases[input.phase.id].approvals, input.plan.approval.envelopeId),
     blockers: [input.blocker],
     ...(input.executionStarted || base.phases[input.phase.id].executionPlanDigest
@@ -224,6 +228,7 @@ export function blockedState(input: {
     ...(input.operation ?? base.phases[input.phase.id].operation
       ? { operation: input.operation ?? base.phases[input.phase.id].operation } : {})
   };
+  if (input.outputs) base.phaseOutputs = { ...base.phaseOutputs, [input.phase.id]: input.outputs };
   base.updatedAt = input.now.toISOString();
   return validateUserActivationState(base);
 }

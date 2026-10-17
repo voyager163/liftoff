@@ -79,7 +79,12 @@ boundary suite runs on shard 2. That named boundary suite includes repair and
 adoption path-with-spaces, junction, mode/readback, and interrupted-transaction
 cases. Windows shard 1 separately runs real repair and adoption child commands
 through the packaged Job Object controller so a mock settlement result cannot
-qualify either lane. All jobs retain the 45-minute limit except Windows shard 2,
+qualify either lane. This precheck uses one worker with file parallelism disabled
+to avoid file-level contention between cold controller compilations. It retains
+the existing 15-second startup budget and uploads its own
+`qualification/windows-process-tests.json` report on success or failure; this is
+not a main-shard result. Serialization alone is not Windows host qualification.
+All jobs retain the 45-minute limit except Windows shard 2,
 which has a 75-minute limit because it must complete both the named boundary
 suite and its source-complete package shard without dropping or filtering either
 set of tests.
@@ -137,6 +142,13 @@ settlement window. Missing readiness, acknowledgement or terminal proof still
 fails closed; the supervisor never treats its own timeout as kernel settlement.
 This does not increase test or CI job deadlines.
 
+Local Compose observation binds the plugin executable separately from Docker.
+The finite prefix-relative candidates use `docker-compose.exe` on Windows and
+the extensionless name on POSIX hosts; Linux system precedence and private-bundle
+precedence remain unchanged. There is no user-configured plugin search fallback.
+Path-model tests do not qualify a Windows host: actual file identity, supported
+plugin version, process settlement and current reobservation are still required.
+
 Before a change is release-ready, also verify the packed artifact:
 
 ```bash
@@ -183,7 +195,11 @@ remote opt-in for that redirect. Do not persist either override globally.
 The package smoke test builds, runs `npm pack`, checks the explicit package
 surface and size budget, installs the tarball into an isolated prefix, and
 executes the installed CLI, upgrade help, and an injected read-only self-upgrade
-check without selecting the host global prefix. The standard template verifier generates a Node.js
+check without selecting the host global prefix. Local builds retain source maps
+for debugging; npm and native package payloads include every emitted JavaScript
+module and TypeScript declaration, but exclude development source maps. Required
+assets remain explicit and the 13 MiB unpacked package budget is unchanged.
+The standard template verifier generates a Node.js
 backend with its Vue frontend, runs both locked installs, builds both projects,
 and runs the generated backend tests without permitting package metadata
 changes.
@@ -221,8 +237,18 @@ node scripts/coverage-gate.mjs verify cli
 node scripts/coverage-gate.mjs verify gateway
 ```
 
-The CLI inventory is every `.ts` file matched by the root `tsconfig.json`
-include, `src/**/*.ts`, whether or not a test imports it. The gateway inventory
+The CLI inventory includes every `.ts` file matched by the root `tsconfig.json`
+include, `src/**/*.ts`, and every raw JavaScript runtime module explicitly
+published in `package.json`:
+
+- `distribution/native/native-bundle-contract.mjs`
+- `distribution/native/native-cask-definition.mjs`
+- `distribution/native/native-program-assembly.mjs`
+- `distribution/native/native-release-admission.mjs`
+- `distribution/native/native-release-catalog.mjs`
+
+Unimported shipped modules remain in the denominator with zero coverage.
+Compiled `dist/` output is not counted again. The gateway inventory
 is its build input: `services/telemetry-ingest/src/**/*.ts` plus the whole
 shared `src/telemetry/contract.ts` module compiled into the gateway image. The
 gate fails if a report omits any inventoried file, lists a path outside it, is
@@ -239,6 +265,48 @@ skipped or host-gated test as unrun. The gate runs Vitest with `CI=true`,
 and it accepts no test filters. `verify` re-judges a saved report against the
 current checkout; a different revision, change set, or inventory makes it stale,
 so rerun the gate instead of reusing an older or copied report.
+Saved verification also requires the V8 provider, a well-formed recorded Node
+version, and each tool's declared, locked, and installed versions to match the
+currently validated exact pins. Installed tool drift fails even if source and
+configuration files are unchanged. Reordering valid descriptors is harmless;
+the observed npm version may be null. Recorded versions are consistency data,
+not authentication of a process or qualification of its host, and the recorded
+Node patch version need not equal the verifier's current patch version.
+
+The test summary's `files` and `failedFiles` count Vitest file records.
+`numFailedTestSuites` also includes nested suites, so the gate checks that
+aggregate separately and labels it as suites, not files. Fully skipped files
+can have a raw `passed` file status; their skipped bodies remain in `unrun`
+and are not qualification evidence. This does not revise historical reports
+or turn a failed run into a pass.
+
+Test totals must be nonnegative safe integers and agree with the actual
+assertion records for passed, failed, skipped/pending, and todo tests. Missing
+assertion arrays or unknown file/assertion statuses fail closed, including when
+verifying saved evidence. Aggregate totals alone cannot establish that tests ran.
+The corpus must contain at least one executed assertion body. An entirely
+skipped, pending, or todo run fails even if module collection covers every source
+metric; registering tests or importing code is not test execution.
+Each inventoried test path must appear exactly once after path normalization,
+including across Windows project shards. Duplicate file records fail rather
+than silently deduplicating their counters, failures, or unrun evidence.
+Threshold comparisons use exact integer arithmetic after safe-integer count
+validation; large counts cannot pass through floating-point product rounding.
+Each source path must also occur exactly once after normalization in both
+coverage reports. Aliases cannot hide uncovered records behind a later member;
+ambiguous reports fail even when their retained totals and inventories match.
+Each final-report entry must also be an object with a nonempty string `path`
+that identifies the same source as its report key after normalization. Missing,
+malformed, escaping or contradictory payload identities fail; equivalent
+relative and absolute paths remain valid, and verification does not rewrite
+the reports. Fresh and saved gates also validate safe-integer hit counters and
+their map membership. Statement and function hits must be nonnegative; signed
+synthetic V8 else-branch hits remain unchanged and are treated as uncovered by
+the pinned provider. The gates use that provider's own summarizer to require
+each source's statement, branch, function and line counts
+to agree with its summary. Contradictory reports fail even when their aggregate
+percentages and saved evidence still agree. This is report consistency, not
+authentication of the coverage producer or proof that every reported hit ran.
 
 On macOS ARM64 with Node 24, the root Vitest configuration passes
 `--no-sparkplug` directly to test workers for ordinary and coverage runs. A
@@ -283,6 +351,67 @@ Linux and uploads each evidence directory. Release qualification runs both gates
 before packing the release tarball; the gateway gate runs even when the CLI gate
 fails, and either failure blocks packing and publication. The repository policy
 rejects removing, conditioning, or reordering these gates.
+
+#### Dispatch-only hosted native custody qualification
+
+The existing `.github/workflows/repository.yml` workflow contains an opt-in
+`qualify-native-custody` job for task 13.5 qualification on actual GitHub-hosted
+macOS ARM64. The job is guarded by `workflow_dispatch`; pull requests and
+long-lived branch pushes retain only their existing repository-policy check and
+do not acquire another multi-hour required job. Manual dispatch also runs that
+short policy check, not the broad CI workflow.
+
+The single `macos-15` job pins Node 24.21.0, npm 12.0.2, OpenTofu 1.12.6,
+OpenSpec 1.11.0, Go 1.27.0, Python 3.14.7, and uv 0.12.7. On exact clean
+committed bytes it runs the supported-stack check, build, unfiltered one-worker
+suite, source-complete one-worker CLI coverage, independent coverage-evidence
+verification, focused custody/history checks, package smoke, repository policy,
+strict OpenSpec validation, and a final clean-tree check. Its 240-minute job
+timeout is a bounded allowance for the measured native full and coverage runs;
+it does not change any test timeout, source inventory, threshold, baseline, or
+test selection.
+
+The job installs npm 12.0.2 into an isolated runner-temp prefix and prepends only
+that package's `.bin` directory. Before tests it proves that the selected launcher
+resolves to `npm-cli.js`, its owning package is exactly `npm@12.0.2`, and direct
+Node execution of that launcher agrees with the ordinary npm probe. It also
+downloads the official Apple Silicon Docker 29.8.2 archive and Compose 5.5.1
+binary over HTTPS, verifies the reviewed archive/binary SHA-256 values, installs
+only `liftoff-docker/bin/docker` and the separately bound
+`liftoff-docker/cli-plugins/docker-compose`, and rechecks both installed binary
+digests and versions. The Docker archive digest is
+`5ffa2bafbabe073470f0333f4a129599230b73d1170bb61146b3d9b08e1d1325`,
+the installed Docker binary digest is
+`b95f15a2e7c6a13c17b8af361a2797981bc858a87a1537c38cfa117a0c5009e1`,
+and the Compose binary digest is
+`998735c9b6fe68a4f05895e6ea73d71ad06f9fc7046383ad89e47346781b6af5`.
+No Docker daemon is started.
+
+OpenSpec is installed with npm 12 in a global-style isolated prefix using the
+historical registry cutoff `2026-09-26T23:59:59Z`. Before the launcher enters
+`PATH`, the job scans the complete package tree twice and requires the qualified
+2,590-file, 299-directory, two-link, 11,862,860-byte content profile with digest
+`sha256:05d52efd0875c1ff0c1bd0aec13f7128a4baab787ea6b31f33fa7360cd53bde2`.
+This binds the historically qualified dependency graph instead of accepting
+current transitive resolution or refreshing the frozen expectation. The root
+and telemetry-ingest packages are then installed independently with their
+committed locks so source-complete coverage uses each package's own Vitest
+launcher.
+
+The job also enables the native OpenSpec execution and initialization lanes
+with the reviewed finite identity budgets:
+`LIFTOFF_OPENSPEC_B_TESTS=1 OB1_VERSION_REMAINING=2
+OB1_SUPPORT_REMAINING=10 LIFTOFF_OI_TESTS=1`. The actual separately bound
+Compose plugin must remain on release line 5 at version 5.5.1 or later; Docker
+CLI identity alone is not Compose qualification.
+
+Non-cancelled runs retain full-suite, coverage, focused, and
+`coverage/cli/` evidence in one artifact. The final native evidence record
+requires the dispatched SHA, clean source inventory, zero coverage-test
+failures, and statements, branches, functions, and lines each strictly above
+80%. It labels the result as hosted macOS ARM64 evidence only. It is not a
+retroactive MacBook result, production custody/handover qualification, or
+disposable Azure qualification.
 
 #### Isolated HCL qualification
 
@@ -839,9 +968,20 @@ do not blindly auto-merge a green check or an automated suggestion.
 The separate [native development bundle builder](docs/native-development-bundles.md)
 uses pinned official runtime bytes, the production dependency lock and original
 license notices. Run its portable contracts with
-`npx vitest run tests/native-bundle.test.ts --maxWorkers=1 --no-file-parallelism`.
+`npx vitest run tests/native-bundle.test.ts tests/native-distribution.test.ts tests/native-release-set.test.ts --maxWorkers=1 --no-file-parallelism`.
 An unsigned development inventory is not signature, installer ownership, OS-floor
 or publication evidence. It does not replace the npm release gates below.
+CI adds isolated native package lanes on Linux x64/arm64 and Windows x64 to the
+existing Apple Silicon lane. Their complete opt-in report gates reject omitted
+or skipped applicable cases. Windows compiles the real launcher and exercises
+running-image locks and the installed controller without changing execution
+policy. Linux uses an explicitly test-only signing key for authentication
+negatives; that is not production signature or package namespace qualification.
+The release-set contracts also use ephemeral, explicitly synthetic keys and
+artifacts. They exercise all-target/npm immutable assembly, signature/subject/ref
+refusal and cross-host byte verification without signing or publishing a release.
+Only an independently authenticated complete handoff may supply the flat catalog
+described in the native guide; no fixture namespace or generated key is approved.
 
 The public release authority is `https://registry.npmjs.org`. The `Release
 Liftoff` workflow runs package checks, both source-complete coverage gates,

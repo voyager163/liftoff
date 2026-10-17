@@ -78,11 +78,38 @@ See
 [configuration and manifests](../../../docs/configuration-and-manifests.md#private-modernization-contracts)
 for the separate source contracts and versioned public interfaces.
 
-Approved new-environment activation may eventually reuse these primitives only
-for a separately qualified protected bootstrap/handover whose resources were
-created by that same recorded operation. It must retain exact ownership,
-locking, backups, no-change verification and due-time custody/disposal proof.
-This narrow exception does not authorize arbitrary brownfield state access.
+Approved new-environment activation now exposes a separate injected-only
+bootstrap/handover capability for resources created by the same recorded operation.
+It binds exact ownership, locking, complete fixed mappings,
+authenticated encrypted backups, concurrency and zero-change verification.
+It must be paired with a custody capability that attests the exact runner/host,
+opaque protected workspace and storage, non-exporting external key reference,
+Azure blob-lease locking, writer quiescence, disposal support, and refusal of
+plaintext fallback. Retention records only digests of opaque artifact/key
+references. Host identities, protected references and proof timestamps must be
+actual strings; coercible JSON values and an invalid current clock cannot
+qualify custody or authorize protected-state dispatch.
+Day-30 disposal is also injected-only and succeeds only after the
+same custody identity is freshly requalified and returns exact payload-free
+deletion proof. The default public CLI registers neither capability. This narrow
+exception does not authorize arbitrary brownfield state access and does not
+expose this module's generic state-migration API.
+
+## Current availability diagnosis
+
+| Surface | Current status | Boundary |
+| --- | --- | --- |
+| Generic migration contracts, encrypted workspace, backend/native adapters, recovery and disposal records | Implemented private building blocks | Synthetic/unit coverage does not register a public command or prove a production provider |
+| macOS existing-inode local refactor profile | Opt-in native lane for actual `darwin/arm64`, OpenTofu 1.12.6 and CPython 3.14 | The result is `synthetic-disposable-only`; it does not qualify Azure, relocation, partition, production cutover, Windows, or Linux |
+| Same-operation-owned backend handover and day-30 disposal | Phase logic, strict proof validation, and `ProtectedStateHandoverPort` / `ProtectedStateCustodyPort` contracts are implemented | The installed public CLI registers no production implementations, so this remains an implementation integration and qualification gap; approval cannot instantiate a missing port |
+| Disposable Azure/provider qualification | No current live proof is registered | Requires a real disposable scope, current credential/network/cost authority, production port implementations, and exact provider evidence; this is separate from adapter implementation |
+| Pre-existing/brownfield state migration | Deliberately excluded from the public release | It remains planning-only even if private primitives, credentials, or broad approval exist |
+
+This distinction is intentional. Missing production handover/custody adapters
+are not merely missing user authorization. Conversely, implementing those
+adapters would not by itself authorize a subscription, create a disposable
+scope, or qualify a host. Both the production integration and its separately
+approved real evidence are required before capability admission can change.
 
 ## Coordinator integration
 

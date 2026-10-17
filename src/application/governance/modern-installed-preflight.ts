@@ -44,6 +44,11 @@ const transactionPaths = [
 const reader = createManifestV8Reader({catalog:projectCatalog,resolveSourceContract:resolveModernManifestV8SourceContract});
 const key = (parts:readonly string[]) => parts.join('/');
 const compare = (a:string,b:string) => a<b?-1:a>b?1:0;
+// Request-local only: the digest ties the render to the captured manifest bytes.
+type CollectedModernSource = Readonly<{
+  manifestDigest:string;
+  core:ReturnType<typeof buildModernManagedCore>;
+}>;
 function present(file: ModernLocalFile): ProjectFileSnapshot {
   const bytes=capturedFileBytes(file);
   return {pathParts:[...file.pathParts],...(bytes===undefined?{}:{content:bytes,mode:file.mode!})};
@@ -101,7 +106,8 @@ async function validateHistory(snapshot:InstalledLocalSnapshot,reference:{snapsh
 }
 
 async function validateCapturedModernActivation(
-  input:InstalledLocalSnapshot, requireCurrentCore:boolean
+  input:InstalledLocalSnapshot, requireCurrentCore:boolean,
+  collectedSource?:CollectedModernSource
 ):Promise<{
   observation:Extract<InstalledLocalPreflight,{status:'observed'}>;
   successor:{manifest:LiftoffManifestV8;journal:ModernMigrationJournalV2}|null;
@@ -147,7 +153,8 @@ async function validateCapturedModernActivation(
     return result('released-source',[],null);
   }
   const manifest=reader.parseManifestV8(raw);
-  const core=buildModernManagedCore(modernProjectSourceInput(manifest));
+  const core=collectedSource?.manifestDigest===rawLocalDigest(manifestBytes)
+    ?collectedSource.core:buildModernManagedCore(modernProjectSourceInput(manifest));
   for(const artifact of core){
     const observed=bytes(artifact.pathParts,requireCurrentCore);
     const recorded=manifest.managedArtifacts.find(file=>file.logicalName===artifact.logicalName);
@@ -241,8 +248,10 @@ export async function validateCapturedModernSuccessorSource(input:InstalledLocal
 export type ModernSuccessorSource=Awaited<ReturnType<typeof validateCapturedModernSuccessorSource>>;
 
 /** Source observation permits core drift, but cannot be supplied as installed execution readiness. */
-export async function validateCapturedModernMaintenanceSource(input:InstalledLocalSnapshot){
-  const {observation:observed}=await validateCapturedModernActivation(input,false);
+async function validateCapturedModernMaintenanceSourceWithCollected(
+  input:InstalledLocalSnapshot,collectedSource?:CollectedModernSource
+){
+  const {observation:observed}=await validateCapturedModernActivation(input,false,collectedSource);
   if((observed.classification!=='current'&&observed.classification!=='successor')||!observed.current){
     localInputFailure('Active maintenance requires a valid current activation boundary.');
   }
@@ -260,12 +269,18 @@ export async function validateCapturedModernMaintenanceSource(input:InstalledLoc
     retention:observed.retention,current:observed.current,execution:'not-authorized' as const
   };
 }
+export async function validateCapturedModernMaintenanceSource(input:InstalledLocalSnapshot){
+  return validateCapturedModernMaintenanceSourceWithCollected(input);
+}
 export type ModernMaintenanceSource=Awaited<ReturnType<typeof validateCapturedModernMaintenanceSource>>;
 
 function validateInstalledRoot(root:string):void{
   if(typeof root!=='string'||!root||root.length>4096||/[\u0000-\u001f]/u.test(root))localInputFailure('Installed preflight requires a bounded root string.');
 }
-async function collectModernInstalledActivation(root:string):Promise<InstalledLocalSnapshot>{
+async function collectModernInstalledActivation(root:string):Promise<{
+  readonly snapshot:InstalledLocalSnapshot;
+  readonly source?:CollectedModernSource;
+}>{
   const requested=root;
     const resolved=path.resolve(requested),initial=await lstat(resolved);
     if(!initial.isDirectory()||initial.isSymbolicLink())localInputFailure('Installed root must be a real directory.');
@@ -351,13 +366,15 @@ async function collectModernInstalledActivation(root:string):Promise<InstalledLo
       const parts=['governance',name];await directory(parts);
       for(const entry of directories.get(key(parts))!.entries.filter(entry=>/\.json$/iu.test(entry.name)))await capture([...parts,entry.name]);
     }
+    let source:CollectedModernSource|undefined;
     if(raw.artifactVersion!==8&&stateFile.content!==null){
-      const source=await readModernActivationSuccessorSource(canonical);
-      for(const observed of [...source.captures,...source.ancestors.flatMap(ancestor=>ancestor.copies)])await capture(observed.pathParts);
-      for(const ancestor of source.ancestors)await capture(ancestor.indexPathParts);
+      const releasedSource=await readModernActivationSuccessorSource(canonical);
+      for(const observed of [...releasedSource.captures,...releasedSource.ancestors.flatMap(ancestor=>ancestor.copies)])await capture(observed.pathParts);
+      for(const ancestor of releasedSource.ancestors)await capture(ancestor.indexPathParts);
     }else if(raw.artifactVersion===8){
       const manifest=reader.parseManifestV8(raw);
       const core=buildModernManagedCore(modernProjectSourceInput(manifest));
+      source={manifestDigest:rawLocalDigest(manifestBytes),core};
       for(const artifact of core)await capture(artifact.pathParts);
       if(manifest.sourceManifestHistory?.kind==='manifest-history'){
         const paths=manifestHistoryPaths(manifest.sourceManifestHistory);await capture(paths.indexPathParts);await capture(paths.manifestPathParts);
@@ -388,7 +405,7 @@ async function collectModernInstalledActivation(root:string):Promise<InstalledLo
     const snapshot:InstalledLocalSnapshot={kind:'liftoff-modern-installed-inputs',schemaVersion:1,root:canonical,observedAt:new Date().toISOString(),
       files:[...files.values()].sort((a,b)=>compare(key(a.pathParts),key(b.pathParts))),directories:[...directories.values()].sort((a,b)=>compare(key(a.pathParts),key(b.pathParts))),
       physical:[...physical.values()].sort((a,b)=>compare(a.path,b.path))};
-    return snapshot;
+    return {snapshot,...(source?{source}:{})};
 }
 function blockedObservation(error:unknown):Extract<InstalledLocalPreflight,{status:'blocked'}>{
   const code=errorCode(error);
@@ -399,11 +416,17 @@ function blockedObservation(error:unknown):Extract<InstalledLocalPreflight,{stat
 /** Storage truth only. Pending journals are checked before any installed record interpretation. */
 export async function inspectModernInstalledActivation(root:string):Promise<InstalledLocalPreflight>{
   validateInstalledRoot(root);
-  try{return await validateCapturedModernInstalledActivation(await collectModernInstalledActivation(root));}
+  try{
+    const collected=await collectModernInstalledActivation(root);
+    return (await validateCapturedModernActivation(collected.snapshot,true,collected.source)).observation;
+  }
   catch(error){return blockedObservation(error);}
 }
 export async function inspectModernMaintenanceSource(root:string):Promise<ModernMaintenanceSource|Extract<InstalledLocalPreflight,{status:'blocked'}>>{
   validateInstalledRoot(root);
-  try{return await validateCapturedModernMaintenanceSource(await collectModernInstalledActivation(root));}
+  try{
+    const collected=await collectModernInstalledActivation(root);
+    return await validateCapturedModernMaintenanceSourceWithCollected(collected.snapshot,collected.source);
+  }
   catch(error){return blockedObservation(error);}
 }

@@ -377,11 +377,13 @@ export function resolveAssessmentLiveScope(project: AssessmentProject, git: Asse
       isRecord(rawRunner) && rawRunner.kind === 'runner-ready.v1' &&
       rawRunner.organization === repository.owner && Number.isInteger(rawRunner.runnerId) && Number(rawRunner.runnerId) > 0 &&
       (rawRunner.groupId === null || Number.isInteger(rawRunner.groupId)) &&
-      (rawRunner.networkConfigurationId === null || typeof rawRunner.networkConfigurationId === 'string')) {
+      (rawRunner.networkConfigurationId === null || typeof rawRunner.networkConfigurationId === 'string') &&
+      typeof rawRunner.label === 'string') {
     scope.runner = {
       organization: repository.owner, runnerId: Number(rawRunner.runnerId),
       groupId: rawRunner.groupId === null ? null : Number(rawRunner.groupId),
-      networkConfigurationId: typeof rawRunner.networkConfigurationId === 'string' ? rawRunner.networkConfigurationId : null
+      networkConfigurationId: typeof rawRunner.networkConfigurationId === 'string' ? rawRunner.networkConfigurationId : null,
+      label: rawRunner.label
     };
   }
   scope.azure = [...azureBindings.values()]
@@ -670,7 +672,7 @@ function evaluateControl(
         families?.availability === 'observed'
       ) {
         observations.live = predicateObservation(
-          effectiveProtectedRefs(rules.value, branches.value, families.value, branch),
+          effectiveProtectedRefs(rules.value, branches.value, families.value, branch, target.profile),
           rules.source
         );
         observations.live.facts = jsonValue({
@@ -685,14 +687,22 @@ function evaluateControl(
       }
       break;
     }
-    case 'single-maintainer':
-      observations.declared = declaredRules(singleMaintainer);
-      observations.live = livePredicate(live, 'github.rulesets', singleMaintainer);
+    case 'single-maintainer': {
+      const repository = live.observations['github.repository'];
+      const branch = repository?.availability === 'observed' && isRecord(repository.value) && typeof repository.value.defaultBranch === 'string'
+        ? repository.value.defaultBranch : null;
+      observations.declared = declaredRules(value => singleMaintainer(value, project.state?.repository.defaultBranch ?? null));
+      observations.live = livePredicate(live, 'github.rulesets', value => singleMaintainer(value, branch));
       break;
-    case 'team-review':
-      observations.declared = declaredRules(teamReview);
-      observations.live = livePredicate(live, 'github.rulesets', teamReview);
+    }
+    case 'team-review': {
+      const repository = live.observations['github.repository'];
+      const branch = repository?.availability === 'observed' && isRecord(repository.value) && typeof repository.value.defaultBranch === 'string'
+        ? repository.value.defaultBranch : null;
+      observations.declared = declaredRules(value => teamReview(value, project.state?.repository.defaultBranch ?? null));
+      observations.live = livePredicate(live, 'github.rulesets', value => teamReview(value, branch));
       break;
+    }
     case 'tag-controls': {
       const app = live.observations['github.actions-app'];
       if (app?.availability === 'observed' && isRecord(app.value) && typeof app.value.id === 'number' &&

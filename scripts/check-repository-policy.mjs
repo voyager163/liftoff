@@ -4,6 +4,11 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
+import {
+  nativeContainerToolProfile,
+  nativeCustodyQualificationCommands,
+  qualifiedOpenSpecProfile
+} from './native-custody-qualification.mjs';
 
 export const communityFiles = [
   'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SECURITY.md', 'GOVERNANCE.md', 'SUPPORT.md'
@@ -20,8 +25,28 @@ export const coverageGateJobs = {
   'coverage-cli': 'npm run coverage:cli',
   'coverage-gateway': 'npm run coverage:gateway'
 };
+export const qualificationSourceRef = '${{ github.event.pull_request.head.sha || github.sha }}';
 export const gatewayInstallCommand = 'npm ci --prefix services/telemetry-ingest';
 export const independentStepCondition = '${{ !cancelled() }}';
+export const nativeCustodyWorkflowFile = 'repository.yml';
+export const nativeCustodyFocusedFiles = [
+  'tests/governance-state-handover.test.ts',
+  'tests/governance-transitions.test.ts',
+  'tests/governance-activation-v2.test.ts',
+  'tests/modern-activation-contract-parity.test.ts',
+  'tests/update-compatibility.test.ts',
+  'tests/contract-baseline.test.ts',
+  'tests/governance-extraction.test.ts',
+  'tests/plugin-generation-parity.test.ts',
+  'tests/generator-parity.test.ts',
+  'tests/modern-managed-core.test.ts',
+  'tests/modern-source-registry.test.ts',
+  'tests/pre-assessment-source-contract.test.ts',
+  'tests/project-telemetry-source.test.ts',
+  'tests/documentation.test.ts',
+  'tests/developer-activation-documentation.test.ts'
+];
+export const nativeCustodyCommands = nativeCustodyQualificationCommands;
 export const platformShardCheckCommand = 'npm run check:supported-stack && npm run build && ' +
   'npx vitest run --shard=${{ matrix.shard }}/2 --allowOnly=false ' +
   '--maxWorkers=2 ' +
@@ -63,6 +88,43 @@ export function checkPluginPathReport(report, platform = process.platform) {
   assert.equal(report.numPassedTests, passed);
   assert.equal(report.numTotalTests, passed + skipped);
 }
+const programBoundaryGroup = 'private original-program input boundary without manufactured assembly facts';
+const genuineProgramGroup = 'genuine original current5 program construction and consumption';
+export const workflowProgramContentCases = Object.freeze([
+  ...['path', 'installedRoot', 'archive', 'manifest', 'receipt', 'reader', 'callback', 'authenticated', 'observedAt']
+    .map(field => `${programBoundaryGroup} rejects caller-selected ${field} before original assembly observation`),
+  ...['ordinary', 'copy', 'json', 'proxy', 'accessor']
+    .map(kind => `${programBoundaryGroup} refuses ${kind} counterfeit original assembly without invoking hooks`),
+  ...['context-copy', 'runtime-copy', 'proxy', 'accessor', 'extra-symbol', 'hidden-field']
+    .map(kind => `${programBoundaryGroup} refuses ${kind} request reconstruction without invoking hooks`),
+  `${programBoundaryGroup} refuses a fabricated content token and proxy without reading their properties or returning archive bytes`,
+  `${genuineProgramGroup} builds, packs and installs the actual versioned program before issuing any Source content token`,
+  ...['manual', 'openspec', 'spec-kit'].flatMap(workflow =>
+    ['single-maintainer-gitflow', 'team-gitflow'].map(profile =>
+      `${genuineProgramGroup} binds actual original archive and complete installed content for ${workflow}/${profile} without issuing release authority`)),
+  `${genuineProgramGroup} rejects copied tokens, foreign original contexts/runtimes and getter-bearing substitutes`,
+  `${genuineProgramGroup} freshly consumes original runtime, validator and independent archive bytes without trusting the readback as a token`,
+  `${genuineProgramGroup} captures original request references before caller substitution and refuses same-byte physical output replacement`
+]);
+export function checkWorkflowProgramContentReport(report) {
+  assert.equal(report.success, true, 'Original program consumer qualification must succeed.');
+  assert.equal(report.numFailedTests, 0);
+  assert.equal(report.numFailedTestSuites, 0);
+  assert.equal(report.numPendingTests, 0, 'Genuine original program consumer cases cannot be skipped.');
+  assert.equal(report.numPassedTests, workflowProgramContentCases.length);
+  assert.equal(report.numTotalTests, workflowProgramContentCases.length);
+  assert.ok(Array.isArray(report.testResults) && report.testResults.length === 1,
+    'A separate complete original program consumer report is required.');
+  const suite = report.testResults[0];
+  assert.ok(typeof suite.name === 'string' &&
+    suite.name.replaceAll('\\', '/').endsWith('/tests/workflow-source5-program-content.test.ts'),
+  'The exact original program consumer suite is required.');
+  assert.ok(Array.isArray(suite.assertionResults), 'Original program consumer cases are missing.');
+  assert.deepEqual(suite.assertionResults.map(test => test.fullName).sort(), [...workflowProgramContentCases].sort(),
+    'Original program consumer cases are missing, duplicated or unexpected.');
+  assert.ok(suite.assertionResults.every(test => test.status === 'passed'),
+    'Every original program consumer case must run and pass.');
+}
 export const isolatedHclTestFiles = [
   'tests/modern-local-inputs.test.ts', 'tests/modern-local-check-plans.test.ts', 'tests/isolated-hcl-parser.test.ts'
 ];
@@ -93,32 +155,117 @@ export function nativeBundleQualificationJob() {
     name: 'Runtime-inclusive bundle (macOS ARM64)', 'runs-on': 'macos-15', 'timeout-minutes': 20,
     permissions: { contents: 'read' },
     steps: [
-      { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', with: { 'persist-credentials': false } },
+      { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+        with: { ref: qualificationSourceRef, 'persist-credentials': false } },
       { uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
         with: { 'node-version': '24.21.0', architecture: 'arm64', cache: 'npm' } },
       { uses: 'actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e',
         with: { 'go-version': '1.27.0', 'cache-dependency-path': 'assets/supported-stack.json' } },
       { name: 'Select supported npm', run: 'npm install --global "npm@12.0.2"' },
       { name: 'Install dependencies', run: 'npm ci' },
-      { name: 'Retrieve the pinned standalone runtime', shell: 'bash', run: [
+      { name: 'Retrieve pinned runtime and historical client', shell: 'bash', run: [
         'url="$(node --input-type=module -e \'import inputs from "./distribution/native/inputs.json" with { type: "json" }; console.log(inputs.runtime.url)\')"',
         'curl --fail --location --proto \'=https\' --proto-redir \'=https\' --max-time 180 \\',
-        '  "$url" --output "$RUNNER_TEMP/liftoff-node-runtime.tgz"', ''
+        '  "$url" --output "$RUNNER_TEMP/liftoff-node-runtime.tgz"',
+        'curl --fail --location --proto \'=https\' --proto-redir \'=https\' --max-time 60 \\',
+        '  \'https://registry.npmjs.org/@msn-control/liftoff/-/liftoff-0.3.4.tgz\' \\',
+        '  --output "$RUNNER_TEMP/liftoff-historical-0.3.4.tgz"',
+        'printf \'%s  %s\\n\' \'05793480c44632b3fc01ac98a4f76a73313d8b273afcb30bde5c22de989d69c0\' \\',
+        '  "$RUNNER_TEMP/liftoff-historical-0.3.4.tgz" | shasum --algorithm 256 --check', ''
       ].join('\n') },
       { name: 'Assemble the development bundle', run: 'npm run build:native -- build ' +
         '--runtime-archive "$RUNNER_TEMP/liftoff-node-runtime.tgz" --output "$RUNNER_TEMP/liftoff-native-bundle"' },
       { name: 'Qualify actual installed behavior', shell: 'bash', run: [
+        'node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-native-bundle" "$RUNNER_TEMP/liftoff-native-archive"',
         'LIFTOFF_NATIVE_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
+        'LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
         'LIFTOFF_NATIVE_GO_EXECUTABLE="$(command -v go)" \\',
+        'LIFTOFF_NATIVE_PACKAGE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
+        'LIFTOFF_NATIVE_ARCHIVE_ROOT="$RUNNER_TEMP/liftoff-native-archive" \\',
+        'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/liftoff-node-runtime.tgz" \\',
         'npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \\',
+        '  tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \\',
+        '  tests/mac-migration-package.test.ts tests/mac-migration-preparation.test.ts \\',
         '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
         '  --reporter=default --reporter=json --outputFile.json=qualification/native-bundle.json',
-        'node scripts/native-bundle.mjs verify-report qualification/native-bundle.json', ''
+        'node scripts/native-bundle.mjs verify-report qualification/native-bundle.json',
+        'node scripts/native-package-report.mjs qualification/native-bundle.json "$RUNNER_TEMP/liftoff-native-bundle"',
+        'node scripts/mac-migration-package-report.mjs qualification/native-bundle.json',
+        'journey="$(node scripts/mac-migration-journey-report.mjs select "$RUNNER_TEMP/liftoff-native-bundle")"',
+        'case "$journey" in',
+        '  stable-handover) journey_test=tests/mac-migration-journey.test.ts ;;',
+        '  prerelease-refusal) journey_test=tests/mac-migration-prerelease.test.ts ;;',
+        '  *) printf \'Unsupported migration journey outcome: %s\\n\' "$journey" >&2; exit 1 ;;',
+        'esac',
+        'journey_report="qualification/mac-migration-${journey}.json"',
+        'LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
+        'LIFTOFF_MAC_MIGRATION_HISTORICAL_TARBALL="$RUNNER_TEMP/liftoff-historical-0.3.4.tgz" \\',
+        'npx vitest run "$journey_test" \\',
+        '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
+        '  --reporter=default --reporter=json --outputFile.json="$journey_report"',
+        'node scripts/mac-migration-journey-report.mjs "$journey_report" "$RUNNER_TEMP/liftoff-native-bundle" "$journey" \\',
+        '  > "qualification/mac-migration-${journey}-outcome.json"',
+        'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/liftoff-node-runtime.tgz" \\',
+        'npx vitest run tests/workflow-source5-program-content.test.ts \\',
+        '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
+        '  --reporter=default --reporter=json --outputFile.json=qualification/workflow-program-content.json',
+        'node scripts/check-repository-policy.mjs --workflow-program-report qualification/workflow-program-content.json', ''
       ].join('\n') },
       { name: 'Store development qualification evidence', if: independentStepCondition,
         uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
         with: { name: 'liftoff-native-bundle-ci-${{ github.run_id }}-${{ github.run_attempt }}',
-          path: 'qualification/native-bundle.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n',
+          path: 'qualification/native-bundle.json\nqualification/mac-migration-*.json\nqualification/workflow-program-content.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n${{ runner.temp }}/liftoff-native-archive/\n',
+          'if-no-files-found': 'error', 'retention-days': 14 } }
+    ]
+  };
+}
+export function nativePlatformQualificationJob() {
+  return {
+    name: 'Native development package (${{ matrix.target }})', 'runs-on': '${{ matrix.os }}',
+    'timeout-minutes': 20, permissions: { contents: 'read' },
+    strategy: { 'fail-fast': false, matrix: { include: [
+      { os: 'ubuntu-24.04', target: 'linux-x64' },
+      { os: 'ubuntu-24.04-arm', target: 'linux-arm64' },
+      { os: 'windows-2025', target: 'win32-x64' }
+    ] } },
+    steps: [
+      { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+        with: { ref: qualificationSourceRef, 'persist-credentials': false } },
+      { uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+        with: { 'node-version': '24.21.0', cache: 'npm' } },
+      { name: 'Select supported npm', run: 'npm install --global "npm@12.0.2"' },
+      { name: 'Install dependencies', run: 'npm ci' },
+      { name: 'Compile the native Windows launcher', if: "runner.os == 'Windows'", shell: 'cmd', run: [
+        'for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do call "%%i\\Common7\\Tools\\VsDevCmd.bat" -arch=x64 -host_arch=x64',
+        'cl /nologo /W4 /WX /O2 /MT /Fo:"%RUNNER_TEMP%\\liftoff-launcher.obj" /Fe:"%RUNNER_TEMP%\\liftoff-launcher.exe" distribution\\windows\\launcher.c /link /SUBSYSTEM:CONSOLE', ''
+      ].join('\n') },
+      { name: 'Retrieve the pinned platform runtime', shell: 'bash', run: [
+        'url="$(node --input-type=module -e \'import inputs from "./distribution/native/inputs.json" with { type: "json" }; import { nativeRuntimeInput } from "./scripts/native-bundle-contract.mjs"; console.log(nativeRuntimeInput(inputs, {platform:process.platform,architecture:process.arch}).url)\')"',
+        'curl --fail --location --proto \'=https\' --proto-redir \'=https\' --max-time 180 \\',
+        '  "$url" --output "$RUNNER_TEMP/liftoff-platform-runtime"', ''
+      ].join('\n') },
+      { name: 'Prepare pinned Linux qualification userspace', if: "runner.os == 'Linux'", shell: 'bash', run: [
+        'image="$(node --input-type=module -e \'import { nativeLinuxUserspaceImages } from "./scripts/native-package-report.mjs"; console.log(nativeLinuxUserspaceImages[process.arch])\')"',
+        'docker pull "$image"', ''
+      ].join('\n') },
+      { name: 'Build and qualify the isolated native package', shell: 'bash', run: [
+        'launcher=()',
+        'if [ "$RUNNER_OS" = Windows ]; then launcher=(--windows-launcher "$RUNNER_TEMP/liftoff-launcher.exe"); fi',
+        'npm run build:native -- build --runtime-archive "$RUNNER_TEMP/liftoff-platform-runtime" \\',
+        '  --output "$RUNNER_TEMP/liftoff-native-bundle" "${launcher[@]}"',
+        'node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-native-bundle" "$RUNNER_TEMP/liftoff-native-archive"',
+        'if [ "$RUNNER_OS" = Linux ]; then export LIFTOFF_NATIVE_DOCKER_EXECUTABLE="$(command -v docker)"; fi',
+        'LIFTOFF_NATIVE_PACKAGE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
+        'LIFTOFF_NATIVE_ARCHIVE_ROOT="$RUNNER_TEMP/liftoff-native-archive" \\',
+        'npx vitest run tests/native-bundle.test.ts tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \\',
+        '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
+        '  --reporter=default --reporter=json --outputFile.json=qualification/native-platform-package.json',
+        'node scripts/native-package-report.mjs qualification/native-platform-package.json "$RUNNER_TEMP/liftoff-native-bundle"', ''
+      ].join('\n') },
+      { name: 'Store exact-source native development artifacts', if: independentStepCondition,
+        uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+        with: { name: 'liftoff-native-package-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}',
+          path: 'qualification/native-platform-package.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n${{ runner.temp }}/liftoff-native-archive/\n',
           'if-no-files-found': 'error', 'retention-days': 14 } }
     ]
   };
@@ -130,6 +277,188 @@ export function checkIsolatedHclRuntime(runtime = {
   assert.equal(runtime.platform, 'darwin', 'Parser qualification requires actual macOS.');
   assert.equal(runtime.arch, 'arm64', 'Parser qualification requires actual ARM64.');
   assert.equal(runtime.versions.node, '24.21.0', 'Parser qualification requires exact Node24.21.0.');
+}
+
+function namedStep(job, name) {
+  const matches = job.steps.filter(step => step.name === name);
+  assert.equal(matches.length, 1, `Hosted native custody qualification requires exactly one ${name} step.`);
+  return matches[0];
+}
+
+export function checkNativeCustodyQualificationJob(job) {
+  assert.equal(job.name, 'Full suite and source-complete coverage (macOS ARM64)');
+  assert.equal(job['runs-on'], 'macos-15');
+  assert.equal(job['timeout-minutes'], 240, 'Measured native full-suite and coverage need the reviewed bounded timeout.');
+  assert.deepEqual(job.permissions, { contents: 'read' });
+  assert.deepEqual(job.env, {
+    CI: 'true',
+    DO_NOT_TRACK: '1',
+    LIFTOFF_TELEMETRY: '0',
+    LIFTOFF_HCL_TEST_LANE: 'native',
+    LIFTOFF_OPENSPEC_B_TESTS: '1',
+    OB1_VERSION_REMAINING: '2',
+    OB1_SUPPORT_REMAINING: '10',
+    LIFTOFF_OI_TESTS: '1'
+  });
+  assert.equal(job.steps[0].uses, 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1');
+  assert.deepEqual(job.steps[0].with, { 'persist-credentials': false });
+  assert.equal(job.steps[1].uses, 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020');
+  assert.deepEqual(job.steps[1].with, { 'node-version': '24.21.0', architecture: 'arm64', cache: 'npm' });
+  assert.equal(job.steps[2].uses, 'actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97');
+  assert.deepEqual(job.steps[2].with, { 'python-version': '3.14.7' });
+  assert.equal(job.steps[3].uses, 'actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e');
+  assert.deepEqual(job.steps[3].with, {
+    'go-version': '1.27.0',
+    'cache-dependency-path': 'assets/supported-stack.json'
+  });
+  assert.equal(job.steps[4].uses, 'opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4');
+  assert.deepEqual(job.steps[4].with, { tofu_version: '1.12.6', tofu_wrapper: false });
+  assert.equal(namedStep(job, 'Install uv').run, 'python -m pip install uv==0.12.7');
+  const npmInstall = namedStep(job, 'Select supported npm');
+  assert.equal(npmInstall.shell, 'bash');
+  assert.equal(npmInstall.run.trim(), [
+    'npm install --prefix "$RUNNER_TEMP/liftoff-npm" --no-package-lock --ignore-scripts --no-audit --no-fund "npm@12.0.2"',
+    'echo "$RUNNER_TEMP/liftoff-npm/node_modules/.bin" >> "$GITHUB_PATH"'
+  ].join('\n'));
+  const containerInstall = namedStep(job, 'Install qualified Docker and Compose');
+  assert.equal(containerInstall.shell, 'bash');
+  assert.equal(containerInstall.run.trim(), [
+    'set -euo pipefail',
+    'root="$RUNNER_TEMP/liftoff-docker"',
+    `archive="$RUNNER_TEMP/docker-${nativeContainerToolProfile.docker.version}.tgz"`,
+    'compose="$RUNNER_TEMP/docker-compose-darwin-aarch64"',
+    'mkdir -p "$root/bin" "$root/cli-plugins" "$RUNNER_TEMP/liftoff-docker-extract"',
+    "curl --fail --location --proto '=https' --tlsv1.2 \\",
+    '  --output "$archive" \\',
+    `  "${nativeContainerToolProfile.docker.archiveUrl}"`,
+    `echo "${nativeContainerToolProfile.docker.archiveSha256}  $archive" | shasum -a 256 --check`,
+    'tar -xzf "$archive" -C "$RUNNER_TEMP/liftoff-docker-extract"',
+    'install -m 0755 "$RUNNER_TEMP/liftoff-docker-extract/docker/docker" "$root/bin/docker"',
+    "curl --fail --location --proto '=https' --tlsv1.2 \\",
+    '  --output "$compose" \\',
+    `  "${nativeContainerToolProfile.compose.binaryUrl}"`,
+    `echo "${nativeContainerToolProfile.compose.binarySha256}  $compose" | shasum -a 256 --check`,
+    'install -m 0755 "$compose" "$root/cli-plugins/docker-compose"',
+    'echo "$root/bin" >> "$GITHUB_PATH"'
+  ].join('\n'));
+  const openspecInstall = namedStep(job, 'Install pinned OpenSpec');
+  assert.equal(openspecInstall.shell, 'bash');
+  assert.equal(openspecInstall.run.trim(), [
+    'npm install --global --prefix "$RUNNER_TEMP/liftoff-openspec" \\',
+    `  --before=${qualifiedOpenSpecProfile.registryCutoff} --no-package-lock --ignore-scripts --no-audit --no-fund \\`,
+    `  ${qualifiedOpenSpecProfile.package}@${qualifiedOpenSpecProfile.version}`,
+    'node scripts/native-custody-qualification.mjs verify-openspec-profile \\',
+    '  "$RUNNER_TEMP/liftoff-openspec/lib/node_modules/@fission-ai/openspec"',
+    'echo "$RUNNER_TEMP/liftoff-openspec/bin" >> "$GITHUB_PATH"'
+  ].join('\n'));
+  assert.equal(namedStep(job, 'Install dependencies').run.trim(), [
+    'npm ci',
+    gatewayInstallCommand
+  ].join('\n'));
+  const toolchain = namedStep(job, 'Verify native toolchain');
+  assert.equal(toolchain.id, 'toolchain');
+  for (const required of [
+    "platform: 'darwin'", "architecture: 'arm64'", "node: '24.21.0'",
+    "'12.0.2'", 'OpenTofu v1\\.12\\.6', "'1.11.0'", 'go1.27.0 darwin/arm64',
+    'Python 3.14.7', 'uv 0\\.12\\.7',
+    "realpathSync(run('/usr/bin/which', ['npm']))",
+    "path.basename(npmLauncher), 'npm-cli.js'",
+    "{ name: npmPackage.name, version: npmPackage.version }, { name: 'npm', version: '12.0.2' }",
+    "run(process.execPath, [npmLauncher, '--version'])",
+    nativeContainerToolProfile.docker.binarySha256,
+    nativeContainerToolProfile.compose.binarySha256,
+    `Docker version ${nativeContainerToolProfile.docker.version}, build ${nativeContainerToolProfile.docker.build}`,
+    `['version', '--short']), '${nativeContainerToolProfile.compose.version}'`,
+    "'liftoff-docker', 'bin', 'docker'",
+    "'liftoff-docker', 'cli-plugins', 'docker-compose'",
+    "'liftoff-openspec', 'lib', 'node_modules', '@fission-ai', 'openspec', 'bin', 'openspec.js'",
+    'LIFTOFF_OPENSPEC_B_TESTS', 'OB1_VERSION_REMAINING', 'OB1_SUPPORT_REMAINING', 'LIFTOFF_OI_TESTS'
+  ]) assert.ok(toolchain.run.includes(required), `Native toolchain check is missing ${required}.`);
+  const cleanStart = namedStep(job, 'Verify exact clean candidate');
+  assert.equal(cleanStart.id, 'clean-start');
+  assert.ok(cleanStart.run.includes('git rev-parse HEAD'));
+  assert.ok(cleanStart.run.includes('$GITHUB_SHA'));
+  assert.ok(cleanStart.run.includes('git status --porcelain=v1 --untracked-files=all'));
+
+  const gates = [
+    ['Check supported stack', 'supported-stack', nativeCustodyCommands.supportedStack],
+    ['Build', 'build', nativeCustodyCommands.build],
+    ['Verify source-complete coverage evidence', 'coverage-verify', nativeCustodyCommands.coverageVerification],
+    ['Run package smoke', 'package', nativeCustodyCommands.packageSmoke],
+    ['Run repository policy', 'policy', nativeCustodyCommands.repositoryPolicy],
+    ['Run strict OpenSpec validation', 'openspec', nativeCustodyCommands.openspec]
+  ];
+  for (const [name, id, command] of gates) {
+    const step = namedStep(job, name);
+    assert.equal(step.id, id);
+    assert.equal(step.if, independentStepCondition);
+    assert.equal(step.run, command);
+  }
+
+  const fullSuite = namedStep(job, 'Run unfiltered full suite');
+  assert.equal(fullSuite.id, 'full-suite');
+  assert.equal(fullSuite.if, independentStepCondition);
+  assert.ok(fullSuite.run.includes(nativeCustodyCommands.fullSuite));
+  assert.ok(fullSuite.run.includes('qualification/native-full-suite.log'));
+  assert.ok(fullSuite.run.includes('set -o pipefail'));
+  assert.ok(!fullSuite.run.includes(' --testTimeout') && !fullSuite.run.includes(' -t '));
+
+  const coverage = namedStep(job, 'Run source-complete CLI coverage');
+  assert.equal(coverage.id, 'coverage');
+  assert.equal(coverage.if, independentStepCondition);
+  assert.ok(coverage.run.includes(nativeCustodyCommands.coverage));
+  assert.ok(coverage.run.includes('qualification/native-coverage.log'));
+  assert.ok(coverage.run.includes('set -o pipefail'));
+  assert.ok(!coverage.run.includes('--source') && !coverage.run.includes('coverage.enabled=false'));
+
+  const focused = namedStep(job, 'Run focused custody and history checks');
+  assert.equal(focused.id, 'focused');
+  assert.equal(focused.if, independentStepCondition);
+  for (const file of nativeCustodyFocusedFiles) {
+    assert.equal(focused.run.split(file).length - 1, 1, `Focused custody gate must include ${file} exactly once.`);
+  }
+  assert.ok(focused.run.includes('--maxWorkers=1 --no-file-parallelism --reporter=dot'));
+  assert.ok(focused.run.includes('qualification/native-focused.log'));
+  assert.ok(!focused.run.includes(' -t '));
+
+  const cleanFinish = namedStep(job, 'Verify final clean bytes');
+  assert.equal(cleanFinish.id, 'clean-finish');
+  assert.equal(cleanFinish.if, independentStepCondition);
+  assert.ok(cleanFinish.run.includes('git diff --check'));
+  assert.ok(cleanFinish.run.includes('git status --porcelain=v1 --untracked-files=all'));
+
+  const record = namedStep(job, 'Record hosted native qualification evidence');
+  assert.equal(record.if, independentStepCondition);
+  assert.equal(record.run, 'node scripts/native-custody-qualification.mjs record qualification/native-custody.json');
+  assert.deepEqual(record.env, {
+    NATIVE_COMPOSE_EXECUTABLE: '${{ runner.temp }}/liftoff-docker/cli-plugins/docker-compose',
+    NATIVE_TOOLCHAIN_OUTCOME: '${{ steps.toolchain.outcome }}',
+    NATIVE_CLEAN_START_OUTCOME: '${{ steps.clean-start.outcome }}',
+    NATIVE_SUPPORTED_STACK_OUTCOME: '${{ steps.supported-stack.outcome }}',
+    NATIVE_BUILD_OUTCOME: '${{ steps.build.outcome }}',
+    NATIVE_FULL_SUITE_OUTCOME: '${{ steps.full-suite.outcome }}',
+    NATIVE_COVERAGE_OUTCOME: '${{ steps.coverage.outcome }}',
+    NATIVE_COVERAGE_VERIFY_OUTCOME: '${{ steps.coverage-verify.outcome }}',
+    NATIVE_FOCUSED_OUTCOME: '${{ steps.focused.outcome }}',
+    NATIVE_PACKAGE_OUTCOME: '${{ steps.package.outcome }}',
+    NATIVE_POLICY_OUTCOME: '${{ steps.policy.outcome }}',
+    NATIVE_OPENSPEC_OUTCOME: '${{ steps.openspec.outcome }}',
+    NATIVE_CLEAN_FINISH_OUTCOME: '${{ steps.clean-finish.outcome }}'
+  });
+
+  const upload = namedStep(job, 'Store hosted native qualification evidence');
+  assert.equal(upload.if, independentStepCondition);
+  assert.equal(upload.uses, 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a');
+  assert.equal(upload.with.name, 'liftoff-native-custody-${{ github.run_id }}-${{ github.run_attempt }}');
+  for (const artifact of [
+    'qualification/native-custody.json',
+    'qualification/native-full-suite.log',
+    'qualification/native-coverage.log',
+    'qualification/native-focused.log',
+    'coverage/cli/'
+  ]) assert.ok(upload.with.path.includes(artifact), `Native qualification artifact is missing ${artifact}.`);
+  assert.equal(upload.with['if-no-files-found'], 'error');
+  assert.equal(upload.with['retention-days'], 14);
 }
 export function checkIsolatedHclReport(report) {
   assert.equal(report.success, true, 'Parser qualification must succeed.');
@@ -178,6 +507,7 @@ export function checkPromotion(event) {
 
 export function checkWorkflow(filename, workflow) {
   const release = filename === 'release.yml';
+  const nativeCustodyWorkflow = filename === nativeCustodyWorkflowFile;
   const windowsBoundaryTimeout =
     "${{ matrix.os == 'windows-latest' && matrix.shard == 2 && 75 || 45 }}";
   assert.deepEqual(workflow.permissions, { contents: 'read' }, `${filename}: workflow default must be contents: read.`);
@@ -188,13 +518,16 @@ export function checkWorkflow(filename, workflow) {
   for (const [id, job] of Object.entries(workflow.jobs)) {
     const parserQualification = ['ci.yml', 'release.yml'].includes(filename) && id === 'qualify-isolated-hcl';
     const bundleQualification = filename === 'ci.yml' && id === 'qualify-native-bundle';
+    const nativeCustodyQualification = nativeCustodyWorkflow && id === 'qualify-native-custody';
     assert.ok(['ubuntu-latest', 'macos-latest', 'windows-latest', '${{ matrix.os }}'].includes(job['runs-on']) ||
-      (parserQualification || bundleQualification) && job['runs-on'] === 'macos-15', `${filename}/${id}: use reviewed hosted runners.`);
+      (parserQualification || bundleQualification || nativeCustodyQualification) && job['runs-on'] === 'macos-15',
+    `${filename}/${id}: use reviewed hosted runners.`);
     const timeout = job['timeout-minutes'];
     assert.ok(
       Number.isInteger(timeout) && timeout > 0 && timeout <= 60 ||
         filename === 'ci.yml' && id === 'test-shards' &&
-          timeout === windowsBoundaryTimeout,
+          timeout === windowsBoundaryTimeout ||
+        nativeCustodyQualification && timeout === 240,
       `${filename}/${id}: bounded timeout required.`
     );
     assert.ok(!job['continue-on-error'], `${filename}/${id}: do not suppress a failed check.`);
@@ -224,8 +557,28 @@ export function checkWorkflow(filename, workflow) {
     }
   }
   if (filename === 'ci.yml') {
+    for (const id of ['test-shards', 'coverage-cli']) {
+      const steps = workflow.jobs[id]?.steps ?? [];
+      for (const platform of ['Linux', 'macOS']) {
+        const prepare = steps.findIndex(step => step.name === `Prepare pinned ${platform} Docker and Compose`);
+        assert.deepEqual(steps[prepare], {
+          name: `Prepare pinned ${platform} Docker and Compose`,
+          if: `runner.os == '${platform}'`,
+          run: 'node scripts/prepare-ci-local-tools.mjs'
+        }, `ci.yml/${id}: prepare real pinned ${platform} container tools without suppressing failures.`);
+        assert.ok(prepare < steps.findIndex(step => step.run === 'npm ci'),
+          `ci.yml/${id}: prepare ${platform} tools before the test/dependency consumers.`);
+      }
+      assert.equal(steps.filter(step => step.run === 'node scripts/prepare-ci-local-tools.mjs').length, 2);
+    }
+    for (const id of Object.keys(coverageGateJobs)) {
+      assert.equal(workflow.jobs[id]?.steps[0]?.with?.ref, qualificationSourceRef,
+        'Independent coverage must be bound to the exact owning head, not a synthetic PR merge revision.');
+    }
     assert.deepEqual(workflow.jobs['qualify-native-bundle'], nativeBundleQualificationJob(),
       'Native bundle qualification must retain its exact reviewed host, inputs, complete cases and report gate.');
+    assert.deepEqual(workflow.jobs['qualify-native-platform-packages'], nativePlatformQualificationJob(),
+      'Native platform qualification must retain every reviewed target, native compiler, complete cases and exact artifact handoff.');
     const platforms = ['ubuntu-latest', 'macos-latest', 'windows-latest'];
     const required = workflow.jobs.test;
     assert.deepEqual(required, {
@@ -299,6 +652,11 @@ export function checkWorkflow(filename, workflow) {
     assert.equal(workflow.jobs.policy?.name, 'Repository policy');
     assert.equal(workflow.jobs.policy?.if, undefined, 'Repository policy must not be skipped.');
     assert.ok(workflow.jobs.policy.steps.some(step => step.run === 'npm run check:repository'), 'Repository policy must run its checker.');
+    assert.deepEqual(Object.keys(workflow.jobs), ['policy', 'qualify-native-custody']);
+    const native = workflow.jobs['qualify-native-custody'];
+    assert.equal(native.if, "${{ github.event_name == 'workflow_dispatch' }}",
+      'Hosted native custody qualification must remain manual-only.');
+    checkNativeCustodyQualificationJob(native);
   }
   if (release) {
     assert.deepEqual(triggers.sort(), ['push', 'workflow_dispatch']);
@@ -382,6 +740,11 @@ export async function checkRepositoryPolicy(root = process.cwd()) {
 
 async function main() {
   const args = process.argv.slice(2);
+  if (args.length === 2 && args[0] === '--workflow-program-report') {
+    checkWorkflowProgramContentReport(JSON.parse(await readFile(args[1], 'utf8')));
+    console.log('All 31 original program consumer cases passed, including 10 genuine cases; no host, workflow or release authority is issued.');
+    return;
+  }
   if (args.length === 2 && args[0] === '--plugin-path-report') {
     checkPluginPathReport(JSON.parse(await readFile(args[1], 'utf8')));
     console.log(`All applicable native plugin path cases passed on ${process.platform}; other hosts require their own reports.`);

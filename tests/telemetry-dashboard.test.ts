@@ -78,7 +78,9 @@ function freshness(id: string, expectedSince: number, rows: Observation[], at = 
   const heartbeats = retained(rows).filter((row) => row.ProjectId === id && row.Source === 'ci-heartbeat');
   const last = heartbeats.length ? Math.max(...heartbeats.map((row) => row.TimeGenerated)) : null;
   const due = Math.max(expectedSince, last ?? expectedSince) + 40 * day;
-  return { last, due, overdue: at > due };
+  const overdue = expectedSince <= at && at > due;
+  const state = expectedSince > at ? 'pending' : last === null ? 'unknown' : overdue ? 'stale' : 'within grace';
+  return { last, due, overdue, state };
 }
 
 interface Diagnostic { Severity: string; Message: string }
@@ -109,9 +111,10 @@ function diagnostics(query: string) {
     .filter((diagnostic) => diagnostic.Severity === 'Error').map((diagnostic) => diagnostic.Message);
 }
 
-function renderQuery(query: string, days: number, expectations = '') {
+function renderQuery(query: string, days: number, expectations = '', configuration = 'unknown') {
   return query.replaceAll('@synthetic_ids@', JSON.stringify([ids.synthetic]))
-    .replaceAll('@expected_heartbeats@', expectations).replaceAll('${window_days}', String(days));
+    .replaceAll('@expected_heartbeats@', expectations).replaceAll('@reporting_configuration@', configuration)
+    .replaceAll('${window_days}', String(days));
 }
 
 describe('native Grafana source and exact KQL schema', () => {
@@ -170,6 +173,33 @@ describe('native Grafana source and exact KQL schema', () => {
     const catalog = await Promise.all((await readdir(queries)).map((file) => readFile(path.join(queries, file), 'utf8')));
     expect(catalog.join('\n')).not.toMatch(/isfuzzy|column_ifexists|ClientTimestamp|client_timestamp|Request|IPAddress/);
   });
+
+  it('renders explicit monthly configuration and empty/future-only expectation states instead of an ambiguous missing row', async () => {
+    const query = await readFile(path.join(queries, 'freshness.kql'), 'utf8');
+    expect(query).toContain('let reportingConfiguration = "@reporting_configuration@";');
+    expect(query).toContain('let evaluated = expected');
+    expect(query).toContain('unconfigured - no eligible expected reporting');
+    expect(query).toContain('ExpectedSince > now(), "pending - monitoring starts in the future"');
+    expect(query).toContain('where toscalar(expected | count) == 0');
+    const dashboard = await buildTelemetryDashboard();
+    const panel = dashboard.panels.find((entry: { title: string }) => entry.title.startsWith('Explicit expected monthly'));
+    if (!panel || !('targets' in panel)) throw new Error('Monthly expectation query panel is missing.');
+    expect(panel.targets[0].azureLogAnalytics.query).toContain('ExpectedProjects = countif(isnotempty(ProjectId))');
+    expect(panel.targets[0].azureLogAnalytics.query).toContain('by ReportingConfiguration, Freshness');
+  });
+
+  it.each(['unknown', 'enabled', 'disabled'])('analyzes explicit %s monthly state with empty, excluded and future expectations', async configuration => {
+    const common = await readFile(path.join(queries, 'projects.kql'), 'utf8');
+    const fresh = await readFile(path.join(queries, 'freshness.kql'), 'utf8');
+    const inventories = ['', `"${ids.synthetic}", datetime(2026-08-01T00:00:00Z)`,
+      `"${ids.rootA}", datetime(2099-01-01T00:00:00Z)`];
+    for (const expectations of inventories) {
+      const query = renderQuery(`${common}\n${fresh}`, 30, expectations, configuration);
+      expect(diagnostics(query)).toEqual([]);
+      expect(query).not.toContain('@reporting_configuration@');
+      expect(diagnostics(`${query}\n| summarize Value=countif(Overdue)\n| project TimeGenerated=now(), Value`)).toEqual([]);
+    }
+  });
 });
 
 describe('fixed-dataset semantic oracle (not Azure query execution)', () => {
@@ -216,6 +246,22 @@ describe('fixed-dataset semantic oracle (not Azure query execution)', () => {
     expect(query).toContain('unknown - no retained heartbeat; never received or expired');
   });
 
+  it('keeps future starts pending alongside overdue and unknown expectations, without inventing heartbeat events', async () => {
+    const expectations = [
+      { id: ids.rootA, since: now - 73 * day }, { id: ids.rootB, since: now + day },
+      { id: ids.never, since: now - 73 * day }, { id: ids.synthetic, since: now - 73 * day }
+    ].filter(entry => entry.id !== ids.synthetic);
+    const states = expectations.map(entry => freshness(entry.id, entry.since, dataset));
+    expect(states.map(entry => entry.state)).toEqual(['stale', 'pending', 'unknown']);
+    expect(states.filter(entry => entry.overdue)).toHaveLength(2);
+    expect(states[1]).toMatchObject({ last: null, overdue: false, due: now + 41 * day });
+    expect(freshness(ids.expired, now - 190 * day, [observation(181, ids.expired)]))
+      .toMatchObject({ last: null, overdue: true, state: 'unknown' });
+    const query = await readFile(path.join(queries, 'freshness.kql'), 'utf8');
+    expect(query).toContain('ExpectedSince <= now() and now() > Due');
+    expect(query).not.toContain('where ExpectedSince <= now()');
+  });
+
   it('separates schema-2 expected attention/cancellation/failure from legacy nonzero semantics', async () => {
     const outcomes = [
       { schema: 2, outcome: 'success' }, { schema: 2, outcome: 'attention-required' },
@@ -241,7 +287,7 @@ describe('fixed-dataset semantic oracle (not Azure query execution)', () => {
 });
 
 describe('operator, privacy and non-destructive boundaries', () => {
-  it('pins providers, avoids resource-group/workspace/state ownership and scopes Logs identity', async () => {
+  it('pins providers, avoids resource-group/workspace/state ownership and scopes Logs and DCR metrics identity', async () => {
     const [resource, resourceVersions, dashboard, dashboardVersions] = await Promise.all([
       readFile(path.join(root, 'grafana', 'main.tf'), 'utf8'),
       readFile(path.join(root, 'grafana', 'versions.tf'), 'utf8'),
@@ -253,6 +299,11 @@ describe('operator, privacy and non-destructive boundaries', () => {
     expect(dashboardVersions).toContain('version = "4.49.0"');
     expect(resource).toMatch(/scope\s*=\s*data\.azurerm_log_analytics_workspace\.telemetry\.id/);
     expect(resource).toContain('"Log Analytics Reader"');
+    expect(resource).toMatch(/scope\s*=\s*data\.azurerm_monitor_data_collection_rule\.telemetry\.id/);
+    expect(resource).toContain('"Monitoring Reader"');
+    expect(resource).toContain('"dcr-liftoff-telemetry-f5be1618"');
+    expect(resource).toContain('data.azurerm_monitor_data_collection_rule.telemetry.location == "koreacentral"');
+    expect(resource).not.toMatch(/scope\s*=\s*data\.azurerm_resource_group\.telemetry\.id/);
     expect(resource).toContain('prevent_destroy = true');
     expect(resource).toMatch(/api_key_enabled\s*=\s*false/);
     expect(resource).toMatch(/location\s*=\s*"koreacentral"/);
@@ -279,6 +330,31 @@ describe('operator, privacy and non-destructive boundaries', () => {
     expect(source).not.toMatch(/grafana_contact_point|notification_policy|email|webhook/i);
   });
 
+  it('defines only the observed DCR transform metric with a bounded window and independent enablement', async () => {
+    const [source, vars] = await Promise.all([
+      readFile(path.join(root, 'dashboards', 'ingestion-faults.tf'), 'utf8'),
+      readFile(path.join(root, 'dashboards', 'variables.tf'), 'utf8')
+    ]);
+    expect(source).toContain('grafana_rule_group" "ingestion_faults"');
+    expect(source).toMatch(/interval_seconds\s*=\s*60/);
+    expect(source).toMatch(/for\s*=\s*"5m"/);
+    expect(source).toMatch(/from\s*=\s*900/);
+    expect(source).toMatch(/queryType\s*=\s*"Azure Monitor"/);
+    expect(source).toMatch(/aggregation\s*=\s*"Count"/);
+    expect(source).toMatch(/timeGrain\s*=\s*"PT1M"/);
+    expect(source).toMatch(/metricName\s*=\s*"TransformationErrors_Count"/);
+    expect(source).toMatch(/resourceName\s*=\s*"dcr-liftoff-telemetry-f5be1618"/);
+    expect(source).toMatch(/metricNamespace\s*=\s*"Microsoft\.Insights\/dataCollectionRules"/);
+    expect(source).toContain('!var.alerts_enabled || !var.ingestion_fault_alerts_enabled');
+    expect(vars).toMatch(/variable "ingestion_fault_alerts_enabled"[\s\S]*?default\s*=\s*false/);
+    expect(source).toMatch(/no_data_state\s*=\s*"NoData"/);
+    expect(source).toMatch(/exec_err_state\s*=\s*"Error"/);
+    expect(source).toContain('type = "sum"');
+    expect(source).toContain('type = "gt", params = [0]');
+    expect(source).not.toMatch(/ApiCallReceived|LiftoffCommandEvents|LiftoffProjectEvents|fill|coalesce|dimensionFilters|grafana_contact_point|notification_policy|email|webhook/i);
+    expect(source).toContain('does not verify gateway/auth/network health or project activity');
+  });
+
   it('documents real blockers, no deployment, retention states, cost and safe rollback across related READMEs', async () => {
     const [operator, bootstrap, privacy, tasks] = await Promise.all([
       readFile(path.join(root, 'README.md'), 'utf8'),
@@ -289,6 +365,14 @@ describe('operator, privacy and non-destructive boundaries', () => {
     for (const term of ['NotRegistered', '$0.04617/hour', '$6/month', 'not an X1/X2', '180 days', 'Verified ingestion-fault',
       'NoData', '40 days', 'not execution', 'GRAFANA_AUTH', 'https://dashboard.azure.com', 'does **not stop', 'distinct backend keys']) {
       expect(operator).toContain(term);
+    }
+    for (const term of ['TransformationErrors_Count', 'DCR-scoped', '5-minute pending', '15-minute window',
+      'ingestion_fault_alerts_enabled', 'empty timeseries', 'not end-to-end ingestion health', 'sensitive']) {
+      expect(operator.replace(/\s+/g, ' ')).toContain(term);
+    }
+    for (const term of ['2 Standard Units', '4 Standard Units', 'USD 67.41', 'USD 73.41',
+      'USD 134.82', 'USD 140.82', 'one unit', 'not a subscription quote or approved budget']) {
+      expect(operator.replace(/\s+/g, ' ')).toContain(term);
     }
     expect(bootstrap).toContain('Grafana does not own the state boundary');
     for (const term of ['unavailable', 'expired', 'disabled', 'stale/unknown', 'forge', 'not a census', 'Schema-1', 'synthetic']) expect(privacy).toContain(term);

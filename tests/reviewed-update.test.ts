@@ -30,6 +30,7 @@ import {
   cleanupUpdateTestRoots,
   createReviewedUpdateFixture,
   fingerprintUpdateTestProject,
+  installReleasedV3ManagedGovernance,
   runLegacyUpdateContract,
   updateTestPreviewOptions
 } from './reviewed-update-helpers.js';
@@ -99,6 +100,7 @@ async function historicalFixture(includeFrontend = false) {
     cloud: 'azure', region: 'eastus', environments: ['dev'],
     specWorkflow: 'openspec', agents: ['copilot'], includeFrontend
   });
+  await installReleasedV3ManagedGovernance(root);
   const manifest = await loadManifest(root);
   if (manifest.governance.profile === 'none' || manifest.governance.profile === 'unspecified') {
     throw new Error('Expected enabled fixture governance.');

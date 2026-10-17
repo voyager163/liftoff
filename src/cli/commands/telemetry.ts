@@ -22,6 +22,7 @@ export async function telemetryCommand(parsed: ParsedArgs, context: ExecutionCon
   }
   return runProjectTelemetry({
     operation, project: parsed.positional[0] ?? readStringFlag(parsed.flags, 'project'),
+    repository: readStringFlag(parsed.flags, 'repository'),
     check: readBooleanFlag(parsed.flags, 'check') === true,
     approvePlan: readStringFlag(parsed.flags, 'approve-plan'),
     preserveIdentity: readBooleanFlag(parsed.flags, 'preserve-identity') === true,

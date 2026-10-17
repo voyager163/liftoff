@@ -10,7 +10,6 @@ import { renderProjectAssessmentIntegration } from '../../generators/governance/
 import { createModernCompatibilityContract } from '../../governance-activation/modern-compatibility.js';
 import { renderModernGovernanceGuide, renderModernGovernanceIntegration } from '../../generators/governance/modern-handoff.js';
 import { projectCatalog } from './catalog.js';
-import { resolveModernManifestV8SourceContract } from './manifest.js';
 import { modernSourceRegistry } from './modern-plugins.js';
 import { resolveModernProjectSourceContext, type ModernProjectSourceInput } from './source-context.js';
 
@@ -27,10 +26,22 @@ export function resolveModernManagedCoreInput(value: unknown) {
 
 /** Produces source-only managed content. No framework tools, project writes, credentials or providers are invoked. */
 export function buildModernManagedCore(value: unknown): readonly ModernManagedCoreArtifact[] {
-  const { selection, plugins, activeLayout, source } = resolveModernManagedCoreInput(value);
+  const { selection, plugins, activeLayout, source, sourceRelease } = resolveModernManagedCoreInput(value);
   const leaf = selection, profile = selection.profile;
+  const hasCapabilityCatalog = sourceRelease !== 'pre-assessment';
   const contentByName = new Map<string, string>();
-  const contracts = { catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract };
+  const sourceRequest = { selection: { ...leaf, profile }, recordedPlugins: plugins };
+  const sourceRequestJson = canonicalJson(sourceRequest);
+  // Sub-producers revalidate their input but reuse this operation's exact resolved source.
+  const contracts = {
+    catalog: projectCatalog,
+    resolveSourceContract(request: typeof sourceRequest) {
+      if (canonicalJson(request) !== sourceRequestJson) {
+        throw new Error('Managed-core producers requested a different source contract.');
+      }
+      return source;
+    }
+  };
   if (profile !== 'none') {
     if (!('identity' in source.governanceSource)) throw new Error('Enabled managed core requires a real governance source.');
     const requested = { selection: { ...leaf, profile }, plugins, activeLayout };
@@ -48,7 +59,10 @@ export function buildModernManagedCore(value: unknown): readonly ModernManagedCo
     }
     contentByName.set('repository-governance-policy', policy);
     contentByName.set('repository-governance-context', canonicalJson(context));
-    contentByName.set('repository-governance-guide', renderModernGovernanceGuide(context, source.governanceSource.graph));
+    contentByName.set(
+      'repository-governance-guide',
+      renderModernGovernanceGuide(context, source.governanceSource.graph, hasCapabilityCatalog)
+    );
     contentByName.set('repository-governance-phase-graph', canonicalJson(source.governanceSource.graph));
     contentByName.set('repository-governance-compatibility', canonicalJson(compatibility));
     contentByName.set('repository-governance-credential-policy-schema', renderModernCredentialPolicySchema(projectCatalog, {
@@ -60,7 +74,10 @@ export function buildModernManagedCore(value: unknown): readonly ModernManagedCo
   for (const agent of leaf.project.agents) {
     for (const operation of profile === 'none' ? ['repair'] as const : ['setup', 'assessment', 'repair'] as const) {
       const integration = governanceAgentIntegrations[agent][operation];
-      contentByName.set(integration.logicalName, renderModernGovernanceIntegration(agent, operation, selection));
+      contentByName.set(
+        integration.logicalName,
+        renderModernGovernanceIntegration(agent, operation, selection, hasCapabilityCatalog)
+      );
     }
     const assessment = projectAssessmentAgentIntegrations[agent];
     if (source.managedArtifacts.some(artifact => artifact.logicalName === assessment.logicalName)) {

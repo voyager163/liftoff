@@ -217,6 +217,21 @@ describe('telemetry OpenTofu privacy contract', () => {
     expect(variables).not.toMatch(/variable "subscription_id"[\s\S]*?default\s*=\s*null/);
   });
 
+  it('requires separately approved provider registration instead of plan-time side effects', async () => {
+    const [versions, grafanaVersions, readme] = await Promise.all([
+      tofuFile('versions.tf'),
+      tofuFile(path.join('grafana', 'versions.tf')),
+      tofuFile('README.md')
+    ]);
+    const azapi = versions.match(/provider "azapi" \{([^{}]*)\}/)?.[1];
+    const azurerm = versions.match(/provider "azurerm" \{([\s\S]*?)\n\s*features \{/)?.[1];
+    expect(azapi).toMatch(/skip_provider_registration\s*=\s*true/);
+    expect(azurerm).toMatch(/resource_provider_registrations\s*=\s*"none"/);
+    expect(grafanaVersions).toMatch(/resource_provider_registrations\s*=\s*"none"/);
+    expect(versions).not.toMatch(/\bresource_providers_to_register\s*=/);
+    expect(readme.replace(/\s+/g, ' ')).toContain('Provider registration remains a separately approved operator prerequisite');
+  });
+
   it('contains only OpenTofu infrastructure files and no alternate deployment path', async () => {
     const entries = await readdir(infrastructureRoot);
     expect(entries.some((name) => name.endsWith('.bicep'))).toBe(false);

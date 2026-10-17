@@ -6,6 +6,12 @@ framework such as Spec Kit can require Python for its own tooling.
 
 ## Baseline
 
+Published npm installations require an external Node runtime. Contributor-only
+[native packages](native-development-bundles.md) carry private Node 24.21.0;
+their declared upstream OS/libc requirements are not qualified Liftoff support
+floors. Their private runtime never satisfies a selected workload's external
+Node/npm requirement.
+
 - CLI runtime: the running process is checked against Liftoff's minimum Node.js
   version. npm installations still need Node.js to launch; no native distribution
   is claimed by this readiness check.
@@ -40,8 +46,14 @@ try to run the missing executable or reinstall Node.js on its behalf.
 Automatic `liftoff upgrade` additionally requires that the running canonical
 `@msn-control/liftoff` package is a normal global npm installation beneath
 `npm root --global`. Local dependencies, `npx` cache copies, linked checkouts,
-and other package-manager stores use the documented manual global npm command
-instead. Liftoff never requests elevation.
+and unknown package-manager stores are refused without an automatic manager
+migration. The selected launcher must identify the same canonical package.
+Homebrew-managed Node with an npm prefix is still an **npm** installation, not a
+cask. Native receipts establish local attribution only; approved publisher,
+signing, namespace, source/inventory, deployed asset and minimum-host evidence
+remain prerequisites for native release admission. The bundled native policy
+is currently unqualified, so no public native replacement is advertised.
+Liftoff never requests elevation.
 
 API workloads additionally require their selected Python, Node.js, or Go
 runtime. GenAI uses Python 3.14 and the Python/FastAPI/PydanticAI stack.

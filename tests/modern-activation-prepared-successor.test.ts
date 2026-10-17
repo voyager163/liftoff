@@ -10,6 +10,7 @@ import { projectCatalog } from '../src/application/project/catalog.js';
 import { toSafeProjectName } from '../src/domain/project/planning.js';
 import { createManifestV8ProjectReader } from '../src/domain/project/manifest/v8-project.js';
 import { composeModernManifestPlugins } from '../src/application/project/plugins.js';
+import { modernPreWorkflowRegistry } from '../src/application/project/modern-plugins.js';
 import { readManifestPluginMetadata } from '../src/domain/project/manifest/plugins.js';
 import { buildModernManagedCore, type ModernManagedCoreInput } from '../src/application/project/modern-managed-core.js';
 import { createManifestV8Candidate, type ManagedManifestDecision } from '../src/application/project/manifest-writer.js';
@@ -54,7 +55,7 @@ function targetFor(source: ModernSuccessorSource): ModernSuccessorTarget {
   const resolution = composeModernManifestPlugins({ workload: workload.kind, stack: workload.apiStack, cloud: workload.cloud,
     ...(workload.kind === 'genai' ? { variant: workload.pattern } : {}), workflow: leaf.project.specWorkflow, agents: leaf.project.agents,
     frontend: workload.frontend ? 'included' : 'omitted', governanceProfile: profile, environments: workload.environments },
-  { safeProjectName: toSafeProjectName(leaf.project.name) }).resolution;
+  { safeProjectName: toSafeProjectName(leaf.project.name) }, modernPreWorkflowRegistry()).resolution;
   const plugins = readManifestPluginMetadata({ schemaVersion: 1, resolutionDigest: resolution.digest, selections: resolution.plugins },
     { stack: workload.apiStack, cloud: workload.cloud, workflow: leaf.project.specWorkflow, agents: leaf.project.agents });
   const base: ModernManagedCoreInput = { selection: { ...leaf, profile }, plugins,
@@ -88,6 +89,41 @@ async function hashes(root: string) {
 }
 
 describe('actual pre-admission G1/W1 historical successor candidates', () => {
+  it.each(['wrong-digest', 'unknown-version'] as const)(
+    'refuses an explicit unrecognized historical target plugin tuple: %s', async scenario => {
+      const { root } = await fixture(3), source = await readModernActivationSuccessorSource(root);
+      const target = structuredClone(targetFor(source));
+      if (scenario === 'wrong-digest') Reflect.set(target.plugins, 'resolutionDigest', `sha256:${'f'.repeat(64)}`);
+      else Reflect.set(target.plugins.selections[0], 'contentVersion', 999);
+      await expect(planModernActivationSuccessor(source, target)).rejects.toThrow();
+    });
+
+  it('does not construct an automatic source5 lane even from an explicit current target', async () => {
+    const { root } = await fixture(3), source = await readModernActivationSuccessorSource(root);
+    const before = await hashes(root), original = targetFor(source), leaf = original.selection;
+    const workload = leaf.project.workload;
+    const resolution = composeModernManifestPlugins({
+      workload: workload.kind, stack: workload.apiStack, cloud: workload.cloud,
+      ...(workload.kind === 'genai' ? { variant: workload.pattern } : {}),
+      workflow: leaf.project.specWorkflow, agents: leaf.project.agents,
+      frontend: workload.frontend ? 'included' : 'omitted',
+      governanceProfile: leaf.profile, environments: workload.environments
+    }, { safeProjectName: toSafeProjectName(leaf.project.name) }).resolution;
+    const plugins = readManifestPluginMetadata({
+      schemaVersion: 1, resolutionDigest: resolution.digest, selections: resolution.plugins
+    }, { stack: workload.apiStack, cloud: workload.cloud, workflow: leaf.project.specWorkflow, agents: leaf.project.agents });
+    const input = { selection: original.selection, plugins, activeLayout: original.activeLayout };
+    const core = buildModernManagedCore(input);
+    const target = { ...input, managed: [
+      ...core.map(({ logicalName, category, pathParts, content }) => ({
+        kind: 'bytes' as const, logicalName, category, pathParts, content
+      })),
+      ...original.managed.filter(file => file.kind === 'retire-alias')
+    ] };
+    await expect(planModernActivationSuccessor(source, target)).rejects.toThrow(/lane/);
+    expect(await hashes(root)).toEqual(before);
+  });
+
   it.each(['sourceBinding', 'originalPaths', 'capturedBytes', 'capturedPath', 'targetDecision', 'targetSelection'] as const)(
     'isolates caller %s synchronously before planner validation yields', async field => {
       const { root } = await fixture(3), source = await readModernActivationSuccessorSource(root), target = structuredClone(targetFor(source));
@@ -249,7 +285,7 @@ describe('actual pre-admission G1/W1 historical successor candidates', () => {
     const incomplete = target.managed.filter(entry => entry.logicalName !== 'repository-governance-guide');
     const snapshot = historyRecord(parseHistoryJson(source.indexContent, 'index'), 'index');
     const partial = createManifestV8Candidate({ origin: 'historical-successor', source: raw,
-      profile: 'single-maintainer-gitflow', activeLayout: target.activeLayout, managed: incomplete,
+      profile: 'single-maintainer-gitflow', activeLayout: target.activeLayout, managed: incomplete, targetPlugins: target.plugins,
       sourceManifestHistory: { schemaVersion: 1, kind: 'activation-history', snapshotId: snapshot.snapshotId, indexDigest: rawHistoryDigest(source.indexContent) } });
     expect(partial.manifest.governance.state).toBe('handoff-partial');
     await expect(planModernActivationSuccessor(source, { ...target, managed: incomplete })).rejects.toThrow(/prerequisite/);

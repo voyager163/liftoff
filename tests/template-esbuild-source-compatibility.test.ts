@@ -21,6 +21,7 @@ import { canonicalJson } from '../src/domain/governance/activation/canonical-jso
 import type { ProjectOptions } from '../src/domain/project/contracts.js';
 import type { AssetDigest, PluginResolution, ResolvedPlugin } from '../src/plugins/contracts.js';
 import { modernPreviousRelease } from '../src/plugins/builtin/modern-previous-release.js';
+import { liftoffVersion } from '../src/version.js';
 import { fixture, inventory, write } from './fixtures/manifest-update.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 
@@ -96,7 +97,21 @@ describe('content-only esbuild refresh preserves complete historical source fami
         const before = await inventory(project.root);
         const preview = await previewModernSuccessorUpdate(project.root, input, project.options);
         expect(preview.scope).toBe('core-manifest-maintenance-only');
-        expect(preview.plans.every(plan => plan.writeCount === 0)).toBe(true);
+        const maintained = createManifestV8Candidate({
+          origin: 'maintenance', source: entry.manifest,
+          managed: manifest.managedArtifacts.map(({ logicalName }) => ({ kind: 'retain', logicalName }))
+        }).manifest;
+        expect(maintained).toEqual({ ...manifest, liftoffVersion });
+        const content = Buffer.from(JSON.stringify(maintained, null, 2) + '\n');
+        const operations = manifest.liftoffVersion === liftoffVersion ? [] : [{
+          type: 'write', pathParts: ['liftoff.manifest.json'],
+          contentDigest: createHash('sha256').update(content).digest('hex'),
+          byteLength: content.length, requestedMode: null
+        }];
+        for (const plan of preview.plans) {
+          expect(plan.writeCount).toBe(operations.length);
+          expect(plan.operations).toEqual(operations);
+        }
         const layout = await inspectApplicationLayout(project.root, manifest);
         expect(layout.report.target?.id).toBe('liftoff-active-application-artifacts-v1');
         expect(layout.report.target?.workload).toEqual(manifest.project.workload);
@@ -174,10 +189,10 @@ describe('content-only esbuild refresh preserves complete historical source fami
     expect(canonicalJson(manifest)).toBe(before);
   });
 
-  it('binds the actual installed Node contribution to only the qualified asset refresh', () => {
+  it('binds the actual installed Node contribution to the reviewed dependency refresh', () => {
     const registry = modernSourceRegistry();
     expect(registry.inventory.find(plugin => plugin.id === 'node-fastify')).toMatchObject({
-      contentVersion: 3, contentDigest: 'sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c'
+      contentVersion: 4, contentDigest: 'sha256:741c6dc7221d9178db1ea88dee47c98e3bdb1ba382ba432dc76f277c705feb92'
     });
     const assets = registry.assetsFor({ kind: 'plugin', category: 'stack', id: 'node-fastify' });
     expect(JSON.parse(assets.own['node-backend-package-manifest']).overrides)

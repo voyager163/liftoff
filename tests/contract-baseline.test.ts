@@ -54,6 +54,9 @@ const hostVerified = (comparisonPlatforms as readonly string[]).includes(process
 type Change = {
   surface: string; key: string; task: string; reason: string; baselineSha256: string; currentSha256: string;
   addedVolatilePointers?: string[];
+  versionChange?: { from: string; to: string };
+  priorCurrentSha256?: string;
+  priorChange?: Change;
 };
 
 // Current behavior must equal the frozen capture, or carry an exact reviewed
@@ -113,6 +116,47 @@ describe('frozen 0.12.3 contract baseline provenance', () => {
       expect(entry.surface).toBe('manifest-readers');
       expect(entry.files.length).toBeGreaterThan(0);
     }
+  });
+
+  it.each([
+    { key: 'help', versionParent: '2d7737fcbb345a84b728d21a6e7fcd78de2a4c80eb35c84317852dbb2163af8d',
+      owner: '3490dfa20dc41b4550d1a28d3c3118be049c14566bf9597ee655ee5aa72326c6',
+      parent: 'ac07e503cadf4b9c0d04d7db54925e355778181c2ad86b5a44f4fbc7d17cbf83' },
+    { key: '--help', versionParent: '0979f36b7df9145971b3c2b31df459596896d6e1a469f2624eb347cd098abdc2',
+      owner: '436c803069370a9d88aa5d98c57b538fc544a6d1676930ea33043b7471d4a4f5',
+      parent: '1aaa34033a2e741827206932aed419a044c49a6aab4ef055195655e4c200b16f' }
+  ])('preserves both independently reviewed $key parent chains through source composition', ({ key, versionParent, owner, parent }) => {
+    const versioned = review.changes.find((entry: Change) => entry.surface === 'cli-text' && entry.key === key);
+    expect(versioned.versionChange).toEqual({ from: '0.12.3', to: '0.13.0-dev.0' });
+    expect(sha256(JSON.stringify(versioned.priorChange))).toBe(versionParent);
+    const change = versioned.priorChange;
+    expect(versioned.priorCurrentSha256).toBe(change.currentSha256);
+    expect(versioned.baselineSha256).toBe(change.baselineSha256);
+    expect(sha256(JSON.stringify(change.priorChange))).toBe(owner);
+    expect(sha256(JSON.stringify(change.mergedPriorChange))).toBe(parent);
+    expect(change.priorCurrentSha256).toBe(change.priorChange.currentSha256);
+    expect(change.baselineSha256).toBe(change.priorChange.baselineSha256);
+    expect(change.baselineSha256).toBe(change.mergedPriorChange.baselineSha256);
+  });
+
+  it('preserves the complete review ledger preceding the development-version change', () => {
+    const versioned = review.changes.filter((change: Change) => change.versionChange !== undefined);
+    expect(Object.fromEntries(['cli-text', 'cli-json', 'rendered-artifacts', 'plugin-generation']
+      .map(surface => [surface, versioned.filter((change: Change) => change.surface === surface).length])))
+      .toEqual({ 'cli-text': 3, 'cli-json': 5, 'rendered-artifacts': 16, 'plugin-generation': 165 });
+    for (const change of versioned as Change[]) {
+      expect(change.versionChange).toEqual({ from: '0.12.3', to: '0.13.0-dev.0' });
+      expect(change.priorCurrentSha256).toBe(change.priorChange?.currentSha256 ?? change.baselineSha256);
+    }
+    expect(versioned.filter((change: Change) => !change.priorChange)
+      .map((change: Change) => [change.surface, change.key])).toEqual([['cli-text', '--version']]);
+    const preceding = {
+      ...review,
+      changes: review.changes.flatMap((change: Change) =>
+        change.versionChange ? change.priorChange ? [change.priorChange] : [] : [change])
+    };
+    expect(sha256(`${JSON.stringify(preceding, null, 2)}\n`))
+      .toBe('1274041eb8717f78aa98aa58054327e35d9a651dadeaf3f06f08c55112700ca5');
   });
 });
 

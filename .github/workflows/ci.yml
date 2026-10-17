@@ -23,6 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
@@ -37,12 +38,17 @@ jobs:
         run: npm install --global "npm@12.0.2"
       - name: Install dependencies
         run: npm ci
-      - name: Retrieve the pinned standalone runtime
+      - name: Retrieve pinned runtime and historical client
         shell: bash
         run: |
           url="$(node --input-type=module -e 'import inputs from "./distribution/native/inputs.json" with { type: "json" }; console.log(inputs.runtime.url)')"
           curl --fail --location --proto '=https' --proto-redir '=https' --max-time 180 \
             "$url" --output "$RUNNER_TEMP/liftoff-node-runtime.tgz"
+          curl --fail --location --proto '=https' --proto-redir '=https' --max-time 60 \
+            'https://registry.npmjs.org/@msn-control/liftoff/-/liftoff-0.3.4.tgz' \
+            --output "$RUNNER_TEMP/liftoff-historical-0.3.4.tgz"
+          printf '%s  %s\n' '05793480c44632b3fc01ac98a4f76a73313d8b273afcb30bde5c22de989d69c0' \
+            "$RUNNER_TEMP/liftoff-historical-0.3.4.tgz" | shasum --algorithm 256 --check
       - name: Assemble the development bundle
         run: >-
           npm run build:native -- build
@@ -51,12 +57,40 @@ jobs:
       - name: Qualify actual installed behavior
         shell: bash
         run: |
+          node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-native-bundle" "$RUNNER_TEMP/liftoff-native-archive"
           LIFTOFF_NATIVE_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \
+          LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \
           LIFTOFF_NATIVE_GO_EXECUTABLE="$(command -v go)" \
+          LIFTOFF_NATIVE_PACKAGE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \
+          LIFTOFF_NATIVE_ARCHIVE_ROOT="$RUNNER_TEMP/liftoff-native-archive" \
+          LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/liftoff-node-runtime.tgz" \
           npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \
+            tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \
+            tests/mac-migration-package.test.ts tests/mac-migration-preparation.test.ts \
             --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \
             --reporter=default --reporter=json --outputFile.json=qualification/native-bundle.json
           node scripts/native-bundle.mjs verify-report qualification/native-bundle.json
+          node scripts/native-package-report.mjs qualification/native-bundle.json "$RUNNER_TEMP/liftoff-native-bundle"
+          node scripts/mac-migration-package-report.mjs qualification/native-bundle.json
+          journey="$(node scripts/mac-migration-journey-report.mjs select "$RUNNER_TEMP/liftoff-native-bundle")"
+          case "$journey" in
+            stable-handover) journey_test=tests/mac-migration-journey.test.ts ;;
+            prerelease-refusal) journey_test=tests/mac-migration-prerelease.test.ts ;;
+            *) printf 'Unsupported migration journey outcome: %s\n' "$journey" >&2; exit 1 ;;
+          esac
+          journey_report="qualification/mac-migration-${journey}.json"
+          LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \
+          LIFTOFF_MAC_MIGRATION_HISTORICAL_TARBALL="$RUNNER_TEMP/liftoff-historical-0.3.4.tgz" \
+          npx vitest run "$journey_test" \
+            --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \
+            --reporter=default --reporter=json --outputFile.json="$journey_report"
+          node scripts/mac-migration-journey-report.mjs "$journey_report" "$RUNNER_TEMP/liftoff-native-bundle" "$journey" \
+            > "qualification/mac-migration-${journey}-outcome.json"
+          LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/liftoff-node-runtime.tgz" \
+          npx vitest run tests/workflow-source5-program-content.test.ts \
+            --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \
+            --reporter=default --reporter=json --outputFile.json=qualification/workflow-program-content.json
+          node scripts/check-repository-policy.mjs --workflow-program-report qualification/workflow-program-content.json
       - name: Store development qualification evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -64,7 +98,84 @@ jobs:
           name: liftoff-native-bundle-ci-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             qualification/native-bundle.json
+            qualification/mac-migration-*.json
+            qualification/workflow-program-content.json
             ${{ runner.temp }}/liftoff-native-bundle/bundle.json
+            ${{ runner.temp }}/liftoff-native-archive/
+          if-no-files-found: error
+          retention-days: 14
+
+  qualify-native-platform-packages:
+    name: Native development package (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux-x64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
+          - os: windows-2025
+            target: win32-x64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.21.0"
+          cache: npm
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+      - name: Install dependencies
+        run: npm ci
+      - name: Compile the native Windows launcher
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do call "%%i\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+          cl /nologo /W4 /WX /O2 /MT /Fo:"%RUNNER_TEMP%\liftoff-launcher.obj" /Fe:"%RUNNER_TEMP%\liftoff-launcher.exe" distribution\windows\launcher.c /link /SUBSYSTEM:CONSOLE
+      - name: Retrieve the pinned platform runtime
+        shell: bash
+        run: |
+          url="$(node --input-type=module -e 'import inputs from "./distribution/native/inputs.json" with { type: "json" }; import { nativeRuntimeInput } from "./scripts/native-bundle-contract.mjs"; console.log(nativeRuntimeInput(inputs, {platform:process.platform,architecture:process.arch}).url)')"
+          curl --fail --location --proto '=https' --proto-redir '=https' --max-time 180 \
+            "$url" --output "$RUNNER_TEMP/liftoff-platform-runtime"
+      - name: Prepare pinned Linux qualification userspace
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          image="$(node --input-type=module -e 'import { nativeLinuxUserspaceImages } from "./scripts/native-package-report.mjs"; console.log(nativeLinuxUserspaceImages[process.arch])')"
+          docker pull "$image"
+      - name: Build and qualify the isolated native package
+        shell: bash
+        run: |
+          launcher=()
+          if [ "$RUNNER_OS" = Windows ]; then launcher=(--windows-launcher "$RUNNER_TEMP/liftoff-launcher.exe"); fi
+          npm run build:native -- build --runtime-archive "$RUNNER_TEMP/liftoff-platform-runtime" \
+            --output "$RUNNER_TEMP/liftoff-native-bundle" "${launcher[@]}"
+          node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-native-bundle" "$RUNNER_TEMP/liftoff-native-archive"
+          if [ "$RUNNER_OS" = Linux ]; then export LIFTOFF_NATIVE_DOCKER_EXECUTABLE="$(command -v docker)"; fi
+          LIFTOFF_NATIVE_PACKAGE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \
+          LIFTOFF_NATIVE_ARCHIVE_ROOT="$RUNNER_TEMP/liftoff-native-archive" \
+          npx vitest run tests/native-bundle.test.ts tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \
+            --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \
+            --reporter=default --reporter=json --outputFile.json=qualification/native-platform-package.json
+          node scripts/native-package-report.mjs qualification/native-platform-package.json "$RUNNER_TEMP/liftoff-native-bundle"
+      - name: Store exact-source native development artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: liftoff-native-package-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            qualification/native-platform-package.json
+            ${{ runner.temp }}/liftoff-native-bundle/bundle.json
+            ${{ runner.temp }}/liftoff-native-archive/
           if-no-files-found: error
           retention-days: 14
 
@@ -138,7 +249,7 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: "24.20.0"
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -163,6 +274,14 @@ jobs:
 
       - name: Select supported npm
         run: npm install --global "npm@12.0.2"
+
+      - name: Prepare pinned Linux Docker and Compose
+        if: runner.os == 'Linux'
+        run: node scripts/prepare-ci-local-tools.mjs
+
+      - name: Prepare pinned macOS Docker and Compose
+        if: runner.os == 'macOS'
+        run: node scripts/prepare-ci-local-tools.mjs
 
       - name: Prefer the selected npm distribution on Windows
         if: runner.os == 'Windows'
@@ -225,12 +344,24 @@ jobs:
         run: npx vitest run tests/framework-smoke.test.ts
 
       - name: Verify native Windows process settlement
+        id: windows-process
         if: runner.os == 'Windows' && matrix.shard == 1
         run: >-
           npx vitest run
           tests/windows-job-runner.test.ts tests/repair-preparation.test.ts
           tests/adoption-verification-execution.test.ts
           -t "settles a real native Node command|detects unref descendant|runs exact checks in a disposable copy"
+          --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false
+          --reporter=dot --reporter=json --outputFile.json=qualification/windows-process-tests.json
+
+      - name: Store Windows process settlement evidence
+        if: ${{ !cancelled() && (steps.windows-process.outcome == 'success' || steps.windows-process.outcome == 'failure') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: liftoff-windows-process-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification/windows-process-tests.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Run Windows project and packaging boundary coverage
         id: windows-boundary
@@ -324,11 +455,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: "24.20.0"
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -353,6 +485,14 @@ jobs:
 
       - name: Select supported npm
         run: npm install --global "npm@12.0.2"
+
+      - name: Prepare pinned Linux Docker and Compose
+        if: runner.os == 'Linux'
+        run: node scripts/prepare-ci-local-tools.mjs
+
+      - name: Prepare pinned macOS Docker and Compose
+        if: runner.os == 'macOS'
+        run: node scripts/prepare-ci-local-tools.mjs
 
       - name: Install dependencies
         run: npm ci
@@ -379,6 +519,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7

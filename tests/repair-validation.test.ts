@@ -63,6 +63,9 @@ describe('isolated local repair validation', () => {
     expect(runner.calls.map(({ command }) => command.args[0])).toEqual(['--version', 'fmt', 'init', 'validate']);
     expect(runner.calls[2].command.args).toContain('-backend=false');
     expect(runner.calls[2].command.args).toContain('-lockfile=readonly');
+    expect(rm).toHaveBeenCalledWith(runner.calls[0].options!.cwd!, {
+      recursive: true, force: true, maxRetries: 3, retryDelay: 100
+    });
     for (const call of runner.calls) {
       expect(call.options?.timeoutMs).toBeLessThanOrEqual(120000);
       expect(call.options?.maxOutputBytes).toBeLessThanOrEqual(65536);
@@ -146,8 +149,25 @@ describe('isolated local repair validation', () => {
     const error = await validateRepairCandidate(candidate(), ['dev'], runner).catch((value: unknown) => value);
     roots.push(runner.calls[0].options!.cwd!);
     expect(error).toBeInstanceOf(Error);
-    expect(error).toMatchObject({ message: 'Private OpenTofu staging cleanup failed; no project transaction is authorized.', cause: cleanupError });
+    expect(error).toMatchObject({ message: 'Private OpenTofu staging cleanup failed (EBUSY); no project transaction is authorized.', cause: cleanupError });
+    expect(String(error)).not.toContain('PRIVATE_PROVIDER_PATH');
   });
+
+  it.each(['EACCES', 'EBUSY', 'EMFILE', 'ENFILE', 'ENOTEMPTY', 'EPERM', 'EIO', 'PRIVATE_CLEANUP_CODE'])(
+    'reports only a recognized cleanup error code: %s', async (code) => {
+      const runner = new Runner();
+      const cleanupError = Object.assign(new Error('PRIVATE_PROVIDER_PATH'), { code });
+      vi.mocked(rm).mockRejectedValueOnce(cleanupError);
+      const error = await validateRepairCandidate(candidate(), ['dev'], runner).catch((value: unknown) => value);
+      roots.push(runner.calls[0].options!.cwd!);
+      const detail = code === 'PRIVATE_CLEANUP_CODE' ? '' : ` (${code})`;
+      expect(error).toMatchObject({
+        message: `Private OpenTofu staging cleanup failed${detail}; no project transaction is authorized.`,
+        cause: cleanupError
+      });
+      expect(String(error)).not.toContain('PRIVATE_');
+    }
+  );
 
   it('preserves the primary validation error and cleanup error without exposing private diagnostics', async () => {
     const runner = new Runner({ stdout: '{"valid":false,"error_count":1}' });
@@ -162,7 +182,7 @@ describe('isolated local repair validation', () => {
     expect(error.errors[1]).toBe(cleanupError);
     expect(error.cause).toBe(error.errors[0]);
     expect(error.message).toContain('did not confirm a valid candidate');
-    expect(error.message).toContain('Private staging cleanup also failed');
+    expect(error.message).toContain('Private staging cleanup also failed (EBUSY)');
     expect(error.message).not.toContain('PRIVATE_');
   });
 });

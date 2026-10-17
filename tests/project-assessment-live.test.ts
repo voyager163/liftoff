@@ -309,8 +309,32 @@ describe('private scoped live metadata prototype', () => {
       availability: 'observed',
       value: { complete: true, prefixes: ['hotfix/', 'release/'], refs: ['hotfix/1.0', 'release/1.0'] }
     });
-    expect(runner.providers.filter(endpoint => new URL(endpoint).pathname.endsWith('/branches'))).toHaveLength(2);
+    expect(runner.providers.filter(endpoint => new URL(endpoint).pathname.endsWith('/branches'))
+      .map(endpoint => new URL(endpoint).searchParams.get('page'))).toEqual(['1', '2', '1', '2']);
     expect(runner.providers.some(endpoint => new URL(endpoint).pathname.includes('feature'))).toBe(false);
+  });
+
+  it('preserves unreadable closing family inventory as unknown in the scoped metadata consumer', async () => {
+    const root = await fixture(), runner = new FixtureRunner(root);
+    let inventories = 0;
+    runner.onProvider = async endpoint => {
+      if (new URL(endpoint).pathname.endsWith('/branches') && ++inventories === 2) {
+        runner.denied = { path: `/repos/${repository}/branches`, status: 403 };
+      }
+    };
+
+    const result = await inspectProjectLiveMetadata({
+      root, profile: 'single-maintainer-gitflow', environments: [], runner, now
+    });
+
+    expect(inventories).toBe(2);
+    for (const key of ['github.ref-families', 'github.branches', 'github.checks']) {
+      expect(result.observations[key]).toMatchObject({ availability: 'not-observed' });
+    }
+    expect(result.observations['github.repository']?.availability).toBe('observed');
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'live-denied' }));
+    expect(runner.calls.every(call => ['git', 'gh'].includes(call.command.executable))).toBe(true);
+    expect(await readFile(path.join(root, 'untouched.txt'), 'utf8')).toBe('original application\n');
   });
 
   it('invalidates facts when the exact GitHub binding changes during the read window', async () => {

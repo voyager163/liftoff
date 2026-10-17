@@ -29,6 +29,7 @@ import {
   transitionPlanForPhase,
   validateSavedTransitionPlan,
   type ApprovalEnvelope,
+  type ActivationConfiguration,
   type EvidenceHeader,
   type GovernancePhaseAdapter,
   type GovernanceSourceOfTruthInspection,
@@ -45,6 +46,11 @@ import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import type { CommandResult, CommandRunner, RunCommandOptions } from '../src/process-runner.js';
 import { NodeCommandRunner, formatCommand } from '../src/process-runner.js';
 import { executeRulesetPhase } from '../src/governance-activation/phase-governance.js';
+import type {
+  ProtectedStateCustodyPort,
+  ProtectedStateCustodyRequest,
+  ProtectedStateDisposalRequest
+} from '../src/governance-activation/transition-ports.js';
 import type { ExternalCommand, LiftoffManifest } from '../src/types.js';
 import { loadManifest } from '../src/application/project/manifest.js';
 import {
@@ -56,6 +62,93 @@ const scratchRoot = path.join(process.cwd(), '.cache', `governance-transition-te
 const emptyGitConfig = path.join(scratchRoot, 'empty.gitconfig');
 afterAll(async () => { await rm(scratchRoot, { recursive: true, force: true }); });
 const now = new Date('2026-09-04T00:00:00.000Z');
+const protectedArtifactRef = 'state-workspace:retained/bootstrap.tfstate.enc';
+const protectedKeyRef = 'key-provider:retained';
+const protectedStateInventory = [[
+  'protected-custody',
+  canonicalSha256(protectedArtifactRef)
+]];
+const protectedKeyInventory = [[
+  'protected-custody',
+  canonicalSha256(protectedKeyRef)
+]];
+
+function custodyProof(request: ProtectedStateCustodyRequest) {
+  const body = {
+    kind: 'protected-state-custody.v1' as const,
+    bindingDigest: request.bindingDigest,
+    runnerId: request.runner.id,
+    runnerLabel: request.runner.label,
+    runnerGroupId: request.runner.groupId,
+    networkConfigurationId: request.runner.networkConfigurationId,
+    hostId: `github-hosted-runner:${request.runner.id}`,
+    workspaceRef: 'state-workspace:retained',
+    storageRef: 'protected-storage:retained',
+    keyProviderRef: protectedKeyRef,
+    protectedStorage: 'encrypted-private' as const,
+    keyCustody: 'external-nonexporting' as const,
+    locking: 'azure-blob-lease' as const,
+    writerQuiesced: true as const,
+    plaintextFallback: false as const,
+    disposalSupported: true as const,
+    observedAt: now.toISOString(),
+    expiresAt: '2026-11-04T00:00:00.000Z'
+  };
+  return { ...body, qualificationDigest: canonicalSha256(body) };
+}
+
+function retainedCustody(bindingDigest = 'a'.repeat(64)) {
+  return custodyProof({
+    schemaVersion: 1,
+    bindingDigest,
+    repository: 'owner/repo',
+    runner: {
+      id: 444,
+      label: 'liftoff-runner',
+      groupId: 333,
+      networkConfigurationId: 'NC_fixture'
+    },
+    backendBindingDigest: 'b'.repeat(64),
+    bootstrapBindingDigest: '9'.repeat(64),
+    retentionDays: 30
+  });
+}
+
+function custodyAdapter(hostId?: string): ProtectedStateCustodyPort & {
+  disposalRequests: ProtectedStateDisposalRequest[];
+} {
+  const disposalRequests: ProtectedStateDisposalRequest[] = [];
+  return {
+    disposalRequests,
+    async qualify(request) {
+      const proof = custodyProof(request);
+      if (!hostId) return { status: 'qualified', proof };
+      const changed = { ...proof, hostId };
+      const { qualificationDigest: _qualificationDigest, ...body } = changed;
+      return {
+        status: 'qualified',
+        proof: { ...changed, qualificationDigest: canonicalSha256(body) }
+      };
+    },
+    async dispose(request) {
+      disposalRequests.push(request);
+      const body = {
+        kind: 'protected-state-disposal.v1' as const,
+        remoteImportEvidenceId: request.remoteImportEvidenceId,
+        remoteImportEvidenceDigest: request.remoteImportEvidenceDigest,
+        custodyQualificationDigest: request.custody.qualificationDigest,
+        disposedAt: request.requestedAt,
+        deletedArtifactRefs: request.backups.map((backup) => backup.encryptedStateRef),
+        deletedKeyRefs: [...new Set(request.backups.map((backup) => backup.encryptionKeyRef))],
+        payloadFree: true as const
+      };
+      return {
+        status: 'completed' as const,
+        proof: { ...body, disposalDigest: canonicalSha256(body) }
+      };
+    }
+  };
+}
 const isolatedGitEnvironment = {
   GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: emptyGitConfig, GIT_CONFIG_SYSTEM: emptyGitConfig,
   GIT_CONFIG_COUNT: '0', GIT_CONFIG_PARAMETERS: ''
@@ -143,13 +236,19 @@ async function writeSeed(root: string, projectName: string): Promise<void> {
 }
 
 function emptyPhases(): UserActivationState['phases'] {
-  return Object.fromEntries(phaseIds.map((phaseId) => [phaseId, {
+  return phaseFixtureRecord<UserActivationState['phases'][PhaseId]>(() => ({
     state: 'pending',
     updatedAt: now.toISOString(),
     evidence: [],
     approvals: [],
     blockers: []
-  }])) as UserActivationState['phases'];
+  }));
+}
+
+function phaseFixtureRecord<T>(value: (phaseId: PhaseId) => T): Record<PhaseId, T> {
+  const record = {} as Record<PhaseId, T>;
+  for (const phaseId of phaseIds) record[phaseId] = value(phaseId);
+  return record;
 }
 
 function validState(overrides: Partial<UserActivationState> = {}): UserActivationState {
@@ -243,10 +342,16 @@ function defaultTestRunner(): CommandRunner {
   };
 }
 
-async function writeApproval(root: string, state: UserActivationState, phaseId: PhaseId, runner?: CommandRunner): Promise<ApprovalEnvelope> {
+async function writeApproval(
+  root: string,
+  state: UserActivationState,
+  phaseId: PhaseId,
+  runner?: CommandRunner,
+  activationInputs?: ActivationConfiguration
+): Promise<ApprovalEnvelope> {
   const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === phaseId)!;
   const manifest = await loadManifest(root);
-  const inspection = await inspectionFor({ root, phaseId, state });
+  const inspection = await inspectionFor({ root, phaseId, state, activationInputs });
   const planned = await buildSavedTransitionPlan({ inspection, runner: runner ?? defaultTestRunner(), now });
   const context = activationEvidenceContexts(canonicalPhaseGraph, state, await readActivationInputSnapshot(root, manifest), now)[phaseId];
   const plan = planned
@@ -328,11 +433,11 @@ class Phase0Runner extends ReadyInitRunner {
           args === 'symbolic-ref --quiet --short HEAD' ? 'develop' :
             args === 'remote -v' ? 'origin https://github.com/owner/phase0.git (fetch)\norigin https://github.com/owner/phase0.git (push)' :
               args === 'remote get-url --push --all origin' ? 'https://github.com/owner/phase0.git' : '';
-      return this.result(command, { stdout });
+      return this.phase0Result(command, { stdout });
     }
     if (command.executable === 'gh') {
       this.calls.push(command);
-      return this.result(command, {
+      return this.phase0Result(command, {
         stdout: `HTTP/2.0 200 OK\r\n\r\n${JSON.stringify({
           id: 123,
           full_name: 'owner/phase0',
@@ -347,12 +452,12 @@ class Phase0Runner extends ReadyInitRunner {
     }
     if (command.executable === 'az' && command.args[0] === 'account') {
       this.calls.push(command);
-      return this.result(command, { stdout: '{"id":"sub"}\n' });
+      return this.phase0Result(command, { stdout: '{"id":"sub"}\n' });
     }
     return await super.run(command, options);
   }
 
-  private result(command: ExternalCommand, values: Partial<CommandResult> = {}): CommandResult {
+  private phase0Result(command: ExternalCommand, values: Partial<CommandResult> = {}): CommandResult {
     return {
       command,
       displayCommand: [command.executable, ...command.args].join(' '),
@@ -416,6 +521,7 @@ async function inspectionFor(input: {
   evidence?: readonly PhaseEvidenceRecord[];
   approvals?: readonly ApprovalEnvelope[];
   source?: GovernanceSourceOfTruthInspection;
+  activationInputs?: ActivationConfiguration;
 }): Promise<GovernanceTransitionInspection> {
   const state = input.state ?? validState();
   const manifest = await loadManifest(input.root);
@@ -438,16 +544,17 @@ async function inspectionFor(input: {
     manifest,
     graph: canonicalPhaseGraph,
     graphHash: canonicalPhaseGraphHash,
+    ...(input.activationInputs ? { activationInputs: input.activationInputs } : {}),
     state,
     approvals: input.approvals ?? [],
     evidence,
     contexts,
     readiness: {
       nextReadyPhase: input.phaseId,
-      phases: Object.fromEntries(phaseIds.map((phaseId) => [phaseId, {
+      phases: phaseFixtureRecord<GovernanceTransitionInspection['readiness']['phases'][PhaseId]>((phaseId) => ({
         state: phaseId === input.phaseId ? 'ready' : 'blocked',
         blockers: []
-      }])) as GovernanceTransitionInspection['readiness']['phases']
+      }))
     },
     sourceOfTruth: input.source ?? sourceSelected()
   };
@@ -753,8 +860,14 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
     const inspection = await inspectionFor({
       root, phaseId: 'bootstrap-state-disposed', state, approvals: [approval]
     });
+    const custody = custodyAdapter();
     const result = await import('../src/governance-activation/transitions.js').then(({ executeApplyNext }) =>
-      executeApplyNext({ inspection, reinspect: async () => inspection, now }));
+      executeApplyNext({
+        inspection,
+        reinspect: async () => inspection,
+        now,
+        adapters: { protectedStateCustody: custody }
+      }));
     expect(result.applied).toBe(false);
     expect(result.evidence).toBeNull();
     expect(result.message).toContain('recorded retention inventory');
@@ -901,7 +1014,7 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
     expect(blocked.message).toContain('Skipped, cancelled, and neutral');
   });
 
-  it.each([false, true])('keeps unavailable credential enrollment/readback blocked even with policy metadata present=%s', async (policyPresent) => {
+  it.each([false, true])('keeps a policy file alone from establishing credential readiness present=%s', async (policyPresent) => {
     const root = await writeProject(`credential-${policyPresent}`);
     if (policyPresent) {
       const policy = buildFineGrainedPatCredentialPolicy({
@@ -918,14 +1031,30 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
         statePath: 'none',
         privateStagingDast: false,
         credentialRequired: true
-      }
+      },
+      phaseOutputs: { 'phase-0-complete': { values: { repositoryId: 555 }, resources: [] } }
     });
-    const approval = await writeApproval(root, state, 'credential-ready');
+    state.phases['phase-0-complete'] = {
+      state: 'verified', updatedAt: now.toISOString(), evidence: [], approvals: [], blockers: []
+    };
+    const activationInputs: ActivationConfiguration = {
+      schemaVersion: 1,
+      phases: {
+        'credential-ready': {
+          kind: 'fine-grained-pat',
+          tokenId: 4242,
+          owner: 'octo-owner',
+          appUnavailableReason: 'The organization has no approved preflight App.'
+        }
+      }
+    };
+    const approval = await writeApproval(root, state, 'credential-ready', undefined, activationInputs);
     const inspection = await inspectionFor({
       root,
       phaseId: 'credential-ready',
       state,
-      approvals: [approval]
+      approvals: [approval],
+      activationInputs
     });
     const module = await import('../src/governance-activation/transitions.js');
     const result = await module.executeApplyNext({
@@ -934,8 +1063,7 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
       now
     });
     expect(result.applied).toBe(false);
-    expect(result.message).toMatch(/credential (?:enrollment|readback).*unavailable/i);
-    expect(result.message).not.toContain('secure masked input channel');
+    expect(result.message).toMatch(/explicitly invoked with governance credential-enroll/i);
     expect(result.evidence).toBeNull();
     expect(JSON.stringify(result)).not.toMatch(/github_pat_|gh[pousr]_/);
   });
@@ -966,11 +1094,38 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
     });
     const remoteImport = evidenceRecord('remote-import-verified', state, 'verified', {
       kind: 'remote-import-verified.v1',
-      encryptedStatePathParts: [['infrastructure', 'bootstrap.tfstate.enc']],
-      encryptionKeyPathParts: [['infrastructure', 'bootstrap.key']],
+      bindingDigest: 'a'.repeat(64),
+      backendBindingDigest: 'b'.repeat(64),
+      mappingDigest: '3'.repeat(64),
+      concurrencyDigest: '4'.repeat(64),
+      encryptedStatePathParts: protectedStateInventory,
+      encryptionKeyPathParts: protectedKeyInventory,
       remoteBackendDigest: 'c'.repeat(64),
-      noChangePlanDigest: 'd'.repeat(64)
-    }, [liveProof('remote-import-verified', 'azure', state)]);
+      noChangePlanDigest: 'd'.repeat(64),
+      workflowRunId: 9002,
+      workflowJobId: 9102,
+      headSha: 'e'.repeat(40),
+      runnerId: 444,
+      runnerLabel: 'liftoff-runner',
+      locking: 'azure-blob-lease',
+      targetStatePreviouslyExisted: false,
+      plan: { add: 0, change: 0, destroy: 0 },
+      mappings: [{ resourceType: 'Microsoft.Network/virtualNetworks', resourceId: '/subscriptions/000/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet', disposition: 'import', stateAddress: 'azurerm_virtual_network.bootstrap' }],
+      backups: [{
+        artifactDigest: 'f'.repeat(64),
+        encryptedStateRef: protectedArtifactRef,
+        encryptionKeyRef: protectedKeyRef
+      }],
+      custody: retainedCustody(),
+      publicExistingStateMigration: false
+    }, [{
+      ...liveProof('remote-import-verified', 'github', state),
+      resourceType: 'actions-workflow-run',
+      resourceId: '/repos/owner/repo/actions/runs/9002'
+    }, {
+      ...liveProof('remote-import-verified', 'azure', state),
+      resourceType: 'private-state-backend'
+    }]);
     const remoteReady = await inspectionFor({
       root,
       phaseId: 'remote-ready',
@@ -1007,23 +1162,56 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
     });
     const retainedImport = evidenceRecord('remote-import-verified', retainedForDisposal, 'verified', {
       kind: 'remote-import-verified.v1',
-      encryptedStatePathParts: [['infrastructure', 'bootstrap.tfstate.enc']],
-      encryptionKeyPathParts: [['infrastructure', 'bootstrap.key']],
+      bindingDigest: 'a'.repeat(64),
+      backendBindingDigest: 'b'.repeat(64),
+      mappingDigest: '3'.repeat(64),
+      concurrencyDigest: '4'.repeat(64),
+      encryptedStatePathParts: protectedStateInventory,
+      encryptionKeyPathParts: protectedKeyInventory,
       remoteBackendDigest: 'c'.repeat(64),
-      noChangePlanDigest: 'd'.repeat(64)
-    }, [liveProof('remote-import-verified', 'azure', retainedForDisposal)]);
+      noChangePlanDigest: 'd'.repeat(64),
+      workflowRunId: 9002,
+      workflowJobId: 9102,
+      headSha: 'e'.repeat(40),
+      runnerId: 444,
+      runnerLabel: 'liftoff-runner',
+      locking: 'azure-blob-lease',
+      targetStatePreviouslyExisted: false,
+      plan: { add: 0, change: 0, destroy: 0 },
+      mappings: [{ resourceType: 'Microsoft.Network/virtualNetworks', resourceId: '/subscriptions/000/resourceGroups/rg/providers/Microsoft.Network/virtualNetworks/vnet', disposition: 'import', stateAddress: 'azurerm_virtual_network.bootstrap' }],
+      backups: [{
+        artifactDigest: 'f'.repeat(64),
+        encryptedStateRef: protectedArtifactRef,
+        encryptionKeyRef: protectedKeyRef
+      }],
+      custody: retainedCustody(),
+      publicExistingStateMigration: false
+    }, [{
+      ...liveProof('remote-import-verified', 'github', retainedForDisposal),
+      resourceType: 'actions-workflow-run',
+      resourceId: '/repos/owner/repo/actions/runs/9002'
+    }, {
+      ...liveProof('remote-import-verified', 'azure', retainedForDisposal),
+      resourceType: 'private-state-backend'
+    }]);
     retainedForDisposal.bootstrapState = {
       status: 'retained',
       remoteImportEvidenceId: retainedImport.evidenceId,
       remoteImportEvidenceDigest: evidenceHeaderDigest(retainedImport.header),
       retainedAt: now.toISOString(),
       disposeAfter: '2026-10-04T00:00:00.000Z',
-      encryptedStatePathParts: [['infrastructure', 'bootstrap.tfstate.enc']],
-      encryptionKeyPathParts: [['infrastructure', 'bootstrap.key']]
+      encryptedStatePathParts: protectedStateInventory,
+      encryptionKeyPathParts: protectedKeyInventory
     };
-    await mkdir(path.join(disposalRoot, 'infrastructure'), { recursive: true });
-    await writeFile(path.join(disposalRoot, 'infrastructure', 'bootstrap.tfstate.enc'), 'encrypted-state\n', 'utf8');
-    await writeFile(path.join(disposalRoot, 'infrastructure', 'bootstrap.key'), 'key-id-only\n', 'utf8');
+    retainedForDisposal.phaseOutputs = {
+      ...retainedForDisposal.phaseOutputs,
+      'remote-import-verified': {
+        values: {
+          bootstrapBindingDigest: '9'.repeat(64)
+        },
+        resources: []
+      }
+    };
     const disposalApproval = await writeApproval(disposalRoot, retainedForDisposal, 'bootstrap-state-disposed');
     const disposalInspection = await inspectionFor({
       root: disposalRoot,
@@ -1031,6 +1219,20 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
       state: retainedForDisposal,
       evidence: [retainedImport],
       approvals: [disposalApproval]
+    });
+    const changedCustodyRoot = await writeProject('disposal-changed-custody');
+    const changedCustodyState = structuredClone(retainedForDisposal);
+    const changedCustodyApproval = await writeApproval(
+      changedCustodyRoot,
+      changedCustodyState,
+      'bootstrap-state-disposed'
+    );
+    const changedCustodyInspection = await inspectionFor({
+      root: changedCustodyRoot,
+      phaseId: 'bootstrap-state-disposed',
+      state: changedCustodyState,
+      evidence: [retainedImport],
+      approvals: [changedCustodyApproval]
     });
     const badPathsRoot = await writeProject('disposal-unbound-path');
     await writeFile(path.join(badPathsRoot, 'protected.txt'), 'preserve this file\n');
@@ -1041,21 +1243,45 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
       root: badPathsRoot, phaseId: 'bootstrap-state-disposed', state: badPathsState,
       evidence: [retainedImport], approvals: [badPathsApproval]
     });
+    const protectedCustody = custodyAdapter();
     const refused = await module.executeApplyNext({
-      inspection: badPaths, reinspect: async () => badPaths, now: new Date('2026-10-04T00:00:00.000Z')
+      inspection: badPaths,
+      reinspect: async () => badPaths,
+      now: new Date('2026-10-04T00:00:00.000Z'),
+      adapters: { protectedStateCustody: protectedCustody }
     });
     expect(refused.applied).toBe(false);
     expect(refused.message).toContain('Disposal paths differ');
     expect(await readFile(path.join(badPathsRoot, 'protected.txt'), 'utf8')).toBe('preserve this file\n');
+    const changedCustody = custodyAdapter('github-hosted-runner:999');
+    const custodyRefused = await module.executeApplyNext({
+      inspection: changedCustodyInspection,
+      reinspect: async () => changedCustodyInspection,
+      now: new Date('2026-10-04T00:00:00.000Z'),
+      adapters: { protectedStateCustody: changedCustody }
+    });
+    expect(custodyRefused.applied).toBe(false);
+    expect(custodyRefused.message).toContain('differs from the immutable retained host');
+    expect(changedCustody.disposalRequests).toHaveLength(0);
     const disposed = await module.executeApplyNext({
       inspection: disposalInspection,
       reinspect: async () => disposalInspection,
-      now: new Date('2026-10-04T00:00:00.000Z')
+      now: new Date('2026-10-04T00:00:00.000Z'),
+      adapters: { protectedStateCustody: protectedCustody }
     });
     expect(disposed.applied).toBe(true);
     expect(disposed.evidence?.result).toBe('disposed');
-    expect(await exists(path.join(disposalRoot, 'infrastructure', 'bootstrap.tfstate.enc'))).toBe(false);
-    expect(await exists(path.join(disposalRoot, 'infrastructure', 'bootstrap.key'))).toBe(false);
+    expect(protectedCustody.disposalRequests).toHaveLength(1);
+    expect(protectedCustody.disposalRequests[0]).toMatchObject({
+      custody: {
+        workspaceRef: 'state-workspace:retained',
+        keyProviderRef: protectedKeyRef
+      },
+      backups: [{
+        encryptedStateRef: protectedArtifactRef,
+        encryptionKeyRef: protectedKeyRef
+      }]
+    });
     const deletionEvidence = JSON.parse(await readFile(path.join(disposalRoot, ...disposed.evidence!.pathParts), 'utf8'));
     expect(deletionEvidence.payload).toMatchObject({
       kind: 'bootstrap-state-disposed.v1',

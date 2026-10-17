@@ -167,7 +167,7 @@ async function credentialExpiringCheck(
     severity: 'warn',
     state: 'credential-expiring',
     detail: `credential policy status ${policy.status}; rotation due ${policy.rotationDueAt}; expires ${policy.expiresAt}`,
-    remedy: 'Public credential readiness and enrollment are currently unavailable pending independently verified provider wiring; no public credential enrollment/readback workflow is exposed, and approve/apply-next refuse the blocked credential-ready capability. Expired cloud credentials do not invalidate unrelated local readiness.'
+    remedy: 'Review and approve the exact credential-ready plan, then use governance credential-enroll with a private non-echoing TTY or explicitly selected non-TTY protected stdin. Plain apply-next does not select a credential channel. A policy file alone is not proof; matching current evidence and independent GitHub secret metadata readback are required. Expired cloud credentials do not invalidate unrelated local readiness.'
   };
 }
 

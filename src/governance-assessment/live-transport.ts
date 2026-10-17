@@ -179,7 +179,8 @@ export class LiveTransport {
         if (!runner || runner.organization.toLowerCase() !== repository.owner.toLowerCase() ||
             !Number.isSafeInteger(runner.runnerId) || runner.runnerId <= 0 ||
             !Number.isSafeInteger(runner.groupId) || Number(runner.groupId) <= 0 ||
-            typeof runner.networkConfigurationId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/u.test(runner.networkConfigurationId)) {
+          typeof runner.networkConfigurationId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/u.test(runner.networkConfigurationId) ||
+          typeof runner.label !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/u.test(runner.label)) {
           throw new LiveFailure('unsafe-scope', 'Exact runner, group, network and repository bindings are required.');
         }
         pathname = action === 'runner' ? `/orgs/${repository.owner}/actions/hosted-runners/${runner.runnerId}`

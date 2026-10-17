@@ -117,6 +117,9 @@ class UpgradeRunner implements CommandRunner {
       });
     }
     if (command.args[0] === 'view') {
+      if (command.args[1] === '@msn-control/liftoff') return commandResult(command, {
+        stdout: JSON.stringify({ name: '@msn-control/liftoff', version: '0.0.0' })
+      });
       return commandResult(command, {
         stdout: JSON.stringify({
           name: '@msn-control/liftoff',
@@ -172,7 +175,7 @@ async function harness(values: {
   runnerOptions?: RunnerOptions;
   packageValues?: Parameters<typeof writePackage>[2];
 } = {}) {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-upgrade-test-'));
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff-upgrade-test-')));
   temporaryRoots.push(root);
   const globalRoot = path.join(root, 'global', 'node_modules');
   const packageRoot = expectedGlobalPackageRoot(globalRoot, process.platform);
@@ -208,6 +211,7 @@ async function harness(values: {
     runningPackageRoot: values.runningPackageRoot ?? packageRoot
   };
   const dependencies: Partial<SelfUpgradeDependencies> = {
+    resolveLiftoff: undefined,
     runner,
     lookupStableRelease: lookup,
     makeNeutralDirectory: async () => neutralDirectory,
@@ -241,20 +245,22 @@ async function harness(values: {
 }
 
 describe('self-upgrade state machine', () => {
-  it('returns current in check and apply modes without registry or install calls', async () => {
+  it('returns current only after checking owning-channel availability, without installing', async () => {
     for (const mode of ['check', 'apply'] as const) {
       const fixture = await harness({ mode, targetVersion: '0.7.0' });
       const result = await runSelfUpgrade(fixture.request, fixture.dependencies);
       expect(result).toEqual({
-        schemaVersion: 1,
+        schemaVersion: 2,
         mode,
         status: 'current',
         currentVersion: '0.7.0',
-        reasonCode: 'current'
+        reasonCode: 'current', targetVersion: '0.7.0', installationOwner: 'npm',
+        upstream: { status: 'available', version: '0.7.0' }, channel: { status: 'available', version: '0.7.0' },
+        effects: 'none', verification: 'not-run'
       });
       expect(selfUpgradeExitCode(result)).toBe(0);
       expect(fixture.runner.calls.map(({ command }) => command.args[0]))
-        .toEqual(['root']);
+        .toEqual(['root', 'config', 'config', 'view']);
     }
   });
 
@@ -274,13 +280,15 @@ describe('self-upgrade state machine', () => {
     ]);
     const result = await runSelfUpgrade(fixture.request, fixture.dependencies);
     expect(result).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       mode: 'check',
       status: 'update-available',
       currentVersion: '0.7.0',
       targetVersion: '0.8.0',
       registryKind: 'canonical',
-      reasonCode: 'update_available'
+      reasonCode: 'update_available', installationOwner: 'npm',
+      upstream: { status: 'available', version: '0.8.0' }, channel: { status: 'available', version: '0.8.0' },
+      effects: 'none', verification: 'not-run'
     });
     expect(Object.values(result)).not.toContain(undefined);
     expect(selfUpgradeExitCode(result)).toBe(2);
@@ -336,7 +344,7 @@ describe('self-upgrade state machine', () => {
       DO_NOT_TRACK: '1',
       LIFTOFF_TELEMETRY: '0'
     });
-    expect(fixture.runner.rootCalls).toBe(2);
+    expect(fixture.runner.rootCalls).toBe(4);
   });
 
   it('prefers the effective scoped registry and never consults a mismatched default', async () => {
@@ -648,7 +656,7 @@ describe('self-upgrade state machine', () => {
     const nativeRun = fixture.runner.run.bind(fixture.runner);
     fixture.runner.run = async (command, options) => {
       const result = await nativeRun(command, options);
-      return command.args[0] === 'root' && fixture.runner.rootCalls > 1
+      return command.args[0] === 'root' && fixture.runner.calls.some(call => call.command.args[0] === 'install')
         ? { ...result, stdout: `${otherRoot}\n` }
         : result;
     };

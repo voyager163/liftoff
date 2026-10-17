@@ -85,7 +85,11 @@ async function active(kind: 'current' | 1 | 2 | 3 = 3, outdated = false) {
   const manifest = await currentManifest(stored.root);
   if (manifest.governance.profile === 'none') throw new Error('Expected enabled fixture.');
   const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({ project: manifest.project, framework: manifest.framework });
-  return { ...stored, selection: selected(leaf, manifest.governance.profile), current: manifest };
+  expect(manifest.governance.activationIdentity.activationContractVersion).toBe(kind === 'current' ? 5 : 4);
+  const selection = selected(leaf, manifest.governance.profile, kind === 'current' ? 'current' : 'retained-custody4');
+  expect(selection.plugins).toEqual(manifest.plugins);
+  expect(selection.activeLayout).toEqual(manifest.activeLayout);
+  return { ...stored, selection, current: manifest };
 }
 type ActiveProject = Awaited<ReturnType<typeof active>>;
 function repair(project: ActiveProject) {
@@ -108,6 +112,22 @@ function protectedFiles(files: Awaited<ReturnType<typeof inventory>>) {
 }
 
 describe('actual reviewed active-v8 maintenance', () => {
+  it.each([1, 2, 3] as const)('refuses current5 reselection of a retained family %s without changing recorded intent', async kind => {
+    const project = await active(kind), before = await inventory(project.root), home = await inventory(project.home);
+    const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({
+      project: project.current.project, framework: project.current.framework
+    });
+    const current = selected(leaf, project.selection.selection.profile);
+    expect(current.plugins.resolutionDigest).not.toBe(project.selection.plugins.resolutionDigest);
+    expect(resolveModernManifestV8SourceContract({
+      selection: current.selection, recordedPlugins: current.plugins
+    }).governanceSource).toHaveProperty('identity.activationContractVersion', 5);
+    await expect(previewModernSuccessorUpdate(project.root, current, project.options))
+      .rejects.toThrow(/cannot change the recorded project, framework, profile, plugins or active layout/u);
+    expect(await inventory(project.root)).toEqual(before);
+    expect(await inventory(project.home)).toEqual(home);
+  });
+
   it.each(['current', 1, 2, 3] as const)('keeps compatible %s active sources untouched without approval or duplicate history', async kind => {
     const project = await active(kind), before = await inventory(project.root);
     const preview = await previewModernSuccessorUpdate(project.root, project.selection, project.options);

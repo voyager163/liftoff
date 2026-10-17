@@ -5,8 +5,27 @@ import { readbackProof } from './transition-records.js';
 import { executeBootstrapStateDisposal, remoteImportRetention } from './phase-bootstrap-state.js';
 import { runCommand, commandSucceeded } from './transition-process.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
-import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
 import { AzureDiscoveryError, observeAzurePhase0 } from './azure-discovery.js';
+import {
+  executeAzureProviderReadiness, planAzureProviderReadiness
+} from './azure-provider-readiness.js';
+import { planAzureDeploymentOwnership } from './azure-deployment-ownership.js';
+import {
+  executeAzureStatePathSelection,
+  executeExistingPrivateBackendReadiness,
+  backendSelectionPlanInputs,
+  existingPrivateBackendPlanInputs
+} from './azure-backend-readiness.js';
+import {
+  bootstrapPlanInputs, executeAzureBackendBootstrap
+} from './azure-backend-bootstrap.js';
+import {
+  runnerNetworkPlanInputs
+} from './runner-readiness.js';
+import {
+  applicationPrerequisitePlanInputs, executeApplicationPrerequisites
+} from './application-prerequisites.js';
+import { applicationArtifactBinding } from './application-artifact.js';
 
 function azureSubscriptionId(input: PhasePlanningInput | PhaseAdapterExecutionInput): string | null {
   return input.inspection.activationInputs?.azure?.subscriptionId ??
@@ -57,23 +76,24 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
       };
     }
     case 'provider-ready':
-      return {
-        operations: [
-          azureOperation(input.phase.id, 'azure.provider.ensure-ready', 'azure-provider-register', {
-            providers: ['Microsoft.Resources', 'Microsoft.Storage', 'Microsoft.Network', 'Microsoft.ContainerRegistry', 'Microsoft.ManagedIdentity']
-          }, subId)
-        ]
-      };
+      return planAzureProviderReadiness(input);
     case 'state-path-selected':
       return {
         operations: [
-          azureOperation(input.phase.id, 'azure.state-path.select', 'azure-read', { allowed: ['existing-private', 'bootstrap-local'] }, subId)
+          azureOperation(
+            input.phase.id,
+            'azure.state-path.select',
+            'azure-read',
+            backendSelectionPlanInputs(input),
+            subId
+          )
         ]
       };
     case 'existing-private-path':
       return {
         operations: [
-          azureOperation(input.phase.id, 'azure.existing-private-path.verify', 'azure-read', { statePath: 'existing-private' }, subId, [
+          planAzureDeploymentOwnership(input, subId),
+          azureOperation(input.phase.id, 'azure.existing-private-path.verify', 'azure-read', existingPrivateBackendPlanInputs(input), subId, [
             { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
           ])
         ]
@@ -81,32 +101,47 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
     case 'bootstrap-local':
       return {
         operations: [
-          azureOperation(input.phase.id, 'azure.bootstrap-local.apply', 'azure-network-provision', { boundedLocalBootstrap: true }, subId, [
+          planAzureDeploymentOwnership(input, subId),
+          azureOperation(input.phase.id, 'azure.bootstrap-local.apply', 'azure-network-provision', bootstrapPlanInputs(input), subId, [
             { mutationClass: 'azure-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
           ])
+        ]
+      };
+    case 'runner-ready':
+      return {
+        operations: [
+          planAzureDeploymentOwnership(input, subId),
+          azureOperation(
+            input.phase.id,
+            'azure.runner-network.ensure',
+            'azure-network-provision',
+            runnerNetworkPlanInputs(input),
+            subId,
+            [{
+              mutationClass: 'azure-read',
+              destination: transitionDestination('subscription', subId, { subscriptionId: subId }),
+              remote: true,
+              destructive: false
+            }]
+          )
         ]
       };
     case 'private-backend-proof':
       return {
         operations: [
-          azureOperation(input.phase.id, 'azure.remote-state.read', 'azure-read', { verifyAccess: true }, subId, [
-            { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
-          ])
+          planAzureDeploymentOwnership(input, subId)
         ]
       };
     case 'remote-import-verified':
       return {
         operations: [
-          azureOperation(input.phase.id, 'azure.remote-import.verify', 'azure-state-import', { noChangePlanRequired: true }, subId, [
-            { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
-            { mutationClass: 'backend-state-write', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
-            { mutationClass: 'azure-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
-          ])
+          planAzureDeploymentOwnership(input, subId)
         ]
       };
     case 'remote-ready':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.remote-ready.verify', 'azure-read', { retainBootstrapStateForDays: 30 }, subId, [
             { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
           ])
@@ -115,23 +150,36 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
     case 'application-prerequisites-ready':
       return {
         operations: [
-          azureOperation(input.phase.id, 'azure.prerequisites.apply', 'azure-resource-provision', { acr: true, managedIdentity: true }, subId, [
+          planAzureDeploymentOwnership(input, subId),
+          azureOperation(input.phase.id, 'azure.prerequisites.apply', 'azure-resource-provision', applicationPrerequisitePlanInputs(input), subId, [
             { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
             { mutationClass: 'backend-state-write', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
             { mutationClass: 'azure-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false }
           ]),
-          azureOperation(input.phase.id, 'azure.prerequisites.verify', 'azure-read', { verifyAcr: true }, subId)
+          azureOperation(input.phase.id, 'azure.prerequisites.verify', 'azure-read', {
+            prerequisiteBindingDigest: applicationPrerequisitePlanInputs(input).bindingDigest
+          }, subId)
         ]
       };
     case 'application-artifact-ready':
+    {
+      const binding = applicationArtifactBinding(input);
       return {
         operations: [
-          azureOperation(input.phase.id, 'azure.artifact.readback', 'azure-read', { verifyDigest: true }, subId)
+          planAzureDeploymentOwnership(input, subId),
+          azureOperation(input.phase.id, 'azure.artifact.readback', 'azure-read', {
+            artifactBindingDigest: binding.bindingDigest, sourceSha: binding.sourceSha,
+            registryResourceId: binding.registryId,
+            ...('artifactRecipe' in binding ? { artifactRecipe: binding.artifactRecipe, verifyManifestBytes: true } : { immutableTag: binding.tag }),
+            verifyAttestation: true
+          }, subId)
         ]
       };
+    }
     case 'application-foundation':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.application-foundation.apply', 'azure-resource-provision', { opentofu: true }, subId, [
             { mutationClass: 'backend-state-read', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
             { mutationClass: 'backend-state-write', destination: transitionDestination('subscription', subId, { subscriptionId: subId }), remote: true, destructive: false },
@@ -142,12 +190,14 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
     case 'staging-qualified':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.staging.readback', 'azure-read', { environment: 'staging' }, subId)
         ]
       };
     case 'production-rehearsed':
       return {
         operations: [
+          planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.production-readback', 'azure-read', { environment: 'prod' }, subId)
         ]
       };
@@ -159,6 +209,8 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
 export async function executeAzurePhase(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
   const subscriptionId = azureSubscriptionId(input);
   switch (input.phase.id) {
+    case 'application-prerequisites-ready':
+      return executeApplicationPrerequisites(input);
     case 'phase-0-complete': {
       const operation = input.plan.operations.find((entry) => entry.actionId === 'azure.phase0.discover');
       if (!subscriptionId || !operation) {
@@ -233,13 +285,13 @@ export async function executeAzurePhase(input: PhaseAdapterExecutionInput): Prom
       }
     }
     case 'provider-ready':
+      return executeAzureProviderReadiness(input);
     case 'state-path-selected':
-      // No production executor exists yet; never synthesize provider registration or state-path readback.
-      return {
-        status: 'blocked',
-        blocker: phaseCapabilities[input.phase.id].blocker ?? 'No production executor is available.',
-        completedOperations: []
-      };
+      return executeAzureStatePathSelection(input);
+    case 'existing-private-path':
+      return executeExistingPrivateBackendReadiness(input);
+    case 'bootstrap-local':
+      return executeAzureBackendBootstrap(input);
     case 'remote-ready':
       return remoteImportRetention(input);
     case 'bootstrap-state-disposed':
