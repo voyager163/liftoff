@@ -220,6 +220,13 @@ backend/runner identity and cost. `sourceTransmissionApproved`,
 `dependencyNetworkApproved` and `buildExecutionApproved` must each be explicitly
 true; resource approval alone cannot authorize them. Changed or uncommitted
 customizations are preserved and block rather than being reset or uploaded.
+The same verified principal must independently have registry-scoped effective
+`registries/read`, `registries/listBuildSourceUploadUrl/action`,
+`registries/scheduleRun/action` and `registries/runs/read` permissions in
+`Microsoft.ContainerRegistry`. AcrPush alone cannot schedule a build.
+Missing actions or explicit permission exclusions block before dispatch; the
+producer never grants another role to make a build succeed. Already accepted
+workflow handles remain observation-only and do not require a new build grant.
 The tree is obtained with `git rev-parse <sourceSha>^{tree}` and independently
 checked against both local Git and the provider commit. Runner admission must
 name `<repository>/<workflowPath>@refs/tags/<execution-tag>`, not a branch.
