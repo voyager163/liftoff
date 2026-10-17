@@ -21,6 +21,17 @@ export interface NativeArchiveContract {
   bundleInventory(directory: string): Promise<{ entries: InventoryEntry[]; totalBytes: number; sha256: string }>;
 }
 
+type ArchiveValidationContract = Pick<NativeArchiveContract, 'bundlePath' | 'nativeBundleLimits'>;
+
+export interface NativeArchiveInventory {
+  readonly manifestSha256: string;
+  readonly inventory: Readonly<{
+    entries: readonly Readonly<InventoryEntry>[];
+    totalBytes: number;
+    sha256: string;
+  }>;
+}
+
 type Member =
   | { name: string; kind: 'directory'; mode: number }
   | { name: string; kind: 'file'; mode: number; content: Buffer }
@@ -72,7 +83,7 @@ function pax(bytes: Buffer): Map<string, string> {
   return attributes;
 }
 
-function parseArchive(bytes: Buffer, contract: NativeArchiveContract, check: () => void): Map<string, Member> {
+function parseArchive(bytes: Buffer, contract: ArchiveValidationContract, check: () => void): Map<string, Member> {
   if (bytes.length % 512 !== 0) throw invalid();
   const { nativeBundleLimits: limits } = contract;
   const members = new Map<string, Member>();
@@ -146,7 +157,7 @@ function parseArchive(bytes: Buffer, contract: NativeArchiveContract, check: () 
   throw invalid();
 }
 
-function validateMembers(members: Map<string, Member>, contract: NativeArchiveContract): void {
+function validateMembers(members: Map<string, Member>, contract: ArchiveValidationContract): void {
   for (const member of members.values()) {
     const parent = path.posix.dirname(member.name);
     if (parent !== '.' && members.get(parent)?.kind !== 'directory') throw invalid();
@@ -204,6 +215,72 @@ function inventory(members: Map<string, Member>) {
   return { entries, totalBytes, sha256: hash(JSON.stringify(entries)) };
 }
 
+async function inspectArchive(
+  archive: Buffer, candidate: NativeCandidate, contract: ArchiveValidationContract,
+  signal: AbortSignal, check: () => void
+) {
+  check();
+  if (!/^(?:linux-(?:x64|arm64)|darwin-arm64)$/.test(candidate.target) || !candidate.archiveSha256 ||
+    archive.length === 0 || archive.length > 256 * 1024 * 1024 || hash(archive) !== candidate.archiveSha256) throw invalid();
+  const maximum = contract.nativeBundleLimits.totalBytes + contract.nativeBundleLimits.entries * 16_384 + 8 * 1024 * 1024;
+  const inflateOptions: ZlibOptions & Pick<TransformOptions, 'signal'> = { maxOutputLength: maximum, signal };
+  const members = parseArchive(await decompress(archive, inflateOptions), contract, check);
+  validateMembers(members, contract);
+  const manifestMember = members.get('bundle.json');
+  if (manifestMember?.kind !== 'file' || manifestMember.content.length > 8 * 1024 * 1024 ||
+    hash(manifestMember.content) !== candidate.manifestSha256) throw invalid();
+  const manifest = record(JSON.parse(manifestMember.content.toString('utf8')));
+  const pkg = record(manifest.package), source = record(manifest.source), platform = record(manifest.platform);
+  const expected = inventory(members);
+  if (manifest.schemaVersion !== 1 || manifest.kind !== 'liftoff-native-development-bundle' ||
+    manifest.releaseReady !== true || pkg.name !== '@msn-control/liftoff' || pkg.version !== candidate.version ||
+    source.repository !== 'voyager163/liftoff' || source.commit !== candidate.sourceCommit ||
+    `${platform.platform}-${platform.architecture}` !== candidate.target || manifest.launcher !== 'bin/liftoff' ||
+    record(manifest.runtime).executable !== 'runtime/node' || expected.sha256 !== candidate.inventorySha256 ||
+    expected.totalBytes > contract.nativeBundleLimits.totalBytes || expected.entries.length > contract.nativeBundleLimits.entries) throw invalid();
+  deepStrictEqual(manifest.inventory, expected);
+  for (const name of ['runtime/node', 'bin/liftoff']) {
+    const entry = members.get(name);
+    if (entry?.kind !== 'file' || entry.mode !== 0o755) throw invalid();
+  }
+  check();
+  return { members, expected, manifestMember };
+}
+
+/** Inert byte/inventory comparison only; the caller must independently authenticate the candidate. */
+export async function verifyNativeArchiveInventory(options: {
+  archive: Buffer;
+  candidate: NativeCandidate;
+  contract: ArchiveValidationContract;
+  signal: AbortSignal;
+}): Promise<NativeArchiveInventory> {
+  const started = performance.now();
+  const signal = AbortSignal.any([options.signal, AbortSignal.timeout(selfUpgradeInstallTimeoutMs)]);
+  const check = () => {
+    if (signal.aborted || performance.now() - started >= selfUpgradeInstallTimeoutMs) {
+      throw new SelfUpgradeFailure('failed', 'native_timeout');
+    }
+  };
+  try {
+    check();
+    if (options.archive.length === 0 || options.archive.length > 256 * 1024 * 1024) throw invalid();
+    const archive = Buffer.from(options.archive), candidate = { ...options.candidate };
+    const contract = { bundlePath: options.contract.bundlePath,
+      nativeBundleLimits: Object.freeze({ ...options.contract.nativeBundleLimits }) };
+    const { expected, manifestMember } = await inspectArchive(archive, candidate, contract, signal, check);
+    const observed = Object.freeze({
+      manifestSha256: hash(manifestMember.content),
+      inventory: Object.freeze({ ...expected, entries: Object.freeze(expected.entries.map(entry => Object.freeze(entry))) })
+    });
+    check();
+    return observed;
+  } catch (error) {
+    if (error instanceof SelfUpgradeFailure) throw error;
+    check();
+    throw invalid();
+  }
+}
+
 export async function stageAuthenticatedNativeArchive(options: {
   archive: Buffer;
   signature: Buffer;
@@ -231,28 +308,7 @@ export async function stageAuthenticatedNativeArchive(options: {
       archive.length === 0 || archive.length > 256 * 1024 * 1024 || hash(archive) !== candidate.archiveSha256 ||
       signature.length !== 64 || publicKey.length === 0 || publicKey.length > 4096) throw invalid();
     verifyNativeBytesSignature(archive, signature, publicKey, expectedKeySha256);
-    const maximum = contract.nativeBundleLimits.totalBytes + contract.nativeBundleLimits.entries * 16_384 + 8 * 1024 * 1024;
-    const inflateOptions: ZlibOptions & Pick<TransformOptions, 'signal'> = { maxOutputLength: maximum, signal: operationSignal };
-    const members = parseArchive(await decompress(archive, inflateOptions), contract, check);
-    validateMembers(members, contract);
-    const manifestMember = members.get('bundle.json');
-    if (manifestMember?.kind !== 'file' || manifestMember.content.length > 8 * 1024 * 1024 ||
-      hash(manifestMember.content) !== candidate.manifestSha256) throw invalid();
-    const manifest = record(JSON.parse(manifestMember.content.toString('utf8')));
-    const pkg = record(manifest.package), source = record(manifest.source), platform = record(manifest.platform);
-    const expected = inventory(members);
-    if (manifest.schemaVersion !== 1 || manifest.kind !== 'liftoff-native-development-bundle' ||
-      manifest.releaseReady !== true || pkg.name !== '@msn-control/liftoff' || pkg.version !== candidate.version ||
-      source.repository !== 'voyager163/liftoff' || source.commit !== candidate.sourceCommit ||
-      `${platform.platform}-${platform.architecture}` !== candidate.target || manifest.launcher !== 'bin/liftoff' ||
-      record(manifest.runtime).executable !== 'runtime/node' || expected.sha256 !== candidate.inventorySha256 ||
-      expected.totalBytes > contract.nativeBundleLimits.totalBytes || expected.entries.length > contract.nativeBundleLimits.entries) throw invalid();
-    deepStrictEqual(manifest.inventory, expected);
-    for (const name of ['runtime/node', 'bin/liftoff']) {
-      const entry = members.get(name);
-      if (entry?.kind !== 'file' || entry.mode !== 0o755) throw invalid();
-    }
-    check();
+    const { members, expected, manifestMember } = await inspectArchive(archive, candidate, contract, operationSignal, check);
     const directory = await storage.makeNeutralDirectory();
     writing = true;
     const stat = await lstat(directory);
