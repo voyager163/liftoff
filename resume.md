@@ -5,6 +5,59 @@ another machine. It records the repository state, decisions, validation,
 remaining work, and cautions needed to continue the OpenSpec change
 `modernize-liftoff-platform` without reconstructing the prior conversation.
 
+## Unpublished telemetry suppression, 2026-10-17
+
+Root assigned the terminal EF telemetry correction on exact composed base
+`1287f85e10513be9a403115331bd5d560349ff7d`, tree
+`ed5398ac193e53bae9ef5e8b8c1c0db4ea495b21`. That base was preserving-merged
+without conflicts as `606979de35f78b1212c01bfad492e13d2ca97e98`; sealed `8fb50e2e`
+remains in ancestry and was not rewritten or relabelled as composed evidence.
+
+Bounded correction `cc91c2e822f914e07792981a675f8e8db3fb3b60`, tree
+`37394b9ef4fd6f5b4bd00f468c1406943468cc1c`, preserves
+`0.13.0-dev.0` as an unpublished source version and keeps the existing
+stable/alpha/beta/rc telemetry grammar unchanged:
+
+- Ordinary commands from an unpublished build perform no telemetry disclosure,
+  hook invocation, command event, project observation or transport. Command
+  execution and exit/output semantics remain unchanged.
+- Explicit local telemetry status, enrollment and disablement commands remain
+  usable. Explicit reporting from an unpublished build returns the structured
+  disabled reason `unreleased-cli` without consent reads or transport. Global
+  opt-outs and ordinary CI disablement retain precedence.
+- The legacy `trackCommand` compatibility path also refuses unpublished
+  versions before constructing delivery.
+- A programmatic `telemetryReleaseVersion` observation seam is threaded through
+  the CLI execution context for the actual released-behavior test harness only.
+  It is not a CLI flag or environment override, and every supplied value is
+  checked by the unchanged bounded release-version predicate.
+- Command/project client validators and the telemetry ingestion gateway
+  explicitly reject `dev` versions. No event, storage record, release identity
+  or success-shaped fallback is fabricated.
+
+Exact clean committed bytes passed build; project and gateway no-emit checks;
+395 telemetry-focused CLI/project/semantic tests with three separately owned
+cases excluded; 162 complete gateway validator tests; 29 documentation tests;
+repository policy; strict change validation; and strict all-OpenSpec validation
+(24/24). The excluded cases were rerun together and remain exactly three
+current-version/native-owner expectation failures: two doctor readiness
+aggregation cases in `tests/semantic-command-outcomes.test.ts` and one
+owner-aware upgrade-availability case in
+`tests/project-telemetry-enrollment.test.ts`. Do not change those snapshots or
+owner identities as part of telemetry; Root owns their deliberate `.13-dev`
+expectation correction.
+
+The sealed evidence directory is
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/telemetry-dev-suppression-cc91`.
+`receipt.json` has SHA-256
+`4c00b71e384fbdf966ba1412214e6451365a12764d292db267a31da489296c78`;
+the evidence ledger has SHA-256
+`c0d4eacb82435c4f52733fbcd81d65f8b3063edc59c3e5ec819b4dbe0b5d2b2e`.
+No full suite, V8 coverage, native qualification, cloud action, package
+publication or push ran. No OpenSpec task checkbox changed; progress remains
+87/136. Root should preserve `cc91c2e8` as the telemetry source delta and run
+final composed qualification against its larger source inventory.
+
 ## Shared reconstruction correction, 2026-10-17
 
 This isolated continuation is a bounded shared-core correction rooted directly
@@ -154,10 +207,12 @@ Root EF already contains `28c9` and `75c`; the commits above `75c` here are
 documentation-only. Root therefore needs a fresh combined full and
 source-complete run after preserving integrations.
 
-Terminal EF failure mapping found no missing executable 8fb delta. The genuine
-Root/integration debt is the `.13-dev` version not satisfying the current
-stable/alpha/beta/rc telemetry version contract and version/native-package
-coupled expectations. An initial infrastructure-guide attribution was disproved
+Terminal EF failure mapping found no missing executable 8fb delta. The
+`.13-dev` release-only telemetry incompatibility is corrected by `cc91c2e8`
+above without broadening the accepted version grammar. The version/native
+fixture corrections are separately pinned at `9557f7c4` and `11d133b1`; neither
+carries composed full-suite or V8 credit. An initial infrastructure-guide
+attribution was disproved
 by actual Root observation: all twenty historical previews proposed only a
 `liftoff.manifest.json` writer-version update, not a README/template write.
 Root `c99d98ba7d82d9dd572688cd2af952eb2430d91e` now requires the exact

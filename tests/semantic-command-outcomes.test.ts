@@ -150,7 +150,11 @@ describe('invocation-scoped semantic completion',()=>{
     const fixture=upgradeWorld({currentVersion:'0.12.3',targetVersion:version});
     expect(await runCli({argv:['doctor','--json'],env:{},stdout,stderr:new CaptureStream(),telemetry:h.telemetry,
       execute:(parsed,ctx)=>runCommand(parsed,{...ctx,runner:rejectedRunner,outcome:completion,
-        selfUpgrade:request=>runSelfUpgrade({...request,runningPackageRoot:fixture.request.runningPackageRoot},fixture.dependencies)})})).toBe(0);
+        selfUpgrade:request=>runSelfUpgrade({
+          ...request,
+          currentVersion:fixture.world.currentVersion,
+          runningPackageRoot:fixture.request.runningPackageRoot
+        },fixture.dependencies)})})).toBe(0);
     expect(completion.finish(0)).toBe(version==='0.12.3'?'success':'attention-required');
     expect(JSON.parse(stdout.text()).summary).toEqual({failures:0,warnings:version==='0.12.3'?0:1});
     expect(h.events).toEqual([]);expect(h.legacy).not.toHaveBeenCalled();expect(h.telemetry.beforeCommand).not.toHaveBeenCalled();
