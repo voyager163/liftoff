@@ -137,6 +137,7 @@ built bundle:
 LIFTOFF_NATIVE_BUNDLE_ROOT=/absolute/path/outside-the-checkout/new-liftoff-bundle \
 LIFTOFF_NATIVE_GO_EXECUTABLE="$(command -v go)" \
 LIFTOFF_NATIVE_PACKAGE_ROOT=/absolute/path/outside-the-checkout/new-liftoff-bundle \
+LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE=/absolute/path/to/the-pinned-standalone-node-archive \
 npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \
 tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \
   --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \
@@ -148,6 +149,13 @@ node scripts/native-package-report.mjs qualification/native-bundle.json \
 
 The original report gate requires all eleven Apple Silicon installed cases to pass;
 the cross-platform report gate additionally requires every common/applicable case.
+The macOS CI lane also selects its checksum-pinned downloaded runtime for the
+separate original-program control. That control makes two actual private builds,
+retains invocation-owned references and checks installed/runtime-reference
+replacement rejection. A prebuilt bundle or installed npm smoke does not replace
+it. Its unset selector is a named unrun control, not original-program
+qualification. CI policy rejects an absent selector or a different archive path;
+the existing twenty-minute job and five-minute case deadlines are unchanged.
 An unset bundle variable
 skips the opt-in suite and cannot qualify a bundle. Startup and planning use an empty
 PATH outside the checkout. Real Manual Go initialization uses the explicitly selected

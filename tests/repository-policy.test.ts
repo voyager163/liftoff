@@ -191,7 +191,8 @@ describe('source repository setup policy', () => {
   it.each([
     'missing', 'conditional', 'runner', 'node', 'architecture', 'go', 'install', 'download',
     'build', 'filtered', 'unset-bundle', 'unset-migration-bundle', 'wrong-migration-bundle', 'missing-migration-cases',
-    'skip-migration-report', 'unset-archive', 'archive-after-tests', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
+    'skip-migration-report', 'unset-archive', 'unset-program-runtime', 'wrong-program-runtime',
+    'archive-after-tests', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
   ])('rejects incomplete runtime-inclusive qualification: %s', async fault => {
     const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-bundle'];
     if (fault === 'missing') delete workflow.jobs['qualify-native-bundle'];
@@ -212,6 +213,11 @@ describe('source repository setup policy', () => {
     if (fault === 'missing-migration-cases') job.steps[7].run = job.steps[7].run.replace(/^  tests\/mac-migration-package.test.ts.*\n/m, '');
     if (fault === 'skip-migration-report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/mac-migration-package-report.mjs.*\n/m, '');
     if (fault === 'unset-archive') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_ARCHIVE_ROOT', 'UNSELECTED_ARCHIVE');
+    if (fault === 'unset-program-runtime') job.steps[7].run = job.steps[7].run.replace(
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE', 'UNSELECTED_PROGRAM_RUNTIME');
+    if (fault === 'wrong-program-runtime') job.steps[7].run = job.steps[7].run.replace(
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/liftoff-node-runtime.tgz"',
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/unverified-runtime.tgz"');
     if (fault === 'archive-after-tests') {
       const archive = job.steps[7].run.split('\n')[0];
       job.steps[7].run = job.steps[7].run.slice(archive.length + 1) + archive + '\n';

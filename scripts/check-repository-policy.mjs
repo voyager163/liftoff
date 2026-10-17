@@ -140,6 +140,7 @@ export function nativeBundleQualificationJob() {
         'LIFTOFF_NATIVE_GO_EXECUTABLE="$(command -v go)" \\',
         'LIFTOFF_NATIVE_PACKAGE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
         'LIFTOFF_NATIVE_ARCHIVE_ROOT="$RUNNER_TEMP/liftoff-native-archive" \\',
+        'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/liftoff-node-runtime.tgz" \\',
         'npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \\',
         '  tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \\',
         '  tests/mac-migration-package.test.ts tests/mac-migration-preparation.test.ts \\',
