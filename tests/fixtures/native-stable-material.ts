@@ -76,5 +76,6 @@ export function signedMaterial(target = 'linux-x64') {
     material.qualification = json(qualification);
     material.signature = sign(null, material.qualification, key.privateKey);
   };
-  return { material, policy, record, qualification, assets, platformEvidence, resign };
+  const resignArchive = () => { material.archiveSignature = sign(null, assets.get(archive)!, archiveKey.privateKey); };
+  return { material, policy, record, qualification, assets, platformEvidence, resign, resignArchive };
 }

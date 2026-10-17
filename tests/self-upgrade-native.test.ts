@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { NodeCommandRunner, type CommandRunner } from '../src/process-runner.js';
 import { defaultSelfUpgradeDependencies } from '../src/adapters/distribution/upgrade-host.js';
-import { bundleInventory } from '../scripts/native-bundle-contract.mjs';
+import { bundleInventory, nativeArchiveTool } from '../scripts/native-bundle-contract.mjs';
 import { inspectOwnedInstallation, installOwnedBundle } from '../scripts/native-install.mjs';
 import { runSelfUpgrade } from '../src/application/upgrade/self-upgrade.js';
 import { cliInstallationLayer } from '../src/application/diagnose/doctor.js';
@@ -185,6 +185,67 @@ async function ownedBundle(version = '0.12.3') {
 }
 
 describe.skipIf(process.platform === 'win32')('native adapter on explicit private receipt-owned fixtures', () => {
+  it.each(['check', 'apply', 'invalid archive'] as const)(
+    'composes independently signed archive observation and private staging for %s without a pre-extracted root', async mode => {
+      const original = await ownedBundle();
+      const next = await ownedBundle('0.13.0');
+      const signed = signedMaterial();
+      delete signed.material.bundleRoot;
+      signed.record.manifestSha256 = next.expectedManifestSha256;
+      signed.record.inventorySha256 = next.manifest.inventory.sha256;
+      if (mode !== 'invalid archive') {
+        const filename = path.join(next.root, 'candidate.tar.gz');
+        const result = await new NodeCommandRunner().run({
+          executable: nativeArchiveTool(), args: ['--no-xattrs', '-czf', filename, '-C', next.source, '.']
+        }, { cwd: next.root, env: { PATH: '/usr/bin:/bin', HOME: next.root, COPYFILE_DISABLE: '1', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0' },
+          inheritEnvironment: false, ensureProcessTreeSettled: true, timeoutMs: 15_000, maxOutputBytes: 8192 });
+        expect(result).toMatchObject({ status: 0, timedOut: false, signal: null });
+        signed.assets.set(signed.record.files[0].filename, await readFile(filename));
+      }
+      const provenance = JSON.parse(signed.assets.get('provenance.json')!.toString());
+      provenance.subject[0].digest.sha256 = hash(signed.assets.get(signed.record.files[0].filename)!);
+      signed.assets.set('provenance.json', json(provenance));
+      const sbom = JSON.parse(signed.assets.get('sbom.cdx.json')!.toString());
+      sbom.properties[1].value = signed.record.inventorySha256;
+      signed.assets.set('sbom.cdx.json', json(sbom));
+      for (const file of signed.record.files) {
+        file.bytes = signed.assets.get(file.filename)!.length;
+        file.sha256 = hash(signed.assets.get(file.filename)!);
+      }
+      Object.assign(signed.qualification, signed.record);
+      signed.resign();
+      signed.resignArchive();
+      const readStable = vi.fn(async () => signed.material);
+      const makeNeutralDirectory = original.dependencies.makeNeutralDirectory;
+      const scratch: string[] = [];
+      const dependencies = {
+        ...original.dependencies,
+        readJson: async (file: string) => file.endsWith('release-policy.json')
+          ? signed.policy : JSON.parse(await readFile(file, 'utf8')),
+        makeNeutralDirectory: async () => {
+          const directory = await makeNeutralDirectory();
+          scratch.push(directory);
+          ownedRoots.push(directory);
+          return directory;
+        }
+      };
+      const port = createNativeUpgradePort(dependencies, { stable: { readStable } });
+      const request = upgradeWorld({ mode: mode === 'check' ? 'check' : 'apply' }).request;
+      request.runningPackageRoot = original.packageRoot;
+      const result = await runSelfUpgrade(request, { ...dependencies, nativeUpgrade: port });
+      expect(result).toMatchObject(mode === 'check'
+        ? { status: 'update-available', effects: 'none', verification: 'not-run' }
+        : mode === 'apply' ? { status: 'upgraded', effects: 'installed', verification: 'verified' }
+        : { status: 'failed', reasonCode: 'native_invalid', effects: 'none', verification: 'not-run' });
+      expect(readStable).toHaveBeenCalledTimes(mode === 'check' ? 2 : 4);
+      expect(scratch).toHaveLength(mode === 'apply' ? 2 : 1);
+      for (const directory of scratch) await expect(lstat(directory)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await inspectOwnedInstallation(original.prefix)).toBe(mode === 'apply'
+        ? `versions/0.13.0-${next.expectedManifestSha256}` : original.installed.current);
+      expect((await lstat(original.bundleRoot)).isDirectory()).toBe(true);
+    }, 30_000
+  );
+
   it('proves the supplied native verification environment reaches actual children without ambient reinheritance', async () => {
     const fixture = await ownedBundle();
     vi.stubEnv('LIFTOFF_NATIVE_PARENT_ONLY_FIXTURE', 'fixture-parent-only');

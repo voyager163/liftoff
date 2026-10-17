@@ -127,6 +127,11 @@ The installed `installation/native-install.mjs recover` requires the selected
 `.native-install-lock/owner.json` SHA-256 for a positively dead process. Active,
 unknown or changed locks and foreign/racing paths are retained. Do not delete
 version-manager directories or sweep the prefix.
+Linux archive staging also retains failed private material instead of sweeping
+temporary directories. An archive/signature, TAR member, source or inventory
+refusal before the owning installer starts has `effects: none`; retain that
+distinction from an installer failure with possible effects. No extracted runtime
+is launched merely to decide whether an archive is safe.
 
 Offline/timeout, invalid metadata, selected-channel lag and channel absence are
 distinct from current. Doctor reports these explicitly without losing local

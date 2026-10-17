@@ -18,7 +18,7 @@ const invalid = { reasonCode: 'native_invalid' };
 const latest = `${nativeFixtureApi}/releases/latest`;
 
 describe('bounded read-only native stable transport', () => {
-  it('wires the qualified default reader through independent archive admission without inferring manager availability or a staging root', async () => {
+  it('independently reobserves the signed Linux archive channel without creating a staging root or accepting an unverified owner', async () => {
     const world = nativeTransportFixture();
     vi.stubGlobal('fetch', world.fetch);
     const host = upgradeWorld();
@@ -26,9 +26,41 @@ describe('bounded read-only native stable transport', () => {
     const candidate = await port.stable(nativeInstallation, '/virtual/neutral');
     expect(candidate).toMatchObject({ version: '0.13.0', target: 'linux-x64', sourceCommit: world.record.commit });
     expect(candidate).not.toHaveProperty('bundleRoot');
-    await expect(port.channel(nativeInstallation, candidate, '/virtual/neutral')).rejects.toMatchObject({ reasonCode: 'channel_unavailable' });
-    await expect(port.apply(nativeInstallation, candidate, '/virtual/neutral')).rejects.toMatchObject({ reasonCode: 'manual_handoff' });
+    await expect(port.channel(nativeInstallation, candidate, '/virtual/neutral')).resolves.toMatchObject({
+      status: 'available', version: candidate.version, artifactSha256: candidate.archiveSha256, exactApply: true
+    });
+    expect(world.fetch.mock.calls.filter(([url]) => String(url).endsWith('.tar.gz'))).toHaveLength(2);
+    await expect(port.apply(nativeInstallation, candidate, '/virtual/neutral')).rejects.toMatchObject({
+      reasonCode: 'native_invalid', effects: 'none'
+    });
     expect(host.world.trace.filter(event => 'run' in event || 'installCommand' in event)).toEqual([]);
+  });
+
+  it('preserves an explicit Linux channel-reader disable instead of inferring availability', async () => {
+    const world = nativeTransportFixture();
+    vi.stubGlobal('fetch', world.fetch);
+    const host = upgradeWorld();
+    const port = createNativeUpgradePort({ ...host.dependencies, readJson: async () => world.policy }, { channel: undefined });
+    const candidate = await port.stable(nativeInstallation, '/virtual/neutral');
+    world.fetch.mockClear();
+    await expect(port.channel(nativeInstallation, candidate, '/virtual/neutral'))
+      .rejects.toMatchObject({ reasonCode: 'channel_unavailable' });
+    expect(world.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(['offline', 'invalid', 'changed policy'] as const)('keeps a second Linux %s observation distinct from current', async kind => {
+    const world = nativeTransportFixture();
+    vi.stubGlobal('fetch', world.fetch);
+    const host = upgradeWorld();
+    const port = createNativeUpgradePort({ ...host.dependencies, readJson: async () => world.policy });
+    const candidate = await port.stable(nativeInstallation, '/virtual/neutral');
+    if (kind === 'offline') world.responses.set(latest, () => new Response('', { status: 503 }));
+    if (kind === 'invalid') world.material.signature[0] ^= 1;
+    if (kind === 'changed policy') world.policy.linux.archiveSigningKeySha256 = '0'.repeat(64);
+    if (kind === 'invalid') world.refresh();
+    await expect(port.channel(nativeInstallation, candidate, '/virtual/neutral')).rejects.toMatchObject({
+      reasonCode: kind === 'offline' ? 'channel_unavailable' : kind === 'invalid' ? 'channel_invalid' : 'channel_changed'
+    });
   });
 
   it('preserves an explicit stable-reader disable override', async () => {

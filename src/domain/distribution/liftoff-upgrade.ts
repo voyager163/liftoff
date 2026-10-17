@@ -131,7 +131,8 @@ export class SelfUpgradeFailure extends Error {
   constructor(
     readonly status: 'blocked' | 'failed',
     readonly reasonCode: SelfUpgradeReasonCode,
-    readonly registryKind?: SelfUpgradeRegistryKind
+    readonly registryKind?: SelfUpgradeRegistryKind,
+    readonly effects?: 'none' | 'possible' | 'installed'
   ) {
     super(reasonCode);
     this.name = 'SelfUpgradeFailure';

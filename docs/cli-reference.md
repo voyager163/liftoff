@@ -1130,6 +1130,11 @@ WinGet handoff outside the running executable, with a new shell and postverifica
 Homebrew cannot pin a cask upgrade to the reviewed version, so no unbound brew
 upgrade is executed. Linux source reuses receipt-bound immutable version
 replacement and exact journal/selected-dead-lock recovery, never prefix sweeps.
+Its default source independently reobserves the authenticated exact archive
+channel. Apply stages a bounded signed snapshot, validates all TAR members and
+the exact manifest/inventory without executing extracted code, then rechecks the
+owner before the existing installer runs. Failed private stages remain available
+for review; a staging refusal before installation reports `effects: none`.
 These are source interfaces, not a declaration of qualified native availability.
 For native receipts, equal package versions are not enough: differing source,
 manifest or inventory identity reports `native_identity_mismatch`, not current.
