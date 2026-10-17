@@ -271,7 +271,6 @@ export async function prepareWindowsJobInteropAssembly(options: {
       cleanup
     };
   } catch (error) {
-    disposeStopWatch();
     operationAbort.abort();
     if (reservation?.kind === 'producer') {
       reservation.fail(new Error('Windows Job interop preparation did not reach authenticated readiness.'));
@@ -279,7 +278,21 @@ export async function prepareWindowsJobInteropAssembly(options: {
     const cleanupPending = pending.size > 0;
     const cleanupPromise = cleanup();
     let cleanupStatus: 'complete' | 'failed' | 'pending' = 'pending';
-    if (!cleanupPending) cleanupStatus = await cleanupPromise ? 'complete' : 'failed';
+    try {
+      if (!cleanupPending) {
+        if (!directory) cleanupStatus = 'complete';
+        else {
+          cleanupStatus = await Promise.race([
+            cleanupPromise.then((cleaned): 'complete' | 'failed' => cleaned ? 'complete' : 'failed'),
+            stoppedPromise
+          ]);
+        }
+      }
+    } catch (cleanupError) {
+      if (!(cleanupError instanceof WindowsJobInteropPreparationStoppedError)) throw cleanupError;
+    } finally {
+      disposeStopWatch();
+    }
     return {
       ok: false,
       reason: error instanceof WindowsJobInteropPreparationStoppedError ? error.reason : 'failed',

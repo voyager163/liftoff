@@ -130,9 +130,9 @@ Controller protocol fixtures use native
 PowerShell launchers on Windows and POSIX launchers on macOS/Linux; passing a
 mock protocol case is not evidence of native Job Object settlement. The separate
 Windows-only smoke case runs the packaged controller against a real Node process
-within the existing execution deadline. The controller explicitly loads the
-built-in compiler module from `PSHOME`, without inheriting an ambient module
-search path or bypassing execution policy.
+within the existing execution deadline. The controller binds built-in cmdlets
+by the exact Utility assembly identity, without ambient module discovery or
+bypassing execution policy.
 
 For timed invocations, the Windows supervisor bounds controller startup and
 authenticated admission separately at 15 seconds. After the single valid admission acknowledgement, it
@@ -141,6 +141,15 @@ settlement grace. Cold PowerShell/C# startup cannot consume a short target's
 settlement window. Missing readiness, acknowledgement or terminal proof still
 fails closed; the supervisor never treats its own timeout as kernel settlement.
 This does not increase test or CI job deadlines.
+
+Only packaged/default PowerShell invocations can reuse process-local compiled
+Win32 bytes, captured after authenticated readiness. Each invocation gets a fresh
+private copy and retains its own admission and settlement checks; custom
+overrides use inline compilation. Cache waiting and file preparation consume the
+existing startup budget. After preparation fails, waiting for cleanup respects
+that same deadline and cancellation: the original failure returns with pending
+cleanup, late work is drained before disposal, and cleanup failure is reported.
+The first cold compile and genuine Windows qualification remain separate gates.
 
 Local Compose observation binds the plugin executable separately from Docker.
 The finite prefix-relative candidates use `docker-compose.exe` on Windows and

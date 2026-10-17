@@ -124,7 +124,33 @@ function restorePreInteropReuseController(controller: string): string {
   return removeSourceRange(restored, branchStart, branchEnd).replace(branchEnd, compile + branchEnd);
 }
 
+function restorePreCleanupDeadlineRunner(runner: string): string {
+  return runner
+    .replace(
+      '  } catch (error) {\n    operationAbort.abort();\n    if (reservation?.kind',
+      '  } catch (error) {\n    disposeStopWatch();\n    operationAbort.abort();\n    if (reservation?.kind'
+    )
+    .replace([
+      '    try {',
+      '      if (!cleanupPending) {',
+      "        if (!directory) cleanupStatus = 'complete';",
+      '        else {',
+      '          cleanupStatus = await Promise.race([',
+      "            cleanupPromise.then((cleaned): 'complete' | 'failed' => cleaned ? 'complete' : 'failed'),",
+      '            stoppedPromise',
+      '          ]);',
+      '        }',
+      '      }',
+      '    } catch (cleanupError) {',
+      '      if (!(cleanupError instanceof WindowsJobInteropPreparationStoppedError)) throw cleanupError;',
+      '    } finally {',
+      '      disposeStopWatch();',
+      '    }'
+    ].join('\n'), "    if (!cleanupPending) cleanupStatus = await cleanupPromise ? 'complete' : 'failed';");
+}
+
 function restore33d8IntakeCorrectionRunner(runner: string): string {
+  runner = restorePreCleanupDeadlineRunner(runner);
   return runner
     .replace([
       '    reservation = await runOperation(',
@@ -664,6 +690,78 @@ describe('Windows Job interop assembly reuse', () => {
     expect(result).toMatchObject({ ok: false, reason: 'failed', cleanupStatus: 'failed' });
     expect(await result.cleanup).toBe(false);
   });
+
+  it.each(['timeout', 'abort'] as const)(
+    'quarantines unsettled cleanup after a real write failure when %s stops preparation',
+    async (stopReason) => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-interop-cleanup-wait-'));
+      tempDirs.push(directory);
+      await mkdir(path.join(directory, 'Win32JobNative.dll'));
+      const cache = new WindowsJobInteropAssemblyCache();
+      const producer = await cache.reserve(identity);
+      if (producer.kind !== 'producer') throw new Error('Expected an interop producer.');
+      producer.publish(Buffer.from([0x4d, 0x5a, 0x01]));
+      const abort = new AbortController();
+      let releaseCleanup!: () => void;
+      const heldCleanup = new Promise<void>((resolve) => { releaseCleanup = resolve; });
+      let reportCleanup!: () => void;
+      const cleanupStarted = new Promise<void>((resolve) => { reportCleanup = resolve; });
+      let actualWriteFailed = false;
+      let cleanupFinished = false;
+      const operations: WindowsJobInteropPreparationOperations = {
+        createPrivateDirectory: async () => directory,
+        writePrivateFile: async (file, bytes, signal) => {
+          try {
+            await writeFile(file, bytes, { flag: 'wx', mode: 0o600, signal });
+          } catch (error) {
+            actualWriteFailed = true;
+            throw error;
+          }
+        },
+        removePrivateDirectory: async (selected) => {
+          expect(selected).toBe(directory);
+          reportCleanup();
+          await heldCleanup;
+          await rm(selected, { recursive: true });
+          cleanupFinished = true;
+          return true;
+        }
+      };
+      const preparing = prepareWindowsJobInteropAssembly({
+        identity,
+        startupTimeoutMs: stopReason === 'timeout' ? 250 : 1_000,
+        signal: abort.signal,
+        cache,
+        operations
+      });
+      let waitTimer: NodeJS.Timeout | undefined;
+      try {
+        await cleanupStarted;
+        expect(actualWriteFailed).toBe(true);
+        const stoppedAt = performance.now();
+        if (stopReason === 'abort') abort.abort();
+        const result = await Promise.race([
+          preparing,
+          new Promise<'not-returned'>((resolve) => {
+            waitTimer = setTimeout(() => resolve('not-returned'), 2_000);
+          })
+        ]);
+        expect(result).not.toBe('not-returned');
+        if (result === 'not-returned') throw new Error('Preparation did not return while cleanup remained unsettled.');
+        if (stopReason === 'abort') expect(performance.now() - stoppedAt).toBeLessThan(500);
+        expect(result).toMatchObject({ ok: false, reason: 'failed', cleanupStatus: 'pending' });
+        expect(cleanupFinished).toBe(false);
+        releaseCleanup();
+        expect(await result.cleanup).toBe(true);
+        expect(cleanupFinished).toBe(true);
+      } finally {
+        if (waitTimer) clearTimeout(waitTimer);
+        releaseCleanup();
+        const result = await preparing;
+        await result.cleanup;
+      }
+    }
+  );
 });
 
 describe('Windows Job Object controller asset integrity and host environment', () => {
@@ -821,6 +919,14 @@ describe('Windows Job Object controller asset integrity and host environment', (
     );
     expect(createHash('sha256').update(runner).digest('hex'))
       .toBe('ab2108d255c7f664f31654f204255cdc8f59150d4d0009e51a0b7152df46a746');
+  });
+
+  it('restores exact 8cdf runner bytes by removing only the cleanup wait deadline correction', async () => {
+    const runner = restorePreCleanupDeadlineRunner(
+      await readFile(path.join(process.cwd(), 'src/adapters/process/windows-job-runner.ts'), 'utf8')
+    );
+    expect(createHash('sha256').update(runner).digest('hex'))
+      .toBe('5d8bfc5250bb30760a6ad8cd55121f4662242bf0920ed65fad069d81351df172');
   });
 
   it('restores exact 33d8 runner bytes by removing only the producer-release and close correction', async () => {
