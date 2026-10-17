@@ -78,7 +78,9 @@ function freshness(id: string, expectedSince: number, rows: Observation[], at = 
   const heartbeats = retained(rows).filter((row) => row.ProjectId === id && row.Source === 'ci-heartbeat');
   const last = heartbeats.length ? Math.max(...heartbeats.map((row) => row.TimeGenerated)) : null;
   const due = Math.max(expectedSince, last ?? expectedSince) + 40 * day;
-  return { last, due, overdue: at > due };
+  const overdue = expectedSince <= at && at > due;
+  const state = expectedSince > at ? 'pending' : last === null ? 'unknown' : overdue ? 'stale' : 'within grace';
+  return { last, due, overdue, state };
 }
 
 interface Diagnostic { Severity: string; Message: string }
@@ -109,9 +111,10 @@ function diagnostics(query: string) {
     .filter((diagnostic) => diagnostic.Severity === 'Error').map((diagnostic) => diagnostic.Message);
 }
 
-function renderQuery(query: string, days: number, expectations = '') {
+function renderQuery(query: string, days: number, expectations = '', configuration = 'unknown') {
   return query.replaceAll('@synthetic_ids@', JSON.stringify([ids.synthetic]))
-    .replaceAll('@expected_heartbeats@', expectations).replaceAll('${window_days}', String(days));
+    .replaceAll('@expected_heartbeats@', expectations).replaceAll('@reporting_configuration@', configuration)
+    .replaceAll('${window_days}', String(days));
 }
 
 describe('native Grafana source and exact KQL schema', () => {
@@ -170,6 +173,33 @@ describe('native Grafana source and exact KQL schema', () => {
     const catalog = await Promise.all((await readdir(queries)).map((file) => readFile(path.join(queries, file), 'utf8')));
     expect(catalog.join('\n')).not.toMatch(/isfuzzy|column_ifexists|ClientTimestamp|client_timestamp|Request|IPAddress/);
   });
+
+  it('renders explicit monthly configuration and empty/future-only expectation states instead of an ambiguous missing row', async () => {
+    const query = await readFile(path.join(queries, 'freshness.kql'), 'utf8');
+    expect(query).toContain('let reportingConfiguration = "@reporting_configuration@";');
+    expect(query).toContain('let evaluated = expected');
+    expect(query).toContain('unconfigured - no eligible expected reporting');
+    expect(query).toContain('ExpectedSince > now(), "pending - monitoring starts in the future"');
+    expect(query).toContain('where toscalar(expected | count) == 0');
+    const dashboard = await buildTelemetryDashboard();
+    const panel = dashboard.panels.find((entry: { title: string }) => entry.title.startsWith('Explicit expected monthly'));
+    if (!panel || !('targets' in panel)) throw new Error('Monthly expectation query panel is missing.');
+    expect(panel.targets[0].azureLogAnalytics.query).toContain('ExpectedProjects = countif(isnotempty(ProjectId))');
+    expect(panel.targets[0].azureLogAnalytics.query).toContain('by ReportingConfiguration, Freshness');
+  });
+
+  it.each(['unknown', 'enabled', 'disabled'])('analyzes explicit %s monthly state with empty, excluded and future expectations', async configuration => {
+    const common = await readFile(path.join(queries, 'projects.kql'), 'utf8');
+    const fresh = await readFile(path.join(queries, 'freshness.kql'), 'utf8');
+    const inventories = ['', `"${ids.synthetic}", datetime(2026-08-01T00:00:00Z)`,
+      `"${ids.rootA}", datetime(2099-01-01T00:00:00Z)`];
+    for (const expectations of inventories) {
+      const query = renderQuery(`${common}\n${fresh}`, 30, expectations, configuration);
+      expect(diagnostics(query)).toEqual([]);
+      expect(query).not.toContain('@reporting_configuration@');
+      expect(diagnostics(`${query}\n| summarize Value=countif(Overdue)\n| project TimeGenerated=now(), Value`)).toEqual([]);
+    }
+  });
 });
 
 describe('fixed-dataset semantic oracle (not Azure query execution)', () => {
@@ -214,6 +244,22 @@ describe('fixed-dataset semantic oracle (not Azure query execution)', () => {
     expect(query).toContain('+ 40d');
     expect(query).toContain('now() > Due');
     expect(query).toContain('unknown - no retained heartbeat; never received or expired');
+  });
+
+  it('keeps future starts pending alongside overdue and unknown expectations, without inventing heartbeat events', async () => {
+    const expectations = [
+      { id: ids.rootA, since: now - 73 * day }, { id: ids.rootB, since: now + day },
+      { id: ids.never, since: now - 73 * day }, { id: ids.synthetic, since: now - 73 * day }
+    ].filter(entry => entry.id !== ids.synthetic);
+    const states = expectations.map(entry => freshness(entry.id, entry.since, dataset));
+    expect(states.map(entry => entry.state)).toEqual(['stale', 'pending', 'unknown']);
+    expect(states.filter(entry => entry.overdue)).toHaveLength(2);
+    expect(states[1]).toMatchObject({ last: null, overdue: false, due: now + 41 * day });
+    expect(freshness(ids.expired, now - 190 * day, [observation(181, ids.expired)]))
+      .toMatchObject({ last: null, overdue: true, state: 'unknown' });
+    const query = await readFile(path.join(queries, 'freshness.kql'), 'utf8');
+    expect(query).toContain('ExpectedSince <= now() and now() > Due');
+    expect(query).not.toContain('where ExpectedSince <= now()');
   });
 
   it('separates schema-2 expected attention/cancellation/failure from legacy nonzero semantics', async () => {

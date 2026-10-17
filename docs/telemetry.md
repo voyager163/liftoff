@@ -508,6 +508,11 @@ Query/permission/table errors stay **unavailable**, never zero projects.
 A successful empty query means no retained observations; older records may
 have expired. Operator-configured disabled reporting is shown separately from
 unknown configuration, never inferred per project from silence. Explicit
+monthly status includes an **unconfigured** row for an empty or fully
+synthetic-excluded expectation inventory, with zero expected projects rather
+than a fabricated healthy heartbeat. Future monitoring starts show **pending**.
+The operator configuration is a separate column, not inferred client consent;
+query failures remain unavailable even when there are no expectations. Explicit
 monthly expectations use **31 days plus 9 days grace (40 days)**, followed by
 a 15-minute alert pending period; late/missing observations mean stale/unknown
 reporting, not abandonment. Query availability does not establish ingestion

@@ -22,12 +22,22 @@ run "offline_render" {
     error_message = "Every query must target only the exact existing workspace."
   }
   assert {
-    condition     = strcontains(grafana_dashboard.adoption.config_json, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa") && !strcontains(grafana_dashboard.adoption.config_json, "@synthetic_ids@") && !strcontains(grafana_dashboard.adoption.config_json, "@expected_heartbeats@")
+    condition     = strcontains(grafana_dashboard.adoption.config_json, "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa") && !strcontains(grafana_dashboard.adoption.config_json, "@synthetic_ids@") && !strcontains(grafana_dashboard.adoption.config_json, "@expected_heartbeats@") && !strcontains(grafana_dashboard.adoption.config_json, "@reporting_configuration@")
     error_message = "Exclusions and expectation templates must actually render."
   }
   assert {
     condition     = strcontains(grafana_dashboard.adoption.config_json, "datetime(2026-08-01T00:00:00Z)") && strcontains(grafana_dashboard.adoption.config_json, "reporting: disabled")
     error_message = "Explicit expected-since and configured disablement must reach native UI/query source."
+  }
+  assert {
+    condition = alltrue(flatten([
+      for panel in jsondecode(grafana_dashboard.adoption.config_json).panels : [
+        for target in try(panel.targets, []) :
+        strcontains(target.azureLogAnalytics.query, "reportingConfiguration = \"disabled\"") &&
+        strcontains(target.azureLogAnalytics.query, "ExpectedProjects = countif(isnotempty(ProjectId))")
+      ] if startswith(panel.title, "Explicit expected monthly")
+    ]))
+    error_message = "Monthly status must render operator configuration and never count its empty-inventory status row as a project."
   }
   assert {
     condition     = alltrue([for rule in grafana_rule_group.telemetry.rule : rule.is_paused && rule.no_data_state == "NoData" && rule.exec_err_state == "Error"])
@@ -65,9 +75,48 @@ run "synthetic_expectation_excluded" {
       expected_since = "2026-08-01T00:00:00Z"
     }]
   }
+
   assert {
     condition     = local.heartbeat_rows == "" && alltrue([for rule in grafana_rule_group.telemetry.rule : rule.is_paused if rule.uid == "liftoff-heartbeat_due"])
     error_message = "Synthetic expectations must be excluded from freshness and alert queries."
+  }
+}
+
+run "empty_expectations_explicit_unknown" {
+  command = plan
+  variables {
+    reporting_configuration = "unknown"
+    alerts_enabled          = true
+    expected_heartbeats     = []
+  }
+  assert {
+    condition = local.heartbeat_rows == "" && alltrue(flatten([
+      for panel in jsondecode(grafana_dashboard.adoption.config_json).panels : [
+        for target in try(panel.targets, []) :
+        strcontains(target.azureLogAnalytics.query, "reportingConfiguration = \"unknown\"") &&
+        strcontains(target.azureLogAnalytics.query, "unconfigured - no eligible expected reporting")
+      ] if startswith(panel.title, "Explicit expected monthly")
+    ]))
+    error_message = "Empty expectation inventories must retain unknown configuration and an explicit unconfigured row."
+  }
+  assert {
+    condition     = local.heartbeat_rows == "" && alltrue([for rule in grafana_rule_group.telemetry.rule : rule.is_paused if rule.uid == "liftoff-heartbeat_due"])
+    error_message = "An empty/unknown monthly inventory cannot activate freshness alerts."
+  }
+}
+
+run "future_expectation_preserved" {
+  command = plan
+  variables {
+    reporting_configuration = "enabled"
+    expected_heartbeats = [{
+      project_id     = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+      expected_since = "2099-01-01T00:00:00Z"
+    }]
+  }
+  assert {
+    condition     = strcontains(local.freshness_kql, "datetime(2099-01-01T00:00:00Z)") && strcontains(local.freshness_kql, "pending - monitoring starts in the future") && !strcontains(local.freshness_kql, "@reporting_configuration@")
+    error_message = "Future monitoring starts must remain visible as pending without an unresolved configuration token."
   }
 }
 
