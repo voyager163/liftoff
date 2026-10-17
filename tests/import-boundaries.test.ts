@@ -1,4 +1,5 @@
 import { lstat, readdir, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { isBuiltin } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1400,6 +1401,11 @@ interface ModuleLoadingContext {
     readonly source: string;
     readonly packagedFiles: ReadonlySet<string>;
   };
+  readonly nativeAssembly?: {
+    readonly source: string;
+    readonly consumerSource: string;
+    readonly packagedFiles: ReadonlySet<string>;
+  };
 }
 
 const nativeAdmissionImporter = 'adapters/distribution/native-metadata.ts';
@@ -1415,6 +1421,13 @@ const nativeCatalogFiles = [
   'distribution/native/native-release-catalog.mjs',
   'distribution/native/native-release-catalog.d.mts'
 ];
+const nativeAssemblyImporter = 'governance-activation/workflow-source5-program-content.ts';
+const nativeAssemblySpecifier = '../../distribution/native/native-program-assembly.mjs';
+const nativeAssemblyFiles = [
+  'distribution/native/native-program-assembly.mjs',
+  'distribution/native/native-program-assembly.d.mts'
+];
+const nativeAssemblySourceSha256 = 'b7539618b60d3cdad3ff0d4db071b206b17e76ccce8d88624bc5dfed7460a8f4';
 
 function nativeCatalogHelperViolations(source: string, file: string): string[] {
   const body = recordsAt(parseProgram(source, file), 'body');
@@ -1491,6 +1504,7 @@ async function moduleLoadingContext(modules: ReadonlyMap<string, string>): Promi
   };
   let nativeAdmission: ModuleLoadingContext['nativeAdmission'];
   let nativeCatalog: ModuleLoadingContext['nativeCatalog'];
+  let nativeAssembly: ModuleLoadingContext['nativeAssembly'];
   try {
     const details = await Promise.all(nativeAdmissionFiles.map(file => lstat(path.resolve(file))));
     if (details.every(detail => detail.isFile() && !detail.isSymbolicLink() && detail.nlink === 1)) {
@@ -1499,6 +1513,18 @@ async function moduleLoadingContext(modules: ReadonlyMap<string, string>): Promi
         packagedFiles: new Set(manifest.files ?? [])
       };
       JSON.parse(await readFile(path.resolve(nativeAdmissionFiles[2]), 'utf8'));
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  try {
+    const details = await Promise.all(nativeAssemblyFiles.map(file => lstat(path.resolve(file))));
+    if (details.every(detail => detail.isFile() && !detail.isSymbolicLink() && detail.nlink === 1)) {
+      nativeAssembly = {
+        source: await readFile(path.resolve(nativeAssemblyFiles[0]), 'utf8'),
+        consumerSource: modules.get(sourcePath(nativeAssemblyImporter)) ?? '',
+        packagedFiles: new Set(manifest.files ?? [])
+      };
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -1520,14 +1546,33 @@ async function moduleLoadingContext(modules: ReadonlyMap<string, string>): Promi
     dependencies: new Set([...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.optionalDependencies ?? {})]),
     devDependencies: new Set(Object.keys(manifest.devDependencies ?? {})),
     nativeAdmission,
-    nativeCatalog
+    nativeCatalog,
+    nativeAssembly
   };
 }
 
-/** Fixed src/builtin/dependency resolution and the two exact deferred packaged helper edges. */
+/** Fixed src/builtin/dependency resolution and exact reviewed packaged helper edges. */
 function moduleSpecifierViolation(
   specifier: string, file: string, context: ModuleLoadingContext, dynamic = false
 ): string | undefined {
+  if (specifier === nativeAssemblySpecifier && relativeSource(file, context.root) === nativeAssemblyImporter) {
+    if (dynamic) return 'original assembly reader edge must remain static and same-instance';
+    const helper = context.nativeAssembly;
+    if (!helper) return 'packaged original assembly helper/declaration is missing';
+    if (!nativeAssemblyFiles.every(target => helper.packagedFiles.has(target))) return 'original assembly dependency is not packaged';
+    if (path.resolve(path.dirname(file), specifier) !== path.resolve(context.root, '..', nativeAssemblyFiles[0])) {
+      return 'original assembly target differs';
+    }
+    const bindings = runtimeImports(helper.consumerSource, file).filter(entry => entry.specifier === specifier);
+    const edges = runtimeDependenciesOf(helper.consumerSource, file).filter(entry => entry.specifier === specifier);
+    if (edges.length !== 1 || edges[0].dynamic || bindings.length !== 1 ||
+      bindings[0].kind !== 'named' || bindings[0].imported !== 'readNativeProgramAssembly') {
+      return 'original assembly consumer may import only its named reader, not issuer, namespace or re-export';
+    }
+    // Root460's deliberately effect-capable original issuer/reader is not a general pure-helper exception.
+    return createHash('sha256').update(helper.source).digest('hex') === nativeAssemblySourceSha256
+      ? undefined : 'original assembly helper differs from its exact reviewed first-party closure';
+  }
   if (specifier === nativeAdmissionSpecifier && relativeSource(file, context.root) === nativeAdmissionImporter) {
     if (!dynamic) return 'admission edge must remain deferred';
     const helper = context.nativeAdmission;
@@ -1648,6 +1693,43 @@ describe('bundled plugin purity and module loading (2.6-G)', () => {
       }
     }
     expect(violations).toEqual([]);
+  });
+
+  it('admits only the same-instance original program reader and keeps issuers, copied helpers and alternate consumers closed', async () => {
+    const context = await moduleLoadingContext(await sourceModules());
+    const importer = sourcePath(nativeAssemblyImporter);
+    const check = (current: ModuleLoadingContext) => moduleSpecifierViolation(nativeAssemblySpecifier, importer, current);
+    expect(check(context)).toBeUndefined();
+    expect(moduleSpecifierViolation(nativeAssemblySpecifier, importer, context, true))
+      .toBe('original assembly reader edge must remain static and same-instance');
+    expect(moduleSpecifierViolation(nativeAssemblySpecifier, sourcePath('governance-activation/other.ts'), context))
+      .toBe('relative specifier leaves src');
+    for (const specifier of [
+      '../../distribution/native/other.mjs', '../../scripts/native-bundle.mjs',
+      '../../distribution/native/../native/native-program-assembly.mjs'
+    ]) expect(moduleSpecifierViolation(specifier, importer, context)).toBe('relative specifier leaves src');
+    expect(check({ ...context, nativeAssembly: undefined })).toBe('packaged original assembly helper/declaration is missing');
+    const helper = context.nativeAssembly!;
+    for (const missing of nativeAssemblyFiles) {
+      expect(check({ ...context, nativeAssembly: {
+        ...helper, packagedFiles: new Set(nativeAssemblyFiles.filter(file => file !== missing))
+      } })).toBe('original assembly dependency is not packaged');
+    }
+    for (const binding of [
+      'buildNativeProgram', '* as assembly', 'defaultReader', '{ readNativeProgramAssembly, buildNativeProgram }'
+    ]) {
+      const imported = binding === 'buildNativeProgram' ? `{ ${binding} }` : binding;
+      expect(check({ ...context, nativeAssembly: {
+        ...helper, consumerSource: `import ${imported} from '${nativeAssemblySpecifier}';`
+      } })).toBe('original assembly consumer may import only its named reader, not issuer, namespace or re-export');
+    }
+    for (const consumerSource of [
+      `import '${nativeAssemblySpecifier}';`,
+      `export { readNativeProgramAssembly } from '${nativeAssemblySpecifier}';`
+    ]) expect(check({ ...context, nativeAssembly: { ...helper, consumerSource } }))
+      .toBe('original assembly consumer may import only its named reader, not issuer, namespace or re-export');
+    expect(check({ ...context, nativeAssembly: { ...helper, source: `${helper.source}\nexport const copied = true;` } }))
+      .toBe('original assembly helper differs from its exact reviewed first-party closure');
   });
 
   it('admits only the exact native metadata edge to a present packaged pure helper and keeps all alternate edges closed', async () => {
