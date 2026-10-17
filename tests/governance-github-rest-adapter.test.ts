@@ -259,6 +259,47 @@ describe('GitHub CLI activation transport', () => {
     }
   });
 
+  it.each([
+    { status: 9 }, { status: 2 }, { status: 4 }, { status: null }, { signal: 'SIGTERM' as const }
+  ])('refuses a complete-looking SARIF success after unconfirmed gh completion %j', async completion => {
+    const runner = new CannedRunner({
+      stdout: 'HTTP/2 200 OK\r\n\r\n{"version":"2.1.0","runs":[]}',
+      stderr: credentialMarker, ...completion
+    });
+    const client = new GitHubActivationClient(createGitHubCliTransport(runner, projectRoot));
+    const error = await rejected(() => client.codeScanningSarif('o/r', 17));
+    expect(error.code).toBe('bounded-request');
+    expect(error.message).not.toContain(credentialMarker);
+    expect(runner.calls).toHaveLength(1);
+  });
+
+  it('does not turn cancelled, crashed or unknown-status 404 output into optional absence', async () => {
+    for (const completion of [{ status: 2 }, { status: 4 }, { status: 9 }, { status: null }, { signal: 'SIGTERM' as const }]) {
+      const runner = new CannedRunner({ stdout: 'HTTP/2 404 Not Found\r\n\r\n{"message":"Not Found"}', ...completion });
+      const client = new GitHubActivationClient(createGitHubCliTransport(runner, projectRoot));
+      await expect(client.optional('/repos/o/r')).rejects.toMatchObject({ code: 'bounded-request' });
+      expect(runner.calls).toHaveLength(1);
+    }
+  });
+
+  it('preserves ordinary gh HTTP-error exits without promoting an uncertain successful write or retrying it', async () => {
+    for (const status of [400, 401, 403, 404, 422, 429, 503]) {
+      const runner = new CannedRunner({ status: 1, stdout: `HTTP/2 ${status} Provider Error\r\n\r\n{"message":"withheld"}` });
+      await expect(createGitHubCliTransport(runner, projectRoot).request({ method: 'GET', path: '/repos/o/r' }))
+        .resolves.toMatchObject({ status, data: { message: 'withheld' } });
+    }
+    for (const status of [401, 403]) {
+      const runner = new CannedRunner({ status: 4, stdout: `HTTP/2 ${status} Authentication Error\r\n\r\n{}` });
+      await expect(createGitHubCliTransport(runner, projectRoot).request({ method: 'GET', path: '/repos/o/r' }))
+        .resolves.toMatchObject({ status });
+    }
+    const runner = new CannedRunner({ status: 9, stdout: 'HTTP/2 204 No Content\r\n\r\n', stderr: credentialMarker });
+    const client = new GitHubActivationClient(createGitHubCliTransport(runner, projectRoot));
+    await expect(client.write('POST', '/repos/o/r/actions/workflows/17/dispatches', { ref: 'immutable-ref' }))
+      .rejects.toMatchObject({ code: 'bounded-request' });
+    expect(runner.calls).toHaveLength(1);
+  });
+
   it('refuses unscoped endpoints and archive writes before running gh', async () => {
     const runner = new CannedRunner({ stdout: 'HTTP/2 200 OK\r\n\r\n{}' });
     const transport = createGitHubCliTransport(runner, projectRoot);
@@ -507,7 +548,16 @@ describe.skipIf(process.platform === 'win32')('bounded GitHub CLI archive reads'
       'case "$FAKE_GH_MODE" in',
       '  archive) printf \'HTTP/2.0 200 OK\\r\\ncontent-type: application/zip\\r\\n\\r\\nPK\\003\\004\\000\\377archive\' ;;',
       '  sarif) printf \'HTTP/2.0 200 OK\\r\\ncontent-type: application/sarif+json\\r\\n\\r\\n{"version":"2.1.0","runs":[]}\' ;;',
+      '  sarif-failed|sarif-cancelled|sarif-signalled)',
+      '    printf \'HTTP/2.0 200 OK\\r\\ncontent-type: application/sarif+json\\r\\n\\r\\n{"version":"2.1.0","runs":[]}\'',
+      '    case "$FAKE_GH_MODE" in sarif-failed) exit 9 ;; sarif-cancelled) exit 2 ;; sarif-signalled) kill -TERM "$$" ;; esac ;;',
+      '  archive-failed|archive-cancelled|archive-signalled)',
+      '    printf \'HTTP/2.0 200 OK\\r\\ncontent-type: application/zip\\r\\n\\r\\nPK\\003\\004\\000\\377archive\'',
+      '    case "$FAKE_GH_MODE" in archive-failed) exit 9 ;; archive-cancelled) exit 2 ;; archive-signalled) kill -TERM "$$" ;; esac ;;',
       '  missing) printf \'HTTP/2.0 404 Not Found\\r\\n\\r\\n{"message":"Not Found"}\' ;;',
+      '  missing-failed|missing-cancelled)',
+      '    printf \'HTTP/2.0 404 Not Found\\r\\n\\r\\n{"message":"Not Found"}\'',
+      '    case "$FAKE_GH_MODE" in missing-failed) exit 1 ;; missing-cancelled) exit 2 ;; esac ;;',
       '  oversized) cat "$FAKE_GH_PAYLOAD" ;;',
       'esac',
       ''
@@ -566,6 +616,36 @@ describe.skipIf(process.platform === 'win32')('bounded GitHub CLI archive reads'
     useFakeGh('oversized');
     const client = new GitHubActivationClient(createGitHubCliTransport(new NodeCommandRunner(), projectRoot));
     await expect(client.codeScanningSarif('o/r', 17)).rejects.toMatchObject({ code: 'bounded-request' });
+  });
+
+  it.each(['failed', 'cancelled', 'signalled'])('refuses actual %s text and archive processes despite complete-looking HTTP200 output', async mode => {
+    useFakeGh(`sarif-${mode}`);
+    const client = new GitHubActivationClient(createGitHubCliTransport(new NodeCommandRunner(), projectRoot));
+    const text = await Promise.allSettled([client.codeScanningSarif('o/r', 17)]);
+    useFakeGh(`archive-${mode}`);
+    const archive = await Promise.allSettled([createGitHubCliTransport(noRunner, projectRoot).request({
+      method: 'GET', path: '/repos/o/r/zipball/abc', binary: true
+    })]);
+    expect([...text, ...archive]).toMatchObject([
+      { status: 'rejected', reason: { code: 'bounded-request' } },
+      { status: 'rejected', reason: { code: 'bounded-request' } }
+    ]);
+  });
+
+  it('distinguishes actual ordinary-error404 from cancelled404 before optional absence or archive observation', async () => {
+    const client = new GitHubActivationClient(createGitHubCliTransport(new NodeCommandRunner(), projectRoot));
+    const archives = createGitHubCliTransport(noRunner, projectRoot);
+    useFakeGh('missing-failed');
+    await expect(client.optional('/repos/o/r')).resolves.toBeNull();
+    await expect(archives.request({ method: 'GET', path: '/repos/o/r/zipball/abc', binary: true }))
+      .resolves.toMatchObject({ status: 404, data: { message: 'Not Found' } });
+    useFakeGh('missing-cancelled');
+    const text = await Promise.allSettled([client.optional('/repos/o/r')]);
+    const archive = await Promise.allSettled([archives.request({ method: 'GET', path: '/repos/o/r/zipball/abc', binary: true })]);
+    expect([...text, ...archive]).toMatchObject([
+      { status: 'rejected', reason: { code: 'bounded-request' } },
+      { status: 'rejected', reason: { code: 'bounded-request' } }
+    ]);
   });
 
   it('parses a missing archive as a JSON status for the caller', async () => {
