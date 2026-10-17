@@ -229,7 +229,7 @@ the mutable Homebrew path.
   branch. The tip containing this MacBook-return update is a later handoff commit.
 - The branch tip containing this file is the handoff commit. After fetching,
   run `git rev-parse HEAD` to record its full SHA.
-- OpenSpec progress is 82/136 tasks complete; 54 remain.
+- OpenSpec progress is 87/136 tasks complete; 49 remain.
 - Task 13.5 is complete after exact hosted-native qualification and independent
   artifact re-judgment on clean revision `94f0d63e`. Task 13.6 remains
   unchecked; task 13.7 is complete.
