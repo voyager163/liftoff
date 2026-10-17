@@ -12,8 +12,9 @@ import { isStableSemver } from '../../stable-release.js';
 import { compareSemver } from '../../semver.js';
 import { readHomebrewCaskOwnership } from './native-cask.js';
 import { createNativeStableSource } from './native-transport.js';
-import { stageAuthenticatedNativeArchive, type NativeArchiveContract } from './native-archive.js';
+import { stageAuthenticatedNativeArchive } from './native-archive.js';
 import { readWindowsInstallerLayout } from './native-windows.js';
+import { bundleInventory, bundlePath, nativeBundleLimits } from '../../../distribution/native/native-bundle-contract.mjs';
 
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const sha256 = /^[a-f0-9]{64}$/;
@@ -453,11 +454,10 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
           if (!current || current.identity !== installation.identity || current.recovery || current.locked) {
             throw new SelfUpgradeFailure('blocked', 'owner_changed');
           }
-          const contract: NativeArchiveContract = await import(pathToFileURL(
-            api.join(installation.bundleRoot, 'installation', 'native-bundle-contract.mjs')).href);
           stage = await stageAuthenticatedNativeArchive({
             archive, signature: state.material.archiveSignature, publicKey: state.material.archivePublicKey,
-            expectedKeySha256: approved.linux.archiveSigningKeySha256, candidate, contract, storage: dependencies,
+            expectedKeySha256: approved.linux.archiveSigningKeySha256, candidate,
+            contract: Object.freeze({ bundleInventory, bundlePath, nativeBundleLimits }), storage: dependencies,
             signal: AbortSignal.timeout(selfUpgradeInstallTimeoutMs)
           });
           bundleRoot = stage.bundleRoot;
