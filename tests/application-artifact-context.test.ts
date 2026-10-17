@@ -129,6 +129,9 @@ describe('manifest-bound exact application context', () => {
       expect(source.manifest.governance.profile).toBe(profile);
       expect(source.readme).toContain('exact manifest-bound inventory');
       expect(source.readme).toContain('`.dockerignore` alone is not source-transmission authority');
+      expect(source.readme).toContain('Fresh registry/identity prerequisite creation also remains blocked');
+      expect(source.readme).toContain('resource-level create-only or exclusive-destination admission is qualified');
+      expect(source.readme).toContain('Original accepted deployment handles remain observation-only');
     });
   }
   it.each([

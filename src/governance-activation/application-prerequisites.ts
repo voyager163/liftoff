@@ -93,7 +93,7 @@ export function applicationPrerequisitePlanInputs(input: PhasePlanningInput | Ph
 
 export type ApplicationPrerequisiteBinding = ReturnType<typeof applicationPrerequisiteBinding>;
 
-function template(binding: ReturnType<typeof applicationPrerequisiteBinding>) {
+export function applicationPrerequisiteTemplate(binding: ApplicationPrerequisiteBinding) {
   const registry = {
     type: 'Microsoft.ContainerRegistry/registries', apiVersion: registryApi,
     name: binding.registryName, location: binding.region, sku: { name: binding.registrySku },
@@ -217,6 +217,11 @@ function outputs(
   };
 }
 
+function assertApplicationPrerequisiteNoReplace(): void {
+  applicationError('application-prerequisite-no-replace-unavailable',
+    'Registry/identity prerequisites have no qualified resource-level create-only or exclusive-destination producer. Incremental ARM deployments may update competing resources; deployment-record conditions and absence preflight are not resource ownership. No prerequisite intent or deployment dispatch was performed. Original accepted handles remain observation-only.');
+}
+
 export async function executeApplicationPrerequisites(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome> {
   input = applicationDeadlineInput(input);
   const completedOperations: TransitionOperation[] = [];
@@ -271,7 +276,7 @@ export async function executeApplicationPrerequisites(input: PhaseAdapterExecuti
       return applicationError('application-group-unready', 'Application prerequisites require the exact resource group already owned by the recorded protected bootstrap.');
     }
     const url = `https://management.azure.com${binding.deploymentId}?api-version=${deploymentApi}`;
-    const body = { location: binding.region, properties: { mode: 'Incremental', template: template(binding) } };
+    const body = { location: binding.region, properties: { mode: 'Incremental', template: applicationPrerequisiteTemplate(binding) } };
     output = outputs(binding);
     if (!previous) {
       if (input.inspection.state.phases[input.phase.id].executionPlanDigest) {
@@ -304,6 +309,7 @@ export async function executeApplicationPrerequisites(input: PhaseAdapterExecuti
       await observeApplicationProtection(input);
       const freshOwnership = await inspectAzureDeploymentOwnership(input);
       if (freshOwnership?.blocker) return applicationError('application-ownership', freshOwnership.blocker);
+      assertApplicationPrerequisiteNoReplace();
       await input.recordApplicationDispatchIntent?.(apply);
       await assertApplicationAuthority(input, apply);
       dispatchAttempted = true;
