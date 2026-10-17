@@ -99,6 +99,15 @@ export interface CaskInstallPreview {
     sha256: string;
     authority: 'unverified-local-bytes';
   };
+  /** Signed release-derived content comparison only; does not establish tap/channel or effect authority. */
+  releaseDefinition?: {
+    authority: 'authenticated-release-definition';
+    filename: string;
+    bytes: number;
+    sha256: string;
+    candidateIdentity: string;
+    selectedSource: 'exact' | 'different' | 'absent';
+  };
   channel: { status: 'unknown' };
   preflight: {
     nativeAppleSilicon: true;

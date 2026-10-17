@@ -476,6 +476,15 @@ validation failures report no installation effects. This source composition does
 not create a signing principal, qualify an archive or enable the current null
 release policy, and supplies no Homebrew or WinGet availability authority.
 
+For an attributed Homebrew cask, the default channel separately repeats signed
+release/asset admission and the read-only receipt/tap-origin/commit observation.
+It compares the exact selected definition SHA-256 with the unchanged canonical
+`nativeCaskDefinition` output derived from that authenticated release. A match
+reports available with `exactApply: false`, never a digest-bound Homebrew command.
+Missing/different local Ruby or incomplete provider facts remain unknown rather
+than fabricated package absence or authenticated lag. No Ruby is parsed or
+evaluated, no source is refreshed, and explicit channel disabling still wins.
+
 Absent-cask preparation is distinct from upgrading an installed owner.
 `createHomebrewCaskPreparation` in `native-cask-plan.ts` exposes
 `observeDestination(prefix, signal)` and `preview(prefix, signal)`. Stable lookup
@@ -487,6 +496,13 @@ the flat or first-letter tap layout. Those bytes are explicitly
 origin, safe Ruby, channel availability, writable destinations, signing or host
 qualification. An occupied path is not installed ownership. Callers must use fresh
 policy and observations; preview identities are not later effect authority.
+The additive `releaseDefinition` comparison authenticates the expected canonical
+filename/content digest against the already admitted candidate and reports
+`selectedSource: exact`, `different` or `absent`. It does not upgrade the local
+source's attribution or prove tap registration, channel freshness or execution.
+An exact byte match still leaves the absent-cask preview's channel unknown and
+its command null. The installed consumer imports only the shared inert renderer,
+not the release builder, and retains private snapshots of admitted material.
 
 Every preview retains `channel.status: unknown`,
 `preflight.exactExecutionProven: false`, and

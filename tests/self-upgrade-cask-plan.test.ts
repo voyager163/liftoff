@@ -1,7 +1,9 @@
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHomebrewCaskPreparation } from '../src/adapters/distribution/native-cask-plan.js';
-import type { NativeStableSource } from '../src/adapters/distribution/native-metadata.js';
+import { authenticatedNativeCaskDefinition, lookupNativeStableCandidate,
+  type NativeStableSource } from '../src/adapters/distribution/native-metadata.js';
+import { nativeCaskDefinition } from '../distribution/native/native-cask-definition.mjs';
 import { upgradeWorld } from './fixtures/installer-upgrade.js';
 import { signedMaterial } from './fixtures/native-stable-material.js';
 
@@ -53,6 +55,8 @@ describe('canonical absent-cask preparation without manager effect authority', (
       source: { state: 'observed', path: fixture.definition, authority: 'unverified-local-bytes',
         bytes: fixture.files.get(fixture.definition)!.length, sha256: expect.stringMatching(/^[a-f0-9]{64}$/) },
       channel: { status: 'unknown' },
+      releaseDefinition: { authority: 'authenticated-release-definition', filename: 'liftoff.rb',
+        selectedSource: 'different', candidateIdentity: preview.target.identity },
       preflight: { nativeAppleSilicon: true, canonicalDirectories: true, caskAbsent: true,
         launcherAbsent: false, exactExecutionProven: false },
       execution: { status: 'blocked', reason: 'exact_cask_execution_unproven', command: null },
@@ -113,8 +117,36 @@ describe('canonical absent-cask preparation without manager effect authority', (
     const preview = await fixture.port().preview(fixture.prefix, fixture.controller.signal);
     expect(preview.source).toEqual({ state: 'absent' });
     expect(preview.channel).toEqual({ status: 'unknown' });
+    expect(preview.releaseDefinition?.selectedSource).toBe('absent');
     expect(preview.execution.status).toBe('blocked');
   });
+
+  it.each(['exact', 'different'] as const)('compares %s canonical signed release bytes without supplying an install command', async match => {
+    const fixture = preparationWorld();
+    const definition = nativeCaskDefinition(fixture.record, fixture.qualification, fixture.policy);
+    fixture.files.set(fixture.definition, Buffer.from(`${definition.content}${match === 'different' ? 'system("must never run")\n' : ''}`));
+    const preview = await fixture.port().preview(fixture.prefix, fixture.controller.signal);
+    expect(preview.releaseDefinition).toMatchObject({
+      authority: 'authenticated-release-definition', filename: definition.filename, bytes: Buffer.byteLength(definition.content),
+      selectedSource: match, candidateIdentity: preview.target.identity, sha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+    });
+    expect(preview.source).toMatchObject({ authority: 'unverified-local-bytes' });
+    expect(preview.channel).toEqual({ status: 'unknown' });
+    expect(preview.preflight.exactExecutionProven).toBe(false);
+    expect(preview.execution).toEqual({ status: 'blocked', reason: 'exact_cask_execution_unproven', command: null });
+    expect(fixture.world.trace.filter(event => 'run' in event || 'installCommand' in event)).toEqual([]);
+  });
+
+  it.each(['version', 'target', 'sourceCommit', 'manifestSha256', 'inventorySha256', 'archiveSha256', 'identity'] as const)(
+    'refuses definition comparison for a foreign authenticated candidate %s', async field => {
+      const fixture = preparationWorld();
+      const candidate = await lookupNativeStableCandidate({ target: 'darwin-arm64' }, fixture.policy,
+        { readStable: fixture.readStable });
+      Reflect.set(candidate, field, 'foreign');
+      await expect(authenticatedNativeCaskDefinition(fixture.material, candidate, fixture.policy))
+        .rejects.toMatchObject({ reasonCode: 'native_invalid' });
+    }
+  );
 
   it('observes the alternate canonical first-letter layout without evaluating it', async () => {
     const fixture = preparationWorld();
