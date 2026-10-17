@@ -226,6 +226,31 @@ name `<repository>/<workflowPath>@refs/tags/<execution-tag>`, not a branch.
 Older plans without the exact tree/tag binding are stale and require review;
 accepted runs cannot be silently retagged under a new plan.
 
+Generated standard and GenAI Dockerfiles live at the repository root and copy
+both `backend` and `database`. For this layout, `contextPath: "."` is allowed only
+with an explicit `contextPaths` positive inventory of **leaf files**, including
+the actual `Dockerfile`. A directory, glob or broad `.` upload is not an
+inventory. The plan binds the exact sorted paths and `sourceManifestDigest`;
+current-v8 preparation uses independently validated current active layout
+bindings, never original generation paths. Historical manifest readers and their
+receipt meanings are unchanged; this helper does not enable public-v8 execution.
+Review additional application files explicitly rather than sweeping a component
+directory or overwriting customizations.
+
+The first-party `applicationArtifactContextStep(paths)` helper prepares a fresh
+context from the approved commit's raw Git blobs, preserving exact file bytes
+and `100644`/`100755` modes. Git archive attributes cannot omit or substitute
+approved content. Metadata, credentials, state and unselected files never enter
+this projection; `.dockerignore` is not source-transmission authority. Bounds
+are 512 files, 1 MiB per file and 8 MiB total, with a two-minute projection
+deadline and 30-second Git-process deadlines. Missing files, links, submodules,
+aliases, changed source or unsupported paths block before source upload.
+The committed workflow must contain this exact step once; subsequent shell
+steps must use `${{ steps.liftoff-context.outputs.path }}` as their working
+directory. The existing dispatch input names, action, destination and effects
+do not change. Workflow publication, installed host admission and independent
+exact transmission/network/build approval remain separate prerequisites.
+
 The reviewed workflow protocol is one `publish` job named
 `Liftoff application artifact`, with the exact qualified runner group/label, a
 1–20 minute timeout, immutable action references, and this pre-effect guard:
