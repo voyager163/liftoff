@@ -702,6 +702,10 @@ objects to16MiB, counting the **complete encoded sealed disk object**. Existing
 preview/consent stores keep their64KiB limit. Failed saves throw and preserve
 unresolved progress; CAS refuses stale/concurrent replacement. These interfaces
 do not register a producer, qualify a host, or open public execution.
+Native reads allocate the independently observed file byte count plus one
+overflow byte, not the entire namespace cap. Namespace limits, opened-file
+ownership, post-read size/timestamp checks and directory checks still apply;
+empty or changing control bytes are errors, not optional absence or new authority.
 
 The private ownership primitive seals the complete reviewed original plan before
 issuance. Each workflow entry keeps a stable key derived from that original

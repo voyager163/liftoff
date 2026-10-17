@@ -451,7 +451,7 @@ async function readText(
     const opened = await io('inspect opened file', filePath, () => handle.stat());
     privateFile(storage, opened, filePath);
     if (!sameFile(before, opened)) throw storageError(`Preview file changed while opening: ${filePath}`);
-    const content = await io('read', filePath, () => handle.readText(maximumBytes));
+    const content = await io('read', filePath, () => handle.readText(Math.min(maximumBytes, before.size)));
     const after = await inspect(storage.fs, filePath);
     if (!after || !sameFile(before, after) || before.size !== after.size ||
         before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
