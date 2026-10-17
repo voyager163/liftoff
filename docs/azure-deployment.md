@@ -264,9 +264,11 @@ before the actual external dispatch; permission/validation refusals are not
 misreported as uncertain acceptance. The documented GitHub API 2026-03-10
 dispatch response returns an actual run ID and URLs: the producer validates
 their repository/run scope and checkpoints that handle before metadata polling,
-even if run-list discovery is delayed. A legacy empty response requires exact
-independent run discovery; malformed or cross-scope acceptance never invents a
-handle or permits redispatch. Unexpected response fields are not retained.
+even if run-list discovery is delayed. A legacy empty response or an intent-only
+recovery without its original accepted run ID remains uncertain. Even a unique
+listed run with matching source and recipe cannot supply original dispatch
+provenance. Malformed or cross-scope acceptance never invents a handle or permits
+redispatch. Unexpected response fields are not retained.
 Actual terminal run status is checkpointed before the fallible job inventory
 read, including when source changes prevent a later outcome from being saved.
 Every polled run ID must match the exact accepted or resumed workflow handle

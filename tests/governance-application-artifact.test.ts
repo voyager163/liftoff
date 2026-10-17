@@ -196,7 +196,10 @@ class ArtifactTransport implements GitHubActivationTransport {
   executionTreeSha: string | undefined;
   providerScopes = 'repo, workflow';
   runnerUsesBranch = false;
-  dispatchResponse: Record<string, unknown> | null = null;
+  dispatchResponse: Record<string, unknown> | null = {
+    workflow_run_id: 901, run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
+    html_url: 'https://github.com/owner/repo/actions/runs/901'
+  };
   onRunRead: (() => Promise<void>) | undefined;
   onJobsRead: (() => Promise<void>) | undefined;
   onDispatch: (() => void) | undefined;
@@ -673,6 +676,27 @@ describe('application source producers behind real prerequisites', () => {
 });
 
 describe('immutable application publication and independent readback', () => {
+  it.each(['empty-response', 'intent-only-recovery'] as const)(
+    'refuses a matching listed run without original accepted-run provenance during %s', async (kind) => {
+      const f = await fixture(true);
+      f.transport.dispatchResponse = null;
+      if (kind === 'intent-only-recovery') {
+        f.transport.dispatched = true;
+        f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+      }
+      const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+      const outcome = await executeApplicationArtifactPublication(f.input);
+      expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/acceptance|accepted/) });
+      expect(outcome.operation).toBeUndefined();
+      expect(outcome.evidencePayload).toBeUndefined();
+      expect(outcome.outputs?.values.immutableImage).toBeUndefined();
+      expect(progress).not.toHaveBeenCalled();
+      expect(f.transport.calls.some((entry) => entry.path.includes('/jobs'))).toBe(false);
+      expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST'))
+        .toHaveLength(kind === 'empty-response' ? 1 : 0);
+    }
+  );
   it('uses the documented accepted run ID without waiting for eventually consistent discovery', async () => {
     const f = await fixture(true);
     f.transport.invisible = true;
@@ -1115,6 +1139,7 @@ describe('immutable application publication and independent readback', () => {
   });
   it.each(['invisible', 'duplicate'] as const)('refuses uncertain/ambiguous %s dispatch without treating a candidate as proof', async (kind) => {
     const f = await fixture(true); f.transport[kind] = true;
+    f.transport.dispatchResponse = null;
     expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/unique actual run/) });
     f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
     expect(await executeApplicationArtifactPublication(f.input)).not.toMatchObject({ status: 'completed' });
