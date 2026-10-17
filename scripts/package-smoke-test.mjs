@@ -188,7 +188,9 @@ try {
   assertPackageContains(packResult, 'dist/self-upgrade.js');
   for (const asset of [
     'native-release-admission.mjs', 'native-release-admission.d.mts',
-    'native-release-catalog.mjs', 'native-release-catalog.d.mts', 'release-policy.json', 'platforms.json'
+    'native-release-catalog.mjs', 'native-release-catalog.d.mts',
+    'native-program-assembly.mjs', 'native-program-assembly.d.mts',
+    'native-cask-definition.mjs', 'native-cask-definition.d.mts', 'release-policy.json', 'platforms.json'
   ]) {
     assertPackageContains(packResult, `distribution/native/${asset}`);
   }
@@ -502,7 +504,8 @@ try {
   for (const asset of [
     'native-release-admission.mjs', 'native-release-admission.d.mts',
     'native-release-catalog.mjs', 'native-release-catalog.d.mts',
-    'native-program-assembly.mjs', 'native-program-assembly.d.mts', 'release-policy.json', 'platforms.json'
+    'native-program-assembly.mjs', 'native-program-assembly.d.mts',
+    'native-cask-definition.mjs', 'native-cask-definition.d.mts', 'release-policy.json', 'platforms.json'
   ]) {
     const relative = path.join('distribution', 'native', asset);
     if (!(await readFile(path.join(installedPackageRoot, relative))).equals(await readFile(path.join(packageRoot, relative)))) {
@@ -516,6 +519,10 @@ try {
     import {gzipSync} from 'node:zlib';
     import {assertNativePublicationEvidence,verifyNativeBytesSignature,verifyNativeEvidenceSignature} from ${JSON.stringify(
       pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-release-admission.mjs')).href)};
+    import {nativeCaskDefinition} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-cask-definition.mjs')).href)};
+    import {readNativeProgramAssembly} from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-program-assembly.mjs')).href)};
     import {admitNativeStableMaterial} from ${JSON.stringify(
       pathToFileURL(path.join(installedPackageRoot, 'dist/adapters/distribution/native-metadata.js')).href)};
     import {readHomebrewCaskOwnership} from ${JSON.stringify(
@@ -528,6 +535,9 @@ try {
       pathToFileURL(path.join(installedPackageRoot, 'distribution/native/native-release-catalog.mjs')).href)};
     const policy=JSON.parse(await readFile(${JSON.stringify(path.join(installedPackageRoot, 'distribution/native/release-policy.json'))},'utf8'));
     assert.equal(policy.approvedSigningKeySha256,null);
+    assert.equal(typeof nativeCaskDefinition,'function');
+    assert.throws(()=>nativeCaskDefinition({},{}));
+    await assert.rejects(()=>readNativeProgramAssembly({}),/original invocations/);
     await assert.rejects(()=>admitNativeStableMaterial({}, {}, policy),e=>e.reasonCode==='native_unqualified');
     await assert.rejects(()=>readHomebrewCaskOwnership({}, {}, policy, '', new AbortController().signal),
       e=>e.reasonCode==='native_unqualified');
