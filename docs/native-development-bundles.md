@@ -471,6 +471,47 @@ No WinGet CLI/COM observation is silently substituted: the reviewed
 opens its database read-write, creates absent state and can rename a corrupt
 database even when remote source updates are suppressed. That does not satisfy
 this reader's no-refresh/no-registration/no-persistent-change contract.
+
+The public API audit at that same immutable Microsoft source pin also covers the
+[catalog and metadata contract](https://github.com/microsoft/winget-cli/blob/3d9083c062c1e7a7086e05becb414d4e005e4ab6/src/Microsoft.Management.Deployment/PackageManager.idl).
+`PackageCatalogBackgroundUpdateInterval = 0` disables the background update
+check (contract 8). `InstalledPackageInformationOnly = true` promises that no
+external resources should be required (contract 9), not that local tracking is
+opened read-only. These are per-reference API properties, not instructions to
+change the user's manager settings.
+In this mode,
+[`Source::Open`](https://github.com/microsoft/winget-cli/blob/3d9083c062c1e7a7086e05becb414d4e005e4ab6/src/AppInstallerRepositoryCore/RepositorySource.cpp#L801-L824)
+uses a tracking-only wrapper rather than opening the remote source.
+The subsequent installed
+[composite search](https://github.com/microsoft/winget-cli/blob/3d9083c062c1e7a7086e05becb414d4e005e4ab6/src/AppInstallerRepositoryCore/CompositeSource.cpp#L1504-L1517)
+calls `Source::GetTrackingCatalog`, which calls
+`PackageTrackingCatalog::CreateForSource` and then the mutating
+`CreateOrOpenTrackingIndex`. Neither public property supplies a read-only open
+disposition or disables tracking creation/repair.
+
+The local `InstalledPackages` catalog and its six public
+`PackageVersionMetadataField` values do not expose an installed-source identifier.
+Registered catalog identity alone does not associate a source with that exact
+installation; an available/default-version match is not a substitute.
+
+Likewise, installed tracking data is not independent current selected-channel
+availability, and an empty tracking-only available-source search is not proof of
+channel absence or lag. `winget list` is not an alternative authority: its
+[documented output](https://learn.microsoft.com/en-us/windows/package-manager/winget/list)
+also includes applications installed by other means, and the
+[audited command](https://github.com/microsoft/winget-cli/blob/3d9083c062c1e7a7086e05becb414d4e005e4ab6/src/AppInstallerCLICore/Commands/ListCommand.cpp)
+does not provide a supported JSON output switch.
+
+The missing protocol is a supported query-only tracking view that binds actual
+registered source identity to the exact installed app and user scope, without
+creating, repairing or updating persistent manager state. Canonical target and
+source identity still require independent freshness checks. Until that contract
+exists, the default observer remains unavailable and ownership remains unknown:
+matching local receipt, HKCU and signer facts do not fill the gap, and no npm,
+default-source, localized-table or direct tracking-database fallback is used.
+The retained source regression proves that refusal with inert process fixtures;
+it does not execute or qualify a Windows SDK/client.
+
 Linux recovery delegates unchanged to the installed receipt/journal API and
 requires exact selected digests; it is not a macOS cask recovery authority.
 
