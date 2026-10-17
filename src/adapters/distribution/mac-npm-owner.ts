@@ -232,6 +232,12 @@ export async function discoverMacNpmSelections(environment: NodeJS.ProcessEnv): 
   const selections = new Map<string, MacNpmSelection>();
   for (const directory of new Set(directories)) {
     const npm = path.join(directory, 'npm');
+    let candidate = false;
+    for (const file of [npm, path.join(directory, 'liftoff')]) {
+      try { await lstat(file); candidate = true; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    }
+    if (!candidate) continue;
     try {
       const npmFile = await realpath(npm);
       const node = await realpath(path.join(directory, 'node'));
@@ -250,7 +256,8 @@ export async function discoverMacNpmSelections(environment: NodeJS.ProcessEnv): 
         ...(managerExecutable ? { managerExecutable } : {}) };
       selections.set(JSON.stringify([npmFile, node, prefix]), selected);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new MacMigrationFailure('unproven-path-owner');
+      throw error;
     }
   }
   return [...selections.values()];

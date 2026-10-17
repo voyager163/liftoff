@@ -2,6 +2,9 @@ import type { CaskInstallPreview } from './native-upgrade.js';
 
 export type MacNpmManager = 'homebrew-node' | 'nvm' | 'volta' | 'custom';
 
+export type MacMigrationJournalPhase = 'prepared' | 'npm-intent' | 'npm-removed' | 'link-intent' | 'link-removed' |
+  'cask-intent' | 'cask-settled' | 'verified' | 'restore-intent' | 'restored' | 'uncertain';
+
 export interface MacNpmSelection {
   npm: string;
   node: string;
@@ -39,7 +42,7 @@ export interface MacMigrationBrew {
 export interface MacMigrationReport {
   schemaVersion: 1;
   kind: 'liftoff-mac-npm-migration';
-  mode: 'preview' | 'apply' | 'recover';
+  mode: 'preview' | 'apply' | 'recover' | 'inspect';
   status: 'blocked' | 'ready' | 'partial' | 'installed' | 'restored';
   effects: 'none' | 'possible' | 'npm-removed' | 'cask-installed' | 'old-restored';
   blockers: string[];
@@ -48,6 +51,7 @@ export interface MacMigrationReport {
   target?: { cask: string; version: string; manifestSha256: string; inventorySha256: string };
   preparation?: CaskInstallPreview;
   journal?: { path: string; sha256: string };
+  observedPhase?: MacMigrationJournalPhase;
   retainedScratch?: string;
   verification?: { owner: 'homebrew-cask'; version: string; assets: 'verified'; path: 'selected' | 'unresolved';
     parentShell: 'not-observable' };

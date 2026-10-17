@@ -4,7 +4,7 @@ import { chmod, lstat, mkdir, open, readlink, realpath, rename, rmdir, symlink, 
 import path from 'node:path';
 import { readUpgradeBytes } from './upgrade-host.js';
 import { assertMigrationMetadata, macMigrationHash, migrationDirectory, migrationFileIdentity, migrationNames } from './mac-npm-owner.js';
-import { MacMigrationFailure, type MacMigrationBrew, type MacNpmOwner } from '../../domain/distribution/mac-migration.js';
+import { MacMigrationFailure, type MacMigrationBrew, type MacMigrationJournalPhase, type MacNpmOwner } from '../../domain/distribution/mac-migration.js';
 import type { NativeCandidate } from '../../domain/distribution/native-upgrade.js';
 import { isStableSemver } from '../../stable-release.js';
 
@@ -124,8 +124,7 @@ export interface MigrationJournal {
   tree: MigrationTree;
   recoveryPhysical: string;
   launcher: { target: string; physical: string; metadata?: string };
-  phase: 'prepared' | 'npm-intent' | 'npm-removed' | 'link-intent' | 'link-removed' |
-    'cask-intent' | 'cask-settled' | 'verified' | 'restore-intent' | 'restored' | 'uncertain';
+  phase: MacMigrationJournalPhase;
   restoration?: {
     completed: { path: string; identity: string }[];
     pending?: string;
@@ -394,33 +393,36 @@ export async function restoreMigrationTree(source: string, journal: MigrationJou
   if (!journal.restoration) { journal.restoration = { completed: [] }; await store.save(journal); }
   const restoration = journal.restoration;
   if (restoration.pending !== undefined || restoration.launcherPending) throw new MacMigrationFailure('restore-settlement-unproven');
-  const assertCurrent = async () => {
-    if (JSON.stringify(await migrationParentIdentities(journal.owner, journal.destination)) !== JSON.stringify(journal.parentIdentities)) {
-      throw new MacMigrationFailure('recovery-parent-changed');
-    }
-    for (let index = 0; index < restoration.completed.length; index++) {
-      const entry = journal.tree.entries[index];
-      if (await restoredEntryIdentity(path.join(journal.owner.packageRoot, entry.path), entry) !== restoration.completed[index].identity) {
-        throw new MacMigrationFailure('restored-entry-changed');
-      }
-      if (entry.kind === 'directory') {
-        const children = restoration.completed.filter(child => child.path !== entry.path &&
-          path.posix.dirname(child.path) === (entry.path || '.')).map(child => path.posix.basename(child.path)).sort();
-        if (JSON.stringify(await migrationNames(path.join(journal.owner.packageRoot, entry.path), 8192)) !== JSON.stringify(children)) {
-          throw new MacMigrationFailure('restored-directory-changed');
-        }
-      }
-    }
-  };
-  await assertCurrent();
+  await assertRestoredMigrationEntriesCurrent(journal);
   for (const entry of journal.tree.entries.slice(restoration.completed.length)) {
     if (performance.now() - started > 30_000) throw new MacMigrationFailure('restore-deadline-exceeded');
     restoration.pending = entry.path; await store.save(journal);
-    await assertCurrent();
+    await assertRestoredMigrationEntriesCurrent(journal);
     await copyEntry(source, journal.owner.packageRoot, entry);
     restoration.completed.push({ path: entry.path,
       identity: await restoredEntryIdentity(path.join(journal.owner.packageRoot, entry.path), entry) });
     delete restoration.pending; await store.save(journal);
+  }
+}
+
+export async function assertRestoredMigrationEntriesCurrent(journal: MigrationJournal): Promise<void> {
+  if (JSON.stringify(await migrationParentIdentities(journal.owner, journal.destination)) !== JSON.stringify(journal.parentIdentities)) {
+    throw new MacMigrationFailure('recovery-parent-changed');
+  }
+  const restoration = journal.restoration;
+  if (!restoration) throw new MacMigrationFailure('missing-restoration-ledger');
+  for (let index = 0; index < restoration.completed.length; index++) {
+    const entry = journal.tree.entries[index];
+    if (await restoredEntryIdentity(path.join(journal.owner.packageRoot, entry.path), entry) !== restoration.completed[index].identity) {
+      throw new MacMigrationFailure('restored-entry-changed');
+    }
+    if (entry.kind === 'directory') {
+      const children = restoration.completed.filter(child => child.path !== entry.path &&
+        path.posix.dirname(child.path) === (entry.path || '.')).map(child => path.posix.basename(child.path)).sort();
+      if (JSON.stringify(await migrationNames(path.join(journal.owner.packageRoot, entry.path), 8192)) !== JSON.stringify(children)) {
+        throw new MacMigrationFailure('restored-directory-changed');
+      }
+    }
   }
 }
 
