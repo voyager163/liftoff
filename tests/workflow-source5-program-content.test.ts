@@ -10,6 +10,7 @@ import {
   assertCurrentSource5WorkflowProgramContent, constructSource5WorkflowProgramContent, readSource5WorkflowProgramContent
 } from '../src/governance-activation/workflow-source5-program-content.js';
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
+import { declareSource5WorkflowProgramSources } from '../src/governance-activation/workflow-source5-declaration.js';
 import { createWorkflowRequiredSourceFixture } from './fixtures/workflow-required-source.js';
 
 const roots: string[] = [], fixtures: Awaited<ReturnType<typeof createWorkflowRequiredSourceFixture>>[] = [];
@@ -129,6 +130,22 @@ describe('genuine original current5 program construction and consumption', () =>
     expect(Object.isFrozen(result)).toBe(true); expect(Object.isFrozen(result.content)).toBe(true);
     expect(JSON.stringify(result)).not.toContain(original.installedApplicationRoot);
     await expect(assertCurrentSource5WorkflowProgramContent(current())).resolves.toBeUndefined();
+    const declared = await declareSource5WorkflowProgramSources(current());
+    expect(declared).toMatchObject({
+      status: 'blocked', publicationSources: [], effects: [], qualifiedExecutableRecipe: null,
+      prerequisiteSession: null, execution: 'not-authorized', workloadExecution: false
+    });
+    expect(declared.declaration.requiredProgram.authenticatedSubject).toMatchObject({
+      kind: 'original-current5-program', scope: 'original-current5-candidate-content',
+      contentDigest: result.content.contentDigest, assemblyDigest: result.content.assemblyDigest,
+      archive: result.archive, originalAssembly: result.originalAssembly, delivery: 'not-observed',
+      releaseAuthority: 'not-issued', nativeQualification: 'not-issued', workflowAuthority: 'not-issued'
+    });
+    expect(declared.blockers).toHaveLength(70);
+    expect(declared.blockers.some(blocker => blocker.subject === 'current5-program')).toBe(false);
+    expect(declared.declaration.recipes.every(recipe => recipe.completeJob === null && recipe.integrationId === null)).toBe(true);
+    expect(declared.declarationDigest).toBe(canonicalSha256(declared.declaration));
+    expect(JSON.stringify(declared)).not.toContain(original.installedApplicationRoot);
     expect(value.calls).toEqual([]); expect(value.processCalls()).toBe(0);
   });
 
@@ -172,6 +189,8 @@ describe('genuine original current5 program construction and consumption', () =>
     await rename(file, path.join(root, 'retained-original-cli.js'));
     await writeFile(file, bytes, { flag: 'wx', mode });
     await expect(assertCurrentSource5WorkflowProgramContent({ ...request, content: originalContent }))
+      .rejects.toThrow(/Original installed assembly readset changed/);
+    await expect(declareSource5WorkflowProgramSources({ ...request, content: originalContent }))
       .rejects.toThrow(/Original installed assembly readset changed/);
   });
 });

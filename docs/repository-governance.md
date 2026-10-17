@@ -262,6 +262,16 @@ Focused input-boundary controls do not replace the explicitly named real
 build/pack/install cases: those require the actual pinned runtime archive and
 first-party build tooling, plus the real launcher on Windows.
 
+`declareSource5WorkflowProgramSources` consumes that original token through the
+fresh first-party reader and binds its complete program/archive/source digests
+into the intended source declaration. It resolves only the current5-program
+obligation; unpublished genuine candidate content does not need a fabricated
+public release. Delivery, complete jobs, integrations, tool/runner admission,
+controlled-red subjects and current prerequisite/session authority remain
+separate requirements. A copied declaration or returned program metadata cannot
+replace the original token, and changed installed content refuses before any
+declaration is issued.
+
 Private `observeSource5WorkflowDependencyReview` reads the actual GitHub
 dependency diff for exact repository/base/head commit/tree selectors through
 the original read-only runtime. It verifies a bounded complete ancestor-to-head

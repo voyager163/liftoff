@@ -177,6 +177,11 @@ export async function readSource5WorkflowProgramContent(
     installedRuntimeEntrypoint: actual.runtimeEntrypoint,
     packageArchive: Object.freeze({ bytes: actual.original.packageArchive.bytes, sha256: actual.original.packageArchive.sha256,
       mode: actual.original.packageArchive.mode, content: Buffer.from(actual.original.packageArchive.content) }),
+    originalAssembly: Object.freeze({
+      sourceCommit: actual.original.manifest.source.commit, sourceDirty: actual.original.manifest.source.dirty,
+      sourceDigest: actual.original.manifest.source.sourceDigest,
+      configurationDigest: actual.original.manifest.source.configurationDigest
+    }),
     contentDigest: actual.contentDigest, assemblyDigest: actual.originalDigest,
     releaseAuthority: 'not-issued' as const, nativeQualification: 'not-issued' as const, workflowAuthority: 'not-issued' as const
   });
