@@ -25,6 +25,7 @@ export const nativePackagePlatformCases = {
     'runs the actual Linux bundle and owned recovery in pinned glibc 2.28 userspace without public or minimum-kernel credit'],
   darwin: ['refuses public macOS installation while minimum-host and signing qualification remain absent'],
   win32: ['refuses replacement of a running Windows image and retains the original bytes',
+    'runs the actual stable Windows launcher and refuses unsafe immutable version pointers',
     'settles an actual installed Windows controller job without changing execution policy']
 };
 export function assertNativePackageReport(report, platform = process.platform) {
