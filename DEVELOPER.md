@@ -2342,6 +2342,16 @@ from authoritative current source/registry/environment/digest receipts;
 These interfaces do not implement or authorize workflow source publication or
 application deployment.
 
+New artifact publication is blocked before intent, source upload or dispatch:
+the approved QuickBuild/tag protocol has no qualified atomic no-replace or
+exclusive-destination producer. Absence preflight followed by tag locks cannot
+prove that no competing tag was overwritten. The current source guard has no
+caller-supplied capability switch or fixture issuer. Original accepted handles
+remain observable without a fresh build grant; unit observation fixtures start
+from explicitly stored original handles, not a bypass of this write guard.
+Temporary tags, import/promotion and extra role grants require a separate
+artifact protocol decision and actual provider qualification.
+
 TASK14.3 supplies separate private source interfaces:
 `planWorkflowSourcePublication`/`executeWorkflowSourcePublication` bind exact
 per-file source and an existing non-protected review ref;

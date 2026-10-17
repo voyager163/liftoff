@@ -99,7 +99,8 @@ describe('developer activation-completeness guidance', () => {
       'branch or raw-SHA fallback', 'does not qualify public-v8 execution',
       '`contextPaths` leaf files', '`applicationArtifactContextStep(paths)`', '`applicationContextDirectory`',
       '`observeApplicationSource`', '512 files, 1 MiB per file, 8 MiB total and two minutes overall',
-      'lost original accepted handle'
+      'lost original accepted handle', 'New artifact publication is blocked before intent',
+      'no qualified atomic no-replace', 'not a bypass of this write guard'
     ]) expect(completeness).toContain(phrase);
     expect(phaseCapabilities['application-prerequisites-ready'].executor).toBe('injected-only');
     expect(phaseCapabilities['application-artifact-ready'].executor).toBe('injected-only');

@@ -227,6 +227,13 @@ The same verified principal must independently have registry-scoped effective
 Missing actions or explicit permission exclusions block before dispatch; the
 producer never grants another role to make a build succeed. Already accepted
 workflow handles remain observation-only and do not require a new build grant.
+New publication currently fails closed before recording intent, uploading source
+or dispatching a build: no qualified atomic no-replace or exclusive-destination
+producer exists for the approved QuickBuild/tag protocol. An absent tag followed
+by a later lock cannot prove that a competing publication was never overwritten.
+An operator assertion, resource approval or fixture cannot supply that guarantee.
+Temporary tags, import/promotion and additional roles are not silently substituted;
+they require a separately reviewed protocol and actual provider qualification.
 The tree is obtained with `git rev-parse <sourceSha>^{tree}` and independently
 checked against both local Git and the provider commit. Runner admission must
 name `<repository>/<workflowPath>@refs/tags/<execution-tag>`, not a branch.

@@ -464,6 +464,11 @@ Approved artifact publication must project an exact manifest-bound inventory
 of leaf files from the immutable source commit; a broad repository-root upload
 or \`.dockerignore\` alone is not source-transmission authority. Source,
 dependency-network and build permissions remain independently reviewed.
+New publication remains blocked until actual no-replace or exclusive-destination
+admission is qualified; checking an absent tag and locking it later cannot
+guarantee that a competing tag was never overwritten. Original accepted runs
+remain observation-only; no temporary tags, import/promotion or extra roles
+are substituted automatically.
 
 `;
   }

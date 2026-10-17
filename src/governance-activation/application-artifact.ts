@@ -178,6 +178,11 @@ async function observeApplicationBuildPermissions(
   }
 }
 
+function assertApplicationPublicationNoReplace(): void {
+  applicationError('application-publication-no-replace-unavailable',
+    'Registry publication has no qualified atomic no-replace or exclusive-destination producer. Absence preflight and later tag locks cannot prevent competing overwrites; no publication intent, source upload or build dispatch was performed. Retained original accepted handles remain observation-only.');
+}
+
 function dispatchInputs(binding: ReturnType<typeof applicationArtifactBinding>): Record<string, string> {
   return {
     binding_digest: binding.bindingDigest, source_sha: binding.sourceSha,
@@ -420,6 +425,9 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
       await observeApplicationProtection(input);
       await observeApplicationBuildPermissions(input, binding);
       await observeApplicationSource(input);
+      await observeApplicationBuildPermissions(input, binding);
+      await assertApplicationAuthority(input, dispatch);
+      assertApplicationPublicationNoReplace();
       await input.recordApplicationDispatchIntent?.(dispatch);
       await assertApplicationAuthority(input, dispatch);
       await observeImmutableWorkflowExecutionRef({ client }, {
