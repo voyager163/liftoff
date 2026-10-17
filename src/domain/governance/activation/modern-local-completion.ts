@@ -205,7 +205,7 @@ export function createCompletionArtifact(p:CompletionArtifactContext,role:LocalF
       {...body,schemaVersion:1,role};
   artifactBytes(result,p);return result;
 }
-function inflateCompletionIndex(encoded:Buffer,expectedBytes:number):Buffer{
+export function inflateCompletionIndex(encoded:Buffer,expectedBytes:number):Buffer{
   if(!Number.isSafeInteger(expectedBytes)||expectedBytes<1||expectedBytes>protectedCompletionIndexEncoding.maximumDecodedBytes)localInputFailure('Invalid bounded completion index length.');
   let inflated:unknown;
   try{inflated=inflateRawSync(encoded,{info:true,maxOutputLength:protectedCompletionIndexEncoding.maximumDecodedBytes});}

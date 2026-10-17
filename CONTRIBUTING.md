@@ -665,6 +665,13 @@ remain preserved. No Docker daemon, dependency network or provider is required.
 The group does not qualify successor creation, fresh OpenSpec finalization,
 general update writers, other hosts or whole-directory rollback.
 
+Successor revalidation stores protected indexes in schema-2 `deflate-raw`
+artifacts, using the same bounded decoder as local completion. Both the encoded
+record and expanded index remain limited to64KiB; base64 overhead must not
+exclude an otherwise admissible index. Historical schema-1 target/index
+artifacts remain readable, and target records retain their original encoding.
+Compression does not change protected paths, exact-byte commitments or consent.
+
 The shared project fixture in `tests/fixtures/modern-revalidation-project.ts`
 also serves `tests/modern-revalidation-records.test.ts`; its private native and
 archived opt-in groups remain separate qualification obligations.
