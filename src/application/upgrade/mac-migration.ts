@@ -4,8 +4,9 @@ import { constants } from 'node:fs';
 import path from 'node:path';
 import { defaultSelfUpgradeDependencies, resolveSelectedLiftoff, type SelfUpgradeDependencies } from '../../adapters/distribution/upgrade-host.js';
 import { inspectNpmFiles } from '../../adapters/distribution/npm.js';
-import { assertCaskOwnership, nativePolicy, createNativeUpgradePort } from '../../adapters/distribution/native.js';
+import { assertCaskOwnership, nativePolicy } from '../../adapters/distribution/native.js';
 import { admitNativeStableMaterial } from '../../adapters/distribution/native-metadata.js';
+import { inspectMacInstalledCandidate } from '../../adapters/distribution/native-mac-installed.js';
 import type { MacMigrationCaskPort } from '../../adapters/distribution/mac-migration-cask.js';
 import { createHomebrewCaskPreparation } from '../../adapters/distribution/native-cask-plan.js';
 import {
@@ -106,24 +107,30 @@ async function verifyCask(journal: MigrationJournal, dependencies: MacMigrationD
   const cask = dependencies.cask!;
   const observed = await bounded(signal => cask.installed(journal.brew, journal.candidate, signal));
   assertCaskOwnership(observed.ownership, observed.inventory, nativePolicy(cask.policy));
-  const inventory = observed.inventory;
-  if (inventory.version !== journal.candidate.version || inventory.manifestSha256 !== journal.candidate.manifestSha256 ||
-    inventory.inventorySha256 !== journal.candidate.inventorySha256 || inventory.sourceCommit !== journal.candidate.sourceCommit ||
-    inventory.target !== 'darwin-arm64') throw new MacMigrationFailure('cask-assets-mismatch');
-  const port = createNativeUpgradePort({ ...dependencies.upgrade, execPath: inventory.runtime,
-    runner: { run: (command, options) => dependencies.upgrade.runner.run(command, { ...options, inheritEnvironment: false }) },
-    environment: migrationEnvironment(dependencies.upgrade, scratch, inventory.runtime),
-    runningExecutable: path.join(inventory.packageRoot, 'dist/cli.js'), resolveLiftoff: async () => journal.destination }, {
-    cask: async () => observed.ownership
-  });
-  const installed = await port.inspect(inventory.packageRoot, inventory.version, scratch);
-  if (!installed || installed.owner !== 'homebrew-cask' || installed.manifestSha256 !== journal.candidate.manifestSha256 ||
-    installed.inventorySha256 !== journal.candidate.inventorySha256) throw new MacMigrationFailure('cask-ownership-unverified');
+  const material = await bounded(signal => cask.target(journal.brew, signal));
+  const inspect = () => bounded(signal => inspectMacInstalledCandidate({ bundleRoot: observed.inventory.bundleRoot,
+    material, candidate: journal.candidate, policy: cask.policy, signal }));
+  const installed = await inspect();
+  for (const key of ['packageRoot', 'bundleRoot', 'launcher', 'runtime', 'version', 'target',
+    'manifestSha256', 'inventorySha256', 'sourceCommit'] as const) {
+    if (observed.inventory[key] !== installed[key]) throw new MacMigrationFailure('cask-assets-mismatch');
+  }
+  assertCaskOwnership(observed.ownership, installed, nativePolicy(cask.policy));
+  if (await realpath(journal.destination) !== installed.launcher) throw new MacMigrationFailure('cask-ownership-unverified');
   if (await migrationProbe(dependencies.upgrade, scratch, installed.runtime, installed.runtime,
     [path.join(installed.packageRoot, 'dist/cli.js'), '--version']) !== `Liftoff ${installed.version}` ||
     await migrationProbe(dependencies.upgrade, scratch, installed.runtime, journal.destination,
       ['--version']) !== `Liftoff ${installed.version}`) {
     throw new MacMigrationFailure('cask-version-verification-failed');
+  }
+  if ((await inspect()).identity !== installed.identity || await realpath(journal.destination) !== installed.launcher) {
+    throw new MacMigrationFailure('cask-assets-mismatch');
+  }
+  const current = await bounded(signal => cask.installed(journal.brew, journal.candidate, signal));
+  assertCaskOwnership(current.ownership, installed, nativePolicy(cask.policy));
+  for (const key of ['packageRoot', 'bundleRoot', 'launcher', 'runtime', 'version', 'target',
+    'manifestSha256', 'inventorySha256', 'sourceCommit'] as const) {
+    if (current.inventory[key] !== installed[key]) throw new MacMigrationFailure('cask-assets-mismatch');
   }
   let selection: 'selected' | 'unresolved' = 'unresolved';
   try {

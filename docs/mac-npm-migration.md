@@ -228,6 +228,31 @@ PATH observations, plus continued absence of the selected old package. A settled
 cask operation whose final verification was interrupted can be checked without
 rewriting its `cask-settled` checkpoint. `restored` requires the complete unchanged
 physical-entry ledger, old package/launcher/version and positive cask absence.
+
+Installed verification does not pretend the new cask runtime is the utility's
+running executable. It independently re-admits fresh original signed release
+material, compares the exact reviewed candidate (including its archive digest),
+and uses the utility's trusted canonical inventory reader to compare manifest
+bytes and every installed path, file digest, size, mode and confined link.
+Physical identities are rechecked across the inventory read. No candidate
+runtime or candidate-supplied inventory helper runs before this inert comparison.
+Only then may bounded version probes run; a second inert comparison detects
+changes during those probes. Manager attribution remains an independent cask
+observation and strict existing ownership assertion, not a child exit status or
+a manufactured self-upgrade installation.
+
+This reader compares installed bytes with authenticated manifest/inventory and
+archive-digest metadata. It does **not** re-parse archive members, qualify
+extraction/publication, or replace the provider's archive, atomic no-clobber and
+manager-readback gates. Development `releaseReady: false` remains an honest
+consistency input, not release approval; the authenticated archive verifier's
+separate `releaseReady: true` requirement is unchanged. If fresh original
+material no longer describes the journal's exact candidate, inspection blocks
+rather than adopting a newer release. The 10-second inventory budget refuses
+late or aborted observations. The canonical inventory callback has no abort
+parameter: its in-flight read cannot be forcibly settled by this wrapper and
+may continue until its own bounded work finishes. Callback failures propagate;
+neither timeout nor cancellation is reported as successful inventory proof.
 An uncertain operation, retained lock, changed manager or edited/replaced state
 remains partial; a previous success never substitutes for current verification.
 Inspection also requires a qualified provider, not the read-only preparation
