@@ -37,6 +37,33 @@ describe('source repository setup policy', () => {
     expect(setup.with['node-version']).toBe('24.21.0');
   });
 
+  it('serializes the native Windows settlement precheck without changing its selected cases', async () => {
+    const workflow = await readWorkflow('ci.yml');
+    const step = workflow.jobs['test-shards'].steps.find(
+      (candidate: { name?: string }) => candidate.name === 'Verify native Windows process settlement'
+    );
+    expect(step.id).toBe('windows-process');
+    expect(step.if).toBe("runner.os == 'Windows' && matrix.shard == 1");
+    expect(step.run.trim()).toBe([
+      'npx vitest run',
+      'tests/windows-job-runner.test.ts tests/repair-preparation.test.ts',
+      'tests/adoption-verification-execution.test.ts',
+      '-t "settles a real native Node command|detects unref descendant|runs exact checks in a disposable copy"',
+      '--maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false',
+      '--reporter=dot --reporter=json --outputFile.json=qualification/windows-process-tests.json'
+    ].join(' '));
+    const evidence = workflow.jobs['test-shards'].steps.find(
+      (candidate: { name?: string }) => candidate.name === 'Store Windows process settlement evidence'
+    );
+    expect(evidence.if).toBe("${{ !cancelled() && (steps.windows-process.outcome == 'success' || steps.windows-process.outcome == 'failure') }}");
+    expect(evidence.with).toEqual({
+      name: 'liftoff-windows-process-tests-${{ github.run_id }}-${{ github.run_attempt }}',
+      path: 'qualification/windows-process-tests.json',
+      'if-no-files-found': 'error',
+      'retention-days': 14
+    });
+  });
+
   it.each(['Linux', 'macOS'].flatMap(platform =>
     ['test-shards', 'coverage-cli'].map(id => ({ platform, id }))))('requires pinned $platform tool preparation in $id', async ({ platform, id }) => {
     for (const fault of ['missing', 'conditional', 'ignored', 'replaced', 'late', 'duplicate']) {

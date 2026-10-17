@@ -344,12 +344,24 @@ jobs:
         run: npx vitest run tests/framework-smoke.test.ts
 
       - name: Verify native Windows process settlement
+        id: windows-process
         if: runner.os == 'Windows' && matrix.shard == 1
         run: >-
           npx vitest run
           tests/windows-job-runner.test.ts tests/repair-preparation.test.ts
           tests/adoption-verification-execution.test.ts
           -t "settles a real native Node command|detects unref descendant|runs exact checks in a disposable copy"
+          --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false
+          --reporter=dot --reporter=json --outputFile.json=qualification/windows-process-tests.json
+
+      - name: Store Windows process settlement evidence
+        if: ${{ !cancelled() && (steps.windows-process.outcome == 'success' || steps.windows-process.outcome == 'failure') }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: liftoff-windows-process-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification/windows-process-tests.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Run Windows project and packaging boundary coverage
         id: windows-boundary
