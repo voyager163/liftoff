@@ -5,6 +5,92 @@ another machine. It records the repository state, decisions, validation,
 remaining work, and cautions needed to continue the OpenSpec change
 `modernize-liftoff-platform` without reconstructing the prior conversation.
 
+## Shared reconstruction correction, 2026-10-17
+
+This isolated continuation is a bounded shared-core correction rooted directly
+at `a05fbb79c0280226f10c84658f590edb0faee846`. Production source commit
+`28c9f77de53642136fc10dda76b016ea82628113`, tree
+`9418cfa5800049016b5f40b172e4feef09b8f842`, removes deterministic duplicate
+source reconstruction without introducing a cross-request cache:
+
+- `buildModernManagedCore` resolves the source once and supplies that exact
+  result to its context and compatibility subproducers only when their
+  canonical source request matches. A different request is rejected rather
+  than served stale data.
+- `inspectModernInstalledActivation` still performs a new filesystem,
+  physical-identity, manifest, record and currentness observation on every
+  invocation. Within one inspection only, its collected managed-core render can
+  be reused during validation when it is bound to the exact captured manifest
+  SHA-256. Public snapshot validation still reconstructs independently.
+- Provider reads, current records, authority, approvals, leases, source
+  selection and filesystem observations are not retained between requests.
+  Source5 public interfaces and its owning fixture/orchestration files are
+  unchanged.
+
+Focused verification of `28c9f77d` passed 171 managed-core/preflight cases,
+28 import-boundary cases, repository policy, strict OpenSpec validation and the
+complete 62-case Source5 matrix file. The six original sequenced timeout
+controls passed under their unchanged 30-second deadlines: preparation 1.619s,
+component sealing 9.346s, lease acquisition 2.768s, all-12 matrix observation
+7.577s, component pending/resume 7.057s and finalization fresh-lease/CAS
+13.199s. A same-process diagnostic, not qualification or hosted timing credit,
+measured the source-resolution portion at a 10.448ms prior-path median versus
+2.671ms with operation-local reuse.
+
+The exact clean qualification of `28c9f77d` started at
+2026-10-17T03:38:38Z and stopped after the unfiltered suite at
+2026-10-17T04:44:19Z. Supported-stack and build passed. The suite reported 357
+passing files, three failing files, six skipped files, 12,757 passing tests, 11
+failing tests and 148 skipped tests. No gateway or CLI coverage command
+started, and no fresh report or percentage exists for this revision.
+
+- One failure was a coupled source-family instrumentation expectation that
+  still required 11 redundant resolutions. Separate successor
+  `75c209e42bd2c506fd16f5394fa35e13f4a3c217`, tree
+  `f31738dc7faa764e0eefc1da0ce394c4188f48cb`, changes only that test. It now
+  asserts one validated source per managed-core operation while each
+  independent installed inspection still performs exactly four source
+  resolutions, its own filesystem opens and a separately captured
+  snapshot/files/directories. Legacy and selected lookup copying remains 24
+  complete rows versus four selected rows. Exact clean committed bytes pass all
+  79 cases, build, repository policy and strict OpenSpec validation.
+- Ten failures in `tests/modern-manual-execution.test.ts` were environment
+  discovery failures because no compatible executable was exposed as
+  `python`. The preserved qualified executable is
+  `/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/macos-toolchain/python/cpython-3.14.7-macos-aarch64-none/bin/python3.14`.
+  The preserved uv 0.12.7 executable is under
+  `files/macos-toolchain/uv/venv/bin/uv`. Use an isolated temporary `python`
+  launcher and PATH; do not mutate system tools.
+- `tests/telemetry-dashboard.test.ts` could not collect because declared
+  dependency `@kusto/language-service-next/bridge.js` is absent from this
+  worktree's `node_modules`. Exact npm 12 `npm ci` is justified only after the
+  currently reserved Source original-program readset releases the shared heavy
+  lane. Do not mutate a dependency or tool root while that readset is active.
+
+The failed-run packet is retained at
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/shared-core-28c9-full-qualification`.
+`coverage-not-run.txt` has SHA-256
+`380e2fb06b4510aec1d2eb998acd37693a5d489585915518cc74e3e7335d1136`;
+the corrected ledger has SHA-256
+`03ae70de234f236f710a2795434de00f8759ae1171fd8774864d11fca9a9fb7d`.
+An initial finalizer copy of pre-existing ignored `cdadc391` reports was removed
+from this packet and explicitly recorded so it cannot be attributed to
+`28c9f77d`.
+
+Neither commit completes an OpenSpec task. Progress remains 87/136 and no
+source, coverage, readiness, provider or phase-completion claim is made. Root
+has received the two bounded commits for preserving intake. The shared heavy
+lane was explicitly released at 2026-10-17T04:44:19Z; Source exact
+`f720a151ba41944f168c3f7fe09129f16245267c` currently owns the reserved
+original-program build/pack/install plus ten-consumer run. After its explicit
+release, allow the already queued bounded application-prerequisite V8 selector,
+then restore this worktree's isolated dependencies and run the failed surfaces.
+A later exclusive exact-clean successor run must repeat supported-stack, build,
+the unfiltered one-worker suite, gateway coverage plus verification, CLI
+source-complete coverage plus verification, repository policy and strict
+OpenSpec. Root's later `.13` and raw-JS inventory need a separate combined
+qualification and cannot inherit this `.12` evidence.
+
 ## Canonical assertion recovery, 2026-10-16
 
 This preserving test/documentation correction follows Root
