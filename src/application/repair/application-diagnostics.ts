@@ -61,6 +61,10 @@ export function applicationCommandFailure(
     return failure('output-limit',
       `The declared combined output bound (${budget} bytes) was exceeded. Reduce check verbosity or explicitly review a different bounded check before retrying. Output is withheld because it may contain secrets.`);
   }
+  if (result.errorCode === 'SUPERVISOR_TIMEOUT') {
+    return failure('timed-out',
+      'The Windows process supervisor reported a bounded timeout before returning trustworthy target launch and settlement evidence. This does not establish that the declared check started or that its declared application timeout elapsed. Review Windows controller startup and host prerequisites before requesting fresh verification. No automatic retry or timeout increase is authorized.');
+  }
   if (result.timedOut || result.errorCode === 'ETIMEDOUT') {
     return failure('timed-out',
       `The declared timeout (${command.timeoutMs} ms) was exceeded. Review hangs and external waits, or request a fresh plan with an explicitly reviewed timeout within the supported bound. No automatic retry or timeout increase is authorized.`);
@@ -86,9 +90,7 @@ export function applicationCommandFailure(
   }
   if (result.errorCode === 'POWERSHELL_SPAWN_FAILED') {
     return failure('execution-failed',
-      result.errorMessage
-        ? `Failed to launch Windows PowerShell 5.1: ${result.errorMessage}`
-        : 'Failed to launch Windows PowerShell 5.1. Ensure Windows PowerShell 5.1 is installed and available in SystemRoot System32.');
+      'Failed to launch Windows PowerShell 5.1 for the bounded controller. Ensure Windows PowerShell 5.1 is installed and available through the supported SystemRoot System32 launch path. Private launch diagnostics are withheld.');
   }
   if (result.errorCode === 'EACCES' || result.errorCode === 'EPERM' || result.status === 126) {
     return failure('execution-failed',

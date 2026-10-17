@@ -5,6 +5,34 @@ another machine. It records the repository state, decisions, validation,
 remaining work, and cautions needed to continue the OpenSpec change
 `modernize-liftoff-platform` without reconstructing the prior conversation.
 
+## Windows diagnostic intake and hosted qualification, 2026-10-17
+
+The current composition preserves CI candidate `6053b551` and source correction
+`6c379b916540f3ac7558d484e6a08300b27743b2`, rather than rewriting either.
+`SUPERVISOR_TIMEOUT` no longer claims that target execution or the declared
+application timeout elapsed; PowerShell launch failure uses fixed guidance
+without interpolating private exception text. Genuine target timeouts and
+existing precedence, cleanup and authority semantics remain unchanged.
+
+The source owner's original controls failed 3/3, the corrected controls passed
+3/3, and its clean committed eight-file portable closure passed 381 tests with
+four existing native-only cases unrun. These are bounded source results, not a
+Windows startup repair or composed coverage qualification.
+
+Original hosted run `39023881630`, attempt 1, remains bound to `979a727f`.
+Its CLI coverage job `117370930657` was cancelled: the authenticated check
+annotation explicitly records the 45-minute maximum. No complete CLI coverage
+report was produced, so the local exact-979a V8 result cannot stand in for that
+hosted gate. The complete Linux and macOS main-report pairs independently
+match all 384 original test files: Linux 13,419 passed / 0 failed / 515 unrun;
+macOS 13,669 / 0 / 265. Preserve these host-specific omissions separately from
+the local 13,707 / 0 / 227 record and the supplemental OpenSpec/native reports.
+
+The serialized Windows precheck candidate remains unqualified on its actual
+Windows lane. Source observation performance and Linux test prerequisites have
+separate bounded allocations; no timeout, coverage floor, safety guard or
+OpenSpec checkbox was relaxed. Programme progress remains 87/136.
+
 ## Unpublished telemetry suppression, 2026-10-17
 
 Root assigned the terminal EF telemetry correction on exact composed base
@@ -39,13 +67,11 @@ Exact clean committed bytes passed build; project and gateway no-emit checks;
 395 telemetry-focused CLI/project/semantic tests with three separately owned
 cases excluded; 162 complete gateway validator tests; 29 documentation tests;
 repository policy; strict change validation; and strict all-OpenSpec validation
-(24/24). The excluded cases were rerun together and remain exactly three
-current-version/native-owner expectation failures: two doctor readiness
-aggregation cases in `tests/semantic-command-outcomes.test.ts` and one
-owner-aware upgrade-availability case in
-`tests/project-telemetry-enrollment.test.ts`. Do not change those snapshots or
-owner identities as part of telemetry; Root owns their deliberate `.13-dev`
-expectation correction.
+(24/24). At that revision the excluded cases were rerun together and remained
+exactly three current-version/native-owner expectation failures: two doctor
+readiness aggregation cases in `tests/semantic-command-outcomes.test.ts` and
+one owner-aware upgrade-availability case in
+`tests/project-telemetry-enrollment.test.ts`.
 
 The sealed evidence directory is
 `/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/telemetry-dev-suppression-cc91`.
@@ -57,6 +83,87 @@ No full suite, V8 coverage, native qualification, cloud action, package
 publication or push ran. No OpenSpec task checkbox changed; progress remains
 87/136. Root should preserve `cc91c2e8` as the telemetry source delta and run
 final composed qualification against its larger source inventory.
+
+Root later assigned those three expectations on exact composed base
+`7bb34abddcf48edb50cb6f411ebbda5227e2346e`, tree
+`0937412a92267e485746ce064be0993cd997db48`. The actual cause was not a
+production owner/readiness defect: both tests intended a released npm-owned
+observation but passed the source package's unpublished `0.13.0-dev.0` as
+`SelfUpgradeRequest.currentVersion`. Production correctly returned
+`blocked/invalid_package` before owner or channel observation.
+
+Test-only successor `11d133b1c4fe2b59e792fe9fb08a6de3bcf4b727`, tree
+`4528bf0271aa0faf1fa626fa05aa8bee22ec24a4`, explicitly supplies each
+fixture's released current version at the injected self-upgrade boundary while
+preserving its exact package root and dependencies. No production file or
+shared fixture changed; unpublished-source refusal, stable/native guards,
+owner identities, semantic outcomes and opt-outs remain unchanged. Exact clean
+committed bytes pass both complete owning files (93/93), the complete
+telemetry closure (398/398), build, project/gateway no-emit, repository policy,
+strict change validation and strict all-OpenSpec validation (24/24).
+
+Evidence is retained under
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/owner-version-expectations-11d133`.
+`receipt.json` has SHA-256
+`b4ed4a829cc211ae844dfd370c0c15b21fa9aa2b5cc7068adea5893957732a4d`;
+the evidence ledger has SHA-256
+`0fc8b22230e1aa07ef54ae126dfb78c4b9f72c175c06b6fa4148aa911e91735b`.
+No full suite, V8 coverage, native/cloud action, push or task checkbox change
+ran.
+
+Root accepted and preserving-integrated `11d133b1` as
+`979a727ff35ddec1909339fe9f425651fee1c138`, tree
+`e9df4949032a2ca3573c06350d49b83d09c9eb35`, over Root-only expectation
+correction `9557f7c4`. Root independently rehashed all 24 source-ledger
+subjects, passed the complete unfiltered 17-file telemetry/native union
+(639/639), strict graph and all eight bounded gates; its receipt has SHA-256
+`bfc2a09e0090bec79ae9f406f5e29f3f971db142abf91c6562d4ee760e7f8468`.
+No further unowned bounded source allocation is currently available. Root
+retains the fresh composed full, gateway, CLI/V8 and final lane plus unresolved
+delivery, whole-job-custody and producer-contract scope. Do not launch another
+heavy, native or genuine-800 run without a new exact assignment.
+
+Root's exact `979a727f` full run later passed 13,707 tests with 227 named
+unrun. Fourteen cases that had passed at `8fb50e2e` were among those unrun:
+six each in `tests/modern-openspec-execution.test.ts` and
+`tests/modern-openspec-initialization.test.ts`, plus two in
+`tests/modern-openspec-tool-identity.test.ts`. All three files are
+byte-identical at `8fb50e2e` and `979a727f`; the difference was the explicit
+test-tool profile, not a source regression.
+
+The continuation owner's ambient Homebrew `node@24` link had advanced to
+`24.22.0`, which the exact runtime guards correctly refuse. Root's fourteen
+unrun cases instead reflected absent explicit profile flags, not runtime
+drift. The owning-session profile restored the
+already-retained official Node `24.21.0` archive with SHA-256
+`bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057`
+and executable SHA-256
+`e4b5a3af0e05c75de2eae013904145f40fe7fc2a6e6f17510128bf45cca4e79b`.
+Its bundled npm initially shadowed isolated npm and produced 11 honest
+`incompatible-tool` failures. The corrected profile uses session-local
+launcher shims that bind official Node `24.21.0` to the existing isolated npm
+`12.0.2`, OpenSpec `1.11.0`, OpenTofu `1.12.6`, and the original native
+OpenSpec/O-I flags and finite metadata budgets.
+
+One final selector on an archive of immutable `979a727f` passed exactly 14/14
+with no failures: six execution, six initialization and two closed
+tool-admission cases. The selector is
+`explicit actual OpenSpec B execution|actual initialized-baseline execution|persists blocked`;
+the non-anchored identity alternative is necessary because Vitest filters
+suite nodes before child names. This supplemental actual-framework evidence
+does not relabel Root's 227-unrun full record, transfer `8fb` or native
+distribution credit, or qualify another OpenSpec task.
+
+Evidence is under
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/openspec-profile-979a`.
+`receipt.json` has SHA-256
+`9484cc6b0ee9fb74e4a22ba842c48c9cb91c8f373404a818eb511c174cd92433`,
+the evidence ledger has SHA-256
+`d35747dca2b8c7a8dfa1d3289f5595b969134efb1000bcc5714ffcd0db00a29c`,
+and final test JSON has SHA-256
+`384eb09ec92326a204136a1848657836867d0e79add0f57f6ef2be9c32a4f2ad`.
+No repository source, full suite, coverage, native distribution, cloud,
+publication, push or task checkbox changed.
 
 ## Shared reconstruction correction, 2026-10-17
 
