@@ -3,7 +3,6 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
 import { canonicalSha256 } from '../../src/domain/governance/activation/canonical-json.js';
-import { environmentValue } from '../../src/domain/workstation/executables.js';
 import type { GitHubActivationTransport, GitHubRequest } from '../../src/adapters/github/activation-rest.js';
 import { NodeCommandRunner } from '../../src/process-runner.js';
 import type { CommandResult, CommandRunner } from '../../src/process-runner.js';
@@ -20,6 +19,8 @@ import { protectedWorkflowFamilies, requiredWorkflowContextsFromSource } from '.
 import { workflowByteDigest } from '../../src/governance-activation/workflow-binding.js';
 import { source5WorkflowPlanInventory } from '../../src/governance-activation/workflow-source5-operations.js';
 import { workflowSource5JournalFixture } from './workflow-source5-journal.js';
+import { matrixValidatorEnvironment } from './workflow-source5-validator-environment.js';
+export { matrixValidatorEnvironment } from './workflow-source5-validator-environment.js';
 
 const contexts = [
   { jobId: 'validate', name: 'Required validation', validationStep: 'Validate source' },
@@ -30,15 +31,6 @@ const invalid = ['export const valid = ;\n', '{broken}\n'];
 const paths = ['backend/application.js', 'backend/package.json'];
 const noGit: CommandRunner = { async run() { throw new Error('Matrix observation must not submit a process or Git effect.'); } };
 type MatrixValidatorSelector = Pick<WorkflowContextBinding, 'family' | 'mode'> & { jobId: typeof contexts[number]['jobId'] };
-
-export function matrixValidatorEnvironment(home: string, platform: NodeJS.Platform = process.platform,
-  ambient: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const environment = { HOME: home, NODE_OPTIONS: '' };
-  if (platform !== 'win32') return environment;
-  const systemRoot = environmentValue(ambient, 'SystemRoot', 'win32');
-  if (!systemRoot) throw new Error('The owned Windows validator requires the actual host SystemRoot.');
-  return { ...environment, SystemRoot: systemRoot };
-}
 
 export function matrixValidatorFailure(reason: 'settlement' | 'input-readback' | 'expectation',
   selector: MatrixValidatorSelector, result: CommandResult): Error {
