@@ -3,12 +3,13 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink,
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { parse, stringify } from 'yaml';
 import { buildCurrentProjectPlan } from '../src/application/project/planning.js';
 import { parseProjectManifest, resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { buildCurrentArtifacts } from '../src/templates.js';
 import type { GeneratedArtifact, ProjectOptions } from '../src/domain/project/contracts.js';
-import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
+import { canonicalSha256, isRecord } from '../src/domain/governance/activation/canonical-json.js';
 import { createModernGovernanceContextContract } from '../src/domain/governance/policy/modern-context.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
 import { bindApplicationArtifactContext } from '../src/governance-activation/application-artifact-context.js';
@@ -88,6 +89,25 @@ async function inventory(root: string, prefix = ''): Promise<string[]> {
 }
 
 describe('manifest-bound exact application context', () => {
+  it('preserves expression-like literal filenames through source, serialized workflow and actual Git-blob projection', async () => {
+    const filename = '${{ github.run_id }}.ts';
+    const paths = [`backend/${filename}`];
+    const step = applicationArtifactContextStep(paths);
+    expect(step.env.LIFTOFF_CONTEXT_PATHS).not.toContain('${{');
+    expect(JSON.parse(step.env.LIFTOFF_CONTEXT_PATHS)).toEqual(paths);
+    const serialized = stringify(step);
+    expect(serialized).not.toContain('${{ github.run_id }}');
+    const decoded: unknown = parse(serialized);
+    if (!isRecord(decoded) || !isRecord(decoded.env)) throw new Error('Expected exact serialized step environment.');
+    expect(decoded.env.LIFTOFF_CONTEXT_PATHS).toBe(step.env.LIFTOFF_CONTEXT_PATHS);
+    const file = { logicalName: 'expression-like-literal', category: 'runtime', pathParts: ['backend', filename],
+      content: 'exact reviewed literal source\n', lifecycle: 'project' as const, provisioningGroup: 'base' as const };
+    const f = await prepare([file]);
+    const { result, directory } = await f.projectFiles(paths);
+    expect(result.status, result.stderr).toBe(0);
+    expect(await inventory(directory!)).toEqual(paths);
+    expect(await readFile(path.join(directory!, ...file.pathParts), 'utf8')).toBe(file.content);
+  });
   for (const profile of ['single-maintainer-gitflow', 'team-gitflow']) {
     it.each(workloads)(`projects the actual generated Dockerfile and source for ${profile} %j`, async workload => {
       const source = generated(workload, profile);

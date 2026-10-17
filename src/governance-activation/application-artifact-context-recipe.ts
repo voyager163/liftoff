@@ -48,7 +48,7 @@ export function applicationArtifactContextStep(paths: readonly string[]) {
     'working-directory': '${{ github.workspace }}',
     env: {
       LIFTOFF_SOURCE_SHA: '${{ inputs.source_sha }}',
-      LIFTOFF_CONTEXT_PATHS: JSON.stringify(paths)
+      LIFTOFF_CONTEXT_PATHS: JSON.stringify(paths).replaceAll('$', '\\u0024')
     },
     run: `node --input-type=module <<'LIFTOFF_APPLICATION_CONTEXT'
 import assert from 'node:assert/strict';
