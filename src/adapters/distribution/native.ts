@@ -13,7 +13,7 @@ import { compareSemver } from '../../semver.js';
 import { readHomebrewCaskOwnership } from './native-cask.js';
 import { createNativeStableSource } from './native-transport.js';
 import { stageAuthenticatedNativeArchive } from './native-archive.js';
-import { readWindowsInstallerLayout } from './native-windows.js';
+import { readWindowsInstallerLayout, readWindowsInstallerRegistration } from './native-windows.js';
 import { bundleInventory, bundlePath, nativeBundleLimits } from '../../../distribution/native/native-bundle-contract.mjs';
 
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -348,8 +348,11 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
         }
         throw error;
       }
+      const registration = await observe(signal =>
+        readWindowsInstallerRegistration(dependencies, installation, latestPolicy, directory, signal));
       return { ...installation, owner: 'winget', managerId: observation.packageIdentifier,
-        managerSource: observation.source, managerScope: 'user', identity: JSON.stringify([installation.identity, observation]) };
+        managerSource: observation.source, managerScope: 'user',
+        identity: JSON.stringify([installation.identity, observation, registration.identity]) };
     }
     throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
   };

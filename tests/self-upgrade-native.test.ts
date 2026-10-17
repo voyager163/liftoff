@@ -494,7 +494,7 @@ describe('owner-aware orchestration and read-only doctor', () => {
     const port = createNativeUpgradePort(fixture.dependencies, {
       cask: async () => fixture.cask, winget: async () => fixture.winget
     });
-    expect(await port.inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral')).toMatchObject({
+    expect(await port.inspect(fixture.packageRoot, '0.12.3', platform === 'win32' ? 'C:\\fixture\\neutral' : '/virtual/neutral')).toMatchObject({
       owner: platform === 'darwin' ? 'homebrew-cask' : 'winget',
       ...(platform === 'win32' ? { managerScope: 'user' } : {})
     });

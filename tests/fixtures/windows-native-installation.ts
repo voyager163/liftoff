@@ -46,6 +46,9 @@ export function windowsReceiptWorld() {
   files.set(receiptFile, json(produced.receipt));
   files.set(pointerFile, Buffer.from(produced.pointer));
   files.set(stableLauncher, Buffer.from(relativeFiles.get('bin/liftoff.exe')!));
+  const systemRoot = 'C:\\Windows';
+  const powershell = path.win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  files.set(powershell, Buffer.from('inert system PowerShell process port'));
   for (const filename of files.keys()) {
     fixture.world.nodes.set(filename, { kind: 'file' });
     for (let directory = path.win32.dirname(filename);;) {
@@ -61,11 +64,19 @@ export function windowsReceiptWorld() {
     target: 'win32-x64', manifestSha256, inventorySha256: inventory.sha256, sourceCommit: manifest.source.commit,
     identity: 'fixture-local-inventory-only'
   };
+  const registration = {
+    schemaVersion: 1, kind: 'liftoff-windows-installer-registration-observation', scope: 'user',
+    appId: policy.winget.installerAppId, installLocation: installRoot, version: installation.version,
+    publisher: policy.winget.publisher, receiptSha256: hash(files.get(receiptFile)!),
+    currentSha256: hash(files.get(pointerFile)!), registeredLauncherSha256: hash(files.get(stableLauncher)!),
+    registeredCertificateSha256: policy.winget.certificateSha256, launcherSha256: hash(files.get(stableLauncher)!),
+    certificateSha256: policy.winget.certificateSha256, signatureStatus: 'valid', signatureType: 'Authenticode'
+  };
   const runner = { run: vi.fn<CommandRunner['run']>(async command => ({
     command, displayCommand: 'inert Windows inventory process port', status: 0, signal: null, timedOut: false,
-    stdout: JSON.stringify(inventory), stderr: ''
+    stdout: JSON.stringify(command.executable === powershell ? registration : inventory), stderr: ''
   })) };
-  const environment: NodeJS.ProcessEnv = { LOCALAPPDATA: local };
+  const environment: NodeJS.ProcessEnv = { LOCALAPPDATA: local, SystemRoot: systemRoot };
   const dependencies = {
     ...fixture.dependencies, runner, architecture: 'x64', execPath: installation.runtime,
     environment, runningExecutable: path.win32.join(packageRoot, 'dist', 'cli.js'),
@@ -99,5 +110,5 @@ export function windowsReceiptWorld() {
   const cask = { fullToken: policy.homebrew.cask!, sourceRepository: policy.homebrew.sourceRepository!,
     bundleRoot, launcher: installation.launcher, installedVersion: installation.version };
   return { ...fixture, dependencies, installation, policy, manifest, produced, files, runner, packageRoot, installRoot,
-    stableLauncher, receiptFile, pointerFile, winget, cask };
+    stableLauncher, receiptFile, pointerFile, winget, cask, powershell, registration };
 }

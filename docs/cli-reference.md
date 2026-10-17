@@ -1133,6 +1133,9 @@ metadata or selection blocks rather than silently choosing another target.
 Version verification disables telemetry and Node startup overrides and checks
 the selected launcher. Windows source uses a version-bound, ID/source/user-scope
 WinGet handoff outside the running executable, with a new shell and postverification.
+Independent Windows checks also require matching HKCU registration hashes and
+the exact selected launcher's embedded signer through system PowerShell 5.1;
+neither the installer receipt nor a signer alone proves a WinGet source.
 Homebrew cannot pin a cask upgrade to the reviewed version, so no unbound brew
 upgrade is executed. For an attributed cask, the read-only channel compares the
 selected tap definition with canonical bytes derived from independently
