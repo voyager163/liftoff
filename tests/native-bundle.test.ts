@@ -1,14 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { chmod, copyFile, link, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import {
   assertDependencyClosure, assertNativeBundleReport, assertSystemRuntimeLibraries, bundleFile, bundleInventory,
-  bundlePath, nativeBundleCases, nativeBundleHost, nativeBundleLimits
+  bundlePath, nativeArchiveMembers, nativeArchiveTool, nativeBundleCases, nativeBundleHost, nativeBundleLimits
 } from '../scripts/native-bundle-contract.mjs';
-import { buildNativeBundle, fetchNativeInput, nativeBundleArguments } from '../scripts/native-bundle.mjs';
+import {
+  buildNativeBundle, buildNativeProgram, fetchNativeInput, nativeBundleArguments, readNativeProgramAssembly
+} from '../scripts/native-bundle.mjs';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -35,6 +37,56 @@ function dependencyLock() {
 }
 
 describe('native development bundle contracts', () => {
+  it.runIf(process.env.LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE)(
+    'retains the real original packed program and rejects changed installed and runtime references', async () => {
+      const runtimeInput = process.env.LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE;
+      if (!runtimeInput) throw new Error('Original program qualification requires its real pinned runtime archive.');
+      const root = await fixture(), runtimeArchive = path.join(root, 'original-runtime-archive');
+      await copyFile(runtimeInput, runtimeArchive);
+      const output = path.join(root, 'original-program');
+      const reference = await buildNativeProgram({ output, runtimeArchive });
+      const first = await readNativeProgramAssembly(reference);
+      const originalVersion = first.manifest.package.version;
+      const originalDigest = first.packageArchive.sha256;
+      expect(createHash('sha256').update(first.packageArchive.content).digest('hex')).toBe(originalDigest);
+      const packed = path.join(root, 'original-package.tgz');
+      await writeFile(packed, first.packageArchive.content, { flag: 'wx', mode: 0o600 });
+      const members = spawnSync(nativeArchiveTool(), ['-tzf', packed], { encoding: 'utf8', timeout: 30_000 });
+      expect(members.status).toBe(0);
+      expect(nativeArchiveMembers(members.stdout)).toEqual(
+        first.manifest.package.sourceFiles.map((file: { path: string }) => `package/${file.path}`).sort());
+      const packageJson = spawnSync(nativeArchiveTool(), ['-xOf', packed, 'package/package.json'],
+        { encoding: 'utf8', timeout: 30_000 });
+      expect(packageJson.status).toBe(0);
+      expect(JSON.parse(packageJson.stdout)).toMatchObject({
+        name: first.manifest.package.name, version: originalVersion
+      });
+      first.manifest.package.version = 'caller-mutated';
+      first.sourceInputs.source.files.length = 0;
+      first.packageArchive.content.fill(0);
+      const second = await readNativeProgramAssembly(reference);
+      expect(second.manifest.package.version).toBe(originalVersion);
+      expect(second.sourceInputs.source.files.length).toBeGreaterThan(0);
+      expect(createHash('sha256').update(second.packageArchive.content).digest('hex')).toBe(originalDigest);
+      expect(second.releaseAuthority).toBe('not-issued');
+      expect(second.nativeQualification).toBe('not-issued');
+      expect(second.workflowAuthority).toBe('not-issued');
+      for (const copy of [{ ...reference }, structuredClone(reference), JSON.parse(JSON.stringify(reference))]) {
+        await expect(readNativeProgramAssembly(copy)).rejects.toThrow('original invocations');
+      }
+      const installed = path.join(output, 'application/dist/cli.js'), bytes = await readFile(installed);
+      const mode = (await lstat(installed)).mode & 0o777;
+      await rename(installed, path.join(root, 'retained-original-cli.js'));
+      await writeFile(installed, bytes, { flag: 'wx', mode });
+      await expect(readNativeProgramAssembly(reference)).rejects.toThrow('Original installed assembly readset changed');
+
+      const other = await buildNativeProgram({ output: path.join(root, 'other-original-program'), runtimeArchive });
+      await readNativeProgramAssembly(other);
+      await rename(runtimeArchive, path.join(root, 'retained-original-runtime-archive'));
+      await copyFile(runtimeInput, runtimeArchive);
+      await expect(readNativeProgramAssembly(other)).rejects.toThrow('Original assembly tool or runtime-archive reference changed');
+    }, 300_000);
+
   it('admits only the four development targets without claiming public platform qualification', () => {
     for (const [platform, architecture] of [['darwin', 'arm64'], ['linux', 'arm64'], ['linux', 'x64'], ['win32', 'x64']] as const) {
       expect(nativeBundleHost(platform, architecture)).toEqual({ platform, architecture });
@@ -55,6 +107,40 @@ describe('native development bundle contracts', () => {
       ['verify', '--output'], ['build', '--runtime-archive', '--output', '--output', 'a']]) {
       expect(() => nativeBundleArguments(args)).toThrow();
     }
+  });
+
+  it.each([null, undefined, false, 1, 'original', {}, { kind: 'liftoff-original-native-program-assembly' }])(
+    'rejects reconstructed original assembly reference %j', async reference => {
+      await expect(readNativeProgramAssembly(reference)).rejects.toThrow();
+    });
+
+  it('rejects proxy and accessor assembly substitutes without invoking caller hooks', async () => {
+    const hook = vi.fn();
+    for (const reference of [
+      new Proxy({}, { get: hook, getPrototypeOf: hook }),
+      Object.defineProperty({}, 'kind', { get: hook, enumerable: true })
+    ]) await expect(readNativeProgramAssembly(reference)).rejects.toThrow('original invocations');
+    expect(hook).not.toHaveBeenCalled();
+  });
+
+  it.each(['receipt', 'archive', 'source', 'callback', 'authenticated', 'releaseReady'])(
+    'refuses caller %s assembly facts before creating output or invoking a build', async field => {
+      const root = await fixture(), output = path.join(root, 'not-created');
+      const options = { output, runtimeArchive: path.join(root, 'absent-runtime'), [field]: true };
+      await expect(buildNativeProgram(options)).rejects.toThrow('only literal build paths');
+      await expect(lstat(output)).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+
+  it('captures only ordinary original build options without invoking accessor or proxy hooks', async () => {
+    const root = await fixture(), output = path.join(root, 'not-created'), hook = vi.fn();
+    const ordinary = { output, runtimeArchive: path.join(root, 'absent-runtime') };
+    for (const options of [
+      new Proxy(ordinary, { get: hook, getPrototypeOf: hook }),
+      Object.defineProperty({ ...ordinary }, 'npmCli', { get: hook, enumerable: true }),
+      { ...ordinary, [Symbol('receipt')]: true }
+    ]) await expect(buildNativeProgram(options)).rejects.toThrow();
+    expect(hook).not.toHaveBeenCalled();
+    await expect(lstat(output)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('requires every actual installed qualification case and rejects empty, skipped or duplicate evidence', () => {

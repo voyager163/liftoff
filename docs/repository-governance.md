@@ -225,6 +225,20 @@ whole-body semantic compilation, the issuer, installed orchestration or14.3.
 The existing publication paths, exact per-file approval/readback and public
 review/effect, protected journal and joint-finalization boundaries are unchanged.
 
+The development builder's private `buildNativeProgram` API retains the actual
+original npm archive bytes from its own build/pack/install invocation behind an
+opaque process-local reference. `readNativeProgramAssembly` accepts only that
+original reference and rechecks the original source, tool/runtime-archive
+references and complete installed output, including physical identities, before
+returning an independent copy of the archive and observed manifest. Copied or
+serialized references and caller-supplied receipts cannot recreate the reader.
+This is a local assembly relationship, not release authentication, atomic
+filesystem custody, native qualification or workflow authority. The existing
+`buildNativeBundle` CLI/API and package version are unchanged: an actual `0.12.3`
+assembly cannot authenticate the declared `0.13.0-dev.0` program. The Source
+constructor, workflow runtime integration and TASK14.3 qualification remain
+separate implementation requirements; this API does not enable them by itself.
+
 Private `observeSource5WorkflowDependencyReview` reads the actual GitHub
 dependency diff for exact repository/base/head commit/tree selectors through
 the original read-only runtime. It verifies a bounded complete ancestor-to-head
