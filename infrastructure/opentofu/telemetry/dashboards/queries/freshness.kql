@@ -1,14 +1,22 @@
-let expected = datatable(ProjectId:string, ExpectedSince:datetime) [@expected_heartbeats@];
-expected
-| where ExpectedSince <= now() and ProjectId !in (syntheticIds)
+let reportingConfiguration = "@reporting_configuration@";
+let expected = datatable(ProjectId:string, ExpectedSince:datetime) [@expected_heartbeats@]
+| where ProjectId !in (syntheticIds);
+let evaluated = expected
 | join kind=leftouter (
     projects
     | where Source == "ci-heartbeat"
     | summarize LastHeartbeat = max(TimeGenerated) by ProjectId
 ) on ProjectId
 | extend Due = max_of(ExpectedSince, coalesce(LastHeartbeat, ExpectedSince)) + 40d
-| extend Overdue = now() > Due
+| extend Overdue = ExpectedSince <= now() and now() > Due
 | extend Freshness = case(
+    ExpectedSince > now(), "pending - monitoring starts in the future",
     isnull(LastHeartbeat), "unknown - no retained heartbeat; never received or expired",
     Overdue, "stale reporting - monthly plus grace exceeded",
-    "within monthly reporting grace")
+    "within monthly reporting grace");
+union evaluated, (
+    print ProjectId = "", ExpectedSince = datetime(null), LastHeartbeat = datetime(null),
+        Due = datetime(null), Overdue = false, Freshness = "unconfigured - no eligible expected reporting"
+    | where toscalar(expected | count) == 0
+)
+| extend ReportingConfiguration = reportingConfiguration
