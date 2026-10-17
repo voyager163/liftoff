@@ -139,8 +139,21 @@ function parseResponse(bytes: Buffer, binary: boolean): GitHubResponse {
   return { status, headers, data };
 }
 
+function parseCompletedResponse(
+  bytes: Buffer, binary: boolean, status: number | null, signal: NodeJS.Signals | null
+): GitHubResponse {
+  const incomplete = () => new GitHubActivationError('bounded-request',
+    'GitHub CLI did not confirm a complete request; provider diagnostics were withheld.');
+  if (status === null || signal !== null || status === 2) throw incomplete();
+  const response = parseResponse(bytes, binary);
+  const providerFailure = status === 1 && response.status >= 400 ||
+    status === 4 && (response.status === 401 || response.status === 403);
+  if (status !== 0 && !providerFailure) throw incomplete();
+  return response;
+}
+
 // CommandRunner deliberately decodes text. Archives need a separate bounded byte collector.
-async function runBinaryGitHub(args: readonly string[], cwd: string): Promise<Buffer> {
+async function runBinaryGitHub(args: readonly string[], cwd: string): Promise<GitHubResponse> {
   return new Promise((resolve, reject) => {
     const child = spawn('gh', [...args], {
       cwd, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'],
@@ -165,9 +178,12 @@ async function runBinaryGitHub(args: readonly string[], cwd: string): Promise<Bu
       clearTimeout(timer);
       if (!stopped) reject(new GitHubActivationError('authentication-prerequisite', 'Install and authenticate GitHub CLI using the owner-controlled provider flow.'));
     });
-    child.once('close', () => {
+    child.once('close', (status, signal) => {
       clearTimeout(timer);
-      if (!stopped) resolve(Buffer.concat(chunks));
+      if (!stopped) {
+        try { resolve(parseCompletedResponse(Buffer.concat(chunks), true, status, signal)); }
+        catch (error) { reject(error); }
+      }
     });
   });
 }
@@ -182,7 +198,7 @@ export function createGitHubCliTransport(runner: CommandRunner, projectRoot: str
         if (request.method !== 'GET' || request.body !== undefined) {
           throw new GitHubActivationError('invalid-endpoint', 'Binary GitHub transport is read-only.');
         }
-        return parseResponse(await runBinaryGitHub(args, projectRoot), true);
+        return runBinaryGitHub(args, projectRoot);
       }
       const stdin = request.body === undefined ? undefined : JSON.stringify(request.body);
       if (stdin !== undefined) args.push('--input', '-');
@@ -193,8 +209,8 @@ export function createGitHubCliTransport(runner: CommandRunner, projectRoot: str
       if (result.timedOut || result.outputLimitExceeded || result.errorCode || result.aborted) {
         throw new GitHubActivationError('bounded-request', 'GitHub request was not completed within its bounded execution window.');
       }
-      // Even errors are parsed only for status, never copied into public output.
-      return parseResponse(Buffer.from(result.stdout), false);
+      // Completed provider errors retain their HTTP status without exposing diagnostics.
+      return parseCompletedResponse(Buffer.from(result.stdout), false, result.status, result.signal);
     }
   };
 }

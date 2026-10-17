@@ -320,6 +320,14 @@ qualify neither CodeQL nor a required context. No scan/upload/Autofix operation,
 public selector, declaration source, accepted integration mapping or phase
 authority is issued by this private metadata reader.
 
+Both text and archive GitHub CLI transports require exit zero and no signal
+before accepting a successful HTTP response. Ordinary completed CLI HTTP errors
+retain their provider status, but cancelled, signalled, null-status or unknown
+completion cannot make a 404 into optional absence. A complete-looking success
+payload from a failed process is not request completion. For mutating requests,
+that refusal leaves acceptance uncertain: retain the original intent and
+independently observe it, never infer permission to repeat the write.
+
 Private `observeSource5WorkflowSecretProtectionHistory` reads the platform's
 actual latest-scan metadata twice, with the same independent repository,
 protected-ref and commit/tree readback. The shared reference guard preserves
