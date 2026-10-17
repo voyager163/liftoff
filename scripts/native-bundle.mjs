@@ -82,7 +82,14 @@ async function assemblyFiles(files) {
   const names = [...new Set(files)].sort();
   assert.ok(names.length > 0 && names.length <= 32768, 'Original assembly file inventory is empty or oversized.');
   const parents = await assemblyDirectories(names), entries = [];
-  for (const name of names) entries.push(await assemblyFile(name));
+  for (let offset = 0; offset < names.length; offset += 4) {
+    const captured = await Promise.allSettled(names.slice(offset, offset + 4).map(name => assemblyFile(name)));
+    // Drain every started read before preserving the original sorted error order.
+    for (const result of captured) {
+      if (result.status === 'rejected') throw result.reason;
+      entries.push(result.value);
+    }
+  }
   assert.deepEqual(await assemblyDirectories(names), parents, 'Original assembly parent reference changed.');
   return { parents, entries };
 }
