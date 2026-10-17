@@ -72,6 +72,7 @@ class ApplicationRunner implements CommandRunner {
   deploymentState = 'Succeeded';
   deployedTemplate: unknown;
   permissions = ['*'];
+  permissionExclusions: string[] = [];
   providerRegistered = true;
   validationState = 'Succeeded';
   occupied = false;
@@ -124,7 +125,9 @@ class ApplicationRunner implements CommandRunner {
     });
     if (key.startsWith('resource list ')) return result(command, this.inventory.map((entry) =>
       ({ ...entry, name: entry.id.split('/').at(-1), location: 'eastus', managedBy: null })));
-    if (key.includes('Microsoft.Authorization/permissions')) return result(command, { value: [{ actions: this.permissions, notActions: [] }] });
+    if (key.includes('Microsoft.Authorization/permissions')) return result(command, {
+      value: [{ actions: this.permissions, notActions: this.permissionExclusions }]
+    });
     if (key.startsWith('provider show ')) return result(command, {
       id: `/subscriptions/${coverageSubscription}/providers/${argument(command, '--namespace')}`,
       namespace: argument(command, '--namespace'), registrationState: this.providerRegistered ? 'Registered' : 'NotRegistered'
@@ -706,6 +709,55 @@ describe('application source producers behind real prerequisites', () => {
 });
 
 describe('immutable application publication and independent readback', () => {
+  it.each([
+    'Microsoft.ContainerRegistry/registries/read',
+    'Microsoft.ContainerRegistry/registries/listBuildSourceUploadUrl/action',
+    'Microsoft.ContainerRegistry/registries/scheduleRun/action',
+    'Microsoft.ContainerRegistry/registries/runs/read'
+  ])('refuses absent actual registry build permission %s before dispatch or source upload', async missing => {
+    const f = await fixture(true);
+    f.runner.permissions = [
+      'Microsoft.ContainerRegistry/registries/read',
+      'Microsoft.ContainerRegistry/registries/listBuildSourceUploadUrl/action',
+      'Microsoft.ContainerRegistry/registries/scheduleRun/action',
+      'Microsoft.ContainerRegistry/registries/runs/read'
+    ].filter(action => action !== missing);
+    const outcome = await executeApplicationArtifactPublication(f.input);
+    expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/build.*permission/) });
+    expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
+    expect(f.runner.writes).toEqual([]);
+  });
+  it('honors actual registry build permission exclusions instead of treating AcrPush as build scheduling authority', async () => {
+    const f = await fixture(true);
+    f.runner.permissionExclusions = ['Microsoft.ContainerRegistry/registries/scheduleRun/action'];
+    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({
+      status: 'blocked', blocker: expect.stringMatching(/build.*permission/)
+    });
+    expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
+  });
+  it('independently observes build permissions at the exact registry scope on every pre-dispatch check', async () => {
+    const f = await fixture(true);
+    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'completed' });
+    const url = `https://management.azure.com${f.transport.binding.registryId}/providers/Microsoft.Authorization/permissions?api-version=2022-04-01`;
+    const observations = f.runner.calls.filter(command => command.args.includes(url));
+    expect(observations).toHaveLength(3);
+    expect(observations.every(command => command.executable === 'az' && argument(command, '--method') === 'GET' &&
+      argument(command, '--resource') === 'https://management.core.windows.net/')).toBe(true);
+  });
+  it('refuses build authority revoked during awaited execution-tag admission after the original durable intent', async () => {
+    const f = await fixture(true);
+    let intentRecorded = false;
+    f.input.recordApplicationDispatchIntent = async () => { intentRecorded = true; };
+    f.transport.onExecutionTagRead = () => {
+      if (intentRecorded) f.runner.permissionExclusions = ['Microsoft.ContainerRegistry/registries/scheduleRun/action'];
+    };
+    const outcome = await executeApplicationArtifactPublication(f.input);
+    expect(intentRecorded).toBe(true);
+    expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/build.*permission/) });
+    expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
+    expect(outcome.operation).toBeUndefined();
+    expect(outcome.evidencePayload).toBeUndefined();
+  });
   it('binds the actual generated root Dockerfile and exact manifest-owned context before dispatch', async () => {
     const f = await fixture(true, true);
     expect(f.transport.binding).toMatchObject({ contextPath: '.', dockerfilePath: 'Dockerfile',
@@ -815,6 +867,7 @@ describe('immutable application publication and independent readback', () => {
     expect(operation).toMatchObject({ operationId: 'github-actions:901', status: 'running',
       pollUrl: 'https://api.github.com/repos/owner/repo/actions/runs/901' });
     f.transport.onRunRead = undefined;
+    f.runner.permissions = [];
     f.input.inspection.state = saved;
     f.input.inspection.contexts[f.phase.id].reviewedPlans = [f.input.plan];
     const next = await executeApplicationArtifactPublication({ ...f.input, now: new Date(coverageNow.getTime() + 1000) });

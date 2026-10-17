@@ -23,6 +23,7 @@ import {
 } from './application-prerequisites.js';
 import { runnerBinding } from './runner-readiness.js';
 import { azureObject, runAzureJson } from './azure-discovery.js';
+import { azurePermissionEntries, azurePermits } from './azure-permissions.js';
 import { applicationReadbackProof as readbackProof } from './application-readiness.js';
 import { inspectAzureDeploymentOwnership } from './azure-deployment-ownership.js';
 import {
@@ -157,6 +158,25 @@ export function applicationArtifactPlanInputs(input: PhasePlanningInput | PhaseA
 }
 
 export type ApplicationArtifactBinding = ReturnType<typeof applicationArtifactBinding>;
+
+async function observeApplicationBuildPermissions(
+  input: PhaseAdapterExecutionInput, binding: ApplicationArtifactBinding
+): Promise<void> {
+  const permissions = azurePermissionEntries(await runAzureJson(input, [
+    'rest', '--method', 'GET',
+    '--url', `https://management.azure.com${binding.registryId}/providers/Microsoft.Authorization/permissions?api-version=2022-04-01`,
+    '--resource', 'https://management.core.windows.net/'
+  ], 'Exact application registry build permissions'));
+  if ([
+    'Microsoft.ContainerRegistry/registries/read',
+    'Microsoft.ContainerRegistry/registries/listBuildSourceUploadUrl/action',
+    'Microsoft.ContainerRegistry/registries/scheduleRun/action',
+    'Microsoft.ContainerRegistry/registries/runs/read'
+  ].some(action => !azurePermits(permissions, action))) {
+    return applicationError('application-build-permission',
+      'Exact registry source-upload, build scheduling or readback permission is missing; AcrPush alone is not build authority. No dispatch, source upload or broader role assignment was performed.');
+  }
+}
 
 function dispatchInputs(binding: ReturnType<typeof applicationArtifactBinding>): Record<string, string> {
   return {
@@ -379,6 +399,7 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
         return applicationError('application-dispatch-uncertain',
           'Artifact destination/dispatch is occupied or acceptance is uncertain; a listed run cannot replace the original accepted run ID. Retain the original intent without adopting a candidate or dispatching again.');
       }
+      await observeApplicationBuildPermissions(input, binding);
       const repositories = await runAzureJson(input, [
         'acr', 'repository', 'list', '--subscription', binding.subscriptionId, '--name', binding.registryName
       ], 'Artifact publication destination inventory');
@@ -397,6 +418,7 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
       }
       await assertApplicationAuthority(input, dispatch);
       await observeApplicationProtection(input);
+      await observeApplicationBuildPermissions(input, binding);
       await observeApplicationSource(input);
       await input.recordApplicationDispatchIntent?.(dispatch);
       await assertApplicationAuthority(input, dispatch);
@@ -404,6 +426,7 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
         repository: binding.repository, repositoryId: binding.repositoryId,
         sourceSha: binding.sourceSha, treeSha: binding.sourceTreeSha, executionRef: binding.executionRef
       });
+      await observeApplicationBuildPermissions(input, binding);
       await assertApplicationAuthority(input, dispatch);
       dispatchAttempted = true;
       const startedAt = (input.clock?.() ?? input.now).toISOString();
