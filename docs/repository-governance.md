@@ -225,17 +225,25 @@ whole-body semantic compilation, the issuer, installed orchestration or14.3.
 The existing publication paths, exact per-file approval/readback and public
 review/effect, protected journal and joint-finalization boundaries are unchanged.
 
-The development builder's private `buildNativeProgram` API retains the actual
+The first-party `distribution/native/native-program-assembly.mjs` private
+`buildNativeProgram` API retains the actual
 original npm archive bytes from its own build/pack/install invocation behind an
 opaque process-local reference. `readNativeProgramAssembly` accepts only that
 original reference and rechecks the original source, tool/runtime-archive
 references and complete installed output, including physical identities, before
-returning an independent copy of the archive and observed manifest. Copied or
+returning an independent copy of the archive and observed manifest, plus its
+internally derived installed application root and CLI entrypoint. Copied or
 serialized references and caller-supplied receipts cannot recreate the reader.
 This is a local assembly relationship, not release authentication, atomic
-filesystem custody, native qualification or workflow authority. The existing
-`buildNativeBundle` CLI/API and package version are unchanged: an actual `0.12.3`
-assembly cannot authenticate the declared `0.13.0-dev.0` program. The Source
+filesystem custody, native qualification or workflow authority. Its installed
+reader has no dependency on repository-only build scripts; only creation needs
+the original first-party build checkout and tooling. An independently installed
+copy does not share another module instance's private references. The existing
+`buildNativeBundle` CLI/API is unchanged. The unpublished candidate uses actual
+consistent `0.13.0-dev.0` package/lock identities; older `0.12.3` bytes cannot
+authenticate it. This prerelease is not eligible for ordinary stable-channel
+upgrade: its installed smoke checks refusal before manager observations, not
+the stable release's current-version and foreign-registry cases. The Source
 constructor, workflow runtime integration and TASK14.3 qualification remain
 separate implementation requirements; this API does not enable them by itself.
 

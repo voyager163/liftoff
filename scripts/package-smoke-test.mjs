@@ -456,6 +456,15 @@ try {
       environment: process.env
     });
     const result = await inspect();
+    if (${JSON.stringify(packResult.version.includes('-'))}) {
+      if (result.status !== 'blocked' || result.reasonCode !== 'invalid_package' ||
+        result.schemaVersion !== 2 || result.installationOwner !== 'unknown' ||
+        result.upstream.status !== 'unknown' || result.channel.status !== 'unknown' ||
+        result.effects !== 'none' || result.verification !== 'not-run' || calls.length !== 0) {
+        throw new Error('Installed prerelease must refuse stable upgrade before manager observations: '+JSON.stringify(result));
+      }
+      process.stdout.write(JSON.stringify({ prereleaseBlocked: result }));
+    } else {
     if (result.status !== 'current' || result.schemaVersion !== 2 || result.installationOwner !== 'npm' ||
       result.channel.status !== 'available' || result.effects !== 'none' || calls.length !== 4) {
       throw new Error('Installed owner check failed: '+JSON.stringify(result));
@@ -469,6 +478,7 @@ try {
       throw new Error('Installed owner check misclassified invalid channel metadata: '+JSON.stringify(invalid));
     }
     process.stdout.write(JSON.stringify({ current: result, invalid }));
+    }
   `;
   const injectedCheck = run(
     process.execPath,
@@ -476,7 +486,12 @@ try {
     { cwd: outsideDirectory, env: { ...npmEnv, PATH: `${path.dirname(liftoffBinary)}${path.delimiter}${npmEnv.PATH ?? ''}` } }
   );
   const injectedResult = JSON.parse(injectedCheck.stdout);
-  if (
+  if (packResult.version.includes('-')) {
+    if (injectedResult.prereleaseBlocked.currentVersion !== packResult.version ||
+      injectedResult.prereleaseBlocked.reasonCode !== 'invalid_package') {
+      throw new Error('Installed prerelease self-upgrade did not preserve its stable-only boundary');
+    }
+  } else if (
     injectedResult.current.status !== 'current' ||
     injectedResult.current.currentVersion !== packResult.version ||
     injectedResult.invalid.reasonCode !== 'registry_invalid'
@@ -486,7 +501,8 @@ try {
 
   for (const asset of [
     'native-release-admission.mjs', 'native-release-admission.d.mts',
-    'native-release-catalog.mjs', 'native-release-catalog.d.mts', 'release-policy.json', 'platforms.json'
+    'native-release-catalog.mjs', 'native-release-catalog.d.mts',
+    'native-program-assembly.mjs', 'native-program-assembly.d.mts', 'release-policy.json', 'platforms.json'
   ]) {
     const relative = path.join('distribution', 'native', asset);
     if (!(await readFile(path.join(installedPackageRoot, relative))).equals(await readFile(path.join(packageRoot, relative)))) {

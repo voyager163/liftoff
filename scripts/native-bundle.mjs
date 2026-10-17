@@ -6,7 +6,6 @@ import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { types } from 'node:util';
 import { gunzipSync } from 'node:zlib';
 import { collectInputs, coveragePackage } from './coverage-gate.mjs';
 import {
@@ -17,6 +16,7 @@ import {
   bundleFile, bundleInventory, bundlePath, readBundleFile, nativeArchiveMembers, nativeArchiveTool, nativeBundleHost, nativeRuntimeInput
 } from './native-bundle-contract.mjs';
 import { assertNativeHost, observeNativeHost } from '../distribution/native/host.mjs';
+export { buildNativeProgram, readNativeProgramAssembly } from '../distribution/native/native-program-assembly.mjs';
 
 const repositoryRoot = path.resolve(fileURLToPath(new URL('../', import.meta.url)));
 const inputsPath = path.join(repositoryRoot, 'distribution/native/inputs.json');
@@ -28,6 +28,7 @@ const builderPaths = [
   'distribution/native/release-policy.json', 'distribution/windows/liftoff.iss',
   'distribution/native/native-release-admission.mjs', 'distribution/native/native-release-admission.d.mts',
   'distribution/native/native-release-catalog.mjs', 'distribution/native/native-release-catalog.d.mts',
+  'distribution/native/native-program-assembly.mjs', 'distribution/native/native-program-assembly.d.mts',
   'scripts/native-release-set.mjs', 'scripts/native-release-set.d.mts', 'scripts/release-artifact.mjs',
   'distribution/linux/install.sh',
   'scripts/native-bundle.mjs', 'scripts/native-bundle-contract.mjs',
@@ -41,8 +42,6 @@ const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = async file => JSON.parse(await readFile(file, 'utf8'));
 const noticeName = /^(?:license|licence|copying|notice|copyright|patents)(?:[._-].*)?$/i;
 const tar = nativeArchiveTool();
-/** @type {WeakMap<object, Awaited<ReturnType<typeof captureProgramAssembly>>>} */
-const programAssemblies = new WeakMap();
 
 function physicalStamp(stat) {
   return [stat.dev, stat.ino, stat.mode, stat.nlink, stat.size, stat.uid, stat.gid,
@@ -134,35 +133,16 @@ async function captureProgramAssembly(bundle, manifest, archive, inputs, tools, 
 }
 
 /**
- * Produces a process-local original reference, not a release or workflow authority.
+ * Creates a reader only by completing the real first-party build invocation.
  * @param {{ output: string, runtimeArchive: string, windowsLauncher?: string, npmCli?: string }} options
  */
-export async function buildNativeProgram(options) {
-  assert.ok(typeof options === 'object' && options !== null && !types.isProxy(options) &&
-    [Object.prototype, null].includes(Object.getPrototypeOf(options)), 'Original assembly options must be ordinary data.');
-  const allowed = ['output', 'runtimeArchive', 'windowsLauncher', 'npmCli'];
-  const fields = Object.getOwnPropertyDescriptors(options);
-  assert.ok(Reflect.ownKeys(options).every(key => typeof key === 'string' && allowed.includes(key)) &&
-    Object.values(fields).every(field => field.enumerable && Object.hasOwn(field, 'value') &&
-      typeof field.value === 'string' && field.value.length > 0),
-  'Original assembly accepts only literal build paths, not receipts, callbacks or authority fields.');
-  assert.ok(Object.hasOwn(fields, 'output') && Object.hasOwn(fields, 'runtimeArchive'),
-    'Original assembly needs its explicit output and runtime archive.');
-  const captured = Object.fromEntries(Object.entries(fields).map(([name, field]) => [name, field.value]));
-  captured.npmCli ??= process.env.npm_execpath;
-  const result = await buildNativeBundleInvocation(captured, true);
+export async function createNativeProgramReader(options) {
+  const result = await buildNativeBundleInvocation(options, true);
   assert.ok(result.original, 'Original assembly capture is missing.');
-  const reference = Object.freeze({ kind: 'liftoff-original-native-program-assembly' });
-  programAssemblies.set(reference, result.original);
-  return reference;
+  return () => readCapturedProgramAssembly(result.original);
 }
 
-/** @param {unknown} reference */
-export async function readNativeProgramAssembly(reference) {
-  assert.ok(typeof reference === 'object' && reference !== null,
-    'Only the original in-process assembly reference may be read.');
-  const original = programAssemblies.get(reference);
-  assert.ok(original, 'Copied, serialized and caller-created assembly references are not original invocations.');
+async function readCapturedProgramAssembly(original) {
   assert.deepEqual(collectInputs(coveragePackage('cli')), original.inputs, 'Original assembly source inputs changed.');
   assert.deepEqual(await assemblyFiles(original.tools.entries.map(entry => entry.path)), original.tools,
     'Original assembly tool or runtime-archive reference changed.');
@@ -177,6 +157,8 @@ export async function readNativeProgramAssembly(reference) {
   assert.deepEqual(collectInputs(coveragePackage('cli')), original.inputs, 'Original assembly source changed before consumption.');
   return Object.freeze({
     kind: 'liftoff-original-native-program-content',
+    installedApplicationRoot: path.join(original.bundle, 'application'),
+    installedCliEntrypoint: path.join(original.bundle, 'application', 'dist', 'cli.js'),
     manifest: structuredClone(original.manifest),
     sourceInputs: structuredClone(original.inputs),
     packageArchive: Object.freeze({ ...original.manifest.package.archive, content: Buffer.from(original.archive) }),

@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   assertDependencyClosure, assertNativeBundleReport, assertSystemRuntimeLibraries, bundleFile, bundleInventory,
   bundlePath, nativeArchiveMembers, nativeArchiveTool, nativeBundleCases, nativeBundleHost, nativeBundleLimits
@@ -44,10 +45,27 @@ describe('native development bundle contracts', () => {
       const root = await fixture(), runtimeArchive = path.join(root, 'original-runtime-archive');
       await copyFile(runtimeInput, runtimeArchive);
       const output = path.join(root, 'original-program');
-      const reference = await buildNativeProgram({ output, runtimeArchive });
+      const options = { output, runtimeArchive }, building = buildNativeProgram(options);
+      options.output = path.join(root, 'not-selected');
+      options.runtimeArchive = path.join(root, 'not-selected-runtime');
+      const reference = await building;
+      await expect(lstat(options.output)).rejects.toMatchObject({ code: 'ENOENT' });
       const first = await readNativeProgramAssembly(reference);
+      expect(first.installedApplicationRoot).toBe(path.join(output, 'application'));
+      expect(first.installedCliEntrypoint).toBe(path.join(output, 'application', 'dist', 'cli.js'));
       const originalVersion = first.manifest.package.version;
       const originalDigest = first.packageArchive.sha256;
+      const installed = await import(pathToFileURL(path.join(first.installedApplicationRoot,
+        'distribution/native/native-program-assembly.mjs')).href);
+      await expect(installed.readNativeProgramAssembly(reference)).rejects.toThrow('original invocations');
+      const version = spawnSync(path.join(output, 'runtime', process.platform === 'win32' ? 'node.exe' : 'node'),
+        [first.installedCliEntrypoint, '--version'], {
+          cwd: root, env: { PATH: '', LIFTOFF_TELEMETRY: '0', DO_NOT_TRACK: '1', CI: 'true',
+            ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
+          encoding: 'utf8', timeout: 10_000
+        });
+      expect(version.status).toBe(0);
+      expect(version.stdout.trim()).toBe(`Liftoff ${originalVersion}`);
       expect(createHash('sha256').update(first.packageArchive.content).digest('hex')).toBe(originalDigest);
       const packed = path.join(root, 'original-package.tgz');
       await writeFile(packed, first.packageArchive.content, { flag: 'wx', mode: 0o600 });
@@ -74,10 +92,10 @@ describe('native development bundle contracts', () => {
       for (const copy of [{ ...reference }, structuredClone(reference), JSON.parse(JSON.stringify(reference))]) {
         await expect(readNativeProgramAssembly(copy)).rejects.toThrow('original invocations');
       }
-      const installed = path.join(output, 'application/dist/cli.js'), bytes = await readFile(installed);
-      const mode = (await lstat(installed)).mode & 0o777;
-      await rename(installed, path.join(root, 'retained-original-cli.js'));
-      await writeFile(installed, bytes, { flag: 'wx', mode });
+      const installedCli = first.installedCliEntrypoint, bytes = await readFile(installedCli);
+      const mode = (await lstat(installedCli)).mode & 0o777;
+      await rename(installedCli, path.join(root, 'retained-original-cli.js'));
+      await writeFile(installedCli, bytes, { flag: 'wx', mode });
       await expect(readNativeProgramAssembly(reference)).rejects.toThrow('Original installed assembly readset changed');
 
       const other = await buildNativeProgram({ output: path.join(root, 'other-original-program'), runtimeArchive });
