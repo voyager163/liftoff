@@ -21,6 +21,7 @@ import { canonicalJson } from '../src/domain/governance/activation/canonical-jso
 import type { ProjectOptions } from '../src/domain/project/contracts.js';
 import type { AssetDigest, PluginResolution, ResolvedPlugin } from '../src/plugins/contracts.js';
 import { modernPreviousRelease } from '../src/plugins/builtin/modern-previous-release.js';
+import { liftoffVersion } from '../src/version.js';
 import { fixture, inventory, write } from './fixtures/manifest-update.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 
@@ -96,7 +97,21 @@ describe('content-only esbuild refresh preserves complete historical source fami
         const before = await inventory(project.root);
         const preview = await previewModernSuccessorUpdate(project.root, input, project.options);
         expect(preview.scope).toBe('core-manifest-maintenance-only');
-        expect(preview.plans.every(plan => plan.writeCount === 0)).toBe(true);
+        const maintained = createManifestV8Candidate({
+          origin: 'maintenance', source: entry.manifest,
+          managed: manifest.managedArtifacts.map(({ logicalName }) => ({ kind: 'retain', logicalName }))
+        }).manifest;
+        expect(maintained).toEqual({ ...manifest, liftoffVersion });
+        const content = Buffer.from(JSON.stringify(maintained, null, 2) + '\n');
+        const operations = manifest.liftoffVersion === liftoffVersion ? [] : [{
+          type: 'write', pathParts: ['liftoff.manifest.json'],
+          contentDigest: createHash('sha256').update(content).digest('hex'),
+          byteLength: content.length, requestedMode: null
+        }];
+        for (const plan of preview.plans) {
+          expect(plan.writeCount).toBe(operations.length);
+          expect(plan.operations).toEqual(operations);
+        }
         const layout = await inspectApplicationLayout(project.root, manifest);
         expect(layout.report.target?.id).toBe('liftoff-active-application-artifacts-v1');
         expect(layout.report.target?.workload).toEqual(manifest.project.workload);
