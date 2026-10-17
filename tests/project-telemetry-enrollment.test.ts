@@ -517,7 +517,9 @@ describe('explicit project enrollment and external checkout consent', () => {
       argv: ['upgrade', '--check', '--json'], cwd: f.project, env: f.env, stdout, stderr,
       execute: (parsed, context) => runCommand(parsed, {
         ...context, selfUpgrade: request => runSelfUpgrade({
-          ...request, runningPackageRoot: upgrade.request.runningPackageRoot
+          ...request,
+          currentVersion: upgrade.world.currentVersion,
+          runningPackageRoot: upgrade.request.runningPackageRoot
         }, upgrade.dependencies)
       })
     });
