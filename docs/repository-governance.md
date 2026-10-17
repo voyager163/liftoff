@@ -247,6 +247,31 @@ the stable release's current-version and foreign-registry cases. The Source
 constructor, workflow runtime integration and TASK14.3 qualification remain
 separate implementation requirements; this API does not enable them by itself.
 
+The private Source program-content constructor accepts only constructed
+context/runtime references and that original assembly reference. Construction
+and consumption freshly revalidate the original archive, source/output relation,
+actual package/lock version and complete installed membership, bytes, modes,
+links and physical identities through the original first-party reader. Actual
+installed assets must also pass the existing compiled current5 source-family
+registry; a matching version string is insufficient. Its own process-local token cannot be copied,
+serialized or replaced by a returned readback. Archive reads return independent
+bytes and only producer-derived CLI, validator and bundled-runtime references.
+This observes genuine candidate content, not release publication, semantic-job
+qualification, prerequisite/session authority or approval to execute workloads.
+Focused input-boundary controls do not replace the explicitly named real
+build/pack/install cases: those require the actual pinned runtime archive and
+first-party build tooling, plus the real launcher on Windows.
+
+`declareSource5WorkflowProgramSources` consumes that original token through the
+fresh first-party reader and binds its complete program/archive/source digests
+into the intended source declaration. It resolves only the current5-program
+obligation; unpublished genuine candidate content does not need a fabricated
+public release. Delivery, complete jobs, integrations, tool/runner admission,
+controlled-red subjects and current prerequisite/session authority remain
+separate requirements. A copied declaration or returned program metadata cannot
+replace the original token, and changed installed content refuses before any
+declaration is issued.
+
 Private `observeSource5WorkflowDependencyReview` reads the actual GitHub
 dependency diff for exact repository/base/head commit/tree selectors through
 the original read-only runtime. It verifies a bounded complete ancestor-to-head
