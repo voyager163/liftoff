@@ -1359,7 +1359,7 @@ and nested reports, verification results/receipts and private backup indexes
 use their own schema-1 formats. Update's journal remains schema 1.
 
 **Repair and preparation capabilities**: The package version is
-0.12.3; application repair and locked preparation capabilities require
+the unpublished `0.13.0-dev.0` candidate; application repair and locked preparation capabilities require
 `repairContractVersion` 1. Do not infer capability support from
 package SemVer alone. Native integrations and tooling must query `liftoff repair --capabilities --json`
 directly to verify `repairContractVersion`, supported schemas, registered recipes,

@@ -229,10 +229,13 @@ retain write authority.
 
 The compatibility map is explicit; Liftoff does not use numeric less-than
 comparisons to infer execution safety.
+The CLI row identifies the unpublished development candidate, not a newly
+released minimum version. Historical activation and provenance identities are
+unchanged.
 
 | Contract | Current version |
 | --- | --- |
-| CLI package version | 0.12.3 |
+| CLI package version | 0.13.0-dev.0 |
 | Activation package identity | 0.12.0 |
 | Historical generation write / supported historical reads | 7 / 2-7 for API and GenAI |
 | Current generation/update write / supported source reads | 8 / 2-8 for API and GenAI |
