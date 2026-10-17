@@ -500,6 +500,30 @@ still bind the exact archive bytes at later consumption and independently
 verify any installed destination. No cask provider is registered by this helper;
 actual Homebrew dispatch and host/channel qualification remain separate.
 
+`native-cask-content.ts` adds a source-only content-consumption component, not a
+cask installation provider. `prepareAuthenticatedCaskContent` privately re-admits
+the signed candidate/material and canonical renderer, then binds its stdin bytes
+and expected child observation to that exact candidate, approved tap repository,
+source path and commit. The inert child program uses a local `FromContentLoader`
+subclass to evaluate the private canonical string while retaining genuine tap
+and source-file attribution, following the audited API in
+`Homebrew/brew@f8d1b25f33e032707f151123aca0eac3a239c676`.
+It retains read-only trust refusal, checks the
+source checksum and subject, and repeats protected source/config/path observations
+plus uncached `GitRepository` origin/head reads; cached `Tap` getters are not a
+freshness check. `readCaskContentObservation` requires the exact bounded protocol
+and a positively spawned, settled successful process, with no extra output.
+The required environment controls are additive: callers must separately admit
+the actual Homebrew host and preserve its effective account/enterprise restrictions.
+No invocation, installer, migration, receipt or provider registration is supplied.
+Inert Ruby interface-double controls do not qualify actual Homebrew execution.
+Those controls in `tests/self-upgrade-cask-content.test.ts` opt in through
+`LIFTOFF_TEST_CASK_CONTENT_RUBY`, naming an existing absolute Ruby executable;
+they load only the repository's inert host double, not Homebrew libraries.
+Atomic no-clobber Caskroom/staging/metadata/prefix publication and independently
+attributed installed-destination inventory remain required before any provider
+can replace the default pre-removal refusal.
+
 For an attributed Homebrew cask, the default channel separately repeats signed
 release/asset admission and the read-only receipt/tap-origin/commit observation.
 It compares the exact selected definition SHA-256 with the unchanged canonical
