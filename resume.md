@@ -103,13 +103,73 @@ floor. This is targeted evidence only, not full or global coverage. Receipt
 That session reverified all 1,724 source bytes/modes and released the lane with
 no child process left.
 
-This continuation now owns the exclusive lane. Restore only this worktree's
-isolated dependencies and run the failed surfaces first. The exact-clean
-successor run must then repeat supported-stack, build, the unfiltered
-one-worker suite, gateway coverage plus verification, CLI source-complete
-coverage plus verification, repository policy and strict OpenSpec. Root's later
-`.13` and raw-JS inventory need a separate combined qualification and cannot
-inherit this `.12` evidence.
+The exact-clean successor qualification is complete on
+`8fb50e2ea0efd84d717a0608b5cbd18a906ef9aa`, tree
+`68ec73d0d9be4495deef00158e33fad159ad5dfb`. This revision adds only
+documentation above executable/test successor `75c209e4`.
+
+- Exact npm 12 `npm ci` used this worktree's regular `node_modules` directory
+  and an isolated temporary cache. It restored the declared Kusto package
+  without changing repository bytes. The first focused attempt used an
+  executable npm wrapper that was not the registered inspectable
+  `npm-cli.js` identity and therefore failed 13 native Manual cases at the
+  protected tool-inspection boundary. Replacing only that environment wrapper
+  with a link to the exact npm 12 launcher cleared the refusal. The three
+  formerly failing files then passed together: 116 passed, zero failed and 15
+  unchanged native-engine skips.
+- Supported-stack and build passed. The unfiltered one-worker suite ran from
+  2026-10-17T04:56:33Z through 2026-10-17T06:19:16Z and passed 360 files with
+  six skipped files; 12,799 tests passed and 134 were skipped. There were no
+  failed files or tests. Its shared-host duration is retained as observation
+  only, not performance credit.
+- Gateway source-complete coverage and independent saved-evidence verification
+  passed 211/211 tests against four files, digest
+  `sha256:28c6816b535eefab7c3b45144c239975898fd458093d0a148492f3164873bf58`.
+  Statements were 245/262 (93.5114%), branches 191/234 (81.6239%), functions
+  64/68 (94.1176%) and lines 235/248 (94.7580%).
+- CLI source-complete coverage and independent saved-evidence verification ran
+  from 2026-10-17T06:19:48Z through 2026-10-17T07:50:17Z. All 12,799 tests
+  passed with 134 skips against 569 executable TypeScript-build files, digest
+  `sha256:5c8840351bea369467f5b3197b73a15239b19e53eb6b2512ee2a519da0f0df00`.
+  Statements were 46,607/52,117 (89.4276%), branches 42,595/49,625 (85.8337%),
+  functions 8,699/9,141 (95.1646%) and lines 41,231/44,997 (91.6305%).
+- Repeated gateway and CLI evidence verification, installed-package smoke for
+  `@msn-control/liftoff@0.12.3`, repository policy, strict change validation,
+  strict all-OpenSpec validation (24/24), whitespace, exact HEAD/tree and final
+  clean-tree checks passed. The final gate completed at
+  2026-10-17T07:51:30Z and released the shared heavy lane.
+
+The sealed packet is
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/shared-core-8fb50e2-qualification`.
+`receipt.json` has SHA-256
+`d57c383acf8342249632cbc63399d3cdc43138dd64db3822704c42b0e4f86e03`;
+its 51-file ledger has SHA-256
+`5c79706ee45c62a455f8c0c11e915547dc35b1302a470f23aab5328bb2cd3ba2`.
+The isolated npm cache was removed after sealing.
+
+Attribution remains exact: this qualifies the original `8fb50e2e` 569-file
+TypeScript-build inventory only. It does not qualify Root's later `.13`
+integration or five additional shipped raw-JavaScript coverage inputs. Public
+Root EF already contains `28c9` and `75c`; the commits above `75c` here are
+documentation-only. Root therefore needs a fresh combined full and
+source-complete run after preserving integrations.
+
+Terminal EF failure mapping found no missing executable 8fb delta. The genuine
+Root/integration debt is the `.13-dev` version not satisfying the current
+stable/alpha/beta/rc telemetry version contract, version/native-package coupled
+expectations, and new infrastructure guidance changing frozen historical
+template bytes. Preserve the reviewed retained-family4 fixture corrections and
+current5 refusals, update only deliberate current-version expectations, and
+gate new guide text to the current source family rather than refreshing the
+historical baseline. Coverage guidance and application publication-handle
+binding were corrected independently after EF. Source owns remaining
+matrix/finalization timing assessment. EF's 45-minute CLI coverage job produced
+no artifact; it cannot inherit this smaller-inventory result.
+
+The subsequently requested exact-`800b56c3` Source consumer slot was removed
+before launch after coherent EF evidence superseded the diagnostic need. It
+remains historically unrun and receives no EF credit. No Source slot remains
+queued behind this completed sequence.
 
 ## Canonical assertion recovery, 2026-10-16
 
