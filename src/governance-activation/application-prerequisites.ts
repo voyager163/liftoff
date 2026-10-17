@@ -244,11 +244,13 @@ export async function executeApplicationPrerequisites(input: PhaseAdapterExecuti
     if (protection.identity.cloud.name !== 'AzureCloud') {
       return applicationError('application-cloud-unsupported', 'Application registry production adapters currently qualify only the AzureCloud endpoint family.');
     }
-    const permissions = await observeAzureEffectivePermissions(input, {
-      subscriptionId: binding.subscriptionId, ...protection.identity.cloud
-    }, 'Application prerequisite permissions');
-    if (requiredActions.some((action) => !azurePermits(permissions, action))) {
-      return applicationError('application-permission', 'Exact application registry, identity or scoped role permission is missing; no role/account/provider broadening was attempted.');
+    if (!previous) {
+      const permissions = await observeAzureEffectivePermissions(input, {
+        subscriptionId: binding.subscriptionId, ...protection.identity.cloud
+      }, 'Application prerequisite permissions');
+      if (requiredActions.some((action) => !azurePermits(permissions, action))) {
+        return applicationError('application-permission', 'Exact application registry, identity or scoped role permission is missing; no role/account/provider broadening was attempted.');
+      }
     }
     for (const namespace of ['Microsoft.ContainerRegistry', 'Microsoft.ManagedIdentity']) {
       const observed = azureObject(await runAzureJson(input, [

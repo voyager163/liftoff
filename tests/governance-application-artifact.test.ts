@@ -526,6 +526,49 @@ describe('application source producers behind real prerequisites', () => {
     expect(next, JSON.stringify(next)).toMatchObject({ status: 'pending' });
     expect(f.runner.writes).toHaveLength(1);
   });
+  it.each(['Running', 'Succeeded'])('observes the original %s prerequisite deployment without fresh create or role-assignment grants', async state => {
+    const f = await fixture();
+    f.runner.deploymentState = 'Running';
+    const first = await executeApplicationPrerequisites(f.input);
+    expect(first).toMatchObject({ status: 'pending', operation: { status: 'running' } });
+    f.input.inspection.state.phases[f.phase.id].operation = {
+      ...first.operation!, planDigest: f.input.plan.planDigest
+    };
+    f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+    f.runner.permissions = [
+      'Microsoft.Resources/deployments/read', 'Microsoft.Resources/deployments/exportTemplate/action',
+      'Microsoft.Resources/subscriptions/resourceGroups/read',
+      'Microsoft.ContainerRegistry/registries/read', 'Microsoft.ManagedIdentity/userAssignedIdentities/read',
+      'Microsoft.Authorization/roleAssignments/read'
+    ];
+    f.runner.deploymentState = state;
+    const next = await executeApplicationPrerequisites({
+      ...f.input, applicationObservationOnly: true, now: new Date(coverageNow.getTime() + 1000)
+    });
+    expect(next, JSON.stringify(next)).toMatchObject({
+      status: state === 'Running' ? 'pending' : 'completed',
+      operation: { operationId: first.operation!.operationId, startedAt: first.operation!.startedAt,
+        planDigest: f.input.plan.planDigest }
+    });
+    expect(f.runner.writes).toHaveLength(1);
+  });
+  it('blocks actual prerequisite read denial without discarding its original handle or redispatching', async () => {
+    const f = await fixture();
+    f.runner.deploymentState = 'Running';
+    const first = await executeApplicationPrerequisites(f.input);
+    expect(first).toMatchObject({ status: 'pending' });
+    const operation = { ...first.operation!, planDigest: f.input.plan.planDigest };
+    f.input.inspection.state.phases[f.phase.id].operation = operation;
+    f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+    f.runner.permissions = [];
+    f.runner.failPoll = true;
+    const outcome = await executeApplicationPrerequisites({ ...f.input, applicationObservationOnly: true });
+    expect(outcome).toMatchObject({ status: 'blocked' });
+    expect(f.input.inspection.state.phases[f.phase.id].operation).toEqual(operation);
+    expect(outcome.evidencePayload).toBeUndefined();
+    expect(JSON.stringify(outcome)).not.toContain('secret-provider-diagnostics');
+    expect(f.runner.writes).toHaveLength(1);
+  });
   it.each(['owned', 'unknown-extra', 'poll-failure'] as const)(
     'resumes the engine read-only with %s inventory and never repeats creation', async (kind) => {
       const f = await fixture(); f.runner.deploymentState = 'Running';
