@@ -255,6 +255,7 @@ export async function runSelfUpgrade(
       });
     } catch (error) {
       if (error instanceof SelfUpgradeFailure) {
+        if (error.effects !== undefined) effects = error.effects;
         if (error.reasonCode.startsWith('registry_')) channel = {
           status: error.reasonCode === 'registry_stale' ? 'lagging' : error.reasonCode === 'registry_absent' ? 'absent' : 'unknown'
         };

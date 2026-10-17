@@ -430,6 +430,24 @@ archive bytes with the shared raw-byte primitive and the separately approved
 archive key, in addition to the qualification-envelope key and subject hashes.
 The npm package includes both inert catalog files; no builder is imported.
 
+For a receipt-owned Linux installation, the default upgrade channel independently
+repeats authenticated stable/asset observation and binds the same exact archive.
+It does not reuse an upstream version string as availability proof; a changed
+policy, release or digest blocks. Check does not extract or retain a stage.
+`native-archive.ts` supplies the subsequent inert staging boundary: it snapshots
+and verifies the approved archive signature, parses a bounded TAR without a shell,
+rejects traversal, aliases, special entries, hard links, unsafe/dangling/cyclic
+links and unsupported metadata, and matches the exact signed manifest/inventory
+before writing. It reuses the installed, verified bundle path/limits/inventory
+contract, then rechecks the extracted inventory without running extracted code.
+The existing installed runtime/installer performs the same-owner immutable
+replacement only after another owner/lock/journal check. Successful stages are
+removed through identity-checked private-scratch cleanup; failed stages are
+retained separately from the ordinary observation directory. Pre-install
+validation failures report no installation effects. This source composition does
+not create a signing principal, qualify an archive or enable the current null
+release policy, and supplies no Homebrew or WinGet availability authority.
+
 Absent-cask preparation is distinct from upgrading an installed owner.
 `createHomebrewCaskPreparation` in `native-cask-plan.ts` exposes
 `observeDestination(prefix, signal)` and `preview(prefix, signal)`. Stable lookup

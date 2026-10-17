@@ -1110,6 +1110,10 @@ Machine-level `@msn-control:registry` takes precedence over the default
 directory so project `.npmrc` files cannot change upgrade delivery. Canonical
 verification isolates both registry settings without changing persistent
 configuration; actual delivery still honors the configured mirror.
+All npm observation, installation and replacement-verification subprocesses use
+only the caller-supplied environment plus the upgrade's temporary cache and
+telemetry/startup guards. Omitted parent npm settings are not merged back in;
+explicit prefix, mirror and account settings remain preserved.
 
 `--check` performs the same origin, target, and parity checks without invoking
 installation. Apply uses one shell-free exact npm command with lifecycle scripts,
@@ -1126,6 +1130,11 @@ WinGet handoff outside the running executable, with a new shell and postverifica
 Homebrew cannot pin a cask upgrade to the reviewed version, so no unbound brew
 upgrade is executed. Linux source reuses receipt-bound immutable version
 replacement and exact journal/selected-dead-lock recovery, never prefix sweeps.
+Its default source independently reobserves the authenticated exact archive
+channel. Apply stages a bounded signed snapshot, validates all TAR members and
+the exact manifest/inventory without executing extracted code, then rechecks the
+owner before the existing installer runs. Failed private stages remain available
+for review; a staging refusal before installation reports `effects: none`.
 These are source interfaces, not a declaration of qualified native availability.
 For native receipts, equal package versions are not enough: differing source,
 manifest or inventory identity reports `native_identity_mismatch`, not current.
