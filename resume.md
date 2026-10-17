@@ -5,6 +5,184 @@ another machine. It records the repository state, decisions, validation,
 remaining work, and cautions needed to continue the OpenSpec change
 `modernize-liftoff-platform` without reconstructing the prior conversation.
 
+## Shared reconstruction correction, 2026-10-17
+
+This isolated continuation is a bounded shared-core correction rooted directly
+at `a05fbb79c0280226f10c84658f590edb0faee846`. Production source commit
+`28c9f77de53642136fc10dda76b016ea82628113`, tree
+`9418cfa5800049016b5f40b172e4feef09b8f842`, removes deterministic duplicate
+source reconstruction without introducing a cross-request cache:
+
+- `buildModernManagedCore` resolves the source once and supplies that exact
+  result to its context and compatibility subproducers only when their
+  canonical source request matches. A different request is rejected rather
+  than served stale data.
+- `inspectModernInstalledActivation` still performs a new filesystem,
+  physical-identity, manifest, record and currentness observation on every
+  invocation. Within one inspection only, its collected managed-core render can
+  be reused during validation when it is bound to the exact captured manifest
+  SHA-256. Public snapshot validation still reconstructs independently.
+- Provider reads, current records, authority, approvals, leases, source
+  selection and filesystem observations are not retained between requests.
+  Source5 public interfaces and its owning fixture/orchestration files are
+  unchanged.
+
+Focused verification of `28c9f77d` passed 171 managed-core/preflight cases,
+28 import-boundary cases, repository policy, strict OpenSpec validation and the
+complete 62-case Source5 matrix file. The six original sequenced timeout
+controls passed under their unchanged 30-second deadlines: preparation 1.619s,
+component sealing 9.346s, lease acquisition 2.768s, all-12 matrix observation
+7.577s, component pending/resume 7.057s and finalization fresh-lease/CAS
+13.199s. A same-process diagnostic, not qualification or hosted timing credit,
+measured the source-resolution portion at a 10.448ms prior-path median versus
+2.671ms with operation-local reuse.
+
+The exact clean qualification of `28c9f77d` started at
+2026-10-17T03:38:38Z and stopped after the unfiltered suite at
+2026-10-17T04:44:19Z. Supported-stack and build passed. The suite reported 357
+passing files, three failing files, six skipped files, 12,757 passing tests, 11
+failing tests and 148 skipped tests. No gateway or CLI coverage command
+started, and no fresh report or percentage exists for this revision.
+
+- One failure was a coupled source-family instrumentation expectation that
+  still required 11 redundant resolutions. Separate successor
+  `75c209e42bd2c506fd16f5394fa35e13f4a3c217`, tree
+  `f31738dc7faa764e0eefc1da0ce394c4188f48cb`, changes only that test. It now
+  asserts one validated source per managed-core operation while each
+  independent installed inspection still performs exactly four source
+  resolutions, its own filesystem opens and a separately captured
+  snapshot/files/directories. Legacy and selected lookup copying remains 24
+  complete rows versus four selected rows. Exact clean committed bytes pass all
+  79 cases, build, repository policy and strict OpenSpec validation.
+- Ten failures in `tests/modern-manual-execution.test.ts` were environment
+  discovery failures because no compatible executable was exposed as
+  `python`. The preserved qualified executable is
+  `/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/macos-toolchain/python/cpython-3.14.7-macos-aarch64-none/bin/python3.14`.
+  The preserved uv 0.12.7 executable is under
+  `files/macos-toolchain/uv/venv/bin/uv`. Use an isolated temporary `python`
+  launcher and PATH; do not mutate system tools.
+- `tests/telemetry-dashboard.test.ts` could not collect because declared
+  dependency `@kusto/language-service-next/bridge.js` is absent from this
+  worktree's `node_modules`. Exact npm 12 `npm ci` is justified only after the
+  currently reserved Source original-program readset releases the shared heavy
+  lane. Do not mutate a dependency or tool root while that readset is active.
+
+The failed-run packet is retained at
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/shared-core-28c9-full-qualification`.
+`coverage-not-run.txt` has SHA-256
+`380e2fb06b4510aec1d2eb998acd37693a5d489585915518cc74e3e7335d1136`;
+the corrected ledger has SHA-256
+`03ae70de234f236f710a2795434de00f8759ae1171fd8774864d11fca9a9fb7d`.
+An initial finalizer copy of pre-existing ignored `cdadc391` reports was removed
+from this packet and explicitly recorded so it cannot be attributed to
+`28c9f77d`.
+
+Neither commit completes an OpenSpec task. Progress remains 87/136 and no
+source, coverage, readiness, provider or phase-completion claim is made. Root
+has received the two bounded commits for preserving intake. The shared heavy
+lane was explicitly released by this session at 2026-10-17T04:44:19Z. Source
+exact `f720a151ba41944f168c3f7fe09129f16245267c`, tree
+`1249bb2fa40ace4ca8df33d89f244280cbbb365f`, then completed its one real
+original-program build/pack/private-install plus ten genuine consumers from
+2026-10-17T04:47:01.095Z through 2026-10-17T04:49:36.198Z: 10 passed, zero
+failed, with 21 regex-unselected request cases. It used the required official
+gzip producer input with SHA-256 beginning `bed7eea`, retained the prior xz
+checksum refusal separately, reverified unchanged HEAD/tree/files/modes and
+explicitly released the lane.
+
+The queued application prerequisite selector then ran only exact
+`1486a43b0e5c0c780841233d6202ad557f259f38` from
+2026-10-17T04:51:50.282Z through 2026-10-17T04:52:41.301Z. Its sole V8 include
+was `src/governance-activation/application-prerequisites.ts`; all 142 owning
+tests passed. Statements were 146/160 (91.25%), branches 150/168 (89.28%),
+functions 21/21 (100%) and lines 141/154 (91.55%), above the unchanged 80.01%
+floor. This is targeted evidence only, not full or global coverage. Receipt
+`files/task141-acceptance/prerequisite-v8-1486/receipt.json` in session
+`68be53ea-3101-4b13-b2a8-e520cecb7a48` has SHA-256
+`45e2990af4463eef02b8bca57af03ccc07983d6bb247723fae2b4ee69c35709f`.
+That session reverified all 1,724 source bytes/modes and released the lane with
+no child process left.
+
+The exact-clean successor qualification is complete on
+`8fb50e2ea0efd84d717a0608b5cbd18a906ef9aa`, tree
+`68ec73d0d9be4495deef00158e33fad159ad5dfb`. This revision adds only
+documentation above executable/test successor `75c209e4`.
+
+- Exact npm 12 `npm ci` used this worktree's regular `node_modules` directory
+  and an isolated temporary cache. It restored the declared Kusto package
+  without changing repository bytes. The first focused attempt used an
+  executable npm wrapper that was not the registered inspectable
+  `npm-cli.js` identity and therefore failed 13 native Manual cases at the
+  protected tool-inspection boundary. Replacing only that environment wrapper
+  with a link to the exact npm 12 launcher cleared the refusal. The three
+  formerly failing files then passed together: 116 passed, zero failed and 15
+  unchanged native-engine skips.
+- Supported-stack and build passed. The unfiltered one-worker suite ran from
+  2026-10-17T04:56:33Z through 2026-10-17T06:19:16Z and passed 360 files with
+  six skipped files; 12,799 tests passed and 134 were skipped. There were no
+  failed files or tests. Its shared-host duration is retained as observation
+  only, not performance credit.
+- Gateway source-complete coverage and independent saved-evidence verification
+  passed 211/211 tests against four files, digest
+  `sha256:28c6816b535eefab7c3b45144c239975898fd458093d0a148492f3164873bf58`.
+  Statements were 245/262 (93.5114%), branches 191/234 (81.6239%), functions
+  64/68 (94.1176%) and lines 235/248 (94.7580%).
+- CLI source-complete coverage and independent saved-evidence verification ran
+  from 2026-10-17T06:19:48Z through 2026-10-17T07:50:17Z. All 12,799 tests
+  passed with 134 skips against 569 executable TypeScript-build files, digest
+  `sha256:5c8840351bea369467f5b3197b73a15239b19e53eb6b2512ee2a519da0f0df00`.
+  Statements were 46,607/52,117 (89.4276%), branches 42,595/49,625 (85.8337%),
+  functions 8,699/9,141 (95.1646%) and lines 41,231/44,997 (91.6305%).
+- Repeated gateway and CLI evidence verification, installed-package smoke for
+  `@msn-control/liftoff@0.12.3`, repository policy, strict change validation,
+  strict all-OpenSpec validation (24/24), whitespace, exact HEAD/tree and final
+  clean-tree checks passed. The final gate completed at
+  2026-10-17T07:51:30Z and released the shared heavy lane.
+
+The sealed packet is
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/shared-core-8fb50e2-qualification`.
+`receipt.json` has SHA-256
+`d57c383acf8342249632cbc63399d3cdc43138dd64db3822704c42b0e4f86e03`;
+its 51-file ledger has SHA-256
+`5c79706ee45c62a455f8c0c11e915547dc35b1302a470f23aab5328bb2cd3ba2`.
+The isolated npm cache was removed after sealing.
+
+Attribution remains exact: this qualifies the original `8fb50e2e` 569-file
+TypeScript-build inventory only. It does not qualify Root's later `.13`
+integration or five additional shipped raw-JavaScript coverage inputs. Public
+Root EF already contains `28c9` and `75c`; the commits above `75c` here are
+documentation-only. Root therefore needs a fresh combined full and
+source-complete run after preserving integrations.
+
+Terminal EF failure mapping found no missing executable 8fb delta. The genuine
+Root/integration debt is the `.13-dev` version not satisfying the current
+stable/alpha/beta/rc telemetry version contract, version/native-package coupled
+expectations, and new infrastructure guidance changing frozen historical
+template bytes. Preserve the reviewed retained-family4 fixture corrections and
+current5 refusals, update only deliberate current-version expectations, and
+gate new guide text to the current source family rather than refreshing the
+historical baseline. Coverage guidance and application publication-handle
+binding were corrected independently after EF. Source owns remaining
+matrix/finalization timing assessment. EF's 45-minute CLI coverage job produced
+no artifact; it cannot inherit this smaller-inventory result.
+
+Root later added exact `68ccddbba79a7e0b78474184c9b9003fde571091`,
+tree `88e392640cde23587191c35eb56d314f55a28b7e`, as a separate four-path
+live-assessment correction. It completes closing release/hotfix ref inventory,
+invalidates proof when an observed ref is removed, and preserves unchanged
+permanent-ref facts under the existing per-inventory bounds and shared
+60-second deadline. Its complete owning/engine/consumer/documentation packet
+passed 309 tests with zero failures. None of its four paths appears in the
+terminal EF failed-file inventory, so preserve it as additional Root source,
+not an EF failure reclassification, 8fb evidence or broad task 14.7 credit.
+Receipt `root-bounded-source-68ccddbba79a-1/receipt.json` has SHA-256
+`98e127e71f67ee0b390623bf696e7c83c6e171b6df6644bddc0aff3cb9b8bbd0`.
+
+The subsequently requested exact-`800b56c3` Source consumer slot was removed
+before launch after coherent EF evidence superseded the diagnostic need. It
+remains historically unrun and receives no EF credit. No Source slot remains
+queued behind this completed sequence.
+
 ## Canonical assertion recovery, 2026-10-16
 
 This preserving test/documentation correction follows Root
@@ -143,7 +321,7 @@ the mutable Homebrew path.
   branch. The tip containing this MacBook-return update is a later handoff commit.
 - The branch tip containing this file is the handoff commit. After fetching,
   run `git rev-parse HEAD` to record its full SHA.
-- OpenSpec progress is 82/136 tasks complete; 54 remain.
+- OpenSpec progress is 87/136 tasks complete; 49 remain.
 - Task 13.5 is complete after exact hosted-native qualification and independent
   artifact re-judgment on clean revision `94f0d63e`. Task 13.6 remains
   unchecked; task 13.7 is complete.

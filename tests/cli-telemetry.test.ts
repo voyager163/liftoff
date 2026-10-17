@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runCli, type CliTelemetryHooks } from '../src/cli.js';
+import { runCli as runProductCli, type CliTelemetryHooks } from '../src/cli.js';
+import {
+  releasedTelemetryVersion,
+  runReleasedTelemetryCli as runCli
+} from './fixtures/released-telemetry.js';
 import { CaptureStream } from './helpers.js';
 import * as telemetryConfig from '../src/telemetry/config.js';
 
@@ -16,6 +20,61 @@ function telemetryHooks(): CliTelemetryHooks & {
 }
 
 describe('CLI telemetry integration', () => {
+  it('keeps unpublished builds free of ordinary disclosure, hooks, and transport', async () => {
+    const notice = vi.spyOn(telemetryConfig, 'readTelemetryNoticeVersion');
+    const record = vi.spyOn(telemetryConfig, 'recordTelemetryNotice');
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const hooks = telemetryHooks();
+    const semantic = vi.fn<NonNullable<CliTelemetryHooks['afterSemanticCommand']>>();
+
+    expect(await runProductCli({
+      argv: ['--version'],
+      env: {},
+      stdout: new CaptureStream(),
+      stderr: new CaptureStream(),
+      telemetry: { ...hooks, afterSemanticCommand: semantic },
+      execute: async () => 0
+    })).toBe(0);
+
+    expect(notice).not.toHaveBeenCalled();
+    expect(record).not.toHaveBeenCalled();
+    expect(hooks.beforeCommand).not.toHaveBeenCalled();
+    expect(hooks.afterCommand).not.toHaveBeenCalled();
+    expect(semantic).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('accepts only a bounded release version through the programmatic observation seam', async () => {
+    const hooks = telemetryHooks();
+    const semantic = vi.fn<NonNullable<CliTelemetryHooks['afterSemanticCommand']>>();
+    expect(await runProductCli({
+      argv: ['--version'],
+      env: {},
+      stdout: new CaptureStream(),
+      stderr: new CaptureStream(),
+      telemetryReleaseVersion: '0.13.0-dev.0',
+      telemetry: { ...hooks, afterSemanticCommand: semantic },
+      execute: async () => 0
+    })).toBe(0);
+    expect(hooks.beforeCommand).not.toHaveBeenCalled();
+    expect(semantic).not.toHaveBeenCalled();
+
+    expect(await runProductCli({
+      argv: ['--version'],
+      env: {},
+      stdout: new CaptureStream(),
+      stderr: new CaptureStream(),
+      telemetryReleaseVersion: releasedTelemetryVersion,
+      telemetry: { ...hooks, afterSemanticCommand: semantic },
+      execute: async () => 0
+    })).toBe(0);
+    expect(hooks.beforeCommand).toHaveBeenCalledTimes(1);
+    expect(semantic).toHaveBeenCalledWith(expect.objectContaining({
+      cliVersion: releasedTelemetryVersion,
+      outcome: 'success'
+    }), {});
+  });
+
   it('bounds a nonsettling legacy hook and never starts a later semantic observer after expiry', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     const stdout = new CaptureStream(), stderr = new CaptureStream(), hooks = telemetryHooks();

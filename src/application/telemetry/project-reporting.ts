@@ -18,7 +18,11 @@ import {
 } from '../../telemetry/delivery.js';
 import { productionTelemetryEndpoint } from '../../telemetry/index.js';
 import { getTelemetryConfigPath } from '../../telemetry/config.js';
-import { isProjectTelemetryEvent, type ProjectTelemetryEvent } from '../../telemetry/contract.js';
+import {
+  isProjectTelemetryEvent,
+  isTelemetryCliVersion,
+  type ProjectTelemetryEvent
+} from '../../telemetry/contract.js';
 import { requestUpdateApproval } from '../update/approval.js';
 import type { ExecutionContext } from '../context.js';
 import { qualifiedHeartbeatTooling } from '../../domain/project/telemetry-heartbeat.js';
@@ -90,7 +94,15 @@ function review(observed: Awaited<ReturnType<typeof observe>>, request: ProjectT
 }
 
 export async function reportProjectObservation(
-  options: { cwd: string; project?: string; repository?: string; env: NodeJS.ProcessEnv; heartbeat?: boolean; delivery?: TelemetryDelivery }
+  options: {
+    cwd: string;
+    project?: string;
+    repository?: string;
+    env: NodeJS.ProcessEnv;
+    heartbeat?: boolean;
+    delivery?: TelemetryDelivery;
+    cliVersion?: string;
+  }
 ): Promise<ProjectReportResult> {
   const disabled = telemetryDisabledResult(options.env);
   if (disabled?.reason === 'global-opt-out') return disabled;
@@ -98,6 +110,10 @@ export async function reportProjectObservation(
     return { status: 'disabled', attempted: false, reason: 'heartbeat-not-qualified' };
   }
   if (disabled && !options.heartbeat) return disabled;
+  const cliVersion = options.cliVersion ?? liftoffVersion;
+  if (!isTelemetryCliVersion(cliVersion)) {
+    return { status: 'disabled', attempted: false, reason: 'unreleased-cli' };
+  }
   const delivery = options.delivery ?? createTelemetryDelivery({ env: options.env });
   try {
     const prepared = await delivery.withinBudget(async () => {
@@ -111,7 +127,7 @@ export async function reportProjectObservation(
       if (!options.heartbeat && !observed.consent) return { status: 'disabled', reason: 'local-consent-required', attempted: false } as const;
       const event: ProjectTelemetryEvent = {
         schemaVersion: 2, event: 'project_observed', projectId: observed.record.projectId,
-        cliVersion: liftoffVersion, ...observed.dimensions, source: options.heartbeat ? 'ci-heartbeat' : 'cli'
+        cliVersion, ...observed.dimensions, source: options.heartbeat ? 'ci-heartbeat' : 'cli'
       };
       if (!isProjectTelemetryEvent(event)) throw new FileSystemError('Project telemetry dimensions are unsupported.');
       const heartbeatProof = options.heartbeat ? await readQualifiedHeartbeatReportProof({
@@ -140,11 +156,15 @@ export async function reportProjectObservation(
 }
 
 export async function reportOrdinaryProject(
-  parsed: ParsedArgs, cwd: string, env: NodeJS.ProcessEnv, delivery: TelemetryDelivery
+  parsed: ParsedArgs,
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  delivery: TelemetryDelivery,
+  cliVersion: string
 ): Promise<void> {
   if (parsed.flags.help === true || !['validate', 'update', 'repair', 'doctor', 'governance', 'dev', 'infra'].includes(parsed.command ?? '')) return;
   const project = typeof parsed.flags.project === 'string' ? parsed.flags.project : parsed.positional[0];
-  await reportProjectObservation({ cwd, project, env, delivery });
+  await reportProjectObservation({ cwd, project, env, delivery, cliVersion });
 }
 
 export async function runProjectTelemetry(request: ProjectTelemetryRequest, context: ExecutionContext): Promise<number> {
@@ -160,7 +180,12 @@ export async function runProjectTelemetry(request: ProjectTelemetryRequest, cont
   }
   if (request.operation === 'report') {
     const result = await reportProjectObservation({
-      cwd: context.cwd, project: request.project, repository: request.repository, env, heartbeat: request.heartbeat
+      cwd: context.cwd,
+      project: request.project,
+      repository: request.repository,
+      env,
+      heartbeat: request.heartbeat,
+      cliVersion: context.telemetryReleaseVersion
     });
     output(result);
     return result.status === 'failed' ? 1 : 0;

@@ -2,6 +2,7 @@ import type { ParsedArgs } from '../domain/project/contracts.js';
 import {
   canonicalTelemetryCommand,
   createTelemetryEvent,
+  isTelemetryCliVersion,
   telemetryNoticeVersion,
   type TelemetryCommand,
   type TelemetryCommandEvent
@@ -97,7 +98,7 @@ export async function trackCommand(
   exitCode: number,
   options: TelemetryRuntimeOptions = {}
 ): Promise<void> {
-  if (!isTelemetryEnabled(options.env)) {
+  if (!isTelemetryEnabled(options.env) || !isTelemetryCliVersion(cliVersion)) {
     return;
   }
 

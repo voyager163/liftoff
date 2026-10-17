@@ -15,7 +15,8 @@ export type TelemetryFetch = (input: string | URL | Request, init?: RequestInit)
 type StopReason = 'budget-expired' | 'closed' | 'invalid-budget';
 export type TelemetryDeliveryResult =
   | { readonly status: 'delivered'; readonly attempted: true }
-  | { readonly status: 'disabled'; readonly attempted: false; readonly reason: 'global-opt-out' | 'ordinary-ci' | 'heartbeat-not-qualified' }
+  | { readonly status: 'disabled'; readonly attempted: false; readonly reason:
+      'global-opt-out' | 'ordinary-ci' | 'heartbeat-not-qualified' | 'unreleased-cli' }
   | { readonly status: 'failed'; readonly attempted: boolean; readonly reason:
       StopReason | 'invalid-payload' | 'invalid-endpoint' | 'http-rejected' | 'network' | 'duplicate-channel' };
 

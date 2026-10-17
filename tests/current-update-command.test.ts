@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runCli } from '../src/cli.js';
+import { runReleasedTelemetryCli as runCli } from './fixtures/released-telemetry.js';
 import { runCommand } from '../src/commands.js';
 import { parseArgs } from '../src/cli/args/parser.js';
 import { applyModernSuccessorUpdate, previewModernSuccessorUpdate } from '../src/application/update/use-case.js';
