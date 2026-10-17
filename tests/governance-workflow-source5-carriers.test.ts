@@ -19,7 +19,7 @@ import * as workflowAuthority from '../src/governance-activation/workflow-source
 import { workflowObservationRuntime, workflowRuntime } from '../src/governance-activation/workflow-runtime.js';
 import { workflowGitCommand } from '../src/governance-activation/workflow-binding.js';
 import { executeWorkflowSourcePublication } from '../src/governance-activation/workflow-publication.js';
-import { workflowSource5JournalFixture } from './fixtures/workflow-source5-journal.js';
+import { workflowPublicationGitRawInventory, workflowSource5JournalFixture } from './fixtures/workflow-source5-journal.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
@@ -617,7 +617,7 @@ describe('engine-owned source5 carriers and exact intent effects', () => {
           if (fault === 'parent-read-fails') throw new Error('isolated post-commit parent read failure');
           stdout = `${commitSha} ${value.binding.parentSha}`;
         } else if (args.includes('commit')) { commits++; head = commitSha; }
-        else if (args[0] === 'diff-tree') stdout = `${value.binding.files[0]!.path}\0`;
+        else if (args[0] === 'diff-tree') stdout = workflowPublicationGitRawInventory(value.binding.files);
         else if (args[0] === 'show') stdout = (await readFile(path.join(value.projectRoot, value.binding.files[0]!.path))).toString();
         else if (args[0] === 'push') { pushes++; pushed = true; stdout = 'isolated push acceptance'; }
         return { command, displayCommand: 'isolated command', status: 0, signal: null, stdout, stderr: '', timedOut: false };

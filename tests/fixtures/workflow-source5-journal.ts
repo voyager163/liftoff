@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, realpath } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { projectCatalog } from '../../src/application/project/catalog.js';
@@ -20,6 +20,14 @@ import { createWorkflowSource5ControlStore, resolveUpdatePreviewLocation } from 
 import { writeModernInstalledProject } from './modern-installed-project.js';
 import { workflowByteDigest } from '../../src/governance-activation/workflow-binding.js';
 import type { WorkflowPublicationBinding } from '../../src/governance-activation/workflow-publication.js';
+
+export function workflowPublicationGitRawInventory(files: WorkflowPublicationBinding['files']): string {
+  return files.map(file => {
+    const addition = file.beforeDigest === null, bytes = Buffer.from(file.content);
+    const oid = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+    return `:${addition ? '000000' : '100644'} 100644 ${addition ? '0'.repeat(40) : 'd'.repeat(40)} ${oid} ${addition ? 'A' : 'M'}\0${file.path}\0`;
+  }).join('');
+}
 
 /** Isolated current5 record/protocol fixtures, not host or live-provider qualification. */
 export async function workflowSource5JournalFixture(options: {

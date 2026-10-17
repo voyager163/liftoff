@@ -224,6 +224,13 @@ This private refusal boundary is not completion of rendering, independent
 whole-body semantic compilation, the issuer, installed orchestration or14.3.
 The existing publication paths, exact per-file approval/readback and public
 review/effect, protected journal and joint-finalization boundaries are unchanged.
+Publication verifies the complete NUL-delimited committed change inventory,
+full blob identities and ordinary non-executable Git modes before any push and
+during read-only reconciliation. Only the reviewed additions/modifications are
+accepted; executable files, links, deletions, renames and malformed or partial
+inventories cannot become publication proof even when their displayed bytes
+match. A rejected local commit retains its original checkpoint and is never
+automatically rewritten, recommitted or pushed.
 
 The first-party `distribution/native/native-program-assembly.mjs` private
 `buildNativeProgram` API retains the actual

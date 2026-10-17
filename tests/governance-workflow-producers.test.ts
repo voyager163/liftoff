@@ -1,4 +1,4 @@
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createServer, request as httpRequest } from 'node:http';
 import { parse, stringify } from 'yaml';
@@ -16,7 +16,7 @@ import {
   type WorkflowProofCheckpoint, type WorkflowContextProof
 } from '../src/governance-activation/workflow-context-proof.js';
 import {
-  executeWorkflowSourcePublication, validateWorkflowPublication,
+  executeWorkflowSourcePublication, observeWorkflowSourcePublication, validateWorkflowPublication,
   type WorkflowPublicationBinding, type WorkflowPublicationInput, type WorkflowPublicationCheckpoint
 } from '../src/governance-activation/workflow-publication.js';
 import {
@@ -944,7 +944,7 @@ describe('per-file workflow source publication authority', () => {
     expect(() => validateWorkflowPublication({ ...publication, files: [{ ...publication.files[0]!, digest: 'f'.repeat(64) }] })).toThrow();
   });
 
-  async function publicationFixture() {
+  async function publicationFixture(existing = false) {
     const f = await fixture();
     const branch = 'ci/liftoff-workflows-reviewed';
     const remote = path.join(scratch, `${counter}-bare.git`);
@@ -956,6 +956,11 @@ describe('per-file workflow source publication authority', () => {
     }
     await writeFile(path.join(f.root, '.gitignore'), 'governance/approvals/\n');
     await git(['init', `--initial-branch=${branch}`]);
+    const before = 'name: Existing reviewed source\non: workflow_dispatch\njobs: {}\n';
+    if (existing) {
+      await mkdir(path.join(f.root, '.github/workflows'), { recursive: true });
+      await writeFile(path.join(f.root, '.github/workflows/proof.yml'), before);
+    }
     await git(['add', '.']); await git(['commit', '-m', 'Isolated source parent']);
     const parentSha = (await git(['rev-parse', 'HEAD'])).trim();
     await git(['init', '--bare', remote]);
@@ -963,10 +968,11 @@ describe('per-file workflow source publication authority', () => {
     await git(['remote', 'add', 'origin', 'https://github.com/owner/repo.git']);
     const request: WorkflowPublicationBinding = {
       repository: 'owner/repo', repositoryId: 123, ref: branch, parentSha, sourceTransmissionApproved: true,
-      files: [{ path: '.github/workflows/proof.yml', beforeDigest: null, digest: workflowByteDigest(recipe()), content: recipe() }]
+      files: [{ path: '.github/workflows/proof.yml', beforeDigest: existing ? workflowByteDigest(before) : null,
+        digest: workflowByteDigest(recipe()), content: recipe() }]
     };
     const calls: ExternalCommand[] = [];
-    let uncertainPush = false;
+    let uncertainPush = false, executableCommit = false;
     const runner: CommandRunner = {
       async run(command, options) {
         calls.push(command);
@@ -974,6 +980,13 @@ describe('per-file workflow source publication authority', () => {
         const args = command.args.includes('push')
           ? ['-c', `remote.origin.url=${remote}`, '-c', `remote.origin.pushurl=${remote}`, ...command.args] : command.args;
         const result = await native.run({ executable: 'git', args }, { ...options, env: { ...options?.env, ...environment } });
+        if (executableCommit && command.args.includes('commit') && result.status === 0) {
+          const original = (await git(['rev-parse', 'HEAD'])).trim();
+          await git(['update-index', '--chmod=+x', '--', request.files[0]!.path]);
+          const tree = (await git(['write-tree'])).trim();
+          const replacement = (await git(['commit-tree', tree, '-p', parentSha, '-m', 'Unreviewed executable mode fixture'])).trim();
+          await git(['update-ref', 'HEAD', replacement, original]);
+        }
         if (uncertainPush && command.args.includes('push')) throw new Error('Uncertain isolated push acceptance');
         return result;
       }
@@ -1033,18 +1046,45 @@ describe('per-file workflow source publication authority', () => {
     };
     return { input, request, calls, checkpoints, git, root: f.root,
       setUncertainPush() { uncertainPush = true; },
+      setExecutableCommit() { executableCommit = true; },
       close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) };
   }
 
   describe('actual bounded local Git and HTTP publication fixtures', () => {
-    it('commits and fast-forward publishes only approved files and independently reads actual immutable bytes', async () => {
-      const f = await publicationFixture();
+    it.each(['fresh', 'read-only', 'resume'] as const)(
+      'rejects a genuinely executable reviewed-byte commit during %s publication', async mode => {
+        const f = await publicationFixture();
+        try {
+          await f.setExecutableCommit();
+          const attempt = await executeWorkflowSourcePublication(f.input, f.request)
+            .then(proof => ({ proof, error: null }), (error: unknown) => ({ proof: null, error }));
+          expect(await f.git(['ls-tree', 'HEAD', '--', f.request.files[0]!.path]))
+            .toMatch(/^100755 blob [a-f0-9]{40}\t\.github\/workflows\/proof\.yml\n$/u);
+          expect(await f.git(['show', `HEAD:${f.request.files[0]!.path}`])).toBe(recipe());
+          if (mode === 'fresh') {
+            expect(attempt.error).toMatchObject({ code: 'workflow-publication-inventory' });
+            expect(attempt.proof).toBeNull();
+          } else {
+            const reconcile = mode === 'read-only' ? observeWorkflowSourcePublication : executeWorkflowSourcePublication;
+            await expect(reconcile(f.input, f.request)).rejects.toMatchObject({ code: 'workflow-publication-inventory' });
+          }
+          expect(f.input.publicationCheckpoint?.stage).toBe('committed');
+          expect(f.calls.filter(command => command.args.includes('push'))).toHaveLength(0);
+          expect(f.calls.filter(command => command.args.includes('commit'))).toHaveLength(1);
+        } finally { await f.close(); }
+      });
+
+    it.each(['addition', 'modification'] as const)(
+      'commits and fast-forward publishes only approved files and independently reads actual immutable bytes: %s', async kind => {
+      const f = await publicationFixture(kind === 'modification');
       try {
         const proof = await executeWorkflowSourcePublication(f.input, f.request);
         expect(proof.parentSha).toBe(f.request.parentSha);
         expect(proof.commitSha).not.toBe(f.request.parentSha);
         expect(f.checkpoints.map((entry) => entry.stage)).toEqual(['writing', 'committed', 'push-intent', 'published']);
         expect(await readFile(path.join(f.root, '.github/workflows/proof.yml'), 'utf8')).toBe(recipe());
+        expect(await f.git(['ls-tree', 'HEAD', '--', f.request.files[0]!.path]))
+          .toMatch(/^100644 blob [a-f0-9]{40}\t\.github\/workflows\/proof\.yml\n$/u);
         expect(f.calls.filter((command) => command.args.includes('push'))).toHaveLength(1);
         expect(f.calls.some((command) => command.args.includes('--force'))).toBe(false);
       } finally { await f.close(); }
