@@ -4,11 +4,13 @@ import os from 'node:os';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readHomebrewCaskOwnership } from '../src/adapters/distribution/native-cask.js';
-import { assertCaskOwnership } from '../src/adapters/distribution/native.js';
+import { assertCaskOwnership, createNativeUpgradePort } from '../src/adapters/distribution/native.js';
 import { NodeCommandRunner, type CommandResult, type CommandRunner } from '../src/process-runner.js';
-import type { NativeBundleInventory, NativeReleasePolicy } from '../src/domain/distribution/native-upgrade.js';
+import type { NativeBundleInventory, NativeInstallation, NativeReleasePolicy } from '../src/domain/distribution/native-upgrade.js';
 import { environmentValue } from '../src/domain/workstation/executables.js';
 import { upgradeWorld } from './fixtures/installer-upgrade.js';
+import { signedMaterial } from './fixtures/native-stable-material.js';
+import { nativeCaskDefinition } from '../distribution/native/native-cask-definition.mjs';
 
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value));
@@ -299,5 +301,81 @@ describe('production Homebrew cask reader on explicit filesystem/process ports',
     await expect(fixture.observe()).rejects.toMatchObject({ reasonCode: 'native_unavailable', message: 'native_unavailable' });
     fixture.readBytes.mockRejectedValue(Object.assign(new Error('fixture denied'), { code: 'EACCES' }));
     await expect(fixture.observe()).rejects.toMatchObject({ reasonCode: 'native_unavailable' });
+  });
+});
+
+describe('default authenticated selected-cask channel comparison', () => {
+  function channelWorld() {
+    const fixture = caskWorld();
+    const signed = signedMaterial('darwin-arm64');
+    Object.assign(fixture.policy, signed.policy);
+    fixture.dependencies.readJson = async () => fixture.policy;
+    fixture.files.set(fixture.definitionPath, Buffer.from(nativeCaskDefinition(signed.record, signed.qualification, signed.policy).content));
+    const readStable = vi.fn(async () => signed.material);
+    const installation: NativeInstallation = { ...fixture.installation, owner: 'homebrew-cask',
+      managerId: fixture.policy.homebrew.cask!, managerSource: fixture.policy.homebrew.sourceRepository! };
+    const port = createNativeUpgradePort(fixture.dependencies, { stable: { readStable } });
+    return { ...fixture, signed, readStable, installation, port };
+  }
+
+  it('reobserves signed release material and the exact canonical selected definition, never exact execution', async () => {
+    const fixture = channelWorld();
+    const candidate = await fixture.port.stable(fixture.installation, fixture.world.neutralDirectory);
+    expect(await fixture.port.channel(fixture.installation, candidate, fixture.world.neutralDirectory)).toMatchObject({
+      status: 'available', version: candidate.version, artifactSha256: candidate.archiveSha256, exactApply: false,
+      identity: expect.stringMatching(/^[a-f0-9]{64}$/)
+    });
+    expect(fixture.readStable).toHaveBeenCalledTimes(2);
+    expect(fixture.run).toHaveBeenCalledTimes(3);
+    expect(fixture.run.mock.calls.every(([command]) => command.executable === 'git')).toBe(true);
+    await expect(fixture.port.apply(fixture.installation, candidate, fixture.world.neutralDirectory))
+      .rejects.toMatchObject({ reasonCode: 'manual_handoff' });
+    expect(fixture.run).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(['different bytes', 'absent bytes', 'foreign repository', 'changed receipt', 'changed head'] as const)(
+    'keeps %s unknown, never fabricated availability, lag or absence', async kind => {
+      const fixture = channelWorld();
+      const candidate = await fixture.port.stable(fixture.installation, fixture.world.neutralDirectory);
+      if (kind === 'different bytes') fixture.files.set(fixture.definitionPath, Buffer.from('# unrelated or lagging local Ruby\n'));
+      if (kind === 'absent bytes') fixture.files.delete(fixture.definitionPath);
+      if (kind === 'foreign repository') fixture.behavior.remote = 'https://github.com/foreign/tap.git';
+      if (kind === 'changed receipt') {
+        const receipt = fixture.receipt();
+        receipt.source.version = '0.13.0';
+        fixture.files.set(fixture.receiptPath, encode(receipt));
+      }
+      if (kind === 'changed head') fixture.behavior.onGit = () => {
+        if (fixture.run.mock.calls.length === 3) fixture.behavior.head = 'f'.repeat(40);
+      };
+      await expect(fixture.port.channel(fixture.installation, candidate, fixture.world.neutralDirectory))
+        .rejects.toMatchObject({ reasonCode: 'channel_changed' });
+    }
+  );
+
+  it('preserves an explicit disabled channel and refuses incomplete provider assertions', async () => {
+    const fixture = channelWorld();
+    const disabled = createNativeUpgradePort(fixture.dependencies, { stable: { readStable: fixture.readStable }, channel: undefined });
+    const candidate = await disabled.stable(fixture.installation, fixture.world.neutralDirectory);
+    await expect(disabled.channel(fixture.installation, candidate, fixture.world.neutralDirectory))
+      .rejects.toMatchObject({ reasonCode: 'channel_unavailable' });
+    const incomplete = createNativeUpgradePort(fixture.dependencies, { stable: { readStable: fixture.readStable },
+      cask: async () => ({
+        fullToken: fixture.policy.homebrew.cask!, sourceRepository: fixture.policy.homebrew.sourceRepository!,
+        bundleRoot: fixture.installation.bundleRoot, launcher: fixture.installation.launcher,
+        installedVersion: fixture.installation.version
+      }) });
+    const admitted = await incomplete.stable(fixture.installation, fixture.world.neutralDirectory);
+    await expect(incomplete.channel(fixture.installation, admitted, fixture.world.neutralDirectory))
+      .rejects.toMatchObject({ reasonCode: 'channel_unavailable' });
+  });
+
+  it('does not reuse prior material as fresh channel availability when the publisher observation fails', async () => {
+    const fixture = channelWorld();
+    const candidate = await fixture.port.stable(fixture.installation, fixture.world.neutralDirectory);
+    fixture.readStable.mockRejectedValue(new Error('fixture-only offline observation'));
+    await expect(fixture.port.channel(fixture.installation, candidate, fixture.world.neutralDirectory))
+      .rejects.toMatchObject({ reasonCode: 'channel_unavailable' });
+    expect(fixture.run).not.toHaveBeenCalled();
   });
 });

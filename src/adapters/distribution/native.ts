@@ -2,15 +2,19 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { installedPackageRoot } from '../packaged-assets/package-root.js';
-import { commandFailed, pathApiForPlatform, readOnlyEnvironment } from '../../domain/distribution/liftoff-npm-installation.js';
+import { commandFailed, comparisonPath, pathApiForPlatform, readOnlyEnvironment } from '../../domain/distribution/liftoff-npm-installation.js';
 import { SelfUpgradeFailure, selfUpgradeInstallTimeoutMs, selfUpgradeProbeTimeoutMs, selfUpgradeVerificationTimeoutMs } from '../../domain/distribution/liftoff-upgrade.js';
-import type { NativeBundleInventory, NativeInstallation, NativeReleasePolicy, NativeUpgradePort } from '../../domain/distribution/native-upgrade.js';
-import { lookupNativeStableCandidate, type NativeStableSource } from './native-metadata.js';
+import type { NativeBundleInventory, NativeCandidate, NativeChannelObservation, NativeInstallation, NativeReleasePolicy, NativeUpgradePort } from '../../domain/distribution/native-upgrade.js';
+import { authenticatedNativeCaskDefinition, lookupNativeStableCandidate, snapshotNativeStableMaterial,
+  type NativeStableMaterial, type NativeStableSource } from './native-metadata.js';
 import type { SelfUpgradeDependencies } from './upgrade-host.js';
 import { isStableSemver } from '../../stable-release.js';
 import { compareSemver } from '../../semver.js';
 import { readHomebrewCaskOwnership } from './native-cask.js';
 import { createNativeStableSource } from './native-transport.js';
+import { stageAuthenticatedNativeArchive } from './native-archive.js';
+import { readWindowsInstallerLayout, readWindowsInstallerRegistration } from './native-windows.js';
+import { bundleInventory, bundlePath, nativeBundleLimits } from '../../../distribution/native/native-bundle-contract.mjs';
 
 const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const sha256 = /^[a-f0-9]{64}$/;
@@ -36,8 +40,8 @@ export function nativePolicy(value: unknown): NativeReleasePolicy {
   if (record.approvedSigningKeySha256 !== null &&
     (typeof record.approvedSigningKeySha256 !== 'string' || !sha256.test(record.approvedSigningKeySha256))) throw invalid();
   nested('homebrew', { cask: /^[a-z0-9-]+\/[a-z0-9-]+\/[a-z0-9-]+$/, sourceRepository: /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/, developerTeamId: /^[A-Z0-9]{10}$/ });
-  nested('winget', { packageIdentifier: /^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)+$/, publisher: /^[^\u0000-\u001f]{1,128}$/,
-    certificateSha256: sha256, installerAppId: /^[A-Za-z0-9{}_-]{1,128}$/ });
+  nested('winget', { packageIdentifier: /^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)+$/, publisher: /^[^"\u0000-\u001f]{1,128}$/,
+    certificateSha256: sha256, installerAppId: /^[A-Za-z0-9{}._-]{1,128}$/ });
   nested('linux', { archiveSigningKeySha256: sha256 });
   return value as NativeReleasePolicy;
 }
@@ -48,6 +52,9 @@ export interface CaskOwnershipObservation {
   installedVersion: string;
   bundleRoot: string;
   launcher: string;
+  receiptSha256?: string;
+  definitionSha256?: string;
+  tapCommit?: string;
 }
 
 export interface WinGetOwnershipObservation {
@@ -59,7 +66,12 @@ export interface WinGetOwnershipObservation {
   installLocation: string;
   launcher: string;
   certificateSha256: string;
+  /** Authenticode verification of the selected stable launcher's exact bytes, not certificate presence. */
+  signatureStatus?: 'valid' | 'invalid' | 'unknown';
   scope: 'user' | 'machine';
+  bundleRoot?: string;
+  /** Independent HKCU uninstall-entry hashes, not values copied from the local receipt. */
+  installerRegistration?: { receiptSha256: string; currentSha256: string; launcherSha256: string };
 }
 
 export function assertCaskOwnership(
@@ -73,17 +85,27 @@ export function assertCaskOwnership(
 }
 
 export function assertWinGetOwnership(
-  observation: WinGetOwnershipObservation, installation: Pick<NativeInstallation, 'bundleRoot' | 'launcher' | 'version'>,
+  observation: WinGetOwnershipObservation,
+  installation: Pick<NativeInstallation, 'bundleRoot' | 'launcher' | 'version' | 'windowsInstaller'>,
   policy: NativeReleasePolicy
 ): void {
   const selected = policy.winget;
   if (!selected.packageIdentifier || !selected.publisher || !selected.installerAppId || !selected.certificateSha256) {
     throw new SelfUpgradeFailure('blocked', 'native_unqualified');
   }
+  const layout = installation.windowsInstaller;
+  if (!layout) throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
+  const samePath = (left: string, right: string) => comparisonPath(left, 'win32') === comparisonPath(right, 'win32');
   if (observation.packageIdentifier !== selected.packageIdentifier || observation.publisher !== selected.publisher ||
     observation.appId !== selected.installerAppId || observation.certificateSha256 !== selected.certificateSha256 ||
-    observation.installedVersion !== installation.version || observation.installLocation !== installation.bundleRoot ||
-    observation.launcher !== installation.launcher || observation.scope !== 'user' ||
+    observation.installedVersion !== installation.version ||
+    !samePath(observation.installLocation, layout.installRoot) ||
+    !samePath(observation.launcher, layout.stableLauncher) || observation.scope !== 'user' ||
+    observation.signatureStatus !== 'valid' ||
+    !observation.bundleRoot || !samePath(observation.bundleRoot, installation.bundleRoot) ||
+    observation.installerRegistration?.receiptSha256 !== layout.receiptSha256 ||
+    observation.installerRegistration?.currentSha256 !== layout.currentSha256 ||
+    observation.installerRegistration?.launcherSha256 !== layout.stableLauncherSha256 ||
     !/^[A-Za-z0-9._-]{1,128}$/.test(observation.source)) {
     throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
   }
@@ -108,7 +130,12 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
   };
   const api = pathApiForPlatform(dependencies.platform);
   const probeTimeoutMs = dependencies.probeTimeoutMs ?? selfUpgradeProbeTimeoutMs;
-  const admitted = new Map<string, string>();
+  const admitted = new Map<string, {
+    description: string;
+    material: NativeStableMaterial;
+    policy: string;
+    source: NativeStableSource;
+  }>();
   const observe = async <T>(read: (signal: AbortSignal) => Promise<T>, channel = false): Promise<T> => {
     if (!Number.isSafeInteger(probeTimeoutMs) || probeTimeoutMs <= 0 || probeTimeoutMs > 2_147_483_647) {
       throw new SelfUpgradeFailure('failed', channel ? 'channel_invalid' : 'native_invalid');
@@ -142,6 +169,19 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
   const policy = async () => nativePolicy(await dependencies.readJson(
     path.join(installedPackageRoot, 'distribution', 'native', 'release-policy.json')
   ));
+  const readCandidate = async (installation: NativeInstallation, approved: NativeReleasePolicy, source: NativeStableSource) => {
+    let snapshot: NativeStableMaterial | undefined;
+    const candidate = await lookupNativeStableCandidate(installation, approved, {
+      readStable: async (target, signal) => {
+        const material = await source.readStable(target, signal);
+        snapshot = snapshotNativeStableMaterial(material);
+        return snapshot;
+      }
+    });
+    if (!snapshot) throw new SelfUpgradeFailure('failed', 'native_unavailable');
+    return { candidate, state: { description: JSON.stringify(candidate), material: snapshot,
+      policy: JSON.stringify(approved), source } };
+  };
   const run = async (runtime: string, args: string[], directory: string, timeoutMs: number) => {
     const result = await dependencies.runner.run({ executable: runtime, args }, {
       cwd: directory, env: readOnlyEnvironment(dependencies, directory), inheritEnvironment: false, timeoutMs, maxOutputBytes: metadataLimit,
@@ -187,15 +227,29 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
       await dependencies.realpath(dependencies.execPath) !== runtimePath) {
       throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
     }
+    let selectedLauncher: string | null = null;
     try {
       if (dependencies.runningExecutable && await dependencies.realpath(dependencies.runningExecutable) !==
         api.join(packageRoot, 'dist', 'cli.js')) throw new Error('Running executable differs.');
       if (dependencies.resolveLiftoff) {
         const selected = await dependencies.resolveLiftoff();
-        if (!selected || await dependencies.realpath(selected) !== launcher) throw new Error('Selected launcher differs.');
+        selectedLauncher = selected;
+        if (!selected || !windows && await dependencies.realpath(selected) !== launcher) throw new Error('Selected launcher differs.');
       }
     } catch {
       throw new SelfUpgradeFailure('blocked', 'executable_selection');
+    }
+    const observed: NativeBundleInventory = {
+      packageRoot, bundleRoot, launcher, runtime: runtimePath, version,
+      target: `${platform.platform}-${platform.architecture}`, manifestSha256: digest(manifestBytes),
+      inventorySha256: inventory.sha256, sourceCommit: source.commit,
+      identity: JSON.stringify([bundleRoot, digest(manifestBytes), inventory.sha256])
+    };
+    if (windows) {
+      const approved = await policy();
+      observed.windowsInstaller = Object.freeze(await observe(signal =>
+        readWindowsInstallerLayout(dependencies, observed, approved, selectedLauncher, signal)));
+      observed.identity = JSON.stringify([observed.identity, observed.windowsInstaller.identity]);
     }
     if (dependencies.platform === 'linux') {
       const prefix = api.dirname(api.dirname(bundleRoot));
@@ -223,17 +277,16 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
     const inspected = await run(runtimePath, ['--input-type=module', '-e', inspectCode, 'liftoff-native-owner-probe',
       pathToFileURL(api.join(bundleRoot, 'installation', 'native-bundle-contract.mjs')).href, bundleRoot], directory, probeTimeoutMs);
     if (JSON.stringify(JSON.parse(inspected)) !== JSON.stringify(inventory)) throw new SelfUpgradeFailure('blocked', 'native_invalid');
-    return {
-      packageRoot, bundleRoot, launcher, runtime: runtimePath, version,
-      target: `${platform.platform}-${platform.architecture}`, manifestSha256: digest(manifestBytes),
-      inventorySha256: inventory.sha256, sourceCommit: source.commit,
-      identity: JSON.stringify([bundleRoot, digest(manifestBytes), inventory.sha256])
-    };
+    return Object.freeze(observed);
   };
   const inspect: NativeUpgradePort['inspect'] = async (packageRoot, version, directory) => {
     const installation = await bundle(packageRoot, version, directory);
     if (!installation) return null;
     const selected = await policy();
+    if (installation.windowsInstaller?.policySha256 &&
+      installation.windowsInstaller.policySha256 !== digest(Buffer.from(JSON.stringify(selected)))) {
+      throw new SelfUpgradeFailure('blocked', 'owner_changed');
+    }
     if (dependencies.platform === 'linux') {
       const prefix = api.dirname(api.dirname(installation.bundleRoot));
       const inspected = await run(installation.runtime, ['--input-type=module', '-e',
@@ -281,8 +334,25 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
       if (!readers.winget) throw new SelfUpgradeFailure('blocked', 'native_unavailable');
       const observation = await observe(signal => readers.winget!(installation, selected, directory, signal));
       assertWinGetOwnership(observation, installation, selected);
+      const latestPolicy = await policy();
+      if (!installation.windowsInstaller || installation.windowsInstaller.policySha256 !== digest(Buffer.from(JSON.stringify(latestPolicy)))) {
+        throw new SelfUpgradeFailure('blocked', 'owner_changed');
+      }
+      try {
+        const refreshed = await observe(async signal => readWindowsInstallerLayout(dependencies, installation, latestPolicy,
+          await dependencies.resolveLiftoff?.() ?? null, signal));
+        if (refreshed.identity !== installation.windowsInstaller.identity) throw new SelfUpgradeFailure('blocked', 'owner_changed');
+      } catch (error) {
+        if (error instanceof SelfUpgradeFailure && ['unsupported_installation', 'executable_selection'].includes(error.reasonCode)) {
+          throw new SelfUpgradeFailure('blocked', 'owner_changed');
+        }
+        throw error;
+      }
+      const registration = await observe(signal =>
+        readWindowsInstallerRegistration(dependencies, installation, latestPolicy, directory, signal));
       return { ...installation, owner: 'winget', managerId: observation.packageIdentifier,
-        managerSource: observation.source, managerScope: 'user', identity: JSON.stringify([installation.identity, observation]) };
+        managerSource: observation.source, managerScope: 'user',
+        identity: JSON.stringify([installation.identity, observation, registration.identity]) };
     }
     throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
   };
@@ -298,13 +368,60 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
       }
       const source = Object.hasOwn(overrides, 'stable') ? readers.stable : createNativeStableSource(approved);
       if (!source) throw new SelfUpgradeFailure('blocked', 'native_unavailable');
-      const candidate = await lookupNativeStableCandidate(installation, approved, source);
-      admitted.set(candidate.identity, JSON.stringify(candidate));
+      const { candidate, state } = await readCandidate(installation, approved, source);
+      admitted.set(candidate.identity, state);
       return Object.freeze(candidate);
     },
     channel: async (installation, candidate, directory) => {
-      if (!readers.channel) throw new SelfUpgradeFailure('blocked', 'channel_unavailable');
-      const observation = await observe(signal => readers.channel!(installation, candidate, directory, signal), true);
+      let observation: NativeChannelObservation;
+      if (readers.channel) {
+        observation = await observe(signal => readers.channel!(installation, candidate, directory, signal), true);
+      } else {
+        const state = admitted.get(candidate.identity);
+        const cask = installation.owner === 'homebrew-cask' && installation.target === 'darwin-arm64';
+        const linux = installation.owner === 'liftoff-native' && /^linux-(?:x64|arm64)$/.test(installation.target);
+        if (Object.hasOwn(overrides, 'channel') || !linux && !cask || cask && !readers.cask || !state ||
+          state.description !== JSON.stringify(candidate)) throw new SelfUpgradeFailure('blocked', 'channel_unavailable');
+        const approved = await policy();
+        if (JSON.stringify(approved) !== state.policy) throw new SelfUpgradeFailure('blocked', 'channel_changed');
+        try {
+          const fresh = await readCandidate(installation, approved, state.source);
+          if (compareSemver(fresh.candidate.version, candidate.version) < 0) {
+            return { status: 'lagging', version: fresh.candidate.version };
+          }
+          if (fresh.state.description !== state.description) throw new SelfUpgradeFailure('blocked', 'channel_changed');
+          if (cask) {
+            const definition = await authenticatedNativeCaskDefinition(fresh.state.material, candidate, approved);
+            const owner = await observe(signal => readers.cask!(installation, approved, directory, signal), true);
+            assertCaskOwnership(owner, installation, approved);
+            if (!owner.definitionSha256 || !sha256.test(owner.definitionSha256) ||
+              !owner.receiptSha256 || !sha256.test(owner.receiptSha256) || !owner.tapCommit || !commit.test(owner.tapCommit)) {
+              throw new SelfUpgradeFailure('blocked', 'channel_unavailable');
+            }
+            if (owner.definitionSha256 !== definition.sha256 || JSON.stringify(await policy()) !== state.policy) {
+              throw new SelfUpgradeFailure('blocked', 'channel_changed');
+            }
+            observation = { status: 'available', version: candidate.version, exactApply: false,
+              artifactSha256: candidate.archiveSha256,
+              identity: digest(Buffer.from(JSON.stringify(['homebrew-cask', candidate.identity, definition.sha256, owner]))) };
+          } else {
+            observation = { status: 'available', version: candidate.version, exactApply: true,
+              artifactSha256: candidate.archiveSha256,
+              identity: digest(Buffer.from(JSON.stringify(['liftoff-native', installation.target, candidate.identity, candidate.archiveSha256]))) };
+          }
+          admitted.set(candidate.identity, fresh.state);
+        } catch (error) {
+          if (error instanceof SelfUpgradeFailure) {
+            if (error.reasonCode === 'native_timeout') throw new SelfUpgradeFailure('failed', 'channel_timeout');
+            if (error.reasonCode === 'native_invalid') throw new SelfUpgradeFailure('failed', 'channel_invalid');
+            if (error.reasonCode === 'native_unavailable') throw new SelfUpgradeFailure('failed', 'channel_unavailable');
+            if (error.reasonCode === 'unsupported_installation' || error.reasonCode === 'owner_changed') {
+              throw new SelfUpgradeFailure('blocked', 'channel_changed');
+            }
+          }
+          throw error;
+        }
+      }
       if (!observation || !['available', 'lagging', 'absent'].includes(observation.status) ||
         observation.status !== 'absent' && !isStableSemver(observation.version) ||
         observation.status === 'lagging' && compareSemver(observation.version, candidate.version) >= 0) {
@@ -319,22 +436,53 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
       return observation;
     },
     apply: async (installation, candidate, directory) => {
-      if (admitted.get(candidate.identity) !== JSON.stringify(candidate)) throw new SelfUpgradeFailure('blocked', 'native_unqualified');
-      if (installation.owner !== 'liftoff-native' || !installation.prefix || !installation.current || !candidate.bundleRoot) {
-        throw new SelfUpgradeFailure('blocked', 'manual_handoff');
-      }
-      const manifestBytes = await bytes(api.join(candidate.bundleRoot, 'bundle.json'));
-      const manifest = object(JSON.parse(manifestBytes.toString('utf8')));
-      const pkg = object(manifest.package);
-      const source = object(manifest.source);
-      const platform = object(manifest.platform);
-      if (digest(manifestBytes) !== candidate.manifestSha256 || pkg.name !== '@msn-control/liftoff' ||
-        pkg.version !== candidate.version || source.repository !== 'voyager163/liftoff' || source.commit !== candidate.sourceCommit ||
-        `${platform.platform}-${platform.architecture}` !== candidate.target ||
-        object(manifest.inventory).sha256 !== candidate.inventorySha256 || manifest.releaseReady !== true) {
-        throw new SelfUpgradeFailure('blocked', 'native_invalid');
-      }
+      let installStarted = false, installed = false;
       try {
+        const state = admitted.get(candidate.identity);
+        if (!state || state.description !== JSON.stringify(candidate)) throw new SelfUpgradeFailure('blocked', 'native_unqualified');
+        if (installation.owner !== 'liftoff-native' || !installation.prefix || !installation.current ||
+          dependencies.platform !== 'linux' || installation.target !== candidate.target) {
+          throw new SelfUpgradeFailure('blocked', 'manual_handoff');
+        }
+        const approved = await policy();
+        if (JSON.stringify(approved) !== state.policy) throw new SelfUpgradeFailure('blocked', 'owner_changed');
+        let stage: Awaited<ReturnType<typeof stageAuthenticatedNativeArchive>> | undefined;
+        let bundleRoot = candidate.bundleRoot;
+        const started = performance.now();
+        if (!bundleRoot) {
+          const archive = state.material.assets.get(`liftoff-${candidate.version}-${candidate.target}.tar.gz`);
+          if (!archive || !state.material.archiveSignature || !state.material.archivePublicKey ||
+            !approved.linux.archiveSigningKeySha256) throw new SelfUpgradeFailure('blocked', 'native_unqualified');
+          const current = await inspect(installation.packageRoot, installation.version, directory);
+          if (!current || current.identity !== installation.identity || current.recovery || current.locked) {
+            throw new SelfUpgradeFailure('blocked', 'owner_changed');
+          }
+          stage = await stageAuthenticatedNativeArchive({
+            archive, signature: state.material.archiveSignature, publicKey: state.material.archivePublicKey,
+            expectedKeySha256: approved.linux.archiveSigningKeySha256, candidate,
+            contract: Object.freeze({ bundleInventory, bundlePath, nativeBundleLimits }), storage: dependencies,
+            signal: AbortSignal.timeout(selfUpgradeInstallTimeoutMs)
+          });
+          bundleRoot = stage.bundleRoot;
+          const finalOwner = await inspect(installation.packageRoot, installation.version, directory);
+          if (!finalOwner || finalOwner.identity !== installation.identity || finalOwner.recovery || finalOwner.locked) {
+            throw new SelfUpgradeFailure('blocked', 'owner_changed');
+          }
+        }
+        const manifestBytes = await bytes(api.join(bundleRoot, 'bundle.json'));
+        const manifest = object(JSON.parse(manifestBytes.toString('utf8')));
+        const pkg = object(manifest.package);
+        const source = object(manifest.source);
+        const platform = object(manifest.platform);
+        if (digest(manifestBytes) !== candidate.manifestSha256 || pkg.name !== '@msn-control/liftoff' ||
+          pkg.version !== candidate.version || source.repository !== 'voyager163/liftoff' || source.commit !== candidate.sourceCommit ||
+          `${platform.platform}-${platform.architecture}` !== candidate.target ||
+          object(manifest.inventory).sha256 !== candidate.inventorySha256 || manifest.releaseReady !== true) {
+          throw new SelfUpgradeFailure('blocked', 'native_invalid');
+        }
+        const remaining = stage ? Math.floor(selfUpgradeInstallTimeoutMs - (performance.now() - started)) : selfUpgradeInstallTimeoutMs;
+        if (remaining <= 0) throw new SelfUpgradeFailure('failed', 'native_install_timeout');
+        installStarted = true;
         await run(installation.runtime, [
           '--input-type=module', '-e',
           'const {installOwnedBundle}=await import(process.argv[2]);' +
@@ -342,13 +490,19 @@ export function createNativeUpgradePort(dependencies: SelfUpgradeDependencies, o
           'source:process.argv[3],prefix:process.argv[4],expectedManifestSha256:process.argv[5],expectedCurrent:process.argv[6],' +
           'admitHost:()=>assertNativeHost(observeNativeHost(),{publicInstallation:true})});',
           'liftoff-native-owner-probe', pathToFileURL(api.join(installation.bundleRoot, 'installation', 'native-install.mjs')).href,
-          candidate.bundleRoot, installation.prefix, candidate.manifestSha256, installation.current,
+          bundleRoot, installation.prefix, candidate.manifestSha256, installation.current,
           pathToFileURL(api.join(installation.bundleRoot, 'installation', 'host.mjs')).href
-        ], directory, selfUpgradeInstallTimeoutMs);
+        ], directory, remaining);
+        installed = true;
+        await stage?.dispose();
         return { effects: 'installed' };
       } catch (error) {
+        if (!installStarted) throw new SelfUpgradeFailure(
+          error instanceof SelfUpgradeFailure ? error.status : 'failed',
+          error instanceof SelfUpgradeFailure ? error.reasonCode : 'native_invalid', undefined, 'none');
+        if (installed) throw new SelfUpgradeFailure('failed', 'cleanup_failed', undefined, 'installed');
         throw new SelfUpgradeFailure('failed', error instanceof SelfUpgradeFailure && error.reasonCode === 'native_timeout'
-          ? 'native_install_timeout' : 'native_install_failed');
+          ? 'native_install_timeout' : 'native_install_failed', undefined, 'possible');
       }
     },
     recover: async (installation, selection, directory) => {

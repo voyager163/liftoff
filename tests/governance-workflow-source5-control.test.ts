@@ -8,6 +8,7 @@ import {
   createScopedUserLocalRecordStore, createWorkflowSource5ControlStore, nodeUpdatePreviewFileSystem,
   workflowSource5ControlLimits, workflowSource5ControlNamespaces, resolveUpdatePreviewLocation
 } from '../src/adapters/filesystem/update-previews.js';
+import type { UpdatePreviewFileSystem } from '../src/adapters/filesystem/update-previews.js';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { plannedApprovalDestinations, plannedApprovalMutations, plannedApprovalResources } from '../src/domain/governance/activation/source-values.js';
 import {
@@ -46,6 +47,97 @@ async function fixture() {
 }
 
 describe('closed sealed workflow source5 controls', () => {
+  it.each(workflowSource5ControlNamespaces)('bounds native %s reads to the observed UTF-8 byte size', async name => {
+    const { project, options, store } = await fixture(), key = canonicalSha256(`read-cap-${name}`);
+    const saved = await store.save(name, key, { kind: 'isolated-control', unicode: 'A\u00e9', escaped: '"\\\n' }, null);
+    const bytes = await readFile(saved.path);
+    expect(bytes.length).toBeGreaterThan(bytes.toString('utf8').length);
+    const reads: { maximumBytes: number; observedBytes: number }[] = [];
+    const fileSystem: UpdatePreviewFileSystem = {
+      ...nodeUpdatePreviewFileSystem,
+      async openFile(filePath, access, mode) {
+        const handle = await nodeUpdatePreviewFileSystem.openFile(filePath, access, mode);
+        return { ...handle, async readText(maximumBytes) {
+          reads.push({ maximumBytes, observedBytes: (await handle.stat()).size });
+          return handle.readText(maximumBytes);
+        } };
+      }
+    };
+    expect(await createWorkflowSource5ControlStore(project, { ...options, fileSystem }).read(name, key)).toEqual(saved);
+    expect(reads).toHaveLength(2);
+    expect(reads.map(read => read.maximumBytes)).toEqual(reads.map(read => read.observedBytes));
+    expect(reads.some(read => read.maximumBytes === bytes.length)).toBe(true);
+  });
+
+  it.each(['growth', 'shrink'] as const)('rejects actual native %s after opening without retaining success or rewriting bytes', async fault => {
+    const { project, options, store } = await fixture(), key = canonicalSha256(`read-race-${fault}`);
+    const saved = await store.save('proof', key, { kind: 'isolated-control', stage: 'intent' }, null);
+    const original = await readFile(saved.path);
+    const changed = fault === 'growth' ? Buffer.concat([original, Buffer.from(' ')]) : original.subarray(0, original.length - 1);
+    const limits: number[] = [];
+    let closes = 0;
+    const fileSystem: UpdatePreviewFileSystem = {
+      ...nodeUpdatePreviewFileSystem,
+      async openFile(filePath, access, mode) {
+        const handle = await nodeUpdatePreviewFileSystem.openFile(filePath, access, mode);
+        if (access !== 'read' || filePath !== saved.path) return handle;
+        return { ...handle, async readText(maximumBytes) {
+          limits.push(maximumBytes);
+          await writeFile(saved.path, changed, { mode: 0o600 });
+          return handle.readText(maximumBytes);
+        }, async close() {
+          await handle.close();
+          closes++;
+        } };
+      }
+    };
+    await expect(createWorkflowSource5ControlStore(project, { ...options, fileSystem }).read('proof', key))
+      .rejects.toThrow(/size limit|changed while reading/u);
+    expect(limits).toEqual([original.length]);
+    expect(closes).toBe(1);
+    expect(await readFile(saved.path)).toEqual(changed);
+  });
+
+  it('reads an actual empty native control with a zero-byte bound and rejects it rather than reporting absence', async () => {
+    const { project, options, store } = await fixture(), key = canonicalSha256('empty-native-control');
+    const saved = await store.save('proof', key, { kind: 'isolated-control' }, null);
+    await writeFile(saved.path, '', { mode: 0o600 });
+    const limits: number[] = [];
+    const fileSystem: UpdatePreviewFileSystem = {
+      ...nodeUpdatePreviewFileSystem,
+      async openFile(filePath, access, mode) {
+        const handle = await nodeUpdatePreviewFileSystem.openFile(filePath, access, mode);
+        return { ...handle, async readText(maximumBytes) {
+          if (filePath === saved.path) limits.push(maximumBytes);
+          return handle.readText(maximumBytes);
+        } };
+      }
+    };
+    await expect(createWorkflowSource5ControlStore(project, { ...options, fileSystem }).read('proof', key))
+      .rejects.toThrow(/Malformed sealed workflow control/u);
+    expect(limits).toEqual([0]);
+    expect(await readFile(saved.path, 'utf8')).toBe('');
+  });
+
+  it.each(workflowSource5ControlNamespaces)('rejects an oversized native %s before opening or allocating its contents', async name => {
+    const { project, options, store } = await fixture(), key = canonicalSha256(`oversized-native-${name}`);
+    const saved = await store.save(name, key, { kind: 'isolated-control' }, null);
+    const oversized = Buffer.alloc(workflowSource5ControlLimits[name] + 1, 'x');
+    await writeFile(saved.path, oversized, { mode: 0o600 });
+    let opens = 0;
+    const fileSystem: UpdatePreviewFileSystem = {
+      ...nodeUpdatePreviewFileSystem,
+      async openFile(filePath, access, mode) {
+        if (filePath === saved.path && access === 'read') opens++;
+        return nodeUpdatePreviewFileSystem.openFile(filePath, access, mode);
+      }
+    };
+    await expect(createWorkflowSource5ControlStore(project, { ...options, fileSystem }).read(name, key))
+      .rejects.toThrow(/size limit/u);
+    expect(opens).toBe(0);
+    expect((await readFile(saved.path)).equals(oversized)).toBe(true);
+  });
+
   it.each(workflowSource5ControlNamespaces)('round-trips exact %s records through an independently reopened store', async name => {
     const { project, options, store } = await fixture(), key = canonicalSha256(name);
     const value = { kind: 'isolated-control', unicode: 'A\u00e9', escaped: '"\\\n', status: 'intent' };

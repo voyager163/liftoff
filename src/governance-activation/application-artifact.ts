@@ -23,11 +23,16 @@ import {
 } from './application-prerequisites.js';
 import { runnerBinding } from './runner-readiness.js';
 import { azureObject, runAzureJson } from './azure-discovery.js';
+import { azurePermissionEntries, azurePermits } from './azure-permissions.js';
 import { applicationReadbackProof as readbackProof } from './application-readiness.js';
 import { inspectAzureDeploymentOwnership } from './azure-deployment-ownership.js';
 import {
   observeImmutableWorkflowExecutionRef, workflowExecutionRefName
 } from './workflow-execution-ref-observation.js';
+import { bindApplicationArtifactContext } from './application-artifact-context.js';
+import {
+  applicationArtifactContextStep, applicationContextBounds, applicationContextDirectory
+} from './application-artifact-context-recipe.js';
 
 export interface VerifiedApplicationArtifact {
   sourceSha: string;
@@ -57,6 +62,18 @@ export function readVerifiedApplicationArtifact(inspection: GovernanceTransition
   const sha = sourceSha(payload.sourceSha);
   const treeSha = sourceSha(payload.sourceTreeSha, 'Published complete source tree SHA');
   const workflowDigest = applicationText(payload.workflowDigest, /^[a-f0-9]{64}$/u, 'Published workflow byte digest');
+  const workflowRunId = positiveId(payload.workflowRunId);
+  const repository = repositoryConfiguration(inspection);
+  const publication = inspection.state.phases['application-artifact-ready'].operation;
+  const workflowResourceId = `/repos/${repository.name}/actions/runs/${workflowRunId}`;
+  if (!publication || publication.provider !== 'github' || publication.actionId !== 'github.artifact.build-dispatch' ||
+    publication.status !== 'completed' || publication.operationId !== `github-actions:${workflowRunId}` ||
+    publication.resourceId !== workflowResourceId || publication.pollUrl !== `https://api.github.com${workflowResourceId}` ||
+    !output.resources.some(resource => resource.provider === 'github' && resource.resourceType === 'workflow-run' &&
+      resource.resourceId === workflowResourceId)) {
+    return applicationError('application-artifact-operation',
+      'Current artifact consumption requires the exact original completed publication handle and receipt run. Missing, nonterminal or changed handles cannot be replaced by artifact annotations; historical records remain readable but do not qualify new deployment.');
+  }
   const imageDigest = digest(payload.artifactDigest);
   const registryResourceId = applicationText(payload.registryResourceId,
     /^\/subscriptions\/[a-f0-9-]+\/resourceGroups\/[A-Za-z0-9_.()-]+\/providers\/Microsoft\.ContainerRegistry\/registries\/[a-z0-9]+$/u,
@@ -82,7 +99,7 @@ export function readVerifiedApplicationArtifact(inspection: GovernanceTransition
     return applicationError('application-artifact-mismatch', 'The authoritative published source, recipe, registry, environment or immutable digest differs; deployment cannot consume it.');
   }
   return {
-    sourceSha: sha, workflowDigest, workflowRunId: positiveId(payload.workflowRunId), workflowJobId: positiveId(payload.workflowJobId),
+    sourceSha: sha, workflowDigest, workflowRunId, workflowJobId: positiveId(payload.workflowJobId),
     acrRunId: applicationText(payload.acrRunId, /^[a-z0-9]{1,32}$/u, 'Actual ACR publication run ID'),
     environment, registryResourceId, imageRepository, digest: imageDigest, immutableImage,
     artifactBindingDigest: applicationText(payload.artifactBindingDigest, /^[a-f0-9]{64}$/u, 'Published artifact binding'),
@@ -92,7 +109,7 @@ export function readVerifiedApplicationArtifact(inspection: GovernanceTransition
 
 export function applicationArtifactBinding(input: PhasePlanningInput | PhaseAdapterExecutionInput) {
   const config = applicationConfiguration(input, 'application-artifact-ready', [
-    'sourceSha', 'sourceTreeSha', 'workflowPath', 'workflowDigest', 'contextPath', 'dockerfilePath', 'imageRepository',
+    'sourceSha', 'sourceTreeSha', 'workflowPath', 'workflowDigest', 'contextPath', 'contextPaths', 'dockerfilePath', 'imageRepository',
     'sourceTransmissionApproved', 'dependencyNetworkApproved', 'buildExecutionApproved'
   ]);
   if (config.sourceTransmissionApproved !== true || config.dependencyNetworkApproved !== true ||
@@ -105,13 +122,16 @@ export function applicationArtifactBinding(input: PhasePlanningInput | PhaseAdap
     return applicationError('application-prerequisites-stale', 'Application artifact planning requires current exact verified registry/identity prerequisites.');
   }
   const workflowPath = ownedPath(config.workflowPath, 'Artifact workflow path');
-  const contextPath = ownedPath(config.contextPath, 'Artifact context path');
+  const contextPath = config.contextPath === '.' ? '.' : ownedPath(config.contextPath, 'Artifact context path');
   const dockerfilePath = ownedPath(config.dockerfilePath, 'Artifact Dockerfile path');
+  const projection = contextPath === '.'
+    ? bindApplicationArtifactContext(input.inspection.manifest, config.contextPaths, dockerfilePath) : undefined;
   if (!/^\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml$/u.test(workflowPath) ||
-    !activationInputPathIsObserved([...contextPath.split('/'), 'Dockerfile']) ||
-    !dockerfilePath.startsWith(`${contextPath}/`) ||
-    !activationInputPathIsObserved(dockerfilePath.split('/')) ||
-    [contextPath, dockerfilePath, workflowPath].some((value) =>
+    (!projection && (config.contextPaths !== undefined ||
+      !activationInputPathIsObserved([...contextPath.split('/'), 'Dockerfile']) ||
+      !dockerfilePath.startsWith(`${contextPath}/`) ||
+      !activationInputPathIsObserved(dockerfilePath.split('/')))) ||
+    [contextPath, dockerfilePath, workflowPath, ...(projection?.contextPaths ?? [])].some((value) =>
       isSensitiveActivationPath(value.split('/'), input.inspection.sensitivePathExclusions ?? []))) {
     return applicationError('application-source-scope', 'Artifact recipes must select one observed non-sensitive source context, its Dockerfile and one explicit committed workflow.');
   }
@@ -124,7 +144,7 @@ export function applicationArtifactBinding(input: PhasePlanningInput | PhaseAdap
     sourceTreeSha: sourceSha(config.sourceTreeSha, 'Reviewed complete source tree SHA'),
     executionRef: workflowExecutionRefName(sourceSha(config.sourceSha)),
     workflowPath, workflowDigest: applicationText(config.workflowDigest, /^[a-f0-9]{64}$/u, 'Reviewed raw workflow byte digest'),
-    contextPath, dockerfilePath,
+    contextPath, dockerfilePath, ...projection,
     imageRepository: applicationText(config.imageRepository, /^[a-z0-9]+(?:[._/-][a-z0-9]+)*$/u, 'Application image repository'),
     environment: prerequisites.environment, registryId: prerequisites.registryId, registryName: prerequisites.registryName,
     loginServer: applicationText(verifiedOutput(input.inspection, 'application-prerequisites-ready', 'loginServer'),
@@ -151,6 +171,30 @@ export function applicationArtifactPlanInputs(input: PhasePlanningInput | PhaseA
 
 export type ApplicationArtifactBinding = ReturnType<typeof applicationArtifactBinding>;
 
+async function observeApplicationBuildPermissions(
+  input: PhaseAdapterExecutionInput, binding: ApplicationArtifactBinding
+): Promise<void> {
+  const permissions = azurePermissionEntries(await runAzureJson(input, [
+    'rest', '--method', 'GET',
+    '--url', `https://management.azure.com${binding.registryId}/providers/Microsoft.Authorization/permissions?api-version=2022-04-01`,
+    '--resource', 'https://management.core.windows.net/'
+  ], 'Exact application registry build permissions'));
+  if ([
+    'Microsoft.ContainerRegistry/registries/read',
+    'Microsoft.ContainerRegistry/registries/listBuildSourceUploadUrl/action',
+    'Microsoft.ContainerRegistry/registries/scheduleRun/action',
+    'Microsoft.ContainerRegistry/registries/runs/read'
+  ].some(action => !azurePermits(permissions, action))) {
+    return applicationError('application-build-permission',
+      'Exact registry source-upload, build scheduling or readback permission is missing; AcrPush alone is not build authority. No dispatch, source upload or broader role assignment was performed.');
+  }
+}
+
+function assertApplicationPublicationNoReplace(): void {
+  applicationError('application-publication-no-replace-unavailable',
+    'Registry publication has no qualified atomic no-replace or exclusive-destination producer. Absence preflight and later tag locks cannot prevent competing overwrites; no publication intent, source upload or build dispatch was performed. Retained original accepted handles remain observation-only.');
+}
+
 function dispatchInputs(binding: ReturnType<typeof applicationArtifactBinding>): Record<string, string> {
   return {
     binding_digest: binding.bindingDigest, source_sha: binding.sourceSha,
@@ -165,7 +209,7 @@ function dispatchInputs(binding: ReturnType<typeof applicationArtifactBinding>):
 async function gitText(input: PhaseAdapterExecutionInput, args: readonly string[]): Promise<string> {
   const result = await input.runner.run({ executable: 'git', args: [...args] }, {
     cwd: input.inspection.projectRoot, timeoutMs: 30_000, maxOutputBytes: 1024 * 1024, stream: false,
-    env: { GIT_TERMINAL_PROMPT: '0', GIT_PAGER: 'cat' }
+    env: { GIT_TERMINAL_PROMPT: '0', GIT_PAGER: 'cat', GIT_NO_LAZY_FETCH: '1', GIT_NO_REPLACE_OBJECTS: '1' }
   });
   if (result.status !== 0 || result.timedOut || result.outputLimitExceeded || result.aborted || result.errorCode) {
     return applicationError('application-source-unobservable', 'Artifact source could not be observed within its Git deadline/byte bound; diagnostics were withheld.');
@@ -176,22 +220,55 @@ async function gitText(input: PhaseAdapterExecutionInput, args: readonly string[
 export async function observeApplicationSource(input: PhaseAdapterExecutionInput) {
   input = applicationDeadlineInput(input);
   const binding = applicationArtifactBinding(input);
+  const projected = binding.contextPaths !== undefined;
+  const sourcePaths = binding.contextPaths ? [...binding.contextPaths, 'liftoff.manifest.json', binding.workflowPath]
+    : [binding.contextPath, binding.workflowPath];
+  const pathCommand = (args: string[]) => projected ? ['--literal-pathspecs', ...args] : args;
   const head = (await gitText(input, ['rev-parse', '--verify', 'HEAD'])).trim();
   const completeTree = (await gitText(input, ['rev-parse', '--verify', `${binding.sourceSha}^{tree}`])).trim();
-  const diff = await gitText(input, ['diff', binding.sourceSha, '--', binding.contextPath, binding.workflowPath]);
-  const untracked = await gitText(input, ['ls-files', '--others', '--exclude-standard', '--', binding.contextPath]);
-  const tree = await gitText(input, ['ls-tree', '-r', '-z', binding.sourceSha, '--', binding.contextPath, binding.workflowPath]);
+  const diff = await gitText(input, pathCommand(['diff', binding.sourceSha, '--', ...sourcePaths]));
+  const untracked = await gitText(input, pathCommand(['ls-files', '--others', '--exclude-standard', '--',
+    ...(binding.contextPaths ?? [binding.contextPath])]));
+  const tree = await gitText(input, pathCommand(['ls-tree', ...(projected ? ['-l'] : ['-r']),
+    '-z', binding.sourceSha, '--', ...sourcePaths]));
   const entries = tree.split('\0').filter(Boolean);
   if (head !== binding.sourceSha || completeTree !== binding.sourceTreeSha ||
     diff || untracked || !entries.length || entries.length > 10_000 ||
     !entries.some((entry) => entry.endsWith(`\t${binding.dockerfilePath}`)) ||
     entries.some((entry) => {
+      if (projected) {
+        const match = entry.match(/^100(?:644|755) blob [a-f0-9]{40} +([0-9]+)\t(.+)$/u);
+        return !match || !sourcePaths.includes(match[2]!) || Number(match[1]) > applicationContextBounds.fileBytes ||
+          isSensitiveActivationPath(match[2]!.split('/'), input.inspection.sensitivePathExclusions ?? []);
+      }
       const match = entry.match(/^100(?:644|755) blob [a-f0-9]{40}\t(.+)$/u);
       return !match || !activationInputPathIsObserved(match[1]!.split('/')) ||
         isSensitiveActivationPath(match[1]!.split('/'), input.inspection.sensitivePathExclusions ?? []);
     })) {
     return applicationError('application-source-changed',
       'Artifact source differs from the approved complete commit, contains uncommitted/custom/sensitive files or unsupported symlinks/submodules; no checkout/reset or source upload was performed.');
+  }
+  if (projected) {
+    const observedPaths = entries.map(entry => entry.split('\t')[1]!);
+    const contextFiles = new Set(binding.contextPaths);
+    const contextBytes = entries.reduce((total, entry) => {
+      const [header, file] = entry.split('\t');
+      return total + (contextFiles.has(file!) ? Number(header!.split(/\s+/u).at(-1)) : 0);
+    }, 0);
+    if (observedPaths.length !== sourcePaths.length || new Set(observedPaths).size !== sourcePaths.length ||
+      sourcePaths.some(file => !observedPaths.includes(file)) ||
+      contextBytes > applicationContextBounds.totalBytes) {
+      return applicationError('application-context-inventory', 'The complete positive context inventory is absent, ambiguous or exceeds its bounded source size; directories are not upload authority.');
+    }
+    let manifest: unknown;
+    try { manifest = JSON.parse(await gitText(input, ['show', `${binding.sourceSha}:liftoff.manifest.json`])); }
+    catch (error) {
+      if (isApplicationProviderError(error)) throw error;
+      return applicationError('application-context-manifest', 'The committed source manifest is not valid bounded JSON.');
+    }
+    if (canonicalSha256(manifest) !== binding.sourceManifestDigest) {
+      return applicationError('application-context-manifest', 'The immutable source manifest differs from the reviewed current context layout.');
+    }
   }
   const workflow = Buffer.from(await gitText(input, ['show', `${binding.sourceSha}:${binding.workflowPath}`]), 'utf8');
   if (!workflow.length || workflow.length > 128 * 1024 ||
@@ -222,6 +299,18 @@ export async function observeApplicationSource(input: PhaseAdapterExecutionInput
       (typeof step.uses !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_./-]+@[a-f0-9]{40}$/u.test(step.uses)))) {
     return applicationError('application-workflow-scope',
       'Artifact workflow must have one exact protected publish job, immutable actions, bounded timeout, exact declared inputs, and a pre-effect source/rerun guard. Workflow publication/runner admission remain separate prerequisites.');
+  }
+  if (binding.contextPaths) {
+    const projection = job.steps.filter(step => isRecord(step) && step.id === 'liftoff-context');
+    const expected = applicationArtifactContextStep(binding.contextPaths);
+    const projectionIndex = job.steps.indexOf(projection[0]);
+    if (projection.length !== 1 || canonicalSha256(projection[0]) !== canonicalSha256(expected) ||
+      !job.steps.some((step, index) => isRecord(step) && step.run !== undefined && index > projectionIndex) ||
+      job.steps.some((step, index) => isRecord(step) && step.run !== undefined && index !== projectionIndex &&
+        (index < projectionIndex || step['working-directory'] !== applicationContextDirectory))) {
+      return applicationError('application-context-recipe',
+        'Root publication must prepare the exact reviewed immutable-file projection, then run build/upload only from its output directory; a broad repository-root upload is forbidden.');
+    }
   }
   const client = clientFor(input);
   const remote = await client.get(`/repos/${binding.repository}/contents/${binding.workflowPath}?ref=${binding.sourceSha}`);
@@ -259,13 +348,6 @@ function boundRun(run: Record<string, unknown>, binding: ReturnType<typeof appli
     return applicationError('application-run-mismatch', 'Actual artifact workflow run changed source, recipe, repository, attempt or approved invocation scope.');
   }
   return positiveId(run.id, 'Artifact workflow run ID');
-}
-
-function operationForRun(input: PhaseAdapterExecutionInput, run: Record<string, unknown>, binding: ReturnType<typeof applicationArtifactBinding>): ExternalOperationState {
-  const id = boundRun(run, binding, applicationDispatchPlan(input).createdAt);
-  return { provider: 'github', actionId: 'github.artifact.build-dispatch', operationId: `github-actions:${id}`,
-    resourceId: `/repos/${binding.repository}/actions/runs/${id}`, pollUrl: `https://api.github.com/repos/${binding.repository}/actions/runs/${id}`,
-    startedAt: String(run.created_at), observedAt: (input.clock?.() ?? input.now).toISOString(), status: 'running' };
 }
 
 function operationForAcceptedDispatch(
@@ -330,61 +412,53 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
       )).filter((run) => run.display_title === binding.runTitle);
       const existing = await find();
       if (existing.length > 1) return applicationError('application-run-ambiguous', 'Artifact invocation is ambiguous; never choose a candidate run or repeat publication.');
-      if (existing.length === 1 && input.inspection.state.phases[input.phase.id].executionPlanDigest) {
-        handle = operationForRun(input, existing[0]!, binding);
-        currentReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
-          id: existing[0]!.id, headSha: existing[0]!.head_sha, runAttempt: existing[0]!.run_attempt
-        })];
-      } else {
-        if (existing.length || input.inspection.state.phases[input.phase.id].executionPlanDigest) {
-          return applicationError('application-dispatch-uncertain', 'Artifact destination/dispatch is occupied or acceptance is uncertain; observe the existing invocation under recovery instead of dispatching again.');
-        }
-        const repositories = await runAzureJson(input, [
-          'acr', 'repository', 'list', '--subscription', binding.subscriptionId, '--name', binding.registryName
-        ], 'Artifact publication destination inventory');
-        if (!Array.isArray(repositories) || repositories.length > 1_000 ||
-          repositories.some((entry) => typeof entry !== 'string')) {
-          return applicationError('application-registry-unobservable', 'Complete bounded registry repository absence could not be established.');
-        }
-        if (repositories.includes(binding.imageRepository)) {
-          const tags = await runAzureJson(input, [
-            'acr', 'repository', 'show-tags', '--subscription', binding.subscriptionId,
-            '--name', binding.registryName, '--repository', binding.imageRepository
-          ], 'Artifact tag collision readback');
-          if (!Array.isArray(tags) || tags.length > 1_000 || tags.some((entry) => typeof entry !== 'string') || tags.includes(binding.tag)) {
-            return applicationError('application-tag-occupied', 'The exact immutable publication tag is occupied or its absence is unobservable; it must not be replaced/adopted.');
-          }
-        }
-        await assertApplicationAuthority(input, dispatch);
-        await observeApplicationProtection(input);
-        await observeApplicationSource(input);
-        await input.recordApplicationDispatchIntent?.(dispatch);
-        await assertApplicationAuthority(input, dispatch);
-        await observeImmutableWorkflowExecutionRef({ client }, {
-          repository: binding.repository, repositoryId: binding.repositoryId,
-          sourceSha: binding.sourceSha, treeSha: binding.sourceTreeSha, executionRef: binding.executionRef
-        });
-        await assertApplicationAuthority(input, dispatch);
-        dispatchAttempted = true;
-        const startedAt = (input.clock?.() ?? input.now).toISOString();
-        const accepted = await client.write('POST', `/repos/${binding.repository}/actions/workflows/${binding.workflowPath.split('/').at(-1)}/dispatches`,
-          { ref: binding.executionRef, inputs: dispatchInputs(binding) });
-        if (accepted) {
-          handle = operationForAcceptedDispatch(input, binding, accepted, startedAt);
-          currentReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
-            id: accepted.workflow_run_id, runUrl: handle.pollUrl,
-            htmlUrl: `https://github.com/${binding.repository}/actions/runs/${accepted.workflow_run_id}`
-          })];
-        } else {
-          const runs = await find();
-          if (runs.length !== 1) return applicationError('application-dispatch-uncertain',
-            'Artifact dispatch was accepted but no unique actual run is visible yet; recovery must observe this invocation and cannot repeat dispatch.');
-          handle = operationForRun(input, runs[0]!, binding);
-          currentReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
-            id: runs[0]!.id, headSha: runs[0]!.head_sha, runAttempt: runs[0]!.run_attempt
-          })];
+      if (existing.length || input.inspection.state.phases[input.phase.id].executionPlanDigest) {
+        return applicationError('application-dispatch-uncertain',
+          'Artifact destination/dispatch is occupied or acceptance is uncertain; a listed run cannot replace the original accepted run ID. Retain the original intent without adopting a candidate or dispatching again.');
+      }
+      await observeApplicationBuildPermissions(input, binding);
+      const repositories = await runAzureJson(input, [
+        'acr', 'repository', 'list', '--subscription', binding.subscriptionId, '--name', binding.registryName
+      ], 'Artifact publication destination inventory');
+      if (!Array.isArray(repositories) || repositories.length > 1_000 ||
+        repositories.some((entry) => typeof entry !== 'string')) {
+        return applicationError('application-registry-unobservable', 'Complete bounded registry repository absence could not be established.');
+      }
+      if (repositories.includes(binding.imageRepository)) {
+        const tags = await runAzureJson(input, [
+          'acr', 'repository', 'show-tags', '--subscription', binding.subscriptionId,
+          '--name', binding.registryName, '--repository', binding.imageRepository
+        ], 'Artifact tag collision readback');
+        if (!Array.isArray(tags) || tags.length > 1_000 || tags.some((entry) => typeof entry !== 'string') || tags.includes(binding.tag)) {
+          return applicationError('application-tag-occupied', 'The exact immutable publication tag is occupied or its absence is unobservable; it must not be replaced/adopted.');
         }
       }
+      await assertApplicationAuthority(input, dispatch);
+      await observeApplicationProtection(input);
+      await observeApplicationBuildPermissions(input, binding);
+      await observeApplicationSource(input);
+      await observeApplicationBuildPermissions(input, binding);
+      await assertApplicationAuthority(input, dispatch);
+      assertApplicationPublicationNoReplace();
+      await input.recordApplicationDispatchIntent?.(dispatch);
+      await assertApplicationAuthority(input, dispatch);
+      await observeImmutableWorkflowExecutionRef({ client }, {
+        repository: binding.repository, repositoryId: binding.repositoryId,
+        sourceSha: binding.sourceSha, treeSha: binding.sourceTreeSha, executionRef: binding.executionRef
+      });
+      await observeApplicationBuildPermissions(input, binding);
+      await assertApplicationAuthority(input, dispatch);
+      dispatchAttempted = true;
+      const startedAt = (input.clock?.() ?? input.now).toISOString();
+      const accepted = await client.write('POST', `/repos/${binding.repository}/actions/workflows/${binding.workflowPath.split('/').at(-1)}/dispatches`,
+        { ref: binding.executionRef, inputs: dispatchInputs(binding) });
+      if (!accepted) return applicationError('application-dispatch-uncertain',
+        'Artifact dispatch returned no unique actual run ID in its acceptance response; retain the durable intent. Run-list candidates cannot prove original acceptance or permit redispatch.');
+      handle = operationForAcceptedDispatch(input, binding, accepted, startedAt);
+      currentReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
+        id: accepted.workflow_run_id, runUrl: handle.pollUrl,
+        htmlUrl: `https://github.com/${binding.repository}/actions/runs/${accepted.workflow_run_id}`
+      })];
     }
     outputs = outputFor(binding, handle, { sourceTreeDigest: source.sourceTreeDigest });
     if (!previous && currentReadback.length) {

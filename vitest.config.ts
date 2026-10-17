@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { defaultExclude, defineConfig, type ViteUserConfig } from 'vitest/config';
 import { isolateProcessUserState } from './tests/setup/user-state-isolation.js';
+import { coveragePackage, publishedRuntimeSources } from './scripts/coverage-gate.mjs';
 
 const migrationInspectionFile = 'tests/migration-inspection.test.ts';
 const distributionInspectionFile = 'tests/installed-tool-distribution.test.ts';
@@ -21,11 +22,11 @@ export const coverageFloorPercent = 80.01;
 
 // Disabled for ordinary runs. `npm run coverage:cli` enables it through
 // scripts/coverage-gate.mjs, which also proves that every file matched by the
-// tsconfig build input is present, including files that no test imports.
+// build input and published raw runtime module is present, even if unimported.
 export const cliCoverage = {
   provider: 'v8',
   enabled: false,
-  include: ['src/**/*.ts'],
+  include: ['src/**/*.ts', ...publishedRuntimeSources(coveragePackage('cli'))],
   exclude: [],
   reportsDirectory: './coverage/cli',
   reporter: ['text-summary', ['text', { file: 'coverage.txt' }], 'json-summary', 'json'],

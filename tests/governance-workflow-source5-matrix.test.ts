@@ -17,7 +17,9 @@ import {
 import {
   observeSource5WorkflowPlanMatrix, type Source5WorkflowPlanComponentFields
 } from '../src/governance-activation/workflow-source5-components.js';
-import { matrixValidatorFailure, workflowSource5MatrixFixture } from './fixtures/workflow-source5-matrix.js';
+import {
+  matrixValidatorConclusion, matrixValidatorEnvironment, matrixValidatorFailure, workflowSource5MatrixFixture
+} from './fixtures/workflow-source5-matrix.js';
 
 const fixtures: Awaited<ReturnType<typeof workflowSource5MatrixFixture>>[] = [];
 type MatrixFixture = Awaited<ReturnType<typeof workflowSource5MatrixFixture>>;
@@ -97,6 +99,91 @@ async function prepareObservation(value: MatrixFixture): Promise<MatrixSession> 
   return session;
 }
 
+describe('owned matrix validator environment and actual outcomes', () => {
+  it.each(['darwin', 'linux'] as const)('preserves the exact %s allowlist without reading ambient configuration', platform => {
+    const ambient = {
+      get SystemRoot(): never { throw new Error('POSIX must not inspect Windows configuration.'); },
+      get unrelated(): never { throw new Error('Unrelated configuration must not be inspected.'); }
+    };
+    expect(matrixValidatorEnvironment('owned-home', platform, ambient)).toEqual({ HOME: 'owned-home', NODE_OPTIONS: '' });
+  });
+
+  it.each(['SystemRoot', 'SYSTEMROOT', 'systemroot'])('copies only actual Windows %s without forwarding ambient configuration', key => {
+    const ambient = { [key]: 'S:\\Windows', HOME: 'ambient-home', NODE_OPTIONS: '--require=unselected',
+      NODE_PATH: 'unselected', Path: 'ambient-search-path',
+      get unrelated(): never { throw new Error('Unrelated configuration must not be inspected.'); }
+    };
+    expect(matrixValidatorEnvironment('owned-home', 'win32', ambient))
+      .toEqual({ HOME: 'owned-home', NODE_OPTIONS: '', SystemRoot: 'S:\\Windows' });
+    expect(ambient[key]).toBe('S:\\Windows');
+    expect(ambient.NODE_OPTIONS).toBe('--require=unselected');
+  });
+
+  it('retains a defined Windows value across undefined or identical case aliases without mutating them', () => {
+    const ambient = { SystemRoot: undefined, SYSTEMROOT: 'S:\\Windows', systemroot: 'S:\\Windows' };
+    expect(matrixValidatorEnvironment('owned-home', 'win32', ambient))
+      .toEqual({ HOME: 'owned-home', NODE_OPTIONS: '', SystemRoot: 'S:\\Windows' });
+    expect(ambient).toEqual({ SystemRoot: undefined, SYSTEMROOT: 'S:\\Windows', systemroot: 'S:\\Windows' });
+  });
+
+  it.each([
+    { name: 'absent', environment: {} },
+    { name: 'undefined', environment: { SystemRoot: undefined } },
+    { name: 'empty', environment: { SystemRoot: '' } }
+  ])('refuses $name Windows SystemRoot', ({ environment }) => {
+    expect(() => matrixValidatorEnvironment('owned-home', 'win32', environment)).toThrow(/actual host SystemRoot/);
+  });
+
+  it('refuses conflicting defined Windows aliases rather than selecting or fabricating a value', () => {
+    expect(() => matrixValidatorEnvironment('owned-home', 'win32', { SystemRoot: 'S:\\Windows', SYSTEMROOT: 'T:\\Windows' }))
+      .toThrow(/Conflicting case-insensitive environment aliases/);
+  });
+
+  it.each([
+    { jobId: 'validate', extension: 'mjs', text: 'export const valid = true;\n', status: 0 },
+    { jobId: 'validate', extension: 'mjs', text: 'export const valid = ;\n', status: 1 },
+    { jobId: 'package', extension: 'json', text: '{"name":"isolated"}\n', status: 0 },
+    { jobId: 'package', extension: 'json', text: '{broken}\n', status: 1 }
+  ] as const)('executes actual $jobId file-backed input with expected status $status rather than accepting initialization failure', async control => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-matrix-validator-environment-'));
+    try {
+      const input = path.join(root, `input.${control.extension}`);
+      await writeFile(input, control.text, { flag: 'wx', mode: 0o600 });
+      const result = await new NodeCommandRunner().run({ executable: process.execPath, args: control.jobId === 'validate' ?
+        ['--check', input] : ['-e', "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))", input] },
+      { cwd: root, env: matrixValidatorEnvironment(root), timeoutMs: 5000, maxOutputBytes: 4096,
+        stream: false, ensureProcessTreeSettled: true });
+      expect(result.status, result.stderr).toBe(control.status);
+      expect(result.signal).toBeNull();
+      expect(result.processSpawned).toBe(true);
+      expect(result.processTreeSettled).toBe(true);
+      expect(result.timedOut).toBe(false);
+      expect(result.outputLimitExceeded).not.toBe(true);
+      expect(result.errorCode).toBeUndefined();
+      expect(result.aborted).not.toBe(true);
+      if (control.status === 1) expect(result.stderr).toMatch(/\bSyntaxError:/u);
+      const selector = { family: 'develop', mode: control.status === 0 ? 'green' : 'controlled-red', jobId: control.jobId } as const;
+      expect(matrixValidatorConclusion(selector, result, control.status === 1))
+        .toBe(control.status === 0 ? 'success' : 'failure');
+      const original = structuredClone(result);
+      for (const mismatch of [
+        { ...result, status: 134, signal: null, stderr: 'CSPRNG initialization assertion' },
+        { ...result, status: 1, stderr: 'CSPRNG initialization assertion' },
+        { ...result, status: 134, signal: null, stderr: 'SyntaxError: unrelated failure' },
+        { ...result, status: 0, stderr: '' }
+      ]) {
+        expect(() => matrixValidatorConclusion({ ...selector, mode: 'controlled-red' }, mismatch, true))
+          .toThrow(/did not detect only its own reviewed violation/);
+      }
+      expect(() => matrixValidatorConclusion({ ...selector, mode: 'green' }, { ...result, status: 1 }, false))
+        .toThrow(/did not detect only its own reviewed violation/);
+      expect(result).toEqual(original);
+      expect(Buffer.byteLength(result.stdout + result.stderr)).toBeLessThanOrEqual(4096);
+      expect(await readFile(input, 'utf8')).toBe(control.text);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+});
+
 describe('complete source5 per-entry independently current matrix', () => {
   it('prepares original source provenance and actual bounded validators independently of component and carrier preparation', async () => {
     prepared = await prepare(() => fixture());
@@ -149,11 +236,11 @@ describe('complete source5 per-entry independently current matrix', () => {
         const input = path.join(root, 'validate.mjs'), text = 'export const valid = ;\n';
         await writeFile(input, text, { flag: 'wx', mode: 0o600 });
         const result = await runner.run({ executable: process.execPath, args: ['--check', input] },
-          { cwd: root, env: { HOME: root, NODE_OPTIONS: '' }, timeoutMs: 5000, maxOutputBytes: 4096,
+          { cwd: root, env: matrixValidatorEnvironment(root), timeoutMs: 5000, maxOutputBytes: 4096,
             stream: false, ensureProcessTreeSettled: true });
         const original = structuredClone(result);
-        expect(result.status).not.toBe(0);
-        expect(result.status).not.toBeNull();
+        expect(result.status, result.stderr).toBe(1);
+        expect(result.stderr).toMatch(/\bSyntaxError:/u);
         expect(result.processTreeSettled).toBe(true);
         expect(result.timedOut).toBe(false);
         expect(Buffer.byteLength(result.stdout + result.stderr)).toBeLessThanOrEqual(4096);

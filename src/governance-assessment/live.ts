@@ -361,19 +361,23 @@ export async function collectLiveAssessment(
   let refsStable = refsValid;
   const base = `https://api.github.com/repos/${repository.owner}/${repository.name}`;
 
+  const readFamilyRefs = async (): Promise<string[]> => {
+    const branchInventory = await transport.pages(
+      'branches-list',
+      null,
+      (value) => {
+        const name = branchName(record(value).name);
+        return { key: name, value: name };
+      }
+    );
+    return branchInventory.filter((name) =>
+      refPrefixes.some((prefix) => name.startsWith(prefix))
+    ).sort();
+  };
+  let familyRefs: string[] | null = null;
   if (refPrefixes.length) {
     try {
-      const branchInventory = await transport.pages(
-        'branches-list',
-        null,
-        (value) => {
-          const name = branchName(record(value).name);
-          return { key: name, value: name };
-        }
-      );
-      const familyRefs = branchInventory.filter((name) =>
-        refPrefixes.some((prefix) => name.startsWith(prefix))
-      ).sort();
+      familyRefs = await readFamilyRefs();
       refs.push(...familyRefs.filter((name) => !refs.includes(name)));
       refs.sort();
       results.put('github.ref-families', {
@@ -697,6 +701,27 @@ export async function collectLiveAssessment(
       results.fail(`github.checks.${ref}`, error);
       results.fail('github.branches', new LiveFailure('unstable-refs', 'Requested refs could not be verified as stable across live collection.'));
       results.fail('github.checks', new LiveFailure('unstable-refs', 'Commit-bound check proof was withheld because ref stability was not established.'));
+    }
+  }
+  if (familyRefs !== null) {
+    try {
+      const currentRefs = await readFamilyRefs();
+      if (currentRefs.length !== familyRefs.length || currentRefs.some((ref, index) => ref !== familyRefs[index])) {
+        const error = new LiveFailure(
+          'ref-families-changed',
+          'Scoped release/hotfix branch membership changed during live collection; family-wide proof was withheld.'
+        );
+        for (const ref of familyRefs.filter(ref => !currentRefs.includes(ref))) {
+          results.fail(`github.branch.${ref}`, error, transport.githubUrl('branch', ref).href);
+          results.fail(`github.checks.${ref}`, error);
+        }
+        throw error;
+      }
+    } catch (error) {
+      refsStable = false;
+      results.fail('github.ref-families', error, `${base}/branches`);
+      results.fail('github.branches', new LiveFailure('unstable-refs', 'Protected branch-family membership could not be verified across live collection.'));
+      results.fail('github.checks', new LiveFailure('unstable-refs', 'Complete family-wide check proof was withheld because branch-family membership was not established.'));
     }
   }
   return results.finish(refsStable);

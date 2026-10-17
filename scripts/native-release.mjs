@@ -12,6 +12,7 @@ import { assertNativePublicationEvidence, verifyNativeEvidenceSignature } from '
 import policy from '../distribution/native/release-policy.json' with { type: 'json' };
 import platforms from '../distribution/native/platforms.json' with { type: 'json' };
 import { nativeEvidenceKinds } from '../distribution/native/native-release-catalog.mjs';
+import { nativeCaskDefinition } from '../distribution/native/native-cask-definition.mjs';
 import { stringify } from 'yaml';
 
 export { assertNativePublicationEvidence, verifyNativeEvidenceSignature };
@@ -19,6 +20,130 @@ export { assertNativePublicationEvidence, verifyNativeEvidenceSignature };
 const root = fileURLToPath(new URL('../', import.meta.url));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const json = async file => JSON.parse((await readBundleFile(file)).content.toString('utf8'));
+
+/**
+ * @typedef {{ repository: string, approvedSigningKeySha256: string|null,
+ *   winget: { packageIdentifier: string|null, installerAppId: string|null,
+ *     publisher: string|null, certificateSha256: string|null } }} WindowsInstallerPolicy
+ * @typedef {{ package: { name: string, version: string },
+ *   platform: { platform: string, architecture: string }, source: { repository: string, commit: string },
+ *   inventory: { sha256: string, entries: { path: string, kind: string, sha256?: string }[] },
+ *   launcher: string, runtime: { executable: string } }} WindowsInstallerManifest
+ */
+
+/**
+ * @param {WindowsInstallerManifest} manifest
+ * @param {string} manifestSha256
+ * @param {WindowsInstallerPolicy} [approvedPolicy]
+ */
+export function nativeWindowsInstallerInputs(manifest, manifestSha256, approvedPolicy = policy) {
+  assert.equal(manifest.package.name, '@msn-control/liftoff');
+  assert.match(manifest.package.version, /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/);
+  assert.ok(manifest.package.version.length <= 128, 'Windows package version exceeds the pointer bound.');
+  assert.deepEqual(manifest.platform, { platform: 'win32', architecture: 'x64' });
+  assert.equal(manifest.source.repository, approvedPolicy.repository);
+  assert.match(manifest.source.commit, /^[a-f0-9]{40}$/);
+  assert.match(manifestSha256 ?? '', /^[a-f0-9]{64}$/, 'Exact Windows bundle manifest digest is required.');
+  assert.match(manifest.inventory.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(manifest.launcher, 'bin/liftoff.exe');
+  assert.equal(manifest.runtime.executable, 'runtime/node.exe');
+  assert.match(approvedPolicy.approvedSigningKeySha256 ?? '', /^[a-f0-9]{64}$/, 'No approved native qualification key.');
+  const approved = approvedPolicy.winget;
+  assert.match(approved.packageIdentifier ?? '', /^[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)+$/, 'No approved WinGet ID.');
+  assert.match(approved.installerAppId ?? '', /^[A-Za-z0-9{}._-]{1,128}$/, 'No approved Windows installer AppId.');
+  assert.match(approved.publisher ?? '', /^[^"\u0000-\u001f]{1,128}$/, 'No approved Windows installer publisher.');
+  assert.match(approved.certificateSha256 ?? '', /^[a-f0-9]{64}$/, 'No approved Authenticode certificate.');
+  const launchers = manifest.inventory.entries.filter(entry => entry.path === manifest.launcher);
+  assert.equal(launchers.length, 1, 'Exactly one inventoried Windows launcher is required.');
+  assert.equal(launchers[0].kind, 'file');
+  assert.match(launchers[0].sha256 ?? '', /^[a-f0-9]{64}$/);
+  const versionName = `${manifest.package.version}-${manifestSha256}`;
+  const receipt = {
+    schemaVersion: 1, kind: 'liftoff-windows-install-receipt', scope: 'user',
+    package: manifest.package.name, packageIdentifier: approved.packageIdentifier,
+    appId: approved.installerAppId, publisher: approved.publisher,
+    certificateSha256: approved.certificateSha256, version: manifest.package.version,
+    sourceCommit: manifest.source.commit, manifestSha256, inventorySha256: manifest.inventory.sha256,
+    versionDirectory: `versions/${versionName}`,
+    launcher: `versions/${versionName}/bin/liftoff.exe`,
+    runtime: `versions/${versionName}/runtime/node.exe`,
+    stableLauncher: 'bin/liftoff.exe', stableLauncherSha256: launchers[0].sha256
+  };
+  return { receipt, versionName, pointer: `${versionName}\r\n`,
+    uninstallKey: `Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${approved.installerAppId}_is1` };
+}
+
+/** @param {{ bundle: string, output: string, approvedPolicy?: WindowsInstallerPolicy }} options */
+export async function prepareNativeWindowsInstaller({ bundle, output, approvedPolicy = policy }) {
+  const manifest = await verifyNativeBundle(bundle);
+  assert.equal(manifest.source.dirty, false, 'Windows packaging requires clean committed source.');
+  const current = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', shell: false });
+  assert.equal(current.status, 0, 'Cannot establish current Windows packaging source.');
+  assert.equal(current.stdout.trim(), manifest.source.commit, 'Windows bundle belongs to another source revision.');
+  const manifestSha256 = (await bundleFile(path.join(bundle, 'bundle.json'))).sha256;
+  const inputs = nativeWindowsInstallerInputs(manifest, manifestSha256, approvedPolicy);
+  const directory = path.resolve(output);
+  const parent = await realpath(path.dirname(directory));
+  assert.equal(path.join(parent, path.basename(directory)), directory, 'Windows packaging output must be canonical.');
+  for (const boundary of [await realpath(root), await realpath(bundle)]) {
+    assert.ok(directory !== boundary && !directory.startsWith(`${boundary}${path.sep}`),
+      'Windows packaging output must be outside the source and bundle.');
+  }
+  const inno = value => {
+    assert.ok(typeof value === 'string' && !/["\u0000-\u001f]/.test(value), 'Unsafe Inno Setup input.');
+    return value.replaceAll('{', '{{');
+  };
+  const quoted = value => {
+    assert.ok(typeof value === 'string' && !/["\u0000-\u001f]/.test(value), 'Unsafe Inno preprocessor input.');
+    return `"${value}"`;
+  };
+  const receiptBytes = Buffer.from(`${JSON.stringify(inputs.receipt, null, 2)}\n`);
+  const bundleDirectory = await realpath(bundle);
+  const files = [{ path: 'bundle.json', kind: 'file', sha256: manifestSha256 }, ...manifest.inventory.entries];
+  assert.ok(files.every(file => file.kind === 'file' || file.kind === 'directory'),
+    'Windows installer inputs must not follow bundle links.');
+  const directoryLines = [], fileLines = [], hashLines = [];
+  for (const file of files) {
+    const relative = bundlePath(file.path).replaceAll('/', '\\');
+    const destination = `{app}\\versions\\{#VersionName}\\${inno(relative)}`;
+    if (file.kind === 'directory') directoryLines.push(`Name: "${destination}"`);
+    else {
+      const source = path.join(bundleDirectory, file.path);
+      fileLines.push(`Source: "${inno(source)}"; DestDir: "${destination.slice(0, destination.lastIndexOf('\\'))}"; Flags: ignoreversion`);
+      hashLines.push(`#if LowerCase(GetSHA256OfFile(${quoted(source)})) != "${file.sha256}"`,
+        '  #error Inventoried Windows bundle bytes changed. Regenerate only from the reviewed bundle.', '#endif');
+    }
+  }
+  for (const [name, digest] of [['native-install.json', hash(receiptBytes)], ['current.txt', hash(inputs.pointer)]]) {
+    hashLines.push(`#if LowerCase(GetSHA256OfFile(${quoted(path.join(directory, name))})) != "${digest}"`,
+      '  #error Generated Windows installation evidence changed.', '#endif');
+  }
+  const definitions = {
+    BundleDir: bundleDirectory, PackageVersion: manifest.package.version,
+    VersionName: inputs.versionName, ApprovedAppId: inputs.receipt.appId,
+    ApprovedPublisher: inputs.receipt.publisher,
+    ApprovedPublisherPascal: inputs.receipt.publisher.replaceAll("'", "''"),
+    ApprovedUninstallKey: inputs.uninstallKey,
+    ApprovedCertificateSha256: inputs.receipt.certificateSha256,
+    ReceiptFile: path.join(directory, 'native-install.json'), CurrentFile: path.join(directory, 'current.txt'),
+    ReceiptSha256: hash(receiptBytes), CurrentSha256: hash(inputs.pointer),
+    StableLauncherSha256: inputs.receipt.stableLauncherSha256, InstallerOutput: path.join(directory, 'installer')
+  };
+  const script = Object.entries(definitions).map(([name, value]) => `#define ${name} "${inno(value)}"`).join('\r\n') +
+    `\r\n#define BundleFilesFile ${quoted(path.join(directory, 'inventory.iss'))}` +
+    `\r\n#define BundleHashesFile ${quoted(path.join(directory, 'hashes.iss'))}` +
+    `\r\n#include ${quoted(path.join(root, 'distribution/windows/liftoff.iss'))}\r\n`;
+  await mkdir(directory, { mode: 0o700 });
+  await writeFile(path.join(directory, 'native-install.json'), receiptBytes, { flag: 'wx', mode: 0o644 });
+  await writeFile(path.join(directory, 'current.txt'), inputs.pointer, { flag: 'wx', mode: 0o644 });
+  await writeFile(path.join(directory, 'inventory.iss'),
+    ['[Dirs]', ...directoryLines, '[Files]', ...fileLines, ''].join('\r\n'), { flag: 'wx', mode: 0o644 });
+  await writeFile(path.join(directory, 'hashes.iss'), [...hashLines, ''].join('\r\n'), { flag: 'wx', mode: 0o644 });
+  await writeFile(path.join(directory, 'installer.iss'), script, { flag: 'wx', mode: 0o644 });
+  await verifyNativeBundle(bundle);
+  return { directory, manifestSha256, receiptSha256: hash(receiptBytes), currentSha256: hash(inputs.pointer),
+    compiled: false, signed: false, installerOwnershipQualified: false, published: false };
+}
 
 export function nativeMaterials(manifest, artifact) {
   const components = [
@@ -244,27 +369,8 @@ export function nativePackageDefinitions(record, evidence, approvedPolicy = poli
   assert.match(record.version, /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/);
   const base = `https://github.com/${record.repository}/releases/download/v${record.version}/`;
   if (record.target === 'darwin-arm64') {
-    const token = approvedPolicy.homebrew.cask.split('/').at(-1);
-    assert.equal(record.files[0].filename, `liftoff-${record.version}-darwin-arm64.tar.gz`);
-    assert.match(record.files[0].sha256, /^[a-f0-9]{64}$/);
-    assert.equal(evidence.artifactUrl, `${base}${record.files[0].filename}`, 'Cask URL must identify the exact qualified release asset.');
-    return { [`${token}.rb`]: [
-      `cask "${token}" do`,
-      `  version "${record.version}"`,
-      `  sha256 "${record.files[0].sha256}"`,
-      `  url "${evidence.artifactUrl}"`,
-      '  name "Liftoff"',
-      '  desc "CLI for governed GenAI applications and APIs"',
-      `  homepage "https://github.com/${record.repository}"`,
-      '  depends_on arch: :arm64',
-      '  depends_on macos: ">= :ventura"',
-      '  preflight do',
-      '    odie "Native Apple Silicon is required" unless Hardware::CPU.arm? && !Hardware::CPU.in_rosetta2?',
-      `    odie "The qualified runtime requires macOS ${platforms.targets['darwin-arm64'].minimumOs} or newer" if MacOS.version < MacOSVersion.new("${platforms.targets['darwin-arm64'].minimumOs}")`,
-      '  end',
-      '  binary "bin/liftoff"',
-      'end', ''
-    ].join('\n') };
+    const definition = nativeCaskDefinition(record, evidence, approvedPolicy);
+    return { [definition.filename]: definition.content };
   }
   assert.equal(record.target, 'win32-x64', 'Linux archives do not use Homebrew or WinGet definitions.');
   const installer = evidence.windowsInstaller;
@@ -307,9 +413,10 @@ export async function verifyNativeReleaseForPublication(directory, digest, commi
 async function main() {
   const [operation, directory, digest, commit, ...extra] = process.argv.slice(2);
   assert.equal(extra.length, 0, 'Unexpected native release arguments.');
-  if (operation === 'archive') {
-    assert.ok(directory && digest && commit === undefined, 'archive requires a bundle and a new output directory.');
-    console.log(JSON.stringify(await archiveNativeBundle({ bundle: path.resolve(directory), output: digest }), null, 2));
+  if (operation === 'archive' || operation === 'windows-installer-inputs') {
+    assert.ok(directory && digest && commit === undefined, `${operation} requires a bundle and a new output directory.`);
+    const build = operation === 'archive' ? archiveNativeBundle : prepareNativeWindowsInstaller;
+    console.log(JSON.stringify(await build({ bundle: path.resolve(directory), output: digest }), null, 2));
     return;
   }
   assert.ok(directory && digest && commit, 'verify/check-publication/definitions require directory, approved manifest digest and source SHA.');

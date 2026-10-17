@@ -401,6 +401,125 @@ describe('bounded, read-only GitHub assessment', () => {
       `${base}/branches/hotfix%2Furgent`
     ]));
     expect(runner.calls.some((call) => call.url.includes('feature'))).toBe(false);
+    expect(runner.calls.filter(call => call.url === branchesUrl())).toHaveLength(2);
+  });
+
+  it.each([
+    { change: 'added', closingRefs: ['release/1.0', 'hotfix/new'] },
+    { change: 'removed', closingRefs: [] }
+  ])('withholds complete family proof when a protected ref is $change after its last exact read', async ({ closingRefs }) => {
+    let familyRefs = ['release/1.0'];
+    const runner = new FixtureRunner()
+      .set(branchesUrl(), () => ({ value: familyRefs.map(name => ({ name })) }))
+      .set(`${base}/branches/release%2F1.0`, count => {
+        const value = { name: 'release/1.0', commit: { sha: commit }, protected: false };
+        if (count === 2) familyRefs = [...closingRefs];
+        return { value };
+      });
+
+    const result = await collect(scope({ refPrefixes: ['release/', 'hotfix/'] }), runner);
+
+    expect(familyRefs).toEqual(closingRefs);
+    expect(result.refsStable).toBe(false);
+    for (const key of ['github.ref-families', 'github.branches', 'github.checks']) {
+      expect(result.observations[key]).toMatchObject({ availability: 'not-observed' });
+    }
+    expect(result.observations['github.branch.develop']!.availability).toBe('observed');
+    expect(result.observations['github.checks.develop']!.availability).toBe('observed');
+    for (const key of ['github.branch.release/1.0', 'github.checks.release/1.0']) {
+      expect(result.observations[key]!.availability).toBe(closingRefs.length ? 'observed' : 'not-observed');
+    }
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'live-ref-families-changed' }));
+    expect(runner.calls.filter(call => call.url === branchesUrl())).toHaveLength(2);
+    expect(runner.calls.some(call => call.url.includes('hotfix%2Fnew'))).toBe(false);
+  });
+
+  it('does not treat initially empty protected families as a stable absence', async () => {
+    let added = false;
+    const runner = new FixtureRunner()
+      .set(branchesUrl(), () => ({ value: added ? [{ name: 'hotfix/new' }] : [] }))
+      .set(branchUrl, count => {
+        if (count === 2) added = true;
+        return { value: { name: 'develop', commit: { sha: commit }, protected: false } };
+      });
+
+    const result = await collect(scope({ refPrefixes: ['release/', 'hotfix/'] }), runner);
+
+    expect(added).toBe(true);
+    expect(result.refsStable).toBe(false);
+    expect(result.observations['github.ref-families']!.availability).toBe('not-observed');
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'live-ref-families-changed' }));
+    expect(runner.calls.filter(call => call.url === branchesUrl())).toHaveLength(2);
+    expect(runner.calls.some(call => call.url.includes('hotfix%2Fnew'))).toBe(false);
+  });
+
+  it.each([
+    { change: 'inventory order', closingRefs: ['hotfix/urgent', 'release/1.0', 'feature/old'] },
+    { change: 'unrelated refs', closingRefs: ['feature/new', 'release/1.0', 'hotfix/urgent'] }
+  ])('keeps complete family proof when only $change changes', async ({ closingRefs }) => {
+    let familyRefs = ['release/1.0', 'hotfix/urgent', 'feature/old'];
+    const runner = new FixtureRunner()
+      .set(branchesUrl(), () => ({ value: familyRefs.map(name => ({ name })) }))
+      .set(`${base}/branches/release%2F1.0`, count => {
+        const value = { name: 'release/1.0', commit: { sha: commit }, protected: false };
+        if (count === 2) familyRefs = [...closingRefs];
+        return { value };
+      });
+
+    const result = await collect(scope({ refPrefixes: ['release/', 'hotfix/'] }), runner);
+
+    expect(familyRefs).toEqual(closingRefs);
+    expect(result.refsStable).toBe(true);
+    expect(result.observations['github.ref-families']).toMatchObject({
+      availability: 'observed',
+      value: { complete: true, refs: ['hotfix/urgent', 'release/1.0'] }
+    });
+    expect(runner.calls.filter(call => call.url === branchesUrl())).toHaveLength(2);
+    expect(runner.calls.some(call => call.url.includes('branches/feature'))).toBe(false);
+  });
+
+  it('withholds family-wide proof when the closing complete inventory is denied', async () => {
+    const runner = new FixtureRunner().set(branchesUrl(), count => count === 1
+      ? { value: [{ name: 'release/1.0' }] }
+      : { httpStatus: 403 });
+
+    const result = await collect(scope({ refPrefixes: ['release/', 'hotfix/'] }), runner);
+
+    expect(result.refsStable).toBe(false);
+    for (const key of ['github.ref-families', 'github.branches', 'github.checks']) {
+      expect(result.observations[key]).toMatchObject({ availability: 'not-observed' });
+    }
+    expect(result.observations['github.repository']!.availability).toBe('observed');
+    expect(result.observations['github.branch.develop']!.availability).toBe('observed');
+    expect(result.observations['github.checks.develop']!.availability).toBe('observed');
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'live-denied' }));
+    expect(runner.calls.filter(call => call.url === branchesUrl())).toHaveLength(2);
+  });
+
+  it('rechecks every family inventory page before retaining complete family-wide proof', async () => {
+    let added = false;
+    const runner = new FixtureRunner()
+      .set(branchesUrl(), {
+        value: Array.from({ length: 100 }, (_, index) => ({ name: `feature/${index}` })),
+        headers: { link: `<${branchesUrl(2)}>; rel="next"` }
+      })
+      .set(branchesUrl(2), () => ({
+        value: [{ name: 'release/1.0' }, ...(added ? [{ name: 'hotfix/new' }] : [])]
+      }))
+      .set(`${base}/branches/release%2F1.0`, count => {
+        if (count === 2) added = true;
+        return { value: { name: 'release/1.0', commit: { sha: commit }, protected: false } };
+      });
+
+    const result = await collect(scope({ refPrefixes: ['release/', 'hotfix/'] }), runner);
+
+    expect(added).toBe(true);
+    expect(result.refsStable).toBe(false);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'live-ref-families-changed' }));
+    for (const url of [branchesUrl(), branchesUrl(2)]) {
+      expect(runner.calls.filter(call => call.url === url)).toHaveLength(2);
+    }
+    expect(runner.calls.some(call => call.url.includes('hotfix%2Fnew'))).toBe(false);
   });
 
   it('keeps incomplete release/hotfix enumeration explicit while retaining permanent-ref reads', async () => {
@@ -422,6 +541,7 @@ describe('bounded, read-only GitHub assessment', () => {
       availability: 'observed',
       value: [expect.objectContaining({ name: 'develop' })]
     });
+    expect(runner.calls.filter(call => call.url === branchesUrl())).toHaveLength(1);
   });
 
   it('keeps a protection 404 unknown even when effective rules were readable', async () => {

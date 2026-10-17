@@ -95,7 +95,7 @@ export async function observeSource5WorkflowCodeScanning(input: {
       { code: 'workflow-code-scanning-program-unavailable',
         message: 'Tool names, versions and GUIDs are descriptive provider metadata, not authenticated CodeQL executable/query subjects or an approved integration mapping.' },
       { code: 'workflow-code-scanning-original-sarif-unavailable',
-        message: 'The existing closed read transport returns analysis metadata, not the custom-media SARIF subset or authenticated original report. No media-type or publisher contract was widened.' },
+        message: 'This metadata-only observation did not request the separate fixed SARIF subset representation; neither metadata nor provider subsets authenticate the original report or publisher/program provenance.' },
       { code: 'workflow-code-scanning-coverage-unavailable',
         message: 'Neither positive rule/result counts nor zero results prove complete selected-language/query coverage, successful original execution or source-bound report provenance.' }
     ]
@@ -105,3 +105,54 @@ export async function observeSource5WorkflowCodeScanning(input: {
 }
 
 export type Source5WorkflowCodeScanningObservation = Awaited<ReturnType<typeof observeSource5WorkflowCodeScanning>>;
+
+/** GitHub returns a transformed subset, not the authenticated original SARIF upload. */
+export async function observeSource5WorkflowCodeScanningSarif(input: {
+  readonly context: Source5WorkflowContext;
+  readonly runtime: WorkflowRuntime;
+  readonly source: Source5CodeScanningSource;
+}) {
+  const { context, runtime, source, client } = captureWorkflowProviderSourceObservation(input, 'code-scanning');
+  const request = { context, runtime, source };
+  const first = await observeSource5WorkflowCodeScanning(request);
+  async function subset(analysisId: number) {
+    const report = await client.codeScanningSarif(source.repository, analysisId);
+    if (report.version !== '2.1.0' || !Array.isArray(report.runs) ||
+      report.runs.some(run => !isRecord(run) || !isRecord(run.tool) ||
+        !isRecord(run.tool.driver) || !boundedText(run.tool.driver.name))) {
+      return workflowFailure('workflow-code-scanning-sarif',
+        'The provider did not return a bounded SARIF 2.1.0 run envelope; metadata and report contents were withheld.');
+    }
+    return { documentDigest: canonicalSha256(report), runCount: report.runs.length };
+  }
+  const subsets = [];
+  for (const analysis of first.analyses.filter(analysis => analysis.matchesSelectedSource)) {
+    const report = await subset(analysis.id);
+    subsets.push({ analysisId: analysis.id, analysisMetadataDigest: analysis.metadataDigest,
+      ...report, readback: 'observed-twice-during-this-invocation' as const });
+  }
+  for (const report of subsets) {
+    if (canonicalSha256(await subset(report.analysisId)) !==
+      canonicalSha256({ documentDigest: report.documentDigest, runCount: report.runCount })) {
+      return workflowFailure('workflow-code-scanning-sarif-changed',
+        'The actual provider SARIF subset changed during observation; no cached or partial report was substituted.');
+    }
+  }
+  const second = await observeSource5WorkflowCodeScanning(request);
+  if (first.inventoryDigest !== second.inventoryDigest) {
+    return workflowFailure('workflow-code-scanning-changed',
+      'The complete code-scanning analysis inventory changed around SARIF observation; no report was rebound to different metadata.');
+  }
+  assertWorkflowObservationRuntime(runtime);
+  return freezeModernValue({
+    ...second,
+    coverage: subsets.length ? 'provider-analysis-metadata-and-sarif-subsets-only' as const : second.coverage,
+    providerSarifSubsets: subsets,
+    blockers: second.blockers.map(blocker => blocker.code === 'workflow-code-scanning-original-sarif-unavailable' ? {
+      code: blocker.code,
+      message: 'The custom-media response is a provider-transformed subset with GitHub additions, not an authenticated original upload, complete report or executable/query provenance.'
+    } : blocker)
+  });
+}
+
+export type Source5WorkflowCodeScanningSarifObservation = Awaited<ReturnType<typeof observeSource5WorkflowCodeScanningSarif>>;

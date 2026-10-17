@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { constants } from 'node:fs';
-import { chmod, copyFile, cp, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, cp, link, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
@@ -9,7 +9,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { bundleFile, bundleInventory, nativeArchiveTool } from '../scripts/native-bundle-contract.mjs';
 import { verifyNativeBundle } from '../scripts/native-bundle.mjs';
-import { archiveNativeBundle, verifyNativeArchive } from '../scripts/native-release.mjs';
+import { archiveNativeBundle, prepareNativeWindowsInstaller, nativeWindowsInstallerInputs, verifyNativeArchive } from '../scripts/native-release.mjs';
+import policy from '../distribution/native/release-policy.json' with { type: 'json' };
 import { inspectOwnedInstallation, installOwnedBundle, recoverOwnedInstallation } from '../scripts/native-install.mjs';
 import { assertNativeHost, observeNativeHost } from '../distribution/native/host.mjs';
 import { installedPlanCases, planContractIssues } from '../scripts/package-smoke-contract.mjs';
@@ -403,6 +404,92 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
   it.runIf(process.platform === 'darwin')('refuses public macOS installation while minimum-host and signing qualification remain absent', () => {
     expect(() => assertNativeHost(observeNativeHost(), { publicInstallation: true })).toThrow('minimum host');
   });
+  it.runIf(windows)('runs the actual stable Windows launcher and refuses unsafe immutable version pointers', async () => {
+    const manifestSha256 = (await bundleFile(path.join(bundle, 'bundle.json'))).sha256;
+    const approvedPolicy = { ...policy, approvedSigningKeySha256: '5'.repeat(64),
+      winget: { packageIdentifier: 'Synthetic.Liftoff', publisher: "Synthetic fixture's publisher",
+        certificateSha256: '6'.repeat(64), installerAppId: '{00000000-0000-0000-0000-000000000000}' } };
+    const unapproved = path.join(fixture, 'unapproved installer inputs');
+    await expect(prepareNativeWindowsInstaller({ bundle, output: unapproved })).rejects.toThrow('No approved');
+    await expect(lstat(unapproved)).rejects.toMatchObject({ code: 'ENOENT' });
+    const output = path.join(fixture, 'synthetic approved installer inputs');
+    const prepared = await prepareNativeWindowsInstaller({ bundle, output, approvedPolicy });
+    expect(prepared).toMatchObject({
+      manifestSha256, compiled: false, signed: false, installerOwnershipQualified: false, published: false
+    });
+    const inputs = nativeWindowsInstallerInputs(manifest, manifestSha256, approvedPolicy);
+    expect(JSON.parse(await readFile(path.join(output, 'native-install.json'), 'utf8'))).toEqual(inputs.receipt);
+    expect(await readFile(path.join(output, 'current.txt'), 'utf8')).toBe(inputs.pointer);
+    const script = await readFile(path.join(output, 'installer.iss'), 'utf8');
+    expect(script).toContain('#define ApprovedAppId "{{00000000-0000-0000-0000-000000000000}"');
+    expect(script).toContain("Synthetic fixture''s publisher");
+    expect(script).toContain(`#define StableLauncherSha256 "${inputs.receipt.stableLauncherSha256}"`);
+    const inventoriedFiles = manifest.inventory.entries.filter((entry: { kind: string }) => entry.kind === 'file').length;
+    const inventory = await readFile(path.join(output, 'inventory.iss'), 'utf8');
+    expect(inventory.match(/^Source: /gm)?.length).toBe(1 + inventoriedFiles);
+    expect(inventory).not.toContain('recursesubdirs');
+    expect(inventory).not.toContain('\\*');
+    const hashes = await readFile(path.join(output, 'hashes.iss'), 'utf8');
+    expect(hashes.match(/^#if LowerCase\(GetSHA256OfFile/gm)?.length).toBe(3 + inventoriedFiles);
+    await expect(prepareNativeWindowsInstaller({ bundle, output, approvedPolicy })).rejects.toThrow('EEXIST');
+    const installation = path.join(fixture, "stable Windows install with spaces & apostrophe's");
+    const selected = path.join(installation, inputs.receipt.versionDirectory);
+    copiedBundles.push(installation);
+    await mkdir(path.dirname(selected), { recursive: true });
+    await cp(bundle, selected, { recursive: true, verbatimSymlinks: true });
+    await mkdir(path.join(installation, 'bin'));
+    const stable = path.join(installation, 'bin/liftoff.exe'), pointer = path.join(installation, 'current.txt');
+    await copyFile(cli, stable);
+    await copyFile(path.join(output, 'native-install.json'), path.join(installation, 'native-install.json'));
+    await writeFile(pointer, inputs.pointer);
+    const before = await bundleInventory(outside);
+    const version = execute(stable, ['--version']);
+    expect(version.status, version.stdout + version.stderr).toBe(0);
+    expect(version.stdout.trim()).toBe(`Liftoff ${manifest.package.version}`);
+    env.NODE_OPTIONS = '--require=/unselected-startup.cjs';
+    env.NODE_PATH = '/unselected-modules';
+    try {
+      const plan = installedPlanCases.find(plan => plan.id === 'manual-cli-only')!;
+      const result = execute(stable, ['plan', ...plan.args]);
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(planContractIssues(result.stdout, plan)).toEqual([]);
+    } finally { delete env.NODE_OPTIONS; delete env.NODE_PATH; }
+    const refused = () => {
+      const result = execute(stable, ['--version']);
+      expect(result.status, result.stdout + result.stderr).not.toBe(0);
+      expect(result.stderr).toContain('installed version pointer');
+    };
+    for (const value of ['', '../outside\r\n', `${inputs.versionName}\n`, `${inputs.pointer}extra`,
+      inputs.pointer.replace(manifestSha256, '0'.repeat(64)), 'x'.repeat(256), `${'1'.repeat(64)}\0\r\n`]) {
+      await writeFile(pointer, value);
+      refused();
+    }
+    await writeFile(pointer, inputs.pointer);
+    const alias = path.join(installation, 'current-alias.txt');
+    await link(pointer, alias);
+    refused();
+    await rm(alias);
+    await rm(pointer);
+    refused();
+    await writeFile(pointer, inputs.pointer);
+    const junctionDigest = manifestSha256 === '0'.repeat(64) ? '1'.repeat(64) : '0'.repeat(64);
+    const junctionName = `${manifest.package.version}-${junctionDigest}`;
+    const junction = path.join(installation, 'versions', junctionName);
+    await symlink(selected, junction, 'junction');
+    await writeFile(pointer, `${junctionName}\r\n`);
+    refused();
+    await writeFile(pointer, inputs.pointer);
+    await rm(junction);
+    expect(execute(stable, ['--version']).status).toBe(0);
+    expect(await bundleInventory(outside)).toEqual(before);
+    await verifyNativeBundle(selected);
+    console.log(JSON.stringify({
+      kind: 'liftoff-windows-stable-launcher', sourceCommit: manifest.source.commit, manifestSha256,
+      inventorySha256: manifest.inventory.sha256, stableLauncherSha256: inputs.receipt.stableLauncherSha256,
+      syntheticPolicy: true, compiledInstaller: false, signed: false, installerOwnershipQualified: false,
+      minimumHostQualified: false, published: false
+    }));
+  }, 120_000);
   it.runIf(windows)('refuses replacement of a running Windows image and retains the original bytes', async () => {
     const locked = await copy('locked Windows version');
     const executable = path.join(locked, manifest.runtime.executable);

@@ -4,10 +4,13 @@ import { freezeModernValue } from '../domain/governance/activation/modern-graph.
 import { workflowFailure } from './workflow-control-values.js';
 import { assertSource5WorkflowContext } from './workflow-source5-context.js';
 import type { Source5WorkflowContext } from './workflow-source5-context.js';
+import { readSource5WorkflowProgramContent } from './workflow-source5-program-content.js';
+import type { Source5WorkflowInstalledProgramContent } from './workflow-source5-program-content.js';
+import type { WorkflowRuntime } from './workflow-runtime.js';
 
 const commonObligations = freezeModernValue([
   { subject: 'current5-program', code: 'workflow-declaration-current5-program-unavailable',
-    requirement: 'An independently authenticated immutable release of this exact current5 Liftoff program, including its complete executable closure; an older published package or a local build is not that subject.' },
+    requirement: 'The genuine original first-party current5 program and its freshly revalidated complete executable, source and archive closure. A caller path, version label, copied receipt or older package is not that subject; publication and release authority remain separate.' },
   { subject: 'provider-integration', code: 'workflow-declaration-integration-unavailable',
     requirement: 'The actual independently authenticated provider integration selector for this exact full job/check identity; no integration ID is inferred from a name or proposed by a caller.' },
   { subject: 'complete-job', code: 'workflow-declaration-complete-job-unavailable',
@@ -77,20 +80,27 @@ const semanticRecipes = freezeModernValue([
     missingSubjects: ['Independently current authenticated Azure/Staging/ZAP qualification, promoted image/candidate provenance and current protected native host with both handover/custody ports.'] }
 ] as const);
 
+function declarationInput<T extends { readonly context: Source5WorkflowContext }>(input: T, fields: readonly string[]) {
+  if (typeof input !== 'object' || input === null || types.isProxy(input) ||
+    ![Object.prototype, null].includes(Object.getPrototypeOf(input)) ||
+    Reflect.ownKeys(input).length !== fields.length ||
+    Reflect.ownKeys(input).some(key => typeof key !== 'string' || !fields.includes(key)) ||
+    Object.values(Object.getOwnPropertyDescriptors(input)).some(descriptor =>
+      !descriptor.enumerable || !Object.hasOwn(descriptor, 'value'))) {
+    return workflowFailure('workflow-declaration-request',
+      'The private declaration accepts only its original context/runtime/content references, not proposed subjects, observations, registrations, commands or authority.');
+  }
+  const value = Object.freeze({ ...input });
+  assertSource5WorkflowContext(value.context);
+  return value;
+}
+
 /** Declares intended semantics only; unresolved subjects cannot become publishable jobs or rulesets. */
 export function declareSource5WorkflowSources(input: {
   readonly context: Source5WorkflowContext;
 }) {
-  if (typeof input !== 'object' || input === null || types.isProxy(input) ||
-    ![Object.prototype, null].includes(Object.getPrototypeOf(input)) ||
-    Reflect.ownKeys(input).length !== 1 || !Object.hasOwn(input, 'context') ||
-    Object.values(Object.getOwnPropertyDescriptors(input)).some(descriptor =>
-      !descriptor.enumerable || !Object.hasOwn(descriptor, 'value'))) {
-    return workflowFailure('workflow-declaration-request',
-      'The private declaration accepts only the constructed current5 context, not proposed subjects, observations, registrations, commands or authority.');
-  }
-  assertSource5WorkflowContext(input.context);
-  const { records } = input.context;
+  const { context } = declarationInput(input, ['context']);
+  const { records } = context;
   const declaration = {
     identity: records.identity, graphHash: canonicalSha256(records.graph),
     inventory: 'intended-not-observed' as const,
@@ -127,4 +137,34 @@ export function declareSource5WorkflowSources(input: {
   });
 }
 
+/** Resolves only the original program obligation; its data cannot qualify jobs or grant execution. */
+export async function declareSource5WorkflowProgramSources(input: {
+  readonly context: Source5WorkflowContext;
+  readonly runtime: WorkflowRuntime;
+  readonly content: Source5WorkflowInstalledProgramContent;
+}) {
+  const value = declarationInput(input, ['context', 'runtime', 'content']);
+  const program = await readSource5WorkflowProgramContent(value);
+  const intended = declareSource5WorkflowSources({ context: value.context });
+  const declaration = {
+    ...intended.declaration,
+    requiredProgram: {
+      ...intended.declaration.requiredProgram,
+      authenticatedSubject: {
+        kind: 'original-current5-program' as const, scope: 'original-current5-candidate-content' as const,
+        contentDigest: program.contentDigest, assemblyDigest: program.assemblyDigest,
+        archive: { bytes: program.packageArchive.bytes, sha256: program.packageArchive.sha256, mode: program.packageArchive.mode },
+        originalAssembly: program.originalAssembly, delivery: 'not-observed' as const,
+        releaseAuthority: program.releaseAuthority, nativeQualification: program.nativeQualification,
+        workflowAuthority: program.workflowAuthority
+      }
+    }
+  };
+  return freezeModernValue({
+    ...intended, declaration, declarationDigest: canonicalSha256(declaration),
+    blockers: intended.blockers.filter(blocker => blocker.subject !== 'current5-program')
+  });
+}
+
 export type Source5WorkflowSourceDeclaration = ReturnType<typeof declareSource5WorkflowSources>;
+export type Source5WorkflowProgramSourceDeclaration = Awaited<ReturnType<typeof declareSource5WorkflowProgramSources>>;

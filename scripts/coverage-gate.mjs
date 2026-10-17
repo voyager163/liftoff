@@ -31,7 +31,7 @@ export const coverageLimits = Object.freeze([
 export const coveragePackages = Object.freeze({
   cli: Object.freeze({
     id: 'cli',
-    description: 'Liftoff CLI (published @msn-control/liftoff runtime compiled from tsconfig.json include)',
+    description: 'Liftoff CLI (TypeScript build inputs and published raw JavaScript runtime modules)',
     rootParts: [],
     reportParts: ['coverage', 'cli'],
     testParts: [['tests']],
@@ -118,8 +118,27 @@ export function packageRoot(definition, root = repositoryRoot) {
   return path.join(root, ...definition.rootParts);
 }
 
-// The runtime inventory is the TypeScript build input: every .ts file matched by
-// tsconfig include, imported by a test or not. Declaration files hold no code.
+export function publishedRuntimeSources(definition, root = repositoryRoot) {
+  if (definition.id !== 'cli') return [];
+  const base = packageRoot(definition, root);
+  const manifest = readJsonFile(path.join(base, 'package.json'), 'CLI package.json');
+  if (!Array.isArray(manifest?.files) || !manifest.files.every(file => typeof file === 'string' && file)) {
+    fail('CLI package.json must declare its published runtime files.');
+  }
+  const modules = manifest.files.filter(file => !file.startsWith('dist/') && /\.(?:mjs|cjs|js)$/.test(file));
+  for (const file of modules) {
+    if (/[*?[\]{}\\\0]/.test(file) || portablePath(base, file) !== file) {
+      fail(`Published raw runtime modules must use exact portable file paths: ${file}.`);
+    }
+    if (!existsSync(path.join(base, file)) || !statSync(path.join(base, file)).isFile()) {
+      fail(`Published raw runtime module is missing or is not a file: ${file}.`);
+    }
+  }
+  return [...new Set(modules)].sort().map(file => portablePath(root, path.join(base, file)));
+}
+
+// Include every build input and published raw runtime module, imported or not.
+// Declaration files hold no executable code.
 export function sourceInventory(definition, root = repositoryRoot) {
   const base = packageRoot(definition, root);
   const tsconfig = readJsonFile(path.join(base, 'tsconfig.json'), `${definition.id} tsconfig.json`);
@@ -135,13 +154,14 @@ export function sourceInventory(definition, root = repositoryRoot) {
     .filter((file) => file.endsWith('.ts') && !file.endsWith('.d.ts') && statSync(file).isFile())
     .map((file) => portablePath(root, file)));
   if (files.length === 0) fail(`${definition.id} source inventory is empty.`);
-  const inventory = describeFiles(root, files);
+  const rawModules = publishedRuntimeSources(definition, root);
+  const inventory = describeFiles(root, [...files, ...rawModules]);
   for (const required of definition.requiredSources) {
     if (!inventory.files.some((entry) => entry.path === required)) {
       fail(`${definition.id} source inventory no longer contains required runtime source ${required}.`);
     }
   }
-  return { includes: [...patterns], ...inventory };
+  return { includes: [...patterns, ...rawModules], ...inventory };
 }
 
 function filesBelow(root, directoryParts) {

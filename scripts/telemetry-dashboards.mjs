@@ -33,11 +33,11 @@ export async function buildTelemetryDashboard() {
   for (const [key, title, x, y, w, h, series] of definitions) {
     let query = await readFile(path.join(root, 'queries', `${key}.kql`), 'utf8');
     if (!['semantic-outcomes', 'legacy-outcomes', 'command-status'].includes(key)) query = `${common}\n${query}`;
-    if (key === 'freshness') query += '\n| summarize ExpectedProjects = count(), OverdueExpectations = countif(Overdue) by Freshness\n| order by Freshness asc';
+    if (key === 'freshness') query += '\n| summarize ExpectedProjects = countif(isnotempty(ProjectId)), OverdueExpectations = countif(Overdue) by ReportingConfiguration, Freshness\n| order by Freshness asc';
     panels.push({
       id: panels.length + 2, type: series ? 'timeseries' : 'table', title,
       description: key === 'freshness'
-        ? 'Only operator-registered expectations. Empty inventory is unconfigured, not healthy. Never infer disablement or abandonment from silence.'
+        ? 'Only operator-registered expectations. Configuration is explicit metadata, not inferred client state. Empty/excluded inventories are unconfigured; future starts are pending, not healthy or stale. Never infer disablement or abandonment from silence.'
         : ['semantic-outcomes', 'legacy-outcomes', 'command-status'].includes(key)
           ? 'A native query error means unavailable. Anonymous command events contain no project identifier: not project counts and no per-project synthetic classification.'
           : 'A native query error means unavailable. Empty dimensions are no observations, not a query-success fallback. Project counts exclude registered synthetic IDs.',

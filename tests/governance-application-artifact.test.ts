@@ -12,14 +12,16 @@ import {
   observeImmutableApplicationArtifact, readVerifiedApplicationArtifact
 } from '../src/governance-activation/application-artifact.js';
 import {
-  applicationPrerequisiteBinding, executeApplicationPrerequisites
+  applicationPrerequisiteBinding, applicationPrerequisiteTemplate, executeApplicationPrerequisites
 } from '../src/governance-activation/application-prerequisites.js';
 import {
   applicationDeadlineInput, applicationProtectionBlocker, assertApplicationAuthority,
   observeApplicationProtection
 } from '../src/governance-activation/application-readiness.js';
 import { protectedStateCustodyRequest } from '../src/governance-activation/protected-state-handover.js';
-import { loadActivationState } from '../src/governance-activation/activation-state.js';
+import { loadActivationState, writeActivationState } from '../src/governance-activation/activation-state.js';
+import { readReviewedTransitionPlans } from '../src/governance-activation/proof-records.js';
+import { isRecord } from '../src/domain/governance/activation/canonical-json.js';
 import { protectedStateCustodyIdentityDigest } from '../src/governance-activation/protected-state-custody.js';
 import { readbackProof } from '../src/governance-activation/transition-records.js';
 import { nativeStateHostId } from '../src/adapters/state/native-system.js';
@@ -39,6 +41,11 @@ import {
 import {
   applicationPlanningFixture, applicationFixtureClient, applicationFixtureWorkloadClient, applicationFixtureWorkloadPrincipal
 } from './fixtures/governance-coverage/application-project.js';
+import { buildProjectPlan } from '../src/application/project/planning.js';
+import { buildArtifacts } from '../src/templates.js';
+import {
+  applicationArtifactContextStep, applicationContextDirectory
+} from '../src/governance-activation/application-artifact-context-recipe.js';
 
 const scratch = scratchDirectory('application-artifact');
 const imageDigest = `sha256:${'d'.repeat(64)}`;
@@ -67,6 +74,7 @@ class ApplicationRunner implements CommandRunner {
   deploymentState = 'Succeeded';
   deployedTemplate: unknown;
   permissions = ['*'];
+  permissionExclusions: string[] = [];
   providerRegistered = true;
   validationState = 'Succeeded';
   occupied = false;
@@ -119,7 +127,9 @@ class ApplicationRunner implements CommandRunner {
     });
     if (key.startsWith('resource list ')) return result(command, this.inventory.map((entry) =>
       ({ ...entry, name: entry.id.split('/').at(-1), location: 'eastus', managedBy: null })));
-    if (key.includes('Microsoft.Authorization/permissions')) return result(command, { value: [{ actions: this.permissions, notActions: [] }] });
+    if (key.includes('Microsoft.Authorization/permissions')) return result(command, {
+      value: [{ actions: this.permissions, notActions: this.permissionExclusions }]
+    });
     if (key.startsWith('provider show ')) return result(command, {
       id: `/subscriptions/${coverageSubscription}/providers/${argument(command, '--namespace')}`,
       namespace: argument(command, '--namespace'), registrationState: this.providerRegistered ? 'Registered' : 'NotRegistered'
@@ -147,12 +157,13 @@ class ApplicationRunner implements CommandRunner {
     if (key.startsWith('acr show ')) return result(command, {
       id: this.prerequisite!.registryId, name: this.prerequisite!.registryName, location: 'eastus', sku: 'Basic',
       adminUserEnabled: false, provisioningState: 'Succeeded', loginServer: `${this.prerequisite!.registryName}.azurecr.io`,
-      tags: { 'liftoff-binding': this.prerequisite!.bindingDigest, 'unrelated-sensitive-tag': 'withheld-fixture-value' }
+      tags: { 'liftoff-binding': this.prerequisite!.bindingDigest, 'liftoff-environment': this.prerequisite!.environment,
+        'unrelated-sensitive-tag': 'withheld-fixture-value' }
     });
     if (key.startsWith('identity show ')) return result(command, {
       id: this.prerequisite!.identityId, name: this.prerequisite!.identityName, location: 'eastus',
       tenantId: coverageTenant, principalId: applicationFixtureWorkloadPrincipal, clientId: applicationFixtureWorkloadClient,
-      tags: { 'liftoff-binding': this.prerequisite!.bindingDigest }
+      tags: { 'liftoff-binding': this.prerequisite!.bindingDigest, 'liftoff-environment': this.prerequisite!.environment }
     });
     if (key.includes('/roleAssignments/')) {
       const role = this.prerequisite!.roles.find((entry) => argument(command, '--url').includes(entry.id))!;
@@ -196,7 +207,10 @@ class ArtifactTransport implements GitHubActivationTransport {
   executionTreeSha: string | undefined;
   providerScopes = 'repo, workflow';
   runnerUsesBranch = false;
-  dispatchResponse: Record<string, unknown> | null = null;
+  dispatchResponse: Record<string, unknown> | null = {
+    workflow_run_id: 901, run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
+    html_url: 'https://github.com/owner/repo/actions/runs/901'
+  };
   onRunRead: (() => Promise<void>) | undefined;
   onJobsRead: (() => Promise<void>) | undefined;
   onDispatch: (() => void) | undefined;
@@ -276,13 +290,40 @@ function record(input: PhaseAdapterExecutionInput, id: PhaseId, payload: Record<
   return evidence;
 }
 
-async function fixture(artifact = false) {
+async function fixture(artifact = false, rootContext = false,
+  contextRecipe: 'exact' | 'missing' | 'wrong-directory' | 'changed-projection' = 'exact',
+  publication: 'accepted' | 'fresh' = 'accepted') {
   const root = await writeCoverageProject(path.join(scratch, `${++counter}`));
   const runner = new ApplicationRunner();
   const f = await applicationPlanningFixture(root, artifact ? 'application-artifact-ready' : 'application-prerequisites-ready', runner);
   runner.prerequisite = f.prerequisite;
   const transport = new ArtifactTransport();
   if (artifact) {
+    let contextPaths: string[] | undefined;
+    if (rootContext) {
+      const generated = buildArtifacts(buildProjectPlan({
+        projectName: 'coverage', projectType: 'standard', apiStack: 'node-fastify',
+        cloud: 'azure', region: 'eastus', environments: ['dev'], includeFrontend: false,
+        specWorkflow: 'openspec', agents: ['github-copilot'], governanceProfile: 'single-maintainer-gitflow'
+      }, { requireProjectName: true }));
+      const source = generated.filter(file => file.logicalName === 'backend-dockerfile' ||
+        file.logicalName === 'root-dockerignore' || ['backend', 'database'].includes(file.pathParts[0]!));
+      for (const file of [...source, generated.find(file => file.logicalName === 'manifest')!]) {
+        const target = path.join(root, ...file.pathParts);
+        await mkdir(path.dirname(target), { recursive: true });
+        await writeFile(target, file.content);
+      }
+      contextPaths = source.map(file => file.pathParts.join('/'));
+      f.inputs.phases['application-artifact-ready'] = { ...f.inputs.phases['application-artifact-ready'],
+        contextPath: '.', contextPaths, dockerfilePath: 'Dockerfile' };
+    }
+    const projection = contextPaths ? applicationArtifactContextStep(contextPaths) : undefined;
+    if (projection && contextRecipe === 'changed-projection') projection.run += '\nprintf changed-projection\\n';
+    const steps = projection ? [
+      ...(contextRecipe === 'missing' ? [] : [projection]),
+      { run: 'echo isolated fixture only', 'working-directory': contextRecipe === 'wrong-directory'
+        ? '${{ github.workspace }}' : applicationContextDirectory }
+    ] : [{ run: 'echo isolated fixture only' }];
     const inputs = ['binding_digest', 'source_sha', 'context_path', 'dockerfile_path', 'image_repository', 'image_tag',
       'registry_id', 'client_id', 'subscription_id', 'tenant_id', 'environment'];
     transport.workflow = stringify({
@@ -292,13 +333,13 @@ async function fixture(artifact = false) {
       jobs: { publish: {
         name: 'Liftoff application artifact', if: '${{ github.sha == inputs.source_sha && github.run_attempt == 1 }}',
         'runs-on': { group: f.runnerPlan.runnerGroupName, labels: [f.runnerPlan.label] }, 'timeout-minutes': 15,
-        steps: [{ run: 'echo isolated fixture only' }]
+        steps
       } }
     });
     await mkdir(path.join(root, '.github', 'workflows'), { recursive: true });
     await mkdir(path.join(root, 'backend'), { recursive: true });
     await writeFile(path.join(root, '.github', 'workflows', 'application-artifact.yml'), transport.workflow);
-    await writeFile(path.join(root, 'backend', 'Dockerfile'), 'FROM scratch\n');
+    if (!rootContext) await writeFile(path.join(root, 'backend', 'Dockerfile'), 'FROM scratch\n');
     for (const args of [['init', '--initial-branch=develop'], ['add', '.'],
       ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-m', 'Isolated fixture']]) {
       const value = await runner.run({ executable: 'git', args }, { cwd: root }); expect(value.status).toBe(0);
@@ -309,6 +350,9 @@ async function fixture(artifact = false) {
       sourceSha: sha, sourceTreeSha: treeSha, workflowDigest: createHash('sha256').update(transport.workflow).digest('hex') };
   }
   f.inspection = await coverageInspection({ root, phaseId: f.phase.id, state: f.state, activationInputs: f.inputs });
+  if (publication === 'accepted') {
+    await writeActivationState(root, f.state, { expectedContentHash: null });
+  }
   const preview = (await buildSavedTransitionPlan(f))!;
   const approval = await issuePriorApproval(root, f.state, preview);
   f.inspection.approvals = [approval];
@@ -388,7 +432,42 @@ async function fixture(artifact = false) {
   const newPreview = (await buildSavedTransitionPlan(input))!;
   input.inspection.approvals = [await issuePriorApproval(root, f.state, newPreview)];
   input.plan = (await buildSavedTransitionPlan(input))!;
-  if (artifact) { transport.binding = applicationArtifactBinding(input); runner.artifact = transport.binding; }
+  if (artifact) {
+    transport.binding = applicationArtifactBinding(input); runner.artifact = transport.binding;
+  }
+  if (publication === 'accepted') {
+    input.inspection.contexts[f.phase.id].reviewedPlans = [input.plan];
+    const phase = f.state.phases[f.phase.id];
+    phase.state = 'running';
+    phase.executionPlanDigest = input.plan.planDigest;
+    const acceptedAt = new Date(coverageNow.getTime() - 1).toISOString();
+    if (artifact) {
+      transport.dispatched = true;
+      phase.operation = {
+        provider: 'github', actionId: 'github.artifact.build-dispatch', operationId: 'github-actions:901',
+        resourceId: '/repos/owner/repo/actions/runs/901', pollUrl: 'https://api.github.com/repos/owner/repo/actions/runs/901',
+        startedAt: acceptedAt, observedAt: acceptedAt,
+        status: 'running', planDigest: input.plan.planDigest
+      };
+    } else {
+      runner.deployedTemplate = applicationPrerequisiteTemplate(f.prerequisite);
+      phase.operation = {
+        provider: 'azure', actionId: 'azure.prerequisites.apply',
+        operationId: `azure-deployment:${f.prerequisite.deploymentId.toLowerCase()}`,
+        resourceId: f.prerequisite.deploymentId,
+        pollUrl: `https://management.azure.com${f.prerequisite.deploymentId}?api-version=2022-09-01`,
+        startedAt: acceptedAt, observedAt: acceptedAt, status: 'running', planDigest: input.plan.planDigest
+      };
+      f.state.phaseOutputs![f.phase.id] = {
+        values: { prerequisiteBindingDigest: f.prerequisite.bindingDigest, environment: f.prerequisite.environment,
+          registryResourceId: f.prerequisite.registryId, workloadIdentityResourceId: f.prerequisite.identityId },
+        resources: [{ provider: 'azure', resourceType: 'Microsoft.Resources/deployments', resourceId: f.prerequisite.deploymentId }]
+      };
+    }
+    const prior = await loadActivationState(root);
+    await writeActivationState(root, f.state, { expectedContentHash: prior!.contentHash });
+    input.inspection.loadedState = await loadActivationState(root);
+  }
   return { ...f, input, runner, transport, custody };
 }
 
@@ -401,17 +480,46 @@ describe('application source producers behind real prerequisites', () => {
     expect(f.input.plan.operations.map((entry) => entry.actionId)).toContain('azure.deployment.classify-ownership');
     expect(await observeApplicationProtection(f.input)).toMatchObject({ custody: { hostId: nativeStateHostId() } });
   });
-  it('uses bounded real ARM dispatch/readback shapes and sanitized provider output', async () => {
+  it('observes an original accepted ARM deployment with bounded readback and sanitized provider output', async () => {
     const f = await fixture();
     const outcome = await executeApplicationPrerequisites(f.input);
     expect(outcome, JSON.stringify(outcome)).toMatchObject({ status: 'completed', resultState: 'verified',
       operation: { status: 'completed' }, outputs: { values: { workloadPrincipalId: applicationFixtureWorkloadPrincipal } } });
-    expect(f.runner.writes).toHaveLength(1);
+    expect(f.runner.writes).toEqual([]);
     expect(JSON.stringify(outcome)).not.toContain('withheld-fixture-value');
     expect(f.runner.options.filter((entry) => entry.timeoutMs).every((entry) => entry.timeoutMs! <= 30_000 && entry.stream === false)).toBe(true);
   });
-  it.each(['ports', 'authority', 'permission', 'provider', 'collision', 'ownership'] as const)('refuses %s before dispatch', async (kind) => {
+  it.each(['registry', 'identity'].flatMap(resource => [
+    { resource, drift: 'missing', value: undefined },
+    { resource, drift: 'changed', value: 'staging' },
+    { resource, drift: 'null', value: null },
+    { resource, drift: 'nonstring', value: false }
+  ]))('refuses $resource $drift environment metadata rather than manufacturing an approved readback tag', async ({ resource, value }) => {
     const f = await fixture();
+    const run = f.runner.run.bind(f.runner);
+    vi.spyOn(f.runner, 'run').mockImplementation(async (command, options) => {
+      const observed = await run(command, options);
+      if (command.args.join(' ').startsWith(resource === 'registry' ? 'acr show ' : 'identity show ')) {
+        const body: unknown = JSON.parse(observed.stdout);
+        if (!isRecord(body) || !isRecord(body.tags)) throw new Error('Isolated provider fixture has invalid tag metadata.');
+        const tags = { ...body.tags };
+        if (value === undefined) delete tags['liftoff-environment'];
+        else tags['liftoff-environment'] = value;
+        return result(command, { ...body, tags });
+      }
+      return observed;
+    });
+    const outcome = await executeApplicationPrerequisites(f.input);
+    expect(outcome).toMatchObject({
+      status: 'blocked', blocker: expect.stringMatching(/prerequisite/), operation: { status: 'completed' }
+    });
+    expect(outcome.evidencePayload).toBeUndefined();
+    expect(outcome.outputs?.values.loginServer).toBeUndefined();
+    expect(outcome.outputs?.values.workloadPrincipalId).toBeUndefined();
+    expect(f.runner.writes).toEqual([]);
+  });
+  it.each(['ports', 'authority', 'permission', 'provider', 'collision', 'ownership'] as const)('refuses %s before dispatch', async (kind) => {
+    const f = await fixture(false, false, 'exact', 'fresh');
     if (kind === 'ports') f.input.adapters = {};
     if (kind === 'authority') f.input.inspection.approvals = [];
     if (kind === 'permission') f.runner.permissions = ['Microsoft.Resources/deployments/read'];
@@ -432,7 +540,50 @@ describe('application source producers behind real prerequisites', () => {
     if (first.operation) first.operation.planDigest = f.input.plan.planDigest;
     const next = await executeApplicationPrerequisites(f.input);
     expect(next, JSON.stringify(next)).toMatchObject({ status: 'pending' });
-    expect(f.runner.writes).toHaveLength(1);
+    expect(f.runner.writes).toEqual([]);
+  });
+  it.each(['Running', 'Succeeded'])('observes the original %s prerequisite deployment without fresh create or role-assignment grants', async state => {
+    const f = await fixture();
+    f.runner.deploymentState = 'Running';
+    const first = await executeApplicationPrerequisites(f.input);
+    expect(first).toMatchObject({ status: 'pending', operation: { status: 'running' } });
+    f.input.inspection.state.phases[f.phase.id].operation = {
+      ...first.operation!, planDigest: f.input.plan.planDigest
+    };
+    f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+    f.runner.permissions = [
+      'Microsoft.Resources/deployments/read', 'Microsoft.Resources/deployments/exportTemplate/action',
+      'Microsoft.Resources/subscriptions/resourceGroups/read',
+      'Microsoft.ContainerRegistry/registries/read', 'Microsoft.ManagedIdentity/userAssignedIdentities/read',
+      'Microsoft.Authorization/roleAssignments/read'
+    ];
+    f.runner.deploymentState = state;
+    const next = await executeApplicationPrerequisites({
+      ...f.input, applicationObservationOnly: true, now: new Date(coverageNow.getTime() + 1000)
+    });
+    expect(next, JSON.stringify(next)).toMatchObject({
+      status: state === 'Running' ? 'pending' : 'completed',
+      operation: { operationId: first.operation!.operationId, startedAt: first.operation!.startedAt,
+        planDigest: f.input.plan.planDigest }
+    });
+    expect(f.runner.writes).toEqual([]);
+  });
+  it('blocks actual prerequisite read denial without discarding its original handle or redispatching', async () => {
+    const f = await fixture();
+    f.runner.deploymentState = 'Running';
+    const first = await executeApplicationPrerequisites(f.input);
+    expect(first).toMatchObject({ status: 'pending' });
+    const operation = { ...first.operation!, planDigest: f.input.plan.planDigest };
+    f.input.inspection.state.phases[f.phase.id].operation = operation;
+    f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+    f.runner.permissions = [];
+    f.runner.failPoll = true;
+    const outcome = await executeApplicationPrerequisites({ ...f.input, applicationObservationOnly: true });
+    expect(outcome).toMatchObject({ status: 'blocked' });
+    expect(f.input.inspection.state.phases[f.phase.id].operation).toEqual(operation);
+    expect(outcome.evidencePayload).toBeUndefined();
+    expect(JSON.stringify(outcome)).not.toContain('secret-provider-diagnostics');
+    expect(f.runner.writes).toEqual([]);
   });
   it.each(['owned', 'unknown-extra', 'poll-failure'] as const)(
     'resumes the engine read-only with %s inventory and never repeats creation', async (kind) => {
@@ -457,7 +608,7 @@ describe('application source producers behind real prerequisites', () => {
       }
       const next = await executeApplyNext({ inspection, reinspect: async () => inspection, runner: f.runner,
         now: new Date(coverageNow.getTime() + 1000), adapters: f.input.adapters });
-      expect(f.runner.writes).toHaveLength(1);
+      expect(f.runner.writes).toEqual([]);
       const after = (await readState(f.root))!;
       expect(after.phases[f.phase.id].operation?.operationId).toBe(saved.phases[f.phase.id].operation?.operationId);
       if (kind === 'owned') {
@@ -472,7 +623,7 @@ describe('application source producers behind real prerequisites', () => {
     }
   );
   it('blocks a resource appearing during validation before any prerequisite write', async () => {
-    const f = await fixture();
+    const f = await fixture(false, false, 'exact', 'fresh');
     f.runner.onValidation = () => f.runner.inventory.push({
       id: f.prerequisite.registryId, type: 'Microsoft.ContainerRegistry/registries'
     });
@@ -480,8 +631,43 @@ describe('application source producers behind real prerequisites', () => {
       blocker: expect.stringMatching(/uncertain/) });
     expect(f.runner.writes).toEqual([]);
   });
+  it.each(['registry', 'identity'] as const)(
+    'does not create over a competing %s destination after the last ownership preflight', async resource => {
+      const f = await fixture(false, false, 'exact', 'fresh');
+      const recordIntent = f.input.recordApplicationDispatchIntent!;
+      f.input.recordApplicationDispatchIntent = vi.fn(async operation => {
+        await recordIntent(operation);
+        f.runner.inventory.push(resource === 'registry'
+          ? { id: f.prerequisite.registryId, type: 'Microsoft.ContainerRegistry/registries' }
+          : { id: f.prerequisite.identityId, type: 'Microsoft.ManagedIdentity/userAssignedIdentities' });
+      });
+      const outcome = await executeApplicationPrerequisites(f.input);
+      expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/resource-level create-only/) });
+      expect(f.input.recordApplicationDispatchIntent).not.toHaveBeenCalled();
+      expect(f.runner.writes).toEqual([]);
+      expect(outcome.evidencePayload).toBeUndefined();
+    }
+  );
+  it.each(['fresh', 'intent-only', 'observation-only'] as const)(
+    'refuses %s prerequisite creation without manufacturing a no-replace capability', async kind => {
+      const f = await fixture(false, false, 'exact', 'fresh');
+      if (kind === 'intent-only') f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+      if (kind === 'observation-only') f.input.applicationObservationOnly = true;
+      const intent = vi.spyOn(f.input, 'recordApplicationDispatchIntent');
+      const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+      const outcome = await executeApplicationPrerequisites(f.input);
+      const reason = kind === 'fresh' ? /resource-level create-only/
+        : kind === 'intent-only' ? /acceptance|confirmed provider handle/ : /recorded provider handle/;
+      expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(reason) });
+      expect(intent).not.toHaveBeenCalled();
+      expect(progress).not.toHaveBeenCalled();
+      expect(f.runner.writes).toEqual([]);
+      expect(outcome.evidencePayload).toBeUndefined();
+      expect(f.input.inspection.state.phases[f.phase.id].operation).toBeUndefined();
+    }
+  );
   it('does not confuse preflight refusal with uncertain dispatch and can retry after permission is corrected', async () => {
-    const f = await fixture(); f.runner.permissions = ['Microsoft.Resources/deployments/read'];
+    const f = await fixture(false, false, 'exact', 'fresh'); f.runner.permissions = ['Microsoft.Resources/deployments/read'];
     const first = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
       runner: f.runner, now: coverageNow, adapters: f.input.adapters });
     expect(first).toMatchObject({ applied: false });
@@ -496,12 +682,14 @@ describe('application source producers behind real prerequisites', () => {
       inspection.contexts[id].reviewedPlans = f.input.inspection.contexts[id].reviewedPlans;
     }
     f.runner.permissions = ['*'];
-    expect(await executeApplyNext({ inspection, reinspect: async () => inspection, runner: f.runner,
-      now: new Date(coverageNow.getTime() + 1000), adapters: f.input.adapters })).toMatchObject({ applied: true });
-    expect(f.runner.writes).toHaveLength(1);
+    const next = await executeApplyNext({ inspection, reinspect: async () => inspection, runner: f.runner,
+      now: new Date(coverageNow.getTime() + 1000), adapters: f.input.adapters });
+    expect(next).toMatchObject({ applied: false, blockers: [expect.stringMatching(/resource-level create-only/)] });
+    expect((await readState(f.root))!.phases[f.phase.id].executionPlanDigest).toBeUndefined();
+    expect(f.runner.writes).toEqual([]);
   });
   it.each(['Running', 'Failed', 'unknown'])('does not create on %s ARM validation', async (state) => {
-    const f = await fixture(); f.runner.validationState = state;
+    const f = await fixture(false, false, 'exact', 'fresh'); f.runner.validationState = state;
     expect(await executeApplicationPrerequisites(f.input)).toMatchObject({
       status: 'blocked', blocker: expect.stringMatching(/completed validation/)
     });
@@ -513,11 +701,29 @@ describe('application source producers behind real prerequisites', () => {
       blocker: expect.stringMatching(/engine-owned durable intent/) });
     expect(f.runner.calls.filter((entry) => entry.executable === 'az')).toEqual([]);
   });
-  it('does not lose a confirmed deployment handle on failed first poll or expose provider diagnostics', async () => {
+  it('retains the original deployment handle on read denial without exposing provider diagnostics', async () => {
     const f = await fixture(); f.runner.failPoll = true;
+    const operation = structuredClone(f.input.inspection.state.phases[f.phase.id].operation);
     const outcome = await executeApplicationPrerequisites(f.input);
-    expect(outcome).toMatchObject({ status: 'pending', operation: { resourceId: f.prerequisite.deploymentId } });
+    expect(outcome).toMatchObject({ status: 'blocked' });
+    expect(f.input.inspection.state.phases[f.phase.id].operation).toEqual(operation);
+    expect(f.runner.writes).toEqual([]);
     expect(JSON.stringify(outcome)).not.toContain('secret-provider-diagnostics');
+  });
+  it('rejects a changed actual deployed recipe while observing an original handle', async () => {
+    const f = await fixture();
+    const actual = f.runner.deployedTemplate;
+    if (!isRecord(actual)) throw new Error('The isolated accepted fixture has no deployed template.');
+    f.runner.deployedTemplate = { ...actual, contentVersion: '2.0.0.0' };
+    const outcome = await executeApplicationPrerequisites(f.input);
+    expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/actual deployed prerequisite recipe/),
+      operation: { resourceId: f.prerequisite.deploymentId, status: 'completed' } });
+    expect(outcome.evidencePayload).toBeUndefined();
+    expect(outcome.outputs?.resources).toEqual([{
+      provider: 'azure', resourceType: 'Microsoft.Resources/deployments', resourceId: f.prerequisite.deploymentId
+    }]);
+    expect(outcome.outputs?.values.workloadPrincipalId).toBeUndefined();
+    expect(f.runner.writes).toEqual([]);
   });
   it.each(['read-failure', 'source-change'] as const)(
     'checkpoints completed prerequisite dispatch before %s during recipe export without inventing resource proof', async (kind) => {
@@ -567,7 +773,7 @@ describe('application source producers behind real prerequisites', () => {
           operationId: operation.operationId, startedAt: operation.startedAt, planDigest: operation.planDigest, status: 'completed'
         });
       }
-      expect(f.runner.writes).toHaveLength(1);
+      expect(f.runner.writes).toEqual([]);
     }
   );
   it('preserves actual failed prerequisite status when concurrent source changes refuse the final outcome', async () => {
@@ -584,14 +790,15 @@ describe('application source producers behind real prerequisites', () => {
       state: 'running', operation: { resourceId: f.prerequisite.deploymentId, status: 'failed' }
     });
     expect(await readFile(policyPath, 'utf8')).toBe(`${policy}\n`);
-    expect(f.runner.writes).toHaveLength(1);
+    expect(f.runner.writes).toEqual([]);
   });
-  it('checkpoints only the actual accepted operation, never future resources', async () => {
-    const f = await fixture(); f.runner.deploymentState = 'Running';
+  it('checkpoints the actual terminal observation, never future resource ownership', async () => {
+    const f = await fixture();
     const checkpoints: Parameters<NonNullable<PhaseAdapterExecutionInput['recordApplicationProgress']>>[0][] = [];
     f.input.recordApplicationProgress = async (progress) => { checkpoints.push(progress); };
     await executeApplicationPrerequisites(f.input);
     expect(checkpoints).toHaveLength(1);
+    expect(checkpoints[0]!.operation.status).toBe('completed');
     expect(checkpoints[0]!.outputs.resources).toEqual([{
       provider: 'azure', resourceType: 'Microsoft.Resources/deployments', resourceId: f.prerequisite.deploymentId
     }]);
@@ -620,7 +827,7 @@ describe('application source producers behind real prerequisites', () => {
       expect(next.evidencePayload).toBeUndefined();
       expect(next.outputs?.values.workloadPrincipalId).toBeUndefined();
       expect(progress).not.toHaveBeenCalled();
-      expect(f.runner.writes).toHaveLength(1);
+      expect(f.runner.writes).toEqual([]);
     }
   );
   it.each(['registrySku', 'assignRegistryRoles', 'environment', 'budget', 'principal', 'unknown'] as const)(
@@ -673,31 +880,151 @@ describe('application source producers behind real prerequisites', () => {
 });
 
 describe('immutable application publication and independent readback', () => {
-  it('uses the documented accepted run ID without waiting for eventually consistent discovery', async () => {
+  it.each([false, true])('refuses fresh publication without actual no-replace admission for root context %s', async rootContext => {
+    const f = await fixture(true, rootContext, 'exact', 'fresh');
+    const intent = vi.spyOn(f.input, 'recordApplicationDispatchIntent');
+    const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+    const outcome = await executeApplicationArtifactPublication(f.input);
+    expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/no-replace|overwrite/) });
+    expect(intent).not.toHaveBeenCalled();
+    expect(progress).not.toHaveBeenCalled();
+    expect(f.transport.calls.some(entry => entry.method !== 'GET')).toBe(false);
+    expect(f.runner.writes).toEqual([]);
+    expect(outcome.operation).toBeUndefined();
+    expect(outcome.evidencePayload).toBeUndefined();
+    expect(outcome.outputs?.values.immutableImage).toBeUndefined();
+  });
+  it.each([
+    'Microsoft.ContainerRegistry/registries/read',
+    'Microsoft.ContainerRegistry/registries/listBuildSourceUploadUrl/action',
+    'Microsoft.ContainerRegistry/registries/scheduleRun/action',
+    'Microsoft.ContainerRegistry/registries/runs/read'
+  ])('refuses absent actual registry build permission %s before dispatch or source upload', async missing => {
+    const f = await fixture(true, false, 'exact', 'fresh');
+    f.runner.permissions = [
+      'Microsoft.ContainerRegistry/registries/read',
+      'Microsoft.ContainerRegistry/registries/listBuildSourceUploadUrl/action',
+      'Microsoft.ContainerRegistry/registries/scheduleRun/action',
+      'Microsoft.ContainerRegistry/registries/runs/read'
+    ].filter(action => action !== missing);
+    const outcome = await executeApplicationArtifactPublication(f.input);
+    expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/build.*permission/) });
+    expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
+    expect(f.runner.writes).toEqual([]);
+  });
+  it('honors actual registry build permission exclusions instead of treating AcrPush as build scheduling authority', async () => {
+    const f = await fixture(true, false, 'exact', 'fresh');
+    f.runner.permissionExclusions = ['Microsoft.ContainerRegistry/registries/scheduleRun/action'];
+    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({
+      status: 'blocked', blocker: expect.stringMatching(/build.*permission/)
+    });
+    expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
+  });
+  it('independently observes build permissions at the exact registry scope on every pre-dispatch check', async () => {
+    const f = await fixture(true, false, 'exact', 'fresh');
+    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({
+      status: 'blocked', blocker: expect.stringMatching(/no-replace/)
+    });
+    const url = `https://management.azure.com${f.transport.binding.registryId}/providers/Microsoft.Authorization/permissions?api-version=2022-04-01`;
+    const observations = f.runner.calls.filter(command => command.args.includes(url));
+    expect(observations).toHaveLength(3);
+    expect(observations.every(command => command.executable === 'az' && argument(command, '--method') === 'GET' &&
+      argument(command, '--resource') === 'https://management.core.windows.net/')).toBe(true);
+  });
+  it('refuses build authority revoked during awaited execution-tag admission before any fresh publication intent', async () => {
+    const f = await fixture(true, false, 'exact', 'fresh');
+    const intent = vi.spyOn(f.input, 'recordApplicationDispatchIntent');
+    let tagReads = 0;
+    f.transport.onExecutionTagRead = () => {
+      if (++tagReads === 2) f.runner.permissionExclusions = ['Microsoft.ContainerRegistry/registries/scheduleRun/action'];
+    };
+    const outcome = await executeApplicationArtifactPublication(f.input);
+    expect(tagReads).toBe(2);
+    expect(intent).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/build.*permission/) });
+    expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
+    expect(outcome.operation).toBeUndefined();
+    expect(outcome.evidencePayload).toBeUndefined();
+  });
+  it('binds the actual generated root Dockerfile and exact manifest-owned context during accepted-run observation', async () => {
+    const f = await fixture(true, true);
+    expect(f.transport.binding).toMatchObject({ contextPath: '.', dockerfilePath: 'Dockerfile',
+      contextPaths: expect.arrayContaining(['Dockerfile', '.dockerignore', 'backend/package.json']),
+      sourceManifestDigest: canonicalSha256(f.input.inspection.manifest) });
+    const outcome = await executeApplicationArtifactPublication(f.input);
+    expect(outcome, JSON.stringify(outcome)).toMatchObject({ status: 'completed', resultState: 'verified' });
+    expect(f.transport.calls.some(entry => entry.method !== 'GET')).toBe(false);
+    expect(f.input.plan.operations.find(entry => entry.actionId === 'github.artifact.build-dispatch')?.inputs)
+      .toMatchObject({ contextPaths: f.transport.binding.contextPaths });
+  });
+  it.each(['missing', 'wrong-directory', 'changed-projection'] as const)(
+    'refuses a reviewed %s root-context recipe before dispatch rather than uploading the whole repository', async kind => {
+      const f = await fixture(true, true, kind);
+      expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({
+        status: 'blocked', blocker: expect.stringMatching(/exact reviewed immutable-file projection/)
+      });
+      expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
+      expect(f.runner.calls.some(entry => entry.executable === 'gh')).toBe(false);
+    }
+  );
+  it('preserves and refuses changed selected root-context source without dispatch', async () => {
+    const f = await fixture(true, true);
+    await writeFile(path.join(f.root, 'backend', 'package.json'), '{"preserved":"customization"}\n');
+    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({
+      status: 'blocked', blocker: expect.stringMatching(/source differs/)
+    });
+    expect(await readFile(path.join(f.root, 'backend', 'package.json'), 'utf8')).toBe('{"preserved":"customization"}\n');
+    expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
+  });
+  it.each([undefined, [], ['../private'], ['Dockerfile', 'backend']].map(paths => ({ paths })))(
+    'blocks an absent, unsafe or directory-sweep root context $paths without throwing or dispatching', async ({ paths }) => {
+      const f = await fixture(true, true);
+      f.inputs.phases['application-artifact-ready'] = { ...f.inputs.phases['application-artifact-ready'], contextPaths: paths };
+      expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked' });
+      expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
+    }
+  );
+  it.each(['fresh-no-handle', 'intent-only-recovery'] as const)(
+    'refuses new publication or run-list adoption without original accepted-run provenance during %s', async (kind) => {
+      const f = await fixture(true, false, 'exact', 'fresh');
+      f.transport.dispatchResponse = null;
+      if (kind === 'intent-only-recovery') {
+        f.transport.dispatched = true;
+        f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+      }
+      const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+      const outcome = await executeApplicationArtifactPublication(f.input);
+      expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/acceptance|accepted/) });
+      expect(outcome.operation).toBeUndefined();
+      expect(outcome.evidencePayload).toBeUndefined();
+      expect(outcome.outputs?.values.immutableImage).toBeUndefined();
+      expect(progress).not.toHaveBeenCalled();
+      expect(f.transport.calls.some((entry) => entry.path.includes('/jobs'))).toBe(false);
+      expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST'))
+        .toHaveLength(0);
+    }
+  );
+  it('observes the original accepted run ID without eventually consistent discovery or a new dispatch', async () => {
     const f = await fixture(true);
     f.transport.invisible = true;
-    f.transport.dispatchResponse = {
-      workflow_run_id: 901, run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
-      html_url: 'https://github.com/owner/repo/actions/runs/901', privateDiagnostic: 'fixture-secret-response'
-    };
+    const run = f.transport.run.bind(f.transport);
+    vi.spyOn(f.transport, 'run').mockImplementation(() => ({ ...run(), privateDiagnostic: 'fixture-secret-response' }));
     const progress = vi.fn(f.input.recordApplicationProgress!);
     f.input.recordApplicationProgress = progress;
     const outcome = await executeApplicationArtifactPublication(f.input);
     expect(outcome).toMatchObject({ status: 'completed', resultState: 'verified',
       operation: { operationId: 'github-actions:901' } });
-    expect(progress).toHaveBeenCalledTimes(2);
+    expect(progress).toHaveBeenCalledOnce();
     expect(progress.mock.calls[0]![0]).toMatchObject({
-      operation: { operationId: 'github-actions:901', resourceId: '/repos/owner/repo/actions/runs/901' },
+      operation: { operationId: 'github-actions:901', resourceId: '/repos/owner/repo/actions/runs/901', status: 'completed' },
       liveReadback: [{ provider: 'github', resourceId: '/repos/owner/repo/actions/runs/901' }]
     });
-    expect(progress.mock.calls[1]![0]).toMatchObject({
-      operation: { operationId: 'github-actions:901', status: 'completed' }
-    });
-    expect(f.transport.calls.filter((entry) => entry.method === 'GET' && entry.path.includes('/actions/workflows/'))).toHaveLength(1);
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'GET' && entry.path.includes('/actions/workflows/'))).toHaveLength(0);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
     expect(JSON.stringify([outcome, progress.mock.calls])).not.toContain('fixture-secret-response');
   });
-  it('checkpoints the accepted provider ID before a failing metadata read and only observes it on retry', async () => {
+  it('retains the original checkpointed provider ID through failed metadata observation and retries without write permission', async () => {
     const f = await fixture(true);
     f.transport.invisible = true;
     f.transport.runStatus = 'in_progress';
@@ -712,7 +1039,7 @@ describe('immutable application publication and independent readback', () => {
     };
     const first = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
       runner: f.runner, now: coverageNow, adapters: f.input.adapters });
-    expect(first).toMatchObject({ applied: false, reason: 'external-operation-pending' });
+    expect(first).toMatchObject({ applied: false, reason: 'blocked' });
     expect(checkpointDuringPoll?.phases[f.phase.id]).toMatchObject({
       state: 'running', operation: { operationId: 'github-actions:901', status: 'running' }
     });
@@ -721,12 +1048,13 @@ describe('immutable application publication and independent readback', () => {
     expect(operation).toMatchObject({ operationId: 'github-actions:901', status: 'running',
       pollUrl: 'https://api.github.com/repos/owner/repo/actions/runs/901' });
     f.transport.onRunRead = undefined;
+    f.runner.permissions = [];
     f.input.inspection.state = saved;
     f.input.inspection.contexts[f.phase.id].reviewedPlans = [f.input.plan];
     const next = await executeApplicationArtifactPublication({ ...f.input, now: new Date(coverageNow.getTime() + 1000) });
     expect(next, JSON.stringify(next)).toMatchObject({ status: 'pending',
       operation: { operationId: operation.operationId, startedAt: operation.startedAt, planDigest: operation.planDigest } });
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it.each(['success', 'failure', 'cancelled', 'timed_out', 'action_required', 'neutral', 'skipped', 'stale'] as const)(
     'checkpoints actual terminal %s run status before a failing job read and recovers without dispatch', async (conclusion) => {
@@ -771,7 +1099,7 @@ describe('immutable application publication and independent readback', () => {
         operationId: operation.operationId, startedAt: operation.startedAt, planDigest: operation.planDigest,
         status: terminalStatus
       });
-      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
     }
   );
   it.each(['success', 'failure'] as const)('blocks regressing nonterminal readback of a known %s terminal run without redispatch', async (conclusion) => {
@@ -797,7 +1125,7 @@ describe('immutable application publication and independent readback', () => {
         planDigest: operation.planDigest, status: terminalStatus } });
     expect(next.evidencePayload).toBeUndefined();
     expect(next.outputs?.values.immutableImage).toBeUndefined();
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it.each(['', 'unknown'] as const)('refuses unsupported terminal conclusion %j without inferring publication success', async (conclusion) => {
     const f = await fixture(true);
@@ -811,7 +1139,7 @@ describe('immutable application publication and independent readback', () => {
     expect(saved.phaseOutputs?.[f.phase.id]?.values.immutableImage).toBeUndefined();
     expect(saved.phases[f.phase.id].evidence.some((entry) => entry.result === 'verified')).toBe(false);
     expect(f.transport.calls.some((entry) => entry.path.includes('/jobs'))).toBe(false);
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it('retains actual terminal run progress when source changes during a later failed job observation', async () => {
     const f = await fixture(true);
@@ -830,20 +1158,17 @@ describe('immutable application publication and independent readback', () => {
     expect(saved.phaseOutputs?.[f.phase.id]?.values.artifactDigest).toBeUndefined();
     expect(saved.phases[f.phase.id].evidence).toEqual([]);
     expect(await readFile(path.join(f.root, 'backend', 'Dockerfile'), 'utf8')).toBe('FROM preserved-customization\n');
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
-  it.each(['run-url', 'html-url', 'run-id', 'missing'] as const)(
-    'refuses malformed accepted %s metadata without inventing a scoped handle or repeating dispatch', async (kind) => {
+  it.each(['poll-url', 'resource-id', 'operation-id', 'missing-handle'] as const)(
+    'refuses malformed original %s metadata without inventing a scoped handle or repeating dispatch', async (kind) => {
       const f = await fixture(true);
       f.transport.invisible = true;
-      f.transport.dispatchResponse = {
-        workflow_run_id: 901, run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
-        html_url: 'https://github.com/owner/repo/actions/runs/901', privateDiagnostic: 'fixture-secret-response'
-      };
-      if (kind === 'run-url') f.transport.dispatchResponse.run_url = 'https://api.github.com/repos/other/repo/actions/runs/901';
-      if (kind === 'html-url') f.transport.dispatchResponse.html_url = 'https://github.com/owner/repo/actions/runs/902';
-      if (kind === 'run-id') f.transport.dispatchResponse.workflow_run_id = 'fixture-secret-response';
-      if (kind === 'missing') f.transport.dispatchResponse = {};
+      const phase = f.input.inspection.state.phases[f.phase.id];
+      if (kind === 'poll-url') phase.operation!.pollUrl = 'https://api.github.com/repos/other/repo/actions/runs/901';
+      if (kind === 'resource-id') phase.operation!.resourceId = '/repos/owner/repo/actions/runs/902';
+      if (kind === 'operation-id') phase.operation!.operationId = 'fixture-secret-response';
+      if (kind === 'missing-handle') delete phase.operation;
       const progress = vi.fn(f.input.recordApplicationProgress!);
       f.input.recordApplicationProgress = progress;
       const outcome = await executeApplicationArtifactPublication(f.input);
@@ -853,10 +1178,10 @@ describe('immutable application publication and independent readback', () => {
       expect(JSON.stringify(outcome)).not.toContain('fixture-secret-response');
       f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
       expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked' });
-      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
     }
   );
-  it('dispatches the real approved recipe once and binds actual source/run/registry/digest readback', async () => {
+  it('binds original accepted source/run/registry/digest readback without any new publication', async () => {
     const f = await fixture(true);
     const outcome = await executeApplicationArtifactPublication(f.input);
     expect(outcome, JSON.stringify(outcome)).toMatchObject({ status: 'completed', resultState: 'verified',
@@ -866,12 +1191,11 @@ describe('immutable application publication and independent readback', () => {
         binding: { sourceSha: f.transport.binding.sourceSha, treeSha: f.transport.binding.sourceTreeSha,
           executionRef: f.transport.binding.executionRef }, protectingRulesetIds: [11] }
     });
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
     expect(f.input.plan.operations.find((entry) => entry.actionId === 'github.artifact.build-dispatch')?.inputs)
       .toMatchObject({ sourceSha: f.transport.binding.sourceSha, sourceTreeSha: f.transport.binding.sourceTreeSha,
         executionRef: f.transport.binding.executionRef });
-    expect(f.transport.calls.find((entry) => entry.method === 'POST')?.body)
-      .toMatchObject({ ref: `liftoff-execution-${f.transport.binding.sourceSha}` });
+    expect(f.transport.calls.some(entry => entry.method !== 'GET')).toBe(false);
     expect(outcome.liveReadback?.map((entry) => entry.provider)).toEqual(['github', 'azure', 'azure']);
     const verification = f.runner.calls.find((entry) => entry.executable === 'gh')!;
     expect(verification.args).toContain('--source-digest');
@@ -896,41 +1220,41 @@ describe('immutable application publication and independent readback', () => {
       expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
     }
   );
-  it('reobserves execution-ref admission after durable intent and before actual dispatch', async () => {
+  it('reobserves original execution-ref admission before accepted-handle observation', async () => {
     const f = await fixture(true);
-    f.input.recordApplicationDispatchIntent = async () => { f.transport.executionTagProtected = false; };
+    let tagReads = 0;
+    f.transport.onExecutionTagRead = () => { if (++tagReads === 1) f.transport.executionTagProtected = false; };
     expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked' });
     expect(f.transport.calls.every((entry) => entry.method === 'GET')).toBe(true);
     expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
   });
-  it('rechecks authority after awaited execution-tag admission before transmitting source through dispatch', async () => {
-    const f = await fixture(true);
+  it('rechecks authority after awaited execution-tag admission before any fresh publication intent', async () => {
+    const f = await fixture(true, false, 'exact', 'fresh');
     let now = coverageNow;
-    let intentRecorded = false;
+    let tagReads = 0;
     f.input.clock = () => now;
-    const intent = vi.fn(async () => { intentRecorded = true; });
+    const intent = vi.fn(async () => {});
     f.input.recordApplicationDispatchIntent = intent;
     f.transport.onExecutionTagRead = () => {
-      if (intentRecorded) now = new Date(Date.parse(f.input.plan.expiresAt) + 1000);
+      if (++tagReads === 2) now = new Date(Date.parse(f.input.plan.expiresAt) + 1000);
     };
     const progress = vi.spyOn(f.input, 'recordApplicationProgress');
     const outcome = await executeApplicationArtifactPublication(f.input);
     expect(outcome).toMatchObject({ status: 'blocked' });
-    expect(intent).toHaveBeenCalledOnce();
+    expect(tagReads).toBe(2);
+    expect(intent).not.toHaveBeenCalled();
     expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toEqual([]);
     expect(progress).not.toHaveBeenCalled();
     expect(outcome.operation).toBeUndefined();
     expect(outcome.evidencePayload).toBeUndefined();
     expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
   });
-  it.each(['accepted', 'resumed'] as const)(
+  it.each(['stored', 'resumed'] as const)(
     'refuses changed execution-ref admission at %s observation while retaining the actual invocation', async (kind) => {
       const f = await fixture(true);
-      if (kind === 'accepted') {
-        f.transport.dispatchResponse = { workflow_run_id: 901,
-          run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
-          html_url: 'https://github.com/owner/repo/actions/runs/901' };
-        f.transport.onDispatch = () => { f.transport.executionTagProtected = false; };
+      if (kind === 'stored') {
+        let tagReads = 0;
+        f.transport.onExecutionTagRead = () => { if (++tagReads === 1) f.transport.executionTagProtected = false; };
       } else {
         f.transport.runStatus = 'in_progress';
         const first = await executeApplicationArtifactPublication(f.input);
@@ -943,18 +1267,15 @@ describe('immutable application publication and independent readback', () => {
       }
       const outcome = await executeApplicationArtifactPublication(f.input);
       expect(outcome).toMatchObject({
-        status: kind === 'accepted' ? 'pending' : 'blocked',
+        status: 'blocked',
         blocker: expect.stringMatching(/independently read repository tag-update/)
       });
-      if (kind === 'accepted') expect(outcome.operation).toMatchObject({
-        operationId: 'github-actions:901', status: 'running'
-      });
-      else expect(f.input.inspection.state.phases[f.phase.id].operation).toMatchObject({
+      expect(f.input.inspection.state.phases[f.phase.id].operation).toMatchObject({
         operationId: 'github-actions:901', status: 'running'
       });
       expect(outcome.evidencePayload).toBeUndefined();
       expect(outcome.outputs?.values.immutableImage).toBeUndefined();
-      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
       expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
     }
   );
@@ -971,7 +1292,7 @@ describe('immutable application publication and independent readback', () => {
     expect(f.transport.calls).toEqual([]);
     expect(f.runner.writes).toEqual([]);
   });
-  it.each(['accepted', 'resumed'] as const)(
+  it.each(['stored', 'resumed'] as const)(
     'refuses a different actual workflow run at the exact %s publication handle', async (kind) => {
       const f = await fixture(true);
       if (kind === 'resumed') {
@@ -983,11 +1304,6 @@ describe('immutable application publication and independent readback', () => {
         };
         f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
         f.transport.runStatus = 'completed';
-      } else {
-        f.transport.dispatchResponse = {
-          workflow_run_id: 901, run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
-          html_url: 'https://github.com/owner/repo/actions/runs/901'
-        };
       }
       const progress = vi.spyOn(f.input, 'recordApplicationProgress');
       const run = f.transport.run.bind(f.transport);
@@ -995,9 +1311,11 @@ describe('immutable application publication and independent readback', () => {
       const jobReads = f.transport.calls.filter((entry) => entry.path.includes('/jobs')).length;
       const outcome = await executeApplicationArtifactPublication(f.input);
       expect(outcome).toMatchObject({
-        status: kind === 'accepted' ? 'pending' : 'blocked',
-        blocker: expect.stringMatching(/exact.*workflow.*handle/),
-        ...(kind === 'accepted' ? { operation: { operationId: 'github-actions:901', status: 'running' } } : {})
+        status: 'blocked',
+        blocker: expect.stringMatching(/exact.*workflow.*handle/)
+      });
+      expect(f.input.inspection.state.phases[f.phase.id].operation).toMatchObject({
+        operationId: 'github-actions:901', status: 'running'
       });
       expect(outcome.evidencePayload).toBeUndefined();
       expect(outcome.outputs?.values.immutableImage).toBeUndefined();
@@ -1005,7 +1323,7 @@ describe('immutable application publication and independent readback', () => {
         entry.operation.status === 'running')).toBe(true);
       expect(f.transport.calls.filter((entry) => entry.path.includes('/jobs'))).toHaveLength(jobReads);
       expect(f.runner.calls.filter((entry) => entry.executable === 'gh')).toEqual([]);
-      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
     }
   );
   it('persists real producer output through the engine and exposes a strict downstream immutable artifact interface', async () => {
@@ -1016,13 +1334,45 @@ describe('immutable application publication and independent readback', () => {
     const saved = (await readState(f.root))!;
     const receipt = JSON.parse(await readFile(path.join(f.root, ...outcome.evidence!.pathParts), 'utf8'));
     const inspection = await coverageInspection({ root: f.root, phaseId: 'application-artifact-ready',
-      state: saved, activationInputs: f.inputs, evidence: [receipt], reviewedPlans: [f.input.plan] });
+      state: saved, activationInputs: f.inputs, evidence: [receipt], reviewedPlans: await readReviewedTransitionPlans(f.root) });
+    const freshness = validateEvidenceFreshness(receipt, inspection.contexts[f.phase.id]);
+    expect(freshness, JSON.stringify(freshness)).toMatchObject({ valid: true });
     expect(readVerifiedApplicationArtifact(inspection)).toMatchObject({ sourceSha: f.transport.binding.sourceSha,
       digest: imageDigest, environment: 'dev', registryResourceId: f.prerequisite.registryId,
       workflowRunId: 901, workflowJobId: 902, acrRunId: 'ca1' });
     Object.assign(saved.phaseOutputs!['application-artifact-ready']!.values, { artifactDigest: 'latest' });
     expect(() => readVerifiedApplicationArtifact(inspection)).toThrow(/authoritative/);
   });
+  it.each(['missing', 'different-run', 'nonterminal', 'wrong-provider', 'wrong-action',
+    'operation-id', 'resource-id', 'poll-url'] as const)(
+    'refuses current artifact consumption with a %s original publication handle', async kind => {
+      const f = await fixture(true);
+      const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
+        runner: f.runner, now: coverageNow, adapters: f.input.adapters });
+      expect(outcome).toMatchObject({ applied: true });
+      const saved = (await readState(f.root))!;
+      const receipt = JSON.parse(await readFile(path.join(f.root, ...outcome.evidence!.pathParts), 'utf8'));
+      const phase = saved.phases[f.phase.id];
+      if (kind === 'missing') delete phase.operation;
+      else if (kind === 'different-run') phase.operation = { ...phase.operation!, operationId: 'github-actions:999',
+        resourceId: '/repos/owner/repo/actions/runs/999', pollUrl: 'https://api.github.com/repos/owner/repo/actions/runs/999' };
+      else if (kind === 'nonterminal') phase.operation!.status = 'running';
+      else if (kind === 'wrong-provider') phase.operation!.provider = 'azure';
+      else if (kind === 'wrong-action') phase.operation!.actionId = 'github.workflow.dispatch';
+      else if (kind === 'operation-id') phase.operation!.operationId = 'github-actions:999';
+      else if (kind === 'resource-id') phase.operation!.resourceId = '/repos/owner/repo/actions/runs/999';
+      else phase.operation!.pollUrl = 'https://api.github.com/repos/owner/repo/actions/runs/999';
+      const prior = await loadActivationState(f.root);
+      await writeActivationState(f.root, saved, { expectedContentHash: prior!.contentHash });
+      const historical = (await loadActivationState(f.root))!;
+      expect(historical.state.phases[f.phase.id].state).toBe('verified');
+      const inspection = await coverageInspection({ root: f.root, phaseId: f.phase.id,
+        state: historical.state, activationInputs: f.inputs, evidence: [receipt],
+        reviewedPlans: await readReviewedTransitionPlans(f.root) });
+      expect(() => readVerifiedApplicationArtifact(inspection)).toThrow(/original.*publication.*handle/);
+      expect(f.transport.calls.filter(entry => entry.method === 'POST')).toEqual([]);
+    }
+  );
   it('refuses an earlier verified artifact after independently inspecting changed recipe or transmission consent', async () => {
     const f = await fixture(true);
     const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
@@ -1042,7 +1392,7 @@ describe('immutable application publication and independent readback', () => {
         evidence: [receipt], reviewedPlans: [f.input.plan] });
       expect(() => readVerifiedApplicationArtifact(inspection)).toThrow(/authoritative/);
     }
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it('observes a real pending run without issuing a second dispatch', async () => {
     const f = await fixture(true); f.transport.runStatus = 'in_progress';
@@ -1052,7 +1402,7 @@ describe('immutable application publication and independent readback', () => {
     f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
     first.operation!.planDigest = f.input.plan.planDigest;
     expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'pending' });
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it('reobserves a later engine retry using original dispatch time and never retags the historical handle', async () => {
     const f = await fixture(true); f.transport.runStatus = 'in_progress';
@@ -1074,7 +1424,7 @@ describe('immutable application publication and independent readback', () => {
     const operation = (await readState(f.root))!.phases[f.phase.id].operation!;
     expect(operation).toMatchObject({ status: 'completed', planDigest: saved.phases[f.phase.id].operation!.planDigest });
     expect(Date.parse(operation.observedAt)).toBeGreaterThan(Date.parse(saved.phases[f.phase.id].operation!.observedAt));
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it('preserves a confirmed actual dispatch when source changes before outcome persistence', async () => {
     const f = await fixture(true); f.transport.runStatus = 'in_progress';
@@ -1087,14 +1437,14 @@ describe('immutable application publication and independent readback', () => {
     expect(saved?.phases['application-artifact-ready']).toMatchObject({ state: 'running',
       operation: { operationId: 'github-actions:901', resourceId: '/repos/owner/repo/actions/runs/901' } });
     expect(await readFile(path.join(f.root, 'backend', 'Dockerfile'), 'utf8')).toBe('FROM preserved-customization\n');
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it('keeps published partial progress but does not qualify a changed/mutable digest', async () => {
     const f = await fixture(true); f.runner.tagMutable = true;
     expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked',
       operation: { status: 'completed' }, outputs: { values: { artifactDigest: imageDigest, acrRunId: 'ca1' } },
       blocker: expect.stringMatching(/writable\/deletable/) });
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it('retains completed dispatch truth when independently sealed authority disappears before readback', async () => {
     const f = await fixture(true);
@@ -1111,14 +1461,18 @@ describe('immutable application publication and independent readback', () => {
       operationId: 'github-actions:901', status: 'completed'
     } });
     expect(f.runner.calls.filter((entry) => entry.executable === 'gh')).toEqual([]);
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
-  it.each(['invisible', 'duplicate'] as const)('refuses uncertain/ambiguous %s dispatch without treating a candidate as proof', async (kind) => {
-    const f = await fixture(true); f.transport[kind] = true;
-    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/unique actual run/) });
+  it.each(['invisible', 'duplicate'] as const)('refuses unavailable/ambiguous %s fresh publication without treating a candidate as proof', async (kind) => {
+    const f = await fixture(true, false, 'exact', 'fresh'); f.transport[kind] = true;
+    f.transport.dispatched = kind === 'duplicate';
+    f.transport.dispatchResponse = null;
+    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({
+      status: 'blocked', blocker: expect.stringMatching(/no-replace|ambiguous/)
+    });
     f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
     expect(await executeApplicationArtifactPublication(f.input)).not.toMatchObject({ status: 'completed' });
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it.each(['source', 'recipe', 'untracked', 'ref'] as const)('refuses changed %s before source transmission/build dispatch', async (kind) => {
     const f = await fixture(true);

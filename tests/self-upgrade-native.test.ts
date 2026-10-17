@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { NodeCommandRunner, type CommandRunner } from '../src/process-runner.js';
 import { defaultSelfUpgradeDependencies } from '../src/adapters/distribution/upgrade-host.js';
-import { bundleInventory } from '../scripts/native-bundle-contract.mjs';
+import { bundleInventory, nativeArchiveTool } from '../scripts/native-bundle-contract.mjs';
 import { inspectOwnedInstallation, installOwnedBundle } from '../scripts/native-install.mjs';
 import { runSelfUpgrade } from '../src/application/upgrade/self-upgrade.js';
 import { cliInstallationLayer } from '../src/application/diagnose/doctor.js';
@@ -15,6 +15,8 @@ import { SelfUpgradeFailure, selfUpgradeExitCode, selfUpgradeRemedy } from '../s
 import type { NativeCandidate, NativeInstallation, NativeUpgradePort } from '../src/domain/distribution/native-upgrade.js';
 import { upgradeWorld } from './fixtures/installer-upgrade.js';
 import { nativeInstallation as installation, signedMaterial } from './fixtures/native-stable-material.js';
+import { windowsReceiptWorld } from './fixtures/windows-native-installation.js';
+import { readWindowsInstallerLayout } from '../src/adapters/distribution/native-windows.js';
 
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const json = (value: unknown) => Buffer.from(JSON.stringify(value));
@@ -155,8 +157,8 @@ async function ownedBundle(version = '0.12.3') {
   await writeFile(path.join(source, 'runtime/node'), '# fixture-only runtime process port\n', { mode: 0o755 });
   await writeFile(path.join(source, 'bin/liftoff'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
   await writeFile(path.join(source, 'application/dist/cli.js'), `console.log("Liftoff ${version}");\n`);
-  for (const name of ['native-install.mjs', 'native-bundle-contract.mjs']) await copyFile(`scripts/${name}`, path.join(source, 'installation', name));
-  for (const name of ['native-release-admission.mjs', 'release-policy.json', 'platforms.json']) {
+  await copyFile('scripts/native-install.mjs', path.join(source, 'installation/native-install.mjs'));
+  for (const name of ['native-bundle-contract.mjs', 'native-release-admission.mjs', 'release-policy.json', 'platforms.json']) {
     await copyFile(`distribution/native/${name}`, path.join(source, 'installation', name));
   }
   await writeFile(path.join(source, 'installation/host.mjs'),
@@ -185,6 +187,67 @@ async function ownedBundle(version = '0.12.3') {
 }
 
 describe.skipIf(process.platform === 'win32')('native adapter on explicit private receipt-owned fixtures', () => {
+  it.each(['check', 'apply', 'invalid archive'] as const)(
+    'composes independently signed archive observation and private staging for %s without a pre-extracted root', async mode => {
+      const original = await ownedBundle();
+      const next = await ownedBundle('0.13.0');
+      const signed = signedMaterial();
+      delete signed.material.bundleRoot;
+      signed.record.manifestSha256 = next.expectedManifestSha256;
+      signed.record.inventorySha256 = next.manifest.inventory.sha256;
+      if (mode !== 'invalid archive') {
+        const filename = path.join(next.root, 'candidate.tar.gz');
+        const result = await new NodeCommandRunner().run({
+          executable: nativeArchiveTool(), args: ['--no-xattrs', '-czf', filename, '-C', next.source, '.']
+        }, { cwd: next.root, env: { PATH: '/usr/bin:/bin', HOME: next.root, COPYFILE_DISABLE: '1', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0' },
+          inheritEnvironment: false, ensureProcessTreeSettled: true, timeoutMs: 15_000, maxOutputBytes: 8192 });
+        expect(result).toMatchObject({ status: 0, timedOut: false, signal: null });
+        signed.assets.set(signed.record.files[0].filename, await readFile(filename));
+      }
+      const provenance = JSON.parse(signed.assets.get('provenance.json')!.toString());
+      provenance.subject[0].digest.sha256 = hash(signed.assets.get(signed.record.files[0].filename)!);
+      signed.assets.set('provenance.json', json(provenance));
+      const sbom = JSON.parse(signed.assets.get('sbom.cdx.json')!.toString());
+      sbom.properties[1].value = signed.record.inventorySha256;
+      signed.assets.set('sbom.cdx.json', json(sbom));
+      for (const file of signed.record.files) {
+        file.bytes = signed.assets.get(file.filename)!.length;
+        file.sha256 = hash(signed.assets.get(file.filename)!);
+      }
+      Object.assign(signed.qualification, signed.record);
+      signed.resign();
+      signed.resignArchive();
+      const readStable = vi.fn(async () => signed.material);
+      const makeNeutralDirectory = original.dependencies.makeNeutralDirectory;
+      const scratch: string[] = [];
+      const dependencies = {
+        ...original.dependencies,
+        readJson: async (file: string) => file.endsWith('release-policy.json')
+          ? signed.policy : JSON.parse(await readFile(file, 'utf8')),
+        makeNeutralDirectory: async () => {
+          const directory = await makeNeutralDirectory();
+          scratch.push(directory);
+          ownedRoots.push(directory);
+          return directory;
+        }
+      };
+      const port = createNativeUpgradePort(dependencies, { stable: { readStable } });
+      const request = upgradeWorld({ mode: mode === 'check' ? 'check' : 'apply' }).request;
+      request.runningPackageRoot = original.packageRoot;
+      const result = await runSelfUpgrade(request, { ...dependencies, nativeUpgrade: port });
+      expect(result).toMatchObject(mode === 'check'
+        ? { status: 'update-available', effects: 'none', verification: 'not-run' }
+        : mode === 'apply' ? { status: 'upgraded', effects: 'installed', verification: 'verified' }
+        : { status: 'failed', reasonCode: 'native_invalid', effects: 'none', verification: 'not-run' });
+      expect(readStable).toHaveBeenCalledTimes(mode === 'check' ? 2 : 4);
+      expect(scratch).toHaveLength(mode === 'apply' ? 2 : 1);
+      for (const directory of scratch) await expect(lstat(directory)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await inspectOwnedInstallation(original.prefix)).toBe(mode === 'apply'
+        ? `versions/0.13.0-${next.expectedManifestSha256}` : original.installed.current);
+      expect((await lstat(original.bundleRoot)).isDirectory()).toBe(true);
+    }, 30_000
+  );
+
   it('proves the supplied native verification environment reaches actual children without ambient reinheritance', async () => {
     const fixture = await ownedBundle();
     vi.stubEnv('LIFTOFF_NATIVE_PARENT_ONLY_FIXTURE', 'fixture-parent-only');
@@ -427,11 +490,11 @@ describe('owner-aware orchestration and read-only doctor', () => {
     expect(fixture.world.trace.filter(event => 'run' in event || 'lookup' in event)).toEqual([]);
   });
   it.each(['darwin', 'win32'] as const)('classifies %s only after bounded explicit manager observations, never from a prefix alone', async platform => {
-    const fixture = managerObservationFixture(platform);
+    const fixture = platform === 'win32' ? windowsReceiptWorld() : managerObservationFixture(platform);
     const port = createNativeUpgradePort(fixture.dependencies, {
       cask: async () => fixture.cask, winget: async () => fixture.winget
     });
-    expect(await port.inspect(fixture.packageRoot, '0.12.3', '/virtual/neutral')).toMatchObject({
+    expect(await port.inspect(fixture.packageRoot, '0.12.3', platform === 'win32' ? 'C:\\fixture\\neutral' : '/virtual/neutral')).toMatchObject({
       owner: platform === 'darwin' ? 'homebrew-cask' : 'winget',
       ...(platform === 'win32' ? { managerScope: 'user' } : {})
     });
@@ -679,7 +742,7 @@ describe('owner-aware orchestration and read-only doctor', () => {
     }));
   });
 
-  it('binds exact manager identities to approved namespace, publisher, certificate and installed bundle facts', () => {
+  it('binds exact manager identities to approved namespace, publisher, certificate and installed bundle facts', async () => {
     const policy = signedMaterial().policy;
     policy.homebrew = { cask: 'fixture/tools/liftoff', sourceRepository: 'fixture/tools', developerTeamId: 'ABCDEFGHIJ' };
     policy.winget = { packageIdentifier: 'Fixture.Liftoff', publisher: 'Fixture Publisher',
@@ -692,16 +755,18 @@ describe('owner-aware orchestration and read-only doctor', () => {
       { installedVersion: '0.13.0' }, { launcher: '/foreign/launcher' }, { bundleRoot: '/foreign/root' }]) {
       expect(() => assertCaskOwnership({ ...cask, ...mutation }, installation, policy)).toThrow('unsupported_installation');
     }
-    const winget = { packageIdentifier: 'Fixture.Liftoff', source: 'fixture-source', publisher: 'Fixture Publisher', scope: 'user' as const,
-      appId: 'fixture-app', certificateSha256: '0'.repeat(64), installedVersion: '0.12.3',
-      installLocation: installation.bundleRoot, launcher: installation.launcher };
-    expect(() => assertWinGetOwnership(winget, installation, policy)).not.toThrow();
+    const windows = windowsReceiptWorld();
+    const layout = await readWindowsInstallerLayout(windows.dependencies, windows.installation, windows.policy,
+      windows.stableLauncher, new AbortController().signal);
+    const installed = { ...windows.installation, windowsInstaller: layout };
+    const winget = windows.winget;
+    expect(() => assertWinGetOwnership(winget, installed, windows.policy)).not.toThrow();
     for (const mutation of [{ packageIdentifier: 'Foreign.Liftoff' }, { publisher: 'Foreign Publisher' },
       { appId: 'foreign-app' }, { certificateSha256: '1'.repeat(64) }, { source: 'unsafe source' },
       { installedVersion: '0.13.0' }, { installLocation: '/foreign/root' }, { launcher: '/foreign/launcher' }]) {
-      expect(() => assertWinGetOwnership({ ...winget, ...mutation }, installation, policy)).toThrow('unsupported_installation');
+      expect(() => assertWinGetOwnership({ ...winget, ...mutation }, installed, windows.policy)).toThrow('unsupported_installation');
     }
-    expect(() => assertWinGetOwnership({ ...winget, scope: 'machine' }, installation, policy)).toThrow('unsupported_installation');
+    expect(() => assertWinGetOwnership({ ...winget, scope: 'machine' }, installed, windows.policy)).toThrow('unsupported_installation');
   });
 
   it.each([

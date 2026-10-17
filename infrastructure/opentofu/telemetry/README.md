@@ -335,6 +335,14 @@ when an ID uses both CLI and heartbeat. Counts are directional, opted-in and
 forgeable; IDs are not authentication. Dashboard text distinguishes configured
 disabled/unknown reporting, successful empty queries, native unavailable
 errors, potential retention expiry and explicit stale/unknown expectations.
+The monthly table also carries the explicit operator reporting configuration.
+An empty inventory, including one entirely excluded as synthetic, returns an
+**unconfigured** status row with zero expected projects; it is not a healthy
+heartbeat observation. Future monitoring starts remain visible as **pending**,
+not stale or silently absent. A configured `disabled` value describes operator
+configuration, not consent or disablement inferred for individual clients.
+These status rows do not create project identities or events. Query/table/
+permission errors still fail as unavailable rather than returning these rows.
 The API query uses its KQL time range, not a dashboard-picker intersection.
 Command availability and schema-separated outcome panels query the anonymous
 command table independently, so legacy-only data remains readable without a

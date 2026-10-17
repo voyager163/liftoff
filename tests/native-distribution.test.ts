@@ -7,8 +7,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { assertNativeHost, atLeastVersion } from '../distribution/native/host.mjs';
 import { verifyNativeBytesSignature } from '../distribution/native/native-release-admission.mjs';
+import { nativeCaskDefinition, type NativeCaskDefinition } from '../distribution/native/native-cask-definition.mjs';
 import { assertLinuxRuntimeLibraries, bundleFile, bundleInventory, nativeArchiveMembers, nativeArchiveTool, nativeRuntimeInput, readBundleFile } from '../scripts/native-bundle-contract.mjs';
-import { nativeMaterials, nativePackageDefinitions, assertNativePublicationEvidence, verifyNativeEvidenceSignature, verifyNativeArchive } from '../scripts/native-release.mjs';
+import { nativeMaterials, nativePackageDefinitions, nativeWindowsInstallerInputs, assertNativePublicationEvidence, verifyNativeEvidenceSignature, verifyNativeArchive } from '../scripts/native-release.mjs';
 import { parse } from 'yaml';
 import { pathToFileURL } from 'node:url';
 import { installOwnedBundle, inspectOwnedInstallation, recoverOwnedInstallation } from '../scripts/native-install.mjs';
@@ -123,6 +124,64 @@ describe('native exact-artifact and signing gates (synthetic contract data, not 
     expect(policy.homebrew.cask).toBeNull();
     expect(policy.winget.packageIdentifier).toBeNull();
   });
+  const windowsManifest = {
+    package: { name: '@msn-control/liftoff', version: '1.2.3' },
+    platform: { platform: 'win32', architecture: 'x64' },
+    source: { repository: record.repository, commit: record.commit },
+    launcher: 'bin/liftoff.exe', runtime: { executable: 'runtime/node.exe' },
+    inventory: { sha256: record.inventorySha256,
+      entries: [{ path: 'bin/liftoff.exe', kind: 'file', sha256: '9'.repeat(64) }] }
+  };
+  it('binds synthetic Windows installer receipt, current pointer and stable launcher without granting manager ownership', () => {
+    const selected = nativeWindowsInstallerInputs(windowsManifest, record.manifestSha256, approved);
+    expect(selected.versionName).toBe(`1.2.3-${record.manifestSha256}`);
+    expect(selected.pointer).toBe(`${selected.versionName}\r\n`);
+    expect(selected.uninstallKey).toBe(`Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${approved.winget.installerAppId}_is1`);
+    expect(selected.receipt).toEqual({
+      schemaVersion: 1, kind: 'liftoff-windows-install-receipt', scope: 'user',
+      package: windowsManifest.package.name, packageIdentifier: approved.winget.packageIdentifier,
+      appId: approved.winget.installerAppId, publisher: approved.winget.publisher,
+      certificateSha256: approved.winget.certificateSha256, version: '1.2.3',
+      sourceCommit: record.commit, manifestSha256: record.manifestSha256, inventorySha256: record.inventorySha256,
+      versionDirectory: `versions/${selected.versionName}`,
+      launcher: `versions/${selected.versionName}/bin/liftoff.exe`,
+      runtime: `versions/${selected.versionName}/runtime/node.exe`,
+      stableLauncher: 'bin/liftoff.exe', stableLauncherSha256: '9'.repeat(64)
+    });
+    expect(selected.receipt).not.toHaveProperty('source');
+    expect(selected.receipt).not.toHaveProperty('releaseReady');
+    expect(() => nativeWindowsInstallerInputs(windowsManifest, record.manifestSha256)).toThrow('No approved');
+  });
+  it.each(['target', 'package', 'version', 'oversized-version', 'commit', 'repository', 'inventory', 'launcher',
+    'runtime', 'missing-launcher', 'duplicate-launcher', 'linked-launcher', 'launcher-hash'])(
+    'refuses a malformed Windows installer source identity: %s', fault => {
+      const changed = structuredClone(windowsManifest);
+      if (fault === 'target') changed.platform.architecture = 'arm64';
+      if (fault === 'package') changed.package.name = 'foreign';
+      if (fault === 'version') changed.package.version = '1.2.3-../../outside';
+      if (fault === 'oversized-version') changed.package.version = `1.2.3-${'x'.repeat(129)}`;
+      if (fault === 'commit') changed.source.commit = '0';
+      if (fault === 'repository') changed.source.repository = 'foreign/repository';
+      if (fault === 'inventory') changed.inventory.sha256 = '';
+      if (fault === 'launcher') changed.launcher = '../outside.exe';
+      if (fault === 'runtime') changed.runtime.executable = 'node.exe';
+      if (fault === 'missing-launcher') changed.inventory.entries = [];
+      if (fault === 'duplicate-launcher') changed.inventory.entries.push(changed.inventory.entries[0]);
+      if (fault === 'linked-launcher') changed.inventory.entries[0].kind = 'link';
+      if (fault === 'launcher-hash') changed.inventory.entries[0].sha256 = '';
+      expect(() => nativeWindowsInstallerInputs(changed, record.manifestSha256, approved)).toThrow();
+    });
+  it.each(['digest', 'key', 'id', 'app-id', 'publisher', 'certificate'])(
+    'refuses missing or unsafe Windows packaging authority: %s', fault => {
+      const changed = structuredClone(approved);
+      if (fault === 'key') changed.approvedSigningKeySha256 = '';
+      if (fault === 'id') changed.winget.packageIdentifier = 'unbound';
+      if (fault === 'app-id') changed.winget.installerAppId = '../foreign';
+      if (fault === 'publisher') changed.winget.publisher = 'quoted "directive"';
+      if (fault === 'certificate') changed.winget.certificateSha256 = '';
+      expect(() => nativeWindowsInstallerInputs(windowsManifest,
+        fault === 'digest' ? '' : record.manifestSha256, changed)).toThrow();
+    });
   it('imports inert shared admission without a builder checkout, global tools or release environment', async () => {
     const cwd = await fixture();
     const url = pathToFileURL(path.resolve('distribution/native/native-release-admission.mjs')).href;
@@ -133,6 +192,50 @@ describe('native exact-artifact and signing gates (synthetic contract data, not 
     expect(JSON.parse(result.stdout)).toEqual([
       'assertNativePublicationEvidence', 'verifyNativeBytesSignature', 'verifyNativeEvidenceSignature'
     ]);
+  });
+  it('imports the inert cask renderer from a foreign cwd without builder, Git, Ruby or global tools', async () => {
+    const cwd = await fixture();
+    const url = pathToFileURL(path.resolve('distribution/native/native-cask-definition.mjs')).href;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `const renderer = await import(${JSON.stringify(url)}); console.log(JSON.stringify(Object.keys(renderer)));`],
+    { cwd, env: { PATH: '', NODE_OPTIONS: '', NODE_PATH: '' }, shell: false, encoding: 'utf8', timeout: 10_000 });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(['nativeCaskDefinition']);
+  });
+  it('preserves the complete existing canonical cask bytes and typed inert result', () => {
+    const artifactUrl = `https://github.com/${record.repository}/releases/download/v${record.version}/${record.files[0].filename}`;
+    const macEvidence = { ...evidence, artifactUrl };
+    const definition: NativeCaskDefinition = nativeCaskDefinition(record, macEvidence, approved);
+    const expected = [
+      'cask "liftoff" do',
+      '  version "1.2.3"',
+      `  sha256 "${'4'.repeat(64)}"`,
+      '  url "https://github.com/voyager163/liftoff/releases/download/v1.2.3/liftoff-1.2.3-darwin-arm64.tar.gz"',
+      '  name "Liftoff"',
+      '  desc "CLI for governed GenAI applications and APIs"',
+      '  homepage "https://github.com/voyager163/liftoff"',
+      '  depends_on arch: :arm64',
+      '  depends_on macos: ">= :ventura"',
+      '  preflight do',
+      '    odie "Native Apple Silicon is required" unless Hardware::CPU.arm? && !Hardware::CPU.in_rosetta2?',
+      '    odie "The qualified runtime requires macOS 13.5 or newer" if MacOS.version < MacOSVersion.new("13.5")',
+      '  end',
+      '  binary "bin/liftoff"',
+      'end', ''
+    ].join('\n');
+    expect(definition).toEqual({ filename: 'liftoff.rb', content: expected });
+    expect(nativePackageDefinitions(record, macEvidence, approved)).toEqual({ 'liftoff.rb': expected });
+    expect(() => nativeCaskDefinition(record, macEvidence)).toThrow('No approved');
+    expect(() => nativeCaskDefinition(record, { ...macEvidence, artifactUrl: 'https://foreign.example/cask' }, approved))
+      .toThrow('exact qualified');
+    expect(() => nativeCaskDefinition(record,
+      { ...macEvidence, channel: { ...macEvidence.channel, source: 'foreign/tap' } }, approved)).toThrow();
+    expect(() => nativeCaskDefinition(record,
+      { ...macEvidence, qualification: { ...macEvidence.qualification, notarization: false } }, approved)).toThrow('notarization');
+    expect(() => nativeCaskDefinition(record, { ...macEvidence, commit: '9'.repeat(40) }, approved)).toThrow('commit differs');
+    expect(() => nativeCaskDefinition({ ...record, target: 'linux-arm64' },
+      { ...macEvidence, target: 'linux-arm64', platformSigningIdentity: approved.linux.archiveSigningKeySha256 }, approved))
+      .toThrow('Apple Silicon');
   });
   it('binds synthetic evidence to exact source, version, every sidecar and approved channel', () => {
     expect(assertNativePublicationEvidence(record, evidence, approved)).toEqual(evidence);
@@ -314,6 +417,14 @@ describe('installed native report admission (synthetic report shapes)', () => {
     if (fault === 'missing') suite.assertionResults = suite.assertionResults.filter(test => test !== userspace);
     else userspace.status = fault;
     expect(() => assertNativePackageReport(selected, 'linux')).toThrow();
+  });
+  it.each(['missing', 'failed', 'skipped'])('requires actual Windows stable launcher admission: %s', fault => {
+    const selected = report('win32'), suite = selected.testResults[0];
+    const title = 'runs the actual stable Windows launcher and refuses unsafe immutable version pointers';
+    const launcher = suite.assertionResults.find(test => test.title === title)!;
+    if (fault === 'missing') suite.assertionResults = suite.assertionResults.filter(test => test !== launcher);
+    else launcher.status = fault;
+    expect(() => assertNativePackageReport(selected, 'win32')).toThrow();
   });
 });
 

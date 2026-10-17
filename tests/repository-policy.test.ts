@@ -9,6 +9,7 @@ import {
   checkIssueForm, checkPromotion, checkRepositoryPolicy, checkWorkflow,
   communityFiles, workflowFiles, checkIsolatedHclReport, checkIsolatedHclRuntime,
   isolatedHclQualificationJob, isolatedHclTestCommand, checkPluginPathReport, pluginPathTestCommand,
+  checkWorkflowProgramContentReport, workflowProgramContentCases,
   nativeBundleQualificationJob, nativePlatformQualificationJob,
   checkNativeCustodyQualificationJob, nativeCustodyWorkflowFile
 } from '../scripts/check-repository-policy.mjs';
@@ -191,7 +192,13 @@ describe('source repository setup policy', () => {
   it.each([
     'missing', 'conditional', 'runner', 'node', 'architecture', 'go', 'install', 'download',
     'build', 'filtered', 'unset-bundle', 'unset-migration-bundle', 'wrong-migration-bundle', 'missing-migration-cases',
-    'skip-migration-report', 'unset-archive', 'archive-after-tests', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
+    'skip-migration-report', 'historical-download', 'historical-checksum', 'unset-historical-client',
+    'missing-journey-cases', 'skip-journey-report', 'wrong-journey-bundle',
+    'unverified-journey-selection', 'wrong-selector-bundle', 'missing-prerelease-cases', 'wrong-refusal-outcome',
+    'missing-journey-evidence', 'unset-archive', 'unset-program-runtime', 'wrong-program-runtime',
+    'missing-program-consumer', 'filtered-program-consumer', 'unset-consumer-runtime', 'wrong-consumer-runtime',
+    'missing-consumer-report-gate', 'ignored-consumer-report-gate', 'missing-consumer-evidence',
+    'archive-after-tests', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
   ])('rejects incomplete runtime-inclusive qualification: %s', async fault => {
     const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-bundle'];
     if (fault === 'missing') delete workflow.jobs['qualify-native-bundle'];
@@ -211,7 +218,48 @@ describe('source repository setup policy', () => {
       'LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/unverified-bundle"');
     if (fault === 'missing-migration-cases') job.steps[7].run = job.steps[7].run.replace(/^  tests\/mac-migration-package.test.ts.*\n/m, '');
     if (fault === 'skip-migration-report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/mac-migration-package-report.mjs.*\n/m, '');
+    if (fault === 'historical-download') job.steps[5].run = job.steps[5].run.replace('liftoff-0.3.4.tgz', 'liftoff-latest.tgz');
+    if (fault === 'historical-checksum') job.steps[5].run = job.steps[5].run.replace('05793480c44632b3', '15793480c44632b3');
+    if (fault === 'unset-historical-client') job.steps[7].run = job.steps[7].run.replace(
+      'LIFTOFF_MAC_MIGRATION_HISTORICAL_TARBALL', 'UNSELECTED_HISTORICAL_CLIENT');
+    if (fault === 'missing-journey-cases') job.steps[7].run = job.steps[7].run.replace(
+      'tests/mac-migration-journey.test.ts', 'tests/mac-migration.test.ts');
+    if (fault === 'skip-journey-report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/mac-migration-journey-report.mjs.*\n/m, '');
+    if (fault === 'wrong-journey-bundle') job.steps[7].run = job.steps[7].run.replace(
+      'mac-migration-journey-report.mjs "$journey_report" "$RUNNER_TEMP/liftoff-native-bundle"',
+      'mac-migration-journey-report.mjs "$journey_report" "$RUNNER_TEMP/stale-native-bundle"');
+    if (fault === 'unverified-journey-selection') job.steps[7].run = job.steps[7].run.replace(
+      /^journey=.*\n/m, 'journey=stable-handover\n');
+    if (fault === 'wrong-selector-bundle') job.steps[7].run = job.steps[7].run.replace(
+      'select "$RUNNER_TEMP/liftoff-native-bundle"', 'select "$RUNNER_TEMP/stale-native-bundle"');
+    if (fault === 'missing-prerelease-cases') job.steps[7].run = job.steps[7].run.replace(
+      'tests/mac-migration-prerelease.test.ts', 'tests/mac-migration-journey.test.ts');
+    if (fault === 'wrong-refusal-outcome') job.steps[7].run = job.steps[7].run.replace('prerelease-refusal)', 'stable-handover)');
+    if (fault === 'missing-journey-evidence') job.steps[8].with.path = job.steps[8].with.path.replace(
+      'qualification/mac-migration-*.json\n', '');
     if (fault === 'unset-archive') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_ARCHIVE_ROOT', 'UNSELECTED_ARCHIVE');
+    if (fault === 'unset-program-runtime') job.steps[7].run = job.steps[7].run.replace(
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE', 'UNSELECTED_PROGRAM_RUNTIME');
+    if (fault === 'wrong-program-runtime') job.steps[7].run = job.steps[7].run.replace(
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/liftoff-node-runtime.tgz"',
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/unverified-runtime.tgz"');
+    if (fault === 'missing-program-consumer') job.steps[7].run = job.steps[7].run.replace(
+      'tests/workflow-source5-program-content.test.ts', 'tests/workflow-source5-declaration.test.ts');
+    if (fault === 'filtered-program-consumer') job.steps[7].run = job.steps[7].run.replace(
+      'vitest run tests/workflow-source5-program-content.test.ts', 'vitest run tests/workflow-source5-program-content.test.ts -t boundary');
+    if (fault === 'unset-consumer-runtime') job.steps[7].run = job.steps[7].run.replace(
+      /LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE=.*\n(?=npx vitest run tests\/workflow-source5-program-content)/,
+      '');
+    if (fault === 'wrong-consumer-runtime') job.steps[7].run = job.steps[7].run.replace(
+      /LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE=.*\n(?=npx vitest run tests\/workflow-source5-program-content)/,
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/stale-runtime.tgz" \\\n');
+    if (fault === 'missing-consumer-report-gate') job.steps[7].run = job.steps[7].run.replace(
+      /^node scripts\/check-repository-policy.mjs --workflow-program-report.*\n/m, '');
+    if (fault === 'ignored-consumer-report-gate') job.steps[7].run = job.steps[7].run.replace(
+      '--workflow-program-report qualification/workflow-program-content.json',
+      '--workflow-program-report qualification/workflow-program-content.json || true');
+    if (fault === 'missing-consumer-evidence') job.steps[8].with.path = job.steps[8].with.path.replace(
+      'qualification/workflow-program-content.json\n', '');
     if (fault === 'archive-after-tests') {
       const archive = job.steps[7].run.split('\n')[0];
       job.steps[7].run = job.steps[7].run.slice(archive.length + 1) + archive + '\n';
@@ -322,6 +370,37 @@ describe('source repository setup policy', () => {
     return { success: true, numFailedTests: 0, numPendingTests: platform === 'win32' ? 0 : 1,
       numPassedTests: platform === 'win32' ? 205 : 204, numTotalTests: 205, testResults };
   }
+  function programContentReport() {
+    return { success: true, numFailedTests: 0, numFailedTestSuites: 0, numPendingTests: 0,
+      numPassedTests: workflowProgramContentCases.length, numTotalTests: workflowProgramContentCases.length,
+      testResults: [{ name: '/fixture/tests/workflow-source5-program-content.test.ts',
+        assertionResults: workflowProgramContentCases.map(fullName => ({ fullName, status: 'passed' })) }] };
+  }
+  it('checks the literal original program report contract without manufacturing an assembly or qualification', () => {
+    expect(workflowProgramContentCases).toHaveLength(31);
+    expect(() => checkWorkflowProgramContentReport(programContentReport())).not.toThrow();
+  });
+  it.each([
+    'failed-report', 'failed-suite', 'failed-count', 'pending-count', 'passed-count', 'total-count', 'empty',
+    'foreign-suite', 'duplicate-suite', 'missing-case', 'duplicate-case', 'unexpected-case', 'failed-case', 'skipped-genuine'
+  ])('rejects incomplete original program consumer report: %s', fault => {
+    const report = programContentReport(), suite = report.testResults[0];
+    if (fault === 'failed-report') report.success = false;
+    if (fault === 'failed-suite') report.numFailedTestSuites++;
+    if (fault === 'failed-count') report.numFailedTests++;
+    if (fault === 'pending-count') report.numPendingTests++;
+    if (fault === 'passed-count') report.numPassedTests--;
+    if (fault === 'total-count') report.numTotalTests--;
+    if (fault === 'empty') report.testResults = [];
+    if (fault === 'foreign-suite') suite.name = '/fixture/tests/workflow-source5-declaration.test.ts';
+    if (fault === 'duplicate-suite') report.testResults.push(structuredClone(suite));
+    if (fault === 'missing-case') suite.assertionResults.pop();
+    if (fault === 'duplicate-case') suite.assertionResults[1] = suite.assertionResults[0];
+    if (fault === 'unexpected-case') suite.assertionResults[0].fullName = 'unrelated passing case';
+    if (fault === 'failed-case') suite.assertionResults[0].status = 'failed';
+    if (fault === 'skipped-genuine') suite.assertionResults[21].status = 'skipped';
+    expect(() => checkWorkflowProgramContentReport(report)).toThrow();
+  });
   it.each(['win32', 'darwin', 'linux'] as const)('validates native plugin report shape without claiming execution on %s', platform => {
     expect(() => checkPluginPathReport(pluginReport(platform), platform)).not.toThrow();
   });

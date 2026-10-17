@@ -224,6 +224,60 @@ This private refusal boundary is not completion of rendering, independent
 whole-body semantic compilation, the issuer, installed orchestration or14.3.
 The existing publication paths, exact per-file approval/readback and public
 review/effect, protected journal and joint-finalization boundaries are unchanged.
+Publication verifies the complete NUL-delimited committed change inventory,
+full blob identities and ordinary non-executable Git modes before any push and
+during read-only reconciliation. Only the reviewed additions/modifications are
+accepted; executable files, links, deletions, renames and malformed or partial
+inventories cannot become publication proof even when their displayed bytes
+match. A rejected local commit retains its original checkpoint and is never
+automatically rewritten, recommitted or pushed.
+
+The first-party `distribution/native/native-program-assembly.mjs` private
+`buildNativeProgram` API retains the actual
+original npm archive bytes from its own build/pack/install invocation behind an
+opaque process-local reference. `readNativeProgramAssembly` accepts only that
+original reference and rechecks the original source, tool/runtime-archive
+references and complete installed output, including physical identities, before
+returning an independent copy of the archive and observed manifest, plus its
+internally derived installed application root and CLI entrypoint. Copied or
+serialized references and caller-supplied receipts cannot recreate the reader.
+This is a local assembly relationship, not release authentication, atomic
+filesystem custody, native qualification or workflow authority. Its installed
+reader has no dependency on repository-only build scripts; only creation needs
+the original first-party build checkout and tooling. An independently installed
+copy does not share another module instance's private references. The existing
+`buildNativeBundle` CLI/API is unchanged. The unpublished candidate uses actual
+consistent `0.13.0-dev.0` package/lock identities; older `0.12.3` bytes cannot
+authenticate it. This prerelease is not eligible for ordinary stable-channel
+upgrade: its installed smoke checks refusal before manager observations, not
+the stable release's current-version and foreign-registry cases. The Source
+constructor, workflow runtime integration and TASK14.3 qualification remain
+separate implementation requirements; this API does not enable them by itself.
+
+The private Source program-content constructor accepts only constructed
+context/runtime references and that original assembly reference. Construction
+and consumption freshly revalidate the original archive, source/output relation,
+actual package/lock version and complete installed membership, bytes, modes,
+links and physical identities through the original first-party reader. Actual
+installed assets must also pass the existing compiled current5 source-family
+registry; a matching version string is insufficient. Its own process-local token cannot be copied,
+serialized or replaced by a returned readback. Archive reads return independent
+bytes and only producer-derived CLI, validator and bundled-runtime references.
+This observes genuine candidate content, not release publication, semantic-job
+qualification, prerequisite/session authority or approval to execute workloads.
+Focused input-boundary controls do not replace the explicitly named real
+build/pack/install cases: those require the actual pinned runtime archive and
+first-party build tooling, plus the real launcher on Windows.
+
+`declareSource5WorkflowProgramSources` consumes that original token through the
+fresh first-party reader and binds its complete program/archive/source digests
+into the intended source declaration. It resolves only the current5-program
+obligation; unpublished genuine candidate content does not need a fabricated
+public release. Delivery, complete jobs, integrations, tool/runner admission,
+controlled-red subjects and current prerequisite/session authority remain
+separate requirements. A copied declaration or returned program metadata cannot
+replace the original token, and changed installed content refuses before any
+declaration is issued.
 
 Private `observeSource5WorkflowDependencyReview` reads the actual GitHub
 dependency diff for exact repository/base/head commit/tree selectors through
@@ -255,13 +309,31 @@ foreign, truncated, changed or inaccessible responses refuse rather than become
 empty successful scans. The result is always blocked: empty/historical
 inventories, source-analysis diagnostics and missing authenticated program,
 query/language coverage and original-report subjects have explicit reasons.
-The existing GitHub read transport fixes its JSON media type; this observer
-does not silently widen it to SARIF. GitHub's custom SARIF response is itself
-only a subset of uploaded data, not authenticated original publisher/program
-provenance. Positive rule counts, zero results or a `CodeQL` label therefore
+Default GitHub requests and this metadata observer retain their JSON media type.
+Private `observeSource5WorkflowCodeScanningSarif` uses a separate, fixed
+body-free, nonbinary GET representation for literal repository analysis IDs.
+It reads every exact-source analysis's SARIF subset twice between complete
+metadata/ref/commit/tree observations, rejects changed or malformed responses,
+and returns only canonical document digests, run counts and metadata bindings.
+Unknown tools are not filtered, external SARIF references are not followed, and
+report contents are withheld. The unchanged size and invocation/request time
+bounds still apply; there is no caller-supplied URL, media header or write grant.
+[GitHub documents this representation](https://docs.github.com/en/rest/code-scanning/code-scanning#get-a-code-scanning-analysis-for-a-repository)
+as a subset of uploaded SARIF 2.1.0 data with GitHub additions, not the original
+report bytes. These JSON digests authenticate neither original publisher/program
+provenance nor complete report/query coverage. The result remains blocked,
+with no prerequisite session or phase proof. Positive rule counts, zero results or a `CodeQL` label therefore
 qualify neither CodeQL nor a required context. No scan/upload/Autofix operation,
 public selector, declaration source, accepted integration mapping or phase
 authority is issued by this private metadata reader.
+
+Both text and archive GitHub CLI transports require exit zero and no signal
+before accepting a successful HTTP response. Ordinary completed CLI HTTP errors
+retain their provider status, but cancelled, signalled, null-status or unknown
+completion cannot make a 404 into optional absence. A complete-looking success
+payload from a failed process is not request completion. For mutating requests,
+that refusal leaves acceptance uncertain: retain the original intent and
+independently observe it, never infer permission to repeat the write.
 
 Private `observeSource5WorkflowSecretProtectionHistory` reads the platform's
 actual latest-scan metadata twice, with the same independent repository,
@@ -572,6 +644,14 @@ and the original bounded result fields/stdout/stderr, not commands, ambient
 environment or unrelated configuration. Diagnostics do not change the invocation,
 input readback, settlement guards, five-second/4-KiB limits or expected outcomes;
 a numeric Windows status is not an observed POSIX signal.
+The owned validators retain only their isolated `HOME` and empty `NODE_OPTIONS`
+on POSIX. On Windows they additionally copy the actual host `SystemRoot`, using
+case-insensitive defined-key lookup; missing, empty or conflicting values refuse
+before invocation. They do not forward ambient search paths, Node configuration
+or unrelated environment values. Controlled-red syntax/JSON outcomes require
+status1 and an actual `SyntaxError`, so a runtime initialization failure cannot
+count as the reviewed source violation. Portable allowlist controls are not
+native Windows qualification.
 Missing-scanner fixtures preserve Git in their reduced search path: Windows uses
 the directory of the actual resolved Git executable, not POSIX system directories.
 They verify Git remains visible and the scanner launcher is absent before invoking
@@ -582,13 +662,18 @@ hosts. Missing-scanner fixtures likewise use only one defined Windows search-pat
 Portable worker/host models check actual workload options, native resolution and the
 unchanged native environment encoder against real Go invocation. They do not establish
 native Windows qualification.
-An additional Windows-only diagnostic repeats one owned syntax-check file under
-the original minimal environment, that environment plus the host's actual
-`SystemRoot`, and surrounding ambient-environment controls. All comparisons retain
-the same file, arguments, working directory, runner and five-second/4-KiB bounds;
-only finite result fields are logged, never environment values. Non-Windows hosts
-leave it explicitly unrun. This is a cause-investigation control, not a production
-environment change, original-matrix success or native validator qualification.
+A Windows-only native regression runs owned valid/invalid syntax and JSON files
+with that same supported validator allowlist. Missing, empty or conflicting
+`SystemRoot` refuses before the first runner call. Every actual command retains
+literal file-backed arguments, its owned working directory, five-second/4-KiB
+bounds, settlement checks and exact input readback. Green requires status0; red
+requires status1 and `SyntaxError`. Only finite fixture/runtime/result fields are
+logged, never environment values. Non-Windows hosts leave this case explicitly
+unrun; portable controls do not qualify its native execution.
+The former unsupported-minimal-environment comparison remains historical evidence,
+including its CSPRNG assertion, timeout and separate `EBUSY` cleanup refusal.
+Later supported-input success neither reclassifies those outcomes nor establishes
+the original cleanup cause, original-matrix success or full native qualification.
 Local-tool metadata workspaces use the actual Windows temporary directory rather
 than a drive-relative POSIX `/tmp` assumption; macOS and Linux retain their existing
 neutral parents. Physical identity, process settlement and owned cleanup checks
@@ -617,6 +702,10 @@ objects to16MiB, counting the **complete encoded sealed disk object**. Existing
 preview/consent stores keep their64KiB limit. Failed saves throw and preserve
 unresolved progress; CAS refuses stale/concurrent replacement. These interfaces
 do not register a producer, qualify a host, or open public execution.
+Native reads allocate the independently observed file byte count plus one
+overflow byte, not the entire namespace cap. Namespace limits, opened-file
+ownership, post-read size/timestamp checks and directory checks still apply;
+empty or changing control bytes are errors, not optional absence or new authority.
 
 The private ownership primitive seals the complete reviewed original plan before
 issuance. Each workflow entry keeps a stable key derived from that original
@@ -651,6 +740,12 @@ attestation. Its concrete key cardinality is independently bounded to 21,994
 (including itself), within the unchanged safe-record node budget and namespace
 caps. Oversized or unrepresentable inventories block rather than widening
 existing stores or hiding keys behind suffix/directory permissions.
+Read-only ownership-history observations still read every inventory slot,
+including absence, in fixed batches of at most four independent reads. Each
+batch fully settles before original-order validation or rejection; retained
+results and failure selection follow inventory order, not completion order.
+No keys, per-file guards, history checks or lease/currentness checks are cached
+or skipped, and no pending read can escape into later writes or lease release.
 
 Opening or initializing a journal requires its exact separately sealed original
 review. Initialization never creates that plan or recreates missing history,
@@ -918,6 +1013,13 @@ do not guess a default subscription or search unrelated resources. Neither mode
 enrolls credentials, expands permissions, registers providers, reads state blobs,
 executes project code, runs scanners or infrastructure tools, or changes local
 or remote configuration.
+Release/hotfix family coverage requires matching complete branch inventories
+before and after the scoped branch/check reads. Added or removed family members,
+or an unreadable closing inventory, withhold family-wide proof rather than
+following new refs or declaring them absent. Inventory ordering and unrelated
+branch changes do not invalidate the selected families. Both passes use the
+existing per-inventory bounds and shared collection deadline; matching snapshots
+detect observed drift, not an atomic provider snapshot or a lock.
 Azure scope and evidence-backed applicability require a current active-baseline
 and referenced, validated saved-plan/evidence receipts. Current receipts bind
 their canonical payload and live readback through `bodyDigest`; a header hash
@@ -1036,7 +1138,7 @@ new history and repair journals use schema 2. Missing capability support stops
 the operation with `liftoff upgrade --check --json`, not direct project edits.
 Upgrading the CLI is a separate decision. Require advertised `interactive-repair`
 support before using the normal interactive journey. Repair identity does not change
-package 0.12.3 or activation 0.12.0 / manifest 7 / policy 6 / activation contract 3 /
+the CLI package identity or activation 0.12.0 / manifest 7 / policy 6 / activation contract 3 /
 graph 2 / state, evidence and approval 3 / compatibility 4.
 
 The normal human entry point is `liftoff repair` in an interactive terminal.

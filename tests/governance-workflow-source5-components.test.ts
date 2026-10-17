@@ -16,7 +16,7 @@ import {
 import { workflowByteDigest } from '../src/governance-activation/workflow-binding.js';
 import type { WorkflowContextBinding } from '../src/governance-activation/workflow-context-proof.js';
 import type { Source5WorkflowOrigin } from '../src/governance-activation/workflow-source5-operations.js';
-import { workflowSource5JournalFixture } from './fixtures/workflow-source5-journal.js';
+import { workflowPublicationGitRawInventory, workflowSource5JournalFixture } from './fixtures/workflow-source5-journal.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
@@ -493,15 +493,30 @@ describe('private source5 original component orchestration', () => {
     } finally { await p.close(); }
   });
 
-  it('reobserves published original commit/parent/inventory/bytes without Git writes or changing immutable proof time', async () => {
+  it.each(['unchanged', 'executable', 'symlink', 'missing', 'extra', 'duplicate', 'truncated',
+    'abbreviated-blob', 'wrong-blob', 'deletion', 'prior-mode'] as const)(
+    'reobserves published original commit/parent/inventory/bytes without Git writes or changing immutable proof time: %s', async fault => {
     const f = await fixture(), p = await provider(f);
+    let inventory = workflowPublicationGitRawInventory(f.source.binding.files);
+    if (fault === 'executable') inventory = inventory.replace(' 100644 ', ' 100755 ');
+    if (fault === 'symlink') inventory = inventory.replace(' 100644 ', ' 120000 ');
+    if (fault === 'missing') inventory = '';
+    if (fault === 'extra') inventory += workflowPublicationGitRawInventory([
+      { ...f.source.binding.files[0]!, path: '.github/workflows/unreviewed.yml' }
+    ]);
+    if (fault === 'duplicate') inventory += inventory;
+    if (fault === 'truncated') inventory = inventory.slice(0, -1);
+    if (fault === 'abbreviated-blob') inventory = inventory.replace(/ [a-f0-9]{40} A/u, ' abc1234 A');
+    if (fault === 'wrong-blob') inventory = inventory.replace(/ [a-f0-9]{40} A/u, ` ${'e'.repeat(40)} A`);
+    if (fault === 'deletion') inventory = inventory.replace(' A\0', ' D\0');
+    if (fault === 'prior-mode') inventory = inventory.replace(':000000 ', ':100755 ');
     const observedCommands: string[][] = [];
     const runner: CommandRunner = { async run(command) {
       const args = command.args!.slice(14); observedCommands.push(args);
       let stdout = '';
       if (args[0] === 'rev-parse') stdout = args[2] === 'HEAD' ? 'c'.repeat(40) : 'b'.repeat(40);
       else if (args[0] === 'rev-list') stdout = `${'c'.repeat(40)} ${f.source.binding.parentSha}`;
-      else if (args[0] === 'diff-tree') stdout = `${f.binding.workflowPath}\0`;
+      else if (args[0] === 'diff-tree') stdout = inventory;
       else if (args[0] === 'show') stdout = f.content;
       else throw new Error('Only exact original literal Git reads are allowed.');
       return { command, displayCommand: 'isolated literal read', status: 0, signal: null, stdout, stderr: '', timedOut: false };
@@ -511,11 +526,14 @@ describe('private source5 original component orchestration', () => {
         const journal = await openSource5WorkflowJournal({ ...f.source, lease, initialize: false });
         const stored = (await f.source.store.read('proof', journal.proofKey(f.source.operation)))!, bytes = await readFile(stored.path);
         const later = new Date(f.source.now.getTime() + 60_000);
-        const result = await executeSource5WorkflowComponent(await fields(f.source, lease, runner, p.transport, false, later), journal);
-        expect(result).toMatchObject({ status: 'completed', proof: { observedAt: f.source.now.toISOString(), commitSha: 'c'.repeat(40) },
-          currentObservedAt: later.toISOString() });
+        const execution = executeSource5WorkflowComponent(await fields(f.source, lease, runner, p.transport, false, later), journal);
+        if (fault === 'unchanged') {
+          expect(await execution).toMatchObject({ status: 'completed', proof: { observedAt: f.source.now.toISOString(), commitSha: 'c'.repeat(40) },
+            currentObservedAt: later.toISOString() });
+        } else await expect(execution).rejects.toMatchObject({ code: 'workflow-publication-inventory' });
         expect(await readFile(stored.path)).toEqual(bytes);
-        expect(observedCommands.map(args => args[0])).toEqual(['rev-parse', 'rev-list', 'diff-tree', 'show', 'rev-parse']);
+        expect(observedCommands.map(args => args[0])).toEqual(fault === 'unchanged'
+          ? ['rev-parse', 'rev-list', 'diff-tree', 'show', 'rev-parse'] : ['rev-parse', 'rev-list', 'diff-tree']);
         expect(p.calls.filter(call => call.method !== 'GET')).toEqual([]);
       });
     } finally { await p.close(); }

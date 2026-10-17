@@ -435,7 +435,7 @@ describe('npm compatibility adapter on private filesystem fixtures', () => {
       expect(runner.calls).toEqual([{ command, options: {
         cwd: '/neutral', env: { PATH: '/fixture/bin', npm_config_cache: path.join('/neutral', 'npm-cache'),
           npm_config_update_notifier: 'false', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0', CI: 'true', NODE_OPTIONS: '', NODE_PATH: '' },
-        timeoutMs: 600_000, maxOutputBytes: 8 * 1024 * 1024, ensureProcessTreeSettled: true,
+        inheritEnvironment: false, timeoutMs: 600_000, maxOutputBytes: 8 * 1024 * 1024, ensureProcessTreeSettled: true,
         stream: true, stdout: json ? stderr : stdout, stderr
       } }]);
     }

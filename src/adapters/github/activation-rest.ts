@@ -7,6 +7,7 @@ export interface GitHubRequest {
   path: string;
   body?: unknown;
   binary?: boolean;
+  representation?: 'code-scanning-sarif';
 }
 export interface GitHubResponse {
   status: number;
@@ -76,6 +77,19 @@ export function positiveId(value: unknown, label = 'GitHub resource ID'): number
   return value as number;
 }
 
+function requestAccept(request: GitHubRequest): string {
+  if (request.representation === undefined) return 'application/vnd.github+json';
+  const analysis = /^\/repos\/([^/]+\/[^/]+)\/code-scanning\/analyses\/([1-9][0-9]*)$/u.exec(request.path);
+  if (request.representation !== 'code-scanning-sarif' || request.method !== 'GET' ||
+    request.body !== undefined || request.binary || !analysis ||
+    !Number.isSafeInteger(Number(analysis[2]))) {
+    throw new GitHubActivationError('invalid-endpoint',
+      'The SARIF representation requires a body-free, nonbinary GET of one explicit repository analysis ID.');
+  }
+  githubRepository(analysis[1]);
+  return 'application/sarif+json';
+}
+
 export function text(value: unknown, label: string): string {
   if (typeof value !== 'string' || !value || value.length > 1024 || /[\u0000-\u001f\u007f]/u.test(value)) {
     throw new GitHubActivationError('invalid-response', `${label} is absent or invalid.`);
@@ -125,8 +139,21 @@ function parseResponse(bytes: Buffer, binary: boolean): GitHubResponse {
   return { status, headers, data };
 }
 
+function parseCompletedResponse(
+  bytes: Buffer, binary: boolean, status: number | null, signal: NodeJS.Signals | null
+): GitHubResponse {
+  const incomplete = () => new GitHubActivationError('bounded-request',
+    'GitHub CLI did not confirm a complete request; provider diagnostics were withheld.');
+  if (status === null || signal !== null || status === 2) throw incomplete();
+  const response = parseResponse(bytes, binary);
+  const providerFailure = status === 1 && response.status >= 400 ||
+    status === 4 && (response.status === 401 || response.status === 403);
+  if (status !== 0 && !providerFailure) throw incomplete();
+  return response;
+}
+
 // CommandRunner deliberately decodes text. Archives need a separate bounded byte collector.
-async function runBinaryGitHub(args: readonly string[], cwd: string): Promise<Buffer> {
+async function runBinaryGitHub(args: readonly string[], cwd: string): Promise<GitHubResponse> {
   return new Promise((resolve, reject) => {
     const child = spawn('gh', [...args], {
       cwd, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'],
@@ -151,9 +178,12 @@ async function runBinaryGitHub(args: readonly string[], cwd: string): Promise<Bu
       clearTimeout(timer);
       if (!stopped) reject(new GitHubActivationError('authentication-prerequisite', 'Install and authenticate GitHub CLI using the owner-controlled provider flow.'));
     });
-    child.once('close', () => {
+    child.once('close', (status, signal) => {
       clearTimeout(timer);
-      if (!stopped) resolve(Buffer.concat(chunks));
+      if (!stopped) {
+        try { resolve(parseCompletedResponse(Buffer.concat(chunks), true, status, signal)); }
+        catch (error) { reject(error); }
+      }
     });
   });
 }
@@ -163,12 +193,12 @@ export function createGitHubCliTransport(runner: CommandRunner, projectRoot: str
     async request(request) {
       const endpoint = apiPath(request.path, request.method);
       const args = ['api', '--hostname', 'github.com', '--method', request.method,
-        '--header', `X-GitHub-Api-Version: ${apiVersion}`, '--header', 'Accept: application/vnd.github+json', '--include', endpoint];
+        '--header', `X-GitHub-Api-Version: ${apiVersion}`, '--header', `Accept: ${requestAccept(request)}`, '--include', endpoint];
       if (request.binary) {
         if (request.method !== 'GET' || request.body !== undefined) {
           throw new GitHubActivationError('invalid-endpoint', 'Binary GitHub transport is read-only.');
         }
-        return parseResponse(await runBinaryGitHub(args, projectRoot), true);
+        return runBinaryGitHub(args, projectRoot);
       }
       const stdin = request.body === undefined ? undefined : JSON.stringify(request.body);
       if (stdin !== undefined) args.push('--input', '-');
@@ -179,8 +209,8 @@ export function createGitHubCliTransport(runner: CommandRunner, projectRoot: str
       if (result.timedOut || result.outputLimitExceeded || result.errorCode || result.aborted) {
         throw new GitHubActivationError('bounded-request', 'GitHub request was not completed within its bounded execution window.');
       }
-      // Even errors are parsed only for status, never copied into public output.
-      return parseResponse(Buffer.from(result.stdout), false);
+      // Completed provider errors retain their HTTP status without exposing diagnostics.
+      return parseCompletedResponse(Buffer.from(result.stdout), false, result.status, result.signal);
     }
   };
 }
@@ -192,13 +222,14 @@ export function createAuthenticatedGitHubTransport(
   return {
     async request(request) {
       if (request.binary) throw new GitHubActivationError('invalid-endpoint', 'Protected credential probes cannot download arbitrary artifacts.');
+      const endpoint = apiPath(request.path, request.method), accept = requestAccept(request);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
       try {
-        const response = await fetcher(`https://api.github.com${apiPath(request.path, request.method)}`, {
+        const response = await fetcher(`https://api.github.com${endpoint}`, {
           method: request.method, redirect: 'error', signal: controller.signal,
           headers: {
-            Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': apiVersion,
+            Accept: accept, 'X-GitHub-Api-Version': apiVersion,
             Authorization: `Bearer ${Buffer.from(credential).toString('utf8')}`,
             'Content-Type': 'application/json'
           },
@@ -232,6 +263,13 @@ export class GitHubActivationClient {
 
   async get(path: string): Promise<Record<string, unknown>> {
     return object(expectStatus(await this.transport.request({ method: 'GET', path }), [200], `Read ${path.split('?')[0]}`).data);
+  }
+
+  async codeScanningSarif(repository: string, analysisId: number): Promise<Record<string, unknown>> {
+    const path = `/repos/${githubRepository(repository)}/code-scanning/analyses/${positiveId(analysisId)}`;
+    return object(expectStatus(await this.transport.request({
+      method: 'GET', path, representation: 'code-scanning-sarif'
+    }), [200], `Read ${path} SARIF subset`).data, 'Code-scanning SARIF subset');
   }
 
   async optional(path: string): Promise<Record<string, unknown> | null> {

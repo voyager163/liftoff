@@ -1090,6 +1090,12 @@ not signing, publication, current channel availability or migration authority.
 Nonstandard, missing, contradictory or racing receipts fail closed. WinGet
 ownership remains an explicit provider port pending authoritative installed
 AppId/publisher/certificate/source observations.
+Windows local attribution separately validates the user app-root receipt,
+exact current-version pointer and stable `bin\liftoff.exe` against the immutable
+inner bundle. An inner version launcher is not the selected stable entry.
+Independent user-scope source/signer/uninstall-registration observations remain
+required; a valid installer receipt without those observations leaves the owner
+unknown. Check never refreshes WinGet sources or accepts source agreements.
 
 Canonical npm's stable `latest` metadata selects one exact target for npm owners. The effective
 configured npm registry remains the delivery path and must expose that exact
@@ -1110,6 +1116,10 @@ Machine-level `@msn-control:registry` takes precedence over the default
 directory so project `.npmrc` files cannot change upgrade delivery. Canonical
 verification isolates both registry settings without changing persistent
 configuration; actual delivery still honors the configured mirror.
+All npm observation, installation and replacement-verification subprocesses use
+only the caller-supplied environment plus the upgrade's temporary cache and
+telemetry/startup guards. Omitted parent npm settings are not merged back in;
+explicit prefix, mirror and account settings remain preserved.
 
 `--check` performs the same origin, target, and parity checks without invoking
 installation. Apply uses one shell-free exact npm command with lifecycle scripts,
@@ -1123,9 +1133,22 @@ metadata or selection blocks rather than silently choosing another target.
 Version verification disables telemetry and Node startup overrides and checks
 the selected launcher. Windows source uses a version-bound, ID/source/user-scope
 WinGet handoff outside the running executable, with a new shell and postverification.
+Independent Windows checks also require matching HKCU registration hashes and
+the exact selected launcher's embedded signer through system PowerShell 5.1;
+neither the installer receipt nor a signer alone proves a WinGet source.
 Homebrew cannot pin a cask upgrade to the reviewed version, so no unbound brew
-upgrade is executed. Linux source reuses receipt-bound immutable version
+upgrade is executed. For an attributed cask, the read-only channel compares the
+selected tap definition with canonical bytes derived from independently
+authenticated release material. A match does not grant exact installation
+authority; differing or missing local definitions remain unknown, not guessed
+package absence or lag.
+Linux source reuses receipt-bound immutable version
 replacement and exact journal/selected-dead-lock recovery, never prefix sweeps.
+Its default source independently reobserves the authenticated exact archive
+channel. Apply stages a bounded signed snapshot, validates all TAR members and
+the exact manifest/inventory without executing extracted code, then rechecks the
+owner before the existing installer runs. Failed private stages remain available
+for review; a staging refusal before installation reports `effects: none`.
 These are source interfaces, not a declaration of qualified native availability.
 For native receipts, equal package versions are not enough: differing source,
 manifest or inventory identity reports `native_identity_mismatch`, not current.
@@ -1359,7 +1382,7 @@ and nested reports, verification results/receipts and private backup indexes
 use their own schema-1 formats. Update's journal remains schema 1.
 
 **Repair and preparation capabilities**: The package version is
-0.12.3; application repair and locked preparation capabilities require
+the unpublished `0.13.0-dev.0` candidate; application repair and locked preparation capabilities require
 `repairContractVersion` 1. Do not infer capability support from
 package SemVer alone. Native integrations and tooling must query `liftoff repair --capabilities --json`
 directly to verify `repairContractVersion`, supported schemas, registered recipes,

@@ -85,6 +85,10 @@ The package's machine-level `@msn-control:registry` takes precedence over npm's
 default `registry`. A canonical default does not cancel a scoped mirror.
 Liftoff reads this configuration from a neutral directory, not a project's
 `.npmrc`, and never prints credential-bearing registry values.
+When embedding the upgrade API, supply the complete intended caller environment:
+omitted parent variables are not inherited by npm probes, installation or
+replacement verification. Explicit account, prefix and registry settings are
+retained; Node startup overrides and telemetry are disabled for these children.
 
 A response-body timeout is a transport failure, not invalid release metadata.
 Retry after connectivity is restored; do not change registry policy or regenerate
@@ -117,12 +121,30 @@ For native installations, use the owning manager and a new-shell `liftoff doctor
 plus `liftoff upgrade --check`; an npm repair command is not native authority.
 Windows `restart_required` means close the running executable before the exact
 manager handoff. Homebrew cask source does not run an unpinned `brew upgrade`.
+Windows registration/signature inspection also refuses missing or restricted
+system PowerShell, mismatched HKCU hashes and unverified embedded signatures.
+Do not disable organizational execution policy or trust an unapproved certificate
+to force an ownership result; a valid signer still does not identify a WinGet source.
+An authenticated cask-definition match is not permission to run Ruby or remove
+an npm installation. An unknown local definition/channel must not be repaired
+with an unbound path install or automatic source refresh.
+For the Windows immutable-version layout, select the app root's
+`bin\liftoff.exe`, not a launcher inside `versions\...`. Do not edit
+`native-install.json` or `current.txt` to repair a selection or receipt failure.
+A valid local installer receipt alone cannot prove a WinGet source: unavailable
+independent source/signer/registration observations remain unknown, with no
+source refresh, agreement acceptance or automatic fallback to npm.
 For Linux `recovery_required`, retain the exact journal and immutable versions.
 The installed `installation/native-install.mjs recover` requires the selected
 `.native-install-transaction.json` SHA-256 and, only when required, the selected
 `.native-install-lock/owner.json` SHA-256 for a positively dead process. Active,
 unknown or changed locks and foreign/racing paths are retained. Do not delete
 version-manager directories or sweep the prefix.
+Linux archive staging also retains failed private material instead of sweeping
+temporary directories. An archive/signature, TAR member, source or inventory
+refusal before the owning installer starts has `effects: none`; retain that
+distinction from an installer failure with possible effects. No extracted runtime
+is launched merely to decide whether an archive is safe.
 
 Offline/timeout, invalid metadata, selected-channel lag and channel absence are
 distinct from current. Doctor reports these explicitly without losing local

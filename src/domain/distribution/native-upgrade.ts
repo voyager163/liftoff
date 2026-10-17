@@ -21,6 +21,18 @@ export interface NativeBundleInventory {
   sourceCommit: string;
   /** Local inventory identity, not manager or publisher authority; never emitted publicly. */
   identity: string;
+  /** Receipt/pointer attribution only; does not establish WinGet ownership or a trusted signer. */
+  windowsInstaller?: WindowsInstallerLayout;
+}
+
+export interface WindowsInstallerLayout {
+  installRoot: string;
+  stableLauncher: string;
+  receiptSha256: string;
+  currentSha256: string;
+  stableLauncherSha256: string;
+  policySha256: string;
+  identity: string;
 }
 
 export interface NativeInstallation extends NativeBundleInventory {
@@ -86,6 +98,15 @@ export interface CaskInstallPreview {
     bytes: number;
     sha256: string;
     authority: 'unverified-local-bytes';
+  };
+  /** Signed release-derived content comparison only; does not establish tap/channel or effect authority. */
+  releaseDefinition?: {
+    authority: 'authenticated-release-definition';
+    filename: string;
+    bytes: number;
+    sha256: string;
+    candidateIdentity: string;
+    selectedSource: 'exact' | 'different' | 'absent';
   };
   channel: { status: 'unknown' };
   preflight: {

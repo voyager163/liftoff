@@ -3,6 +3,7 @@ import path from 'node:path';
 import { SelfUpgradeFailure } from '../../domain/distribution/liftoff-upgrade.js';
 import type { NativeCandidate, NativeInstallation, NativeReleasePolicy } from '../../domain/distribution/native-upgrade.js';
 import { isStableSemver, stableReleaseLookupTimeoutMs } from '../../stable-release.js';
+import { nativeCaskDefinition } from '../../../distribution/native/native-cask-definition.mjs';
 
 export interface NativeStableMaterial {
   record: Buffer;
@@ -22,6 +23,24 @@ export interface NativeStableMaterial {
 
 export interface NativeStableSource {
   readStable(target: Pick<NativeInstallation, 'target'>, signal: AbortSignal): Promise<NativeStableMaterial>;
+}
+
+function snapshotMetadata(material: NativeStableMaterial) {
+  return {
+    record: Buffer.from(material.record), qualification: Buffer.from(material.qualification),
+    signature: Buffer.from(material.signature), publicKey: Buffer.from(material.publicKey),
+    stableTag: material.stableTag, draft: material.draft, prerelease: material.prerelease
+  };
+}
+
+export function snapshotNativeStableMaterial(material: NativeStableMaterial): NativeStableMaterial {
+  return {
+    ...material, ...snapshotMetadata(material),
+    assets: new Map([...material.assets].map(([name, content]) => [name, Buffer.from(content)])),
+    platformEvidence: new Map([...material.platformEvidence].map(([name, content]) => [name, Buffer.from(content)])),
+    ...(material.archiveSignature ? { archiveSignature: Buffer.from(material.archiveSignature) } : {}),
+    ...(material.archivePublicKey ? { archivePublicKey: Buffer.from(material.archivePublicKey) } : {})
+  };
 }
 
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -68,6 +87,28 @@ export async function authenticateNativeStableMetadata(
       target: installation.target, commit: record.commit, manifestSha256: record.manifestSha256,
       inventorySha256: record.inventorySha256, files: record.files }, evidence };
   } catch {
+    throw new SelfUpgradeFailure('failed', 'native_invalid');
+  }
+}
+
+/** Authenticated definition content, not tap registration, channel freshness or manager execution authority. */
+export async function authenticatedNativeCaskDefinition(
+  material: NativeStableMaterial, candidate: NativeCandidate, policy: NativeReleasePolicy
+): Promise<Readonly<{ filename: string; content: string; bytes: number; sha256: string }>> {
+  try {
+    const snapshot = snapshotMetadata(material);
+    const { record, evidence } = await authenticateNativeStableMetadata(snapshot, { target: 'darwin-arm64' }, policy);
+    if (candidate.target !== record.target || candidate.version !== record.version || candidate.sourceCommit !== record.commit ||
+      candidate.manifestSha256 !== record.manifestSha256 || candidate.inventorySha256 !== record.inventorySha256 ||
+      candidate.archiveSha256 !== object(record.files[0]).sha256 ||
+      candidate.identity !== hash(Buffer.concat([snapshot.record, snapshot.qualification, snapshot.signature, snapshot.publicKey]))) {
+      throw new Error('Authenticated cask candidate differs.');
+    }
+    const definition = nativeCaskDefinition(record, evidence, policy);
+    const bytes = Buffer.from(definition.content);
+    return Object.freeze({ ...definition, bytes: bytes.length, sha256: hash(bytes) });
+  } catch (error) {
+    if (error instanceof SelfUpgradeFailure) throw error;
     throw new SelfUpgradeFailure('failed', 'native_invalid');
   }
 }

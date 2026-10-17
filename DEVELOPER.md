@@ -138,8 +138,9 @@ schema identify read-only data contracts, not a new policy or activation identit
 Repair has an independent authority in `src/domain/repair/identity.ts`, exposed
 by `liftoff repair --capabilities --json`. Repair contract 1 records eligibility,
 interactive/exact approval, validation, completion and recovery guarantees.
-It is not part of the activation version vector above. The package remains at 0.12.3;
-new application repair and locked preparation capabilities are unreleased. There is
+It is not part of the activation version vector above. The current CLI package is
+the unpublished `0.13.0-dev.0` candidate; new application repair and locked
+preparation capabilities remain unreleased. There is
 no released minimum version yet: tools and integrations must negotiate the actual
 capability contract and preparation matrix directly rather than fabricating a release version.
 
@@ -638,6 +639,13 @@ with its `surface`, `key`, owning `task`, `reason`, `baselineSha256`, and
 `currentSha256`; stale, mismatched, or duplicate records fail. Never regenerate
 the baseline to accept new behavior.
 
+The private `0.13.0-dev.0` writer is an exact infrastructure-layout generation
+entry, not a wildcard for future prereleases or a native/release qualification.
+Package-version changes must preserve the preceding review records, including
+both composed help histories. Record only the actual version fields and induced
+hashes after checking all 165 plugin cases; never update their frozen snapshot.
+The baseline test also pins the complete preceding review ledger.
+
 The same file labels observed rejections. `historical-v5-v6-governed-manifest-rejected`
 is a known defect owned by task 3.2: the 0.12.3 readers reject authentic
 governed v5 and v6 manifests because they require governance artifacts first
@@ -695,7 +703,44 @@ npm run verify:generated-containers
 npm run verify:release-identity
 ```
 
+The CLI coverage inventory includes every TypeScript build input and every
+explicitly published raw JavaScript runtime module, including the native
+distribution helpers. Unimported shipped helpers must appear with zero coverage,
+not disappear from the denominator. Compiled `dist/` output is not counted again.
+Each of the four CLI metrics and four independent gateway metrics must meet the
+unchanged 80.01% floor. Earlier TypeScript-only reports do not qualify this
+expanded CLI inventory; fresh exact-source evidence is required.
+
+## 0.13.0-dev.0 release checklist
+
+This is an unpublished development candidate, not a released minimum version or
+permission to tag, publish, sign, install a public native package, or change cloud
+resources. The historical checklist below does not qualify this candidate.
+
+- Package metadata, both root lock identities, actual npm archive contents,
+  native manifests, and installed `liftoff --version` must agree on
+  `0.13.0-dev.0`. Do not relabel older `0.12.3` artifacts.
+- Requalify the composed source, installed dependency closure, and original
+  same-process assembly producer/reader. An original assembly content reference
+  does not itself qualify workflow execution or issue release authority.
+- Run the complete host matrix and independently enforce all four CLI and
+  gateway coverage floors at 80.01%. Earlier source-only, host-specific, or
+  predecessor results do not qualify the final composed source.
+- Ordinary stable-channel upgrade must refuse this prerelease before manager
+  observations. That refusal does not qualify a stable release's current-version,
+  foreign-registry, manager installation, or migration journeys.
+- Require actual signing, notarization where applicable, approved namespaces,
+  minimum-host and install/upgrade/uninstall evidence before enabling a public
+  native channel. Unconfigured release principals remain fail-closed.
+- Preserve historical activation identities, manifests, compatibility fixtures,
+  project data, consent and protected state. Live qualification still requires
+  its exact admitted host, target, principal and bounded effects.
+
 ## 0.12.3 release checklist
+
+This historical release checklist is retained for the original baseline. Its
+version and contract statements are not the current development candidate's
+publication or qualification record.
 
 - Package metadata, lockfile metadata, `liftoff --version`, and tag agree on
   `0.12.3`. Preparing these files is not publication or permission to create a tag.
@@ -2339,8 +2384,31 @@ restriction for read-only prerequisite polling, not adoption or write authority.
 `readVerifiedApplicationArtifact` returns `VerifiedApplicationArtifact` only
 from authoritative current source/registry/environment/digest receipts;
 `observeImmutableApplicationArtifact` provides independent actual readback.
+Current consumption requires the exact completed original publication handle
+named by the receipt and its scoped workflow-run resource. Historical states
+without that binding remain readable, but cannot qualify new deployment.
 These interfaces do not implement or authorize workflow source publication or
 application deployment.
+
+Fresh registry/identity prerequisites are blocked before intent or deployment
+dispatch: no qualified resource-level create-only or exclusive-destination
+producer exists. Incremental ARM deployments may update existing resources;
+deployment-record conditions do not establish child-resource ownership.
+Absence preflight and the protected state lease are not an external resource
+exclusion guarantee. `applicationPrerequisiteTemplate` is only the pure reviewed
+recipe, not a capability issuer. Original accepted deployment handles remain
+observable without new registry, identity or role-write grants; fixture recipes
+and stored unit handles are not provider concurrency qualification.
+
+New artifact publication is blocked before intent, source upload or dispatch:
+the approved QuickBuild/tag protocol has no qualified atomic no-replace or
+exclusive-destination producer. Absence preflight followed by tag locks cannot
+prove that no competing tag was overwritten. The current source guard has no
+caller-supplied capability switch or fixture issuer. Original accepted handles
+remain observable without a fresh build grant; unit observation fixtures start
+from explicitly stored original handles, not a bypass of this write guard.
+Temporary tags, import/promotion and extra role grants require a separate
+artifact protocol decision and actual provider qualification.
 
 TASK14.3 supplies separate private source interfaces:
 `planWorkflowSourcePublication`/`executeWorkflowSourcePublication` bind exact
@@ -2390,6 +2458,22 @@ policy writer, task14.3 authority, branch or raw-SHA fallback is borrowed.
 Old mutable-ref plans are stale, not silently upgraded. Admission is repeated
 before dispatch and accepted/resumed observation; this source integration
 does not qualify public-v8 execution or the missing production host/ports.
+
+Root-context artifact preparation requires `contextPath: "."` plus exact
+`contextPaths` leaf files bound to the manifest and current active layout.
+`application-artifact-context.ts` exposes `bindApplicationArtifactContext`;
+the neutral `application-artifact-context-recipe.ts` exports
+`applicationArtifactContextStep(paths)` and `applicationContextDirectory`.
+Workflow composition must consume this exact first-party step, then use its
+projected working directory for every subsequent shell step. The projection
+reads bounded raw immutable Git blobs, not a mutable worktree, Git archive or
+whole-root upload; modes are preserved and private/unselected files excluded.
+The limits are 512 files, 1 MiB per file, 8 MiB total and two minutes overall.
+`observeApplicationSource` independently validates the exact committed recipe,
+manifest digest, positive inventory, source/tree and protected execution ref.
+This is shared preparation, not a Source5 writer, production bridge or new
+dispatch input. An empty acceptance response or lost original accepted handle
+cannot be repaired by adopting even a unique matching listed run.
 
 Actual committed workflow bytes, separate transmission/network/build consent,
 the admitted private-network hosted runner, ACR QuickBuild output image and

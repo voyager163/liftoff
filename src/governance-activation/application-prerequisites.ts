@@ -93,7 +93,7 @@ export function applicationPrerequisitePlanInputs(input: PhasePlanningInput | Ph
 
 export type ApplicationPrerequisiteBinding = ReturnType<typeof applicationPrerequisiteBinding>;
 
-function template(binding: ReturnType<typeof applicationPrerequisiteBinding>) {
+export function applicationPrerequisiteTemplate(binding: ApplicationPrerequisiteBinding) {
   const registry = {
     type: 'Microsoft.ContainerRegistry/registries', apiVersion: registryApi,
     name: binding.registryName, location: binding.region, sku: { name: binding.registrySku },
@@ -162,12 +162,14 @@ export async function observeApplicationPrerequisites(input: PhaseAdapterExecuti
     registry.location !== binding.region || registry.sku !== 'Basic' || registry.adminUserEnabled !== false ||
     registry.provisioningState !== 'Succeeded' || !isRecord(registry.tags) ||
     registry.tags['liftoff-binding'] !== binding.bindingDigest ||
+    registry.tags['liftoff-environment'] !== binding.environment ||
     typeof registry.loginServer !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)?\.azurecr\.io$/u.test(registry.loginServer) ||
     identity.id !== binding.identityId || identity.name !== binding.identityName ||
     identity.location !== binding.region || identity.tenantId !== binding.tenantId ||
     typeof identity.principalId !== 'string' || !guid.test(identity.principalId) ||
     typeof identity.clientId !== 'string' || !guid.test(identity.clientId) ||
-    !isRecord(identity.tags) || identity.tags['liftoff-binding'] !== binding.bindingDigest) {
+    !isRecord(identity.tags) || identity.tags['liftoff-binding'] !== binding.bindingDigest ||
+    identity.tags['liftoff-environment'] !== binding.environment) {
     return applicationError('application-prerequisite-readback', 'Registry or workload identity differs from the exact approved owned prerequisite.');
   }
   const roles = [];
@@ -193,11 +195,11 @@ export async function observeApplicationPrerequisites(input: PhaseAdapterExecuti
   return { binding, registry: {
     id: registry.id, name: registry.name, location: registry.location, loginServer: registry.loginServer,
     sku: registry.sku, adminUserEnabled: registry.adminUserEnabled, provisioningState: registry.provisioningState,
-    tags: { 'liftoff-binding': binding.bindingDigest, 'liftoff-environment': binding.environment }
+    tags: { 'liftoff-binding': registry.tags['liftoff-binding'], 'liftoff-environment': registry.tags['liftoff-environment'] }
   }, identity: {
     id: identity.id, name: identity.name, location: identity.location, tenantId: identity.tenantId,
     principalId: identity.principalId, clientId: identity.clientId,
-    tags: { 'liftoff-binding': binding.bindingDigest, 'liftoff-environment': binding.environment }
+    tags: { 'liftoff-binding': identity.tags['liftoff-binding'], 'liftoff-environment': identity.tags['liftoff-environment'] }
   }, roles };
 }
 
@@ -213,6 +215,11 @@ function outputs(
       { resourceType: 'Microsoft.Resources/deployments', resourceId: binding.deploymentId }
     ]).map((resource) => ({ provider: 'azure', ...resource }))
   };
+}
+
+function assertApplicationPrerequisiteNoReplace(): void {
+  applicationError('application-prerequisite-no-replace-unavailable',
+    'Registry/identity prerequisites have no qualified resource-level create-only or exclusive-destination producer. Incremental ARM deployments may update competing resources; deployment-record conditions and absence preflight are not resource ownership. No prerequisite intent or deployment dispatch was performed. Original accepted handles remain observation-only.');
 }
 
 export async function executeApplicationPrerequisites(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome> {
@@ -242,11 +249,13 @@ export async function executeApplicationPrerequisites(input: PhaseAdapterExecuti
     if (protection.identity.cloud.name !== 'AzureCloud') {
       return applicationError('application-cloud-unsupported', 'Application registry production adapters currently qualify only the AzureCloud endpoint family.');
     }
-    const permissions = await observeAzureEffectivePermissions(input, {
-      subscriptionId: binding.subscriptionId, ...protection.identity.cloud
-    }, 'Application prerequisite permissions');
-    if (requiredActions.some((action) => !azurePermits(permissions, action))) {
-      return applicationError('application-permission', 'Exact application registry, identity or scoped role permission is missing; no role/account/provider broadening was attempted.');
+    if (!previous) {
+      const permissions = await observeAzureEffectivePermissions(input, {
+        subscriptionId: binding.subscriptionId, ...protection.identity.cloud
+      }, 'Application prerequisite permissions');
+      if (requiredActions.some((action) => !azurePermits(permissions, action))) {
+        return applicationError('application-permission', 'Exact application registry, identity or scoped role permission is missing; no role/account/provider broadening was attempted.');
+      }
     }
     for (const namespace of ['Microsoft.ContainerRegistry', 'Microsoft.ManagedIdentity']) {
       const observed = azureObject(await runAzureJson(input, [
@@ -267,7 +276,7 @@ export async function executeApplicationPrerequisites(input: PhaseAdapterExecuti
       return applicationError('application-group-unready', 'Application prerequisites require the exact resource group already owned by the recorded protected bootstrap.');
     }
     const url = `https://management.azure.com${binding.deploymentId}?api-version=${deploymentApi}`;
-    const body = { location: binding.region, properties: { mode: 'Incremental', template: template(binding) } };
+    const body = { location: binding.region, properties: { mode: 'Incremental', template: applicationPrerequisiteTemplate(binding) } };
     output = outputs(binding);
     if (!previous) {
       if (input.inspection.state.phases[input.phase.id].executionPlanDigest) {
@@ -300,6 +309,7 @@ export async function executeApplicationPrerequisites(input: PhaseAdapterExecuti
       await observeApplicationProtection(input);
       const freshOwnership = await inspectAzureDeploymentOwnership(input);
       if (freshOwnership?.blocker) return applicationError('application-ownership', freshOwnership.blocker);
+      assertApplicationPrerequisiteNoReplace();
       await input.recordApplicationDispatchIntent?.(apply);
       await assertApplicationAuthority(input, apply);
       dispatchAttempted = true;

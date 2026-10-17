@@ -227,6 +227,7 @@ export async function inspectGlobalInstallation(
     {
       cwd: neutralDirectory,
       env: readOnlyEnvironment(dependencies, neutralDirectory),
+      inheritEnvironment: false,
       timeoutMs: dependencies.probeTimeoutMs ?? selfUpgradeProbeTimeoutMs,
       maxOutputBytes: 2 * 1024 * 1024,
       ensureProcessTreeSettled: true
@@ -331,6 +332,7 @@ async function configuredUpgradeRegistry(
   const options = {
     cwd: neutralDirectory,
     env: readOnlyEnvironment(dependencies, neutralDirectory),
+    inheritEnvironment: false,
     timeoutMs,
     maxOutputBytes: 2 * 1024 * 1024,
     ensureProcessTreeSettled: true
@@ -382,6 +384,7 @@ export async function inspectRegistryParity(
   const options = {
     cwd: neutralDirectory,
     env: readOnlyEnvironment(dependencies, neutralDirectory),
+    inheritEnvironment: false,
     timeoutMs,
     maxOutputBytes: 2 * 1024 * 1024,
     ensureProcessTreeSettled: true
@@ -469,6 +472,7 @@ export async function npmGlobalRoot(
     {
       cwd: neutralDirectory,
       env: readOnlyEnvironment(dependencies, neutralDirectory),
+      inheritEnvironment: false,
       timeoutMs: dependencies.probeTimeoutMs ?? selfUpgradeProbeTimeoutMs,
       maxOutputBytes: 2 * 1024 * 1024,
       ensureProcessTreeSettled: true
@@ -513,6 +517,7 @@ export function runExactGlobalInstall(
   return dependencies.runner.run(installCommand, {
     cwd: neutralDirectory,
     env: readOnlyEnvironment(dependencies, neutralDirectory),
+    inheritEnvironment: false,
     timeoutMs: selfUpgradeInstallTimeoutMs,
     maxOutputBytes: 8 * 1024 * 1024,
     ensureProcessTreeSettled: true,
@@ -606,6 +611,7 @@ export async function verifyReplacement(
     {
       cwd: neutralDirectory,
       env: readOnlyEnvironment(dependencies, neutralDirectory),
+      inheritEnvironment: false,
       timeoutMs: selfUpgradeVerificationTimeoutMs,
       maxOutputBytes: 2 * 1024 * 1024,
       ensureProcessTreeSettled: true
