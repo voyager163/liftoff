@@ -200,6 +200,20 @@ describe('Windows installer local attribution and independent WinGet ownership',
     expect(world.runner.run.mock.calls[0][1]).toMatchObject({ inheritEnvironment: false, ensureProcessTreeSettled: true });
   });
 
+  it('does not promote matching installer registration and signer facts into selected-source ownership', async () => {
+    const world = windowsReceiptWorld();
+    const layout = await read(world);
+    const registration = await readWindowsInstallerRegistration(world.dependencies,
+      { ...world.installation, windowsInstaller: layout }, world.policy, 'C:\\fixture\\neutral', new AbortController().signal);
+    expect(registration).toMatchObject({ signatureStatus: 'valid', certificateSha256: world.policy.winget.certificateSha256 });
+    expect(registration).not.toHaveProperty('source');
+    expect(registration).not.toHaveProperty('owner');
+    await expect(createNativeUpgradePort(world.dependencies).inspect(world.packageRoot, '0.12.3', 'C:\\fixture\\neutral'))
+      .rejects.toMatchObject({ reasonCode: 'native_unavailable' });
+    expect(world.runner.run.mock.calls.map(([command]) => command.executable))
+      .toEqual([world.powershell, world.installation.runtime]);
+  });
+
   it('classifies only after independent user-scope source/signer/registration observations', async () => {
     const world = windowsReceiptWorld();
     const reader = vi.fn<NonNullable<NativeOwnerReaders['winget']>>(async () => world.winget);
