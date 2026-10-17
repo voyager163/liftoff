@@ -740,6 +740,12 @@ attestation. Its concrete key cardinality is independently bounded to 21,994
 (including itself), within the unchanged safe-record node budget and namespace
 caps. Oversized or unrepresentable inventories block rather than widening
 existing stores or hiding keys behind suffix/directory permissions.
+Read-only ownership-history observations still read every inventory slot,
+including absence, in fixed batches of at most four independent reads. Each
+batch fully settles before original-order validation or rejection; retained
+results and failure selection follow inventory order, not completion order.
+No keys, per-file guards, history checks or lease/currentness checks are cached
+or skipped, and no pending read can escape into later writes or lease release.
 
 Opening or initializing a journal requires its exact separately sealed original
 review. Initialization never creates that plan or recreates missing history,
