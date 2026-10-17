@@ -261,13 +261,6 @@ function boundRun(run: Record<string, unknown>, binding: ReturnType<typeof appli
   return positiveId(run.id, 'Artifact workflow run ID');
 }
 
-function operationForRun(input: PhaseAdapterExecutionInput, run: Record<string, unknown>, binding: ReturnType<typeof applicationArtifactBinding>): ExternalOperationState {
-  const id = boundRun(run, binding, applicationDispatchPlan(input).createdAt);
-  return { provider: 'github', actionId: 'github.artifact.build-dispatch', operationId: `github-actions:${id}`,
-    resourceId: `/repos/${binding.repository}/actions/runs/${id}`, pollUrl: `https://api.github.com/repos/${binding.repository}/actions/runs/${id}`,
-    startedAt: String(run.created_at), observedAt: (input.clock?.() ?? input.now).toISOString(), status: 'running' };
-}
-
 function operationForAcceptedDispatch(
   input: PhaseAdapterExecutionInput, binding: ApplicationArtifactBinding,
   response: Record<string, unknown>, startedAt: string
@@ -330,61 +323,47 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
       )).filter((run) => run.display_title === binding.runTitle);
       const existing = await find();
       if (existing.length > 1) return applicationError('application-run-ambiguous', 'Artifact invocation is ambiguous; never choose a candidate run or repeat publication.');
-      if (existing.length === 1 && input.inspection.state.phases[input.phase.id].executionPlanDigest) {
-        handle = operationForRun(input, existing[0]!, binding);
-        currentReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
-          id: existing[0]!.id, headSha: existing[0]!.head_sha, runAttempt: existing[0]!.run_attempt
-        })];
-      } else {
-        if (existing.length || input.inspection.state.phases[input.phase.id].executionPlanDigest) {
-          return applicationError('application-dispatch-uncertain', 'Artifact destination/dispatch is occupied or acceptance is uncertain; observe the existing invocation under recovery instead of dispatching again.');
-        }
-        const repositories = await runAzureJson(input, [
-          'acr', 'repository', 'list', '--subscription', binding.subscriptionId, '--name', binding.registryName
-        ], 'Artifact publication destination inventory');
-        if (!Array.isArray(repositories) || repositories.length > 1_000 ||
-          repositories.some((entry) => typeof entry !== 'string')) {
-          return applicationError('application-registry-unobservable', 'Complete bounded registry repository absence could not be established.');
-        }
-        if (repositories.includes(binding.imageRepository)) {
-          const tags = await runAzureJson(input, [
-            'acr', 'repository', 'show-tags', '--subscription', binding.subscriptionId,
-            '--name', binding.registryName, '--repository', binding.imageRepository
-          ], 'Artifact tag collision readback');
-          if (!Array.isArray(tags) || tags.length > 1_000 || tags.some((entry) => typeof entry !== 'string') || tags.includes(binding.tag)) {
-            return applicationError('application-tag-occupied', 'The exact immutable publication tag is occupied or its absence is unobservable; it must not be replaced/adopted.');
-          }
-        }
-        await assertApplicationAuthority(input, dispatch);
-        await observeApplicationProtection(input);
-        await observeApplicationSource(input);
-        await input.recordApplicationDispatchIntent?.(dispatch);
-        await assertApplicationAuthority(input, dispatch);
-        await observeImmutableWorkflowExecutionRef({ client }, {
-          repository: binding.repository, repositoryId: binding.repositoryId,
-          sourceSha: binding.sourceSha, treeSha: binding.sourceTreeSha, executionRef: binding.executionRef
-        });
-        await assertApplicationAuthority(input, dispatch);
-        dispatchAttempted = true;
-        const startedAt = (input.clock?.() ?? input.now).toISOString();
-        const accepted = await client.write('POST', `/repos/${binding.repository}/actions/workflows/${binding.workflowPath.split('/').at(-1)}/dispatches`,
-          { ref: binding.executionRef, inputs: dispatchInputs(binding) });
-        if (accepted) {
-          handle = operationForAcceptedDispatch(input, binding, accepted, startedAt);
-          currentReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
-            id: accepted.workflow_run_id, runUrl: handle.pollUrl,
-            htmlUrl: `https://github.com/${binding.repository}/actions/runs/${accepted.workflow_run_id}`
-          })];
-        } else {
-          const runs = await find();
-          if (runs.length !== 1) return applicationError('application-dispatch-uncertain',
-            'Artifact dispatch was accepted but no unique actual run is visible yet; recovery must observe this invocation and cannot repeat dispatch.');
-          handle = operationForRun(input, runs[0]!, binding);
-          currentReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
-            id: runs[0]!.id, headSha: runs[0]!.head_sha, runAttempt: runs[0]!.run_attempt
-          })];
+      if (existing.length || input.inspection.state.phases[input.phase.id].executionPlanDigest) {
+        return applicationError('application-dispatch-uncertain',
+          'Artifact destination/dispatch is occupied or acceptance is uncertain; a listed run cannot replace the original accepted run ID. Retain the original intent without adopting a candidate or dispatching again.');
+      }
+      const repositories = await runAzureJson(input, [
+        'acr', 'repository', 'list', '--subscription', binding.subscriptionId, '--name', binding.registryName
+      ], 'Artifact publication destination inventory');
+      if (!Array.isArray(repositories) || repositories.length > 1_000 ||
+        repositories.some((entry) => typeof entry !== 'string')) {
+        return applicationError('application-registry-unobservable', 'Complete bounded registry repository absence could not be established.');
+      }
+      if (repositories.includes(binding.imageRepository)) {
+        const tags = await runAzureJson(input, [
+          'acr', 'repository', 'show-tags', '--subscription', binding.subscriptionId,
+          '--name', binding.registryName, '--repository', binding.imageRepository
+        ], 'Artifact tag collision readback');
+        if (!Array.isArray(tags) || tags.length > 1_000 || tags.some((entry) => typeof entry !== 'string') || tags.includes(binding.tag)) {
+          return applicationError('application-tag-occupied', 'The exact immutable publication tag is occupied or its absence is unobservable; it must not be replaced/adopted.');
         }
       }
+      await assertApplicationAuthority(input, dispatch);
+      await observeApplicationProtection(input);
+      await observeApplicationSource(input);
+      await input.recordApplicationDispatchIntent?.(dispatch);
+      await assertApplicationAuthority(input, dispatch);
+      await observeImmutableWorkflowExecutionRef({ client }, {
+        repository: binding.repository, repositoryId: binding.repositoryId,
+        sourceSha: binding.sourceSha, treeSha: binding.sourceTreeSha, executionRef: binding.executionRef
+      });
+      await assertApplicationAuthority(input, dispatch);
+      dispatchAttempted = true;
+      const startedAt = (input.clock?.() ?? input.now).toISOString();
+      const accepted = await client.write('POST', `/repos/${binding.repository}/actions/workflows/${binding.workflowPath.split('/').at(-1)}/dispatches`,
+        { ref: binding.executionRef, inputs: dispatchInputs(binding) });
+      if (!accepted) return applicationError('application-dispatch-uncertain',
+        'Artifact dispatch returned no unique actual run ID in its acceptance response; retain the durable intent. Run-list candidates cannot prove original acceptance or permit redispatch.');
+      handle = operationForAcceptedDispatch(input, binding, accepted, startedAt);
+      currentReadback = [readbackProof(input, 'github', 'workflow-run', handle.resourceId, {
+        id: accepted.workflow_run_id, runUrl: handle.pollUrl,
+        htmlUrl: `https://github.com/${binding.repository}/actions/runs/${accepted.workflow_run_id}`
+      })];
     }
     outputs = outputFor(binding, handle, { sourceTreeDigest: source.sourceTreeDigest });
     if (!previous && currentReadback.length) {
