@@ -79,7 +79,12 @@ boundary suite runs on shard 2. That named boundary suite includes repair and
 adoption path-with-spaces, junction, mode/readback, and interrupted-transaction
 cases. Windows shard 1 separately runs real repair and adoption child commands
 through the packaged Job Object controller so a mock settlement result cannot
-qualify either lane. All jobs retain the 45-minute limit except Windows shard 2,
+qualify either lane. This precheck uses one worker with file parallelism disabled
+to avoid file-level contention between cold controller compilations. It retains
+the existing 15-second startup budget and uploads its own
+`qualification/windows-process-tests.json` report on success or failure; this is
+not a main-shard result. Serialization alone is not Windows host qualification.
+All jobs retain the 45-minute limit except Windows shard 2,
 which has a 75-minute limit because it must complete both the named boundary
 suite and its source-complete package shard without dropping or filtering either
 set of tests.

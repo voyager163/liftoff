@@ -273,7 +273,7 @@ The sealed packet is
 `/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/shared-core-8fb50e2-qualification`.
 `receipt.json` has SHA-256
 `d57c383acf8342249632cbc63399d3cdc43138dd64db3822704c42b0e4f86e03`;
-its 51-file ledger has SHA-256
+its sealed artifact ledger has SHA-256
 `5c79706ee45c62a455f8c0c11e915547dc35b1302a470f23aab5328bb2cd3ba2`.
 The isolated npm cache was removed after sealing.
 
@@ -286,18 +286,22 @@ source-complete run after preserving integrations.
 
 Terminal EF failure mapping found no missing executable 8fb delta. The
 `.13-dev` release-only telemetry incompatibility is corrected by `cc91c2e8`
-above without broadening the accepted version grammar. Remaining Root debt is
-the deliberate version/native-package coupled expectations. Root's exact
-reproduction also established that the 20 compatibility failures require a
-current-version-only manifest candidate with exactly one
-`liftoff.manifest.json` write; they were not caused by production guide text or
-a root README mutation. Root reverted its provisional renderer gate, left
-production guidance/frozen baselines unchanged, and owns the precise manifest
-expectation correction. Preserve the reviewed retained-family4 fixture
-corrections and current5 refusals. Coverage guidance and application
-publication-handle binding were corrected independently after EF. Source owns
-remaining matrix/finalization timing assessment. EF's 45-minute CLI coverage
-job produced no artifact; it cannot inherit this smaller-inventory result.
+above without broadening the accepted version grammar. The version/native
+fixture corrections are separately pinned at `9557f7c4` and `11d133b1`; neither
+carries composed full-suite or V8 credit. An initial infrastructure-guide
+attribution was disproved
+by actual Root observation: all twenty historical previews proposed only a
+`liftoff.manifest.json` writer-version update, not a README/template write.
+Root `c99d98ba7d82d9dd572688cd2af952eb2430d91e` now requires the exact
+current-version-only candidate and its sole manifest write/hash/byte length,
+while preserving every frozen source field and project byte. No production
+renderer or frozen baseline was changed for that correction. Preserve the
+reviewed retained-family4 fixture corrections and current5 refusals; do not
+refresh historical baselines or infer an automatic successor lane.
+Coverage guidance and application publication-handle
+binding were corrected independently after EF. Source owns remaining
+matrix/finalization timing assessment. EF's 45-minute CLI coverage job produced
+no artifact; it cannot inherit this smaller-inventory result.
 
 Root later added exact `68ccddbba79a7e0b78474184c9b9003fde571091`,
 tree `88e392640cde23587191c35eb56d314f55a28b7e`, as a separate four-path
