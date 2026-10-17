@@ -583,7 +583,11 @@ name leaves its descriptor bound to the old directory, not the newly selected
 prefix path.
 
 [`fclonefileat`](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/bsd/man/man2/clonefile.2)
-does select the source by descriptor and refuses an existing destination.
+does select the source by descriptor. Zero flags are not namespace-entry
+exclusion: the private control follows a dangling destination symlink and creates
+its target. The primary header defines `CLONE_NOFOLLOW_ANY` as `0x0008`; with that
+flag the corresponding private control refuses the symlink with `ELOOP`, leaves
+its target absent, and refuses competing files/directories with `EEXIST`.
 The private host control actually clones the held original file and directory
 after source-name substitution; directory cloning is not claimed unavailable,
 although Apple's manual strongly discourages it. The ABI returns success or an
