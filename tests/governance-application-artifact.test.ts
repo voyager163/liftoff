@@ -1343,6 +1343,36 @@ describe('immutable application publication and independent readback', () => {
     Object.assign(saved.phaseOutputs!['application-artifact-ready']!.values, { artifactDigest: 'latest' });
     expect(() => readVerifiedApplicationArtifact(inspection)).toThrow(/authoritative/);
   });
+  it.each(['missing', 'different-run', 'nonterminal', 'wrong-provider', 'wrong-action',
+    'operation-id', 'resource-id', 'poll-url'] as const)(
+    'refuses current artifact consumption with a %s original publication handle', async kind => {
+      const f = await fixture(true);
+      const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
+        runner: f.runner, now: coverageNow, adapters: f.input.adapters });
+      expect(outcome).toMatchObject({ applied: true });
+      const saved = (await readState(f.root))!;
+      const receipt = JSON.parse(await readFile(path.join(f.root, ...outcome.evidence!.pathParts), 'utf8'));
+      const phase = saved.phases[f.phase.id];
+      if (kind === 'missing') delete phase.operation;
+      else if (kind === 'different-run') phase.operation = { ...phase.operation!, operationId: 'github-actions:999',
+        resourceId: '/repos/owner/repo/actions/runs/999', pollUrl: 'https://api.github.com/repos/owner/repo/actions/runs/999' };
+      else if (kind === 'nonterminal') phase.operation!.status = 'running';
+      else if (kind === 'wrong-provider') phase.operation!.provider = 'azure';
+      else if (kind === 'wrong-action') phase.operation!.actionId = 'github.workflow.dispatch';
+      else if (kind === 'operation-id') phase.operation!.operationId = 'github-actions:999';
+      else if (kind === 'resource-id') phase.operation!.resourceId = '/repos/owner/repo/actions/runs/999';
+      else phase.operation!.pollUrl = 'https://api.github.com/repos/owner/repo/actions/runs/999';
+      const prior = await loadActivationState(f.root);
+      await writeActivationState(f.root, saved, { expectedContentHash: prior!.contentHash });
+      const historical = (await loadActivationState(f.root))!;
+      expect(historical.state.phases[f.phase.id].state).toBe('verified');
+      const inspection = await coverageInspection({ root: f.root, phaseId: f.phase.id,
+        state: historical.state, activationInputs: f.inputs, evidence: [receipt],
+        reviewedPlans: await readReviewedTransitionPlans(f.root) });
+      expect(() => readVerifiedApplicationArtifact(inspection)).toThrow(/original.*publication.*handle/);
+      expect(f.transport.calls.filter(entry => entry.method === 'POST')).toEqual([]);
+    }
+  );
   it('refuses an earlier verified artifact after independently inspecting changed recipe or transmission consent', async () => {
     const f = await fixture(true);
     const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,

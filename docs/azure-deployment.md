@@ -244,6 +244,10 @@ The same verified principal must independently have registry-scoped effective
 Missing actions or explicit permission exclusions block before dispatch; the
 producer never grants another role to make a build succeed. Already accepted
 workflow handles remain observation-only and do not require a new build grant.
+Current artifact consumption requires the exact completed original publication
+handle named by its receipt and scoped workflow-run resource. Missing,
+nonterminal or changed handles block new deployment; historical state/evidence
+parsers remain unchanged and those records remain readable.
 New publication currently fails closed before recording intent, uploading source
 or dispatching a build: no qualified atomic no-replace or exclusive-destination
 producer exists for the approved QuickBuild/tag protocol. An absent tag followed

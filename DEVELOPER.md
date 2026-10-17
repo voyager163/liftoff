@@ -2339,6 +2339,9 @@ restriction for read-only prerequisite polling, not adoption or write authority.
 `readVerifiedApplicationArtifact` returns `VerifiedApplicationArtifact` only
 from authoritative current source/registry/environment/digest receipts;
 `observeImmutableApplicationArtifact` provides independent actual readback.
+Current consumption requires the exact completed original publication handle
+named by the receipt and its scoped workflow-run resource. Historical states
+without that binding remain readable, but cannot qualify new deployment.
 These interfaces do not implement or authorize workflow source publication or
 application deployment.
 
