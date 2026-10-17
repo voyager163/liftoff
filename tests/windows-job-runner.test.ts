@@ -124,7 +124,24 @@ function restorePreInteropReuseController(controller: string): string {
   return removeSourceRange(restored, branchStart, branchEnd).replace(branchEnd, compile + branchEnd);
 }
 
+function restore33d8IntakeCorrectionRunner(runner: string): string {
+  return runner
+    .replace([
+      '    reservation = await runOperation(',
+      '      () => cache.reserve(options.identity),',
+      '      (acquired) => {',
+      '        reservation = acquired;',
+      "        if (stopped && acquired.kind === 'producer') {",
+      "          acquired.fail(new Error('Windows Job interop preparation stopped before producer acquisition completed.'));",
+      '        }',
+      '      }',
+      '    );'
+    ].join('\n'), '    reservation = await runOperation(() => cache.reserve(options.identity));')
+    .replace('    await file?.close();', '    await file?.close().catch(() => {});');
+}
+
 function restoreCe4InteropRevisionRunner(runner: string): string {
+  runner = restore33d8IntakeCorrectionRunner(runner);
   const originalPreparationHelpers = [
     'class WindowsJobInteropReservationTimeout extends Error {}',
     '',
@@ -454,6 +471,32 @@ describe('Windows Job interop assembly reuse', () => {
       .rejects.toThrow('changed during bounded capture');
   });
 
+  it('rejects accepted bytes when the real physical file handle reports close failure', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-interop-close-'));
+    tempDirs.push(directory);
+    const assembly = path.join(directory, 'Win32JobNative.dll');
+    await writeFile(assembly, Buffer.from([0x4d, 0x5a, 0x01]));
+    let closeFailed = false;
+    const operations: WindowsJobInteropCaptureOperations = {
+      lstat: (filePath) => lstat(filePath, { bigint: true }),
+      open: async (filePath) => {
+        const handle = await open(filePath, 'r');
+        return {
+          stat: () => handle.stat({ bigint: true }),
+          read: (buffer, offset, length, position) => handle.read(buffer, offset, length, position),
+          close: async () => {
+            await handle.close();
+            closeFailed = true;
+            throw new Error('injected physical close failure');
+          }
+        };
+      }
+    };
+    await expect(captureWindowsJobInteropAssembly(assembly, undefined, operations))
+      .rejects.toThrow('injected physical close failure');
+    expect(closeFailed).toBe(true);
+  });
+
   it('times out delayed preparation at the absolute deadline and drains late directory creation into cleanup', async () => {
     const cache = new WindowsJobInteropAssemblyCache();
     let releaseDirectory!: (directory: string) => void;
@@ -535,6 +578,40 @@ describe('Windows Job interop assembly reuse', () => {
     expect(operations.createPrivateDirectory).not.toHaveBeenCalled();
     expect(operations.writePrivateFile).not.toHaveBeenCalled();
     await expect(cache.reserve(identity)).resolves.toMatchObject({ kind: 'producer' });
+  });
+
+  it('fails a producer acquired in the cancellation microtask before filesystem preparation starts', async () => {
+    const cache = new WindowsJobInteropAssemblyCache();
+    const abort = new AbortController();
+    let filesystemStarts = 0;
+    const operations: WindowsJobInteropPreparationOperations = {
+      createPrivateDirectory: async () => {
+        filesystemStarts += 1;
+        throw new Error('Unexpected filesystem work after cancellation.');
+      },
+      writePrivateFile: async () => { throw new Error('Unexpected filesystem work after cancellation.'); },
+      removePrivateDirectory: async () => true
+    };
+    const preparing = prepareWindowsJobInteropAssembly({
+      identity,
+      startupTimeoutMs: 500,
+      signal: abort.signal,
+      cache,
+      operations
+    });
+    queueMicrotask(() => abort.abort());
+    const result = await preparing;
+    expect(result).toMatchObject({ ok: false, reason: 'aborted', cleanupStatus: 'complete' });
+    expect(filesystemStarts).toBe(0);
+    const next = await Promise.race([
+      cache.reserve(identity),
+      new Promise<'still-pending'>((resolve) => setTimeout(() => resolve('still-pending'), 25))
+    ]);
+    expect(next).not.toBe('still-pending');
+    expect(next).toMatchObject({ kind: 'producer' });
+    if (next !== 'still-pending' && next.kind === 'producer') {
+      next.fail(new Error('test complete'));
+    }
   });
 
   it('quarantines a late write settlement after timeout and retains its cleanup failure', async () => {
@@ -744,6 +821,14 @@ describe('Windows Job Object controller asset integrity and host environment', (
     );
     expect(createHash('sha256').update(runner).digest('hex'))
       .toBe('ab2108d255c7f664f31654f204255cdc8f59150d4d0009e51a0b7152df46a746');
+  });
+
+  it('restores exact 33d8 runner bytes by removing only the producer-release and close correction', async () => {
+    const runner = restore33d8IntakeCorrectionRunner(
+      await readFile(path.join(process.cwd(), 'src/adapters/process/windows-job-runner.ts'), 'utf8')
+    );
+    expect(createHash('sha256').update(runner).digest('hex'))
+      .toBe('f3a823df24bd12abfc60e940e6ae8ee4c4b8b89136a4863d00e25947e24ef64b');
   });
 
   it('places fixed stages around admission boundaries without preceding native error capture or weakening policy denial', async () => {

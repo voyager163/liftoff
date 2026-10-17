@@ -234,7 +234,15 @@ export async function prepareWindowsJobInteropAssembly(options: {
   };
 
   try {
-    reservation = await runOperation(() => cache.reserve(options.identity));
+    reservation = await runOperation(
+      () => cache.reserve(options.identity),
+      (acquired) => {
+        reservation = acquired;
+        if (stopped && acquired.kind === 'producer') {
+          acquired.fail(new Error('Windows Job interop preparation stopped before producer acquisition completed.'));
+        }
+      }
+    );
     directory = await runOperation(
       () => operations.createPrivateDirectory(path.join(tmpdir(), 'liftoff-job-interop-')),
       (created) => { directory = created; }
@@ -359,7 +367,7 @@ export async function captureWindowsJobInteropAssembly(
     }
     return verifiedWindowsJobInteropAssembly(bytes);
   } finally {
-    await file?.close().catch(() => {});
+    await file?.close();
   }
 }
 
