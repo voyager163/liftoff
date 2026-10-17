@@ -12,7 +12,7 @@ import {
   observeImmutableApplicationArtifact, readVerifiedApplicationArtifact
 } from '../src/governance-activation/application-artifact.js';
 import {
-  applicationPrerequisiteBinding, executeApplicationPrerequisites
+  applicationPrerequisiteBinding, applicationPrerequisiteTemplate, executeApplicationPrerequisites
 } from '../src/governance-activation/application-prerequisites.js';
 import {
   applicationDeadlineInput, applicationProtectionBlocker, assertApplicationAuthority,
@@ -350,7 +350,7 @@ async function fixture(artifact = false, rootContext = false,
       sourceSha: sha, sourceTreeSha: treeSha, workflowDigest: createHash('sha256').update(transport.workflow).digest('hex') };
   }
   f.inspection = await coverageInspection({ root, phaseId: f.phase.id, state: f.state, activationInputs: f.inputs });
-  if (artifact && publication === 'accepted') {
+  if (publication === 'accepted') {
     await writeActivationState(root, f.state, { expectedContentHash: null });
   }
   const preview = (await buildSavedTransitionPlan(f))!;
@@ -434,23 +434,39 @@ async function fixture(artifact = false, rootContext = false,
   input.plan = (await buildSavedTransitionPlan(input))!;
   if (artifact) {
     transport.binding = applicationArtifactBinding(input); runner.artifact = transport.binding;
-    if (publication === 'accepted') {
-      input.inspection.contexts[f.phase.id].reviewedPlans = [input.plan];
+  }
+  if (publication === 'accepted') {
+    input.inspection.contexts[f.phase.id].reviewedPlans = [input.plan];
+    const phase = f.state.phases[f.phase.id];
+    phase.state = 'running';
+    phase.executionPlanDigest = input.plan.planDigest;
+    const acceptedAt = new Date(coverageNow.getTime() - 1).toISOString();
+    if (artifact) {
       transport.dispatched = true;
-      const phase = f.state.phases[f.phase.id];
-      phase.state = 'running';
-      phase.executionPlanDigest = input.plan.planDigest;
-      const acceptedAt = new Date(coverageNow.getTime() - 1).toISOString();
       phase.operation = {
         provider: 'github', actionId: 'github.artifact.build-dispatch', operationId: 'github-actions:901',
         resourceId: '/repos/owner/repo/actions/runs/901', pollUrl: 'https://api.github.com/repos/owner/repo/actions/runs/901',
         startedAt: acceptedAt, observedAt: acceptedAt,
         status: 'running', planDigest: input.plan.planDigest
       };
-      const prior = await loadActivationState(root);
-      await writeActivationState(root, f.state, { expectedContentHash: prior!.contentHash });
-      input.inspection.loadedState = await loadActivationState(root);
+    } else {
+      runner.deployedTemplate = applicationPrerequisiteTemplate(f.prerequisite);
+      phase.operation = {
+        provider: 'azure', actionId: 'azure.prerequisites.apply',
+        operationId: `azure-deployment:${f.prerequisite.deploymentId.toLowerCase()}`,
+        resourceId: f.prerequisite.deploymentId,
+        pollUrl: `https://management.azure.com${f.prerequisite.deploymentId}?api-version=2022-09-01`,
+        startedAt: acceptedAt, observedAt: acceptedAt, status: 'running', planDigest: input.plan.planDigest
+      };
+      f.state.phaseOutputs![f.phase.id] = {
+        values: { prerequisiteBindingDigest: f.prerequisite.bindingDigest, environment: f.prerequisite.environment,
+          registryResourceId: f.prerequisite.registryId, workloadIdentityResourceId: f.prerequisite.identityId },
+        resources: [{ provider: 'azure', resourceType: 'Microsoft.Resources/deployments', resourceId: f.prerequisite.deploymentId }]
+      };
     }
+    const prior = await loadActivationState(root);
+    await writeActivationState(root, f.state, { expectedContentHash: prior!.contentHash });
+    input.inspection.loadedState = await loadActivationState(root);
   }
   return { ...f, input, runner, transport, custody };
 }
@@ -464,12 +480,12 @@ describe('application source producers behind real prerequisites', () => {
     expect(f.input.plan.operations.map((entry) => entry.actionId)).toContain('azure.deployment.classify-ownership');
     expect(await observeApplicationProtection(f.input)).toMatchObject({ custody: { hostId: nativeStateHostId() } });
   });
-  it('uses bounded real ARM dispatch/readback shapes and sanitized provider output', async () => {
+  it('observes an original accepted ARM deployment with bounded readback and sanitized provider output', async () => {
     const f = await fixture();
     const outcome = await executeApplicationPrerequisites(f.input);
     expect(outcome, JSON.stringify(outcome)).toMatchObject({ status: 'completed', resultState: 'verified',
       operation: { status: 'completed' }, outputs: { values: { workloadPrincipalId: applicationFixtureWorkloadPrincipal } } });
-    expect(f.runner.writes).toHaveLength(1);
+    expect(f.runner.writes).toEqual([]);
     expect(JSON.stringify(outcome)).not.toContain('withheld-fixture-value');
     expect(f.runner.options.filter((entry) => entry.timeoutMs).every((entry) => entry.timeoutMs! <= 30_000 && entry.stream === false)).toBe(true);
   });
@@ -500,10 +516,10 @@ describe('application source producers behind real prerequisites', () => {
     expect(outcome.evidencePayload).toBeUndefined();
     expect(outcome.outputs?.values.loginServer).toBeUndefined();
     expect(outcome.outputs?.values.workloadPrincipalId).toBeUndefined();
-    expect(f.runner.writes).toHaveLength(1);
+    expect(f.runner.writes).toEqual([]);
   });
   it.each(['ports', 'authority', 'permission', 'provider', 'collision', 'ownership'] as const)('refuses %s before dispatch', async (kind) => {
-    const f = await fixture();
+    const f = await fixture(false, false, 'exact', 'fresh');
     if (kind === 'ports') f.input.adapters = {};
     if (kind === 'authority') f.input.inspection.approvals = [];
     if (kind === 'permission') f.runner.permissions = ['Microsoft.Resources/deployments/read'];
@@ -524,7 +540,7 @@ describe('application source producers behind real prerequisites', () => {
     if (first.operation) first.operation.planDigest = f.input.plan.planDigest;
     const next = await executeApplicationPrerequisites(f.input);
     expect(next, JSON.stringify(next)).toMatchObject({ status: 'pending' });
-    expect(f.runner.writes).toHaveLength(1);
+    expect(f.runner.writes).toEqual([]);
   });
   it.each(['Running', 'Succeeded'])('observes the original %s prerequisite deployment without fresh create or role-assignment grants', async state => {
     const f = await fixture();
@@ -550,7 +566,7 @@ describe('application source producers behind real prerequisites', () => {
       operation: { operationId: first.operation!.operationId, startedAt: first.operation!.startedAt,
         planDigest: f.input.plan.planDigest }
     });
-    expect(f.runner.writes).toHaveLength(1);
+    expect(f.runner.writes).toEqual([]);
   });
   it('blocks actual prerequisite read denial without discarding its original handle or redispatching', async () => {
     const f = await fixture();
@@ -567,7 +583,7 @@ describe('application source producers behind real prerequisites', () => {
     expect(f.input.inspection.state.phases[f.phase.id].operation).toEqual(operation);
     expect(outcome.evidencePayload).toBeUndefined();
     expect(JSON.stringify(outcome)).not.toContain('secret-provider-diagnostics');
-    expect(f.runner.writes).toHaveLength(1);
+    expect(f.runner.writes).toEqual([]);
   });
   it.each(['owned', 'unknown-extra', 'poll-failure'] as const)(
     'resumes the engine read-only with %s inventory and never repeats creation', async (kind) => {
@@ -592,7 +608,7 @@ describe('application source producers behind real prerequisites', () => {
       }
       const next = await executeApplyNext({ inspection, reinspect: async () => inspection, runner: f.runner,
         now: new Date(coverageNow.getTime() + 1000), adapters: f.input.adapters });
-      expect(f.runner.writes).toHaveLength(1);
+      expect(f.runner.writes).toEqual([]);
       const after = (await readState(f.root))!;
       expect(after.phases[f.phase.id].operation?.operationId).toBe(saved.phases[f.phase.id].operation?.operationId);
       if (kind === 'owned') {
@@ -607,7 +623,7 @@ describe('application source producers behind real prerequisites', () => {
     }
   );
   it('blocks a resource appearing during validation before any prerequisite write', async () => {
-    const f = await fixture();
+    const f = await fixture(false, false, 'exact', 'fresh');
     f.runner.onValidation = () => f.runner.inventory.push({
       id: f.prerequisite.registryId, type: 'Microsoft.ContainerRegistry/registries'
     });
@@ -615,8 +631,43 @@ describe('application source producers behind real prerequisites', () => {
       blocker: expect.stringMatching(/uncertain/) });
     expect(f.runner.writes).toEqual([]);
   });
+  it.each(['registry', 'identity'] as const)(
+    'does not create over a competing %s destination after the last ownership preflight', async resource => {
+      const f = await fixture(false, false, 'exact', 'fresh');
+      const recordIntent = f.input.recordApplicationDispatchIntent!;
+      f.input.recordApplicationDispatchIntent = vi.fn(async operation => {
+        await recordIntent(operation);
+        f.runner.inventory.push(resource === 'registry'
+          ? { id: f.prerequisite.registryId, type: 'Microsoft.ContainerRegistry/registries' }
+          : { id: f.prerequisite.identityId, type: 'Microsoft.ManagedIdentity/userAssignedIdentities' });
+      });
+      const outcome = await executeApplicationPrerequisites(f.input);
+      expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/resource-level create-only/) });
+      expect(f.input.recordApplicationDispatchIntent).not.toHaveBeenCalled();
+      expect(f.runner.writes).toEqual([]);
+      expect(outcome.evidencePayload).toBeUndefined();
+    }
+  );
+  it.each(['fresh', 'intent-only', 'observation-only'] as const)(
+    'refuses %s prerequisite creation without manufacturing a no-replace capability', async kind => {
+      const f = await fixture(false, false, 'exact', 'fresh');
+      if (kind === 'intent-only') f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
+      if (kind === 'observation-only') f.input.applicationObservationOnly = true;
+      const intent = vi.spyOn(f.input, 'recordApplicationDispatchIntent');
+      const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+      const outcome = await executeApplicationPrerequisites(f.input);
+      const reason = kind === 'fresh' ? /resource-level create-only/
+        : kind === 'intent-only' ? /acceptance|confirmed provider handle/ : /recorded provider handle/;
+      expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(reason) });
+      expect(intent).not.toHaveBeenCalled();
+      expect(progress).not.toHaveBeenCalled();
+      expect(f.runner.writes).toEqual([]);
+      expect(outcome.evidencePayload).toBeUndefined();
+      expect(f.input.inspection.state.phases[f.phase.id].operation).toBeUndefined();
+    }
+  );
   it('does not confuse preflight refusal with uncertain dispatch and can retry after permission is corrected', async () => {
-    const f = await fixture(); f.runner.permissions = ['Microsoft.Resources/deployments/read'];
+    const f = await fixture(false, false, 'exact', 'fresh'); f.runner.permissions = ['Microsoft.Resources/deployments/read'];
     const first = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
       runner: f.runner, now: coverageNow, adapters: f.input.adapters });
     expect(first).toMatchObject({ applied: false });
@@ -631,12 +682,14 @@ describe('application source producers behind real prerequisites', () => {
       inspection.contexts[id].reviewedPlans = f.input.inspection.contexts[id].reviewedPlans;
     }
     f.runner.permissions = ['*'];
-    expect(await executeApplyNext({ inspection, reinspect: async () => inspection, runner: f.runner,
-      now: new Date(coverageNow.getTime() + 1000), adapters: f.input.adapters })).toMatchObject({ applied: true });
-    expect(f.runner.writes).toHaveLength(1);
+    const next = await executeApplyNext({ inspection, reinspect: async () => inspection, runner: f.runner,
+      now: new Date(coverageNow.getTime() + 1000), adapters: f.input.adapters });
+    expect(next).toMatchObject({ applied: false, blockers: [expect.stringMatching(/resource-level create-only/)] });
+    expect((await readState(f.root))!.phases[f.phase.id].executionPlanDigest).toBeUndefined();
+    expect(f.runner.writes).toEqual([]);
   });
   it.each(['Running', 'Failed', 'unknown'])('does not create on %s ARM validation', async (state) => {
-    const f = await fixture(); f.runner.validationState = state;
+    const f = await fixture(false, false, 'exact', 'fresh'); f.runner.validationState = state;
     expect(await executeApplicationPrerequisites(f.input)).toMatchObject({
       status: 'blocked', blocker: expect.stringMatching(/completed validation/)
     });
@@ -648,11 +701,29 @@ describe('application source producers behind real prerequisites', () => {
       blocker: expect.stringMatching(/engine-owned durable intent/) });
     expect(f.runner.calls.filter((entry) => entry.executable === 'az')).toEqual([]);
   });
-  it('does not lose a confirmed deployment handle on failed first poll or expose provider diagnostics', async () => {
+  it('retains the original deployment handle on read denial without exposing provider diagnostics', async () => {
     const f = await fixture(); f.runner.failPoll = true;
+    const operation = structuredClone(f.input.inspection.state.phases[f.phase.id].operation);
     const outcome = await executeApplicationPrerequisites(f.input);
-    expect(outcome).toMatchObject({ status: 'pending', operation: { resourceId: f.prerequisite.deploymentId } });
+    expect(outcome).toMatchObject({ status: 'blocked' });
+    expect(f.input.inspection.state.phases[f.phase.id].operation).toEqual(operation);
+    expect(f.runner.writes).toEqual([]);
     expect(JSON.stringify(outcome)).not.toContain('secret-provider-diagnostics');
+  });
+  it('rejects a changed actual deployed recipe while observing an original handle', async () => {
+    const f = await fixture();
+    const actual = f.runner.deployedTemplate;
+    if (!isRecord(actual)) throw new Error('The isolated accepted fixture has no deployed template.');
+    f.runner.deployedTemplate = { ...actual, contentVersion: '2.0.0.0' };
+    const outcome = await executeApplicationPrerequisites(f.input);
+    expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/actual deployed prerequisite recipe/),
+      operation: { resourceId: f.prerequisite.deploymentId, status: 'completed' } });
+    expect(outcome.evidencePayload).toBeUndefined();
+    expect(outcome.outputs?.resources).toEqual([{
+      provider: 'azure', resourceType: 'Microsoft.Resources/deployments', resourceId: f.prerequisite.deploymentId
+    }]);
+    expect(outcome.outputs?.values.workloadPrincipalId).toBeUndefined();
+    expect(f.runner.writes).toEqual([]);
   });
   it.each(['read-failure', 'source-change'] as const)(
     'checkpoints completed prerequisite dispatch before %s during recipe export without inventing resource proof', async (kind) => {
@@ -702,7 +773,7 @@ describe('application source producers behind real prerequisites', () => {
           operationId: operation.operationId, startedAt: operation.startedAt, planDigest: operation.planDigest, status: 'completed'
         });
       }
-      expect(f.runner.writes).toHaveLength(1);
+      expect(f.runner.writes).toEqual([]);
     }
   );
   it('preserves actual failed prerequisite status when concurrent source changes refuse the final outcome', async () => {
@@ -719,14 +790,15 @@ describe('application source producers behind real prerequisites', () => {
       state: 'running', operation: { resourceId: f.prerequisite.deploymentId, status: 'failed' }
     });
     expect(await readFile(policyPath, 'utf8')).toBe(`${policy}\n`);
-    expect(f.runner.writes).toHaveLength(1);
+    expect(f.runner.writes).toEqual([]);
   });
-  it('checkpoints only the actual accepted operation, never future resources', async () => {
-    const f = await fixture(); f.runner.deploymentState = 'Running';
+  it('checkpoints the actual terminal observation, never future resource ownership', async () => {
+    const f = await fixture();
     const checkpoints: Parameters<NonNullable<PhaseAdapterExecutionInput['recordApplicationProgress']>>[0][] = [];
     f.input.recordApplicationProgress = async (progress) => { checkpoints.push(progress); };
     await executeApplicationPrerequisites(f.input);
     expect(checkpoints).toHaveLength(1);
+    expect(checkpoints[0]!.operation.status).toBe('completed');
     expect(checkpoints[0]!.outputs.resources).toEqual([{
       provider: 'azure', resourceType: 'Microsoft.Resources/deployments', resourceId: f.prerequisite.deploymentId
     }]);
@@ -755,7 +827,7 @@ describe('application source producers behind real prerequisites', () => {
       expect(next.evidencePayload).toBeUndefined();
       expect(next.outputs?.values.workloadPrincipalId).toBeUndefined();
       expect(progress).not.toHaveBeenCalled();
-      expect(f.runner.writes).toHaveLength(1);
+      expect(f.runner.writes).toEqual([]);
     }
   );
   it.each(['registrySku', 'assignRegistryRoles', 'environment', 'budget', 'principal', 'unknown'] as const)(

@@ -459,6 +459,12 @@ ${plan.governanceProfile.id === 'none'
   : 'Generated policy and local completion are not live enforcement. Use only an actually supported, separately approved activation operation; an unavailable production adapter remains a blocker.'}
 Existing deployments and state require independent assessment and planning.
 
+Fresh registry/identity prerequisite creation also remains blocked until
+resource-level create-only or exclusive-destination admission is qualified.
+Incremental ARM deployments may update existing resources; a condition on the
+deployment record and an absence check do not prove child-resource ownership.
+Original accepted deployment handles remain observation-only.
+
 The generated root \`Dockerfile\` copies both \`backend\` and \`database\`.
 Approved artifact publication must project an exact manifest-bound inventory
 of leaf files from the immutable source commit; a broad repository-root upload

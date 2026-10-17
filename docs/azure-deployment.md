@@ -184,16 +184,24 @@ static contract data nor an installed package supplies execution authority.
 
 `application-prerequisites-ready` accepts only the selected declared environment,
 `registrySku: "Basic"` and explicit `assignRegistryRoles: true`, with nonzero
-fixed/usage cost ceilings. It creates the deterministic registry and workload
+fixed/usage cost ceilings. Its reviewed recipe specifies the deterministic registry and workload
 identity inside the previously verified same-operation bootstrap group, disables
 registry admin credentials, and assigns only registry-scoped AcrPull to that
 workload identity and AcrPush to the existing verified tenant service principal.
 It does not create an account, federated credential, provider registration,
 broader role, application deployment or brownfield import. Permission/provider
 readback, collision inspection, independent deployed-recipe export and exact
-resource/role readback are required. Provider conditional creation and competing
-resource-creation scenarios still require real disposable qualification; source
-tests cannot qualify an Azure resource provider's concurrency behavior.
+resource/role readback are required.
+Fresh prerequisite creation fails closed before intent or deployment dispatch:
+there is no qualified resource-level create-only or exclusive-destination
+producer. [Incremental ARM deployments](https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/deployment-modes)
+can update existing named resources and reset omitted properties. A condition on
+the deployment record does not establish conditional creation of its registry,
+identity or role resources. Absence preflight, a protected state lease and later
+matching names/tags cannot prove that a competing resource was never modified.
+The source guard accepts no caller-issued capability switch; original accepted
+deployment handles remain observable. Actual provider concurrency qualification
+and a separately reviewed protocol are required before this write path opens.
 Both the actual registry and workload identity must retain the exact
 `liftoff-binding` and `liftoff-environment` tags. Missing, changed or malformed
 environment metadata blocks qualification; readback never fills in an expected

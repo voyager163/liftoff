@@ -2380,6 +2380,16 @@ from authoritative current source/registry/environment/digest receipts;
 These interfaces do not implement or authorize workflow source publication or
 application deployment.
 
+Fresh registry/identity prerequisites are blocked before intent or deployment
+dispatch: no qualified resource-level create-only or exclusive-destination
+producer exists. Incremental ARM deployments may update existing resources;
+deployment-record conditions do not establish child-resource ownership.
+Absence preflight and the protected state lease are not an external resource
+exclusion guarantee. `applicationPrerequisiteTemplate` is only the pure reviewed
+recipe, not a capability issuer. Original accepted deployment handles remain
+observable without new registry, identity or role-write grants; fixture recipes
+and stored unit handles are not provider concurrency qualification.
+
 New artifact publication is blocked before intent, source upload or dispatch:
 the approved QuickBuild/tag protocol has no qualified atomic no-replace or
 exclusive-destination producer. Absence preflight followed by tag locks cannot
