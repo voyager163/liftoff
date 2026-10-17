@@ -193,7 +193,9 @@ describe('source repository setup policy', () => {
     'build', 'filtered', 'unset-bundle', 'unset-migration-bundle', 'wrong-migration-bundle', 'missing-migration-cases',
     'skip-migration-report', 'historical-download', 'historical-checksum', 'unset-historical-client',
     'missing-journey-cases', 'skip-journey-report', 'wrong-journey-bundle',
-    'unset-archive', 'archive-after-tests', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
+    'unverified-journey-selection', 'wrong-selector-bundle', 'missing-prerelease-cases', 'wrong-refusal-outcome',
+    'missing-journey-evidence', 'unset-archive', 'unset-program-runtime', 'wrong-program-runtime',
+    'archive-after-tests', 'skip-report', 'conditional-cases', 'missing-upload', 'ignored-report'
   ])('rejects incomplete runtime-inclusive qualification: %s', async fault => {
     const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-bundle'];
     if (fault === 'missing') delete workflow.jobs['qualify-native-bundle'];
@@ -221,9 +223,23 @@ describe('source repository setup policy', () => {
       'tests/mac-migration-journey.test.ts', 'tests/mac-migration.test.ts');
     if (fault === 'skip-journey-report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/mac-migration-journey-report.mjs.*\n/m, '');
     if (fault === 'wrong-journey-bundle') job.steps[7].run = job.steps[7].run.replace(
-      'mac-migration-journey-report.mjs qualification/mac-migration-journey.json "$RUNNER_TEMP/liftoff-native-bundle"',
-      'mac-migration-journey-report.mjs qualification/mac-migration-journey.json "$RUNNER_TEMP/stale-native-bundle"');
+      'mac-migration-journey-report.mjs "$journey_report" "$RUNNER_TEMP/liftoff-native-bundle"',
+      'mac-migration-journey-report.mjs "$journey_report" "$RUNNER_TEMP/stale-native-bundle"');
+    if (fault === 'unverified-journey-selection') job.steps[7].run = job.steps[7].run.replace(
+      /^journey=.*\n/m, 'journey=stable-handover\n');
+    if (fault === 'wrong-selector-bundle') job.steps[7].run = job.steps[7].run.replace(
+      'select "$RUNNER_TEMP/liftoff-native-bundle"', 'select "$RUNNER_TEMP/stale-native-bundle"');
+    if (fault === 'missing-prerelease-cases') job.steps[7].run = job.steps[7].run.replace(
+      'tests/mac-migration-prerelease.test.ts', 'tests/mac-migration-journey.test.ts');
+    if (fault === 'wrong-refusal-outcome') job.steps[7].run = job.steps[7].run.replace('prerelease-refusal)', 'stable-handover)');
+    if (fault === 'missing-journey-evidence') job.steps[8].with.path = job.steps[8].with.path.replace(
+      'qualification/mac-migration-*.json\n', '');
     if (fault === 'unset-archive') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_ARCHIVE_ROOT', 'UNSELECTED_ARCHIVE');
+    if (fault === 'unset-program-runtime') job.steps[7].run = job.steps[7].run.replace(
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE', 'UNSELECTED_PROGRAM_RUNTIME');
+    if (fault === 'wrong-program-runtime') job.steps[7].run = job.steps[7].run.replace(
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/liftoff-node-runtime.tgz"',
+      'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/unverified-runtime.tgz"');
     if (fault === 'archive-after-tests') {
       const archive = job.steps[7].run.split('\n')[0];
       job.steps[7].run = job.steps[7].run.slice(archive.length + 1) + archive + '\n';

@@ -300,7 +300,8 @@ This dependency-free historical client actually runs help, rejects its unsupport
 `upgrade` command, and creates a legacy project; current native code and its
 private runtime are copied unchanged from the development bundle.
 
-Sixteen journeys combine the four manager layouts, each independent global
+For an actual stable-version development bundle, sixteen positive journeys
+combine the four manager layouts, each independent global
 opt-out, and handover or settled-failure recovery. Fixture construction and the
 migration/verification body each have a separate 30-second test bound; production
 observation/dispatch deadlines are unchanged. Exact caller tree bytes, modes,
@@ -314,3 +315,22 @@ qualification. These use actual npm, historical and compiled clients, but
 **synthetic manager, cask admission and settlement evidence**. They do not qualify
 digest-bound Homebrew execution, a published channel, signing or minimum hosts,
 and the native manifest remains `releaseReady: false`.
+
+CI selects the lane only after verifying the built bundle and its actual package
+version, not the checkout's version or a caller-supplied label. A genuine
+prerelease such as `0.13.0-dev.0` runs the separately named
+`tests/mac-migration-prerelease.test.ts` lane instead: four manager layouts,
+each independent global opt-out, and preview or explicit apply. These cases
+require the unchanged production stable-release guard to refuse before a review,
+journal, npm removal, cask channel/destination checks or installation. The old client, recovery
+material, caller state and tools must remain unchanged; compiled prerelease
+version/reporting probes do not establish a successful handover.
+
+The stable-positive gate is retained, not skipped or relabelled as a successful
+prerelease migration. Reports are distinct:
+`mac-migration-stable-handover.json` versus
+`mac-migration-prerelease-refusal.json`, each with its own verified outcome
+summary. The refusal summary explicitly records `positiveMigrationQualified: false`.
+The report verifier rejects a mismatched version, outcome, suite or incomplete
+case matrix. An unrun genuine prerelease lane establishes no refusal
+qualification, and neither lane establishes public migration readiness.

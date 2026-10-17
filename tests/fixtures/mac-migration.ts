@@ -10,6 +10,7 @@ import type { MacMigrationDependencies, MacMigrationRequest } from '../../src/ap
 import type { MacNpmManager } from '../../src/domain/distribution/mac-migration.js';
 import type { NativeReleasePolicy } from '../../src/domain/distribution/native-upgrade.js';
 import type { NativeStableMaterial } from '../../src/adapters/distribution/native-metadata.js';
+import { isStableSemver } from '../../src/stable-release.js';
 
 const json = (value: unknown) => Buffer.from(JSON.stringify(value));
 
@@ -91,10 +92,8 @@ esac
       `#!/bin/sh\nexec ${JSON.stringify(path.join(source, 'runtime/node'))} ${JSON.stringify(path.join(source, 'application/dist/cli.js'))} "$@"\n`,
       { mode: 0o755 });
     await writeFile(path.join(source, 'application/dist/cli.js'), 'console.log("Liftoff 0.13.0");\n');
-    for (const file of ['native-bundle-contract.mjs', 'native-install.mjs']) {
-      await copyFile(path.join('scripts', file), path.join(source, 'installation', file));
-    }
-    for (const file of ['native-release-admission.mjs', 'release-policy.json']) {
+    await copyFile('scripts/native-install.mjs', path.join(source, 'installation/native-install.mjs'));
+    for (const file of ['native-bundle-contract.mjs', 'native-release-admission.mjs', 'release-policy.json']) {
       await copyFile(path.join('distribution/native', file), path.join(source, 'installation', file));
     }
   }
@@ -141,8 +140,9 @@ esac
     artifactUrl: `https://github.com/voyager163/liftoff/releases/download/v${targetVersion}/${archive}` };
   const material: NativeStableMaterial = { record: json(record), qualification: json(qualification),
     signature: sign(null, json(qualification), key.privateKey), publicKey: Buffer.from(key.publicKey.export({ type: 'spki', format: 'pem' })),
-    stableTag: `v${targetVersion}`, prerelease: false, draft: false, assets, platformEvidence };
-  const channel = { status: 'available' as const, version: targetVersion, identity: 'fixture-channel-identity', exactApply: true,
+    stableTag: `v${targetVersion}`, prerelease: !isStableSemver(targetVersion), draft: false, assets, platformEvidence };
+  const channel = { status: 'available' as const,
+    version: targetVersion, identity: 'fixture-channel-identity', exactApply: isStableSemver(targetVersion),
     artifactSha256: hash(assets.get(archive)!) };
   const base = defaultSelfUpgradeDependencies({ PATH: `${path.join(brewPrefix, 'bin')}:${path.join(prefix, 'bin')}`, HOME: root });
   const scratch = new Set<string>();

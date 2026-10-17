@@ -145,6 +145,7 @@ export function nativeBundleQualificationJob() {
         'LIFTOFF_NATIVE_GO_EXECUTABLE="$(command -v go)" \\',
         'LIFTOFF_NATIVE_PACKAGE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
         'LIFTOFF_NATIVE_ARCHIVE_ROOT="$RUNNER_TEMP/liftoff-native-archive" \\',
+        'LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE="$RUNNER_TEMP/liftoff-node-runtime.tgz" \\',
         'npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \\',
         '  tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \\',
         '  tests/mac-migration-package.test.ts tests/mac-migration-preparation.test.ts \\',
@@ -153,17 +154,25 @@ export function nativeBundleQualificationJob() {
         'node scripts/native-bundle.mjs verify-report qualification/native-bundle.json',
         'node scripts/native-package-report.mjs qualification/native-bundle.json "$RUNNER_TEMP/liftoff-native-bundle"',
         'node scripts/mac-migration-package-report.mjs qualification/native-bundle.json',
+        'journey="$(node scripts/mac-migration-journey-report.mjs select "$RUNNER_TEMP/liftoff-native-bundle")"',
+        'case "$journey" in',
+        '  stable-handover) journey_test=tests/mac-migration-journey.test.ts ;;',
+        '  prerelease-refusal) journey_test=tests/mac-migration-prerelease.test.ts ;;',
+        '  *) printf \'Unsupported migration journey outcome: %s\\n\' "$journey" >&2; exit 1 ;;',
+        'esac',
+        'journey_report="qualification/mac-migration-${journey}.json"',
         'LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
         'LIFTOFF_MAC_MIGRATION_HISTORICAL_TARBALL="$RUNNER_TEMP/liftoff-historical-0.3.4.tgz" \\',
-        'npx vitest run tests/mac-migration-journey.test.ts \\',
+        'npx vitest run "$journey_test" \\',
         '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
-        '  --reporter=default --reporter=json --outputFile.json=qualification/mac-migration-journey.json',
-        'node scripts/mac-migration-journey-report.mjs qualification/mac-migration-journey.json "$RUNNER_TEMP/liftoff-native-bundle"', ''
+        '  --reporter=default --reporter=json --outputFile.json="$journey_report"',
+        'node scripts/mac-migration-journey-report.mjs "$journey_report" "$RUNNER_TEMP/liftoff-native-bundle" "$journey" \\',
+        '  > "qualification/mac-migration-${journey}-outcome.json"', ''
       ].join('\n') },
       { name: 'Store development qualification evidence', if: independentStepCondition,
         uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
         with: { name: 'liftoff-native-bundle-ci-${{ github.run_id }}-${{ github.run_attempt }}',
-          path: 'qualification/native-bundle.json\nqualification/mac-migration-journey.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n${{ runner.temp }}/liftoff-native-archive/\n',
+          path: 'qualification/native-bundle.json\nqualification/mac-migration-*.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n${{ runner.temp }}/liftoff-native-archive/\n',
           'if-no-files-found': 'error', 'retention-days': 14 } }
     ]
   };
