@@ -10,7 +10,6 @@ import { renderProjectAssessmentIntegration } from '../../generators/governance/
 import { createModernCompatibilityContract } from '../../governance-activation/modern-compatibility.js';
 import { renderModernGovernanceGuide, renderModernGovernanceIntegration } from '../../generators/governance/modern-handoff.js';
 import { projectCatalog } from './catalog.js';
-import { resolveModernManifestV8SourceContract } from './manifest.js';
 import { modernSourceRegistry } from './modern-plugins.js';
 import { resolveModernProjectSourceContext, type ModernProjectSourceInput } from './source-context.js';
 
@@ -31,7 +30,18 @@ export function buildModernManagedCore(value: unknown): readonly ModernManagedCo
   const leaf = selection, profile = selection.profile;
   const hasCapabilityCatalog = sourceRelease !== 'pre-assessment';
   const contentByName = new Map<string, string>();
-  const contracts = { catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract };
+  const sourceRequest = { selection: { ...leaf, profile }, recordedPlugins: plugins };
+  const sourceRequestJson = canonicalJson(sourceRequest);
+  // Sub-producers revalidate their input but reuse this operation's exact resolved source.
+  const contracts = {
+    catalog: projectCatalog,
+    resolveSourceContract(request: typeof sourceRequest) {
+      if (canonicalJson(request) !== sourceRequestJson) {
+        throw new Error('Managed-core producers requested a different source contract.');
+      }
+      return source;
+    }
+  };
   if (profile !== 'none') {
     if (!('identity' in source.governanceSource)) throw new Error('Enabled managed core requires a real governance source.');
     const requested = { selection: { ...leaf, profile }, plugins, activeLayout };
