@@ -639,6 +639,13 @@ with its `surface`, `key`, owning `task`, `reason`, `baselineSha256`, and
 `currentSha256`; stale, mismatched, or duplicate records fail. Never regenerate
 the baseline to accept new behavior.
 
+The private `0.13.0-dev.0` writer is an exact infrastructure-layout generation
+entry, not a wildcard for future prereleases or a native/release qualification.
+Package-version changes must preserve the preceding review records, including
+both composed help histories. Record only the actual version fields and induced
+hashes after checking all 165 plugin cases; never update their frozen snapshot.
+The baseline test also pins the complete preceding review ledger.
+
 The same file labels observed rejections. `historical-v5-v6-governed-manifest-rejected`
 is a known defect owned by task 3.2: the 0.12.3 readers reject authentic
 governed v5 and v6 manifests because they require governance artifacts first
