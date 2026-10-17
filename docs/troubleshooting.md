@@ -85,6 +85,10 @@ The package's machine-level `@msn-control:registry` takes precedence over npm's
 default `registry`. A canonical default does not cancel a scoped mirror.
 Liftoff reads this configuration from a neutral directory, not a project's
 `.npmrc`, and never prints credential-bearing registry values.
+When embedding the upgrade API, supply the complete intended caller environment:
+omitted parent variables are not inherited by npm probes, installation or
+replacement verification. Explicit account, prefix and registry settings are
+retained; Node startup overrides and telemetry are disabled for these children.
 
 A response-body timeout is a transport failure, not invalid release metadata.
 Retry after connectivity is restored; do not change registry policy or regenerate

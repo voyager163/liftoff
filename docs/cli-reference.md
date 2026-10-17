@@ -1110,6 +1110,10 @@ Machine-level `@msn-control:registry` takes precedence over the default
 directory so project `.npmrc` files cannot change upgrade delivery. Canonical
 verification isolates both registry settings without changing persistent
 configuration; actual delivery still honors the configured mirror.
+All npm observation, installation and replacement-verification subprocesses use
+only the caller-supplied environment plus the upgrade's temporary cache and
+telemetry/startup guards. Omitted parent npm settings are not merged back in;
+explicit prefix, mirror and account settings remain preserved.
 
 `--check` performs the same origin, target, and parity checks without invoking
 installation. Apply uses one shell-free exact npm command with lifecycle scripts,
