@@ -486,6 +486,20 @@ validation failures report no installation effects. This source composition does
 not create a signing principal, qualify an archive or enable the current null
 release policy, and supplies no Homebrew or WinGet availability authority.
 
+`verifyAuthenticatedMacCandidateArchive` in `native-mac-archive.ts` supplies an
+inert Mac candidate check without pretending that the candidate is the current
+installation. It privately snapshots and independently re-admits the original
+signed release, approved publisher/team/channel/URL bindings, deployed asset
+bytes, provenance and referenced qualification evidence. It then reuses the
+same bounded TAR/path/link/manifest/full-inventory comparison as Linux staging,
+including cancellation during inflation. It does not use Linux archive signing
+keys, extract files, import candidate helpers or run the candidate runtime.
+Its immutable result contains candidate and inventory facts, not installed
+ownership, current channel freshness or permission to execute. Consumers must
+still bind the exact archive bytes at later consumption and independently
+verify any installed destination. No cask provider is registered by this helper;
+actual Homebrew dispatch and host/channel qualification remain separate.
+
 For an attributed Homebrew cask, the default channel separately repeats signed
 release/asset admission and the read-only receipt/tap-origin/commit observation.
 It compares the exact selected definition SHA-256 with the unchanged canonical
