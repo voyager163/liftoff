@@ -1,5 +1,5 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { copyFile, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { bundleInventory } from '../../scripts/native-bundle-contract.mjs';
@@ -14,7 +14,8 @@ import type { NativeStableMaterial } from '../../src/adapters/distribution/nativ
 const json = (value: unknown) => Buffer.from(JSON.stringify(value));
 
 // Real private file/process fixtures, synthetic manager/publication evidence; never public qualification.
-export async function macMigrationFixture(manager: MacNpmManager = 'custom', shared = false, observeChildEnvironment = false) {
+export async function macMigrationFixture(manager: MacNpmManager = 'custom', shared = false, observeChildEnvironment = false,
+  nativeBundle?: string) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf mac migration spaces ')));
   const childEnvironmentFile = path.join(root, 'child-environment.jsonl');
   const childEnvironmentProbe = path.join(root, 'child-environment-probe.cjs');
@@ -79,19 +80,23 @@ esac
   const recovery = path.join(root, 'offline old package');
   await copyMigrationTree(oldPackage, recovery, await captureMigrationTree(oldPackage));
   const source = path.join(root, 'cask fixture bundle');
-  for (const directory of ['bin', 'runtime', 'application/dist', 'installation']) {
-    await mkdir(path.join(source, directory), { recursive: true });
-  }
-  await writeFile(path.join(source, 'runtime/node'), `#!/bin/sh\n${childEnvironmentGuard}exec ${JSON.stringify(process.execPath)} "$@"\n`, { mode: 0o755 });
-  await writeFile(path.join(source, 'bin/liftoff'),
-    `#!/bin/sh\nexec ${JSON.stringify(path.join(source, 'runtime/node'))} ${JSON.stringify(path.join(source, 'application/dist/cli.js'))} "$@"\n`,
-    { mode: 0o755 });
-  await writeFile(path.join(source, 'application/dist/cli.js'), 'console.log("Liftoff 0.13.0");\n');
-  for (const file of ['native-bundle-contract.mjs', 'native-install.mjs']) {
-    await copyFile(path.join('scripts', file), path.join(source, 'installation', file));
-  }
-  for (const file of ['native-release-admission.mjs', 'release-policy.json']) {
-    await copyFile(path.join('distribution/native', file), path.join(source, 'installation', file));
+  if (nativeBundle) {
+    await cp(nativeBundle, source, { recursive: true, verbatimSymlinks: true, errorOnExist: true, force: false });
+  } else {
+    for (const directory of ['bin', 'runtime', 'application/dist', 'installation']) {
+      await mkdir(path.join(source, directory), { recursive: true });
+    }
+    await writeFile(path.join(source, 'runtime/node'), `#!/bin/sh\n${childEnvironmentGuard}exec ${JSON.stringify(process.execPath)} "$@"\n`, { mode: 0o755 });
+    await writeFile(path.join(source, 'bin/liftoff'),
+      `#!/bin/sh\nexec ${JSON.stringify(path.join(source, 'runtime/node'))} ${JSON.stringify(path.join(source, 'application/dist/cli.js'))} "$@"\n`,
+      { mode: 0o755 });
+    await writeFile(path.join(source, 'application/dist/cli.js'), 'console.log("Liftoff 0.13.0");\n');
+    for (const file of ['native-bundle-contract.mjs', 'native-install.mjs']) {
+      await copyFile(path.join('scripts', file), path.join(source, 'installation', file));
+    }
+    for (const file of ['native-release-admission.mjs', 'release-policy.json']) {
+      await copyFile(path.join('distribution/native', file), path.join(source, 'installation', file));
+    }
   }
   const inventory = await bundleInventory(source);
   const manifest = { schemaVersion: 1, kind: 'liftoff-native-development-bundle', releaseReady: true,
@@ -99,29 +104,32 @@ esac
     source: { repository: 'voyager163/liftoff', commit: 'd'.repeat(40) },
     platform: { platform: 'darwin', architecture: 'arm64' }, launcher: 'bin/liftoff',
     runtime: { executable: 'runtime/node' }, inventory };
-  const manifestBytes = json(manifest);
-  await writeFile(path.join(source, 'bundle.json'), manifestBytes);
+  const manifestBytes = nativeBundle ? await readFile(path.join(source, 'bundle.json')) : json(manifest);
+  if (!nativeBundle) await writeFile(path.join(source, 'bundle.json'), manifestBytes);
+  const packaged = JSON.parse(manifestBytes.toString()) as typeof manifest;
+  const targetVersion = packaged.package.version;
+  const targetCommit = packaged.source.commit;
   const key = generateKeyPairSync('ed25519');
   const policy: NativeReleasePolicy = { schemaVersion: 1, repository: 'voyager163/liftoff',
     approvedSigningKeySha256: hash(key.publicKey.export({ format: 'der', type: 'spki' })),
     homebrew: { cask: 'fixture/tools/liftoff', sourceRepository: 'fixture/tools', developerTeamId: 'ABCDEFGHIJ' },
     winget: { packageIdentifier: null, publisher: null, certificateSha256: null, installerAppId: null },
     linux: { archiveSigningKeySha256: null } };
-  const archive = 'liftoff-0.13.0-darwin-arm64.tar.gz';
+  const archive = `liftoff-${targetVersion}-darwin-arm64.tar.gz`;
   const assets = new Map([
     [archive, Buffer.from('fixture-only deployed archive')],
     ['NOTICE', Buffer.from('fixture-only licensed material')],
     ['sbom.cdx.json', json({ bomFormat: 'CycloneDX', specVersion: '1.6',
-      components: [{ name: '@msn-control/liftoff', version: '0.13.0' }, { name: 'node' }, { name: 'fixture' }],
-      properties: [{ name: 'liftoff:sourceCommit', value: 'd'.repeat(40) },
+      components: [{ name: '@msn-control/liftoff', version: targetVersion }, { name: 'node' }, { name: 'fixture' }],
+      properties: [{ name: 'liftoff:sourceCommit', value: targetCommit },
         { name: 'liftoff:inventorySha256', value: inventory.sha256 }] })]
   ]);
   assets.set('provenance.json', json({ _type: 'https://in-toto.io/Statement/v1', predicateType: 'https://slsa.dev/provenance/v1',
     subject: [{ name: archive, digest: { sha256: hash(assets.get(archive)!) } }],
-    predicate: { buildDefinition: { externalParameters: { repository: policy.repository, commit: 'd'.repeat(40),
-      packageVersion: '0.13.0', target: { platform: 'darwin', architecture: 'arm64' } } } } }));
+    predicate: { buildDefinition: { externalParameters: { repository: policy.repository, commit: targetCommit,
+      packageVersion: targetVersion, target: { platform: 'darwin', architecture: 'arm64' } } } } }));
   const record = { schemaVersion: 1, kind: 'liftoff-native-release-candidate', repository: policy.repository,
-    commit: 'd'.repeat(40), version: '0.13.0', target: 'darwin-arm64', manifestSha256: hash(manifestBytes),
+    commit: targetCommit, version: targetVersion, target: 'darwin-arm64', manifestSha256: hash(manifestBytes),
     inventorySha256: inventory.sha256, files: [archive, 'sbom.cdx.json', 'provenance.json', 'NOTICE'].map(filename =>
       ({ filename, bytes: assets.get(filename)!.length, sha256: hash(assets.get(filename)!), mode: 0o644 })) };
   const platformEvidence = new Map(['minimumHost', 'installerOwnership', 'signing', 'packageNamespace', 'hclSourceCorrespondence', 'notarization']
@@ -130,11 +138,11 @@ esac
     platformSigningIdentity: policy.homebrew.developerTeamId,
     qualification: Object.fromEntries([...platformEvidence.keys()].map(name => [name, true])),
     evidenceDigests: Object.fromEntries([...platformEvidence].map(([name, bytes]) => [name, hash(bytes)])),
-    artifactUrl: `https://github.com/voyager163/liftoff/releases/download/v0.13.0/${archive}` };
+    artifactUrl: `https://github.com/voyager163/liftoff/releases/download/v${targetVersion}/${archive}` };
   const material: NativeStableMaterial = { record: json(record), qualification: json(qualification),
     signature: sign(null, json(qualification), key.privateKey), publicKey: Buffer.from(key.publicKey.export({ type: 'spki', format: 'pem' })),
-    stableTag: 'v0.13.0', prerelease: false, draft: false, assets, platformEvidence };
-  const channel = { status: 'available' as const, version: '0.13.0', identity: 'fixture-channel-identity', exactApply: true,
+    stableTag: `v${targetVersion}`, prerelease: false, draft: false, assets, platformEvidence };
+  const channel = { status: 'available' as const, version: targetVersion, identity: 'fixture-channel-identity', exactApply: true,
     artifactSha256: hash(assets.get(archive)!) };
   const base = defaultSelfUpgradeDependencies({ PATH: `${path.join(brewPrefix, 'bin')}:${path.join(prefix, 'bin')}`, HOME: root });
   const scratch = new Set<string>();
@@ -151,10 +159,10 @@ esac
         return { settled: true, installed: true }; },
       installed: async () => ({
         inventory: { packageRoot: path.join(source, 'application'), bundleRoot: source, runtime: path.join(source, 'runtime/node'),
-          launcher: path.join(source, 'bin/liftoff'), version: '0.13.0', target: 'darwin-arm64', sourceCommit: 'd'.repeat(40),
+          launcher: path.join(source, 'bin/liftoff'), version: targetVersion, target: 'darwin-arm64', sourceCommit: targetCommit,
           manifestSha256: record.manifestSha256, inventorySha256: inventory.sha256, identity: 'fixture-local-inventory' },
         ownership: { fullToken: policy.homebrew.cask!, sourceRepository: policy.homebrew.sourceRepository!,
-          installedVersion: '0.13.0', bundleRoot: source, launcher: path.join(source, 'bin/liftoff') }
+          installedVersion: targetVersion, bundleRoot: source, launcher: path.join(source, 'bin/liftoff') }
       })
     } };
   const request: MacMigrationRequest = { selection: { npm, node, prefix, manager,

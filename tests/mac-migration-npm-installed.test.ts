@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { chmod, copyFile, cp, lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runMacMigration } from '../src/application/upgrade/mac-migration.js';
 import { captureMigrationTree, migrationAbsent } from '../src/adapters/distribution/mac-migration-state.js';
 import { macMigrationHash } from '../src/adapters/distribution/mac-npm-owner.js';
 import type { CommandResult, RunCommandOptions } from '../src/process-runner.js';
 import { macMigrationFixture } from './fixtures/mac-migration.js';
+import { copyMacMigrationTools } from './fixtures/mac-migration-tools.js';
 
 type Fixture = Awaited<ReturnType<typeof macMigrationFixture>>;
 const fixtures: Fixture[] = [];
@@ -19,17 +20,7 @@ describe.skipIf(process.platform === 'win32' || !npm || path.basename(npm) !== '
     it.for(cases)('preserves exact scope through actual npm uninstall, $outcome, shared launcher $sharedLauncher',
       { timeout: 30_000 }, async ({ outcome, sharedLauncher }, { task }) => {
         const value = await macMigrationFixture('custom', sharedLauncher); fixtures.push(value);
-        const originals = { npm: await realpath(npm!), node: await realpath(process.execPath) };
-        const tools = path.join(value.root, 'actual tools');
-        await mkdir(path.join(tools, 'bin'), { recursive: true, mode: 0o700 });
-        await cp(path.dirname(path.dirname(originals.npm)), path.join(tools, 'npm'), {
-          recursive: true, verbatimSymlinks: true, errorOnExist: true, force: false
-        });
-        const selected = { npm: path.join(tools, 'npm/bin/npm-cli.js'), node: path.join(tools, 'bin/node') };
-        await copyFile(originals.node, selected.node);
-        await chmod(selected.node, 0o755);
-        await chmod(path.join(tools, 'npm'), 0o700);
-        await chmod(path.dirname(selected.npm), 0o700);
+        const { originals, ...selected } = await copyMacMigrationTools(value.root, npm!);
         expect(macMigrationHash(await readFile(selected.npm))).toBe(macMigrationHash(await readFile(originals.npm)));
         expect(macMigrationHash(await readFile(selected.node))).toBe(macMigrationHash(await readFile(originals.node)));
         value.request.selection = { ...selected,

@@ -256,6 +256,7 @@ npx vitest run tests/mac-migration.test.ts tests/mac-migration-safety.test.ts \
   tests/mac-migration-environment.test.ts tests/process-runner.test.ts \
   tests/mac-migration-npm-installed.test.ts \
   tests/mac-migration-package.test.ts tests/mac-migration-package-report.test.ts \
+  tests/mac-migration-journey-report.test.ts \
   tests/repository-policy.test.ts
 ```
 
@@ -289,3 +290,27 @@ notarization or minimum-host behavior. The optional installed-package suite
 requires `LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT` naming a current verified native
 development bundle; an unset variable skips it and establishes no artifact
 qualification.
+
+The optional `tests/mac-migration-journey.test.ts` suite requires both that bundle
+and `LIFTOFF_MAC_MIGRATION_HISTORICAL_TARBALL`. CI downloads the canonical registry
+archive for `@msn-control/liftoff@0.3.4` and verifies SHA-256
+`05793480c44632b3fc01ac98a4f76a73313d8b273afcb30bde5c22de989d69c0`
+before its offline, `--ignore-scripts` installation into a disposable prefix.
+This dependency-free historical client actually runs help, rejects its unsupported
+`upgrade` command, and creates a legacy project; current native code and its
+private runtime are copied unchanged from the development bundle.
+
+Sixteen journeys combine the four manager layouts, each independent global
+opt-out, and handover or settled-failure recovery. Fixture construction and the
+migration/verification body each have a separate 30-second test bound; production
+observation/dispatch deadlines are unchanged. Exact caller tree bytes, modes,
+physical identities, Git history, unknown `.liftoff` state, enrolled/copied/
+unenrolled records, invalid/read-only config and unrelated tools/packages must
+survive. Compiled reporting runs with one global opt-out and a fetch tripwire;
+it must neither transport nor create consent for a copied or unenrolled project.
+`scripts/mac-migration-journey-report.mjs` requires all sixteen cases to run and
+pass against the exact clean-source development bundle; omission/skipping is not
+qualification. These use actual npm, historical and compiled clients, but
+**synthetic manager, cask admission and settlement evidence**. They do not qualify
+digest-bound Homebrew execution, a published channel, signing or minimum hosts,
+and the native manifest remains `releaseReady: false`.
