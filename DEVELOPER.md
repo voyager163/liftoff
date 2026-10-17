@@ -2421,6 +2421,22 @@ Old mutable-ref plans are stale, not silently upgraded. Admission is repeated
 before dispatch and accepted/resumed observation; this source integration
 does not qualify public-v8 execution or the missing production host/ports.
 
+Root-context artifact preparation requires `contextPath: "."` plus exact
+`contextPaths` leaf files bound to the manifest and current active layout.
+`application-artifact-context.ts` exposes `bindApplicationArtifactContext`;
+the neutral `application-artifact-context-recipe.ts` exports
+`applicationArtifactContextStep(paths)` and `applicationContextDirectory`.
+Workflow composition must consume this exact first-party step, then use its
+projected working directory for every subsequent shell step. The projection
+reads bounded raw immutable Git blobs, not a mutable worktree, Git archive or
+whole-root upload; modes are preserved and private/unselected files excluded.
+The limits are 512 files, 1 MiB per file, 8 MiB total and two minutes overall.
+`observeApplicationSource` independently validates the exact committed recipe,
+manifest digest, positive inventory, source/tree and protected execution ref.
+This is shared preparation, not a Source5 writer, production bridge or new
+dispatch input. An empty acceptance response or lost original accepted handle
+cannot be repaired by adopting even a unique matching listed run.
+
 Actual committed workflow bytes, separate transmission/network/build consent,
 the admitted private-network hosted runner, ACR QuickBuild output image and
 locked tag/digest, plus `gh attestation verify` certificate signer/source/run

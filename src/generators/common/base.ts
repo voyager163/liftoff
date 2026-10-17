@@ -459,6 +459,12 @@ ${plan.governanceProfile.id === 'none'
   : 'Generated policy and local completion are not live enforcement. Use only an actually supported, separately approved activation operation; an unavailable production adapter remains a blocker.'}
 Existing deployments and state require independent assessment and planning.
 
+The generated root \`Dockerfile\` copies both \`backend\` and \`database\`.
+Approved artifact publication must project an exact manifest-bound inventory
+of leaf files from the immutable source commit; a broad repository-root upload
+or \`.dockerignore\` alone is not source-transmission authority. Source,
+dependency-network and build permissions remain independently reviewed.
+
 `;
   }
   const governanceGate = plan.governanceProfile.id === 'none'

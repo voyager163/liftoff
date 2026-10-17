@@ -39,6 +39,11 @@ import {
 import {
   applicationPlanningFixture, applicationFixtureClient, applicationFixtureWorkloadClient, applicationFixtureWorkloadPrincipal
 } from './fixtures/governance-coverage/application-project.js';
+import { buildProjectPlan } from '../src/application/project/planning.js';
+import { buildArtifacts } from '../src/templates.js';
+import {
+  applicationArtifactContextStep, applicationContextDirectory
+} from '../src/governance-activation/application-artifact-context-recipe.js';
 
 const scratch = scratchDirectory('application-artifact');
 const imageDigest = `sha256:${'d'.repeat(64)}`;
@@ -279,13 +284,38 @@ function record(input: PhaseAdapterExecutionInput, id: PhaseId, payload: Record<
   return evidence;
 }
 
-async function fixture(artifact = false) {
+async function fixture(artifact = false, rootContext = false, contextRecipe: 'exact' | 'missing' | 'wrong-directory' | 'changed-projection' = 'exact') {
   const root = await writeCoverageProject(path.join(scratch, `${++counter}`));
   const runner = new ApplicationRunner();
   const f = await applicationPlanningFixture(root, artifact ? 'application-artifact-ready' : 'application-prerequisites-ready', runner);
   runner.prerequisite = f.prerequisite;
   const transport = new ArtifactTransport();
   if (artifact) {
+    let contextPaths: string[] | undefined;
+    if (rootContext) {
+      const generated = buildArtifacts(buildProjectPlan({
+        projectName: 'coverage', projectType: 'standard', apiStack: 'node-fastify',
+        cloud: 'azure', region: 'eastus', environments: ['dev'], includeFrontend: false,
+        specWorkflow: 'openspec', agents: ['github-copilot'], governanceProfile: 'single-maintainer-gitflow'
+      }, { requireProjectName: true }));
+      const source = generated.filter(file => file.logicalName === 'backend-dockerfile' ||
+        file.logicalName === 'root-dockerignore' || ['backend', 'database'].includes(file.pathParts[0]!));
+      for (const file of [...source, generated.find(file => file.logicalName === 'manifest')!]) {
+        const target = path.join(root, ...file.pathParts);
+        await mkdir(path.dirname(target), { recursive: true });
+        await writeFile(target, file.content);
+      }
+      contextPaths = source.map(file => file.pathParts.join('/'));
+      f.inputs.phases['application-artifact-ready'] = { ...f.inputs.phases['application-artifact-ready'],
+        contextPath: '.', contextPaths, dockerfilePath: 'Dockerfile' };
+    }
+    const projection = contextPaths ? applicationArtifactContextStep(contextPaths) : undefined;
+    if (projection && contextRecipe === 'changed-projection') projection.run += '\nprintf changed-projection\\n';
+    const steps = projection ? [
+      ...(contextRecipe === 'missing' ? [] : [projection]),
+      { run: 'echo isolated fixture only', 'working-directory': contextRecipe === 'wrong-directory'
+        ? '${{ github.workspace }}' : applicationContextDirectory }
+    ] : [{ run: 'echo isolated fixture only' }];
     const inputs = ['binding_digest', 'source_sha', 'context_path', 'dockerfile_path', 'image_repository', 'image_tag',
       'registry_id', 'client_id', 'subscription_id', 'tenant_id', 'environment'];
     transport.workflow = stringify({
@@ -295,13 +325,13 @@ async function fixture(artifact = false) {
       jobs: { publish: {
         name: 'Liftoff application artifact', if: '${{ github.sha == inputs.source_sha && github.run_attempt == 1 }}',
         'runs-on': { group: f.runnerPlan.runnerGroupName, labels: [f.runnerPlan.label] }, 'timeout-minutes': 15,
-        steps: [{ run: 'echo isolated fixture only' }]
+        steps
       } }
     });
     await mkdir(path.join(root, '.github', 'workflows'), { recursive: true });
     await mkdir(path.join(root, 'backend'), { recursive: true });
     await writeFile(path.join(root, '.github', 'workflows', 'application-artifact.yml'), transport.workflow);
-    await writeFile(path.join(root, 'backend', 'Dockerfile'), 'FROM scratch\n');
+    if (!rootContext) await writeFile(path.join(root, 'backend', 'Dockerfile'), 'FROM scratch\n');
     for (const args of [['init', '--initial-branch=develop'], ['add', '.'],
       ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-m', 'Isolated fixture']]) {
       const value = await runner.run({ executable: 'git', args }, { cwd: root }); expect(value.status).toBe(0);
@@ -676,6 +706,46 @@ describe('application source producers behind real prerequisites', () => {
 });
 
 describe('immutable application publication and independent readback', () => {
+  it('binds the actual generated root Dockerfile and exact manifest-owned context before dispatch', async () => {
+    const f = await fixture(true, true);
+    expect(f.transport.binding).toMatchObject({ contextPath: '.', dockerfilePath: 'Dockerfile',
+      contextPaths: expect.arrayContaining(['Dockerfile', '.dockerignore', 'backend/package.json']),
+      sourceManifestDigest: canonicalSha256(f.input.inspection.manifest) });
+    const outcome = await executeApplicationArtifactPublication(f.input);
+    expect(outcome, JSON.stringify(outcome)).toMatchObject({ status: 'completed', resultState: 'verified' });
+    const dispatch = f.transport.calls.find(entry => entry.method === 'POST')!;
+    expect(dispatch.body).toMatchObject({ ref: f.transport.binding.executionRef,
+      inputs: { context_path: '.', dockerfile_path: 'Dockerfile' } });
+    expect(f.input.plan.operations.find(entry => entry.actionId === 'github.artifact.build-dispatch')?.inputs)
+      .toMatchObject({ contextPaths: f.transport.binding.contextPaths });
+  });
+  it.each(['missing', 'wrong-directory', 'changed-projection'] as const)(
+    'refuses a reviewed %s root-context recipe before dispatch rather than uploading the whole repository', async kind => {
+      const f = await fixture(true, true, kind);
+      expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({
+        status: 'blocked', blocker: expect.stringMatching(/exact reviewed immutable-file projection/)
+      });
+      expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
+      expect(f.runner.calls.some(entry => entry.executable === 'gh')).toBe(false);
+    }
+  );
+  it('preserves and refuses changed selected root-context source without dispatch', async () => {
+    const f = await fixture(true, true);
+    await writeFile(path.join(f.root, 'backend', 'package.json'), '{"preserved":"customization"}\n');
+    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({
+      status: 'blocked', blocker: expect.stringMatching(/source differs/)
+    });
+    expect(await readFile(path.join(f.root, 'backend', 'package.json'), 'utf8')).toBe('{"preserved":"customization"}\n');
+    expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
+  });
+  it.each([undefined, [], ['../private'], ['Dockerfile', 'backend']].map(paths => ({ paths })))(
+    'blocks an absent, unsafe or directory-sweep root context $paths without throwing or dispatching', async ({ paths }) => {
+      const f = await fixture(true, true);
+      f.inputs.phases['application-artifact-ready'] = { ...f.inputs.phases['application-artifact-ready'], contextPaths: paths };
+      expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked' });
+      expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
+    }
+  );
   it.each(['empty-response', 'intent-only-recovery'] as const)(
     'refuses a matching listed run without original accepted-run provenance during %s', async (kind) => {
       const f = await fixture(true);
