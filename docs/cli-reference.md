@@ -1090,6 +1090,12 @@ not signing, publication, current channel availability or migration authority.
 Nonstandard, missing, contradictory or racing receipts fail closed. WinGet
 ownership remains an explicit provider port pending authoritative installed
 AppId/publisher/certificate/source observations.
+Windows local attribution separately validates the user app-root receipt,
+exact current-version pointer and stable `bin\liftoff.exe` against the immutable
+inner bundle. An inner version launcher is not the selected stable entry.
+Independent user-scope source/signer/uninstall-registration observations remain
+required; a valid installer receipt without those observations leaves the owner
+unknown. Check never refreshes WinGet sources or accepts source agreements.
 
 Canonical npm's stable `latest` metadata selects one exact target for npm owners. The effective
 configured npm registry remains the delivery path and must expose that exact

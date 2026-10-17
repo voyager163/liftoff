@@ -121,6 +121,12 @@ For native installations, use the owning manager and a new-shell `liftoff doctor
 plus `liftoff upgrade --check`; an npm repair command is not native authority.
 Windows `restart_required` means close the running executable before the exact
 manager handoff. Homebrew cask source does not run an unpinned `brew upgrade`.
+For the Windows immutable-version layout, select the app root's
+`bin\liftoff.exe`, not a launcher inside `versions\...`. Do not edit
+`native-install.json` or `current.txt` to repair a selection or receipt failure.
+A valid local installer receipt alone cannot prove a WinGet source: unavailable
+independent source/signer/registration observations remain unknown, with no
+source refresh, agreement acceptance or automatic fallback to npm.
 For Linux `recovery_required`, retain the exact journal and immutable versions.
 The installed `installation/native-install.mjs recover` requires the selected
 `.native-install-transaction.json` SHA-256 and, only when required, the selected

@@ -405,6 +405,19 @@ qualified deployed native stable release is established; real manager/source/cer
 independent qualification remain required. Returning fixture observations does
 not qualify a provider. WinGet source currently admits only observed
 user-scope ownership; machine-scope installs are not migrated or elevated.
+The Windows consumer binds the schema-1 `native-install.json` receipt to the
+canonical `%LOCALAPPDATA%\Programs\Liftoff` root, exact CRLF `current.txt`,
+immutable version directory and byte-identical stable/inner launchers. Its
+`WindowsInstallerLayout` is local attribution only: independent user-scope
+manager/source/signer observations must also match the app-root uninstall
+registration's receipt/current/launcher hashes. Selecting an inner version
+launcher, a junction, a link, a changed pointer or a foreign receipt blocks.
+An installer receipt alone never supplies a WinGet source or owning channel.
+No WinGet CLI/COM observation is silently substituted: the reviewed
+[tracking-catalog implementation](https://github.com/microsoft/winget-cli/blob/3d9083c062c1e7a7086e05becb414d4e005e4ab6/src/AppInstallerRepositoryCore/PackageTrackingCatalog.cpp)
+opens its database read-write, creates absent state and can rename a corrupt
+database even when remote source updates are suppressed. That does not satisfy
+this reader's no-refresh/no-registration/no-persistent-change contract.
 Linux recovery delegates unchanged to the installed receipt/journal API and
 requires exact selected digests; it is not a macOS cask recovery authority.
 

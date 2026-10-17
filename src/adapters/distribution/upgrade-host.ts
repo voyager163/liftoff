@@ -20,6 +20,7 @@ export interface SelfUpgradeDependencies {
   removeNeutralDirectory(directory: string): Promise<void>;
   readJson(filePath: string): Promise<unknown>;
   lstat(filePath: string): Promise<Stats>;
+  lstatBigInt?(filePath: string): Promise<BigIntStats>;
   realpath(filePath: string): Promise<string>;
   platform: NodeJS.Platform;
   architecture?: string;
@@ -88,6 +89,7 @@ export function defaultSelfUpgradeDependencies(environment: NodeJS.ProcessEnv = 
     readBytes: readUpgradeBytes,
     readlink,
     lstat,
+    lstatBigInt: filePath => lstat(filePath, { bigint: true }),
     realpath,
     platform: process.platform,
     architecture: process.arch,
