@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -236,11 +236,21 @@ describe('manifest-bound exact application context', () => {
       { ...executable, pathParts: ['backend', '.env'], content: 'PRIVATE_FIXTURE_ONLY\n' },
       { ...executable, pathParts: ['.liftoff', 'state', 'private.tfstate'], content: 'PRIVATE_STATE_FIXTURE_ONLY\n' }];
     const f = await prepare(files);
-    await chmod(path.join(f.project, 'backend', 'custom.sh'), 0o755);
-    expect((await f.runner.run({ executable: 'git', args: ['add', 'backend/custom.sh'] }, { cwd: f.project, env: f.env })).status).toBe(0);
+    expect((await f.runner.run({ executable: 'git', args: ['config', 'core.fileMode', 'false'] },
+      { cwd: f.project, env: f.env })).status).toBe(0);
+    expect((await f.runner.run({ executable: 'git', args: ['add', '--chmod=+x', '--', 'backend/custom.sh'] },
+      { cwd: f.project, env: f.env })).status).toBe(0);
+    const staged = await f.runner.run({ executable: 'git', args: ['ls-files', '--stage', '--', 'backend/custom.sh'] },
+      { cwd: f.project, env: f.env });
+    expect(staged.status, staged.stderr).toBe(0);
+    expect(staged.stdout).toMatch(/^100755 [a-f0-9]{40} 0\tbackend\/custom\.sh\n$/u);
     expect((await f.runner.run({ executable: 'git',
       args: ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-m', 'Exact executable mode'] },
     { cwd: f.project, env: f.env })).status).toBe(0);
+    const committed = await f.runner.run({ executable: 'git', args: ['ls-tree', 'HEAD', '--', 'backend/custom.sh'] },
+      { cwd: f.project, env: f.env });
+    expect(committed.status, committed.stderr).toBe(0);
+    expect(committed.stdout).toMatch(/^100755 blob [a-f0-9]{40}\tbackend\/custom\.sh\n$/u);
     const sha = (await f.runner.run({ executable: 'git', args: ['rev-parse', 'HEAD'] }, { cwd: f.project, env: f.env })).stdout.trim();
     await writeFile(path.join(f.project, 'backend', 'custom.sh'), 'PRESERVED_WORKTREE_CUSTOMIZATION\n');
     await writeFile(path.join(f.project, 'backend', 'untracked.key'), 'PRIVATE_UNTRACKED_FIXTURE_ONLY\n');
