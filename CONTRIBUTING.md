@@ -225,8 +225,18 @@ node scripts/coverage-gate.mjs verify cli
 node scripts/coverage-gate.mjs verify gateway
 ```
 
-The CLI inventory is every `.ts` file matched by the root `tsconfig.json`
-include, `src/**/*.ts`, whether or not a test imports it. The gateway inventory
+The CLI inventory includes every `.ts` file matched by the root `tsconfig.json`
+include, `src/**/*.ts`, and every raw JavaScript runtime module explicitly
+published in `package.json`:
+
+- `distribution/native/native-bundle-contract.mjs`
+- `distribution/native/native-cask-definition.mjs`
+- `distribution/native/native-program-assembly.mjs`
+- `distribution/native/native-release-admission.mjs`
+- `distribution/native/native-release-catalog.mjs`
+
+Unimported shipped modules remain in the denominator with zero coverage.
+Compiled `dist/` output is not counted again. The gateway inventory
 is its build input: `services/telemetry-ingest/src/**/*.ts` plus the whole
 shared `src/telemetry/contract.ts` module compiled into the gateway image. The
 gate fails if a report omits any inventoried file, lists a path outside it, is
