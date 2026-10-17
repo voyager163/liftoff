@@ -1007,6 +1007,13 @@ do not guess a default subscription or search unrelated resources. Neither mode
 enrolls credentials, expands permissions, registers providers, reads state blobs,
 executes project code, runs scanners or infrastructure tools, or changes local
 or remote configuration.
+Release/hotfix family coverage requires matching complete branch inventories
+before and after the scoped branch/check reads. Added or removed family members,
+or an unreadable closing inventory, withhold family-wide proof rather than
+following new refs or declaring them absent. Inventory ordering and unrelated
+branch changes do not invalidate the selected families. Both passes use the
+existing per-inventory bounds and shared collection deadline; matching snapshots
+detect observed drift, not an atomic provider snapshot or a lock.
 Azure scope and evidence-backed applicability require a current active-baseline
 and referenced, validated saved-plan/evidence receipts. Current receipts bind
 their canonical payload and live readback through `bodyDigest`; a header hash
