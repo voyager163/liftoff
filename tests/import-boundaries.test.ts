@@ -1439,6 +1439,7 @@ const nativeCaskFiles = [
   'distribution/native/platforms.json'
 ];
 const nativeContractImporter = 'adapters/distribution/native.ts';
+const nativeInstalledContractImporter = 'adapters/distribution/native-mac-installed.ts';
 const nativeContractSpecifier = '../../../distribution/native/native-bundle-contract.mjs';
 const nativeContractFiles = [
   'distribution/native/native-bundle-contract.mjs',
@@ -1659,12 +1660,15 @@ function moduleSpecifierViolation(
     return createHash('sha256').update(helper.source).digest('hex') === nativeCaskSourceSha256
       ? undefined : 'cask helper differs from its exact reviewed pure closure';
   }
-  if (specifier === nativeContractSpecifier && importer === nativeContractImporter) {
+  if (specifier === nativeContractSpecifier && [nativeContractImporter, nativeInstalledContractImporter].includes(importer)) {
     if (dynamic) return 'bundle contract edge must remain static';
     const helper = context.nativeContract;
     if (!helper) return 'packaged bundle contract helper/declaration is missing';
     if (!nativeContractFiles.every(target => helper.packagedFiles.has(target))) return 'bundle contract dependency is not packaged';
-    if (!exactStaticHelperBindings(context, file, specifier, ['bundleInventory', 'bundlePath', 'nativeBundleLimits'])) {
+    const names = importer === nativeInstalledContractImporter
+      ? ['bundleInventory', 'bundlePath', 'nativeBundleLimits', 'readBundleFile']
+      : ['bundleInventory', 'bundlePath', 'nativeBundleLimits'];
+    if (!exactStaticHelperBindings(context, file, specifier, names)) {
       return 'bundle contract edge has unexpected runtime bindings';
     }
     return createHash('sha256').update(helper.source).digest('hex') === nativeContractSourceSha256
@@ -2002,6 +2006,28 @@ describe('bundled plugin purity and module loading (2.6-G)', () => {
     for (const expression of [
       'import(pathToFileURL(contractPath).href);', "import(new URL('./contract.mjs', import.meta.url).href);", 'import(contractPath);'
     ]) expect(loaderReferenceViolations(expression, importer)).toEqual(['line 1: computed import() specifier']);
+  });
+
+  it('admits only the inert installed-candidate reader with its exact static canonical inventory bindings', async () => {
+    const context = await moduleLoadingContext(await sourceModules());
+    const importer = sourcePath(nativeInstalledContractImporter);
+    const check = (current: ModuleLoadingContext) => moduleSpecifierViolation(nativeContractSpecifier, importer, current);
+    expect(check(context)).toBeUndefined();
+    expect(moduleSpecifierViolation(nativeContractSpecifier, importer, context, true)).toBe('bundle contract edge must remain static');
+    expect(moduleSpecifierViolation(nativeContractSpecifier, sourcePath('adapters/distribution/other.ts'), context))
+      .toBe('relative specifier leaves src');
+    for (const source of [
+      `import * as inventory from '${nativeContractSpecifier}';`,
+      `import inventory from '${nativeContractSpecifier}';`,
+      `export { bundleInventory } from '${nativeContractSpecifier}';`,
+      `import { bundleInventory, bundlePath, nativeBundleLimits } from '${nativeContractSpecifier}';`,
+      `import { bundleInventory, bundlePath, nativeBundleLimits, readBundleFile, nativeBundleHost } from '${nativeContractSpecifier}';`
+    ]) expect(check({ ...context, modules: new Map(context.modules).set(importer, source) }))
+      .toBe('bundle contract edge has unexpected runtime bindings');
+    expect(check({ ...context, nativeContract: undefined })).toBe('packaged bundle contract helper/declaration is missing');
+    expect(check({ ...context, nativeContract: {
+      ...context.nativeContract!, source: `${context.nativeContract!.source}\nexport const changed = true;`
+    } })).toBe('bundle contract differs from its exact reviewed first-party closure');
   });
 
   it('bans in-process code-loading and evaluation primitives in authored source', async () => {
