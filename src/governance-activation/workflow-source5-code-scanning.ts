@@ -95,7 +95,7 @@ export async function observeSource5WorkflowCodeScanning(input: {
       { code: 'workflow-code-scanning-program-unavailable',
         message: 'Tool names, versions and GUIDs are descriptive provider metadata, not authenticated CodeQL executable/query subjects or an approved integration mapping.' },
       { code: 'workflow-code-scanning-original-sarif-unavailable',
-        message: 'The existing closed read transport returns analysis metadata, not the custom-media SARIF subset or authenticated original report. No media-type or publisher contract was widened.' },
+        message: 'This metadata-only observation did not request the separate fixed SARIF subset representation; neither metadata nor provider subsets authenticate the original report or publisher/program provenance.' },
       { code: 'workflow-code-scanning-coverage-unavailable',
         message: 'Neither positive rule/result counts nor zero results prove complete selected-language/query coverage, successful original execution or source-bound report provenance.' }
     ]
