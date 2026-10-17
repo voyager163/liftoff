@@ -107,6 +107,13 @@ describe('developer activation-completeness guidance', () => {
       'Current consumption requires the exact completed original publication handle',
       'without that binding remain readable, but cannot qualify new deployment'
     ]) expect(completeness).toContain(phrase);
+    for (const phrase of [
+      '`artifactRecipe.version: "oci-digest-v1"`', '`applicationArtifactDigestWorkflow`',
+      '`PhasePlanBuild.blockers` prevents a saved executable plan or approval',
+      'GitHub attestation delivery is explicitly planned', 'requires a separate compatible contract decision',
+      'reviewed declarations, not independently qualified builder capabilities',
+      'no earlier approval is reinterpreted'
+    ]) expect(completeness).toContain(phrase);
     expect(phaseCapabilities['application-prerequisites-ready'].executor).toBe('injected-only');
     expect(phaseCapabilities['application-artifact-ready'].executor).toBe('injected-only');
   });

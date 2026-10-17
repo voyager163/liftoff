@@ -32,6 +32,7 @@ import {
 import {
   applicationArtifactBinding, applicationArtifactPlanInputs, executeApplicationArtifactPublication
 } from './application-artifact.js';
+import { applicationArtifactDigestBlockers } from './application-artifact-digest-recipe.js';
 
 export async function planGitHubPhase(input: PhasePlanningInput): Promise<PhasePlanBuild | null> {
   const repository = repositoryConfiguration(input.inspection).name;
@@ -196,6 +197,7 @@ export async function planGitHubPhase(input: PhasePlanningInput): Promise<PhaseP
     {
       const binding = applicationArtifactBinding(input);
       return {
+        ...('artifactRecipe' in binding ? { blockers: applicationArtifactDigestBlockers } : {}),
         operations: [
           githubOperation(input, 'github.artifact.build-dispatch', 'github-workflow-dispatch',
             applicationArtifactPlanInputs(input), undefined, [{

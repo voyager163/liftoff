@@ -470,11 +470,20 @@ Approved artifact publication must project an exact manifest-bound inventory
 of leaf files from the immutable source commit; a broad repository-root upload
 or \`.dockerignore\` alone is not source-transmission authority. Source,
 dependency-network and build permissions remain independently reviewed.
-New publication remains blocked until actual no-replace or exclusive-destination
+${current ? 'Legacy tag-based' : 'New'} publication remains blocked until actual no-replace or exclusive-destination
 admission is qualified; checking an absent tag and locking it later cannot
 guarantee that a competing tag was never overwritten. Original accepted runs
 remain observation-only; no temporary tags, import/promotion or extra roles
-are substituted automatically.
+are substituted automatically.${current ? `
+The separately selected \`oci-digest-v1\` artifact recipe is a blocked source
+proposal only, not an executable reviewed plan. It uses the same exact Git
+projection and excludes image/cache tags and OCI attestation/referrers fallback.
+Authenticated delivery, whole-job protected custody, build-tool qualification
+and GitHub attestation's unallocated write effect remain independent blockers
+before saved plan, approval, source transmission or dispatch. Legacy receipts
+cannot qualify this selection; no live target or new publication receipt is
+provided.
+` : ''}
 
 `;
   }
