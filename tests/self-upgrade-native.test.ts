@@ -157,8 +157,8 @@ async function ownedBundle(version = '0.12.3') {
   await writeFile(path.join(source, 'runtime/node'), '# fixture-only runtime process port\n', { mode: 0o755 });
   await writeFile(path.join(source, 'bin/liftoff'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
   await writeFile(path.join(source, 'application/dist/cli.js'), `console.log("Liftoff ${version}");\n`);
-  for (const name of ['native-install.mjs', 'native-bundle-contract.mjs']) await copyFile(`scripts/${name}`, path.join(source, 'installation', name));
-  for (const name of ['native-release-admission.mjs', 'release-policy.json', 'platforms.json']) {
+  await copyFile('scripts/native-install.mjs', path.join(source, 'installation/native-install.mjs'));
+  for (const name of ['native-bundle-contract.mjs', 'native-release-admission.mjs', 'release-policy.json', 'platforms.json']) {
     await copyFile(`distribution/native/${name}`, path.join(source, 'installation', name));
   }
   await writeFile(path.join(source, 'installation/host.mjs'),

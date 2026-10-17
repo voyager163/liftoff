@@ -1,4 +1,5 @@
 import { lstat, readdir, readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { isBuiltin } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1392,6 +1393,7 @@ interface ModuleLoadingContext {
   readonly present: ReadonlySet<string>;
   readonly dependencies: ReadonlySet<string>;
   readonly devDependencies: ReadonlySet<string>;
+  readonly modules?: ReadonlyMap<string, string>;
   readonly nativeAdmission?: {
     readonly source: string;
     readonly packagedFiles: ReadonlySet<string>;
@@ -1400,9 +1402,18 @@ interface ModuleLoadingContext {
     readonly source: string;
     readonly packagedFiles: ReadonlySet<string>;
   };
+  readonly nativeCask?: {
+    readonly source: string;
+    readonly packagedFiles: ReadonlySet<string>;
+  };
+  readonly nativeContract?: {
+    readonly source: string;
+    readonly packagedFiles: ReadonlySet<string>;
+  };
 }
 
 const nativeAdmissionImporter = 'adapters/distribution/native-metadata.ts';
+const nativeArchiveImporter = 'adapters/distribution/native-archive.ts';
 const nativeAdmissionSpecifier = '../../../distribution/native/native-release-admission.mjs';
 const nativeAdmissionFiles = [
   'distribution/native/native-release-admission.mjs',
@@ -1415,6 +1426,31 @@ const nativeCatalogFiles = [
   'distribution/native/native-release-catalog.mjs',
   'distribution/native/native-release-catalog.d.mts'
 ];
+const nativeCaskSpecifier = '../../../distribution/native/native-cask-definition.mjs';
+const nativeCaskFiles = [
+  'distribution/native/native-cask-definition.mjs',
+  'distribution/native/native-cask-definition.d.mts',
+  ...nativeAdmissionFiles,
+  'distribution/native/platforms.json'
+];
+const nativeContractImporter = 'adapters/distribution/native.ts';
+const nativeContractSpecifier = '../../../distribution/native/native-bundle-contract.mjs';
+const nativeContractFiles = [
+  'distribution/native/native-bundle-contract.mjs',
+  'distribution/native/native-bundle-contract.d.mts'
+];
+const nativeCaskSourceSha256 = '56f1224c5d48ea92b27c15eb690ed2b371127fe1dc327ad3d44d964afc2b33e5';
+const nativeContractSourceSha256 = 'ec3253f3b3bf72606ec2bf4f2fa9d544e06ef3be7671c117c9884971dc4388ec';
+
+function exactStaticHelperBindings(
+  context: ModuleLoadingContext, file: string, specifier: string, names: readonly string[]
+): boolean {
+  const source = context.modules?.get(file) ?? '';
+  const edges = runtimeDependenciesOf(source, file).filter(entry => entry.specifier === specifier);
+  const bindings = runtimeImports(source, file).filter(entry => entry.specifier === specifier);
+  return edges.length === 1 && edges[0].dynamic !== true && bindings.every(entry => entry.kind === 'named') &&
+    bindings.map(entry => entry.imported).sort().join() === [...names].sort().join();
+}
 
 function nativeCatalogHelperViolations(source: string, file: string): string[] {
   const body = recordsAt(parseProgram(source, file), 'body');
@@ -1491,6 +1527,8 @@ async function moduleLoadingContext(modules: ReadonlyMap<string, string>): Promi
   };
   let nativeAdmission: ModuleLoadingContext['nativeAdmission'];
   let nativeCatalog: ModuleLoadingContext['nativeCatalog'];
+  let nativeCask: ModuleLoadingContext['nativeCask'];
+  let nativeContract: ModuleLoadingContext['nativeContract'];
   try {
     const details = await Promise.all(nativeAdmissionFiles.map(file => lstat(path.resolve(file))));
     if (details.every(detail => detail.isFile() && !detail.isSymbolicLink() && detail.nlink === 1)) {
@@ -1502,6 +1540,23 @@ async function moduleLoadingContext(modules: ReadonlyMap<string, string>): Promi
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  for (const [kind, files] of [['cask', nativeCaskFiles], ['contract', nativeContractFiles]] as const) {
+    try {
+      const details = await Promise.all(files.map(file => lstat(path.resolve(file))));
+      if (details.every(detail => detail.isFile() && !detail.isSymbolicLink() && detail.nlink === 1)) {
+        const helper = {
+          source: await readFile(path.resolve(files[0]), 'utf8'),
+          packagedFiles: new Set(manifest.files ?? [])
+        };
+        if (kind === 'cask') {
+          JSON.parse(await readFile(path.resolve('distribution/native/platforms.json'), 'utf8'));
+          nativeCask = helper;
+        } else nativeContract = helper;
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
   }
   try {
     const details = await Promise.all(nativeCatalogFiles.map(file => lstat(path.resolve(file))));
@@ -1516,20 +1571,29 @@ async function moduleLoadingContext(modules: ReadonlyMap<string, string>): Promi
   }
   return {
     root: sourceRoot,
+    modules,
     present: new Set(modules.keys()),
     dependencies: new Set([...Object.keys(manifest.dependencies ?? {}), ...Object.keys(manifest.optionalDependencies ?? {})]),
     devDependencies: new Set(Object.keys(manifest.devDependencies ?? {})),
     nativeAdmission,
-    nativeCatalog
+    nativeCatalog,
+    nativeCask,
+    nativeContract
   };
 }
 
-/** Fixed src/builtin/dependency resolution and the two exact deferred packaged helper edges. */
+/** Fixed src/builtin/dependency resolution and exact reviewed packaged helper edges. */
 function moduleSpecifierViolation(
   specifier: string, file: string, context: ModuleLoadingContext, dynamic = false
 ): string | undefined {
-  if (specifier === nativeAdmissionSpecifier && relativeSource(file, context.root) === nativeAdmissionImporter) {
-    if (!dynamic) return 'admission edge must remain deferred';
+  const importer = relativeSource(file, context.root);
+  if (specifier === nativeAdmissionSpecifier && [nativeAdmissionImporter, nativeArchiveImporter].includes(importer)) {
+    const archive = importer === nativeArchiveImporter;
+    if (archive && dynamic) return 'archive admission edge must remain static';
+    if (!archive && !dynamic) return 'admission edge must remain deferred';
+    if (archive && !exactStaticHelperBindings(context, file, specifier, ['verifyNativeBytesSignature'])) {
+      return 'archive admission edge has unexpected runtime bindings';
+    }
     const helper = context.nativeAdmission;
     if (!helper) return 'packaged admission helper or data/declaration is missing';
     if (!nativeAdmissionFiles.every(target => helper.packagedFiles.has(target))) return 'admission dependency is not packaged';
@@ -1537,6 +1601,30 @@ function moduleSpecifierViolation(
     if (target !== path.resolve(context.root, '..', nativeAdmissionFiles[0])) return 'admission target differs';
     return nativeAdmissionHelperViolations(helper.source, target).length === 0
       ? undefined : 'admission helper is not the fixed pure dependency closure';
+  }
+  if (specifier === nativeCaskSpecifier && importer === nativeAdmissionImporter) {
+    if (dynamic) return 'cask edge must remain static';
+    const helper = context.nativeCask;
+    if (!helper) return 'packaged cask helper/data/declaration is missing';
+    if (!nativeCaskFiles.every(target => helper.packagedFiles.has(target))) return 'cask dependency is not packaged';
+    if (!exactStaticHelperBindings(context, file, specifier, ['nativeCaskDefinition'])) return 'cask edge has unexpected runtime bindings';
+    if (!context.nativeAdmission ||
+      nativeAdmissionHelperViolations(context.nativeAdmission.source, path.resolve(context.root, '..', nativeAdmissionFiles[0])).length) {
+      return 'cask admission dependency is not the fixed pure closure';
+    }
+    return createHash('sha256').update(helper.source).digest('hex') === nativeCaskSourceSha256
+      ? undefined : 'cask helper differs from its exact reviewed pure closure';
+  }
+  if (specifier === nativeContractSpecifier && importer === nativeContractImporter) {
+    if (dynamic) return 'bundle contract edge must remain static';
+    const helper = context.nativeContract;
+    if (!helper) return 'packaged bundle contract helper/declaration is missing';
+    if (!nativeContractFiles.every(target => helper.packagedFiles.has(target))) return 'bundle contract dependency is not packaged';
+    if (!exactStaticHelperBindings(context, file, specifier, ['bundleInventory', 'bundlePath', 'nativeBundleLimits'])) {
+      return 'bundle contract edge has unexpected runtime bindings';
+    }
+    return createHash('sha256').update(helper.source).digest('hex') === nativeContractSourceSha256
+      ? undefined : 'bundle contract differs from its exact reviewed first-party closure';
   }
   if (specifier === nativeCatalogSpecifier && relativeSource(file, context.root) === nativeCatalogImporter) {
     if (!dynamic) return 'catalog edge must remain deferred';
@@ -1739,6 +1827,100 @@ describe('bundled plugin purity and module loading (2.6-G)', () => {
       .toEqual(['line 1: computed import() specifier']);
     expect(loaderReferenceViolations(`import(new URL('${nativeCatalogSpecifier}', import.meta.url).href);`, importer))
       .toEqual(['line 1: computed import() specifier']);
+  });
+
+  it('admits only the archive signature verifier as the second exact static admission consumer', async () => {
+    const context = await moduleLoadingContext(await sourceModules());
+    const importer = sourcePath(nativeArchiveImporter);
+    const check = (current: ModuleLoadingContext) => moduleSpecifierViolation(nativeAdmissionSpecifier, importer, current);
+    expect(check(context)).toBeUndefined();
+    expect(moduleSpecifierViolation(nativeAdmissionSpecifier, importer, context, true)).toBe('archive admission edge must remain static');
+    expect(moduleSpecifierViolation(nativeAdmissionSpecifier, sourcePath('adapters/distribution/other.ts'), context))
+      .toBe('relative specifier leaves src');
+    for (const binding of ['* as admission', 'defaultAdmission', '{ assertNativePublicationEvidence }',
+      '{ verifyNativeBytesSignature, verifyNativeEvidenceSignature }']) {
+      expect(check({ ...context, modules: new Map(context.modules).set(importer,
+        `import ${binding} from '${nativeAdmissionSpecifier}';`) })).toBe('archive admission edge has unexpected runtime bindings');
+    }
+    expect(check({ ...context, nativeAdmission: undefined })).toBe('packaged admission helper or data/declaration is missing');
+    expect(check({ ...context, nativeAdmission: { ...context.nativeAdmission!, source: `${context.nativeAdmission!.source}\nimport 'node:fs';` } }))
+      .toBe('admission helper is not the fixed pure dependency closure');
+    for (const missing of nativeAdmissionFiles) {
+      expect(check({ ...context, nativeAdmission: {
+        ...context.nativeAdmission!, packagedFiles: new Set(nativeAdmissionFiles.filter(file => file !== missing))
+      } })).toBe('admission dependency is not packaged');
+    }
+  });
+
+  it('admits only the metadata cask renderer with its unchanged pure signature/data closure', async () => {
+    const context = await moduleLoadingContext(await sourceModules());
+    const importer = sourcePath(nativeAdmissionImporter);
+    const check = (current: ModuleLoadingContext) => moduleSpecifierViolation(nativeCaskSpecifier, importer, current);
+    expect(check(context)).toBeUndefined();
+    expect(moduleSpecifierViolation(nativeCaskSpecifier, importer, context, true)).toBe('cask edge must remain static');
+    expect(moduleSpecifierViolation(nativeCaskSpecifier, sourcePath(nativeArchiveImporter), context)).toBe('relative specifier leaves src');
+    expect(check({ ...context, nativeCask: undefined })).toBe('packaged cask helper/data/declaration is missing');
+    const helper = context.nativeCask!;
+    for (const missing of nativeCaskFiles) {
+      expect(check({ ...context, nativeCask: {
+        ...helper, packagedFiles: new Set(nativeCaskFiles.filter(file => file !== missing))
+      } })).toBe('cask dependency is not packaged');
+    }
+    for (const consumerSource of [
+      `import * as cask from '${nativeCaskSpecifier}';`,
+      `import cask from '${nativeCaskSpecifier}';`,
+      `export { nativeCaskDefinition } from '${nativeCaskSpecifier}';`,
+      `import '${nativeCaskSpecifier}';`
+    ]) expect(check({ ...context, modules: new Map(context.modules).set(importer, consumerSource) }))
+      .toBe('cask edge has unexpected runtime bindings');
+    for (const source of [
+      `${helper.source}\nimport 'node:fs';`,
+      helper.source.replace('node:assert/strict', 'node:process'),
+      helper.source.replace("'./release-policy.json'", "'./different-policy.json'"),
+      helper.source.replace("'./platforms.json'", "'./different-platforms.json'"),
+      `${helper.source}\nexport const ambient = process.env;`
+    ]) expect(check({ ...context, nativeCask: { ...helper, source } }))
+      .toBe('cask helper differs from its exact reviewed pure closure');
+    expect(check({ ...context, nativeAdmission: undefined })).toBe('cask admission dependency is not the fixed pure closure');
+    expect(check({ ...context, nativeAdmission: { ...context.nativeAdmission!, source: `${context.nativeAdmission!.source}\nimport 'node:fs';` } }))
+      .toBe('cask admission dependency is not the fixed pure closure');
+  });
+
+  it('admits only the fixed installed bundle contract and refuses constructed loaders, wrappers and extra runtime bindings', async () => {
+    const context = await moduleLoadingContext(await sourceModules());
+    const importer = sourcePath(nativeContractImporter);
+    const check = (current: ModuleLoadingContext) => moduleSpecifierViolation(nativeContractSpecifier, importer, current);
+    expect(check(context)).toBeUndefined();
+    expect(moduleSpecifierViolation(nativeContractSpecifier, importer, context, true)).toBe('bundle contract edge must remain static');
+    for (const wrongImporter of [nativeAdmissionImporter, nativeArchiveImporter, 'domain/project/other.ts']) {
+      expect(moduleSpecifierViolation(nativeContractSpecifier, sourcePath(wrongImporter), context)).toBe('relative specifier leaves src');
+    }
+    for (const specifier of [
+      '../../../scripts/native-bundle-contract.mjs',
+      '../../../distribution/native/../native/native-bundle-contract.mjs',
+      '../../../installation/native-bundle-contract.mjs'
+    ]) expect(moduleSpecifierViolation(specifier, importer, context)).toBe('relative specifier leaves src');
+    expect(check({ ...context, nativeContract: undefined })).toBe('packaged bundle contract helper/declaration is missing');
+    const helper = context.nativeContract!;
+    for (const missing of nativeContractFiles) {
+      expect(check({ ...context, nativeContract: {
+        ...helper, packagedFiles: new Set(nativeContractFiles.filter(file => file !== missing))
+      } })).toBe('bundle contract dependency is not packaged');
+    }
+    for (const binding of [
+      '* as contract', 'contract', '{ bundleInventory, bundlePath }',
+      '{ bundleInventory, bundlePath, nativeBundleLimits, readBundleFile }'
+    ]) expect(check({ ...context, modules: new Map(context.modules).set(importer,
+      `import ${binding} from '${nativeContractSpecifier}';`) })).toBe('bundle contract edge has unexpected runtime bindings');
+    for (const source of [
+      `export * from '../../scripts/native-bundle-contract.mjs';`,
+      `${helper.source}\nexport const ambient = process.env;`,
+      helper.source.replace("from 'node:fs/promises'", "from 'node:child_process'")
+    ]) expect(check({ ...context, nativeContract: { ...helper, source } }))
+      .toBe('bundle contract differs from its exact reviewed first-party closure');
+    for (const expression of [
+      'import(pathToFileURL(contractPath).href);', "import(new URL('./contract.mjs', import.meta.url).href);", 'import(contractPath);'
+    ]) expect(loaderReferenceViolations(expression, importer)).toEqual(['line 1: computed import() specifier']);
   });
 
   it('bans in-process code-loading and evaluation primitives in authored source', async () => {
