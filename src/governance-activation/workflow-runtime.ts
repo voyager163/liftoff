@@ -164,7 +164,8 @@ function readableGit(args: readonly string[]): boolean {
       (args[2] === 'HEAD' || /^[a-f0-9]{40}\^\{tree\}$/u.test(args[2]!)) ||
     args.length === 2 && args[0] === 'show' && /^[a-f0-9]{40}:(?:\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml|governance\/rulesets\/[A-Za-z0-9_-]+\.json)$/u.test(args[1]!) ||
     args.length === 5 && sha(args[4]) && same(['rev-list', '--parents', '-n', '1', args[4]!]) ||
-    args.length === 6 && sha(args[5]) && same(['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', args[5]!]);
+    args.length === 7 && sha(args[6]) &&
+      same(['diff-tree', '--no-commit-id', '--raw', '--no-abbrev', '-r', '-z', args[6]!]);
 }
 function boundedWorkflowRuntime(services: WorkflowObservationServices, readOnly: boolean,
   runGit?: (args: readonly string[], deadline: number) => ReturnType<CommandRunner['run']>,

@@ -18,7 +18,7 @@ import { createSource5WorkflowEffectInput } from '../src/governance-activation/w
 import { workflowRuntime } from '../src/governance-activation/workflow-runtime.js';
 import { executeWorkflowSourcePublication } from '../src/governance-activation/workflow-publication.js';
 import { workflowByteDigest } from '../src/governance-activation/workflow-binding.js';
-import { workflowSource5JournalFixture } from './fixtures/workflow-source5-journal.js';
+import { workflowPublicationGitRawInventory, workflowSource5JournalFixture } from './fixtures/workflow-source5-journal.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
@@ -95,7 +95,7 @@ function publicationServices(value: Review) {
     else if (args[0] === 'rev-list') stdout = `${commitSha} ${value.binding.parentSha}`;
     else if (args.includes('commit')) { commands.push(args); head = commitSha; }
     else if (args.includes('add')) commands.push(args);
-    else if (args[0] === 'diff-tree') stdout = `${value.binding.files.map(file => file.path).join('\0')}\0`;
+    else if (args[0] === 'diff-tree') stdout = workflowPublicationGitRawInventory(value.binding.files);
     else if (args[0] === 'show') {
       const file = value.binding.files.find(file => args[1] === `${commitSha}:${file.path}`);
       if (!file) throw new Error('Unexpected isolated committed path.');

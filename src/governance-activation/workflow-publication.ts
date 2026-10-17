@@ -1,4 +1,5 @@
 import { devNull } from 'node:os';
+import { createHash } from 'node:crypto';
 import { parse } from 'yaml';
 import { isRecord, canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import { captureProjectFileSnapshot, applyProjectFileTransaction } from '../adapters/filesystem/project-transaction.js';
@@ -134,10 +135,25 @@ async function observePublished(
 async function verifyPublicationCommit(
   runtime: ReturnType<typeof workflowRuntime>, binding: WorkflowPublicationBinding, commitSha: string
 ): Promise<void> {
-  const changed = (await runtime.git(['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', commitSha]))
-    .split('\0').filter(Boolean).sort();
-  if (canonicalSha256(changed) !== canonicalSha256(binding.files.map((file) => file.path).sort())) {
-    return workflowFailure('workflow-publication-inventory', 'The actual source commit changed files outside, or omitted files from, its exact reviewed inventory.');
+  const raw = (await runtime.git(['diff-tree', '--no-commit-id', '--raw', '--no-abbrev', '-r', '-z', commitSha])).split('\0');
+  const invalid = () => workflowFailure('workflow-publication-inventory',
+    'The actual source commit must contain exactly the reviewed ordinary non-executable file additions/modifications, complete blob identities and unchanged before modes.');
+  if (raw.pop() !== '' || raw.length !== binding.files.length * 2) return invalid();
+  const changed: string[] = [];
+  for (let index = 0; index < raw.length; index += 2) {
+    const metadata = /^:(000000|100644) 100644 ([a-f0-9]{40}) ([a-f0-9]{40}) ([AM])$/u.exec(raw[index]!);
+    const file = binding.files.find(file => file.path === raw[index + 1]);
+    if (!metadata || !file) return invalid();
+    const addition = file.beforeDigest === null;
+    const bytes = Buffer.from(file.content);
+    if (metadata[1] !== (addition ? '000000' : '100644') ||
+      metadata[4] !== (addition ? 'A' : 'M') ||
+      (metadata[2] === '0'.repeat(40)) !== addition ||
+      metadata[3] !== createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex')) return invalid();
+    changed.push(file.path);
+  }
+  if (canonicalSha256(changed.sort()) !== canonicalSha256(binding.files.map((file) => file.path).sort())) {
+    return invalid();
   }
   for (const file of binding.files) {
     if (workflowByteDigest(await runtime.git(['show', `${commitSha}:${file.path}`])) !== file.digest) {
