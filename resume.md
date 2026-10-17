@@ -5,9 +5,61 @@ another machine. It records the repository state, decisions, validation,
 remaining work, and cautions needed to continue the OpenSpec change
 `modernize-liftoff-platform` without reconstructing the prior conversation.
 
+## Composed Windows candidates and rejected optimization, 2026-10-17
+
+Preserving merge `c59f59be6a20324021ca4448c62e2e005a4dd6e9`, tree
+`4e5fb2128c6ee3b1c14f92f9924851f17f5c9a2c`, combines Root's Windows Compose
+candidate `3ceea6a3` with fixture-only correction
+`4a3f87ee4b11e29cebda4a8d196e40264d6f7ab1`. The Compose resolver now uses
+finite Windows-native `.exe` companion paths while preserving POSIX paths,
+physical identity checks and existing precedence. Four portable path-model
+controls are not proof of an actual installed Windows plugin.
+
+The Mac migration fixture retains genuine POSIX recovery capture/copy by
+default. Only two portable bundle/metadata contracts explicitly omit recovery:
+they create no recovery directory and supply no recovery request property.
+Production ownership/recovery checks remain unchanged; the prerelease case
+still reaches real stable-admission refusal. Root's complete composed ten-file
+closure passed 199 tests with 16 existing genuine-native cases unrun, alongside
+both strict consumer graphs, project no-emit, repository policy and diff checks.
+The first Root profile omitted `npm_execpath` and passed 195 tests with 20 unrun;
+the corrected profile explicitly supplies pinned npm for the four
+disposable-prefix controls. Neither record is actual Windows qualification.
+
+Source's sole callback-`lstat` candidate was rejected and completely restored.
+Both complete three-file profiles passed 206 tests, but no complete-file
+duration improved and the strict per-case observation comparison differed in
+three original finalization negative cases. All 59 packet subjects and both
+original hosted logs were independently rehashed. No optimization source,
+test or commit was retained; the backend reservation is released. Neither the
+microprobe nor the unchanged passing local timeout cases repairs the hosted
+CLI deadline or the Windows timeout.
+
+Original run `39023881630`, attempt 1, is terminal and cancelled: 17 jobs
+succeeded, five failed and one was cancelled. Its Windows second main shard
+reported 6,686 passed / 8 failed / 553 unrun. The two fixture failures have the
+bounded candidate above; actual rerun evidence is still required. Two native
+workflow-context controls remain unresolved: absent HOME-replacement witness
+and Node syntax status 134 rather than 1. Their assertions now expose existing
+bounded sanitized observations without accepting those outcomes. The first
+source-finalization case also exceeded its unchanged 30-second test deadline.
+Do not infer those causes from the cancelled 45-minute CLI coverage job.
+
+The clarified Linux comparison has 292 added raw unrun names but 291 newly
+unrun underlying cases, one renamed already-unrun Windows case and three newly
+executed cases: net +288 unrun. No missing first-party Linux preparation was
+established. The Darwin HCL runtime tuple and explicit inert Ruby opt-in remain
+separate qualification boundaries.
+
+Fresh composed full-suite and independent source-complete CLI/gateway
+qualification must identify their own clean commit and inventories; exact
+`979a727f` reports, supplemental OpenSpec results and native artifacts cannot
+be transferred. No new push, hosted/native qualification, publication or task
+credit is recorded here. Programme progress remains 87/136.
+
 ## Windows diagnostic intake and hosted qualification, 2026-10-17
 
-The current composition preserves CI candidate `6053b551` and source correction
+The diagnostic intake preserves CI candidate `6053b551` and source correction
 `6c379b916540f3ac7558d484e6a08300b27743b2`, rather than rewriting either.
 `SUPERVISOR_TIMEOUT` no longer claims that target execution or the declared
 application timeout elapsed; PowerShell launch failure uses fixed guidance
@@ -29,9 +81,10 @@ macOS 13,669 / 0 / 265. Preserve these host-specific omissions separately from
 the local 13,707 / 0 / 227 record and the supplemental OpenSpec/native reports.
 
 The serialized Windows precheck candidate remains unqualified on its actual
-Windows lane. Source observation performance and Linux test prerequisites have
-separate bounded allocations; no timeout, coverage floor, safety guard or
-OpenSpec checkbox was relaxed. Programme progress remains 87/136.
+Windows lane. Source observation performance and Linux test prerequisites
+were separately allocated; their final dispositions are recorded above. No
+timeout, coverage floor, safety guard or OpenSpec checkbox was relaxed.
+Programme progress remains 87/136.
 
 ## Unpublished telemetry suppression, 2026-10-17
 
