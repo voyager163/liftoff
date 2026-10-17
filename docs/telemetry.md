@@ -101,6 +101,11 @@ partial execution, recovery or cleanup remains `failure`, even if its public
 exit is 2 or a later prompt is cancelled. An unclassified nonzero exit stays
 `failure`; numeric exit codes and command output are unchanged.
 
+A committed adoption with successful independent readback is `success`.
+An adoption preview or a clean recovery rollback is `attention-required`:
+neither completes adoption. Failed approval, publication or recovery remains
+`failure`.
+
 Explicit local integrations may also observe the schema-2 event through the
 optional `CliTelemetryHooks.afterSemanticCommand` hook. It uses the same command
 allowlist, disclosure readiness, global opt-outs and assessment/capability

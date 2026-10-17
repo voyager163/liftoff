@@ -211,7 +211,9 @@ export async function adoptCommand(
       }
     }
   }
-  context.outcome?.record(report.exitCode === 1 ? 'failure' : 'attention-required');
+  context.outcome?.record(
+    report.exitCode === 1 ? 'failure' : report.exitCode === 2 ? 'attention-required' : 'success'
+  );
   if (selected.json) {
     context.presentation.rawStdout(`${JSON.stringify(report, null, 2)}\n`);
   } else {
