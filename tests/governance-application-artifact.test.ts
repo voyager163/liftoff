@@ -19,7 +19,8 @@ import {
   observeApplicationProtection
 } from '../src/governance-activation/application-readiness.js';
 import { protectedStateCustodyRequest } from '../src/governance-activation/protected-state-handover.js';
-import { loadActivationState } from '../src/governance-activation/activation-state.js';
+import { loadActivationState, writeActivationState } from '../src/governance-activation/activation-state.js';
+import { readReviewedTransitionPlans } from '../src/governance-activation/proof-records.js';
 import { protectedStateCustodyIdentityDigest } from '../src/governance-activation/protected-state-custody.js';
 import { readbackProof } from '../src/governance-activation/transition-records.js';
 import { nativeStateHostId } from '../src/adapters/state/native-system.js';
@@ -287,7 +288,9 @@ function record(input: PhaseAdapterExecutionInput, id: PhaseId, payload: Record<
   return evidence;
 }
 
-async function fixture(artifact = false, rootContext = false, contextRecipe: 'exact' | 'missing' | 'wrong-directory' | 'changed-projection' = 'exact') {
+async function fixture(artifact = false, rootContext = false,
+  contextRecipe: 'exact' | 'missing' | 'wrong-directory' | 'changed-projection' = 'exact',
+  publication: 'accepted' | 'fresh' = 'accepted') {
   const root = await writeCoverageProject(path.join(scratch, `${++counter}`));
   const runner = new ApplicationRunner();
   const f = await applicationPlanningFixture(root, artifact ? 'application-artifact-ready' : 'application-prerequisites-ready', runner);
@@ -345,6 +348,9 @@ async function fixture(artifact = false, rootContext = false, contextRecipe: 'ex
       sourceSha: sha, sourceTreeSha: treeSha, workflowDigest: createHash('sha256').update(transport.workflow).digest('hex') };
   }
   f.inspection = await coverageInspection({ root, phaseId: f.phase.id, state: f.state, activationInputs: f.inputs });
+  if (artifact && publication === 'accepted') {
+    await writeActivationState(root, f.state, { expectedContentHash: null });
+  }
   const preview = (await buildSavedTransitionPlan(f))!;
   const approval = await issuePriorApproval(root, f.state, preview);
   f.inspection.approvals = [approval];
@@ -424,7 +430,26 @@ async function fixture(artifact = false, rootContext = false, contextRecipe: 'ex
   const newPreview = (await buildSavedTransitionPlan(input))!;
   input.inspection.approvals = [await issuePriorApproval(root, f.state, newPreview)];
   input.plan = (await buildSavedTransitionPlan(input))!;
-  if (artifact) { transport.binding = applicationArtifactBinding(input); runner.artifact = transport.binding; }
+  if (artifact) {
+    transport.binding = applicationArtifactBinding(input); runner.artifact = transport.binding;
+    if (publication === 'accepted') {
+      input.inspection.contexts[f.phase.id].reviewedPlans = [input.plan];
+      transport.dispatched = true;
+      const phase = f.state.phases[f.phase.id];
+      phase.state = 'running';
+      phase.executionPlanDigest = input.plan.planDigest;
+      const acceptedAt = new Date(coverageNow.getTime() - 1).toISOString();
+      phase.operation = {
+        provider: 'github', actionId: 'github.artifact.build-dispatch', operationId: 'github-actions:901',
+        resourceId: '/repos/owner/repo/actions/runs/901', pollUrl: 'https://api.github.com/repos/owner/repo/actions/runs/901',
+        startedAt: acceptedAt, observedAt: acceptedAt,
+        status: 'running', planDigest: input.plan.planDigest
+      };
+      const prior = await loadActivationState(root);
+      await writeActivationState(root, f.state, { expectedContentHash: prior!.contentHash });
+      input.inspection.loadedState = await loadActivationState(root);
+    }
+  }
   return { ...f, input, runner, transport, custody };
 }
 
@@ -709,13 +734,27 @@ describe('application source producers behind real prerequisites', () => {
 });
 
 describe('immutable application publication and independent readback', () => {
+  it.each([false, true])('refuses fresh publication without actual no-replace admission for root context %s', async rootContext => {
+    const f = await fixture(true, rootContext, 'exact', 'fresh');
+    const intent = vi.spyOn(f.input, 'recordApplicationDispatchIntent');
+    const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+    const outcome = await executeApplicationArtifactPublication(f.input);
+    expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/no-replace|overwrite/) });
+    expect(intent).not.toHaveBeenCalled();
+    expect(progress).not.toHaveBeenCalled();
+    expect(f.transport.calls.some(entry => entry.method !== 'GET')).toBe(false);
+    expect(f.runner.writes).toEqual([]);
+    expect(outcome.operation).toBeUndefined();
+    expect(outcome.evidencePayload).toBeUndefined();
+    expect(outcome.outputs?.values.immutableImage).toBeUndefined();
+  });
   it.each([
     'Microsoft.ContainerRegistry/registries/read',
     'Microsoft.ContainerRegistry/registries/listBuildSourceUploadUrl/action',
     'Microsoft.ContainerRegistry/registries/scheduleRun/action',
     'Microsoft.ContainerRegistry/registries/runs/read'
   ])('refuses absent actual registry build permission %s before dispatch or source upload', async missing => {
-    const f = await fixture(true);
+    const f = await fixture(true, false, 'exact', 'fresh');
     f.runner.permissions = [
       'Microsoft.ContainerRegistry/registries/read',
       'Microsoft.ContainerRegistry/registries/listBuildSourceUploadUrl/action',
@@ -728,7 +767,7 @@ describe('immutable application publication and independent readback', () => {
     expect(f.runner.writes).toEqual([]);
   });
   it('honors actual registry build permission exclusions instead of treating AcrPush as build scheduling authority', async () => {
-    const f = await fixture(true);
+    const f = await fixture(true, false, 'exact', 'fresh');
     f.runner.permissionExclusions = ['Microsoft.ContainerRegistry/registries/scheduleRun/action'];
     expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({
       status: 'blocked', blocker: expect.stringMatching(/build.*permission/)
@@ -736,38 +775,39 @@ describe('immutable application publication and independent readback', () => {
     expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
   });
   it('independently observes build permissions at the exact registry scope on every pre-dispatch check', async () => {
-    const f = await fixture(true);
-    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'completed' });
+    const f = await fixture(true, false, 'exact', 'fresh');
+    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({
+      status: 'blocked', blocker: expect.stringMatching(/no-replace/)
+    });
     const url = `https://management.azure.com${f.transport.binding.registryId}/providers/Microsoft.Authorization/permissions?api-version=2022-04-01`;
     const observations = f.runner.calls.filter(command => command.args.includes(url));
     expect(observations).toHaveLength(3);
     expect(observations.every(command => command.executable === 'az' && argument(command, '--method') === 'GET' &&
       argument(command, '--resource') === 'https://management.core.windows.net/')).toBe(true);
   });
-  it('refuses build authority revoked during awaited execution-tag admission after the original durable intent', async () => {
-    const f = await fixture(true);
-    let intentRecorded = false;
-    f.input.recordApplicationDispatchIntent = async () => { intentRecorded = true; };
+  it('refuses build authority revoked during awaited execution-tag admission before any fresh publication intent', async () => {
+    const f = await fixture(true, false, 'exact', 'fresh');
+    const intent = vi.spyOn(f.input, 'recordApplicationDispatchIntent');
+    let tagReads = 0;
     f.transport.onExecutionTagRead = () => {
-      if (intentRecorded) f.runner.permissionExclusions = ['Microsoft.ContainerRegistry/registries/scheduleRun/action'];
+      if (++tagReads === 2) f.runner.permissionExclusions = ['Microsoft.ContainerRegistry/registries/scheduleRun/action'];
     };
     const outcome = await executeApplicationArtifactPublication(f.input);
-    expect(intentRecorded).toBe(true);
+    expect(tagReads).toBe(2);
+    expect(intent).not.toHaveBeenCalled();
     expect(outcome).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/build.*permission/) });
     expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
     expect(outcome.operation).toBeUndefined();
     expect(outcome.evidencePayload).toBeUndefined();
   });
-  it('binds the actual generated root Dockerfile and exact manifest-owned context before dispatch', async () => {
+  it('binds the actual generated root Dockerfile and exact manifest-owned context during accepted-run observation', async () => {
     const f = await fixture(true, true);
     expect(f.transport.binding).toMatchObject({ contextPath: '.', dockerfilePath: 'Dockerfile',
       contextPaths: expect.arrayContaining(['Dockerfile', '.dockerignore', 'backend/package.json']),
       sourceManifestDigest: canonicalSha256(f.input.inspection.manifest) });
     const outcome = await executeApplicationArtifactPublication(f.input);
     expect(outcome, JSON.stringify(outcome)).toMatchObject({ status: 'completed', resultState: 'verified' });
-    const dispatch = f.transport.calls.find(entry => entry.method === 'POST')!;
-    expect(dispatch.body).toMatchObject({ ref: f.transport.binding.executionRef,
-      inputs: { context_path: '.', dockerfile_path: 'Dockerfile' } });
+    expect(f.transport.calls.some(entry => entry.method !== 'GET')).toBe(false);
     expect(f.input.plan.operations.find(entry => entry.actionId === 'github.artifact.build-dispatch')?.inputs)
       .toMatchObject({ contextPaths: f.transport.binding.contextPaths });
   });
@@ -798,9 +838,9 @@ describe('immutable application publication and independent readback', () => {
       expect(f.transport.calls.some(entry => entry.method === 'POST')).toBe(false);
     }
   );
-  it.each(['empty-response', 'intent-only-recovery'] as const)(
-    'refuses a matching listed run without original accepted-run provenance during %s', async (kind) => {
-      const f = await fixture(true);
+  it.each(['fresh-no-handle', 'intent-only-recovery'] as const)(
+    'refuses new publication or run-list adoption without original accepted-run provenance during %s', async (kind) => {
+      const f = await fixture(true, false, 'exact', 'fresh');
       f.transport.dispatchResponse = null;
       if (kind === 'intent-only-recovery') {
         f.transport.dispatched = true;
@@ -816,34 +856,29 @@ describe('immutable application publication and independent readback', () => {
       expect(f.transport.calls.some((entry) => entry.path.includes('/jobs'))).toBe(false);
       expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
       expect(f.transport.calls.filter((entry) => entry.method === 'POST'))
-        .toHaveLength(kind === 'empty-response' ? 1 : 0);
+        .toHaveLength(0);
     }
   );
-  it('uses the documented accepted run ID without waiting for eventually consistent discovery', async () => {
+  it('observes the original accepted run ID without eventually consistent discovery or a new dispatch', async () => {
     const f = await fixture(true);
     f.transport.invisible = true;
-    f.transport.dispatchResponse = {
-      workflow_run_id: 901, run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
-      html_url: 'https://github.com/owner/repo/actions/runs/901', privateDiagnostic: 'fixture-secret-response'
-    };
+    const run = f.transport.run.bind(f.transport);
+    vi.spyOn(f.transport, 'run').mockImplementation(() => ({ ...run(), privateDiagnostic: 'fixture-secret-response' }));
     const progress = vi.fn(f.input.recordApplicationProgress!);
     f.input.recordApplicationProgress = progress;
     const outcome = await executeApplicationArtifactPublication(f.input);
     expect(outcome).toMatchObject({ status: 'completed', resultState: 'verified',
       operation: { operationId: 'github-actions:901' } });
-    expect(progress).toHaveBeenCalledTimes(2);
+    expect(progress).toHaveBeenCalledOnce();
     expect(progress.mock.calls[0]![0]).toMatchObject({
-      operation: { operationId: 'github-actions:901', resourceId: '/repos/owner/repo/actions/runs/901' },
+      operation: { operationId: 'github-actions:901', resourceId: '/repos/owner/repo/actions/runs/901', status: 'completed' },
       liveReadback: [{ provider: 'github', resourceId: '/repos/owner/repo/actions/runs/901' }]
     });
-    expect(progress.mock.calls[1]![0]).toMatchObject({
-      operation: { operationId: 'github-actions:901', status: 'completed' }
-    });
-    expect(f.transport.calls.filter((entry) => entry.method === 'GET' && entry.path.includes('/actions/workflows/'))).toHaveLength(1);
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'GET' && entry.path.includes('/actions/workflows/'))).toHaveLength(0);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
     expect(JSON.stringify([outcome, progress.mock.calls])).not.toContain('fixture-secret-response');
   });
-  it('checkpoints the accepted provider ID before a failing metadata read and only observes it on retry', async () => {
+  it('retains the original checkpointed provider ID through failed metadata observation and retries without write permission', async () => {
     const f = await fixture(true);
     f.transport.invisible = true;
     f.transport.runStatus = 'in_progress';
@@ -858,7 +893,7 @@ describe('immutable application publication and independent readback', () => {
     };
     const first = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
       runner: f.runner, now: coverageNow, adapters: f.input.adapters });
-    expect(first).toMatchObject({ applied: false, reason: 'external-operation-pending' });
+    expect(first).toMatchObject({ applied: false, reason: 'blocked' });
     expect(checkpointDuringPoll?.phases[f.phase.id]).toMatchObject({
       state: 'running', operation: { operationId: 'github-actions:901', status: 'running' }
     });
@@ -873,7 +908,7 @@ describe('immutable application publication and independent readback', () => {
     const next = await executeApplicationArtifactPublication({ ...f.input, now: new Date(coverageNow.getTime() + 1000) });
     expect(next, JSON.stringify(next)).toMatchObject({ status: 'pending',
       operation: { operationId: operation.operationId, startedAt: operation.startedAt, planDigest: operation.planDigest } });
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it.each(['success', 'failure', 'cancelled', 'timed_out', 'action_required', 'neutral', 'skipped', 'stale'] as const)(
     'checkpoints actual terminal %s run status before a failing job read and recovers without dispatch', async (conclusion) => {
@@ -918,7 +953,7 @@ describe('immutable application publication and independent readback', () => {
         operationId: operation.operationId, startedAt: operation.startedAt, planDigest: operation.planDigest,
         status: terminalStatus
       });
-      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
     }
   );
   it.each(['success', 'failure'] as const)('blocks regressing nonterminal readback of a known %s terminal run without redispatch', async (conclusion) => {
@@ -944,7 +979,7 @@ describe('immutable application publication and independent readback', () => {
         planDigest: operation.planDigest, status: terminalStatus } });
     expect(next.evidencePayload).toBeUndefined();
     expect(next.outputs?.values.immutableImage).toBeUndefined();
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it.each(['', 'unknown'] as const)('refuses unsupported terminal conclusion %j without inferring publication success', async (conclusion) => {
     const f = await fixture(true);
@@ -958,7 +993,7 @@ describe('immutable application publication and independent readback', () => {
     expect(saved.phaseOutputs?.[f.phase.id]?.values.immutableImage).toBeUndefined();
     expect(saved.phases[f.phase.id].evidence.some((entry) => entry.result === 'verified')).toBe(false);
     expect(f.transport.calls.some((entry) => entry.path.includes('/jobs'))).toBe(false);
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it('retains actual terminal run progress when source changes during a later failed job observation', async () => {
     const f = await fixture(true);
@@ -977,20 +1012,17 @@ describe('immutable application publication and independent readback', () => {
     expect(saved.phaseOutputs?.[f.phase.id]?.values.artifactDigest).toBeUndefined();
     expect(saved.phases[f.phase.id].evidence).toEqual([]);
     expect(await readFile(path.join(f.root, 'backend', 'Dockerfile'), 'utf8')).toBe('FROM preserved-customization\n');
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
-  it.each(['run-url', 'html-url', 'run-id', 'missing'] as const)(
-    'refuses malformed accepted %s metadata without inventing a scoped handle or repeating dispatch', async (kind) => {
+  it.each(['poll-url', 'resource-id', 'operation-id', 'missing-handle'] as const)(
+    'refuses malformed original %s metadata without inventing a scoped handle or repeating dispatch', async (kind) => {
       const f = await fixture(true);
       f.transport.invisible = true;
-      f.transport.dispatchResponse = {
-        workflow_run_id: 901, run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
-        html_url: 'https://github.com/owner/repo/actions/runs/901', privateDiagnostic: 'fixture-secret-response'
-      };
-      if (kind === 'run-url') f.transport.dispatchResponse.run_url = 'https://api.github.com/repos/other/repo/actions/runs/901';
-      if (kind === 'html-url') f.transport.dispatchResponse.html_url = 'https://github.com/owner/repo/actions/runs/902';
-      if (kind === 'run-id') f.transport.dispatchResponse.workflow_run_id = 'fixture-secret-response';
-      if (kind === 'missing') f.transport.dispatchResponse = {};
+      const phase = f.input.inspection.state.phases[f.phase.id];
+      if (kind === 'poll-url') phase.operation!.pollUrl = 'https://api.github.com/repos/other/repo/actions/runs/901';
+      if (kind === 'resource-id') phase.operation!.resourceId = '/repos/owner/repo/actions/runs/902';
+      if (kind === 'operation-id') phase.operation!.operationId = 'fixture-secret-response';
+      if (kind === 'missing-handle') delete phase.operation;
       const progress = vi.fn(f.input.recordApplicationProgress!);
       f.input.recordApplicationProgress = progress;
       const outcome = await executeApplicationArtifactPublication(f.input);
@@ -1000,10 +1032,10 @@ describe('immutable application publication and independent readback', () => {
       expect(JSON.stringify(outcome)).not.toContain('fixture-secret-response');
       f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
       expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked' });
-      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
     }
   );
-  it('dispatches the real approved recipe once and binds actual source/run/registry/digest readback', async () => {
+  it('binds original accepted source/run/registry/digest readback without any new publication', async () => {
     const f = await fixture(true);
     const outcome = await executeApplicationArtifactPublication(f.input);
     expect(outcome, JSON.stringify(outcome)).toMatchObject({ status: 'completed', resultState: 'verified',
@@ -1013,12 +1045,11 @@ describe('immutable application publication and independent readback', () => {
         binding: { sourceSha: f.transport.binding.sourceSha, treeSha: f.transport.binding.sourceTreeSha,
           executionRef: f.transport.binding.executionRef }, protectingRulesetIds: [11] }
     });
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
     expect(f.input.plan.operations.find((entry) => entry.actionId === 'github.artifact.build-dispatch')?.inputs)
       .toMatchObject({ sourceSha: f.transport.binding.sourceSha, sourceTreeSha: f.transport.binding.sourceTreeSha,
         executionRef: f.transport.binding.executionRef });
-    expect(f.transport.calls.find((entry) => entry.method === 'POST')?.body)
-      .toMatchObject({ ref: `liftoff-execution-${f.transport.binding.sourceSha}` });
+    expect(f.transport.calls.some(entry => entry.method !== 'GET')).toBe(false);
     expect(outcome.liveReadback?.map((entry) => entry.provider)).toEqual(['github', 'azure', 'azure']);
     const verification = f.runner.calls.find((entry) => entry.executable === 'gh')!;
     expect(verification.args).toContain('--source-digest');
@@ -1043,41 +1074,41 @@ describe('immutable application publication and independent readback', () => {
       expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
     }
   );
-  it('reobserves execution-ref admission after durable intent and before actual dispatch', async () => {
+  it('reobserves original execution-ref admission before accepted-handle observation', async () => {
     const f = await fixture(true);
-    f.input.recordApplicationDispatchIntent = async () => { f.transport.executionTagProtected = false; };
+    let tagReads = 0;
+    f.transport.onExecutionTagRead = () => { if (++tagReads === 1) f.transport.executionTagProtected = false; };
     expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked' });
     expect(f.transport.calls.every((entry) => entry.method === 'GET')).toBe(true);
     expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
   });
-  it('rechecks authority after awaited execution-tag admission before transmitting source through dispatch', async () => {
-    const f = await fixture(true);
+  it('rechecks authority after awaited execution-tag admission before any fresh publication intent', async () => {
+    const f = await fixture(true, false, 'exact', 'fresh');
     let now = coverageNow;
-    let intentRecorded = false;
+    let tagReads = 0;
     f.input.clock = () => now;
-    const intent = vi.fn(async () => { intentRecorded = true; });
+    const intent = vi.fn(async () => {});
     f.input.recordApplicationDispatchIntent = intent;
     f.transport.onExecutionTagRead = () => {
-      if (intentRecorded) now = new Date(Date.parse(f.input.plan.expiresAt) + 1000);
+      if (++tagReads === 2) now = new Date(Date.parse(f.input.plan.expiresAt) + 1000);
     };
     const progress = vi.spyOn(f.input, 'recordApplicationProgress');
     const outcome = await executeApplicationArtifactPublication(f.input);
     expect(outcome).toMatchObject({ status: 'blocked' });
-    expect(intent).toHaveBeenCalledOnce();
+    expect(tagReads).toBe(2);
+    expect(intent).not.toHaveBeenCalled();
     expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toEqual([]);
     expect(progress).not.toHaveBeenCalled();
     expect(outcome.operation).toBeUndefined();
     expect(outcome.evidencePayload).toBeUndefined();
     expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
   });
-  it.each(['accepted', 'resumed'] as const)(
+  it.each(['stored', 'resumed'] as const)(
     'refuses changed execution-ref admission at %s observation while retaining the actual invocation', async (kind) => {
       const f = await fixture(true);
-      if (kind === 'accepted') {
-        f.transport.dispatchResponse = { workflow_run_id: 901,
-          run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
-          html_url: 'https://github.com/owner/repo/actions/runs/901' };
-        f.transport.onDispatch = () => { f.transport.executionTagProtected = false; };
+      if (kind === 'stored') {
+        let tagReads = 0;
+        f.transport.onExecutionTagRead = () => { if (++tagReads === 1) f.transport.executionTagProtected = false; };
       } else {
         f.transport.runStatus = 'in_progress';
         const first = await executeApplicationArtifactPublication(f.input);
@@ -1090,18 +1121,15 @@ describe('immutable application publication and independent readback', () => {
       }
       const outcome = await executeApplicationArtifactPublication(f.input);
       expect(outcome).toMatchObject({
-        status: kind === 'accepted' ? 'pending' : 'blocked',
+        status: 'blocked',
         blocker: expect.stringMatching(/independently read repository tag-update/)
       });
-      if (kind === 'accepted') expect(outcome.operation).toMatchObject({
-        operationId: 'github-actions:901', status: 'running'
-      });
-      else expect(f.input.inspection.state.phases[f.phase.id].operation).toMatchObject({
+      expect(f.input.inspection.state.phases[f.phase.id].operation).toMatchObject({
         operationId: 'github-actions:901', status: 'running'
       });
       expect(outcome.evidencePayload).toBeUndefined();
       expect(outcome.outputs?.values.immutableImage).toBeUndefined();
-      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
       expect(f.runner.calls.some((entry) => entry.executable === 'gh')).toBe(false);
     }
   );
@@ -1118,7 +1146,7 @@ describe('immutable application publication and independent readback', () => {
     expect(f.transport.calls).toEqual([]);
     expect(f.runner.writes).toEqual([]);
   });
-  it.each(['accepted', 'resumed'] as const)(
+  it.each(['stored', 'resumed'] as const)(
     'refuses a different actual workflow run at the exact %s publication handle', async (kind) => {
       const f = await fixture(true);
       if (kind === 'resumed') {
@@ -1130,11 +1158,6 @@ describe('immutable application publication and independent readback', () => {
         };
         f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
         f.transport.runStatus = 'completed';
-      } else {
-        f.transport.dispatchResponse = {
-          workflow_run_id: 901, run_url: 'https://api.github.com/repos/owner/repo/actions/runs/901',
-          html_url: 'https://github.com/owner/repo/actions/runs/901'
-        };
       }
       const progress = vi.spyOn(f.input, 'recordApplicationProgress');
       const run = f.transport.run.bind(f.transport);
@@ -1142,9 +1165,11 @@ describe('immutable application publication and independent readback', () => {
       const jobReads = f.transport.calls.filter((entry) => entry.path.includes('/jobs')).length;
       const outcome = await executeApplicationArtifactPublication(f.input);
       expect(outcome).toMatchObject({
-        status: kind === 'accepted' ? 'pending' : 'blocked',
-        blocker: expect.stringMatching(/exact.*workflow.*handle/),
-        ...(kind === 'accepted' ? { operation: { operationId: 'github-actions:901', status: 'running' } } : {})
+        status: 'blocked',
+        blocker: expect.stringMatching(/exact.*workflow.*handle/)
+      });
+      expect(f.input.inspection.state.phases[f.phase.id].operation).toMatchObject({
+        operationId: 'github-actions:901', status: 'running'
       });
       expect(outcome.evidencePayload).toBeUndefined();
       expect(outcome.outputs?.values.immutableImage).toBeUndefined();
@@ -1152,7 +1177,7 @@ describe('immutable application publication and independent readback', () => {
         entry.operation.status === 'running')).toBe(true);
       expect(f.transport.calls.filter((entry) => entry.path.includes('/jobs'))).toHaveLength(jobReads);
       expect(f.runner.calls.filter((entry) => entry.executable === 'gh')).toEqual([]);
-      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+      expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
     }
   );
   it('persists real producer output through the engine and exposes a strict downstream immutable artifact interface', async () => {
@@ -1163,7 +1188,9 @@ describe('immutable application publication and independent readback', () => {
     const saved = (await readState(f.root))!;
     const receipt = JSON.parse(await readFile(path.join(f.root, ...outcome.evidence!.pathParts), 'utf8'));
     const inspection = await coverageInspection({ root: f.root, phaseId: 'application-artifact-ready',
-      state: saved, activationInputs: f.inputs, evidence: [receipt], reviewedPlans: [f.input.plan] });
+      state: saved, activationInputs: f.inputs, evidence: [receipt], reviewedPlans: await readReviewedTransitionPlans(f.root) });
+    const freshness = validateEvidenceFreshness(receipt, inspection.contexts[f.phase.id]);
+    expect(freshness, JSON.stringify(freshness)).toMatchObject({ valid: true });
     expect(readVerifiedApplicationArtifact(inspection)).toMatchObject({ sourceSha: f.transport.binding.sourceSha,
       digest: imageDigest, environment: 'dev', registryResourceId: f.prerequisite.registryId,
       workflowRunId: 901, workflowJobId: 902, acrRunId: 'ca1' });
@@ -1189,7 +1216,7 @@ describe('immutable application publication and independent readback', () => {
         evidence: [receipt], reviewedPlans: [f.input.plan] });
       expect(() => readVerifiedApplicationArtifact(inspection)).toThrow(/authoritative/);
     }
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it('observes a real pending run without issuing a second dispatch', async () => {
     const f = await fixture(true); f.transport.runStatus = 'in_progress';
@@ -1199,7 +1226,7 @@ describe('immutable application publication and independent readback', () => {
     f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
     first.operation!.planDigest = f.input.plan.planDigest;
     expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'pending' });
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it('reobserves a later engine retry using original dispatch time and never retags the historical handle', async () => {
     const f = await fixture(true); f.transport.runStatus = 'in_progress';
@@ -1221,7 +1248,7 @@ describe('immutable application publication and independent readback', () => {
     const operation = (await readState(f.root))!.phases[f.phase.id].operation!;
     expect(operation).toMatchObject({ status: 'completed', planDigest: saved.phases[f.phase.id].operation!.planDigest });
     expect(Date.parse(operation.observedAt)).toBeGreaterThan(Date.parse(saved.phases[f.phase.id].operation!.observedAt));
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it('preserves a confirmed actual dispatch when source changes before outcome persistence', async () => {
     const f = await fixture(true); f.transport.runStatus = 'in_progress';
@@ -1234,14 +1261,14 @@ describe('immutable application publication and independent readback', () => {
     expect(saved?.phases['application-artifact-ready']).toMatchObject({ state: 'running',
       operation: { operationId: 'github-actions:901', resourceId: '/repos/owner/repo/actions/runs/901' } });
     expect(await readFile(path.join(f.root, 'backend', 'Dockerfile'), 'utf8')).toBe('FROM preserved-customization\n');
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it('keeps published partial progress but does not qualify a changed/mutable digest', async () => {
     const f = await fixture(true); f.runner.tagMutable = true;
     expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked',
       operation: { status: 'completed' }, outputs: { values: { artifactDigest: imageDigest, acrRunId: 'ca1' } },
       blocker: expect.stringMatching(/writable\/deletable/) });
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it('retains completed dispatch truth when independently sealed authority disappears before readback', async () => {
     const f = await fixture(true);
@@ -1258,15 +1285,18 @@ describe('immutable application publication and independent readback', () => {
       operationId: 'github-actions:901', status: 'completed'
     } });
     expect(f.runner.calls.filter((entry) => entry.executable === 'gh')).toEqual([]);
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
-  it.each(['invisible', 'duplicate'] as const)('refuses uncertain/ambiguous %s dispatch without treating a candidate as proof', async (kind) => {
-    const f = await fixture(true); f.transport[kind] = true;
+  it.each(['invisible', 'duplicate'] as const)('refuses unavailable/ambiguous %s fresh publication without treating a candidate as proof', async (kind) => {
+    const f = await fixture(true, false, 'exact', 'fresh'); f.transport[kind] = true;
+    f.transport.dispatched = kind === 'duplicate';
     f.transport.dispatchResponse = null;
-    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({ status: 'blocked', blocker: expect.stringMatching(/unique actual run/) });
+    expect(await executeApplicationArtifactPublication(f.input)).toMatchObject({
+      status: 'blocked', blocker: expect.stringMatching(/no-replace|ambiguous/)
+    });
     f.input.inspection.state.phases[f.phase.id].executionPlanDigest = f.input.plan.planDigest;
     expect(await executeApplicationArtifactPublication(f.input)).not.toMatchObject({ status: 'completed' });
-    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(1);
+    expect(f.transport.calls.filter((entry) => entry.method === 'POST')).toHaveLength(0);
   });
   it.each(['source', 'recipe', 'untracked', 'ref'] as const)('refuses changed %s before source transmission/build dispatch', async (kind) => {
     const f = await fixture(true);
