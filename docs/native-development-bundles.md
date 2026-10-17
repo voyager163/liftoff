@@ -636,6 +636,14 @@ abort, deadline, invalid-descriptor/flag and descriptor/process settlement cases
 they are private ABI evidence, not Homebrew, installed, release, minimum-host or
 unsupported-filesystem qualification.
 
+The repeatable controls live in `tests/self-upgrade-cask-publication.test.ts`
+and opt in on Darwin through `LIFTOFF_TEST_DARWIN_EXCLUSIVE_RUBY`, naming an
+existing absolute Ruby executable with Fiddle. They create one private fixture,
+use only the repository's raw-ABI test driver, and require process/descriptor
+settlement before removing that exact fixture. Their passing counterexamples do
+not qualify a publication provider. Without the explicit interpreter selection,
+the cases remain named, unrun controls; no Ruby or Homebrew is installed.
+
 For an attributed Homebrew cask, the default channel separately repeats signed
 release/asset admission and the read-only receipt/tap-origin/commit observation.
 It compares the exact selected definition SHA-256 with the unchanged canonical
