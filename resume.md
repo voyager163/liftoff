@@ -95,6 +95,46 @@ retains the fresh composed full, gateway, CLI/V8 and final lane plus unresolved
 delivery, whole-job-custody and producer-contract scope. Do not launch another
 heavy, native or genuine-800 run without a new exact assignment.
 
+Root's exact `979a727f` full run later passed 13,707 tests with 227 named
+unrun. Fourteen cases that had passed at `8fb50e2e` were among those unrun:
+six each in `tests/modern-openspec-execution.test.ts` and
+`tests/modern-openspec-initialization.test.ts`, plus two in
+`tests/modern-openspec-tool-identity.test.ts`. All three files are
+byte-identical at `8fb50e2e` and `979a727f`; the difference was the explicit
+test-tool profile, not a source regression.
+
+The ambient Homebrew `node@24` link had advanced to `24.22.0`, which the exact
+runtime guards correctly refuse. The owning-session profile restored the
+already-retained official Node `24.21.0` archive with SHA-256
+`bed7eea5325e1108f32ce5228ddd6a5f0f08a499ee42aa7442aea583702f6057`
+and executable SHA-256
+`e4b5a3af0e05c75de2eae013904145f40fe7fc2a6e6f17510128bf45cca4e79b`.
+Its bundled npm initially shadowed isolated npm and produced 11 honest
+`incompatible-tool` failures. The corrected profile uses session-local
+launcher shims that bind official Node `24.21.0` to the existing isolated npm
+`12.0.2`, OpenSpec `1.11.0`, OpenTofu `1.12.6`, and the original native
+OpenSpec/O-I flags and finite metadata budgets.
+
+One final selector on an archive of immutable `979a727f` passed exactly 14/14
+with no failures: six execution, six initialization and two closed
+tool-admission cases. The selector is
+`explicit actual OpenSpec B execution|actual initialized-baseline execution|persists blocked`;
+the non-anchored identity alternative is necessary because Vitest filters
+suite nodes before child names. This supplemental actual-framework evidence
+does not relabel Root's 227-unrun full record, transfer `8fb` or native
+distribution credit, or qualify another OpenSpec task.
+
+Evidence is under
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/openspec-profile-979a`.
+`receipt.json` has SHA-256
+`9484cc6b0ee9fb74e4a22ba842c48c9cb91c8f373404a818eb511c174cd92433`,
+the evidence ledger has SHA-256
+`d35747dca2b8c7a8dfa1d3289f5595b969134efb1000bcc5714ffcd0db00a29c`,
+and final test JSON has SHA-256
+`384eb09ec92326a204136a1848657836867d0e79add0f57f6ef2be9c32a4f2ad`.
+No repository source, full suite, coverage, native distribution, cloud,
+publication, push or task checkbox changed.
+
 ## Shared reconstruction correction, 2026-10-17
 
 This isolated continuation is a bounded shared-core correction rooted directly
