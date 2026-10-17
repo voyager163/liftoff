@@ -7,6 +7,7 @@ export interface GitHubRequest {
   path: string;
   body?: unknown;
   binary?: boolean;
+  representation?: 'code-scanning-sarif';
 }
 export interface GitHubResponse {
   status: number;
@@ -74,6 +75,19 @@ export function positiveId(value: unknown, label = 'GitHub resource ID'): number
     throw new GitHubActivationError('invalid-response', `${label} must be a positive provider resource ID.`);
   }
   return value as number;
+}
+
+function requestAccept(request: GitHubRequest): string {
+  if (request.representation === undefined) return 'application/vnd.github+json';
+  const analysis = /^\/repos\/([^/]+\/[^/]+)\/code-scanning\/analyses\/([1-9][0-9]*)$/u.exec(request.path);
+  if (request.representation !== 'code-scanning-sarif' || request.method !== 'GET' ||
+    request.body !== undefined || request.binary || !analysis ||
+    !Number.isSafeInteger(Number(analysis[2]))) {
+    throw new GitHubActivationError('invalid-endpoint',
+      'The SARIF representation requires a body-free, nonbinary GET of one explicit repository analysis ID.');
+  }
+  githubRepository(analysis[1]);
+  return 'application/sarif+json';
 }
 
 export function text(value: unknown, label: string): string {
@@ -163,7 +177,7 @@ export function createGitHubCliTransport(runner: CommandRunner, projectRoot: str
     async request(request) {
       const endpoint = apiPath(request.path, request.method);
       const args = ['api', '--hostname', 'github.com', '--method', request.method,
-        '--header', `X-GitHub-Api-Version: ${apiVersion}`, '--header', 'Accept: application/vnd.github+json', '--include', endpoint];
+        '--header', `X-GitHub-Api-Version: ${apiVersion}`, '--header', `Accept: ${requestAccept(request)}`, '--include', endpoint];
       if (request.binary) {
         if (request.method !== 'GET' || request.body !== undefined) {
           throw new GitHubActivationError('invalid-endpoint', 'Binary GitHub transport is read-only.');
@@ -192,13 +206,14 @@ export function createAuthenticatedGitHubTransport(
   return {
     async request(request) {
       if (request.binary) throw new GitHubActivationError('invalid-endpoint', 'Protected credential probes cannot download arbitrary artifacts.');
+      const endpoint = apiPath(request.path, request.method), accept = requestAccept(request);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
       try {
-        const response = await fetcher(`https://api.github.com${apiPath(request.path, request.method)}`, {
+        const response = await fetcher(`https://api.github.com${endpoint}`, {
           method: request.method, redirect: 'error', signal: controller.signal,
           headers: {
-            Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': apiVersion,
+            Accept: accept, 'X-GitHub-Api-Version': apiVersion,
             Authorization: `Bearer ${Buffer.from(credential).toString('utf8')}`,
             'Content-Type': 'application/json'
           },
@@ -232,6 +247,13 @@ export class GitHubActivationClient {
 
   async get(path: string): Promise<Record<string, unknown>> {
     return object(expectStatus(await this.transport.request({ method: 'GET', path }), [200], `Read ${path.split('?')[0]}`).data);
+  }
+
+  async codeScanningSarif(repository: string, analysisId: number): Promise<Record<string, unknown>> {
+    const path = `/repos/${githubRepository(repository)}/code-scanning/analyses/${positiveId(analysisId)}`;
+    return object(expectStatus(await this.transport.request({
+      method: 'GET', path, representation: 'code-scanning-sarif'
+    }), [200], `Read ${path} SARIF subset`).data, 'Code-scanning SARIF subset');
   }
 
   async optional(path: string): Promise<Record<string, unknown> | null> {

@@ -302,10 +302,20 @@ foreign, truncated, changed or inaccessible responses refuse rather than become
 empty successful scans. The result is always blocked: empty/historical
 inventories, source-analysis diagnostics and missing authenticated program,
 query/language coverage and original-report subjects have explicit reasons.
-The existing GitHub read transport fixes its JSON media type; this observer
-does not silently widen it to SARIF. GitHub's custom SARIF response is itself
-only a subset of uploaded data, not authenticated original publisher/program
-provenance. Positive rule counts, zero results or a `CodeQL` label therefore
+Default GitHub requests and this metadata observer retain their JSON media type.
+Private `observeSource5WorkflowCodeScanningSarif` uses a separate, fixed
+body-free, nonbinary GET representation for literal repository analysis IDs.
+It reads every exact-source analysis's SARIF subset twice between complete
+metadata/ref/commit/tree observations, rejects changed or malformed responses,
+and returns only canonical document digests, run counts and metadata bindings.
+Unknown tools are not filtered, external SARIF references are not followed, and
+report contents are withheld. The unchanged size and invocation/request time
+bounds still apply; there is no caller-supplied URL, media header or write grant.
+[GitHub documents this representation](https://docs.github.com/en/rest/code-scanning/code-scanning#get-a-code-scanning-analysis-for-a-repository)
+as a subset of uploaded SARIF 2.1.0 data with GitHub additions, not the original
+report bytes. These JSON digests authenticate neither original publisher/program
+provenance nor complete report/query coverage. The result remains blocked,
+with no prerequisite session or phase proof. Positive rule counts, zero results or a `CodeQL` label therefore
 qualify neither CodeQL nor a required context. No scan/upload/Autofix operation,
 public selector, declaration source, accepted integration mapping or phase
 authority is issued by this private metadata reader.

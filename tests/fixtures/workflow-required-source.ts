@@ -48,11 +48,13 @@ export async function createWorkflowRequiredSourceFixture(root: string,
     ] }, files
   };
   const calls: { method: string; path: string }[] = [], errors: unknown[] = [];
+  const acceptHeaders: Array<string | undefined> = [];
   const hooks: { afterResponse?: (path: string) => void } = {}, routes = new Map<string, unknown>();
   const replyHeaders = new Map<string, Record<string, string>>(), replyStatuses = new Map<string, number>();
   const server = createServer((request, reply) => {
     try {
       calls.push({ method: request.method ?? '', path: request.url ?? '' });
+      acceptHeaders.push(request.headers.accept);
       if (request.method !== 'GET') throw new Error('Required-source fixture permits no provider effects.');
       const endpoint = request.url ?? '';
       let data: unknown;
@@ -87,7 +89,7 @@ export async function createWorkflowRequiredSourceFixture(root: string,
   const runtime = workflowObservationRuntime({ projectRoot, transport, runner: { async run() {
     processCalls++; throw new Error('Immutable source observation must not execute Git or project commands.');
   } } });
-  return { context, runtime, source, names, state, calls, hooks, transport, routes, replyHeaders, replyStatuses,
+  return { context, runtime, source, names, state, calls, acceptHeaders, hooks, transport, routes, replyHeaders, replyStatuses,
     processCalls: () => processCalls,
     close: async () => {
       await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
