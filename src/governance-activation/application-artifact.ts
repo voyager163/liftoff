@@ -62,6 +62,18 @@ export function readVerifiedApplicationArtifact(inspection: GovernanceTransition
   const sha = sourceSha(payload.sourceSha);
   const treeSha = sourceSha(payload.sourceTreeSha, 'Published complete source tree SHA');
   const workflowDigest = applicationText(payload.workflowDigest, /^[a-f0-9]{64}$/u, 'Published workflow byte digest');
+  const workflowRunId = positiveId(payload.workflowRunId);
+  const repository = repositoryConfiguration(inspection);
+  const publication = inspection.state.phases['application-artifact-ready'].operation;
+  const workflowResourceId = `/repos/${repository.name}/actions/runs/${workflowRunId}`;
+  if (!publication || publication.provider !== 'github' || publication.actionId !== 'github.artifact.build-dispatch' ||
+    publication.status !== 'completed' || publication.operationId !== `github-actions:${workflowRunId}` ||
+    publication.resourceId !== workflowResourceId || publication.pollUrl !== `https://api.github.com${workflowResourceId}` ||
+    !output.resources.some(resource => resource.provider === 'github' && resource.resourceType === 'workflow-run' &&
+      resource.resourceId === workflowResourceId)) {
+    return applicationError('application-artifact-operation',
+      'Current artifact consumption requires the exact original completed publication handle and receipt run. Missing, nonterminal or changed handles cannot be replaced by artifact annotations; historical records remain readable but do not qualify new deployment.');
+  }
   const imageDigest = digest(payload.artifactDigest);
   const registryResourceId = applicationText(payload.registryResourceId,
     /^\/subscriptions\/[a-f0-9-]+\/resourceGroups\/[A-Za-z0-9_.()-]+\/providers\/Microsoft\.ContainerRegistry\/registries\/[a-z0-9]+$/u,
@@ -87,7 +99,7 @@ export function readVerifiedApplicationArtifact(inspection: GovernanceTransition
     return applicationError('application-artifact-mismatch', 'The authoritative published source, recipe, registry, environment or immutable digest differs; deployment cannot consume it.');
   }
   return {
-    sourceSha: sha, workflowDigest, workflowRunId: positiveId(payload.workflowRunId), workflowJobId: positiveId(payload.workflowJobId),
+    sourceSha: sha, workflowDigest, workflowRunId, workflowJobId: positiveId(payload.workflowJobId),
     acrRunId: applicationText(payload.acrRunId, /^[a-z0-9]{1,32}$/u, 'Actual ACR publication run ID'),
     environment, registryResourceId, imageRepository, digest: imageDigest, immutableImage,
     artifactBindingDigest: applicationText(payload.artifactBindingDigest, /^[a-f0-9]{64}$/u, 'Published artifact binding'),

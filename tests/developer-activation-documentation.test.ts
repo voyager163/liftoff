@@ -103,7 +103,9 @@ describe('developer activation-completeness guidance', () => {
       'no qualified atomic no-replace', 'not a bypass of this write guard',
       'Fresh registry/identity prerequisites are blocked before intent',
       'no qualified resource-level create-only', '`applicationPrerequisiteTemplate`',
-      'not a capability issuer', 'deployment-record conditions do not establish child-resource ownership'
+      'not a capability issuer', 'deployment-record conditions do not establish child-resource ownership',
+      'Current consumption requires the exact completed original publication handle',
+      'without that binding remain readable, but cannot qualify new deployment'
     ]) expect(completeness).toContain(phrase);
     expect(phaseCapabilities['application-prerequisites-ready'].executor).toBe('injected-only');
     expect(phaseCapabilities['application-artifact-ready'].executor).toBe('injected-only');
