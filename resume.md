@@ -166,6 +166,18 @@ binding were corrected independently after EF. Source owns remaining
 matrix/finalization timing assessment. EF's 45-minute CLI coverage job produced
 no artifact; it cannot inherit this smaller-inventory result.
 
+Root later added exact `68ccddbba79a7e0b78474184c9b9003fde571091`,
+tree `88e392640cde23587191c35eb56d314f55a28b7e`, as a separate four-path
+live-assessment correction. It completes closing release/hotfix ref inventory,
+invalidates proof when an observed ref is removed, and preserves unchanged
+permanent-ref facts under the existing per-inventory bounds and shared
+60-second deadline. Its complete owning/engine/consumer/documentation packet
+passed 309 tests with zero failures. None of its four paths appears in the
+terminal EF failed-file inventory, so preserve it as additional Root source,
+not an EF failure reclassification, 8fb evidence or broad task 14.7 credit.
+Receipt `root-bounded-source-68ccddbba79a-1/receipt.json` has SHA-256
+`98e127e71f67ee0b390623bf696e7c83c6e171b6df6644bddc0aff3cb9b8bbd0`.
+
 The subsequently requested exact-`800b56c3` Source consumer slot was removed
 before launch after coherent EF evidence superseded the diagnostic need. It
 remains historically unrun and receives no EF credit. No Source slot remains
