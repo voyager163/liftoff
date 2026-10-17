@@ -3,7 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
-import { observeSource5WorkflowCodeScanning } from '../src/governance-activation/workflow-source5-code-scanning.js';
+import {
+  observeSource5WorkflowCodeScanning, observeSource5WorkflowCodeScanningSarif
+} from '../src/governance-activation/workflow-source5-code-scanning.js';
 import { createWorkflowRequiredSourceFixture } from './fixtures/workflow-required-source.js';
 
 function analysis(id = 17, name = 'CodeQL') {
@@ -250,5 +252,205 @@ describe('complete actual code-scanning metadata, never CodeQL or original-repor
       }
       expect(hook).not.toHaveBeenCalled(); expect(value.calls).toEqual([]); expect(value.processCalls()).toBe(0);
     } finally { await value.close(); }
+  });
+
+  describe('fixed read-only provider SARIF subsets, never original-report or CodeQL authority', () => {
+    async function sarifFixture(workflow: 'manual' | 'openspec' | 'spec-kit' = 'manual',
+      profile: 'single-maintainer-gitflow' | 'team-gitflow' = 'single-maintainer-gitflow') {
+      const value = await fixture(workflow, profile);
+      const reportPath = '/repos/owner/repo/code-scanning/analyses/17';
+      const report = {
+        version: '2.1.0', $schema: 'https://untrusted.invalid/private-schema',
+        runs: [{
+          tool: { driver: { name: 'CodeQL', version: 'private-provider-version' } },
+          results: [{ ruleId: 'private-rule', message: { text: 'private-source-snippet' },
+            properties: { 'github/alertNumber': 23, 'github/alertUrl': 'https://github.com/owner/repo/security/code-scanning/23' } }],
+          externalPropertyFileReferences: { results: [{ location: { uri: 'https://untrusted.invalid/private-results' } }] }
+        }],
+        private_future_field: 'opaque-provider-data'
+      };
+      value.routes.set(reportPath, report);
+      return { ...value, reportPath, report,
+        requestSarif: () => observeSource5WorkflowCodeScanningSarif({
+          context: value.context, runtime: value.runtime, source: value.source
+        }) };
+    }
+
+    it.each([
+      ['manual', 'single-maintainer-gitflow'], ['manual', 'team-gitflow'],
+      ['openspec', 'single-maintainer-gitflow'], ['openspec', 'team-gitflow'],
+      ['spec-kit', 'single-maintainer-gitflow'], ['spec-kit', 'team-gitflow']
+    ] as const)('reads actual SARIF HTTP subsets twice for %s/%s without granting report/tool authority', async (workflow, profile) => {
+      const value = await sarifFixture(workflow, profile);
+      try {
+        const result = await value.requestSarif();
+        expect(result).toMatchObject({
+          status: 'blocked', source: value.source, inventoryDigest: canonicalSha256(value.entries),
+          coverage: 'provider-analysis-metadata-and-sarif-subsets-only',
+          authenticatedCodeQLProgram: null, authenticatedQuerySubjects: null, originalSarif: 'not-observed',
+          completeLanguageAndQueryCoverage: 'not-validated', requiredContextSemantics: 'not-validated',
+          prerequisiteSession: null, phaseProof: 'not-issued', execution: 'not-authorized',
+          providerSarifSubsets: [{ analysisId: 17, analysisMetadataDigest: canonicalSha256(value.entries[0]),
+            documentDigest: canonicalSha256(value.report), runCount: 1,
+            readback: 'observed-twice-during-this-invocation' }]
+        });
+        expect(result.blockers.some(blocker => blocker.code === 'workflow-code-scanning-original-sarif-unavailable')).toBe(true);
+        expect(JSON.stringify(result)).not.toMatch(/private-|opaque-provider|untrusted\.invalid|github\/alert/);
+        expect(Object.isFrozen(result.providerSarifSubsets[0])).toBe(true);
+        expect(value.calls).toHaveLength(18);
+        expect(value.calls.slice(8, 10)).toEqual([
+          { method: 'GET', path: value.reportPath }, { method: 'GET', path: value.reportPath }
+        ]);
+        for (const [index, call] of value.calls.entries()) {
+          expect(call.method).toBe('GET');
+          expect(value.acceptHeaders[index]).toBe(call.path === value.reportPath
+            ? 'application/sarif+json' : 'application/vnd.github+json');
+        }
+        expect(value.processCalls()).toBe(0);
+      } finally { await value.close(); }
+    });
+
+    it('retains all exact-source tool subsets but does not retrieve historical reports or external references', async () => {
+      const value = await sarifFixture();
+      try {
+        value.entries.push(analysis(18, '__proto__'), { ...analysis(19, 'historical'), commit_sha: 'c'.repeat(40) });
+        const other = { ...value.report, runs: [{ tool: { driver: { name: '__proto__' } } }] };
+        const otherPath = '/repos/owner/repo/code-scanning/analyses/18';
+        value.routes.set(otherPath, other);
+        const result = await value.requestSarif();
+        expect(result.analyses).toHaveLength(3);
+        expect(result.providerSarifSubsets.map(report => report.analysisId)).toEqual([17, 18]);
+        expect(result.providerSarifSubsets[1]!.documentDigest).toBe(canonicalSha256(other));
+        expect(value.calls.filter(call => /^\/repos\/owner\/repo\/code-scanning\/analyses\//u.test(call.path))
+          .map(call => call.path)).toEqual([value.reportPath, otherPath, value.reportPath, otherPath]);
+        expect(value.calls.some(call => /tool_name|tool_guid|untrusted|analyses\/19/u.test(call.path))).toBe(false);
+        expect(result.authenticatedCodeQLProgram).toBeNull();
+      } finally { await value.close(); }
+    });
+
+    it.each(['empty', 'historical'] as const)('keeps %s inventory blocked without asserting a subset was observed', async kind => {
+      const value = await sarifFixture();
+      try {
+        if (kind === 'empty') value.entries.splice(0);
+        else value.entries[0]!.commit_sha = 'c'.repeat(40);
+        const result = await value.requestSarif();
+        expect(result).toMatchObject({ status: 'blocked', providerSarifSubsets: [],
+          coverage: 'provider-analysis-metadata-only', originalSarif: 'not-observed' });
+        expect(value.calls.some(call => call.path === value.reportPath)).toBe(false);
+        expect(result.blockers.some(blocker => blocker.code === 'workflow-code-scanning-source-analysis-unavailable')).toBe(true);
+      } finally { await value.close(); }
+    });
+
+    it('preserves an actual empty SARIF run array without turning it into successful scan coverage', async () => {
+      const value = await sarifFixture();
+      try {
+        const report = { version: '2.1.0', runs: [] };
+        value.routes.set(value.reportPath, report);
+        expect(await value.requestSarif()).toMatchObject({ status: 'blocked', originalSarif: 'not-observed',
+          completeLanguageAndQueryCoverage: 'not-validated',
+          providerSarifSubsets: [{ analysisId: 17, documentDigest: canonicalSha256(report), runCount: 0 }] });
+      } finally { await value.close(); }
+    });
+
+    it.each([
+      analysis(), { version: '2.0', runs: [] }, { version: '2.1.0' }, { version: '2.1.0', runs: {} },
+      { version: '2.1.0', runs: [null] }, { version: '2.1.0', runs: [{}] },
+      { version: '2.1.0', runs: [{ tool: {} }] }, { version: '2.1.0', runs: [{ tool: { driver: { name: '' } } }] }
+    ])('refuses metadata fallback or malformed SARIF envelopes %j', async report => {
+      const value = await sarifFixture();
+      try {
+        value.routes.set(value.reportPath, report);
+        await expect(value.requestSarif()).rejects.toMatchObject({ code: 'workflow-code-scanning-sarif' });
+        expect(value.calls.filter(call => call.path === value.reportPath)).toHaveLength(1);
+      } finally { await value.close(); }
+    });
+
+    it.each([401, 403, 404, 422, 429, 503])('retains SARIF HTTP%s without a JSON/metadata or empty-report fallback', async status => {
+      const value = await sarifFixture();
+      try {
+        value.replyStatuses.set(value.reportPath, status);
+        await expect(value.requestSarif()).rejects.toMatchObject({ code: 'provider-response', status });
+        expect(value.calls.filter(call => call.path === value.reportPath)).toHaveLength(1);
+      } finally { await value.close(); }
+    });
+
+    it.each(['result', 'unknown-field', 'run-count'] as const)('refuses an actually changed SARIF %s readback', async kind => {
+      const value = await sarifFixture();
+      try {
+        let reads = 0;
+        value.hooks.afterResponse = endpoint => {
+          if (endpoint !== value.reportPath || ++reads !== 1) return;
+          value.routes.set(value.reportPath, kind === 'result'
+            ? { ...value.report, runs: [{ tool: { driver: { name: 'CodeQL' } }, results: [] }] }
+            : kind === 'run-count' ? { ...value.report, runs: [] }
+              : { ...value.report, private_future_field: 'changed-opaque-field' });
+        };
+        await expect(value.requestSarif()).rejects.toMatchObject({ code: 'workflow-code-scanning-sarif-changed' });
+        expect(reads).toBe(2);
+      } finally { await value.close(); }
+    });
+
+    it('refuses inventory rebinding around stable SARIF instead of accepting the second metadata snapshot', async () => {
+      const value = await sarifFixture();
+      try {
+        value.hooks.afterResponse = endpoint => {
+          if (endpoint === value.reportPath) value.entries[0]!.rules_count++;
+        };
+        await expect(value.requestSarif()).rejects.toMatchObject({ code: 'workflow-code-scanning-changed' });
+      } finally { await value.close(); }
+    });
+
+    it.each(['repository', 'tree', 'ref'] as const)('rechecks the actual %s after SARIF reads', async kind => {
+      const value = await sarifFixture();
+      try {
+        value.hooks.afterResponse = endpoint => {
+          if (endpoint !== value.reportPath) return;
+          if (kind === 'repository') value.state.repository.id++;
+          if (kind === 'tree') value.state.commit.tree.sha = 'c'.repeat(40);
+          if (kind === 'ref') value.branch.object.sha = 'c'.repeat(40);
+        };
+        await expect(value.requestSarif()).rejects.toMatchObject({ code: kind === 'tree'
+          ? 'workflow-code-scanning-commit' : `workflow-code-scanning-${kind}` });
+      } finally { await value.close(); }
+    });
+
+    it('keeps the original response size bound and withholds an oversized report', async () => {
+      const value = await sarifFixture();
+      try {
+        value.routes.set(value.reportPath, { ...value.report, private_future_field: 'private-'.repeat(600_000) });
+        const rejected = value.requestSarif();
+        await expect(rejected).rejects.toMatchObject({ code: 'workflow-provider' });
+        await expect(rejected).rejects.not.toThrow(/private-/);
+      } finally { await value.close(); }
+    });
+
+    it('does not reset the original invocation deadline while reading subsets', async () => {
+      const value = await sarifFixture(), now = Date.now();
+      try {
+        value.hooks.afterResponse = endpoint => {
+          if (endpoint === value.reportPath) vi.spyOn(Date, 'now').mockReturnValue(now + 180_001);
+        };
+        await expect(value.requestSarif()).rejects.toMatchObject({ code: 'workflow-deadline' });
+      } finally { vi.restoreAllMocks(); await value.close(); }
+    });
+
+    it('captures references before awaits and refuses caller reports, IDs, media, tools, hooks or substitute authority', async () => {
+      const value = await sarifFixture();
+      try {
+        const original = { ...value.source };
+        value.hooks.afterResponse = endpoint => { if (endpoint === '/repos/owner/repo') value.source.ref = 'main'; };
+        expect((await value.requestSarif()).source).toEqual(original);
+        value.calls.splice(0);
+        const request = { context: value.context, runtime: value.runtime, source: original }, hook = vi.fn();
+        const getter = { ...request }; Object.defineProperty(getter, 'source', { enumerable: true, get: hook });
+        for (const input of [null, [], { ...request, report: value.report }, { ...request, analysisId: 17 },
+          { ...request, representation: 'code-scanning-sarif' }, { ...request, tool: 'CodeQL' },
+          { ...request, proof: {} }, getter, new Proxy(request, { getPrototypeOf: hook }),
+          { ...request, context: { ...value.context } }, { ...request, runtime: { ...value.runtime } }]) {
+          await expect(Reflect.apply(observeSource5WorkflowCodeScanningSarif, undefined, [input])).rejects.toThrow();
+        }
+        expect(hook).not.toHaveBeenCalled(); expect(value.calls).toEqual([]); expect(value.processCalls()).toBe(0);
+      } finally { await value.close(); }
+    });
   });
 });
