@@ -16,12 +16,15 @@ liftoff-migrate-npm [--npm <absolute-npm-cli-or-link> --node <absolute-node>
   [--apply <exact-preview-sha256> --journal <new-private-directory>]
 liftoff-migrate-npm --recover <exact-journal-sha256> --journal <private-directory>
   [--dead-lock <exact-lock-owner-sha256>]
+liftoff-migrate-npm --inspect <exact-journal-sha256> --journal <private-directory>
 
 Output is one JSON report. Preview does not modify installations, projects, user
 configuration or shared caches. Private temporary observations are removed.
 Unproven/multiple owners require exact selection; no nvm/Volta directory sweep.
 No Homebrew bootstrap, sudo, forced overwrite, global cleanup or registry change.
 Recovery never overwrites newer cask/user installs. Partial journals are retained.
+Inspection rechecks selected settled state without removal, installation, recovery
+or journal/lock writes. A prior success is not proof of the current installation.
 PATH selection and parent-shell aliases/hash are separate: open a fresh shell and
 inspect 'type -a liftoff'; the utility cannot repair its parent's command cache.
 
@@ -31,7 +34,7 @@ ${macMigrationBridge.notice}
 export function parseMacMigration(args: string[]): MacMigrationRequest {
   const values = new Map<string, string>();
   const accepted = ['--npm', '--node', '--prefix', '--manager', '--manager-root', '--manager-executable',
-    '--brew', '--recovery', '--apply', '--journal', '--recover', '--dead-lock'];
+    '--brew', '--recovery', '--apply', '--journal', '--recover', '--dead-lock', '--inspect'];
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index];
     const value = args[index + 1];
@@ -40,12 +43,12 @@ export function parseMacMigration(args: string[]): MacMigrationRequest {
     }
     values.set(flag, value);
   }
-  const paths = accepted.filter(flag => !['--manager', '--apply', '--recover', '--dead-lock'].includes(flag));
+  const paths = accepted.filter(flag => !['--manager', '--apply', '--recover', '--dead-lock', '--inspect'].includes(flag));
   for (const flag of paths) {
     const value = values.get(flag);
     if (value && (!path.isAbsolute(value) || path.resolve(value) !== value)) throw new Error(`${flag} requires a canonical absolute path.`);
   }
-  for (const flag of ['--apply', '--recover', '--dead-lock']) {
+  for (const flag of ['--apply', '--recover', '--dead-lock', '--inspect']) {
     if (values.has(flag) && !/^[a-f0-9]{64}$/.test(values.get(flag)!)) throw new Error(`${flag} requires an exact lowercase SHA-256.`);
   }
   const fields = ['--npm', '--node', '--prefix', '--manager'];
@@ -53,6 +56,12 @@ export function parseMacMigration(args: string[]): MacMigrationRequest {
   if (selected && !fields.every(flag => values.has(flag))) throw new Error('Old owner selection requires npm, node, prefix and manager.');
   const manager = values.get('--manager');
   if (manager && !['homebrew-node', 'nvm', 'volta', 'custom'].includes(manager)) throw new Error('Unsupported old npm manager.');
+  if (values.has('--inspect')) {
+    if (!values.has('--journal') || [...values.keys()].some(flag => !['--inspect', '--journal'].includes(flag))) {
+      throw new Error('Inspection requires only its exact journal selectors.');
+    }
+    return { inspect: { journalRoot: values.get('--journal')!, journalSha256: values.get('--inspect')! } };
+  }
   if (values.has('--recover')) {
     if (!values.has('--journal') || [...values.keys()].some(flag => !['--recover', '--journal', '--dead-lock'].includes(flag))) {
       throw new Error('Recovery requires only its exact journal and optional dead-lock selectors.');
