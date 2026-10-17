@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { assertNativeHost, atLeastVersion } from '../distribution/native/host.mjs';
 import { verifyNativeBytesSignature } from '../distribution/native/native-release-admission.mjs';
+import { nativeCaskDefinition, type NativeCaskDefinition } from '../distribution/native/native-cask-definition.mjs';
 import { assertLinuxRuntimeLibraries, bundleFile, bundleInventory, nativeArchiveMembers, nativeArchiveTool, nativeRuntimeInput, readBundleFile } from '../scripts/native-bundle-contract.mjs';
 import { nativeMaterials, nativePackageDefinitions, nativeWindowsInstallerInputs, assertNativePublicationEvidence, verifyNativeEvidenceSignature, verifyNativeArchive } from '../scripts/native-release.mjs';
 import { parse } from 'yaml';
@@ -191,6 +192,50 @@ describe('native exact-artifact and signing gates (synthetic contract data, not 
     expect(JSON.parse(result.stdout)).toEqual([
       'assertNativePublicationEvidence', 'verifyNativeBytesSignature', 'verifyNativeEvidenceSignature'
     ]);
+  });
+  it('imports the inert cask renderer from a foreign cwd without builder, Git, Ruby or global tools', async () => {
+    const cwd = await fixture();
+    const url = pathToFileURL(path.resolve('distribution/native/native-cask-definition.mjs')).href;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `const renderer = await import(${JSON.stringify(url)}); console.log(JSON.stringify(Object.keys(renderer)));`],
+    { cwd, env: { PATH: '', NODE_OPTIONS: '', NODE_PATH: '' }, shell: false, encoding: 'utf8', timeout: 10_000 });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual(['nativeCaskDefinition']);
+  });
+  it('preserves the complete existing canonical cask bytes and typed inert result', () => {
+    const artifactUrl = `https://github.com/${record.repository}/releases/download/v${record.version}/${record.files[0].filename}`;
+    const macEvidence = { ...evidence, artifactUrl };
+    const definition: NativeCaskDefinition = nativeCaskDefinition(record, macEvidence, approved);
+    const expected = [
+      'cask "liftoff" do',
+      '  version "1.2.3"',
+      `  sha256 "${'4'.repeat(64)}"`,
+      '  url "https://github.com/voyager163/liftoff/releases/download/v1.2.3/liftoff-1.2.3-darwin-arm64.tar.gz"',
+      '  name "Liftoff"',
+      '  desc "CLI for governed GenAI applications and APIs"',
+      '  homepage "https://github.com/voyager163/liftoff"',
+      '  depends_on arch: :arm64',
+      '  depends_on macos: ">= :ventura"',
+      '  preflight do',
+      '    odie "Native Apple Silicon is required" unless Hardware::CPU.arm? && !Hardware::CPU.in_rosetta2?',
+      '    odie "The qualified runtime requires macOS 13.5 or newer" if MacOS.version < MacOSVersion.new("13.5")',
+      '  end',
+      '  binary "bin/liftoff"',
+      'end', ''
+    ].join('\n');
+    expect(definition).toEqual({ filename: 'liftoff.rb', content: expected });
+    expect(nativePackageDefinitions(record, macEvidence, approved)).toEqual({ 'liftoff.rb': expected });
+    expect(() => nativeCaskDefinition(record, macEvidence)).toThrow('No approved');
+    expect(() => nativeCaskDefinition(record, { ...macEvidence, artifactUrl: 'https://foreign.example/cask' }, approved))
+      .toThrow('exact qualified');
+    expect(() => nativeCaskDefinition(record,
+      { ...macEvidence, channel: { ...macEvidence.channel, source: 'foreign/tap' } }, approved)).toThrow();
+    expect(() => nativeCaskDefinition(record,
+      { ...macEvidence, qualification: { ...macEvidence.qualification, notarization: false } }, approved)).toThrow('notarization');
+    expect(() => nativeCaskDefinition(record, { ...macEvidence, commit: '9'.repeat(40) }, approved)).toThrow('commit differs');
+    expect(() => nativeCaskDefinition({ ...record, target: 'linux-arm64' },
+      { ...macEvidence, target: 'linux-arm64', platformSigningIdentity: approved.linux.archiveSigningKeySha256 }, approved))
+      .toThrow('Apple Silicon');
   });
   it('binds synthetic evidence to exact source, version, every sidecar and approved channel', () => {
     expect(assertNativePublicationEvidence(record, evidence, approved)).toEqual(evidence);
