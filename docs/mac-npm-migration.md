@@ -256,6 +256,7 @@ npx vitest run tests/mac-migration.test.ts tests/mac-migration-safety.test.ts \
   tests/mac-migration-environment.test.ts tests/process-runner.test.ts \
   tests/mac-migration-npm-installed.test.ts \
   tests/mac-migration-package.test.ts tests/mac-migration-package-report.test.ts \
+  tests/mac-migration-journey-report.test.ts \
   tests/repository-policy.test.ts
 ```
 
@@ -289,3 +290,47 @@ notarization or minimum-host behavior. The optional installed-package suite
 requires `LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT` naming a current verified native
 development bundle; an unset variable skips it and establishes no artifact
 qualification.
+
+The optional `tests/mac-migration-journey.test.ts` suite requires both that bundle
+and `LIFTOFF_MAC_MIGRATION_HISTORICAL_TARBALL`. CI downloads the canonical registry
+archive for `@msn-control/liftoff@0.3.4` and verifies SHA-256
+`05793480c44632b3fc01ac98a4f76a73313d8b273afcb30bde5c22de989d69c0`
+before its offline, `--ignore-scripts` installation into a disposable prefix.
+This dependency-free historical client actually runs help, rejects its unsupported
+`upgrade` command, and creates a legacy project; current native code and its
+private runtime are copied unchanged from the development bundle.
+
+For an actual stable-version development bundle, sixteen positive journeys
+combine the four manager layouts, each independent global
+opt-out, and handover or settled-failure recovery. Fixture construction and the
+migration/verification body each have a separate 30-second test bound; production
+observation/dispatch deadlines are unchanged. Exact caller tree bytes, modes,
+physical identities, Git history, unknown `.liftoff` state, enrolled/copied/
+unenrolled records, invalid/read-only config and unrelated tools/packages must
+survive. Compiled reporting runs with one global opt-out and a fetch tripwire;
+it must neither transport nor create consent for a copied or unenrolled project.
+`scripts/mac-migration-journey-report.mjs` requires all sixteen cases to run and
+pass against the exact clean-source development bundle; omission/skipping is not
+qualification. These use actual npm, historical and compiled clients, but
+**synthetic manager, cask admission and settlement evidence**. They do not qualify
+digest-bound Homebrew execution, a published channel, signing or minimum hosts,
+and the native manifest remains `releaseReady: false`.
+
+CI selects the lane only after verifying the built bundle and its actual package
+version, not the checkout's version or a caller-supplied label. A genuine
+prerelease such as `0.13.0-dev.0` runs the separately named
+`tests/mac-migration-prerelease.test.ts` lane instead: four manager layouts,
+each independent global opt-out, and preview or explicit apply. These cases
+require the unchanged production stable-release guard to refuse before a review,
+journal, npm removal, cask channel/destination checks or installation. The old client, recovery
+material, caller state and tools must remain unchanged; compiled prerelease
+version/reporting probes do not establish a successful handover.
+
+The stable-positive gate is retained, not skipped or relabelled as a successful
+prerelease migration. Reports are distinct:
+`mac-migration-stable-handover.json` versus
+`mac-migration-prerelease-refusal.json`, each with its own verified outcome
+summary. The refusal summary explicitly records `positiveMigrationQualified: false`.
+The report verifier rejects a mismatched version, outcome, suite or incomplete
+case matrix. An unrun genuine prerelease lane establishes no refusal
+qualification, and neither lane establishes public migration readiness.

@@ -126,10 +126,15 @@ export function nativeBundleQualificationJob() {
         with: { 'go-version': '1.27.0', 'cache-dependency-path': 'assets/supported-stack.json' } },
       { name: 'Select supported npm', run: 'npm install --global "npm@12.0.2"' },
       { name: 'Install dependencies', run: 'npm ci' },
-      { name: 'Retrieve the pinned standalone runtime', shell: 'bash', run: [
+      { name: 'Retrieve pinned runtime and historical client', shell: 'bash', run: [
         'url="$(node --input-type=module -e \'import inputs from "./distribution/native/inputs.json" with { type: "json" }; console.log(inputs.runtime.url)\')"',
         'curl --fail --location --proto \'=https\' --proto-redir \'=https\' --max-time 180 \\',
-        '  "$url" --output "$RUNNER_TEMP/liftoff-node-runtime.tgz"', ''
+        '  "$url" --output "$RUNNER_TEMP/liftoff-node-runtime.tgz"',
+        'curl --fail --location --proto \'=https\' --proto-redir \'=https\' --max-time 60 \\',
+        '  \'https://registry.npmjs.org/@msn-control/liftoff/-/liftoff-0.3.4.tgz\' \\',
+        '  --output "$RUNNER_TEMP/liftoff-historical-0.3.4.tgz"',
+        'printf \'%s  %s\\n\' \'05793480c44632b3fc01ac98a4f76a73313d8b273afcb30bde5c22de989d69c0\' \\',
+        '  "$RUNNER_TEMP/liftoff-historical-0.3.4.tgz" | shasum --algorithm 256 --check', ''
       ].join('\n') },
       { name: 'Assemble the development bundle', run: 'npm run build:native -- build ' +
         '--runtime-archive "$RUNNER_TEMP/liftoff-node-runtime.tgz" --output "$RUNNER_TEMP/liftoff-native-bundle"' },
@@ -148,12 +153,26 @@ export function nativeBundleQualificationJob() {
         '  --reporter=default --reporter=json --outputFile.json=qualification/native-bundle.json',
         'node scripts/native-bundle.mjs verify-report qualification/native-bundle.json',
         'node scripts/native-package-report.mjs qualification/native-bundle.json "$RUNNER_TEMP/liftoff-native-bundle"',
-        'node scripts/mac-migration-package-report.mjs qualification/native-bundle.json', ''
+        'node scripts/mac-migration-package-report.mjs qualification/native-bundle.json',
+        'journey="$(node scripts/mac-migration-journey-report.mjs select "$RUNNER_TEMP/liftoff-native-bundle")"',
+        'case "$journey" in',
+        '  stable-handover) journey_test=tests/mac-migration-journey.test.ts ;;',
+        '  prerelease-refusal) journey_test=tests/mac-migration-prerelease.test.ts ;;',
+        '  *) printf \'Unsupported migration journey outcome: %s\\n\' "$journey" >&2; exit 1 ;;',
+        'esac',
+        'journey_report="qualification/mac-migration-${journey}.json"',
+        'LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle" \\',
+        'LIFTOFF_MAC_MIGRATION_HISTORICAL_TARBALL="$RUNNER_TEMP/liftoff-historical-0.3.4.tgz" \\',
+        'npx vitest run "$journey_test" \\',
+        '  --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \\',
+        '  --reporter=default --reporter=json --outputFile.json="$journey_report"',
+        'node scripts/mac-migration-journey-report.mjs "$journey_report" "$RUNNER_TEMP/liftoff-native-bundle" "$journey" \\',
+        '  > "qualification/mac-migration-${journey}-outcome.json"', ''
       ].join('\n') },
       { name: 'Store development qualification evidence', if: independentStepCondition,
         uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
         with: { name: 'liftoff-native-bundle-ci-${{ github.run_id }}-${{ github.run_attempt }}',
-          path: 'qualification/native-bundle.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n${{ runner.temp }}/liftoff-native-archive/\n',
+          path: 'qualification/native-bundle.json\nqualification/mac-migration-*.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n${{ runner.temp }}/liftoff-native-archive/\n',
           'if-no-files-found': 'error', 'retention-days': 14 } }
     ]
   };
