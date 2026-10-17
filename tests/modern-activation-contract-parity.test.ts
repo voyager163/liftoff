@@ -85,7 +85,7 @@ describe('current/released contracts stay separate from modern source allocation
     expect(identities.activationContractVersion).toBe(3);
     expect(identities.phaseGraphSchemaVersion).toBe(2);
     expect(identities.historicalActivationIdentities).toHaveLength(2);
-    expect(JSON.parse(readFileSync('package.json', 'utf8')).version).toBe('0.12.3');
+    expect(JSON.parse(readFileSync('package.json', 'utf8')).version).toBe('0.13.0-dev.0');
     expect(hash(readFileSync('assets/governance/single-maintainer-gitflow/policy.md')))
       .toBe('9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149');
     const modern = identities.modernActivationSourceContracts()[0].identity;

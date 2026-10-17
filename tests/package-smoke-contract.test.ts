@@ -85,6 +85,12 @@ describe('compiled package surface', () => {
       'distribution/native/native-release-admission.d.mts',
       'distribution/native/native-release-catalog.mjs',
       'distribution/native/native-release-catalog.d.mts',
+      'distribution/native/native-program-assembly.mjs',
+      'distribution/native/native-program-assembly.d.mts',
+      'distribution/native/native-cask-definition.mjs',
+      'distribution/native/native-cask-definition.d.mts',
+      'distribution/native/native-bundle-contract.mjs',
+      'distribution/native/native-bundle-contract.d.mts',
       'distribution/native/release-policy.json',
       'distribution/native/platforms.json'
     ]);

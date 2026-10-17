@@ -32,6 +32,7 @@ import { upgradeWorld } from './fixtures/installer-upgrade.js';
 const cleanups: string[] = [];
 const previousRegistry = process.env.LIFTOFF_REGISTRY;
 const unreachableRegistry = 'http://127.0.0.1:1';
+const releasedInstallationVersion = '0.12.3';
 
 beforeAll(() => {
   // An offline observation must remain explicit, never "current".
@@ -130,9 +131,13 @@ async function run(
   return { code, out: stdout.text(), err: stderr.text() };
 }
 
-function diagnosticUpgrade(stable: () => Promise<StableRelease>, channel?: ConfiguredRegistryTargetLookup): SelfUpgradeExecutor {
+function diagnosticUpgrade(
+  stable: () => Promise<StableRelease>,
+  channel?: ConfiguredRegistryTargetLookup,
+  currentVersion = releasedInstallationVersion
+): SelfUpgradeExecutor {
   return async request => {
-    const fixture = upgradeWorld({ currentVersion: liftoffVersion });
+    const fixture = upgradeWorld({ currentVersion });
     fixture.world.stable = stable;
     const run = fixture.dependencies.runner.run.bind(fixture.dependencies.runner);
     fixture.dependencies.runner = { run: async (command, options) => {
@@ -144,7 +149,7 @@ function diagnosticUpgrade(stable: () => Promise<StableRelease>, channel?: Confi
         ? { ...result, stdout: JSON.stringify({ name: '@msn-control/liftoff', version }) }
         : { ...result, status: 1, stderr: observed.status === 'stale' ? 'E404 not found' : 'unavailable' };
     } };
-    return runSelfUpgrade({ ...request, runningPackageRoot: fixture.world.packageRoot }, fixture.dependencies);
+    return runSelfUpgrade({ ...request, currentVersion, runningPackageRoot: fixture.world.packageRoot }, fixture.dependencies);
   };
 }
 
@@ -445,7 +450,26 @@ describe('doctor command', () => {
     });
   }, 30_000);
 
-  it('reports current and newer authoritative registry versions outside a project', async () => {
+  it('refuses unpublished installation metadata before canonical lookup without hiding local diagnostics', async () => {
+    const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-unreleased-'));
+    cleanups.push(elsewhere);
+    const stable = vi.fn<() => Promise<StableRelease>>(async () => ({
+      name: '@msn-control/liftoff', version: '99.0.0'
+    }));
+    const result = await run(['doctor', '--json'], elsewhere, new ReadyInitRunner(), {
+      selfUpgrade: diagnosticUpgrade(stable, undefined, '0.13.0-dev.0')
+    });
+    expect(result.code).toBe(0);
+    const report = JSON.parse(result.out);
+    const cli = report.layers.find((layer: { title: string }) => layer.title === 'CLI');
+    expect(cli.checks.find((check: { label: string }) => check.label === 'cli freshness')).toMatchObject({
+      severity: 'warn', detail: expect.stringContaining('blocked (invalid_package)')
+    });
+    expect(report.layers.map((layer: { title: string }) => layer.title)).toContain('Environment');
+    expect(stable).not.toHaveBeenCalled();
+  });
+
+  it('reports current and newer authoritative registry versions for an explicitly released npm owner', async () => {
     const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-freshness-'));
     cleanups.push(elsewhere);
 
@@ -456,11 +480,11 @@ describe('doctor command', () => {
       {
         stableReleaseLookup: async () => ({
           name: '@msn-control/liftoff',
-          version: liftoffVersion
+          version: releasedInstallationVersion
         })
       }
     );
-    expect(current.out).toContain(`cli freshness: Liftoff ${liftoffVersion} is already the canonical stable release.`);
+    expect(current.out).toContain(`cli freshness: Liftoff ${releasedInstallationVersion} is already the canonical stable release.`);
 
     const newer = await run(
       ['doctor', '--json'],
@@ -670,7 +694,7 @@ describe('doctor command', () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({
         name: '@msn-control/liftoff',
-        version: liftoffVersion
+        version: releasedInstallationVersion
       }), { status: 200 })
     );
     const stdout = new CaptureStream();
@@ -687,7 +711,7 @@ describe('doctor command', () => {
       'https://registry.npmjs.org/%40msn-control%2Fliftoff/latest'
     );
     expect(stdout.text()).toContain(
-      `cli freshness: Liftoff ${liftoffVersion} is already the canonical stable release.`
+      `cli freshness: Liftoff ${releasedInstallationVersion} is already the canonical stable release.`
     );
     expect(await readFile(npmrcPath, 'utf8')).toBe(npmrc);
   }, 30_000);

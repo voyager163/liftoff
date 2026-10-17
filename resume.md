@@ -143,7 +143,7 @@ The sealed packet is
 `/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/shared-core-8fb50e2-qualification`.
 `receipt.json` has SHA-256
 `d57c383acf8342249632cbc63399d3cdc43138dd64db3822704c42b0e4f86e03`;
-its 51-file ledger has SHA-256
+its sealed artifact ledger has SHA-256
 `5c79706ee45c62a455f8c0c11e915547dc35b1302a470f23aab5328bb2cd3ba2`.
 The isolated npm cache was removed after sealing.
 
@@ -156,12 +156,17 @@ source-complete run after preserving integrations.
 
 Terminal EF failure mapping found no missing executable 8fb delta. The genuine
 Root/integration debt is the `.13-dev` version not satisfying the current
-stable/alpha/beta/rc telemetry version contract, version/native-package coupled
-expectations, and new infrastructure guidance changing frozen historical
-template bytes. Preserve the reviewed retained-family4 fixture corrections and
-current5 refusals, update only deliberate current-version expectations, and
-gate new guide text to the current source family rather than refreshing the
-historical baseline. Coverage guidance and application publication-handle
+stable/alpha/beta/rc telemetry version contract and version/native-package
+coupled expectations. An initial infrastructure-guide attribution was disproved
+by actual Root observation: all twenty historical previews proposed only a
+`liftoff.manifest.json` writer-version update, not a README/template write.
+Root `c99d98ba7d82d9dd572688cd2af952eb2430d91e` now requires the exact
+current-version-only candidate and its sole manifest write/hash/byte length,
+while preserving every frozen source field and project byte. No production
+renderer or frozen baseline was changed for that correction. Preserve the
+reviewed retained-family4 fixture corrections and current5 refusals; do not
+refresh historical baselines or infer an automatic successor lane.
+Coverage guidance and application publication-handle
 binding were corrected independently after EF. Source owns remaining
 matrix/finalization timing assessment. EF's 45-minute CLI coverage job produced
 no artifact; it cannot inherit this smaller-inventory result.
