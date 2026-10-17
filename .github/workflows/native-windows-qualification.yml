@@ -1,15 +1,15 @@
-name: Exact f6b Windows source qualification
+name: Native Windows fixture successor qualification
 
 on:
   push:
-    branches: [voyager163-native-windows-f6b-qualification]
+    branches: [ voyager163-native-windows-f6b-qualification ]
 
 permissions:
   contents: read
 
 jobs:
   qualify:
-    name: Exact f6b native Windows source and signing refusal
+    name: Native Windows source and signing refusal (fixture successor)
     runs-on: windows-2025
     timeout-minutes: 20
     permissions:
@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: f6b340d61a079f0a88488dd2677fd440678306ee
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
@@ -30,7 +30,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $source = (git rev-parse HEAD).Trim()
-          if ($source -ne 'f6b340d61a079f0a88488dd2677fd440678306ee') { throw 'Unexpected checked-out source.' }
+          if ($source -ne $env:GITHUB_SHA) { throw 'Unexpected checked-out source.' }
       - name: Select supported npm
         run: npm install --global "npm@12.0.2"
       - name: Install dependencies
@@ -142,7 +142,8 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: liftoff-native-f6b-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          name: liftoff-native-junction-windows-${{ github.run_id }}-${{
+            github.run_attempt }}
           path: |
             qualification/
             ${{ runner.temp }}/liftoff-native-bundle/bundle.json

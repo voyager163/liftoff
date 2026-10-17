@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { constants } from 'node:fs';
-import { chmod, copyFile, cp, link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, cp, link, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
@@ -472,12 +472,14 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
     await rm(pointer);
     refused();
     await writeFile(pointer, inputs.pointer);
-    const retained = path.join(installation, 'retained-version');
-    await rename(selected, retained);
-    await symlink(retained, selected, 'junction');
+    const junctionDigest = manifestSha256 === '0'.repeat(64) ? '1'.repeat(64) : '0'.repeat(64);
+    const junctionName = `${manifest.package.version}-${junctionDigest}`;
+    const junction = path.join(installation, 'versions', junctionName);
+    await symlink(selected, junction, 'junction');
+    await writeFile(pointer, `${junctionName}\r\n`);
     refused();
-    await rm(selected);
-    await rename(retained, selected);
+    await writeFile(pointer, inputs.pointer);
+    await rm(junction);
     expect(execute(stable, ['--version']).status).toBe(0);
     expect(await bundleInventory(outside)).toEqual(before);
     await verifyNativeBundle(selected);
