@@ -539,6 +539,42 @@ Atomic no-clobber Caskroom/staging/metadata/prefix publication and independently
 attributed installed-destination inventory remain required before any provider
 can replace the default pre-removal refusal.
 
+**Missing cask publication primitive**
+
+The read-only audit of
+`Homebrew/brew@f8d1b25f33e032707f151123aca0eac3a239c676` does not supply a
+supported no-clobber installation transaction. The blocking paths are concrete:
+
+| Write path | Why ordinary installation is insufficient |
+| --- | --- |
+| Archive staging | `UnpackStrategy::Directory#move_to_dir` merges existing directories and explicitly removes existing destination files before moving replacements. |
+| Cask metadata | `Metadata#metadata_timestamped_path` / `metadata_subdir` use recursive directory creation; `Installer#save_caskfile` performs ordinary writes and removes the previous saved directory. |
+| Config and install receipt | `Pathname#atomic_write` explicitly always overwrites; `File.atomic_write` publishes through replacement `File.rename`. Atomic replacement is not exclusive creation. |
+| Launcher | The macOS `Symlinked#create_filesystem_link` invokes `/bin/ln -h -f -s`; `force: false` does not make that syscall no-clobber. |
+| Failure cleanup | `Installer#purge_versioned_files` removes staged/metadata paths without a transaction-created inode/byte attribution check. |
+
+`CaskLock` exists, but at this pin its only non-definition Ruby reference is
+cleanup, not installation acquisition. Even an acquired cooperative lock would
+not make the writes above exclusive. The sandbox's path/subpath write grants
+constrain location, not ownership of newly competing entries. Recursive directory
+creation, existence checks and post-write observations do not close those races.
+An isolated standard-Ruby control with competing entries introduced after the
+absence check confirms that ordinary writes and temporary-file rename overwrite,
+directory rename replaces an existing empty directory, and recursive creation
+accepts a competing directory. Exclusive symlink creation refuses an existing
+dangling entry, but cannot protect the other destinations. These are filesystem
+controls, not execution or qualification of Homebrew itself.
+
+The missing supported contract is transaction-private staging, metadata and
+rollback destination plumbing, followed by parent-identity-bound exclusive
+directory/file publication and cleanup restricted to entries created by that
+transaction. It must preserve genuine manager metadata and effective restrictions.
+The audited Homebrew interfaces expose neither that complete contract nor an
+exclusive directory publication primitive. No wrapper around `Installer`, lock,
+availability flag or asserted no-clobber boolean is substituted for it. The
+default provider therefore remains absent; installed-directory inventory facts
+and canonical content observation cannot authorize npm removal or installation.
+
 For an attributed Homebrew cask, the default channel separately repeats signed
 release/asset admission and the read-only receipt/tap-origin/commit observation.
 It compares the exact selected definition SHA-256 with the unchanged canonical
