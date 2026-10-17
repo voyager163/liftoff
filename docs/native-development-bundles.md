@@ -588,6 +588,54 @@ availability flag or asserted no-clobber boolean is substituted for it. The
 default provider therefore remains absent; installed-directory inventory facts
 and canonical content observation cannot authorize npm removal or installation.
 
+**Darwin exclusive-publication boundary**
+
+The primary Darwin ABI in
+`apple-oss-distributions/xnu@f6217f891ac0bb64f3d375211650a4c1ff8ca1ea`
+provides genuine destination exclusion:
+[`renameatx_np`](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/bsd/man/man2/rename.2)
+with `RENAME_EXCL` returns `EEXIST` for an occupied destination.
+`bsd/sys/stdio.h` defines that flag as `0x00000004`; `0x00000002` is
+`RENAME_SWAP`, not exclusion. ABI availability does not lower Liftoff's platform
+policy or qualify a minimum host.
+
+Parent descriptors bind directory objects, not the current canonical names of
+those directories. The rename ABI also selects its source by parent descriptor
+and basename, not by the already-open source object or an expected inode.
+Deterministic private-filesystem controls, using the existing pinned
+Ruby/Fiddle/libSystem, preserve competing destination files, directories and
+dangling symlinks, but move a source substituted after identity validation.
+Holding the expected source descriptor does not prevent that move; a same-byte
+replacement also defeats digest-only readback. Replacing a parent's canonical
+name leaves its descriptor bound to the old directory, not the newly selected
+prefix path.
+
+[`fclonefileat`](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/bsd/man/man2/clonefile.2)
+does select the source by descriptor. Zero flags are not namespace-entry
+exclusion: the private control follows a dangling destination symlink and creates
+its target. The primary header defines `CLONE_NOFOLLOW_ANY` as `0x0008`; with that
+flag the corresponding private control refuses the symlink with `ELOOP`, leaves
+its target absent, and refuses competing files/directories with `EEXIST`.
+The private host control actually clones the held original file and directory
+after source-name substitution; directory cloning is not claimed unavailable,
+although Apple's manual strongly discourages it. The ABI returns success or an
+error, not a created-destination descriptor or identity. A deterministic
+post-clone, pre-open replacement makes the subsequent open observe a foreign
+same-byte entry. That observation cannot be promoted to transaction ownership.
+Likewise, checking an owned inode before name-based `unlinkat` does not prevent
+removing a replacement introduced between the check and the unlink.
+
+These audited calls therefore do not supply the combined identified-source,
+exclusive-publication and exact-owned-entry cleanup contract under competing
+substitution. Source-descriptor cloning closes the source-selection gap, not
+creation-bound destination ownership or safe cleanup. A separately protected
+transaction namespace or stronger object-bound publication/cleanup plumbing
+requires review before implementation. No replacing fallback, check-then-remove
+cleanup or success-shaped production primitive is exported. The controls include
+abort, deadline, invalid-descriptor/flag and descriptor/process settlement cases;
+they are private ABI evidence, not Homebrew, installed, release, minimum-host or
+unsupported-filesystem qualification.
+
 For an attributed Homebrew cask, the default channel separately repeats signed
 release/asset admission and the read-only receipt/tap-origin/commit observation.
 It compares the exact selected definition SHA-256 with the unchanged canonical
