@@ -33,6 +33,10 @@ import { bindApplicationArtifactContext } from './application-artifact-context.j
 import {
   applicationArtifactContextStep, applicationContextBounds, applicationContextDirectory
 } from './application-artifact-context-recipe.js';
+import {
+  applicationArtifactDigestBlockers, applicationArtifactDigestRecipe, applicationArtifactDispatchInputNames,
+  assertApplicationArtifactDigestWorkflow
+} from './application-artifact-digest-recipe.js';
 
 export interface VerifiedApplicationArtifact {
   sourceSha: string;
@@ -50,6 +54,13 @@ export interface VerifiedApplicationArtifact {
 }
 
 export function readVerifiedApplicationArtifact(inspection: GovernanceTransitionInspection): VerifiedApplicationArtifact {
+  const configuration = inspection.activationInputs?.phases['application-artifact-ready'] ??
+    inspection.state.activationInputs?.phases['application-artifact-ready'];
+  if (configuration && Object.hasOwn(configuration, 'artifactRecipe')) {
+    applicationArtifactDigestRecipe(configuration.artifactRecipe);
+    return applicationError('application-artifact-recipe-unqualified',
+      'The selected digest-only recipe has no allocated original publication receipt/current consumer. Historical QuickBuild v1 evidence and its original handles remain inspectable but cannot qualify the selected recipe.');
+  }
   const evidence = latestRecordWithPayload(inspection, 'application-artifact-ready');
   const output = inspection.state.phaseOutputs?.['application-artifact-ready'];
   if (inspection.state.phases['application-artifact-ready'].state !== 'verified' || !evidence || !output ||
@@ -110,8 +121,10 @@ export function readVerifiedApplicationArtifact(inspection: GovernanceTransition
 export function applicationArtifactBinding(input: PhasePlanningInput | PhaseAdapterExecutionInput) {
   const config = applicationConfiguration(input, 'application-artifact-ready', [
     'sourceSha', 'sourceTreeSha', 'workflowPath', 'workflowDigest', 'contextPath', 'contextPaths', 'dockerfilePath', 'imageRepository',
-    'sourceTransmissionApproved', 'dependencyNetworkApproved', 'buildExecutionApproved'
+    'sourceTransmissionApproved', 'dependencyNetworkApproved', 'buildExecutionApproved', 'artifactRecipe'
   ]);
+  const artifactRecipe = Object.hasOwn(config, 'artifactRecipe')
+    ? applicationArtifactDigestRecipe(config.artifactRecipe) : undefined;
   if (config.sourceTransmissionApproved !== true || config.dependencyNetworkApproved !== true ||
     config.buildExecutionApproved !== true) {
     return applicationError('application-build-consent',
@@ -126,6 +139,10 @@ export function applicationArtifactBinding(input: PhasePlanningInput | PhaseAdap
   const dockerfilePath = ownedPath(config.dockerfilePath, 'Artifact Dockerfile path');
   const projection = contextPath === '.'
     ? bindApplicationArtifactContext(input.inspection.manifest, config.contextPaths, dockerfilePath) : undefined;
+  if (artifactRecipe && !projection) {
+    return applicationError('application-artifact-recipe-context',
+      'The selected digest recipe requires the exact manifest-bound root projection and its reviewed Dockerfile; a legacy directory upload is incompatible.');
+  }
   if (!/^\.github\/workflows\/[A-Za-z0-9_-]+\.ya?ml$/u.test(workflowPath) ||
     (!projection && (config.contextPaths !== undefined ||
       !activationInputPathIsObserved([...contextPath.split('/'), 'Dockerfile']) ||
@@ -160,6 +177,11 @@ export function applicationArtifactBinding(input: PhasePlanningInput | PhaseAdap
     budget: applicationBudget(input),
     sourceTransmissionApproved: true, dependencyNetworkApproved: true, buildExecutionApproved: true
   };
+  if (artifactRecipe) {
+    const selected = { ...binding, artifactRecipe };
+    const bindingDigest = canonicalSha256(selected);
+    return { ...selected, bindingDigest, runTitle: `Liftoff application artifact ${bindingDigest}` };
+  }
   const bindingDigest = canonicalSha256(binding);
   return { ...binding, bindingDigest, tag: `liftoff-${binding.environment}-${bindingDigest}`,
     runTitle: `Liftoff application artifact ${bindingDigest}` };
@@ -196,6 +218,9 @@ function assertApplicationPublicationNoReplace(): void {
 }
 
 function dispatchInputs(binding: ReturnType<typeof applicationArtifactBinding>): Record<string, string> {
+  if ('artifactRecipe' in binding) {
+    return applicationError('application-artifact-recipe-execution-unavailable', applicationArtifactDigestBlockers.join(' '));
+  }
   return {
     binding_digest: binding.bindingDigest, source_sha: binding.sourceSha,
     context_path: binding.contextPath, dockerfile_path: binding.dockerfilePath,
@@ -276,7 +301,7 @@ export async function observeApplicationSource(input: PhaseAdapterExecutionInput
     return applicationError('application-recipe-changed', 'The actual local artifact workflow bytes differ from the separately reviewed immutable recipe.');
   }
   let parsed: unknown;
-  try { parsed = parse(workflow.toString('utf8')); }
+  try { parsed = parse(workflow.toString('utf8'), 'artifactRecipe' in binding ? { uniqueKeys: true, maxAliasCount: 0 } : undefined); }
   catch { return applicationError('application-workflow-invalid', 'The approved artifact workflow is not valid bounded YAML.'); }
   const job = isRecord(parsed) && isRecord(parsed.jobs) ? parsed.jobs.publish : null;
   const trigger = isRecord(parsed) && isRecord(parsed.on) && isRecord(parsed.on.workflow_dispatch)
@@ -292,7 +317,7 @@ export async function observeApplicationSource(input: PhaseAdapterExecutionInput
     !isRecord(job['runs-on']) || job['runs-on'].group !== binding.runnerGroupName ||
     canonicalSha256(job['runs-on'].labels) !== canonicalSha256([binding.runnerLabel]) ||
     typeof job['timeout-minutes'] !== 'number' || job['timeout-minutes'] <= 0 || job['timeout-minutes'] > 20 ||
-    !inputs || canonicalSha256(Object.keys(inputs).sort()) !== canonicalSha256(Object.keys(dispatchInputs(binding)).sort()) ||
+    !inputs || canonicalSha256(Object.keys(inputs).sort()) !== canonicalSha256([...applicationArtifactDispatchInputNames].sort()) ||
     Object.values(inputs).some((entry) => !isRecord(entry) || entry.type !== 'string' || entry.required !== true) ||
     !Array.isArray(job.steps) || job.steps.length > 30 ||
     job.steps.some((step) => !isRecord(step) || step.uses !== undefined &&
@@ -311,6 +336,10 @@ export async function observeApplicationSource(input: PhaseAdapterExecutionInput
       return applicationError('application-context-recipe',
         'Root publication must prepare the exact reviewed immutable-file projection, then run build/upload only from its output directory; a broad repository-root upload is forbidden.');
     }
+  }
+  if ('artifactRecipe' in binding) {
+    if (!binding.contextPaths) return applicationError('application-artifact-recipe-context', 'The exact projected digest context is absent.');
+    assertApplicationArtifactDigestWorkflow(parsed, binding.contextPaths, binding.artifactRecipe, binding);
   }
   const client = clientFor(input);
   const remote = await client.get(`/repos/${binding.repository}/contents/${binding.workflowPath}?ref=${binding.sourceSha}`);
@@ -368,6 +397,9 @@ function operationForAcceptedDispatch(
 }
 
 function outputFor(binding: ReturnType<typeof applicationArtifactBinding>, handle: ExternalOperationState, values: PhaseOutputBindings['values'] = {}): PhaseOutputBindings {
+  if ('artifactRecipe' in binding) {
+    return applicationError('application-artifact-recipe-unqualified', 'Digest-only source proposals cannot issue legacy artifact outputs.');
+  }
   return { values: { artifactBindingDigest: binding.bindingDigest, sourceSha: binding.sourceSha,
     sourceTreeSha: binding.sourceTreeSha, executionRef: binding.executionRef,
     workflowDigest: binding.workflowDigest, environment: binding.environment, registryResourceId: binding.registryId,
@@ -384,6 +416,9 @@ export async function executeApplicationArtifactPublication(input: PhaseAdapterE
   try {
     assertApplicationProgressPorts(input);
     const binding = applicationArtifactBinding(input);
+    if ('artifactRecipe' in binding) {
+      return applicationError('application-artifact-recipe-execution-unavailable', applicationArtifactDigestBlockers.join(' '));
+    }
     const dispatchedPlan = applicationDispatchPlan(input);
     const dispatch = input.plan.operations.find((entry) => entry.actionId === 'github.artifact.build-dispatch');
     if (!dispatch || canonicalSha256(dispatch.inputs) !== canonicalSha256(applicationArtifactPlanInputs(input))) {
@@ -572,6 +607,10 @@ export async function observeImmutableApplicationArtifact(
 ) {
   input = applicationDeadlineInput(input);
   const binding = applicationArtifactBinding(input);
+  if ('artifactRecipe' in binding) {
+    return applicationError('application-artifact-recipe-unqualified',
+      'The selected digest recipe has no allocated original publication readback contract; legacy ACR runs and v1 outputs cannot stand in for it.');
+  }
   const { artifactBindingDigest, sourceSha: outputSourceSha, workflowDigest, registryResourceId,
     acrRunId, artifactDigest } = outputs.values;
   const workflowRunResourceId = operation.resourceId;

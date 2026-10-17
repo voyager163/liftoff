@@ -700,7 +700,15 @@ readiness. A tag, job step name, placeholder/bootstrap image or caller annotatio
 is never that proof. Confirmed partial operation handles are retained for
 observation, not redispatch; changed source, tag/digest or authority blocks.
 Workflow publication and application deployment remain separate unavailable
-phases. Source fixtures do not satisfy real disposable task13/task14 qualification.
+phases. Source fixtures do not satisfy real disposable task13/task14 qualification.${current ? `
+The explicit \`oci-digest-v1\` selection is a closed, blocked source proposal,
+not an executable reviewed plan. Its exact Git projection and digest exporter
+exclude image/cache tags, registry attestations and referrers-tag fallback.
+Authenticated delivery, whole-job protected custody, build-tool qualification
+and the unallocated GitHub attestation write effect remain independent blockers.
+No saved executable plan, approval, source transmission, new receipt or live
+dispatch is enabled; legacy receipts cannot qualify the selected recipe.
+` : ''}
 
 Generated roots keep \`liftoff_activation_ownership = null\` by default and do
 not emit reserved Liftoff ownership tags in ordinary, Manual, governance-none,

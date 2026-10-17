@@ -16,6 +16,9 @@ import { bindApplicationArtifactContext } from '../src/governance-activation/app
 import {
   applicationArtifactContextStep, applicationContextBounds, applicationContextPaths
 } from '../src/governance-activation/application-artifact-context-recipe.js';
+import {
+  applicationArtifactDigestWorkflow, assertApplicationArtifactDigestWorkflow
+} from '../src/governance-activation/application-artifact-digest-recipe.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -113,6 +116,11 @@ describe('manifest-bound exact application context', () => {
       const source = generated(workload, profile);
       const binding = bindApplicationArtifactContext(source.manifest, source.paths, 'Dockerfile');
       expect(binding).toEqual({ contextPaths: [...source.paths].sort(), sourceManifestDigest: canonicalSha256(source.manifest) });
+      const recipe = { version: 'oci-digest-v1', builderName: 'reviewed-existing-builder',
+        buildxVersion: 'v0.30.1', buildkitVersion: 'v0.26.2' } as const;
+      const runner = { runnerGroupName: 'reviewed-group', runnerLabel: 'reviewed-label' };
+      const workflow = applicationArtifactDigestWorkflow(binding.contextPaths, recipe, runner);
+      expect(() => assertApplicationArtifactDigestWorkflow(parse(stringify(workflow)), binding.contextPaths, recipe, runner)).not.toThrow();
       const f = await prepare(source.files);
       const { result, directory } = await f.projectFiles(binding.contextPaths);
       expect(result.status, result.stderr).toBe(0);
@@ -132,6 +140,8 @@ describe('manifest-bound exact application context', () => {
       expect(source.readme).toContain('Fresh registry/identity prerequisite creation also remains blocked');
       expect(source.readme).toContain('resource-level create-only or exclusive-destination admission is qualified');
       expect(source.readme).toContain('Original accepted deployment handles remain observation-only');
+      expect(source.readme).toContain('`oci-digest-v1` artifact recipe is a blocked source');
+      expect(source.readme).toContain('before saved plan, approval, source transmission or dispatch');
     });
   }
   it.each([

@@ -1744,6 +1744,19 @@ placeholder, candidate tag or caller-supplied source annotation. Partial handles
 survive a later source/authority change; failed or uncertain effects are observed,
 not automatically repeated or undone.
 
+An explicit `artifactRecipe.version: "oci-digest-v1"` selects a separate closed
+source proposal, not an executable plan. The actual artifact binding/source
+observer validates its complete first-party workflow and exact Git projection;
+image/cache tags, OCI attestation delivery/referrers fallback and unreviewed
+steps are rejected. Existing `PhasePlanBuild.blockers` stops before saved
+executable plan or approval. Authenticated program delivery, whole-job host
+custody, build-tool qualification and GitHub attestation's unallocated
+`github-write` effect remain distinct blockers. Proposed workflow permissions
+cannot expand the frozen action/phase contract or borrow Source5 authority.
+Legacy selection, v1 receipts and original-handle checks are unchanged; old
+receipts cannot qualify the newly selected recipe. There is no new receipt
+issuer, live dispatch or task-completion credit.
+
 The artifact route dispatches only the existing protected lightweight
 `liftoff-execution-<full-source-SHA>` tag bound to its own reviewed complete
 source/tree/recipe. A shared read-only observer rechecks effective no-bypass

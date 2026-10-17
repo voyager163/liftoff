@@ -169,7 +169,9 @@ export async function planAzurePhase(input: PhasePlanningInput): Promise<PhasePl
           planAzureDeploymentOwnership(input, subId),
           azureOperation(input.phase.id, 'azure.artifact.readback', 'azure-read', {
             artifactBindingDigest: binding.bindingDigest, sourceSha: binding.sourceSha,
-            registryResourceId: binding.registryId, immutableTag: binding.tag, verifyAttestation: true
+            registryResourceId: binding.registryId,
+            ...('artifactRecipe' in binding ? { artifactRecipe: binding.artifactRecipe, verifyManifestBytes: true } : { immutableTag: binding.tag }),
+            verifyAttestation: true
           }, subId)
         ]
       };

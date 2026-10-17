@@ -2475,6 +2475,30 @@ This is shared preparation, not a Source5 writer, production bridge or new
 dispatch input. An empty acceptance response or lost original accepted handle
 cannot be repaired by adopting even a unique matching listed run.
 
+The separately selected `artifactRecipe.version: "oci-digest-v1"` is Stage A
+source preparation only. `application-artifact-digest-recipe.ts` exports
+`applicationArtifactDigestRecipe`, `applicationArtifactDigestSteps`,
+`applicationArtifactDigestWorkflow` and `assertApplicationArtifactDigestWorkflow`.
+The real artifact binding, GitHub/Azure proposal planners and source observer
+consume that selection. Exact workflow validation excludes extra setup/jobs,
+image/cache tags, OCI attestations, referrers-tag fallback, changed projection
+or working directory, and ambient workflow overrides. Tool names/versions are
+reviewed declarations, not independently qualified builder capabilities.
+The existing eleven dispatch input names are preserved; the digest recipe
+never consumes the reserved legacy image-tag input.
+
+`PhasePlanBuild.blockers` prevents a saved executable plan or approval. Distinct
+delivery, whole-job custody and build-tool blockers remain Root/TASK14.3-held.
+GitHub attestation delivery is explicitly planned, but its `github-write`
+effect is excluded by the frozen artifact action and phase; that allocation
+requires a separate compatible contract decision. Proposed workflow permissions
+do not grant it. No new caller authority port, Source5 phase/family/body,
+receipt/provenance issuer or live dispatch is added. `readVerifiedApplicationArtifact`
+and `observeImmutableApplicationArtifact` refuse legacy receipts under this
+selection without changing v1 bytes, `VerifiedApplicationArtifact`, historical
+inspectability or the original 0e2 completed-handle checks. Removing the selector
+retains the unchanged legacy path; no earlier approval is reinterpreted.
+
 Actual committed workflow bytes, separate transmission/network/build consent,
 the admitted private-network hosted runner, ACR QuickBuild output image and
 locked tag/digest, plus `gh attestation verify` certificate signer/source/run

@@ -1,15 +1,15 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { stringify } from 'yaml';
+import { parse, stringify } from 'yaml';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   buildSavedTransitionPlan, canonicalSha256, canonicalPhaseGraph, evidenceBodyDigest, evidenceHeaderDigest,
   executeApplyNext, validateEvidenceFreshness, type PhaseEvidenceRecord, type PhaseId
 } from '../src/governance-activation/index.js';
 import {
-  applicationArtifactBinding, executeApplicationArtifactPublication,
-  observeImmutableApplicationArtifact, readVerifiedApplicationArtifact
+  applicationArtifactBinding, applicationArtifactPlanInputs, executeApplicationArtifactPublication,
+  observeApplicationSource, observeImmutableApplicationArtifact, readVerifiedApplicationArtifact
 } from '../src/governance-activation/application-artifact.js';
 import {
   applicationPrerequisiteBinding, applicationPrerequisiteTemplate, executeApplicationPrerequisites
@@ -46,6 +46,16 @@ import { buildArtifacts } from '../src/templates.js';
 import {
   applicationArtifactContextStep, applicationContextDirectory
 } from '../src/governance-activation/application-artifact-context-recipe.js';
+import {
+  applicationArtifactDigestBlockers, applicationArtifactDigestSteps
+} from '../src/governance-activation/application-artifact-digest-recipe.js';
+import { planGitHubPhase } from '../src/governance-activation/phase-github.js';
+import { previewApplyNext } from '../src/governance-activation/transition-planning.js';
+
+const digestRecipe = {
+  version: 'oci-digest-v1', builderName: 'reviewed-existing-builder',
+  buildxVersion: 'v0.30.1', buildkitVersion: 'v0.26.2'
+} as const;
 
 const scratch = scratchDirectory('application-artifact');
 const imageDigest = `sha256:${'d'.repeat(64)}`;
@@ -177,11 +187,15 @@ class ApplicationRunner implements CommandRunner {
         digest: this.actualDigest, name: argument(command, '--image'), changeableAttributes: { writeEnabled: this.tagMutable, deleteEnabled: false }
       });
     }
-    if (key.startsWith('acr task show-run ')) return result(command, {
-      runId: 'ca1', runType: 'QuickBuild', status: 'Succeeded',
-      outputImages: [{ registry: this.artifact!.loginServer, repository: this.artifact!.imageRepository,
-        tag: this.artifact!.tag, digest: this.actualDigest }]
-    });
+    if (key.startsWith('acr task show-run ')) {
+      const binding = this.artifact;
+      if (!binding || !('tag' in binding)) throw new Error('A legacy ACR-run fixture cannot witness the selected digest recipe.');
+      return result(command, {
+        runId: 'ca1', runType: 'QuickBuild', status: 'Succeeded',
+        outputImages: [{ registry: binding.loginServer, repository: binding.imageRepository,
+          tag: binding.tag, digest: this.actualDigest }]
+      });
+    }
     if (key.startsWith('rest --method GET ')) return result(command, {
       subscriptionId: coverageSubscription, tenantId: coverageTenant, state: 'Enabled'
     });
@@ -470,6 +484,156 @@ async function fixture(artifact = false, rootContext = false,
   }
   return { ...f, input, runner, transport, custody };
 }
+
+async function selectDigestSource(f: Awaited<ReturnType<typeof fixture>>,
+  change?: (workflow: Record<string, unknown>, job: Record<string, unknown>) => void) {
+  const workflow: unknown = parse(f.transport.workflow);
+  if (!isRecord(workflow) || !isRecord(workflow.jobs) || !isRecord(workflow.jobs.publish)) {
+    throw new Error('Expected isolated artifact workflow fixture.');
+  }
+  const job = workflow.jobs.publish;
+  workflow.name = 'Liftoff digest-only application artifact';
+  workflow.permissions = { contents: 'read', 'id-token': 'write', attestations: 'write' };
+  job['timeout-minutes'] = 20;
+  job.steps = applicationArtifactDigestSteps(f.transport.binding.contextPaths!, digestRecipe);
+  change?.(workflow, job);
+  f.transport.workflow = stringify(workflow);
+  await writeFile(path.join(f.input.inspection.projectRoot, '.github', 'workflows', 'application-artifact.yml'), f.transport.workflow);
+  for (const args of [['add', '.github/workflows/application-artifact.yml'],
+    ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '--allow-empty', '-m', 'Digest source fixture']]) {
+    expect((await f.runner.run({ executable: 'git', args }, { cwd: f.input.inspection.projectRoot })).status).toBe(0);
+  }
+  const git = async (args: string[]) => (await f.runner.run({ executable: 'git', args },
+    { cwd: f.input.inspection.projectRoot })).stdout.trim();
+  Object.assign(f.inputs.phases['application-artifact-ready']!, {
+    artifactRecipe: digestRecipe, sourceSha: await git(['rev-parse', 'HEAD']),
+    sourceTreeSha: await git(['rev-parse', 'HEAD^{tree}']),
+    workflowDigest: createHash('sha256').update(f.transport.workflow).digest('hex')
+  });
+}
+
+describe('explicit digest-only artifact source stage', () => {
+  it('binds the separately selected recipe without a legacy image tag', async () => {
+    const f = await fixture(true, true);
+    const legacy = applicationArtifactPlanInputs(f.input);
+    const configuration = f.inputs.phases['application-artifact-ready']!;
+    f.inputs.phases['application-artifact-ready'] = { ...configuration, artifactRecipe: digestRecipe };
+    const selected = applicationArtifactPlanInputs(f.input);
+    expect(selected).toMatchObject({ artifactRecipe: digestRecipe, contextPath: '.', acceptsTagOnly: false });
+    expect(selected).not.toHaveProperty('tag');
+    expect(selected.bindingDigest).not.toBe(legacy.bindingDigest);
+    f.inputs.phases['application-artifact-ready'] = configuration;
+    expect(applicationArtifactPlanInputs(f.input)).toEqual(legacy);
+  });
+  it('consumes the selected proposal through existing blockers before a saved executable plan or approval', async () => {
+    const f = await fixture(true, true);
+    Object.assign(f.inputs.phases['application-artifact-ready']!, { artifactRecipe: digestRecipe });
+    const proposal = await planGitHubPhase(f.input);
+    expect(proposal?.blockers).toEqual(applicationArtifactDigestBlockers);
+    expect(proposal?.operations[0]?.inputs.artifactRecipe).toEqual(digestRecipe);
+    expect(proposal?.operations[0]?.effects?.some(effect => effect.mutationClass === 'github-write')).toBe(false);
+    await expect(buildSavedTransitionPlan(f.input)).rejects.toThrow(/application-artifact-delivery-unavailable/);
+    expect(await previewApplyNext({ ...f.input, execute: true })).toMatchObject({
+      authorized: false, applied: false, noWrites: true, savedPlan: null,
+      blockers: [expect.stringContaining('application-artifact-attestation-effect-unallocated')]
+    });
+    expect(f.transport.calls.filter(call => call.method !== 'GET')).toEqual([]);
+    expect(f.runner.writes).toEqual([]);
+  });
+  it('validates the exact committed digest-only workflow through the owning source observer', async () => {
+    const f = await fixture(true, true);
+    await selectDigestSource(f);
+    f.transport.binding = applicationArtifactBinding(f.input);
+    await expect(observeApplicationSource(f.input)).resolves.toMatchObject({
+      binding: { artifactRecipe: digestRecipe, contextPath: '.', contextPaths: f.transport.binding.contextPaths },
+      workflowDigest: f.transport.binding.workflowDigest
+    });
+    expect(f.transport.calls.filter(call => call.method !== 'GET')).toEqual([]);
+    expect(f.runner.writes).toEqual([]);
+  });
+  it.each(['cache-tag', 'attestation-push', 'referrers-fallback', 'working-directory', 'changed-projection', 'extra-setup'] as const)(
+    'rejects a newly committed and hashed %s attempt in the actual source consumer', async kind => {
+      const f = await fixture(true, true);
+      await selectDigestSource(f, (_workflow, job) => {
+        if (!Array.isArray(job.steps) || !job.steps.every(isRecord)) throw new Error('Expected exact digest source steps.');
+        const steps = job.steps;
+        if (kind === 'cache-tag') steps[2]!.run += '\ndocker buildx build --cache-to type=registry,ref=example.azurecr.io/cache:latest .\n';
+        if (kind === 'attestation-push') steps[3]!.with = { 'push-to-registry': true };
+        if (kind === 'referrers-fallback') steps[3]!.env = { OCI_FORCE_REFERRERS_TAG: 'true' };
+        if (kind === 'working-directory') steps[2]!['working-directory'] = '${{ github.workspace }}';
+        if (kind === 'changed-projection') steps[1]!.run += '\nprintf altered-projection\n';
+        if (kind === 'extra-setup') steps.unshift({ uses: 'unreviewed/setup@' + 'f'.repeat(40) });
+      });
+      f.transport.binding = applicationArtifactBinding(f.input);
+      await expect(observeApplicationSource(f.input)).rejects.toThrow(
+        ['working-directory', 'changed-projection'].includes(kind) ? /Root publication must prepare/ : /complete exact workflow/
+      );
+      expect(f.transport.calls).toEqual([]);
+      expect(f.runner.writes).toEqual([]);
+    }
+  );
+  it.each([null, 'oci-digest-v1', { version: 'legacy-v1' }, { ...digestRecipe, version: 'oci-digest-v2' }])(
+    'does not fall back to legacy execution for incompatible explicit selection %j', async value => {
+      const f = await fixture(true, true);
+      Object.assign(f.inputs.phases['application-artifact-ready']!, { artifactRecipe: value });
+      expect(() => applicationArtifactBinding(f.input)).toThrow(/version/);
+      await expect(buildSavedTransitionPlan(f.input)).rejects.toThrow(/version/);
+      expect(f.transport.calls).toEqual([]);
+      expect(f.runner.writes).toEqual([]);
+    }
+  );
+  it('refuses a legacy directory recipe rather than broadening the selected source projection', async () => {
+    const f = await fixture(true);
+    Object.assign(f.inputs.phases['application-artifact-ready']!, { artifactRecipe: digestRecipe });
+    expect(() => applicationArtifactBinding(f.input)).toThrow(/exact manifest-bound root projection/);
+  });
+  it('blocks selected execution before every provider, intent or progress call without reinterpreting original handles', async () => {
+    const f = await fixture(true, true);
+    const original = structuredClone(f.input.inspection.state.phases[f.phase.id]);
+    const calls = f.runner.calls.length;
+    const intent = vi.spyOn(f.input, 'recordApplicationDispatchIntent');
+    const progress = vi.spyOn(f.input, 'recordApplicationProgress');
+    f.input.adapters = {};
+    f.input.inspection.approvals = [];
+    Object.assign(f.inputs.phases['application-artifact-ready']!, { artifactRecipe: digestRecipe });
+    const outcome = await executeApplicationArtifactPublication(f.input);
+    expect(outcome).toMatchObject({ status: 'blocked', completedOperations: [], blocker: applicationArtifactDigestBlockers.join(' ') });
+    expect(outcome.evidencePayload).toBeUndefined();
+    expect(outcome.outputs).toBeUndefined();
+    expect(f.input.inspection.state.phases[f.phase.id]).toEqual(original);
+    expect(f.runner.calls).toHaveLength(calls);
+    expect(f.transport.calls).toEqual([]);
+    expect(intent).not.toHaveBeenCalled();
+    expect(progress).not.toHaveBeenCalled();
+  });
+  it('keeps old v1 receipts readable but refuses their current use under the newly selected recipe', async () => {
+    const f = await fixture(true, true);
+    const outcome = await executeApplyNext({ inspection: f.input.inspection, reinspect: async () => f.input.inspection,
+      runner: f.runner, now: coverageNow, adapters: f.input.adapters });
+    expect(outcome).toMatchObject({ applied: true });
+    const saved = (await readState(f.root))!;
+    const originalState = JSON.stringify(saved);
+    const receipt = JSON.parse(await readFile(path.join(f.root, ...outcome.evidence!.pathParts), 'utf8'));
+    const inspection = await coverageInspection({ root: f.root, phaseId: f.phase.id, state: saved,
+      activationInputs: f.inputs, evidence: [receipt], reviewedPlans: await readReviewedTransitionPlans(f.root) });
+    const legacy = readVerifiedApplicationArtifact(inspection);
+    const selectedInputs = { ...f.inputs, phases: { ...f.inputs.phases,
+      'application-artifact-ready': { ...f.inputs.phases['application-artifact-ready'], artifactRecipe: digestRecipe } } };
+    expect(() => readVerifiedApplicationArtifact({ ...inspection, activationInputs: selectedInputs }))
+      .toThrow(/Historical QuickBuild v1 evidence/);
+    expect(readVerifiedApplicationArtifact(inspection)).toEqual(legacy);
+    expect(JSON.stringify(saved)).toBe(originalState);
+    expect((await loadActivationState(f.root))!.state.phases[f.phase.id].operation).toMatchObject({
+      status: 'completed', operationId: 'github-actions:901'
+    });
+    const outputs = saved.phaseOutputs![f.phase.id]!;
+    const calls = f.runner.calls.length;
+    Object.assign(f.inputs.phases['application-artifact-ready']!, { artifactRecipe: digestRecipe });
+    await expect(observeImmutableApplicationArtifact(f.input, outputs, saved.phases[f.phase.id].operation!))
+      .rejects.toThrow(/legacy ACR runs and v1 outputs cannot stand in/);
+    expect(f.runner.calls).toHaveLength(calls);
+  });
+});
 
 describe('application source producers behind real prerequisites', () => {
   it('plans exact registry, workload identity, narrowly scoped roles and nonzero cost', async () => {
@@ -1503,6 +1667,7 @@ describe('immutable application publication and independent readback', () => {
     'retains original artifact inputs while the %s read is awaiting a response', async (boundary) => {
       const f = await fixture(true);
       const binding = f.transport.binding;
+      if (!('tag' in binding)) throw new Error('Expected original legacy publication fixture.');
       const values = { artifactBindingDigest: binding.bindingDigest, sourceSha: binding.sourceSha,
         workflowDigest: binding.workflowDigest, registryResourceId: binding.registryId,
         acrRunId: 'ca1', artifactDigest: imageDigest };
@@ -1568,6 +1733,7 @@ describe('immutable application publication and independent readback', () => {
     'refuses replacement %s proof after caller inputs change during the original read', async (replacement) => {
       const f = await fixture(true);
       const binding = f.transport.binding;
+      if (!('tag' in binding)) throw new Error('Expected original legacy publication fixture.');
       const values = { artifactBindingDigest: binding.bindingDigest, sourceSha: binding.sourceSha,
         workflowDigest: binding.workflowDigest, registryResourceId: binding.registryId,
         acrRunId: 'ca1', artifactDigest: imageDigest };
