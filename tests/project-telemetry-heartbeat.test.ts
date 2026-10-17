@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runCli } from '../src/cli.js';
+import { runReleasedTelemetryCli as runCli } from './fixtures/released-telemetry.js';
 import { buildCurrentProjectPlan } from '../src/application/project/planning.js';
 import { buildCurrentArtifacts } from '../src/templates.js';
 import { NodeCommandRunner } from '../src/process-runner.js';

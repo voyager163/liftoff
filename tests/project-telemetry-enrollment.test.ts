@@ -2,7 +2,11 @@ import { chmod, cp, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symli
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runCli } from '../src/cli.js';
+import { runCli as runProductCli } from '../src/cli.js';
+import {
+  releasedTelemetryVersion,
+  runReleasedTelemetryCli as runCli
+} from './fixtures/released-telemetry.js';
 import { parseArgs } from '../src/cli/args/parser.js';
 import { buildCurrentProjectPlan } from '../src/application/project/planning.js';
 import { buildCurrentArtifacts } from '../src/templates.js';
@@ -55,6 +59,68 @@ async function approve(operation: 'enroll' | 'disable', project: string, env: No
 }
 
 describe('explicit project enrollment and external checkout consent', () => {
+  it('keeps local telemetry controls usable while unpublished reporting stays disabled', async () => {
+    const f = await fixture();
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const status = new CaptureStream(), statusErrors = new CaptureStream();
+    expect(await runProductCli({
+      argv: ['telemetry', 'status', '--json'],
+      cwd: f.project,
+      env: f.env,
+      stdout: status,
+      stderr: statusErrors
+    })).toBe(0);
+    expect(JSON.parse(status.text())).toMatchObject({
+      operation: 'status',
+      status: 'disabled',
+      reason: 'not-enrolled'
+    });
+    expect(statusErrors.text()).toBe('');
+
+    const report = new CaptureStream(), reportErrors = new CaptureStream();
+    expect(await runProductCli({
+      argv: ['telemetry', 'report', '--json'],
+      cwd: f.project,
+      env: f.env,
+      stdout: report,
+      stderr: reportErrors
+    })).toBe(0);
+    expect(JSON.parse(report.text())).toMatchObject({
+      operation: 'report',
+      status: 'disabled',
+      reason: 'unreleased-cli',
+      attempted: false
+    });
+    expect(reportErrors.text()).toBe('');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects unpublished project observations before consent reads or transport', async () => {
+    const f = await fixture();
+    const consent = vi.spyOn(storage, 'readTelemetryConsentConfig');
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    await expect(reportProjectObservation({
+      cwd: f.project,
+      env: f.env,
+      cliVersion: '0.13.0-dev.0'
+    })).resolves.toEqual({
+      status: 'disabled',
+      attempted: false,
+      reason: 'unreleased-cli'
+    });
+    expect(consent).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    await expect(reportProjectObservation({
+      cwd: f.project,
+      env: { ...f.env, DO_NOT_TRACK: '1' },
+      cliVersion: '0.13.0-dev.0'
+    })).resolves.toEqual({
+      status: 'disabled',
+      attempted: false,
+      reason: 'global-opt-out'
+    });
+  });
+
   it('keeps deterministic generation and every status/preview free of random identity and writes', async () => {
     const f = await fixture(), random = vi.spyOn(storage, 'newProjectTelemetryId');
     const before = await captureTreeState(f.root), fetch = vi.spyOn(globalThis, 'fetch');
@@ -341,8 +407,12 @@ describe('explicit project enrollment and external checkout consent', () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
     const delivery = createTelemetryDelivery({ env: f.env });
     try {
-      expect((await reportProjectObservation({ cwd: f.project, env: f.env, delivery })).status).toBe('delivered');
-      expect(await reportProjectObservation({ cwd: f.project, env: f.env, delivery })).toMatchObject({ status: 'failed', reason: 'duplicate-channel', attempted: false });
+      expect((await reportProjectObservation({
+        cwd: f.project, env: f.env, delivery, cliVersion: releasedTelemetryVersion
+      })).status).toBe('delivered');
+      expect(await reportProjectObservation({
+        cwd: f.project, env: f.env, delivery, cliVersion: releasedTelemetryVersion
+      })).toMatchObject({ status: 'failed', reason: 'duplicate-channel', attempted: false });
       expect(fetch).toHaveBeenCalledTimes(1);
     } finally { delivery.close(); }
   });
@@ -359,7 +429,7 @@ describe('explicit project enrollment and external checkout consent', () => {
     const start = performance.now();
     let settled = false;
     const result = (route === 'reporter'
-      ? reportProjectObservation({ cwd: f.project, env: f.env })
+      ? reportProjectObservation({ cwd: f.project, env: f.env, cliVersion: releasedTelemetryVersion })
       : invoke(['telemetry', 'report', '--json'], f.project, f.env)
     ).then(value => { settled = true; return value; });
     await transportStarted;
@@ -389,7 +459,9 @@ describe('explicit project enrollment and external checkout consent', () => {
       started(); return new Promise<storage.TelemetryConsentConfig>(() => {});
     });
     const fetch = vi.spyOn(globalThis, 'fetch');
-    const start = performance.now(), result = reportProjectObservation({ cwd: f.project, env: f.env });
+    const start = performance.now(), result = reportProjectObservation({
+      cwd: f.project, env: f.env, cliVersion: releasedTelemetryVersion
+    });
     await collectionStarted;
     await vi.advanceTimersByTimeAsync(maximumTelemetryDeliveryMs);
     expect(await result).toEqual({ status: 'failed', reason: 'budget-expired', attempted: false });

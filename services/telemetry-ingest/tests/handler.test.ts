@@ -97,6 +97,7 @@ describe('telemetry ingestion handler', () => {
     ['command', { ...validEvent, command: 'init:/private/project' }],
     ['version', { ...validEvent, cliVersion: '/private/project' }],
     ['build metadata identifier', { ...validEvent, cliVersion: '0.6.1+install-550e8400-e29b-41d4-a716-446655440000' }],
+    ['unpublished development version', { ...validEvent, cliVersion: '0.13.0-dev.0' }],
     ['unbounded prerelease', { ...validEvent, cliVersion: '0.6.1-preview.private' }],
     ['leading-zero prerelease version', { ...validEvent, cliVersion: '1.0.0-01' }],
     ['outcome', { ...validEvent, outcome: 'cancelled' }]

@@ -289,6 +289,16 @@ describe('telemetry client', () => {
     ]);
   });
 
+  it('does not construct delivery for an unpublished legacy client version', async () => {
+    const fetch = vi.fn<TelemetryFetch>();
+    await trackCommand('help', '0.13.0-dev.0', 0, {
+      env: {},
+      endpoint: 'https://telemetry.example.test/api/events',
+      fetch
+    });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('rejects non-HTTPS endpoints without transport', async () => {
     const fetch = vi.fn<TelemetryFetch>();
     await trackCommand('help', '0.6.1', 0, {

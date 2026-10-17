@@ -96,6 +96,7 @@ describe('versioned command outcomes', () => {
 
   it('bounds version length and rejects identifier-bearing build or arbitrary prerelease metadata', () => {
     expect(isTelemetryCliVersion(`${'1'.repeat(65)}.0.0`)).toBe(false);
+    expect(isTelemetryCliVersion('0.13.0-dev.0')).toBe(false);
     expect(isTelemetryCliVersion('0.13.0+private-project')).toBe(false);
     expect(isTelemetryCliVersion('0.13.0-private-project')).toBe(false);
   });
@@ -138,6 +139,7 @@ describe('project observation endpoint contract', () => {
     ['object identity', { projectId: {} }],
     ['noncanonical identity whitespace', { projectId: `${project.projectId}\n` }],
     ['numeric release', { cliVersion: 12 }],
+    ['unpublished development release', { cliVersion: '0.13.0-dev.0' }],
     ['metadata-bearing release', { cliVersion: '0.12.3+secret' }],
     ['unknown policy', { policyProfile: 'private-team' }],
     ['unknown policy version', { policyVersion: 8 }],

@@ -2,7 +2,8 @@ import {mkdtemp,realpath,lstat,rm,mkdir,readdir,readFile,writeFile} from 'node:f
 import path from 'node:path';
 import os from 'node:os';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-import {runCli,type CliTelemetryHooks} from '../src/cli.js';
+import type {CliTelemetryHooks} from '../src/cli.js';
+import {runReleasedTelemetryCli as runCli} from './fixtures/released-telemetry.js';
 import {runCommand} from '../src/commands.js';
 import {initializeProject} from '../src/application/initialize/use-case.js';
 import {migrateProject} from '../src/application/migrate/use-case.js';

@@ -87,6 +87,13 @@ execution failure is failure. A schema-1 event is never reinterpreted as schema
 separate explicit project enrollment; this is not a claim that the latest
 published release or production ingestion has been qualified for it.
 
+Telemetry payloads admit only bounded release versions: stable versions and the
+declared `alpha`, `beta`, or `rc` prerelease forms. Reserved unpublished source
+versions such as `0.13.0-dev.0` do not display the ordinary disclosure, invoke
+telemetry hooks, or send command/project events. Explicit local telemetry
+status, enrollment, and disablement commands remain available; an explicit
+report from an unpublished build returns `unreleased-cli` without transport.
+
 Command producers also record an invocation-local semantic outcome. Expected
 update drift or an available CLI upgrade is `attention-required`; an explicit
 decline or interactive cancellation is `cancelled`. Failed verification,
