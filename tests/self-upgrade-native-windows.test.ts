@@ -1,9 +1,11 @@
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import { readWindowsInstallerLayout } from '../src/adapters/distribution/native-windows.js';
+import { readWindowsInstallerLayout, readWindowsInstallerRegistration } from '../src/adapters/distribution/native-windows.js';
 import { assertWinGetOwnership, createNativeUpgradePort, nativePolicy,
   type NativeOwnerReaders, type WinGetOwnershipObservation } from '../src/adapters/distribution/native.js';
 import { windowsReceiptWorld } from './fixtures/windows-native-installation.js';
+import { defaultSelfUpgradeDependencies } from '../src/adapters/distribution/upgrade-host.js';
 
 describe('Windows installer local attribution and independent WinGet ownership', () => {
   const read = (world: ReturnType<typeof windowsReceiptWorld>, selected = world.stableLauncher, signal = new AbortController().signal) =>
@@ -23,6 +25,164 @@ describe('Windows installer local attribution and independent WinGet ownership',
     expect(observed).not.toHaveProperty('source');
     expect(world.runner.run).not.toHaveBeenCalled();
   });
+
+    describe('independent user installer registration and embedded signer observation', () => {
+      const inspect = async (world: ReturnType<typeof windowsReceiptWorld>, signal = new AbortController().signal) => {
+        const layout = await readWindowsInstallerLayout(world.dependencies, world.installation, world.policy, world.stableLauncher, signal);
+        return readWindowsInstallerRegistration(world.dependencies, { ...world.installation, windowsInstaller: layout },
+          world.policy, 'C:\\fixture\\neutral', signal);
+      };
+
+      it('uses only bounded system PowerShell, HKCU and an exact-byte embedded signature, never WinGet', async () => {
+        const world = windowsReceiptWorld();
+        world.dependencies.environment.PSModulePath = 'C:\\hostile\\modules';
+        world.dependencies.environment.NODE_OPTIONS = '--require=hostile';
+        const observed = await inspect(world);
+        expect(observed).toMatchObject({ signatureStatus: 'valid', certificateSha256: world.policy.winget.certificateSha256 });
+        expect(observed).not.toHaveProperty('source');
+        expect(observed).not.toHaveProperty('owner');
+        expect(world.runner.run).toHaveBeenCalledTimes(1);
+        const [command, options] = world.runner.run.mock.calls[0];
+        expect(command.executable).toBe(world.powershell);
+        expect(command.args.slice(0, 4)).toEqual(['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand']);
+        expect(command.args).not.toContain('-ExecutionPolicy');
+        const script = Buffer.from(command.args[4], 'base64').toString('utf16le');
+        expect(script).toContain('[Microsoft.Win32.RegistryHive]::CurrentUser');
+        expect(script).not.toContain('LocalMachine');
+        expect(script).toContain(".OpenSubKey(('Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\' + $inputData.appId + '_is1'), $false)");
+        expect(script).toContain('[IO.FileShare]::Read');
+        expect(script).toContain('Get-AuthenticodeSignature -LiteralPath');
+        expect(script).toContain("$signature.SignatureType.ToString() -cne 'Authenticode'");
+        expect(script).toContain("$policy -eq 'Restricted' -or $policy -eq 'AllSigned'");
+        expect(script).not.toMatch(/winget|Set-ExecutionPolicy|SetValue|CreateSubKey|Register-ObjectEvent|Invoke-Expression/i);
+        expect(options).toMatchObject({
+          cwd: 'C:\\fixture\\neutral', inheritEnvironment: false, ensureProcessTreeSettled: true,
+          maxOutputBytes: 16 * 1024, redactArgIndices: [4],
+          env: { NODE_OPTIONS: '', NODE_PATH: '', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0',
+            PSModulePath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules',
+            LOCALAPPDATA: 'C:\\fixture\\neutral' }
+        });
+      });
+
+      it.skipIf(process.platform !== 'win32')('parses the observation and refuses a unique absent HKCU key with real Windows PowerShell', async () => {
+        const world = windowsReceiptWorld();
+        await inspect(world);
+        const source = Buffer.from(world.runner.run.mock.calls[0][0].args[4], 'base64').toString('utf16le');
+        const input = Buffer.from(source).toString('base64');
+        const parser = `$source=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${input}'));` +
+          '$tokens=$null;$errors=$null;$null=[System.Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors);' +
+          'if($errors.Count -ne 0){[Console]::Error.WriteLine(($errors | Out-String));exit 1};[Console]::Write("parsed")';
+        const host = defaultSelfUpgradeDependencies();
+        const root = host.environment.SystemRoot;
+        if (!root) throw new Error('Actual Windows SystemRoot is required for the parser control.');
+        const directory = await host.makeNeutralDirectory();
+        try {
+          const options = {
+            cwd: directory, inheritEnvironment: false, ensureProcessTreeSettled: true, timeoutMs: 60_000, maxOutputBytes: 16 * 1024,
+            env: { SystemRoot: root, TEMP: directory, TMP: directory, DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0',
+              NODE_OPTIONS: '', NODE_PATH: '' }
+          };
+          const executable = path.win32.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+          const result = await host.runner.run({
+            executable,
+            args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(parser, 'utf16le').toString('base64')]
+          }, options);
+          expect(result).toMatchObject({ status: 0, stdout: 'parsed', timedOut: false, processTreeSettled: true });
+          const payloadMatch = /FromBase64String\('([A-Za-z0-9+/=]+)'\)/.exec(source);
+          if (!payloadMatch) throw new Error('The exact observation payload is required.');
+          const payload: Record<string, unknown> = JSON.parse(Buffer.from(payloadMatch[1], 'base64').toString('utf8'));
+          payload.appId = `Liftoff.Observation.Absent.${randomUUID()}`;
+          const observation = source.replace(payloadMatch[1], Buffer.from(JSON.stringify(payload)).toString('base64'));
+          const absent = await host.runner.run({
+            executable,
+            args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(observation, 'utf16le').toString('base64')]
+          }, options);
+          expect(absent).toMatchObject({ status: 1, stdout: '', timedOut: false, processTreeSettled: true });
+          expect(absent.stderr.trim()).toMatch(/^Windows installer registration observation unavailable \((?:registration|policy)\)\.$/);
+        } finally {
+          await host.removeNeutralDirectory(directory);
+        }
+      }, 120_000);
+
+      it.each(['scope', 'appId', 'installLocation', 'version', 'publisher', 'receiptSha256', 'currentSha256',
+        'registeredLauncherSha256', 'registeredCertificateSha256', 'launcherSha256', 'certificateSha256',
+        'signatureStatus', 'signatureType', 'extra', 'missing'] as const)(
+        'rejects independent %s mismatch even when the manager port claims valid ownership', async field => {
+          const world = windowsReceiptWorld();
+          if (field === 'missing') Reflect.deleteProperty(world.registration, 'receiptSha256');
+          else Reflect.set(world.registration, field, field === 'signatureType' ? 'Catalog' : 'foreign');
+          await expect(createNativeUpgradePort(world.dependencies, { winget: async () => world.winget })
+            .inspect(world.packageRoot, '0.12.3', 'C:\\fixture\\neutral'))
+            .rejects.toMatchObject({ reasonCode: 'unsupported_installation' });
+        }
+      );
+
+      it.each(['missing', 'ambiguous', 'relative', 'UNC', 'stream', 'traversal'] as const)(
+        'refuses %s system PowerShell attribution without a guessed fallback', async kind => {
+          const world = windowsReceiptWorld();
+          const environment = world.dependencies.environment;
+          if (kind === 'missing') delete environment.SystemRoot;
+          else if (kind === 'ambiguous') environment.SYSTEMROOT = environment.SystemRoot;
+          else environment.SystemRoot = kind === 'relative' ? 'Windows' : kind === 'UNC' ? '\\\\server\\Windows'
+            : kind === 'stream' ? 'C:\\Windows:alternate' : 'C:\\Windows\\..\\Windows';
+          await expect(inspect(world)).rejects.toMatchObject({ reasonCode: 'native_unavailable' });
+          expect(world.runner.run).not.toHaveBeenCalled();
+        }
+      );
+
+      it.each(['linked PowerShell', 'redirected PowerShell', 'invalid timeout', 'unqualified certificate', 'cancelled'] as const)(
+        'rejects %s before starting an observation process', async kind => {
+          const world = windowsReceiptWorld();
+          if (kind === 'linked PowerShell') world.world.nodes.set(world.powershell, { kind: 'symlink', target: world.powershell });
+          if (kind === 'redirected PowerShell') {
+            const realpath = world.dependencies.realpath;
+            world.dependencies.realpath = async filename => filename === world.powershell ? 'C:\\foreign\\powershell.exe' : realpath(filename);
+          }
+          if (kind === 'invalid timeout') Object.assign(world.dependencies, { probeTimeoutMs: 0 });
+          if (kind === 'unqualified certificate') world.policy.winget.certificateSha256 = null;
+          await expect(inspect(world, kind === 'cancelled' ? AbortSignal.abort() : new AbortController().signal))
+            .rejects.toMatchObject({
+              reasonCode: kind === 'unqualified certificate' ? 'native_unqualified' : kind === 'cancelled' ? 'native_timeout'
+                : kind === 'invalid timeout' ? 'native_invalid' : 'native_unavailable'
+            });
+          expect(world.runner.run).not.toHaveBeenCalled();
+        }
+      );
+
+      it.each(['timeout', 'aborted', 'unsettled', 'output limit', 'invalid JSON'] as const)(
+        'rejects %s process results without promoting receipt-only ownership', async kind => {
+          const world = windowsReceiptWorld();
+          const run = world.runner.run.getMockImplementation()!;
+          world.runner.run.mockImplementation(async (command, options) => {
+            const result = await run(command, options);
+            return { ...result, ...(kind === 'timeout' ? { timedOut: true }
+              : kind === 'aborted' ? { aborted: true } : kind === 'unsettled' ? { processTreeSettled: false }
+              : kind === 'output limit' ? { outputLimitExceeded: true } : { stdout: '{invalid' }) };
+          });
+          await expect(inspect(world)).rejects.toMatchObject({
+            reasonCode: kind === 'timeout' ? 'native_timeout' : kind === 'invalid JSON' ? 'native_invalid' : 'native_unavailable'
+          });
+        }
+      );
+
+      it.each(['pointer', 'selection', 'receipt', 'policy'] as const)(
+        'rechecks %s after the OS signature and registry observation', async kind => {
+          const world = windowsReceiptWorld();
+          const run = world.runner.run.getMockImplementation()!;
+          world.runner.run.mockImplementation(async (command, options) => {
+            const result = await run(command, options);
+            if (kind === 'pointer') world.files.set(world.pointerFile, Buffer.from('changed\r\n'));
+            if (kind === 'selection') world.dependencies.resolveLiftoff = async () => world.installation.launcher;
+            if (kind === 'receipt') world.files.set(world.receiptFile, Buffer.from('{}'));
+            if (kind === 'policy') world.policy.approvedSigningKeySha256 = 'f'.repeat(64);
+            return result;
+          });
+          await expect(inspect(world)).rejects.toMatchObject({
+            reasonCode: 'owner_changed'
+          });
+        }
+      );
+    });
 
   it('accepts case-insensitive selection of the stable entry, never the inner launcher', async () => {
     const world = windowsReceiptWorld();

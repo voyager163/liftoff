@@ -427,6 +427,16 @@ immutable version directory and byte-identical stable/inner launchers. Its
 manager/source/signer observations must also match the app-root uninstall
 registration's receipt/current/launcher hashes. Selecting an inner version
 launcher, a junction, a link, a changed pointer or a foreign receipt blocks.
+`readWindowsInstallerRegistration` additionally observes the exact HKCU uninstall
+key read-only and verifies the stable launcher's embedded Authenticode signature
+and signer-certificate SHA-256 through bounded system Windows PowerShell 5.1.
+It holds a read-only, non-write-shared launcher handle while hashing and checking
+the signature, reobserves registration values, then rechecks the local layout.
+It uses no profile, user modules, WinGet invocation, machine-scope lookup or
+execution-policy bypass. Missing/restricted PowerShell or an unverified signature
+blocks; these OS-observation source tests are not signed-host qualification.
+This independent observation is required even when an injected manager provider
+asserts a valid signer. It establishes neither the invoking manager nor a source.
 An installer receipt alone never supplies a WinGet source or owning channel.
 No WinGet CLI/COM observation is silently substituted: the reviewed
 [tracking-catalog implementation](https://github.com/microsoft/winget-cli/blob/3d9083c062c1e7a7086e05becb414d4e005e4ab6/src/AppInstallerRepositoryCore/PackageTrackingCatalog.cpp)

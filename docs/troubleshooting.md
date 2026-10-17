@@ -121,6 +121,10 @@ For native installations, use the owning manager and a new-shell `liftoff doctor
 plus `liftoff upgrade --check`; an npm repair command is not native authority.
 Windows `restart_required` means close the running executable before the exact
 manager handoff. Homebrew cask source does not run an unpinned `brew upgrade`.
+Windows registration/signature inspection also refuses missing or restricted
+system PowerShell, mismatched HKCU hashes and unverified embedded signatures.
+Do not disable organizational execution policy or trust an unapproved certificate
+to force an ownership result; a valid signer still does not identify a WinGet source.
 An authenticated cask-definition match is not permission to run Ruby or remove
 an npm installation. An unknown local definition/channel must not be repaired
 with an unbound path install or automatic source refresh.
