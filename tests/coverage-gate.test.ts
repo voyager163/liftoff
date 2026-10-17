@@ -19,6 +19,7 @@ import {
   evaluateTestResults,
   exceedsFloor,
   formatPercent,
+  publishedRuntimeSources,
   runCoverageGate,
   sourceInventory,
   targetedInvocation,
@@ -178,7 +179,7 @@ describe('pinned source-complete coverage configuration', () => {
   });
 
   it('configures the CLI and gateway source inventories without exclusions', () => {
-    expect(cliCoverage.include).toEqual(['src/**/*.ts']);
+    expect(cliCoverage.include).toEqual(['src/**/*.ts', ...publishedRuntimeSources(coveragePackage('cli'))]);
     expect(cliCoverage.reportsDirectory).toBe('./coverage/cli');
     expect(gatewayCoverage.include).toEqual(['src/**/*.ts', '**/src/telemetry/contract.ts']);
     expect(gatewayCoverage.allowExternal).toBe(true);
@@ -261,14 +262,46 @@ describe('pinned source-complete coverage configuration', () => {
 });
 
 describe('coverage source inventories', () => {
-  it('measures every CLI build input, including files no test imports', () => {
+  it('measures every CLI build input and published raw runtime module, including unimported files', () => {
     const inventory = sourceInventory(coveragePackage('cli'));
-    const expected = globSync('src/**/*.ts').map((file) => file.split(path.sep).join('/')).sort();
-    expect(inventory.includes).toEqual(['src/**/*.ts']);
+    const raw = publishedRuntimeSources(coveragePackage('cli'));
+    const expected = [...globSync('src/**/*.ts').map((file) => file.split(path.sep).join('/')), ...raw].sort();
+    expect(raw).toContain('distribution/native/native-bundle-contract.mjs');
+    expect(raw).toContain('distribution/native/native-program-assembly.mjs');
+    expect(inventory.includes).toEqual(['src/**/*.ts', ...raw]);
     expect(inventory.files.map((entry: { path: string }) => entry.path)).toEqual(expected);
     expect(inventory.files.map((entry: { path: string }) => entry.path)).toContain('src/cli.ts');
     expect(inventory.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
+
+  it('counts an unimported shipped JavaScript runtime module at zero rather than omitting it', async () => {
+    const module = 'distribution/native/unimported.mjs';
+    const root = await fixturePackage({
+      coverage: { provider: 'v8', include: ['src/**/*.ts', module], exclude: [],
+        thresholds: Object.fromEntries(coverageMetrics.map((metric: string) => [metric, gateFloorPercent])) },
+      sources: { 'src/covered.ts': 'export const covered = (value: number) => value > 0 ? value : -value;\n',
+        [module]: Array.from({ length: 20 }, (_, i) => `export function unimported${i}() { return ${i}; }\n`).join('') },
+      tests: { 'tests/covered.test.ts': "import {it,expect} from 'vitest'; import {covered} from '../src/covered.ts'; it('covers',()=>{expect(covered(2)).toBe(2);expect(covered(-2)).toBe(2);});\n" }
+    });
+    const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ ...manifest, files: ['dist/**/*.js', module] }));
+    const definition: Definition = { ...fixtureDefinition(), id: 'cli' };
+    expect(sourceInventory(definition, root).files.map((file: { path: string }) => file.path)).toContain(module);
+    const result = await runCoverageGate(definition, { root, quiet: true, revision: fixedRevision });
+    expect(result.result).toBe('failed');
+    const report = JSON.parse(await readFile(path.join(root, 'coverage', 'fixture', 'coverage-summary.json'), 'utf8'));
+    expect(report[path.join(root, module)].functions).toMatchObject({ covered: 0, total: 20 });
+  });
+
+  it.each(['distribution/native/*.mjs', './distribution/native/helper.mjs', '../helper.mjs',
+    'distribution\\native\\helper.mjs', 'distribution/native/missing.mjs'])(
+    'refuses an ambiguous, nonportable or missing published runtime module %s', async module => {
+      const root = await fixturePackage();
+      const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ ...manifest, files: ['dist/**/*.js', module] }));
+      expect(() => publishedRuntimeSources({ ...fixtureDefinition(), id: 'cli' }, root)).toThrow(CoverageGateError);
+    }
+  );
 
   it('measures the gateway runtime plus the whole shared contract it compiles', () => {
     const inventory = sourceInventory(coveragePackage('gateway'));

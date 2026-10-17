@@ -696,6 +696,14 @@ npm run verify:generated-containers
 npm run verify:release-identity
 ```
 
+The CLI coverage inventory includes every TypeScript build input and every
+explicitly published raw JavaScript runtime module, including the native
+distribution helpers. Unimported shipped helpers must appear with zero coverage,
+not disappear from the denominator. Compiled `dist/` output is not counted again.
+Each of the four CLI metrics and four independent gateway metrics must meet the
+unchanged 80.01% floor. Earlier TypeScript-only reports do not qualify this
+expanded CLI inventory; fresh exact-source evidence is required.
+
 ## 0.13.0-dev.0 release checklist
 
 This is an unpublished development candidate, not a released minimum version or
