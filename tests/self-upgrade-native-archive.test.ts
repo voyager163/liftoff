@@ -1,16 +1,23 @@
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { chmod, lstat, mkdir, readFile, readdir, readlink, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { gunzipSync, gzipSync } from 'node:zlib';
+import { gunzip, gunzipSync, gzipSync } from 'node:zlib';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as contract from '../scripts/native-bundle-contract.mjs';
 import { stageAuthenticatedNativeArchive } from '../src/adapters/distribution/native-archive.js';
 import { defaultSelfUpgradeDependencies } from '../src/adapters/distribution/upgrade-host.js';
 import type { NativeCandidate } from '../src/domain/distribution/native-upgrade.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
+import { selfUpgradeInstallTimeoutMs } from '../src/domain/distribution/liftoff-upgrade.js';
+
+vi.mock('node:zlib', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:zlib')>();
+  return { ...actual, gunzip: vi.fn(actual.gunzip) };
+});
 
 const directories: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
 });
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -191,6 +198,31 @@ describe.skipIf(process.platform === 'win32')('inert authenticated Linux archive
     expect(await readFile(path.join(path.dirname(stage.bundleRoot), 'archive.tar.gz'))).toEqual(expected);
     expect(await contract.bundleInventory(stage.bundleRoot)).toEqual(world.manifest.inventory);
     await stage.dispose();
+  });
+
+  it.each(['caller', 'deadline'] as const)('cancels real in-flight inflation on %s abort before full expansion', async kind => {
+    const world = await fixture();
+    const bytes = Buffer.alloc(32 * 1024 * 1024);
+    tar(world.members).copy(bytes);
+    const caller = new AbortController(), deadline = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+    const actual = await vi.importActual<typeof import('node:zlib')>('node:zlib');
+    const completions: { name: string | undefined; bytes: number | undefined }[] = [];
+    vi.mocked(gunzip).mockImplementationOnce((input, options, callback) =>
+      actual.gunzip(input, options, (error, output) => {
+        completions.push({ name: error?.name, bytes: output?.length });
+        callback(error, output);
+      }));
+    const pending = stageAuthenticatedNativeArchive({ ...world.signArchive(bytes), signal: caller.signal });
+    const refusal = expect(pending).rejects.toMatchObject({ reasonCode: 'native_install_timeout' });
+    await new Promise<void>(resolve => setImmediate(() => {
+      (kind === 'caller' ? caller : deadline).abort();
+      resolve();
+    }));
+    await refusal;
+    expect(timeout).toHaveBeenCalledWith(selfUpgradeInstallTimeoutMs);
+    expect(completions).toEqual([{ name: 'AbortError', bytes: undefined }]);
+    expect(world.storage.makeNeutralDirectory).not.toHaveBeenCalled();
   });
 
   it.each(['digest', 'signature', 'principal', 'manifest', 'inventory', 'target', 'aborted'] as const)(
