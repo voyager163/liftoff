@@ -184,6 +184,14 @@ at the existing DCR only** for native transformation metrics, never
 subscription-wide Monitoring Reader. This additional DCR-scoped read grant
 needs its own reviewed plan/approval; it is not inherited from an earlier
 Logs-only plan. The DCR must also remain in Korea Central.
+Workspace discovery uses the generic management-plane resource metadata
+lookup, not the shared-key-capable Log Analytics workspace datasource. It
+requires exactly one matching resource ID, name, group and type, and refuses
+region drift before granting access. Grafana preparation does not request
+workspace shared keys, including when workspace local authentication is
+disabled; it does not need ingestion credentials.
+This change does not sanitize previously saved plans or state; retain their
+existing private handling and separately authorized cleanup boundaries.
 Viewer/editor/admin role entries are existing Entra object
 IDs at the Grafana instance scope, reviewed independently; an empty map grants
 nobody access. The identity has Logs/metric read access, not ingestion or state

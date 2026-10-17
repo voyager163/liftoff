@@ -287,6 +287,19 @@ describe('fixed-dataset semantic oracle (not Azure query execution)', () => {
 });
 
 describe('operator, privacy and non-destructive boundaries', () => {
+  it('reads workspace metadata without the shared-key-capable workspace datasource', async () => {
+    const source = await readFile(path.join(root, 'grafana', 'main.tf'), 'utf8');
+    expect(source).toContain('data "azurerm_resources" "telemetry_workspace"');
+    expect(source).toContain('type                = "Microsoft.OperationalInsights/workspaces"');
+    expect(source).toContain('length(self.resources) == 1');
+    expect(source).toContain('lower(resource.id)');
+    expect(source).toContain('lower(resource.resource_group_name)');
+    expect(source).toContain('lower(resource.type)');
+    expect(source).toContain('lower(resource.name)');
+    expect(source).toMatch(/scope\s*=\s*one\(data\.azurerm_resources\.telemetry_workspace\.resources\)\.id/);
+    expect(source).not.toMatch(/azurerm_log_analytics_workspace|shared_key|sharedKeys|listKeys/);
+  });
+
   it('pins providers, avoids resource-group/workspace/state ownership and scopes Logs and DCR metrics identity', async () => {
     const [resource, resourceVersions, dashboard, dashboardVersions] = await Promise.all([
       readFile(path.join(root, 'grafana', 'main.tf'), 'utf8'),
@@ -297,7 +310,7 @@ describe('operator, privacy and non-destructive boundaries', () => {
     expect(resourceVersions).toContain('version = "5.3.0"');
     expect(resourceVersions).toMatch(/resource_provider_registrations\s*=\s*"none"/);
     expect(dashboardVersions).toContain('version = "4.49.0"');
-    expect(resource).toMatch(/scope\s*=\s*data\.azurerm_log_analytics_workspace\.telemetry\.id/);
+    expect(resource).toMatch(/scope\s*=\s*one\(data\.azurerm_resources\.telemetry_workspace\.resources\)\.id/);
     expect(resource).toContain('"Log Analytics Reader"');
     expect(resource).toMatch(/scope\s*=\s*data\.azurerm_monitor_data_collection_rule\.telemetry\.id/);
     expect(resource).toContain('"Monitoring Reader"');
