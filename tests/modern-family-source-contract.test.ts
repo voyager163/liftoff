@@ -315,7 +315,7 @@ it('retains unmatched-row semantics and rejects an unknown family without exposi
     ['unknown-family', 'single-maintainer-gitflow', 'manual'])).toThrow('Unknown modern activation source family.');
 });
 
-it('performs the same11 validated fresh-inspection resolutions and filesystem reads, copying66 family rows instead of11 only in the legacy comparator', async () => {
+it('reuses one validated source per managed-core operation while retaining four fresh resolutions and reads per independent inspection', async () => {
   for (const family of families) family.registry();
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'selected-family-inspection-'))); roots.push(root);
   const fixture = await settled(writeModernInstalledProject(root));
@@ -329,9 +329,10 @@ it('performs the same11 validated fresh-inspection resolutions and filesystem re
   };
   expect(original.status).toBe('observed');
   if (original.status !== 'observed' || !original.current) throw new Error('Expected independently read enabled current state.');
-  expect(legacy.resolutions).toBe(11); expect(legacy.lookups).toHaveLength(11);
-  expect(legacy.lookups.reduce((sum, lookup) => sum + lookup.graphRows, 0)).toBe(66);
+  expect(legacy.resolutions).toBe(4); expect(legacy.lookups).toHaveLength(4);
+  expect(legacy.lookups.reduce((sum, lookup) => sum + lookup.graphRows, 0)).toBe(24);
   expect(legacy.lookups.every(lookup => lookup.arrayCalls === 1 && lookup.rowCalls === 0)).toBe(true);
+  expect(legacy.reads.filter(read => read.startsWith('open:')).length).toBeGreaterThan(0);
   resetObservation('selected');
   const selectedStartedAt = Date.now();
   const current = await settled(inspectModernInstalledActivation(root));
@@ -342,10 +343,14 @@ it('performs the same11 validated fresh-inspection resolutions and filesystem re
   inspections.push(legacy, selected);
   expect(current.status).toBe('observed');
   if (current.status !== 'observed' || !current.current) throw new Error('Expected independently read enabled current state.');
+  expect(selected.startedAt).toBeGreaterThanOrEqual(legacy.completedAt);
+  expect(current.snapshot).not.toBe(original.snapshot);
+  expect(current.snapshot.files).not.toBe(original.snapshot.files);
+  expect(current.snapshot.directories).not.toBe(original.snapshot.directories);
   compareFreshObservations(original, current);
-  expect(selected.resolutions).toBe(11);
-  expect(selected.lookups).toHaveLength(11);
-  expect(selected.lookups.reduce((sum, lookup) => sum + lookup.graphRows, 0)).toBe(11);
+  expect(selected.resolutions).toBe(4);
+  expect(selected.lookups).toHaveLength(4);
+  expect(selected.lookups.reduce((sum, lookup) => sum + lookup.graphRows, 0)).toBe(4);
   expect(selected.lookups.every(lookup => lookup.arrayCalls === 0 && lookup.rowCalls === 1)).toBe(true);
   expect(selected.reads).toEqual(legacy.reads);
   expect(selected.reads.filter(read => read.startsWith('open:')).length).toBeGreaterThan(0);
