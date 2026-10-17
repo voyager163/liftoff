@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
 import { canonicalSha256 } from '../../src/domain/governance/activation/canonical-json.js';
+import { environmentValue } from '../../src/domain/workstation/executables.js';
 import type { GitHubActivationTransport, GitHubRequest } from '../../src/adapters/github/activation-rest.js';
 import { NodeCommandRunner } from '../../src/process-runner.js';
 import type { CommandResult, CommandRunner } from '../../src/process-runner.js';
@@ -28,10 +29,19 @@ const valid = ['export const valid = true;\n', '{"name":"isolated"}\n'];
 const invalid = ['export const valid = ;\n', '{broken}\n'];
 const paths = ['backend/application.js', 'backend/package.json'];
 const noGit: CommandRunner = { async run() { throw new Error('Matrix observation must not submit a process or Git effect.'); } };
+type MatrixValidatorSelector = Pick<WorkflowContextBinding, 'family' | 'mode'> & { jobId: typeof contexts[number]['jobId'] };
+
+export function matrixValidatorEnvironment(home: string, platform: NodeJS.Platform = process.platform,
+  ambient: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const environment = { HOME: home, NODE_OPTIONS: '' };
+  if (platform !== 'win32') return environment;
+  const systemRoot = environmentValue(ambient, 'SystemRoot', 'win32');
+  if (!systemRoot) throw new Error('The owned Windows validator requires the actual host SystemRoot.');
+  return { ...environment, SystemRoot: systemRoot };
+}
 
 export function matrixValidatorFailure(reason: 'settlement' | 'input-readback' | 'expectation',
-  selector: Pick<WorkflowContextBinding, 'family' | 'mode'> & { jobId: typeof contexts[number]['jobId'] },
-  result: CommandResult): Error {
+  selector: MatrixValidatorSelector, result: CommandResult): Error {
   const message = reason === 'settlement' ? 'An isolated bounded validator did not settle.' :
     reason === 'input-readback' ? 'An original file-backed validator input changed during execution.' :
       `The isolated actual validator did not detect only its own reviewed violation: ${selector.family}/${selector.mode}/${selector.jobId}, status ${result.status}.`;
@@ -43,6 +53,16 @@ export function matrixValidatorFailure(reason: 'settlement' | 'input-readback' |
       errorCode: result.errorCode ?? null, errorMessage: result.errorMessage ?? null,
       timedOut: result.timedOut, aborted: result.aborted ?? null, outputLimitExceeded: result.outputLimitExceeded ?? null }
   })}`);
+}
+
+export function matrixValidatorConclusion(selector: MatrixValidatorSelector, result: CommandResult,
+  expectedRed: boolean): 'success' | 'failure' {
+  const conclusion = result.status === 0 ? 'success' : 'failure';
+  if (conclusion !== (expectedRed ? 'failure' : 'success') ||
+      expectedRed && (result.status !== 1 || !/\bSyntaxError:/u.test(result.stderr))) {
+    throw matrixValidatorFailure('expectation', selector, result);
+  }
+  return conclusion;
 }
 
 /** Original fixture provenance and loopback/process observations, not live workflow qualification. */
@@ -142,7 +162,7 @@ async function prepareMatrixFixture(seed: Awaited<ReturnType<typeof workflowSour
       await writeFile(input, text, { flag: 'wx', mode: 0o600 });
       const result = await validators.run({ executable: process.execPath, args: index === 0 ?
         ['--check', input] : ['-e', "JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8'))", input] },
-      { cwd: seed.root, env: { HOME: seed.storage.homedir, NODE_OPTIONS: '' },
+      { cwd: seed.root, env: matrixValidatorEnvironment(seed.storage.homedir),
         timeoutMs: 5000, maxOutputBytes: 4096, stream: false, ensureProcessTreeSettled: true });
       const selector = { family: binding.family, mode: binding.mode, jobId: context.jobId };
       if (result.timedOut || result.outputLimitExceeded || result.errorCode || result.aborted || result.status === null ||
@@ -152,11 +172,7 @@ async function prepareMatrixFixture(seed: Awaited<ReturnType<typeof workflowSour
       if (await readFile(input, 'utf8') !== text) {
         throw matrixValidatorFailure('input-readback', selector, result);
       }
-      const conclusion = result.status === 0 ? 'success' : 'failure';
-      if (conclusion !== (binding.violation?.context === context.name ? 'failure' : 'success')) {
-        throw matrixValidatorFailure('expectation', selector, result);
-      }
-      outcome.push(conclusion);
+      outcome.push(matrixValidatorConclusion(selector, result, binding.violation?.context === context.name));
     }
     outcomes.push(outcome);
   }

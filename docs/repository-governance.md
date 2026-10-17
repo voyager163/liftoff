@@ -225,6 +225,28 @@ whole-body semantic compilation, the issuer, installed orchestration or14.3.
 The existing publication paths, exact per-file approval/readback and public
 review/effect, protected journal and joint-finalization boundaries are unchanged.
 
+The first-party `distribution/native/native-program-assembly.mjs` private
+`buildNativeProgram` API retains the actual
+original npm archive bytes from its own build/pack/install invocation behind an
+opaque process-local reference. `readNativeProgramAssembly` accepts only that
+original reference and rechecks the original source, tool/runtime-archive
+references and complete installed output, including physical identities, before
+returning an independent copy of the archive and observed manifest, plus its
+internally derived installed application root and CLI entrypoint. Copied or
+serialized references and caller-supplied receipts cannot recreate the reader.
+This is a local assembly relationship, not release authentication, atomic
+filesystem custody, native qualification or workflow authority. Its installed
+reader has no dependency on repository-only build scripts; only creation needs
+the original first-party build checkout and tooling. An independently installed
+copy does not share another module instance's private references. The existing
+`buildNativeBundle` CLI/API is unchanged. The unpublished candidate uses actual
+consistent `0.13.0-dev.0` package/lock identities; older `0.12.3` bytes cannot
+authenticate it. This prerelease is not eligible for ordinary stable-channel
+upgrade: its installed smoke checks refusal before manager observations, not
+the stable release's current-version and foreign-registry cases. The Source
+constructor, workflow runtime integration and TASK14.3 qualification remain
+separate implementation requirements; this API does not enable them by itself.
+
 Private `observeSource5WorkflowDependencyReview` reads the actual GitHub
 dependency diff for exact repository/base/head commit/tree selectors through
 the original read-only runtime. It verifies a bounded complete ancestor-to-head
@@ -572,6 +594,14 @@ and the original bounded result fields/stdout/stderr, not commands, ambient
 environment or unrelated configuration. Diagnostics do not change the invocation,
 input readback, settlement guards, five-second/4-KiB limits or expected outcomes;
 a numeric Windows status is not an observed POSIX signal.
+The owned validators retain only their isolated `HOME` and empty `NODE_OPTIONS`
+on POSIX. On Windows they additionally copy the actual host `SystemRoot`, using
+case-insensitive defined-key lookup; missing, empty or conflicting values refuse
+before invocation. They do not forward ambient search paths, Node configuration
+or unrelated environment values. Controlled-red syntax/JSON outcomes require
+status1 and an actual `SyntaxError`, so a runtime initialization failure cannot
+count as the reviewed source violation. Portable allowlist controls are not
+native Windows qualification.
 Missing-scanner fixtures preserve Git in their reduced search path: Windows uses
 the directory of the actual resolved Git executable, not POSIX system directories.
 They verify Git remains visible and the scanner launcher is absent before invoking
@@ -1036,7 +1066,7 @@ new history and repair journals use schema 2. Missing capability support stops
 the operation with `liftoff upgrade --check --json`, not direct project edits.
 Upgrading the CLI is a separate decision. Require advertised `interactive-repair`
 support before using the normal interactive journey. Repair identity does not change
-package 0.12.3 or activation 0.12.0 / manifest 7 / policy 6 / activation contract 3 /
+the CLI package identity or activation 0.12.0 / manifest 7 / policy 6 / activation contract 3 /
 graph 2 / state, evidence and approval 3 / compatibility 4.
 
 The normal human entry point is `liftoff repair` in an interactive terminal.

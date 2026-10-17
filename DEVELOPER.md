@@ -138,8 +138,9 @@ schema identify read-only data contracts, not a new policy or activation identit
 Repair has an independent authority in `src/domain/repair/identity.ts`, exposed
 by `liftoff repair --capabilities --json`. Repair contract 1 records eligibility,
 interactive/exact approval, validation, completion and recovery guarantees.
-It is not part of the activation version vector above. The package remains at 0.12.3;
-new application repair and locked preparation capabilities are unreleased. There is
+It is not part of the activation version vector above. The current CLI package is
+the unpublished `0.13.0-dev.0` candidate; new application repair and locked
+preparation capabilities remain unreleased. There is
 no released minimum version yet: tools and integrations must negotiate the actual
 capability contract and preparation matrix directly rather than fabricating a release version.
 
@@ -695,7 +696,36 @@ npm run verify:generated-containers
 npm run verify:release-identity
 ```
 
+## 0.13.0-dev.0 release checklist
+
+This is an unpublished development candidate, not a released minimum version or
+permission to tag, publish, sign, install a public native package, or change cloud
+resources. The historical checklist below does not qualify this candidate.
+
+- Package metadata, both root lock identities, actual npm archive contents,
+  native manifests, and installed `liftoff --version` must agree on
+  `0.13.0-dev.0`. Do not relabel older `0.12.3` artifacts.
+- Requalify the composed source, installed dependency closure, and original
+  same-process assembly producer/reader. An original assembly content reference
+  does not itself qualify workflow execution or issue release authority.
+- Run the complete host matrix and independently enforce all four CLI and
+  gateway coverage floors at 80.01%. Earlier source-only, host-specific, or
+  predecessor results do not qualify the final composed source.
+- Ordinary stable-channel upgrade must refuse this prerelease before manager
+  observations. That refusal does not qualify a stable release's current-version,
+  foreign-registry, manager installation, or migration journeys.
+- Require actual signing, notarization where applicable, approved namespaces,
+  minimum-host and install/upgrade/uninstall evidence before enabling a public
+  native channel. Unconfigured release principals remain fail-closed.
+- Preserve historical activation identities, manifests, compatibility fixtures,
+  project data, consent and protected state. Live qualification still requires
+  its exact admitted host, target, principal and bounded effects.
+
 ## 0.12.3 release checklist
+
+This historical release checklist is retained for the original baseline. Its
+version and contract statements are not the current development candidate's
+publication or qualification record.
 
 - Package metadata, lockfile metadata, `liftoff --version`, and tag agree on
   `0.12.3`. Preparing these files is not publication or permission to create a tag.

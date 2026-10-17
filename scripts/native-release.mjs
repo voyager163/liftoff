@@ -12,6 +12,7 @@ import { assertNativePublicationEvidence, verifyNativeEvidenceSignature } from '
 import policy from '../distribution/native/release-policy.json' with { type: 'json' };
 import platforms from '../distribution/native/platforms.json' with { type: 'json' };
 import { nativeEvidenceKinds } from '../distribution/native/native-release-catalog.mjs';
+import { nativeCaskDefinition } from '../distribution/native/native-cask-definition.mjs';
 import { stringify } from 'yaml';
 
 export { assertNativePublicationEvidence, verifyNativeEvidenceSignature };
@@ -368,27 +369,8 @@ export function nativePackageDefinitions(record, evidence, approvedPolicy = poli
   assert.match(record.version, /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/);
   const base = `https://github.com/${record.repository}/releases/download/v${record.version}/`;
   if (record.target === 'darwin-arm64') {
-    const token = approvedPolicy.homebrew.cask.split('/').at(-1);
-    assert.equal(record.files[0].filename, `liftoff-${record.version}-darwin-arm64.tar.gz`);
-    assert.match(record.files[0].sha256, /^[a-f0-9]{64}$/);
-    assert.equal(evidence.artifactUrl, `${base}${record.files[0].filename}`, 'Cask URL must identify the exact qualified release asset.');
-    return { [`${token}.rb`]: [
-      `cask "${token}" do`,
-      `  version "${record.version}"`,
-      `  sha256 "${record.files[0].sha256}"`,
-      `  url "${evidence.artifactUrl}"`,
-      '  name "Liftoff"',
-      '  desc "CLI for governed GenAI applications and APIs"',
-      `  homepage "https://github.com/${record.repository}"`,
-      '  depends_on arch: :arm64',
-      '  depends_on macos: ">= :ventura"',
-      '  preflight do',
-      '    odie "Native Apple Silicon is required" unless Hardware::CPU.arm? && !Hardware::CPU.in_rosetta2?',
-      `    odie "The qualified runtime requires macOS ${platforms.targets['darwin-arm64'].minimumOs} or newer" if MacOS.version < MacOSVersion.new("${platforms.targets['darwin-arm64'].minimumOs}")`,
-      '  end',
-      '  binary "bin/liftoff"',
-      'end', ''
-    ].join('\n') };
+    const definition = nativeCaskDefinition(record, evidence, approvedPolicy);
+    return { [definition.filename]: definition.content };
   }
   assert.equal(record.target, 'win32-x64', 'Linux archives do not use Homebrew or WinGet definitions.');
   const installer = evidence.windowsInstaller;

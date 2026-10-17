@@ -244,6 +244,21 @@ locators; it does not authenticate a publisher, inspect a channel or grant insta
 Its adjacent `.d.mts` declaration provides the typed locator contract; both are
 bound to the builder inputs and copied into the native bundle's `installation/`.
 
+The inert `native-cask-definition.mjs` exports
+`nativeCaskDefinition(record, evidence, approvedPolicy?)`, returning exactly
+`{ filename, content }` for the existing canonical Ruby cask definition.
+The release renderer delegates to it without changing cask bytes. Its adjacent
+`.d.mts` declaration accepts unknown records at the typed admission boundary.
+It uses the existing publication-evidence and exact archive URL/hash checks;
+callers must first independently authenticate the original qualification bytes
+and approved principal. It neither authenticates unsigned catalog locators nor
+evaluates Ruby, reads Homebrew state, proves a tap commit/path or makes a
+Homebrew command digest-bound. Comparing independently selected published cask
+bytes to this canonical result is separate from proving manager execution.
+Default unconfigured production policy continues to refuse rendering.
+Packaging and native-builder inventory integration for this helper must be
+composed before installed consumers can use it.
+
 Strict TypeScript consumers distinguish `bundleFile` identities from
 `readBundleFile` identities plus captured bytes. Builder and recovery interfaces
 retain their optional Windows launcher and selected stale-lock inputs; these

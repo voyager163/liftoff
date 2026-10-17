@@ -1,6 +1,6 @@
 {
   "name": "@msn-control/liftoff",
-  "version": "0.12.3",
+  "version": "0.13.0-dev.0",
   "description": "Interactive CLI for governed GenAI applications and APIs.",
   "type": "module",
   "license": "GPL-3.0-only",
@@ -35,6 +35,10 @@
     "distribution/native/native-release-admission.d.mts",
     "distribution/native/native-release-catalog.mjs",
     "distribution/native/native-release-catalog.d.mts",
+    "distribution/native/native-program-assembly.mjs",
+    "distribution/native/native-program-assembly.d.mts",
+    "distribution/native/native-cask-definition.mjs",
+    "distribution/native/native-cask-definition.d.mts",
     "distribution/native/release-policy.json",
     "distribution/native/platforms.json",
     "assets/governance/modern/source-contracts.json",

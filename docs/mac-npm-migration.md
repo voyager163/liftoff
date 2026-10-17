@@ -145,6 +145,11 @@ journal or npm removal. A preparation identity is not an apply approval.
 Recovery still requires its separately qualified provider; preparation or an
 observed absent destination cannot authorize restoration.
 
+Discovery examines at most 64 explicit PATH directories, never manager trees.
+A visible npm or Liftoff launcher whose npm/Node pair cannot be proved is an
+`unproven-path-owner`, not an absent installation. Select the complete old owner
+explicitly rather than allowing another discovered copy to hide that ambiguity.
+
 Apply additionally requires:
 
 ```text
@@ -207,6 +212,27 @@ target-looking bytes. New packages, cask installations, unexpected children
 and user changes are never overwritten. Verified old content, launcher and
 version are required before reporting `restored`.
 
+To check a previously completed handover or restoration, select its current
+authenticated journal explicitly:
+
+```text
+liftoff-migrate-npm --inspect <exact-journal-sha256>
+  --journal <exact-private-journal-directory>
+```
+
+Inspection never acquires or releases a lock, changes journal bytes, uninstalls,
+installs, removes residual links or replays restoration. `effects: none` describes
+this invocation; `observedPhase` identifies the selected historical checkpoint.
+An `installed` result requires fresh native ownership, exact version/assets and
+PATH observations, plus continued absence of the selected old package. A settled
+cask operation whose final verification was interrupted can be checked without
+rewriting its `cask-settled` checkpoint. `restored` requires the complete unchanged
+physical-entry ledger, old package/launcher/version and positive cask absence.
+An uncertain operation, retained lock, changed manager or edited/replaced state
+remains partial; a previous success never substitutes for current verification.
+Inspection also requires a qualified provider, not the read-only preparation
+API. It cannot clear an unknown settlement or grant new apply/recovery authority.
+
 Liftoff configuration, telemetry preferences, projects, `.liftoff`, Node/npm and
 unrelated packages are outside cleanup scope. There is no broad prefix,
 nvm/Volta image, cache or configuration sweep. Identity checks detect observed
@@ -225,7 +251,7 @@ verified cask with unresolved PATH; help/ready/fully selected completion exits 0
 ```sh
 npm run build
 npx vitest run tests/mac-migration.test.ts tests/mac-migration-safety.test.ts \
-  tests/mac-migration-observation.test.ts \
+  tests/mac-migration-observation.test.ts tests/mac-migration-resume.test.ts \
   tests/mac-migration-preparation.test.ts \
   tests/mac-migration-environment.test.ts tests/process-runner.test.ts \
   tests/mac-migration-npm-installed.test.ts \

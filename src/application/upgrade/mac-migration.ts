@@ -15,7 +15,8 @@ import {
 import {
   captureMigrationTree, copyMigrationTree, MacMigrationJournalStore, migrationAbsent, migrationLauncher,
   migrationParentIdentities as parentIdentities, restoreMigrationTree, syncMigrationDirectory,
-  assertMigrationRecoveryJournalBudget, migrationJournalUnsettled, type MigrationJournal, type MigrationTree
+  assertMigrationRecoveryJournalBudget, assertRestoredMigrationEntriesCurrent, migrationJournalUnsettled,
+  type MigrationJournal, type MigrationTree
 } from '../../adapters/distribution/mac-migration-state.js';
 import { commandFailed } from '../../domain/distribution/liftoff-npm-installation.js';
 import { SelfUpgradeFailure } from '../../domain/distribution/liftoff-upgrade.js';
@@ -32,6 +33,7 @@ export interface MacMigrationRequest {
   recovery?: string;
   apply?: { review: string; journalRoot: string };
   recover?: { journalRoot: string; journalSha256: string; deadLockSha256?: string };
+  inspect?: { journalRoot: string; journalSha256: string };
 }
 
 export interface MacMigrationDependencies {
@@ -171,18 +173,25 @@ async function restore(journal: MigrationJournal, store: MacMigrationJournalStor
     if (journal.restoration!.launcher.metadata !== journal.launcher.metadata) throw new MacMigrationFailure('restored-launcher-metadata-mismatch');
     delete journal.restoration!.launcherPending; await store.save(journal);
   }
-  if ((await captureMigrationTree(journal.owner.packageRoot)).content !== journal.tree.content ||
+  await verifyRestored(journal, dependencies.upgrade, scratch);
+  journal.phase = 'restored'; await store.save(journal);
+}
+
+async function verifyRestored(journal: MigrationJournal, dependencies: SelfUpgradeDependencies, scratch: string): Promise<void> {
+  const tree = await captureMigrationTree(journal.owner.packageRoot);
+  if (tree.content !== journal.tree.content ||
     await realpath(journal.owner.launcher) !== journal.owner.binary) throw new MacMigrationFailure('restore-verification-failed');
-  if (await migrationProbe(dependencies.upgrade, scratch, journal.owner.node, journal.owner.node,
-    [journal.owner.binary, '--version']) !== `Liftoff ${journal.owner.version}`) {
+  if (await migrationProbe(dependencies, scratch, journal.owner.node, journal.owner.node,
+    [journal.owner.binary, '--version']) !== `Liftoff ${journal.owner.version}` ||
+    (await captureMigrationTree(journal.owner.packageRoot)).physical !== tree.physical) {
     throw new MacMigrationFailure('restore-version-verification-failed');
   }
-  journal.phase = 'restored'; await store.save(journal);
 }
 
 export async function runMacMigration(request: MacMigrationRequest, dependencies: MacMigrationDependencies): Promise<MacMigrationReport> {
   const report: MacMigrationReport = { schemaVersion: 1, kind: 'liftoff-mac-npm-migration',
-    mode: request.recover ? 'recover' : request.apply ? 'apply' : 'preview', status: 'blocked', effects: 'none', blockers: [] };
+    mode: request.inspect ? 'inspect' : request.recover ? 'recover' : request.apply ? 'apply' : 'preview',
+    status: 'blocked', effects: 'none', blockers: [] };
   let scratch: string | undefined;
   let store: MacMigrationJournalStore | undefined;
   let journal: MigrationJournal | undefined;
@@ -190,8 +199,55 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
   try {
     const host = await dependencies.host();
     assertMacHost(host);
-    if (request.apply && request.recover) throw new MacMigrationFailure('contradictory-mode');
+    if ([request.apply, request.recover, request.inspect].filter(Boolean).length > 1 ||
+      request.inspect && (request.selection || request.brew || request.recovery)) throw new MacMigrationFailure('contradictory-mode');
     scratch = await dependencies.upgrade.makeNeutralDirectory();
+    if (request.inspect) {
+      store = new MacMigrationJournalStore(request.inspect.journalRoot);
+      journal = await store.read(request.inspect.journalSha256);
+      report.selected = selectedReport(journal.owner);
+      report.observedPhase = journal.phase;
+      report.status = 'partial';
+      if (migrationJournalUnsettled(journal)) throw new MacMigrationFailure('operation-settlement-unproven');
+      if (!await migrationAbsent(path.join(store.root, 'lock'))) throw new MacMigrationFailure('migration-lock-present');
+      const cask = dependencies.cask;
+      if (!cask) throw new MacMigrationFailure('native-cask-provider-unqualified');
+      if (macMigrationHash(JSON.stringify(nativePolicy(cask.policy))) !== journal.policyIdentity ||
+        (await brewObservation(journal.brew.executable, journal.owner, dependencies.upgrade, scratch)).identity !== journal.brew.identity) {
+        throw new MacMigrationFailure('inspection-manager-changed');
+      }
+      report.target = targetReport(cask, journal.candidate);
+      let verification: MacMigrationReport['verification'];
+      let status: 'installed' | 'restored';
+      if (['verified', 'cask-settled'].includes(journal.phase)) {
+        if (!await migrationAbsent(journal.owner.packageRoot)) throw new MacMigrationFailure('old-installation-reappeared');
+        verification = await verifyCask(journal, dependencies, scratch);
+        if (!await migrationAbsent(journal.owner.packageRoot)) throw new MacMigrationFailure('old-installation-reappeared');
+        status = 'installed';
+      } else if (journal.phase === 'restored') {
+        await assertMigrationTools(journal.owner);
+        if (!await bounded(signal => cask.absent(journal!.brew, journal!.candidate, signal))) {
+          throw new MacMigrationFailure('cask-absence-unproven');
+        }
+        if (journal.restoration?.completed.length !== journal.tree.entries.length) throw new MacMigrationFailure('incomplete-restoration-ledger');
+        await assertRestoredMigrationEntriesCurrent(journal);
+        if (JSON.stringify(await migrationLauncher(journal.owner.launcher)) !== JSON.stringify(journal.restoration.launcher ?? journal.launcher) ||
+          journal.destination !== journal.owner.launcher && !await migrationAbsent(journal.destination)) {
+          throw new MacMigrationFailure('recovery-destination-changed');
+        }
+        await verifyRestored(journal, dependencies.upgrade, scratch);
+        status = 'restored';
+      } else throw new MacMigrationFailure('migration-recovery-required');
+      if (!await migrationAbsent(path.join(store.root, 'lock')) ||
+        macMigrationHash(JSON.stringify(nativePolicy(cask.policy))) !== journal.policyIdentity ||
+        (await brewObservation(journal.brew.executable, journal.owner, dependencies.upgrade, scratch)).identity !== journal.brew.identity) {
+        throw new MacMigrationFailure('inspection-input-changed');
+      }
+      await store.read(request.inspect.journalSha256);
+      if (verification) report.verification = verification;
+      report.status = status;
+      return report;
+    }
     if (request.recover) {
       store = new MacMigrationJournalStore(request.recover.journalRoot);
       journal = await store.read(request.recover.journalSha256);
@@ -361,10 +417,13 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
       error instanceof SelfUpgradeFailure ? `native-${error.reasonCode}` : 'migration-observation-or-operation-failed');
     return report;
   } finally {
-    const unsettled = store?.hasUnsettledOperation || journal && migrationJournalUnsettled(journal);
+    const unsettled = !request.inspect && (store?.hasUnsettledOperation || journal && migrationJournalUnsettled(journal));
     if (store && journal) {
       try { report.journal = await store.descriptor(); }
-      catch { report.blockers.push('journal-readback-failed'); report.status = 'partial'; }
+      catch {
+        report.blockers.push('journal-readback-failed'); report.status = 'partial';
+        if (request.inspect) delete report.verification;
+      }
     }
     if (store && locked && !unsettled) {
       try { await store.release(); } catch { report.blockers.push('migration-lock-retained'); report.status = 'partial'; }
