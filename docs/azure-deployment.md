@@ -286,7 +286,53 @@ directory. The existing dispatch input names, action, destination and effects
 do not change. Workflow publication, installed host admission and independent
 exact transmission/network/build approval remain separate prerequisites.
 
-The reviewed workflow protocol is one `publish` job named
+#### Explicit digest-only source proposal
+
+Selecting `artifactRecipe` in the `application-artifact-ready` source
+configuration opts into a separate, closed recipe; omission preserves the
+legacy QuickBuild binding and rendering. Its exact declaration is:
+
+```json
+{
+  "version": "oci-digest-v1",
+  "builderName": "<reviewed-existing-builder>",
+  "buildxVersion": "<reviewed-vMAJOR.MINOR.PATCH>",
+  "buildkitVersion": "<reviewed-vMAJOR.MINOR.PATCH>"
+}
+```
+
+These are reviewed tool declarations, **not qualification or authority**.
+Unknown recipe versions, extra fields and legacy directory contexts are refused.
+Use the same exact manifest-bound root inventory. The first-party
+`applicationArtifactDigestWorkflow(paths, recipe, runner)` composes pinned
+checkout, the existing raw-Git projection, a bounded digest-only exporter and
+GitHub-only build provenance. `observeApplicationSource` requires the complete
+exact workflow, not merely a matching caller-supplied workflow hash. Additional
+setup/jobs/services, changed working directories, image/cache tags, implicit
+OCI attestations and referrers-tag fallback fail validation. Existing dispatch
+input names remain unchanged; the reserved legacy `image_tag` input is not
+consumed by this recipe.
+
+**This is Stage A source preparation, not an executable reviewed plan.**
+`PhasePlanBuild.blockers` prevents a saved executable plan or approval before
+source transmission, intent or dispatch. Four independent gaps remain:
+authenticated original-program delivery, whole-job protected host/credential
+custody, actual build-tool qualification, and allocation of GitHub attestation's
+`github-write` effect. The frozen artifact action and phase do not allow that
+delegated write; declaring `attestations: write` in proposed workflow bytes
+does not grant it. TASK14.3/Root owns the genuine delivery/custody handoff and
+the separate compatible effect-contract decision. No local port, builder
+name/version, fixture or native-content reference fills those gaps.
+
+No new publication receipt or provenance issuer is allocated. Legacy v1
+records and original accepted handles remain inspectable and retain their
+existing observation-only behavior when the legacy recipe is selected.
+Selecting this recipe refuses those receipts as current artifact readiness;
+there is no fake ACR run, v1 relabeling or change to `VerifiedApplicationArtifact`.
+Actual manifest readback, original-run cryptographic verification, retention
+and independently approved live qualification remain outstanding.
+
+The legacy reviewed workflow protocol is one `publish` job named
 `Liftoff application artifact`, with the exact qualified runner group/label, a
 1–20 minute timeout, immutable action references, and this pre-effect guard:
 `${{ github.sha == inputs.source_sha && github.run_attempt == 1 }}`.
