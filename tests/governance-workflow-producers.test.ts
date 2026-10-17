@@ -1051,6 +1051,33 @@ describe('per-file workflow source publication authority', () => {
   }
 
   describe('actual bounded local Git and HTTP publication fixtures', () => {
+    it('allows only the complete literal committed-mode read in an original read-only runtime', async () => {
+      const f = await publicationFixture();
+      try {
+        const proof = await executeWorkflowSourcePublication(f.input, f.request);
+        const runtime = workflowObservationRuntime({
+          projectRoot: f.root, runner: f.input.runner,
+          transport: { async request() { throw new Error('This Git-only control must not contact a provider.'); } }
+        });
+        const args = ['diff-tree', '--no-commit-id', '--raw', '--no-abbrev', '-r', '-z', proof.commitSha];
+        expect(await runtime.git(args)).toMatch(/^:000000 100644 [a-f0-9]{40} [a-f0-9]{40} A\0\.github\/workflows\/proof\.yml\0$/u);
+        const before = f.calls.length;
+        for (const unsupported of [
+          args.filter(argument => argument !== '--no-abbrev'),
+          [...args.slice(0, -1), proof.commitSha.slice(0, 7)],
+          [...args.slice(0, -1), 'A'.repeat(40)],
+          [...args.slice(0, -1), `${proof.commitSha}:${f.request.files[0]!.path}`],
+          [...args, '--', f.request.files[0]!.path],
+          [...args, '--ext-diff'],
+          [...args, '--textconv'],
+          ['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', proof.commitSha]
+        ]) {
+          await expect(runtime.git(unsupported)).rejects.toMatchObject({ code: 'workflow-observation-only' });
+          expect(f.calls).toHaveLength(before);
+        }
+      } finally { await f.close(); }
+    });
+
     it.each(['fresh', 'read-only', 'resume'] as const)(
       'rejects a genuinely executable reviewed-byte commit during %s publication', async mode => {
         const f = await publicationFixture();
