@@ -39,13 +39,11 @@ Exact clean committed bytes passed build; project and gateway no-emit checks;
 395 telemetry-focused CLI/project/semantic tests with three separately owned
 cases excluded; 162 complete gateway validator tests; 29 documentation tests;
 repository policy; strict change validation; and strict all-OpenSpec validation
-(24/24). The excluded cases were rerun together and remain exactly three
-current-version/native-owner expectation failures: two doctor readiness
-aggregation cases in `tests/semantic-command-outcomes.test.ts` and one
-owner-aware upgrade-availability case in
-`tests/project-telemetry-enrollment.test.ts`. Do not change those snapshots or
-owner identities as part of telemetry; Root owns their deliberate `.13-dev`
-expectation correction.
+(24/24). At that revision the excluded cases were rerun together and remained
+exactly three current-version/native-owner expectation failures: two doctor
+readiness aggregation cases in `tests/semantic-command-outcomes.test.ts` and
+one owner-aware upgrade-availability case in
+`tests/project-telemetry-enrollment.test.ts`.
 
 The sealed evidence directory is
 `/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/telemetry-dev-suppression-cc91`.
@@ -57,6 +55,33 @@ No full suite, V8 coverage, native qualification, cloud action, package
 publication or push ran. No OpenSpec task checkbox changed; progress remains
 87/136. Root should preserve `cc91c2e8` as the telemetry source delta and run
 final composed qualification against its larger source inventory.
+
+Root later assigned those three expectations on exact composed base
+`7bb34abddcf48edb50cb6f411ebbda5227e2346e`, tree
+`0937412a92267e485746ce064be0993cd997db48`. The actual cause was not a
+production owner/readiness defect: both tests intended a released npm-owned
+observation but passed the source package's unpublished `0.13.0-dev.0` as
+`SelfUpgradeRequest.currentVersion`. Production correctly returned
+`blocked/invalid_package` before owner or channel observation.
+
+Test-only successor `11d133b1c4fe2b59e792fe9fb08a6de3bcf4b727`, tree
+`4528bf0271aa0faf1fa626fa05aa8bee22ec24a4`, explicitly supplies each
+fixture's released current version at the injected self-upgrade boundary while
+preserving its exact package root and dependencies. No production file or
+shared fixture changed; unpublished-source refusal, stable/native guards,
+owner identities, semantic outcomes and opt-outs remain unchanged. Exact clean
+committed bytes pass both complete owning files (93/93), the complete
+telemetry closure (398/398), build, project/gateway no-emit, repository policy,
+strict change validation and strict all-OpenSpec validation (24/24).
+
+Evidence is retained under
+`/Users/jonathan/.copilot/session-state/5346ea6f-fb24-4527-af62-46fbce954a74/files/owner-version-expectations-11d133`.
+`receipt.json` has SHA-256
+`b4ed4a829cc211ae844dfd370c0c15b21fa9aa2b5cc7068adea5893957732a4d`;
+the evidence ledger has SHA-256
+`0fc8b22230e1aa07ef54ae126dfb78c4b9f72c175c06b6fa4148aa911e91735b`.
+No full suite, V8 coverage, native/cloud action, push or task checkbox change
+ran.
 
 ## Shared reconstruction correction, 2026-10-17
 
