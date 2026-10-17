@@ -99,14 +99,20 @@ export async function readSource5WorkflowOwnershipHistory(input: Source5Workflow
   const { scope, entryKey, inventory, lineage } = description;
   const store = createWorkflowSource5ControlStore(input.projectRoot, input.storage);
   const retained: { namespace: string; key: string; record: WorkflowSource5StoredControl }[] = [];
-  for (const object of inventory.objects) {
-    const record = await store.read(object.namespace === 'operation' ? 'operation' : 'proof', object.key);
-    if (!record) continue;
-    if (record.encodedBytes > object.maximumEncodedBytes || record.revision > object.maximumRevisions ||
-      object.maximumRevisions === 1 && (record.revision !== 1 || record.previousDigest !== null)) {
-      return workflowFailure('workflow-source5-owner', 'Retained ownership history exceeds its original sealed byte/revision inventory.');
+  for (let offset = 0; offset < inventory.objects.length; offset += 4) {
+    const reads = await Promise.allSettled(inventory.objects.slice(offset, offset + 4).map(async object => ({
+      object, record: await store.read(object.namespace === 'operation' ? 'operation' : 'proof', object.key)
+    })));
+    for (const read of reads) {
+      if (read.status === 'rejected') throw read.reason;
+      const { object, record } = read.value;
+      if (!record) continue;
+      if (record.encodedBytes > object.maximumEncodedBytes || record.revision > object.maximumRevisions ||
+        object.maximumRevisions === 1 && (record.revision !== 1 || record.previousDigest !== null)) {
+        return workflowFailure('workflow-source5-owner', 'Retained ownership history exceeds its original sealed byte/revision inventory.');
+      }
+      retained.push({ namespace: object.namespace, key: object.key, record });
     }
-    retained.push({ namespace: object.namespace, key: object.key, record });
   }
   const pointer = retained.find(entry => entry.key === entryKey)?.record;
   const manifestKey = canonicalSha256({ kind: 'workflow-source5-owner-manifest-key.v1', entryKey });
