@@ -70,12 +70,63 @@ outside the checkout. Supply `--windows-launcher <absolute-compiled-exe>` as wel
 as the runtime/output arguments. The C launcher uses `CreateProcessW`, not a shell,
 preserves literal arguments, clears Node startup overrides and propagates child
 status. Its exact executable hash is recorded alongside the source inputs.
-The Inno Setup source requires an independently approved publisher/AppId and an
-actual configured signing tool. It is not a qualified install/uninstall or
-stable-command/PATH integration; it must not be distributed unsigned.
+The Inno Setup source requires independently approved publisher/AppId, certificate,
+WinGet ID and qualification-key pins, plus an actual configured signing tool.
+It must not be distributed unsigned. Its installer/PATH lifecycle is source
+preparation, not a signed, compiled or executed installer qualification.
 Its `x64os` architecture restriction rejects ARM64/x64 emulation before
 installation; the former generic 64-bit check was insufficient. This source
 restriction is not a compiled or minimum-host installer result.
+
+### Windows installer producer contract
+
+On a clean exact-source Windows bundle, the guarded preparation command is:
+
+```sh
+node scripts/native-release.mjs windows-installer-inputs \
+  /absolute/verified-windows-bundle /absolute/new-private-installer-inputs
+```
+
+The real unconfigured policy refuses this command before creating its output.
+With independently approved policy inputs it writes `installer.iss`, explicit
+`inventory.iss`, compile-time `hashes.iss`, `native-install.json` and `current.txt`.
+The generated input contains only inventoried files, no recursive wildcard;
+compile-time checks bind every input file, manifest, receipt and pointer to its
+selected SHA-256. Generation neither invokes the compiler/signing tool nor
+claims WinGet invocation, command ownership, publication or release readiness.
+An operator must independently qualify the compiler, signing and complete
+install/upgrade/uninstall lifecycle before promoting the result.
+
+The proposed per-user root is `%LOCALAPPDATA%\Programs\Liftoff`.
+Immutable bundles live at `versions/<package-version>-<bundle-manifest-sha256>`.
+The same compiled launcher is copied to `bin/liftoff.exe`; its bounded, single-link
+`current.txt` must contain exactly `<version-name>\r\n` (ASCII).
+The launcher rejects malformed, missing, escaping, hard-linked or reparse-point
+pointers and junction version directories, and selects the version's private
+runtime without putting Node on PATH. Direct bundle launch remains supported.
+
+The schema-1 receipt has kind `liftoff-windows-install-receipt`, scope `user`,
+package, version, source commit, manifest/inventory digests, approved package ID,
+AppId, publisher and certificate fingerprint, relative version directory,
+inner launcher/runtime, and stable-launcher path/hash. The standard
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\<AppId>_is1`
+registration retains the installation root, not the inner bundle root.
+Additional `LiftoffReceiptSha256`, `LiftoffCurrentSha256`,
+`LiftoffLauncherSha256`, `LiftoffCertificateSha256`, `LiftoffPathEntry`
+and `LiftoffPathAdded` values bind local attribution. Consumers must independently
+verify the real manager/source, signer and complete bundle, then derive the
+inner root from the authenticated receipt; none of these editable local records
+proves WinGet ownership or publisher authenticity on its own.
+
+Installer source refuses foreign/occupied roots, immutable-version collisions,
+reparse-point trees, changed receipt/pointer/launcher identities and running or
+unopenable stable launchers. It never closes applications automatically.
+Its user-only PATH addition preserves existing raw data and string type and
+rechecks observed data before writing. Uninstall removes only the exact
+attributable segment, retains unrelated segments/type, and refuses changed or
+ambiguous ownership. These are source-level safeguards pending actual signed
+Windows lifecycle execution, including failure/rollback and concurrent-edit
+qualification; they are not a claim of transactional or ACL qualification.
 
 ## Installed qualification
 
@@ -109,7 +160,11 @@ These checks do not qualify Windows controller execution, OS minimums or public
 distribution. Windows/Linux use `LIFTOFF_NATIVE_PACKAGE_ROOT` with
 `tests/native-bundle.test.ts tests/native-distribution.test.ts tests/native-release-set.test.ts
 tests/native-package-installed.test.ts` and the cross-platform report gate.
-Windows cases run the real installed controller and running-image locking.
+Windows cases run the real installed controller, running-image locking, and the
+compiled stable launcher from a private versioned fixture with foreign cwd and
+empty PATH. They exercise malformed/missing/hard-linked/junction pointers and
+generate exact installer inputs only with explicitly synthetic policy.
+This required case is not execution of a signed Inno installer.
 Linux cases exercise the actual bundle's isolated owned installation/recovery and
 test-only Ed25519 bootstrap authentication. Linux qualification additionally requires
 Docker with a native same-architecture Linux daemon and the exact Rocky Linux 8.10
