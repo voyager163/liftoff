@@ -14,9 +14,13 @@ import { isStableSemver } from '../../src/stable-release.js';
 
 const json = (value: unknown) => Buffer.from(JSON.stringify(value));
 
+export interface MacMigrationFixturePreparation {
+  recovery: 'posix' | 'omitted';
+}
+
 // Real private file/process fixtures, synthetic manager/publication evidence; never public qualification.
 export async function macMigrationFixture(manager: MacNpmManager = 'custom', shared = false, observeChildEnvironment = false,
-  nativeBundle?: string) {
+  nativeBundle?: string, preparation: MacMigrationFixturePreparation = { recovery: 'posix' }) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf mac migration spaces ')));
   const childEnvironmentFile = path.join(root, 'child-environment.jsonl');
   const childEnvironmentProbe = path.join(root, 'child-environment-probe.cjs');
@@ -79,7 +83,9 @@ esac
 `, { mode: 0o755 });
   }
   const recovery = path.join(root, 'offline old package');
-  await copyMigrationTree(oldPackage, recovery, await captureMigrationTree(oldPackage));
+  if (preparation.recovery === 'posix') {
+    await copyMigrationTree(oldPackage, recovery, await captureMigrationTree(oldPackage));
+  }
   const source = path.join(root, 'cask fixture bundle');
   if (nativeBundle) {
     await cp(nativeBundle, source, { recursive: true, verbatimSymlinks: true, errorOnExist: true, force: false });
@@ -167,9 +173,10 @@ esac
     } };
   const request: MacMigrationRequest = { selection: { npm, node, prefix, manager,
     ...(manager === 'nvm' ? { managerRoot: nvmRoot } : manager === 'volta' ? { managerRoot: voltaRoot, managerExecutable } :
-      manager === 'homebrew-node' ? { managerRoot: prefix, managerExecutable: brew } : {}) }, brew, recovery };
+      manager === 'homebrew-node' ? { managerRoot: prefix, managerExecutable: brew } : {}) }, brew,
+    ...(preparation.recovery === 'posix' ? { recovery } : {}) };
   return { root, prefix, brewPrefix, oldPackage, oldLauncher, npm, node, recovery, source, policy, material, channel, childEnvironmentFile,
-    dependencies, request, cleanup: async () => {
+    recoveryPreparation: preparation.recovery, dependencies, request, cleanup: async () => {
       for (const directory of scratch) await base.removeNeutralDirectory(directory);
       await rm(root, { recursive: true, force: true });
     } };
