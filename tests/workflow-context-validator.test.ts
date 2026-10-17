@@ -514,6 +514,10 @@ describe('release-owned real context validator bodies, not phase qualification',
       '});'
     ].join('\n'));
     const report = await executeWorkflowContextValidator(value.root, { validator: 'backend-tests', sourceSha: value.sourceSha });
+    expect(report).toMatchObject({
+      status: 'blocked', code: 'validator-cleanup', workloadExecution: true,
+      command: { status: 0, processTreeSettled: true }
+    });
     const observed = JSON.parse(await readFile(path.join(value.root, ...value.backend, 'build/home-replacement.json'), 'utf8'));
     const replacement = await readFile(path.join(observed.allocated, 'replacement.txt'), 'utf8').catch(error => {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null;
@@ -858,18 +862,19 @@ describe('release-owned real context validator bodies, not phase qualification',
   it('retains actual bounded Compose diagnostic fields without serializing inputs or submitting extra commands', async () => {
     const value = await fixture(), filename = path.join(value.root, 'private-diagnostic-source.mjs');
     await value.write(['private-diagnostic-source.mjs'], 'const PRIVATE_DIAGNOSTIC_SOURCE = ;\n');
+    const command = { executable: process.execPath, args: ['--check', filename] };
     const failure = new Error('Original owned diagnostic control failure');
     let actual: ActualCommandResult | undefined;
     const log = vi.spyOn(console, 'info').mockImplementation(() => {});
     try {
       await expect(withComposeDiagnostics('owned-syntax-control', async () => {
-        actual = await new NodeCommandRunner().run({ executable: process.execPath, args: ['--check', filename] },
+        actual = await new NodeCommandRunner().run(command,
           { cwd: value.root, timeoutMs: 5000, maxOutputBytes: 4096, ensureProcessTreeSettled: true, stream: false });
         throw failure;
       })).rejects.toBe(failure);
       if (!actual) throw new Error('The owned syntax control returned no actual command result.');
       expect(actual).toMatchObject({ processSpawned: true, processTreeSettled: true, timedOut: false });
-      expect(actual.status).toBe(1);
+      expect(actual.status, JSON.stringify(composeDiagnosticCommand('owned-syntax-control', command, actual))).toBe(1);
       expect(actual.errorCode ?? null).toBeNull();
       expect(log).toHaveBeenCalledTimes(1);
       const text = log.mock.calls[0]![0];

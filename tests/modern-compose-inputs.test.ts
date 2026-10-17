@@ -12,7 +12,7 @@ import { buildCurrentArtifacts } from '../src/templates.js';
 import { writeArtifacts } from '../src/file-system.js';
 import {
   assertModernLocalToolsCurrent, isModernComposePluginVersionSupported,
-  modernLinuxComposePluginPaths, observeModernLocalTools
+  modernComposePluginCandidates, modernLinuxComposePluginPaths, observeModernLocalTools
 } from '../src/adapters/process/modern-local-tools.js';
 import { createApplicationEnvironment } from '../src/application/repair/application-environment.js';
 import * as toolchain from '../src/application/repair/application-toolchain.js';
@@ -29,6 +29,50 @@ if (!['auto', 'portable', 'native'].includes(lane)) throw new Error('Unknown nat
 const qualified = process.platform === 'darwin' && process.arch === 'arm64' && process.versions.node === '24.21.0';
 if (lane === 'native' && !qualified) throw new Error('Native Compose qualification requires the qualified runtime.');
 const nativeIt = it.skipIf(lane === 'portable' || !qualified);
+
+describe('finite native Compose plugin candidates', () => {
+  it('uses only native exe names at the four Windows paths (path model, not host qualification)', () => {
+    const paths = path.win32, bin = paths.join('C:\\', 'Program Files', 'Docker', 'Docker', 'resources', 'bin');
+    expect(modernComposePluginCandidates(paths.join(bin, 'docker.exe'), 'win32')).toEqual([
+      paths.resolve(bin, '..', 'cli-plugins', 'docker-compose.exe'),
+      paths.resolve(bin, '..', '..', 'lib', 'docker', 'cli-plugins', 'docker-compose.exe'),
+      paths.resolve(bin, '..', 'lib', 'docker', 'cli-plugins', 'docker-compose.exe'),
+      paths.resolve(bin, '..', 'libexec', 'docker', 'cli-plugins', 'docker-compose.exe')
+    ]);
+  });
+
+  it('keeps private Linux bundle locations ahead of system fallbacks', () => {
+    const paths = path.posix, bin = paths.join('/', 'owned', 'bundle', 'bin');
+    expect(modernComposePluginCandidates(paths.join(bin, 'docker'), 'linux')).toEqual([
+      paths.resolve(bin, '..', 'cli-plugins', 'docker-compose'),
+      paths.resolve(bin, '..', '..', 'lib', 'docker', 'cli-plugins', 'docker-compose'),
+      paths.resolve(bin, '..', 'lib', 'docker', 'cli-plugins', 'docker-compose'),
+      paths.resolve(bin, '..', 'libexec', 'docker', 'cli-plugins', 'docker-compose'),
+      ...modernLinuxComposePluginPaths
+    ]);
+  });
+
+  it('keeps distro Linux system precedence without duplicate probes', () => {
+    const paths = path.posix, bin = paths.join('/', 'usr', 'bin');
+    const candidates = modernComposePluginCandidates(paths.join(bin, 'docker'), 'linux');
+    expect(candidates).toEqual([
+      ...modernLinuxComposePluginPaths,
+      paths.resolve(bin, '..', 'cli-plugins', 'docker-compose'),
+      paths.resolve(bin, '..', '..', 'lib', 'docker', 'cli-plugins', 'docker-compose')
+    ]);
+    expect(new Set(candidates).size).toBe(candidates.length);
+  });
+
+  it('preserves the four extensionless Darwin locations', () => {
+    const paths = path.posix, bin = paths.join('/', 'reviewed', 'tools', 'bin');
+    expect(modernComposePluginCandidates(paths.join(bin, 'docker'), 'darwin')).toEqual([
+      paths.resolve(bin, '..', 'cli-plugins', 'docker-compose'),
+      paths.resolve(bin, '..', '..', 'lib', 'docker', 'cli-plugins', 'docker-compose'),
+      paths.resolve(bin, '..', 'lib', 'docker', 'cli-plugins', 'docker-compose'),
+      paths.resolve(bin, '..', 'libexec', 'docker', 'cli-plugins', 'docker-compose')
+    ]);
+  });
+});
 
 describe('closed current Compose input interpretation', () => {
   it('retains the finite immutable Docker Linux system-plugin precedence without user-configured search paths', () => {

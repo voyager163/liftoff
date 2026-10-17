@@ -142,6 +142,13 @@ settlement window. Missing readiness, acknowledgement or terminal proof still
 fails closed; the supervisor never treats its own timeout as kernel settlement.
 This does not increase test or CI job deadlines.
 
+Local Compose observation binds the plugin executable separately from Docker.
+The finite prefix-relative candidates use `docker-compose.exe` on Windows and
+the extensionless name on POSIX hosts; Linux system precedence and private-bundle
+precedence remain unchanged. There is no user-configured plugin search fallback.
+Path-model tests do not qualify a Windows host: actual file identity, supported
+plugin version, process settlement and current reobservation are still required.
+
 Before a change is release-ready, also verify the packed artifact:
 
 ```bash

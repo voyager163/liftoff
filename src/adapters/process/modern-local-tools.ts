@@ -29,18 +29,24 @@ export function isModernComposePluginVersionSupported(version:string):boolean{
     compareVersionCores(version,modernComposePluginRequirement.minimumVersion)>=0;
 }
 
-async function installedComposePlugin(dockerExecutable:string,root:string,staging:string){
-  const bin=path.dirname(dockerExecutable);
-  const system=process.platform==='linux'?modernLinuxComposePluginPaths:[];
+export function modernComposePluginCandidates(dockerExecutable:string,platform:NodeJS.Platform=process.platform):readonly string[]{
+  const paths=platform==='win32'?path.win32:path.posix;
+  const bin=paths.dirname(dockerExecutable);
+  const plugin=platform==='win32'?'docker-compose.exe':'docker-compose';
+  const system=platform==='linux'?modernLinuxComposePluginPaths:[];
   const prefix=[
-    path.resolve(bin,'../cli-plugins/docker-compose'),
-    path.resolve(bin,'../../lib/docker/cli-plugins/docker-compose'),
-    path.resolve(bin,'../lib/docker/cli-plugins/docker-compose'),
-    path.resolve(bin,'../libexec/docker/cli-plugins/docker-compose')
+    paths.resolve(bin,'..','cli-plugins',plugin),
+    paths.resolve(bin,'..','..','lib','docker','cli-plugins',plugin),
+    paths.resolve(bin,'..','lib','docker','cli-plugins',plugin),
+    paths.resolve(bin,'..','libexec','docker','cli-plugins',plugin)
   ];
   // Closed private bundles do not borrow a machine-wide plugin ahead of their own.
   const candidates=system.length&&['/usr/bin','/usr/local/bin'].includes(bin)?[...system,...prefix]:[...prefix,...system];
-  for(const candidate of new Set(candidates)){
+  return [...new Set(candidates)];
+}
+
+async function installedComposePlugin(dockerExecutable:string,root:string,staging:string){
+  for(const candidate of modernComposePluginCandidates(dockerExecutable)){
     try{await stat(candidate);}
     catch(error){
       if(typeof error==='object'&&error!==null&&'code'in error&&error.code==='ENOENT')continue;
