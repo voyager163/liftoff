@@ -15,6 +15,8 @@ import { SelfUpgradeFailure, selfUpgradeExitCode, selfUpgradeRemedy } from '../s
 import type { NativeCandidate, NativeInstallation, NativeUpgradePort } from '../src/domain/distribution/native-upgrade.js';
 import { upgradeWorld } from './fixtures/installer-upgrade.js';
 import { nativeInstallation as installation, signedMaterial } from './fixtures/native-stable-material.js';
+import { windowsReceiptWorld } from './fixtures/windows-native-installation.js';
+import { readWindowsInstallerLayout } from '../src/adapters/distribution/native-windows.js';
 
 const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const json = (value: unknown) => Buffer.from(JSON.stringify(value));
@@ -488,7 +490,7 @@ describe('owner-aware orchestration and read-only doctor', () => {
     expect(fixture.world.trace.filter(event => 'run' in event || 'lookup' in event)).toEqual([]);
   });
   it.each(['darwin', 'win32'] as const)('classifies %s only after bounded explicit manager observations, never from a prefix alone', async platform => {
-    const fixture = managerObservationFixture(platform);
+    const fixture = platform === 'win32' ? windowsReceiptWorld() : managerObservationFixture(platform);
     const port = createNativeUpgradePort(fixture.dependencies, {
       cask: async () => fixture.cask, winget: async () => fixture.winget
     });
@@ -740,7 +742,7 @@ describe('owner-aware orchestration and read-only doctor', () => {
     }));
   });
 
-  it('binds exact manager identities to approved namespace, publisher, certificate and installed bundle facts', () => {
+  it('binds exact manager identities to approved namespace, publisher, certificate and installed bundle facts', async () => {
     const policy = signedMaterial().policy;
     policy.homebrew = { cask: 'fixture/tools/liftoff', sourceRepository: 'fixture/tools', developerTeamId: 'ABCDEFGHIJ' };
     policy.winget = { packageIdentifier: 'Fixture.Liftoff', publisher: 'Fixture Publisher',
@@ -753,16 +755,18 @@ describe('owner-aware orchestration and read-only doctor', () => {
       { installedVersion: '0.13.0' }, { launcher: '/foreign/launcher' }, { bundleRoot: '/foreign/root' }]) {
       expect(() => assertCaskOwnership({ ...cask, ...mutation }, installation, policy)).toThrow('unsupported_installation');
     }
-    const winget = { packageIdentifier: 'Fixture.Liftoff', source: 'fixture-source', publisher: 'Fixture Publisher', scope: 'user' as const,
-      appId: 'fixture-app', certificateSha256: '0'.repeat(64), installedVersion: '0.12.3',
-      installLocation: installation.bundleRoot, launcher: installation.launcher };
-    expect(() => assertWinGetOwnership(winget, installation, policy)).not.toThrow();
+    const windows = windowsReceiptWorld();
+    const layout = await readWindowsInstallerLayout(windows.dependencies, windows.installation, windows.policy,
+      windows.stableLauncher, new AbortController().signal);
+    const installed = { ...windows.installation, windowsInstaller: layout };
+    const winget = windows.winget;
+    expect(() => assertWinGetOwnership(winget, installed, windows.policy)).not.toThrow();
     for (const mutation of [{ packageIdentifier: 'Foreign.Liftoff' }, { publisher: 'Foreign Publisher' },
       { appId: 'foreign-app' }, { certificateSha256: '1'.repeat(64) }, { source: 'unsafe source' },
       { installedVersion: '0.13.0' }, { installLocation: '/foreign/root' }, { launcher: '/foreign/launcher' }]) {
-      expect(() => assertWinGetOwnership({ ...winget, ...mutation }, installation, policy)).toThrow('unsupported_installation');
+      expect(() => assertWinGetOwnership({ ...winget, ...mutation }, installed, windows.policy)).toThrow('unsupported_installation');
     }
-    expect(() => assertWinGetOwnership({ ...winget, scope: 'machine' }, installation, policy)).toThrow('unsupported_installation');
+    expect(() => assertWinGetOwnership({ ...winget, scope: 'machine' }, installed, windows.policy)).toThrow('unsupported_installation');
   });
 
   it.each([
