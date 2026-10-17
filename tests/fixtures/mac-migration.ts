@@ -87,10 +87,8 @@ esac
     `#!/bin/sh\nexec ${JSON.stringify(path.join(source, 'runtime/node'))} ${JSON.stringify(path.join(source, 'application/dist/cli.js'))} "$@"\n`,
     { mode: 0o755 });
   await writeFile(path.join(source, 'application/dist/cli.js'), 'console.log("Liftoff 0.13.0");\n');
-  for (const file of ['native-bundle-contract.mjs', 'native-install.mjs']) {
-    await copyFile(path.join('scripts', file), path.join(source, 'installation', file));
-  }
-  for (const file of ['native-release-admission.mjs', 'release-policy.json']) {
+  await copyFile(path.join('scripts', 'native-install.mjs'), path.join(source, 'installation/native-install.mjs'));
+  for (const file of ['native-bundle-contract.mjs', 'native-release-admission.mjs', 'release-policy.json']) {
     await copyFile(path.join('distribution/native', file), path.join(source, 'installation', file));
   }
   const inventory = await bundleInventory(source);

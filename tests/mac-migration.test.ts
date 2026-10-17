@@ -64,6 +64,15 @@ const configPreservationCases = (['DO_NOT_TRACK=1', 'LIFTOFF_TELEMETRY=0'] as co
       (['handover', 'settled-recovery'] as const).map(outcome => ({ optOut, location, configState, outcome })))));
 
 describe.skipIf(process.platform === 'win32')('private SOURCE-only Mac migration', () => {
+  it('copies the canonical standalone contract and reads the exact fixture inventory', async () => {
+    const value = await fixture();
+    const file = path.join(value.source, 'installation/native-bundle-contract.mjs');
+    expect(await readFile(file)).toEqual(await readFile('distribution/native/native-bundle-contract.mjs'));
+    const contract: typeof import('../distribution/native/native-bundle-contract.mjs') =
+      await import(pathToFileURL(file).href);
+    expect(await contract.bundleInventory(value.source))
+      .toEqual(JSON.parse(await readFile(path.join(value.source, 'bundle.json'), 'utf8')).inventory);
+  });
   it.for(configPreservationCases)(
     'preserves caller config $optOut $location $configState through preview and $outcome',
     { timeout: 30_000 },
