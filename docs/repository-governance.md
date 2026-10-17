@@ -594,6 +594,14 @@ and the original bounded result fields/stdout/stderr, not commands, ambient
 environment or unrelated configuration. Diagnostics do not change the invocation,
 input readback, settlement guards, five-second/4-KiB limits or expected outcomes;
 a numeric Windows status is not an observed POSIX signal.
+The owned validators retain only their isolated `HOME` and empty `NODE_OPTIONS`
+on POSIX. On Windows they additionally copy the actual host `SystemRoot`, using
+case-insensitive defined-key lookup; missing, empty or conflicting values refuse
+before invocation. They do not forward ambient search paths, Node configuration
+or unrelated environment values. Controlled-red syntax/JSON outcomes require
+status1 and an actual `SyntaxError`, so a runtime initialization failure cannot
+count as the reviewed source violation. Portable allowlist controls are not
+native Windows qualification.
 Missing-scanner fixtures preserve Git in their reduced search path: Windows uses
 the directory of the actual resolved Git executable, not POSIX system directories.
 They verify Git remains visible and the scanner launcher is absent before invoking
