@@ -18,6 +18,7 @@ resource "grafana_rule_group" "ingestion_faults" {
     labels = { component = "liftoff-telemetry", scope = "dcr-transform-errors-only" }
     data {
       ref_id         = "A"
+      query_type     = "Azure Monitor"
       datasource_uid = grafana_data_source.telemetry.uid
       relative_time_range {
         from = 900

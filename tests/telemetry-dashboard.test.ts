@@ -336,6 +336,7 @@ describe('operator, privacy and non-destructive boundaries', () => {
     expect(source).toMatch(/for\s*=\s*"15m"/);
     expect(source).toMatch(/no_data_state\s*=\s*"NoData"/);
     expect(source).toMatch(/exec_err_state\s*=\s*"Error"/);
+    expect(source).toMatch(/query_type\s*=\s*"Azure Log Analytics"/);
     expect(source).toContain('var.reporting_configuration != "enabled"');
     expect(vars).toMatch(/variable "alerts_enabled"[\s\S]*?default\s*=\s*false/);
     expect(probe).toContain('Value = 0');
@@ -353,6 +354,7 @@ describe('operator, privacy and non-destructive boundaries', () => {
     expect(source).toMatch(/for\s*=\s*"5m"/);
     expect(source).toMatch(/from\s*=\s*900/);
     expect(source).toMatch(/queryType\s*=\s*"Azure Monitor"/);
+    expect(source).toMatch(/query_type\s*=\s*"Azure Monitor"/);
     expect(source).toMatch(/aggregation\s*=\s*"Count"/);
     expect(source).toMatch(/timeGrain\s*=\s*"PT1M"/);
     expect(source).toMatch(/metricName\s*=\s*"TransformationErrors_Count"/);
@@ -368,7 +370,7 @@ describe('operator, privacy and non-destructive boundaries', () => {
     expect(source).toContain('does not verify gateway/auth/network health or project activity');
   });
 
-  it('documents real blockers, no deployment, retention states, cost and safe rollback across related READMEs', async () => {
+  it('documents the actual bounded rollout, remaining qualification, retention, cost and safe rollback', async () => {
     const [operator, bootstrap, privacy, tasks] = await Promise.all([
       readFile(path.join(root, 'README.md'), 'utf8'),
       readFile(path.join(root, '..', 'bootstrap', 'README.md'), 'utf8'),
@@ -389,8 +391,9 @@ describe('operator, privacy and non-destructive boundaries', () => {
     }
     expect(bootstrap).toContain('Grafana does not own the state boundary');
     for (const term of ['unavailable', 'expired', 'disabled', 'stale/unknown', 'forge', 'not a census', 'Schema-1', 'synthetic']) expect(privacy).toContain(term);
-    expect(tasks.match(/- \[x\] 17\./g)).toBeNull();
-    expect(tasks.match(/- \[ \] 17\./g)).toHaveLength(8);
+    expect(operator).toContain('deployed; project reporting remains disabled');
+    expect(operator).toContain('API evidence is not a claim that these journeys ran');
+    for (const id of ['17.3', '17.4', '17.5']) expect(tasks).toContain(`- [ ] ${id} `);
     const [vars, example] = await Promise.all([
       readFile(path.join(root, 'variables.tf'), 'utf8'), readFile(path.join(root, 'production.tfvars.example'), 'utf8')
     ]);

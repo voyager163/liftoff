@@ -96,6 +96,7 @@ resource "grafana_rule_group" "telemetry" {
       labels = { component = "liftoff-telemetry", scope = "reporting-not-health" }
       data {
         ref_id         = "A"
+        query_type     = "Azure Log Analytics"
         datasource_uid = grafana_data_source.telemetry.uid
         relative_time_range {
           from = 15552000

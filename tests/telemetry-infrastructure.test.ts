@@ -124,7 +124,7 @@ describe('telemetry OpenTofu privacy contract', () => {
       expect(text).toContain('project_ingestion_enabled=false');
       expect(text).toContain('attention-required');
       expect(text).toContain('LiftoffProjectEvents_CL');
-      expect(text).toContain('not yet deployed');
+      expect(text).toContain('deployed; project reporting remains disabled');
     }
     expect(guide).toContain('A public project ID is not authentication');
     expect(readme).toContain('Korea Central');

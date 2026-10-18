@@ -224,34 +224,54 @@ release-wide coverage were not qualified by this integration.
 
 Depends on 9 and 15-16 for qualified candidate artifacts and client contracts, not prior client publication. Production steps require separate operator approval. Use synthetic observations to qualify ingestion before publishing/enabling the client and heartbeat. References: design D13; liftoff-telemetry-dashboard, liftoff-cli-telemetry.
 
-- [ ] 17.1 Re-observe the exact subscription/resource group, existing Korea Central resources, state ownership/perimeter, table schemas and provider availability through authorized read-only access; verify the proposed plan has no unintended replacement or region/default drift.
-- [ ] 17.2 Add version-pinned Managed Grafana, scoped managed-identity Logs access, datasource and explicit dashboard provisioning; verify actual Standard tier/size/cost/region and provider registration are disclosed before apply.
+- [x] 17.1 Re-observe the exact subscription/resource group, existing Korea Central resources, state ownership/perimeter, table schemas and provider availability through authorized read-only access; verify the proposed plan has no unintended replacement or region/default drift.
+- [x] 17.2 Add version-pinned Managed Grafana, scoped managed-identity Logs access, datasource and explicit dashboard provisioning; verify actual Standard tier/size/cost/region and provider registration are disclosed before apply.
 - [ ] 17.3 Build 30/90/180-day observed/first-observed project, version/policy/template, source/freshness and semantic-outcome panels; verify fixed datasets deduplicate clones and count separate monorepo roots correctly.
 - [ ] 17.4 Implement explicit unavailable/empty/disabled/stale and legacy-semantic states plus synthetic-project exclusions; verify forged/public-event caveats, retention-window labels and no lifetime/census/compliance claims.
 - [ ] 17.5 Add bounded ingestion-fault/heartbeat-freshness alert definitions with disclosed grace periods; verify low daily CLI usage does not trigger an abandonment/failure claim.
-- [ ] 17.6 Update telemetry and bootstrap READMEs with OpenTofu-only deployment, cost/RBAC, consent schema, verification and rollback instructions; verify static configuration, dashboard JSON and documentation tests without production access.
-- [ ] 17.7 After explicit operator approval, deploy backward-compatible gateway/table/DCR changes first, then Grafana; verify real identity access, synthetic ingestion/query, 180-day retention and continued absence of request/IP/console logging.
-- [ ] 17.8 Exercise approved feature disablement/dashboard rollback without destroying the protected group, workspace/data, backend or perimeter; verify existing anonymous ingestion remains operational and records survive.
+- [x] 17.6 Update telemetry and bootstrap READMEs with OpenTofu-only deployment, cost/RBAC, consent schema, verification and rollback instructions; verify static configuration, dashboard JSON and documentation tests without production access.
+- [x] 17.7 After explicit operator approval, deploy backward-compatible gateway/table/DCR changes first, then Grafana; verify real identity access, synthetic ingestion/query, 180-day retention and continued absence of request/IP/console logging.
+- [x] 17.8 Exercise approved feature disablement/dashboard rollback without destroying the protected group, workspace/data, backend or perimeter; verify existing anonymous ingestion remains operational and records survive.
 
-Tasks 17.2-17.6 have a bounded source-preparation layer: separate pinned
+Tasks 17.3-17.5 have a bounded source-preparation layer: separate pinned
 OpenTofu resource/dashboard roots, workspace-scoped Logs identity, native
 Grafana panels/KQL, registered synthetic exclusions, paused query-availability
 and explicit monthly-expectation rules, portable offline tests and operator
-runbooks. All 17.x flags remain unchecked: qualified task-9/16 candidate
-prerequisites, actual SKU/provider/quota/cost and state ownership, verified
-ingestion-fault signal, real identity/query/UI scenarios and approved live
-deployment/rollback are unmet. Static source is not deployment qualification.
+runbooks. Browser/UI qualification and actual fault-alert firing/routing remain
+incomplete; native API/query evidence is not a claim these journeys ran.
+Static source alone is not deployment qualification. No installed-client or
+genuine heartbeat qualification is claimed; task-9/16 publication gates remain.
 
-Explicitly authorized partial live rollout on 2026-10-18 registered
-Microsoft.Dashboard and applied a reviewed, non-replacing schema-only plan
-against the original protected remote state: one project table added, three
-resources updated, none destroyed. Independent readback confirmed the nine
-project columns, both tables' 180-day analytics/total retention, preserved
-command stream and unchanged legacy gateway image. Project delivery remains
-disabled and no client/heartbeat was enrolled. Provider-level validation
-accepted proposed Standard X1/major 13 in Korea Central without creating it.
-The candidate gateway rollout, actual Grafana/RBAC/query/UI/ingestion and
-rollback remain outstanding; 17.7 is not complete.
+The explicitly authorized 2026-10-18 rollout registered Microsoft.Dashboard,
+extended the original protected telemetry state without replacement or region
+drift, and verified both tables' 180-day analytics/total retention. ACR run de4
+built exact public source 006d3aabbffc3cd3a5ff30d2692f7c30cee280b8; the reviewed
+gateway update deployed digest
+sha256:d209118a5640250d604beca54ac3cc74d392b5fb0e90070c49779478868361b7.
+Standard X1/major 13 was disclosed and provisioned in Korea Central, with scoped
+workspace/DCR reader roles, existing-operator instance-only access, API keys
+disabled, and separate protected resource/dashboard state keys.
+
+Actual Entra and MSI/native queries succeeded. Four registered synthetic
+observations deduplicated to two roots; all 33 native panel queries across
+30/90/180-day windows excluded both IDs. Five corrected negative HTTP controls
+were refused. The initial invalid private wire probe was also correctly refused
+and remains retained, not relabeled as a product failure. Native unavailable
+queries return actual errors; the DCR metric's empty timeseries remains unknown.
+All three alert rules are paused and the expectation inventory is empty.
+
+Reviewed dashboard-only removal/restoration produced actual 404/200 responses;
+the native query_type normalization drift discovered during restoration was
+corrected explicitly rather than ignored. Project-feature disablement restored
+503 while a legacy schema-1 operator probe still returned 204. Accepted records,
+original resource identities, state lineage (serial 23 to 30), perimeter and
+logging exclusions survived. Both final roots converged without changes. The
+two synthetic exclusions have byte-verified protected durable inventory and
+remain configured for at least 180 days after the last accepted observation.
+Private receipt live-rollout-receipt.json, SHA-256
+da4b4f656508e618ba37c074a770c18cdada9ecb60978e24a540a00919d3c909,
+binds 147 retained artifacts; raw states/plans/identity values are not published.
+No client or heartbeat was enrolled and project ingestion is disabled.
 
 ## 18. Qualify the integrated release and complete the change
 

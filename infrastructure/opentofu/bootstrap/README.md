@@ -89,9 +89,17 @@ build, test, formatting, backend-free initialization, and validation.
 
 ## Grafana does not own the state boundary
 
-The telemetry [Grafana runbook](../telemetry/README.md#managed-grafana-source-preparation-not-deployed)
+The telemetry [Grafana runbook](../telemetry/README.md#managed-grafana-deployment-and-remaining-qualification)
 adds separate resource and dashboard roots, not another bootstrap or a state
-migration. Future approved roots need distinct keys in the existing private
+migration. The authorized 2026-10-18 rollout used distinct keys
+`telemetry/production.tfstate`, `grafana/production.tfstate` and
+`grafana/dashboards-production.tfstate` in the existing private container,
+preserving the telemetry lineage and perimeter. Dashboard removal/restoration
+and project-feature disablement were exercised without destroying these
+resources or accepted telemetry. This operator evidence does not qualify
+application whole-job custody or public deployment-state commands.
+
+Future approved roots need distinct keys in the existing private
 `tfstate` container and independently verified ownership/lineage, writer
 locking, protected host and network admission. Do not reuse the telemetry key,
 copy state, broaden either storage network layer, change the enforced

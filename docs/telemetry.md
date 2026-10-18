@@ -119,10 +119,15 @@ have aged past the published 180-day retention window. Combining the two
 schemas would falsely treat historical expected nonzero states as semantic
 failures.
 
-The candidate gateway configuration is **not yet deployed**. The separately
-authorized 2026-10-18 schema rollout added the project table/DCR stream and
-verified 180-day retention without replacing the production gateway image.
-`project_ingestion_enabled=false` remains in effect; the live gateway has no
+The candidate gateway is **deployed; project reporting remains disabled**. The
+separately authorized 2026-10-18 rollout added `LiftoffProjectEvents_CL` and its
+DCR stream with verified 180-day retention, then built and deployed the exact
+public-source gateway image through reviewed OpenTofu plans. Four registered
+synthetic events were accepted and deduplicated to two roots; the real Grafana
+MSI queries exclude both IDs from adoption panels. These protocol probes are
+not actual enrollment, a published-client journey or a genuine CI heartbeat.
+`project_ingestion_enabled=false` is back in effect after controlled verification;
+the live gateway has no
 project-stream environment setting. No client or heartbeat was enrolled, and
 schema availability is not proof of successful project ingestion.
 The candidate's separate
@@ -511,11 +516,18 @@ resource group.
 Normal `liftoff` commands never authenticate to Azure, read OpenTofu state, or
 deploy telemetry infrastructure.
 
-## Grafana adoption dashboard (source only)
+## Grafana adoption dashboard
 
 Reviewed source now lives in `infrastructure/opentofu/telemetry/grafana` and
-`infrastructure/opentofu/telemetry/dashboards`; it is **not deployed**. See the
-[operator runbook](https://github.com/voyager163/liftoff/tree/develop/infrastructure/opentofu/telemetry#managed-grafana-source-preparation-not-deployed)
+`infrastructure/opentofu/telemetry/dashboards`. The authorized Standard X1
+instance and dashboard are deployed in Korea Central, with scoped MSI access
+and all alerts paused. Actual authenticated API and native 30/90/180-day queries
+succeeded, including empty/unavailable states and synthetic exclusions. The
+operator exercised dashboard removal/restoration and project-feature
+disablement without destroying data or disabling legacy command ingestion.
+Browser/UI, fault-alert firing/routing, installed-client and genuine heartbeat
+qualification remain incomplete. See the
+[operator runbook](https://github.com/voyager163/liftoff/tree/develop/infrastructure/opentofu/telemetry#managed-grafana-deployment-and-remaining-qualification)
 in the source repository. Infrastructure is operator-owned, not part of the CLI
 package or something normal commands apply.
 
@@ -550,10 +562,12 @@ Operator-registered synthetic UUIDs are excluded from every project query,
 including freshness; no extra payload field is added. No embedded secrets,
 public sharing, request/IP/console logging or new backend is introduced.
 
-Provider registration, Standard size/region/quota/actual recurring cost,
-protected state ownership, real datasource access, project ingestion,
-published heartbeat tooling and native UI/live query scenarios remain external
+Provider registration, actual Standard X1 placement/cost disclosure, protected
+state ownership, real datasource queries and controlled synthetic ingestion
+now have operator deployment evidence. Billed subscription-specific costs,
+published heartbeat tooling, browser/UI and fault-alert firing/routing remain
 qualification gates. Pausing alerts or rolling back dashboard JSON preserves
 workspace/tables, history, command ingress and backend/perimeter; it does not
-delete records or stop Managed Grafana service charges. Source tests are not
-production deployment or an exercised rollback.
+delete records or stop Managed Grafana service charges. Source tests alone are
+not production deployment or an exercised rollback; the operator evidence is
+recorded separately.

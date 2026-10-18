@@ -53,15 +53,38 @@ provider lock file and Docker base digest are reviewed and committed.
 
 ### Backward-compatible schema rollout
 
-The candidate gateway image changes are **not yet deployed**. On 2026-10-18,
-an explicitly authorized, reviewed OpenTofu plan against the original protected
+The candidate gateway is **deployed; project reporting remains disabled**.
+On 2026-10-18, an explicitly authorized, reviewed OpenTofu plan against the original protected
 remote state added `LiftoffProjectEvents_CL` and its separate DCR stream in place.
 The plan added one resource, updated three, and destroyed none. Independent
 readback confirmed all nine project columns and both tables' 180-day analytics
-and total retention. The original command stream and gateway image were
-preserved; `project_ingestion_enabled=false` remains in effect, with no project
-stream environment setting in the live Container App. This schema rollout does
-not enable project delivery, enroll a client, or qualify the candidate gateway.
+and total retention. The original command stream and gateway image were preserved during that first
+schema-only step. A separate build-only plan then built public source
+`006d3aabbffc3cd3a5ff30d2692f7c30cee280b8` through ACR run `de4`. A separately
+reviewed gateway-only update deployed its verified image digest
+`sha256:d209118a5640250d604beca54ac3cc74d392b5fb0e90070c49779478868361b7`.
+
+Controlled operator qualification temporarily enabled the project stream.
+Five malformed/extra-field/type/digest/streamed-size controls were rejected;
+four accepted synthetic events deduplicated to two roots, including repeated
+clone observations and overlapping CLI/protocol-heartbeat sources. Both IDs
+were registered as exclusions before upload; all 33 native panel queries
+across 30/90/180-day windows still excluded them. These are operator protocol
+probes, not enrolled projects, an installed-client journey or a genuine CI
+heartbeat. The initial private probe incorrectly used a string policy version
+and an unprefixed digest and was correctly rejected; its evidence is retained
+separately from the corrected probes.
+
+Feature disablement has been exercised: `project_ingestion_enabled=false` is
+back in effect, the project route returns 503, and legacy anonymous command
+ingestion still accepts schema 1. The four synthetic records survive; one
+explicit operator schema-1 command probe is not real command-usage evidence.
+The final telemetry plan has no changes. No client or heartbeat was enrolled.
+The two synthetic exclusions also have a byte-verified durable operator
+inventory at `grafana/synthetic-qualification-20261018.json` in the existing
+protected `tfstate` container, separate from all state keys. Keep those IDs in
+dashboard inputs for at least 180 days after their last accepted observation;
+this inventory is not consent or a client configuration.
 
 The gateway continues accepting command schema 1 with its original zero/nonzero
 outcomes. Command schema 2 adds semantic `attention-required` and `cancelled`
@@ -210,7 +233,7 @@ Then publish a Liftoff patch with client delivery disabled. Remove individual
 telemetry resources only through a reviewed OpenTofu plan. Never destroy
 `rg-liftoff-prod`; its deletion protection is intentional.
 
-## Managed Grafana source preparation (not deployed)
+## Managed Grafana deployment and remaining qualification
 
 The `grafana/` root adds only a Managed Grafana instance and explicitly reviewed
 roles. It reads the existing `rg-liftoff-prod` and
@@ -252,6 +275,26 @@ is needed for the backend-free checks below.
 The same native Azure Monitor datasource also supports the independently
 paused DCR transformation-error rule. It does not add a second data pipeline
 or a custom fault producer.
+Set each rule's `query_type` as well as its native model `queryType`; Grafana
+canonicalizes the former on creation. Omitting it produces perpetual plan
+drift. The deployed configuration includes both and converges without ignoring
+rule changes.
+
+The authenticated [adoption dashboard](https://amg-liftoff-f5be1618-h3byfdaghwfveue4.sel.grafana.azure.com/d/liftoff-observed-adoption)
+is deployed. Actual Entra `/api/org`, dashboard and native datasource queries
+succeeded; the instance reports Grafana 13.1.3. The MSI has exactly the
+workspace-scoped Log Analytics Reader and DCR-scoped Monitoring Reader grants;
+the existing operator has instance-scoped Grafana Admin. API keys and zone
+redundancy are disabled. All three alert rules remain paused, with no expected
+heartbeat inventory or notification routing.
+
+Native query errors were verified as HTTP 400 errors, not zero-project results.
+The DCR metric query succeeds but currently has an empty timeseries: **unknown**,
+not a verified zero-fault or end-to-end health signal. An approved dashboard-only
+rollback returned actual 404 while retaining the datasource/rules; restoration
+returned 200 and the full dashboard root converged without changes. Browser/UI,
+fault-alert firing/routing, published-client and genuine heartbeat qualification
+remain outstanding; API evidence is not a claim that these journeys ran.
 
 ### Gates and recurring cost
 
@@ -269,7 +312,13 @@ Separately authorized work on 2026-10-18 registered `Microsoft.Dashboard` and
 verified terminal `Registered` readback. Provider-level ARM validation accepted
 a proposed Standard X1, Grafana major 13 instance in Korea Central; validation
 does not create an instance, reserve capacity, approve recurring cost, or prove
-real managed-identity/query access. No Grafana instance has been created.
+real managed-identity/query access. Subsequent explicitly authorized provisioning
+created Standard X1 in Korea Central, followed by the scoped roles and native
+dashboard described above. Retail meters inspected before apply imply two
+Standard units at $0.04617/hour each: approximately USD 67.41 per 730 hours,
+plus $6/month per active user, or approximately USD 73.41/month for one user,
+before taxes and existing telemetry costs. This is a disclosed retail estimate,
+not an actual subscription-specific invoice or an X2 quote.
 The schema rollout above used the existing Entra-authenticated remote backend
 and preserved its original lineage while advancing its serial. Original and
 post-apply state and full saved plans are retained privately, not in the repo.
@@ -319,10 +368,11 @@ resources are provisioned by these static checks.
 
 The Grafana inputs intentionally have no SKU-size/major/name defaults. Obtain
 fresh authorized metadata, actual cost/region/quota/provider proof, exact
-ownership and a reviewed non-replacing plan before any future apply. Native
-release and heartbeat production prerequisites in tasks 9 and 16 are still
-unmet. This layer is source preparation, not task 17.7 deployment or task 17.8
-exercised rollback. All section-17 task flags remain unchecked.
+ownership and a reviewed non-replacing plan before any future apply. The
+2026-10-18 operator rollout and non-destructive rollback above are actual
+deployment evidence, separate from these static checks. Native release,
+published-client/heartbeat, browser/UI and fault-alert firing/routing gates
+remain incomplete; no source-only check grants that qualification.
 
 ### Static validation and future operator sequence
 
