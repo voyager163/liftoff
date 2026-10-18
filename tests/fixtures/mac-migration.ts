@@ -1,7 +1,8 @@
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { copyFile, cp, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, cp, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { bundleInventory } from '../../scripts/native-bundle-contract.mjs';
 import { defaultSelfUpgradeDependencies } from '../../src/adapters/distribution/upgrade-host.js';
 import { macMigrationHash as hash } from '../../src/adapters/distribution/mac-npm-owner.js';
@@ -11,6 +12,7 @@ import type { MacNpmManager } from '../../src/domain/distribution/mac-migration.
 import type { NativeReleasePolicy } from '../../src/domain/distribution/native-upgrade.js';
 import type { NativeStableMaterial } from '../../src/adapters/distribution/native-metadata.js';
 import { isStableSemver } from '../../src/stable-release.js';
+import { tar, type TarMember } from './native-archive.js';
 
 const json = (value: unknown) => Buffer.from(JSON.stringify(value));
 
@@ -121,8 +123,22 @@ esac
     winget: { packageIdentifier: null, publisher: null, certificateSha256: null, installerAppId: null },
     linux: { archiveSigningKeySha256: null } };
   const archive = `liftoff-${targetVersion}-darwin-arm64.tar.gz`;
+  const members: TarMember[] = [{ name: './', kind: '5' }];
+  const visit = async (relative: string) => {
+    for (const name of (await readdir(path.join(source, relative))).sort()) {
+      const selected = path.posix.join(relative, name), filename = path.join(source, selected);
+      const stat = await lstat(filename);
+      const base = { name: `./${selected}`, mode: stat.mode & 0o777 };
+      if (stat.isDirectory()) {
+        members.push({ ...base, name: `${base.name}/`, kind: '5' });
+        await visit(selected);
+      } else if (stat.isSymbolicLink()) members.push({ ...base, kind: '2', target: await readlink(filename) });
+      else members.push({ ...base, kind: '0', content: await readFile(filename) });
+    }
+  };
+  if (!nativeBundle) await visit('');
   const assets = new Map([
-    [archive, Buffer.from('fixture-only deployed archive')],
+    [archive, nativeBundle ? Buffer.from('fixture-only deployed archive') : gzipSync(tar(members))],
     ['NOTICE', Buffer.from('fixture-only licensed material')],
     ['sbom.cdx.json', json({ bomFormat: 'CycloneDX', specVersion: '1.6',
       components: [{ name: '@msn-control/liftoff', version: targetVersion }, { name: 'node' }, { name: 'fixture' }],

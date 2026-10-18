@@ -132,19 +132,69 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
       catalogFilename: 'liftoff-native-release.json', catalogTargets: ['darwin-arm64', 'linux-arm64', 'linux-x64', 'win32-x64'],
       rawSignatureVerified: true
     });
+    it('admits packaged private cask staging only on POSIX hosts without ambient tools', async ({ task }) => {
+      const root = path.join(fixture, 'private cask transport');
+      await mkdir(root, { mode: 0o700 });
+      const stat = await lstat(root, { bigint: true });
+      const directoryIdentity = JSON.stringify(
+        (['dev', 'ino', 'uid', 'gid', 'mode'] as const).map(key => String(stat[key]))
+      );
+      const worker = path.join(bundle, 'application/distribution/native/cask-stage-worker.mjs');
+      const names = ['release.json', 'qualification.json', 'qualification.sig', 'qualification.pub',
+        'archive.tar.gz', 'sbom.cdx.json', 'provenance.json', 'NOTICE', 'definition.rb'];
+      const payload = new Map(names.map(name => [name, Buffer.from(`inert transport specimen: ${name}\n`)]));
+      const digest = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+      const header = Buffer.from(JSON.stringify({ schemaVersion: 1, kind: 'liftoff-cask-stage-write', mode: 'create',
+        root, directoryIdentity, files: [...payload].map(([name, bytes]) => ({ name, bytes: bytes.length, sha256: digest(bytes) })) }));
+      const length = Buffer.alloc(4);
+      length.writeUInt32BE(header.length);
+      const before = await bundleInventory(outside);
+      const result = spawnSync(runtime, [worker], { cwd: root, env, input: Buffer.concat([length, header, ...payload.values()]),
+        encoding: 'utf8', shell: false, timeout: 60_000, maxBuffer: 64 * 1024 });
+      expect(result.error).toBeUndefined();
+      expect(result.signal).toBeNull();
+      if (windows) {
+        expect(result.status).toBe(1);
+        expect(result.stdout).toBe('');
+        expect(result.stderr).toBe('liftoff-cask-target-stage:refused\n');
+        expect((await bundleInventory(root)).entries).toEqual([]);
+      } else {
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stderr).toBe('');
+        const receipt = JSON.parse(result.stdout);
+        expect(receipt).toMatchObject({ schemaVersion: 1, kind: 'liftoff-cask-stage-written' });
+        expect(receipt.files.map((file: { name: string }) => file.name)).toEqual(names);
+        for (const [name, bytes] of payload) {
+          const file = path.join(root, 'cask-target', name), value = await lstat(file, { bigint: true });
+          expect(await readFile(file)).toEqual(bytes);
+          expect(value.mode & 0o777n).toBe(0o600n);
+          expect(value.nlink).toBe(1n);
+          expect(receipt.files.find((entry: { name: string }) => entry.name === name).physical)
+            .toBe(JSON.stringify((['dev', 'ino', 'uid', 'gid', 'mode', 'nlink', 'size', 'mtimeNs', 'ctimeNs'] as const)
+              .map(key => String(value[key]))));
+        }
+      }
+      Object.assign(task.meta, { caskStageTransport: { runtime, worker,
+        workerSha256: (await bundleFile(worker)).sha256, outcome: windows ? 'refused-windows' : 'private-posix-write',
+        inertTransportOnlyNotCaskInstallationOrPublication: true } });
+      expect(await bundleInventory(outside)).toEqual(before);
+    });
   });
   it('refuses missing template, controller, HCL and host-policy material without checkout fallback', async () => {
     const damaged = await copy('missing asset package');
     for (const relative of ['application/assets/plugins/go-huma/go-backend/go.mod',
       'application/assets/repair/windows-job-controller.ps1',
       'application/node_modules/@cdktf/hcl2json/main.wasm.gz', 'installation/platforms.json',
-      'installation/release-policy.json', 'installation/native-release-admission.mjs', 'installation/native-release-catalog.mjs']) {
+      'installation/release-policy.json', 'installation/native-release-admission.mjs', 'installation/native-release-catalog.mjs',
+      'application/distribution/native/cask-stage-worker.mjs']) {
       const file = path.join(damaged, relative), bytes = await readFile(file), mode = (await lstat(file)).mode & 0o777;
       await rm(file);
       try {
         await expect(verifyNativeBundle(damaged)).rejects.toThrow();
         const result = relative.endsWith('go.mod')
           ? execute(path.join(damaged, manifest.launcher), ['plan', ...installedPlanCases.find(plan => plan.id === 'manual-cli-only')!.args])
+          : relative.endsWith('cask-stage-worker.mjs')
+            ? execute(path.join(damaged, windows ? 'runtime/node.exe' : 'runtime/node'), [path.join(damaged, relative)])
           : relative.endsWith('.ps1')
             ? installed(`import { verifyWindowsJobControllerAsset } from ${JSON.stringify(moduleUrl('adapters/process/windows-job-runner.js', damaged))}; await verifyWindowsJobControllerAsset();`, damaged)
             : relative.endsWith('platforms.json')

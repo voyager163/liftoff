@@ -73,6 +73,32 @@ revalidate that exact scope before dispatch. Its policy must equal the utility's
 own packaged native policy; a provider cannot supply replacement approval.
 No version-pinning `brew install` command is invented.
 
+The source preview also authenticates the complete target material and checks
+the actual compressed archive against its signed manifest and complete
+path/byte/mode/link inventory without extracting or running it. A signed
+qualification assertion with dummy or mismatched archive bytes is insufficient.
+After exact approval, apply retains the archive, generated authenticated cask
+definition, release/signature/public-key metadata and every referenced evidence
+file in `cask-target` under the private journal. Files are exclusive mode-0600
+creations; the directory is mode 0700. A separately settled packaged Node child
+writes relative to its own verified working directory, never by repeatedly
+resolving mutable absolute parent names. A replaced canonical parent therefore
+cannot redirect those writes into the replacement directory.
+Before payload dispatch, the journal directory must also pass the existing
+native ACL/flag/attribute refusal checks. The target directory's admitted
+metadata is bound into the retained identity and rechecked, not inferred from
+its POSIX mode alone. This does not enable directory rollback or broader
+permission restoration.
+
+The journal binds both content and physical identities of the retained files,
+including its snapshot record. Preparation and retained-material checks have
+their own existing 120-second installation budget and honor cancellation.
+Incomplete preparation is retained and never authorizes npm removal. Complete
+material is reauthenticated and checked before removal and cask dispatch; inode
+replacement, hard links, changed modes, unknown members or changed bytes block
+progress. Retaining these bytes does not qualify a Homebrew executable, tap,
+namespace, installation command, signing identity or public migration.
+
 Old scope directories must be canonical, safely permissioned and writable
 where effects are intended. Collisions, escaped/hard-linked material, unsafe
 permissions and inventories exceeding 8,192 entries, depth 32, 8 MiB per file,
@@ -108,9 +134,13 @@ bounded and use neutral working directories, but are **not an OS/network
 security sandbox**; untrusted arbitrary package code is not supported.
 
 Preview does not change installations, projects, user configuration or shared
-caches. Process working directories, HOME/XDG, temporary files, Homebrew
-cache/log paths and npm observation cache/config paths are private temporary
-scratch. Only the explicitly selected Volta root is passed to `volta which`.
+caches. Probe, manager and installed-code process working directories,
+HOME/XDG, temporary files, Homebrew cache/log paths and npm observation
+cache/config paths are private temporary scratch. The fixed data-only staging
+worker instead uses the durable private journal or target directory as its
+working directory, HOME and TMPDIR, with no inherited environment or Node
+startup overrides. It never changes the parent process's working directory.
+Only the explicitly selected Volta root is passed to `volta which`.
 The caller's default `HOME/.config/liftoff/config.json` and explicit
 `XDG_CONFIG_HOME/liftoff/config.json` are outside that scratch scope. Preview,
 handover and selected recovery do not record a notice or consent, repair invalid
@@ -170,6 +200,11 @@ Cask observations have a 10-second elapsed deadline and installation dispatch
 has a 120-second deadline. A late response is refused even if the timeout
 callback could not run first. A late installation result retains the partial
 journal, lock and scratch rather than authorizing cleanup or restoration.
+New completed journals use their retained exact release for final and later
+inspection, so a subsequent change to the upstream stable selector cannot make
+verification download or silently substitute a different target. Historical
+journals without retained target material remain readable through their
+original observation path; the reader does not invent an offline copy for them.
 The utility package/runtime and selected Node, npm, manager and Homebrew
 executables must remain outside the old uninstall scope. Overlapping tool
 selections are refused rather than deleting the tools needed for handover or

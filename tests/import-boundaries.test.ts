@@ -1440,6 +1440,7 @@ const nativeCaskFiles = [
 ];
 const nativeContractImporter = 'adapters/distribution/native.ts';
 const nativeInstalledContractImporter = 'adapters/distribution/native-mac-installed.ts';
+const nativeCaskStageContractImporter = 'adapters/distribution/mac-migration-cask-stage.ts';
 const nativeContractSpecifier = '../../../distribution/native/native-bundle-contract.mjs';
 const nativeContractFiles = [
   'distribution/native/native-bundle-contract.mjs',
@@ -1660,12 +1661,14 @@ function moduleSpecifierViolation(
     return createHash('sha256').update(helper.source).digest('hex') === nativeCaskSourceSha256
       ? undefined : 'cask helper differs from its exact reviewed pure closure';
   }
-  if (specifier === nativeContractSpecifier && [nativeContractImporter, nativeInstalledContractImporter].includes(importer)) {
+  if (specifier === nativeContractSpecifier &&
+    [nativeContractImporter, nativeInstalledContractImporter, nativeCaskStageContractImporter].includes(importer)) {
     if (dynamic) return 'bundle contract edge must remain static';
     const helper = context.nativeContract;
     if (!helper) return 'packaged bundle contract helper/declaration is missing';
     if (!nativeContractFiles.every(target => helper.packagedFiles.has(target))) return 'bundle contract dependency is not packaged';
-    const names = importer === nativeInstalledContractImporter
+    const names = importer === nativeCaskStageContractImporter ? ['bundlePath', 'nativeBundleLimits']
+      : importer === nativeInstalledContractImporter
       ? ['bundleInventory', 'bundlePath', 'nativeBundleLimits', 'readBundleFile']
       : ['bundleInventory', 'bundlePath', 'nativeBundleLimits'];
     if (!exactStaticHelperBindings(context, file, specifier, names)) {
@@ -2022,6 +2025,25 @@ describe('bundled plugin purity and module loading (2.6-G)', () => {
       `export { bundleInventory } from '${nativeContractSpecifier}';`,
       `import { bundleInventory, bundlePath, nativeBundleLimits } from '${nativeContractSpecifier}';`,
       `import { bundleInventory, bundlePath, nativeBundleLimits, readBundleFile, nativeBundleHost } from '${nativeContractSpecifier}';`
+    ]) expect(check({ ...context, modules: new Map(context.modules).set(importer, source) }))
+      .toBe('bundle contract edge has unexpected runtime bindings');
+    expect(check({ ...context, nativeContract: undefined })).toBe('packaged bundle contract helper/declaration is missing');
+    expect(check({ ...context, nativeContract: {
+      ...context.nativeContract!, source: `${context.nativeContract!.source}\nexport const changed = true;`
+    } })).toBe('bundle contract differs from its exact reviewed first-party closure');
+  });
+
+  it('admits only the cask stage producer with the exact inert path and inventory-limit bindings', async () => {
+    const context = await moduleLoadingContext(await sourceModules());
+    const importer = sourcePath(nativeCaskStageContractImporter);
+    const check = (current: ModuleLoadingContext) => moduleSpecifierViolation(nativeContractSpecifier, importer, current);
+    expect(check(context)).toBeUndefined();
+    expect(moduleSpecifierViolation(nativeContractSpecifier, importer, context, true)).toBe('bundle contract edge must remain static');
+    for (const source of [
+      `import * as inventory from '${nativeContractSpecifier}';`,
+      `export { bundlePath } from '${nativeContractSpecifier}';`,
+      `import { bundleInventory, bundlePath, nativeBundleLimits } from '${nativeContractSpecifier}';`,
+      `import { bundlePath } from '${nativeContractSpecifier}';`
     ]) expect(check({ ...context, modules: new Map(context.modules).set(importer, source) }))
       .toBe('bundle contract edge has unexpected runtime bindings');
     expect(check({ ...context, nativeContract: undefined })).toBe('packaged bundle contract helper/declaration is missing');

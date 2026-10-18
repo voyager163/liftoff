@@ -134,6 +134,18 @@ discover -> preflight -> recovery-ready -> uninstall exact npm package
 
 Before uninstalling, confirm native arm64, supported OS, approved Homebrew, exact cask availability, destination collisions, permissions, and a verified offline recovery copy of the old version. Record the owning npm executable/prefix and exact package/launcher identity. Distinguish Homebrew Node, nvm, Volta, and custom prefixes through verified manager data. Ambiguous or multiple copies require an explicit selection; do not search/delete all Node versions.
 
+Approved apply also retains the authenticated target archive, exact cask definition,
+qualification metadata and referenced evidence under the private migration journal.
+Validate the archive inventory without extraction or execution, bind the retained
+files' content and physical identities to the journal, and recheck them before npm
+removal and cask dispatch. A dedicated bounded child writes only within its own
+verified private working directory, so later canonical-parent replacement cannot
+redirect writes into another directory. Failed preparation retains its partial
+material and cannot authorize removal. New completed journals verify against this
+retained exact release, not a subsequently changed stable target; historical
+journals remain readable without inventing absent retained evidence. Private
+staging establishes neither Homebrew execution nor publication authority.
+
 Uninstall only the selected `@msn-control/liftoff` using its actual manager. Remove a residual launcher only if its identity still proves it belongs to that package. Never use forced cask overwrite or broad prefix/cache/config cleanup. Homebrew and npm can compete for the same `bin/liftoff`; treat transfer as a journaled handover, not naive install-then-uninstall.
 
 Retain user configuration, telemetry preferences, projects, `.liftoff` records, Node/npm, and unrelated packages. Recovery restores only verified attributable old installation material when the destination has not changed or become Homebrew-owned. Never undo a later user edit or uninstall an unrelated/new successful installation. Report old/new ownership and any remaining PATH/shell-cache issue explicitly; a script cannot mutate its parent shell's aliases/hash state.

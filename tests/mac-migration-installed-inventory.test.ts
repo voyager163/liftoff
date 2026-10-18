@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { runMacMigration } from '../src/application/upgrade/mac-migration.js';
-import { captureMigrationTree } from '../src/adapters/distribution/mac-migration-state.js';
+import { captureMigrationTree, MacMigrationJournalStore } from '../src/adapters/distribution/mac-migration-state.js';
 import { macMigrationFixture } from './fixtures/mac-migration.js';
 
 type Fixture = Awaited<ReturnType<typeof macMigrationFixture>>;
@@ -99,19 +99,45 @@ describe.skipIf(process.platform === 'win32')('migration independent installed-b
     expect(calls).toBe(2);
   });
 
-  it('blocks stale original release material during repeat inspection without rewriting the journal', async () => {
+  it('blocks stale original release material during historical-journal inspection without rewriting it', async () => {
     const value = await fixture();
     const applied = await apply(value);
     expect(applied.status).toBe('installed');
     const root = path.join(value.root, 'private journal');
+    const store = new MacMigrationJournalStore(root);
+    const journal = await store.read(applied.journal!.sha256);
+    expect(journal.targetStage).toBeDefined();
+    await store.lock();
+    try {
+      delete journal.targetStage;
+      await store.save(journal);
+    } finally { await store.release(); }
+    const historical = await store.descriptor();
     const before = await captureMigrationTree(root);
     value.material.prerelease = true;
     const run = vi.spyOn(value.dependencies.upgrade.runner, 'run');
     const result = await runMacMigration({ inspect: { journalRoot: root,
-      journalSha256: applied.journal!.sha256 } }, value.dependencies);
+      journalSha256: historical.sha256 } }, value.dependencies);
     expect(result).toMatchObject({ status: 'partial', effects: 'none', blockers: ['native-native_invalid'] });
     expect(result.verification).toBeUndefined();
     expect(run.mock.calls.some(([command]) => command.executable === path.join(value.source, 'runtime/node'))).toBe(false);
     expect(await captureMigrationTree(root)).toEqual(before);
   });
+
+  it.each(['qualification.sig', 'release.json', 'snapshot.json', 'definition.rb'] as const)(
+    'blocks changed retained %s during repeat inspection without executing target code or rewriting evidence', async name => {
+      const value = await fixture(), applied = await apply(value);
+      expect(applied.status).toBe('installed');
+      const root = path.join(value.root, 'private journal');
+      await writeFile(path.join(root, 'cask-target', name), 'retain changed target bytes');
+      const before = await captureMigrationTree(root);
+      const run = vi.spyOn(value.dependencies.upgrade.runner, 'run'), target = vi.spyOn(value.dependencies.cask!, 'target');
+      const result = await runMacMigration({ inspect: { journalRoot: root, journalSha256: applied.journal!.sha256 } },
+        value.dependencies);
+      expect(result).toMatchObject({ status: 'partial', effects: 'none', blockers: ['cask-target-stage-changed'] });
+      expect(result.verification).toBeUndefined();
+      expect(target).not.toHaveBeenCalled();
+      expect(run.mock.calls.some(([command]) => command.executable === path.join(value.source, 'runtime/node'))).toBe(false);
+      expect(await captureMigrationTree(root)).toEqual(before);
+    });
 });

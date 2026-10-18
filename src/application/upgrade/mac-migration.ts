@@ -8,6 +8,7 @@ import { assertCaskOwnership, nativePolicy } from '../../adapters/distribution/n
 import { admitNativeStableMaterial } from '../../adapters/distribution/native-metadata.js';
 import { inspectMacInstalledCandidate } from '../../adapters/distribution/native-mac-installed.js';
 import type { MacMigrationCaskPort } from '../../adapters/distribution/mac-migration-cask.js';
+import { prepareCaskMigrationTarget, readCaskMigrationTarget, stageCaskMigrationTarget } from '../../adapters/distribution/mac-migration-cask-stage.js';
 import { createHomebrewCaskPreparation } from '../../adapters/distribution/native-cask-plan.js';
 import {
   discoverMacNpmSelections, inspectMacNpmOwner, macMigrationHash, migrationDirectory, migrationEnvironment,
@@ -20,7 +21,7 @@ import {
   type MigrationJournal, type MigrationTree
 } from '../../adapters/distribution/mac-migration-state.js';
 import { commandFailed } from '../../domain/distribution/liftoff-npm-installation.js';
-import { SelfUpgradeFailure } from '../../domain/distribution/liftoff-upgrade.js';
+import { SelfUpgradeFailure, selfUpgradeInstallTimeoutMs } from '../../domain/distribution/liftoff-upgrade.js';
 import { installedPackageRoot } from '../../adapters/packaged-assets/package-root.js';
 import {
   MacMigrationFailure, type MacMigrationBrew, type MacMigrationHost, type MacMigrationReport,
@@ -107,7 +108,10 @@ async function verifyCask(journal: MigrationJournal, dependencies: MacMigrationD
   const cask = dependencies.cask!;
   const observed = await bounded(signal => cask.installed(journal.brew, journal.candidate, signal));
   assertCaskOwnership(observed.ownership, observed.inventory, nativePolicy(cask.policy));
-  const material = await bounded(signal => cask.target(journal.brew, signal));
+  const material = journal.targetStage
+    ? await readCaskMigrationTarget({ stage: journal.targetStage, candidate: journal.candidate, policy: cask.policy,
+      signal: new AbortController().signal })
+    : await bounded(signal => cask.target(journal.brew, signal));
   const inspect = () => bounded(signal => inspectMacInstalledCandidate({ bundleRoot: observed.inventory.bundleRoot,
     material, candidate: journal.candidate, policy: cask.policy, signal }));
   const installed = await inspect();
@@ -318,6 +322,8 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
     if (!preflight.identity || preflight.permissions !== 'verified' || preflight.collisions !== 'clear') {
       throw new MacMigrationFailure('cask-scope-preflight-unproven');
     }
+    const preparedTarget = await bounded(signal => prepareCaskMigrationTarget({ material, candidate, policy, signal }),
+      selfUpgradeInstallTimeoutMs);
     const launcher = await migrationLauncher(owner.launcher);
     const launcherProbe = path.join(scratch, 'recovery-launcher-probe');
     await symlink(launcher.target, launcherProbe);
@@ -331,7 +337,7 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
     const recovery = await recoveryObservation(owner, request.recovery, tree, dependencies.upgrade, scratch);
     const policyIdentity = macMigrationHash(JSON.stringify(policy));
     const review = macMigrationHash(JSON.stringify([host, owner, brew, candidate, channel, preflight,
-      policyIdentity, destination, parents, launcher, tree, request.recovery, recovery]));
+      policyIdentity, destination, parents, launcher, tree, request.recovery, recovery, preparedTarget.identity]));
     report.review = review; report.target = targetReport(cask, candidate);
     if (!request.apply) { report.status = 'ready'; return report; }
     if (request.apply.review !== review || !/^[a-f0-9]{64}$/.test(request.apply.review)) throw new MacMigrationFailure('stale-exact-review');
@@ -349,6 +355,11 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
       recoveryPhysical: backup.physical, launcher, phase: 'prepared' };
     await store.save(journal);
     assertMigrationRecoveryJournalBudget(journal);
+    const targetStage = await stageCaskMigrationTarget(preparedTarget,
+      { root: store.root, rootIdentity: journal.rootIdentity }, new AbortController().signal, dependencies.upgrade.runner);
+    journal.targetStage = targetStage;
+    assertMigrationRecoveryJournalBudget(journal);
+    await store.save(journal);
     if ((await inspectMacNpmOwner(request.selection ?? owner, dependencies.upgrade, scratch)).identity !== owner.identity ||
       (await captureMigrationTree(owner.packageRoot)).physical !== tree.physical ||
       (await brewObservation(request.brew, owner, dependencies.upgrade, scratch)).identity !== brew.identity ||
@@ -362,6 +373,7 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
       throw new MacMigrationFailure('cask-review-changed');
     }
     const assertOldCurrent = async () => {
+      await readCaskMigrationTarget({ stage: targetStage, candidate, policy, signal: new AbortController().signal });
       if ((await inspectMacNpmOwner(request.selection ?? owner, dependencies.upgrade, scratch!)).identity !== owner.identity ||
         (await captureMigrationTree(owner.packageRoot)).physical !== tree.physical ||
         JSON.stringify(await parentIdentities(owner, destination)) !== JSON.stringify(parents) ||
@@ -400,6 +412,7 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
     if (JSON.stringify(dispatchCandidate) !== JSON.stringify(candidate) || JSON.stringify(dispatchChannel) !== JSON.stringify(channel) ||
       JSON.stringify(dispatchPreflight) !== JSON.stringify(preflight) ||
       macMigrationHash(JSON.stringify(nativePolicy(cask.policy))) !== policyIdentity) throw new MacMigrationFailure('cask-review-changed');
+    await readCaskMigrationTarget({ stage: targetStage, candidate, policy, signal: new AbortController().signal });
     journal.phase = 'cask-intent'; await store.save(journal); report.effects = 'possible';
     await assertMigrationTools(owner);
     if (!await migrationAbsent(destination) || !await migrationAbsent(owner.packageRoot) ||
@@ -409,7 +422,8 @@ export async function runMacMigration(request: MacMigrationRequest, dependencies
     }
     const operationId = journal.operationId;
     const installed = await bounded(signal => cask.installExact(brew, candidate, channel.identity, operationId,
-      { signal, environment: migrationEnvironment(dependencies.upgrade, scratch!, owner.node), timeoutMs: 120_000 }), 120_000);
+      { signal, environment: migrationEnvironment(dependencies.upgrade, scratch!, owner.node), timeoutMs: 120_000,
+        targetStage }), 120_000);
     if (!installed.settled) { journal.phase = 'uncertain'; await store.save(journal); throw new MacMigrationFailure('cask-settlement-unproven'); }
     journal.phase = 'cask-settled'; await store.save(journal);
     report.effects = installed.installed ? 'possible' : 'npm-removed';

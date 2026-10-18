@@ -7,6 +7,7 @@ import { assertMigrationMetadata, macMigrationHash, migrationDirectory, migratio
 import { MacMigrationFailure, type MacMigrationBrew, type MacMigrationJournalPhase, type MacNpmOwner } from '../../domain/distribution/mac-migration.js';
 import type { NativeCandidate } from '../../domain/distribution/native-upgrade.js';
 import { isStableSemver } from '../../stable-release.js';
+import type { CaskMigrationTargetStage } from './mac-migration-cask-stage.js';
 
 export interface MigrationTreeEntry {
   path: string;
@@ -125,6 +126,7 @@ export interface MigrationJournal {
   recoveryPhysical: string;
   launcher: { target: string; physical: string; metadata?: string };
   phase: MacMigrationJournalPhase;
+  targetStage?: CaskMigrationTargetStage;
   restoration?: {
     completed: { path: string; identity: string }[];
     pending?: string;
@@ -324,8 +326,11 @@ function assertJournalShape(journal: MigrationJournal): void {
     'cask-settled', 'verified', 'restore-intent', 'restored', 'uncertain'];
   if (!closed(journal, ['schemaVersion', 'kind', 'root', 'rootIdentity', 'scratch', 'operationId', 'review', 'owner',
     'brew', 'candidate', 'channelIdentity', 'policyIdentity', 'destination', 'parentIdentities', 'tree',
-    'recoveryPhysical', 'launcher', 'phase'], ['restoration']) ||
+    'recoveryPhysical', 'launcher', 'phase'], ['restoration', 'targetStage']) ||
     !phases.includes(journal.phase) || !absolute(journal.root) || !absolute(journal.scratch) ||
+    journal.targetStage !== undefined && (!closed(journal.targetStage, ['root', 'sha256', 'identity']) ||
+      journal.targetStage.root !== path.join(journal.root, 'cask-target') ||
+      !digest(journal.targetStage.sha256) || !digest(journal.targetStage.identity)) ||
     typeof journal.operationId !== 'string' || !/^[a-f0-9-]{36}$/.test(journal.operationId) ||
     typeof journal.channelIdentity !== 'string' || !journal.channelIdentity || journal.channelIdentity.length > 10000 ||
     !closed(journal.owner, ['npm', 'node', 'prefix', 'manager', 'packageRoot', 'version', 'binary', 'launcher', 'identity', 'tools'],

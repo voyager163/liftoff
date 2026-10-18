@@ -191,6 +191,7 @@ try {
     'native-release-catalog.mjs', 'native-release-catalog.d.mts',
     'native-program-assembly.mjs', 'native-program-assembly.d.mts',
     'native-cask-definition.mjs', 'native-cask-definition.d.mts',
+    'cask-stage-worker.mjs', 'cask-stage-worker.d.mts',
     'native-bundle-contract.mjs', 'native-bundle-contract.d.mts', 'release-policy.json', 'platforms.json'
   ]) {
     assertPackageContains(packResult, `distribution/native/${asset}`);
@@ -507,6 +508,7 @@ try {
     'native-release-catalog.mjs', 'native-release-catalog.d.mts',
     'native-program-assembly.mjs', 'native-program-assembly.d.mts',
     'native-cask-definition.mjs', 'native-cask-definition.d.mts',
+    'cask-stage-worker.mjs', 'cask-stage-worker.d.mts',
     'native-bundle-contract.mjs', 'native-bundle-contract.d.mts', 'release-policy.json', 'platforms.json'
   ]) {
     const relative = path.join('distribution', 'native', asset);

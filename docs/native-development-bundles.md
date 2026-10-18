@@ -147,6 +147,7 @@ LIFTOFF_NATIVE_PACKAGE_ROOT=/absolute/path/outside-the-checkout/new-liftoff-bund
 LIFTOFF_NATIVE_PROGRAM_RUNTIME_ARCHIVE=/absolute/path/to/the-pinned-standalone-node-archive \
 npx vitest run tests/native-bundle.test.ts tests/native-bundle-installed.test.ts \
 tests/native-distribution.test.ts tests/native-release-set.test.ts tests/native-package-installed.test.ts \
+tests/mac-migration-cask-stage.test.ts \
   --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false \
   --reporter=default --reporter=json --outputFile.json=qualification/native-bundle.json
 node scripts/native-bundle.mjs verify-report qualification/native-bundle.json
@@ -156,6 +157,12 @@ node scripts/native-package-report.mjs qualification/native-bundle.json \
 
 The original report gate requires all eleven Apple Silicon installed cases to pass;
 the cross-platform report gate additionally requires every common/applicable case.
+Its packaged cask-stage worker case uses the bundle's pinned runtime and exact
+installed helper with no global tools. POSIX hosts must reproduce every inert
+transport byte and creation-held physical identity; Windows must refuse before
+creating target material. Missing-helper controls require failure without a
+checkout fallback. These are private transport checks, not Homebrew execution,
+cask publication or public migration qualification.
 The macOS CI lane also selects its checksum-pinned downloaded runtime for the
 separate original-program control. That control makes two actual private builds,
 retains invocation-owned references and checks installed/runtime-reference
