@@ -29,18 +29,21 @@ import { writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 import { selected, writeModernInstalledProject, writeModernHistoricalSource, writeModernSuccessor, localInputsPlanFixture as planInput } from './fixtures/modern-installed-project.js';
 
 const io=vi.hoisted(()=>({opens:[] as string[],afterOpen:undefined as undefined|((target:string)=>Promise<void>),
-  afterLstat:undefined as undefined|((target:string)=>Promise<void>)}));
+  observeLstat:undefined as undefined|((target:string)=>(()=>Promise<void>)|undefined),
+  afterPhysicalLstat:undefined as undefined|((target:string)=>Promise<void>)}));
 vi.mock('node:fs/promises',async importOriginal=>{
   const actual=await importOriginal<typeof import('node:fs/promises')>();
   return {...actual,lstat:async(...args:Parameters<typeof actual.lstat>)=>{
-    const stat=await actual.lstat(...args);await io.afterLstat?.(String(args[0]));return stat;
+    const target=String(args[0]),observe=io.observeLstat?.(target);
+    try{return await actual.lstat(...args);}
+    finally{await io.afterPhysicalLstat?.(target);await observe?.();}
   },open:async(...args:Parameters<typeof actual.open>)=>{
     const target=String(args[0]);io.opens.push(target);const handle=await actual.open(...args);
     try{await io.afterOpen?.(target);return handle;}catch(error){await handle.close();throw error;}
   }};
 });
 const roots:string[]=[];
-afterEach(async()=>{io.afterOpen=undefined;io.afterLstat=undefined;io.opens=[];for(const root of roots.splice(0))await fs.rm(root,{recursive:true,force:true});vi.restoreAllMocks();});
+afterEach(async()=>{io.afterOpen=undefined;io.observeLstat=undefined;io.afterPhysicalLstat=undefined;io.opens=[];for(const root of roots.splice(0))await fs.rm(root,{recursive:true,force:true});vi.restoreAllMocks();});
 const contracts={catalog:projectCatalog,resolveSourceContract:resolveModernManifestV8SourceContract};
 const timestamp='2026-09-01T12:00:00.000Z',expiry='2026-09-01T13:00:00.000Z';
 async function root(){const directory=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'installed-preflight-')));roots.push(directory);return directory;}
@@ -79,14 +82,17 @@ function observeFinalPhysicalBatch(root:string,opens:number,observe:(index:numbe
   let rootReads=0,final=false,release!:()=>void,refuse!:(error:Error)=>void;
   let timer:ReturnType<typeof setTimeout>|undefined;
   const ready=new Promise<void>((resolve,reject)=>{release=resolve;refuse=reject;});
-  const state={started:0,active:0,maximum:0,completed:[] as number[]};
-  io.afterLstat=async target=>{
+  const state={started:0,active:0,maximum:0,paths:[] as string[],completed:[] as number[]};
+  io.observeLstat=target=>{
     if(!final&&io.opens.length===opens&&target===root&&++rootReads===2)final=true;
     if(!final)return;
+    state.paths.push(target);
     const index=state.started++;state.maximum=Math.max(state.maximum,++state.active);
     if(index===0)timer=setTimeout(()=>refuse(new Error('The complete final physical batch did not start.')),5000);
     if(index===3){clearTimeout(timer);release();}
-    try{await ready;await observe(index);}finally{state.active--;state.completed.push(index);}
+    return async()=>{
+      try{await ready;await observe(index);}finally{state.active--;state.completed.push(index);}
+    };
   };
   return state;
 }
@@ -97,10 +103,21 @@ describe('bounded final installed physical readback',()=>{
     const original=await inspectModernInstalledActivation(f.root),opens=io.opens.length;io.opens=[];
     expect(original.status).toBe('observed');
     const state=observeFinalPhysicalBatch(f.root,opens,async()=>{});
+    let release!:()=>void;
+    const sibling=new Promise<void>(resolve=>{release=resolve;}),physicalCompletions:string[]=[];
+    io.afterPhysicalLstat=async target=>{
+      if(!state.started)return;
+      if(target===f.root)await sibling;else release();
+      physicalCompletions.push(target);
+    };
     const observed=await inspectModernInstalledActivation(f.root);
     expect(state.active).toBe(0);expect(state.maximum).toBe(4);
+    expect(state.paths[0]).toBe(f.root);expect(physicalCompletions).toContain(f.root);
+    expect(physicalCompletions[0]).not.toBe(f.root);
     expect(observed.status).toBe('observed');
     if(original.status!=='observed'||observed.status!=='observed')throw new Error('Expected actual installed observations.');
+    expect(state.started).toBe(original.snapshot.physical.length);
+    expect(original.snapshot.physical.some(entry=>entry.identity===null)).toBe(true);
     expect(observed.snapshot.files).toEqual(original.snapshot.files);
     expect(observed.snapshot.directories).toEqual(original.snapshot.directories);
     expect(observed.snapshot.physical).toEqual(original.snapshot.physical);
