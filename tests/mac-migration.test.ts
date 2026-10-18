@@ -212,16 +212,28 @@ describe.skipIf(process.platform === 'win32')('private SOURCE-only Mac migration
         for (const [index, [command, options]] of run.mock.calls.entries()) {
           expect(options?.cwd).toBeDefined(); expect(options?.env).toBeDefined();
           expect(options?.ensureProcessTreeSettled).toBe(true);
-          expect([value.node, value.request.brew, runtime, path.join(value.brewPrefix, 'bin/liftoff')]).toContain(command.executable);
-          neutral(options!.env!, options!.cwd!, [runtime, path.join(value.brewPrefix, 'bin/liftoff')].includes(command.executable)
-            ? runtime : value.node);
+          if (command.executable === process.execPath) {
+            expect(command.args).toEqual([path.resolve('distribution/native/cask-stage-worker.mjs')]);
+            expect([path.join(value.root, 'private journal'), path.join(value.root, 'private journal', 'cask-target')])
+              .toContain(options!.cwd);
+            expect(options!.env).toEqual({
+              PATH: '/usr/bin:/bin', HOME: options!.cwd, TMPDIR: options!.cwd,
+              NODE_OPTIONS: '', NODE_PATH: '', CI: 'true', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0'
+            });
+            expect(options!.inheritEnvironment).toBe(false);
+            expect(options!.stdin).toBeInstanceOf(Uint8Array);
+          } else {
+            expect([value.node, value.request.brew, runtime, path.join(value.brewPrefix, 'bin/liftoff')]).toContain(command.executable);
+            neutral(options!.env!, options!.cwd!, [runtime, path.join(value.brewPrefix, 'bin/liftoff')].includes(command.executable)
+              ? runtime : value.node);
+          }
           if (command.executable === value.request.brew) expect(command.args).toEqual(['--prefix']);
           if (command.args[0] === value.npm) {
             expect([
               [value.npm, '--version'], [value.npm, 'root', '--global', '--prefix', value.prefix],
               [value.npm, 'uninstall', '--global', '--prefix', value.prefix, '--ignore-scripts', '--no-audit', '--no-fund', '@msn-control/liftoff']
             ]).toContainEqual(command.args);
-          } else if (command.executable !== value.request.brew) {
+          } else if (command.executable !== value.request.brew && command.executable !== process.execPath) {
             if (command.args[0] === '--input-type=module') {
               expect(command.executable).toBe(runtime);
               expect(command.args.slice(0, 2)).toEqual(['--input-type=module', '-e']);

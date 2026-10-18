@@ -238,6 +238,7 @@ describe('source repository setup policy', () => {
   it.each([
     'missing', 'conditional', 'runner', 'node', 'architecture', 'go', 'install', 'download',
     'build', 'filtered', 'unset-bundle', 'unset-migration-bundle', 'wrong-migration-bundle', 'missing-migration-cases',
+    'missing-cask-stage-cases',
     'skip-migration-report', 'historical-download', 'historical-checksum', 'unset-historical-client',
     'missing-journey-cases', 'skip-journey-report', 'wrong-journey-bundle',
     'unverified-journey-selection', 'wrong-selector-bundle', 'missing-prerelease-cases', 'wrong-refusal-outcome',
@@ -263,6 +264,7 @@ describe('source repository setup policy', () => {
       'LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/liftoff-native-bundle"',
       'LIFTOFF_MAC_MIGRATION_BUNDLE_ROOT="$RUNNER_TEMP/unverified-bundle"');
     if (fault === 'missing-migration-cases') job.steps[7].run = job.steps[7].run.replace(/^  tests\/mac-migration-package.test.ts.*\n/m, '');
+    if (fault === 'missing-cask-stage-cases') job.steps[7].run = job.steps[7].run.replace(' tests/mac-migration-cask-stage.test.ts', '');
     if (fault === 'skip-migration-report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/mac-migration-package-report.mjs.*\n/m, '');
     if (fault === 'historical-download') job.steps[5].run = job.steps[5].run.replace('liftoff-0.3.4.tgz', 'liftoff-latest.tgz');
     if (fault === 'historical-checksum') job.steps[5].run = job.steps[5].run.replace('05793480c44632b3', '15793480c44632b3');
