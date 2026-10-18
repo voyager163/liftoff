@@ -20,6 +20,7 @@ import { encodeWindowsEnvironmentBlock } from '../src/adapters/process/windows-j
 import { resolveTargetExecutableCommand } from '../src/adapters/process/windows-job-runner.js';
 import { hclComputationPolicy } from '../src/adapters/hcl/isolated-parser.js';
 import { extractVersion } from '../src/domain/workstation/versions.js';
+import { matrixValidatorEnvironment } from './fixtures/workflow-source5-validator-environment.js';
 
 const qualifiedHcl = process.platform === hclComputationPolicy.qualifiedRuntime.platform &&
   process.arch === hclComputationPolicy.qualifiedRuntime.arch &&
@@ -894,7 +895,8 @@ describe('release-owned real context validator bodies, not phase qualification',
     try {
       await expect(withComposeDiagnostics('owned-syntax-control', async () => {
         actual = await new NodeCommandRunner().run(command,
-          { cwd: value.root, timeoutMs: 5000, maxOutputBytes: 4096, ensureProcessTreeSettled: true, stream: false });
+          { cwd: value.root, env: matrixValidatorEnvironment(value.root), inheritEnvironment: false,
+            timeoutMs: 5000, maxOutputBytes: 4096, ensureProcessTreeSettled: true, stream: false });
         throw failure;
       })).rejects.toBe(failure);
       if (!actual) throw new Error('The owned syntax control returned no actual command result.');

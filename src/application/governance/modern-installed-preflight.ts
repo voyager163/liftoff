@@ -401,7 +401,16 @@ async function collectModernInstalledActivation(root:string):Promise<{
       }
       if(manifest.activationTargetHistory)await capture(activationTargetHistoryPathParts(manifest.activationTargetHistory));
     }
-    for(const entry of physical.values())if(canonicalJson(await stamp(entry.path))!==canonicalJson(entry))localInputFailure('Installed physical inputs changed during collection.');
+    const physicalEntries=[...physical.values()];
+    for(let start=0;start<physicalEntries.length;start+=4){
+      const batch=physicalEntries.slice(start,start+4);
+      const observations=await Promise.allSettled(batch.map(entry=>stamp(entry.path)));
+      for(const [index,entry] of batch.entries()){
+        const observed=observations[index]!;
+        if(observed.status==='rejected')throw observed.reason;
+        if(canonicalJson(observed.value)!==canonicalJson(entry))localInputFailure('Installed physical inputs changed during collection.');
+      }
+    }
     const snapshot:InstalledLocalSnapshot={kind:'liftoff-modern-installed-inputs',schemaVersion:1,root:canonical,observedAt:new Date().toISOString(),
       files:[...files.values()].sort((a,b)=>compare(key(a.pathParts),key(b.pathParts))),directories:[...directories.values()].sort((a,b)=>compare(key(a.pathParts),key(b.pathParts))),
       physical:[...physical.values()].sort((a,b)=>compare(a.path,b.path))};
