@@ -57,6 +57,7 @@ Within the same test invocation, ordered projects run the other root files first
 then `tests/repair-cancellation.test.ts`, then `tests/repair-preparation-execution.test.ts`, then
 `tests/installed-tool-distribution.test.ts`, then the intact
 `tests/migration-inspection.test.ts` file, then the intact
+`tests/adoption-verification-execution.test.ts` file, then the intact
 `tests/governance-workflow-source5-matrix.test.ts` file, then the intact
 `tests/governance-workflow-source5-finalization.test.ts` file, then the intact
 `tests/activation-successor-update.test.ts` file without competing filesystem-heavy
@@ -70,14 +71,16 @@ in its original 10-second hook, and Source5 cases retain their 30-second limits;
 neither fixtures nor assertions are moved out of their original timed bodies.
 Interpreter-copy preparation retains its original test timeout and reports
 phase timings; its actual fixture creation and verification are not moved into hooks.
-Each file belongs to exactly one
-group; targeted file selectors still run the selected file. Real revalidation
+Each file belongs to exactly one group; targeted file selectors still run the
+selected file. Real revalidation
 and fixture construction remain inside the original timed test bodies.
-Other platforms retain their existing single-project configuration and Vitest's
-worker default. Discovery remains complete, and isolation, assertions, and
-timeouts are unchanged, including the migration inspection suite's 90-second
-limit. Use these defaults for CI qualification rather than increasing timeouts
-or excluding slow cases.
+Windows adoption verification also runs as an intact ordered file, so its
+original fixture preparation, actual child commands and receipt checks do not
+compete with other files inside the original 30-second cases.
+macOS and Linux retain Vitest's worker default. Discovery remains complete;
+isolation, assertions, and timeouts are unchanged, including the migration
+inspection suite's 90-second limit. Use these defaults for CI qualification
+rather than increasing timeouts or excluding slow cases.
 
 Hosted CI partitions the complete root suite into four shards per platform.
 Every shard runs the package's supported-stack check and build; native integration
@@ -112,6 +115,18 @@ then validate in the original member order. Each member retains its own physical
 stage checks; an earlier semantic refusal still wins over a later physical
 failure. Both matrix inventory passes and the subsequent authority check remain
 fresh, and these local reads do not submit provider effects.
+Original native assembly output captures also use fixed-four physical-entry
+batches, preserving both complete inventories, both physical passes, manifest
+readback and fresh parent brackets. An original-order error returns only after
+all started siblings settle; no later batch follows a refusal.
+Installed packed-source byte/length verification likewise uses fixed-four
+batches in the original manifest order, preserving earlier semantic refusals
+over later physical failures and retaining every source member check.
+Installed OpenSpec distribution scans overlap at most four admitted regular-file
+reads. File/count/byte reservations happen before opening, and every started
+handle closes before ordered metadata, entry and parent checks or refusal.
+Directory/link boundaries, both complete scans and the original 30-second
+scan deadline remain unchanged; neither inventory nor currentness is cached.
 Windows interop capture also rereads every assembly byte through the same open
 physical file using one buffer capped at 64 KiB. In-place changes must refuse
 even when Windows has not advanced the open handle's timestamps. The original

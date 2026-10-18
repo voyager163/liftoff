@@ -22,7 +22,7 @@ describe('root test runner configuration', () => {
   it('partitions Windows discovery into disjoint ordered groups without dropping any isolated file', () => {
     const windows = createRootTestConfig('win32');
     const projects = windows.test.projects;
-    expect(projects).toHaveLength(8);
+    expect(projects).toHaveLength(9);
     if (!projects) throw new Error('Expected all Windows test projects.');
 
     expect(projects[0]).toMatchObject({
@@ -32,6 +32,7 @@ describe('root test runner configuration', () => {
         include: ['tests/**/*.test.ts'],
         exclude: [...defaultExclude, 'tests/repair-cancellation.test.ts', 'tests/repair-preparation-execution.test.ts',
           'tests/installed-tool-distribution.test.ts', 'tests/migration-inspection.test.ts',
+          'tests/adoption-verification-execution.test.ts',
           'tests/governance-workflow-source5-matrix.test.ts', 'tests/governance-workflow-source5-finalization.test.ts',
           'tests/activation-successor-update.test.ts'],
         sequence: { groupOrder: 0 }
@@ -72,25 +73,33 @@ describe('root test runner configuration', () => {
     expect(projects[5]).toMatchObject({
       extends: false,
       test: {
-        name: 'workflow-source5-matrix',
-        include: ['tests/governance-workflow-source5-matrix.test.ts'],
+        name: 'adoption-verification-execution',
+        include: ['tests/adoption-verification-execution.test.ts'],
         sequence: { groupOrder: 5 }
       }
     });
     expect(projects[6]).toMatchObject({
       extends: false,
       test: {
-        name: 'workflow-source5-finalization',
-        include: ['tests/governance-workflow-source5-finalization.test.ts'],
+        name: 'workflow-source5-matrix',
+        include: ['tests/governance-workflow-source5-matrix.test.ts'],
         sequence: { groupOrder: 6 }
       }
     });
     expect(projects[7]).toMatchObject({
       extends: false,
       test: {
+        name: 'workflow-source5-finalization',
+        include: ['tests/governance-workflow-source5-finalization.test.ts'],
+        sequence: { groupOrder: 7 }
+      }
+    });
+    expect(projects[8]).toMatchObject({
+      extends: false,
+      test: {
         name: 'activation-successor-update',
         include: ['tests/activation-successor-update.test.ts'],
-        sequence: { groupOrder: 7 }
+        sequence: { groupOrder: 8 }
       }
     });
     for (const project of projects.slice(1)) expect(project.test).not.toHaveProperty('exclude');

@@ -6,6 +6,7 @@ import { coveragePackage, publishedRuntimeSources } from './scripts/coverage-gat
 const migrationInspectionFile = 'tests/migration-inspection.test.ts';
 const distributionInspectionFile = 'tests/installed-tool-distribution.test.ts';
 const preparationExecutionFile = 'tests/repair-preparation-execution.test.ts';
+const adoptionVerificationFile = 'tests/adoption-verification-execution.test.ts';
 const cancellationFile = 'tests/repair-cancellation.test.ts';
 const workflowMatrixFile = 'tests/governance-workflow-source5-matrix.test.ts';
 const workflowFinalizationFile = 'tests/governance-workflow-source5-finalization.test.ts';
@@ -65,7 +66,8 @@ export function createRootTestConfig(
       { name: 'repair-cancellation', file: cancellationFile },
       { name: 'repair-preparation-execution', file: preparationExecutionFile },
       { name: 'installed-tool-distribution', file: distributionInspectionFile },
-      { name: 'migration-inspection', file: migrationInspectionFile }
+      { name: 'migration-inspection', file: migrationInspectionFile },
+      { name: 'adoption-verification-execution', file: adoptionVerificationFile }
     ] : []),
     { name: 'workflow-source5-matrix', file: workflowMatrixFile },
     { name: 'workflow-source5-finalization', file: workflowFinalizationFile },

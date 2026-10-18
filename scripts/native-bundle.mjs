@@ -100,9 +100,15 @@ async function assemblyOutput(directory) {
   const names = ['', 'bundle.json', ...before.entries.map(entry => entry.path)];
   const capture = async () => {
     const entries = [];
-    for (const name of names) {
-      const file = path.join(directory, name), stat = await lstat(file, { bigint: true });
-      entries.push({ path: name, physical: physicalStamp(stat), resolved: await realpath(file) });
+    for (let offset = 0; offset < names.length; offset += 4) {
+      const captured = await Promise.allSettled(names.slice(offset, offset + 4).map(async name => {
+        const file = path.join(directory, name), stat = await lstat(file, { bigint: true });
+        return { path: name, physical: physicalStamp(stat), resolved: await realpath(file) };
+      }));
+      for (const result of captured) {
+        if (result.status === 'rejected') throw result.reason;
+        entries.push(result.value);
+      }
     }
     return entries;
   };
@@ -546,10 +552,13 @@ export async function verifyNativeBundle(directory) {
   const packagePaths = manifest.package.sourceFiles.map(file => bundlePath(file.path));
   assert.equal(new Set(packagePaths).size, packagePaths.length, 'Packed source inventory has duplicate paths.');
   assert.deepEqual(packagedAssetIssues({ packedPaths: packagePaths, declaredFiles: pkg.files }), []);
-  for (const source of manifest.package.sourceFiles) {
-    const installed = await bundleFile(path.join(root, 'application', source.path), 12 * 1024 * 1024);
-    assert.equal(installed.sha256, source.sha256, `Packed source bytes differ: ${source.path}`);
-    assert.equal(installed.bytes, source.bytes, `Packed source length differs: ${source.path}`);
+  for (let offset = 0; offset < manifest.package.sourceFiles.length; offset += 4) {
+    const captured = await Promise.allSettled(manifest.package.sourceFiles.slice(offset, offset + 4).map(async source => {
+      const installed = await bundleFile(path.join(root, 'application', source.path), 12 * 1024 * 1024);
+      assert.equal(installed.sha256, source.sha256, `Packed source bytes differ: ${source.path}`);
+      assert.equal(installed.bytes, source.bytes, `Packed source length differs: ${source.path}`);
+    }));
+    for (const result of captured) if (result.status === 'rejected') throw result.reason;
   }
   await assertHclInputs(path.join(root, 'application'), lock, inputs);
   for (const dependency of manifest.dependencies) {

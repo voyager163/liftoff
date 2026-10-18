@@ -1,4 +1,4 @@
-import {constants} from 'node:fs';
+import {constants,type BigIntStats} from 'node:fs';
 import {lstat,open,opendir,readlink,realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {performance} from 'node:perf_hooks';
@@ -97,42 +97,69 @@ export async function captureOpenSpecDistribution(input:OpenSpecDistributionLoca
         await assertAncestors();
         for(const [p,expected]of chain)if(canonicalJson(distributionPhysical(await lstat(p,{bigint:true})))!==canonicalJson(expected))localInputFailure('Distribution parent changed during capture.');
       }
-      for(const name of names){
-        budget();await assertChain();
-        const childParts=[...parts,name],child=path.join(root,...childParts),stat=await lstat(child,{bigint:true}),physical=distributionPhysical(stat);
-        if(stat.isDirectory()&&!stat.isSymbolicLink()){await walk(childParts,chain);continue;}
-        if(++entries>limits.entries)localInputFailure('Distribution entry bound exceeded.');
-        if(stat.isSymbolicLink()){
-          if(inventory.links.length>=limits.symlinks)localInputFailure('Distribution symlink bound exceeded.');
-          if(stat.size>BigInt(limits.pathBytes))localInputFailure('Distribution link text bound exceeded.');
-          const raw=await readlink(child,{encoding:'buffer'}),linkText=raw.toString('utf8');
-          if(!Buffer.from(linkText).equals(raw))localInputFailure('Unsupported absolute or malformed distribution link.');
-          distributionLinkTarget(linkText);
-          const link={pathParts:childParts,linkText,canonicalTargetParts:[] as string[],physical};
-          inventory.links.push(link);nodes.set(key(childParts),'link');addMetadata(link);
-        }else{
-          if(!stat.isFile()||stat.nlink!==1n||(stat.mode&0o7000n)!==0n)localInputFailure('Distribution file is special, hard-linked or unsafe.');
-          if(inventory.files.length>=limits.files||stat.size>BigInt(limits.fileBytes)||BigInt(bytes)+stat.size>BigInt(limits.totalBytes))localInputFailure('Distribution file/count/byte bound exceeded.');
-          const isMetadata=name==='package.json'&&(parts.length===0||/(?:^|\/)node_modules\/(?:@[^/]+\/)?[^/]+$/u.test(key(parts)));
-          if(isMetadata&&stat.size>65536n)localInputFailure('Distribution package metadata exceeds supported64KiB.');
-          const handle=await open(child,constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0)),hash=createHash('sha256'),chunks:Buffer[]=[];
-          try{
-            if(canonicalJson(distributionPhysical(await handle.stat({bigint:true})))!==canonicalJson(physical))localInputFailure('Distribution file changed at open.');
-            let offset=0;const buffer=Buffer.alloc(Math.min(1024*1024,Number(stat.size)+1));
-            while(offset<Number(stat.size)){
-              budget();const got=await handle.read(buffer,0,Math.min(buffer.length,Number(stat.size)-offset),offset);
-              if(!got.bytesRead)localInputFailure('Distribution file truncated during scan.');
-              hash.update(buffer.subarray(0,got.bytesRead));if(isMetadata)chunks.push(Buffer.from(buffer.subarray(0,got.bytesRead)));offset+=got.bytesRead;
-            }
-            if(canonicalJson(distributionPhysical(await handle.stat({bigint:true})))!==canonicalJson(physical))localInputFailure('Distribution file changed during read.');
-          }finally{await handle.close();}
-          const entry={pathParts:childParts,bytes:Number(stat.size),contentDigest:hash.digest('hex'),mode:Number(stat.mode&0o7777n),physical};
-          inventory.files.push(entry);nodes.set(key(childParts),'file');bytes+=entry.bytes;addMetadata(entry);
-          if(isMetadata){const raw=Buffer.concat(chunks),text=raw.toString('utf8');if(!Buffer.from(text).equals(raw))localInputFailure('Invalid package metadata encoding.');metadata.set(key(parts),JSON.parse(text));}
-        }
-        if(canonicalJson(distributionPhysical(await lstat(child,{bigint:true})))!==canonicalJson(physical))localInputFailure('Distribution entry changed during scan.');
-        await assertChain();
+      async function readMember(childParts:string[],child:string,stat:BigIntStats,physical:DistributionPhysical,isMetadata:boolean){
+        const handle=await open(child,constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0)),hash=createHash('sha256'),chunks:Buffer[]=[];
+        try{
+          if(canonicalJson(distributionPhysical(await handle.stat({bigint:true})))!==canonicalJson(physical))localInputFailure('Distribution file changed at open.');
+          let offset=0;const buffer=Buffer.alloc(Math.min(1024*1024,Number(stat.size)+1));
+          while(offset<Number(stat.size)){
+            budget();const got=await handle.read(buffer,0,Math.min(buffer.length,Number(stat.size)-offset),offset);
+            if(!got.bytesRead)localInputFailure('Distribution file truncated during scan.');
+            hash.update(buffer.subarray(0,got.bytesRead));if(isMetadata)chunks.push(Buffer.from(buffer.subarray(0,got.bytesRead)));offset+=got.bytesRead;
+          }
+          if(canonicalJson(distributionPhysical(await handle.stat({bigint:true})))!==canonicalJson(physical))localInputFailure('Distribution file changed during read.');
+        }finally{await handle.close();}
+        return {entry:{pathParts:childParts,bytes:Number(stat.size),contentDigest:hash.digest('hex'),mode:Number(stat.mode&0o7777n),physical},
+          metadataContent:isMetadata?Buffer.concat(chunks):undefined};
       }
+      let pending:Promise<PromiseSettledResult<Awaited<ReturnType<typeof readMember>>>>[]=[];
+      async function flush(){
+        const settled=await Promise.all(pending);pending=[];
+        for(const result of settled){
+          if(result.status==='rejected')throw result.reason;
+          const {entry,metadataContent}=result.value,child=path.join(root,...entry.pathParts);
+          inventory.files.push(entry);nodes.set(key(entry.pathParts),'file');addMetadata(entry);
+          if(metadataContent!==undefined){const text=metadataContent.toString('utf8');if(!Buffer.from(text).equals(metadataContent))localInputFailure('Invalid package metadata encoding.');metadata.set(key(parts),JSON.parse(text));}
+          if(canonicalJson(distributionPhysical(await lstat(child,{bigint:true})))!==canonicalJson(entry.physical))localInputFailure('Distribution entry changed during scan.');
+          await assertChain();
+        }
+      }
+      for(const name of names){
+        try{
+          budget();await assertChain();
+          const childParts=[...parts,name],child=path.join(root,...childParts);
+          let stat=await lstat(child,{bigint:true});
+          if((stat.isDirectory()||stat.isSymbolicLink())&&pending.length){
+            await flush();budget();await assertChain();stat=await lstat(child,{bigint:true});
+          }
+          const physical=distributionPhysical(stat);
+          if(stat.isDirectory()&&!stat.isSymbolicLink()){await walk(childParts,chain);continue;}
+          if(++entries>limits.entries)localInputFailure('Distribution entry bound exceeded.');
+          if(stat.isSymbolicLink()){
+            if(inventory.links.length>=limits.symlinks)localInputFailure('Distribution symlink bound exceeded.');
+            if(stat.size>BigInt(limits.pathBytes))localInputFailure('Distribution link text bound exceeded.');
+            const raw=await readlink(child,{encoding:'buffer'}),linkText=raw.toString('utf8');
+            if(!Buffer.from(linkText).equals(raw))localInputFailure('Unsupported absolute or malformed distribution link.');
+            distributionLinkTarget(linkText);
+            const link={pathParts:childParts,linkText,canonicalTargetParts:[] as string[],physical};
+            inventory.links.push(link);nodes.set(key(childParts),'link');addMetadata(link);
+          }else{
+            if(!stat.isFile()||stat.nlink!==1n||(stat.mode&0o7000n)!==0n)localInputFailure('Distribution file is special, hard-linked or unsafe.');
+            if(inventory.files.length+pending.length>=limits.files||stat.size>BigInt(limits.fileBytes)||BigInt(bytes)+stat.size>BigInt(limits.totalBytes))localInputFailure('Distribution file/count/byte bound exceeded.');
+            const isMetadata=name==='package.json'&&(parts.length===0||/(?:^|\/)node_modules\/(?:@[^/]+\/)?[^/]+$/u.test(key(parts)));
+            if(isMetadata&&stat.size>65536n)localInputFailure('Distribution package metadata exceeds supported64KiB.');
+            // Reserve pending slots and bytes before any read can complete out of order.
+            bytes+=Number(stat.size);
+            pending.push(readMember(childParts,child,stat,physical,isMetadata).then(
+              value=>({status:'fulfilled' as const,value}),reason=>({status:'rejected' as const,reason})));
+            if(pending.length===4)await flush();
+            continue;
+          }
+          if(canonicalJson(distributionPhysical(await lstat(child,{bigint:true})))!==canonicalJson(physical))localInputFailure('Distribution entry changed during scan.');
+          await assertChain();
+        }catch(error){await flush();throw error;}
+      }
+      await flush();
       await assertChain();
     }
     await walk([],new Map());
