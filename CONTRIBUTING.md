@@ -305,6 +305,7 @@ The CLI inventory includes every `.ts` file matched by the root `tsconfig.json`
 include, `src/**/*.ts`, and every raw JavaScript runtime module explicitly
 published in `package.json`:
 
+- `distribution/native/cask-stage-worker.mjs`
 - `distribution/native/native-bundle-contract.mjs`
 - `distribution/native/native-cask-definition.mjs`
 - `distribution/native/native-program-assembly.mjs`
