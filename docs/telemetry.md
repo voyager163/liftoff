@@ -525,8 +525,11 @@ and all alerts paused. Actual authenticated API and native 30/90/180-day queries
 succeeded, including empty/unavailable states and synthetic exclusions. The
 operator exercised dashboard removal/restoration and project-feature
 disablement without destroying data or disabling legacy command ingestion.
-Browser/UI, fault-alert firing/routing, installed-client and genuine heartbeat
-qualification remain incomplete. See the
+Normal authenticated native-browser panel/selector/error journeys and
+narrow-screen panel scrolling are also qualified. Interactive sign-in was not
+exercised; an additional forced-reload stress probe stalled and remains
+unqualified, not repaired by later normal successes. Fault-alert firing/routing,
+installed-client and genuine heartbeat qualification remain incomplete. See the
 [operator runbook](https://github.com/voyager163/liftoff/tree/develop/infrastructure/opentofu/telemetry#managed-grafana-deployment-and-remaining-qualification)
 in the source repository. Infrastructure is operator-owned, not part of the CLI
 package or something normal commands apply.
@@ -541,9 +544,11 @@ Source counts overlap; a heartbeat is not a daily active developer, healthy
 deployment or compliance proof. The public ingestion endpoint permits forged
 events, so these are directional observations, not a census or lifetime total.
 
-Query/permission/table errors stay **unavailable**, never zero projects.
-A successful empty query means no retained observations; older records may
-have expired. Operator-configured disabled reporting is shown separately from
+Query/permission/table errors stay **unavailable**, never zero projects; inspect
+Grafana's native error-status button and details rather than treating its
+no-value placeholder as a query result. Successful empty panels say
+**No retained value**. A successful empty query means no retained observations;
+older records may have expired. Operator-configured disabled reporting is shown separately from
 unknown configuration, never inferred per project from silence. Explicit
 monthly status includes an **unconfigured** row for an empty or fully
 synthetic-excluded expectation inventory, with zero expected projects rather
@@ -565,9 +570,11 @@ public sharing, request/IP/console logging or new backend is introduced.
 Provider registration, actual Standard X1 placement/cost disclosure, protected
 state ownership, real datasource queries and controlled synthetic ingestion
 now have operator deployment evidence. Billed subscription-specific costs,
-published heartbeat tooling, browser/UI and fault-alert firing/routing remain
-qualification gates. Pausing alerts or rolling back dashboard JSON preserves
-workspace/tables, history, command ingress and backend/perimeter; it does not
+published heartbeat tooling and fault-alert firing/routing remain qualification
+gates. Native browser evidence is not an availability guarantee: datasource
+health can succeed while a query stalls. Pausing alerts or rolling back dashboard
+JSON preserves workspace/tables, history, command ingress and backend/perimeter;
+it does not
 delete records or stop Managed Grafana service charges. Source tests alone are
 not production deployment or an exercised rollback; the operator evidence is
 recorded separately.

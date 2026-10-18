@@ -37,13 +37,13 @@ export async function buildTelemetryDashboard() {
     panels.push({
       id: panels.length + 2, type: series ? 'timeseries' : 'table', title,
       description: key === 'freshness'
-        ? 'Only operator-registered expectations. Configuration is explicit metadata, not inferred client state. Empty/excluded inventories are unconfigured; future starts are pending, not healthy or stale. Never infer disablement or abandonment from silence.'
+        ? 'A native query error means unavailable. Only operator-registered expectations. Configuration is explicit metadata, not inferred client state. Empty/excluded inventories are unconfigured; future starts are pending, not healthy or stale. Never infer disablement or abandonment from silence.'
         : ['semantic-outcomes', 'legacy-outcomes', 'command-status'].includes(key)
           ? 'A native query error means unavailable. Anonymous command events contain no project identifier: not project counts and no per-project synthetic classification.'
           : 'A native query error means unavailable. Empty dimensions are no observations, not a query-success fallback. Project counts exclude registered synthetic IDs.',
       gridPos: { x, y, w, h }, datasource,
       fieldConfig: {
-        defaults: { noValue: 'Unavailable / no retained value', decimals: 0, custom: {} },
+        defaults: { noValue: 'No retained value', decimals: 0, custom: {} },
         overrides: []
       },
       options: series

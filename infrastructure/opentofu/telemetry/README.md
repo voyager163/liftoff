@@ -292,9 +292,33 @@ Native query errors were verified as HTTP 400 errors, not zero-project results.
 The DCR metric query succeeds but currently has an empty timeseries: **unknown**,
 not a verified zero-fault or end-to-end health signal. An approved dashboard-only
 rollback returned actual 404 while retaining the datasource/rules; restoration
-returned 200 and the full dashboard root converged without changes. Browser/UI,
-fault-alert firing/routing, published-client and genuine heartbeat qualification
-remain outstanding; API evidence is not a claim that these journeys ran.
+returned 200 and the full dashboard root converged without changes. Normal
+native browser journeys are qualified below; fault-alert firing/routing,
+published-client and genuine heartbeat qualification remain outstanding.
+API evidence is not a claim that these journeys ran.
+
+The subsequent native browser check rendered all 12 panels, exercised the
+30/90/180-day selector and received 25 successful native query responses:
+seven window-dependent panels rerun for each selection; unchanged panels reuse
+their original results. A separate narrow-screen check rendered all 12 panels
+and exposed the full measurement caveats through native panel scrolling.
+An isolated missing-table query produced an actual HTTP 400, the native error
+status button and its detailed Azure error, with no zero-result substitution.
+Successful empty panels now say **No retained value**, not "unavailable";
+use the native query status/error details to distinguish failure from emptiness.
+Authentication used the existing approved operator's bearer token, injected
+only for the exact Grafana origin in a disposable browser. No interactive
+sign-in, new account, credential persistence or broader viewer role was tested.
+
+This is not a query-availability guarantee. A later extra forced-reload probe
+retained 24 successful responses but stalled on the 180-day timeline at its
+60-second observation bound; other stalled diagnostic probes are also retained.
+Their cause is unestablished, and later passing normal journeys do not repair
+or relabel them. Datasource health HTTP 200 alone is not query-path proof.
+The reviewed correction changed only 11 empty-value labels and one description;
+the separate dashboard state advanced from serial 4 to 5 with its lineage
+preserved and a final no-change plan. Roles, datasource, alerts, logging and
+query timeouts were not changed.
 
 ### Gates and recurring cost
 
@@ -371,8 +395,9 @@ fresh authorized metadata, actual cost/region/quota/provider proof, exact
 ownership and a reviewed non-replacing plan before any future apply. The
 2026-10-18 operator rollout and non-destructive rollback above are actual
 deployment evidence, separate from these static checks. Native release,
-published-client/heartbeat, browser/UI and fault-alert firing/routing gates
-remain incomplete; no source-only check grants that qualification.
+published-client/heartbeat and fault-alert firing/routing gates remain
+incomplete; no source-only check grants that qualification. The bounded native
+browser evidence above does not qualify interactive sign-in or reload stress.
 
 ### Static validation and future operator sequence
 
@@ -397,8 +422,8 @@ drift. The pinned Microsoft Kusto language service performs offline syntax and
 schema analysis, with a fixed-dataset semantic oracle. This is **not execution
 against Azure Logs**, a rendered native UI/access test, or proof of ingestion.
 The MIT language-service dependency is development-only and is not bundled
-with the CLI runtime. Native Grafana rendering, error displays and real KQL
-results remain live qualification gates.
+with the CLI runtime. These commands do not replace the separate live native
+rendering, error-display and KQL evidence described above.
 The `source.tftest.hcl` tests use mocked providers only; their plans assert
 rendered configuration and negative inputs without production plan/refresh,
 Azure credentials, Grafana requests, state/backend access or writes.

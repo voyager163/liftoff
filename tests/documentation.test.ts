@@ -230,9 +230,12 @@ describe('public documentation', () => {
     expect(root).toContain('Planned work is not shipped support');
     expect(compact(bootstrap)).toContain('default public CLI does not register production implementations');
     expect(telemetry).toContain('deployed; project reporting remains disabled');
+    expect(compact(telemetry)).toContain('Normal native browser journeys are qualified below');
     expect(compact(telemetry)).toContain(
-      'Browser/UI, fault-alert firing/routing, published-client and genuine heartbeat qualification remain outstanding'
+      'fault-alert firing/routing, published-client and genuine heartbeat qualification remain outstanding'
     );
+    expect(telemetry).toContain('Their cause is unestablished');
+    expect(compact(telemetry)).toContain('Successful empty panels now say **No retained value**, not "unavailable"');
     expect(telemetry).toContain('No client is enrolled by enabling this endpoint');
     expect(compact(stateMigration)).toContain(
       'private API, not an enabled public existing-deployment migration command'

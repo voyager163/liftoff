@@ -105,7 +105,7 @@ Recovery is explicit; saved progress is not current proof. Team generation write
 | [CLI reference](docs/cli-reference.md) | Find commands, automation flags, repair modes, and exit codes |
 | [Project structure](docs/project-structure.md) · [Configuration](docs/configuration-and-manifests.md) | Navigate generated files, ownership, and manifests |
 | [Azure deployment](docs/azure-deployment.md) | Review infrastructure and deployment boundaries |
-| [Telemetry and privacy](docs/telemetry.md) | Understand explicit project consent, heartbeat blockers, retention, and opt-outs |
+| [Telemetry and privacy](docs/telemetry.md) | Understand explicit project consent, native Grafana observations, heartbeat blockers, retention, and opt-outs |
 | [Troubleshooting](docs/troubleshooting.md) | Resolve registry, readiness, migration, and update blockers |
 | [Developer guide](DEVELOPER.md) · [Native development bundles](docs/native-development-bundles.md) | Maintain compatibility and releases; native bundles are not a published installation or migration channel |
 

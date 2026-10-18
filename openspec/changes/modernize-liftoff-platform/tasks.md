@@ -226,21 +226,30 @@ Depends on 9 and 15-16 for qualified candidate artifacts and client contracts, n
 
 - [x] 17.1 Re-observe the exact subscription/resource group, existing Korea Central resources, state ownership/perimeter, table schemas and provider availability through authorized read-only access; verify the proposed plan has no unintended replacement or region/default drift.
 - [x] 17.2 Add version-pinned Managed Grafana, scoped managed-identity Logs access, datasource and explicit dashboard provisioning; verify actual Standard tier/size/cost/region and provider registration are disclosed before apply.
-- [ ] 17.3 Build 30/90/180-day observed/first-observed project, version/policy/template, source/freshness and semantic-outcome panels; verify fixed datasets deduplicate clones and count separate monorepo roots correctly.
-- [ ] 17.4 Implement explicit unavailable/empty/disabled/stale and legacy-semantic states plus synthetic-project exclusions; verify forged/public-event caveats, retention-window labels and no lifetime/census/compliance claims.
+- [x] 17.3 Build 30/90/180-day observed/first-observed project, version/policy/template, source/freshness and semantic-outcome panels; verify fixed datasets deduplicate clones and count separate monorepo roots correctly.
+- [x] 17.4 Implement explicit unavailable/empty/disabled/stale and legacy-semantic states plus synthetic-project exclusions; verify forged/public-event caveats, retention-window labels and no lifetime/census/compliance claims.
 - [ ] 17.5 Add bounded ingestion-fault/heartbeat-freshness alert definitions with disclosed grace periods; verify low daily CLI usage does not trigger an abandonment/failure claim.
 - [x] 17.6 Update telemetry and bootstrap READMEs with OpenTofu-only deployment, cost/RBAC, consent schema, verification and rollback instructions; verify static configuration, dashboard JSON and documentation tests without production access.
 - [x] 17.7 After explicit operator approval, deploy backward-compatible gateway/table/DCR changes first, then Grafana; verify real identity access, synthetic ingestion/query, 180-day retention and continued absence of request/IP/console logging.
 - [x] 17.8 Exercise approved feature disablement/dashboard rollback without destroying the protected group, workspace/data, backend or perimeter; verify existing anonymous ingestion remains operational and records survive.
 
-Tasks 17.3-17.5 have a bounded source-preparation layer: separate pinned
-OpenTofu resource/dashboard roots, workspace-scoped Logs identity, native
-Grafana panels/KQL, registered synthetic exclusions, paused query-availability
-and explicit monthly-expectation rules, portable offline tests and operator
-runbooks. Browser/UI qualification and actual fault-alert firing/routing remain
-incomplete; native API/query evidence is not a claim these journeys ran.
-Static source alone is not deployment qualification. No installed-client or
-genuine heartbeat qualification is claimed; task-9/16 publication gates remain.
+Tasks 17.3-17.4 now combine fixed-dataset/schema checks, the earlier live
+synthetic/exclusion queries and actual native browser evidence. Source/fixed-data
+checks distinguish disabled/unconfigured, retained-empty and legacy/semantic
+states; all 12 panels rendered across the 30/90/180-day selector. A real missing-table
+HTTP 400 displayed the native error-status button and Azure details without
+fabricating zero; successful empty panels have a neutral no-value label.
+Narrow-screen measurement caveats remain reachable through native scrolling.
+Existing-operator exact-origin bearer transport is not interactive sign-in
+qualification. A later extra forced-reload run stalled after 24 successful
+responses; it and earlier stalled diagnostics remain explicitly unqualified,
+with no root-cause or repair claim. Normal later passes do not relabel them.
+Private browser-ui-receipt.json, SHA-256
+30d68982c874e178deec79e441ed6232806f8a8bbb9190a93ea03fb55c761de6,
+binds 796 artifacts and reverified all 147 original rollout subjects.
+Task 17.5 retains its bounded source layer, but actual fault-alert firing/routing
+remains incomplete. All three alerts remain paused; no installed-client or
+genuine heartbeat qualification is claimed. Task-9/16 publication gates remain.
 
 The explicitly authorized 2026-10-18 rollout registered Microsoft.Dashboard,
 extended the original protected telemetry state without replacement or region
