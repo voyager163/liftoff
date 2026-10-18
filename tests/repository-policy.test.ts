@@ -13,7 +13,7 @@ import {
   nativeBundleQualificationJob, nativePlatformQualificationJob,
   checkNativeCustodyQualificationJob, nativeCustodyWorkflowFile
 } from '../scripts/check-repository-policy.mjs';
-import { readPinnedCiTool } from '../scripts/prepare-ci-local-tools.mjs';
+import { assertCiToolArchitecture, readPinnedCiTool } from '../scripts/prepare-ci-local-tools.mjs';
 
 const root = process.cwd();
 const fixtures: string[] = [];
@@ -64,8 +64,10 @@ describe('source repository setup policy', () => {
     });
   });
 
-  it.each(['Linux', 'macOS'].flatMap(platform =>
-    ['test-shards', 'coverage-cli'].map(id => ({ platform, id }))))('requires pinned $platform tool preparation in $id', async ({ platform, id }) => {
+  it.each([
+    ...['Linux', 'macOS'].flatMap(platform => ['test-shards', 'coverage-cli'].map(id => ({ platform, id }))),
+    { platform: 'Windows', id: 'test-shards' }
+  ])('requires pinned $platform tool preparation in $id', async ({ platform, id }) => {
     for (const fault of ['missing', 'conditional', 'ignored', 'replaced', 'late', 'duplicate']) {
       const workflow = await readWorkflow('ci.yml'), steps = workflow.jobs[id].steps;
       const index = steps.findIndex((step: { name?: string }) => step.name === `Prepare pinned ${platform} Docker and Compose`);
@@ -94,6 +96,23 @@ describe('source repository setup policy', () => {
     await expect(readPinnedCiTool(directory, sha256)).rejects.toThrow('regular, non-symlink');
   });
 
+  it('admits native Windows x64 executable headers and rejects foreign, truncated and library inputs', () => {
+    const bytes = Buffer.alloc(128);
+    bytes.writeUInt16LE(0x5a4d, 0); bytes.writeUInt32LE(64, 60);
+    bytes.writeUInt32LE(0x00004550, 64); bytes.writeUInt16LE(0x8664, 68);
+    bytes.writeUInt16LE(0x0002, 86); bytes.writeUInt16LE(0x020b, 88);
+    expect(() => assertCiToolArchitecture(bytes, 'win32')).not.toThrow();
+    for (const [offset, value] of [[0, 0], [64, 0], [68, 0xaa64], [86, 0x2002], [86, 0], [88, 0x010b]]) {
+      const changed = Buffer.from(bytes); changed.writeUInt16LE(value!, offset!);
+      expect(() => assertCiToolArchitecture(changed, 'win32')).toThrow();
+    }
+    for (const length of [0, 63, 89]) expect(() => assertCiToolArchitecture(bytes.subarray(0, length), 'win32')).toThrow();
+    const escaped = Buffer.from(bytes); escaped.writeUInt32LE(0xffffffff, 60);
+    expect(() => assertCiToolArchitecture(escaped, 'win32')).toThrow();
+    expect(() => assertCiToolArchitecture(bytes, 'darwin')).toThrow();
+    expect(() => assertCiToolArchitecture(bytes, 'linux')).toThrow();
+  });
+
   it('refuses extra bootstrap arguments before creating files or running tools', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ci-tool-refusal-'));
     fixtures.push(directory);
@@ -111,18 +130,18 @@ describe('source repository setup policy', () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ci-host-refusal-'));
     fixtures.push(directory);
     const env = { ...process.env, GITHUB_ACTIONS: 'true',
-      RUNNER_OS: process.platform === 'darwin' ? 'macOS' : 'Linux',
+      RUNNER_OS: process.platform === 'darwin' ? 'macOS' : process.platform === 'win32' ? 'Windows' : 'Linux',
       RUNNER_ARCH: process.arch === 'arm64' ? 'ARM64' : 'X64',
       RUNNER_TEMP: directory, GITHUB_PATH: path.join(directory, 'path') };
     if (fault === 'actions') env.GITHUB_ACTIONS = 'false';
-    if (fault === 'os') env.RUNNER_OS = 'Windows';
+    if (fault === 'os') env.RUNNER_OS = 'unsupported';
     if (fault === 'architecture') env.RUNNER_ARCH = 'unsupported';
     const result = spawnSync(process.execPath, ['scripts/prepare-ci-local-tools.mjs'], {
       cwd: root, encoding: 'utf8', timeout: 5000, env
     });
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('requires a Linux x64 or macOS ARM64 GitHub Actions runner.');
+    expect(result.stderr).toContain('requires a Linux x64, Windows x64 or macOS ARM64 GitHub Actions runner.');
     expect(result.stdout).toBe('');
     expect(await readdir(directory)).toEqual([]);
   });

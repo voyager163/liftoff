@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { appendFile, chmod, copyFile, link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink } from 'node:fs/promises';
+import { appendFile, chmod, copyFile, link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -55,6 +55,11 @@ function composeDiagnosticCommand(context: ComposeDiagnosticContext, command: Ac
   if (!kind) return null;
   const version = kind === 'docker-version' || kind === 'compose-version' ? extractVersion(result.stdout, 'docker') : null;
   return { kind, version: version && /^\d{1,6}\.\d{1,6}\.\d{1,6}(?:[-+][A-Za-z0-9.-]{1,64})?$/u.test(version) ? version : null,
+    ...(kind === 'owned-syntax-control' ? { nodeFailure: {
+      syntaxError: result.stderr.includes('SyntaxError:'),
+      nativeAssertion: result.stderr.includes('Assertion failed:'),
+      fatalError: result.stderr.includes('FATAL ERROR:')
+    } } : {}),
     result: { status: result.status, signal: result.signal, processSpawned: result.processSpawned ?? null,
       processTreeSettled: result.processTreeSettled ?? null, timedOut: result.timedOut ?? null,
       outputLimitExceeded: result.outputLimitExceeded ?? null, aborted: result.aborted ?? null,
@@ -501,20 +506,40 @@ describe('release-owned real context validator bodies, not phase qualification',
     const parent = await mkdtemp(path.join(root, 'execution-parent-'));
     for (const key of ['TMPDIR', 'TEMP', 'TMP']) vi.stubEnv(key, parent);
     const value = await fixture([
-      'import { mkdirSync, renameSync, writeFileSync } from "node:fs";',
+      'import { mkdirSync, writeFileSync } from "node:fs";',
       'import path from "node:path";',
-      'test("fixture replaces its allocated home without failing its test", () => {',
+      'test("fixture records its actual allocated home", () => {',
       '  const allocated = process.env.HOME, moved = `${allocated}-moved`;',
       '  writeFileSync(path.join(allocated, "original.txt"), "original allocated home");',
-      '  renameSync(allocated, moved);',
-      '  mkdirSync(allocated, { mode: 0o700 });',
-      '  writeFileSync(path.join(allocated, "replacement.txt"), "replacement must survive");',
       '  mkdirSync(new URL("../build/", import.meta.url), { recursive: true });',
       '  writeFileSync(new URL("../build/home-replacement.json", import.meta.url), JSON.stringify({ allocated, moved }));',
       '});'
     ].join('\n'));
-    const report = await executeWorkflowContextValidator(value.root, { validator: 'backend-tests', sourceSha: value.sourceSha });
-    expect(report).toMatchObject({
+    const originalRun = NodeCommandRunner.prototype.run;
+    let replaced = false;
+    const run = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(async function (this: NodeCommandRunner, command, options) {
+      const result = await originalRun.call(this, command, options);
+      const home = options?.env?.HOME;
+      if (home && path.basename(home).startsWith('liftoff-workflow-validator-') &&
+        options?.cwd === path.join(value.root, ...value.backend) && options.timeoutMs === 180_000 &&
+        options.maxOutputBytes === 1024 * 1024 &&
+        result.status === 0 && result.processTreeSettled === true) {
+        await rename(home, `${home}-moved`);
+        await mkdir(home, { mode: 0o700 });
+        await writeFile(path.join(home, 'replacement.txt'), 'replacement must survive');
+        replaced = true;
+      }
+      return result;
+    });
+    let report: Awaited<ReturnType<typeof executeWorkflowContextValidator>>;
+    try {
+      report = await executeWorkflowContextValidator(value.root, { validator: 'backend-tests', sourceSha: value.sourceSha });
+    } finally {
+      run.mockRestore();
+    }
+    expect(replaced, JSON.stringify({ status: report.status, code: report.code, command: report.command })).toBe(true);
+    expect(report, JSON.stringify({ status: report.status, code: report.code, command: report.command,
+      retainedExecutionDirectory: report.retainedExecutionDirectory !== null })).toMatchObject({
       status: 'blocked', code: 'validator-cleanup', workloadExecution: true,
       command: { status: 0, processTreeSettled: true }
     });
@@ -884,7 +909,8 @@ describe('release-owned real context validator bodies, not phase qualification',
       expect(diagnostic).toEqual({
         context: 'owned-syntax-control', runtime: { node: process.version, platform: process.platform, arch: process.arch },
         callThroughCount: 1, omittedObservations: 0, refusal: null, exceptionCode: null,
-        observations: [{ kind: 'owned-syntax-control', version: null, result: {
+        observations: [{ kind: 'owned-syntax-control', version: null,
+          nodeFailure: { syntaxError: true, nativeAssertion: false, fatalError: false }, result: {
           status: actual.status, signal: actual.signal, processSpawned: actual.processSpawned ?? null,
           processTreeSettled: actual.processTreeSettled ?? null, timedOut: actual.timedOut ?? null,
           outputLimitExceeded: actual.outputLimitExceeded ?? null, aborted: actual.aborted ?? null,
@@ -964,8 +990,8 @@ describe('release-owned real context validator bodies, not phase qualification',
       const bundle = await mkdtemp(path.join(root, 'copied-compose-tools-'));
       await mkdir(path.join(bundle, 'bin'));
       await mkdir(path.join(bundle, 'cli-plugins'));
-      plugin = path.join(bundle, 'cli-plugins', 'docker-compose');
-      await copyFile(observed.files[0]!.path, path.join(bundle, 'bin', 'docker'));
+      plugin = path.join(bundle, 'cli-plugins', process.platform === 'win32' ? 'docker-compose.exe' : 'docker-compose');
+      await copyFile(observed.files[0]!.path, path.join(bundle, 'bin', process.platform === 'win32' ? 'docker.exe' : 'docker'));
       await copyFile(observed.executablePath, plugin);
       vi.stubEnv('PATH', [path.join(bundle, 'bin'), process.env.PATH].join(path.delimiter));
       await expect(executeWorkflowComposeConfigValidator(value.root, value.sourceSha))

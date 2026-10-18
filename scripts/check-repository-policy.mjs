@@ -559,7 +559,8 @@ export function checkWorkflow(filename, workflow) {
   if (filename === 'ci.yml') {
     for (const id of ['test-shards', 'coverage-cli']) {
       const steps = workflow.jobs[id]?.steps ?? [];
-      for (const platform of ['Linux', 'macOS']) {
+      const platforms = id === 'test-shards' ? ['Linux', 'macOS', 'Windows'] : ['Linux', 'macOS'];
+      for (const platform of platforms) {
         const prepare = steps.findIndex(step => step.name === `Prepare pinned ${platform} Docker and Compose`);
         assert.deepEqual(steps[prepare], {
           name: `Prepare pinned ${platform} Docker and Compose`,
@@ -569,7 +570,7 @@ export function checkWorkflow(filename, workflow) {
         assert.ok(prepare < steps.findIndex(step => step.run === 'npm ci'),
           `ci.yml/${id}: prepare ${platform} tools before the test/dependency consumers.`);
       }
-      assert.equal(steps.filter(step => step.run === 'node scripts/prepare-ci-local-tools.mjs').length, 2);
+      assert.equal(steps.filter(step => step.run === 'node scripts/prepare-ci-local-tools.mjs').length, platforms.length);
     }
     for (const id of Object.keys(coverageGateJobs)) {
       assert.equal(workflow.jobs[id]?.steps[0]?.with?.ref, qualificationSourceRef,

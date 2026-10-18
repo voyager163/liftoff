@@ -119,6 +119,10 @@ for short fixture roots. Windows process creation still limits the working
 directory to `MAX_PATH`, even when filesystem operations accept longer paths;
 native fixtures leave room for both full workspace identities without changing
 the application's storage layout or truncating identifiers.
+The platform shards prepare checksum-pinned Docker CLI and Compose executables
+in a private runner prefix on all three hosts. Windows uses native x64 PE files
+named `docker.exe` and `docker-compose.exe`; it does not assume the runner's
+Docker CLI includes a compatible, independently identifiable Compose plugin.
 Each CI platform also runs the complete plugin composition, native-path and
 packaged-lookup suites and uploads `qualification/plugin-paths.json`. The
 repository-policy report check requires every applicable case to pass; unavailable

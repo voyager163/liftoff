@@ -155,7 +155,7 @@ esac
   const dependencies: MacMigrationDependencies = { upgrade: { ...base, platform: 'darwin', architecture: 'arm64',
     makeNeutralDirectory: async () => { const directory = await base.makeNeutralDirectory(); scratch.add(directory); return directory; },
     removeNeutralDirectory: async directory => { await base.removeNeutralDirectory(directory); scratch.delete(directory); },
-    readJson: file => file.endsWith('/distribution/native/release-policy.json') ? Promise.resolve(policy) : base.readJson(file) },
+    readJson: file => file === path.resolve('distribution/native/release-policy.json') ? Promise.resolve(policy) : base.readJson(file) },
     host: async () => ({ platform: 'darwin', architecture: 'arm64', nativeArchitecture: 'arm64', appleSilicon: '1',
       translated: '0', osVersion: '15.7', runtimeVersion: '24.21.0' }),
     cask: { policy, admitHost: async () => {}, target: async () => material, channel: async () => channel,

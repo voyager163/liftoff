@@ -294,6 +294,10 @@ jobs:
           if ($version -ne "12.0.2") { throw "Expected npm 12.0.2 at the selected prefix; found $version." }
           $prefix | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+      - name: Prepare pinned Windows Docker and Compose
+        if: runner.os == 'Windows'
+        run: node scripts/prepare-ci-local-tools.mjs
+
       - name: Use runner-owned short temporary paths on Windows
         if: runner.os == 'Windows'
         shell: pwsh
