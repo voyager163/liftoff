@@ -370,6 +370,17 @@ export async function captureWindowsJobInteropAssembly(
       if (bytesRead <= 0) throw new Error('Windows Job controller interop assembly ended during bounded capture.');
       offset += bytesRead;
     }
+    // Windows can retain unchanged timestamps while an open file is modified in place.
+    const readback = Buffer.alloc(Math.min(size, 64 * 1024));
+    let checked = 0;
+    while (checked < size) {
+      throwIfAborted();
+      const { bytesRead } = await file.read(readback, 0, Math.min(readback.length, size - checked), checked);
+      if (bytesRead <= 0 || !readback.subarray(0, bytesRead).equals(bytes.subarray(checked, checked + bytesRead))) {
+        throw new Error('Windows Job controller interop assembly changed during bounded capture.');
+      }
+      checked += bytesRead;
+    }
     throwIfAborted();
     const overflow = Buffer.alloc(1);
     const overflowRead = await file.read(overflow, 0, 1, size);

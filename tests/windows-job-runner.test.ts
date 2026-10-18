@@ -124,8 +124,14 @@ function restorePreInteropReuseController(controller: string): string {
   return removeSourceRange(restored, branchStart, branchEnd).replace(branchEnd, compile + branchEnd);
 }
 
+function restorePreInteropByteReadbackRunner(runner: string): string {
+  return removeSourceRange(runner,
+    '    // Windows can retain unchanged timestamps while an open file is modified in place.\n',
+    '    throwIfAborted();\n    const overflow = Buffer.alloc(1);');
+}
+
 function restorePreCleanupDeadlineRunner(runner: string): string {
-  return runner
+  return restorePreInteropByteReadbackRunner(runner)
     .replace(
       '  } catch (error) {\n    operationAbort.abort();\n    if (reservation?.kind',
       '  } catch (error) {\n    disposeStopWatch();\n    operationAbort.abort();\n    if (reservation?.kind'
@@ -495,6 +501,77 @@ describe('Windows Job interop assembly reuse', () => {
     };
     await expect(captureWindowsJobInteropAssembly(assembly, undefined, operations))
       .rejects.toThrow('changed during bounded capture');
+  });
+
+  it('rejects actual in-place byte changes even when open-handle timestamps have not advanced', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-interop-timestamp-alias-'));
+    tempDirs.push(directory);
+    const assembly = path.join(directory, 'Win32JobNative.dll');
+    await writeFile(assembly, Buffer.from([0x4d, 0x5a, 0x01, 0x02]));
+    const original = await lstat(assembly, { bigint: true }), changed = Buffer.from([0x4d, 0x5a, 0x09, 0x09]);
+    const close = vi.fn<() => Promise<void>>();
+    const operations: WindowsJobInteropCaptureOperations = {
+      lstat: (filePath) => lstat(filePath, { bigint: true }),
+      open: async filePath => {
+        const handle = await open(filePath, 'r');
+        close.mockImplementation(() => handle.close());
+        let mutated = false;
+        return {
+          stat: async () => Object.assign(await handle.stat({ bigint: true }), {
+            mtimeNs: original.mtimeNs, ctimeNs: original.ctimeNs
+          }),
+          read: async (buffer, offset, length, position) => {
+            const result = await handle.read(buffer, offset, length, position);
+            if (!mutated) { mutated = true; await writeFile(filePath, changed); }
+            return result;
+          },
+          close
+        };
+      }
+    };
+    await expect(captureWindowsJobInteropAssembly(assembly, undefined, operations))
+      .rejects.toThrow('changed during bounded capture');
+    expect(await readFile(assembly)).toEqual(changed);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechecks every actual byte with one bounded buffer while handling short physical reads', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-interop-readback-'));
+    tempDirs.push(directory);
+    const assembly = path.join(directory, 'Win32JobNative.dll');
+    const expected = Buffer.concat([Buffer.from([0x4d, 0x5a]), Buffer.alloc(128 * 1024 + 17, 0x31)]);
+    await writeFile(assembly, expected);
+    let primary: Buffer | undefined;
+    const buffers = new Set<Buffer>(), reads: { position: number; bytes: number; maximum: number }[] = [];
+    const operations: WindowsJobInteropCaptureOperations = {
+      lstat: filePath => lstat(filePath, { bigint: true }),
+      open: async filePath => {
+        const handle = await open(filePath, 'r');
+        return {
+          stat: () => handle.stat({ bigint: true }),
+          read: async (buffer, offset, length, position) => {
+            primary ??= buffer;
+            const result = await handle.read(buffer, offset, Math.min(length, 13 * 1024), position);
+            if (buffer !== primary && buffer.length > 1) {
+              buffers.add(buffer);
+              reads.push({ position, bytes: result.bytesRead, maximum: length });
+            }
+            return result;
+          },
+          close: () => handle.close()
+        };
+      }
+    };
+    await expect(captureWindowsJobInteropAssembly(assembly, undefined, operations)).resolves.toEqual(expected);
+    expect(buffers.size).toBe(1); expect([...buffers][0]!.length).toBe(64 * 1024);
+    expect(reads.length).toBeGreaterThan(2);
+    expect(reads[0]!.position).toBe(0);
+    for (const [index, read] of reads.entries()) {
+      expect(read.maximum).toBeLessThanOrEqual(64 * 1024);
+      expect(read.bytes).toBeGreaterThan(0);
+      if (index) expect(read.position).toBe(reads[index - 1]!.position + reads[index - 1]!.bytes);
+    }
+    expect(reads.reduce((total, read) => total + read.bytes, 0)).toBe(expected.length);
   });
 
   it('rejects accepted bytes when the real physical file handle reports close failure', async () => {
@@ -927,6 +1004,14 @@ describe('Windows Job Object controller asset integrity and host environment', (
     );
     expect(createHash('sha256').update(runner).digest('hex'))
       .toBe('5d8bfc5250bb30760a6ad8cd55121f4662242bf0920ed65fad069d81351df172');
+  });
+
+  it('restores exact fc10 runner bytes by removing only physical byte readback', async () => {
+    const runner = restorePreInteropByteReadbackRunner(
+      await readFile(path.join(process.cwd(), 'src/adapters/process/windows-job-runner.ts'), 'utf8')
+    );
+    expect(createHash('sha256').update(runner).digest('hex'))
+      .toBe('10b5cddfd7b8b9313c53212417f1d8d1d419fe0cf6360b60da9e0dcc02b273f0');
   });
 
   it('restores exact 33d8 runner bytes by removing only the producer-release and close correction', async () => {
