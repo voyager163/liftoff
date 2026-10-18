@@ -152,6 +152,19 @@ describe('telemetry OpenTofu privacy contract', () => {
     expect(target).not.toMatch(/:latest|image_tag\s*=\s*"(?:main|master|latest)"/i);
   });
 
+  it('stages explicit build-only revisions without changing the active image or enabling project delivery', async () => {
+    const [target, variables] = await Promise.all([
+      tofuFile('container-app.tf'), tofuFile('variables.tf')
+    ]);
+    expect(variables).toMatch(/variable "prepared_image_revisions"[\s\S]*?type\s*=\s*set\(string\)[\s\S]*?default\s*=\s*\[\]/);
+    expect(variables).toContain('for revision in var.prepared_image_revisions');
+    expect(target).toContain('setunion(var.retained_image_revisions, var.prepared_image_revisions, toset([var.source_revision]))');
+    expect(target.match(/var\.prepared_image_revisions/g)).toHaveLength(1);
+    expect(target).toContain('image_tag               = var.source_revision');
+    expect(target).toContain('${local.image_repository}@${var.image_digest}');
+    expect(target).toContain('for_each = var.project_ingestion_enabled ? [local.project_input_stream_name] : []');
+  });
+
   it('keeps one smallest warm replica with strict scale and probe bounds', async () => {
     const target = await tofuFile('container-app.tf');
     expect(target).not.toContain('logs_destination');

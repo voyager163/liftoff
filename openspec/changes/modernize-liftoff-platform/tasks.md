@@ -242,6 +242,17 @@ prerequisites, actual SKU/provider/quota/cost and state ownership, verified
 ingestion-fault signal, real identity/query/UI scenarios and approved live
 deployment/rollback are unmet. Static source is not deployment qualification.
 
+Explicitly authorized partial live rollout on 2026-10-18 registered
+Microsoft.Dashboard and applied a reviewed, non-replacing schema-only plan
+against the original protected remote state: one project table added, three
+resources updated, none destroyed. Independent readback confirmed the nine
+project columns, both tables' 180-day analytics/total retention, preserved
+command stream and unchanged legacy gateway image. Project delivery remains
+disabled and no client/heartbeat was enrolled. Provider-level validation
+accepted proposed Standard X1/major 13 in Korea Central without creating it.
+The candidate gateway rollout, actual Grafana/RBAC/query/UI/ingestion and
+rollback remain outstanding; 17.7 is not complete.
+
 ## 18. Qualify the integrated release and complete the change
 
 Depends on all prior stages. This group is integration verification, not a substitute for earlier tests/documentation.

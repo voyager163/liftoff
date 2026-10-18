@@ -119,7 +119,13 @@ have aged past the published 180-day retention window. Combining the two
 schemas would falsely treat historical expected nonzero states as semantic
 failures.
 
-The candidate configuration is **not yet deployed**. Its separate
+The candidate gateway configuration is **not yet deployed**. The separately
+authorized 2026-10-18 schema rollout added the project table/DCR stream and
+verified 180-day retention without replacing the production gateway image.
+`project_ingestion_enabled=false` remains in effect; the live gateway has no
+project-stream environment setting. No client or heartbeat was enrolled, and
+schema availability is not proof of successful project ingestion.
+The candidate's separate
 `/api/projects` endpoint accepts only project schema 2:
 
 ```json

@@ -53,7 +53,16 @@ provider lock file and Docker base digest are reviewed and committed.
 
 ### Backward-compatible schema rollout
 
-The command/project schema additions in this checkout are **not yet deployed**.
+The candidate gateway image changes are **not yet deployed**. On 2026-10-18,
+an explicitly authorized, reviewed OpenTofu plan against the original protected
+remote state added `LiftoffProjectEvents_CL` and its separate DCR stream in place.
+The plan added one resource, updated three, and destroyed none. Independent
+readback confirmed all nine project columns and both tables' 180-day analytics
+and total retention. The original command stream and gateway image were
+preserved; `project_ingestion_enabled=false` remains in effect, with no project
+stream environment setting in the live Container App. This schema rollout does
+not enable project delivery, enroll a client, or qualify the candidate gateway.
+
 The gateway continues accepting command schema 1 with its original zero/nonzero
 outcomes. Command schema 2 adds semantic `attention-required` and `cancelled`
 alongside `success` and `failure`; the schema column preserves that distinction.
@@ -126,6 +135,36 @@ using the exact commit-tagged image. Do not push production images out of band
 or place a GitHub token, registry password, storage key, SAS token, endpoint key,
 or Azure Monitor credential in variables, state configuration, source, or
 outputs.
+
+### Build a candidate before switching the gateway
+
+Do not pair a new `source_revision` with the old image digest to force a build.
+Keep the currently deployed `source_revision`, `image_digest` and retained
+revisions unchanged, and add the full public candidate SHA to
+`prepared_image_revisions` in the private production variable file. This set
+defaults to empty and only adds explicit build tasks/runs; it cannot change
+the active image or enable project ingestion.
+
+Review a saved plan that preserves existing resources and the active gateway,
+then apply that exact plan. Verify the actual ACR run succeeded and read the
+candidate tag's manifest digest using Entra authentication:
+
+```bash
+az acr repository show --subscription <approved-subscription> \
+  --name <existing-registry> --image telemetry-ingest:<full-candidate-sha> \
+  --query digest --output tsv
+```
+
+Only then set `source_revision` to that candidate and `image_digest` to its
+observed digest, move the previous active revision into
+`retained_image_revisions`, and remove the candidate from the prepared set.
+Review and apply a fresh non-replacing plan. The build-task identity is
+unchanged across this handover; removing a prepared revision without retaining
+or deploying it is a separately reviewed resource deletion, not cleanup
+authority. Keep `project_ingestion_enabled=false` until the independent
+synthetic-ingestion approval/verification step.
+These are telemetry operator steps, not Liftoff application artifact,
+native release, programme-delivery or whole-job custody qualification.
 
 ## Verification
 
@@ -224,6 +263,21 @@ subscription pricing are **unqualified**. No provider was registered, resource
 or role changed, state payload read, event uploaded or production plan run.
 Protected state ownership/lineage and approved writer/network access also
 remain unqualified. Do not infer these prerequisites from configuration.
+
+Those observations are historical, not the current provider/table status.
+Separately authorized work on 2026-10-18 registered `Microsoft.Dashboard` and
+verified terminal `Registered` readback. Provider-level ARM validation accepted
+a proposed Standard X1, Grafana major 13 instance in Korea Central; validation
+does not create an instance, reserve capacity, approve recurring cost, or prove
+real managed-identity/query access. No Grafana instance has been created.
+The schema rollout above used the existing Entra-authenticated remote backend
+and preserved its original lineage while advancing its serial. Original and
+post-apply state and full saved plans are retained privately, not in the repo.
+The first backend initialization rejected simultaneous subscription/tenant CLI
+credential options; the corrected invocation pinned the exact subscription and
+independently checked its tenant without changing the global Azure default.
+This is operator deployment evidence, not whole-job/host custody or application
+deployment qualification.
 
 Separately authorized read-only preparation on 2026-10-15 produced a
 non-replacing telemetry schema plan and a local-empty-state proposed Grafana
