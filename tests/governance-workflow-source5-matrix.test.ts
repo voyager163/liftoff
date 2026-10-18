@@ -21,6 +21,23 @@ import {
   matrixValidatorConclusion, matrixValidatorEnvironment, matrixValidatorFailure, workflowSource5MatrixFixture
 } from './fixtures/workflow-source5-matrix.js';
 
+const matrixIo = vi.hoisted(() => ({
+  observeRead: undefined as undefined | ((namespace: string, key: string) => ((error: unknown) => Promise<void>) | undefined)
+}));
+vi.mock('../src/adapters/filesystem/update-previews.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../src/adapters/filesystem/update-previews.js')>();
+  return { ...actual, createWorkflowSource5ControlStore(...args: Parameters<typeof actual.createWorkflowSource5ControlStore>) {
+    const store = actual.createWorkflowSource5ControlStore(...args);
+    return { ...store, async read(...selected: Parameters<typeof store.read>) {
+      const observe = matrixIo.observeRead?.(...selected);
+      let failure: unknown;
+      try { return await store.read(...selected); }
+      catch (error) { failure = error; throw error; }
+      finally { await observe?.(failure); }
+    } };
+  } };
+});
+
 const fixtures: Awaited<ReturnType<typeof workflowSource5MatrixFixture>>[] = [];
 type MatrixFixture = Awaited<ReturnType<typeof workflowSource5MatrixFixture>>;
 type Observation = Awaited<ReturnType<MatrixFixture['entries']>>;
@@ -41,6 +58,7 @@ let incomplete: { fixture: MatrixFixture; session: MatrixSession } | undefined;
 beforeEach(() => {
   if (preparations.size) throw new Error('An earlier bounded original preparation has not settled; do not overlap it or remove its root.');
   if (sessions.some(session => session.pending)) throw new Error('An earlier bounded observation has not settled; do not reuse or remove its held lease.');
+  matrixIo.observeRead = undefined;
   if (prepared && originalProviderState) {
     Object.assign(prepared.state, originalProviderState);
     prepared.calls.splice(0);
@@ -97,6 +115,60 @@ async function prepareObservation(value: MatrixFixture): Promise<MatrixSession> 
   };
   sessions.push(session);
   return session;
+}
+
+function observeMatrixMemberBatches(entries: Observation['entries'], journal: Observation['journal']) {
+  const keys = new Map<string, { index: number; first: boolean; pointer: boolean }>();
+  for (const [index, { input }] of entries.entries()) {
+    const operationKey = canonicalSha256({ controlKey: journal.controlKey, operationDigest: canonicalSha256(input.operation) });
+    keys.set(`operation:${operationKey}`, { index, first: false, pointer: true });
+    for (const [stageIndex, stage] of ['dispatch-intent', 'dispatch-accepted', 'dispatch-terminal', 'component-completed'].entries()) {
+      const key = canonicalSha256({ kind: 'workflow-source5-stage-key.v1', operationKey, stage });
+      keys.set(`proof:${key}`, { index, first: stageIndex === 0, pointer: false });
+    }
+  }
+  const batches = Array.from({ length: Math.ceil(entries.length / 4) }, () => {
+    let release!: () => void, refuse!: (error: Error) => void, secondSettled!: () => void;
+    const ready = new Promise<void>((resolve, reject) => { release = resolve; refuse = reject; });
+    const second = new Promise<void>(resolve => { secondSettled = resolve; });
+    return { ready, release, refuse, second, secondSettled, timer: undefined as ReturnType<typeof setTimeout> | undefined };
+  });
+  const state = { started: [] as number[], completed: [] as number[], active: 0, maximum: 0,
+    pendingReads: 0, failures: new Map<number, unknown>() };
+  const complete = async (index: number) => {
+    const batch = batches[Math.floor(index / 4)]!;
+    await batch.ready;
+    if (index % 4 === 0) await batch.second;
+    state.completed.push(index); state.active--;
+    if (index % 4 === 1) batch.secondSettled();
+  };
+  matrixIo.observeRead = (namespace, key) => {
+    const selected = keys.get(`${namespace}:${key}`);
+    if (!selected) return;
+    const { index, first, pointer } = selected, batch = batches[Math.floor(index / 4)]!;
+    state.pendingReads++;
+    if (first) {
+      expect(index).toBe(state.started.length);
+      if (index % 4 === 0) {
+        expect(state.active).toBe(0);
+        batch.timer = setTimeout(() => batch.refuse(new Error('The complete matrix member batch did not start.')), 5000);
+      }
+      state.started.push(index);
+      state.maximum = Math.max(state.maximum, ++state.active);
+      if (index % 4 === 3) { clearTimeout(batch.timer); batch.release(); }
+    }
+    return async error => {
+      try {
+        if (first) await batch.ready;
+        if (error !== undefined) state.failures.set(index, error);
+        if (pointer || first && error !== undefined) await complete(index);
+      } finally { state.pendingReads--; }
+    };
+  };
+  return { state, dispose() {
+    matrixIo.observeRead = undefined;
+    for (const batch of batches) clearTimeout(batch.timer);
+  } };
 }
 
 describe('owned matrix validator environment and actual outcomes', () => {
@@ -603,6 +675,65 @@ describe('complete source5 per-entry independently current matrix', () => {
       }
       expect(value.calls.every(call => call.method === 'GET')).toBe(true);
       expect(value.errors).toEqual([]);
+    });
+
+  it('reads every original matrix member in drained fixed-four batches without changing retained components', async () => {
+    const { fixture: value, session } = originalFixture();
+    await session.read(async ({ entries, journal }) => {
+      const retained = await Promise.all(entries.map(async ({ input }) => {
+        const record = (await value.store.read('proof', journal.proofKey(input.operation)))!;
+        return { path: record.path, bytes: await readFile(record.path) };
+      }));
+      const { state, dispose } = observeMatrixMemberBatches(entries, journal);
+      try { await workflowPorts.assertSource5WorkflowMatrixEntries(entries); } finally { dispose(); }
+      expect(state.started).toEqual(entries.map((_, index) => index));
+      expect([...state.completed].sort((a, b) => a - b)).toEqual(state.started);
+      expect(state.maximum).toBe(4); expect(state.active).toBe(0); expect(state.pendingReads).toBe(0);
+      for (const index of [0, 4, 8]) expect(state.completed.indexOf(index + 1)).toBeLessThan(state.completed.indexOf(index));
+      expect(state.failures.size).toBe(0); expect(value.calls).toEqual([]);
+      for (const record of retained) expect(await readFile(record.path)).toEqual(record.bytes);
+    });
+  });
+
+  it.each(['physical', 'semantic'] as const)(
+    'drains all started matrix members and preserves the first original %s refusal without starting a later batch', async fault => {
+      const { fixture: value, session } = originalFixture();
+      await session.read(async ({ entries, journal }) => {
+        const originals = await Promise.all(entries.slice(0, 2).map(async ({ input }) => {
+          const operationKey = canonicalSha256({ controlKey: journal.controlKey, operationDigest: canonicalSha256(input.operation) });
+          const key = canonicalSha256({ kind: 'workflow-source5-stage-key.v1', operationKey, stage: 'dispatch-intent' });
+          const record = (await value.store.read('proof', key))!;
+          return { path: record.path, bytes: await readFile(record.path) };
+        }));
+        if (fault === 'physical') await writeFile(originals[0]!.path, '{');
+        await writeFile(originals[1]!.path, '{}');
+        const selected = entries.map((entry, index) => fault === 'semantic' && index === 0 ?
+          { ...entry, proof: { ...entry.proof, runId: entry.proof.runId + 1 } } : entry);
+        const { state, dispose } = observeMatrixMemberBatches(entries, journal);
+        let failure: unknown;
+        try {
+          failure = await workflowPorts.assertSource5WorkflowMatrixEntries(selected).then(() => {
+            throw new Error('Changed original matrix members must refuse.');
+          }, (error: unknown) => error);
+        } finally {
+          dispose();
+          for (const original of originals) await writeFile(original.path, original.bytes);
+        }
+        expect(state.started).toEqual([0, 1, 2, 3]);
+        expect([...state.completed].sort()).toEqual([0, 1, 2, 3]);
+        expect(state.completed.indexOf(1)).toBeLessThan(state.completed.indexOf(0));
+        expect(state.maximum).toBe(4); expect(state.active).toBe(0); expect(state.pendingReads).toBe(0);
+        expect(value.calls).toEqual([]);
+        if (fault === 'physical') {
+          expect(state.failures.size).toBe(2);
+          expect(failure).toBe(state.failures.get(0));
+        } else {
+          expect(state.failures.size).toBe(1);
+          if (!(failure instanceof GitHubActivationError)) throw new Error('Original semantic member refusal must remain typed.');
+          expect(failure).not.toBe(state.failures.get(1));
+          expect(failure.message).toMatch(/proof|component|original/i);
+        }
+      });
     });
 
   it('rechecks original component ledgers after current provider reads and preserves loss without repair', async () => {

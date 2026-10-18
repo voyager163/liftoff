@@ -184,12 +184,18 @@ export async function assertSource5WorkflowMatrixEntries(
     return workflowFailure('workflow-source5-proof-matrix', 'The matrix must cover the complete original indexed operation inventory in its original order; caller-selected subsets or reordered carriers refuse.');
   }
   await first.journal.assertInventory();
-  for (const { input, proof } of entries) {
-    const events = await first.journal.events(input.operation);
-    assertSource5WorkflowProofEvents(input, proof, events);
-    const completed = events.find(event => event.stage === 'component-completed');
-    if (!completed || canonicalSha256(completed.data.proof) !== canonicalSha256(proof)) {
-      return workflowFailure('workflow-source5-proof-matrix', 'Every matrix member must be its exact already sealed original component, including its original observation time.');
+  for (let start = 0; start < entries.length; start += 4) {
+    const batch = entries.slice(start, start + 4);
+    const observations = await Promise.allSettled(batch.map(({ input }) => first.journal.events(input.operation)));
+    for (const [index, { input, proof }] of batch.entries()) {
+      const observation = observations[index]!;
+      if (observation.status === 'rejected') throw observation.reason;
+      const events = observation.value;
+      assertSource5WorkflowProofEvents(input, proof, events);
+      const completed = events.find(event => event.stage === 'component-completed');
+      if (!completed || canonicalSha256(completed.data.proof) !== canonicalSha256(proof)) {
+        return workflowFailure('workflow-source5-proof-matrix', 'Every matrix member must be its exact already sealed original component, including its original observation time.');
+      }
     }
   }
   // The original checkpoint selects the complete retained owner inventory, without minting a checkpoint carrier.
