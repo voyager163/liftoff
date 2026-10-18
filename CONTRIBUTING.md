@@ -114,6 +114,9 @@ Original publication dependency readback also drains fixed-four batches before
 checking each retained digest, encoded size and revision in the original order.
 Every inventory assertion rereads all dependencies; an earlier semantic refusal
 wins over a later physical failure only after all started siblings settle.
+Event reads reuse only the journal's already-captured immutable current-plan
+inventory and context. Physical stage bytes, authority, ownership and currentness
+are still read and checked afresh; another original plan is analyzed separately.
 Whole-matrix retained-component checks also drain fixed-four member batches,
 then validate in the original member order. Each member retains its own physical
 stage checks; an earlier semantic refusal still wins over a later physical

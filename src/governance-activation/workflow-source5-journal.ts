@@ -72,7 +72,8 @@ async function describeSource5WorkflowJournal(input: Source5WorkflowJournalInput
   const recordedAt = input.now.toISOString();
   input.context.records.readPlan(input.plan, { approvals: [input.approval] });
   const plan = captureWorkflowBinding(input.plan), approval = captureWorkflowBinding(input.approval);
-  const { control, effects } = source5WorkflowPlanInventory(plan);
+  const inventory = source5WorkflowPlanInventory(plan);
+  const { control, effects } = inventory;
   const store = createWorkflowSource5ControlStore(input.projectRoot, input.storage);
   const common = { schemaVersion: 1, projectRoot: input.projectRoot, controlKey: control.controlKey,
     identity: plan.identity, phaseId: plan.phaseId, graphHash: plan.graphHash,
@@ -372,9 +373,9 @@ async function describeSource5WorkflowJournal(input: Source5WorkflowJournalInput
     }
   }
   async function events(operation: ModernTransitionOperation, selectedPlan = plan): Promise<readonly Source5WorkflowEvent[]> {
-    const selectedInventory = source5WorkflowPlanInventory(selectedPlan);
+    const selectedInventory = selectedPlan === plan ? inventory : source5WorkflowPlanInventory(selectedPlan);
     const selectedControl = selectedInventory.control;
-    const selectedCommon = { ...common, controlKey: selectedControl.controlKey, identity: selectedPlan.identity,
+    const selectedCommon = selectedPlan === plan ? common : { ...common, controlKey: selectedControl.controlKey, identity: selectedPlan.identity,
       phaseId: selectedPlan.phaseId, graphHash: selectedPlan.graphHash, repositoryAnchor: selectedControl.repositoryAnchor,
       planDigest: selectedPlan.planDigest, savedPlanDigest: canonicalSha256(selectedPlan),
       previewFingerprint: source5PreviewFingerprint(input.projectRoot, selectedPlan) };

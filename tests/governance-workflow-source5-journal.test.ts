@@ -8,6 +8,7 @@ import {
   source5WorkflowOriginalPlanValue, withSource5WorkflowLease
 } from '../src/governance-activation/workflow-source5-authority.js';
 import { source5WorkflowOwnership } from '../src/governance-activation/workflow-source5-ownership.js';
+import * as workflowOperations from '../src/governance-activation/workflow-source5-operations.js';
 import type { ProjectMutationLease } from '../src/adapters/filesystem/project-lock.js';
 import { measureSource5WorkflowStorageInventory, source5MaximumStorageKeys } from '../src/governance-activation/workflow-source5-storage-inventory.js';
 import { workflowSource5JournalFixture } from './fixtures/workflow-source5-journal.js';
@@ -104,6 +105,25 @@ function observeEventBatch(keys: readonly string[],
 }
 
 describe('bounded original workflow journal event readback', () => {
+  it('reuses only captured immutable current-plan analysis while rereading every original stage and refusing actual byte loss', async () => {
+    const value = await fixture();
+    await withSource5WorkflowLease(value.projectRoot, async lease => {
+      const { journal } = await publishedComponent(value, lease), original = await journal.events(value.operation);
+      expect(Object.isFrozen(journal.plan)).toBe(true);
+      expect(Object.isFrozen(journal.plan.operations)).toBe(true);
+      expect(Object.isFrozen(journal.plan.operations[0]!.inputs)).toBe(true);
+      const selected = (await value.store.read('proof', eventKey(value.control.controlKey, value.operation, original[0]!.stage)))!;
+      const inventory = vi.spyOn(workflowOperations, 'source5WorkflowPlanInventory');
+      try {
+        expect(await journal.events(value.operation)).toEqual(original);
+        expect(await journal.events(value.operation)).toEqual(original);
+        await unlink(selected.path);
+        await expect(journal.events(value.operation)).rejects.toMatchObject({ code: 'workflow-source5-chain' });
+        expect(inventory).not.toHaveBeenCalled();
+      } finally { inventory.mockRestore(); }
+    });
+  });
+
   it('drains four authenticated reads before advancing while preserving all original stage bytes and chain order', async () => {
     const value = await fixture();
     await withSource5WorkflowLease(value.projectRoot, async lease => {
