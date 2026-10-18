@@ -1,0 +1,396 @@
+import type { ModernPhaseGraph } from '../domain/governance/activation/modern-graph.js';
+import type { ModernSavedTransitionPlan, ModernTransitionOperation } from '../domain/governance/activation/modern-record-contracts.js';
+import type { GitHubActivationTransport, GitHubRequest, GitHubResponse } from '../adapters/github/activation-rest.js';
+import { GitHubActivationError } from '../adapters/github/activation-rest.js';
+import type { CommandRunner } from '../process-runner.js';
+import type { ProjectMutationLease } from '../adapters/filesystem/project-lock.js';
+import type { Source5WorkflowAuthority, Source5WorkflowPhase } from './workflow-source5-authority.js';
+import {
+  assertSource5WorkflowAuthority, assertSource5WorkflowEntryOwnership, readSource5WorkflowEntryKey
+} from './workflow-source5-authority.js';
+import { claimSource5WorkflowEntryCarrier, withSource5WorkflowEntryGate } from './workflow-source5-context.js';
+import { readSource5WorkflowDispatchCheckpoint, validateSource5WorkflowCheckpointData } from './workflow-source5-checkpoints.js';
+import type { WorkflowContextProof, WorkflowProofCheckpoint } from './workflow-context-proof.js';
+import { source5WorkflowPlanInventory } from './workflow-source5-operations.js';
+import type { WorkflowPublicationCheckpoint } from './workflow-publication.js';
+import { assertSource5WorkflowJournal } from './workflow-source5-journal.js';
+import type { Source5WorkflowEvent, Source5WorkflowJournal, Source5WorkflowStage } from './workflow-source5-journal.js';
+import { canonicalSha256, isRecord } from '../domain/governance/activation/canonical-json.js';
+import {
+  captureWorkflowBinding, readWorkflowDispatchHandle, workflowFailure, workflowGitCommand, workflowGitOptions
+} from './workflow-binding.js';
+import { devNull } from 'node:os';
+import { modernActivationSourceContracts } from '../domain/governance/policy/identity.js';
+
+export interface Source5WorkflowEffectFields {
+  readonly kind: 'source5-workflow-effect.v1';
+  readonly projectRoot: string;
+  readonly plan: ModernSavedTransitionPlan;
+  readonly operation: ModernTransitionOperation;
+  readonly phase: ModernPhaseGraph['phases'][number] & { readonly id: Source5WorkflowPhase };
+  readonly authority: Source5WorkflowAuthority;
+  readonly lease: ProjectMutationLease;
+  readonly now: Date;
+  readonly clock?: () => Date;
+  readonly runner: CommandRunner;
+  readonly transport: GitHubActivationTransport;
+  readonly observationOnly: boolean;
+  readonly profile: 'single-maintainer-gitflow' | 'team-gitflow';
+  readonly reviewedPlans: readonly ModernSavedTransitionPlan[];
+}
+export interface Source5WorkflowEffectInput extends Source5WorkflowEffectFields {
+  readonly publicationCheckpoint?: WorkflowPublicationCheckpoint;
+  readonly workflowCheckpoint?: WorkflowProofCheckpoint;
+  readonly workflowObservationOnly: boolean;
+  readonly executionRefIntent?: { bindingDigest: string; planDigest: string };
+  readonly runnerAdmissionIntent?: { bindingDigest: string; planDigest: string };
+  readonly recordWorkflowPublication: (checkpoint: WorkflowPublicationCheckpoint) => Promise<void>;
+  readonly recordWorkflowDispatch: (checkpoint: WorkflowProofCheckpoint) => Promise<void>;
+  readonly recordExecutionRefIntent: (intent: { bindingDigest: string; planDigest: string }) => Promise<void>;
+  readonly recordRunnerAdmissionIntent: (intent: { bindingDigest: string; planDigest: string }) => Promise<void>;
+}
+const issued = new WeakMap<Source5WorkflowEffectInput, { journal: Source5WorkflowJournal; entryKey: string; submitted: Set<string> }>();
+export async function createSource5WorkflowEffectInput(
+  fields: Source5WorkflowEffectFields, journal: Source5WorkflowJournal
+): Promise<Source5WorkflowEffectInput> {
+  assertSource5WorkflowJournal(journal);
+  await journal.assertInventory();
+  const allowedFields = ['kind', 'projectRoot', 'plan', 'operation', 'phase', 'authority', 'lease',
+    'now', 'clock', 'runner', 'transport', 'observationOnly', 'profile', 'reviewedPlans'];
+  if (Reflect.ownKeys(fields).some(key => typeof key !== 'string' || !allowedFields.includes(key)) ||
+    Object.values(Object.getOwnPropertyDescriptors(fields)).some(descriptor => descriptor.get || descriptor.set) ||
+    fields.kind !== 'source5-workflow-effect.v1' || typeof fields.observationOnly !== 'boolean' ||
+    !Array.isArray(fields.reviewedPlans) || fields.reviewedPlans.some(plan => canonicalSha256(plan) !== canonicalSha256(journal.plan))) {
+    return workflowFailure('workflow-source5-effect-context', 'Unknown runtime fields, caller checkpoint callbacks or arbitrary original plans are not an engine-owned effect context.');
+  }
+  const phase = modernActivationSourceContracts().find(row => row.identity.phaseGraphHash === fields.plan.identity.phaseGraphHash)
+    ?.graph.phases.find(phase => phase.id === fields.plan.phaseId);
+  if (fields.projectRoot !== journal.projectRoot || canonicalSha256(fields.plan) !== canonicalSha256(journal.plan) ||
+    fields.lease !== journal.lease || !phase || canonicalSha256(fields.phase) !== canonicalSha256(phase) ||
+    fields.profile !== fields.plan.identity.profile || !fields.observationOnly && (journal.wasAttempted(fields.operation) ||
+      (await journal.events(fields.operation)).length)) {
+    return workflowFailure('workflow-source5-effect-context', 'An attempted workflow entry can only receive observation authority, never another effect carrier.');
+  }
+  await assertSource5WorkflowAuthority({ authority: fields.authority, projectRoot: fields.projectRoot,
+    plan: fields.plan, operation: fields.operation, now: fields.clock?.() ?? fields.now, write: !fields.observationOnly, lease: fields.lease });
+  const entryKey = await readSource5WorkflowEntryKey({ ...fields, firstIntent: false });
+  return withSource5WorkflowEntryGate(fields.projectRoot, fields.lease, entryKey, async gate => {
+    await assertSource5WorkflowAuthority({ ...fields, now: fields.clock?.() ?? fields.now, write: !fields.observationOnly });
+    const events = await journal.events(fields.operation);
+    if (!fields.observationOnly && events.length) {
+      return workflowFailure('workflow-source5-effect-context', 'Durable original work appeared before carrier issuance; only observation is permitted.');
+    }
+    if (!fields.observationOnly) await claimSource5WorkflowEntryCarrier(gate);
+    const intent = (stage: Source5WorkflowStage) => {
+      const event = events.find(event => event.stage === stage);
+      return event ? { bindingDigest: event.bindingDigest, planDigest: event.planDigest } : undefined;
+    };
+    const publication = [...events].reverse().find(event => event.stage.startsWith('publication-'));
+    let publicationCheckpoint: WorkflowPublicationCheckpoint | undefined;
+    if (publication) {
+      publicationCheckpoint = typeof publication.data.commitSha === 'string'
+        ? { bindingDigest: publication.bindingDigest, planDigest: publication.planDigest,
+          stage: publication.stage === 'publication-published' ? 'published' :
+            publication.stage.startsWith('publication-push-') ? 'push-intent' : 'committed',
+          commitSha: publication.data.commitSha }
+        : { bindingDigest: publication.bindingDigest, planDigest: publication.planDigest, stage: 'writing' };
+    }
+    const dispatch = [...events].reverse().find(event => event.stage.startsWith('dispatch-'));
+    const workflowCheckpoint = dispatch ? readSource5WorkflowDispatchCheckpoint(dispatch.data, String(fields.operation.inputs.repository)) : undefined;
+    const input: Source5WorkflowEffectInput = Object.freeze({ ...fields, plan: journal.plan,
+      operation: captureWorkflowBinding(fields.operation), phase: captureWorkflowBinding(fields.phase),
+      reviewedPlans: Object.freeze([journal.plan]), now: new Date(fields.now.getTime()),
+      publicationCheckpoint, workflowCheckpoint, workflowObservationOnly: fields.observationOnly,
+      executionRefIntent: intent('execution-ref-intent'), runnerAdmissionIntent: intent('runner-intent'),
+      recordWorkflowPublication: (checkpoint: WorkflowPublicationCheckpoint) =>
+        recordSource5WorkflowStage(input, `publication-${checkpoint.stage}`, { ...checkpoint }),
+      recordWorkflowDispatch: (checkpoint: WorkflowProofCheckpoint) =>
+        recordSource5WorkflowStage(input, checkpoint.stage === 'dispatch-intent' ? 'dispatch-intent' :
+          checkpoint.stage === 'accepted' ? 'dispatch-accepted' : 'dispatch-terminal', { ...checkpoint }),
+      recordExecutionRefIntent: (intent: { bindingDigest: string; planDigest: string }) =>
+        recordSource5WorkflowStage(input, 'execution-ref-intent', intent),
+      recordRunnerAdmissionIntent: (intent: { bindingDigest: string; planDigest: string }) =>
+        recordSource5WorkflowStage(input, 'runner-intent', intent)
+    });
+    issued.set(input, { journal, entryKey, submitted: new Set() });
+    return input;
+  });
+}
+export function assertSource5WorkflowEffectContext(input: Source5WorkflowEffectInput): void {
+  if (!issued.has(input)) workflowFailure('workflow-source5-effect-context', 'Structural runtime fields or success-shaped callbacks are not a workflow effect capability.');
+}
+export async function assertSource5WorkflowCurrentProof(
+  input: Source5WorkflowEffectInput, proof: WorkflowContextProof
+): Promise<void> {
+  proof = captureWorkflowBinding(proof);
+  const bound = issued.get(input);
+  if (!bound || !input.operation.actionId.startsWith('github.checks.') ||
+    proof.planDigest !== input.plan.planDigest || proof.bindingDigest !== canonicalSha256(input.operation.inputs) ||
+    canonicalSha256(proof.binding) !== proof.bindingDigest) {
+    return workflowFailure('workflow-source5-proof-entry', 'Current proof must belong to this exact internally issued indexed entry, not another entry in the same plan.');
+  }
+  await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: false });
+  const events = await bound.journal.events(input.operation);
+  assertSource5WorkflowProofEvents(input, proof, events);
+}
+
+function assertSource5WorkflowProofEvents(
+  input: Source5WorkflowEffectInput, proof: WorkflowContextProof, events: readonly Source5WorkflowEvent[]
+) {
+  validateSource5WorkflowCheckpointData(input.operation, 'component-completed', {
+    bindingDigest: proof.bindingDigest, planDigest: proof.planDigest, proof
+  }, events, input.plan.planDigest);
+  const completed = events.find(event => event.stage === 'component-completed');
+  if (completed && (!isRecord(completed.data.proof) ||
+    canonicalSha256({ ...completed.data.proof, observedAt: null }) !==
+      canonicalSha256({ ...proof, observedAt: null }))) {
+    return workflowFailure('workflow-source5-proof-entry', 'Current observation cannot replace the original component, run identity, time, plan or source provenance.');
+  }
+}
+
+export function captureSource5WorkflowMatrixEntries(
+  entries: readonly { readonly input: Source5WorkflowEffectInput; readonly proof: WorkflowContextProof }[]
+): readonly { readonly input: Source5WorkflowEffectInput; readonly proof: WorkflowContextProof }[] {
+  if (!Array.isArray(entries) || Object.getPrototypeOf(entries) !== Array.prototype ||
+    !entries.length || entries.length > 132 || Object.keys(entries).length !== entries.length ||
+    Object.values(Object.getOwnPropertyDescriptors(entries)).some(descriptor => descriptor.get || descriptor.set) ||
+    Reflect.ownKeys(entries).some(key => typeof key !== 'string' || key !== 'length' && !/^(?:0|[1-9][0-9]*)$/u.test(key))) {
+    return workflowFailure('workflow-source5-proof-matrix', 'A private matrix requires its closed bounded explicit original entry array without accessors or extra fields.');
+  }
+  return Object.freeze(entries.map(entry => {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(entry)) ||
+      !Object.hasOwn(entry, 'input') || !Object.hasOwn(entry, 'proof') ||
+      Reflect.ownKeys(entry).some(key => key !== 'input' && key !== 'proof') ||
+      Object.values(Object.getOwnPropertyDescriptors(entry)).some(descriptor => descriptor.get || descriptor.set)) {
+      return workflowFailure('workflow-source5-proof-matrix', 'Matrix members need only their internally issued original carrier and exact retained proof; callbacks and observation modes are not authority.');
+    }
+    assertSource5WorkflowEffectContext(entry.input);
+    return Object.freeze({ input: entry.input, proof: captureWorkflowBinding(entry.proof) });
+  }));
+}
+
+export async function assertSource5WorkflowMatrixEntries(
+  entries: readonly { readonly input: Source5WorkflowEffectInput; readonly proof: WorkflowContextProof }[]
+): Promise<void> {
+  entries = captureSource5WorkflowMatrixEntries(entries);
+  const first = entries[0] && issued.get(entries[0].input);
+  if (!first || first.journal.plan.phaseId !== 'green-red-proof' ||
+    entries.some(({ input }) => issued.get(input)?.journal !== first.journal || !input.observationOnly)) {
+    return workflowFailure('workflow-source5-proof-matrix', 'A private matrix needs original observation-only carriers from one exact green-red journal and held lease.');
+  }
+  const { effects, checkpoint } = source5WorkflowPlanInventory(first.journal.plan);
+  if (canonicalSha256(entries.map(({ input }) => input.operation)) !== canonicalSha256(effects)) {
+    return workflowFailure('workflow-source5-proof-matrix', 'The matrix must cover the complete original indexed operation inventory in its original order; caller-selected subsets or reordered carriers refuse.');
+  }
+  await first.journal.assertInventory();
+  for (let start = 0; start < entries.length; start += 4) {
+    const batch = entries.slice(start, start + 4);
+    const observations = await Promise.allSettled(batch.map(({ input }) => first.journal.events(input.operation)));
+    for (const [index, { input, proof }] of batch.entries()) {
+      const observation = observations[index]!;
+      if (observation.status === 'rejected') throw observation.reason;
+      const events = observation.value;
+      assertSource5WorkflowProofEvents(input, proof, events);
+      const completed = events.find(event => event.stage === 'component-completed');
+      if (!completed || canonicalSha256(completed.data.proof) !== canonicalSha256(proof)) {
+        return workflowFailure('workflow-source5-proof-matrix', 'Every matrix member must be its exact already sealed original component, including its original observation time.');
+      }
+    }
+  }
+  // The original checkpoint selects the complete retained owner inventory, without minting a checkpoint carrier.
+  const input = entries[0]!.input;
+  await assertSource5WorkflowAuthority({ ...input, operation: checkpoint, now: input.clock?.() ?? input.now, write: false });
+}
+export async function recordSource5WorkflowStage(
+  input: Source5WorkflowEffectInput, stage: Source5WorkflowStage, data: Readonly<Record<string, unknown>>
+): Promise<void> {
+  const binding = issued.get(input);
+  if (!binding) return workflowFailure('workflow-source5-effect-context', 'Workflow checkpoints require their original engine-owned effect context.');
+  await withSource5WorkflowEntryGate(input.projectRoot, input.lease, binding.entryKey, async () => {
+    const firstIntent = !(await binding.journal.events(input.operation)).length;
+    if (input.observationOnly && (firstIntent || stage.endsWith('-intent') || stage === 'publication-writing')) {
+      return workflowFailure('workflow-observation-only', 'An observation carrier cannot introduce or repeat original intent.');
+    }
+    if (firstIntent) await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: !input.observationOnly });
+    await assertSource5WorkflowEntryOwnership({ ...input, firstIntent });
+    const bindingDigest = canonicalSha256(input.operation.inputs), planDigest = input.plan.planDigest;
+    if (data.bindingDigest !== undefined && data.bindingDigest !== bindingDigest ||
+      data.planDigest !== undefined && data.planDigest !== planDigest) {
+      return workflowFailure('workflow-source5-checkpoint', 'An original checkpoint cannot be retagged to this carrier plan or binding.');
+    }
+    await binding.journal.record(input.operation, stage, { ...captureWorkflowBinding(data), bindingDigest, planDigest });
+  });
+}
+export async function assertSource5WorkflowIntent(
+  input: Source5WorkflowEffectInput, request: GitHubRequest | { readonly git: readonly string[] } | 'source-write'
+): Promise<void> {
+  request = captureWorkflowBinding(request);
+  const bound = issued.get(input);
+  if (!bound || input.observationOnly) return workflowFailure('workflow-observation-only', 'Only an unconsumed engine-issued workflow entry can perform its original exact effect.');
+  return withSource5WorkflowEntryGate(input.projectRoot, input.lease, bound.entryKey, async () => {
+    await bound.journal.assertInventory();
+    await assertSource5WorkflowEntryOwnership({ ...input, firstIntent: false });
+    const events = await bound.journal.events(input.operation), value = input.operation.inputs;
+    const event = (stage: Source5WorkflowStage) => events.find(event => event.stage === stage);
+    const same = (left: unknown, right: unknown) => canonicalSha256(left) === canonicalSha256(right);
+    let identity = '', matches = false;
+    if (request === 'source-write') {
+      identity = 'source-write'; matches = Boolean(event('publication-writing'));
+    } else if ('git' in request) {
+      if (!Array.isArray(value.files) || value.files.some(file => !isRecord(file) || typeof file.path !== 'string')) {
+        return workflowFailure('workflow-source5-intent', 'A source effect has no exact original file inventory.');
+      }
+      const files = value.files.map(file => String(file.path));
+      const observed = event('publication-committed')?.data.commitSha;
+      const commands = [
+        { identity: 'git-add', stage: 'publication-writing' as const, args: ['--literal-pathspecs', 'add', '--', ...files] },
+        { identity: 'git-commit', stage: 'publication-commit-intent' as const, args: ['-c', `core.hooksPath=${devNull}`,
+          '--literal-pathspecs', 'commit', '--only', '--no-gpg-sign', '-m', 'Publish reviewed governance workflow source',
+          '-m', 'Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>', '--', ...files] },
+        { identity: 'git-push', stage: 'publication-push-intent' as const,
+          args: ['push', '--porcelain', 'origin', `${observed}:refs/heads/${value.ref}`] }
+      ];
+      const selected = commands.find(command => same(request.git, command.args));
+      identity = selected?.identity ?? ''; matches = Boolean(selected && event(selected.stage));
+    } else if (request.method === 'POST' && request.path === `/repos/${value.repository}/git/refs`) {
+      identity = 'tag-create'; matches = Boolean(event('execution-ref-intent')) &&
+        same(request.body, { ref: `refs/tags/${value.executionRef}`, sha: value.sourceSha });
+    } else if (request.method === 'PATCH' &&
+      request.path === `/orgs/${String(value.repository).split('/')[0]}/actions/runner-groups/${value.groupId}`) {
+      identity = 'runner-patch'; matches = Boolean(event('runner-intent')) && same(request.body,
+        { name: value.groupName, restricted_to_workflows: true, selected_workflows: value.afterWorkflows });
+    } else if (request.method === 'POST' &&
+      request.path === `/repos/${value.repository}/actions/workflows/${event('dispatch-intent')?.data.workflowId}/dispatches`) {
+      identity = 'workflow-dispatch'; matches = Boolean(event('dispatch-intent')) && same(request.body,
+        { ref: value.executionRef, inputs: { source_sha: value.sourceSha,
+          protected_ref: `refs/heads/${value.ref}`, proof_id: canonicalSha256(value) } });
+    }
+    if (!matches || !identity || bound.submitted.has(identity)) {
+      return workflowFailure('workflow-source5-intent', 'The exact reserved effect has no confirmed original intent, differs from review, or was already attempted. Never repeat uncertain work.');
+    }
+    await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
+    bound.submitted.add(identity);
+  });
+}
+
+export async function requestSource5WorkflowEffect(
+  input: Source5WorkflowEffectInput, request: GitHubRequest, deadline: number
+): Promise<GitHubResponse> {
+  source5WorkflowRemainingMs(deadline);
+  request = captureWorkflowBinding(request);
+  if (Object.keys(request).some(key => !['method', 'path', 'body'].includes(key))) {
+    return workflowFailure('workflow-source5-intent', 'An exact provider effect cannot carry unreviewed transport fields.');
+  }
+  assertSource5WorkflowEffectContext(input);
+  await prepareSource5WorkflowEffect(input, request, deadline);
+  const response = await input.transport.request(request);
+  await recordSource5WorkflowResponse(input, request, response);
+  source5WorkflowRemainingMs(deadline);
+  return response;
+}
+
+function source5WorkflowRemainingMs(deadline: number): number {
+  const remaining = deadline - Date.now();
+  if (!Number.isSafeInteger(deadline) || remaining <= 0 || remaining > 30_000) {
+    return workflowFailure('workflow-deadline', 'Workflow preparation and I/O must remain within the same original bounded runtime deadline.');
+  }
+  return remaining;
+}
+
+async function source5WorkflowPreparation(deadline: number, prepare: () => Promise<void>): Promise<void> {
+  const remaining = source5WorkflowRemainingMs(deadline);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new GitHubActivationError('workflow-deadline',
+        'Workflow authority or intent preparation exceeded its original deadline; this attempt cannot start provider or Git work.')), remaining);
+    });
+    await Promise.race([timeout, prepare()]);
+    source5WorkflowRemainingMs(deadline);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+async function prepareSource5WorkflowEffect(
+  input: Source5WorkflowEffectInput, request: Parameters<typeof assertSource5WorkflowIntent>[1], deadline: number
+): Promise<void> {
+  await source5WorkflowPreparation(deadline, async () => {
+    await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
+    source5WorkflowRemainingMs(deadline);
+    await assertSource5WorkflowIntent(input, request);
+    source5WorkflowRemainingMs(deadline);
+    await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: true });
+  });
+}
+
+export async function prepareSource5WorkflowObservation(
+  input: Source5WorkflowEffectInput, deadline: number
+): Promise<void> {
+  assertSource5WorkflowEffectContext(input);
+  await source5WorkflowPreparation(deadline, async () => {
+    await assertSource5WorkflowAuthority({ ...input, now: input.clock?.() ?? input.now, write: false });
+  });
+}
+
+async function recordSource5WorkflowResponse(
+  input: Source5WorkflowEffectInput, request: GitHubRequest, response: GitHubResponse
+): Promise<void> {
+  const bound = issued.get(input);
+  if (!bound) return workflowFailure('workflow-source5-effect-context', 'Acceptance requires the original issued effect carrier.');
+  const data = response.data, value = input.operation.inputs;
+  if (request.method === 'POST' && request.path === `/repos/${value.repository}/git/refs` && response.status === 201) {
+    if (!isRecord(data) || !isRecord(data.object)) {
+      return workflowFailure('workflow-source5-acceptance', 'Tag creation returned no exact acceptance handle; retain original intent and never repeat uncertain creation.');
+    }
+    await recordSource5WorkflowStage(input, 'execution-ref-accepted', {
+      ref: data.ref, sha: data.object.sha, url: data.url
+    });
+  } else if (request.method === 'PATCH' && response.status === 200) {
+    if (!isRecord(data) || !Array.isArray(data.selected_workflows)) {
+      return workflowFailure('workflow-source5-acceptance', 'Runner assignment returned no exact acceptance fields; original intent remains unresolved.');
+    }
+    await recordSource5WorkflowStage(input, 'runner-accepted', {
+      groupId: data.id, groupName: data.name, selectedWorkflowsDigest: canonicalSha256([...data.selected_workflows].sort())
+    });
+  } else if (request.method === 'POST' && request.path.includes('/dispatches')) {
+    const handle = readWorkflowDispatchHandle(response, String(value.repository));
+    if (handle) {
+      const intent = (await bound.journal.events(input.operation)).find(event => event.stage === 'dispatch-intent');
+      if (!intent) return workflowFailure('workflow-source5-acceptance', 'Dispatch acceptance lost its original intent; no handle may be adopted or retagged.');
+      await recordSource5WorkflowStage(input, 'dispatch-accepted', { ...intent.data, ...handle, stage: 'accepted' });
+    }
+  }
+}
+
+async function recordSource5WorkflowGitResult(
+  input: Source5WorkflowEffectInput, args: readonly string[], output: string
+): Promise<void> {
+  if (args[0] !== 'push') return;
+  const bound = issued.get(input);
+  if (!bound) return workflowFailure('workflow-source5-effect-context', 'Push acceptance requires the original issued effect carrier.');
+  const intent = (await bound.journal.events(input.operation)).find(event => event.stage === 'publication-push-intent');
+  if (!intent) return workflowFailure('workflow-source5-acceptance', 'Push acceptance lost its original exact commit intent.');
+  await recordSource5WorkflowStage(input, 'publication-push-accepted', {
+    commitSha: intent.data.commitSha, outputDigest: canonicalSha256(output)
+  });
+}
+
+export async function runSource5WorkflowGitEffect(
+  input: Source5WorkflowEffectInput, args: readonly string[], deadline: number
+) {
+  source5WorkflowRemainingMs(deadline);
+  args = captureWorkflowBinding(args);
+  assertSource5WorkflowEffectContext(input);
+  await prepareSource5WorkflowEffect(input, { git: args }, deadline);
+  const command = workflowGitCommand(args);
+  const result = await input.runner.run(command, workflowGitOptions(input.projectRoot, source5WorkflowRemainingMs(deadline)));
+  if (result.status === 0 && !result.timedOut && !result.outputLimitExceeded && !result.errorCode && !result.aborted) {
+    await recordSource5WorkflowGitResult(input, args, result.stdout);
+  }
+  source5WorkflowRemainingMs(deadline);
+  return result;
+}
+
+export function isSource5WorkflowEffectInput(value: object): value is Source5WorkflowEffectInput {
+  return 'kind' in value && value.kind === 'source5-workflow-effect.v1';
+}

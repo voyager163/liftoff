@@ -69,7 +69,7 @@ export function renderTofuRootVariables(plan: ApiProjectPlan, environment: strin
 export function renderTofuRootMain(plan: ApiProjectPlan): string {
   const variables = [
     'environment', 'location', 'resource_suffix', 'backend_image', 'backend_target_port',
-    'postgres_admin_password', 'enable_private_networking',
+    'postgres_admin_password', 'enable_private_networking', 'liftoff_activation_ownership',
     ...(plan.includeFrontend ? ['frontend_image'] : []),
     ...(hasFunctionWorker(plan) ? ['function_worker_queue_name', 'functions_python_version'] : [])
   ];
@@ -167,6 +167,16 @@ variable "enable_private_networking" {
   type        = bool
   default     = false
   description = "Enable production-oriented private-networking-ready settings."
+}
+
+variable "liftoff_activation_ownership" {
+  type = object({
+    bootstrap_binding_digest    = string
+    prerequisite_binding_digest = string
+  })
+  default     = null
+  nullable    = true
+  description = "Protected activation ownership bindings. Leave null for ordinary or independently governed use."
 }
 ${functionVariables}
 `;
@@ -322,9 +332,31 @@ resource "azurerm_role_assignment" "function_storage_blob_contributor" {
   principal_id         = azurerm_user_assigned_identity.worker.principal_id
 }
 ` : '';
-  return `resource "azurerm_resource_group" "main" {
+  return `locals {
+  liftoff_bootstrap_binding_digest = var.liftoff_activation_ownership == null ? null : regex(
+    "^[a-f0-9]{64}$",
+    var.liftoff_activation_ownership.bootstrap_binding_digest
+  )
+  liftoff_prerequisite_binding_digest = var.liftoff_activation_ownership == null ? null : regex(
+    "^[a-f0-9]{64}$",
+    var.liftoff_activation_ownership.prerequisite_binding_digest
+  )
+  liftoff_resource_group_ownership_tags = var.liftoff_activation_ownership == null ? null : {
+    "liftoff-managed-by"  = "liftoff"
+    "liftoff-phase"       = "bootstrap-local"
+    "liftoff-environment" = var.environment
+    "liftoff-binding"     = local.liftoff_bootstrap_binding_digest
+  }
+  liftoff_application_ownership_tags = var.liftoff_activation_ownership == null ? null : {
+    "liftoff-environment" = var.environment
+    "liftoff-binding"     = local.liftoff_prerequisite_binding_digest
+  }
+}
+
+resource "azurerm_resource_group" "main" {
   name     = "${names.resourceGroup}"
   location = var.location
+  tags     = local.liftoff_resource_group_ownership_tags
 }
 
 resource "azurerm_container_registry" "main" {
@@ -333,12 +365,14 @@ resource "azurerm_container_registry" "main" {
   location            = azurerm_resource_group.main.location
   sku                 = "Basic"
   admin_enabled       = false
+  tags                = local.liftoff_application_ownership_tags
 }
 
 resource "azurerm_user_assigned_identity" "app" {
   name                = "${names.identity}"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
+  tags                = local.liftoff_application_ownership_tags
 }
 
 resource "azurerm_role_assignment" "acr_pull" {
@@ -624,9 +658,83 @@ ${plan.workload === 'genai' && plan.pattern.id === 'rag' ? '\nThe RAG backend id
 Azure is the supported infrastructure starter. Generated files are not production-readiness evidence.
 ${governanceGate}
 
-## Bootstrap Infrastructure
+${current ? `## State and bootstrap boundary
 
-The first apply uses a public bootstrap image so Azure Container Apps can start before the new ACR contains application images.
+Each generated environment starts with an explicit local backend. A missing
+local state file does not prove that an Azure deployment, backend, or resource
+name is absent. \`backend.remote.example.tf\` is a configuration example, not
+approval, ownership evidence, or a state-migration command.
+
+New-environment activation may hand over only backend resources created by the
+same recorded operation, after exact ownership, protected backups, locking,
+writer quiescence, complete mappings, no-change readback, retention, and
+due-time disposal are verified. The public CLI has the phase contracts and
+strict proof validators but does not currently register production protected
+handover/custody adapters. This is unavailable implementation wiring plus a
+separate native/cloud qualification requirement; approval alone cannot enable
+it.
+
+Pre-existing deployment/state adoption, import, partition, relocation, and
+address migration remain planning-only. Do not substitute direct \`tofu\`,
+Azure CLI, copied state, plaintext storage, or a different host for a blocked
+capability. The supported offline commands are \`tofu fmt -check -recursive\`,
+\`tofu init -backend=false\`, and \`tofu validate\` in each selected root.
+The live commands below are operator reference only until the exact execution
+combination has real disposable qualification and current scoped authority.
+
+## Immutable application preparation boundary
+
+The source producers for approved registry/identity prerequisites and application
+publication do not authorize a real operation. Both protected handover and
+custody capabilities, the actual qualified host, unchanged 30-day retention,
+current exact resource/role/cost approval and same-operation ownership are
+required before any registry write or source/build dispatch. The public CLI
+does not register the missing production protected-state wiring.
+
+Application publication separately requires approved source transmission,
+dependency/network access and build execution; exact committed source/workflow
+bytes and qualified runner admission; actual ACR build/run readback; locked tag
+and manifest; and cryptographically verified workflow/source/run provenance.
+Only independently verified \`<registry>/<repository>@sha256:<digest>\` is artifact
+readiness. A tag, job step name, placeholder/bootstrap image or caller annotation
+is never that proof. Confirmed partial operation handles are retained for
+observation, not redispatch; changed source, tag/digest or authority blocks.
+Workflow publication and application deployment remain separate unavailable
+phases. Source fixtures do not satisfy real disposable task13/task14 qualification.${current ? `
+The explicit \`oci-digest-v1\` selection is a closed, blocked source proposal,
+not an executable reviewed plan. Its exact Git projection and digest exporter
+exclude image/cache tags, registry attestations and referrers-tag fallback.
+Authenticated delivery, whole-job protected custody, build-tool qualification
+and the unallocated GitHub attestation write effect remain independent blockers.
+No saved executable plan, approval, source transmission, new receipt or live
+dispatch is enabled; legacy receipts cannot qualify the selected recipe.
+` : ''}
+
+Generated roots keep \`liftoff_activation_ownership = null\` by default and do
+not emit reserved Liftoff ownership tags in ordinary, Manual, governance-none,
+or not-yet-activated use. A protected execution may supply the closed two-digest
+object only through its ephemeral \`liftoff.auto.tfvars.json\` overlay, using the
+original verified bootstrap and application-prerequisite binding digests.
+Missing, malformed, extra, current-recomputed, or mismatched ownership evidence
+is a configuration mismatch; generated tfvars never contain these private values.
+The HCL retains AcrPull only. AcrPush stays externally owned and is not declared.
+
+Artifact dispatch requires the existing protected lightweight
+\`liftoff-execution-<full-source-SHA>\` tag, exact reviewed \`sourceTreeSha\`,
+independent no-bypass tag update/deletion protection/provider-grant/commit/tag
+readback and tag-specific runner admission. Admission is read-only and repeated
+before dispatch and accepted/resumed observation: no tag/policy writer,
+task14.3 authority, branch or raw-SHA fallback is borrowed. Old plans need new
+review. Public-v8 activation, actual protected production ports/host and
+disposable execution-ref qualification remain unavailable.
+
+## Application bootstrap reference
+
+The first application apply uses a public bootstrap image so Azure Container
+Apps can start before the new ACR contains application images. This image
+bootstrap is not protected remote-state bootstrap or handover evidence.` : `## Bootstrap Infrastructure
+
+The first apply uses a public bootstrap image so Azure Container Apps can start before the new ACR contains application images.`}
 
 \`\`\`bash
 cd infrastructure/opentofu/azure/environments/${env}
@@ -667,8 +775,12 @@ use \`tofu init -backend=false\` followed by \`tofu validate\` in each selected 
 For reviewed remote-state adoption, replace \`backend.local.tf\` using that root's
 \`backend.remote.example.tf\`. Each example has a distinct project-and-environment blob key.
 State is secret-sensitive: require private access, encryption, ZRS redundancy, and blob-lease locking;
-do not commit state or credentials. Existing flat-root projects need a separate reviewed migration;
-Liftoff update and force do not move infrastructure or state.
+${current ? `do not commit state or credentials. This replacement is available only through
+the separately qualified same-operation-owned handover described above or an
+independently operated reviewed path; the generated project does not claim one.
+Existing flat-root projects need a separate reviewed planning path; Liftoff
+update and force do not move infrastructure or state.` : `do not commit state or credentials. Existing flat-root projects need a separate reviewed migration;
+Liftoff update and force do not move infrastructure or state.`}
 The default PostgreSQL firewall permits Azure-hosted services. Replace it with private networking before production; set \`enable_private_networking=true\` only when the required VNet, delegated subnet, and private DNS resources are added.
 
 ## Azure Name Suffixes

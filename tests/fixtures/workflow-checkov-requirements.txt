@@ -1,0 +1,2 @@
+# Isolated real-scanner test prerequisite, not an approved release or native subject.
+checkov==3.3.20

@@ -1,11 +1,11 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { globSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import rootConfig, { cliCoverage, coverageFloorPercent, createRootConfig, userStateIsolationSetup } from '../vitest.config.js';
 import gatewayConfig, { gatewayCoverage } from '../services/telemetry-ingest/vitest.config.js';
-import { checkWorkflow, coverageGateJobs } from '../scripts/check-repository-policy.mjs';
+import { checkWorkflow, ciCoverageGateJobs, coverageGateJobs } from '../scripts/check-repository-policy.mjs';
 import {
   CoverageGateError,
   configurationInventory,
@@ -19,6 +19,7 @@ import {
   evaluateTestResults,
   exceedsFloor,
   formatPercent,
+  publishedRuntimeSources,
   runCoverageGate,
   sourceInventory,
   targetedInvocation,
@@ -178,7 +179,7 @@ describe('pinned source-complete coverage configuration', () => {
   });
 
   it('configures the CLI and gateway source inventories without exclusions', () => {
-    expect(cliCoverage.include).toEqual(['src/**/*.ts']);
+    expect(cliCoverage.include).toEqual(['src/**/*.ts', ...publishedRuntimeSources(coveragePackage('cli'))]);
     expect(cliCoverage.reportsDirectory).toBe('./coverage/cli');
     expect(gatewayCoverage.include).toEqual(['src/**/*.ts', '**/src/telemetry/contract.ts']);
     expect(gatewayCoverage.allowExternal).toBe(true);
@@ -230,6 +231,20 @@ describe('pinned source-complete coverage configuration', () => {
     expect(coverageTestEnvironment).toEqual({ CI: 'true', LIFTOFF_TELEMETRY: '0', DO_NOT_TRACK: '1' });
   });
 
+  it('assigns every inventoried Windows test file to exactly one project shard', () => {
+    const selections = new Map<string, number>();
+    for (const project of createRootConfig('win32').test.projects ?? []) {
+      const exclude = 'exclude' in project.test ? project.test.exclude : undefined;
+      for (const file of globSync(project.test.include, { cwd: repository, exclude })) {
+        const name = file.split(path.sep).join('/');
+        selections.set(name, (selections.get(name) ?? 0) + 1);
+      }
+    }
+    expect([...selections].sort(([left], [right]) => left.localeCompare(right)))
+      .toEqual(testInventory(coveragePackage('cli')).testFiles.map((file: string) => [file, 1])
+        .sort(([left], [right]) => String(left).localeCompare(String(right))));
+  });
+
   it('labels targeted diagnostics as non-qualifying and keeps them out of gate reports', () => {
     const targeted = targetedInvocation(coveragePackage('gateway'), {
       sources: ['src/telemetry/contract.ts', path.join('services', 'telemetry-ingest', 'src', 'server.ts')],
@@ -247,14 +262,46 @@ describe('pinned source-complete coverage configuration', () => {
 });
 
 describe('coverage source inventories', () => {
-  it('measures every CLI build input, including files no test imports', () => {
+  it('measures every CLI build input and published raw runtime module, including unimported files', () => {
     const inventory = sourceInventory(coveragePackage('cli'));
-    const expected = globSync('src/**/*.ts').map((file) => file.split(path.sep).join('/')).sort();
-    expect(inventory.includes).toEqual(['src/**/*.ts']);
+    const raw = publishedRuntimeSources(coveragePackage('cli'));
+    const expected = [...globSync('src/**/*.ts').map((file) => file.split(path.sep).join('/')), ...raw].sort();
+    expect(raw).toContain('distribution/native/native-bundle-contract.mjs');
+    expect(raw).toContain('distribution/native/native-program-assembly.mjs');
+    expect(inventory.includes).toEqual(['src/**/*.ts', ...raw]);
     expect(inventory.files.map((entry: { path: string }) => entry.path)).toEqual(expected);
     expect(inventory.files.map((entry: { path: string }) => entry.path)).toContain('src/cli.ts');
     expect(inventory.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
+
+  it('counts an unimported shipped JavaScript runtime module at zero rather than omitting it', async () => {
+    const module = 'distribution/native/unimported.mjs';
+    const root = await fixturePackage({
+      coverage: { provider: 'v8', include: ['src/**/*.ts', module], exclude: [],
+        thresholds: Object.fromEntries(coverageMetrics.map((metric: string) => [metric, gateFloorPercent])) },
+      sources: { 'src/covered.ts': 'export const covered = (value: number) => value > 0 ? value : -value;\n',
+        [module]: Array.from({ length: 20 }, (_, i) => `export function unimported${i}() { return ${i}; }\n`).join('') },
+      tests: { 'tests/covered.test.ts': "import {it,expect} from 'vitest'; import {covered} from '../src/covered.ts'; it('covers',()=>{expect(covered(2)).toBe(2);expect(covered(-2)).toBe(2);});\n" }
+    });
+    const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ ...manifest, files: ['dist/**/*.js', module] }));
+    const definition: Definition = { ...fixtureDefinition(), id: 'cli' };
+    expect(sourceInventory(definition, root).files.map((file: { path: string }) => file.path)).toContain(module);
+    const result = await runCoverageGate(definition, { root, quiet: true, revision: fixedRevision });
+    expect(result.result).toBe('failed');
+    const report = JSON.parse(await readFile(path.join(root, 'coverage', 'fixture', 'coverage-summary.json'), 'utf8'));
+    expect(report[path.join(root, module)].functions).toMatchObject({ covered: 0, total: 20 });
+  });
+
+  it.each(['distribution/native/*.mjs', './distribution/native/helper.mjs', '../helper.mjs',
+    'distribution\\native\\helper.mjs', 'distribution/native/missing.mjs'])(
+    'refuses an ambiguous, nonportable or missing published runtime module %s', async module => {
+      const root = await fixturePackage();
+      const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+      await writeFile(path.join(root, 'package.json'), JSON.stringify({ ...manifest, files: ['dist/**/*.js', module] }));
+      expect(() => publishedRuntimeSources({ ...fixtureDefinition(), id: 'cli' }, root)).toThrow(CoverageGateError);
+    }
+  );
 
   it('measures the gateway runtime plus the whole shared contract it compiles', () => {
     const inventory = sourceInventory(coveragePackage('gateway'));
@@ -366,6 +413,49 @@ describe('fail-closed coverage evaluation', () => {
     expect(formatPercent(2, 3)).toBe('66.6666');
   });
 
+  it('rejects a below-floor count when Number multiplication rounds both products equal', () => {
+    const covered = 7_206_660_123_718_266, total = 9_007_199_254_740_990;
+    expect(Number.isSafeInteger(covered) && Number.isSafeInteger(total)).toBe(true);
+    expect(covered * 10_000).toBe(total * 8001);
+    expect(exceedsFloor(covered, total), JSON.stringify({
+      covered, total, exactCoveredProduct: String(BigInt(covered) * 10_000n),
+      exactFloorProduct: String(BigInt(total) * 8001n)
+    })).toBe(false);
+  });
+
+  it.each([
+    { label: 'below', covered: 7_200_899_999_999_999, expected: false },
+    { label: 'at', covered: 7_200_900_000_000_000, expected: true },
+    { label: 'above', covered: 7_200_900_000_000_001, expected: true }
+  ])('judges large safe-integer counts $label the exact configured floor', ({ covered, expected }) => {
+    expect(exceedsFloor(covered, 9_000_000_000_000_000)).toBe(expected);
+  });
+
+  it('fails every metric below the exact floor even when all input counts are safe integers', () => {
+    const result = evaluate({
+      'src/a.ts': metrics(7_206_660_123_718_266, 9_007_199_254_740_990),
+      'src/entry.ts': metrics(0, 0)
+    });
+    expect(result.failures).toHaveLength(4);
+    expect(Object.keys(result.metrics)).toEqual(coverageMetrics);
+    for (const [metric, value] of Object.entries(result.metrics)) {
+      expect(value).toMatchObject({ percent: '80.0099', passed: false });
+      expect(result.failures).toEqual(expect.arrayContaining([
+        expect.stringMatching(new RegExp(`^Coverage metric ${metric} is 80\\.0099%`))
+      ]));
+    }
+  });
+
+  it('preserves exact threshold decisions across the upper safe-integer range', () => {
+    for (let offset = 0; offset < 1024; offset++) {
+      const total = Number.MAX_SAFE_INTEGER - offset;
+      const minimum = Number((BigInt(total) * 8001n + 9999n) / 10_000n);
+      expect(exceedsFloor(minimum - 1, total)).toBe(false);
+      expect(exceedsFloor(minimum, total)).toBe(true);
+      expect(exceedsFloor(minimum + 1, total)).toBe(true);
+    }
+  });
+
   it('rejects tampered totals, disagreeing final reports and paths outside the repository', () => {
     const tampered = summaryFor(root, passing);
     tampered.total.functions = { ...tampered.total.functions, covered: tampered.total.functions.total };
@@ -376,6 +466,87 @@ describe('fail-closed coverage evaluation', () => {
     const outside = { ...summaryFor(root, passing), [path.resolve(root, '..', '..', 'elsewhere.ts')]: metrics(1, 1) };
     expect(evaluateCoverageReports({ summary: outside, final: finalFor(root, Object.keys(passing)), inventory, root }).failures)
       .toEqual(expect.arrayContaining([expect.stringContaining('outside the repository')]));
+  });
+
+  it.each([
+    { label: 'null', record: null }, { label: 'boolean', record: true },
+    { label: 'string', record: 'src/a.ts' }, { label: 'array', record: [] },
+    { label: 'missing path', record: {} }, { label: 'numeric path', record: { path: 42 } }
+  ])(
+    'rejects a final source record without a valid payload path ($label)', ({ record }) => {
+      const final = { ...finalFor(root, Object.keys(passing)), [path.join(root, 'src', 'a.ts')]: record };
+      const result = evaluateCoverageReports({ summary: summaryFor(root, passing), final, inventory, root });
+      expect(result.failures).toEqual(['coverage-final.json source record src/a.ts lacks a valid path identity.']);
+      expect(result.metrics).toMatchObject({ lines: { covered: 99, total: 110, passed: true } });
+    }
+  );
+
+  it('rejects a final source record whose payload names a different inventoried file', () => {
+    const final = { ...finalFor(root, Object.keys(passing)), [path.join(root, 'src', 'a.ts')]: { path: 'src/entry.ts' } };
+    expect(evaluateCoverageReports({ summary: summaryFor(root, passing), final, inventory, root }).failures)
+      .toEqual(['coverage-final.json source record src/a.ts declares another source path: src/entry.ts']);
+  });
+
+  it('rejects an escaping final payload path independently of its valid report key', () => {
+    const outside = path.resolve(root, '..', 'outside.ts');
+    const final = { ...finalFor(root, Object.keys(passing)), [path.join(root, 'src', 'a.ts')]: { path: outside } };
+    expect(evaluateCoverageReports({ summary: summaryFor(root, passing), final, inventory, root }).failures)
+      .toEqual([`coverage-final.json source record src/a.ts has a path outside the repository: ${outside}`]);
+  });
+
+  it('preserves final report inputs and equivalent absolute or relative payload identities', () => {
+    for (const payload of ['src/a.ts', path.join(root, 'src', 'a.ts'), `${root}/src/./a.ts`]) {
+      const final = { ...finalFor(root, Object.keys(passing)), [path.join(root, 'src', 'a.ts')]: { path: payload } };
+      const before = JSON.stringify(final);
+      expect(evaluateCoverageReports({ summary: summaryFor(root, passing), final, inventory, root }).failures).toEqual([]);
+      expect(JSON.stringify(final)).toBe(before);
+    }
+  });
+
+  it('rejects normalized summary duplicates even when a later record hides uncovered counts', () => {
+    const summary = { [`${root}/src/./a.ts`]: metrics(0, 100), ...summaryFor(root, passing) };
+    const result = evaluateCoverageReports({ summary, final: finalFor(root, Object.keys(passing)), inventory, root });
+    expect(result.failures).toEqual(['Coverage report contains duplicate source file record: src/a.ts']);
+  });
+
+  it('rejects normalized final duplicates even when every inventoried source is present', () => {
+    const final = { [`${root}/src/./a.ts`]: { path: 'src/a.ts' }, ...finalFor(root, Object.keys(passing)) };
+    const result = evaluate(passing, final);
+    expect(result.failures).toEqual(['coverage-final.json contains duplicate source file record: src/a.ts']);
+  });
+
+  it('reports each repeated source member independently without mutating either raw report', () => {
+    const summary = {
+      [`${root}/src/./a.ts`]: metrics(0, 100),
+      [`${root}/src/unused/../a.ts`]: metrics(1, 100),
+      ...summaryFor(root, passing)
+    };
+    const final = {
+      [`${root}/src/./a.ts`]: { path: 'src/a.ts' },
+      [`${root}/src/unused/../a.ts`]: { path: 'src/a.ts' },
+      ...finalFor(root, Object.keys(passing))
+    };
+    const rawBefore = JSON.stringify({ summary, final });
+    const result = evaluateCoverageReports({ summary, final, inventory, root });
+    expect(result.failures.filter(message => message === 'Coverage report contains duplicate source file record: src/a.ts'))
+      .toHaveLength(2);
+    expect(result.failures.filter(message => message === 'coverage-final.json contains duplicate source file record: src/a.ts'))
+      .toHaveLength(2);
+    expect(result.failures).toHaveLength(4);
+    expect(JSON.stringify({ summary, final })).toBe(rawBefore);
+  });
+
+  it('rejects summary identity collisions in either member order', () => {
+    const entries: [string, Counts][] = [
+      [`${root}/src/./a.ts`, passing['src/a.ts']],
+      [path.join(root, 'src', 'a.ts'), passing['src/a.ts']],
+      [path.join(root, 'src', 'entry.ts'), passing['src/entry.ts']]
+    ];
+    for (const ordered of [entries, [...entries].reverse()]) {
+      const summary = { total: summaryFor(root, passing).total, ...Object.fromEntries(ordered) };
+      const result = evaluateCoverageReports({ summary, final: finalFor(root, Object.keys(passing)), inventory, root });
+      expect(result.failures).toEqual(['Coverage report contains duplicate source file record: src/a.ts']);
+    }
   });
 
   it('never lets a passing CLI report satisfy or mask the gateway', () => {
@@ -415,8 +586,8 @@ describe('fail-closed test results', () => {
       numTotalTests: assertions.length,
       numPassedTests: assertions.filter((assertion) => assertion.status === 'passed').length,
       numFailedTests: assertions.filter((assertion) => assertion.status === 'failed').length,
-      numPendingTests: assertions.filter((assertion) => assertion.status === 'skipped').length,
-      numTodoTests: 0,
+      numPendingTests: assertions.filter((assertion) => ['skipped', 'pending'].includes(assertion.status)).length,
+      numTodoTests: assertions.filter((assertion) => assertion.status === 'todo').length,
       numFailedTestSuites: files.filter((entry) => entry.status === 'failed').length,
       testResults: files,
       ...overrides
@@ -429,6 +600,211 @@ describe('fail-closed test results', () => {
     });
     expect(verdict.failures).toEqual([]);
     expect(verdict.summary?.unrun).toEqual([{ file: 'tests/a.test.ts', test: 'tests/a.test.ts case 1', status: 'skipped' }]);
+  });
+
+  it('counts one failed file independently of two failed nested suites and a fully skipped file', () => {
+    const files = [
+      file('tests/a.test.ts', ['failed', 'failed']),
+      file('tests/b.test.ts', ['passed']),
+      file('tests/c.test.ts', ['skipped', 'skipped'])
+    ];
+    const verdict = evaluateTestResults({
+      results: results(files, { numFailedTestSuites: 2 }),
+      tests: { testFiles: [...tests.testFiles, 'tests/c.test.ts'] }, root
+    });
+    expect(verdict.summary).toMatchObject({ files: 3, total: 5, failed: 2, failedFiles: 1, skipped: 2 });
+    expect(verdict.summary?.unrun).toHaveLength(2);
+    expect(verdict.failures).toEqual(expect.arrayContaining([
+      'Vitest reported 1 failed test file(s).',
+      'Vitest reported 2 failed test suite(s).',
+      'Test file failed: tests/a.test.ts'
+    ]));
+    expect(verdict.failures).not.toContain('Vitest reported 2 failed test file(s).');
+  });
+
+  it('counts two failed files even when three nested suites fail', () => {
+    const verdict = evaluateTestResults({
+      results: results([file('tests/a.test.ts', ['failed']), file('tests/b.test.ts', ['failed', 'failed'])],
+        { numFailedTestSuites: 3 }), tests, root
+    });
+    expect(verdict.summary?.failedFiles).toBe(2);
+    expect(verdict.failures).toEqual(expect.arrayContaining([
+      'Vitest reported 2 failed test file(s).',
+      'Vitest reported 3 failed test suite(s).'
+    ]));
+    expect(verdict.failures).not.toContain('Vitest reported 3 failed test file(s).');
+  });
+
+  it('counts a file collection failure even when it contains no failed assertions', () => {
+    const failed = { ...file('tests/a.test.ts', []), status: 'failed' };
+    const verdict = evaluateTestResults({
+      results: results([failed, file('tests/b.test.ts', ['passed'])], { success: false }), tests, root
+    });
+    expect(verdict.summary).toMatchObject({ failed: 0, failedFiles: 1 });
+    expect(verdict.failures).toEqual(expect.arrayContaining([
+      'Vitest reported 1 failed test file(s).',
+      'Test file failed: tests/a.test.ts'
+    ]));
+  });
+
+  it('still fails a positive suite aggregate when no file status reports a failure', () => {
+    const verdict = evaluateTestResults({
+      results: results([file('tests/a.test.ts', ['passed']), file('tests/b.test.ts', ['passed'])],
+        { numFailedTestSuites: 2 }), tests, root
+    });
+    expect(verdict.summary?.failedFiles).toBe(0);
+    expect(verdict.failures).toEqual(['Vitest reported 2 failed test suite(s).']);
+  });
+
+  it.each([undefined, null, '1', 1.5])('still fails a missing or invalid suite aggregate (%s)', failedSuites => {
+    const verdict = evaluateTestResults({
+      results: results([file('tests/a.test.ts', ['passed']), file('tests/b.test.ts', ['passed'])],
+        { numFailedTestSuites: failedSuites }), tests, root
+    });
+    expect(verdict.summary?.failedFiles).toBe(0);
+    expect(verdict.failures).toEqual(['Vitest reported an unknown number of failed test suite(s).']);
+  });
+
+  it('rejects aggregate passed tests with no assertion records', () => {
+    const verdict = evaluateTestResults({
+      results: results([file('tests/a.test.ts', []), file('tests/b.test.ts', [])],
+        { numTotalTests: 1, numPassedTests: 1 }), tests, root
+    });
+    expect(verdict.failures).toEqual([
+      'Vitest test count total (1) does not equal its assertion-record count (0).',
+      'Vitest test count passed (1) does not equal its assertion-record count (0).'
+    ]);
+  });
+
+  it('rejects repeated passed file records instead of treating matching aggregate counts as proof', () => {
+    const verdict = evaluateTestResults({
+      results: results([file('tests/a.test.ts', ['passed']), file('tests/b.test.ts', ['passed']),
+        file('tests/a.test.ts', ['passed'])]), tests, root
+    });
+    expect(verdict.summary).toMatchObject({ files: 3, total: 3, passed: 3 });
+    expect(verdict.failures).toEqual(['Vitest reported duplicate test file record: tests/a.test.ts']);
+  });
+
+  it('checks duplicate file identities after path normalization', () => {
+    const alias = { ...file('tests/a.test.ts', ['passed']), name: `${root}/tests/./a.test.ts` };
+    const verdict = evaluateTestResults({
+      results: results([file('tests/a.test.ts', ['passed']), file('tests/b.test.ts', ['passed']), alias]), tests, root
+    });
+    expect(verdict.failures).toEqual(['Vitest reported duplicate test file record: tests/a.test.ts']);
+  });
+
+  it('retains every failure in duplicate file records rather than silently discarding the repeated data', () => {
+    const verdict = evaluateTestResults({
+      results: results([file('tests/a.test.ts', ['failed']), file('tests/b.test.ts', ['passed']),
+        file('tests/a.test.ts', ['failed'])]), tests, root
+    });
+    expect(verdict.summary).toMatchObject({ files: 3, total: 3, failed: 2, failedFiles: 2 });
+    expect(verdict.failures).toContain('Vitest reported duplicate test file record: tests/a.test.ts');
+    expect(verdict.failures.filter(message => message === 'Test failed: tests/a.test.ts > tests/a.test.ts case 0'))
+      .toHaveLength(2);
+  });
+
+  it('retains unrun evidence in repeated file records while rejecting their identity ambiguity', () => {
+    const verdict = evaluateTestResults({
+      results: results([file('tests/a.test.ts', ['passed']), file('tests/b.test.ts', ['passed']),
+        file('tests/a.test.ts', ['skipped'])]), tests, root
+    });
+    expect(verdict.failures).toEqual(['Vitest reported duplicate test file record: tests/a.test.ts']);
+    expect(verdict.summary?.unrun).toEqual([{ file: 'tests/a.test.ts', test: 'tests/a.test.ts case 0', status: 'skipped' }]);
+  });
+
+  it.each([
+    ['numTotalTests', 'total'],
+    ['numPassedTests', 'passed'],
+    ['numFailedTests', 'failed'],
+    ['numPendingTests', 'skipped'],
+    ['numTodoTests', 'todo']
+  ].flatMap(([field, label]) => [undefined, null, -1, 1.5, '2', Number.MAX_SAFE_INTEGER + 1]
+    .map(value => ({ field, label, value }))))
+  ('rejects malformed $field ($value)', ({ field, label, value }) => {
+    const verdict = evaluateTestResults({
+      results: results([file('tests/a.test.ts', ['passed']), file('tests/b.test.ts', ['passed'])],
+        { [field]: value }), tests, root
+    });
+    expect(verdict.failures).toContain(`Vitest test count ${label} must be a nonnegative safe integer.`);
+  });
+
+  it.each([
+    ['numTotalTests', 'total', 3],
+    ['numPassedTests', 'passed', 3],
+    ['numFailedTests', 'failed', 1],
+    ['numPendingTests', 'skipped', 1],
+    ['numTodoTests', 'todo', 1]
+  ])('rejects an inconsistent %s', (field, label, value) => {
+    const verdict = evaluateTestResults({
+      results: results([file('tests/a.test.ts', ['passed']), file('tests/b.test.ts', ['passed'])],
+        { [field]: value }), tests, root
+    });
+    expect(verdict.failures).toEqual(expect.arrayContaining([
+      expect.stringMatching(`^Vitest test count ${label} .* does not equal its assertion-record count`)
+    ]));
+  });
+
+  it('keeps skipped, pending and todo assertion records as distinct unrun evidence', () => {
+    const verdict = evaluateTestResults({
+      results: results([file('tests/a.test.ts', ['passed', 'skipped', 'pending']), file('tests/b.test.ts', ['todo'])]),
+      tests, root
+    });
+    expect(verdict.failures).toEqual([]);
+    expect(verdict.summary).toMatchObject({ total: 4, passed: 1, failed: 0, skipped: 2, todo: 1 });
+    expect(verdict.summary?.unrun.map((entry: { status: string }) => entry.status)).toEqual(['skipped', 'pending', 'todo']);
+  });
+
+  it.each([
+    ['skipped'],
+    ['todo'],
+    ['pending'],
+    ['skipped', 'todo'],
+    ['skipped', 'pending', 'todo']
+  ].map(statuses => ({ label: statuses.join('/'), statuses })))
+  ('rejects a corpus with only unrun assertion statuses ($label)', ({ statuses }) => {
+    const verdict = evaluateTestResults({
+      results: results([file('tests/a.test.ts', statuses), file('tests/b.test.ts', [])]), tests, root
+    });
+    expect(verdict.failures).toContain('Vitest executed no tests; all registered assertion records are unrun.');
+    expect(verdict.summary?.unrun.map((entry: { status: string }) => entry.status)).toEqual(statuses);
+  });
+
+  it.each([undefined, null, 'running', 'unrecognized'])('rejects an invalid assertion status (%s)', status => {
+    const report = results([file('tests/a.test.ts', ['passed']), file('tests/b.test.ts', ['passed'])]);
+    const verdict = evaluateTestResults({
+      results: { ...report, testResults: report.testResults.map((entry, index) => index === 0
+        ? { ...entry, assertionResults: entry.assertionResults.map(assertion => ({ ...assertion, status })) } : entry) },
+      tests, root
+    });
+    expect(verdict.failures).toContain('Test has an invalid status: tests/a.test.ts > tests/a.test.ts case 0');
+    expect(verdict.summary?.unrun.map((entry: { status: string }) => entry.status)[0]).toBe(String(status ?? 'unknown'));
+  });
+
+  it.each([undefined, null, {}])('rejects a missing or malformed assertion array (%s)', assertionResults => {
+    const report = results([file('tests/a.test.ts', ['passed']), file('tests/b.test.ts', ['passed'])]);
+    const verdict = evaluateTestResults({
+      results: { ...report, testResults: report.testResults.map((entry, index) => index === 0
+        ? { ...entry, assertionResults } : entry) }, tests, root
+    });
+    expect(verdict.failures).toContain('Test file has no assertion-results array: tests/a.test.ts');
+  });
+
+  it.each([undefined, null, 'running'])('rejects an invalid file status (%s)', status => {
+    const report = results([file('tests/a.test.ts', ['passed']), file('tests/b.test.ts', ['passed'])]);
+    const verdict = evaluateTestResults({
+      results: { ...report, testResults: report.testResults.map((entry, index) => index === 0
+        ? { ...entry, status } : entry) }, tests, root
+    });
+    expect(verdict.failures).toContain('Test file has an invalid status: tests/a.test.ts');
+  });
+
+  it.each([-1, Number.MAX_SAFE_INTEGER + 1])('rejects a negative or unsafe suite aggregate (%s)', failedSuites => {
+    const verdict = evaluateTestResults({
+      results: results([file('tests/a.test.ts', ['passed']), file('tests/b.test.ts', ['passed'])],
+        { numFailedTestSuites: failedSuites }), tests, root
+    });
+    expect(verdict.failures).toEqual(['Vitest reported an unknown number of failed test suite(s).']);
   });
 
   it.each([
@@ -462,6 +838,406 @@ describe('real pinned-provider gate runs', () => {
     expect(saved).toEqual(evidence);
     await expect(verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision }))
       .resolves.toMatchObject({ result: 'passed', failures: [] });
+  }, 60_000);
+
+  it('matches actual pinned-provider skipped and todo counts without treating them as passed', async () => {
+    const root = await fixturePackage({
+      sources: { 'src/covered.ts': 'export const covered = (value: number) => value > 0 ? value : -value;\n' },
+      tests: {
+        'tests/covered.test.ts': [
+          "import { expect, it } from 'vitest';",
+          "import { covered } from '../src/covered.ts';",
+          "it('covers both branches', () => { expect(covered(2)).toBe(2); expect(covered(-3)).toBe(3); });",
+          "it.skip('is host-gated elsewhere', () => {});",
+          "it.todo('is not implemented elsewhere');",
+          ''
+        ].join('\n')
+      }
+    });
+    const evidence = await gate(root);
+    expect(evidence.result).toBe('passed');
+    expect(evidence.tests).toMatchObject({ files: 1, total: 3, passed: 1, failed: 0, skipped: 1, todo: 1 });
+    expect(evidence.tests.unrun.map((entry: { status: string }) => entry.status)).toEqual(['skipped', 'todo']);
+    await expect(verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision }))
+      .resolves.toMatchObject({ result: 'passed', failures: [] });
+  }, 60_000);
+
+  it('rejects an all-unrun pinned-provider fixture even when collection covers every source metric', async () => {
+    const root = await fixturePackage({
+      sources: {
+        'src/covered.ts': [
+          'export function covered(value: number): number {',
+          '  return value > 0 ? value : -value;',
+          '}',
+          'export const observed = [covered(2), covered(-3)];',
+          ''
+        ].join('\n')
+      },
+      tests: {
+        'tests/covered.test.ts': [
+          "import { it } from 'vitest';",
+          "import { observed } from '../src/covered.ts';",
+          'void observed;',
+          "it.skip('has not executed', () => {});",
+          "it.todo('has not been implemented');",
+          ''
+        ].join('\n')
+      }
+    });
+    const evidence = await gate(root);
+    const report = JSON.parse(await readFile(path.join(root, 'coverage', 'fixture', 'test-results.json'), 'utf8'));
+    expect(evidence.invocation.exitCode).toBe(0);
+    expect(evidence.tests).toMatchObject({ total: 2, passed: 0, failed: 0, skipped: 1, todo: 1 });
+    for (const metric of coverageMetrics) expect(evidence.metrics[metric].percent).toBe('100.0000');
+    expect(evidence.result, JSON.stringify({
+      invocation: evidence.invocation, tests: evidence.tests, metrics: evidence.metrics, rawTestResults: report
+    })).toBe('failed');
+    expect(evidence.failures).toContain('Vitest executed no tests; all registered assertion records are unrun.');
+  }, 60_000);
+
+  it('rejects saved passing evidence when raw aggregate totals outnumber its unchanged assertion records', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const reportPath = path.join(root, 'coverage', 'fixture', 'test-results.json');
+    const report = JSON.parse(await readFile(reportPath, 'utf8'));
+    report.numTotalTests += 1;
+    report.numPassedTests += 1;
+    await writeFile(reportPath, JSON.stringify(report));
+    const evidence = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+    expect(evidence.result).toBe('failed');
+    expect(evidence.failures).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^Vitest test count total .* does not equal its assertion-record count/),
+      expect.stringMatching(/^Vitest test count passed .* does not equal its assertion-record count/)
+    ]));
+  }, 60_000);
+
+  it('rejects duplicated file records in saved evidence even when repeated assertions match the totals', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const reportPath = path.join(root, 'coverage', 'fixture', 'test-results.json');
+    const report = JSON.parse(await readFile(reportPath, 'utf8'));
+    expect(report.testResults.length).toBeGreaterThan(0);
+    report.testResults.push(...structuredClone(report.testResults));
+    for (const field of ['numTotalTests', 'numPassedTests', 'numFailedTests', 'numPendingTests', 'numTodoTests']) {
+      report[field] *= 2;
+    }
+    await writeFile(reportPath, JSON.stringify(report));
+    const evidence = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+    expect(evidence.result, JSON.stringify({ failures: evidence.failures, rawTestResults: report }))
+      .toBe('failed');
+    expect(evidence.failures).toContain('Vitest reported duplicate test file record: tests/covered.test.ts');
+  }, 60_000);
+
+  it('rejects saved summary aliases that hide uncovered source records behind complete retained totals', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const reportPath = path.join(root, 'coverage', 'fixture', 'coverage-summary.json');
+    const report = JSON.parse(await readFile(reportPath, 'utf8'));
+    const name = Object.keys(report).find(key => key.replaceAll('\\', '/').endsWith('/src/covered.ts'));
+    if (name === undefined) throw new Error('Fixture coverage summary lacks src/covered.ts.');
+    const alias = name.replaceAll('\\', '/').replace('/src/covered.ts', '/src/./covered.ts');
+    const ambiguous = { [alias]: metrics(0, 100), ...report };
+    await writeFile(reportPath, JSON.stringify(ambiguous));
+    const evidence = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+    expect(evidence.result, JSON.stringify({ failures: evidence.failures, rawCoverageSummary: ambiguous }))
+      .toBe('failed');
+    expect(evidence.failures).toContain('Coverage report contains duplicate source file record: src/covered.ts');
+  }, 60_000);
+
+  it('rejects saved final aliases even when source counts and retained evidence are unchanged', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const reportPath = path.join(root, 'coverage', 'fixture', 'coverage-final.json');
+    const report = JSON.parse(await readFile(reportPath, 'utf8'));
+    const name = Object.keys(report).find(key => key.replaceAll('\\', '/').endsWith('/src/covered.ts'));
+    if (name === undefined) throw new Error('Fixture final coverage lacks src/covered.ts.');
+    const alias = name.replaceAll('\\', '/').replace('/src/covered.ts', '/src/./covered.ts');
+    await writeFile(reportPath, JSON.stringify({ [alias]: structuredClone(report[name]), ...report }));
+    const evidence = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+    expect(evidence.result).toBe('failed');
+    expect(evidence.failures).toContain('coverage-final.json contains duplicate source file record: src/covered.ts');
+  }, 60_000);
+
+  it('rejects a saved final source record whose payload path names another file', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const file = path.join(root, 'coverage', 'fixture', 'coverage-final.json');
+    const report = JSON.parse(await readFile(file, 'utf8'));
+    const key = Object.keys(report).find(name => name.replaceAll('\\', '/').endsWith('/src/covered.ts'));
+    if (key === undefined) throw new Error('Fixture final coverage lacks src/covered.ts.');
+    const originalPayloadPath = report[key].path;
+    report[key].path = path.join(root, 'src', 'entry.ts');
+    await writeFile(file, JSON.stringify(report));
+    const verdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+    expect(verdict.result, JSON.stringify({
+      failures: verdict.failures, key, originalPayloadPath, changedPayloadPath: report[key].path
+    })).toBe('failed');
+    expect(verdict.failures).toContain('coverage-final.json source record src/covered.ts declares another source path: src/entry.ts');
+  }, 60_000);
+
+  it('rejects malformed saved final record payloads without mutating retained reports', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const file = path.join(root, 'coverage', 'fixture', 'coverage-final.json');
+    const original = await readFile(file, 'utf8');
+    for (const record of [null, true, 'src/covered.ts', [], {}, { path: 42 }, { path: '' }]) {
+      const report = JSON.parse(original);
+      const key = Object.keys(report).find(name => name.replaceAll('\\', '/').endsWith('/src/covered.ts'));
+      if (key === undefined) throw new Error('Fixture final coverage lacks src/covered.ts.');
+      report[key] = record;
+      const bytes = JSON.stringify(report);
+      await writeFile(file, bytes);
+      const verdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+      expect(verdict.result).toBe('failed');
+      expect(verdict.failures).toContain('coverage-final.json source record src/covered.ts lacks a valid path identity.');
+      expect(await readFile(file, 'utf8')).toBe(bytes);
+    }
+    await writeFile(file, original);
+    await expect(verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision }))
+      .resolves.toMatchObject({ result: 'passed', failures: [] });
+  }, 60_000);
+
+  it('rejects saved coverage whose final statement hits contradict its summary', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const directory = path.join(root, 'coverage', 'fixture');
+    const file = path.join(directory, 'coverage-final.json');
+    const summaryBytes = await readFile(path.join(directory, 'coverage-summary.json'), 'utf8');
+    const evidenceBytes = await readFile(path.join(directory, coverageEvidenceFile), 'utf8');
+    const report = JSON.parse(await readFile(file, 'utf8'));
+    const key = Object.keys(report).find(name => name.replaceAll('\\', '/').endsWith('/src/covered.ts'));
+    if (key === undefined) throw new Error('Fixture final coverage lacks src/covered.ts.');
+    const originalRecord = structuredClone(report[key]);
+    expect(Object.keys(report[key].s).length).toBeGreaterThan(0);
+    for (const id of Object.keys(report[key].s)) report[key].s[id] = 0;
+    const changedBytes = JSON.stringify(report);
+    await writeFile(file, changedBytes);
+    const verdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+    expect(await readFile(path.join(directory, 'coverage-summary.json'), 'utf8')).toBe(summaryBytes);
+    expect(await readFile(path.join(directory, coverageEvidenceFile), 'utf8')).toBe(evidenceBytes);
+    expect(await readFile(file, 'utf8')).toBe(changedBytes);
+    expect(verdict.result, JSON.stringify({
+      verdict, key, originalRecord, changedRecord: report[key], unchangedSummary: JSON.parse(summaryBytes)
+    })).toBe('failed');
+    expect(verdict.failures).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^coverage-final\.json source record src\/covered\.ts statements counts .* do not match/),
+      expect.stringMatching(/^coverage-final\.json source record src\/covered\.ts lines counts .* do not match/)
+    ]));
+  }, 60_000);
+
+  it('rejects contradictory reports in a fresh gate from a fixture-local synthetic producer', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const directory = path.join(root, 'coverage', 'fixture');
+    const reports: Record<string, unknown> = {};
+    for (const name of ['coverage-summary.json', 'coverage-final.json', 'test-results.json']) {
+      reports[name] = JSON.parse(await readFile(path.join(directory, name), 'utf8'));
+    }
+    const final = JSON.parse(await readFile(path.join(directory, 'coverage-final.json'), 'utf8'));
+    const key = Object.keys(final).find(name => name.replaceAll('\\', '/').endsWith('/src/covered.ts'));
+    if (key === undefined) throw new Error('Fixture final coverage lacks src/covered.ts.');
+    for (const id of Object.keys(final[key].s)) final[key].s[id] = 0;
+    reports['coverage-final.json'] = final;
+    const localVitest = path.join(root, 'node_modules', 'vitest');
+    await mkdir(localVitest, { recursive: true });
+    await writeFile(path.join(localVitest, 'package.json'),
+      await readFile(path.join(repository, 'node_modules', 'vitest', 'package.json'), 'utf8'));
+    await writeFile(path.join(localVitest, 'vitest.mjs'), [
+      "import { mkdir, writeFile } from 'node:fs/promises';",
+      "import path from 'node:path';",
+      `const reports = ${JSON.stringify(reports)};`,
+      `const directory = ${JSON.stringify(directory)};`,
+      'await mkdir(directory, { recursive: true });',
+      'for (const [name, value] of Object.entries(reports)) {',
+      '  await writeFile(path.join(directory, name), JSON.stringify(value));',
+      '}', ''
+    ].join('\n'));
+    const verdict = await gate(root);
+    expect(verdict.invocation.exitCode).toBe(0);
+    expect(verdict.metrics.statements.percent).toBe('100.0000');
+    expect(verdict.result).toBe('failed');
+    expect(verdict.failures).toEqual(expect.arrayContaining([
+      expect.stringMatching(/^coverage-final\.json source record src\/covered\.ts statements counts .* do not match/),
+      expect.stringMatching(/^coverage-final\.json source record src\/covered\.ts lines counts .* do not match/)
+    ]));
+  }, 60_000);
+
+  it.each(['functions', 'branches', 'lines'])(
+    'rejects saved final %s counts that contradict the unchanged summary', async metric => {
+      const root = await fixturePackage({
+        sources: {
+          'src/covered.ts': [
+            'export function covered(value: number): number {',
+            '  const magnitude = value > 0 ? value : -value;',
+            '  return magnitude;',
+            '}', ''
+          ].join('\n'),
+          'src/entry.ts': 'export function unimportedEntrypoint(): string { return "never imported by a test"; }\n'
+        }
+      });
+      expect((await gate(root)).result).toBe('passed');
+      const file = path.join(root, 'coverage', 'fixture', 'coverage-final.json');
+      const report = JSON.parse(await readFile(file, 'utf8'));
+      const key = Object.keys(report).find(name => name.replaceAll('\\', '/').endsWith('/src/covered.ts'));
+      if (key === undefined) throw new Error('Fixture final coverage lacks src/covered.ts.');
+      if (metric === 'functions') {
+        for (const id of Object.keys(report[key].f)) report[key].f[id] = 0;
+      } else if (metric === 'branches') {
+        for (const id of Object.keys(report[key].b)) report[key].b[id] = report[key].b[id].map(() => 0);
+      } else {
+        const lines = Object.keys(report[key].statementMap).map(id => report[key].statementMap[id].start.line);
+        expect(new Set(lines).size).toBeGreaterThan(1);
+        for (const id of Object.keys(report[key].statementMap)) report[key].statementMap[id].start.line = lines[0];
+      }
+      const changedBytes = JSON.stringify(report);
+      await writeFile(file, changedBytes);
+      const verdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+      expect(verdict.result, JSON.stringify(verdict)).toBe('failed');
+      expect(verdict.failures).toContainEqual(expect.stringMatching(new RegExp(
+        `^coverage-final\\.json source record src/covered\\.ts ${metric} counts .* do not match`
+      )));
+      expect(await readFile(file, 'utf8')).toBe(changedBytes);
+    }, 60_000
+  );
+
+  it('rejects malformed final hit maps and counters before provider summarization', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const file = path.join(root, 'coverage', 'fixture', 'coverage-final.json');
+    const original = await readFile(file, 'utf8');
+    const originalReport = JSON.parse(original);
+    const key = Object.keys(originalReport).find(name => name.replaceAll('\\', '/').endsWith('/src/covered.ts'));
+    if (key === undefined) throw new Error('Fixture final coverage lacks src/covered.ts.');
+    const statement = Object.keys(originalReport[key].s)[0];
+    const fn = Object.keys(originalReport[key].f)[0];
+    const branch = Object.keys(originalReport[key].b)[0];
+    expect(statement).toBeDefined();
+    expect(fn).toBeDefined();
+    expect(branch).toBeDefined();
+    const records = [];
+    for (const value of [0.5, '1', null, Number.MAX_SAFE_INTEGER + 1]) {
+      for (const kind of ['s', 'f', 'b']) {
+        const record = structuredClone(originalReport[key]);
+        if (kind === 'b') record.b[branch][0] = value;
+        else record[kind][kind === 's' ? statement : fn] = value;
+        records.push(record);
+      }
+    }
+    for (const kind of ['s', 'f']) {
+      const record = structuredClone(originalReport[key]);
+      record[kind][kind === 's' ? statement : fn] = -1;
+      records.push(record);
+    }
+    for (const kind of ['statementMap', 'fnMap', 'branchMap', 's', 'f', 'b']) {
+      for (const value of [undefined, null, []]) {
+        const record = structuredClone(originalReport[key]);
+        if (value === undefined) delete record[kind];
+        else record[kind] = value;
+        records.push(record);
+      }
+    }
+    for (const [kind, id] of [['statementMap', statement], ['fnMap', fn], ['branchMap', branch]]) {
+      const record = structuredClone(originalReport[key]);
+      delete record[kind][id];
+      records.push(record);
+    }
+    const missingLocation = structuredClone(originalReport[key]);
+    delete missingLocation.statementMap[statement].start;
+    records.push(missingLocation);
+    const invalidLine = structuredClone(originalReport[key]);
+    invalidLine.statementMap[statement].start.line = 0;
+    records.push(invalidLine);
+    const shortBranch = structuredClone(originalReport[key]);
+    shortBranch.b[branch].pop();
+    records.push(shortBranch);
+    const invalidFunction = structuredClone(originalReport[key]);
+    invalidFunction.fnMap[fn] = null;
+    records.push(invalidFunction);
+    for (const record of records) {
+      const bytes = JSON.stringify({ ...JSON.parse(original), [key]: record });
+      await writeFile(file, bytes);
+      const verdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+      expect(verdict.result, bytes).toBe('failed');
+      expect(verdict.failures).toContain('coverage-final.json source record src/covered.ts has malformed hit maps or counters.');
+      expect(await readFile(file, 'utf8')).toBe(bytes);
+    }
+    const signedBranch = structuredClone(originalReport[key]);
+    const originallyCovered = signedBranch.b[branch][0] > 0;
+    signedBranch.b[branch][0] = -1;
+    const signedBytes = JSON.stringify({ ...JSON.parse(original), [key]: signedBranch });
+    await writeFile(file, signedBytes);
+    const signedVerdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+    expect(signedVerdict.failures).not.toContain(
+      'coverage-final.json source record src/covered.ts has malformed hit maps or counters.'
+    );
+    if (originallyCovered) {
+      expect(signedVerdict.failures).toContainEqual(
+        expect.stringMatching(/^coverage-final\.json source record src\/covered\.ts branches counts .* do not match/)
+      );
+    } else {
+      expect(signedVerdict).toMatchObject({ result: 'passed', failures: [] });
+    }
+    expect(await readFile(file, 'utf8')).toBe(signedBytes);
+    await writeFile(file, original);
+    await expect(verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision }))
+      .resolves.toMatchObject({ result: 'passed', failures: [] });
+  }, 60_000);
+
+  it('rejects summary counts changed consistently with saved evidence but not with final hits', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const directory = path.join(root, 'coverage', 'fixture');
+    const summaryFile = path.join(directory, 'coverage-summary.json');
+    const evidenceFile = path.join(directory, coverageEvidenceFile);
+    const finalBytes = await readFile(path.join(directory, 'coverage-final.json'), 'utf8');
+    const summary = JSON.parse(await readFile(summaryFile, 'utf8'));
+    const evidence = JSON.parse(await readFile(evidenceFile, 'utf8'));
+    const key = Object.keys(summary).find(name => name.replaceAll('\\', '/').endsWith('/src/covered.ts'));
+    if (key === undefined) throw new Error('Fixture coverage summary lacks src/covered.ts.');
+    for (const metric of coverageMetrics) {
+      summary[key][metric].covered += 1;
+      summary[key][metric].total += 1;
+      summary.total[metric].covered += 1;
+      summary.total[metric].total += 1;
+      evidence.metrics[metric].covered += 1;
+      evidence.metrics[metric].total += 1;
+    }
+    await writeFile(summaryFile, JSON.stringify(summary));
+    await writeFile(evidenceFile, JSON.stringify(evidence));
+    const verdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+    expect(verdict.result).toBe('failed');
+    expect(verdict.failures).toHaveLength(4);
+    for (const metric of coverageMetrics) {
+      expect(verdict.failures).toContainEqual(expect.stringMatching(new RegExp(
+        `^coverage-final\\.json source record src/covered\\.ts ${metric} counts .* do not match`
+      )));
+    }
+    expect(await readFile(path.join(directory, 'coverage-final.json'), 'utf8')).toBe(finalBytes);
+  }, 60_000);
+
+  it('preserves legitimate provider counts, large hit magnitudes and relative final identities', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const file = path.join(root, 'coverage', 'fixture', 'coverage-final.json');
+    const report = JSON.parse(await readFile(file, 'utf8'));
+    for (const [key, record] of Object.entries(report)) {
+      const source = report[key];
+      source.path = path.relative(root, key);
+      for (const kind of ['s', 'f']) {
+        for (const id of Object.keys(source[kind])) {
+          if (source[kind][id] > 0) source[kind][id] = Number.MAX_SAFE_INTEGER;
+        }
+      }
+      for (const id of Object.keys(source.b)) {
+        source.b[id] = source.b[id].map((hit: number) => hit > 0 ? Number.MAX_SAFE_INTEGER : 0);
+      }
+      expect(record).toBe(source);
+    }
+    const bytes = JSON.stringify(report);
+    await writeFile(file, bytes);
+    await expect(verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision }))
+      .resolves.toMatchObject({ result: 'passed', failures: [] });
+    expect(await readFile(file, 'utf8')).toBe(bytes);
   }, 60_000);
 
   it('fails when coverage omits an unimported entrypoint', async () => {
@@ -502,6 +1278,37 @@ describe('real pinned-provider gate runs', () => {
       expect.stringContaining('Missing coverage-summary.json'),
       expect.stringContaining('Test failed: tests/covered.test.ts')
     ]));
+  }, 60_000);
+
+  it('reports actual failed files rather than nested suites from a real pinned-provider failure', async () => {
+    const root = await fixturePackage({
+      tests: {
+        'tests/covered.test.ts': [
+          "import { describe, expect, it } from 'vitest';",
+          "describe('first nested suite', () => it('fails first', () => expect(1).toBe(2)));",
+          "describe('second nested suite', () => it('fails second', () => expect(3).toBe(4)));",
+          ''
+        ].join('\n'),
+        'tests/entry.test.ts': "import { it } from 'vitest';\nit.skip('is entirely host-gated', () => {});\n"
+      }
+    });
+    const evidence = await gate(root);
+    const report = JSON.parse(await readFile(path.join(root, 'coverage', 'fixture', 'test-results.json'), 'utf8'));
+    expect(report.numFailedTestSuites).toBeGreaterThan(1);
+    expect(report.testResults.filter((entry: { status: string }) => entry.status === 'failed')).toHaveLength(1);
+    expect(evidence.result).toBe('failed');
+    expect(evidence.invocation.exitCode).toBe(1);
+    expect(evidence.tests).toMatchObject({ files: 2, failed: 2, failedFiles: 1, skipped: 1 });
+    expect(evidence.tests.unrun).toEqual([
+      { file: 'tests/entry.test.ts', test: 'is entirely host-gated', status: 'skipped' }
+    ]);
+    expect(evidence.failures).toEqual(expect.arrayContaining([
+      expect.stringContaining('Vitest exited with 1;'),
+      'Vitest reported 1 failed test file(s).',
+      `Vitest reported ${report.numFailedTestSuites} failed test suite(s).`
+    ]));
+    expect(evidence.failures).not.toContain(`Vitest reported ${report.numFailedTestSuites} failed test file(s).`);
+    expect(evidence.metrics).toEqual({});
   }, 60_000);
 
   it('fails an empty coverage report', async () => {
@@ -564,6 +1371,89 @@ describe('real pinned-provider gate runs', () => {
     await writeFile(file, original);
     await expect(verify()).resolves.toMatchObject({ result: 'passed' });
   }, 60_000);
+
+  it('rejects saved coverage evidence whose recorded provider identity changed', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const file = path.join(root, 'coverage', 'fixture', coverageEvidenceFile);
+    const saved = JSON.parse(await readFile(file, 'utf8'));
+    saved.tools.provider = 'istanbul';
+    await writeFile(file, JSON.stringify(saved));
+    const verdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+    expect(verdict.result, JSON.stringify({ failures: verdict.failures, savedTools: saved.tools })).toBe('failed');
+    expect(verdict.failures).toContain('Saved evidence does not record the V8 coverage provider.');
+  }, 60_000);
+
+  it('rejects malformed saved runtime identities rather than accepting truthy data', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const file = path.join(root, 'coverage', 'fixture', coverageEvidenceFile);
+    const original = await readFile(file, 'utf8');
+    for (const node of [true, {}, [], '', null, 'unknown']) {
+      const saved = JSON.parse(original);
+      saved.tools.node = node;
+      await writeFile(file, JSON.stringify(saved));
+      const verdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+      expect(verdict.result).toBe('failed');
+      expect(verdict.failures).toContain('Saved evidence lacks a valid Node runtime version.');
+    }
+  }, 60_000);
+
+  it('binds every recorded package version field and required descriptor to current pins', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const file = path.join(root, 'coverage', 'fixture', coverageEvidenceFile);
+    const original = await readFile(file, 'utf8');
+    for (const name of ['vitest', '@vitest/coverage-v8', 'vite']) {
+      for (const field of ['declared', 'locked', 'installed']) {
+        const saved = JSON.parse(original);
+        saved.tools.packages[name][field] = '0.0.0';
+        await writeFile(file, JSON.stringify(saved));
+        const verdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+        expect(verdict.result).toBe('failed');
+        expect(verdict.failures).toContain(`Saved evidence ${name} ${field} version does not match the current pinned tool.`);
+      }
+      const missing = JSON.parse(original);
+      delete missing.tools.packages[name];
+      await writeFile(file, JSON.stringify(missing));
+      const verdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+      expect(verdict.result).toBe('failed');
+      for (const field of ['declared', 'locked', 'installed']) {
+        expect(verdict.failures).toContain(`Saved evidence ${name} ${field} version does not match the current pinned tool.`);
+      }
+    }
+  }, 60_000);
+
+  it('rejects current installed provider drift even when saved metadata and project files are unchanged', async () => {
+    const root = await fixturePackage();
+    const provider = path.join(root, 'node_modules', '@vitest', 'coverage-v8');
+    await cp(path.join(repository, 'node_modules', '@vitest', 'coverage-v8'), provider, { recursive: true });
+    expect((await gate(root)).result).toBe('passed');
+    const manifest = path.join(provider, 'package.json');
+    const installed = JSON.parse(await readFile(manifest, 'utf8'));
+    installed.version = '0.0.0';
+    await writeFile(manifest, JSON.stringify(installed));
+    const verdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
+    expect(verdict.result).toBe('failed');
+    expect(verdict.failures).toEqual(expect.arrayContaining([
+      expect.stringContaining('@vitest/coverage-v8 installed version "0.0.0" differs from the declared pin "5.0.0"')
+    ]));
+  }, 60_000);
+
+  it('accepts reordered valid tool descriptors and nullable npm observations', async () => {
+    const root = await fixturePackage();
+    expect((await gate(root)).result).toBe('passed');
+    const file = path.join(root, 'coverage', 'fixture', coverageEvidenceFile);
+    const saved = JSON.parse(await readFile(file, 'utf8'));
+    const packages = saved.tools.packages;
+    saved.tools.packages = Object.fromEntries(['vite', '@vitest/coverage-v8', 'vitest'].map(name => [name, {
+      installed: packages[name].installed, locked: packages[name].locked, declared: packages[name].declared
+    }]));
+    saved.tools.npm = null;
+    await writeFile(file, JSON.stringify(saved));
+    await expect(verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision }))
+      .resolves.toMatchObject({ result: 'passed', failures: [] });
+  }, 60_000);
 });
 
 describe('independent CI and release coverage gates', () => {
@@ -577,7 +1467,10 @@ describe('independent CI and release coverage gates', () => {
   it('runs each package gate once in its own unconditional Linux CI job with separate evidence', async () => {
     const ci = await workflow('ci.yml');
     expect(coverageGateJobs).toEqual({ 'coverage-cli': 'npm run coverage:cli', 'coverage-gateway': 'npm run coverage:gateway' });
-    for (const [id, command] of Object.entries(coverageGateJobs)) {
+    expect(ciCoverageGateJobs).toEqual({
+      'coverage-cli': 'npm run coverage:cli -- --max-workers 4', 'coverage-gateway': 'npm run coverage:gateway'
+    });
+    for (const [id, command] of Object.entries(ciCoverageGateJobs)) {
       const job = ci.jobs[id];
       const report = id === 'coverage-cli' ? 'coverage/cli/' : 'coverage/gateway/';
       expect(job['runs-on']).toBe('ubuntu-latest');
@@ -590,7 +1483,7 @@ describe('independent CI and release coverage gates', () => {
       expect(upload?.with).toMatchObject({ path: report, 'if-no-files-found': 'error' });
     }
     const gates = Object.values(ci.jobs).flatMap((job) => runs(job).filter((run) => /coverage:(?:cli|gateway)/.test(run!)));
-    expect(gates.sort()).toEqual(['npm run coverage:cli', 'npm run coverage:gateway']);
+    expect(gates.sort()).toEqual(['npm run coverage:cli -- --max-workers 4', 'npm run coverage:gateway']);
     expect(ci.permissions).toEqual({ contents: 'read' });
   });
 
@@ -639,7 +1532,7 @@ describe('independent CI and release coverage gates', () => {
     ['a skipped CI gate job', 'ci.yml', (value: Workflow) => { value.jobs['coverage-cli'].if = 'false'; }],
     ['a CI gate replaced by ordinary tests', 'ci.yml', (value: Workflow) => {
       value.jobs['coverage-cli'].steps = value.jobs['coverage-cli'].steps.map((step) =>
-        step.run === 'npm run coverage:cli' ? { ...step, run: 'npm test' } : step);
+        step.run === ciCoverageGateJobs['coverage-cli'] ? { ...step, run: 'npm test' } : step);
     }],
     ['a gateway gate that only runs after CLI success', 'release.yml', (value: Workflow) => {
       const step = value.jobs.qualify.steps.find((item) => item.run === 'npm run coverage:gateway')!;

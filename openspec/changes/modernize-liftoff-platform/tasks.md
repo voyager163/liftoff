@@ -147,23 +147,23 @@ Depends on 9-10. References: design D5; liftoff-native-distribution, liftoff-npm
 Depends on 3-8. References: design D10-D11; liftoff-governance-activation-engine, liftoff-infrastructure-governance, liftoff-repository-governance-profile.
 
 - [x] 12.1 Replace placeholder/injected-only advertised discovery paths with bounded actual GitHub/Azure reads; verify exact repository, tenant, subscription, principal, environment and resource binding rather than trusting default account or matching names.
-- [ ] 12.2 Derive minimal provider namespaces/features from approved resource types and inspect/register only authorized prerequisites; verify terminal Registered readback precedes dependent writes and shared registrations survive rollback.
-- [ ] 12.3 Implement exact approval persistence, expiry/source binding and protected credential enrollment/use proof; verify no credential in chat/argv/source/public receipts and a policy file alone cannot establish readiness.
-- [ ] 12.4 Enforce new-environment versus same-operation-owned versus pre-existing deployment classification before every effect; verify unknown/occupied/brownfield cases remain planning-only without duplicate resources or sensitive state reads.
-- [ ] 12.5 Implement bounded asynchronous handles, current reobservation and sanitized partial-failure records; verify retry observes existing operations without redispatch and stale ownership blocks compensation.
-- [ ] 12.6 Update Azure/governance/setup guidance with real prerequisites, profile differences and exact producer limits; verify no unsupported public stateful command is advertised and no credentials are needed for local completion.
+- [x] 12.2 Derive minimal provider namespaces/features from approved resource types and inspect/register only authorized prerequisites; verify terminal Registered readback precedes dependent writes and shared registrations survive rollback.
+- [x] 12.3 Implement exact approval persistence, expiry/source binding and protected credential enrollment/use proof; verify no credential in chat/argv/source/public receipts and a policy file alone cannot establish readiness.
+- [x] 12.4 Enforce new-environment versus same-operation-owned versus pre-existing deployment classification before every effect; verify unknown/occupied/brownfield cases remain planning-only without duplicate resources or sensitive state reads.
+- [x] 12.5 Implement bounded asynchronous handles, current reobservation and sanitized partial-failure records; verify retry observes existing operations without redispatch and stale ownership blocks compensation.
+- [x] 12.6 Update Azure/governance/setup guidance with real prerequisites, profile differences and exact producer limits; verify no unsupported public stateful command is advertised and no credentials are needed for local completion.
 
 ## 13. Qualify protected new-environment backend and execution prerequisites
 
 Depends on 12. References: design D11; liftoff-governance-activation-engine, liftoff-infrastructure-governance.
 
-- [ ] 13.1 Implement verified reuse of an approved private backend/execution path without adopting unknown deployment state; verify identity, reachability, locking/versioning and readback conditions with positive/negative tests.
-- [ ] 13.2 Implement only the minimal separately approved new-environment bootstrap when reachability requires it; verify scoped names, cost, permissions and owned operation records before billable writes.
-- [ ] 13.3 Complete applicable repository-dedicated hosted-runner/network prerequisites with exact labels, routing, DNS and one approved egress mode; verify real reachability and keep unavailable org/account capabilities explicit blockers.
-- [ ] 13.4 Qualify protected state handling/handover only for resources created by the same approved bootstrap, with backups, exact mapping/concurrency, no-change verification and retention; verify the public API still rejects arbitrary pre-existing state import/partition/relocation.
-- [ ] 13.5 Preserve due-time/custody/disposal obligations and unsupported-host admission; verify absent protected storage/keys/locking blocks rather than falling back to plaintext or an unapproved execution host.
+- [x] 13.1 Implement verified reuse of an approved private backend/execution path without adopting unknown deployment state; verify identity, reachability, locking/versioning and readback conditions with positive/negative tests.
+- [x] 13.2 Implement only the minimal separately approved new-environment bootstrap when reachability requires it; verify scoped names, cost, permissions and owned operation records before billable writes.
+- [x] 13.3 Complete applicable repository-dedicated hosted-runner/network prerequisites with exact labels, routing, DNS and one approved egress mode; verify real reachability and keep unavailable org/account capabilities explicit blockers.
+- [x] 13.4 Qualify protected state handling/handover only for resources created by the same approved bootstrap, with backups, exact mapping/concurrency, no-change verification and retention; verify the public API still rejects arbitrary pre-existing state import/partition/relocation.
+- [x] 13.5 Preserve due-time/custody/disposal obligations and unsupported-host admission; verify absent protected storage/keys/locking blocks rather than falling back to plaintext or an unapproved execution host.
 - [ ] 13.6 Run explicitly approved disposable native/cloud qualification for each advertised execution combination; verify reports separate real outcomes from mocks and preserve partial checkpoints on failure.
-- [ ] 13.7 Update generated infrastructure/bootstrap guidance and state-migration README with the narrow new-owned-bootstrap exception and deferred brownfield scope; verify examples use actual qualified hosts and commands.
+- [x] 13.7 Update generated infrastructure/bootstrap guidance and state-migration README with the narrow new-owned-bootstrap exception and deferred brownfield scope; verify examples use actual qualified hosts and commands.
 
 ## 14. Complete application deployment qualification and enforcement
 
@@ -214,28 +214,64 @@ Enablement and `report --heartbeat` refuse without writes/delivery; neither
 project enrollment nor a caller flag enables ordinary CI. No active cron was
 installed in this repository. Production ingestion and release/custody gates
 remain separate; all other groups retain their parent-branch task status.
+The four checked stage-16 tasks record composed SOURCE evidence only:
+the complete bounded affected selector, strict fixture imports, gateway tests,
+build/noEmit, static dashboard/OpenTofu checks and disposable installed npm
+smoke. Native Windows execution, published pins, live ingestion/query/UI and
+release-wide coverage were not qualified by this integration.
 
 ## 17. Extend the approved Azure telemetry deployment and Grafana dashboards
 
 Depends on 9 and 15-16 for qualified candidate artifacts and client contracts, not prior client publication. Production steps require separate operator approval. Use synthetic observations to qualify ingestion before publishing/enabling the client and heartbeat. References: design D13; liftoff-telemetry-dashboard, liftoff-cli-telemetry.
 
-- [ ] 17.1 Re-observe the exact subscription/resource group, existing Korea Central resources, state ownership/perimeter, table schemas and provider availability through authorized read-only access; verify the proposed plan has no unintended replacement or region/default drift.
-- [ ] 17.2 Add version-pinned Managed Grafana, scoped managed-identity Logs access, datasource and explicit dashboard provisioning; verify actual Standard tier/size/cost/region and provider registration are disclosed before apply.
+- [x] 17.1 Re-observe the exact subscription/resource group, existing Korea Central resources, state ownership/perimeter, table schemas and provider availability through authorized read-only access; verify the proposed plan has no unintended replacement or region/default drift.
+- [x] 17.2 Add version-pinned Managed Grafana, scoped managed-identity Logs access, datasource and explicit dashboard provisioning; verify actual Standard tier/size/cost/region and provider registration are disclosed before apply.
 - [ ] 17.3 Build 30/90/180-day observed/first-observed project, version/policy/template, source/freshness and semantic-outcome panels; verify fixed datasets deduplicate clones and count separate monorepo roots correctly.
 - [ ] 17.4 Implement explicit unavailable/empty/disabled/stale and legacy-semantic states plus synthetic-project exclusions; verify forged/public-event caveats, retention-window labels and no lifetime/census/compliance claims.
 - [ ] 17.5 Add bounded ingestion-fault/heartbeat-freshness alert definitions with disclosed grace periods; verify low daily CLI usage does not trigger an abandonment/failure claim.
-- [ ] 17.6 Update telemetry and bootstrap READMEs with OpenTofu-only deployment, cost/RBAC, consent schema, verification and rollback instructions; verify static configuration, dashboard JSON and documentation tests without production access.
-- [ ] 17.7 After explicit operator approval, deploy backward-compatible gateway/table/DCR changes first, then Grafana; verify real identity access, synthetic ingestion/query, 180-day retention and continued absence of request/IP/console logging.
-- [ ] 17.8 Exercise approved feature disablement/dashboard rollback without destroying the protected group, workspace/data, backend or perimeter; verify existing anonymous ingestion remains operational and records survive.
+- [x] 17.6 Update telemetry and bootstrap READMEs with OpenTofu-only deployment, cost/RBAC, consent schema, verification and rollback instructions; verify static configuration, dashboard JSON and documentation tests without production access.
+- [x] 17.7 After explicit operator approval, deploy backward-compatible gateway/table/DCR changes first, then Grafana; verify real identity access, synthetic ingestion/query, 180-day retention and continued absence of request/IP/console logging.
+- [x] 17.8 Exercise approved feature disablement/dashboard rollback without destroying the protected group, workspace/data, backend or perimeter; verify existing anonymous ingestion remains operational and records survive.
 
-Tasks 17.2-17.6 have a bounded source-preparation layer: separate pinned
+Tasks 17.3-17.5 have a bounded source-preparation layer: separate pinned
 OpenTofu resource/dashboard roots, workspace-scoped Logs identity, native
 Grafana panels/KQL, registered synthetic exclusions, paused query-availability
 and explicit monthly-expectation rules, portable offline tests and operator
-runbooks. All 17.x flags remain unchecked: qualified task-9/16 candidate
-prerequisites, actual SKU/provider/quota/cost and state ownership, verified
-ingestion-fault signal, real identity/query/UI scenarios and approved live
-deployment/rollback are unmet. Static source is not deployment qualification.
+runbooks. Browser/UI qualification and actual fault-alert firing/routing remain
+incomplete; native API/query evidence is not a claim these journeys ran.
+Static source alone is not deployment qualification. No installed-client or
+genuine heartbeat qualification is claimed; task-9/16 publication gates remain.
+
+The explicitly authorized 2026-10-18 rollout registered Microsoft.Dashboard,
+extended the original protected telemetry state without replacement or region
+drift, and verified both tables' 180-day analytics/total retention. ACR run de4
+built exact public source 006d3aabbffc3cd3a5ff30d2692f7c30cee280b8; the reviewed
+gateway update deployed digest
+sha256:d209118a5640250d604beca54ac3cc74d392b5fb0e90070c49779478868361b7.
+Standard X1/major 13 was disclosed and provisioned in Korea Central, with scoped
+workspace/DCR reader roles, existing-operator instance-only access, API keys
+disabled, and separate protected resource/dashboard state keys.
+
+Actual Entra and MSI/native queries succeeded. Four registered synthetic
+observations deduplicated to two roots; all 33 native panel queries across
+30/90/180-day windows excluded both IDs. Five corrected negative HTTP controls
+were refused. The initial invalid private wire probe was also correctly refused
+and remains retained, not relabeled as a product failure. Native unavailable
+queries return actual errors; the DCR metric's empty timeseries remains unknown.
+All three alert rules are paused and the expectation inventory is empty.
+
+Reviewed dashboard-only removal/restoration produced actual 404/200 responses;
+the native query_type normalization drift discovered during restoration was
+corrected explicitly rather than ignored. Project-feature disablement restored
+503 while a legacy schema-1 operator probe still returned 204. Accepted records,
+original resource identities, state lineage (serial 23 to 30), perimeter and
+logging exclusions survived. Both final roots converged without changes. The
+two synthetic exclusions have byte-verified protected durable inventory and
+remain configured for at least 180 days after the last accepted observation.
+Private receipt live-rollout-receipt.json, SHA-256
+da4b4f656508e618ba37c074a770c18cdada9ecb60978e24a540a00919d3c909,
+binds 147 retained artifacts; raw states/plans/identity values are not published.
+No client or heartbeat was enrolled and project ingestion is disabled.
 
 ## 18. Qualify the integrated release and complete the change
 
@@ -244,7 +280,7 @@ Depends on all prior stages. This group is integration verification, not a subst
 - [ ] 18.1 Run the complete declared workload/workflow/agent/profile and native-host qualification matrix, including Manual/no-agent, preserved layouts, old manifests, clean installs and Apple Silicon handover; verify every advertised combination and explicit unsupported boundary.
 - [ ] 18.2 Run fresh independent CLI/gateway coverage, import boundaries, repository policy, template audits, generated-container/OpenTofu checks and installed native/npm smoke tests; verify all four metrics exceed 80% and every report identifies its exact revision/inventory.
 - [ ] 18.3 Verify a representative old Liftoff project and a non-Liftoff project through their complete separate migration journeys; confirm original code/Git/history and opt-outs are preserved except exact approved changes, and brownfield state remains untouched.
-- [ ] 18.4 Audit the explicit inventory of all four maintained READMEs, generated README sources and related guides against actual commands, schemas, capabilities and package links; verify no stale npm-primary, fake archive, wrong completion, unsupported public stateful or anonymous-project-ID claim remains.
+- [x] 18.4 Audit the explicit inventory of all four maintained READMEs, generated README sources and related guides against actual commands, schemas, capabilities and package links; verify no stale npm-primary, fake archive, wrong completion, unsupported public stateful or anonymous-project-ID claim remains.
 - [ ] 18.5 Verify release assembly uses the same qualified immutable source/artifacts across native channels and npm bridge, with native assets available before migration guidance and ingestion ready before project reporting; publish only with separate maintainer authorization.
 - [ ] 18.6 After authorized publication, qualify installed client enrollment/reporting and a separately enabled heartbeat in an explicitly approved disposable project using the exact published pins; verify actual ingestion/deduplication and opt-out behavior before claiming live end-to-end reporting.
 - [ ] 18.7 Check every proposal capability against its implemented scenarios and retained evidence, then run strict OpenSpec validation; mark only actually completed tasks and leave unavailable external qualification/deployment tasks explicitly incomplete rather than archiving or claiming full delivery.

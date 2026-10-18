@@ -7,10 +7,10 @@ locals {
     if !contains(var.synthetic_project_ids, entry.project_id)
   ])
   projects_kql = replace(file("${path.module}/queries/projects.kql"), "@synthetic_ids@", jsonencode(sort(tolist(var.synthetic_project_ids))))
-  freshness_kql = replace(
+  freshness_kql = replace(replace(
     "${local.projects_kql}\n${file("${path.module}/queries/freshness.kql")}",
     "@expected_heartbeats@", local.heartbeat_rows
-  )
+  ), "@reporting_configuration@", var.reporting_configuration)
   rendered_dashboard = merge(local.dashboard_source, {
     panels = concat(
       [for panel in local.dashboard_source.panels : merge(panel, {
@@ -25,9 +25,10 @@ locals {
             datasource = { type = "grafana-azure-monitor-datasource", uid = grafana_data_source.telemetry.uid }
             azureLogAnalytics = merge(target.azureLogAnalytics, {
               resources = [local.workspace_resource_id]
-              query = replace(replace(target.azureLogAnalytics.query,
+              query = replace(replace(replace(target.azureLogAnalytics.query,
                 "@synthetic_ids@", jsonencode(sort(tolist(var.synthetic_project_ids)))),
-              "@expected_heartbeats@", local.heartbeat_rows)
+                "@expected_heartbeats@", local.heartbeat_rows),
+              "@reporting_configuration@", var.reporting_configuration)
             })
           })
         ]
@@ -95,6 +96,7 @@ resource "grafana_rule_group" "telemetry" {
       labels = { component = "liftoff-telemetry", scope = "reporting-not-health" }
       data {
         ref_id         = "A"
+        query_type     = "Azure Log Analytics"
         datasource_uid = grafana_data_source.telemetry.uid
         relative_time_range {
           from = 15552000

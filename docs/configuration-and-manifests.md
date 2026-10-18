@@ -229,10 +229,13 @@ retain write authority.
 
 The compatibility map is explicit; Liftoff does not use numeric less-than
 comparisons to infer execution safety.
+The CLI row identifies the unpublished development candidate, not a newly
+released minimum version. Historical activation and provenance identities are
+unchanged.
 
 | Contract | Current version |
 | --- | --- |
-| CLI package version | 0.12.3 |
+| CLI package version | 0.13.0-dev.0 |
 | Activation package identity | 0.12.0 |
 | Historical generation write / supported historical reads | 7 / 2-7 for API and GenAI |
 | Current generation/update write / supported source reads | 8 / 2-8 for API and GenAI |
@@ -292,12 +295,33 @@ times OpenSpec, Spec Kit and Manual, with six actual computed graph hashes.
 | Modern contract | Version |
 | --- | --- |
 | Manifest | 8 |
-| Activation contract / state / evidence header / approval envelope | 4 |
+| Activation contract | 5 |
+| State / evidence header / approval envelope | 4 |
 | Phase graph / saved transition plan | 3 |
 | Compatibility metadata | 5 |
 | Supersession / credential policy / migration journal | 2 |
 | Prepared successor preview / retained approval-only audit | 2 / 1 |
 | Single-maintainer policy / team policy | 7 / 1 |
+
+Contract5 changes only current workflow publication authority and the six computed
+source graphs: publication requires explicit commit/push/readback/admission
+approval, and context proof uses phase-specific v2 payloads. The canonical packaged
+table has raw digest
+`sha256:fce27df7e8485ef0847d71a20dfee950e55bbbc50509dc48f50bd4d306a19162`.
+The prior custody source4 table remains byte-exact at
+`sha256:74023432198c9eed026a3600a9f37cc1bb39dcda373a16929dd72b1f1b49731f`
+in the captured `modern-pre-workflow.ts` registry; its graph, original records and
+plans remain readable alongside the frozen pre-custody family. Neither source4
+family is current execution permission. Source5 has no automatic migration lane
+or public activation support; changing an identity does not upgrade old consent.
+In particular, activation-v1/v2/v3 sources cannot obtain a current5 successor
+preview or publication. Manifest-v8 and update-report support alone do not
+declare that lane. Already-linked retained family4 sources can undergo exact
+same-intent maintenance; selecting current5 instead cannot change their recorded
+plugins or layout. No automatic fallback to a retained target is performed.
+Shared source metadata retains the current, pre-workflow and pre-custody
+distinctions, including each family's capability guidance. Reading a retained
+family does not relabel it as the current project-telemetry bundle.
 
 `createManifestV8Reader` validates the complete source contract independently of
 the public historical-reader dispatch. Plugin API/content identity, finite
@@ -394,9 +418,11 @@ fresh proof remain independently required for local completion. A committed
 successor and successful revalidation are separate outcomes; failed follow-up
 must preserve the committed successor and source history, not downgrade them.
 
-The [protected state API](../src/application/state-migration/README.md) is a
-different private boundary. A local control-record successor does not read,
-import, move or rewrite deployed OpenTofu state.
+The packaged
+[private staging and bootstrap retention boundary](repository-governance.md#private-staging-and-bootstrap-retention)
+documents the protected-state handover scope. The generic protected state API
+remains a different private boundary. A local control-record successor does not
+read, import, move or rewrite deployed OpenTofu state.
 
 ## Artifact ownership
 

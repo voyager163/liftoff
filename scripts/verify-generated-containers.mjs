@@ -8,7 +8,7 @@ import spawn from 'cross-spawn';
 import { buildProjectPlan } from '../dist/planner.js';
 import { buildArtifacts } from '../dist/templates.js';
 import { writeArtifacts } from '../dist/file-system.js';
-import { isContainerPortPending } from './generated-container-startup.mjs';
+import { isContainerPortPending, readCreatedContainerId } from './generated-container-startup.mjs';
 
 const npmCliPath = process.env.npm_execpath;
 if (!npmCliPath) throw new Error('Run generated-container verification through npm.');
@@ -20,6 +20,7 @@ const selectedCase = arguments_[1];
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-container-verify-'));
 const runId = randomUUID();
 const imageTags = [];
+let retainTempRoot = false;
 const tagFor = (name) => `liftoff-template-${name}:verify-${runId}`;
 const sentinel = 'liftoff-host-context-sentinel';
 
@@ -110,9 +111,11 @@ async function prepareNativeSource(projectRoot, entry) {
 
 async function verifyStartup(build, projectRoot, probes) {
   const name = `liftoff-verify-${runId}-${build.frontend ? 'frontend' : path.basename(projectRoot)}`;
+  const cidFile = path.join(tempRoot, `${name}.cid`);
+  let containerId;
   const port = build.frontend ? 80 : 8000;
   const command = [
-    'run', '--rm', '--name', name, '--publish', `127.0.0.1::${port}`,
+    'run', '--rm', '--cidfile', cidFile, '--name', name, '--publish', `127.0.0.1::${port}`,
     '--env', 'DATABASE_URL=postgresql://liftoff:test-only@127.0.0.1:5432/liftoff',
     '--env', 'REDIS_URL=redis://127.0.0.1:6379/0',
     '--env', 'PYDANTIC_AI_MODEL=test',
@@ -137,11 +140,16 @@ async function verifyStartup(build, projectRoot, probes) {
       if (startupError || child.exitCode !== null || child.signalCode !== null) {
         throw new Error(`Generated image ${build.tag} exited before becoming ready: ${startupError?.message ?? logs}`);
       }
-      const binding = spawn.sync('docker', ['port', name, `${port}/tcp`], {
+      containerId ??= await readCreatedContainerId(cidFile);
+      if (!containerId) {
+        await delay(200);
+        continue;
+      }
+      const binding = spawn.sync('docker', ['port', containerId, `${port}/tcp`], {
         encoding: 'utf8', shell: false, timeout: 10_000
       });
       if (binding.error) throw binding.error;
-      if (binding.status !== 0 && !isContainerPortPending(binding.stderr ?? '', name, port)) {
+      if (binding.status !== 0 && !isContainerPortPending(binding.stderr ?? '', containerId, port)) {
         throw new Error(`Unable to inspect generated container ${name}: ${binding.stderr}`);
       }
       const matched = /^127\.0\.0\.1:(\d+)$/m.exec(binding.stdout ?? '');
@@ -193,14 +201,14 @@ async function verifyStartup(build, projectRoot, probes) {
         }
       }
     }
-    const workdir = JSON.parse(run(['inspect', '--format', '{{json .Config.WorkingDir}}', name], projectRoot)) || '/';
+    const workdir = JSON.parse(run(['inspect', '--format', '{{json .Config.WorkingDir}}', containerId], projectRoot)) || '/';
     const imagePaths = new Set(probes.flatMap(parts => [
       path.posix.join(workdir, ...parts),
       ...(parts[0] === 'backend' ? [path.posix.join(workdir, ...parts.slice(1))] : [])
     ]));
     for (const imagePath of imagePaths) {
       const copied = spawn.sync('docker', [
-        'cp', `${name}:${imagePath}`, path.join(tempRoot, 'unexpected-context-file')
+        'cp', `${containerId}:${imagePath}`, path.join(tempRoot, 'unexpected-context-file')
       ], { encoding: 'utf8', shell: false, timeout: 10_000 });
       if (copied.error) throw copied.error;
       if (copied.status === 0) throw new Error(`Host-only build input leaked into ${build.tag}: ${imagePath}`);
@@ -211,14 +219,34 @@ async function verifyStartup(build, projectRoot, probes) {
   } catch (error) {
     failure = error;
   } finally {
-    const cleanup = spawn.sync('docker', ['rm', '--force', name], {
-      encoding: 'utf8', shell: false, timeout: 15_000
-    });
+    const removeCreatedContainer = async () => {
+      containerId ??= await readCreatedContainerId(cidFile);
+      if (!containerId) return;
+      const cleanup = spawn.sync('docker', ['rm', '--force', containerId], {
+        encoding: 'utf8', shell: false, timeout: 15_000
+      });
+      if (cleanup.error || cleanup.status !== 0 && !/no such container/i.test(cleanup.stderr ?? '')) {
+        throw new Error(`Container cleanup failed for ${containerId}: ${cleanup.error?.message ?? cleanup.stderr}`);
+      }
+    };
+    const recordCleanupFailure = error => {
+      retainTempRoot = true;
+      const detail = error instanceof Error ? error.message : String(error);
+      failure = new Error(`${failure?.message ?? ''}\n${detail}\nVerification material retained at ${tempRoot}.`, { cause: failure });
+    };
+    try {
+      await removeCreatedContainer();
+    } catch (error) {
+      recordCleanupFailure(error);
+    }
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
-    await Promise.race([closed, delay(5_000, undefined, { ref: false })]);
-    if (cleanup.error || cleanup.status !== 0 && !/no such container/i.test(cleanup.stderr ?? '')) {
-      const detail = `Container cleanup failed for ${name}: ${cleanup.error?.message ?? cleanup.stderr}`;
-      failure = new Error(`${failure?.message ?? ''}\n${detail}`, { cause: failure });
+    const clientSettled = await Promise.race([closed.then(() => true), delay(5_000, false, { ref: false })]);
+    try {
+      if (!containerId && clientSettled) await removeCreatedContainer();
+      if (!containerId) throw new Error('No created container ID is available; name-based cleanup is refused.');
+      if (!clientSettled) throw new Error('The Docker run client did not settle within its existing cleanup budget.');
+    } catch (error) {
+      recordCleanupFailure(error);
     }
   }
   if (failure) throw failure;
@@ -372,5 +400,5 @@ try {
       process.exitCode = 1;
     }
   }
-  await rm(tempRoot, { recursive: true, force: true });
+  if (!retainTempRoot) await rm(tempRoot, { recursive: true, force: true });
 }

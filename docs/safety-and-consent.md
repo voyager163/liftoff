@@ -45,9 +45,11 @@ dependencies. `/liftoff-setup` first verifies and archives the OpenSpec bootstra
 or finalizes the real Spec Kit bundle locally, then stops at authority gates.
 Live activation requires explicit
 commit/push approval, read-only Phase 0, and activation-plan approval.
-Missing public approval persistence, secure credential enrollment, or production
-executors remain blockers; this sequence does not promise a complete production
-activation workflow.
+Approval persistence and protected credential enrollment are separate explicit
+steps: credential values may be read only by the dedicated approved
+`governance credential-enroll` route through a private TTY or explicitly selected
+non-TTY protected stdin. Missing production executors remain blockers; this
+sequence does not promise a complete production activation workflow.
 
 An approved downstream local-state bootstrap remains encrypted, gitignored, and
 single-writer. It is never transferred through GitHub artifacts or secrets,
@@ -61,10 +63,13 @@ subscription capability.
 
 ## CLI self-upgrade boundary
 
-`liftoff upgrade` is itself the narrow authorization to replace a supported
-global npm installation with one exact stable version. It accepts no project
+`liftoff upgrade` is itself the narrow authorization to replace only its verified
+owning installation with one exact stable version. It accepts no project
 path, `--yes`, `--force`, tool-install, or dependency-install permission.
-`liftoff upgrade --check` is read-only and invokes no npm installation.
+`liftoff upgrade --check` is read-only and invokes no installation. Ownership,
+publisher/selected-channel identity and freshness are rechecked before apply.
+No cross-manager migration, manager bootstrap, elevation or broad manager update
+is authorized. Unqualified native channels refuse replacement explicitly.
 
 Both modes operate from a temporary neutral directory so a project `.npmrc`
 cannot redirect machine-level discovery. Canonical npm selects the target while
@@ -78,6 +83,17 @@ the effective delivery registry.
 npm replacement is not a Liftoff file transaction. If npm or post-install
 verification fails, Liftoff reports an exact-version repair command and does not
 claim automatic rollback.
+
+Native source uses the existing Linux receipt and atomic version-link transaction;
+receipts never authenticate a publisher. Unknown or partial effects remain explicit.
+Recovery selects the exact journal digest, plus an explicitly selected lock-owner
+digest only for a positively dead process, and never sweeps version directories.
+Windows executable replacement requires an external exact manager handoff and
+a new-shell doctor/check; Homebrew has no safe version-bound cask upgrade command,
+so Liftoff does not run an unbound `brew upgrade`.
+Verification subprocesses disable anonymous/project telemetry and Node startup
+overrides. Doctor and upgrade help do not enroll configuration consent or deliver
+telemetry. An upgrade does not enable reporting.
 
 ## Staged initialization
 
@@ -172,8 +188,10 @@ immutable evidence, credential policies, active OpenSpec changes, and bootstrap
 retention/disposal records. If the current activation identity is future,
 unsupported, or graph-incompatible, update and setup block with a remedy instead
 of downgrading or rewriting state.
-Exact supported historical v1/v2/v3 can use the reviewed successor lane, not in-place
-retagging. Original records are copied byte-for-byte into immutable in-project
+Exact historical v1/v2/v3 successors require an explicitly declared source/target
+lane, not in-place retagging. The current5 target has no such lane; manifest-v8
+support, force and a supplied fingerprint do not authorize a successor.
+Under the retained successor contracts, original records are copied byte-for-byte into immutable in-project
 history before their exact active paths are retired or replaced. A linked current
 activation obtains fresh evidence; historical approvals never become current
 permission. Unavailable revalidation remains an explicit blocker.

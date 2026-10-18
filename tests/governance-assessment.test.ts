@@ -266,6 +266,7 @@ jobs:
     const rule = (approvals: number, codeowners = false, lastPush = false) => [{
       target: 'branch',
       enforcement: 'active',
+      conditions: { ref_name: { include: ['~ALL'], exclude: [] } },
       rules: [{
         type: 'pull_request',
         parameters: {
@@ -399,6 +400,7 @@ jobs:
       runnerId: 7,
       groupId: 9,
       networkConfigurationId: 'NC_bound',
+      expectedLabel: 'private-staging',
       runner: {
         status: 'Ready',
         labels: ['private-staging'],

@@ -10,6 +10,8 @@ const roots:{path:string;ino:number;dev:number}[]=[];
 const packageMetadata={name:'@fission-ai/openspec',version:'1.11.0',type:'module',bin:{openspec:'./bin/openspec.js'}};
 const nofollow=vi.hoisted(()=>({component:'',calls:[] as {operation:string;path:string}[],violations:[] as string[],swapAtRoot:'',swapParent:'',swapTarget:'',swapped:false}));
 const faults=vi.hoisted(()=>({directory:'',calls:0}));
+const reads=vi.hoisted(()=>({directory:'',starts:[] as string[],stats:[] as string[],closed:[] as string[],active:0,maximum:0,
+  gates:new Map<string,Promise<void>>(),failures:new Map<string,string>(),errors:new Map<string,unknown>()}));
 vi.mock('node:fs/promises',async original=>{
   const actual=await original<typeof import('node:fs/promises')>();
   function observe(operation:string,target:unknown){
@@ -24,6 +26,7 @@ vi.mock('node:fs/promises',async original=>{
     lstat:async(...args:Parameters<typeof actual.lstat>)=>{
       observe('lstat',args[0]);
       const result=await actual.lstat(...args);
+      if(reads.directory&&String(args[0]).startsWith(reads.directory+path.sep))reads.stats.push(String(args[0]));
       if(nofollow.swapAtRoot&&String(args[0])===nofollow.swapAtRoot&&!nofollow.swapped){
         nofollow.swapped=true;
         await actual.rename(nofollow.swapParent,nofollow.swapTarget);
@@ -32,12 +35,24 @@ vi.mock('node:fs/promises',async original=>{
       return result;
     },
     realpath:async(...args:Parameters<typeof actual.realpath>)=>{observe('realpath',args[0]);return actual.realpath(...args);},
+    open:async(...args:Parameters<typeof actual.open>)=>{
+      const target=String(args[0]);
+      if(!reads.directory||!target.startsWith(reads.directory+path.sep))return actual.open(...args);
+      reads.starts.push(target);reads.active++;reads.maximum=Math.max(reads.maximum,reads.active);
+      await reads.gates.get(target);
+      try{
+        const handle=await actual.open(reads.failures.get(target)??args[0],args[1],args[2]),close=handle.close.bind(handle);
+        handle.close=async()=>{try{await close();}finally{reads.active--;reads.closed.push(target);}};
+        return handle;
+      }catch(error){reads.active--;reads.errors.set(target,error);throw error;}
+    },
     opendir:async(...args:Parameters<typeof actual.opendir>)=>{
     if(args[0]===faults.directory&&++faults.calls===2)await actual.writeFile(path.join(faults.directory,'resource'),'changed between passes');
     return actual.opendir(...args);
   }};
 });
 afterEach(async()=>{faults.directory='';faults.calls=0;nofollow.component='';nofollow.calls=[];nofollow.violations=[];nofollow.swapAtRoot='';nofollow.swapParent='';nofollow.swapTarget='';nofollow.swapped=false;
+  reads.directory='';reads.starts=[];reads.stats=[];reads.closed=[];reads.active=0;reads.maximum=0;reads.gates.clear();reads.failures.clear();reads.errors.clear();
   vi.restoreAllMocks();for(const root of roots.splice(0).reverse()){const s=await lstat(root.path);expect(s.ino).toBe(root.ino);expect(s.dev).toBe(root.dev);expect(s.isSymbolicLink()).toBe(false);await rm(root.path,{recursive:true});}});
 async function fixture(metadata:unknown=packageMetadata){
   const root=await realpath(await mkdtemp(path.join(os.tmpdir(),'distribution-owned-'))),s=await lstat(root);roots.push({path:root,ino:s.ino,dev:s.dev});
@@ -48,7 +63,95 @@ async function fixture(metadata:unknown=packageMetadata){
   const locator={launcherPath:path.join(pkg,'bin/openspec.js'),canonicalLauncherPath:path.join(pkg,'bin/openspec.js'),projectRoot:project,stagingRoot:staging};
   return {root,pkg,locator};
 }
+function deferred(){
+  let resolve=()=>{};
+  const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};
+}
+async function readFixture(){
+  const f=await fixture(),directory=path.join(f.pkg,'resources');await mkdir(directory);
+  const files=Array.from({length:9},(_,i)=>path.join(directory,`f${i}`));
+  for(const file of files)await writeFile(file,'observed physical bytes\n');
+  const gates=new Map(files.map(file=>[file,deferred()]));
+  reads.directory=directory;for(const [file,gate]of gates)reads.gates.set(file,gate.promise);
+  return {...f,directory,files,gates};
+}
 describe('bounded complete installed distribution identity',()=>{
+  it('bounds complete regular-file reads at four, closes every started handle and preserves both fresh scans',async()=>{
+    const {locator,files,gates}=await readFixture();
+    const pending=captureOpenSpecDistribution(locator);
+    let result:Awaited<typeof pending>|undefined;
+    try{
+      await vi.waitFor(()=>expect(reads.starts).toEqual(files.slice(0,4)),{timeout:10000});
+      expect(reads.maximum).toBe(4);
+      for(const file of files.slice(0,3))gates.get(file)!.resolve();
+      await vi.waitFor(()=>expect(reads.closed).toHaveLength(3),{timeout:10000});
+      expect(reads.starts).toEqual(files.slice(0,4));
+      gates.get(files[3]!)!.resolve();
+      await vi.waitFor(()=>expect(reads.starts).toEqual(files.slice(0,8)),{timeout:10000});
+    }finally{for(const gate of gates.values())gate.resolve();result=await pending;}
+    expect(reads.maximum).toBe(4);expect(reads.active).toBe(0);
+    expect(reads.starts).toEqual([...files,...files]);expect(reads.closed).toHaveLength(18);
+    expect(result.inventory.files.filter(file=>file.pathParts[0]==='resources').map(file=>file.pathParts[1]))
+      .toEqual(files.map(file=>path.basename(file)));
+  });
+  it('drains reversed actual native open failures and retains the first original-order error without another batch',async()=>{
+    const {root,locator,files,gates}=await readFixture();
+    reads.failures.set(files[0]!,path.join(root,'missing-first'));reads.failures.set(files[2]!,path.join(root,'missing-later'));
+    gates.get(files[2]!)!.resolve();
+    let settled=false;
+    const pending=captureOpenSpecDistribution(locator).then(
+      value=>{settled=true;return {status:'fulfilled' as const,value};},
+      reason=>{settled=true;return {status:'rejected' as const,reason};});
+    let result:Awaited<typeof pending>|undefined;
+    try{
+      await vi.waitFor(()=>expect(reads.starts).toEqual(files.slice(0,4)),{timeout:10000});
+      await vi.waitFor(()=>expect(reads.errors.has(files[2]!)).toBe(true),{timeout:10000});
+      expect(settled).toBe(false);gates.get(files[0]!)!.resolve();
+      await vi.waitFor(()=>expect(reads.errors.has(files[0]!)).toBe(true),{timeout:10000});
+      expect(settled).toBe(false);expect(reads.active).toBe(2);
+    }finally{for(const gate of gates.values())gate.resolve();result=await pending;}
+    expect(result.status).toBe('rejected');
+    if(result.status!=='rejected')throw new Error('Actual native open failures must refuse the scan.');
+    expect(result.reason).toBe(reads.errors.get(files[0]!));
+    expect(result.reason).not.toBe(reads.errors.get(files[2]!));
+    expect(result.reason).toMatchObject({code:'ENOENT',path:path.join(root,'missing-first')});
+    expect(reads.starts).toEqual(files.slice(0,4));expect(reads.closed).toHaveLength(2);expect(reads.active).toBe(0);
+  });
+  it('settles an earlier physical read failure before returning a later admission refusal without opening the oversized member',async()=>{
+    const {root,locator,files,gates,directory}=await readFixture();
+    reads.directory='';
+    const handle=await open(files[2]!,'r+');
+    await handle.truncate(openSpecDistributionPolicy.fileBytes+1);await handle.close();
+    reads.directory=directory;
+    reads.starts=[];reads.closed=[];reads.maximum=0;
+    reads.failures.set(files[0]!,path.join(root,'missing-earlier'));
+    gates.get(files[1]!)!.resolve();
+    let settled=false;
+    const pending=captureOpenSpecDistribution(locator).then(
+      value=>{settled=true;return {status:'fulfilled' as const,value};},
+      reason=>{settled=true;return {status:'rejected' as const,reason};});
+    let result:Awaited<typeof pending>|undefined;
+    try{
+      await vi.waitFor(()=>expect(reads.stats).toContain(files[2]!),{timeout:10000});
+      expect(reads.starts).toEqual(files.slice(0,2));expect(settled).toBe(false);
+    }finally{for(const gate of gates.values())gate.resolve();result=await pending;}
+    expect(result.status).toBe('rejected');
+    if(result.status!=='rejected')throw new Error('The earlier native refusal must remain an error.');
+    expect(result.reason).toBe(reads.errors.get(files[0]!));
+    expect(reads.starts).toEqual(files.slice(0,2));expect(reads.active).toBe(0);
+  });
+  it('preserves earlier real metadata parsing refusal over a later native read error after all started handles close',async()=>{
+    const f=await fixture(),directory=path.join(f.pkg,'node_modules','owned');await mkdir(directory,{recursive:true});
+    const files=['package.json','q0','q1','q2','q3'].map(name=>path.join(directory,name));
+    for(const file of files)await writeFile(file,path.basename(file)==='package.json'?'{broken}':'observed');
+    reads.directory=directory;reads.failures.set(files[2]!,path.join(f.root,'missing-later'));
+    const result=await captureOpenSpecDistribution(f.locator).then(
+      value=>({status:'fulfilled' as const,value}),reason=>({status:'rejected' as const,reason}));
+    expect(result.status).toBe('rejected');
+    if(result.status!=='rejected')throw new Error('Malformed actual metadata must refuse the scan.');
+    expect(result.reason).toBeInstanceOf(SyntaxError);expect(result.reason).not.toBe(reads.errors.get(files[2]!));
+    expect(reads.starts).toEqual(files.slice(0,4));expect(reads.closed).toHaveLength(3);expect(reads.active).toBe(0);
+  });
   it.each(['win32','darwin','linux'] as const)('interprets relative link separators for %s without changing their raw bytes',platform=>{
     expect(distributionLinkTarget('resources/policy',platform)).toEqual(['resources','policy']);
     if(platform==='win32')expect(distributionLinkTarget('resources\\policy',platform)).toEqual(['resources','policy']);

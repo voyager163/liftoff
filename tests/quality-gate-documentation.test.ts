@@ -10,6 +10,7 @@ import {
   coveragePackage,
   coverageTestEnvironment,
   defaultMaxWorkers,
+  publishedRuntimeSources,
   sourceInventory,
   targetedInvocation
 } from '../scripts/coverage-gate.mjs';
@@ -49,8 +50,12 @@ describe('coverage gate contributor guidance', () => {
     expect(gates).toContain('strictly\ngreater than 80% (configured floor 80.01%)');
     expect(gates).toContain('`@vitest/coverage-v8` `5.0.0`');
     expect(packageJson.devDependencies['@vitest/coverage-v8']).toBe('5.0.0');
-    expect(cliCoverage.include).toEqual(['src/**/*.ts']);
+    const runtimeSources = publishedRuntimeSources(coveragePackage('cli'));
+    expect(cliCoverage.include).toEqual(['src/**/*.ts', ...runtimeSources]);
     expect(gates).toContain('`src/**/*.ts`');
+    for (const source of runtimeSources) expect(gates).toContain(`\`${source}\``);
+    expect(gates).toContain('Unimported shipped modules remain in the denominator');
+    expect(gates).toContain('Compiled `dist/` output is not counted again');
     expect(sourceInventory(coveragePackage('gateway')).files.map((entry: { path: string }) => entry.path)).toContain('src/telemetry/contract.ts');
     expect(gatewayCoverage.include).toContain('**/src/telemetry/contract.ts');
     expect(gates).toContain('`services/telemetry-ingest/src/**/*.ts` plus the whole\nshared `src/telemetry/contract.ts` module');

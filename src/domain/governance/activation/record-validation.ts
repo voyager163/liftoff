@@ -1,7 +1,7 @@
 import type { RecordOperation, RecordRollback, RecordPlan, RecordGraph, ModernActivationSourceInput, ModernMutationClass } from './modern-record-contracts.js';
 import type { ManifestContractContext } from '../../project/manifest/context.js';
 import { createModernActivationIdentityReader } from './modern-identity.js';
-import { modernActivationSourceContracts } from '../policy/identity.js';
+import { readableModernActivationSourceContract } from '../policy/identity.js';
 import { releasedV3Values } from './record-contracts.js';
 import {
   activationCompatibility,
@@ -84,7 +84,7 @@ export function releasedV3TaskProjectionContract(
 
 export function modernActivationRecordValidators(catalog: ManifestContractContext['catalog'], input: ModernActivationSourceInput) {
   const identity = createModernActivationIdentityReader(catalog).validateReadableModernActivationIdentity(input);
-  const source = modernActivationSourceContracts().find(source => source.identity.phaseGraphHash === identity.phaseGraphHash)!;
+  const source = readableModernActivationSourceContract(identity.phaseGraphHash)!;
   const mutations: readonly ModernMutationClass[] = [...releasedV3Values.mutationClasses,
     'write-spec-kit-seed', 'write-spec-kit-governance', 'write-operational-plan'];
   return createRecordValidators(identity, source.graph, true, { planVersion: source.savedPlanSchemaVersion,
@@ -394,7 +394,12 @@ function createRecordValidators<I extends Records.ActivationIdentityFieldsV1, P 
     if (pollUrl !== undefined) {
       publicJson(pollUrl, `${path}.pollUrl`);
       const url = new URL(pollUrl);
-      if (url.protocol !== 'https:' || !['api.github.com', 'management.azure.com'].includes(url.hostname) ||
+      if (pollUrl.length > 2_048 || url.protocol !== 'https:' || ![
+        'api.github.com',
+        'management.azure.com',
+        'management.usgovcloudapi.net',
+        'management.chinacloudapi.cn'
+      ].includes(url.hostname) ||
         url.username || url.password || url.port) throw new Error(`${path}.pollUrl must be a credential-free supported provider URL.`);
     }
     const startedAt = isoTimestamp(item.startedAt, `${path}.startedAt`);

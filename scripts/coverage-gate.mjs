@@ -31,7 +31,7 @@ export const coverageLimits = Object.freeze([
 export const coveragePackages = Object.freeze({
   cli: Object.freeze({
     id: 'cli',
-    description: 'Liftoff CLI (published @msn-control/liftoff runtime compiled from tsconfig.json include)',
+    description: 'Liftoff CLI (TypeScript build inputs and published raw JavaScript runtime modules)',
     rootParts: [],
     reportParts: ['coverage', 'cli'],
     testParts: [['tests']],
@@ -118,8 +118,27 @@ export function packageRoot(definition, root = repositoryRoot) {
   return path.join(root, ...definition.rootParts);
 }
 
-// The runtime inventory is the TypeScript build input: every .ts file matched by
-// tsconfig include, imported by a test or not. Declaration files hold no code.
+export function publishedRuntimeSources(definition, root = repositoryRoot) {
+  if (definition.id !== 'cli') return [];
+  const base = packageRoot(definition, root);
+  const manifest = readJsonFile(path.join(base, 'package.json'), 'CLI package.json');
+  if (!Array.isArray(manifest?.files) || !manifest.files.every(file => typeof file === 'string' && file)) {
+    fail('CLI package.json must declare its published runtime files.');
+  }
+  const modules = manifest.files.filter(file => !file.startsWith('dist/') && /\.(?:mjs|cjs|js)$/.test(file));
+  for (const file of modules) {
+    if (/[*?[\]{}\\\0]/.test(file) || portablePath(base, file) !== file) {
+      fail(`Published raw runtime modules must use exact portable file paths: ${file}.`);
+    }
+    if (!existsSync(path.join(base, file)) || !statSync(path.join(base, file)).isFile()) {
+      fail(`Published raw runtime module is missing or is not a file: ${file}.`);
+    }
+  }
+  return [...new Set(modules)].sort().map(file => portablePath(root, path.join(base, file)));
+}
+
+// Include every build input and published raw runtime module, imported or not.
+// Declaration files hold no executable code.
 export function sourceInventory(definition, root = repositoryRoot) {
   const base = packageRoot(definition, root);
   const tsconfig = readJsonFile(path.join(base, 'tsconfig.json'), `${definition.id} tsconfig.json`);
@@ -135,13 +154,14 @@ export function sourceInventory(definition, root = repositoryRoot) {
     .filter((file) => file.endsWith('.ts') && !file.endsWith('.d.ts') && statSync(file).isFile())
     .map((file) => portablePath(root, file)));
   if (files.length === 0) fail(`${definition.id} source inventory is empty.`);
-  const inventory = describeFiles(root, files);
+  const rawModules = publishedRuntimeSources(definition, root);
+  const inventory = describeFiles(root, [...files, ...rawModules]);
   for (const required of definition.requiredSources) {
     if (!inventory.files.some((entry) => entry.path === required)) {
       fail(`${definition.id} source inventory no longer contains required runtime source ${required}.`);
     }
   }
-  return { includes: [...patterns], ...inventory };
+  return { includes: [...patterns, ...rawModules], ...inventory };
 }
 
 function filesBelow(root, directoryParts) {
@@ -279,7 +299,7 @@ export function formatPercent(covered, total) {
 }
 
 export function exceedsFloor(covered, total) {
-  return total > 0 && covered * 10_000 >= floorBasisPoints * total;
+  return total > 0 && BigInt(covered) * 10_000n >= BigInt(floorBasisPoints) * BigInt(total);
 }
 
 // Judges one package's saved V8 summary/final reports against its current source
@@ -305,15 +325,35 @@ export function evaluateCoverageReports({ summary, final, inventory, root = repo
       failures.push(`Coverage report contains a path outside the repository: ${key}`);
       continue;
     }
+    if (reported.has(file)) failures.push(`Coverage report contains duplicate source file record: ${file}`);
     reported.set(file, value);
   }
   const finalFiles = new Set();
   if (typeof final === 'object' && final !== null && !Array.isArray(final)) {
-    for (const key of Object.keys(final)) {
+    for (const [key, record] of Object.entries(final)) {
+      let file;
       try {
-        finalFiles.add(reportPath(root, key));
+        file = reportPath(root, key);
       } catch {
         failures.push(`coverage-final.json contains a path outside the repository: ${key}`);
+        continue;
+      }
+      if (finalFiles.has(file)) failures.push(`coverage-final.json contains duplicate source file record: ${file}`);
+      finalFiles.add(file);
+      if (typeof record !== 'object' || record === null || Array.isArray(record) ||
+          typeof record.path !== 'string' || record.path.length === 0) {
+        failures.push(`coverage-final.json source record ${file} lacks a valid path identity.`);
+        continue;
+      }
+      let declared;
+      try {
+        declared = reportPath(root, record.path);
+      } catch {
+        failures.push(`coverage-final.json source record ${file} has a path outside the repository: ${record.path}`);
+        continue;
+      }
+      if (declared !== file) {
+        failures.push(`coverage-final.json source record ${file} declares another source path: ${declared}`);
       }
     }
   } else {
@@ -361,6 +401,58 @@ export function evaluateCoverageReports({ summary, final, inventory, root = repo
   return { failures, metrics };
 }
 
+function validHitMaps(record) {
+  const object = value => typeof value === 'object' && value !== null && !Array.isArray(value);
+  const count = value => Number.isSafeInteger(value) && value >= 0;
+  // The pinned V8 provider can emit negative synthetic else-branch hits while
+  // deriving branch coverage from merged ranges; its summarizer treats them as uncovered.
+  const branchCount = value => Number.isSafeInteger(value);
+  const sameKeys = (left, right) => Object.keys(left).length === Object.keys(right).length &&
+    Object.keys(left).every(key => Object.hasOwn(right, key));
+  if (!['statementMap', 'fnMap', 'branchMap', 's', 'f', 'b'].every(key => object(record[key]))) return false;
+  if (!sameKeys(record.s, record.statementMap) || !sameKeys(record.f, record.fnMap) ||
+      !sameKeys(record.b, record.branchMap)) return false;
+  if (!Object.values(record.s).every(count) || !Object.values(record.f).every(count)) return false;
+  if (!Object.values(record.statementMap).every(location =>
+    object(location) && object(location.start) && Number.isSafeInteger(location.start.line) && location.start.line > 0)) {
+    return false;
+  }
+  if (!Object.values(record.fnMap).every(object)) return false;
+  return Object.entries(record.b).every(([key, hits]) => Array.isArray(hits) && hits.every(branchCount) &&
+    object(record.branchMap[key]) && Array.isArray(record.branchMap[key].locations) &&
+    record.branchMap[key].locations.length === hits.length);
+}
+
+async function finalCoverageCountFailures(definition, { summary, final }, root) {
+  const provider = installedPackageFile(packageRoot(definition, root), '@vitest/coverage-v8');
+  if (!provider) fail('Unable to validate final coverage counts: the pinned V8 provider is not installed.');
+  // Use the installed provider's own line/branch summarizer, not a second implementation.
+  const entry = createRequire(provider).resolve('@vitest/istanbul-lib-coverage');
+  const { createFileCoverage } = await import(pathToFileURL(entry).href);
+  const reported = new Map(Object.entries(summary).filter(([key]) => key !== 'total')
+    .map(([key, value]) => [reportPath(root, key), value]));
+  const failures = [];
+  for (const [key, record] of Object.entries(final)) {
+    const file = reportPath(root, key);
+    if (!validHitMaps(record)) {
+      failures.push(`coverage-final.json source record ${file} has malformed hit maps or counters.`);
+      continue;
+    }
+    const derived = createFileCoverage({
+      path: record.path, statementMap: record.statementMap, fnMap: record.fnMap,
+      branchMap: record.branchMap, s: record.s, f: record.f, b: record.b
+    }).toSummary();
+    for (const metric of coverageMetrics) {
+      const actual = derived[metric], expected = reported.get(file)[metric];
+      if (actual.covered !== expected.covered || actual.total !== expected.total) {
+        failures.push(`coverage-final.json source record ${file} ${metric} counts ` +
+          `(${actual.covered}/${actual.total}) do not match coverage-summary.json (${expected.covered}/${expected.total}).`);
+      }
+    }
+  }
+  return failures;
+}
+
 function assertionName(entry) {
   if (typeof entry?.fullName === 'string' && entry.fullName) return entry.fullName;
   const ancestors = Array.isArray(entry?.ancestorTitles) ? entry.ancestorTitles.filter((item) => typeof item === 'string') : [];
@@ -376,7 +468,8 @@ export function evaluateTestResults({ results, tests, root = repositoryRoot }) {
   if (typeof results !== 'object' || results === null || !Array.isArray(results.testResults)) {
     return { failures: ['test-results.json is not a Vitest JSON report.'], summary: undefined };
   }
-  const count = (name) => (Number.isSafeInteger(results[name]) ? results[name] : undefined);
+  const count = (name) => (Number.isSafeInteger(results[name]) && results[name] >= 0 ? results[name] : undefined);
+  const failedSuites = count('numFailedTestSuites');
   const summary = {
     success: results.success === true,
     files: results.testResults.length,
@@ -385,14 +478,17 @@ export function evaluateTestResults({ results, tests, root = repositoryRoot }) {
     failed: count('numFailedTests'),
     skipped: count('numPendingTests'),
     todo: count('numTodoTests'),
-    failedFiles: count('numFailedTestSuites'),
+    failedFiles: results.testResults.filter((file) => file?.status === 'failed').length,
     unrun: []
   };
   if (!summary.success) failures.push('Vitest reported an unsuccessful run.');
   if (!summary.total) failures.push('Vitest executed no tests.');
   if (summary.failed !== 0) failures.push(`Vitest reported ${summary.failed ?? 'an unknown number of'} failed test(s).`);
-  if (summary.failedFiles !== 0) failures.push(`Vitest reported ${summary.failedFiles ?? 'an unknown number of'} failed test file(s).`);
+  if (summary.failedFiles !== 0) failures.push(`Vitest reported ${summary.failedFiles} failed test file(s).`);
+  // Vitest's suite aggregate includes nested describes, not just file records.
+  if (failedSuites !== 0) failures.push(`Vitest reported ${failedSuites ?? 'an unknown number of'} failed test suite(s).`);
   const executed = new Set();
+  const actual = { total: 0, passed: 0, failed: 0, skipped: 0, todo: 0 };
   for (const file of results.testResults) {
     let name;
     try {
@@ -401,15 +497,40 @@ export function evaluateTestResults({ results, tests, root = repositoryRoot }) {
       failures.push(`Vitest reported a test file outside the repository: ${file?.name}`);
       continue;
     }
+    if (executed.has(name)) failures.push(`Vitest reported duplicate test file record: ${name}`);
     executed.add(name);
     if (file?.status === 'failed') failures.push(`Test file failed: ${name}`);
-    for (const assertion of Array.isArray(file?.assertionResults) ? file.assertionResults : []) {
+    else if (file?.status !== 'passed') failures.push(`Test file has an invalid status: ${name}`);
+    if (!Array.isArray(file?.assertionResults)) {
+      failures.push(`Test file has no assertion-results array: ${name}`);
+      continue;
+    }
+    for (const assertion of file.assertionResults) {
+      actual.total++;
+      switch (assertion?.status) {
+        case 'passed': actual.passed++; break;
+        case 'failed': actual.failed++; break;
+        case 'skipped':
+        case 'pending': actual.skipped++; break;
+        case 'todo': actual.todo++; break;
+        default: failures.push(`Test has an invalid status: ${name} > ${assertionName(assertion)}`);
+      }
       if (assertion?.status === 'failed') {
         failures.push(`Test failed: ${name} > ${assertionName(assertion)}`);
       } else if (assertion?.status !== 'passed') {
         summary.unrun.push({ file: name, test: assertionName(assertion), status: String(assertion?.status ?? 'unknown') });
       }
     }
+  }
+  for (const name of ['total', 'passed', 'failed', 'skipped', 'todo']) {
+    if (summary[name] === undefined) {
+      failures.push(`Vitest test count ${name} must be a nonnegative safe integer.`);
+    } else if (summary[name] !== actual[name]) {
+      failures.push(`Vitest test count ${name} (${summary[name]}) does not equal its assertion-record count (${actual[name]}).`);
+    }
+  }
+  if (actual.total > 0 && actual.passed === 0 && actual.failed === 0) {
+    failures.push('Vitest executed no tests; all registered assertion records are unrun.');
   }
   const notExecuted = tests.testFiles.filter((file) => !executed.has(file));
   const unexpected = [...executed].filter((file) => !tests.testFiles.includes(file)).sort();
@@ -603,6 +724,8 @@ export async function runCoverageGate(target, {
   const after = collectInputs(definition, { root, revision });
   const reports = await readReports(directory);
   const coverage = evaluateCoverageReports({ summary: reports.summary, final: reports.final, inventory: after.source, root });
+  const finalCounts = coverage.failures.length === 0 && toolFailures.length === 0
+    ? await finalCoverageCountFailures(definition, reports, root) : [];
   const tests = evaluateTestResults({ results: reports.results, tests: after.tests, root });
   const failures = [
     ...toolFailures,
@@ -610,7 +733,8 @@ export async function runCoverageGate(target, {
     ...(execution.exitCode !== 0 && !execution.error ? [`Vitest exited with ${execution.exitCode ?? execution.signal}; failed tests or unmet thresholds block the gate.`] : []),
     ...compareInputs('Inputs changed during the run', before, after),
     ...tests.failures,
-    ...coverage.failures
+    ...coverage.failures,
+    ...finalCounts
   ];
   const evidence = evidenceFor({
     definition, root, inputs: after, tools, invocation, execution, coverage, tests: tests.summary, failures, startedAt, finishedAt
@@ -655,6 +779,8 @@ export async function verifyCoverageEvidence(target, { root = repositoryRoot, re
   const current = collectInputs(definition, { root, revision });
   const reports = await readReports(directory);
   const failures = [];
+  const currentTools = toolVersions(definition, root);
+  failures.push(...currentTools.failures);
   if (saved === undefined) {
     failures.push(`Missing ${coverageEvidenceFile}; a fresh coverage run is required.`);
   } else {
@@ -668,8 +794,16 @@ export async function verifyCoverageEvidence(target, { root = repositoryRoot, re
       failures.push(`Saved evidence floor ${JSON.stringify(saved.threshold?.configuredFloorPercent ?? null)} is not the configured ${coverageFloorPercent}%.`);
     }
     failures.push(...savedInvocationFailures(definition, directory, root, saved.invocation));
-    if (!saved.tools?.packages?.['@vitest/coverage-v8']?.installed || !saved.tools?.node) {
-      failures.push('Saved evidence lacks the provider and runtime versions.');
+    if (saved.tools?.provider !== 'v8') failures.push('Saved evidence does not record the V8 coverage provider.');
+    if (typeof saved.tools?.node !== 'string' || !/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(saved.tools.node)) {
+      failures.push('Saved evidence lacks a valid Node runtime version.');
+    }
+    for (const name of pinnedToolPackages) {
+      for (const field of ['declared', 'locked', 'installed']) {
+        if (saved.tools?.packages?.[name]?.[field] !== currentTools.tools.packages[name][field]) {
+          failures.push(`Saved evidence ${name} ${field} version does not match the current pinned tool.`);
+        }
+      }
     }
     const savedInputs = {
       source: saved.sourceInventory ?? {},
@@ -684,8 +818,10 @@ export async function verifyCoverageEvidence(target, { root = repositoryRoot, re
     }
   }
   const coverage = evaluateCoverageReports({ summary: reports.summary, final: reports.final, inventory: current.source, root });
+  const finalCounts = coverage.failures.length === 0 && currentTools.failures.length === 0
+    ? await finalCoverageCountFailures(definition, reports, root) : [];
   const tests = evaluateTestResults({ results: reports.results, tests: current.tests, root });
-  failures.push(...tests.failures, ...coverage.failures);
+  failures.push(...tests.failures, ...coverage.failures, ...finalCounts);
   for (const metric of coverageMetrics) {
     const recorded = saved?.metrics?.[metric];
     const measured = coverage.metrics[metric];

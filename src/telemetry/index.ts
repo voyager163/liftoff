@@ -2,6 +2,7 @@ import type { ParsedArgs } from '../domain/project/contracts.js';
 import {
   canonicalTelemetryCommand,
   createTelemetryEvent,
+  isTelemetryCliVersion,
   telemetryNoticeVersion,
   type TelemetryCommand,
   type TelemetryCommandEvent
@@ -97,7 +98,7 @@ export async function trackCommand(
   exitCode: number,
   options: TelemetryRuntimeOptions = {}
 ): Promise<void> {
-  if (!isTelemetryEnabled(options.env)) {
+  if (!isTelemetryEnabled(options.env) || !isTelemetryCliVersion(cliVersion)) {
     return;
   }
 
@@ -106,11 +107,7 @@ export async function trackCommand(
     return;
   }
 
-  try {
-    await reportCommandEvent(createTelemetryEvent(command, cliVersion, exitCode), options);
-  } catch {
-    // The legacy API deliberately discards delivery failures.
-  }
+  await reportCommandEvent(createTelemetryEvent(command, cliVersion, exitCode), options).catch(() => undefined);
 }
 
 export async function reportCommandEvent(
@@ -120,13 +117,12 @@ export async function reportCommandEvent(
   const disabled = telemetryDisabledResult(options.env);
   if (disabled) return disabled;
 
+  const endpoint = options.endpoint ?? productionTelemetryEndpoint;
   const delivery = options.delivery ?? createTelemetryDelivery({
     env: options.env, fetch: options.fetch, timeoutMs: options.timeoutMs
   });
   try {
-    const result = await delivery.deliver({
-      command: { endpoint: options.endpoint ?? productionTelemetryEndpoint, event }
-    });
+    const result = await delivery.deliver({ command: { endpoint, event } });
     if (!result.command) {
       throw new Error('Command telemetry delivery did not return its requested result.');
     }

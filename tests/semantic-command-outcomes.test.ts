@@ -2,7 +2,8 @@ import {mkdtemp,realpath,lstat,rm,mkdir,readdir,readFile,writeFile} from 'node:f
 import path from 'node:path';
 import os from 'node:os';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-import {runCli,type CliTelemetryHooks} from '../src/cli.js';
+import type {CliTelemetryHooks} from '../src/cli.js';
+import {runReleasedTelemetryCli as runCli} from './fixtures/released-telemetry.js';
 import {runCommand} from '../src/commands.js';
 import {initializeProject} from '../src/application/initialize/use-case.js';
 import {migrateProject} from '../src/application/migrate/use-case.js';
@@ -10,9 +11,9 @@ import {createCommandOutcome} from '../src/application/command-outcome.js';
 import {PresentationSession} from '../src/terminal.js';
 import {CaptureStream} from './helpers.js';
 import {createSemanticTelemetryEvent,telemetryClientFields,type SemanticTelemetryEvent} from '../src/telemetry/contract.js';
-import type {SelfUpgradeResult} from '../src/self-upgrade.js';
+import {runSelfUpgrade,type SelfUpgradeResult} from '../src/self-upgrade.js';
+import {upgradeWorld} from './fixtures/installer-upgrade.js';
 import type {CommandRunner} from '../src/process-runner.js';
-import {liftoffPackageName} from '../src/domain/distribution/liftoff-package.js';
 import {buildProjectPlan} from '../src/application/project/planning.js';
 import {buildArtifacts} from '../src/templates.js';
 const prompt=vi.hoisted(()=>({answer:'decline' as 'decline'|'cancel'|'accept',profile:'decline' as 'decline'|'cancel',profileCalls:0}));
@@ -145,13 +146,18 @@ describe('invocation-scoped semantic completion',()=>{
     expect(await readFile(path.join(root,'liftoff.manifest.json'),'utf8')).toBe(manifest);
   });
   it.each(['0.12.3','99.0.0'])('uses actual doctor readiness aggregation for published version %s',async version=>{
-    const h=hooks(),stdout=new CaptureStream();
+    const h=hooks(),stdout=new CaptureStream(),completion=createCommandOutcome();
+    const fixture=upgradeWorld({currentVersion:'0.12.3',targetVersion:version});
     expect(await runCli({argv:['doctor','--json'],env:{},stdout,stderr:new CaptureStream(),telemetry:h.telemetry,
-      execute:(parsed,ctx)=>runCommand(parsed,{...ctx,runner:rejectedRunner,
-        stableReleaseLookup:async()=>({name:liftoffPackageName,version}),
-        configuredRegistryTargetLookup:async()=>({status:'available',registryKind:'canonical'})})})).toBe(0);
-    expect(h.events[0].outcome).toBe(version==='0.12.3'?'success':'attention-required');
+      execute:(parsed,ctx)=>runCommand(parsed,{...ctx,runner:rejectedRunner,outcome:completion,
+        selfUpgrade:request=>runSelfUpgrade({
+          ...request,
+          currentVersion:fixture.world.currentVersion,
+          runningPackageRoot:fixture.request.runningPackageRoot
+        },fixture.dependencies)})})).toBe(0);
+    expect(completion.finish(0)).toBe(version==='0.12.3'?'success':'attention-required');
     expect(JSON.parse(stdout.text()).summary).toEqual({failures:0,warnings:version==='0.12.3'?0:1});
+    expect(h.events).toEqual([]);expect(h.legacy).not.toHaveBeenCalled();expect(h.telemetry.beforeCommand).not.toHaveBeenCalled();
   });
   it('keeps explicit failure sticky through cancellation and freezes the final outcome',()=>{
     const value=createCommandOutcome();

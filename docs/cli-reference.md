@@ -33,26 +33,26 @@ install -> upgrade CLI -> plan -> init or migrate -> validate, doctor, explicitl
 | `liftoff init [project-name]` | Initializes a named child or the exact current Git root through staged readiness and framework setup |
 | `liftoff migrate <source>` | Creates a new sibling scaffold and filtered source copy without changing the source |
 | `liftoff validate [project]` | Validates manifest identity, managed-core hashes, project provenance, workload metadata, and framework markers |
-| `liftoff doctor [project]` | Runs read-only workload-derived project and workstation diagnostics |
+| `liftoff doctor` | Runs read-only workload-derived diagnostics for the current directory and workstation |
 | `liftoff telemetry status [project] --json` | Read-only project enrollment status; no notice, consent, transport or receipts |
 | `liftoff telemetry enroll [project] --check --json` | Discloses pseudonymous reporting and reviews exact project/external local consent writes; no random ID is generated |
 | `liftoff telemetry enroll [project] --approve-plan <fingerprint> --json` | Creates a random UUID after exact current approval and binds consent outside that checkout; cloned/copied records require explicit `--preserve-identity` or `--new-identity` review |
 | `liftoff telemetry disable [project] --approve-plan <fingerprint> --json` | Disables that project and removes its local consent binding while preserving the UUID, unrelated bindings and accepted history |
 | `liftoff telemetry report [project] --json` | Explicit bounded project-only delivery result; never recursively emits an anonymous aggregate |
-| `liftoff telemetry heartbeat enable [project] --repository <root> --check --json` | Refuses activation without real qualified published CLI/action/artifact pins and a registered repository-scoped producer; no cron is installed |
+| `liftoff telemetry heartbeat enable [project] --repository <root> --check --json` | Source-scoped producer plans exist, but activation remains refused without release-owned qualified published CLI/action/artifact pins; no cron is installed |
 | `liftoff telemetry heartbeat disable [project] --repository <root> --check --json` | Reviews exact removal of an inventoried shared workflow entry; application requires its current fingerprint/default-No approval and preserves other entries/custom bytes |
-| `liftoff telemetry report [project] --heartbeat --json` | Currently emits nothing because the separately qualified CI producer is absent; global opt-outs and ordinary CI disablement always win |
+| `liftoff telemetry report [project] --heartbeat --repository <root> --json` | Currently emits nothing because published tooling qualification remains unavailable; a future explicit selected-root CI exception requires validated enrollment, separately enabled inventory and exact owned workflow/repository bindings, never flags alone |
 | `liftoff governance status [project]` | Reports deterministic setup state, activation identity, phase states, blockers, approvals, and evidence freshness |
 | `liftoff governance plan [project]` | Previews dependency-ready work before approval and saves a disclosed project-bound receipt outside the repository; no project/provider mutations |
-| `liftoff governance approve [project] --plan <fingerprint>` | Approves only the exact unexpired preview; does not execute its operations; refuses blocked or unavailable capabilities such as credential-ready |
+| `liftoff governance approve [project] --plan <fingerprint>` | Approves only the exact unexpired preview; does not execute its operations; refuses blocked or unavailable capabilities |
 | `liftoff governance apply-next [project]` | Previews the next graph-ready transition; add `--execute` to execute at most one approved mutation; refuses blocked or unavailable capabilities before saving a plan |
-| `liftoff governance credential-enroll [project] --plan <fingerprint>` | Currently refuses: public credential readiness and enrollment are unavailable pending independently verified provider wiring; reads no input, writes nothing, and never accepts a token argument |
+| `liftoff governance credential-enroll [project] --plan <fingerprint> [--protected-stdin]` | Executes only an exact approved credential-ready plan; reads the value from a private non-echoing TTY or explicitly selected non-TTY protected stdin, verifies exact provider scope/use and independent secret metadata, then persists payload-free policy/evidence |
 | `liftoff governance recover [project] --plan <fingerprint>` | Previews an explicitly planned recovery; `--execute` runs only its approved scope |
 | `liftoff governance resume [project]` | Rechecks external blockers and readiness descendants without rerunning verified operations |
 | `liftoff governance verify [project]` | Read-only validation of graph, state, evidence, task projection, policy identity, active-change identity, and live readback; reports consistency separately from setup completion and reports completion as indeterminate when inspection fails |
 | `liftoff governance assess [project] [--governance <profile>]` | Read-only comparison against the recorded or explicitly selected installed packaged governance target; local-only unless `--live` is explicitly requested |
-| `liftoff upgrade` | Replaces a verified global npm installation with the exact canonical stable release exposed by the configured registry |
-| `liftoff upgrade --check` | Checks installation origin and registry parity without installing; exits 2 when an installable update exists |
+| `liftoff upgrade` | Replaces only the verified owning CLI installation, or reports a blocked native channel/manual manager handoff |
+| `liftoff upgrade --check` | Checks ownership, upstream freshness and selected-channel availability without installing; exits 2 when an installable update exists |
 | `liftoff update [project]` | Applies an exactly approved v8 successor, managed-core maintenance, or separately labeled local governance-profile plan |
 | `liftoff update --check` | Reports eligible v8 maintenance or explicit governance-profile plans without project mutation; exits 0 when clean and 2 when actionable |
 | `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; it cannot select profile, workflow, plugin, application, or provider authority |
@@ -93,6 +93,12 @@ heartbeat publication blockers.
 `$liftoff-repair` (Codex), are native coding-agent invocations, not a `liftoff setup`
 command or `liftoff -repair` flag. Init creates a scaffold; repair
 works on a supported existing Liftoff project without reinitializing it.
+
+`liftoff-migrate-npm` is a **separate, source-only development utility**, not a
+`liftoff migrate` subcommand or a released npm bin. See the
+[standalone Mac migration contract](mac-npm-migration.md) for preview, exact
+approval, preservation, journal/recovery and parent-shell limits. Its public
+cask provider is unregistered; npm remains the only published channel.
 
 Generation, validation, doctor, governance, and update consume the packaged
 [supported-stack baseline](supported-stack.md). The current contract uses
@@ -225,10 +231,58 @@ release, before writing a plan, approval, authority record, or state; an earlier
 approval does not override that refusal. `resume` rechecks blockers and downstream
 readiness without repeating verified operations.
 
+Plans containing backend-state access, state import, registry publication,
+network provisioning, or Azure resource provisioning also contain the exact
+read-only `azure.deployment.classify-ownership` operation. Immediately before
+the phase adapter runs, `apply-next --execute` reobserves the selected Azure
+identity and bounded resource metadata. It proceeds only for independently
+absent expected environments or an exact same-operation resume whose current
+plan, operation, resource-group ID, and every observed resource ID match recorded
+outputs. Pre-existing or uncertain scope returns a saved planning result and
+performs no backend-state read, import, publication, or resource write.
+
+Credential planning accepts metadata only in
+`activationInputs.phases["credential-ready"]`; never put the value in the public
+input file:
+
+```json
+{ "kind": "github-app", "appId": 12, "installationId": 77 }
+```
+
+or the explicitly justified fallback:
+
+```json
+{
+  "kind": "fine-grained-pat",
+  "tokenId": 4242,
+  "owner": "octo-owner",
+  "appUnavailableReason": "No approved selected-repository preflight App is available."
+}
+```
+
+The IDs and fallback reason are source-bound into the reviewed plan. The App
+private key or PAT value is supplied only later through the protected enrollment
+channel.
+
 Apply-next JSON names the attempted phase in `selectedPhase` and reports
 `executedPhase` separately. `nextReadyPhase` is recomputed after execution;
 `nextPlannablePhase` can identify work awaiting approval. A pending external
-operation retains its provider handle and is polled, not dispatched twice.
+operation retains its exact provider handle and partial output bindings and is
+polled, not dispatched twice. Azure registration polling stops after at most 60
+observations with intervals no greater than five seconds; a still-running
+operation becomes a durable checkpoint rather than a generic timeout.
+Resume requires the unchanged reviewed provider, action, operation, resource,
+start time, and credential-free poll URL plus a strictly newer matching provider
+readback. Handles older than 24 hours and observations older than ten minutes
+are refused.
+
+If a completed remote effect is followed by a blocker, JSON returns
+`reason: "blocked"` with failed `partial-failure.v1` evidence and retained owned
+outputs. The evidence uses digests for blocker, provider payload, completed
+operations, and cleanup warnings; it does not persist raw diagnostics or
+credentials. A terminal handle cannot be retried through ordinary `apply-next`.
+Create and approve an explicit recovery plan, which must reverify current
+deployment ownership before any compensation or continuation.
 Status/resume preserve `storedState` and `storedBlockers` when
 an archived baseline is `retryable`; only explicit execution may replace that
 failure with verified evidence.
@@ -404,6 +458,14 @@ not published readiness. `localComplete`, `activationComplete`, and
 process or write actually occurred; inspect the exact result and saved progress.
 Actual check failures, blocked preparation, and uncertain settlement exit 1.
 A successfully completed requested operation exits 0.
+
+In local execution results, aggregate `process-failed` means a failed subprocess
+was actually observed. Aggregate `execution-failed` means execution stopped
+without an observed subprocess failure, for example at an in-process guard. It
+does not identify the underlying exception or claim that inputs changed.
+Individual checks retain their existing process/admission codes; neither raw
+exception text nor project output is disclosed. Incomplete execution remains
+failed and cannot authorize automatic replay.
 
 Omitting `--execute`, or using `--execute=false`, only inspects saved execution
 progress and exits 0 unless that inspection fails or is blocked. It never
@@ -640,10 +702,16 @@ be refused. Persisted configuration acceptance is unchanged. Input-validation
 diagnostics use trusted schema labels rather than supplied keys or values, and
 malformed approval-JSON diagnostics omit parser payload snippets.
 
-`credential-enroll` currently refuses before selecting a private TTY or
-`--protected-stdin` channel: public credential readiness and enrollment are
-unavailable pending independently verified provider wiring. A fingerprint is not a
-token, and approval alone neither enrolls a credential nor provisions resources.
+`credential-enroll` requires an exact unexpired approved `credential-ready`
+preview. By default it selects a private non-echoing TTY. `--protected-stdin`
+must be explicitly selected and must be supplied by an owner-controlled non-TTY
+secret channel; ordinary TTY stdin is refused. The value is never accepted in
+argv, `--inputs`, the fingerprint, chat, source, plans, evidence, or output.
+Approval alone neither enrolls a credential nor provisions resources, and
+plain `apply-next --execute` does not select a protected credential channel.
+Successful execution verifies exact repository, principal, permissions, provider
+expiry, real API use, encrypted Actions secret write, and independent current
+secret metadata before writing a payload-free policy and matching evidence.
 Interrupted writes require a fresh `plan --recover-phase` before `recover`;
 unsupported or ambiguous external outcomes remain visible blockers.
 
@@ -982,12 +1050,27 @@ liftoff upgrade --json
 liftoff upgrade --check --json
 ```
 
-`liftoff upgrade` is an imperative request to replace the supported global npm
+`liftoff upgrade` is an imperative request to replace only the verified owning
 installation of `@msn-control/liftoff`; it does not prompt or accept `--yes`,
 `--force`, `--install-tools`, project paths, or project dependency flags.
 Automatic replacement is refused for local dependencies, `npx` execution-cache
 copies, linked checkouts, unknown package-manager stores, ambiguous roots, or
 unsafe paths.
+
+Owners are `npm`, `homebrew-cask`, `winget`, `liftoff-native`, or `unknown`.
+The native policy has no approved signing identity or public manager namespace:
+native upgrades currently return an explicit `native_unqualified` refusal, not
+an available release or an npm fallback. Local native receipts prove attribution
+only. The reusable source admission requires independently verified Ed25519
+qualification, exact repository/commit/version/target/manifest/inventory,
+referenced platform evidence and downloaded deployed assets with bound provenance
+and SBOM. Fixtures do not qualify a real manager or public distribution.
+Linux also requires the downloaded archive's detached Ed25519 signature against
+its separately approved archive key; qualification assertions or catalog hashes
+alone are insufficient. The bounded default native stable reader checks the
+canonical GitHub catalog, tag/main/run identity and deployed bytes. It remains
+inert before HTTP while the real signing/namespace policy is null, supplies no
+staging root, and does not establish selected-manager availability.
 
 On macOS, a verified global installation at the standard Homebrew prefix can
 remain eligible when Homebrew Node/npm reports its versioned Cellar prefix.
@@ -995,18 +1078,48 @@ Liftoff checks the package, runtime layout, and launcher, then explicitly target
 that existing prefix throughout the upgrade. It rejects a prefix-specific
 registry change instead of silently switching delivery policy. This fallback
 does not apply to arbitrary prefixes, Windows, or Linux.
+This is npm running with Homebrew-managed Node, **not Homebrew cask ownership**.
 
-Canonical npm's stable `latest` metadata selects one exact target. The effective
+The production cask ownership reader is wired but remains inert while the cask
+namespace/source policy is null. It requires the exact standard Caskroom staged
+version, Homebrew's installed receipt and canonical source definition, and the
+approved tap's local Git origin. It rechecks receipt/definition/config bytes,
+directory identities and the tap commit; it does not execute Homebrew or Ruby,
+refresh a source, or contact a repository. This proves local attribution only,
+not signing, publication, current channel availability or migration authority.
+Nonstandard, missing, contradictory or racing receipts fail closed. WinGet
+ownership remains an explicit provider port pending authoritative installed
+AppId/publisher/certificate/source observations.
+Windows local attribution separately validates the user app-root receipt,
+exact current-version pointer and stable `bin\liftoff.exe` against the immutable
+inner bundle. An inner version launcher is not the selected stable entry.
+Independent user-scope source/signer/uninstall-registration observations remain
+required; a valid installer receipt without those observations leaves the owner
+unknown. Check never refreshes WinGet sources or accepts source agreements.
+
+Canonical npm's stable `latest` metadata selects one exact target for npm owners. The effective
 configured npm registry remains the delivery path and must expose that exact
 version. Liftoff never edits `.npmrc`, embeds registry credentials, forces a
 canonical bypass around a stale mirror, invokes elevation, installs a
 prerelease, or performs a downgrade.
+
+When the exact target is missing, a second bounded package lookup through that
+same scoped registry distinguishes a lagging mirror (`registry_stale`) from a
+missing package (`registry_absent`). Offline, timeout or contradictory metadata
+remain unknown, not current.
+An exact-target response naming another product, omitting a valid stable version,
+returning a prerelease, or reporting a version newer than the requested target
+is `registry_invalid`, not evidence of mirror lag.
 
 Machine-level `@msn-control:registry` takes precedence over the default
 `registry`, even when the default is canonical. The lookup runs from a neutral
 directory so project `.npmrc` files cannot change upgrade delivery. Canonical
 verification isolates both registry settings without changing persistent
 configuration; actual delivery still honors the configured mirror.
+All npm observation, installation and replacement-verification subprocesses use
+only the caller-supplied environment plus the upgrade's temporary cache and
+telemetry/startup guards. Omitted parent npm settings are not merged back in;
+explicit prefix, mirror and account settings remain preserved.
 
 `--check` performs the same origin, target, and parity checks without invoking
 installation. Apply uses one shell-free exact npm command with lifecycle scripts,
@@ -1015,13 +1128,60 @@ confined binary, and exact `Liftoff <version>` output. A failed install or
 verification is not automatically rolled back; use the exact-version repair
 command printed by Liftoff.
 
-JSON results use schema version 1 and expose only `mode`, `status`,
+Apply rechecks the same owner and delivery source before installation; changed
+metadata or selection blocks rather than silently choosing another target.
+Version verification disables telemetry and Node startup overrides and checks
+the selected launcher. Windows source uses a version-bound, ID/source/user-scope
+WinGet handoff outside the running executable, with a new shell and postverification.
+Independent Windows checks also require matching HKCU registration hashes and
+the exact selected launcher's embedded signer through system PowerShell 5.1;
+neither the installer receipt nor a signer alone proves a WinGet source.
+Homebrew cannot pin a cask upgrade to the reviewed version, so no unbound brew
+upgrade is executed. For an attributed cask, the read-only channel compares the
+selected tap definition with canonical bytes derived from independently
+authenticated release material. A match does not grant exact installation
+authority; differing or missing local definitions remain unknown, not guessed
+package absence or lag.
+Linux source reuses receipt-bound immutable version
+replacement and exact journal/selected-dead-lock recovery, never prefix sweeps.
+Its default source independently reobserves the authenticated exact archive
+channel. Apply stages a bounded signed snapshot, validates all TAR members and
+the exact manifest/inventory without executing extracted code, then rechecks the
+owner before the existing installer runs. Failed private stages remain available
+for review; a staging refusal before installation reports `effects: none`.
+These are source interfaces, not a declaration of qualified native availability.
+For native receipts, equal package versions are not enough: differing source,
+manifest or inventory identity reports `native_identity_mismatch`, not current.
+
+JSON results use **schema version 2** and expose `mode`, `status`,
 `currentVersion`, applicable `targetVersion`, applicable `registryKind`, and a
-stable `reasonCode`, plus optional `installationTarget` (`homebrew-opt` or
-`homebrew-usr-local`) when the standard Homebrew fallback is verified. Arbitrary
+stable `reasonCode`, `installationOwner`, separate `upstream` and `channel`
+availability (`available`, `lagging`, `absent`, `unknown`, `unqualified`),
+`effects` (`none`, `possible`, `installed`), and `verification`
+(`not-run`, `verified`, `failed`). Applicable `handoff` and `restartRequired`
+do not imply successful replacement. Optional `installationTarget` (`homebrew-opt` or
+`homebrew-usr-local`) is included when the standard Homebrew fallback is verified. Arbitrary
 installation paths are not included. Status is one of `current`, `update-available`, `upgraded`,
-`blocked`, or `failed`. Child progress goes to stderr so stdout remains one JSON
-object.
+`blocked`, `failed`, or `handoff-required`. Exit codes are 0 for verified upgraded
+or checked current, 2 for a read-only available update, and 1 for blocked, failed
+or required handoff. Child progress goes to stderr so stdout remains one JSON object.
+Schema-1 consumers must branch on `schemaVersion` before reading new fields or
+statuses; the internal compatibility facade still accepts historical schema-1
+results, but newly executed upgrade reports are schema 2.
+`neutral_directory_unavailable` means no install was attempted; `cleanup_failed`
+retains the preceding effect/verification facts rather than resetting them to
+none. A rejected apply executor reports possible effects, never invented success.
+
+`doctor` shares this read-only inspection and retains local diagnostics when
+metadata is offline. Unknown, channel lag/absence, prerelease and refused downgrade
+are not described as current. Doctor and upgrade help/verification do not emit
+anonymous/project telemetry, a disclosure notice or consent-enrollment writes.
+Doctor's read-only process probes retain the short two-second diagnostic profile;
+ordinary upgrade probes are bounded at 30 seconds, install at ten minutes, and
+replacement version execution at 15 seconds.
+Native owner/channel observations also check elapsed time after the reader
+returns: synchronous parsing or verification cannot turn a result arriving
+after its deadline into an accepted ownership or availability observation.
 
 ## Repair modes
 
@@ -1222,7 +1382,7 @@ and nested reports, verification results/receipts and private backup indexes
 use their own schema-1 formats. Update's journal remains schema 1.
 
 **Repair and preparation capabilities**: The package version is
-0.12.3; application repair and locked preparation capabilities require
+the unpublished `0.13.0-dev.0` candidate; application repair and locked preparation capabilities require
 `repairContractVersion` 1. Do not infer capability support from
 package SemVer alone. Native integrations and tooling must query `liftoff repair --capabilities --json`
 directly to verify `repairContractVersion`, supported schemas, registered recipes,
@@ -1449,15 +1609,24 @@ not current syntax:
 Invoking removed syntax fails during argument parsing, before project discovery
 or filesystem access.
 
-Current readers support manifest artifact versions v2, v3, v4, v5, v6, and v7.
-All current writes use v7. Supported historical reads are normalized through an
-explicit compatibility map; future versions, individually known but unsupported
-tuples, and unknown phase-graph hashes block and report an upgrade or
+Historical manifest artifact versions v2 through v7 remain supported through an
+explicit compatibility map. The independent v8 source format is also
+read-supported by its advertised interfaces.
+Fresh project generation writes manifest v8 for `plan`, `init`, and sibling `migrate`,
+as declared by `schemas.currentGeneration`; the historical commands above are
+not that writer contract.
+Future versions, individually known but unsupported tuples, and unknown
+phase-graph hashes block and report an upgrade or
 reconciliation remedy instead of downgrading or fabricating evidence.
-Exact known activation-v1 identity remains non-executable. The explicitly
-supported reviewed successor lane preserves that original history while
-establishing new v2 state and fresh proof; merely reading a historical identity
-or updating a core file does not perform or authorize the migration.
+Exact known activation-v1 identity remains non-executable. Advertising
+`schemas.currentUpdate` does not itself declare an activation successor lane.
+The retained historical-successor contracts preserve original history while
+publishing linked state4/journal2 and v8 metadata. The current5 target has no
+historical activation-v1/v2/v3 lane; check refuses before publishing a preview,
+and force or a supplied fingerprint cannot bypass a missing preview or lane.
+Fresh local proof requires separate verification and exact-byte publication;
+merely reading a historical identity or updating a core file does not perform
+or authorize the migration.
 
 ## Development and infrastructure helpers
 

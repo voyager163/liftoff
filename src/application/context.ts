@@ -15,6 +15,7 @@ export interface CommandContext {
   stderr: NodeJS.WritableStream;
   stdin?: Readable;
   env?: NodeJS.ProcessEnv;
+  telemetryReleaseVersion?: string;
   runner?: CommandRunner;
   selfUpgrade?: SelfUpgradeExecutor;
   stableReleaseLookup?: () => Promise<StableRelease>;

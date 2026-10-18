@@ -60,7 +60,7 @@ describe('release workflow', () => {
     const shards = definition.jobs['test-shards'];
 
     expect(shards.strategy.matrix).toEqual({
-      os: ['ubuntu-latest', 'macos-latest', 'windows-latest'], shard: [1, 2]
+      os: ['ubuntu-latest', 'macos-latest', 'windows-latest'], shard: [1, 2, 3, 4]
     });
     expect(shards['runs-on']).toBe('${{ matrix.os }}');
     expect(shards['timeout-minutes']).toBe(
@@ -75,7 +75,7 @@ describe('release workflow', () => {
     const check = shards.steps.find((step: { name?: string }) => step.name === 'Run package check');
     expect(check.if).toBeUndefined();
     expect(check.run).toContain('npm run check:supported-stack && npm run build && npx vitest run');
-    expect(check.run).toContain('--shard=${{ matrix.shard }}/2 --allowOnly=false');
+    expect(check.run).toContain('--shard=${{ matrix.shard }}/4 --allowOnly=false');
     const smoke = shards.steps.find((step: { name?: string }) => step.name === 'Run package smoke test');
     expect(smoke).toMatchObject({ if: 'matrix.shard == 1', run: 'npm run smoke:package' });
     expect(workflow).toMatch(/^  workflow_dispatch:$/m);

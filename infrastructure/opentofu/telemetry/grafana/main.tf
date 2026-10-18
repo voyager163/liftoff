@@ -2,8 +2,27 @@ data "azurerm_resource_group" "telemetry" {
   name = "rg-liftoff-prod"
 }
 
-data "azurerm_log_analytics_workspace" "telemetry" {
+data "azurerm_resources" "telemetry_workspace" {
   name                = "log-liftoff-telemetry-f5be1618"
+  resource_group_name = data.azurerm_resource_group.telemetry.name
+  type                = "Microsoft.OperationalInsights/workspaces"
+
+  lifecycle {
+    postcondition {
+      condition = length(self.resources) == 1 && alltrue([
+        for resource in self.resources :
+        lower(resource.id) == lower("${data.azurerm_resource_group.telemetry.id}/providers/Microsoft.OperationalInsights/workspaces/log-liftoff-telemetry-f5be1618") &&
+        lower(resource.name) == "log-liftoff-telemetry-f5be1618" &&
+        lower(resource.resource_group_name) == lower(data.azurerm_resource_group.telemetry.name) &&
+        lower(resource.type) == "microsoft.operationalinsights/workspaces"
+      ])
+      error_message = "Grafana requires exactly one existing telemetry workspace at the reviewed resource ID; missing, ambiguous or foreign metadata cannot authorize access."
+    }
+  }
+}
+
+data "azurerm_monitor_data_collection_rule" "telemetry" {
+  name                = "dcr-liftoff-telemetry-f5be1618"
   resource_group_name = data.azurerm_resource_group.telemetry.name
 }
 
@@ -32,7 +51,8 @@ resource "azurerm_dashboard_grafana" "telemetry" {
     precondition {
       condition = (
         data.azurerm_resource_group.telemetry.location == "koreacentral" &&
-        data.azurerm_log_analytics_workspace.telemetry.location == "koreacentral"
+        one(data.azurerm_resources.telemetry_workspace.resources).location == "koreacentral" &&
+        data.azurerm_monitor_data_collection_rule.telemetry.location == "koreacentral"
       )
       error_message = "Existing telemetry placement changed; stop for ownership/region review."
     }
@@ -40,8 +60,14 @@ resource "azurerm_dashboard_grafana" "telemetry" {
 }
 
 resource "azurerm_role_assignment" "logs_reader" {
-  scope                = data.azurerm_log_analytics_workspace.telemetry.id
+  scope                = one(data.azurerm_resources.telemetry_workspace.resources).id
   role_definition_name = "Log Analytics Reader"
+  principal_id         = azurerm_dashboard_grafana.telemetry.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "transform_metrics_reader" {
+  scope                = data.azurerm_monitor_data_collection_rule.telemetry.id
+  role_definition_name = "Monitoring Reader"
   principal_id         = azurerm_dashboard_grafana.telemetry.identity[0].principal_id
 }
 
@@ -57,5 +83,5 @@ output "grafana_endpoint" {
 }
 
 output "workspace_resource_id" {
-  value = data.azurerm_log_analytics_workspace.telemetry.id
+  value = one(data.azurerm_resources.telemetry_workspace.resources).id
 }

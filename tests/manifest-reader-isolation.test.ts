@@ -7,7 +7,7 @@ const source = vi.hoisted(() => ({
 }));
 vi.mock('../src/domain/governance/policy/identity.js', async importOriginal => ({
   ...await importOriginal<typeof import('../src/domain/governance/policy/identity.js')>(),
-  modernActivationSourceContracts: source.modern
+  modernActivationSourceIdentityTables: source.modern
 }));
 
 describe('historical manifest source isolation', () => {

@@ -24,14 +24,27 @@ Versions that predate `liftoff upgrade` require one manual global installation:
 npm install -g @msn-control/liftoff@latest
 ```
 
+## Mac npm-to-Homebrew migration is unavailable
+
+Do not uninstall an old npm installation merely because a native development
+bundle or source fixture passes. npm is still the sole published channel.
+The [standalone Mac migration source](mac-npm-migration.md) works independently
+of old versions lacking `liftoff upgrade`, but public cask/signing/minimum-host
+and provider qualification remain blockers. It cannot bootstrap Homebrew,
+invent an exact-version cask command, sweep nvm/Volta, or fix parent-shell
+aliases/hash. Verified offline old-package recovery must precede uninstall.
+
 ## CLI upgrade is blocked by installation origin
 
 Automatic replacement supports the canonical package at npm's effective
 global package root or an independently verified standard Homebrew prefix on
 macOS. A local dependency, `npx` cache copy, linked checkout, or
-another package-manager installation is intentionally refused. Use the manual
-global npm command shown by Liftoff; do not try to make upgrade replace a
-different installation.
+unknown package-manager installation is intentionally refused. Identify the
+current owner and repair it through that owner; do not force replacement of
+a different installation or interpret an npm prefix under `/opt/homebrew` as a cask.
+Native public cask, WinGet and archive channels remain unqualified. Their
+`native_unqualified` refusal is not an invitation to bypass signing or migrate
+automatically to npm.
 
 ### Homebrew Node and npm report a different prefix
 
@@ -72,10 +85,18 @@ The package's machine-level `@msn-control:registry` takes precedence over npm's
 default `registry`. A canonical default does not cancel a scoped mirror.
 Liftoff reads this configuration from a neutral directory, not a project's
 `.npmrc`, and never prints credential-bearing registry values.
+When embedding the upgrade API, supply the complete intended caller environment:
+omitted parent variables are not inherited by npm probes, installation or
+replacement verification. Explicit account, prefix and registry settings are
+retained; Node startup overrides and telemetry are disabled for these children.
 
 A response-body timeout is a transport failure, not invalid release metadata.
 Retry after connectivity is restored; do not change registry policy or regenerate
 project locks to work around it.
+`registry_invalid` with unknown channel availability is not a stale-mirror
+diagnosis. A foreign product, missing or prerelease version, or newer mismatched
+response to an exact-version query must be corrected by the approved registry
+operator before retrying; Liftoff does not install from that response.
 
 ## npm cannot write the global prefix
 
@@ -85,10 +106,49 @@ workstation process, then rerun the command.
 
 ## CLI replacement verification fails
 
-Liftoff reports `failed` even when npm exited zero unless installed metadata and
+Liftoff reports `failed` even when the owning installer exited zero unless installed metadata and
 `liftoff --version` both match the exact target. Run the exact-version global npm
 repair command printed in the result. Liftoff does not claim an automatic
 rollback after npm may have partially changed global state.
+
+Upgrade material reads and neutral-scratch cleanup compare complete native
+file identities using bigint metadata, not rounded JavaScript Numbers. Changed
+scratch identity or ownership blocks cleanup and retains the replacement.
+Do not delete retained material merely because the pathname is unchanged.
+
+Schema-2 `effects: possible` or `verification: failed` is not an upgraded completion.
+For native installations, use the owning manager and a new-shell `liftoff doctor`
+plus `liftoff upgrade --check`; an npm repair command is not native authority.
+Windows `restart_required` means close the running executable before the exact
+manager handoff. Homebrew cask source does not run an unpinned `brew upgrade`.
+Windows registration/signature inspection also refuses missing or restricted
+system PowerShell, mismatched HKCU hashes and unverified embedded signatures.
+Do not disable organizational execution policy or trust an unapproved certificate
+to force an ownership result; a valid signer still does not identify a WinGet source.
+An authenticated cask-definition match is not permission to run Ruby or remove
+an npm installation. An unknown local definition/channel must not be repaired
+with an unbound path install or automatic source refresh.
+For the Windows immutable-version layout, select the app root's
+`bin\liftoff.exe`, not a launcher inside `versions\...`. Do not edit
+`native-install.json` or `current.txt` to repair a selection or receipt failure.
+A valid local installer receipt alone cannot prove a WinGet source: unavailable
+independent source/signer/registration observations remain unknown, with no
+source refresh, agreement acceptance or automatic fallback to npm.
+For Linux `recovery_required`, retain the exact journal and immutable versions.
+The installed `installation/native-install.mjs recover` requires the selected
+`.native-install-transaction.json` SHA-256 and, only when required, the selected
+`.native-install-lock/owner.json` SHA-256 for a positively dead process. Active,
+unknown or changed locks and foreign/racing paths are retained. Do not delete
+version-manager directories or sweep the prefix.
+Linux archive staging also retains failed private material instead of sweeping
+temporary directories. An archive/signature, TAR member, source or inventory
+refusal before the owning installer starts has `effects: none`; retain that
+distinction from an installer failure with possible effects. No extracted runtime
+is launched merely to decide whether an archive is safe.
+
+Offline/timeout, invalid metadata, selected-channel lag and channel absence are
+distinct from current. Doctor reports these explicitly without losing local
+project checks; restore approved metadata instead of changing registry policy.
 
 ## An installed tool is still reported missing
 
@@ -286,20 +346,72 @@ policy's repository-dedicated provisioning exception, but it must stop for
 explicit approval before creating any Azure or GitHub resource. Do not replace
 missing capability with duplicate scanners, partial provisioning, or
 placeholder success.
-These are target-policy requirements; 14 production phases lack executors and
-two ruleset phases require an injected adapter absent from the public CLI.
-Public approval persistence and credential enrollment also remain unavailable.
+These are target-policy requirements; production phases still have explicit
+capability gaps. Two ruleset phases and the protected proof, handover, and
+due-time disposal phases require explicit injected capabilities absent from the
+default public CLI. Exact
+approval persistence, provider readiness, protected credential enrollment, and
+approved existing-private backend readiness are built in. The bounded
+new-environment path can also provision and verify its repository-dedicated
+larger runner, but that does not by itself authorize private backend proof,
+state handover, application provisioning, deployment, or enforcement phases.
 An unavailable executor or authority entry point is a blocker, not an instruction
 to run its provider commands directly.
 
+For protected state work, do not copy backups or key material into the project
+when custody admission fails. The required private adapter must report the exact
+runner/host, protected workspace/storage, non-exporting key reference, Azure
+blob-lease lock, writer quiescence, and disposal support with plaintext fallback
+disabled. `remote-import-verified` must keep the custody identity established by
+`private-backend-proof`. Day-30 disposal must use the same custody identity and
+exact retained opaque artifact/key references; it cannot run early, treat
+already-missing material as success, or fall back to ordinary filesystem
+deletion. Reconnect the approved protected host/storage/key capability and
+resume the saved phase rather than moving material to an unsupported host.
+
 If a private ZRS state backend cannot be reached because public network access
-is disabled and no approved private management path exists, do not enable
-public access or upload local state to GitHub. The target policy requires an
-explicitly approved minimum `bootstrap-local` phase, adoption through declarative
-imports from the private runner, verify identity parity, locking, versioning,
-and a clean no-change plan, then retain the frozen local state read-only for 30
-days before secure deletion. That production adapter is not implemented by this
-release; stop at the capability blocker and plan separately reviewed platform work.
+is disabled, do not enable public access or upload local state to GitHub.
+For an approved existing path, provide exact `state-path-selected` inputs for
+`statePath`, `resourceGroup`, `storageAccount`, `container`, `key`, and
+`principalId`. Liftoff binds the current execution host and qualified OpenTofu,
+then verifies OAuth-only private reachability, versioning, soft delete,
+blob-lease availability, and an absent exact target key. If the target key
+exists, Liftoff refuses to read or adopt it. If no approved existing private path
+is reachable, the separately approved `bootstrap-local` phase can create only
+the deterministic Azure network foundation for one declared environment: a
+delegated runner subnet, separate private-endpoint subnet, Standard NAT
+gateway/public IP, and the private Blob endpoint/DNS binding. It requires
+nonzero reviewed cost ceilings, effective exact permissions, absent or
+same-operation-owned scope, and one immutable deployment handle before it can
+report success. It does not create the GitHub runner or touch backend state.
+
+The separately approved `runner-ready` phase then requires the exact verified
+subnet, NAT gateway, private DNS link and endpoint zone group, current
+`GitHub.Network` registration proof, an exact private repository and organization
+identity, available `ubuntu-latest`/`4-core` larger-runner capacity, packaged
+preflight workflows, and nonzero fixed and usage cost ceilings. It creates one
+Azure network-settings resource, one Actions network configuration, one
+repository-selected workflow-restricted runner group, and one maximum-concurrency
+runner with static public IP disabled. If GitHub reports `Provisioning`, rerun
+`liftoff governance resume --scope activation --json`; Liftoff polls the same
+recorded runner and does not repeat the provider writes. Do not rename, recreate,
+or manually adopt an occupied deterministic resource. Missing licensing,
+permissions, repository assignment, exact routing/DNS, or matching resume IDs
+must remain blocked.
+
+Continue only through the injected `private-backend-proof` and
+`remote-import-verified` capability. It must use the exact recorded runner and
+same bootstrap-owned inventory, an absent target, Azure blob-lease locking,
+complete fixed mappings, opaque encrypted artifact references under qualified
+protected custody, and a zero-add/change/destroy plan. While its GitHub Actions
+run is pending, use
+`liftoff governance resume --scope activation --json`; do not redispatch, edit,
+or replace the recorded workflow handle. An occupied target, changed run/job,
+runner/backend/bootstrap drift, incomplete or extra mapping, nonzero plan, or
+missing backup is a hard blocker. `runner-ready` does not dispatch this workflow
+or prove backend access. If the protected-state capability is not registered on
+the selected host, stop at that blocker; do not substitute direct OpenTofu
+import, state push, relocation, partitioning, or manual record edits.
 
 If an Azure bootstrap fails with a namespace-not-registered error while
 `resource_provider_registrations = "none"` is configured, do not retry the same
@@ -340,6 +452,30 @@ An interrupted approved transaction uses `liftoff repair "path/to/project" --rec
 a committed patch with a later problem requires a new reviewed correction or
 user-controlled history recovery. See [repair modes](cli-reference.md#repair-modes).
 
+If activation reports deployment ownership as pre-existing or uncertain, do not
+delete local state, edit an operation record, add a Liftoff tag, or rerun with a
+broader approval. Those actions cannot establish ownership. The current release
+executes protected deployment/state effects only for an independently absent
+expected resource group or an exact same-operation resume whose current plan and
+recorded output IDs cover every freshly observed Azure resource. Other existing
+deployment/state scope is intentionally planning-only; no backend read or
+duplicate provisioning was attempted.
+
+If provider registration remains pending after bounded polling, keep the saved
+checkpoint intact. Resume reobserves the same credential-free Azure operation
+handle and never sends a second registration request. A changed operation or
+resource ID, changed poll URL, missing provider readback, observation older than
+ten minutes, or operation older than 24 hours is an integrity blocker; do not
+edit timestamps or IDs to bypass it.
+
+If the phase is blocked after a remote write, failed `partial-failure.v1`
+evidence and owned output bindings preserve what Liftoff can safely prove without
+copying raw Azure diagnostics. Do not interpret the blocked state as cloud
+rollback, and do not rerun ordinary apply after a terminal handle. Generate the
+reported recovery plan, review its exact scope, and execute it only after fresh
+deployment-ownership verification. Successfully registered namespaces and
+features are shared subscription capabilities and remain retained.
+
 `liftoff doctor` and `liftoff governance status --json` use precise states:
 
 | State | Remedy |
@@ -348,7 +484,7 @@ user-controlled history recovery. See [repair modes](cli-reference.md#repair-mod
 | `phase-blocked` | Read the phase, proof, and authority blocker; unavailable production or enrollment capabilities remain blocked. |
 | `evidence-stale` | Obtain fresh proof through supported, authorized execution from current inputs; never edit receipts or reuse stale headers as current inputs. |
 | `credential-expiring` | Rotate before the recorded lead time using the same App or PAT policy. |
-| `reconciliation-required` | Review `liftoff update --check`. An exact supported v1 source can use the approved history-preserving successor lane; unknown formats remain blocked. Never edit JSON to acknowledge identity. |
+| `reconciliation-required` | Review `liftoff update --check`. Activation-v1/v2/v3 successors require an explicitly declared source/target lane; current5 has none. Preserve original records and do not force, retag or fall back to a retained target. Unknown formats remain blocked. |
 | `identity-incompatible` | Upgrade when the supported tuple requires a newer CLI. A historical receipt never becomes executable through force, retagging, or an invented mapping. |
 | `enforcement-incomplete` | Prove exact required contexts green and deliberately red, then approve final enforcement before ruleset mutation. |
 | `disposal-pending` | Review retention, exact imported paths, destructive scope, and proof. Execution requires valid authority; there is no public approval-entry shortcut. |
@@ -356,7 +492,7 @@ user-controlled history recovery. See [repair modes](cli-reference.md#repair-mod
 Do not hand-edit task checkboxes to clear these states. Tasks are projections of
 validated phase evidence.
 
-## Runner-preflight credential setup is blocked
+## Runner-preflight credential setup
 
 The policy prefers an existing verified selected-repository GitHub App with the
 required read permissions. Its fallback contract describes a fine-grained PAT
@@ -369,12 +505,19 @@ network-configuration read, no writes, and the recorded workflow/job allowlist
 `private-dast-preflight` unless the generated policy records a narrower
 applicable set).
 
-This release does not expose public credential enrollment or masked input.
-Do not create or submit a credential through an invented setup channel, and do
-not hand-write state or receipts to bypass the capability blocker. Never paste
-or show the value in chat, argv, command arguments, logs, evidence, files, or
-screenshots. Revoke and rotate leaked credentials through their owner-controlled
-system. A payload-free policy file alone is not independent readback evidence.
+Create public activation inputs containing only the selected App installation
+IDs or the justified fine-grained PAT grant metadata. Run `governance plan`, then
+approve the exact unexpired fingerprint. Enroll with
+`liftoff governance credential-enroll --plan <fingerprint>` for a private
+non-echoing TTY, or add `--protected-stdin` only when an owner-controlled
+non-TTY secret channel supplies stdin. If protected stdin is a TTY, absent,
+empty, oversized, interrupted, or times out, enrollment stops.
+
+Never paste or show the value in chat, argv, command arguments, `--inputs`, logs,
+evidence, policy, source files, or screenshots. Revoke and rotate leaked
+credentials through their owner-controlled system. A payload-free policy file
+alone is not independent readback evidence; readiness also requires matching
+current credential-ready evidence and GitHub secret metadata readback.
 
 ## Governance identity or manifest migration is blocked
 
@@ -421,10 +564,13 @@ separate reviewed migration.
 Approved historical infrastructure validation uses backend-disabled private
 staging and requires explicit process-tree settlement before deleting provider
 outputs. Unknown settlement retains staging and blocks the project transaction.
-A cleanup failure never authorizes repair or hides an earlier validation failure;
-both failures are retained internally, with only fixed validation diagnostics
-reported. Do not retry deletion, remove an active provider executable, or assume
-an `EBUSY` error identifies the process holding it.
+Only after confirmed settlement, cleanup permits three bounded native filesystem
+retries with a 100 ms linear backoff. A cleanup failure never authorizes repair or
+hides an earlier validation failure; both failures are retained internally, with
+only fixed diagnostics and recognized filesystem error codes reported. Private
+paths and provider diagnostics are not echoed. Do not manually retry deletion,
+remove an active provider executable, or assume an `EBUSY` error identifies the
+process holding it.
 
 ## Windows native verification cannot admit a target
 
@@ -433,6 +579,13 @@ Utility assembly, resolved by its complete Microsoft strong name rather than
 assuming a DLL exists in `PSHOME`. Policy denial happens before compiler or
 Console method calls; Liftoff does not elevate or bypass execution policy.
 Do not substitute a downloaded compiler DLL or cached Win32 helper.
+
+`UNSUPPORTED_PROCESS_INPUT` means a command supplied stdin while requesting
+Windows process-tree settlement. The admitted controller has no stdin channel,
+so Liftoff refuses before dispatch rather than running against empty input.
+Use an approved file-backed validator where its command supports one; do not
+move credentials into argv or disable settlement to bypass the refusal. This
+does not add native stdin support or change ordinary non-settled stdin commands.
 
 A `LIFTOFF_CONTROLLER_BOOTSTRAP` diagnostic reports only a fixed assembly,
 type, cmdlet-binding, or compilation stage. Failure before compilation does not

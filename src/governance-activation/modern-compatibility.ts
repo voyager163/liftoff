@@ -96,7 +96,12 @@ export function createModernCompatibilityContract(context: ManifestV8ReaderConte
       pluginResolutionDigest: plugins.resolutionDigest, activeLayoutDigest: manifestActiveLayoutDigest(activeLayout, source.layoutDescriptor)
     };
     const identity = reader.validateReadableModernActivationIdentity({
-      ...input, recordedIdentity: reader.identityForSource({ ...input, sourceVersion: staticIdentity.liftoffVersion })
+      ...input,
+      recordedIdentity: reader.identityForReadableSource({
+        ...input,
+        sourceVersion: staticIdentity.liftoffVersion,
+        phaseGraphHash: staticIdentity.phaseGraphHash
+      })
     });
     if (Object.entries(staticIdentity).some(([key, value]) => !Object.hasOwn(identity, key) || Reflect.get(identity, key) !== value) ||
       canonicalSha256(source.governanceSource.graph) !== identity.phaseGraphHash) {
@@ -117,7 +122,8 @@ export function createModernCompatibilityContract(context: ManifestV8ReaderConte
         targetIdentity: identity,
         readableReleasedSources: released.map(({ identity, reader }) => ({ identity: { ...identity }, reader })),
         targetPhaseContracts: graph.phases.map(phase => ({ phaseId: phase.id, digest: digests[phase.id]! })),
-        successorLanes: identity.profile === 'single-maintainer-gitflow' && workflow !== 'manual' ? released.map(source => ({
+        successorLanes: identity.activationContractVersion === 4 &&
+          identity.profile === 'single-maintainer-gitflow' && workflow !== 'manual' ? released.map(source => ({
           id: source.lane, sourceIdentity: { ...source.identity }, targetIdentity: identity, sourceWorkflow: workflow,
           strategy: 'preserve-history-revalidate', profileTransition: 'preserve'
         })) : [],

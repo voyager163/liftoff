@@ -76,7 +76,7 @@ describe('developer activation-completeness guidance', () => {
 
   it('states the actual executor counts from the release-owned capability table', () => {
     expect(completeness).toContain(`Of its ${phases.length} declared phases, ${byExecutor('built-in').length} have built-in handler paths, ` +
-      `${byExecutor('injected-only').length} require an injected\nGitHub ruleset adapter`);
+      `${byExecutor('injected-only').length} require an explicit injected capability`);
     expect(completeness).toContain(`and ${byExecutor('unavailable').length}\nfall back to an explicit missing-production-adapter blocker`);
   });
 
@@ -86,22 +86,63 @@ describe('developer activation-completeness guidance', () => {
     for (const phase of byExecutor('injected-only')) expect(completeness).toContain(`\`${phase}\``);
   });
 
+  it('documents guarded application source interfaces without claiming downstream or production qualification', () => {
+    for (const phrase of [
+      '`application-prerequisites-ready`', '`application-artifact-ready`',
+      '`recordApplicationDispatchIntent`', '`recordApplicationProgress`',
+      '`applicationObservationOnly`', '`readVerifiedApplicationArtifact`',
+      '`VerifiedApplicationArtifact`', '`observeImmutableApplicationArtifact`',
+      'old placeholder plan', 'TASK14.1 stays\nunchecked',
+      'do not implement or authorize workflow source publication',
+      '`liftoff-execution-<full-source-SHA>`', '`sourceTreeSha`',
+      'Old mutable-ref plans are stale', 'no tag or\npolicy writer',
+      'branch or raw-SHA fallback', 'does not qualify public-v8 execution',
+      '`contextPaths` leaf files', '`applicationArtifactContextStep(paths)`', '`applicationContextDirectory`',
+      '`observeApplicationSource`', '512 files, 1 MiB per file, 8 MiB total and two minutes overall',
+      'lost original accepted handle', 'New artifact publication is blocked before intent',
+      'no qualified atomic no-replace', 'not a bypass of this write guard',
+      'Fresh registry/identity prerequisites are blocked before intent',
+      'no qualified resource-level create-only', '`applicationPrerequisiteTemplate`',
+      'not a capability issuer', 'deployment-record conditions do not establish child-resource ownership',
+      'Current consumption requires the exact completed original publication handle',
+      'without that binding remain readable, but cannot qualify new deployment'
+    ]) expect(completeness).toContain(phrase);
+    for (const phrase of [
+      '`artifactRecipe.version: "oci-digest-v1"`', '`applicationArtifactDigestWorkflow`',
+      '`PhasePlanBuild.blockers` prevents a saved executable plan or approval',
+      'GitHub attestation delivery is explicitly planned', 'requires a separate compatible contract decision',
+      'reviewed declarations, not independently qualified builder capabilities',
+      'no earlier approval is reinterpreted'
+    ]) expect(completeness).toContain(phrase);
+    expect(phaseCapabilities['application-prerequisites-ready'].executor).toBe('injected-only');
+    expect(phaseCapabilities['application-artifact-ready'].executor).toBe('injected-only');
+  });
+
   it('describes approval and execution denial instead of a missing approval command', () => {
     expect(developer).not.toContain('no public approval-persistence');
     for (const phrase of [
       '`liftoff governance approve` persists exact approval envelopes, but it refuses a\nphase whose capability is unavailable or blocked',
       '`governance apply-next --execute` likewise stops before\nany saved plan, intent, or producer effect',
-      '`provider-ready` and `state-path-selected` no longer report\nsynthetic verified success'
+      '`provider-ready` now derives its exact namespace and supported\nfeature prerequisites from reviewed resource types',
+      '`state-path-selected` and `existing-private-path` now provide the first narrow\nproduction backend-readiness path',
+      'The separately approved `bootstrap-local` path now qualifies one bounded\nnew-environment network foundation'
     ]) {
       expect(completeness).toContain(phrase);
     }
-    for (const phase of ['provider-ready', 'state-path-selected'] as const) expect(phaseCapabilities[phase].executor).toBe('unavailable');
+    expect(phaseCapabilities['provider-ready'].executor).toBe('built-in');
+    expect(phaseCapabilities['state-path-selected'].executor).toBe('built-in');
+    expect(phaseCapabilities['existing-private-path'].executor).toBe('built-in');
+    expect(phaseCapabilities['bootstrap-local'].executor).toBe('built-in');
+    expect(phaseCapabilities['runner-ready'].executor).toBe('built-in');
+    expect(completeness).toContain('`runner-ready` now provides the bounded production successor');
+    expect(completeness).toContain('does not dispatch a workflow or\nclaim private backend reachability');
   });
 
-  it('keeps credential readiness unavailable until independent readback exists', () => {
-    expect(phaseCapabilities['credential-ready'].blocker).toMatch(/Independent credential readback/);
-    expect(completeness).toContain('`credential-ready` and the public\n`governance credential-enroll` path remain unavailable pending independent\ncredential readback');
-    expect(completeness).toContain('Implement secure credential enrollment with independent readback before\n   `credential-ready` can be approved or executed');
+  it('documents protected credential readiness and independent readback', () => {
+    expect(phaseCapabilities['credential-ready']).toEqual({ executor: 'built-in', retry: 'none' });
+    expect(completeness).toContain('`credential-ready` is now a\nbuilt-in production phase');
+    expect(completeness).toContain('private non-echoing TTY or explicitly\nselected non-TTY `--protected-stdin`');
+    expect(completeness).toContain('A policy file alone\nnever establishes readiness');
   });
 
   it('distinguishes private modern observation from execution and public migration', () => {
@@ -122,13 +163,15 @@ describe('developer activation-completeness guidance', () => {
   it('separates published defaults, exact private source contracts and protected state work', () => {
     const manifests = readFileSync(path.join(process.cwd(), 'docs/configuration-and-manifests.md'), 'utf8');
     const state = readFileSync(path.join(process.cwd(), 'src/application/state-migration/README.md'), 'utf8');
+    const bootstrap = readFileSync(path.join(process.cwd(), 'infrastructure/opentofu/bootstrap/README.md'), 'utf8');
     const sources = modernActivationSourceContracts();
     expect(sources).toHaveLength(6);
     for (const source of sources) {
       const identity = source.identity;
       expect(manifests).toContain(`\`${identity.liftoffVersion}\``);
       expect(manifests).toContain(`| Manifest | ${identity.manifestArtifactVersion} |`);
-      expect(manifests).toContain(`| Activation contract / state / evidence header / approval envelope | ${identity.activationContractVersion} |`);
+      expect(manifests).toContain(`| Activation contract | ${identity.activationContractVersion} |`);
+      expect(manifests).toContain(`| State / evidence header / approval envelope | ${identity.activationStateSchemaVersion} |`);
       expect(manifests).toContain(`| Phase graph / saved transition plan | ${source.savedPlanSchemaVersion} |`);
       expect(manifests).toContain(`| Compatibility metadata | ${source.compatibilityMetadataSchemaVersion} |`);
     }
@@ -146,6 +189,20 @@ describe('developer activation-completeness guidance', () => {
       'planning-only', 'cannot authorize any state operation',
       'same recorded operation', 'does not authorize arbitrary brownfield state access'
     ]) expect(state).toContain(phrase);
+    for (const phrase of [
+      'Current availability diagnosis', '`synthetic-disposable-only`',
+      'installed public CLI registers no production implementations',
+      'implementation integration and qualification gap',
+      'approval cannot instantiate a missing port',
+      'Deliberately excluded from the public release'
+    ]) expect(state).toContain(phrase);
+    for (const phrase of [
+      "repository maintainer's telemetry bootstrap root",
+      'tofu -chdir=infrastructure/opentofu/bootstrap init -backend=false',
+      'same recorded operation', 'register production implementations',
+      'and qualification gap', 'planning-only',
+      'Missing local state is never evidence'
+    ]) expect(bootstrap).toContain(phrase);
   });
 
   it('documents installed preflight and project-attributed publication without claiming execution', () => {

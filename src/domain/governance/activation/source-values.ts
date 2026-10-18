@@ -311,7 +311,89 @@ export function assertTaskMarkers(markdown: string, mappings: readonly { taskId:
   }
 }
 
-export function validatePhasePayloadValues<I extends R.ActivationIdentityFieldsV1, P extends string>(record: R.PhaseEvidenceRecordFieldsV3<I, P>): string[] {
+function validProtectedCustody(
+  value: unknown,
+  bindingDigest: unknown,
+  runnerId: unknown,
+  runnerLabel: unknown
+): boolean {
+  if (!isRecord(value)) return false;
+  const fields = [
+    'bindingDigest', 'disposalSupported', 'expiresAt', 'hostId', 'keyCustody',
+    'keyProviderRef', 'kind', 'locking', 'networkConfigurationId', 'observedAt',
+    'plaintextFallback', 'protectedStorage', 'qualificationDigest', 'runnerGroupId',
+    'runnerId', 'runnerLabel', 'storageRef', 'workspaceRef', 'writerQuiesced'
+  ].sort();
+  if (canonicalJson(Object.keys(value).sort()) !== canonicalJson(fields)) return false;
+  const refPattern = /^[a-z][a-z0-9-]{1,31}:[A-Za-z0-9._/-]{1,512}$/u;
+  const observedAt = typeof value.observedAt === 'string' ? Date.parse(value.observedAt) : NaN;
+  const expiresAt = typeof value.expiresAt === 'string' ? Date.parse(value.expiresAt) : NaN;
+  const { qualificationDigest, ...body } = value;
+  return value.kind === 'protected-state-custody.v1' &&
+    value.bindingDigest === bindingDigest &&
+    value.runnerId === runnerId &&
+    value.runnerLabel === runnerLabel &&
+    Number.isInteger(value.runnerGroupId) && Number(value.runnerGroupId) > 0 &&
+    typeof value.networkConfigurationId === 'string' && value.networkConfigurationId.length > 0 &&
+    typeof value.hostId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$/u.test(value.hostId) &&
+    typeof value.workspaceRef === 'string' && refPattern.test(value.workspaceRef) &&
+    typeof value.storageRef === 'string' && refPattern.test(value.storageRef) &&
+    typeof value.keyProviderRef === 'string' && refPattern.test(value.keyProviderRef) &&
+    value.protectedStorage === 'encrypted-private' &&
+    value.keyCustody === 'external-nonexporting' &&
+    value.locking === 'azure-blob-lease' &&
+    value.writerQuiesced === true &&
+    value.plaintextFallback === false &&
+    value.disposalSupported === true &&
+    Number.isFinite(observedAt) && Number.isFinite(expiresAt) && observedAt < expiresAt &&
+    typeof qualificationDigest === 'string' && hex64Pattern.test(qualificationDigest) &&
+    qualificationDigest === canonicalSha256(body);
+}
+
+function validProtectedBackups(
+  backupsValue: unknown,
+  custodyValue: unknown,
+  encryptedStatePathParts: unknown,
+  encryptionKeyPathParts: unknown
+): boolean {
+  if (!Array.isArray(backupsValue) || backupsValue.length < 1 || backupsValue.length > 8 ||
+    !isRecord(custodyValue)) return false;
+  const artifactRefs = new Set<string>();
+  const keyRefs = new Set<string>();
+  const encryptedInventory: string[][] = [];
+  const keyInventory: string[][] = [];
+  for (const backup of backupsValue) {
+    if (!isRecord(backup) ||
+      canonicalJson(Object.keys(backup).sort()) !== canonicalJson([
+        'artifactDigest', 'encryptedStateRef', 'encryptionKeyRef'
+      ]) ||
+      typeof backup.artifactDigest !== 'string' || !hex64Pattern.test(backup.artifactDigest) ||
+      typeof backup.encryptedStateRef !== 'string' ||
+      typeof backup.encryptionKeyRef !== 'string' ||
+      typeof custodyValue.workspaceRef !== 'string' ||
+      typeof custodyValue.keyProviderRef !== 'string' ||
+      !backup.encryptedStateRef.startsWith(`${custodyValue.workspaceRef}/`) ||
+      backup.encryptionKeyRef !== custodyValue.keyProviderRef ||
+      artifactRefs.has(backup.encryptedStateRef) ||
+      backup.encryptedStateRef === backup.encryptionKeyRef) return false;
+    artifactRefs.add(backup.encryptedStateRef);
+    encryptedInventory.push(['protected-custody', canonicalSha256(backup.encryptedStateRef)]);
+    if (!keyRefs.has(backup.encryptionKeyRef)) {
+      keyRefs.add(backup.encryptionKeyRef);
+      keyInventory.push(['protected-custody', canonicalSha256(backup.encryptionKeyRef)]);
+    }
+  }
+  return canonicalSha256(encryptedInventory) === canonicalSha256(encryptedStatePathParts) &&
+    canonicalSha256(keyInventory) === canonicalSha256(encryptionKeyPathParts);
+}
+
+export function validatePhasePayloadValues<I extends R.ActivationIdentityFieldsV1, P extends string>(
+  record: R.PhaseEvidenceRecordFieldsV3<I, P>,
+  options: {
+    allowLegacyCredentialPolicyOnly?: boolean;
+    allowLegacyProtectedStateProof?: boolean;
+  } = {}
+): string[] {
   if (record.header.result === 'failed' || record.header.result === 'inapplicable') return [];
   const payload = record.payload;
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -319,8 +401,60 @@ export function validatePhasePayloadValues<I extends R.ActivationIdentityFieldsV
   }
 
   const value = payload as Record<string, unknown>;
-  const expected = record.header.phaseId === 'phase-0-complete' ? 'phase-0-discovery.v1' : `${record.header.phaseId}.v1`;
+  const workflowSource5 = record.header.identity.activationContractVersion === 5 &&
+    ['bootstrap-workflow-source-ready', 'workflow-source-ready', 'dev-proof',
+      'staging-qualified', 'production-rehearsed', 'green-red-proof'].includes(record.header.phaseId);
+  const expected = record.header.phaseId === 'phase-0-complete' ? 'phase-0-discovery.v1' :
+    `${record.header.phaseId}.${workflowSource5 ? 'v2' : 'v1'}`;
   const issues = value.kind === expected ? [] : [`${record.header.phaseId} payload kind must be ${expected}.`];
+  if (workflowSource5) {
+    const hex = (digest: unknown) => typeof digest === 'string' && /^[a-f0-9]{64}$/u.test(digest);
+    const admission = (receipt: unknown) => isRecord(receipt) &&
+      receipt.kind === 'immutable-workflow-execution-ref.v1' && isRecord(receipt.binding) &&
+      typeof receipt.binding.sourceSha === 'string' && /^[a-f0-9]{40}$/u.test(receipt.binding.sourceSha) &&
+      receipt.binding.executionRef === `liftoff-execution-${receipt.binding.sourceSha}` &&
+      hex(receipt.barrierDigest) && hex(receipt.providerAdmissionDigest) && hex(receipt.observationDigest) &&
+      Array.isArray(receipt.protectingRulesetIds) && receipt.protectingRulesetIds.length > 0 &&
+      receipt.protectingRulesetIds.every(id => Number.isSafeInteger(id) && Number(id) > 0);
+    if (['bootstrap-workflow-source-ready', 'workflow-source-ready'].includes(record.header.phaseId)) {
+      const publication = value.publication, runner = value.runnerAdmission;
+      if (!isRecord(publication) || publication.kind !== 'workflow-source-publication.v1' ||
+        !hex(publication.bindingDigest) || !hex(publication.observationDigest) ||
+        typeof publication.commitSha !== 'string' || !/^[a-f0-9]{40}$/u.test(publication.commitSha) ||
+        !Array.isArray(publication.files) || publication.files.length === 0 ||
+        publication.files.some(file => !isRecord(file) || typeof file.path !== 'string' || !hex(file.digest)) ||
+        !admission(value.executionAdmission) || !isRecord(runner) ||
+        !hex(runner.bindingDigest) || !hex(runner.observationDigest)) {
+        issues.push('Source5 publication requires exact committed per-file readback and independently qualified existing execution-tag/provider and runner admission; missing early prerequisites cannot be borrowed from later phases.');
+      }
+    } else {
+      const proofs = value.workflowProofs;
+      if (!Array.isArray(proofs) || proofs.length === 0 || proofs.some(proof =>
+        !isRecord(proof) || proof.kind !== 'workflow-context-proof.v1' ||
+        !isRecord(proof.binding) || proof.bindingDigest !== canonicalSha256(proof.binding) ||
+        !hex(proof.planDigest) || !hex(proof.observationDigest) ||
+        !Number.isSafeInteger(proof.runId) || Number(proof.runId) <= 0 ||
+        !Number.isSafeInteger(proof.workflowId) || Number(proof.workflowId) <= 0 ||
+        proof.attempt !== 1 || !['success', 'failure'].includes(String(proof.conclusion)) ||
+        typeof proof.dispatchedAt !== 'string' || !Number.isFinite(Date.parse(proof.dispatchedAt)) ||
+        !admission(proof.executionAdmission) || !Array.isArray(proof.contexts) || proof.contexts.length === 0 ||
+        proof.contexts.some(context => !isRecord(context) ||
+          !['success', 'failure'].includes(String(context.conclusion)) ||
+          !Number.isSafeInteger(context.jobId) || Number(context.jobId) <= 0 ||
+          !Number.isSafeInteger(context.checkRunId) || Number(context.checkRunId) <= 0))) {
+        issues.push('Source5 requires real exact-run/job/check context proof with original dispatch time and separate current execution/provider admission; v1 summaries are not qualification.');
+      }
+      if (record.header.phaseId === 'green-red-proof') {
+        const matrix = value.matrix;
+        if (!isRecord(matrix) || matrix.kind !== 'green-red-required-contexts.v2' ||
+          !Array.isArray(matrix.proofDigests) || matrix.proofDigests.length < 8 ||
+          matrix.proofDigests.some(digest => !hex(digest)) ||
+          matrix.observationDigest !== canonicalSha256(matrix.proofDigests)) {
+          issues.push('Source5 green/red evidence requires independently current complete source-derived four-family coverage, not a synthetic green/failure pair.');
+        }
+      }
+    }
+  }
   if (record.header.phaseId === 'seed-verified') {
     if (!Array.isArray(value.checks) || value.checks.length === 0 || value.checks.some((check) =>
       typeof check !== 'object' || check === null || !['passed', 'inapplicable'].includes(String(check.status)))) {
@@ -342,7 +476,8 @@ export function validatePhasePayloadValues<I extends R.ActivationIdentityFieldsV
     issues.push('Publication evidence must match the independently observed resulting Git object ID.');
   }
   if (record.header.phaseId === 'runner-ready') {
-    if (typeof value.organization !== 'string' || !Number.isInteger(value.runnerId) || Number(value.runnerId) <= 0 ||
+    if (typeof value.organization !== 'string' || typeof value.label !== 'string' ||
+      !Number.isInteger(value.runnerId) || Number(value.runnerId) <= 0 ||
       !(value.groupId === null || Number.isInteger(value.groupId)) ||
       !(value.networkConfigurationId === null || typeof value.networkConfigurationId === 'string')) {
       issues.push('Runner proof requires an explicit organization, runner ID, group, and network-configuration binding.');
@@ -352,14 +487,121 @@ export function validatePhasePayloadValues<I extends R.ActivationIdentityFieldsV
       issues.push('Runner payload ID has no matching independent runner resource readback.');
     }
   }
+  if (record.header.phaseId === 'private-backend-proof' &&
+    options.allowLegacyProtectedStateProof !== true) {
+    if (typeof value.bindingDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/u.test(value.bindingDigest) ||
+      !Number.isInteger(value.workflowRunId) || Number(value.workflowRunId) <= 0 ||
+      !Number.isInteger(value.workflowJobId) || Number(value.workflowJobId) <= 0 ||
+      typeof value.headSha !== 'string' || !/^[a-f0-9]{40}$/u.test(value.headSha) ||
+      !Number.isInteger(value.runnerId) || Number(value.runnerId) <= 0 ||
+      typeof value.runnerLabel !== 'string' ||
+      typeof value.backendBindingDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/u.test(value.backendBindingDigest) ||
+      value.targetStateExists !== false ||
+      value.locking !== 'azure-blob-lease' ||
+      !validProtectedCustody(value.custody, value.bindingDigest, value.runnerId, value.runnerLabel) ||
+      typeof value.observationDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/u.test(value.observationDigest)) {
+      issues.push('Private backend proof requires exact workflow, runner, absent target, locking, and payload-free observation bindings.');
+    }
+    if (!(record.liveReadback ?? []).some((proof) =>
+      proof.provider === 'github' &&
+      proof.resourceId.endsWith(`/actions/runs/${value.workflowRunId}`)) ||
+      !(record.liveReadback ?? []).some((proof) =>
+        proof.provider === 'azure' && proof.resourceType === 'private-state-backend')) {
+      issues.push('Private backend proof requires matching GitHub workflow and Azure backend readback.');
+    }
+  }
+  if (record.header.phaseId === 'remote-import-verified' &&
+    options.allowLegacyProtectedStateProof !== true) {
+    const digests = [
+      value.bindingDigest,
+      value.backendBindingDigest,
+      value.mappingDigest,
+      value.concurrencyDigest,
+      value.remoteBackendDigest,
+      value.noChangePlanDigest
+    ];
+    const plan = typeof value.plan === 'object' && value.plan !== null && !Array.isArray(value.plan)
+      ? value.plan as Record<string, unknown>
+      : undefined;
+    if (digests.some((digest) => typeof digest !== 'string' || !/^[a-f0-9]{64}$/u.test(digest)) ||
+      !Number.isInteger(value.workflowRunId) || Number(value.workflowRunId) <= 0 ||
+      !Number.isInteger(value.workflowJobId) || Number(value.workflowJobId) <= 0 ||
+      typeof value.headSha !== 'string' || !/^[a-f0-9]{40}$/u.test(value.headSha) ||
+      !Number.isInteger(value.runnerId) || Number(value.runnerId) <= 0 ||
+      typeof value.runnerLabel !== 'string' ||
+      value.locking !== 'azure-blob-lease' ||
+      value.targetStatePreviouslyExisted !== false ||
+      plan?.add !== 0 || plan.change !== 0 || plan.destroy !== 0 ||
+      !Array.isArray(value.mappings) || value.mappings.length === 0 ||
+      !validProtectedCustody(value.custody, value.bindingDigest, value.runnerId, value.runnerLabel) ||
+      !validProtectedBackups(
+        value.backups,
+        value.custody,
+        value.encryptedStatePathParts,
+        value.encryptionKeyPathParts
+      ) ||
+      !Array.isArray(value.encryptedStatePathParts) ||
+      !Array.isArray(value.encryptionKeyPathParts) ||
+      value.publicExistingStateMigration !== false) {
+      issues.push('Remote import proof requires exact complete mapping, concurrency, encrypted backups, zero-change planning, and disabled brownfield migration.');
+    }
+    if (!(record.liveReadback ?? []).some((proof) =>
+      proof.provider === 'github' &&
+      proof.resourceId.endsWith(`/actions/runs/${value.workflowRunId}`)) ||
+      !(record.liveReadback ?? []).some((proof) =>
+        proof.provider === 'azure' && proof.resourceType === 'private-state-backend')) {
+      issues.push('Remote import proof requires matching GitHub workflow and Azure backend readback.');
+    }
+  }
+  if (record.header.phaseId === 'bootstrap-state-disposed' &&
+    options.allowLegacyProtectedStateProof !== true) {
+    const artifactRefs = Array.isArray(value.deletedArtifactRefs)
+      ? value.deletedArtifactRefs : [];
+    const keyRefs = Array.isArray(value.deletedKeyRefs)
+      ? value.deletedKeyRefs : [];
+    const refs = [...artifactRefs, ...keyRefs];
+    if (value.kind !== 'bootstrap-state-disposed.v1' ||
+      value.payloadFree !== true ||
+      typeof value.remoteBackendDigest !== 'string' ||
+      !hex64Pattern.test(value.remoteBackendDigest) ||
+      typeof value.noChangePlanDigest !== 'string' ||
+      !hex64Pattern.test(value.noChangePlanDigest) ||
+      typeof value.custodyQualificationDigest !== 'string' ||
+      !hex64Pattern.test(value.custodyQualificationDigest) ||
+      typeof value.disposalDigest !== 'string' ||
+      !hex64Pattern.test(value.disposalDigest) ||
+      !Array.isArray(value.deletedPathParts) ||
+      artifactRefs.length < 1 || keyRefs.length < 1 ||
+      refs.some((ref) => typeof ref !== 'string' ||
+        !/^[a-z][a-z0-9-]{1,31}:[A-Za-z0-9._/-]{1,512}$/u.test(ref)) ||
+      new Set(artifactRefs).size !== artifactRefs.length ||
+      new Set(keyRefs).size !== keyRefs.length ||
+      !Array.isArray(value.incompleteCleanup) ||
+      value.incompleteCleanup.length !== 0) {
+      issues.push('Bootstrap disposal proof requires exact protected artifact and key deletion under the retained custody authority with no plaintext cleanup fallback.');
+    }
+  }
   if (record.header.phaseId === 'state-path-selected' && !['existing-private', 'bootstrap-local'].includes(String(value.statePath))) {
     issues.push('State-path selection requires an explicit applicable backend path.');
   }
   if (record.header.phaseId === 'workflow-source-ready' && (typeof value.rulesetSourceDigest !== 'string' || !/^[a-f0-9]{64}$/.test(value.rulesetSourceDigest))) {
     issues.push('Workflow-source evidence must bind the reviewed ruleset source digest.');
   }
-  if (record.header.phaseId === 'credential-ready' && (typeof value.policyDigest !== 'string' || !/^[a-f0-9]{64}$/.test(value.policyDigest))) {
-    issues.push('Credential evidence must bind the public credential policy and independent readback.');
+  if (record.header.phaseId === 'credential-ready') {
+    const validPolicyDigest = typeof value.policyDigest === 'string' && /^[a-f0-9]{64}$/.test(value.policyDigest);
+    const validUsageDigest = typeof value.usageDigest === 'string' && /^[a-f0-9]{64}$/.test(value.usageDigest);
+    const matchingReadback = validUsageDigest && (record.liveReadback ?? []).some((proof) =>
+      proof.provider === 'github' && proof.matches && proof.readbackDigest === value.usageDigest
+    );
+    const legacyPolicyOnly = options.allowLegacyCredentialPolicyOnly === true &&
+      value.usageDigest === undefined &&
+      !(record.liveReadback ?? []).some((proof) => proof.provider === 'github');
+    if (!validPolicyDigest || (!legacyPolicyOnly && (!validUsageDigest || !matchingReadback))) {
+      issues.push('Credential evidence must bind the public credential policy and matching independent GitHub readback.');
+    }
   }
   const scope = typeof value.assessmentScope === 'object' && value.assessmentScope !== null
     ? value.assessmentScope as Record<string, unknown> : undefined;

@@ -7,12 +7,12 @@ import {
 } from '../../adapters/filesystem/modern-local-publication-inputs.js';
 import type { ProjectFileMutation } from '../../adapters/filesystem/project-transaction.js';
 import { canonicalJson, canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
-import { copyModernLocalData, localInputFailure, rawLocalDigest } from '../../domain/governance/activation/modern-local-inputs.js';
+import { copyModernLocalData, localInputFailure } from '../../domain/governance/activation/modern-local-inputs.js';
 import {
   completedExecutionBinding, completionHash, completionTime, type CompletionProtectedIndex
 } from '../../domain/governance/activation/modern-local-completion.js';
 import {
-  localRevalidationPolicy, revalidationArtifactBytes, revalidationPhaseIds, revalidationPublicationFingerprint,
+  createRevalidationArtifact, localRevalidationPolicy, revalidationArtifactBytes, revalidationPhaseIds, revalidationPublicationFingerprint,
   validateRevalidationIntent, validateRevalidationResult,
   type LocalRevalidationArtifact, type LocalRevalidationIntent, type LocalRevalidationResult, type LocalRevalidationTarget
 } from '../../domain/governance/activation/modern-revalidation-publication.js';
@@ -39,17 +39,6 @@ export async function readRevalidationIntent(root: string, fingerprint: string, 
     localInputFailure('Revalidation intent root or issuance differs.');
   }
   return intent;
-}
-
-function artifact(intent: LocalRevalidationIntent, role: LocalRevalidationArtifact['role'], content: Buffer,
-  pathParts: string[] | null, mode: number | null): LocalRevalidationArtifact {
-  const value: LocalRevalidationArtifact = {
-    kind: 'liftoff-local-revalidation-artifact', schemaVersion: 1, projectRoot: intent.projectRoot,
-    operationId: intent.operationId, intentFingerprint: intent.fingerprint, role, pathParts, mode,
-    contentBase64: content.toString('base64'), bytes: content.length, rawDigest: rawLocalDigest(content)
-  };
-  revalidationArtifactBytes(value, intent);
-  return value;
 }
 
 async function loadArtifact(store: LocalRevalidationRecordStore, key: string, intent: LocalRevalidationIntent) {
@@ -280,13 +269,13 @@ export async function prepareModernSuccessorRevalidation(root: string, request: 
     if (target.purpose !== 'state' && target.purpose !== 'migration-journal' && original.content !== undefined && !original.content.equals(target.content)) {
       localInputFailure('Revalidation cannot replace original immutable proof or plan bytes.');
     }
-    const value = artifact(intent, 'target', target.content, target.pathParts, mode), artifactKey = canonicalSha256(value);
+    const value = createRevalidationArtifact(intent, 'target', target.content, target.pathParts, mode), artifactKey = canonicalSha256(value);
     await store.write('artifact', artifactKey, value);
     targets.push({ pathParts: target.pathParts, operation: 'write', original: completionSnapshot(original),
       target: { exists: true, rawDigest: value.rawDigest, bytes: value.bytes, mode }, artifactKey, purpose: target.purpose });
     mutations.push({ type: 'write', pathParts: target.pathParts, content: target.content, mode });
   }
-  const protectedArtifact = artifact(intent, 'protected-index', Buffer.from(canonicalJson(index)), null, null);
+  const protectedArtifact = createRevalidationArtifact(intent, 'protected-index', Buffer.from(canonicalJson(index)), null, null);
   const protectedIndexKey = canonicalSha256(protectedArtifact);
   await store.write('artifact', protectedIndexKey, protectedArtifact);
   const preconditions = await completionPreconditions(index, targets);

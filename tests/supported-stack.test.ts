@@ -159,8 +159,8 @@ describe('supported stack baseline', () => {
     duplicate.supportedHostPlatforms = ['linux/x64', 'linux/x64'];
     expect(() => parseSupportedStackBaseline(duplicate)).toThrow(/must not contain duplicates/);
 
-    const unsupported = fixture();
-    unsupported.containers.redis.platforms = ['windows/amd64'];
+    const unsupported = parseSupportedStackBaseline(fixture());
+    Reflect.set(unsupported.containers.redis, 'platforms', ['windows/amd64']);
     expect(() => parseSupportedStackBaseline(unsupported)).toThrow(/unsupported/);
   });
 
@@ -307,12 +307,16 @@ describe('supported stack baseline', () => {
     expect(() => assertImmutableGeneratedContainerReferences([{
       logicalName: 'backend-dockerfile',
       category: 'runtime',
+      lifecycle: 'project',
+      provisioningGroup: 'base',
       pathParts: ['Dockerfile'],
       content: 'FROM node:24-alpine\n'
     }])).toThrow(/mutable image reference/);
     expect(() => assertImmutableGeneratedContainerReferences([{
       logicalName: 'docker-compose',
       category: 'local-development',
+      lifecycle: 'project',
+      provisioningGroup: 'base',
       pathParts: ['docker-compose.yml'],
       content: 'services: {}\n'
     }])).toThrow(/contains no image reference/);

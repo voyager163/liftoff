@@ -172,6 +172,36 @@ afterEach(async () => {
 });
 
 describe('external command runner', () => {
+  it.each([undefined, true, false])('honors explicit environment inheritance %s without changing its default', async inheritEnvironment => {
+    const name = 'LIFTOFF_RUNNER_PARENT_ONLY_FIXTURE';
+    const previous = process.env[name];
+    try {
+      process.env[name] = 'parent';
+      const result = await new NodeCommandRunner().run({ executable: process.execPath,
+        args: ['-e', `console.log(JSON.stringify({parent:process.env.${name} ?? null,selected:process.env.LIFTOFF_RUNNER_SELECTED_FIXTURE}))`] },
+      { inheritEnvironment, env: { LIFTOFF_RUNNER_SELECTED_FIXTURE: 'selected' }, timeoutMs: 10_000 });
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({ parent: inheritEnvironment === false ? null : 'parent', selected: 'selected' });
+      expect(process.env[name]).toBe('parent');
+    } finally {
+      if (previous === undefined) delete process.env[name]; else process.env[name] = previous;
+    }
+  });
+
+  it('can launch with an explicitly empty environment instead of implicitly restoring its parent', async () => {
+    const name = 'LIFTOFF_RUNNER_PARENT_ONLY_FIXTURE';
+    const previous = process.env[name];
+    try {
+      process.env[name] = 'parent';
+      const result = await new NodeCommandRunner().run({ executable: process.execPath,
+        args: ['-e', `console.log(JSON.stringify(process.env.${name} ?? null))`] },
+      { inheritEnvironment: false, timeoutMs: 10_000 });
+      expect(result.status).toBe(0); expect(JSON.parse(result.stdout)).toBeNull();
+    } finally {
+      if (previous === undefined) delete process.env[name]; else process.env[name] = previous;
+    }
+  });
+
   it('passes hostile-looking arguments literally without shell interpolation', async () => {
     const root = await testRoot('literal-args');
     const sentinel = path.join(root, 'shell-expanded');
@@ -387,6 +417,34 @@ describe('external command runner', () => {
 
     expect(result).toMatchObject({ aborted: true, timedOut: false, stdout: '', stderr: '', status: null });
     await expect(access(sentinel)).rejects.toThrow();
+  });
+
+  it.each([
+    { name: 'text', stdin: 'private-input-fixture' },
+    { name: 'bytes', stdin: Buffer.from('private-input-fixture') },
+    { name: 'empty text', stdin: '' },
+    { name: 'empty bytes', stdin: new Uint8Array() }
+  ])('refuses unsupported Windows settled stdin $name before dispatch without echoing it', async ({ stdin }) => {
+    const root = await testRoot('unsupported-windows-input');
+    const sentinel = path.join(root, 'must-not-exist');
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+    if (!platform) throw new Error('The process platform descriptor is unavailable.');
+    Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
+    try {
+      const result = await new NodeCommandRunner().run({
+        executable: process.execPath,
+        args: ['-e', 'require("node:fs").writeFileSync(process.argv[1], "unexpected")', sentinel]
+      }, { stdin, ensureProcessTreeSettled: true, timeoutMs: 5000, maxOutputBytes: 4096, stream: false });
+      expect(result).toMatchObject({
+        status: null, signal: null, stdout: '', stderr: '', timedOut: false,
+        processSpawned: false, processTreeSettled: false, errorCode: 'UNSUPPORTED_PROCESS_INPUT',
+        errorMessage: 'The Windows settled process controller does not support stdin input; use an explicit file-backed command.'
+      });
+      expect(JSON.stringify(result)).not.toContain('private-input-fixture');
+      await expect(access(sentinel)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+    }
   });
 
   it('removes cancellation listeners after successful completion without altering output', async () => {

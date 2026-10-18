@@ -10,6 +10,21 @@ const builtIn = { executor: 'built-in', retry: 'none' } as const;
 const local = { executor: 'built-in', retry: 'explicit-local' } as const;
 const unavailable = { executor: 'unavailable', retry: 'none', blocker: 'No production executor is available.' } as const;
 const injected = { executor: 'injected-only', retry: 'none', blocker: 'An explicit GitHub ruleset adapter is required; no production adapter is configured.' } as const;
+const protectedState = {
+  executor: 'injected-only',
+  retry: 'none',
+  blocker: 'Explicit protected state handover and qualified custody capabilities are required; public existing-state migration and plaintext fallback remain disabled.'
+} as const;
+const protectedDisposal = {
+  executor: 'injected-only',
+  retry: 'none',
+  blocker: 'The same qualified protected custody capability is required for due-time bootstrap disposal.'
+} as const;
+const protectedApplication = {
+  executor: 'injected-only',
+  retry: 'none',
+  blocker: 'Application source producers require both qualified protected handover and custody capabilities, current exact approved resources and a protected execution host; production task13/task14 qualification is not available.'
+} as const;
 
 export const phaseCapabilities: Readonly<Record<PhaseId, PhaseCapability>> = {
   'seed-valid': local,
@@ -20,17 +35,17 @@ export const phaseCapabilities: Readonly<Record<PhaseId, PhaseCapability>> = {
   'phase-0-complete': builtIn,
   'activation-approved': builtIn,
   'bootstrap-workflow-source-ready': unavailable,
-  'credential-ready': { ...builtIn, blocker: 'Independent credential readback and public credential enrollment are unavailable.' },
-  'provider-ready': unavailable,
-  'state-path-selected': unavailable,
-  'existing-private-path': unavailable,
-  'bootstrap-local': unavailable,
-  'runner-ready': unavailable,
-  'private-backend-proof': unavailable,
-  'remote-import-verified': unavailable,
+  'credential-ready': builtIn,
+  'provider-ready': builtIn,
+  'state-path-selected': builtIn,
+  'existing-private-path': builtIn,
+  'bootstrap-local': builtIn,
+  'runner-ready': builtIn,
+  'private-backend-proof': protectedState,
+  'remote-import-verified': protectedState,
   'remote-ready': builtIn,
-  'application-prerequisites-ready': unavailable,
-  'application-artifact-ready': unavailable,
+  'application-prerequisites-ready': protectedApplication,
+  'application-artifact-ready': protectedApplication,
   'application-foundation': unavailable,
   'workflow-source-ready': unavailable,
   'dev-proof': unavailable,
@@ -40,5 +55,5 @@ export const phaseCapabilities: Readonly<Record<PhaseId, PhaseCapability>> = {
   'enforcement-approved': builtIn,
   'rulesets-applied': injected,
   'live-readback': injected,
-  'bootstrap-state-disposed': builtIn
+  'bootstrap-state-disposed': protectedDisposal
 };

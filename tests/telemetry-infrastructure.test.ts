@@ -124,7 +124,7 @@ describe('telemetry OpenTofu privacy contract', () => {
       expect(text).toContain('project_ingestion_enabled=false');
       expect(text).toContain('attention-required');
       expect(text).toContain('LiftoffProjectEvents_CL');
-      expect(text).toContain('not yet deployed');
+      expect(text).toContain('deployed; project reporting remains disabled');
     }
     expect(guide).toContain('A public project ID is not authentication');
     expect(readme).toContain('Korea Central');
@@ -150,6 +150,19 @@ describe('telemetry OpenTofu privacy contract', () => {
     expect(target).toContain('for_each = local.image_build_revisions');
     expect(target).toContain('create = "45m"');
     expect(target).not.toMatch(/:latest|image_tag\s*=\s*"(?:main|master|latest)"/i);
+  });
+
+  it('stages explicit build-only revisions without changing the active image or enabling project delivery', async () => {
+    const [target, variables] = await Promise.all([
+      tofuFile('container-app.tf'), tofuFile('variables.tf')
+    ]);
+    expect(variables).toMatch(/variable "prepared_image_revisions"[\s\S]*?type\s*=\s*set\(string\)[\s\S]*?default\s*=\s*\[\]/);
+    expect(variables).toContain('for revision in var.prepared_image_revisions');
+    expect(target).toContain('setunion(var.retained_image_revisions, var.prepared_image_revisions, toset([var.source_revision]))');
+    expect(target.match(/var\.prepared_image_revisions/g)).toHaveLength(1);
+    expect(target).toContain('image_tag               = var.source_revision');
+    expect(target).toContain('${local.image_repository}@${var.image_digest}');
+    expect(target).toContain('for_each = var.project_ingestion_enabled ? [local.project_input_stream_name] : []');
   });
 
   it('keeps one smallest warm replica with strict scale and probe bounds', async () => {
@@ -215,6 +228,21 @@ describe('telemetry OpenTofu privacy contract', () => {
     expect(outputs).not.toMatch(/function_app_id|azurewebsites/i);
     expect(variables).toContain('^[a-z0-9]{6,8}$');
     expect(variables).not.toMatch(/variable "subscription_id"[\s\S]*?default\s*=\s*null/);
+  });
+
+  it('requires separately approved provider registration instead of plan-time side effects', async () => {
+    const [versions, grafanaVersions, readme] = await Promise.all([
+      tofuFile('versions.tf'),
+      tofuFile(path.join('grafana', 'versions.tf')),
+      tofuFile('README.md')
+    ]);
+    const azapi = versions.match(/provider "azapi" \{([^{}]*)\}/)?.[1];
+    const azurerm = versions.match(/provider "azurerm" \{([\s\S]*?)\n\s*features \{/)?.[1];
+    expect(azapi).toMatch(/skip_provider_registration\s*=\s*true/);
+    expect(azurerm).toMatch(/resource_provider_registrations\s*=\s*"none"/);
+    expect(grafanaVersions).toMatch(/resource_provider_registrations\s*=\s*"none"/);
+    expect(versions).not.toMatch(/\bresource_providers_to_register\s*=/);
+    expect(readme.replace(/\s+/g, ' ')).toContain('Provider registration remains a separately approved operator prerequisite');
   });
 
   it('contains only OpenTofu infrastructure files and no alternate deployment path', async () => {

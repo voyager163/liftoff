@@ -555,7 +555,11 @@ describe('bounded application inventory and executable staged patch', () => {
       if (kind === 'directory entry') await putApplicationFixtureFile(root, ['docs', 'added.txt'], 'new');
       if (kind === 'directory mode') {
         if (process.platform === 'win32') return;
-        await chmod(path.join(root, 'docs'), 0o700);
+        const directory = path.join(root, 'docs');
+        const before = (await lstat(directory)).mode & 0o777;
+        const changed = before === 0o700 ? 0o750 : 0o700;
+        await chmod(directory, changed);
+        expect((await lstat(directory)).mode & 0o777).toBe(changed);
       }
       if (kind === 'staged bytes') await putApplicationFixtureFile(stage, document.mappings[1]!.stagedPathParts, 'changed');
       if (kind === 'staged mode') await chmod(path.join(stage, ...document.mappings[1]!.stagedPathParts), 0o444);
@@ -820,6 +824,23 @@ describe('bounded application inventory and executable staged patch', () => {
         remedy: '10000 ms'
       },
       {
+        name: 'Windows supervisor timeout before target admission', executable: 'node', kind: 'timed-out',
+        output: {
+          status: null, timedOut: true, errorCode: 'SUPERVISOR_TIMEOUT',
+          processSpawned: false, processTreeSettled: false,
+          errorMessage: 'PRIVATE_CONTROLLER_DETAIL controller=compiling, admission=not-reported'
+        },
+        remedy: 'Windows process supervisor reported a bounded timeout'
+      },
+      {
+        name: 'Windows PowerShell spawn failure', executable: 'node', kind: 'execution-failed',
+        output: {
+          status: null, errorCode: 'POWERSHELL_SPAWN_FAILED',
+          errorMessage: 'PRIVATE_WINDOWS_PATH and PRIVATE_ACCOUNT'
+        },
+        remedy: 'Windows PowerShell 5.1 is installed and available'
+      },
+      {
         name: 'output limit before dependency classification', executable: 'node', kind: 'output-limit',
         output: { status: null, outputLimitExceeded: true, stderr: 'ERR_MODULE_NOT_FOUND PRIVATE_OUTPUT' },
         remedy: '16384 bytes'
@@ -841,6 +862,28 @@ describe('bounded application inventory and executable staged patch', () => {
       expect(diagnostic?.message).toContain(remedy);
       expect(JSON.stringify(diagnostic)).not.toContain('PRIVATE_');
       expect(applicationFailureBlocker(0, check, diagnostic!)).not.toContain('PRIVATE_');
+    });
+
+    it('keeps supervisor timeout distinct from a genuine declared target timeout', () => {
+      const check = { ...command(), timeoutMs: 2_000 };
+      const supervisor = applicationCommandFailure(check, result({
+        status: null, timedOut: true, errorCode: 'SUPERVISOR_TIMEOUT',
+        processSpawned: false, processTreeSettled: false,
+        errorMessage: 'PRIVATE_DETAIL during startup controller=compiling, admission=not-reported'
+      }));
+      expect(supervisor).toMatchObject({ kind: 'timed-out', cleanupUnsafe: false });
+      expect(supervisor?.message).toContain('does not establish that the declared check started');
+      expect(supervisor?.message).not.toContain('2000 ms');
+      expect(supervisor?.message).not.toContain('PRIVATE_');
+
+      const target = applicationCommandFailure(check, result({
+        status: null, timedOut: true, errorCode: 'ETIMEDOUT',
+        processSpawned: true, processTreeSettled: true,
+        errorMessage: 'PRIVATE_TARGET_DETAIL'
+      }));
+      expect(target).toMatchObject({ kind: 'timed-out', cleanupUnsafe: false });
+      expect(target?.message).toContain('2000 ms');
+      expect(target?.message).not.toContain('PRIVATE_');
     });
 
     it('does not turn error-like successful output into a failed verification', () => {

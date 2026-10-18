@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runCli } from '../src/cli.js';
+import { runReleasedTelemetryCli as runCli } from './fixtures/released-telemetry.js';
 import { runCommand } from '../src/commands.js';
 import { parseArgs } from '../src/cli/args/parser.js';
 import { applyModernSuccessorUpdate, previewModernSuccessorUpdate } from '../src/application/update/use-case.js';
@@ -15,7 +15,6 @@ import {
   createProfileTransitionTransactionAuthorityStore
 } from '../src/application/profile-transition/transaction-authority.js';
 import { buildModernManagedCore } from '../src/application/project/modern-managed-core.js';
-import { renderProjectAssessmentIntegration } from '../src/generators/governance/integrations.js';
 import { createModernGovernanceContextContract } from '../src/domain/governance/policy/modern-context.js';
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
@@ -100,26 +99,29 @@ async function leaveCommittedProfileTransition(
 }
 
 describe('public current-v8 project update', () => {
-  it.each([1, 2, 3] as const)('publishes a historical activation-%s successor without reusing old proof', async version => {
+  it.each([1, 2, 3] as const)('refuses an undeclared historical activation-%s to current5 lane without project or approval effects', async version => {
     const project = await fixture();
     await writeModernHistoricalSource(project.root, version);
-    const before = await inventory(project.root);
+    const before = await inventory(project.root), home = await inventory(project.home);
     expect(before['.github/prompts/liftoff-assess.prompt.md']).toBeUndefined();
-    const preview = await invoke(project, ['--check']);
-    expect(preview).toMatchObject({ code: 2, report: { scope: 'history-core-state-manifest-publication-only' } });
-    const result = await invoke(project, ['--approve-plan', preview.report.plans[0].fingerprint]);
-    expect(result).toMatchObject({ code: 2, outcome: 'attention-required', report: {
-      status: 'committed-incomplete', publicationCommitted: true, localComplete: false
-    } });
-    const state = JSON.parse(await fs.readFile(path.join(project.root, 'governance', 'activation-state.json'), 'utf8'));
-    expect(state.schemaVersion).toBe(4);
-    const after = await inventory(project.root);
-    expect(Object.entries(after).some(([name, file]) => name.startsWith('governance/history/') &&
-      file.digest === before['governance/activation-state.json'].digest)).toBe(true);
-    expect(after['application.txt']).toEqual(before['application.txt']);
-    expect(after['package.json']).toEqual(before['package.json']);
-    expect(await fs.readFile(path.join(project.root, '.github', 'prompts', 'liftoff-assess.prompt.md'), 'utf8'))
-      .toBe(renderProjectAssessmentIntegration('github-copilot'));
+    for (const args of [['--check'], [], ['--force'], ['--approve-plan', 'a'.repeat(64)]]) {
+      const check = args.includes('--check');
+      const result = await invoke(project, args);
+      expect(result, JSON.stringify(result.report)).toMatchObject({ code: 1, outcome: 'failure', stderr: '', report: {
+        status: 'failed', reasonCode: check ? 'update-failed' : 'preview-missing', publicationCommitted: check ? false : null,
+        projectFileEffectsUncertain: !check, executionRequested: !check, externalMetadataWriteRequested: true,
+        operationComplete: false, coreUpdateComplete: false,
+        localComplete: false, activationComplete: false, lifecycleComplete: false, providerOperationsAuthorized: false
+      } });
+      expect(result.report.diagnostics).toEqual([
+        expect.stringContaining(check
+          ? 'modern successor lane: is not explicitly declared for the exact source/target intent.'
+          : 'No saved update preview was found for project')
+      ]);
+      expect(result.report).not.toHaveProperty('plans');
+      expect(await inventory(project.root)).toEqual(before);
+      expect(await inventory(project.home)).toEqual(home);
+    }
   });
 
   it.each([1, 2, 3] as const)('maintains an active successor of family %s without retagging its original transition', async version => {

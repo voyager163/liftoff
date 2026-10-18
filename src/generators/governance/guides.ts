@@ -116,6 +116,26 @@ ${plan.agents.some((agent) => agent.id === 'codex')
   ? 'Codex skills use their dollar-prefixed names or the `/skills` picker, not global custom prompts.\n'
   : ''}
 
+The recorded \`${plan.governanceProfile.id}\` profile is bound into plans and proof.
+${plan.governanceProfile.id === 'team-gitflow'
+    ? 'Team GitFlow requires one current independent human PR approval; self, bot-only, and stale approval do not satisfy it.'
+    : 'Single-maintainer GitFlow requires zero additional human PR approvals.'}
+Neither profile invents a deployment reviewer. Local completion requires no
+GitHub/Azure credential, provider registration, deployment, or live enforcement.
+
+Treat \`liftoff capabilities --json\` phase
+\`productionExecutorAvailable\` and blocker fields as the exact producer limit.
+Never substitute direct GitHub, Azure, OpenTofu, registry, state, or ruleset
+commands for unavailable or injected-only work. Activation uses bounded exact
+GitHub/Azure identity and resource reads, private \`credential-enroll\` after
+approval, provider prerequisites derived from approved resource types, and
+deployment-ownership classification before protected effects. Pre-existing or
+unknown deployment/state scope remains planning-only. A pending external
+operation resumes only its immutable freshly reobserved handle; changed, stale,
+missing-readback, over-age, or terminal handles require explicit reviewed
+recovery after current ownership is reverified. Never claim local rollback
+removed retained cloud effects.
+
 Before publication and activation, setup verifies the deterministic baseline seed:
 \`liftoff validate\`, applicable backend tests, frontend build,
 \`docker compose config -q\`, \`tofu fmt -check -recursive\`,
@@ -230,13 +250,16 @@ Use the CLI-provided \`liftoff governance approve --plan <fingerprint>\` only
 after the developer explicitly approves the exact displayed plan; never
 automatically approve it. Approval persists authority but does not execute.
 Approve and apply-next refuse blocked or unavailable capabilities.
-Public credential readiness and enrollment are currently unavailable pending
-independently verified provider wiring: approve refuses the credential-ready plan,
-and \`liftoff governance credential-enroll --plan <fingerprint>\` refuses before
-reading any input or writing a secret, policy, or evidence. A secret name or
-policy file alone never establishes readiness. Never paste or show a credential in chat, argv,
-command arguments, logs, evidence, source files, or screenshots. A leaked value must be
-revoked and rotated through its owner-controlled system, not fabricated state.
+For credential readiness, approval still does not read or write a value. Only
+\`liftoff governance credential-enroll --plan <fingerprint>\` may select a private
+non-echoing TTY; \`--protected-stdin\` is allowed only for an explicitly selected
+owner-controlled non-TTY secret channel. Plain \`apply-next --execute\` does not
+select that channel. A secret name or policy file alone never establishes
+readiness: matching current evidence and independent GitHub secret metadata
+readback are required. Never paste or show a credential in chat, argv,
+\`--inputs\`, command arguments, logs, evidence, policy, source files, or
+screenshots. A leaked value must be revoked and rotated through its
+owner-controlled system, not fabricated state.
 
 Live status must be proven from user-owned activation evidence and GitHub
 read-back, never inferred from these local files.

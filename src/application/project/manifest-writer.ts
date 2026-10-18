@@ -52,6 +52,7 @@ export type ManifestV8WriteRequest =
       readonly activeLayout: ManifestActiveLayout;
       readonly sourceManifestHistory: ManifestSourceHistoryReference;
       readonly managed: readonly ManagedManifestDecision[];
+      readonly targetPlugins?: LiftoffManifestV8['plugins'];
     }
   | {
       readonly origin: 'maintenance'; readonly source: unknown; readonly managed: readonly ManagedManifestDecision[];
@@ -311,7 +312,10 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
     'origin', 'selection', 'generatedArtifacts',
     ...(isRecord(input) && Object.hasOwn(input, 'activeLayout') ? ['activeLayout'] : [])
   ] : origin === 'adoption' ? ['origin', 'selection', 'activeLayout', 'managed', 'adoptionObservations'] :
-    origin === 'historical-successor' ? ['origin', 'source', 'profile', 'activeLayout', 'sourceManifestHistory', 'managed'] :
+    origin === 'historical-successor' ? [
+      'origin', 'source', 'profile', 'activeLayout', 'sourceManifestHistory', 'managed',
+      ...(isRecord(input) && Object.hasOwn(input, 'targetPlugins') ? ['targetPlugins'] : [])
+    ] :
       origin === 'workflow-transition'
         ? ['origin', 'source', 'selection', 'activeLayout', 'managed']
         : origin === 'profile-transition'
@@ -419,7 +423,12 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
   const target = targetFor(
     leaf,
     profile,
-    origin === 'maintenance' && source?.artifactVersion === 8
+    origin === 'historical-successor' && Object.hasOwn(request, 'targetPlugins')
+      ? readManifestPluginMetadata(sourceData(request.targetPlugins), {
+        stack: leaf.project.workload.apiStack, cloud: leaf.project.workload.cloud,
+        workflow: leaf.project.specWorkflow, agents: leaf.project.agents
+      })
+      : origin === 'maintenance' && source?.artifactVersion === 8
       ? source.plugins
       : undefined
   );
@@ -461,11 +470,15 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
     return {
       profile, policyVersion: staticIdentity.policyVersion,
       state: target.source.requiredHandoffLogicalNames.every((name) => owned.has(name)) ? 'handoff-generated' : 'handoff-partial',
-      activationIdentity: identityReader.identityForSource({
-        sourceVersion: staticIdentity.liftoffVersion, profile, policyVersion: staticIdentity.policyVersion,
-        selection: { ...leaf, profile }, pluginResolutionDigest: target.plugins.resolutionDigest,
-        activeLayoutDigest: manifestActiveLayoutDigest(activeLayout, target.source.layoutDescriptor)
-      })
+      activationIdentity: origin === 'maintenance' && source?.artifactVersion === 8 &&
+        source.governance.profile !== 'none'
+        ? source.governance.activationIdentity
+        : identityReader.identityForReadableSource({
+            sourceVersion: staticIdentity.liftoffVersion, phaseGraphHash: staticIdentity.phaseGraphHash,
+            profile, policyVersion: staticIdentity.policyVersion,
+            selection: { ...leaf, profile }, pluginResolutionDigest: target.plugins.resolutionDigest,
+            activeLayoutDigest: manifestActiveLayoutDigest(activeLayout, target.source.layoutDescriptor)
+          })
     };
   })();
   const manifest = rootReader.parseManifestV8({

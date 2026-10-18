@@ -25,13 +25,17 @@ import type {
   RunCommandOptions
 } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/types.js';
+import { runSelfUpgrade, type SelfUpgradeExecutor, type ConfiguredRegistryTargetLookup } from '../src/self-upgrade.js';
+import { lookupStableRelease, type StableRelease } from '../src/stable-release.js';
+import { upgradeWorld } from './fixtures/installer-upgrade.js';
 
 const cleanups: string[] = [];
 const previousRegistry = process.env.LIFTOFF_REGISTRY;
 const unreachableRegistry = 'http://127.0.0.1:1';
+const releasedInstallationVersion = '0.12.3';
 
 beforeAll(() => {
-  // unreachable registry: freshness lookup must soft-fail silently
+  // An offline observation must remain explicit, never "current".
   process.env.LIFTOFF_REGISTRY = unreachableRegistry;
 });
 
@@ -108,7 +112,7 @@ async function run(
   runner = new ReadyInitRunner(),
   context: Partial<Pick<
     CommandContext,
-    'configuredRegistryTargetLookup' | 'stableReleaseLookup'
+    'configuredRegistryTargetLookup' | 'stableReleaseLookup' | 'selfUpgrade'
   >> = {}
 ): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
@@ -121,9 +125,32 @@ async function run(
     stableReleaseLookup: async () => {
       throw new Error('offline');
     },
+    selfUpgrade: diagnosticUpgrade(context.stableReleaseLookup ?? (async () => { throw new Error('offline'); }), context.configuredRegistryTargetLookup),
     ...context
   });
   return { code, out: stdout.text(), err: stderr.text() };
+}
+
+function diagnosticUpgrade(
+  stable: () => Promise<StableRelease>,
+  channel?: ConfiguredRegistryTargetLookup,
+  currentVersion = releasedInstallationVersion
+): SelfUpgradeExecutor {
+  return async request => {
+    const fixture = upgradeWorld({ currentVersion });
+    fixture.world.stable = stable;
+    const run = fixture.dependencies.runner.run.bind(fixture.dependencies.runner);
+    fixture.dependencies.runner = { run: async (command, options) => {
+      if (command.args[0] !== 'view' || command.args[1] === '@msn-control/liftoff') return run(command, options);
+      const version = command.args[1].split('@').at(-1)!;
+      const result = await run(command, options);
+      const observed = channel ? await channel(version) : { status: 'available' };
+      return observed.status === 'available'
+        ? { ...result, stdout: JSON.stringify({ name: '@msn-control/liftoff', version }) }
+        : { ...result, status: 1, stderr: observed.status === 'stale' ? 'E404 not found' : 'unavailable' };
+    } };
+    return runSelfUpgrade({ ...request, currentVersion, runningPackageRoot: fixture.world.packageRoot }, fixture.dependencies);
+  };
 }
 
 async function writeJson(root: string, parts: readonly string[], value: unknown): Promise<void> {
@@ -191,6 +218,19 @@ describe('doctor exit-code model', () => {
 });
 
 describe('doctor command', () => {
+  it('retains local diagnostics when an installation inspector throws, without claiming freshness or an upgrade', async () => {
+    const root = await fixtureProject();
+    const observed = await run(['doctor', '--json'], root, new ReadyInitRunner(), {
+      selfUpgrade: async () => { throw new Error('fixture inspection unavailable'); }
+    });
+    const report = JSON.parse(observed.out);
+    expect(report.layers.map((layer: { title: string }) => layer.title)).toContain('Project');
+    expect(report.layers.map((layer: { title: string }) => layer.title)).toContain('Environment');
+    const cli = report.layers.find((layer: { title: string }) => layer.title === 'CLI');
+    expect(cli.checks.find((check: { label: string }) => check.label === 'cli freshness'))
+      .toMatchObject({ severity: 'warn', detail: expect.stringContaining('inspection_unavailable') });
+    expect(observed.out).not.toContain('fixture inspection unavailable');
+  });
   it('runs CLI and environment checks outside a project while offline', async () => {
     const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-'));
     cleanups.push(elsewhere);
@@ -198,7 +238,7 @@ describe('doctor command', () => {
     const result = await run(['doctor'], elsewhere);
     expect(result.out).toContain('CLI');
     expect(result.out).toContain(`version: Liftoff ${liftoffVersion}`);
-    expect(result.out).not.toContain('cli freshness');
+    expect(result.out).toContain('cli freshness: CLI upgrade failed (canonical_unavailable)');
     expect(result.out).toContain('Environment');
     expect(result.out).toContain(`Liftoff runtime: Running Liftoff runtime: Node.js ${process.versions.node}`);
     expect(result.out).toContain('not evidence that external node or npm is installed');
@@ -224,7 +264,7 @@ describe('doctor command', () => {
     );
     expect(result.out).toContain('repository governance');
     expect(result.out).toContain('live enforcement is not inferred');
-    expect(result.out).not.toContain('cli freshness');
+    expect(result.out).toContain('cli freshness: CLI upgrade failed (canonical_unavailable)');
   }, 30_000);
 
   it('reports local governance integrity without claiming live enforcement', async () => {
@@ -360,7 +400,7 @@ describe('doctor command', () => {
     const expiring = JSON.parse((await run(['doctor', '--json'], expiringRoot)).out);
     expect(projectCheck(expiring, 'governance-credential-expiring')).toMatchObject({
       state: 'credential-expiring',
-      remedy: expect.stringContaining('no public credential enrollment/readback workflow')
+      remedy: expect.stringContaining('governance credential-enroll')
     });
 
     const incompatibleRoot = await fixtureProject();
@@ -410,7 +450,26 @@ describe('doctor command', () => {
     });
   }, 30_000);
 
-  it('reports current and newer authoritative registry versions outside a project', async () => {
+  it('refuses unpublished installation metadata before canonical lookup without hiding local diagnostics', async () => {
+    const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-unreleased-'));
+    cleanups.push(elsewhere);
+    const stable = vi.fn<() => Promise<StableRelease>>(async () => ({
+      name: '@msn-control/liftoff', version: '99.0.0'
+    }));
+    const result = await run(['doctor', '--json'], elsewhere, new ReadyInitRunner(), {
+      selfUpgrade: diagnosticUpgrade(stable, undefined, '0.13.0-dev.0')
+    });
+    expect(result.code).toBe(0);
+    const report = JSON.parse(result.out);
+    const cli = report.layers.find((layer: { title: string }) => layer.title === 'CLI');
+    expect(cli.checks.find((check: { label: string }) => check.label === 'cli freshness')).toMatchObject({
+      severity: 'warn', detail: expect.stringContaining('blocked (invalid_package)')
+    });
+    expect(report.layers.map((layer: { title: string }) => layer.title)).toContain('Environment');
+    expect(stable).not.toHaveBeenCalled();
+  });
+
+  it('reports current and newer authoritative registry versions for an explicitly released npm owner', async () => {
     const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-freshness-'));
     cleanups.push(elsewhere);
 
@@ -421,11 +480,11 @@ describe('doctor command', () => {
       {
         stableReleaseLookup: async () => ({
           name: '@msn-control/liftoff',
-          version: liftoffVersion
+          version: releasedInstallationVersion
         })
       }
     );
-    expect(current.out).toContain(`cli freshness: running ${liftoffVersion}, latest stable ${liftoffVersion}`);
+    expect(current.out).toContain(`cli freshness: Liftoff ${releasedInstallationVersion} is already the canonical stable release.`);
 
     const newer = await run(
       ['doctor', '--json'],
@@ -443,10 +502,10 @@ describe('doctor command', () => {
     const freshness = cli.checks.find((check: { label: string }) => check.label === 'cli freshness');
     expect(freshness).toMatchObject({
       severity: 'warn',
-      detail: `Liftoff 99.0.0 is published, this CLI is ${liftoffVersion}`
+      detail: 'Liftoff 99.0.0 is available for this supported global npm installation. (update_available)'
     });
-    expect(freshness.remedy).toContain('@msn-control/liftoff@99.0.0');
-    expect(freshness.remedy).toContain('--registry=https://registry.npmjs.org');
+    expect(freshness.remedy).toContain('liftoff upgrade --check');
+    expect(freshness.remedy).not.toContain('--registry');
     expect(report.summary.warnings).toBeGreaterThanOrEqual(1);
   }, 30_000);
 
@@ -635,7 +694,7 @@ describe('doctor command', () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({
         name: '@msn-control/liftoff',
-        version: liftoffVersion
+        version: releasedInstallationVersion
       }), { status: 200 })
     );
     const stdout = new CaptureStream();
@@ -644,6 +703,7 @@ describe('doctor command', () => {
       stdout,
       stderr: new CaptureStream(),
       runner: new ReadyInitRunner(),
+      selfUpgrade: diagnosticUpgrade(() => lookupStableRelease()),
       env: { LIFTOFF_REGISTRY: 'https://malicious.example.test/npm/' }
     });
     expect(code).toBe(0);
@@ -651,7 +711,7 @@ describe('doctor command', () => {
       'https://registry.npmjs.org/%40msn-control%2Fliftoff/latest'
     );
     expect(stdout.text()).toContain(
-      `cli freshness: running ${liftoffVersion}, latest stable ${liftoffVersion}`
+      `cli freshness: Liftoff ${releasedInstallationVersion} is already the canonical stable release.`
     );
     expect(await readFile(npmrcPath, 'utf8')).toBe(npmrc);
   }, 30_000);
@@ -672,7 +732,7 @@ describe('doctor command', () => {
       }
     );
     expect(result.out).toContain(
-      'configured npm registry does not expose it'
+      'CLI upgrade was blocked (registry_stale)'
     );
     expect(result.out).toContain('managed registry owner');
     expect(result.out).toContain('liftoff upgrade --check');
@@ -792,7 +852,7 @@ describe('doctor command', () => {
     expect(report.layers.map((layer: { title: string }) => layer.title)).toContain('Project');
     expect(typeof report.summary.failures).toBe('number');
     expect(typeof report.summary.warnings).toBe('number');
-    expect(result.out).not.toContain('cli freshness');
+    expect(result.out).toContain('cli freshness');
   }, 30_000);
 });
 

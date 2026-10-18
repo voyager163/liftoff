@@ -1,7 +1,8 @@
+import { deflateRawSync } from 'node:zlib';
 import { canonicalSha256 } from './canonical-json.js';
 import { copyModernLocalData, localInputFailure, rawLocalDigest } from './modern-local-inputs.js';
 import {
-  completionRecord, completionHash, completionRoot, completionTime, snapshotControl, validateCompletedBinding,
+  completionRecord, completionHash, completionRoot, completionTime, inflateCompletionIndex, snapshotControl, validateCompletedBinding,
   type CompletedLocalExecutionBinding, type CompletionSnapshot, type ManualFinalizationResult
 } from './modern-local-completion.js';
 import { exactRecord } from '../../project/manifest/fields.js';
@@ -30,12 +31,14 @@ export interface LocalRevalidationIntent {
   sourceBinding: string; sourcePlanFingerprint: string; originalTransitionDigest: string; originalPreparationDigest: string;
   execution: CompletedLocalExecutionBinding; protectedSetDigest: string; policyDigest: string;
 }
-export interface LocalRevalidationArtifact {
+interface RevalidationArtifactV1 {
   kind: 'liftoff-local-revalidation-artifact'; schemaVersion: 1;
   projectRoot: string; operationId: string; intentFingerprint: string;
   role: 'target' | 'protected-index'; pathParts: string[] | null; mode: number | null;
   contentBase64: string; bytes: number; rawDigest: string;
 }
+export type LocalRevalidationArtifact = RevalidationArtifactV1 |
+  (Omit<RevalidationArtifactV1, 'schemaVersion' | 'role'> & { schemaVersion: 2; role: 'protected-index'; encoding: 'deflate-raw' });
 export interface LocalRevalidationTarget {
   pathParts: string[]; operation: 'write'; original: CompletionSnapshot; target: CompletionSnapshot;
   artifactKey: string; purpose: TargetPurpose;
@@ -98,10 +101,26 @@ export function validateRevalidationIntent(input: LocalRevalidationIntent, now: 
   if (fingerprint !== canonicalSha256(body)) localInputFailure('Revalidation intent fingerprint differs.');
   return p;
 }
+export function createRevalidationArtifact(intent: LocalRevalidationIntent, role: LocalRevalidationArtifact['role'], content: Buffer,
+  pathParts: string[] | null, mode: number | null): LocalRevalidationArtifact {
+  if (content.length > localRevalidationPolicy.recordBytes) localInputFailure('Revalidation artifact payload exceeds64KiB.');
+  const body = {
+    kind: 'liftoff-local-revalidation-artifact' as const, projectRoot: intent.projectRoot,
+    operationId: intent.operationId, intentFingerprint: intent.fingerprint, pathParts, mode,
+    contentBase64: content.toString('base64'), bytes: content.length, rawDigest: rawLocalDigest(content)
+  };
+  const value: LocalRevalidationArtifact = role === 'protected-index'
+    ? { ...body, schemaVersion: 2, role, encoding: 'deflate-raw', contentBase64: deflateRawSync(content).toString('base64') }
+    : { ...body, schemaVersion: 1, role };
+  revalidationArtifactBytes(value, intent);
+  return value;
+}
 export function revalidationArtifactBytes(input: LocalRevalidationArtifact, intent: LocalRevalidationIntent): Buffer {
+  input = copyModernLocalData(input);
   const value = completionRecord(input, ['kind', 'schemaVersion', 'projectRoot', 'operationId', 'intentFingerprint', 'role',
-    'pathParts', 'mode', 'contentBase64', 'bytes', 'rawDigest'], 'Revalidation artifact');
-  if (value.kind !== 'liftoff-local-revalidation-artifact' || value.schemaVersion !== 1 || value.projectRoot !== intent.projectRoot ||
+    'pathParts', 'mode', 'contentBase64', 'bytes', 'rawDigest', ...(input.schemaVersion === 2 ? ['encoding'] : [])], 'Revalidation artifact');
+  const compressed = value.schemaVersion === 2 && value.role === 'protected-index' && value.encoding === 'deflate-raw';
+  if (value.kind !== 'liftoff-local-revalidation-artifact' || !(compressed || value.schemaVersion === 1) || value.projectRoot !== intent.projectRoot ||
       value.operationId !== intent.operationId || value.intentFingerprint !== intent.fingerprint ||
       !['target', 'protected-index'].includes(value.role)) localInputFailure('Revalidation artifact attribution differs.');
   if (value.role === 'protected-index') {
@@ -113,8 +132,10 @@ export function revalidationArtifactBytes(input: LocalRevalidationArtifact, inte
     }
   }
   if (typeof value.contentBase64 !== 'string' || !Number.isSafeInteger(value.bytes) || value.bytes < 0) localInputFailure('Invalid revalidation artifact bytes.');
-  const bytes = Buffer.from(value.contentBase64, 'base64');
-  if (bytes.toString('base64') !== value.contentBase64 || bytes.length !== value.bytes || rawLocalDigest(bytes) !== value.rawDigest) {
+  const encoded = Buffer.from(value.contentBase64, 'base64');
+  if (encoded.toString('base64') !== value.contentBase64) localInputFailure('Revalidation artifact base64 is not canonical.');
+  const bytes = compressed ? inflateCompletionIndex(encoded, value.bytes) : encoded;
+  if (bytes.length !== value.bytes || rawLocalDigest(bytes) !== value.rawDigest) {
     localInputFailure('Revalidation artifact differs from its exact raw bytes.');
   }
   return bytes;

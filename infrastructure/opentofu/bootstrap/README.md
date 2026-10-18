@@ -4,6 +4,38 @@ This isolated OpenTofu root creates the protected remote-state boundary used by
 the production telemetry root. It uses local bootstrap state intentionally so
 it can create the remote backend without Azure CLI resource creation.
 
+## Scope and current availability
+
+This is the repository maintainer's telemetry bootstrap root. It is not a
+generated customer-project root, a public brownfield migration command, or proof
+that an arbitrary workstation can hold protected bootstrap state.
+
+The repository can validate these files without backend or Azure access:
+
+```bash
+tofu -chdir=infrastructure/opentofu/bootstrap fmt -check
+tofu -chdir=infrastructure/opentofu/bootstrap init -backend=false
+tofu -chdir=infrastructure/opentofu/bootstrap validate
+```
+
+The live plan/apply example below is an operator runbook only. It requires an
+already reviewed Azure scope, current cost and permission approval, an admitted
+operator network path, and a host that independently satisfies the protected
+storage, non-exporting key, locking, writer-quiescence, backup, retention, and
+due-time disposal contract.
+
+New-environment activation has one narrow exception: backend resources created
+by the same recorded operation may be handed over by that operation after exact
+ownership and no-change readback. The engine contracts, proof validation, and
+injected handover/custody ports exist, but the default public CLI does not
+register production implementations of those ports. That is an implementation
+and qualification gap, not an approval prompt; operator consent cannot turn an
+absent adapter into an available capability.
+
+Pre-existing deployment/state adoption, import, partition, relocation, and
+address migration remain planning-only. Missing local state is never evidence
+that the Azure scope is absent or newly owned.
+
 It also owns the enforced Azure Network Security Perimeter profile that protects
 state storage. Explicit operator IPv4 `/32` CIDRs are the target architecture's
 only inbound exceptions. Storage keys remain disabled; perimeter admission does
@@ -57,9 +89,17 @@ build, test, formatting, backend-free initialization, and validation.
 
 ## Grafana does not own the state boundary
 
-The telemetry [Grafana runbook](../telemetry/README.md#managed-grafana-source-preparation-not-deployed)
+The telemetry [Grafana runbook](../telemetry/README.md#managed-grafana-deployment-and-remaining-qualification)
 adds separate resource and dashboard roots, not another bootstrap or a state
-migration. Future approved roots need distinct keys in the existing private
+migration. The authorized 2026-10-18 rollout used distinct keys
+`telemetry/production.tfstate`, `grafana/production.tfstate` and
+`grafana/dashboards-production.tfstate` in the existing private container,
+preserving the telemetry lineage and perimeter. Dashboard removal/restoration
+and project-feature disablement were exercised without destroying these
+resources or accepted telemetry. This operator evidence does not qualify
+application whole-job custody or public deployment-state commands.
+
+Future approved roots need distinct keys in the existing private
 `tfstate` container and independently verified ownership/lineage, writer
 locking, protected host and network admission. Do not reuse the telemetry key,
 copy state, broaden either storage network layer, change the enforced

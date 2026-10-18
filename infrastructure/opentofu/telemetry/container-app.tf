@@ -7,7 +7,7 @@ locals {
   image_repository        = "telemetry-ingest"
   image_tag               = var.source_revision
   image_name              = "${local.image_repository}:${local.image_tag}"
-  image_build_revisions   = setunion(var.retained_image_revisions, toset([var.source_revision]))
+  image_build_revisions   = setunion(var.retained_image_revisions, var.prepared_image_revisions, toset([var.source_revision]))
 }
 
 resource "azurerm_container_registry" "telemetry" {

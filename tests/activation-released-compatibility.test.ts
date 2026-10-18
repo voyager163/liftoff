@@ -21,6 +21,7 @@ import {
 import {
   historicalV1ActivationIdentity, historicalV2ActivationIdentity, releasedV3ActivationIdentity
 } from '../src/domain/governance/policy/identity.js';
+import { currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
 import { readHistoricalActivationInventory, readHistoricalSnapshotInventory } from '../src/governance-activation/historical-state.js';
 
 const captureBytes = readFileSync(new URL('./fixtures/activation-v3/records.json', import.meta.url));
@@ -30,6 +31,15 @@ function capturedCompatibility() {
 }
 function activation(value: Record<string, unknown>) { return historyRecord(value.activation, 'activation'); }
 function core(value: Record<string, unknown>) { return historyRecord(value.managedCore, 'managedCore'); }
+function currentCompatibility() {
+  const value = capturedCompatibility();
+  activation(value).currentCompatibleTuples = [currentActivationIdentity];
+  activation(value).recognizedGraphHashes = [currentActivationIdentity.phaseGraphHash];
+  for (const migration of historyArray(activation(value).successorMigrations, 'successor migrations')) {
+    historyRecord(migration, 'successor migration').toIdentity = currentActivationIdentity;
+  }
+  return value;
+}
 const authority = 'liftoff.manifest.json managedArtifacts[].contentHash' as const;
 function entries(names: readonly string[]): ManagedCompatibilityInventoryEntry[] {
   return names.map(logicalName => {
@@ -39,14 +49,14 @@ function entries(names: readonly string[]): ManagedCompatibilityInventoryEntry[]
   });
 }
 function withInventory(names: readonly string[], selected = names) {
-  const value = capturedCompatibility();
+  const value = currentCompatibility();
   core(value).logicalNameAllowlist = [...names];
   core(value).updateInventory = entries(selected);
   core(value).pathAllowlist = entries(selected).map(entry => entry.pathParts);
   return value;
 }
 function legacy(schemaVersion: 2 | 3) {
-  const value = capturedCompatibility();
+  const value = currentCompatibility();
   value.schemaVersion = schemaVersion;
   const historical = historyRecord(activation(value).historicalReadability, 'historical');
   delete historical.readers;
@@ -63,10 +73,10 @@ function legacy(schemaVersion: 2 | 3) {
 // These current-reader characterization cases run before R2 extraction and are
 // retained unchanged afterward; they are not a stricter replacement contract.
 describe('current compatibility characterization', () => {
-  it('retains the exact frozen empty builder bytes and parser property order', () => {
+  it('retains current builder bytes and parser property order without rewriting the frozen capture', () => {
     expect(createHash('sha256').update(captureBytes).digest('hex'))
       .toBe('cb9a4768b30e031d9d4b802528223679efa28259b50713221cdfc7a71d6eda46');
-    const expected = capturedCompatibility();
+    const expected = currentCompatibility();
     expect(JSON.stringify(buildGovernanceCompatibilityMetadata([], [], []))).toBe(JSON.stringify(expected));
     expect(JSON.stringify(validateGovernanceCompatibilityMetadata(expected))).toBe(JSON.stringify(expected));
   });
@@ -97,7 +107,7 @@ describe('current compatibility characterization', () => {
   });
 
   it('keeps original first-failure diagnostics and expected-agent narrowing', () => {
-    const value = capturedCompatibility();
+    const value = currentCompatibility();
     expect(() => validateGovernanceCompatibilityMetadata({ ...value, schemaVersion: 5 }))
       .toThrow('compatibility.schemaVersion must be 2, 3, or 4; historical metadata requires its version-specific reader.');
     expect(() => validateGovernanceCompatibilityMetadata({ ...value, generatedBy: 'other', liftoffVersion: 'other' }))
@@ -114,7 +124,7 @@ describe('current compatibility characterization', () => {
       .toThrow('compatibility.managedCore.pathAllowlist does not match the packaged managed-core path allowlist.');
     expect(() => validateGovernanceCompatibilityMetadata(claude, { inventory: [] }))
       .toThrow('compatibility.managedCore.updateInventory does not match the expected managed update inventory.');
-    const invalidMapping = capturedCompatibility();
+    const invalidMapping = currentCompatibility();
     activation(invalidMapping).graphMappings = [{}];
     expect(() => validateGovernanceCompatibilityMetadata(invalidMapping))
       .toThrow('compatibility.activation.graphMappings[0].fromGraphHash is required.');

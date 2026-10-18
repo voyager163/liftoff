@@ -158,8 +158,14 @@ describe('real modern managed-core inventory and content', () => {
         expect(guide).toContain('Historical generation/adoption paths are provenance');
         expect(guide).toContain('Preserve existing CODEOWNERS and stronger controls');
         expect(guide).toContain('Pre-existing deployment and OpenTofu state changes remain planning-only');
+        expect(guide).toContain('registers no\nproduction protected handover or custody ports');
+        expect(guide).toContain('implementation\nintegration and real-qualification gap');
+        expect(guide).toContain('Authorization cannot instantiate a missing adapter');
+        expect(guide).toContain('cannot expand into brownfield import, partition, relocation');
         expect(guide).not.toContain('--execute');
-        expect(guide).not.toContain('liftoff capabilities');
+        expect(guide).toContain('liftoff capabilities --json');
+        expect(guide).toContain('read-only contract, not proof');
+        expect(guide).toContain('Do not invent a supported-manifest response field');
         expect(guide).toContain(profile === 'team-gitflow' ? 'one independent human approval' : 'zero additional human PR approvals');
         if (workflow === 'manual') {
           expect(guide).toContain('external framework as not-required');
@@ -334,8 +340,8 @@ describe('real W1/CP1 and credential2 integration', () => {
       expect(() => renderModernCredentialPolicySchema(projectCatalog, { ...correlated, recordedIdentity: currentActivationIdentity })).toThrow();
     });
 
-  it('keeps the old schema1 bytes pinned to the immutable published artifact', () => {
-    expect(sha(renderCredentialPolicySchema())).toBe('cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce');
+  it('pins current schema1 bytes to the reviewed graph successor', () => {
+    expect(sha(renderCredentialPolicySchema())).toBe('4e65b78d01ca8abfba8d52ca65e61a818c23c7f012c5cb43e248ccc94d315cf1');
     const schema = JSON.parse(renderCredentialPolicySchema());
     expect(schema.properties.schemaVersion).toEqual({ const: 1 });
     expect(schema.properties.identity.required).toHaveLength(11);

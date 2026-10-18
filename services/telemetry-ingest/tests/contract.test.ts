@@ -112,7 +112,10 @@ describe('shared client and gateway telemetry contract', () => {
     for (const version of ['0.12.3', '1.0.0-alpha', '1.0.0-beta.2', '10.20.30-rc.0']) {
       expect(isTelemetryCliVersion(version)).toBe(true);
     }
-    for (const version of [undefined, 12, '01.2.3', '1.2', '1.2.3-preview', '1.2.3-rc.01', '1.2.3+build', 'v1.2.3']) {
+    for (const version of [
+      undefined, 12, '01.2.3', '1.2', '1.2.3-dev.0', '1.2.3-preview',
+      '1.2.3-rc.01', '1.2.3+build', 'v1.2.3'
+    ]) {
       expect(isTelemetryCliVersion(version)).toBe(false);
     }
   });

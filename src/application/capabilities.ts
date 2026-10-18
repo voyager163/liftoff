@@ -44,6 +44,12 @@ export function installedCapabilities() {
         execution: false,
         scope: 'Source inspection and independently reconstructed local publication proof only; no current writers or provider completion.'
       },
+      modernWorkflowReview: {
+        manifestRead: [8], report: 1, selector: 'governance plan --scope activation --inputs <workflow-review.json>',
+        request: 'review-workflow-source5', readOnly: true, blockedExit: 2,
+        approval: false, execution: false, externalMetadataWrites: false, providerOperations: false,
+        scope: 'Exact current5 review values only. Independently current prerequisite/Azure peers and qualified native-host integration remain unavailable; no source upload, dispatch or phase/matrix completion is authorized.'
+      },
       modernLocalVerification: {
         manifestRead: [8], report: modernLocalCommandReportSchemaVersion,
         selector: 'governance <plan|approve|apply-next> --scope local --local-operation verify',

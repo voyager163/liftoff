@@ -7,6 +7,7 @@ import type { ExternalCommand } from './domain/project/contracts.js';
 export interface RunCommandOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  inheritEnvironment?: boolean;
   stdin?: string | Uint8Array;
   timeoutMs?: number;
   maxOutputBytes?: number;
@@ -158,6 +159,13 @@ export class NodeCommandRunner implements CommandRunner {
       };
     }
     if (options.ensureProcessTreeSettled && process.platform === 'win32') {
+      if (options.stdin !== undefined) {
+        return {
+          command, displayCommand, status: null, signal: null, stdout: '', stderr: '', timedOut: false,
+          processSpawned: false, processTreeSettled: false, errorCode: 'UNSUPPORTED_PROCESS_INPUT',
+          errorMessage: 'The Windows settled process controller does not support stdin input; use an explicit file-backed command.'
+        };
+      }
       const { runWindowsJobCommand } = await import('./adapters/process/windows-job-runner.js');
       return runWindowsJobCommand(command, options);
     }
@@ -184,7 +192,8 @@ export class NodeCommandRunner implements CommandRunner {
       const ownsProcessGroup = (bounded || options.ensureProcessTreeSettled === true) && process.platform !== 'win32';
       const child = spawn(command.executable, command.args, {
         cwd: options.cwd,
-        env: options.env ? { ...process.env, ...options.env } : process.env,
+        env: options.inheritEnvironment === false ? { ...options.env } :
+          options.env ? { ...process.env, ...options.env } : process.env,
         shell: false,
         detached: ownsProcessGroup,
         stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],

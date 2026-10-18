@@ -40,6 +40,8 @@ import {
 } from '../src/application/project/source-context.js';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
+import { createCommandOutcome } from '../src/application/command-outcome.js';
+import type { TelemetrySemanticOutcome } from '../src/telemetry/contract.js';
 import { buildCurrentArtifacts } from '../src/templates.js';
 import { optionsFromParsedArgs } from '../src/cli/project-options.js';
 import { CaptureStream } from './helpers.js';
@@ -95,12 +97,14 @@ async function fixture(options: { manifest?: boolean } = {}) {
     artifact => artifact.logicalName === 'manifest'
   );
   if (!manifest) throw new Error('Missing command fixture manifest source.');
+  const parsedManifest = parseProjectManifest(JSON.parse(manifest.content) as unknown);
+  if (parsedManifest.artifactVersion !== 8) {
+    throw new Error('Command fixture requires the current manifest schema.');
+  }
   return {
     root,
     home,
-    source: modernProjectSourceInput(
-      parseProjectManifest(JSON.parse(manifest.content) as unknown)
-    )
+    source: modernProjectSourceInput(parsedManifest)
   };
 }
 
@@ -349,17 +353,19 @@ async function invoke(
   argv: string[],
   cwd: string,
   home: string
-): Promise<{ code: number; stdout: string; stderr: string }> {
+): Promise<{ code: number; stdout: string; stderr: string; outcome: TelemetrySemanticOutcome }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
+  const outcome = createCommandOutcome();
   const code = await runCommand(parseArgs(argv), {
     cwd,
     stdout,
     stderr,
+    outcome,
     updateNow: () => now,
     updatePreview: { homedir: home, env: {}, clock: () => now }
   });
-  return { code, stdout: stdout.text(), stderr: stderr.text() };
+  return { code, stdout: stdout.text(), stderr: stderr.text(), outcome: outcome.finish(code) };
 }
 
 describe('public reviewed adoption command', () => {
@@ -371,7 +377,7 @@ describe('public reviewed adoption command', () => {
       path.dirname(project.root),
       project.home
     );
-    expect(result).toMatchObject({ code: 2, stderr: '' });
+    expect(result).toMatchObject({ code: 2, stderr: '', outcome: 'attention-required' });
     const report = JSON.parse(result.stdout);
     expect(report).toMatchObject({
       schemaVersion: 1,
@@ -465,7 +471,7 @@ describe('public reviewed adoption command', () => {
       project.root,
       project.home
     );
-    expect(result).toMatchObject({ code: 0, stderr: '' });
+    expect(result).toMatchObject({ code: 0, stderr: '', outcome: 'success' });
     expect(result.stdout).not.toContain('deployment-state-must-not-be-read-or-written');
     expect(JSON.parse(result.stdout)).toMatchObject({
       operation: 'approve',
@@ -526,7 +532,7 @@ describe('public reviewed adoption command', () => {
       project.root,
       project.home
     );
-    expect(recovery.code).toBe(1);
+    expect(recovery).toMatchObject({ code: 1, outcome: 'failure' });
     expect(JSON.parse(recovery.stdout)).toMatchObject({
       operation: 'recover',
       status: 'recovery-unavailable',
@@ -543,7 +549,7 @@ describe('public reviewed adoption command', () => {
       path.dirname(missing),
       home
     );
-    expect(approval.code).toBe(1);
+    expect(approval).toMatchObject({ code: 1, outcome: 'failure' });
     expect(JSON.parse(approval.stdout)).toMatchObject({
       operation: 'approve',
       status: 'error',
@@ -557,7 +563,7 @@ describe('public reviewed adoption command', () => {
       path.dirname(missing),
       home
     );
-    expect(recovery.code).toBe(1);
+    expect(recovery).toMatchObject({ code: 1, outcome: 'failure' });
     expect(JSON.parse(recovery.stdout)).toMatchObject({
       operation: 'recover',
       status: 'error',
@@ -582,7 +588,7 @@ describe('public reviewed adoption command', () => {
       project.root,
       project.home
     );
-    expect(result).toMatchObject({ code: 2, stderr: '' });
+    expect(result).toMatchObject({ code: 2, stderr: '', outcome: 'attention-required' });
     expect(JSON.parse(result.stdout)).toMatchObject({
       operation: 'recover',
       readOnly: false,

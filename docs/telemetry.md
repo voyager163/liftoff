@@ -3,8 +3,8 @@
 Liftoff collects a small aggregate event to understand which CLI commands are
 useful and whether they complete, need operator attention, are cancelled, or
 fail. Telemetry is enabled by default, disclosed before the first eligible
-command, and never required for the CLI to work. It creates
-no persistent installation or session identifier.
+command, and never required for the CLI to work.
+It creates no persistent installation or session identifier.
 
 ## Event contract
 
@@ -54,6 +54,13 @@ reason codes, and errors are not added. The replacement binary's verification
 process runs with telemetry and disclosure disabled, so at most the originally
 invoked parent command emits an event.
 
+`liftoff doctor` and its JSON/help forms, `liftoff help doctor`,
+`liftoff upgrade --help`, and `liftoff help upgrade` bypass anonymous telemetry,
+disclosure, and consent/enrollment writes. Ownership, freshness and replacement
+verification subprocesses opt out with both `DO_NOT_TRACK=1` and
+`LIFTOFF_TELEMETRY=0`, including in ordinary CI environments. Updating the CLI
+does not enroll project reporting or change the user's reporting configuration.
+
 Liftoff does **not** send:
 
 - An installation, user, device, or session identifier.
@@ -71,7 +78,7 @@ below. None of these records is an installation, user or device identity.
 
 ## Versioned ingestion rollout
 
-The candidate gateway accepts command schemas 1 and 2 independently. Schema 1
+The gateway accepts command schemas 1 and 2 independently. Schema 1
 retains its original zero/nonzero meaning; schema 2 accepts `success`,
 `attention-required`, `cancelled`, and `failure` from the command's semantic
 result. Expected exit-2 drift is attention-required, while an actual partial
@@ -80,12 +87,24 @@ execution failure is failure. A schema-1 event is never reinterpreted as schema
 separate explicit project enrollment; this is not a claim that the latest
 published release or production ingestion has been qualified for it.
 
+Telemetry payloads admit only bounded release versions: stable versions and the
+declared `alpha`, `beta`, or `rc` prerelease forms. Reserved unpublished source
+versions such as `0.13.0-dev.0` do not display the ordinary disclosure, invoke
+telemetry hooks, or send command/project events. Explicit local telemetry
+status, enrollment, and disablement commands remain available; an explicit
+report from an unpublished build returns `unreleased-cli` without transport.
+
 Command producers also record an invocation-local semantic outcome. Expected
 update drift or an available CLI upgrade is `attention-required`; an explicit
 decline or interactive cancellation is `cancelled`. Failed verification,
 partial execution, recovery or cleanup remains `failure`, even if its public
 exit is 2 or a later prompt is cancelled. An unclassified nonzero exit stays
 `failure`; numeric exit codes and command output are unchanged.
+
+A committed adoption with successful independent readback is `success`.
+An adoption preview or a clean recovery rollback is `attention-required`:
+neither completes adoption. Failed approval, publication or recovery remains
+`failure`.
 
 Explicit local integrations may also observe the schema-2 event through the
 optional `CliTelemetryHooks.afterSemanticCommand` hook. It uses the same command
@@ -100,7 +119,18 @@ have aged past the published 180-day retention window. Combining the two
 schemas would falsely treat historical expected nonzero states as semantic
 failures.
 
-The candidate configuration is **not yet deployed**. Its separate
+The candidate gateway is **deployed; project reporting remains disabled**. The
+separately authorized 2026-10-18 rollout added `LiftoffProjectEvents_CL` and its
+DCR stream with verified 180-day retention, then built and deployed the exact
+public-source gateway image through reviewed OpenTofu plans. Four registered
+synthetic events were accepted and deduplicated to two roots; the real Grafana
+MSI queries exclude both IDs from adoption panels. These protocol probes are
+not actual enrollment, a published-client journey or a genuine CI heartbeat.
+`project_ingestion_enabled=false` is back in effect after controlled verification;
+the live gateway has no
+project-stream environment setting. No client or heartbeat was enrolled, and
+schema availability is not proof of successful project ingestion.
+The candidate's separate
 `/api/projects` endpoint accepts only project schema 2:
 
 ```json
@@ -170,7 +200,7 @@ An operator-reviewed deletion request needs independently verified authority;
 disabling delivery only stops future observations and does not claim historical
 deletion. The public endpoint can receive forged observations.
 
-## Explicit project consent (candidate client)
+## Explicit project consent candidate client
 
 Check `liftoff capabilities --json` in the installed CLI before using these
 commands. Installation, initialization, generated README/setup guidance, agent
@@ -241,7 +271,9 @@ self-upgrade never collect a project observation.
 Project enrollment never installs a schedule or enables a CI exception.
 `liftoff telemetry heartbeat enable ./project --repository ./repository --check --json`
 currently reports a blocker: no qualified published heartbeat-capable Linux CLI
-archive/digest and repository-scoped enablement producer are registered.
+archive/digest and immutable checkout action are registered. The source producer
+foundation is gated by release-owned qualification, which remains undefined;
+there is no CLI flag, environment variable or caller-supplied pin override.
 The latest release's presence, a syntactically valid URL/digest, a caller flag,
 or a test specimen is not artifact qualification. No invented archive URL,
 mutable `latest`/tag pin, automatic installation or active cron is installed.
@@ -255,6 +287,32 @@ runtime-inclusive CLI archive/digest and immutable checkout action, monthly
 schedule and contents-read permission. It never scans/enrolls projects, runs
 application scripts, upgrades/repairs projects or deploys Azure resources.
 Syntax/rendering tests are not real artifact/publication/CI qualification.
+
+The gated producer reviews one explicit canonical project and repository root,
+the independently verified GitHub origin and physical Git/repository identity,
+current enrollment and external consent/config snapshot, and both exact target
+files. Separate approval installs only the reviewed root; stale snapshots,
+ambiguous ownership, different tooling and read-only targets fail before writes.
+It does not enroll, generate an identity, update another root, upgrade tooling
+or execute application code. Candidate-tooling tests exercise pure plans and
+disposable filesystem transactions only, not the public release gate.
+
+The future qualified workflow invokes
+`liftoff telemetry report ./project --heartbeat --repository ./repository --json`
+with the exact selected root and repository. It must validate the current enabled
+project record, distinct enabled inventory entry, exact release-owned tooling,
+owned monthly workflow/job bytes and independently verified repository binding.
+A tracked record or forged CI/workflow environment is not sufficient. This path
+reads no local consent/config and writes no notice, consent or event queue; its
+separately approved repository inventory is the CI enablement. Both global
+opt-outs are rechecked after asynchronous preparation and before transport.
+Ordinary `CI=true` paths remain disabled. Collection, proof revalidation and the
+single project request share the existing one-second deadline with no retries.
+
+Removing the last entry deletes the two reviewed files only when the workflow
+is entirely Liftoff-owned. Custom jobs and bytes are retained; custom content
+without remaining jobs requires a separate review rather than an implicit
+overwrite or deletion.
 
 For an existing exact inventoried entry,
 `liftoff telemetry heartbeat disable ./project --repository ./repository --check --json`
@@ -458,12 +516,19 @@ resource group.
 Normal `liftoff` commands never authenticate to Azure, read OpenTofu state, or
 deploy telemetry infrastructure.
 
-## Grafana adoption dashboard (source only)
+## Grafana adoption dashboard
 
 Reviewed source now lives in `infrastructure/opentofu/telemetry/grafana` and
-`infrastructure/opentofu/telemetry/dashboards`; it is **not deployed**. See the
-[operator runbook](../infrastructure/opentofu/telemetry/README.md#managed-grafana-source-preparation-not-deployed)
-in a source checkout. Infrastructure is operator-owned, not part of the CLI
+`infrastructure/opentofu/telemetry/dashboards`. The authorized Standard X1
+instance and dashboard are deployed in Korea Central, with scoped MSI access
+and all alerts paused. Actual authenticated API and native 30/90/180-day queries
+succeeded, including empty/unavailable states and synthetic exclusions. The
+operator exercised dashboard removal/restoration and project-feature
+disablement without destroying data or disabling legacy command ingestion.
+Browser/UI, fault-alert firing/routing, installed-client and genuine heartbeat
+qualification remain incomplete. See the
+[operator runbook](https://github.com/voyager163/liftoff/tree/develop/infrastructure/opentofu/telemetry#managed-grafana-deployment-and-remaining-qualification)
+in the source repository. Infrastructure is operator-owned, not part of the CLI
 package or something normal commands apply.
 
 The authenticated native Grafana view shows approximate opted-in distinct
@@ -480,6 +545,11 @@ Query/permission/table errors stay **unavailable**, never zero projects.
 A successful empty query means no retained observations; older records may
 have expired. Operator-configured disabled reporting is shown separately from
 unknown configuration, never inferred per project from silence. Explicit
+monthly status includes an **unconfigured** row for an empty or fully
+synthetic-excluded expectation inventory, with zero expected projects rather
+than a fabricated healthy heartbeat. Future monitoring starts show **pending**.
+The operator configuration is a separate column, not inferred client consent;
+query failures remain unavailable even when there are no expectations. Explicit
 monthly expectations use **31 days plus 9 days grace (40 days)**, followed by
 a 15-minute alert pending period; late/missing observations mean stale/unknown
 reporting, not abandonment. Query availability does not establish ingestion
@@ -492,10 +562,12 @@ Operator-registered synthetic UUIDs are excluded from every project query,
 including freshness; no extra payload field is added. No embedded secrets,
 public sharing, request/IP/console logging or new backend is introduced.
 
-Provider registration, Standard size/region/quota/actual recurring cost,
-protected state ownership, real datasource access, project ingestion,
-published heartbeat tooling and native UI/live query scenarios remain external
+Provider registration, actual Standard X1 placement/cost disclosure, protected
+state ownership, real datasource queries and controlled synthetic ingestion
+now have operator deployment evidence. Billed subscription-specific costs,
+published heartbeat tooling, browser/UI and fault-alert firing/routing remain
 qualification gates. Pausing alerts or rolling back dashboard JSON preserves
 workspace/tables, history, command ingress and backend/perimeter; it does not
-delete records or stop Managed Grafana service charges. Source tests are not
-production deployment or an exercised rollback.
+delete records or stop Managed Grafana service charges. Source tests alone are
+not production deployment or an exercised rollback; the operator evidence is
+recorded separately.

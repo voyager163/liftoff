@@ -18,9 +18,15 @@ import {
 } from '../../telemetry/delivery.js';
 import { productionTelemetryEndpoint } from '../../telemetry/index.js';
 import { getTelemetryConfigPath } from '../../telemetry/config.js';
-import { isProjectTelemetryEvent, type ProjectTelemetryEvent } from '../../telemetry/contract.js';
+import {
+  isProjectTelemetryEvent,
+  isTelemetryCliVersion,
+  type ProjectTelemetryEvent
+} from '../../telemetry/contract.js';
 import { requestUpdateApproval } from '../update/approval.js';
 import type { ExecutionContext } from '../context.js';
+import { qualifiedHeartbeatTooling } from '../../domain/project/telemetry-heartbeat.js';
+import { readQualifiedHeartbeatReportProof } from '../../adapters/filesystem/telemetry-heartbeat.js';
 
 export const projectTelemetryEndpoint = productionTelemetryEndpoint.replace(/\/events$/, '/projects');
 export type ProjectReportResult = TelemetryDeliveryResult | {
@@ -30,6 +36,7 @@ export type ProjectReportResult = TelemetryDeliveryResult | {
 export interface ProjectTelemetryRequest {
   operation: 'status' | 'enroll' | 'disable' | 'report';
   project?: string;
+  repository?: string;
   check: boolean;
   approvePlan?: string;
   preserveIdentity: boolean;
@@ -38,7 +45,7 @@ export interface ProjectTelemetryRequest {
   json: boolean;
 }
 
-async function observe(cwd: string, project: string | undefined, env: NodeJS.ProcessEnv) {
+export async function observeProjectTelemetryRoot(cwd: string, project: string | undefined) {
   const selected = project === undefined ? await findProjectRoot(cwd) : path.resolve(cwd, project);
   if (!selected) throw new FileSystemError('No Liftoff project root was selected.');
   const location = await telemetryRoot(selected);
@@ -47,16 +54,21 @@ async function observe(cwd: string, project: string | undefined, env: NodeJS.Pro
   const dimensions = projectTelemetryDimensions(telemetryJson(manifest.content, 'Project manifest'));
   const recordFile = await readTelemetryFile(location.root, projectTelemetryRecordPath, 4096);
   const record = parseTelemetryFile(recordFile);
+  return { ...location, manifest, dimensions, recordFile, record };
+}
+
+async function observe(cwd: string, project: string | undefined, env: NodeJS.ProcessEnv) {
+  const observed = await observeProjectTelemetryRoot(cwd, project);
   const config = await readTelemetryConsentConfig(getTelemetryConfigPath({ env }));
-  if (config.path === location.root || config.path.startsWith(`${location.root}${path.sep}`)) {
+  if (config.path === observed.root || config.path.startsWith(`${observed.root}${path.sep}`)) {
     throw new FileSystemError('Project consent must be stored outside the selected project.');
   }
 
-  const consent = record && projectConsentBindings(config.config).some(binding =>
-    binding.projectRoot === location.root && binding.projectId === record.projectId &&
+  const consent = observed.record && projectConsentBindings(config.config).some(binding =>
+    binding.projectRoot === observed.root && binding.projectId === observed.record?.projectId &&
     binding.disclosureVersion === projectTelemetryDisclosureVersion);
   const writableConfig = config.snapshot.mode === undefined || (config.snapshot.mode & 0o222) !== 0;
-  return { ...location, manifest, dimensions, recordFile, record, config, consent: consent === true && writableConfig };
+  return { ...observed, config, consent: consent === true && writableConfig };
 }
 
 export { observe as observeProjectTelemetry };
@@ -82,25 +94,50 @@ function review(observed: Awaited<ReturnType<typeof observe>>, request: ProjectT
 }
 
 export async function reportProjectObservation(
-  options: { cwd: string; project?: string; env: NodeJS.ProcessEnv; heartbeat?: boolean; delivery?: TelemetryDelivery }
+  options: {
+    cwd: string;
+    project?: string;
+    repository?: string;
+    env: NodeJS.ProcessEnv;
+    heartbeat?: boolean;
+    delivery?: TelemetryDelivery;
+    cliVersion?: string;
+  }
 ): Promise<ProjectReportResult> {
   const disabled = telemetryDisabledResult(options.env);
-  // No qualified published heartbeat producer exists yet; CI cannot be enabled by a caller flag or tracked record.
   if (disabled?.reason === 'global-opt-out') return disabled;
-  if (options.heartbeat) return { status: 'disabled', attempted: false, reason: 'heartbeat-not-qualified' };
-  if (disabled) return disabled;
+  if (options.heartbeat && (!qualifiedHeartbeatTooling || !options.project || !options.repository)) {
+    return { status: 'disabled', attempted: false, reason: 'heartbeat-not-qualified' };
+  }
+  if (disabled && !options.heartbeat) return disabled;
+  const cliVersion = options.cliVersion ?? liftoffVersion;
+  if (!isTelemetryCliVersion(cliVersion)) {
+    return { status: 'disabled', attempted: false, reason: 'unreleased-cli' };
+  }
   const delivery = options.delivery ?? createTelemetryDelivery({ env: options.env });
   try {
     const prepared = await delivery.withinBudget(async () => {
-      const observed = await observe(options.cwd, options.project, options.env);
+      const observed = options.heartbeat
+        ? { ...await observeProjectTelemetryRoot(options.cwd, options.project), consent: undefined }
+        : await observe(options.cwd, options.project, options.env);
+      if (options.heartbeat && path.resolve(options.cwd, options.project!) !== observed.root) {
+        throw new FileSystemError('Heartbeat report requires the explicit canonical selected project root.');
+      }
       if (!observed.record?.enabled) return { status: 'disabled', reason: 'not-enrolled', attempted: false } as const;
-      if (!observed.consent) return { status: 'disabled', reason: 'local-consent-required', attempted: false } as const;
+      if (!options.heartbeat && !observed.consent) return { status: 'disabled', reason: 'local-consent-required', attempted: false } as const;
       const event: ProjectTelemetryEvent = {
         schemaVersion: 2, event: 'project_observed', projectId: observed.record.projectId,
-        cliVersion: liftoffVersion, ...observed.dimensions, source: 'cli'
+        cliVersion, ...observed.dimensions, source: options.heartbeat ? 'ci-heartbeat' : 'cli'
       };
       if (!isProjectTelemetryEvent(event)) throw new FileSystemError('Project telemetry dimensions are unsupported.');
-      return { status: 'ready', event } as const;
+      const heartbeatProof = options.heartbeat ? await readQualifiedHeartbeatReportProof({
+        projectRoot: observed.root, repositoryRoot: path.resolve(options.cwd, options.repository!),
+        manifest: telemetrySnapshotIdentity(observed.manifest), event, env: options.env, signal: delivery.signal
+      }) : undefined;
+      if (options.heartbeat && !heartbeatProof) return { status: 'disabled', attempted: false, reason: 'heartbeat-not-qualified' } as const;
+      const after = telemetryDisabledResult(options.env);
+      if (after?.reason === 'global-opt-out' || after && !options.heartbeat) return after;
+      return { status: 'ready', event: Object.freeze(event), heartbeatProof } as const;
     });
     if (prepared.status === 'failed') {
       return prepared.reason === 'operation-failed'
@@ -108,7 +145,9 @@ export async function reportProjectObservation(
         : { status: 'failed', attempted: false, reason: prepared.reason };
     }
     if (prepared.value.status !== 'ready') return prepared.value;
-    const result = await delivery.deliver({ project: { endpoint: projectTelemetryEndpoint, event: prepared.value.event } });
+    const result = await delivery.deliver({ project: {
+      endpoint: projectTelemetryEndpoint, event: prepared.value.event, heartbeatProof: prepared.value.heartbeatProof
+    } });
     if (!result.project) throw new FileSystemError('Project delivery did not return its requested result.');
     return result.project;
   } finally {
@@ -117,11 +156,15 @@ export async function reportProjectObservation(
 }
 
 export async function reportOrdinaryProject(
-  parsed: ParsedArgs, cwd: string, env: NodeJS.ProcessEnv, delivery: TelemetryDelivery
+  parsed: ParsedArgs,
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  delivery: TelemetryDelivery,
+  cliVersion: string
 ): Promise<void> {
   if (parsed.flags.help === true || !['validate', 'update', 'repair', 'doctor', 'governance', 'dev', 'infra'].includes(parsed.command ?? '')) return;
   const project = typeof parsed.flags.project === 'string' ? parsed.flags.project : parsed.positional[0];
-  await reportProjectObservation({ cwd, project, env, delivery });
+  await reportProjectObservation({ cwd, project, env, delivery, cliVersion });
 }
 
 export async function runProjectTelemetry(request: ProjectTelemetryRequest, context: ExecutionContext): Promise<number> {
@@ -131,12 +174,19 @@ export async function runProjectTelemetry(request: ProjectTelemetryRequest, cont
     context.presentation.rawStdout(`${JSON.stringify(report, null, 2)}\n`);
   };
   const disabled = telemetryDisabledResult(env);
-  if (disabled) {
+  if (disabled && !(disabled.reason === 'ordinary-ci' && request.operation === 'report' && request.heartbeat)) {
     output(disabled);
     return 0;
   }
   if (request.operation === 'report') {
-    const result = await reportProjectObservation({ cwd: context.cwd, project: request.project, env, heartbeat: request.heartbeat });
+    const result = await reportProjectObservation({
+      cwd: context.cwd,
+      project: request.project,
+      repository: request.repository,
+      env,
+      heartbeat: request.heartbeat,
+      cliVersion: context.telemetryReleaseVersion
+    });
     output(result);
     return result.status === 'failed' ? 1 : 0;
   }
