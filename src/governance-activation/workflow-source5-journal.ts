@@ -379,40 +379,47 @@ async function describeSource5WorkflowJournal(input: Source5WorkflowJournalInput
       return workflowFailure('workflow-source5-journal', 'An operation is outside the original journal inventory.');
     }
     const result: Source5WorkflowEvent[] = [];
-    for (const stage of stages(operation)) {
-      const stored = await store.read('proof', selectedStageKey(stage));
-      if (!stored) continue;
-      const raw = stored.value;
-      if (selectedPlan === plan) {
-        const bound = manifest.value.objects.find(bound => bound.namespace === 'proof' && bound.key === selectedStageKey(stage));
-        if (!bound || stored.encodedBytes > bound.maximumEncodedBytes || stored.revision > bound.maximumRevisions) {
-          return workflowFailure('workflow-source5-chain', 'Actual sealed event exceeds its original complete byte/revision reservation.');
+    const operationStages = stages(operation);
+    for (let start = 0; start < operationStages.length; start += 4) {
+      const batch = operationStages.slice(start, start + 4);
+      const observations = await Promise.allSettled(batch.map(stage => store.read('proof', selectedStageKey(stage))));
+      for (const [index, stage] of batch.entries()) {
+        const observation = observations[index]!;
+        if (observation.status === 'rejected') throw observation.reason;
+        const stored = observation.value;
+        if (!stored) continue;
+        const raw = stored.value;
+        if (selectedPlan === plan) {
+          const bound = manifest.value.objects.find(bound => bound.namespace === 'proof' && bound.key === selectedStageKey(stage));
+          if (!bound || stored.encodedBytes > bound.maximumEncodedBytes || stored.revision > bound.maximumRevisions) {
+            return workflowFailure('workflow-source5-chain', 'Actual sealed event exceeds its original complete byte/revision reservation.');
+          }
         }
+        if (!isRecord(raw) || raw.schemaVersion !== 1 || raw.kind !== 'workflow-source5-event' ||
+          raw.controlKey !== selectedControl.controlKey || raw.planDigest !== selectedPlan.planDigest ||
+          raw.savedPlanDigest !== selectedCommon.savedPlanDigest || raw.operationDigest !== canonicalSha256(operation) ||
+          raw.bindingDigest !== canonicalSha256(operation.inputs) || raw.stage !== stage ||
+          !(raw.previousEventDigest === null || typeof raw.previousEventDigest === 'string') ||
+          raw.previousEventDigest !== (result.length ? canonicalSha256(result.at(-1)) : null) ||
+          typeof raw.recordedAt !== 'string' || !Number.isFinite(Date.parse(raw.recordedAt)) ||
+          Date.parse(raw.recordedAt) < Date.parse(selectedPlan.createdAt) ||
+          result.length && Date.parse(raw.recordedAt) < Date.parse(result.at(-1)!.recordedAt) || !isRecord(raw.data) ||
+          canonicalSha256(Object.keys(raw).sort()) !== canonicalSha256([
+            'schemaVersion', 'kind', 'controlKey', 'planDigest', 'savedPlanDigest', 'operationDigest',
+            'bindingDigest', 'stage', 'previousEventDigest', 'recordedAt', 'data'
+          ].sort())) {
+          return workflowFailure('workflow-source5-chain', 'Original workflow checkpoint chain is missing, reordered or contradicts its exact plan/binding.');
+        }
+        const event: Source5WorkflowEvent = { schemaVersion: 1, kind: 'workflow-source5-event', controlKey: selectedControl.controlKey,
+          planDigest: selectedPlan.planDigest, savedPlanDigest: selectedCommon.savedPlanDigest, operationDigest: canonicalSha256(operation),
+          bindingDigest: canonicalSha256(operation.inputs), stage, previousEventDigest: raw.previousEventDigest,
+          recordedAt: raw.recordedAt, data: raw.data };
+        if (Buffer.byteLength(canonicalJson(raw.data)) > maximumStageDataBytes) {
+          return workflowFailure('workflow-source5-chain', 'Checkpoint data exceeds its original bounded complete protocol reservation.');
+        }
+        validateSource5WorkflowCheckpointData(operation, stage, raw.data, result, selectedPlan.planDigest);
+        result.push(captureWorkflowBinding(event));
       }
-      if (!isRecord(raw) || raw.schemaVersion !== 1 || raw.kind !== 'workflow-source5-event' ||
-        raw.controlKey !== selectedControl.controlKey || raw.planDigest !== selectedPlan.planDigest ||
-        raw.savedPlanDigest !== selectedCommon.savedPlanDigest || raw.operationDigest !== canonicalSha256(operation) ||
-        raw.bindingDigest !== canonicalSha256(operation.inputs) || raw.stage !== stage ||
-        !(raw.previousEventDigest === null || typeof raw.previousEventDigest === 'string') ||
-        raw.previousEventDigest !== (result.length ? canonicalSha256(result.at(-1)) : null) ||
-        typeof raw.recordedAt !== 'string' || !Number.isFinite(Date.parse(raw.recordedAt)) ||
-        Date.parse(raw.recordedAt) < Date.parse(selectedPlan.createdAt) ||
-        result.length && Date.parse(raw.recordedAt) < Date.parse(result.at(-1)!.recordedAt) || !isRecord(raw.data) ||
-        canonicalSha256(Object.keys(raw).sort()) !== canonicalSha256([
-          'schemaVersion', 'kind', 'controlKey', 'planDigest', 'savedPlanDigest', 'operationDigest',
-          'bindingDigest', 'stage', 'previousEventDigest', 'recordedAt', 'data'
-        ].sort())) {
-        return workflowFailure('workflow-source5-chain', 'Original workflow checkpoint chain is missing, reordered or contradicts its exact plan/binding.');
-      }
-      const event: Source5WorkflowEvent = { schemaVersion: 1, kind: 'workflow-source5-event', controlKey: selectedControl.controlKey,
-        planDigest: selectedPlan.planDigest, savedPlanDigest: selectedCommon.savedPlanDigest, operationDigest: canonicalSha256(operation),
-        bindingDigest: canonicalSha256(operation.inputs), stage, previousEventDigest: raw.previousEventDigest,
-        recordedAt: raw.recordedAt, data: raw.data };
-      if (Buffer.byteLength(canonicalJson(raw.data)) > maximumStageDataBytes) {
-        return workflowFailure('workflow-source5-chain', 'Checkpoint data exceeds its original bounded complete protocol reservation.');
-      }
-      validateSource5WorkflowCheckpointData(operation, stage, raw.data, result, selectedPlan.planDigest);
-      result.push(captureWorkflowBinding(event));
     }
     const pointer = await store.read('operation', selectedOperationKey);
     if (pointer) {

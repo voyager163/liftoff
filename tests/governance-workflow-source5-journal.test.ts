@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { nodeUpdatePreviewFileSystem, workflowSource5ControlLimits } from '../src/adapters/filesystem/update-previews.js';
-import { openSource5WorkflowJournal } from '../src/governance-activation/workflow-source5-journal.js';
+import { openSource5WorkflowJournal, source5WorkflowStages } from '../src/governance-activation/workflow-source5-journal.js';
 import {
   issueSource5WorkflowApproval, restoreSource5WorkflowAuthority, source5WorkflowAuthorityValue,
   source5WorkflowOriginalPlanValue, withSource5WorkflowLease
@@ -12,8 +12,27 @@ import type { ProjectMutationLease } from '../src/adapters/filesystem/project-lo
 import { measureSource5WorkflowStorageInventory, source5MaximumStorageKeys } from '../src/governance-activation/workflow-source5-storage-inventory.js';
 import { workflowSource5JournalFixture } from './fixtures/workflow-source5-journal.js';
 
+const io = vi.hoisted(() => ({
+  observeRead: undefined as undefined | ((namespace: string, key: string) => ((error: unknown) => Promise<void>) | undefined)
+}));
+vi.mock('../src/adapters/filesystem/update-previews.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../src/adapters/filesystem/update-previews.js')>();
+  return { ...actual, createWorkflowSource5ControlStore(...args: Parameters<typeof actual.createWorkflowSource5ControlStore>) {
+    const store = actual.createWorkflowSource5ControlStore(...args);
+    return { ...store, async read(...selected: Parameters<typeof store.read>) {
+      const observe = io.observeRead?.(...selected);
+      let failure: unknown;
+      try { return await store.read(...selected); }
+      catch (error) { failure = error; throw error; }
+      finally { await observe?.(failure); }
+    } };
+  } };
+});
 const roots: string[] = [];
-afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
+afterEach(async () => {
+  io.observeRead = undefined;
+  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
+});
 async function fixture() {
   const value = await workflowSource5JournalFixture(); roots.push(value.root);
   await sealReview(value);
@@ -54,6 +73,90 @@ function proofBinding(value: Awaited<ReturnType<typeof fixture>>) {
     workflowPath: value.binding.files[0]!.path, workflowDigest: value.binding.files[0]!.digest,
     contexts: [{ name: 'fixture-context', validationStep: 'Validate fixture' }], mode: 'green', tokenSuppressedTrigger: true };
 }
+
+function observeEventBatch(keys: readonly string[]) {
+  let release!: () => void, refuse!: (error: Error) => void, siblingSettled!: () => void;
+  const ready = new Promise<void>((resolve, reject) => { release = resolve; refuse = reject; });
+  const sibling = new Promise<void>(resolve => { siblingSettled = resolve; });
+  const state = { started: [] as string[], completed: [] as number[], active: 0, maximum: 0, failures: new Map<string, unknown>() };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  io.observeRead = (namespace, key) => {
+    if (namespace !== 'proof' || !keys.includes(key)) return;
+    const index = state.started.length;
+    if (index % 4 === 0) expect(state.active).toBe(0);
+    expect(key).toBe(keys[index]);
+    state.started.push(key);
+    state.maximum = Math.max(state.maximum, ++state.active);
+    if (index === 0) timer = setTimeout(() => refuse(new Error('The complete event batch did not start.')), 5000);
+    if (index === 3) { clearTimeout(timer); release(); }
+    return async error => {
+      try {
+        if (error !== undefined) state.failures.set(key, error);
+        await ready;
+        if (index === 0) await sibling;
+        if (index === 1) siblingSettled();
+      } finally { state.completed.push(index); state.active--; }
+    };
+  };
+  return state;
+}
+
+describe('bounded original workflow journal event readback', () => {
+  it('drains four authenticated reads before advancing while preserving all original stage bytes and chain order', async () => {
+    const value = await fixture();
+    await withSource5WorkflowLease(value.projectRoot, async lease => {
+      const { journal } = await publishedComponent(value, lease), original = await journal.events(value.operation);
+      const keys = original.map(event => eventKey(value.control.controlKey, value.operation, event.stage));
+      const retained = await Promise.all(keys.map(async key => {
+        const record = (await value.store.read('proof', key))!;
+        return { path: record.path, bytes: await readFile(record.path) };
+      }));
+      const state = observeEventBatch(keys);
+      expect(await journal.events(value.operation)).toEqual(original);
+      io.observeRead = undefined;
+      expect(state.maximum).toBe(4); expect(state.active).toBe(0);
+      expect(state.started).toEqual(keys); expect(state.completed).toHaveLength(8);
+      expect(state.completed.indexOf(1)).toBeLessThan(state.completed.indexOf(0));
+      expect(state.failures.size).toBe(0);
+      for (const record of retained) expect(await readFile(record.path)).toEqual(record.bytes);
+    });
+  });
+
+  it.each(['physical', 'chain'] as const)('drains the failed batch and preserves the first original %s refusal without reading later stages', async fault => {
+    const value = await fixture();
+    await withSource5WorkflowLease(value.projectRoot, async lease => {
+      const { journal } = await publishedComponent(value, lease);
+      const stages = [...source5WorkflowStages.slice(0, 7), 'component-completed'];
+      const keys = stages.map(stage => eventKey(value.control.controlKey, value.operation, stage));
+      const records = await Promise.all(keys.slice(0, 3).map(async key => (await value.store.read('proof', key))!));
+      if (fault === 'physical') {
+        await writeFile(records[0]!.path, '{');
+        await writeFile(records[1]!.path, '{}');
+      } else {
+        await unlink(records[0]!.path);
+        await writeFile(records[2]!.path, '{');
+      }
+      const state = observeEventBatch(keys);
+      const failure = await journal.events(value.operation).then(() => {
+        throw new Error('Invalid original event bytes must refuse.');
+      }, (error: unknown) => error);
+      io.observeRead = undefined;
+      expect(state.started).toEqual(keys.slice(0, 4));
+      expect(state.maximum).toBe(4); expect(state.active).toBe(0);
+      expect([...state.completed].sort()).toEqual([0, 1, 2, 3]);
+      expect(state.completed.indexOf(1)).toBeLessThan(state.completed.indexOf(0));
+      if (fault === 'physical') {
+        expect(state.failures.size).toBe(2);
+        expect(failure).toBe(state.failures.get(keys[0]!));
+      } else {
+        expect(state.failures.size).toBe(1);
+        expect(state.failures.has(keys[2]!)).toBe(true);
+        expect(failure).toMatchObject({ code: 'workflow-source5-chain' });
+        expect(failure).not.toBe(state.failures.get(keys[2]!));
+      }
+    });
+  });
+});
 
 describe('full closed source5 journal inventory and retained truth', () => {
   it.each([true, false])('requires a separately sealed original review before opening with initialize=%s', async initialize => {
