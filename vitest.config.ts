@@ -8,6 +8,8 @@ const distributionInspectionFile = 'tests/installed-tool-distribution.test.ts';
 const preparationExecutionFile = 'tests/repair-preparation-execution.test.ts';
 const cancellationFile = 'tests/repair-cancellation.test.ts';
 const workflowMatrixFile = 'tests/governance-workflow-source5-matrix.test.ts';
+const workflowFinalizationFile = 'tests/governance-workflow-source5-finalization.test.ts';
+const successorUpdateFile = 'tests/activation-successor-update.test.ts';
 
 // Every root Vitest invocation (npm test, targeted runs and the coverage gate)
 // uses a temporary HOME/XDG/profile root. The main process isolates while this
@@ -58,77 +60,42 @@ export function createRootTestConfig(
       ? { execArgv: ['--no-sparkplug'] }
       : {})
   };
+  const ordered = [
+    ...(platform === 'win32' ? [
+      { name: 'repair-cancellation', file: cancellationFile },
+      { name: 'repair-preparation-execution', file: preparationExecutionFile },
+      { name: 'installed-tool-distribution', file: distributionInspectionFile },
+      { name: 'migration-inspection', file: migrationInspectionFile }
+    ] : []),
+    { name: 'workflow-source5-matrix', file: workflowMatrixFile },
+    { name: 'workflow-source5-finalization', file: workflowFinalizationFile },
+    { name: 'activation-successor-update', file: successorUpdateFile }
+  ];
 
   return {
     test: {
       ...test,
-      ...(platform === 'win32' ? {
-        projects: [
-          {
-            extends: false,
-            test: {
-              ...test,
-              name: 'root-tests',
-              include: [...test.include],
-              exclude: [...defaultExclude, migrationInspectionFile, distributionInspectionFile, preparationExecutionFile, cancellationFile, workflowMatrixFile],
-              sequence: { groupOrder: 0 }
-            }
-          },
-          {
-            extends: false,
-            test: {
-              ...test,
-              name: 'repair-cancellation',
-              include: [cancellationFile],
-              // Keep cancellation and exact receipt reuse inside the unchanged 30s cases.
-              sequence: { groupOrder: 1 }
-            }
-          },
-          {
-            extends: false,
-            test: {
-              ...test,
-              name: 'repair-preparation-execution',
-              include: [preparationExecutionFile],
-              sequence: { groupOrder: 2 }
-            }
-          },
-          {
-            extends: false,
-            test: {
-              ...test,
-              name: 'installed-tool-distribution',
-              include: [distributionInspectionFile],
-              // Exercise the full 8192-file scan inside its unchanged 30s deadline.
-              sequence: { groupOrder: 3 }
-            }
-          },
-          {
-            extends: false,
-            test: {
-              ...test,
-              name: 'migration-inspection',
-              include: [migrationInspectionFile],
-              // Keep real revalidation inside its timed cases, without competing native builds.
-              sequence: { groupOrder: 4 }
-            }
-          },
-          {
-            extends: false,
-            test: {
-              ...test,
-              name: 'workflow-source5-matrix',
-              include: [workflowMatrixFile],
-              sequence: { groupOrder: 5 }
-            }
+      projects: [
+        {
+          extends: false,
+          test: {
+            ...test,
+            name: 'root-tests',
+            include: [...test.include],
+            exclude: [...defaultExclude, ...ordered.map(({ file }) => file)],
+            sequence: { groupOrder: 0 }
           }
-        ]
-      } : {})
+        },
+        ...ordered.map(({ name, file }, index) => ({
+          extends: false as const,
+          test: { ...test, name, include: [file], sequence: { groupOrder: index + 1 } }
+        }))
+      ]
     }
   } satisfies ViteUserConfig;
 }
 
-// Global setup stays at the root: Windows projects must not repeat it.
+// Global setup stays at the root; individual projects must not repeat it.
 export function createRootConfig(
   platform: NodeJS.Platform,
   nodeVersion = process.versions.node,

@@ -22,7 +22,7 @@ describe('root test runner configuration', () => {
   it('partitions Windows discovery into disjoint ordered groups without dropping any isolated file', () => {
     const windows = createRootTestConfig('win32');
     const projects = windows.test.projects;
-    expect(projects).toHaveLength(6);
+    expect(projects).toHaveLength(8);
     if (!projects) throw new Error('Expected all Windows test projects.');
 
     expect(projects[0]).toMatchObject({
@@ -30,9 +30,10 @@ describe('root test runner configuration', () => {
       test: {
         name: 'root-tests',
         include: ['tests/**/*.test.ts'],
-        exclude: [...defaultExclude, 'tests/migration-inspection.test.ts', 'tests/installed-tool-distribution.test.ts',
-          'tests/repair-preparation-execution.test.ts', 'tests/repair-cancellation.test.ts',
-          'tests/governance-workflow-source5-matrix.test.ts'],
+        exclude: [...defaultExclude, 'tests/repair-cancellation.test.ts', 'tests/repair-preparation-execution.test.ts',
+          'tests/installed-tool-distribution.test.ts', 'tests/migration-inspection.test.ts',
+          'tests/governance-workflow-source5-matrix.test.ts', 'tests/governance-workflow-source5-finalization.test.ts',
+          'tests/activation-successor-update.test.ts'],
         sequence: { groupOrder: 0 }
       }
     });
@@ -76,6 +77,22 @@ describe('root test runner configuration', () => {
         sequence: { groupOrder: 5 }
       }
     });
+    expect(projects[6]).toMatchObject({
+      extends: false,
+      test: {
+        name: 'workflow-source5-finalization',
+        include: ['tests/governance-workflow-source5-finalization.test.ts'],
+        sequence: { groupOrder: 6 }
+      }
+    });
+    expect(projects[7]).toMatchObject({
+      extends: false,
+      test: {
+        name: 'activation-successor-update',
+        include: ['tests/activation-successor-update.test.ts'],
+        sequence: { groupOrder: 7 }
+      }
+    });
     for (const project of projects.slice(1)) expect(project.test).not.toHaveProperty('exclude');
   });
 
@@ -94,11 +111,12 @@ describe('root test runner configuration', () => {
       expect(project.test).not.toHaveProperty('testNamePattern');
       expect(project.test).not.toHaveProperty('setupFiles');
       expect(project.test).not.toHaveProperty('globalSetup');
+      expect(project.test).not.toHaveProperty('hookTimeout');
     }
   });
 
-  it.each(['darwin', 'linux'] as const)('leaves the %s runner scheduling and discovery unchanged', (platform) => {
-    const { execArgv, ...test } = createRootTestConfig(platform).test;
+  it.each(['darwin', 'linux'] as const)('preserves %s worker defaults and case semantics while isolating intact readback and loader files', (platform) => {
+    const { execArgv, projects, ...test } = createRootTestConfig(platform).test;
     expect(test).toEqual({
       environment: 'node',
       include: ['tests/**/*.test.ts'],
@@ -106,6 +124,27 @@ describe('root test runner configuration', () => {
       maxWorkers: undefined,
       testTimeout: 30_000
     });
+    expect(projects.map(project => ({
+      name: project.test.name, include: project.test.include, groupOrder: project.test.sequence.groupOrder
+    }))).toEqual([
+      { name: 'root-tests', include: ['tests/**/*.test.ts'], groupOrder: 0 },
+      { name: 'workflow-source5-matrix', include: ['tests/governance-workflow-source5-matrix.test.ts'], groupOrder: 1 },
+      { name: 'workflow-source5-finalization', include: ['tests/governance-workflow-source5-finalization.test.ts'], groupOrder: 2 },
+      { name: 'activation-successor-update', include: ['tests/activation-successor-update.test.ts'], groupOrder: 3 }
+    ]);
+    expect(projects[0]!.test).toHaveProperty('exclude', [
+      ...defaultExclude, 'tests/governance-workflow-source5-matrix.test.ts',
+      'tests/governance-workflow-source5-finalization.test.ts', 'tests/activation-successor-update.test.ts'
+    ]);
+    for (const project of projects) {
+      expect(project.test).toMatchObject({
+        environment: 'node', restoreMocks: true, maxWorkers: undefined, testTimeout: 30_000
+      });
+      expect(project.test).not.toHaveProperty('hookTimeout');
+      expect(project.test).not.toHaveProperty('testNamePattern');
+      expect(project.test).not.toHaveProperty('setupFiles');
+      expect(project.test).not.toHaveProperty('globalSetup');
+    }
     expect(execArgv).toEqual(
       platform === 'darwin' && process.arch === 'arm64' && process.versions.node.startsWith('24.')
         ? ['--no-sparkplug']

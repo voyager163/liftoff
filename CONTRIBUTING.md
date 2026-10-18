@@ -57,11 +57,17 @@ Within the same test invocation, ordered projects run the other root files first
 then `tests/repair-cancellation.test.ts`, then `tests/repair-preparation-execution.test.ts`, then
 `tests/installed-tool-distribution.test.ts`, then the intact
 `tests/migration-inspection.test.ts` file, then the intact
-`tests/governance-workflow-source5-matrix.test.ts` file without competing filesystem-heavy
+`tests/governance-workflow-source5-matrix.test.ts` file, then the intact
+`tests/governance-workflow-source5-finalization.test.ts` file, then the intact
+`tests/activation-successor-update.test.ts` file without competing filesystem-heavy
 suites or native builds. The full distribution-limit fixtures retain their
 30-second production scan deadline rather than competing with other file workers.
 Cancellation and exact receipt reuse retain their original 30-second test deadline
 without concurrent native stack builds competing for the same filesystem.
+On macOS and Linux, the same final three files run in ordered groups after the
+other root files. The retained successor's actual SSR-loader preparation remains
+in its original 10-second hook, and Source5 cases retain their 30-second limits;
+neither fixtures nor assertions are moved out of their original timed bodies.
 Interpreter-copy preparation retains its original test timeout and reports
 phase timings; its actual fixture creation and verification are not moved into hooks.
 Each file belongs to exactly one
@@ -101,6 +107,11 @@ Source5 journal event reads use fixed batches of four authenticated, physically
 checked records. Every started read settles before chain validation proceeds
 in the original stage order. The first original refusal wins, and a failed batch
 never submits a later batch; no authority or currentness read is cached.
+Whole-matrix retained-component checks also drain fixed-four member batches,
+then validate in the original member order. Each member retains its own physical
+stage checks; an earlier semantic refusal still wins over a later physical
+failure. Both matrix inventory passes and the subsequent authority check remain
+fresh, and these local reads do not submit provider effects.
 Windows interop capture also rereads every assembly byte through the same open
 physical file using one buffer capped at 64 KiB. In-place changes must refuse
 even when Windows has not advanced the open handle's timestamps. The original
