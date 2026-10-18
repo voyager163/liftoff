@@ -56,7 +56,8 @@ The root Vitest configuration limits Windows to two concurrent file workers.
 Within the same test invocation, ordered projects run the other root files first,
 then `tests/repair-cancellation.test.ts`, then `tests/repair-preparation-execution.test.ts`, then
 `tests/installed-tool-distribution.test.ts`, then the intact
-`tests/migration-inspection.test.ts` file without competing filesystem-heavy
+`tests/migration-inspection.test.ts` file, then the intact
+`tests/governance-workflow-source5-matrix.test.ts` file without competing filesystem-heavy
 suites or native builds. The full distribution-limit fixtures retain their
 30-second production scan deadline rather than competing with other file workers.
 Cancellation and exact receipt reuse retain their original 30-second test deadline
@@ -72,8 +73,8 @@ timeouts are unchanged, including the migration inspection suite's 90-second
 limit. Use these defaults for CI qualification rather than increasing timeouts
 or excluding slow cases.
 
-Hosted CI partitions the complete root suite into two shards per platform.
-Both shards run the package's supported-stack check and build; native integration
+Hosted CI partitions the complete root suite into four shards per platform.
+Every shard runs the package's supported-stack check and build; native integration
 and packaging checks run on shard 1, except the intact Windows project/packaging
 boundary suite runs on shard 2. That named boundary suite includes repair and
 adoption path-with-spaces, junction, mode/readback, and interrupted-transaction
@@ -89,9 +90,22 @@ which has a 75-minute limit because it must complete both the named boundary
 suite and its source-complete package shard without dropping or filtering either
 set of tests.
 Each shard uploads its complete test report, including failures. The existing
-required `Test (...)` checks are fail-closed aggregators: all six platform shards
+required `Test (...)` checks are fail-closed aggregators: all twelve platform shards
 must succeed, so a failed, cancelled or skipped shard cannot produce a green
 required check. The independent source-complete coverage jobs remain unsharded.
+CI runs the complete CLI coverage gate with four file workers; the local default
+remains two. Neither change raises deadlines, filters tests, or merges partial
+coverage reports.
+
+Source5 journal event reads use fixed batches of four authenticated, physically
+checked records. Every started read settles before chain validation proceeds
+in the original stage order. The first original refusal wins, and a failed batch
+never submits a later batch; no authority or currentness read is cached.
+Windows interop capture also rereads every assembly byte through the same open
+physical file using one buffer capped at 64 KiB. In-place changes must refuse
+even when Windows has not advanced the open handle's timestamps. The original
+size, identity, single-link, overflow, close, abort, and startup-deadline guards
+still apply before bytes can be published to the process-local cache.
 Repository text checks out with LF endings on every host; explicitly frozen CRLF
 evidence keeps its original bytes through `.gitattributes`.
 
@@ -278,7 +292,8 @@ Each run writes `coverage/cli/` or `coverage/gateway/`: `coverage-summary.json`,
 set, SHA-256 digests of the source, test, and configuration inventories, the
 pinned tool versions, the portable invocation and exit status, and every
 skipped or host-gated test as unrun. The gate runs Vitest with `CI=true`,
-`LIFTOFF_TELEMETRY=0`, `DO_NOT_TRACK=1`, two workers, and `--allowOnly=false`,
+`LIFTOFF_TELEMETRY=0`, `DO_NOT_TRACK=1`, two workers by default (four in hosted
+CLI coverage), and `--allowOnly=false`,
 and it accepts no test filters. `verify` re-judges a saved report against the
 current checkout; a different revision, change set, or inventory makes it stale,
 so rerun the gate instead of reusing an older or copied report.

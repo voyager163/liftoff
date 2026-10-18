@@ -25,6 +25,10 @@ export const coverageGateJobs = {
   'coverage-cli': 'npm run coverage:cli',
   'coverage-gateway': 'npm run coverage:gateway'
 };
+export const ciCoverageGateJobs = {
+  ...coverageGateJobs,
+  'coverage-cli': `${coverageGateJobs['coverage-cli']} -- --max-workers 4`
+};
 export const qualificationSourceRef = '${{ github.event.pull_request.head.sha || github.sha }}';
 export const gatewayInstallCommand = 'npm ci --prefix services/telemetry-ingest';
 export const independentStepCondition = '${{ !cancelled() }}';
@@ -48,7 +52,7 @@ export const nativeCustodyFocusedFiles = [
 ];
 export const nativeCustodyCommands = nativeCustodyQualificationCommands;
 export const platformShardCheckCommand = 'npm run check:supported-stack && npm run build && ' +
-  'npx vitest run --shard=${{ matrix.shard }}/2 --allowOnly=false ' +
+  'npx vitest run --shard=${{ matrix.shard }}/4 --allowOnly=false ' +
   '--maxWorkers=2 ' +
   '--reporter=default --reporter=json --outputFile.json=qualification/platform-tests.json';
 export const pluginPathTestCommand = 'npx vitest run tests/plugin-native-paths.test.ts tests/plugin-packaged-lookup-native.test.ts ' +
@@ -593,8 +597,9 @@ export function checkWorkflow(filename, workflow) {
       }]
     }, 'Required platform checks must fail unless every shard succeeds, including cancelled or skipped shards.');
     const job = workflow.jobs['test-shards'];
-    assert.deepEqual(job?.strategy?.matrix, { os: platforms, shard: [1, 2] },
-      'Full-suite sharding requires both shards on all three hosted platforms.');
+    assert.deepEqual(job?.strategy?.matrix, { os: platforms, shard: [1, 2, 3, 4] },
+      'Full-suite sharding requires all four shards on all three hosted platforms.');
+    assert.equal(job.name, 'Platform tests (${{ matrix.os }}, shard ${{ matrix.shard }}/4)');
     assert.equal(job.strategy['fail-fast'], false, 'Retain diagnostics from every shard.');
     assert.equal(job['runs-on'], '${{ matrix.os }}');
     assert.equal(job.needs, undefined);
@@ -620,7 +625,7 @@ export function checkWorkflow(filename, workflow) {
     assert.equal(testUpload.if, independentStepCondition);
     assert.equal(testUpload.with['if-no-files-found'], 'error');
     assert.equal(testUpload.with.name, 'liftoff-platform-tests-${{ runner.os }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}');
-    for (const [id, command] of Object.entries(coverageGateJobs)) {
+    for (const [id, command] of Object.entries(ciCoverageGateJobs)) {
       const job = workflow.jobs[id];
       assert.ok(job && job.if === undefined && job['runs-on'] === 'ubuntu-latest', `ci.yml/${id}: the independent coverage gate must run on every CI event.`);
       const gates = job.steps.filter(step => step.run === command);

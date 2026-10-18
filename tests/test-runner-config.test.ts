@@ -19,10 +19,10 @@ describe('root test runner configuration', () => {
     expect(config.test?.testTimeout).toBe(30_000);
   });
 
-  it('partitions Windows discovery into disjoint ordered groups without dropping the migration file', () => {
+  it('partitions Windows discovery into disjoint ordered groups without dropping any isolated file', () => {
     const windows = createRootTestConfig('win32');
     const projects = windows.test.projects;
-    expect(projects).toHaveLength(5);
+    expect(projects).toHaveLength(6);
     if (!projects) throw new Error('Expected all Windows test projects.');
 
     expect(projects[0]).toMatchObject({
@@ -31,7 +31,8 @@ describe('root test runner configuration', () => {
         name: 'root-tests',
         include: ['tests/**/*.test.ts'],
         exclude: [...defaultExclude, 'tests/migration-inspection.test.ts', 'tests/installed-tool-distribution.test.ts',
-          'tests/repair-preparation-execution.test.ts', 'tests/repair-cancellation.test.ts'],
+          'tests/repair-preparation-execution.test.ts', 'tests/repair-cancellation.test.ts',
+          'tests/governance-workflow-source5-matrix.test.ts'],
         sequence: { groupOrder: 0 }
       }
     });
@@ -65,6 +66,14 @@ describe('root test runner configuration', () => {
         name: 'migration-inspection',
         include: ['tests/migration-inspection.test.ts'],
         sequence: { groupOrder: 4 }
+      }
+    });
+    expect(projects[5]).toMatchObject({
+      extends: false,
+      test: {
+        name: 'workflow-source5-matrix',
+        include: ['tests/governance-workflow-source5-matrix.test.ts'],
+        sequence: { groupOrder: 5 }
       }
     });
     for (const project of projects.slice(1)) expect(project.test).not.toHaveProperty('exclude');

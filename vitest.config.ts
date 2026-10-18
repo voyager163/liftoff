@@ -7,6 +7,7 @@ const migrationInspectionFile = 'tests/migration-inspection.test.ts';
 const distributionInspectionFile = 'tests/installed-tool-distribution.test.ts';
 const preparationExecutionFile = 'tests/repair-preparation-execution.test.ts';
 const cancellationFile = 'tests/repair-cancellation.test.ts';
+const workflowMatrixFile = 'tests/governance-workflow-source5-matrix.test.ts';
 
 // Every root Vitest invocation (npm test, targeted runs and the coverage gate)
 // uses a temporary HOME/XDG/profile root. The main process isolates while this
@@ -69,7 +70,7 @@ export function createRootTestConfig(
               ...test,
               name: 'root-tests',
               include: [...test.include],
-              exclude: [...defaultExclude, migrationInspectionFile, distributionInspectionFile, preparationExecutionFile, cancellationFile],
+              exclude: [...defaultExclude, migrationInspectionFile, distributionInspectionFile, preparationExecutionFile, cancellationFile, workflowMatrixFile],
               sequence: { groupOrder: 0 }
             }
           },
@@ -110,6 +111,15 @@ export function createRootTestConfig(
               include: [migrationInspectionFile],
               // Keep real revalidation inside its timed cases, without competing native builds.
               sequence: { groupOrder: 4 }
+            }
+          },
+          {
+            extends: false,
+            test: {
+              ...test,
+              name: 'workflow-source5-matrix',
+              include: [workflowMatrixFile],
+              sequence: { groupOrder: 5 }
             }
           }
         ]

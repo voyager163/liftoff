@@ -234,14 +234,14 @@ jobs:
         run: test "$SHARD_RESULT" = success
 
   test-shards:
-    name: Platform tests (${{ matrix.os }}, shard ${{ matrix.shard }}/2)
+    name: Platform tests (${{ matrix.os }}, shard ${{ matrix.shard }}/4)
     runs-on: ${{ matrix.os }}
     timeout-minutes: ${{ matrix.os == 'windows-latest' && matrix.shard == 2 && 75 || 45 }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -427,7 +427,7 @@ jobs:
       - name: Run package check
         run: >-
           npm run check:supported-stack && npm run build &&
-          npx vitest run --shard=${{ matrix.shard }}/2 --allowOnly=false
+          npx vitest run --shard=${{ matrix.shard }}/4 --allowOnly=false
           --maxWorkers=2
           --reporter=default --reporter=json --outputFile.json=qualification/platform-tests.json
 
@@ -505,7 +505,7 @@ jobs:
         run: npm ci --prefix services/telemetry-ingest
 
       - name: Run source-complete CLI coverage gate
-        run: npm run coverage:cli
+        run: npm run coverage:cli -- --max-workers 4
 
       - name: Store CLI coverage evidence
         if: ${{ !cancelled() }}

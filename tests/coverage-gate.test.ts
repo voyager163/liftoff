@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import rootConfig, { cliCoverage, coverageFloorPercent, createRootConfig, userStateIsolationSetup } from '../vitest.config.js';
 import gatewayConfig, { gatewayCoverage } from '../services/telemetry-ingest/vitest.config.js';
-import { checkWorkflow, coverageGateJobs } from '../scripts/check-repository-policy.mjs';
+import { checkWorkflow, ciCoverageGateJobs, coverageGateJobs } from '../scripts/check-repository-policy.mjs';
 import {
   CoverageGateError,
   configurationInventory,
@@ -1467,7 +1467,10 @@ describe('independent CI and release coverage gates', () => {
   it('runs each package gate once in its own unconditional Linux CI job with separate evidence', async () => {
     const ci = await workflow('ci.yml');
     expect(coverageGateJobs).toEqual({ 'coverage-cli': 'npm run coverage:cli', 'coverage-gateway': 'npm run coverage:gateway' });
-    for (const [id, command] of Object.entries(coverageGateJobs)) {
+    expect(ciCoverageGateJobs).toEqual({
+      'coverage-cli': 'npm run coverage:cli -- --max-workers 4', 'coverage-gateway': 'npm run coverage:gateway'
+    });
+    for (const [id, command] of Object.entries(ciCoverageGateJobs)) {
       const job = ci.jobs[id];
       const report = id === 'coverage-cli' ? 'coverage/cli/' : 'coverage/gateway/';
       expect(job['runs-on']).toBe('ubuntu-latest');
@@ -1480,7 +1483,7 @@ describe('independent CI and release coverage gates', () => {
       expect(upload?.with).toMatchObject({ path: report, 'if-no-files-found': 'error' });
     }
     const gates = Object.values(ci.jobs).flatMap((job) => runs(job).filter((run) => /coverage:(?:cli|gateway)/.test(run!)));
-    expect(gates.sort()).toEqual(['npm run coverage:cli', 'npm run coverage:gateway']);
+    expect(gates.sort()).toEqual(['npm run coverage:cli -- --max-workers 4', 'npm run coverage:gateway']);
     expect(ci.permissions).toEqual({ contents: 'read' });
   });
 
@@ -1529,7 +1532,7 @@ describe('independent CI and release coverage gates', () => {
     ['a skipped CI gate job', 'ci.yml', (value: Workflow) => { value.jobs['coverage-cli'].if = 'false'; }],
     ['a CI gate replaced by ordinary tests', 'ci.yml', (value: Workflow) => {
       value.jobs['coverage-cli'].steps = value.jobs['coverage-cli'].steps.map((step) =>
-        step.run === 'npm run coverage:cli' ? { ...step, run: 'npm test' } : step);
+        step.run === ciCoverageGateJobs['coverage-cli'] ? { ...step, run: 'npm test' } : step);
     }],
     ['a gateway gate that only runs after CLI success', 'release.yml', (value: Workflow) => {
       const step = value.jobs.qualify.steps.find((item) => item.run === 'npm run coverage:gateway')!;
