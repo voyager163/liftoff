@@ -89,7 +89,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "Unavailable / no retained value",
+          "noValue": "No retained value",
           "decimals": 0,
           "custom": {}
         },
@@ -136,7 +136,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "Unavailable / no retained value",
+          "noValue": "No retained value",
           "decimals": 0,
           "custom": {}
         },
@@ -183,7 +183,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "Unavailable / no retained value",
+          "noValue": "No retained value",
           "decimals": 0,
           "custom": {}
         },
@@ -237,7 +237,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "Unavailable / no retained value",
+          "noValue": "No retained value",
           "decimals": 0,
           "custom": {}
         },
@@ -284,7 +284,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "Unavailable / no retained value",
+          "noValue": "No retained value",
           "decimals": 0,
           "custom": {}
         },
@@ -331,7 +331,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "Unavailable / no retained value",
+          "noValue": "No retained value",
           "decimals": 0,
           "custom": {}
         },
@@ -378,7 +378,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "Unavailable / no retained value",
+          "noValue": "No retained value",
           "decimals": 0,
           "custom": {}
         },
@@ -412,7 +412,7 @@
       "id": 9,
       "type": "table",
       "title": "Explicit expected monthly reporting - freshness / unknown",
-      "description": "Only operator-registered expectations. Configuration is explicit metadata, not inferred client state. Empty/excluded inventories are unconfigured; future starts are pending, not healthy or stale. Never infer disablement or abandonment from silence.",
+      "description": "A native query error means unavailable. Only operator-registered expectations. Configuration is explicit metadata, not inferred client state. Empty/excluded inventories are unconfigured; future starts are pending, not healthy or stale. Never infer disablement or abandonment from silence.",
       "gridPos": {
         "x": 12,
         "y": 37,
@@ -425,7 +425,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "Unavailable / no retained value",
+          "noValue": "No retained value",
           "decimals": 0,
           "custom": {}
         },
@@ -472,7 +472,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "Unavailable / no retained value",
+          "noValue": "No retained value",
           "decimals": 0,
           "custom": {}
         },
@@ -519,7 +519,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "Unavailable / no retained value",
+          "noValue": "No retained value",
           "decimals": 0,
           "custom": {}
         },
@@ -566,7 +566,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "noValue": "Unavailable / no retained value",
+          "noValue": "No retained value",
           "decimals": 0,
           "custom": {}
         },

@@ -153,6 +153,19 @@ describe('native Grafana source and exact KQL schema', () => {
     expect(diagnostics(await readFile(path.join(queries, 'query-availability.kql'), 'utf8'))).toEqual([]);
   });
 
+  it('does not label successful empty panels as unavailable or replace query errors with zero', async () => {
+    const dashboard = await buildTelemetryDashboard();
+    for (const panel of dashboard.panels) {
+      if ('targets' in panel) {
+        expect(panel.fieldConfig.defaults.noValue).toBe('No retained value');
+        expect(panel.description).toContain('A native query error means unavailable.');
+      }
+    }
+    expect(dashboard.panels[0].options).toMatchObject({
+      content: expect.stringContaining('Query/permission/table errors are **unavailable**, never zero.')
+    });
+  });
+
   it('rejects broken syntax, absent tables and unapproved fields rather than interpreting them as zero', () => {
     expect(diagnostics('LiftoffProjectEvents_CL | where )')).not.toEqual([]);
     expect(diagnostics('AbsentProjectEvents_CL | count')).not.toEqual([]);
@@ -393,7 +406,12 @@ describe('operator, privacy and non-destructive boundaries', () => {
     for (const term of ['unavailable', 'expired', 'disabled', 'stale/unknown', 'forge', 'not a census', 'Schema-1', 'synthetic']) expect(privacy).toContain(term);
     expect(operator).toContain('deployed; project reporting remains disabled');
     expect(operator).toContain('API evidence is not a claim that these journeys ran');
-    for (const id of ['17.3', '17.4', '17.5']) expect(tasks).toContain(`- [ ] ${id} `);
+    expect(operator).toContain('This is not a query-availability guarantee');
+    expect(operator.replace(/\s+/g, ' ')).toContain('Successful empty panels now say **No retained value**');
+    for (const id of ['17.3', '17.4']) expect(tasks).toContain(`- [x] ${id} `);
+    expect(tasks).toContain('- [ ] 17.5 ');
+    expect(tasks).toContain('Private browser-ui-receipt.json');
+    expect(tasks).toContain('with no root-cause or repair claim');
     const [vars, example] = await Promise.all([
       readFile(path.join(root, 'variables.tf'), 'utf8'), readFile(path.join(root, 'production.tfvars.example'), 'utf8')
     ]);
