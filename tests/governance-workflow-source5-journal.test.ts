@@ -74,14 +74,16 @@ function proofBinding(value: Awaited<ReturnType<typeof fixture>>) {
     contexts: [{ name: 'fixture-context', validationStep: 'Validate fixture' }], mode: 'green', tokenSuppressedTrigger: true };
 }
 
-function observeEventBatch(keys: readonly string[]) {
+function observeEventBatch(keys: readonly string[],
+  select: (namespace: string, key: string) => string | undefined = (namespace, key) => namespace === 'proof' ? key : undefined) {
   let release!: () => void, refuse!: (error: Error) => void, siblingSettled!: () => void;
   const ready = new Promise<void>((resolve, reject) => { release = resolve; refuse = reject; });
   const sibling = new Promise<void>(resolve => { siblingSettled = resolve; });
   const state = { started: [] as string[], completed: [] as number[], active: 0, maximum: 0, failures: new Map<string, unknown>() };
   let timer: ReturnType<typeof setTimeout> | undefined;
-  io.observeRead = (namespace, key) => {
-    if (namespace !== 'proof' || !keys.includes(key)) return;
+  io.observeRead = (namespace, rawKey) => {
+    const key = select(namespace, rawKey);
+    if (key === undefined || !keys.includes(key)) return;
     const index = state.started.length;
     if (index % 4 === 0) expect(state.active).toBe(0);
     expect(key).toBe(keys[index]);
@@ -154,6 +156,75 @@ describe('bounded original workflow journal event readback', () => {
         expect(failure).toMatchObject({ code: 'workflow-source5-chain' });
         expect(failure).not.toBe(state.failures.get(keys[2]!));
       }
+    });
+  });
+});
+
+async function dependentJournal(value: Awaited<ReturnType<typeof fixture>>, lease: ProjectMutationLease) {
+  const source = await publishedComponent(value, lease), events = await source.journal.events(value.operation);
+  const binding = { repository: value.binding.repository, repositoryId: value.binding.repositoryId,
+    sourceSha: source.origin.commitSha, treeSha: source.origin.treeSha, executionRef: `liftoff-execution-${source.origin.commitSha}` };
+  const reviewed = await sealReview(value.review({ origin: source.origin,
+    effects: [{ action: 'github.workflow-source.bind-execution-ref', binding }] }));
+  const journal = await openSource5WorkflowJournal({ ...reviewed, lease, initialize: true });
+  const dependencies = [
+    { namespace: 'plan' as const, key: value.control.controlKey },
+    { namespace: 'proof' as const, key: manifestKey(value.control.controlKey) },
+    { namespace: 'proof' as const, key: canonicalSha256({ kind: 'workflow-source5-reservation-key.v1', controlKey: value.control.controlKey }) },
+    { namespace: 'journal' as const, key: value.control.controlKey },
+    { namespace: 'operation' as const, key: opKey(value.control.controlKey, value.operation) },
+    ...events.map(event => ({ namespace: 'proof' as const, key: eventKey(value.control.controlKey, value.operation, event.stage) }))
+  ];
+  const records = await Promise.all(dependencies.map(async dependency => {
+    const record = (await value.store.read(dependency.namespace, dependency.key))!;
+    return { ...dependency, path: record.path, bytes: await readFile(record.path) };
+  }));
+  return { journal, records, keys: dependencies.map(entry => `${entry.namespace}:${entry.key}`) };
+}
+
+describe('bounded original publication dependency readback', () => {
+  it('retains every original dependency and drains fixed-four batches before ordered validation without changing their bytes', async () => {
+    const value = await fixture();
+    await withSource5WorkflowLease(value.projectRoot, async lease => {
+      const { journal, records, keys } = await dependentJournal(value, lease);
+      expect(keys).toHaveLength(13);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const state = observeEventBatch(keys, (namespace, key) => `${namespace}:${key}`);
+        await journal.assertInventory();
+        io.observeRead = undefined;
+        expect(state.maximum).toBe(4); expect(state.active).toBe(0);
+        expect(state.started).toEqual(keys); expect(state.completed).toHaveLength(keys.length);
+        expect(state.completed.indexOf(1)).toBeLessThan(state.completed.indexOf(0));
+        expect(state.failures.size).toBe(0);
+      }
+      for (const record of records) expect(await readFile(record.path)).toEqual(record.bytes);
+    });
+  });
+
+  it.each(['physical', 'semantic'] as const)('drains every started dependency and retains the first original %s refusal without another batch', async fault => {
+    const value = await fixture();
+    await withSource5WorkflowLease(value.projectRoot, async lease => {
+      const { journal, records, keys } = await dependentJournal(value, lease);
+      if (fault === 'physical') await writeFile(records[0]!.path, '{');
+      else await unlink(records[0]!.path);
+      await writeFile(records[1]!.path, '{}');
+      const state = observeEventBatch(keys, (namespace, key) => `${namespace}:${key}`);
+      const failure = await journal.assertInventory().then(
+        () => { throw new Error('Lost or changed original publication dependencies must refuse.'); },
+        (error: unknown) => error);
+      io.observeRead = undefined;
+      expect(state.started).toEqual(keys.slice(0, 4)); expect(state.maximum).toBe(4);
+      expect(state.active).toBe(0); expect([...state.completed].sort()).toEqual([0, 1, 2, 3]);
+      expect(state.completed.indexOf(1)).toBeLessThan(state.completed.indexOf(0));
+      if (fault === 'physical') {
+        expect(state.failures.size).toBe(2);
+        expect(failure).toBe(state.failures.get(keys[0]!));
+      } else {
+        expect(state.failures.size).toBe(1);
+        expect(failure).toMatchObject({ code: 'workflow-source5-original' });
+        expect(failure).not.toBe(state.failures.get(keys[1]!));
+      }
+      for (const record of records.slice(4)) expect(await readFile(record.path)).toEqual(record.bytes);
     });
   });
 });

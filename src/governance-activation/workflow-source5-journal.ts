@@ -351,11 +351,17 @@ async function describeSource5WorkflowJournal(input: Source5WorkflowJournalInput
     const cursor = await store.read('journal', control.controlKey);
     const recovery = await store.read('proof', reservationKey);
     const retainedPlan = await store.read('plan', control.controlKey);
-    for (const dependency of readDependencies) {
-      const current = await store.read(dependency.namespace, dependency.key);
-      if (!current || current.rawDigest !== dependency.rawDigest || current.encodedBytes !== dependency.encodedBytes ||
-        current.revision !== dependency.revision) {
-        return workflowFailure('workflow-source5-original', 'An independently sealed original publication dependency was lost or changed; effects and finalization remain blocked.');
+    for (let start = 0; start < readDependencies.length; start += 4) {
+      const batch = readDependencies.slice(start, start + 4);
+      const observations = await Promise.allSettled(batch.map(dependency => store.read(dependency.namespace, dependency.key)));
+      for (const [index, dependency] of batch.entries()) {
+        const observation = observations[index]!;
+        if (observation.status === 'rejected') throw observation.reason;
+        const current = observation.value;
+        if (!current || current.rawDigest !== dependency.rawDigest || current.encodedBytes !== dependency.encodedBytes ||
+          current.revision !== dependency.revision) {
+          return workflowFailure('workflow-source5-original', 'An independently sealed original publication dependency was lost or changed; effects and finalization remain blocked.');
+        }
       }
     }
     if (!stored || canonicalSha256(stored.value) !== manifest.digest || !cursor || !recovery || !retainedPlan ||
