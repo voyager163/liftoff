@@ -229,7 +229,10 @@ describe('public documentation', () => {
     expect(root).not.toMatch(/brew install --cask|winget install/i);
     expect(root).toContain('Planned work is not shipped support');
     expect(compact(bootstrap)).toContain('default public CLI does not register production implementations');
-    expect(telemetry).toContain('not yet deployed');
+    expect(telemetry).toContain('deployed; project reporting remains disabled');
+    expect(compact(telemetry)).toContain(
+      'Browser/UI, fault-alert firing/routing, published-client and genuine heartbeat qualification remain outstanding'
+    );
     expect(telemetry).toContain('No client is enrolled by enabling this endpoint');
     expect(compact(stateMigration)).toContain(
       'private API, not an enabled public existing-deployment migration command'
