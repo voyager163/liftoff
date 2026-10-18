@@ -27,6 +27,13 @@ system-library resolution and ELF version requirements; macOS rejects non-system
 dylibs. A hosted modern-OS run cannot establish these minimum-host requirements.
 `minimumHostQualified` and `publicDistributionQualified` remain false.
 
+The Linux archive bootstrap additionally requires **OpenSSL 3.0 or newer with
+Ed25519 support** for its `pkeyutl -rawin` signature verification. Older OpenSSL,
+LibreSSL, missing tools and unrecognized version responses are refused before
+scratch creation or authentication-input reads. This is an installer-tool
+prerequisite, separate from the bundled Node runtime's library requirements;
+glibc 2.28 alone does not establish bootstrap compatibility.
+
 The build requires contributor Node/npm and network access for locked npm dependencies
 and checksum-pinned original license notices. The resulting launcher does not require
 global Node/npm. It invokes only `runtime/node`, clears `NODE_OPTIONS`/`NODE_PATH`, and
@@ -187,7 +194,8 @@ empty PATH. They exercise malformed/missing/hard-linked/junction pointers and
 generate exact installer inputs only with explicitly synthetic policy.
 This required case is not execution of a signed Inno installer.
 Linux cases exercise the actual bundle's isolated owned installation/recovery and
-test-only Ed25519 bootstrap authentication. Linux qualification additionally requires
+test-only Ed25519 bootstrap authentication using OpenSSL 3.0 or newer with Ed25519
+support on the invoking host. Linux qualification additionally requires
 Docker with a native same-architecture Linux daemon and the exact Rocky Linux 8.10
 image pinned in `nativeLinuxUserspaceImages` in `scripts/native-package-report.mjs`.
 CI pulls that immutable image before the tests; tests never pull, request emulation or

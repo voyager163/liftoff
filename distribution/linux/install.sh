@@ -30,6 +30,15 @@ at_least() {
     exit 0;
   }'
 }
+archive_openssl_available() {
+  openssl_version=$(openssl version 2>/dev/null) || return 1
+  openssl_version=$(printf '%s\n' "$openssl_version" | awk '
+    NR != 1 || $1 != "OpenSSL" || $2 !~ /^[0-9]+\.[0-9]+\.[0-9]+[a-z]?$/ { exit 1 }
+    { version=$2 }
+    END { if (NR == 1 && version != "") print version; else exit 1 }
+  ') || return 1
+  at_least "$openssl_version" 3.0
+}
 at_least "${libc#glibc }" 2.28 && at_least "$(uname -r | cut -d- -f1)" 4.18 || {
   printf '%s\n' 'The selected runtime requires Linux kernel 4.18 and glibc 2.28 or newer.' >&2
   exit 1
@@ -41,6 +50,10 @@ for digest in "$4" "$5" "$7"; do
   }
 done
 case "$6" in /*) ;; *) printf '%s\n' 'An explicit existing private user-local prefix is required.' >&2; exit 1 ;; esac
+archive_openssl_available || {
+  printf '%s\n' 'OpenSSL 3.0 or newer with Ed25519 support is required for archive authentication; no installation was changed.' >&2
+  exit 1
+}
 umask 077
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/liftoff-authenticated-archive.XXXXXXXX")
 for file in "$1" "$2" "$3"; do

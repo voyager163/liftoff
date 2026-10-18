@@ -103,6 +103,62 @@ describe('native runtime floors and unsupported-host admission', () => {
   });
 });
 
+describe.skipIf(process.platform === 'win32')('Linux bootstrap OpenSSL prerequisite (synthetic tools, not installation qualification)', () => {
+  async function probe(banner?: string, status = 0) {
+    const root = await fixture(), tools = path.join(root, 'tools'), temporary = path.join(root, 'temporary');
+    const observed = path.join(root, 'scratch-observed');
+    await mkdir(tools); await mkdir(temporary);
+    const commands = {
+      uname: '#!/bin/sh\ncase "$1" in -s) echo Linux ;; -m) echo aarch64 ;; -r) echo 4.18.0 ;; *) exit 1 ;; esac\n',
+      getconf: '#!/bin/sh\nprintf "glibc 2.28\\n"\n',
+      mktemp: `#!/bin/sh\nprintf 'called\\n' > ${JSON.stringify(observed)}\nexit 73\n`,
+      ...(banner === undefined ? {} : {
+        openssl: `#!/bin/sh\nprintf '%s\\n' ${JSON.stringify(banner)}\nexit ${status}\n`
+      })
+    };
+    for (const [name, source] of Object.entries(commands)) {
+      const file = path.join(tools, name);
+      await writeFile(file, source); await chmod(file, 0o755);
+    }
+    for (const name of ['awk', 'cut']) await symlink(await realpath(`/usr/bin/${name}`), path.join(tools, name));
+    const result = spawnSync('/bin/sh', [path.resolve('distribution/linux/install.sh'),
+      'archive', 'signature', 'public-key', '1'.repeat(64), '2'.repeat(64), root, '3'.repeat(64), 'none'], {
+      cwd: root, env: { PATH: tools, TMPDIR: temporary }, encoding: 'utf8', timeout: 10_000
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.signal).toBeNull();
+    return { result, observed, temporary };
+  }
+
+  it.each([
+    ['missing', undefined], ['legacy', 'OpenSSL 1.1.1k FIPS 25 Mar 2021'],
+    ['older-major', 'OpenSSL 2.0.0'], ['LibreSSL', 'LibreSSL 3.3.6'],
+    ['empty', ''], ['unknown', 'OpenSSL unknown'], ['incomplete', 'OpenSSL 3.0'],
+    ['malformed', 'OpenSSL 3.not-a-version'], ['development', 'OpenSSL 3.0.0-dev']
+  ])('refuses %s before scratch or authentication inputs are touched', async (_name, banner) => {
+    const { result, observed, temporary } = await probe(banner);
+    expect(result.status, result.stdout + result.stderr).toBe(1);
+    expect(result.stderr).toContain('OpenSSL 3.0 or newer');
+    await expect(lstat(observed)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await bundleInventory(temporary)).entries).toEqual([]);
+  });
+
+  it('refuses a failed version probe even when its banner claims a supported version', async () => {
+    const { result, observed } = await probe('OpenSSL 3.0.0', 1);
+    expect(result.status, result.stdout + result.stderr).toBe(1);
+    expect(result.stderr).toContain('OpenSSL 3.0 or newer');
+    await expect(lstat(observed)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each(['OpenSSL 3.0.0', 'OpenSSL 3.6.0 1 Oct 2026', 'OpenSSL 4.0.1'])(
+    'allows %s to reach scratch creation without granting installation approval', async banner => {
+      const { result, observed } = await probe(banner);
+      expect(result.status, result.stdout + result.stderr).toBe(73);
+      expect(await readFile(observed, 'utf8')).toBe('called\n');
+      expect(result.stderr).not.toContain('OpenSSL 3.0 or newer');
+    });
+});
+
 describe('native exact-artifact and signing gates (synthetic contract data, not qualification)', () => {
   const record = {
     repository: 'voyager163/liftoff', commit: '1'.repeat(40), version: '1.2.3', target: 'darwin-arm64',
