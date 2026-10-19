@@ -90,7 +90,11 @@ function requestUrl(raw: string | undefined, audience: string): URL {
     return failure('endpoint-host', 'The original endpoint is not a supported GitHub Actions token service host.');
   }
   if (!/^\/[A-Za-z0-9_./-]+\/idtoken$/u.test(url.pathname)) {
-    return failure('endpoint-path', 'The original GitHub Actions endpoint is not a supported token path.');
+    const shape = url.pathname === '/idtoken' ? 'root-idtoken'
+      : url.pathname.endsWith('/token') ? 'token'
+      : /\/idtoken\/$/iu.test(url.pathname) ? 'trailing-slash'
+      : /\/idtoken$/iu.test(url.pathname) ? 'idtoken-encoding-or-case' : 'unsupported';
+    return failure(`endpoint-path-${shape}`, 'The original GitHub Actions endpoint is not a supported token path; only a fixed shape classification is reported.');
   }
   if ([...url.searchParams.keys()].some(key => key !== 'api-version') ||
     url.searchParams.getAll('api-version').length > 1) {
