@@ -38,6 +38,7 @@ export const coveragePackages = Object.freeze({
     requiredSources: ['src/cli.ts'],
     separatelyQualified: [
       'assets/repair/windows-job-controller.ps1 (packaged PowerShell helper; Windows native CI lanes)',
+      'assets/repair/Liftoff.WindowsJob.Interop.dll (first-party literal C# rebuild and Windows native execution; not V8 coverage)',
       'Installed npm package and exact release tarball (npm run smoke:package)',
       'Generated applications and containers (npm run verify:generated-containers, verify:standard-node-templates)',
       'Pinned OpenSpec/Spec Kit, native OpenTofu and locked dependency preparation (host-gated CI steps)'

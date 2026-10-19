@@ -113,9 +113,9 @@ describe('compiled package surface', () => {
 });
 
 describe('required packaged assets', () => {
-  it('requires exactly the thirteen template assets and fourteen core ancillary assets', () => {
-    expect(required).toHaveLength(27);
-    expect(new Set(required).size).toBe(27);
+  it('requires exactly the thirteen template assets and fifteen core ancillary assets', () => {
+    expect(required).toHaveLength(28);
+    expect(new Set(required).size).toBe(28);
     expect(required).toEqual([...templatePaths, ...requiredAncillaryAssets].sort());
     expect(templatePaths.filter((entry) => requiredAncillaryAssets.includes(entry))).toEqual([]);
     const declaredAssets = packageJson.files.filter((entry) =>
@@ -146,6 +146,7 @@ describe('packed asset inventory', () => {
         'assets/governance/team-gitflow/assessment-controls.json',
         'assets/governance/team-gitflow/policy-v1.md',
         ...eggInfoPaths,
+        'assets/repair/Liftoff.WindowsJob.Interop.dll',
         helperPath,
         'assets/skills/assessment.md',
         'assets/skills/governance-assessment.md',

@@ -26,10 +26,43 @@ export const nativeBundleCases = Object.freeze([
   'rejects non-executable and changed private runtime bytes even with a recomputed inventory'
 ]);
 
-export function assertNativeBundleReport(report) {
+export function assertNativeTestReport(report) {
+  assert.ok(report && typeof report === 'object' && !Array.isArray(report), 'Native qualification requires a test report.');
   assert.equal(report.success, true, 'Native qualification did not succeed.');
   assert.equal(report.numFailedTests, 0);
   assert.equal(report.numFailedTestSuites, 0);
+  assert.ok(Array.isArray(report.testResults) && report.testResults.length > 0, 'Native qualification requires test file records.');
+  const actual = { numTotalTests: 0, numPassedTests: 0, numFailedTests: 0, numPendingTests: 0, numTodoTests: 0 };
+  const files = new Set();
+  for (const file of report.testResults) {
+    assert.ok(file && typeof file.name === 'string' && file.name.length > 0, 'Native report has an invalid test file name.');
+    const name = file.name.replaceAll('\\', '/');
+    assert.ok(!files.has(name), 'Native report contains duplicate test file records.');
+    files.add(name);
+    assert.equal(file.status, 'passed', 'Native report contains a failed or incomplete test file.');
+    assert.ok(Array.isArray(file.assertionResults), 'Native test file has no assertion records.');
+    for (const test of file.assertionResults) {
+      actual.numTotalTests++;
+      switch (test?.status) {
+        case 'passed': actual.numPassedTests++; break;
+        case 'failed': actual.numFailedTests++; break;
+        case 'pending':
+        case 'skipped': actual.numPendingTests++; break;
+        case 'todo': actual.numTodoTests++; break;
+        default: assert.fail('Native report contains an unsupported assertion status.');
+      }
+    }
+  }
+  assert.equal(actual.numFailedTests, 0, 'Native report contains failed assertions despite its summary.');
+  assert.ok(actual.numPassedTests > 0, 'Native qualification executed no passing tests.');
+  for (const [key, count] of Object.entries(actual)) {
+    assert.ok(Number.isSafeInteger(report[key]) && report[key] >= 0, 'Native test counts must be nonnegative safe integers.');
+    assert.equal(report[key], count, `Native report ${key} differs from its assertion records.`);
+  }
+}
+
+export function assertNativeBundleReport(report) {
+  assertNativeTestReport(report);
   const files = report.testResults.filter(file =>
     file.name.replaceAll('\\', '/').endsWith('/tests/native-bundle-installed.test.ts'));
   assert.equal(files.length, 1, 'Native qualification report must contain exactly one installed suite.');

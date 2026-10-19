@@ -1,14 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { assertMacMigrationPackageReport, macMigrationPackageCases } from '../scripts/mac-migration-package-report.mjs';
+import { nativeReport } from './helpers/native-report.js';
 
 function report() {
-  return {
-    success: true, numFailedTests: 0, numFailedTestSuites: 0,
-    testResults: [{
-      name: '/fixture/tests/mac-migration-package.test.ts',
-      assertionResults: macMigrationPackageCases.map(title => ({ title, status: 'passed' }))
-    }]
-  };
+  return nativeReport([{
+    name: '/fixture/tests/mac-migration-package.test.ts',
+    assertionResults: macMigrationPackageCases.map(title => ({ title, status: 'passed' }))
+  }]);
 }
 
 describe('standalone migration package report admission', () => {
@@ -28,9 +26,22 @@ describe('standalone migration package report admission', () => {
     selected.testResults[0].name = 'C:\\fixture\\tests\\mac-migration-package.test.ts';
     selected.testResults.push({
       name: '/fixture/tests/native-package-installed.test.ts',
+      status: 'passed',
       assertionResults: [{ title: 'foreign host case', status: 'skipped' }]
     });
+    selected.numTotalTests++;
+    selected.numPendingTests++;
     expect(assertMacMigrationPackageReport(selected)).toEqual({ cases: 5, passed: 5 });
+  });
+
+  it('rejects ancillary file failure even with passing required cases and coherent green counts', () => {
+    const selected = report(), ancillary = structuredClone(selected.testResults[0]);
+    ancillary.name = '/fixture/tests/ancillary.test.ts';
+    ancillary.status = 'failed';
+    selected.testResults.push(ancillary);
+    selected.numTotalTests += macMigrationPackageCases.length;
+    selected.numPassedTests += macMigrationPackageCases.length;
+    expect(() => assertMacMigrationPackageReport(selected)).toThrow('test file');
   });
 
   it.each([

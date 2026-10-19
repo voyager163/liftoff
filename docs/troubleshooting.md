@@ -578,7 +578,13 @@ The controller requires FullLanguage mode and the built-in Windows PowerShell
 Utility assembly, resolved by its complete Microsoft strong name rather than
 assuming a DLL exists in `PSHOME`. Policy denial happens before compiler or
 Console method calls; Liftoff does not elevate or bypass execution policy.
-Do not substitute a downloaded compiler DLL or cached Win32 helper.
+Default packaged execution requires the integrity-verified first-party interop
+DLL and its exclusive private copy. Missing, linked, changed or mismatched bytes
+fail before target dispatch; there is no runtime-compiler fallback in this lane.
+Repair or reinstall the exact verified package rather than substitute a downloaded
+compiler DLL or unrelated cached Win32 helper. A .NET SDK is a contributor rebuild
+tool, not an installed-user prerequisite. Explicit custom controller/PowerShell
+overrides retain the existing inline compiler behavior.
 
 `UNSUPPORTED_PROCESS_INPUT` means a command supplied stdin while requesting
 Windows process-tree settlement. The admitted controller has no stdin channel,

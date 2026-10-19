@@ -34,7 +34,9 @@ const builderPaths = [
   'scripts/native-release-set.mjs', 'scripts/native-release-set.d.mts', 'scripts/release-artifact.mjs',
   'distribution/linux/install.sh',
   'scripts/native-bundle.mjs', 'scripts/native-bundle-contract.mjs',
-  'scripts/package-smoke-contract.mjs', 'scripts/coverage-gate.mjs', 'scripts/clean-build.mjs'
+  'scripts/package-smoke-contract.mjs', 'scripts/coverage-gate.mjs', 'scripts/clean-build.mjs',
+  'scripts/windows-job-interop.mjs', 'scripts/windows-job-interop/Interop.csproj',
+  'scripts/windows-job-interop/packages.lock.json'
 ];
 const boundaries = Object.freeze({
   signed: false, notarized: false, installerOwnershipQualified: false, minimumOsQualified: false,

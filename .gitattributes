@@ -5,6 +5,7 @@
 /assets/locks/** text eol=lf
 /assets/plugins/** text eol=lf
 /assets/repair/** text eol=lf
+/assets/repair/*.dll -text !eol
 /assets/skills/** text eol=lf
 /assets/supported-stack.json text eol=lf
 /assets/templates/** text eol=lf

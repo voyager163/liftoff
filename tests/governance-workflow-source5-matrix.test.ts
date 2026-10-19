@@ -9,8 +9,9 @@ import * as workflowRuntime from '../src/governance-activation/workflow-runtime.
 import * as workflowPorts from '../src/governance-activation/workflow-source5-ports.js';
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import {
-  source5WorkflowAuthorityValue, withSource5WorkflowLease
+  assertSource5WorkflowAuthority, source5WorkflowAuthorityValue, withSource5WorkflowLease
 } from '../src/governance-activation/workflow-source5-authority.js';
+import { source5WorkflowPlanInventory } from '../src/governance-activation/workflow-source5-operations.js';
 import {
   readCurrentWorkflowContextProof, verifyProtectedWorkflowProofMatrix, verifySource5WorkflowProofMatrix
 } from '../src/governance-activation/workflow-context-proof.js';
@@ -162,6 +163,64 @@ function observeMatrixMemberBatches(entries: Observation['entries'], journal: Ob
         if (first) await batch.ready;
         if (error !== undefined) state.failures.set(index, error);
         if (pointer || first && error !== undefined) await complete(index);
+      } finally { state.pendingReads--; }
+    };
+  };
+  return { state, dispose() {
+    matrixIo.observeRead = undefined;
+    for (const batch of batches) clearTimeout(batch.timer);
+  } };
+}
+
+function matrixOwnerSelections(value: MatrixFixture, entries: Observation['entries']) {
+  return entries.map(({ input }) => {
+    const entryKey = canonicalSha256({ kind: 'workflow-source5-original-entry-key.v1', schemaVersion: 1,
+      projectRoot: value.projectRoot, projectKey: value.control.projectKey,
+      repositoryAnchor: value.control.repositoryAnchor, identity: value.plan.identity, phaseId: value.plan.phaseId,
+      originalPlanKey: value.control.controlKey, operationDigest: canonicalSha256(input.operation) });
+    return [
+      { namespace: 'proof', key: canonicalSha256({ kind: 'workflow-source5-owner-manifest-key.v1', entryKey }) },
+      { namespace: 'operation', key: entryKey },
+      { namespace: 'proof', key: canonicalSha256({
+        kind: 'workflow-source5-owner-reservation-key.v1', entryKey, generation: 1 }) },
+      { namespace: 'proof', key: canonicalSha256({
+        kind: 'workflow-source5-owner-confirmation-key.v1', entryKey, generation: 0 }) }
+    ];
+  });
+}
+
+function observeMatrixOwnerBatches(selections: ReturnType<typeof matrixOwnerSelections>) {
+  const keys = new Map(selections.flatMap((owner, index) =>
+    owner.map(({ namespace, key }, stage) => [`${namespace}:${key}`, { index, stage }] as const)));
+  const batches = Array.from({ length: Math.ceil(selections.length / 4) }, () => ({
+    ready: Promise.withResolvers<void>(), second: Promise.withResolvers<void>(), started: 0,
+    timer: undefined as ReturnType<typeof setTimeout> | undefined
+  }));
+  const state = { started: [] as number[], completed: [] as number[], active: 0, maximum: 0,
+    pendingReads: 0, errors: new Map<number, unknown>() };
+  matrixIo.observeRead = (namespace, key) => {
+    const selected = keys.get(`${namespace}:${key}`);
+    if (!selected) return;
+    const { index, stage } = selected, batch = batches[Math.floor(index / 4)]!;
+    state.pendingReads++;
+    if (stage === 0) {
+      expect(state.completed).toHaveLength(Math.floor(index / 4) * 4);
+      state.started.push(index);
+      state.maximum = Math.max(state.maximum, ++state.active);
+      if (++batch.started === 1) {
+        batch.timer = setTimeout(() => batch.ready.reject(new Error('Four original checkpoint owners did not start.')), 5000);
+      }
+      if (batch.started === 4) { clearTimeout(batch.timer); batch.ready.resolve(); }
+    }
+    return async error => {
+      try {
+        if (error !== undefined) state.errors.set(index, error);
+        await batch.ready.promise;
+        if (stage === 3 || stage === 0 && error !== undefined) {
+          if (index % 4 === 0) await batch.second.promise;
+          state.completed.push(index); state.active--;
+          if (index % 4 === 1) batch.second.resolve();
+        }
       } finally { state.pendingReads--; }
     };
   };
@@ -360,6 +419,98 @@ describe('complete source5 per-entry independently current matrix', () => {
       expect(value.errors).toEqual([]);
     });
   });
+  it('drains four original read-only checkpoint owners per batch and freshly refuses changed confirmation on the next call', async () => {
+    const { fixture: value, session } = originalFixture();
+    await session.read(async ({ entries }) => {
+      const input = entries[0]!.input, selections = matrixOwnerSelections(value, entries);
+      const checkpoint = { ...input, operation: source5WorkflowPlanInventory(input.plan).checkpoint, write: false };
+      const observed = observeMatrixOwnerBatches(selections);
+      try {
+        await assertSource5WorkflowAuthority(checkpoint);
+        for (let start = 0; start < entries.length; start += 4) {
+          expect(observed.state.started.slice(start, start + 4).toSorted((a, b) => a - b))
+            .toEqual([start, start + 1, start + 2, start + 3]);
+        }
+        expect(observed.state.completed).toHaveLength(12);
+        expect(observed.state.maximum).toBe(4);
+        expect(observed.state.active).toBe(0);
+        expect(observed.state.pendingReads).toBe(0);
+        expect(observed.state.errors.size).toBe(0);
+      } finally { observed.dispose(); }
+      const confirmation = selections[0]![3]!;
+      const record = (await value.store.read('proof', confirmation.key))!;
+      const bytes = await readFile(record.path);
+      try {
+        await writeFile(record.path, '{}');
+        await expect(assertSource5WorkflowAuthority(checkpoint)).rejects.toThrow();
+      } finally { await writeFile(record.path, bytes); }
+      expect(await readFile(record.path)).toEqual(bytes);
+      expect(value.calls).toEqual([]);
+    });
+  });
+  it('retains the first original checkpoint owner error after draining its failed batch without starting later owners', async () => {
+    const { fixture: value, session } = originalFixture();
+    await session.read(async ({ entries }) => {
+      const input = entries[0]!.input, selections = matrixOwnerSelections(value, entries);
+      const records = await Promise.all(selections.slice(0, 2).map(async owner => {
+        const record = (await value.store.read('proof', owner[0]!.key))!;
+        return { path: record.path, bytes: await readFile(record.path) };
+      }));
+      let observed: ReturnType<typeof observeMatrixOwnerBatches> | undefined;
+      try {
+        await writeFile(records[0]!.path, '{');
+        await writeFile(records[1]!.path, '{}');
+        observed = observeMatrixOwnerBatches(selections);
+        const failure = await assertSource5WorkflowAuthority({
+          ...input, operation: source5WorkflowPlanInventory(input.plan).checkpoint, write: false
+        }).then(() => { throw new Error('Changed original ownership must refuse.'); }, (error: unknown) => error);
+        expect(observed.state.started.toSorted((a, b) => a - b)).toEqual([0, 1, 2, 3]);
+        expect(observed.state.completed).toHaveLength(4);
+        expect(observed.state.completed.indexOf(1)).toBeLessThan(observed.state.completed.indexOf(0));
+        expect(observed.state.maximum).toBe(4);
+        expect(observed.state.active).toBe(0);
+        expect(observed.state.pendingReads).toBe(0);
+        expect(observed.state.errors.size).toBe(2);
+        expect(failure).toBe(observed.state.errors.get(0));
+        expect(failure).not.toBe(observed.state.errors.get(1));
+      } finally {
+        observed?.dispose();
+        for (const record of records) await writeFile(record.path, record.bytes);
+      }
+      for (const record of records) expect(await readFile(record.path)).toEqual(record.bytes);
+      expect(value.calls).toEqual([]);
+    });
+  });
+  it.each(['selected-entry', 'write-checkpoint'] as const)(
+    'preserves serial ownership observation for %s', async mode => {
+      const { fixture: value, session } = originalFixture();
+      await session.read(async ({ entries }) => {
+        const input = entries[0]!.input, selections = matrixOwnerSelections(value, entries);
+        const keys = new Map(selections.flatMap((owner, index) =>
+          owner.map(({ namespace, key }, stage) => [`${namespace}:${key}`, { index, stage }] as const)));
+        const started: number[] = [], completed: number[] = [];
+        let active = 0, maximum = 0;
+        matrixIo.observeRead = (namespace, key) => {
+          const selected = keys.get(`${namespace}:${key}`);
+          if (!selected) return;
+          if (selected.stage === 0) { started.push(selected.index); maximum = Math.max(maximum, ++active); }
+          return async () => {
+            if (selected.stage === 3) { completed.push(selected.index); active--; }
+          };
+        };
+        try {
+          await assertSource5WorkflowAuthority({ ...input,
+            operation: mode === 'selected-entry' ? input.operation : source5WorkflowPlanInventory(input.plan).checkpoint,
+            write: mode === 'write-checkpoint' });
+          const expected = mode === 'selected-entry' ? [0] : entries.map((_, index) => index);
+          expect(started).toEqual(expected);
+          expect(completed).toEqual(expected);
+          expect(maximum).toBe(1);
+          expect(active).toBe(0);
+        } finally { matrixIo.observeRead = undefined; }
+        expect(value.calls).toEqual([]);
+      });
+    });
   it('withholds journal-derived matrix completion after actual run drift without replacing original receipts', async () => {
     const { fixture: value, session } = originalFixture();
     await session.read(async ({ entries, journal }) => {

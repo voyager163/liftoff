@@ -22,7 +22,10 @@ param(
     [string]$InvocationId,
 
     [Parameter(Mandatory = $false)]
-    [string]$InteropAssemblyPath
+    [string]$InteropAssemblyPath,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$RequirePrecompiledInterop
 )
 
 $ErrorActionPreference = 'Stop'
@@ -367,6 +370,9 @@ try {
     $compilerParameters.GenerateInMemory = $true
     [void]$compilerParameters.ReferencedAssemblies.Add([System.Object].Assembly.Location)
     if ([string]::IsNullOrEmpty($InteropAssemblyPath)) {
+        if ($RequirePrecompiledInterop) {
+            throw 'The packaged Win32 interop assembly is required.'
+        }
         $bootstrapStage = 'compile'
         [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: compiling")
         & $compilerCmdlet -TypeDefinition $win32TypeDef -CompilerParameters $compilerParameters -ErrorAction Stop
@@ -377,6 +383,9 @@ try {
         }
         $exactInteropAssemblyPath = [System.IO.Path]::GetFullPath($InteropAssemblyPath)
         if (-not [System.IO.File]::Exists($exactInteropAssemblyPath)) {
+            if ($RequirePrecompiledInterop) {
+                throw 'The private packaged Win32 interop assembly is missing.'
+            }
             $bootstrapStage = 'compile'
             [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: compiling")
             $compilerParameters.GenerateInMemory = $false

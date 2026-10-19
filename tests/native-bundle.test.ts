@@ -173,15 +173,19 @@ describe('native development bundle contracts', () => {
 
   it('requires every actual installed qualification case and rejects empty, skipped or duplicate evidence', () => {
     const file = {
-      name: '/checkout/tests/native-bundle-installed.test.ts',
+      name: '/checkout/tests/native-bundle-installed.test.ts', status: 'passed',
       assertionResults: nativeBundleCases.map(title => ({ title, status: 'passed' }))
     };
-    const report = { success: true, numFailedTests: 0, numFailedTestSuites: 0, testResults: [file] };
+    const report = { success: true, numFailedTests: 0, numFailedTestSuites: 0,
+      numTotalTests: nativeBundleCases.length, numPassedTests: nativeBundleCases.length,
+      numPendingTests: 0, numTodoTests: 0, testResults: [file] };
     expect(assertNativeBundleReport(report)).toEqual({ cases: nativeBundleCases.length, passed: nativeBundleCases.length });
     for (const changed of [
       { ...report, success: false },
       { ...report, numFailedTests: 1 },
       { ...report, numFailedTestSuites: 1 },
+      { ...report, numTotalTests: nativeBundleCases.length * 2, numPassedTests: nativeBundleCases.length * 2,
+        testResults: [file, { ...file, name: '/checkout/tests/ancillary.test.ts', status: 'failed' }] },
       { ...report, testResults: [] },
       { ...report, testResults: [file, file] },
       { ...report, testResults: [{ ...file, name: '/checkout/tests/native-bundle.test.ts' }] },

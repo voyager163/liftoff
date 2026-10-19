@@ -100,6 +100,55 @@ function removeSourceRange(source: string, start: string, end: string): string {
   return source.slice(0, startIndex) + source.slice(endIndex);
 }
 
+function restorePrePackagedInteropController(controller: string): string {
+  return controller
+    .replace([
+      '    [string]$InteropAssemblyPath,', '',
+      '    [Parameter(Mandatory = $false)]',
+      '    [switch]$RequirePrecompiledInterop'
+    ].join('\n'), '    [string]$InteropAssemblyPath')
+    .replace([
+      '        if ($RequirePrecompiledInterop) {',
+      "            throw 'The packaged Win32 interop assembly is required.'",
+      '        }', ''
+    ].join('\n'), '')
+    .replace([
+      '            if ($RequirePrecompiledInterop) {',
+      "                throw 'The private packaged Win32 interop assembly is missing.'",
+      '            }', ''
+    ].join('\n'), '');
+}
+
+function restorePrePackagedInteropRunner(runner: string): string {
+  runner = removeSourceRange(runner,
+    'export const windowsJobInteropAssemblyAssetPathParts = ',
+    'const controllerStartupTimeoutMs = ');
+  runner = removeSourceRange(runner,
+    '    let packagedBytes: Buffer | undefined;',
+    '    directory = await runOperation(');
+  runner = removeSourceRange(runner,
+    "    if (packagedBytes && reservation.kind === 'producer') {",
+    '    const remainingStartupMs = ');
+  runner = removeSourceRange(runner,
+    "            if (createHash('sha256').update(bytes).digest('hex') !== windowsJobInteropAssemblyAssetDigest) {",
+    '            interopPublished = true;');
+  return runner
+    .replace('  assemblyAssetDigest?: string;\n', '')
+    .replace("'liftoff-windows-job-interop-v2'", "'liftoff-windows-job-interop-v1'")
+    .replace('    identity.powershellPath,\n    identity.assemblyAssetDigest ?? null', '    identity.powershellPath')
+    .replace('      errorMessage: string;\n', '')
+    .replace('  packagedAssemblyPath?: string;\n  captureOperations?: WindowsJobInteropCaptureOperations;\n', '')
+    .replace('      errorMessage: error instanceof Error ? error.message : String(error),\n', '')
+    .replace('        powershellPath,\n        assemblyAssetDigest: windowsJobInteropAssemblyAssetDigest', '        powershellPath')
+    .replace('      packagedAssemblyPath: path.join(path.dirname(scriptPath), windowsJobInteropAssemblyAssetPathParts[2]),\n', '')
+    .replace('          : `Failed to prepare the verified Windows Job interop assembly before target execution: ${preparation.errorMessage}${cleanupSuffix}`',
+      '          : `Failed to prepare the verified Windows Job interop assembly before target execution.${cleanupSuffix}`')
+    .replace('    let interopPublished = interopAssemblyPath === null;', "    let interopPublished = interopReservation?.kind !== 'producer';")
+    .replace('        if (interopAssemblyPath && !interopPublished) {', "        if (interopReservation?.kind === 'producer' && !interopPublished) {")
+    .replace('            interopPublished = true;', '            interopReservation.publish(bytes);\n            interopPublished = true;')
+    .replace("['-InteropAssemblyPath', interopAssemblyPath, '-RequirePrecompiledInterop']", "['-InteropAssemblyPath', interopAssemblyPath]");
+}
+
 function restorePreInteropReuseController(controller: string): string {
   controller = restorePreReadyController(controller);
   const parameter = [
@@ -133,7 +182,7 @@ function restorePreInteropByteReadbackRunner(runner: string): string {
 }
 
 function restoreDefaultCompilerController(controller: string): string {
-  return controller
+  return restorePrePackagedInteropController(controller)
     .replace([
       "    $bootstrapStage = 'compiler-parameters'",
       '    $compilerParameters = [System.CodeDom.Compiler.CompilerParameters]::new()',
@@ -175,7 +224,7 @@ function restorePreReadyController(controller: string): string {
 }
 
 function restorePreReadyRunner(runner: string): string {
-  return runner
+  return restorePrePackagedInteropRunner(runner)
     .replace(windowsJobControllerAssetDigest, '77d63fa0c72a1f860008358fe7ed6e80a08e4040d6c700ea58ab64dae6b6e9e5')
     .replace(
       '/^LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|loading-interop|connecting|connected|ready-serialize|ready-encode|ready-write|ready-flush|ready-written)\\r?$/gmu',
@@ -895,6 +944,17 @@ describe('Windows Job interop assembly reuse', () => {
 });
 
 describe('Windows Job Object controller asset integrity and host environment', () => {
+  it('restores exact original 9bee controller and runner bytes by removing only packaged interop seeding', async () => {
+    const controller = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+    expect(createHash('sha256').update(restorePrePackagedInteropController(controller)).digest('hex'))
+      .toBe('03789de4dc1fbacb37ea310a63508d778b748d663d9d8dc7e6d0dfd3781ef83e');
+    const runner = await readFile(path.join(process.cwd(), 'src/adapters/process/windows-job-runner.ts'), 'utf8');
+    const restored = restorePrePackagedInteropRunner(runner)
+      .replace(windowsJobControllerAssetDigest, '03789de4dc1fbacb37ea310a63508d778b748d663d9d8dc7e6d0dfd3781ef83e');
+    expect(createHash('sha256').update(restored).digest('hex'))
+      .toBe('4a4afc27fcb4d9e8732a8e55793ed59a69b3152a4e0176ceaa066ec7e1080833');
+  });
+
   it('verifies the packaged controller asset matches its exact pinned SHA-256 digest', async () => {
     const verifiedPath = await verifyWindowsJobControllerAsset();
     expect(verifiedPath).toContain(path.join('assets', 'repair', 'windows-job-controller.ps1'));

@@ -157,6 +157,11 @@ node scripts/native-package-report.mjs qualification/native-bundle.json \
 
 The original report gate requires all eleven Apple Silicon installed cases to pass;
 the cross-platform report gate additionally requires every common/applicable case.
+Native and standalone migration report gates also inspect every reported file and
+assertion, reject duplicate file records, and recompute aggregate test counts.
+A green summary cannot conceal an ancillary failed file or assertion. Named
+foreign-host skips remain unrun; Vitest's nested suite totals are not normalized
+into file counts.
 Its packaged cask-stage worker case uses the bundle's pinned runtime and exact
 installed helper with no global tools. POSIX hosts must reproduce every inert
 transport byte and creation-held physical identity; Windows must refuse before
@@ -200,6 +205,18 @@ compiled stable launcher from a private versioned fixture with foreign cwd and
 empty PATH. They exercise malformed/missing/hard-linked/junction pointers and
 generate exact installer inputs only with explicitly synthetic policy.
 This required case is not execution of a signed Inno installer.
+The explicit native/npm asset inventory also includes the first-party
+`Liftoff.WindowsJob.Interop.dll`. Default controller startup verifies fresh
+packaged bytes and an exclusive per-invocation copy rather than compiling C#;
+custom overrides retain the inline path. Windows native-package CI runs
+`npm run check:windows-interop` using pinned .NET SDK 10.0.402 and the locked
+net462 reference package 1.0.3. Two independent builds of the controller's
+unchanged literal C# must match the shipped DLL byte-for-byte. The SDK and
+Microsoft reference assemblies are build inputs, not shipped runtime dependencies.
+CI writes this receipt under the runner's temporary directory, outside the
+checkout, so it cannot dirty the source before native archive handoff.
+This reproducibility check does not qualify Windows execution, minimum hosts,
+signing or public distribution.
 Linux cases exercise the actual bundle's isolated owned installation/recovery and
 test-only Ed25519 bootstrap authentication using OpenSSL 3.0 or newer with Ed25519
 support on the invoking host. Linux qualification additionally requires

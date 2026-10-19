@@ -70,6 +70,16 @@ The target's runtime budget starts only after its valid admission acknowledgemen
 the existing five-second settlement grace is separate. A startup timeout is
 not evidence that the target ran or that its process tree settled.
 
+Default packaged execution loads a private copy of the pinned first-party
+`Liftoff.WindowsJob.Interop.dll`; it never silently recompiles missing material.
+Fresh bounded physical capture and SHA-256 checks cover both the packaged asset
+and each invocation's private copy. Authentication still precedes cache publication
+and target dispatch. Custom controller/PowerShell overrides retain their inline
+path. Installed users need no .NET SDK. The build-only pinned SDK and locked
+reference package reproduce the unchanged literal C# with
+`npm run check:windows-interop`; regeneration uses
+`node scripts/windows-job-interop.mjs --write` and requires an updated runner pin.
+
 The C# launch helper owns `PROCESS_INFORMATION`; PowerShell does not construct
 an unused second instance before readiness. Fixed readiness diagnostics distinguish
 JSON serialization, encoding, pipe writes and flushing from mere pipe connection.

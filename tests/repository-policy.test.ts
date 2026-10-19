@@ -338,7 +338,9 @@ describe('source repository setup policy', () => {
       expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
     });
   it.each(['missing', 'matrix', 'runner', 'conditional', 'compiler', 'runtime', 'userspace', 'userspace-condition',
-    'userspace-pin', 'filtered', 'report', 'archive', 'unset-archive', 'upload'])(
+    'userspace-pin', 'filtered', 'report', 'archive', 'unset-archive', 'upload',
+    'interop-compiler-missing', 'interop-compiler-unpinned', 'interop-sdk', 'interop-condition',
+    'interop-check', 'interop-check-conditional', 'interop-checkout-output', 'interop-evidence'])(
     'rejects incomplete native platform packaging: %s', async fault => {
       const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-platform-packages'];
       if (fault === 'missing') delete workflow.jobs['qualify-native-platform-packages'];
@@ -347,14 +349,27 @@ describe('source repository setup policy', () => {
       if (fault === 'conditional') job.if = 'false';
       if (fault === 'compiler') job.steps[4].run += ' || true';
       if (fault === 'runtime') job.steps[1].with['node-version'] = 'latest';
-      if (fault === 'userspace') job.steps.splice(6, 1);
-      if (fault === 'userspace-condition') job.steps[6].if = 'false';
-      if (fault === 'userspace-pin') job.steps[6].run = 'docker pull rockylinux/rockylinux:latest';
-      if (fault === 'filtered') job.steps[7].run += ' -t skipped';
-      if (fault === 'report') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/native-package-report.*\n/m, '');
-      if (fault === 'archive') job.steps[7].run = job.steps[7].run.replace(/^node scripts\/native-release.*\n/m, '');
-      if (fault === 'unset-archive') job.steps[7].run = job.steps[7].run.replace('LIFTOFF_NATIVE_ARCHIVE_ROOT', 'UNSELECTED_ARCHIVE');
-      if (fault === 'upload') job.steps[8].with['if-no-files-found'] = 'ignore';
+      if (fault === 'userspace') job.steps.splice(8, 1);
+      if (fault === 'userspace-condition') job.steps[8].if = 'false';
+      if (fault === 'userspace-pin') job.steps[8].run = 'docker pull rockylinux/rockylinux:latest';
+      if (fault === 'filtered') job.steps[9].run += ' -t skipped';
+      if (fault === 'report') job.steps[9].run = job.steps[9].run.replace(/^node scripts\/native-package-report.*\n/m, '');
+      if (fault === 'archive') job.steps[9].run = job.steps[9].run.replace(/^node scripts\/native-release.*\n/m, '');
+      if (fault === 'unset-archive') job.steps[9].run = job.steps[9].run.replace('LIFTOFF_NATIVE_ARCHIVE_ROOT', 'UNSELECTED_ARCHIVE');
+      if (fault === 'upload') job.steps[10].with['if-no-files-found'] = 'ignore';
+      if (fault === 'interop-compiler-missing') job.steps.splice(5, 1);
+      if (fault === 'interop-compiler-unpinned') job.steps[5].uses = 'actions/setup-dotnet@v5';
+      if (fault === 'interop-sdk') job.steps[5].with['dotnet-version'] = '10.0.x';
+      if (fault === 'interop-condition') job.steps[5].if = 'false';
+      if (fault === 'interop-check') job.steps[6].run += ' || true';
+      if (fault === 'interop-check-conditional') job.steps[6].if = 'false';
+      if (fault === 'interop-checkout-output') {
+        job.steps[6].run = 'mkdir -p qualification\nnpm run --silent check:windows-interop > qualification/windows-job-interop.json\n';
+        job.steps[10].with.path = job.steps[10].with.path.replace(
+          '${{ runner.temp }}/liftoff-windows-job-interop.json\n', 'qualification/windows-job-interop.json\n');
+      }
+      if (fault === 'interop-evidence') job.steps[10].with.path = job.steps[10].with.path.replace(
+        '${{ runner.temp }}/liftoff-windows-job-interop.json\n', '');
       expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
     });
   it.each([

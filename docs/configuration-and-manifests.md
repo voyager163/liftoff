@@ -330,6 +330,13 @@ managed inventory must agree. Manual records framework `not-required` and may
 select no agents; this source representation does not yet enable Manual in
 public initialization. Governance `none` has no invented activation identity.
 
+Installed inspection rereads and physically binds its files on every call.
+Within that single collection, the validated manifest and rendered core may be
+reused only for the exact captured manifest-byte SHA-256. This is not a cache of
+filesystem observations or readiness. Later inspections rebuild their source;
+the public copied-snapshot validator independently parses and reconstructs its
+source instead of inheriting the collection's private compiler results.
+
 Active paths establish interpretation, never directory ownership. Original
 `projectArtifacts` retain their generation paths/hashes; separate
 `adoptionObservations` record actual observed hashes without claiming generation.
