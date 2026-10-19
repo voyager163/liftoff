@@ -170,6 +170,7 @@ describe('closed manual job identity qualification without dependency execution'
             actor_id: '400', run_id: '100', check_run_id: process.env.MOCK_JOB_CLAIM_TEST ?? '500', run_attempt: '1',
             sha: '${env.GITHUB_SHA}', workflow_sha: '${env.GITHUB_SHA}',
             workflow_ref: '${env.GITHUB_WORKFLOW_REF}', ref: 'refs/heads/develop', ref_type: 'branch',
+            job_workflow_ref: '${env.GITHUB_WORKFLOW_REF}', job_workflow_sha: '${env.GITHUB_SHA}',
             event_name: 'workflow_dispatch', runner_environment: 'github-hosted',
             iat: now, nbf: now - 600, exp: now + 300
           };

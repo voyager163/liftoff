@@ -80,6 +80,25 @@ describe('original signed GitHub job identity, not delivery or custody authority
     const observed = await identity.observeGitHubJobIdentity(expected);
     expect(() => identity.assertCurrentGitHubJobIdentity(observed, expected)).not.toThrow();
   });
+  it('verifies paired job-workflow claims only when they repeat the exact original workflow and source', async () => {
+    token = signed(claims({ job_workflow_ref: expected.workflowRef, job_workflow_sha: expected.sourceSha }));
+    const observed = await identity.observeGitHubJobIdentity(expected);
+    expect(() => identity.assertCurrentGitHubJobIdentity(observed, expected)).not.toThrow();
+  });
+  it.each([
+    { job_workflow_ref: 'other/repository/.github/workflows/job.yml@refs/heads/main', job_workflow_sha: expected.sourceSha },
+    { job_workflow_ref: expected.workflowRef, job_workflow_sha: 'b'.repeat(40) },
+    { job_workflow_ref: expected.workflowRef.replace('identity.yml', 'other.yml'), job_workflow_sha: expected.sourceSha },
+    { job_workflow_ref: expected.workflowRef.replace('feature/identity', 'other'), job_workflow_sha: expected.sourceSha },
+    { job_workflow_ref: null, job_workflow_sha: expected.sourceSha },
+    { job_workflow_ref: expected.workflowRef, job_workflow_sha: null }
+  ])('refuses a foreign or malformed paired job-workflow identity: %j', async change => {
+    token = signed(claims(change));
+    await expect(identity.observeGitHubJobIdentity(expected)).rejects.toMatchObject({
+      code: 'github-job-identity-claims', claimStage: 'unsupported-claims'
+    });
+    expect(fetchGitHub).toHaveBeenCalledTimes(1);
+  });
   it.each([
     'repo:owner@457/repository@123:ref:refs/heads/feature/identity',
     'repo:owner@456/repository@124:ref:refs/heads/feature/identity',

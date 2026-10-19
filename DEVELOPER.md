@@ -17,6 +17,9 @@ IDs. GitHub uses the latter by default for repositories created after July 15,
 2026; both forms must still match every independently expected signed ID.
 Reusable workflows, environment subjects and custom subject forms remain
 explicitly unsupported.
+Paired `job_workflow_ref`/`job_workflow_sha` claims may repeat that same original
+workflow and source. Foreign, incomplete or malformed pairs remain refused;
+these repeated signed claims do not authorize reusable-workflow execution.
 
 Token acquisition and verification share a ten-second abortable deadline.
 Token, token-response and JWKS limits are 16 KiB, 32 KiB and 64 KiB. Redirects,

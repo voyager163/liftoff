@@ -211,8 +211,11 @@ export async function observeGitHubJobIdentity(value: unknown, signal?: AbortSig
     if (claims.ref !== reference || claims.ref_type !== 'branch') return rejectClaims('ref');
     if (claims.sub !== `repo:${expected.repository}:ref:${reference}` &&
       claims.sub !== immutableSubject) return rejectClaims('subject');
-    if (Object.hasOwn(claims, 'job_workflow_ref') || Object.hasOwn(claims, 'job_workflow_sha') ||
-      Object.hasOwn(claims, 'environment')) {
+    const jobWorkflowRef = Object.hasOwn(claims, 'job_workflow_ref');
+    const jobWorkflowSha = Object.hasOwn(claims, 'job_workflow_sha');
+    if (Object.hasOwn(claims, 'environment') ||
+      (jobWorkflowRef || jobWorkflowSha) && (!jobWorkflowRef || !jobWorkflowSha ||
+        claims.job_workflow_ref !== expected.workflowRef || claims.job_workflow_sha !== expected.sourceSha)) {
       return rejectClaims('unsupported-claims');
     }
     const jwks = await read(githubJobIdentityJwks, 65_536);
