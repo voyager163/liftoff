@@ -128,7 +128,10 @@ export async function source5WorkflowOwnership(input: Source5WorkflowOwnershipIn
       await store.save('proof', manifestKey, value, null);
     }
   }
-  async function verifyHistory(selected: Owner, pointerRawDigest: string): Promise<void> {
+  async function verifyHistory(
+    selected: Owner, pointerRawDigest: string,
+    capturedConfirmation?: PromiseSettledResult<WorkflowSource5StoredControl | null>
+  ): Promise<void> {
     const originalPlan = lineage.find(ancestor => ancestor.control.controlKey === selected.controlKey);
     if (!originalPlan || selected.planDigest !== originalPlan.plan.planDigest ||
       selected.savedPlanDigest !== canonicalSha256(originalPlan.plan) ||
@@ -136,7 +139,9 @@ export async function source5WorkflowOwnership(input: Source5WorkflowOwnershipIn
       selected.rawSnapshotDigest !== originalPlan.plan.baselineDigest) {
       return workflowFailure('workflow-source5-owner', 'Ownership does not retain its independently sealed original plan, review and raw snapshot.');
     }
-    const confirmed = await store.read('proof', confirmationKey(selected.generation));
+    if (capturedConfirmation?.status === 'rejected') throw capturedConfirmation.reason;
+    const confirmed = capturedConfirmation === undefined
+      ? await store.read('proof', confirmationKey(selected.generation)) : capturedConfirmation.value;
     if (!confirmed || !isRecord(confirmed.value) ||
       (selected.generation === 0 ? confirmed.value.previousReceiptDigest !== null : !hex(confirmed.value.previousReceiptDigest))) {
       return workflowFailure('workflow-source5-owner', 'Exact original ownership readback was not durably confirmed.');
@@ -172,17 +177,23 @@ export async function source5WorkflowOwnership(input: Source5WorkflowOwnershipIn
   }
   async function assertCurrent(fresh: boolean): Promise<void> {
     await assertSource5WorkflowLease(input.lease, input.projectRoot);
-    await manifest(false);
-    const current = await pointer();
+    const [manifestObservation, pointerObservation] = await Promise.allSettled([manifest(false), pointer()]);
+    if (manifestObservation.status === 'rejected') throw manifestObservation.reason;
+    if (pointerObservation.status === 'rejected') throw pointerObservation.reason;
+    const current = pointerObservation.value;
     if (!current || current.owner.controlKey !== inventory.control.controlKey ||
       current.owner.planDigest !== input.plan.planDigest || current.owner.savedPlanDigest !== canonicalSha256(input.plan) ||
       current.owner.approvalHash !== source5ApprovalHash(input.context, input.approval)) {
       return workflowFailure('workflow-source5-owner', 'No confirmed exact ownership exists for this current reviewed plan.');
     }
-    const next = current.owner.generation < source5OwnershipMaximumGeneration
-      ? await store.read('proof', reservationKey(current.owner.generation + 1)) : null;
-    if (next) return workflowFailure('workflow-source5-owner-retired', 'A discoverable durable reservation retires this owner even if its CAS was lost or rejected.');
-    await verifyHistory(current.owner, current.record.rawDigest);
+    const [reservationObservation, confirmationObservation] = await Promise.allSettled([
+      current.owner.generation < source5OwnershipMaximumGeneration
+        ? store.read('proof', reservationKey(current.owner.generation + 1)) : Promise.resolve(null),
+      store.read('proof', confirmationKey(current.owner.generation))
+    ]);
+    if (reservationObservation.status === 'rejected') throw reservationObservation.reason;
+    if (reservationObservation.value) return workflowFailure('workflow-source5-owner-retired', 'A discoverable durable reservation retires this owner even if its CAS was lost or rejected.');
+    await verifyHistory(current.owner, current.record.rawDigest, confirmationObservation);
     if (fresh) {
       await requireUnattempted();
       const latest = await inspectModernInstalledActivation(input.projectRoot);
