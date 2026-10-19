@@ -22,6 +22,9 @@ ambiguous keys and copied observations are refused. Raw identity/request tokens
 and provider diagnostics are never returned, logged or written. The original
 frozen observation has process-local provenance and expires with the token;
 its serialized report is diagnostic data, not a reusable capability.
+Endpoint rejection reports only a fixed transport, host, path or query stage,
+never the original URL, query values or request credential. An unsupported
+provider endpoint remains blocked before any credential-bearing request.
 
 The manual `GitHub job identity qualification` workflow prepares the two-module
 program using **Node 24.21.0's experimental built-in TypeScript transformer**.

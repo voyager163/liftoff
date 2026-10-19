@@ -83,12 +83,18 @@ function requestUrl(raw: string | undefined, audience: string): URL {
   let url: URL;
   try { url = new URL(raw ?? ''); }
   catch { return failure('unavailable', 'A genuine GitHub Actions token endpoint is unavailable; no ambient credential fallback was attempted.'); }
-  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash ||
-    !/^(?:pipelines[a-z0-9-]*|run-actions-[a-z0-9-]+)\.actions\.githubusercontent\.com$/u.test(url.hostname) ||
-    !/^\/[A-Za-z0-9_./-]+\/idtoken$/u.test(url.pathname) ||
-    [...url.searchParams.keys()].some(key => key !== 'api-version') ||
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hash) {
+    return failure('endpoint-transport', 'Job credentials require an original HTTPS endpoint without URL credentials, a custom port or a fragment.');
+  }
+  if (!/^(?:pipelines[a-z0-9-]*|run-actions-[a-z0-9-]+)\.actions\.githubusercontent\.com$/u.test(url.hostname)) {
+    return failure('endpoint-host', 'The original endpoint is not a supported GitHub Actions token service host.');
+  }
+  if (!/^\/[A-Za-z0-9_./-]+\/idtoken$/u.test(url.pathname)) {
+    return failure('endpoint-path', 'The original GitHub Actions endpoint is not a supported token path.');
+  }
+  if ([...url.searchParams.keys()].some(key => key !== 'api-version') ||
     url.searchParams.getAll('api-version').length > 1) {
-    return failure('endpoint', 'Job credentials may be sent only to the original HTTPS GitHub Actions token endpoint without redirects or an injected audience.');
+    return failure('endpoint-query', 'The original GitHub Actions endpoint has unsupported query selectors or an injected audience.');
   }
   url.searchParams.set('audience', audience);
   return url;

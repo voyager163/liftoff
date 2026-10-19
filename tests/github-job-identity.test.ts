@@ -113,6 +113,18 @@ describe('original signed GitHub job identity, not delivery or custody authority
     await expect(identity.observeGitHubJobIdentity(expected)).rejects.toThrow();
     expect(fetchGitHub).not.toHaveBeenCalled();
   });
+  it.each([
+    ['https://private-endpoint-user@pipelines.actions.githubusercontent.com/jobs/job/idtoken', 'transport'],
+    ['https://private-endpoint-host.example/jobs/job/idtoken', 'host'],
+    ['https://pipelines.actions.githubusercontent.com/private-endpoint-path', 'path'],
+    [`${requestUrl}&private-endpoint-query=private-endpoint-value`, 'query']
+  ])('reports only a fixed endpoint rejection stage: %s', async (url, stage) => {
+    vi.stubEnv('ACTIONS_ID_TOKEN_REQUEST_URL', url);
+    const error = await identity.observeGitHubJobIdentity(expected).catch((failure: unknown) => failure);
+    expect(error).toMatchObject({ code: `github-job-identity-endpoint-${stage}` });
+    expect(String(error)).not.toMatch(/private-endpoint|private-original-request-credential/);
+    expect(fetchGitHub).not.toHaveBeenCalled();
+  });
   it.each(['', 'private\ncredential', 'a'.repeat(16_385)])('refuses absent or unsafe request credentials without fallback', async value => {
     vi.stubEnv('ACTIONS_ID_TOKEN_REQUEST_TOKEN', value);
     await expect(identity.observeGitHubJobIdentity(expected)).rejects.toMatchObject({ code: 'github-job-identity-unavailable' });
