@@ -88,6 +88,18 @@ release configuration require deliberate maintainer review even when CI is
 green. A contributor-edited workflow reporting success is not independent
 review of that workflow.
 
+The separate `github-job-identity.yml` workflow is a closed, manual-only
+nonpublishing exception. A read-only job prepares two explicit first-party
+modules with Node built-ins, without npm or lifecycle scripts. Only its dependent
+identity-observation job receives `actions: read` and `id-token: write`; it has
+no checkout, dependency installation, cloud commands or publishing step. It
+requests only a fresh Liftoff-purpose audience and verifies GitHub's signature
+against exact original job/run/source selectors. The permission itself is not
+audience-restricted: the closed reviewed program, not a GitHub permission
+mechanism, limits its use. Ordinary contribution jobs remain read-only.
+Its sanitized report is not program-delivery, host-custody, deployment or
+release authority. See the [identity qualification guide](DEVELOPER.md#signed-github-job-identity).
+
 ## Releases
 
 The release workflow qualifies and packs a canonical version tag whose commit
