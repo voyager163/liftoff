@@ -82,7 +82,7 @@ function workerArtifacts(patternId: string): ArtifactDeclaration[] {
 export const pythonFastApiPlugin = builtinDescriptor({
   category: 'stack',
   id: 'python-fastapi',
-  contentVersion: 2,
+  contentVersion: 3,
   supports: [standard, genai],
   artifacts: [
     ...sharedBackend.map(([logicalName, category, pathParts]) => projectArtifact(logicalName, category, pathParts)),

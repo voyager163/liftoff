@@ -51,6 +51,26 @@ describe('reviewed patched template dependency closure', () => {
     expect(exported).not.toMatch(/\n(?:pyjwt==2\.13\.0|urllib3==2\.7\.0)/);
   });
 
+  it.each(['python-standard', 'python-genai'])('pins patched Mako in %s', (template) => {
+    expect(lockedVersion(read(`${python}/${template}/uv.lock`), 'mako')).toBe('1.4.2');
+  });
+
+  it('keeps the patched GenAI SDK closure and Functions export on the same reviewed versions', () => {
+    const lock = read(`${python}/python-genai/uv.lock`);
+    const exported = read(`${python}/python-genai/function-requirements.txt`);
+    for (const [name, version] of [
+      ['mako', '1.4.2'], ['pydantic-ai-slim', '2.53.0'], ['pydantic-graph', '2.53.0'],
+      ['werkzeug', '3.1.9'], ['openai', '3.35.1'], ['genai-prices', '0.1.13']
+    ]) {
+      expect(lockedVersion(lock, name)).toBe(version);
+      expect(exported).toContain(`\n${name}==${version} \\\n`);
+    }
+    expect(read(`${python}/python-genai/pyproject.toml`)).toContain('"pydantic-ai-slim[openai]==2.53.0"');
+    const baseline = JSON.parse(read('assets/supported-stack.json'));
+    expect(baseline.id).toBe('2026.10.19');
+    expect(baseline.pythonProjects['genai-backend'].dependencies['pydantic-ai-slim']).toBe('2.53.0');
+  });
+
   it('binds Fastify and both fast-uri release lines to patched compatible versions', () => {
     const manifest = JSON.parse(read(`${node}/package.json`));
     const lock = JSON.parse(read(`${node}/package-lock.json`));

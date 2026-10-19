@@ -20,10 +20,10 @@ const assetSha256: Readonly<Record<string, Sha256Digest>> = {
   'go-backend-module': 'sha256:b4a00ccd7a9881c7e518dcbba83bd8ead0a852b29cb2509402f3c8c9af5bafac',
   'go-backend-checksums': 'sha256:c4c5f94664176df8c09e6fbf02a48391e606d135caec6b75932271333bbb4fb5',
   'python-standard-project': 'sha256:dc551853962b84bec527bb3463801b74ab9681b41d362653892243836a6e6935',
-  'python-standard-lock': 'sha256:4bc135105548ce5d16d64fe034be6993cf722f75f51ac4d728a56c35c80d0dc2',
-  'python-genai-project': 'sha256:94cbed85dbaf807866b4908703106d19e01eee9a30b7ccf186b88f68d8154745',
-  'python-genai-lock': 'sha256:2d6c651f9237d092ef56461b3f492aa19b1a825f08f14608b3cc2d020d89e16d',
-  'python-genai-function-requirements': 'sha256:6297c0dbb51146fa6188b380e026d6a31f61d1cec9c5586aa495ff1dca26ef46',
+  'python-standard-lock': 'sha256:042440545f33b7c82e0a676602c29092ec06104da543372110602225c637ec3a',
+  'python-genai-project': 'sha256:9d71f403b7298edbb4413384ef786da4e66cc4849749e90824daa2acd2a1629e',
+  'python-genai-lock': 'sha256:6734357fa5dc42b1aac41c80b4a8ee91a5aede97c1efc4d2b2a2213943d73112',
+  'python-genai-function-requirements': 'sha256:67886959248dfbc782dc408bb87f54679eaecb97fcb82c47340a3b979838c3c6',
   'opentofu-azure-versions': 'sha256:7f1b60e1d88e6e8f0bc3981fafbb33b9d1471b3fe028b2eaa757d01d7f7001af',
   'opentofu-azure-provider-lock': 'sha256:e4a061da79009c7e1c2f9cb356b3a4df0bb05802f9b98f30de79c351c280ef61',
   'frontend-package-manifest': 'sha256:8217179388207e3d8e8599544e7741b29beb6dded81f01bcf5d4356785a68561',
@@ -39,7 +39,7 @@ interface PluginRecord {
 }
 
 const pluginRecords: readonly PluginRecord[] = [
-  { category: 'stack', id: 'python-fastapi', apiVersion: 1, contentVersion: 2, contentDigest: 'sha256:44f91983bc9b69360cb6c0f35c61b8e0132bd4bfd1f7c93c1bf696d525bed7ea' },
+  { category: 'stack', id: 'python-fastapi', apiVersion: 1, contentVersion: 3, contentDigest: 'sha256:007ef8be99fea8d880c5f4411e1a77f2f58bb0f5945f5c6728a599905cca7c5c' },
   { category: 'stack', id: 'node-fastify', apiVersion: 1, contentVersion: 4, contentDigest: 'sha256:741c6dc7221d9178db1ea88dee47c98e3bdb1ba382ba432dc76f277c705feb92' },
   { category: 'stack', id: 'go-huma', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:89f2689d613fcd5708bf9a94b5138cc0d39fb3c0c18374c75a190e7ee8ba1432' },
   { category: 'cloud', id: 'azure', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7' },
@@ -52,9 +52,9 @@ const pluginRecords: readonly PluginRecord[] = [
 
 /** Expected registry identities of the built-ins. Tests assert them; runtime never consults them. */
 export const builtinReleaseDigests = deepFrozen({
-  pluginSetDigest: 'sha256:d79222120ab3f940f364a4a457116773a467bd2fc7f8f92df4c6a528e5b1bd09' as Sha256Digest,
+  pluginSetDigest: 'sha256:9e44b24e3703878cabd683f45dfab2d0d8fd1e34e117c5b086f986ca263b5f8e' as Sha256Digest,
   coreContributionDigest: 'sha256:f8189ff22d635da4f8c5598e92159d3c4364684016a00e0df9af034a7503ae22' as Sha256Digest,
-  registryDigest: 'sha256:850a9fa5e0995ba80730da6eb316d24304e013e465d111b1d4eb0b330d6a23e5' as Sha256Digest
+  registryDigest: 'sha256:1b41b3e9c1cc55d5463a743beb8041cd8459ab95dea86b24d44f314296df7cb8' as Sha256Digest
 });
 
 // A missing literal is reported by registry intake as a release mismatch at first use, never here.

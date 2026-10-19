@@ -63,12 +63,16 @@ describe('genuine pre-assessment declaration and managed-body source contract', 
     const registry = modernPreAssessmentRegistry();
     expect(before.registryDigest).toBe('sha256:3f586dc05020ab6f8f5f8c312098fef7e2a1a0ff3a802d60c1f0366ef25023a1');
     expect(before.pluginSetDigest).toBe('sha256:b37f1ea2319bdf25e2fda09faa271639c48007acdcbd80aaf540835a210eab73');
-    expect(registry.registryDigest).toBe('sha256:b09ff9e46519eb78e3acaa811b7687e017f5cd36c923ecf0c439c3daa8477f18');
-    expect(registry.pluginSetDigest).toBe('sha256:593f115d00e9065567b063d306511a5aa7d3a0e21ee17811e94aa09f69daf79f');
+    expect(registry.registryDigest).toBe('sha256:a22a5aa692b839fa67865a519bc09ae7f544a4ff0c77699ac983d6ceef4db1e2');
+    expect(registry.pluginSetDigest).toBe('sha256:041e13d32bca6467eb335c0ce43f76783fe87c0efc779de70ea759c8f2dbf981');
     expect(registry.coreContributionDigest).toBe('sha256:a4710c6c0be752760b7bf068e794974aba443d05510bd5ca634a4e1ed3064677');
     expect(registry.inventory.find(plugin => plugin.id === 'node-fastify')).toMatchObject({
       contentVersion: 4,
       contentDigest: 'sha256:741c6dc7221d9178db1ea88dee47c98e3bdb1ba382ba432dc76f277c705feb92'
+    });
+    expect(registry.inventory.find(plugin => plugin.id === 'python-fastapi')).toMatchObject({
+      contentVersion: 3,
+      contentDigest: 'sha256:007ef8be99fea8d880c5f4411e1a77f2f58bb0f5945f5c6728a599905cca7c5c'
     });
     expect(modernPreAssessmentRegistry()).toBe(registry);
     expect(Object.isFrozen(modernPreAssessmentSource)).toBe(true);

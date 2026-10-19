@@ -19,7 +19,7 @@ import * as telemetryContract from '../src/telemetry/contract.js';
 
 const profiles = ['none', 'single-maintainer-gitflow', 'team-gitflow'] as const;
 const workflows = ['manual', 'openspec', 'spec-kit'] as const;
-const registryDigest = 'sha256:835adbab9c5c762be80697452f2e20d7b6e80d58e0b263faca3016dc1fd772e2';
+const registryDigest = 'sha256:42a88c45428b41443e2363a60c5c3343af9ef0031e3cf43907b4f59c727d6ec1';
 const manifestReader = createManifestV8Reader({
   catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract
 });

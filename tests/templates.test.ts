@@ -108,7 +108,7 @@ describe('templates and filesystem', () => {
       artifacts.find((artifact) => artifact.pathParts.join('/') === artifactPath)?.content ?? '';
 
     expect(contentAt('backend/orchestration/model_config.py')).toContain('from pydantic_ai import Agent');
-    expect(contentAt('backend/pyproject.toml')).toContain('pydantic-ai-slim[openai]==2.33.0');
+    expect(contentAt('backend/pyproject.toml')).toContain('pydantic-ai-slim[openai]==2.53.0');
     expect(contentAt('backend/pyproject.toml')).toContain('langfuse==4.14.4');
     expect(contentAt('backend/uv.lock')).toContain('name = "functional-rag-backend"');
     expect(contentAt('backend/orchestration/model_config.py')).toContain('PYDANTIC_AI_MODEL is required');

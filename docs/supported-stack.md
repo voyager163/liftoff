@@ -60,6 +60,14 @@ npm run verify:standard-node-templates
 Retired Power Apps fixtures are negative inputs only and do not participate in
 generation, freshness, or dependency promotion.
 
+The `2026.10.19` Python refresh pins Pydantic AI 2.53.0, Mako 1.4.2 and
+Werkzeug 3.1.9 together with their reviewed lock/export closure. Exact retained
+activation-4 metadata remains readable with current template assets; frozen
+governance declarations and old project-owned dependencies are not rewritten.
+Unpublished older activation-5 metadata is not reclassified as activation 4.
+This refresh does not itself qualify public native packages or a comprehensive
+Python advisory audit.
+
 ## Existing generated projects
 
 Upgrade the globally installed Liftoff CLI, then inspect Liftoff core
