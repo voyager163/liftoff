@@ -165,13 +165,13 @@ describe('closed manual job identity qualification without dependency execution'
           const now = Math.floor(Date.now() / 1000);
           const claims = {
             iss: 'https://token.actions.githubusercontent.com', aud: url.searchParams.get('audience'),
-            sub: 'repo:voyager163/liftoff:ref:refs/heads/develop',
+            sub: 'repo:voyager163@300/liftoff@200:ref:refs/heads/develop',
             repository: 'voyager163/liftoff', repository_id: '200', repository_owner_id: '300',
             actor_id: '400', run_id: '100', check_run_id: '500', run_attempt: '1',
             sha: '${env.GITHUB_SHA}', workflow_sha: '${env.GITHUB_SHA}',
             workflow_ref: '${env.GITHUB_WORKFLOW_REF}', ref: 'refs/heads/develop', ref_type: 'branch',
             event_name: 'workflow_dispatch', runner_environment: 'github-hosted',
-            iat: now, nbf: now - 5, exp: now + 300
+            iat: now, nbf: now - 600, exp: now + 300
           };
           const prefix = Buffer.from(JSON.stringify({alg: 'RS256', typ: 'JWT', kid: 'test-only-key'})).toString('base64url')
             + '.' + Buffer.from(JSON.stringify(claims)).toString('base64url');

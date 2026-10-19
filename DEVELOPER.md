@@ -11,9 +11,12 @@ caller supplies only exact expected repository/owner/actor IDs, original run and
 check-run IDs, source SHA, literal branch workflow and Liftoff-purpose audience.
 The signed `check_run_id` is compared with the real job's `check_run_url`; it is
 not assumed to equal the Actions job ID. Only first-attempt, manually dispatched,
-GitHub-hosted, same-source workflows with the default branch subject are
-supported. Reusable workflows, environment subjects and custom subject forms
-remain explicitly unsupported.
+GitHub-hosted, same-source workflows with an exact default branch subject are
+supported: either legacy names or immutable owner/repository names and numeric
+IDs. GitHub uses the latter by default for repositories created after July 15,
+2026; both forms must still match every independently expected signed ID.
+Reusable workflows, environment subjects and custom subject forms remain
+explicitly unsupported.
 
 Token acquisition and verification share a ten-second abortable deadline.
 Token, token-response and JWKS limits are 16 KiB, 32 KiB and 64 KiB. Redirects,
@@ -30,6 +33,10 @@ path is not a documented `/idtoken` suffix contract. Preserve its bounded
 2 KiB ASCII path without reconstructing it, while retaining the exact HTTPS
 GitHub service-host allowlist, query checks, redirect refusal and all signed
 issuer, audience, job and workflow bindings.
+`nbf` is checked independently from `iat`, including GitHub's documented
+backdated not-before time. It cannot be in the future beyond the existing
+30-second skew allowance. Issued-at freshness, maximum ten-minute token
+lifetime, expiry and final expiry rechecks remain unchanged.
 
 The manual `GitHub job identity qualification` workflow prepares the two-module
 program using **Node 24.21.0's experimental built-in TypeScript transformer**.

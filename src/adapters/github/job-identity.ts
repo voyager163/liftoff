@@ -188,10 +188,13 @@ export async function observeGitHubJobIdentity(value: unknown, signal?: AbortSig
     }
     const now = Math.floor(Date.now() / 1000);
     const { iat, nbf, exp } = claims;
+    const [owner, repositoryName] = expected.repository.split('/');
+    const reference = expected.workflowRef.split('@')[1];
+    const immutableSubject = `repo:${owner}@${expected.ownerId}/${repositoryName}@${expected.repositoryId}:ref:${reference}`;
     if (typeof iat !== 'number' || !Number.isSafeInteger(iat) ||
       typeof nbf !== 'number' || !Number.isSafeInteger(nbf) ||
       typeof exp !== 'number' || !Number.isSafeInteger(exp) ||
-      iat > now + 30 || iat < now - 600 || nbf > now + 30 || nbf < iat - 30 ||
+      iat > now + 30 || iat < now - 600 || nbf > now + 30 || nbf < 0 ||
       exp <= now || exp <= iat || nbf >= exp || exp - iat > 600 ||
       claims.iss !== githubJobIdentityIssuer || claims.aud !== expected.audience ||
       claims.repository !== expected.repository || claims.repository_id !== String(expected.repositoryId) ||
@@ -200,8 +203,8 @@ export async function observeGitHubJobIdentity(value: unknown, signal?: AbortSig
       claims.run_attempt !== '1' || claims.sha !== expected.sourceSha ||
       claims.workflow_sha !== expected.sourceSha || claims.workflow_ref !== expected.workflowRef ||
       claims.event_name !== 'workflow_dispatch' || claims.runner_environment !== 'github-hosted' ||
-      claims.ref !== expected.workflowRef.split('@')[1] || claims.ref_type !== 'branch' ||
-      claims.sub !== `repo:${expected.repository}:ref:${claims.ref}` ||
+      claims.ref !== reference || claims.ref_type !== 'branch' ||
+      claims.sub !== `repo:${expected.repository}:ref:${reference}` && claims.sub !== immutableSubject ||
       Object.hasOwn(claims, 'job_workflow_ref') || Object.hasOwn(claims, 'job_workflow_sha') ||
       Object.hasOwn(claims, 'environment')) {
       return failure('claims', 'Signed job identity must match the exact original repository, actor, job/run, source, workflow, purpose, host kind and current lifetime; reruns and unsupported subject forms are refused.');

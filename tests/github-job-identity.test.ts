@@ -75,6 +75,30 @@ describe('original signed GitHub job identity, not delivery or custody authority
     expect(fetchGitHub.mock.calls[1]![0]).toBe(identity.githubJobIdentityJwks);
     expect(fetchGitHub.mock.calls[1]![1]?.headers).not.toHaveProperty('Authorization');
   });
+  it('verifies the immutable default subject against both original numeric IDs and names', async () => {
+    token = signed(claims({ sub: 'repo:owner@456/repository@123:ref:refs/heads/feature/identity' }));
+    const observed = await identity.observeGitHubJobIdentity(expected);
+    expect(() => identity.assertCurrentGitHubJobIdentity(observed, expected)).not.toThrow();
+  });
+  it.each([
+    'repo:owner@457/repository@123:ref:refs/heads/feature/identity',
+    'repo:owner@456/repository@124:ref:refs/heads/feature/identity',
+    'repo:another@456/repository@123:ref:refs/heads/feature/identity',
+    'repo:owner@456/another@123:ref:refs/heads/feature/identity',
+    'repo:owner@0456/repository@123:ref:refs/heads/feature/identity',
+    'repo:owner@456/repository@0123:ref:refs/heads/feature/identity',
+    'repo:owner@456/repository@123:ref:refs/heads/another',
+    'repo:owner@456/repository:ref:refs/heads/feature/identity'
+  ])('refuses a genuinely signed but inconsistent immutable default subject: %s', async sub => {
+    token = signed(claims({ sub }));
+    await expect(identity.observeGitHubJobIdentity(expected)).rejects.toMatchObject({ code: 'github-job-identity-claims' });
+    expect(fetchGitHub).toHaveBeenCalledTimes(1);
+  });
+  it.each([0, 5, 30, 600, 3600])('checks not-before independently from issued-at when it is %s seconds earlier', async offset => {
+    token = signed(claims({ nbf: Math.floor(Date.now() / 1000) - offset }));
+    const observed = await identity.observeGitHubJobIdentity(expected);
+    expect(() => identity.assertCurrentGitHubJobIdentity(observed, expected)).not.toThrow();
+  });
   it.each([
     undefined, null, {}, { ...expected, runAttempt: 2 }, { ...expected, runId: 0 },
     { ...expected, runId: Number.MAX_SAFE_INTEGER + 1 }, { ...expected, repository: 'owner/../other' },
@@ -153,9 +177,11 @@ describe('original signed GitHub job identity, not delivery or custody authority
     { sha: 'c'.repeat(40) }, { workflow_sha: 'c'.repeat(40) },
     { workflow_ref: expected.workflowRef.replace('identity.yml', 'another.yml') },
     { event_name: 'pull_request' }, { runner_environment: 'self-hosted' },
-    { ref: 'refs/heads/main' }, { ref_type: 'tag' }, { sub: 'repo:owner/repository:environment:prod' },
+    { ref: 'refs/heads/main' }, { ref: { toString: 'untrusted' } },
+    { ref_type: 'tag' }, { sub: 'repo:owner/repository:environment:prod' },
     { job_workflow_ref: expected.workflowRef }, { job_workflow_sha: expected.sourceSha }, { environment: 'prod' },
-    { run_id: expected.runId }, { check_run_id: expected.checkRunId }, { iat: 'now' }, { exp: null }, { nbf: 'now' }
+    { run_id: expected.runId }, { check_run_id: expected.checkRunId }, { iat: 'now' }, { exp: null },
+    { nbf: 'now' }, { nbf: -1 }, { nbf: 0.5 }
   ])('rejects a genuinely signed but foreign or unsupported claim: %j', async change => {
     token = signed(claims(change));
     await expect(identity.observeGitHubJobIdentity(expected)).rejects.toMatchObject({ code: 'github-job-identity-claims' });
