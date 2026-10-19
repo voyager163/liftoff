@@ -3,6 +3,61 @@
 This guide covers release-owned compatibility, deterministic setup, and package
 publishing. General contribution setup remains in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Signed GitHub job identity
+
+`src/adapters/github/job-identity.ts` verifies a bounded, original GitHub Actions
+OIDC token using RS256 and the fixed GitHub issuer's current HTTPS JWKS. The
+caller supplies only exact expected repository/owner/actor IDs, original run and
+check-run IDs, source SHA, literal branch workflow and Liftoff-purpose audience.
+The signed `check_run_id` is compared with the real job's `check_run_url`; it is
+not assumed to equal the Actions job ID. Only first-attempt, manually dispatched,
+GitHub-hosted, same-source workflows with the default branch subject are
+supported. Reusable workflows, environment subjects and custom subject forms
+remain explicitly unsupported.
+
+Token acquisition and verification share a ten-second abortable deadline.
+Token, token-response and JWKS limits are 16 KiB, 32 KiB and 64 KiB. Redirects,
+foreign credential endpoints, caller keys/algorithms, stale or foreign claims,
+ambiguous keys and copied observations are refused. Raw identity/request tokens
+and provider diagnostics are never returned, logged or written. The original
+frozen observation has process-local provenance and expires with the token;
+its serialized report is diagnostic data, not a reusable capability.
+
+The manual `GitHub job identity qualification` workflow prepares the two-module
+program using **Node 24.21.0's experimental built-in TypeScript transformer**.
+It runs no npm/dependency/lifecycle code. Only the separate observation job gets
+nonpublishing OIDC plus read-only job metadata. The repository policy validates
+the entire closed workflow, including trigger, permissions, steps and pinned
+actions. Portable tests use real local RSA signatures and mocked network
+responses; they are not genuine GitHub execution evidence.
+
+This primitive establishes signed job facts **only**. Ordinary Actions artifact
+transport and its diagnostic inventory do not establish Source5 authenticated
+program delivery, protected whole-job host custody, selected build-tool closure,
+effect approval, artifact publication or workflow authority. No activation
+identity, phase, receipt family, public CLI capability or OpenSpec completion
+gate is advanced by adding this observer.
+
+```bash
+npx vitest run tests/github-job-identity.test.ts tests/github-job-identity-qualification.test.ts tests/repository-policy.test.ts
+```
+
+## Windows controller readiness
+
+The packaged Windows PowerShell controller has a shared 15-second startup
+budget, including private interop preparation and authenticated admission.
+The target's runtime budget starts only after its valid admission acknowledgement;
+the existing five-second settlement grace is separate. A startup timeout is
+not evidence that the target ran or that its process tree settled.
+
+The C# launch helper owns `PROCESS_INFORMATION`; PowerShell does not construct
+an unused second instance before readiness. Fixed readiness diagnostics distinguish
+JSON serialization, encoding, pipe writes and flushing from mere pipe connection.
+Only exact whole-line stage names enter timeout errors, never raw controller
+stderr. Portable tests cover the protocol and sanitized failure boundaries;
+the two real-controller cases in `tests/windows-job-runner.test.ts` require
+native Windows and must not be replaced with mocked qualification.
+
 ## Project reporting consent boundary
 
 `application/telemetry/project-reporting.ts` owns explicit status/enroll/disable/

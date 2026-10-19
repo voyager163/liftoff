@@ -14,8 +14,50 @@ export const communityFiles = [
   'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SECURITY.md', 'GOVERNANCE.md', 'SUPPORT.md'
 ];
 export const workflowFiles = [
-  'ci.yml', 'repository.yml', 'release.yml', 'template-dependency-audit.yml', 'supported-stack-freshness.yml'
+  'ci.yml', 'repository.yml', 'release.yml', 'template-dependency-audit.yml', 'supported-stack-freshness.yml',
+  'github-job-identity.yml'
 ];
+export function githubJobIdentityQualificationWorkflow() {
+  const condition = "${{ github.repository == 'voyager163/liftoff' && github.event_name == 'workflow_dispatch' && github.run_attempt == 1 && github.ref_type == 'branch' }}";
+  const node = { uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020', with: { 'node-version': '24.21.0' } };
+  const artifact = (kind, artifactPath) => ({
+    uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+    with: { name: `liftoff-job-identity-${kind}-\${{ github.run_id }}-\${{ github.run_attempt }}`,
+      path: artifactPath, 'if-no-files-found': 'error', 'retention-days': 14 }
+  });
+  return {
+    name: 'GitHub job identity qualification', on: { workflow_dispatch: null }, permissions: { contents: 'read' },
+    jobs: {
+      'prepare-job-identity': {
+        name: 'Prepare dependency-free job identity program', if: condition,
+        'runs-on': 'ubuntu-latest', 'timeout-minutes': 5, permissions: { contents: 'read' },
+        steps: [
+          { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+            with: { ref: '${{ github.sha }}', 'persist-credentials': false } },
+          structuredClone(node),
+          { name: 'Transform only the explicit identity program with Node built-ins',
+            run: 'node scripts/qualify-github-job-identity.mjs prepare' },
+          artifact('program', 'qualification/job-identity-program')
+        ]
+      },
+      'observe-job-identity': {
+        name: 'Observe signed GitHub job identity', needs: 'prepare-job-identity', if: condition,
+        'runs-on': 'ubuntu-latest', 'timeout-minutes': 5,
+        permissions: { contents: 'read', actions: 'read', 'id-token': 'write' },
+        steps: [
+          structuredClone(node),
+          { uses: 'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c',
+            with: { name: 'liftoff-job-identity-program-${{ github.run_id }}-${{ github.run_attempt }}',
+              path: 'qualification/job-identity-program' } },
+          { name: 'Verify signed original job facts without publishing or cloud access',
+            env: { GH_TOKEN: '${{ github.token }}' },
+            run: 'node qualification/job-identity-program/qualify.mjs observe' },
+          artifact('report', 'qualification/job-identity-program/job-identity-report.json')
+        ]
+      }
+    }
+  };
+}
 export const allowedActions = [
   'actions/checkout', 'actions/setup-node', 'actions/setup-python', 'actions/setup-go',
   'opentofu/setup-opentofu', 'actions/upload-artifact', 'actions/download-artifact'
@@ -511,6 +553,11 @@ export function checkPromotion(event) {
 
 export function checkWorkflow(filename, workflow) {
   const release = filename === 'release.yml';
+  const identityQualification = filename === 'github-job-identity.yml';
+  if (identityQualification) {
+    assert.deepEqual(workflow, githubJobIdentityQualificationWorkflow(),
+      'Only the exact closed manual job-identity workflow may request nonpublishing OIDC; no dependency execution, caller inputs or additional steps.');
+  }
   const nativeCustodyWorkflow = filename === nativeCustodyWorkflowFile;
   const windowsBoundaryTimeout =
     "${{ matrix.os == 'windows-latest' && matrix.shard == 2 && 75 || 45 }}";
@@ -540,6 +587,9 @@ export function checkWorkflow(filename, workflow) {
       assert.equal(job.environment, 'npm-release', 'Publishing requires the release environment.');
       assert.equal(job.needs, 'qualify', 'Publishing must depend on qualification.');
       assert.equal(job.if, publicationCondition, 'Publishing must be limited to canonical tag pushes.');
+    } else if (identityQualification && id === 'observe-job-identity') {
+      assert.deepEqual(job.permissions, { contents: 'read', actions: 'read', 'id-token': 'write' },
+        'Only the closed manual identity observer gets nonpublishing OIDC and read-only job metadata.');
     } else if (job.permissions !== undefined) {
       assert.deepEqual(job.permissions, { contents: 'read' }, `${filename}/${id}: contribution/qualification jobs cannot escalate permissions.`);
     }

@@ -25,7 +25,7 @@ import {
 } from './windows-job-protocol.js';
 
 export const windowsJobControllerAssetPathParts = ['assets', 'repair', 'windows-job-controller.ps1'] as const;
-export const windowsJobControllerAssetDigest = '77d63fa0c72a1f860008358fe7ed6e80a08e4040d6c700ea58ab64dae6b6e9e5';
+export const windowsJobControllerAssetDigest = '943f27f794a8161a7486aa6b02fa467788f0c3ab633ca340b214e8bb3d0f4125';
 const controllerStartupTimeoutMs = 15_000;
 const controllerSettlementGraceMs = 5_000;
 const controllerInteropAssemblyMaximumBytes = 1024 * 1024;
@@ -929,7 +929,7 @@ export async function runWindowsJobCommand(
       if (settled || !(timeoutMs > 0 && Number.isFinite(timeoutMs))) return;
       if (supervisorTimer) clearTimeout(supervisorTimer);
       supervisorTimer = setTimeout(() => {
-        const controllerStage = [...psStderr.matchAll(/LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|loading-interop|connecting|connected)/gu)].at(-1)?.[1] ?? 'not-reported';
+        const controllerStage = [...psStderr.matchAll(/^LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|loading-interop|connecting|connected|ready-serialize|ready-encode|ready-write|ready-flush|ready-written)\r?$/gmu)].at(-1)?.[1] ?? 'not-reported';
         const controllerAdmissionCandidate = [...psStderr.matchAll(/^LIFTOFF_CONTROLLER_ADMISSION: ([^\r\n]*)\r?$/gmu)].at(-1)?.[1];
         const controllerAdmissionStage = controllerAdmissionStages.find(stage => stage === controllerAdmissionCandidate) ?? 'not-reported';
         const reportedBudgetMs = phase === 'startup' ? controllerStartupTimeoutMs : budgetMs;
