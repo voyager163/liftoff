@@ -107,7 +107,7 @@ describe('original signed GitHub job identity, not delivery or custody authority
     'https://user@pipelines.actions.githubusercontent.com/jobs/job/idtoken',
     'https://pipelines.actions.githubusercontent.com:8443/jobs/job/idtoken',
     `${requestUrl}#fragment`, `${requestUrl}&audience=injected`, `${requestUrl}&api-version=2.0`,
-    'https://pipelines.actions.githubusercontent.com/another-endpoint'
+    'https://pipelines.actions.githubusercontent.com/unsupported%20path'
   ])('never sends a credential to an unsupported endpoint: %s', async url => {
     vi.stubEnv('ACTIONS_ID_TOKEN_REQUEST_URL', url);
     await expect(identity.observeGitHubJobIdentity(expected)).rejects.toThrow();
@@ -116,7 +116,7 @@ describe('original signed GitHub job identity, not delivery or custody authority
   it.each([
     ['https://private-endpoint-user@pipelines.actions.githubusercontent.com/jobs/job/idtoken', 'transport'],
     ['https://private-endpoint-host.example/jobs/job/idtoken', 'host'],
-    ['https://pipelines.actions.githubusercontent.com/private-endpoint-path', 'path-unsupported'],
+    ['https://pipelines.actions.githubusercontent.com/private-endpoint-path%20', 'path'],
     [`${requestUrl}&private-endpoint-query=private-endpoint-value`, 'query']
   ])('reports only a fixed endpoint rejection stage: %s', async (url, stage) => {
     vi.stubEnv('ACTIONS_ID_TOKEN_REQUEST_URL', url);
@@ -125,13 +125,19 @@ describe('original signed GitHub job identity, not delivery or custody authority
     expect(String(error)).not.toMatch(/private-endpoint|private-original-request-credential/);
     expect(fetchGitHub).not.toHaveBeenCalled();
   });
-  it.each([
-    ['/idtoken', 'root-idtoken'], ['/jobs/opaque/token', 'token'],
-    ['/jobs/opaque/idtoken/', 'trailing-slash'], ['/jobs/opaque/IdToken', 'idtoken-encoding-or-case']
-  ])('classifies unsupported token paths without returning original path data: %s', async (pathname, shape) => {
+  it.each(['/idtoken', '/jobs/opaque/token', '/jobs/opaque/idtoken/', '/jobs/opaque/IdToken', '/_apis/oidc', '/'])(
+    'uses the original bounded GitHub provider path without inventing a token suffix: %s', async pathname => {
+    vi.stubEnv('ACTIONS_ID_TOKEN_REQUEST_URL', `https://pipelines.actions.githubusercontent.com${pathname}`);
+    const observed = await identity.observeGitHubJobIdentity(expected);
+    expect(new URL(String(fetchGitHub.mock.calls[0]![0])).pathname).toBe(pathname);
+    expect(fetchGitHub).toHaveBeenCalledTimes(2);
+    expect(() => identity.assertCurrentGitHubJobIdentity(observed, expected)).not.toThrow();
+  });
+  it.each(['/' + 'a'.repeat(2048), '/jobs/opaque/%0A', '/jobs/opaque/%2F'])(
+    'refuses oversized or escaped provider paths before sending a credential: %s', async pathname => {
     vi.stubEnv('ACTIONS_ID_TOKEN_REQUEST_URL', `https://pipelines.actions.githubusercontent.com${pathname}`);
     await expect(identity.observeGitHubJobIdentity(expected)).rejects.toMatchObject({
-      code: `github-job-identity-endpoint-path-${shape}`
+      code: 'github-job-identity-endpoint-path'
     });
     expect(fetchGitHub).not.toHaveBeenCalled();
   });

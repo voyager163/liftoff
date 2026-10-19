@@ -25,6 +25,11 @@ its serialized report is diagnostic data, not a reusable capability.
 Endpoint rejection reports only a fixed transport, host, path or query stage,
 never the original URL, query values or request credential. An unsupported
 provider endpoint remains blocked before any credential-bearing request.
+The runner supplies `GenerateIdTokenUrl` as an opaque provider URL; its internal
+path is not a documented `/idtoken` suffix contract. Preserve its bounded
+2 KiB ASCII path without reconstructing it, while retaining the exact HTTPS
+GitHub service-host allowlist, query checks, redirect refusal and all signed
+issuer, audience, job and workflow bindings.
 
 The manual `GitHub job identity qualification` workflow prepares the two-module
 program using **Node 24.21.0's experimental built-in TypeScript transformer**.
