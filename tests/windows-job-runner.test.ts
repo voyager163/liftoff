@@ -132,7 +132,27 @@ function restorePreInteropByteReadbackRunner(runner: string): string {
     '    throwIfAborted();\n    const overflow = Buffer.alloc(1);');
 }
 
+function restoreDefaultCompilerController(controller: string): string {
+  return controller
+    .replace([
+      "    $bootstrapStage = 'compiler-parameters'",
+      '    $compilerParameters = [System.CodeDom.Compiler.CompilerParameters]::new()',
+      '    $compilerParameters.GenerateExecutable = $false',
+      '    $compilerParameters.GenerateInMemory = $true',
+      '    [void]$compilerParameters.ReferencedAssemblies.Add([System.Object].Assembly.Location)',
+      ''
+    ].join('\n'), '')
+    .replace('& $compilerCmdlet -TypeDefinition $win32TypeDef -CompilerParameters $compilerParameters -ErrorAction Stop',
+      '& $compilerCmdlet -TypeDefinition $win32TypeDef -ErrorAction Stop')
+    .replace([
+      '            $compilerParameters.GenerateInMemory = $false',
+      '            $compilerParameters.OutputAssembly = $exactInteropAssemblyPath',
+      '            & $compilerCmdlet -TypeDefinition $win32TypeDef -CompilerParameters $compilerParameters -ErrorAction Stop'
+    ].join('\n'), '            & $compilerCmdlet -TypeDefinition $win32TypeDef -OutputAssembly $exactInteropAssemblyPath -OutputType Library -ErrorAction Stop');
+}
+
 function restorePreReadySerializationController(controller: string): string {
+  controller = restoreDefaultCompilerController(controller);
   return removeSourceRange(controller, 'function ConvertTo-ControlJsonString', 'function Send-ControlFrame')
     .replace([
       "    if ($obj.kind -eq 'ready') {",
@@ -897,8 +917,7 @@ describe('Windows Job Object controller asset integrity and host environment', (
       expect(controller).toContain(`$${variable} = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.${type}', $true)`);
       expect(controller).toContain(`[System.Management.Automation.CmdletInfo]::new('${command}', $${variable})`);
     }
-    expect(controller).toContain('& $compilerCmdlet -TypeDefinition $win32TypeDef -ErrorAction Stop');
-    expect(controller).toContain('& $compilerCmdlet -TypeDefinition $win32TypeDef -OutputAssembly $exactInteropAssemblyPath -OutputType Library -ErrorAction Stop');
+    expect(controller.match(/& \$compilerCmdlet -TypeDefinition \$win32TypeDef -CompilerParameters \$compilerParameters -ErrorAction Stop/gu)).toHaveLength(2);
     expect(controller).toContain('[System.Reflection.Assembly]::LoadFile($exactInteropAssemblyPath)');
     expect(controller).toContain("if ($nativeType.Assembly.Location -cne $exactInteropAssemblyPath)");
     expect(controller).toContain("throw 'Win32 interop assembly identity does not match the private invocation path.'");
@@ -916,10 +935,24 @@ describe('Windows Job Object controller asset integrity and host environment', (
       'not-reported', 'assembly-load', 'assembly-identity', 'compiler-type', 'compiler-cmdlet',
       'new-object-type', 'new-object-cmdlet', 'to-json-type', 'to-json-cmdlet',
       'from-json-type', 'from-json-cmdlet', 'sleep-type', 'sleep-cmdlet',
-      'write-error-type', 'write-error-cmdlet', 'compile', 'interop-path',
+      'write-error-type', 'write-error-cmdlet', 'compiler-parameters', 'compile', 'interop-path',
       'compile', 'interop-load', 'interop-identity'
     ]);
     expect(bootstrap).not.toMatch(/\$_|\.Exception|\.Message/u);
+  });
+
+  it('restricts both unchanged Win32 compilations to the loaded core library and restores the exact default-reference parent', async () => {
+    const controller = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+    expect(controller).toContain('$compilerParameters = [System.CodeDom.Compiler.CompilerParameters]::new()');
+    expect(controller).toContain('[void]$compilerParameters.ReferencedAssemblies.Add([System.Object].Assembly.Location)');
+    expect(controller).toContain('$compilerParameters.GenerateExecutable = $false');
+    expect(controller).toContain('$compilerParameters.GenerateInMemory = $true');
+    expect(controller).toContain('$compilerParameters.GenerateInMemory = $false');
+    expect(controller).toContain('$compilerParameters.OutputAssembly = $exactInteropAssemblyPath');
+    expect(controller).not.toMatch(/-ReferencedAssemblies|-CompilerOptions|-IgnoreWarnings|Bypass/u);
+    expect(controller.match(/\.ReferencedAssemblies\.Add\(/gu)).toHaveLength(1);
+    expect(createHash('sha256').update(restoreDefaultCompilerController(controller)).digest('hex'))
+      .toBe('adfe5bbb9fdb82ce7b4c318f6d9d84c431926cdf5d98eb1534480e55a4055339');
   });
 
   it('keeps interop reuse source-bound, private, bounded and unavailable to custom controller overrides', async () => {
@@ -2001,6 +2034,54 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
     expect(result.stdout).not.toMatch(/[^\x20-\x7e]/u);
     expect(JSON.parse(result.stdout)).toEqual(common);
   });
+
+  it.runIf(process.platform === 'win32').each(['inline', 'private-file'] as const)(
+    'compiles the unchanged native definitions with only the loaded core library in %s mode',
+    async mode => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-core-compiler-'));
+      tempDirs.push(directory);
+      const asset = await verifyWindowsJobControllerAsset();
+      const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
+      const assembly = mode === 'private-file' ? path.join(directory, 'Win32JobNative.dll') : '';
+      const script = [
+        "$ErrorActionPreference = 'Stop'",
+        `$source = [System.IO.File]::ReadAllText(${literal(asset)})`,
+        "$end = $source.IndexOf('# Connect to the private control pipe', [System.StringComparison]::Ordinal)",
+        "if ($end -lt 0) { throw 'Missing controller bootstrap boundary.' }",
+        '$bootstrap = [scriptblock]::Create($source.Substring(0, $end))',
+        `. $bootstrap -ControlPipeName 'not-connected' -ExpectedNonce 'not-admitted' -WorkspaceId 'not-admitted' -InvocationId 'not-admitted' -InteropAssemblyPath ${literal(assembly)}`,
+        'if ($compilerParameters.ReferencedAssemblies.Count -ne 1 -or',
+        '    $compilerParameters.ReferencedAssemblies[0] -cne [System.Object].Assembly.Location) {',
+        "    throw 'Compiler reference closure was not restricted to the loaded core library.'",
+        '}',
+        'if ($compilerParameters.GenerateExecutable) { throw \'Compiler must produce only a library.\' }',
+        '$compiled = [Win32JobNative].Assembly',
+        '$references = $compiled.GetReferencedAssemblies()',
+        "if ($references.Length -ne 1 -or $references[0].Name -cne 'mscorlib') { throw 'Unexpected emitted assembly dependency.' }",
+        ...(assembly ? [
+          `if ($compiled.Location -cne ${literal(assembly)}) { throw 'Private assembly location changed.' }`,
+          "if ($compilerParameters.GenerateInMemory) { throw 'Private file was not produced.' }"
+        ] : [
+          "if (-not $compilerParameters.GenerateInMemory) { throw 'Inline compilation changed.' }",
+          "if (-not [string]::IsNullOrEmpty($compiled.Location)) { throw 'Inline assembly was persisted.' }"
+        ]),
+        "[Console]::Out.Write('core-library-only')"
+      ].join('\n');
+      const host = buildWindowsControllerHostEnvironment();
+      if (!host.SystemRoot) throw new Error('Windows controller host requires SystemRoot.');
+      const powershell = path.join(host.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+      const result = spawnSync(powershell, [
+        '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')
+      ], { env: host, encoding: 'utf8', timeout: 15_000, maxBuffer: 16 * 1024 });
+      expect(result.error, result.stderr).toBeUndefined();
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toBe('core-library-only');
+      if (assembly) {
+        const captured = await captureWindowsJobInteropAssembly(assembly);
+        expect(captured.subarray(0, 2).toString()).toBe('MZ');
+      }
+    }
+  );
 
   it('ensures environmentValue does not let undefined Path shadow valid PATH and rejects conflicting aliases', async () => {
     const { environmentValue } = await import('../src/domain/workstation/executables.js');

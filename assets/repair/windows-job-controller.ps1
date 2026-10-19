@@ -361,10 +361,15 @@ try {
     $writeErrorType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.WriteErrorCommand', $true)
     $bootstrapStage = 'write-error-cmdlet'
     $writeErrorCmdlet = [System.Management.Automation.CmdletInfo]::new('Write-Error', $writeErrorType)
+    $bootstrapStage = 'compiler-parameters'
+    $compilerParameters = [System.CodeDom.Compiler.CompilerParameters]::new()
+    $compilerParameters.GenerateExecutable = $false
+    $compilerParameters.GenerateInMemory = $true
+    [void]$compilerParameters.ReferencedAssemblies.Add([System.Object].Assembly.Location)
     if ([string]::IsNullOrEmpty($InteropAssemblyPath)) {
         $bootstrapStage = 'compile'
         [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: compiling")
-        & $compilerCmdlet -TypeDefinition $win32TypeDef -ErrorAction Stop
+        & $compilerCmdlet -TypeDefinition $win32TypeDef -CompilerParameters $compilerParameters -ErrorAction Stop
     } else {
         $bootstrapStage = 'interop-path'
         if (-not [System.IO.Path]::IsPathRooted($InteropAssemblyPath)) {
@@ -374,7 +379,9 @@ try {
         if (-not [System.IO.File]::Exists($exactInteropAssemblyPath)) {
             $bootstrapStage = 'compile'
             [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: compiling")
-            & $compilerCmdlet -TypeDefinition $win32TypeDef -OutputAssembly $exactInteropAssemblyPath -OutputType Library -ErrorAction Stop
+            $compilerParameters.GenerateInMemory = $false
+            $compilerParameters.OutputAssembly = $exactInteropAssemblyPath
+            & $compilerCmdlet -TypeDefinition $win32TypeDef -CompilerParameters $compilerParameters -ErrorAction Stop
         }
         $bootstrapStage = 'interop-load'
         [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: loading-interop")

@@ -148,6 +148,11 @@ physical file using one buffer capped at 64 KiB. In-place changes must refuse
 even when Windows has not advanced the open handle's timestamps. The original
 size, identity, single-link, overflow, close, abort, and startup-deadline guards
 still apply before bytes can be published to the process-local cache.
+Both inline and private-file Win32 compilation use explicit compiler parameters
+referencing only the already-loaded CLR core library required by the unchanged
+C# definitions, rather than Add-Type's implicit framework/PowerShell references.
+The built-in compiler binding, language and execution policies, authenticated
+readiness, and original 15-second startup budget remain unchanged.
 Repository text checks out with LF endings on every host; explicitly frozen CRLF
 evidence keeps its original bytes through `.gitattributes`.
 
