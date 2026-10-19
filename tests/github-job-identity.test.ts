@@ -124,6 +124,21 @@ describe('original signed GitHub job identity, not delivery or custody authority
     expect(fetchGitHub).not.toHaveBeenCalled();
   });
   it.each([
+    [{ nbf: 'private-invalid-time' }, 'time-type'], [{ exp: 1 }, 'lifetime'],
+    [{ aud: 'private-invalid-audience' }, 'issuer-audience'],
+    [{ repository: 'private-invalid-repository' }, 'repository'],
+    [{ actor_id: 'private-invalid-actor' }, 'actor'], [{ run_id: 'private-invalid-run' }, 'run'],
+    [{ check_run_id: 'private-invalid-job' }, 'job'], [{ sha: 'private-invalid-source' }, 'source-workflow'],
+    [{ event_name: 'private-invalid-event' }, 'event-host'], [{ ref: 'private-invalid-ref' }, 'ref'],
+    [{ sub: 'private-invalid-subject' }, 'subject'], [{ environment: 'private-invalid-environment' }, 'unsupported-claims']
+  ])('retains a fixed claim rejection stage without rejected values: %j', async (change, claimStage) => {
+    token = signed(claims(change));
+    const error = await identity.observeGitHubJobIdentity(expected).catch((failure: unknown) => failure);
+    expect(error).toMatchObject({ code: 'github-job-identity-claims', claimStage });
+    expect(String(error)).not.toMatch(/private-invalid|private-original-request-credential/);
+    expect(fetchGitHub).toHaveBeenCalledTimes(1);
+  });
+  it.each([
     '', 'http://pipelines.actions.githubusercontent.com/jobs/job/idtoken',
     'https://outside.example/jobs/job/idtoken',
     'https://pipelines.actions.githubusercontent.com.outside.example/jobs/job/idtoken',

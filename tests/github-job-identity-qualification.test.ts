@@ -167,7 +167,7 @@ describe('closed manual job identity qualification without dependency execution'
             iss: 'https://token.actions.githubusercontent.com', aud: url.searchParams.get('audience'),
             sub: 'repo:voyager163@300/liftoff@200:ref:refs/heads/develop',
             repository: 'voyager163/liftoff', repository_id: '200', repository_owner_id: '300',
-            actor_id: '400', run_id: '100', check_run_id: '500', run_attempt: '1',
+            actor_id: '400', run_id: '100', check_run_id: process.env.MOCK_JOB_CLAIM_TEST ?? '500', run_attempt: '1',
             sha: '${env.GITHUB_SHA}', workflow_sha: '${env.GITHUB_SHA}',
             workflow_ref: '${env.GITHUB_WORKFLOW_REF}', ref: 'refs/heads/develop', ref_type: 'branch',
             event_name: 'workflow_dispatch', runner_environment: 'github-hosted',
@@ -184,7 +184,7 @@ describe('closed manual job identity qualification without dependency execution'
         return new Response(JSON.stringify({keys: [key]}));
       };
     `);
-    const childEnv = {
+    const childEnv: NodeJS.ProcessEnv = {
       ...process.env, ...env, GH_TOKEN: 'private-unlogged-credential',
       ACTIONS_ID_TOKEN_REQUEST_URL: 'https://pipelines.actions.githubusercontent.com/jobs/job/idtoken?api-version=2.0',
       ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'test-only-request-token'
@@ -202,6 +202,13 @@ describe('closed manual job identity qualification without dependency execution'
       observation: { checkRunId: 500, runId: 100, hostCustody: 'not-established', workflowAuthority: 'not-issued' }
     });
     expect(reportBytes.toString('utf8')).not.toMatch(/private-unlogged-credential|test-only-request-token|PRIVATE KEY/);
+    childEnv.MOCK_JOB_CLAIM_TEST = 'private-invalid-job-claim';
+    const badClaim = execute();
+    expect(badClaim.status).toBe(1);
+    expect(badClaim.stderr).toContain('github-job-identity-claims; claim-stage=job');
+    expect(badClaim.stderr).not.toMatch(/private-invalid-job-claim|private-unlogged-credential|test-only-request-token/);
+    expect(await readFile(path.join(output, 'job-identity-report.json'))).toEqual(reportBytes);
+    delete childEnv.MOCK_JOB_CLAIM_TEST;
     await rm(marker);
     await writeFile(path.join(output, 'job-identity.js'), '\n// actual changed program bytes\n', { flag: 'a' });
     const tampered = execute();

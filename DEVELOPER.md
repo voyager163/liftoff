@@ -37,6 +37,8 @@ issuer, audience, job and workflow bindings.
 backdated not-before time. It cannot be in the future beyond the existing
 30-second skew allowance. Issued-at freshness, maximum ten-minute token
 lifetime, expiry and final expiry rechecks remain unchanged.
+Claim refusals expose only a fixed validation-stage label, never claim values,
+so a genuine provider mismatch can be diagnosed without retaining a token.
 
 The manual `GitHub job identity qualification` workflow prepares the two-module
 program using **Node 24.21.0's experimental built-in TypeScript transformer**.

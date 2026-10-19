@@ -35,8 +35,9 @@ export interface GitHubJobIdentityObservation extends GitHubJobIdentityExpectati
 }
 
 const observations = new WeakMap<GitHubJobIdentityObservation, { binding: string; expiresAt: number }>();
-function failure(code: string, message: string): never {
-  throw new GitHubActivationError(`github-job-identity-${code}`, message);
+function failure(code: string, message: string, claimStage?: string): never {
+  throw Object.assign(new GitHubActivationError(`github-job-identity-${code}`, message),
+    claimStage === undefined ? {} : { claimStage });
 }
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !types.isProxy(value) &&
@@ -191,23 +192,28 @@ export async function observeGitHubJobIdentity(value: unknown, signal?: AbortSig
     const [owner, repositoryName] = expected.repository.split('/');
     const reference = expected.workflowRef.split('@')[1];
     const immutableSubject = `repo:${owner}@${expected.ownerId}/${repositoryName}@${expected.repositoryId}:ref:${reference}`;
+    const rejectClaims = (stage: string): never => failure('claims',
+      'Signed job identity must match the exact original repository, actor, job/run, source, workflow, purpose, host kind and current lifetime; reruns and unsupported subject forms are refused.', stage);
     if (typeof iat !== 'number' || !Number.isSafeInteger(iat) ||
       typeof nbf !== 'number' || !Number.isSafeInteger(nbf) ||
-      typeof exp !== 'number' || !Number.isSafeInteger(exp) ||
-      iat > now + 30 || iat < now - 600 || nbf > now + 30 || nbf < 0 ||
-      exp <= now || exp <= iat || nbf >= exp || exp - iat > 600 ||
-      claims.iss !== githubJobIdentityIssuer || claims.aud !== expected.audience ||
-      claims.repository !== expected.repository || claims.repository_id !== String(expected.repositoryId) ||
-      claims.repository_owner_id !== String(expected.ownerId) || claims.actor_id !== String(expected.actorId) ||
-      claims.run_id !== String(expected.runId) || claims.check_run_id !== String(expected.checkRunId) ||
-      claims.run_attempt !== '1' || claims.sha !== expected.sourceSha ||
-      claims.workflow_sha !== expected.sourceSha || claims.workflow_ref !== expected.workflowRef ||
-      claims.event_name !== 'workflow_dispatch' || claims.runner_environment !== 'github-hosted' ||
-      claims.ref !== reference || claims.ref_type !== 'branch' ||
-      claims.sub !== `repo:${expected.repository}:ref:${reference}` && claims.sub !== immutableSubject ||
-      Object.hasOwn(claims, 'job_workflow_ref') || Object.hasOwn(claims, 'job_workflow_sha') ||
+      typeof exp !== 'number' || !Number.isSafeInteger(exp)) return rejectClaims('time-type');
+    if (iat > now + 30 || iat < now - 600 || nbf > now + 30 || nbf < 0 ||
+      exp <= now || exp <= iat || nbf >= exp || exp - iat > 600) return rejectClaims('lifetime');
+    if (claims.iss !== githubJobIdentityIssuer || claims.aud !== expected.audience) return rejectClaims('issuer-audience');
+    if (claims.repository !== expected.repository || claims.repository_id !== String(expected.repositoryId) ||
+      claims.repository_owner_id !== String(expected.ownerId)) return rejectClaims('repository');
+    if (claims.actor_id !== String(expected.actorId)) return rejectClaims('actor');
+    if (claims.run_id !== String(expected.runId) || claims.run_attempt !== '1') return rejectClaims('run');
+    if (claims.check_run_id !== String(expected.checkRunId)) return rejectClaims('job');
+    if (claims.sha !== expected.sourceSha || claims.workflow_sha !== expected.sourceSha ||
+      claims.workflow_ref !== expected.workflowRef) return rejectClaims('source-workflow');
+    if (claims.event_name !== 'workflow_dispatch' || claims.runner_environment !== 'github-hosted') return rejectClaims('event-host');
+    if (claims.ref !== reference || claims.ref_type !== 'branch') return rejectClaims('ref');
+    if (claims.sub !== `repo:${expected.repository}:ref:${reference}` &&
+      claims.sub !== immutableSubject) return rejectClaims('subject');
+    if (Object.hasOwn(claims, 'job_workflow_ref') || Object.hasOwn(claims, 'job_workflow_sha') ||
       Object.hasOwn(claims, 'environment')) {
-      return failure('claims', 'Signed job identity must match the exact original repository, actor, job/run, source, workflow, purpose, host kind and current lifetime; reruns and unsupported subject forms are refused.');
+      return rejectClaims('unsupported-claims');
     }
     const jwks = await read(githubJobIdentityJwks, 65_536);
     if (!record(jwks) || !Array.isArray(jwks.keys) || !jwks.keys.length || jwks.keys.length > 20) {
