@@ -11,6 +11,7 @@ import { inspectModernLocalRuntime, planModernLocalRuntime, reinspectModernLocal
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { parseManifest, resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
 import { buildModernManagedCore } from '../src/application/project/modern-managed-core.js';
+import * as pluginComposition from '../src/application/project/plugins.js';
 import { createManifestV8Reader } from '../src/domain/project/manifest/v8.js';
 import { createManifestV8ProjectReader } from '../src/domain/project/manifest/v8-project.js';
 import { createModernGovernanceContextContract } from '../src/domain/governance/policy/modern-context.js';
@@ -508,6 +509,25 @@ describe('actual original and preserved historical sources',()=>{
 });
 
 describe('copied observations and independent current storage',()=>{
+  it('reuses parsed source only within one physical collection and independently validates copied snapshots',async()=>{
+    const f=await completedCurrent(),compose=vi.spyOn(pluginComposition,'composeModernManifestPlugins');
+    io.opens=[];
+    const first=await inspectModernInstalledActivation(f.root),opens=[...io.opens];
+    expect(first.status).toBe('observed');
+    if(first.status!=='observed')throw new Error('Expected actual installed source.');
+    expect(compose).toHaveBeenCalledTimes(2);
+    expect(await validateCapturedModernInstalledActivation(first.snapshot)).toEqual(first);
+    expect(compose).toHaveBeenCalledTimes(4);
+    expect(io.opens).toEqual(opens);
+    io.opens=[];
+    const second=await inspectModernInstalledActivation(f.root);
+    expect(second.status).toBe('observed');
+    expect(compose).toHaveBeenCalledTimes(6);
+    expect(io.opens).toEqual(opens);
+    if(second.status==='observed')expect(second.binding).toBe(first.binding);
+    await f.write(['liftoff.manifest.json'],'{');
+    expect((await inspectModernInstalledActivation(f.root)).status).toBe('blocked');
+  });
   it('rejects initial hooks and captures nested source data before yielding',async()=>{
     const f=await completedCurrent(),result=await inspectModernInstalledActivation(f.root);
     if(result.status!=='observed')throw new Error('Expected installed state.');

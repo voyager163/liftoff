@@ -17,7 +17,7 @@ import { readPreservedActivationTargetManifest } from '../update/activation-targ
 import { parseManifest, resolveModernManifestV8SourceContract } from '../project/manifest.js';
 import { projectCatalog } from '../project/catalog.js';
 import { buildModernManagedCore } from '../project/modern-managed-core.js';
-import { modernProjectSourceInput, resolveModernManifestSourceContext } from '../project/source-context.js';
+import { modernProjectSourceInput } from '../project/source-context.js';
 import { canonicalJson, canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
 import { copyModernLocalData, capturedFileBytes, localInputFailure, rawLocalDigest, ModernLocalInputError,
   type ModernLocalFile, type ModernLocalDirectory, type ModernLocalPhysical } from '../../domain/governance/activation/modern-local-inputs.js';
@@ -44,9 +44,10 @@ const transactionPaths = [
 const reader = createManifestV8Reader({catalog:projectCatalog,resolveSourceContract:resolveModernManifestV8SourceContract});
 const key = (parts:readonly string[]) => parts.join('/');
 const compare = (a:string,b:string) => a<b?-1:a>b?1:0;
-// Request-local only: the digest ties the render to the captured manifest bytes.
+// Request-local only: parsed source and rendered core require the exact captured manifest bytes.
 type CollectedModernSource = Readonly<{
   manifestDigest:string;
+  manifest:LiftoffManifestV8;
   core:ReturnType<typeof buildModernManagedCore>;
 }>;
 function present(file: ModernLocalFile): ProjectFileSnapshot {
@@ -60,7 +61,7 @@ function retention(origin:string,repositoryId:string,value:BootstrapStateRetenti
 }
 function context(manifest:LiftoffManifestV8) {
   if(manifest.governance.profile==='none')return localInputFailure('Governance-none has no activation record contract.');
-  const source=resolveModernManifestSourceContext(manifest);
+  const source=modernProjectSourceInput(manifest);
   return {recordedIdentity:manifest.governance.activationIdentity,profile:manifest.governance.profile,policyVersion:manifest.governance.policyVersion,
     selection:{...source.selection,profile:manifest.governance.profile},
     pluginResolutionDigest:source.plugins.resolutionDigest,activeLayoutDigest:manifest.governance.activationIdentity.activeLayoutDigest};
@@ -152,9 +153,9 @@ async function validateCapturedModernActivation(
     if(journalBytes || observedCollections.some(item=>item.files.length))localInputFailure('Released source has missing activation state with orphaned records.');
     return result('released-source',[],null);
   }
-  const manifest=reader.parseManifestV8(raw);
-  const core=collectedSource?.manifestDigest===rawLocalDigest(manifestBytes)
-    ?collectedSource.core:buildModernManagedCore(modernProjectSourceInput(manifest));
+  const collected=collectedSource?.manifestDigest===rawLocalDigest(manifestBytes)?collectedSource:undefined;
+  const manifest=collected?.manifest??reader.parseManifestV8(raw);
+  const core=collected?.core??buildModernManagedCore(modernProjectSourceInput(manifest));
   for(const artifact of core){
     const observed=bytes(artifact.pathParts,requireCurrentCore);
     const recorded=manifest.managedArtifacts.find(file=>file.logicalName===artifact.logicalName);
@@ -374,7 +375,7 @@ async function collectModernInstalledActivation(root:string):Promise<{
     }else if(raw.artifactVersion===8){
       const manifest=reader.parseManifestV8(raw);
       const core=buildModernManagedCore(modernProjectSourceInput(manifest));
-      source={manifestDigest:rawLocalDigest(manifestBytes),core};
+      source={manifestDigest:rawLocalDigest(manifestBytes),manifest,core};
       for(const artifact of core)await capture(artifact.pathParts);
       if(manifest.sourceManifestHistory?.kind==='manifest-history'){
         const paths=manifestHistoryPaths(manifest.sourceManifestHistory);await capture(paths.indexPathParts);await capture(paths.manifestPathParts);

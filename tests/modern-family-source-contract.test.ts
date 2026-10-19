@@ -315,7 +315,7 @@ it('retains unmatched-row semantics and rejects an unknown family without exposi
     ['unknown-family', 'single-maintainer-gitflow', 'manual'])).toThrow('Unknown modern activation source family.');
 });
 
-it('reuses one validated source per managed-core operation while retaining four fresh resolutions and reads per independent inspection', async () => {
+it('reuses request-local validated source while retaining fresh resolutions and identical physical reads per inspection', async () => {
   for (const family of families) family.registry();
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'selected-family-inspection-'))); roots.push(root);
   const fixture = await settled(writeModernInstalledProject(root));
@@ -329,8 +329,8 @@ it('reuses one validated source per managed-core operation while retaining four 
   };
   expect(original.status).toBe('observed');
   if (original.status !== 'observed' || !original.current) throw new Error('Expected independently read enabled current state.');
-  expect(legacy.resolutions).toBe(4); expect(legacy.lookups).toHaveLength(4);
-  expect(legacy.lookups.reduce((sum, lookup) => sum + lookup.graphRows, 0)).toBe(24);
+  expect(legacy.resolutions).toBe(2); expect(legacy.lookups).toHaveLength(2);
+  expect(legacy.lookups.reduce((sum, lookup) => sum + lookup.graphRows, 0)).toBe(12);
   expect(legacy.lookups.every(lookup => lookup.arrayCalls === 1 && lookup.rowCalls === 0)).toBe(true);
   expect(legacy.reads.filter(read => read.startsWith('open:')).length).toBeGreaterThan(0);
   resetObservation('selected');
@@ -348,9 +348,9 @@ it('reuses one validated source per managed-core operation while retaining four 
   expect(current.snapshot.files).not.toBe(original.snapshot.files);
   expect(current.snapshot.directories).not.toBe(original.snapshot.directories);
   compareFreshObservations(original, current);
-  expect(selected.resolutions).toBe(4);
-  expect(selected.lookups).toHaveLength(4);
-  expect(selected.lookups.reduce((sum, lookup) => sum + lookup.graphRows, 0)).toBe(4);
+  expect(selected.resolutions).toBe(2);
+  expect(selected.lookups).toHaveLength(2);
+  expect(selected.lookups.reduce((sum, lookup) => sum + lookup.graphRows, 0)).toBe(2);
   expect(selected.lookups.every(lookup => lookup.arrayCalls === 0 && lookup.rowCalls === 1)).toBe(true);
   expect(selected.reads).toEqual(legacy.reads);
   expect(selected.reads.filter(read => read.startsWith('open:')).length).toBeGreaterThan(0);
