@@ -289,7 +289,7 @@ export function nativePlatformQualificationJob() {
         uses: 'actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1',
         with: { 'dotnet-version': '10.0.402' } },
       { name: 'Verify the packaged Windows interop against two independent builds', if: "runner.os == 'Windows'",
-        shell: 'bash', run: 'mkdir -p qualification\nnpm run --silent check:windows-interop > qualification/windows-job-interop.json\n' },
+        shell: 'bash', run: 'npm run --silent check:windows-interop > "$RUNNER_TEMP/liftoff-windows-job-interop.json"\n' },
       { name: 'Retrieve the pinned platform runtime', shell: 'bash', run: [
         'url="$(node --input-type=module -e \'import inputs from "./distribution/native/inputs.json" with { type: "json" }; import { nativeRuntimeInput } from "./scripts/native-bundle-contract.mjs"; console.log(nativeRuntimeInput(inputs, {platform:process.platform,architecture:process.arch}).url)\')"',
         'curl --fail --location --proto \'=https\' --proto-redir \'=https\' --max-time 180 \\',
@@ -316,7 +316,7 @@ export function nativePlatformQualificationJob() {
       { name: 'Store exact-source native development artifacts', if: independentStepCondition,
         uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
         with: { name: 'liftoff-native-package-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}',
-          path: 'qualification/native-platform-package.json\nqualification/windows-job-interop.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n${{ runner.temp }}/liftoff-native-archive/\n',
+          path: 'qualification/native-platform-package.json\n${{ runner.temp }}/liftoff-windows-job-interop.json\n${{ runner.temp }}/liftoff-native-bundle/bundle.json\n${{ runner.temp }}/liftoff-native-archive/\n',
           'if-no-files-found': 'error', 'retention-days': 14 } }
     ]
   };

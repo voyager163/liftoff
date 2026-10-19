@@ -149,8 +149,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          mkdir -p qualification
-          npm run --silent check:windows-interop > qualification/windows-job-interop.json
+          npm run --silent check:windows-interop > "$RUNNER_TEMP/liftoff-windows-job-interop.json"
       - name: Retrieve the pinned platform runtime
         shell: bash
         run: |
@@ -185,7 +184,7 @@ jobs:
           name: liftoff-native-package-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             qualification/native-platform-package.json
-            qualification/windows-job-interop.json
+            ${{ runner.temp }}/liftoff-windows-job-interop.json
             ${{ runner.temp }}/liftoff-native-bundle/bundle.json
             ${{ runner.temp }}/liftoff-native-archive/
           if-no-files-found: error

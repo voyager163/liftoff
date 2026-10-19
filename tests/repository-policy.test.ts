@@ -340,7 +340,7 @@ describe('source repository setup policy', () => {
   it.each(['missing', 'matrix', 'runner', 'conditional', 'compiler', 'runtime', 'userspace', 'userspace-condition',
     'userspace-pin', 'filtered', 'report', 'archive', 'unset-archive', 'upload',
     'interop-compiler-missing', 'interop-compiler-unpinned', 'interop-sdk', 'interop-condition',
-    'interop-check', 'interop-check-conditional', 'interop-evidence'])(
+    'interop-check', 'interop-check-conditional', 'interop-checkout-output', 'interop-evidence'])(
     'rejects incomplete native platform packaging: %s', async fault => {
       const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-native-platform-packages'];
       if (fault === 'missing') delete workflow.jobs['qualify-native-platform-packages'];
@@ -363,8 +363,13 @@ describe('source repository setup policy', () => {
       if (fault === 'interop-condition') job.steps[5].if = 'false';
       if (fault === 'interop-check') job.steps[6].run += ' || true';
       if (fault === 'interop-check-conditional') job.steps[6].if = 'false';
+      if (fault === 'interop-checkout-output') {
+        job.steps[6].run = 'mkdir -p qualification\nnpm run --silent check:windows-interop > qualification/windows-job-interop.json\n';
+        job.steps[10].with.path = job.steps[10].with.path.replace(
+          '${{ runner.temp }}/liftoff-windows-job-interop.json\n', 'qualification/windows-job-interop.json\n');
+      }
       if (fault === 'interop-evidence') job.steps[10].with.path = job.steps[10].with.path.replace(
-        'qualification/windows-job-interop.json\n', '');
+        '${{ runner.temp }}/liftoff-windows-job-interop.json\n', '');
       expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
     });
   it.each([

@@ -213,6 +213,8 @@ custom overrides retain the inline path. Windows native-package CI runs
 net462 reference package 1.0.3. Two independent builds of the controller's
 unchanged literal C# must match the shipped DLL byte-for-byte. The SDK and
 Microsoft reference assemblies are build inputs, not shipped runtime dependencies.
+CI writes this receipt under the runner's temporary directory, outside the
+checkout, so it cannot dirty the source before native archive handoff.
 This reproducibility check does not qualify Windows execution, minimum hosts,
 signing or public distribution.
 Linux cases exercise the actual bundle's isolated owned installation/recovery and
