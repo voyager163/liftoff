@@ -348,14 +348,21 @@ function sameFile(left: UpdatePreviewFileStat, right: UpdatePreviewFileStat): bo
 
 async function assertDirectories(storage: Storage, snapshot: DirectorySnapshot): Promise<void> {
   const privateRoot = storage.paths.dirname(storage.location.directory);
-  for (const [directory, before] of snapshot) {
-    const current = await inspect(storage.fs, directory);
-    if (!current || current.isSymbolicLink() || !current.isDirectory() || !sameFile(before, current)) {
-      throw storageError(`Preview storage directory changed during the operation: ${directory}`);
-    }
-    if (storage.platform !== 'win32' && within(privateRoot, directory, storage.paths, storage.platform) &&
-        (current.mode & 0o077) !== 0) {
-      throw storageError(`Preview directory permissions changed during the operation: ${directory}`);
+  const entries = [...snapshot];
+  for (let start = 0; start < entries.length; start += 4) {
+    const batch = entries.slice(start, start + 4);
+    const observations = await Promise.allSettled(batch.map(([directory]) => inspect(storage.fs, directory)));
+    for (const [index, [directory, before]] of batch.entries()) {
+      const observed = observations[index]!;
+      if (observed.status === 'rejected') throw observed.reason;
+      const current = observed.value;
+      if (!current || current.isSymbolicLink() || !current.isDirectory() || !sameFile(before, current)) {
+        throw storageError(`Preview storage directory changed during the operation: ${directory}`);
+      }
+      if (storage.platform !== 'win32' && within(privateRoot, directory, storage.paths, storage.platform) &&
+          (current.mode & 0o077) !== 0) {
+        throw storageError(`Preview directory permissions changed during the operation: ${directory}`);
+      }
     }
   }
 }

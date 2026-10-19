@@ -132,7 +132,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(await realpath(process.
     else await observe();
   } catch (error) {
     const code = /^github-job-identity-[a-z-]+$/u.test(error?.code ?? '') ? error.code : 'qualification-input-or-preparation';
-    console.error(`GitHub job identity qualification failed (${code}); credentials and provider diagnostics were withheld.`);
+    const stage = code === 'github-job-identity-claims' && [
+      'time-type', 'lifetime', 'issuer-audience', 'repository', 'actor', 'run', 'job',
+      'source-workflow', 'event-host', 'ref', 'subject', 'unsupported-claims'
+    ].includes(error?.claimStage) ? `; claim-stage=${error.claimStage}` : '';
+    console.error(`GitHub job identity qualification failed (${code}${stage}); credentials and provider diagnostics were withheld.`);
     process.exitCode = 1;
   }
 }

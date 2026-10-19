@@ -75,6 +75,49 @@ describe('original signed GitHub job identity, not delivery or custody authority
     expect(fetchGitHub.mock.calls[1]![0]).toBe(identity.githubJobIdentityJwks);
     expect(fetchGitHub.mock.calls[1]![1]?.headers).not.toHaveProperty('Authorization');
   });
+  it('verifies the immutable default subject against both original numeric IDs and names', async () => {
+    token = signed(claims({ sub: 'repo:owner@456/repository@123:ref:refs/heads/feature/identity' }));
+    const observed = await identity.observeGitHubJobIdentity(expected);
+    expect(() => identity.assertCurrentGitHubJobIdentity(observed, expected)).not.toThrow();
+  });
+  it('verifies paired job-workflow claims only when they repeat the exact original workflow and source', async () => {
+    token = signed(claims({ job_workflow_ref: expected.workflowRef, job_workflow_sha: expected.sourceSha }));
+    const observed = await identity.observeGitHubJobIdentity(expected);
+    expect(() => identity.assertCurrentGitHubJobIdentity(observed, expected)).not.toThrow();
+  });
+  it.each([
+    { job_workflow_ref: 'other/repository/.github/workflows/job.yml@refs/heads/main', job_workflow_sha: expected.sourceSha },
+    { job_workflow_ref: expected.workflowRef, job_workflow_sha: 'b'.repeat(40) },
+    { job_workflow_ref: expected.workflowRef.replace('identity.yml', 'other.yml'), job_workflow_sha: expected.sourceSha },
+    { job_workflow_ref: expected.workflowRef.replace('feature/identity', 'other'), job_workflow_sha: expected.sourceSha },
+    { job_workflow_ref: null, job_workflow_sha: expected.sourceSha },
+    { job_workflow_ref: expected.workflowRef, job_workflow_sha: null }
+  ])('refuses a foreign or malformed paired job-workflow identity: %j', async change => {
+    token = signed(claims(change));
+    await expect(identity.observeGitHubJobIdentity(expected)).rejects.toMatchObject({
+      code: 'github-job-identity-claims', claimStage: 'unsupported-claims'
+    });
+    expect(fetchGitHub).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    'repo:owner@457/repository@123:ref:refs/heads/feature/identity',
+    'repo:owner@456/repository@124:ref:refs/heads/feature/identity',
+    'repo:another@456/repository@123:ref:refs/heads/feature/identity',
+    'repo:owner@456/another@123:ref:refs/heads/feature/identity',
+    'repo:owner@0456/repository@123:ref:refs/heads/feature/identity',
+    'repo:owner@456/repository@0123:ref:refs/heads/feature/identity',
+    'repo:owner@456/repository@123:ref:refs/heads/another',
+    'repo:owner@456/repository:ref:refs/heads/feature/identity'
+  ])('refuses a genuinely signed but inconsistent immutable default subject: %s', async sub => {
+    token = signed(claims({ sub }));
+    await expect(identity.observeGitHubJobIdentity(expected)).rejects.toMatchObject({ code: 'github-job-identity-claims' });
+    expect(fetchGitHub).toHaveBeenCalledTimes(1);
+  });
+  it.each([0, 5, 30, 600, 3600])('checks not-before independently from issued-at when it is %s seconds earlier', async offset => {
+    token = signed(claims({ nbf: Math.floor(Date.now() / 1000) - offset }));
+    const observed = await identity.observeGitHubJobIdentity(expected);
+    expect(() => identity.assertCurrentGitHubJobIdentity(observed, expected)).not.toThrow();
+  });
   it.each([
     undefined, null, {}, { ...expected, runAttempt: 2 }, { ...expected, runId: 0 },
     { ...expected, runId: Number.MAX_SAFE_INTEGER + 1 }, { ...expected, repository: 'owner/../other' },
@@ -100,6 +143,21 @@ describe('original signed GitHub job identity, not delivery or custody authority
     expect(fetchGitHub).not.toHaveBeenCalled();
   });
   it.each([
+    [{ nbf: 'private-invalid-time' }, 'time-type'], [{ exp: 1 }, 'lifetime'],
+    [{ aud: 'private-invalid-audience' }, 'issuer-audience'],
+    [{ repository: 'private-invalid-repository' }, 'repository'],
+    [{ actor_id: 'private-invalid-actor' }, 'actor'], [{ run_id: 'private-invalid-run' }, 'run'],
+    [{ check_run_id: 'private-invalid-job' }, 'job'], [{ sha: 'private-invalid-source' }, 'source-workflow'],
+    [{ event_name: 'private-invalid-event' }, 'event-host'], [{ ref: 'private-invalid-ref' }, 'ref'],
+    [{ sub: 'private-invalid-subject' }, 'subject'], [{ environment: 'private-invalid-environment' }, 'unsupported-claims']
+  ])('retains a fixed claim rejection stage without rejected values: %j', async (change, claimStage) => {
+    token = signed(claims(change));
+    const error = await identity.observeGitHubJobIdentity(expected).catch((failure: unknown) => failure);
+    expect(error).toMatchObject({ code: 'github-job-identity-claims', claimStage });
+    expect(String(error)).not.toMatch(/private-invalid|private-original-request-credential/);
+    expect(fetchGitHub).toHaveBeenCalledTimes(1);
+  });
+  it.each([
     '', 'http://pipelines.actions.githubusercontent.com/jobs/job/idtoken',
     'https://outside.example/jobs/job/idtoken',
     'https://pipelines.actions.githubusercontent.com.outside.example/jobs/job/idtoken',
@@ -107,10 +165,38 @@ describe('original signed GitHub job identity, not delivery or custody authority
     'https://user@pipelines.actions.githubusercontent.com/jobs/job/idtoken',
     'https://pipelines.actions.githubusercontent.com:8443/jobs/job/idtoken',
     `${requestUrl}#fragment`, `${requestUrl}&audience=injected`, `${requestUrl}&api-version=2.0`,
-    'https://pipelines.actions.githubusercontent.com/another-endpoint'
+    'https://pipelines.actions.githubusercontent.com/unsupported%20path'
   ])('never sends a credential to an unsupported endpoint: %s', async url => {
     vi.stubEnv('ACTIONS_ID_TOKEN_REQUEST_URL', url);
     await expect(identity.observeGitHubJobIdentity(expected)).rejects.toThrow();
+    expect(fetchGitHub).not.toHaveBeenCalled();
+  });
+  it.each([
+    ['https://private-endpoint-user@pipelines.actions.githubusercontent.com/jobs/job/idtoken', 'transport'],
+    ['https://private-endpoint-host.example/jobs/job/idtoken', 'host'],
+    ['https://pipelines.actions.githubusercontent.com/private-endpoint-path%20', 'path'],
+    [`${requestUrl}&private-endpoint-query=private-endpoint-value`, 'query']
+  ])('reports only a fixed endpoint rejection stage: %s', async (url, stage) => {
+    vi.stubEnv('ACTIONS_ID_TOKEN_REQUEST_URL', url);
+    const error = await identity.observeGitHubJobIdentity(expected).catch((failure: unknown) => failure);
+    expect(error).toMatchObject({ code: `github-job-identity-endpoint-${stage}` });
+    expect(String(error)).not.toMatch(/private-endpoint|private-original-request-credential/);
+    expect(fetchGitHub).not.toHaveBeenCalled();
+  });
+  it.each(['/idtoken', '/jobs/opaque/token', '/jobs/opaque/idtoken/', '/jobs/opaque/IdToken', '/_apis/oidc', '/'])(
+    'uses the original bounded GitHub provider path without inventing a token suffix: %s', async pathname => {
+    vi.stubEnv('ACTIONS_ID_TOKEN_REQUEST_URL', `https://pipelines.actions.githubusercontent.com${pathname}`);
+    const observed = await identity.observeGitHubJobIdentity(expected);
+    expect(new URL(String(fetchGitHub.mock.calls[0]![0])).pathname).toBe(pathname);
+    expect(fetchGitHub).toHaveBeenCalledTimes(2);
+    expect(() => identity.assertCurrentGitHubJobIdentity(observed, expected)).not.toThrow();
+  });
+  it.each(['/' + 'a'.repeat(2048), '/jobs/opaque/%0A', '/jobs/opaque/%2F'])(
+    'refuses oversized or escaped provider paths before sending a credential: %s', async pathname => {
+    vi.stubEnv('ACTIONS_ID_TOKEN_REQUEST_URL', `https://pipelines.actions.githubusercontent.com${pathname}`);
+    await expect(identity.observeGitHubJobIdentity(expected)).rejects.toMatchObject({
+      code: 'github-job-identity-endpoint-path'
+    });
     expect(fetchGitHub).not.toHaveBeenCalled();
   });
   it.each(['', 'private\ncredential', 'a'.repeat(16_385)])('refuses absent or unsafe request credentials without fallback', async value => {
@@ -125,9 +211,11 @@ describe('original signed GitHub job identity, not delivery or custody authority
     { sha: 'c'.repeat(40) }, { workflow_sha: 'c'.repeat(40) },
     { workflow_ref: expected.workflowRef.replace('identity.yml', 'another.yml') },
     { event_name: 'pull_request' }, { runner_environment: 'self-hosted' },
-    { ref: 'refs/heads/main' }, { ref_type: 'tag' }, { sub: 'repo:owner/repository:environment:prod' },
+    { ref: 'refs/heads/main' }, { ref: { toString: 'untrusted' } },
+    { ref_type: 'tag' }, { sub: 'repo:owner/repository:environment:prod' },
     { job_workflow_ref: expected.workflowRef }, { job_workflow_sha: expected.sourceSha }, { environment: 'prod' },
-    { run_id: expected.runId }, { check_run_id: expected.checkRunId }, { iat: 'now' }, { exp: null }, { nbf: 'now' }
+    { run_id: expected.runId }, { check_run_id: expected.checkRunId }, { iat: 'now' }, { exp: null },
+    { nbf: 'now' }, { nbf: -1 }, { nbf: 0.5 }
   ])('rejects a genuinely signed but foreign or unsupported claim: %j', async change => {
     token = signed(claims(change));
     await expect(identity.observeGitHubJobIdentity(expected)).rejects.toMatchObject({ code: 'github-job-identity-claims' });

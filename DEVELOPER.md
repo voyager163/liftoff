@@ -11,9 +11,15 @@ caller supplies only exact expected repository/owner/actor IDs, original run and
 check-run IDs, source SHA, literal branch workflow and Liftoff-purpose audience.
 The signed `check_run_id` is compared with the real job's `check_run_url`; it is
 not assumed to equal the Actions job ID. Only first-attempt, manually dispatched,
-GitHub-hosted, same-source workflows with the default branch subject are
-supported. Reusable workflows, environment subjects and custom subject forms
-remain explicitly unsupported.
+GitHub-hosted, same-source workflows with an exact default branch subject are
+supported: either legacy names or immutable owner/repository names and numeric
+IDs. GitHub uses the latter by default for repositories created after July 15,
+2026; both forms must still match every independently expected signed ID.
+Reusable workflows, environment subjects and custom subject forms remain
+explicitly unsupported.
+Paired `job_workflow_ref`/`job_workflow_sha` claims may repeat that same original
+workflow and source. Foreign, incomplete or malformed pairs remain refused;
+these repeated signed claims do not authorize reusable-workflow execution.
 
 Token acquisition and verification share a ten-second abortable deadline.
 Token, token-response and JWKS limits are 16 KiB, 32 KiB and 64 KiB. Redirects,
@@ -22,6 +28,20 @@ ambiguous keys and copied observations are refused. Raw identity/request tokens
 and provider diagnostics are never returned, logged or written. The original
 frozen observation has process-local provenance and expires with the token;
 its serialized report is diagnostic data, not a reusable capability.
+Endpoint rejection reports only a fixed transport, host, path or query stage,
+never the original URL, query values or request credential. An unsupported
+provider endpoint remains blocked before any credential-bearing request.
+The runner supplies `GenerateIdTokenUrl` as an opaque provider URL; its internal
+path is not a documented `/idtoken` suffix contract. Preserve its bounded
+2 KiB ASCII path without reconstructing it, while retaining the exact HTTPS
+GitHub service-host allowlist, query checks, redirect refusal and all signed
+issuer, audience, job and workflow bindings.
+`nbf` is checked independently from `iat`, including GitHub's documented
+backdated not-before time. It cannot be in the future beyond the existing
+30-second skew allowance. Issued-at freshness, maximum ten-minute token
+lifetime, expiry and final expiry rechecks remain unchanged.
+Claim refusals expose only a fixed validation-stage label, never claim values,
+so a genuine provider mismatch can be diagnosed without retaining a token.
 
 The manual `GitHub job identity qualification` workflow prepares the two-module
 program using **Node 24.21.0's experimental built-in TypeScript transformer**.
@@ -53,9 +73,15 @@ not evidence that the target ran or that its process tree settled.
 The C# launch helper owns `PROCESS_INFORMATION`; PowerShell does not construct
 an unused second instance before readiness. Fixed readiness diagnostics distinguish
 JSON serialization, encoding, pipe writes and flushing from mere pipe connection.
+The fixed six-field ready frame uses a closed encoder instead of invoking the
+general-purpose PowerShell JSON serializer before authentication. Its three
+string values are escaped by UTF-16 code unit, preserving control characters,
+quotes, backslashes and surrogate pairs without loading a serialization module.
+Other frames and incoming requests retain their existing JSON cmdlets.
 Only exact whole-line stage names enter timeout errors, never raw controller
 stderr. Portable tests cover the protocol and sanitized failure boundaries;
-the two real-controller cases in `tests/windows-job-runner.test.ts` require
+the two real-controller cases and direct encoder qualification in
+`tests/windows-job-runner.test.ts` require
 native Windows and must not be replaced with mocked qualification.
 
 ## Project reporting consent boundary

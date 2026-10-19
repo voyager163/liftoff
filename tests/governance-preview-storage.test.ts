@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { lstat, mkdir, mkdtemp, readFile, rm, symlink, unlink } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, unlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createScopedUserLocalRecordStore } from '../src/adapters/filesystem/update-previews.js';
+import { createScopedUserLocalRecordStore, nodeUpdatePreviewFileSystem } from '../src/adapters/filesystem/update-previews.js';
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { parseArgs } from '../src/cli/args/parser.js';
 
@@ -61,6 +61,81 @@ describe('project-bound governance preview storage', () => {
     await expect(store.read(key)).rejects.toThrow(/singly linked regular file/);
     await expect(store.write(key, { replacement: true })).rejects.toThrow(/singly linked regular file/);
     expect(await readFile(target.path)).toEqual(bytes);
+  });
+
+  it('rereads actual private directories and record bytes without changing them', async () => {
+    const { project, options, store } = await fixture();
+    const key = canonicalSha256('native-directory-readback'), value = { original: true };
+    const saved = await store.write(key, value), bytes = await readFile(saved.path);
+    const calls: string[] = [];
+    const reader = createScopedUserLocalRecordStore(project, 'governance-preview', {
+      ...options, fileSystem: { ...nodeUpdatePreviewFileSystem, lstat: async target => {
+        calls.push(target);
+        return lstat(target);
+      } }
+    });
+    expect((await reader.read(key))?.value).toEqual(value);
+    expect(calls.filter(target => target === path.dirname(saved.path)).length).toBeGreaterThan(1);
+    expect(await readFile(saved.path)).toEqual(bytes);
+  });
+
+  it('refuses actual ancestor replacement during readback and preserves the original private record', async () => {
+    const { root, project, options, store } = await fixture();
+    const key = canonicalSha256('native-directory-replacement');
+    const saved = await store.write(key, { original: true }), bytes = await readFile(saved.path);
+    const home = await realpath(options.homedir), retained = path.join(root, 'retained-private-home');
+    const originalInode = (await lstat(home)).ino;
+    let armed = false, replaced = false, opened = false;
+    const reader = createScopedUserLocalRecordStore(project, 'governance-preview', {
+      ...options, fileSystem: { ...nodeUpdatePreviewFileSystem,
+        realpath: async target => {
+          const resolved = await realpath(target);
+          if (target === path.dirname(saved.path)) armed = true;
+          return resolved;
+        },
+        lstat: async target => {
+          if (armed && target === home && !replaced) {
+            replaced = true;
+            await rename(home, retained);
+            await mkdir(home, { mode: 0o700 });
+            expect((await lstat(home)).ino).not.toBe(originalInode);
+          }
+          return lstat(target);
+        },
+        openFile: async (...args) => { opened = true; return nodeUpdatePreviewFileSystem.openFile(...args); }
+      }
+    });
+    await expect(reader.read(key)).rejects.toThrow(/directory changed during the operation/u);
+    expect(replaced).toBe(true);
+    expect(opened).toBe(false);
+    expect(await readFile(path.join(retained, path.relative(home, saved.path)))).toEqual(bytes);
+  });
+
+  it.skipIf(process.platform === 'win32')('refuses actual private permission drift during directory readback', async () => {
+    const { project, options, store } = await fixture();
+    const key = canonicalSha256('native-directory-permissions');
+    const saved = await store.write(key, { original: true }), bytes = await readFile(saved.path);
+    const privateRoot = path.dirname(path.dirname(saved.path));
+    let armed = false, changed = false;
+    const reader = createScopedUserLocalRecordStore(project, 'governance-preview', {
+      ...options, fileSystem: { ...nodeUpdatePreviewFileSystem,
+        realpath: async target => {
+          const resolved = await realpath(target);
+          if (target === path.dirname(saved.path)) armed = true;
+          return resolved;
+        },
+        lstat: async target => {
+          if (armed && target === privateRoot && !changed) {
+            changed = true;
+            await chmod(target, 0o755);
+          }
+          return lstat(target);
+        }
+      }
+    });
+    await expect(reader.read(key)).rejects.toThrow(/permissions changed during the operation/u);
+    expect(changed).toBe(true);
+    expect(await readFile(saved.path)).toEqual(bytes);
   });
 });
 

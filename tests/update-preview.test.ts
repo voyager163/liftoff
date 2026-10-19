@@ -279,6 +279,102 @@ function makeReceipt(overrides: Partial<UpdatePreviewInput> = {}): UpdatePreview
   return createUpdatePreviewReceipt([createUpdatePreviewDescriptor({ ...input(), ...overrides })], { receiptId, issuedAt });
 }
 
+function observeDirectoryReadback(
+  f: ReturnType<typeof fixture>, directory: string,
+  observe: (index: number, directory: string) => Promise<void>
+) {
+  const chain: string[] = [];
+  for (let current = directory;; current = f.paths.dirname(current)) {
+    chain.unshift(current);
+    if (f.paths.dirname(current) === current) break;
+  }
+  const read = f.fs.lstat.bind(f.fs), resolve = f.fs.realpath.bind(f.fs);
+  const state = { chain, started: [] as string[], completed: [] as number[], active: 0, maximum: 0 };
+  let armed = false;
+  const batches = new Map<number, { count: number; ready: Promise<void>; release: () => void; timer: ReturnType<typeof setTimeout> }>();
+  f.fs.realpath = async target => {
+    const result = await resolve(target);
+    if (target === directory) armed = true;
+    return result;
+  };
+  f.fs.lstat = async target => {
+    if (!armed || !chain.includes(target)) return read(target);
+    const index = state.started.length, offset = index % chain.length;
+    const batchKey = Math.floor(index / chain.length) * chain.length + Math.floor(offset / 4) * 4;
+    let batch = batches.get(batchKey);
+    if (!batch) {
+      let release!: () => void, refuse!: (error: Error) => void;
+      const ready = new Promise<void>((resolve, reject) => { release = resolve; refuse = reject; });
+      batch = { count: 0, ready, release, timer: setTimeout(() => refuse(new Error('The complete directory batch did not start.')), 1000) };
+      batches.set(batchKey, batch);
+    }
+    state.started.push(target);
+    state.maximum = Math.max(state.maximum, ++state.active);
+    if (++batch.count === Math.min(4, chain.length - Math.floor(offset / 4) * 4)) {
+      clearTimeout(batch.timer);
+      batch.release();
+    }
+    try {
+      await batch.ready;
+      await observe(index, target);
+      return await read(target);
+    } finally {
+      state.active--;
+      state.completed.push(index);
+    }
+  };
+  return state;
+}
+
+describe('bounded preview directory readback', () => {
+  it.each(['linux', 'darwin', 'win32'] as const)('rereads every %s directory in drained fixed-four batches', async platform => {
+    const f = fixture(platform);
+    const issued = await issueUpdatePreviewReceipt(f.projectRoot, [createUpdatePreviewDescriptor(input(f.projectRoot))], f.options);
+    const bytes = f.fs.contents(issued.location.receiptPath), mutations = f.fs.mutations();
+    const observed = observeDirectoryReadback(f, issued.location.directory, async () => {});
+    const loaded = await loadUpdatePreviewReceipt(f.projectRoot, f.options);
+    expect(loaded.receipt).toEqual(issued.receipt);
+    expect(observed.started).toEqual([...observed.chain, ...observed.chain]);
+    expect(observed.maximum).toBe(4);
+    expect(observed.active).toBe(0);
+    expect(observed.completed).toHaveLength(observed.started.length);
+    expect(f.fs.contents(issued.location.receiptPath)).toBe(bytes);
+    expect(f.fs.mutations()).toEqual(mutations);
+  });
+
+  it.each(['linux', 'darwin', 'win32'] as const)('preserves the first original %s physical error after faster sibling failure and full settlement', async platform => {
+    const f = fixture(platform);
+    const issued = await issueUpdatePreviewReceipt(f.projectRoot, [createUpdatePreviewDescriptor(input(f.projectRoot))], f.options);
+    const original = new FixtureError('EIO', 'first-original-directory');
+    const temporal = new FixtureError('EACCES', 'first-temporal-directory');
+    const observed = observeDirectoryReadback(f, issued.location.directory, async index => {
+      if (index === 0) { await new Promise(resolve => setTimeout(resolve, 10)); throw original; }
+      if (index === 1) throw temporal;
+    });
+    await expect(loadUpdatePreviewReceipt(f.projectRoot, f.options)).rejects.toSatisfy(
+      (error: unknown) => error instanceof Error && error.cause === original
+    );
+    expect(observed.started).toEqual(observed.chain.slice(0, 4));
+    expect(observed.maximum).toBe(4);
+    expect(observed.active).toBe(0);
+    expect(observed.completed[0]).toBe(1);
+    expect([...observed.completed].sort()).toEqual([0, 1, 2, 3]);
+  });
+
+  it.each(['linux', 'darwin', 'win32'] as const)('keeps earlier %s directory substitution ahead of a later physical error', async platform => {
+    const f = fixture(platform);
+    const issued = await issueUpdatePreviewReceipt(f.projectRoot, [createUpdatePreviewDescriptor(input(f.projectRoot))], f.options);
+    const observed = observeDirectoryReadback(f, issued.location.directory, async (index, directory) => {
+      if (index === 0) { await new Promise(resolve => setTimeout(resolve, 10)); f.fs.directory(directory); }
+      if (index === 1) throw new FixtureError('EACCES', 'later-original-directory');
+    });
+    await expect(loadUpdatePreviewReceipt(f.projectRoot, f.options)).rejects.toThrow(/directory changed during the operation/u);
+    expect(observed.started).toEqual(observed.chain.slice(0, 4));
+    expect(observed.active).toBe(0);
+    expect([...observed.completed].sort()).toEqual([0, 1, 2, 3]);
+  });
+});
+
 describe('semantic update fingerprints', () => {
   it('hashes structured semantics deterministically with full lowercase digests', () => {
     const left = createUpdatePreviewDescriptor({

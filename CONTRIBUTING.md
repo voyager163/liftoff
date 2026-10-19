@@ -117,6 +117,15 @@ wins over a later physical failure only after all started siblings settle.
 Event reads reuse only the journal's already-captured immutable current-plan
 inventory and context. Physical stage bytes, authority, ownership and currentness
 are still read and checked afresh; another original plan is analyzed separately.
+Restored workflow authority similarly retains only digests and operation
+multiplicities computed from its privately captured immutable plan and approval.
+Every assertion still hashes the caller's current values, rereads installed scope,
+ownership and sealed issuance, and checks the original lease and current time.
+Preview-storage directory readback drains fixed-four metadata batches before
+checking identities and private permissions in the original ancestor order.
+An earlier semantic refusal wins over a later physical failure after settlement;
+no later batch or file open follows a failed guard. Directory discovery,
+per-file brackets and every fresh observation remain unchanged.
 Whole-matrix retained-component checks also drain fixed-four member batches,
 then validate in the original member order. Each member retains its own physical
 stage checks; an earlier semantic refusal still wins over a later physical
@@ -139,6 +148,11 @@ physical file using one buffer capped at 64 KiB. In-place changes must refuse
 even when Windows has not advanced the open handle's timestamps. The original
 size, identity, single-link, overflow, close, abort, and startup-deadline guards
 still apply before bytes can be published to the process-local cache.
+Both inline and private-file Win32 compilation use explicit compiler parameters
+referencing only the already-loaded CLR core library required by the unchanged
+C# definitions, rather than Add-Type's implicit framework/PowerShell references.
+The built-in compiler binding, language and execution policies, authenticated
+readiness, and original 15-second startup budget remain unchanged.
 Repository text checks out with LF endings on every host; explicitly frozen CRLF
 evidence keeps its original bytes through `.gitattributes`.
 
