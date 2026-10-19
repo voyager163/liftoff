@@ -149,6 +149,16 @@ export async function assertSource5WorkflowAuthority(input: {
   await assertObservedAuthorityScope(binding);
   const selected = binding.owners.get(canonicalSha256(input.operation));
   if (selected) await selected.assertCurrent(false);
+  else if (!input.write && binding.plan.phaseId === 'green-red-proof') {
+    const owners = [...binding.owners.values()];
+    for (let start = 0; start < owners.length; start += 4) {
+      const observations = await Promise.allSettled(owners.slice(start, start + 4)
+        .map(owner => owner.assertCurrent(false)));
+      for (const observation of observations) {
+        if (observation.status === 'rejected') throw observation.reason;
+      }
+    }
+  }
   else for (const owner of binding.owners.values()) await owner.assertCurrent(false);
   const phase = binding.context.records.graph.phases.find(phase => phase.id === binding.plan.phaseId)!;
   if ([input.operation, ...(input.operation.effects ?? [])].some(effect =>

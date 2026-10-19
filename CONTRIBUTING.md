@@ -131,6 +131,11 @@ then validate in the original member order. Each member retains its own physical
 stage checks; an earlier semantic refusal still wins over a later physical
 failure. Both matrix inventory passes and the subsequent authority check remain
 fresh, and these local reads do not submit provider effects.
+Read-only green/red checkpoint authority checks also drain the complete original
+owner inventory in fixed-four batches. Each owner's physical records and history
+are reread; the first original-order failure returns only after its started
+siblings settle, without starting a later batch. Selected-entry and write-capable
+authority checks retain their serial behavior.
 Original native assembly output captures also use fixed-four physical-entry
 batches, preserving both complete inventories, both physical passes, manifest
 readback and fresh parent brackets. An original-order error returns only after
