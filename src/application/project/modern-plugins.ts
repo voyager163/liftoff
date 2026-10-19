@@ -6,6 +6,7 @@ import { modernAssets, modernGovernanceAssets, modernRegistryInput } from '../..
 import { modernRelease } from '../../plugins/builtin/modern-release.js';
 import { modernHistoricalRelease } from '../../plugins/builtin/modern-historical-release.js';
 import { modernPreviousRelease } from '../../plugins/builtin/modern-previous-release.js';
+import { modernPythonPreviousReleases } from '../../plugins/builtin/modern-python-previous-release.js';
 import {
   modernPreWorkflowDeclarationsDigest, modernPreWorkflowGovernanceSourceContracts, modernPreWorkflowSource
 } from '../../plugins/builtin/modern-pre-workflow.js';
@@ -96,19 +97,23 @@ function createModernCompatibilityRegistry(
     .map((asset) => [asset.id, asset]));
   const currentNode = modernRelease.plugins.find((plugin) =>
     plugin.category === 'stack' && plugin.id === 'node-fastify');
-  if (currentFrontendAssets.size !== 2 || currentNode === undefined) {
+  const currentPython = modernRelease.plugins.find((plugin) =>
+    plugin.category === 'stack' && plugin.id === 'python-fastapi');
+  if (currentFrontendAssets.size !== 2 || currentNode === undefined || currentPython === undefined) {
     throw new Error('Current template release is missing the retained modern compatibility closure.');
   }
   return createPluginRegistry({
     ...source,
-    descriptors: source.descriptors.map(descriptor => descriptor.category === 'stack' && descriptor.id === 'node-fastify'
-      ? { ...descriptor, contentVersion: currentNode.contentVersion } : descriptor),
+    descriptors: source.descriptors.map(descriptor => descriptor.category === 'stack' &&
+      (descriptor.id === 'node-fastify' || descriptor.id === 'python-fastapi')
+      ? { ...descriptor, contentVersion: descriptor.id === 'node-fastify' ? currentNode.contentVersion : currentPython.contentVersion } : descriptor),
     release: {
       ...source.release,
       sharedAssets: source.release.sharedAssets.map((asset) =>
         currentFrontendAssets.get(asset.id) ?? asset),
       plugins: source.release.plugins.map((plugin) =>
-        plugin.category === 'stack' && plugin.id === 'node-fastify' ? currentNode : plugin)
+        plugin.category === 'stack' && plugin.id === 'node-fastify' ? currentNode :
+          plugin.category === 'stack' && plugin.id === 'python-fastapi' ? currentPython : plugin)
     },
     assets
   });
@@ -223,11 +228,13 @@ function matchesRetainedModernPlugins(
 /** Recognizes exact original custody4 metadata, never the current5 family or execution permission. */
 export function matchesPreWorkflowModernPlugins(recorded: ManifestPluginMetadata, resolution: PluginResolution): boolean {
   return matchesRetainedModernPlugins(recorded, resolution, modernPreWorkflowSource, modernPreWorkflowRegistry(),
-    modernPreWorkflowDeclarationsDigest, []);
+    modernPreWorkflowDeclarationsDigest, [modernPythonPreviousReleases.preWorkflow]);
 }
 
 /** Recognizes exact pinned source families, never old template bytes or execution permission. */
 export function matchesHistoricalModernPlugins(recorded: ManifestPluginMetadata, resolution: PluginResolution): boolean {
   return matchesRetainedModernPlugins(recorded, resolution, modernPreAssessmentSource, modernPreAssessmentRegistry(),
-    modernPreAssessmentDeclarationsDigest, [modernHistoricalRelease, modernPreviousRelease]);
+    modernPreAssessmentDeclarationsDigest, [
+      modernHistoricalRelease, modernPreviousRelease, modernPythonPreviousReleases.preAssessment
+    ]);
 }

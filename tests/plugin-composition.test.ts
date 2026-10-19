@@ -424,14 +424,22 @@ describe('registry construction boundary', () => {
   });
 
   it('passes lowered limits to the registry and to the reader bounds', () => {
+    const bytes = installedBytes();
+    const largestAssetBytes = Math.max(...bytes.map(asset => asset.bytes.length));
+    const limits = {
+      maxAssetBytes: largestAssetBytes + 1,
+      maxTotalAssetBytes: bytes.reduce((total, asset) => total + asset.bytes.length, 0) + 1
+    };
+    expect(limits.maxAssetBytes).toBeLessThan(pluginRegistryLimits.maxAssetBytes);
+    expect(limits.maxTotalAssetBytes).toBeLessThan(pluginRegistryLimits.maxTotalAssetBytes);
     let seen: unknown;
     const registry = createBuiltinPluginRegistry((declarations, bounds) => {
       seen = bounds;
       return readDeclaredAssetBytes(declarations, bounds);
-    }, { maxAssetBytes: 460_000, maxTotalAssetBytes: 1_200_000 });
-    expect(seen).toEqual({ maxAssetBytes: 460_000, maxTotalAssetBytes: 1_200_000, maxPathParts: 32, maxPartLength: 255 });
+    }, limits);
+    expect(seen).toEqual({ ...limits, maxPathParts: 32, maxPartLength: 255 });
     expect(registry.registryDigest).toBe(builtinPluginRegistry().registryDigest);
-    const tooSmall = registryFailure(() => createBuiltinPluginRegistry(() => installedBytes(), { maxAssetBytes: 459_997 }));
+    const tooSmall = registryFailure(() => createBuiltinPluginRegistry(() => bytes, { maxAssetBytes: largestAssetBytes - 1 }));
     expect(tooSmall.issues.map((issue) => issue.code)).toContain('validation-limit-exceeded');
   });
 

@@ -57,6 +57,13 @@ type Change = {
   versionChange?: { from: string; to: string };
   priorCurrentSha256?: string;
   priorChange?: Change;
+  pythonTemplateRefresh?: string;
+};
+
+const beforePythonTemplateRefresh = {
+  ...review,
+  changes: (review.changes as Change[]).flatMap(change =>
+    change.pythonTemplateRefresh === '2026.10.19' ? change.priorChange ? [change.priorChange] : [] : [change])
 };
 
 // Current behavior must equal the frozen capture, or carry an exact reviewed
@@ -139,8 +146,32 @@ describe('frozen 0.12.3 contract baseline provenance', () => {
     expect(change.baselineSha256).toBe(change.mergedPriorChange.baselineSha256);
   });
 
+  it('preserves the complete ledger and exact parent chains preceding the Python template refresh', () => {
+    const refreshed = (review.changes as Change[]).filter(change => change.pythonTemplateRefresh !== undefined);
+    expect(refreshed).toHaveLength(206);
+    expect(Object.fromEntries([
+      'plugin-generation', 'generator-extraction', 'cli-json', 'rendered-artifacts',
+      'governance-history', 'governance-extraction', 'governance-extraction-cli'
+    ].map(surface => [surface, refreshed.filter(change => change.surface === surface).length]))).toEqual({
+      'plugin-generation': 157, 'generator-extraction': 23, 'cli-json': 4, 'rendered-artifacts': 15,
+      'governance-history': 1, 'governance-extraction': 2, 'governance-extraction-cli': 4
+    });
+    for (const change of refreshed) {
+      expect(change.pythonTemplateRefresh).toBe('2026.10.19');
+      expect(change.priorCurrentSha256).toBe(change.priorChange?.currentSha256 ?? change.baselineSha256);
+      expect(change.baselineSha256).toBe(change.priorChange?.baselineSha256 ?? change.baselineSha256);
+    }
+    expect(refreshed.filter(change => !change.priorChange).map(change => [change.surface, change.key]))
+      .toEqual([
+        ...Array.from({ length: 9 }, (_, index) => ['generator-extraction', `${index + 3}/backend-pyproject`]),
+        ['governance-extraction', 'contexts']
+      ]);
+    expect(sha256(`${JSON.stringify(beforePythonTemplateRefresh, null, 2)}\n`))
+      .toBe('97f29155b772386f579bb1ac307a1e457191a597770b838e339953690063b6a3');
+  });
+
   it('preserves the complete review ledger preceding the development-version change', () => {
-    const versioned = review.changes.filter((change: Change) => change.versionChange !== undefined);
+    const versioned = beforePythonTemplateRefresh.changes.filter((change: Change) => change.versionChange !== undefined);
     expect(Object.fromEntries(['cli-text', 'cli-json', 'rendered-artifacts', 'plugin-generation']
       .map(surface => [surface, versioned.filter((change: Change) => change.surface === surface).length])))
       .toEqual({ 'cli-text': 3, 'cli-json': 5, 'rendered-artifacts': 16, 'plugin-generation': 165 });
@@ -151,8 +182,8 @@ describe('frozen 0.12.3 contract baseline provenance', () => {
     expect(versioned.filter((change: Change) => !change.priorChange)
       .map((change: Change) => [change.surface, change.key])).toEqual([['cli-text', '--version']]);
     const preceding = {
-      ...review,
-      changes: review.changes.flatMap((change: Change) =>
+      ...beforePythonTemplateRefresh,
+      changes: beforePythonTemplateRefresh.changes.flatMap((change: Change) =>
         change.versionChange ? change.priorChange ? [change.priorChange] : [] : [change])
     };
     expect(sha256(`${JSON.stringify(preceding, null, 2)}\n`))

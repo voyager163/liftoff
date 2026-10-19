@@ -75,8 +75,8 @@ const image = (name, tag, digest, source, selectionReason) => ({
 
 const baseline = {
   schemaVersion: 1,
-  id: '2026.08.31',
-  verifiedOn: '2026-08-31',
+  id: '2026.10.19',
+  verifiedOn: '2026-10-19',
   supportedHostPlatforms: [
     'darwin/arm64',
     'darwin/x64',
@@ -119,7 +119,7 @@ const baseline = {
         langfuse: '4.14.4',
         psycopg: '3.3.4',
         pydantic: '2.13.4',
-        'pydantic-ai-slim': '2.33.0',
+        'pydantic-ai-slim': '2.53.0',
         'pydantic-settings': '2.15.0',
         redis: '8.1.0',
         'scalar-fastapi': '1.8.2',

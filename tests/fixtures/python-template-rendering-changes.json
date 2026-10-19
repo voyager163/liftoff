@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "release": "2026.10.19",
+  "priorLedgerSha256": "97f29155b772386f579bb1ac307a1e457191a597770b838e339953690063b6a3",
+  "counts": {
+    "plugin-generation": 157,
+    "generator-extraction": 23,
+    "cli-json": 4,
+    "rendered-artifacts": 15,
+    "governance-history": 1,
+    "governance-extraction": 2,
+    "governance-extraction-cli": 4
+  },
+  "cli": {
+    "status-json": {
+      "beforeStdoutSha256": "2e900023a69dfb4a8aa0203bc77fda316370435dafa7da9472903454561035a9",
+      "fields": [
+        {
+          "segments": [
+            "blockerFingerprint"
+          ],
+          "before": "22defc6448a20ac45ca2e64b433baadbef55d7cce3b056806166e78e0b9673af",
+          "after": "2620815384f786b707968dfd7950c622cd3292b460448b7aa4618e59def94874"
+        }
+      ]
+    },
+    "status-local-json": {
+      "beforeStdoutSha256": "040ebcfab3bb15dbe0f3bdcf6f1be8163372b04c102e886be4bc72dee1d684a4",
+      "fields": [
+        {
+          "segments": [
+            "blockerFingerprint"
+          ],
+          "before": "92ddd067b6cbbda2a64232ee4a027461ebef2184ca691978930ae2087a115445",
+          "after": "3f4fc755a7e869740905d0f8af1948bc5ef1dabef42c8ebd176b1860e7c3ea07"
+        }
+      ]
+    },
+    "resume-json": {
+      "beforeStdoutSha256": "bcbfe96f57445c37951ba845cb093c156783f1bb30dcc5af206f1e03f68b1fda",
+      "fields": [
+        {
+          "segments": [
+            "blockerFingerprint"
+          ],
+          "before": "92ddd067b6cbbda2a64232ee4a027461ebef2184ca691978930ae2087a115445",
+          "after": "3f4fc755a7e869740905d0f8af1948bc5ef1dabef42c8ebd176b1860e7c3ea07"
+        }
+      ]
+    },
+    "plan-json": {
+      "beforeStdoutSha256": "e7b435ada9a03a096b0d3f903e44f7174dfc442c516fb8cace36ce973bc68b64",
+      "fields": [
+        {
+          "segments": [
+            "plan",
+            "baselineDigest"
+          ],
+          "before": "a7dd3a29b4fc589b85b29c0cbbe91486a9a052a56a17dc0b88939be1f5548c8e",
+          "after": "6674a5186946ec8cded51f0b2ea6ed5bf2c51cdcd61b6bf53eead2bdc174d0b0"
+        },
+        {
+          "segments": [
+            "plan",
+            "inputDigest"
+          ],
+          "before": "9e8f3f10b6534ec01ad254fe477c0efb44c212a2225f3f94f684ed1225ed3b35",
+          "after": "0ab2c53cbb1516ceee083cbfe5efadf62693ed8d145b26b9269b4e2bed8ff4e4"
+        },
+        {
+          "segments": [
+            "plan",
+            "transitionDigest"
+          ],
+          "before": "78457d3b3ddc4b619bb7d1cde09e281bea03c198a756a9c89d665cab0bd09865",
+          "after": "86696c66c375116c5d461dd003aaea7f387ab07f522dca46b08b6b6f9283aa10"
+        }
+      ]
+    }
+  }
+}
