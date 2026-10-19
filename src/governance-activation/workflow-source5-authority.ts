@@ -34,6 +34,9 @@ interface AuthorityBinding {
 }
 const authorities = new WeakMap<Source5WorkflowAuthority, AuthorityBinding & {
   owners: ReadonlyMap<string, Awaited<ReturnType<typeof source5WorkflowOwnership>>>;
+  savedPlanDigest: string;
+  operationDigestCounts: ReadonlyMap<string, number>;
+  approvalValueDigest: string;
 }>();
 export function source5WorkflowAuthorityValue(binding: AuthorityBinding) {
   const { context, plan, approval, previewFingerprint, projectRoot, repositoryAnchor } = binding;
@@ -113,14 +116,20 @@ export async function restoreSource5WorkflowAuthority(
   validateBinding(binding, now, false);
   await assertObservedAuthorityScope(binding);
   const value = source5WorkflowAuthorityValue(binding);
-  const stored = await createWorkflowSource5ControlStore(binding.projectRoot, binding.storage).read('approval', canonicalSha256(value));
+  const approvalValueDigest = canonicalSha256(value);
+  const stored = await createWorkflowSource5ControlStore(binding.projectRoot, binding.storage).read('approval', approvalValueDigest);
   if (!stored || stored.projectRoot !== binding.projectRoot || !isRecord(stored.value) ||
-    canonicalSha256(stored.value) !== canonicalSha256(value)) {
+    canonicalSha256(stored.value) !== approvalValueDigest) {
     return workflowFailure('workflow-source5-unissued', 'The original workflow approval has no exact sealed project-local issuance; imported envelopes are not permission.');
   }
   const owners = await ownersFor(binding, false);
+  const operationDigestCounts = new Map<string, number>();
+  for (const digest of value.operationDigests) {
+    operationDigestCounts.set(digest, (operationDigestCounts.get(digest) ?? 0) + 1);
+  }
   const token = Object.freeze({ kind: 'source5-workflow-issued-authority' as const });
-  authorities.set(token, { ...binding, owners });
+  authorities.set(token, { ...binding, owners, savedPlanDigest: value.savedPlanDigest,
+    operationDigestCounts, approvalValueDigest });
   return token;
 }
 
@@ -131,9 +140,9 @@ export async function assertSource5WorkflowAuthority(input: {
 }): Promise<void> {
   const binding = authorities.get(input.authority);
   if (!binding || binding.projectRoot !== input.projectRoot || input.lease !== undefined && input.lease !== binding.lease ||
-    canonicalSha256(input.plan) !== canonicalSha256(binding.plan) ||
+    canonicalSha256(input.plan) !== binding.savedPlanDigest ||
     input.operation.phaseId !== binding.plan.phaseId ||
-    binding.plan.operations.filter(operation => canonicalSha256(operation) === canonicalSha256(input.operation)).length !== 1) {
+    binding.operationDigestCounts.get(canonicalSha256(input.operation)) !== 1) {
     return workflowFailure('workflow-source5-authority', 'Workflow capability is not the engine-issued exact root/plan/operation authority.');
   }
   validateBinding(binding, input.now, input.write);
@@ -146,9 +155,8 @@ export async function assertSource5WorkflowAuthority(input: {
     !phase.allowedMutations[effect.remote ? 'remote' : 'local'].includes(effect.mutationClass))) {
     return workflowFailure('workflow-source5-mutation', 'The exact effect is outside the unchanged current5 phase mutation inventory.');
   }
-  const value = source5WorkflowAuthorityValue(binding);
-  const stored = await createWorkflowSource5ControlStore(binding.projectRoot, binding.storage).read('approval', canonicalSha256(value));
-  if (!stored || canonicalSha256(stored.value) !== canonicalSha256(value)) {
+  const stored = await createWorkflowSource5ControlStore(binding.projectRoot, binding.storage).read('approval', binding.approvalValueDigest);
+  if (!stored || canonicalSha256(stored.value) !== binding.approvalValueDigest) {
     workflowFailure('workflow-source5-unissued', 'Original workflow issuance changed or disappeared; no effect or authority refresh is permitted.');
   }
   validateBinding(binding, input.clock?.() ?? input.now, input.write);

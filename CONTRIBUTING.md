@@ -117,6 +117,10 @@ wins over a later physical failure only after all started siblings settle.
 Event reads reuse only the journal's already-captured immutable current-plan
 inventory and context. Physical stage bytes, authority, ownership and currentness
 are still read and checked afresh; another original plan is analyzed separately.
+Restored workflow authority similarly retains only digests and operation
+multiplicities computed from its privately captured immutable plan and approval.
+Every assertion still hashes the caller's current values, rereads installed scope,
+ownership and sealed issuance, and checks the original lease and current time.
 Whole-matrix retained-component checks also drain fixed-four member batches,
 then validate in the original member order. Each member retains its own physical
 stage checks; an earlier semantic refusal still wins over a later physical

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { link, mkdir, mkdtemp, readFile, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -10,12 +10,15 @@ import {
 } from '../src/adapters/filesystem/update-previews.js';
 import type { UpdatePreviewFileSystem } from '../src/adapters/filesystem/update-previews.js';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
+import * as canonical from '../src/domain/governance/activation/canonical-json.js';
 import { plannedApprovalDestinations, plannedApprovalMutations, plannedApprovalResources } from '../src/domain/governance/activation/source-values.js';
 import {
   assertSource5WorkflowAuthority, createSource5WorkflowContext, issueSource5WorkflowApproval,
   restoreSource5WorkflowAuthority, source5ApprovalHash, source5PreviewFingerprint, withSource5WorkflowLease
 } from '../src/governance-activation/workflow-source5-authority.js';
-import { assertSource5WorkflowEntryOwnership, source5WorkflowOriginalPlanValue } from '../src/governance-activation/workflow-source5-authority.js';
+import {
+  assertSource5WorkflowEntryOwnership, source5WorkflowAuthorityValue, source5WorkflowOriginalPlanValue
+} from '../src/governance-activation/workflow-source5-authority.js';
 import { source5OwnershipMaximumGeneration, source5WorkflowOwnership } from '../src/governance-activation/workflow-source5-ownership.js';
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { writeModernInstalledProject } from './fixtures/modern-installed-project.js';
@@ -719,6 +722,50 @@ describe('independently issued modern source5 workflow authority', () => {
         operation: field === 'operation' ? { ...value.operation, destination: { type: 'local', identity: 'other' } } : value.operation,
         now: value.now, write: true
       })).rejects.toThrow(/authority/);
+    });
+  });
+
+  it('reuses only captured immutable derivatives while freshly hashing callers and reading original sealed authority', async () => {
+    const value = await authorityFixture(), reads: string[] = [];
+    const fileSystem: UpdatePreviewFileSystem = {
+      ...nodeUpdatePreviewFileSystem,
+      async openFile(filePath, access, mode) {
+        if (access === 'read') reads.push(filePath);
+        return nodeUpdatePreviewFileSystem.openFile(filePath, access, mode);
+      }
+    };
+    await withSource5WorkflowLease(value.project, async lease => {
+      const plan = structuredClone(value.plan), approval = structuredClone(value.approval);
+      const binding = { ...value, plan, approval, projectRoot: value.project, lease,
+        storage: { ...value.options, fileSystem } };
+      await issueSource5WorkflowApproval(binding, value.now);
+      const authority = await restoreSource5WorkflowAuthority(binding, value.now);
+      const stored = (await value.store.read('approval', canonicalSha256(source5WorkflowAuthorityValue(binding))))!;
+      const original = await readFile(stored.path);
+      const check = { authority, projectRoot: value.project, plan: value.plan,
+        operation: value.operation, lease, now: value.now, write: true };
+      reads.splice(0);
+      const digest = vi.spyOn(canonical, 'canonicalSha256');
+      try {
+        await assertSource5WorkflowAuthority(check);
+        expect(reads.filter(file => file === stored.path)).toHaveLength(1);
+        Object.assign(plan, { expiresAt: '2026-09-03T00:00:00.000Z' });
+        Object.assign(approval, { expiresAt: '2026-09-03T00:00:00.000Z' });
+        await assertSource5WorkflowAuthority(check);
+        expect(reads.filter(file => file === stored.path)).toHaveLength(2);
+        expect(digest.mock.calls.some(([input]) => input === check.plan)).toBe(true);
+        expect(digest.mock.calls.some(([input]) => typeof input === 'object' && input !== null &&
+          'kind' in input && input.kind === 'liftoff-source5-workflow-approval' && Object.isFrozen(input))).toBe(false);
+        await expect(assertSource5WorkflowAuthority({ ...check, plan })).rejects.toThrow(/authority/u);
+        await expect(assertSource5WorkflowAuthority({ ...check,
+          operation: { ...value.operation, destination: { type: 'local', identity: 'other' } } })).rejects.toThrow(/authority/u);
+        expect(reads.filter(file => file === stored.path)).toHaveLength(2);
+        const changed = Buffer.concat([original, Buffer.from(' ')]);
+        await writeFile(stored.path, changed);
+        await expect(assertSource5WorkflowAuthority(check)).rejects.toThrow(/seal|scope|bytes/u);
+        expect(reads.filter(file => file === stored.path)).toHaveLength(3);
+        expect(await readFile(stored.path)).toEqual(changed);
+      } finally { digest.mockRestore(); }
     });
   });
 
