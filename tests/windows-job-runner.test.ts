@@ -132,8 +132,19 @@ function restorePreInteropByteReadbackRunner(runner: string): string {
     '    throwIfAborted();\n    const overflow = Buffer.alloc(1);');
 }
 
+function restorePreReadySerializationController(controller: string): string {
+  return removeSourceRange(controller, 'function ConvertTo-ControlJsonString', 'function Send-ControlFrame')
+    .replace([
+      "    if ($obj.kind -eq 'ready') {",
+      '        $json = ConvertTo-ReadyFrameJson $obj',
+      '    } else {',
+      '        $json = $obj | & $toJsonCmdlet -Compress -Depth 10',
+      '    }'
+    ].join('\n'), '    $json = $obj | & $toJsonCmdlet -Compress -Depth 10');
+}
+
 function restorePreReadyController(controller: string): string {
-  return controller
+  return restorePreReadySerializationController(controller)
     .replace(/    if \(\$obj\.kind -eq 'ready'\) \{\n        \[Console\]::Error\.WriteLine\("LIFTOFF_CONTROLLER_STAGE: ready-[a-z]+"\)\n    \}\n/gu, '')
     .replace('$hProcess = [IntPtr]::Zero\n', '$hProcess = [IntPtr]::Zero\n$pi = & $newObjectCmdlet Win32JobNative+PROCESS_INFORMATION\n')
     .replace('    if ($hProcess -ne [IntPtr]::Zero) { [Win32JobNative]::CloseHandle($hProcess) | Out-Null }', [
@@ -978,11 +989,34 @@ describe('Windows Job Object controller asset integrity and host environment', (
     const stages = ['ready-serialize', 'ready-encode', 'ready-write', 'ready-flush', 'ready-written'];
     expect([...send.matchAll(/LIFTOFF_CONTROLLER_STAGE: (ready-[a-z]+)"/gu)].map(match => match[1])).toEqual(stages);
     for (const [index, operation] of [
-      '$json = $obj | & $toJsonCmdlet', '$payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($json)',
+      '$json = ConvertTo-ReadyFrameJson $obj', '$payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($json)',
       '$stream.Write($header, 0, 4)', '$stream.Flush()', 'Write-AckAdmissionDiagnostic $obj $true'
     ].entries()) {
       expect(send.indexOf(`LIFTOFF_CONTROLLER_STAGE: ${stages[index]}"`)).toBeLessThan(send.indexOf(operation));
     }
+  });
+
+  it('limits the serializer-free cold path to the closed ready frame and restores the exact qualified parent controller', async () => {
+    const controller = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+    const helpers = controller.slice(controller.indexOf('function ConvertTo-ControlJsonString'), controller.indexOf('function Send-ControlFrame'));
+    expect(helpers).toContain("$encoded.Append('\\u')");
+    expect(helpers).toContain("$obj.psbase.Count -ne 6");
+    expect(helpers).toContain("$obj.schemaVersion -isnot [int]");
+    for (const field of ['workspaceId', 'invocationId', 'nonce']) {
+      expect(helpers).toContain(`$obj.${field} -isnot [string]`);
+      expect(helpers).toContain(`ConvertTo-ControlJsonString $obj.${field}`);
+    }
+    expect(helpers).not.toMatch(/Cmdlet|ConvertTo-Json|Add-Type|Win32JobNative|Assembly/u);
+    expect(createHash('sha256').update(restorePreReadySerializationController(controller)).digest('hex'))
+      .toBe('943f27f794a8161a7486aa6b02fa467788f0c3ab633ca340b214e8bb3d0f4125');
+    const send = controller.slice(controller.indexOf('function Send-ControlFrame'), controller.indexOf('function Read-ControlFrame'));
+    expect(send).toContain([
+      "    if ($obj.kind -eq 'ready') {",
+      '        $json = ConvertTo-ReadyFrameJson $obj',
+      '    } else {',
+      '        $json = $obj | & $toJsonCmdlet -Compress -Depth 10',
+      '    }'
+    ].join('\n'));
   });
 
   it('restores exact pre-diagnostic C#, control, containment and supervisor bytes by removing only approved diagnostics', async () => {
@@ -1906,6 +1940,66 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
       expect(await readFile(input(control), 'utf8')).toBe(control.text);
     }
     expect(run).toHaveBeenCalledTimes(4);
+  });
+
+  it.runIf(process.platform === 'win32')('round-trips exact ready scope strings through the real closed PowerShell encoder and refuses non-ready shapes', async () => {
+    const asset = await verifyWindowsJobControllerAsset();
+    const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
+    const string = (value: string) => `[string]::new([char[]]@(${value.split('').map(character => character.charCodeAt(0)).join(',')}))`;
+    const common = {
+      schemaVersion: 1, kind: 'ready', controllerId: 'liftoff-windows-job-controller-v1',
+      workspaceId: `quotes"\\\r\n\t${String.fromCharCode(...Array.from({ length: 32 }, (_, index) => index), 127)}`,
+      invocationId: 'unicode-\u2028\u2029-\ud83d\ude80-\ud800x\udc00',
+      nonce: '0123456789abcdef'
+    };
+    const script = [
+      "$ErrorActionPreference = 'Stop'",
+      `$source = [System.IO.File]::ReadAllText(${literal(asset)})`,
+      '$tokens = $null; $errors = $null',
+      '$ast = [System.Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)',
+      "if ($errors.Count -ne 0) { throw 'Controller syntax error.' }",
+      "foreach ($name in @('ConvertTo-ControlJsonString', 'ConvertTo-ReadyFrameJson')) {",
+      '    $definition = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name }, $true)',
+      "    if ($null -eq $definition) { throw 'Missing closed encoder.' }",
+      '    . ([scriptblock]::Create($definition.Extent.Text))',
+      '}',
+      '$original = @{ schemaVersion = 1; kind = \'ready\'; controllerId = \'liftoff-windows-job-controller-v1\';',
+      `    workspaceId = ${string(common.workspaceId)}; invocationId = ${string(common.invocationId)}; nonce = ${string(common.nonce)} }`,
+      'if ((ConvertTo-ControlJsonString \'\') -cne \'""\') { throw \'Empty string was not preserved.\' }',
+      '[Console]::Out.Write((ConvertTo-ReadyFrameJson $original))',
+      '$changes = @(',
+      "    { $frame.extra = 'not-in-schema' },",
+      '    { $frame.Count = 6 },',
+      "    { $frame.Remove('workspaceId') },",
+      "    { $frame.Remove('workspaceId'); $frame.WorkspaceId = 'wrong-key-case' },",
+      "    { $frame.kind = 'ack' },",
+      "    { $frame.kind = @('ready') },",
+      "    { $frame.controllerId = 'foreign' },",
+      "    { $frame.controllerId = @('liftoff-windows-job-controller-v1') },",
+      '    { $frame.schemaVersion = 2 },',
+      '    { $frame.schemaVersion = $true },',
+      '    { $frame.workspaceId = $null },',
+      '    { $frame.invocationId = 7 },',
+      "    { $frame.nonce = @('not', 'a-string') }",
+      ')',
+      'foreach ($change in $changes) {',
+      '    $frame = $original.Clone(); & $change',
+      '    $rejected = $false',
+      '    try { $null = ConvertTo-ReadyFrameJson $frame }',
+      "    catch { $rejected = $_.Exception.Message -ceq 'Invalid ready control frame.' }",
+      "    if (-not $rejected) { throw 'Non-ready frame was not refused.' }",
+      '}'
+    ].join('\n');
+    const host = buildWindowsControllerHostEnvironment();
+    if (!host.SystemRoot) throw new Error('Windows controller host requires SystemRoot.');
+    const powershell = path.join(host.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const result = spawnSync(powershell, [
+      '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')
+    ], { env: host, encoding: 'utf8', timeout: 15_000, maxBuffer: 16 * 1024 });
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).not.toMatch(/[^\x20-\x7e]/u);
+    expect(JSON.parse(result.stdout)).toEqual(common);
   });
 
   it('ensures environmentValue does not let undefined Path shadow valid PATH and rejects conflicting aliases', async () => {

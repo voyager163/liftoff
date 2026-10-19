@@ -412,12 +412,44 @@ function Write-AckAdmissionDiagnostic($frame, [bool]$completed) {
     }
 }
 
+function ConvertTo-ControlJsonString([string]$value) {
+    $encoded = [System.Text.StringBuilder]::new('"')
+    foreach ($character in $value.ToCharArray()) {
+        [void]$encoded.Append('\u')
+        [void]$encoded.Append(([int]$character).ToString('x4', [System.Globalization.CultureInfo]::InvariantCulture))
+    }
+    [void]$encoded.Append('"')
+    return $encoded.ToString()
+}
+
+function ConvertTo-ReadyFrameJson($obj) {
+    if ($obj -isnot [hashtable] -or $obj.psbase.Count -ne 6 -or $obj.schemaVersion -isnot [int] -or $obj.schemaVersion -ne 1 -or
+        $obj.kind -isnot [string] -or $obj.kind -cne 'ready' -or
+        $obj.controllerId -isnot [string] -or $obj.controllerId -cne 'liftoff-windows-job-controller-v1' -or
+        $obj.workspaceId -isnot [string] -or $obj.invocationId -isnot [string] -or $obj.nonce -isnot [string]) {
+        throw 'Invalid ready control frame.'
+    }
+    foreach ($key in $obj.Keys) {
+        if (@('schemaVersion', 'kind', 'controllerId', 'workspaceId', 'invocationId', 'nonce') -cnotcontains $key) {
+            throw 'Invalid ready control frame.'
+        }
+    }
+    return '{"schemaVersion":1,"kind":"ready","controllerId":"liftoff-windows-job-controller-v1","workspaceId":' +
+        (ConvertTo-ControlJsonString $obj.workspaceId) + ',"invocationId":' +
+        (ConvertTo-ControlJsonString $obj.invocationId) + ',"nonce":' +
+        (ConvertTo-ControlJsonString $obj.nonce) + '}'
+}
+
 function Send-ControlFrame($stream, $obj) {
     Write-AckAdmissionDiagnostic $obj $false
     if ($obj.kind -eq 'ready') {
         [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: ready-serialize")
     }
-    $json = $obj | & $toJsonCmdlet -Compress -Depth 10
+    if ($obj.kind -eq 'ready') {
+        $json = ConvertTo-ReadyFrameJson $obj
+    } else {
+        $json = $obj | & $toJsonCmdlet -Compress -Depth 10
+    }
     if ($obj.kind -eq 'ready') {
         [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: ready-encode")
     }

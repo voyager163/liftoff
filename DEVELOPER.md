@@ -73,9 +73,15 @@ not evidence that the target ran or that its process tree settled.
 The C# launch helper owns `PROCESS_INFORMATION`; PowerShell does not construct
 an unused second instance before readiness. Fixed readiness diagnostics distinguish
 JSON serialization, encoding, pipe writes and flushing from mere pipe connection.
+The fixed six-field ready frame uses a closed encoder instead of invoking the
+general-purpose PowerShell JSON serializer before authentication. Its three
+string values are escaped by UTF-16 code unit, preserving control characters,
+quotes, backslashes and surrogate pairs without loading a serialization module.
+Other frames and incoming requests retain their existing JSON cmdlets.
 Only exact whole-line stage names enter timeout errors, never raw controller
 stderr. Portable tests cover the protocol and sanitized failure boundaries;
-the two real-controller cases in `tests/windows-job-runner.test.ts` require
+the two real-controller cases and direct encoder qualification in
+`tests/windows-job-runner.test.ts` require
 native Windows and must not be replaced with mocked qualification.
 
 ## Project reporting consent boundary
