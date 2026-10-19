@@ -112,7 +112,7 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
       import assert from 'node:assert/strict';
       import { createHash, generateKeyPairSync, sign } from 'node:crypto';
       import { gzipSync } from 'node:zlib';
-      import { verifyWindowsJobControllerAsset } from ${JSON.stringify(moduleUrl('adapters/process/windows-job-runner.js'))};
+      import { verifyWindowsJobControllerAsset, captureWindowsJobInteropAssembly } from ${JSON.stringify(moduleUrl('adapters/process/windows-job-runner.js'))};
       const admission = await import(${JSON.stringify(pathToFileURL(path.join(bundle, 'installation/native-release-admission.mjs')).href)});
       const catalog = await import(${JSON.stringify(pathToFileURL(path.join(bundle, 'installation/native-release-catalog.mjs')).href)});
       const key = generateKeyPairSync('ed25519'), bytes = gzipSync(Buffer.from('Installed synthetic signature specimen.'));
@@ -121,13 +121,16 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
       assert.equal(admission.verifyNativeBytesSignature(bytes, signature, publicKey, fingerprint), undefined);
       assert.throws(() => admission.verifyNativeBytesSignature(Buffer.from('changed'), signature, publicKey, fingerprint), /signature/);
       assert.throws(() => admission.verifyNativeEvidenceSignature(bytes, signature, publicKey, fingerprint), SyntaxError);
+      const interop = await captureWindowsJobInteropAssembly(${JSON.stringify(path.join(bundle, 'application/assets/repair/Liftoff.WindowsJob.Interop.dll'))});
       console.log(JSON.stringify({ controller: await verifyWindowsJobControllerAsset(), runtime: process.execPath,
+        interopSha256: createHash('sha256').update(interop).digest('hex'),
         admissionExports: Object.keys(admission).sort(), catalogFilename: catalog.nativeReleaseCatalogFilename,
         catalogTargets: catalog.nativeReleaseTargets, rawSignatureVerified: true }));
     `);
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({
       controller: path.join(bundle, 'application/assets/repair/windows-job-controller.ps1'), runtime,
+      interopSha256: '9639b54c1e91d77184d36d8d4e3498a3deb69a9c9e863fa4ff756264329d9a25',
       admissionExports: ['assertNativePublicationEvidence', 'verifyNativeBytesSignature', 'verifyNativeEvidenceSignature'],
       catalogFilename: 'liftoff-native-release.json', catalogTargets: ['darwin-arm64', 'linux-arm64', 'linux-x64', 'win32-x64'],
       rawSignatureVerified: true
@@ -184,6 +187,7 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
     const damaged = await copy('missing asset package');
     for (const relative of ['application/assets/plugins/go-huma/go-backend/go.mod',
       'application/assets/repair/windows-job-controller.ps1',
+      'application/assets/repair/Liftoff.WindowsJob.Interop.dll',
       'application/node_modules/@cdktf/hcl2json/main.wasm.gz', 'installation/platforms.json',
       'installation/release-policy.json', 'installation/native-release-admission.mjs', 'installation/native-release-catalog.mjs',
       'application/distribution/native/cask-stage-worker.mjs']) {
@@ -195,6 +199,8 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
           ? execute(path.join(damaged, manifest.launcher), ['plan', ...installedPlanCases.find(plan => plan.id === 'manual-cli-only')!.args])
           : relative.endsWith('cask-stage-worker.mjs')
             ? execute(path.join(damaged, windows ? 'runtime/node.exe' : 'runtime/node'), [path.join(damaged, relative)])
+          : relative.endsWith('.dll')
+            ? installed(`import { captureWindowsJobInteropAssembly } from ${JSON.stringify(moduleUrl('adapters/process/windows-job-runner.js', damaged))}; await captureWindowsJobInteropAssembly(${JSON.stringify(file)});`, damaged)
           : relative.endsWith('.ps1')
             ? installed(`import { verifyWindowsJobControllerAsset } from ${JSON.stringify(moduleUrl('adapters/process/windows-job-runner.js', damaged))}; await verifyWindowsJobControllerAsset();`, damaged)
             : relative.endsWith('platforms.json')

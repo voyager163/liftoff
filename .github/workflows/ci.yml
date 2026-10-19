@@ -140,6 +140,17 @@ jobs:
         run: |
           for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do call "%%i\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
           cl /nologo /W4 /WX /O2 /MT /Fo:"%RUNNER_TEMP%\liftoff-launcher.obj" /Fe:"%RUNNER_TEMP%\liftoff-launcher.exe" distribution\windows\launcher.c /link /SUBSYSTEM:CONSOLE
+      - name: Select the pinned Windows interop compiler
+        if: runner.os == 'Windows'
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: "10.0.402"
+      - name: Verify the packaged Windows interop against two independent builds
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p qualification
+          npm run --silent check:windows-interop > qualification/windows-job-interop.json
       - name: Retrieve the pinned platform runtime
         shell: bash
         run: |
@@ -174,6 +185,7 @@ jobs:
           name: liftoff-native-package-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             qualification/native-platform-package.json
+            qualification/windows-job-interop.json
             ${{ runner.temp }}/liftoff-native-bundle/bundle.json
             ${{ runner.temp }}/liftoff-native-archive/
           if-no-files-found: error

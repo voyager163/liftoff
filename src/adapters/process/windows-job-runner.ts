@@ -25,7 +25,9 @@ import {
 } from './windows-job-protocol.js';
 
 export const windowsJobControllerAssetPathParts = ['assets', 'repair', 'windows-job-controller.ps1'] as const;
-export const windowsJobControllerAssetDigest = '03789de4dc1fbacb37ea310a63508d778b748d663d9d8dc7e6d0dfd3781ef83e';
+export const windowsJobControllerAssetDigest = '2b05fac3e801247dc841ba9c9cadd4bf91b151c6552df2cfaecce9032dc1c697';
+export const windowsJobInteropAssemblyAssetPathParts = ['assets', 'repair', 'Liftoff.WindowsJob.Interop.dll'] as const;
+export const windowsJobInteropAssemblyAssetDigest = '9639b54c1e91d77184d36d8d4e3498a3deb69a9c9e863fa4ff756264329d9a25';
 const controllerStartupTimeoutMs = 15_000;
 const controllerSettlementGraceMs = 5_000;
 const controllerInteropAssemblyMaximumBytes = 1024 * 1024;
@@ -42,6 +44,7 @@ const controllerAdmissionStages = [
 export interface WindowsJobInteropAssemblyIdentity {
   controllerAssetDigest: string;
   powershellPath: string;
+  assemblyAssetDigest?: string;
 }
 
 export type WindowsJobInteropAssemblyReservation =
@@ -63,9 +66,10 @@ type WindowsJobInteropAssemblyEntry =
 
 function windowsJobInteropAssemblyIdentity(identity: WindowsJobInteropAssemblyIdentity): string {
   return createHash('sha256').update(JSON.stringify([
-    'liftoff-windows-job-interop-v1',
+    'liftoff-windows-job-interop-v2',
     identity.controllerAssetDigest,
-    identity.powershellPath
+    identity.powershellPath,
+    identity.assemblyAssetDigest ?? null
   ])).digest('hex');
 }
 
@@ -172,6 +176,7 @@ export type WindowsJobInteropPreparationResult =
   | {
       ok: false;
       reason: 'timeout' | 'aborted' | 'failed';
+      errorMessage: string;
       cleanupStatus: 'complete' | 'failed' | 'pending';
       cleanup: Promise<boolean>;
     };
@@ -182,6 +187,8 @@ export async function prepareWindowsJobInteropAssembly(options: {
   signal?: AbortSignal;
   cache?: WindowsJobInteropAssemblyCache;
   operations?: WindowsJobInteropPreparationOperations;
+  packagedAssemblyPath?: string;
+  captureOperations?: WindowsJobInteropCaptureOperations;
 }): Promise<WindowsJobInteropPreparationResult> {
   const cache = options.cache ?? windowsJobInteropAssemblyCache;
   const operations = options.operations ?? windowsJobInteropPreparationOperations;
@@ -243,6 +250,24 @@ export async function prepareWindowsJobInteropAssembly(options: {
         }
       }
     );
+    let packagedBytes: Buffer | undefined;
+    if (options.packagedAssemblyPath || options.identity.assemblyAssetDigest !== undefined) {
+      const packagedAssemblyPath = options.packagedAssemblyPath;
+      if (!packagedAssemblyPath || !/^[a-f0-9]{64}$/u.test(options.identity.assemblyAssetDigest ?? '')) {
+        throw new Error('Packaged Windows Job interop requires its exact asset path and SHA-256 identity.');
+      }
+      packagedBytes = await runOperation(() => captureWindowsJobInteropAssembly(
+        packagedAssemblyPath,
+        operationAbort.signal,
+        options.captureOperations
+      ));
+      if (createHash('sha256').update(packagedBytes).digest('hex') !== options.identity.assemblyAssetDigest) {
+        throw new Error('Packaged Windows Job interop assembly integrity failure.');
+      }
+      if (reservation.kind === 'consumer' && !reservation.bytes.equals(packagedBytes)) {
+        throw new Error('Cached Windows Job interop differs from the freshly verified packaged assembly.');
+      }
+    }
     directory = await runOperation(
       () => operations.createPrivateDirectory(path.join(tmpdir(), 'liftoff-job-interop-')),
       (created) => { directory = created; }
@@ -255,6 +280,10 @@ export async function prepareWindowsJobInteropAssembly(options: {
         consumerBytes,
         operationAbort.signal
       ));
+    }
+    if (packagedBytes && reservation.kind === 'producer') {
+      const producerBytes = packagedBytes;
+      await runOperation(() => operations.writePrivateFile(assemblyPath, producerBytes, operationAbort.signal));
     }
     const remainingStartupMs = Math.floor(deadline - performance.now());
     if (remainingStartupMs <= 0) {
@@ -296,6 +325,7 @@ export async function prepareWindowsJobInteropAssembly(options: {
     return {
       ok: false,
       reason: error instanceof WindowsJobInteropPreparationStoppedError ? error.reason : 'failed',
+      errorMessage: error instanceof Error ? error.message : String(error),
       cleanupStatus,
       cleanup: cleanupPromise
     };
@@ -722,8 +752,10 @@ export async function runWindowsJobCommand(
     const preparation = await prepareWindowsJobInteropAssembly({
       identity: {
         controllerAssetDigest: windowsJobControllerAssetDigest,
-        powershellPath
+        powershellPath,
+        assemblyAssetDigest: windowsJobInteropAssemblyAssetDigest
       },
+      packagedAssemblyPath: path.join(path.dirname(scriptPath), windowsJobInteropAssemblyAssetPathParts[2]),
       startupTimeoutMs: controllerStartupTimeoutMs,
       signal: options.signal
     });
@@ -771,7 +803,7 @@ export async function runWindowsJobCommand(
         errorCode: timedOut ? 'SUPERVISOR_TIMEOUT' : 'CONTROLLER_LAUNCH_FAILED',
         errorMessage: timedOut
           ? `Supervisor timeout: Windows Job Object controller exceeded ${controllerStartupTimeoutMs}ms during startup without reporting settlement (controller=not-reported, admission=not-reported, connected=false, authenticated=false, state=${session.getState()}).${cleanupSuffix}`
-          : `Failed to prepare the verified Windows Job interop assembly before target execution.${cleanupSuffix}`
+          : `Failed to prepare the verified Windows Job interop assembly before target execution: ${preparation.errorMessage}${cleanupSuffix}`
       };
     }
     interopReservation = preparation.reservation;
@@ -812,7 +844,7 @@ export async function runWindowsJobCommand(
     let incomingBuffer = Buffer.alloc(0);
     let supervisorTimer: NodeJS.Timeout | null = null;
     let abortHandler: (() => void) | null = null;
-    let interopPublished = interopReservation?.kind !== 'producer';
+    let interopPublished = interopAssemblyPath === null;
     let interopCleanupFailed = false;
     const interopCaptureAbort = new AbortController();
 
@@ -1025,7 +1057,7 @@ export async function runWindowsJobCommand(
           return;
         }
 
-        if (interopReservation?.kind === 'producer' && !interopPublished) {
+        if (interopAssemblyPath && !interopPublished) {
           try {
             if (!interopAssemblyPath) throw new Error('Missing private interop assembly path.');
             const bytes = await captureWindowsJobInteropAssembly(
@@ -1033,7 +1065,10 @@ export async function runWindowsJobCommand(
               interopCaptureAbort.signal
             );
             if (settled || interopCaptureAbort.signal.aborted) return;
-            interopReservation.publish(bytes);
+            if (createHash('sha256').update(bytes).digest('hex') !== windowsJobInteropAssemblyAssetDigest) {
+              throw new Error('Private Windows Job interop differs from the verified packaged assembly.');
+            }
+            if (interopReservation?.kind === 'producer') interopReservation.publish(bytes);
             interopPublished = true;
           } catch {
             if (settled) return;
@@ -1141,7 +1176,7 @@ export async function runWindowsJobCommand(
         workspaceId,
         '-InvocationId',
         invocationId,
-        ...(interopAssemblyPath ? ['-InteropAssemblyPath', interopAssemblyPath] : [])
+        ...(interopAssemblyPath ? ['-InteropAssemblyPath', interopAssemblyPath, '-RequirePrecompiledInterop'] : [])
       ];
 
       const hostEnv = buildWindowsControllerHostEnvironment();

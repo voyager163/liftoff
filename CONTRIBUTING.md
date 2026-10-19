@@ -212,14 +212,27 @@ settlement window. Missing readiness, acknowledgement or terminal proof still
 fails closed; the supervisor never treats its own timeout as kernel settlement.
 This does not increase test or CI job deadlines.
 
-Only packaged/default PowerShell invocations can reuse process-local compiled
-Win32 bytes, captured after authenticated readiness. Each invocation gets a fresh
-private copy and retains its own admission and settlement checks; custom
-overrides use inline compilation. Cache waiting and file preparation consume the
+Packaged/default PowerShell invocations use the release-owned
+`assets/repair/Liftoff.WindowsJob.Interop.dll`, built from the unchanged literal
+C# in `windows-job-controller.ps1`. Every invocation freshly captures the bounded
+single-link asset and checks its pinned SHA-256 before creating an exclusive
+private copy. The default controller requires that copy to exist; missing material
+cannot fall back to runtime compilation. Private bytes are checked again after
+authenticated readiness, before target dispatch. Only then can the process-local
+cache publish them, bound to controller, assembly and PowerShell identities.
+Custom overrides retain inline compilation and cannot use the packaged cache.
+Cache waiting, asset capture and file preparation consume the
 existing startup budget. After preparation fails, waiting for cleanup respects
 that same deadline and cancellation: the original failure returns with pending
 cleanup, late work is drained before disposal, and cleanup failure is reported.
-The first cold compile and genuine Windows qualification remain separate gates.
+No .NET SDK is required by installed users. Contributors changing the literal
+C# use .NET SDK 10.0.402 and `node scripts/windows-job-interop.mjs --write`, then
+update the runner's assembly digest. `npm run check:windows-interop` restores the
+locked net462 reference package 1.0.3 and requires two independent deterministic
+builds to match the packaged DLL. Windows native-package CI runs that check.
+The binary is first-party GPL-3.0-only code; reference assemblies are not shipped.
+Reproducible builds do not replace genuine Windows execution or minimum-host
+qualification.
 
 Local Compose observation binds the plugin executable separately from Docker.
 The finite prefix-relative candidates use `docker-compose.exe` on Windows and

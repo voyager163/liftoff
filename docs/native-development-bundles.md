@@ -205,6 +205,16 @@ compiled stable launcher from a private versioned fixture with foreign cwd and
 empty PATH. They exercise malformed/missing/hard-linked/junction pointers and
 generate exact installer inputs only with explicitly synthetic policy.
 This required case is not execution of a signed Inno installer.
+The explicit native/npm asset inventory also includes the first-party
+`Liftoff.WindowsJob.Interop.dll`. Default controller startup verifies fresh
+packaged bytes and an exclusive per-invocation copy rather than compiling C#;
+custom overrides retain the inline path. Windows native-package CI runs
+`npm run check:windows-interop` using pinned .NET SDK 10.0.402 and the locked
+net462 reference package 1.0.3. Two independent builds of the controller's
+unchanged literal C# must match the shipped DLL byte-for-byte. The SDK and
+Microsoft reference assemblies are build inputs, not shipped runtime dependencies.
+This reproducibility check does not qualify Windows execution, minimum hosts,
+signing or public distribution.
 Linux cases exercise the actual bundle's isolated owned installation/recovery and
 test-only Ed25519 bootstrap authentication using OpenSSL 3.0 or newer with Ed25519
 support on the invoking host. Linux qualification additionally requires

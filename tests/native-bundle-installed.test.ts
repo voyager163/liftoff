@@ -262,14 +262,18 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
   it('executes the installed isolated HCL parser and resolves the controller from the installed boundary', () => {
     const result = installedScript(`
       import { parseIsolatedHcl } from ${JSON.stringify(installedModule('adapters/hcl/isolated-parser.js'))};
-      import { verifyWindowsJobControllerAsset } from ${JSON.stringify(installedModule('adapters/process/windows-job-runner.js'))};
+      import { createHash } from 'node:crypto';
+      import { verifyWindowsJobControllerAsset, captureWindowsJobInteropAssembly } from ${JSON.stringify(installedModule('adapters/process/windows-job-runner.js'))};
       const parsed = await parseIsolatedHcl(['locals { enabled = true }\\n']);
-      console.log(JSON.stringify({ parsed: parsed[0].parsed, controller: await verifyWindowsJobControllerAsset(), runtime: process.execPath }));
+      const interop = await captureWindowsJobInteropAssembly(${JSON.stringify(path.join(bundle, 'application/assets/repair/Liftoff.WindowsJob.Interop.dll'))});
+      console.log(JSON.stringify({ parsed: parsed[0].parsed, controller: await verifyWindowsJobControllerAsset(),
+        interopSha256: createHash('sha256').update(interop).digest('hex'), runtime: process.execPath }));
     `);
     expect(result.status, result.stdout + result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({
       parsed: { locals: [{ enabled: true }] },
       controller: path.join(bundle, 'application/assets/repair/windows-job-controller.ps1'),
+      interopSha256: '9639b54c1e91d77184d36d8d4e3498a3deb69a9c9e863fa4ff756264329d9a25',
       runtime
     });
   });
@@ -282,6 +286,7 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
     for (const missing of [
       'assets/plugins/go-huma/go-backend/go.mod',
       'assets/repair/windows-job-controller.ps1',
+      'assets/repair/Liftoff.WindowsJob.Interop.dll',
       'node_modules/@cdktf/hcl2json/main.wasm.gz'
     ]) {
       const file = path.join(damaged, 'application', missing);
@@ -292,7 +297,9 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
         await expect(verifyNativeBundle(damaged)).rejects.toThrow();
         const result = missing.endsWith('go.mod')
           ? execute(path.join(damaged, 'bin/liftoff'), ['plan', ...installedPlanCases.find(plan => plan.id === 'manual-cli-only')!.args])
-          : installedScript(missing.endsWith('.ps1')
+          : installedScript(missing.endsWith('.dll')
+            ? `import { captureWindowsJobInteropAssembly } from ${JSON.stringify(installedModule('adapters/process/windows-job-runner.js', damaged))}; await captureWindowsJobInteropAssembly(${JSON.stringify(file)});`
+            : missing.endsWith('.ps1')
             ? `import { verifyWindowsJobControllerAsset } from ${JSON.stringify(installedModule('adapters/process/windows-job-runner.js', damaged))}; await verifyWindowsJobControllerAsset();`
             : `import { parseIsolatedHcl } from ${JSON.stringify(installedModule('adapters/hcl/isolated-parser.js', damaged))}; await parseIsolatedHcl(['locals { enabled = true }\\n']);`, damaged);
         expect(result.status, result.stdout + result.stderr).toBe(1);
