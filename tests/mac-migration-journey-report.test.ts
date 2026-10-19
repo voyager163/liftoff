@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assertMacMigrationJourneyReport, historicalMigrationClient } from '../scripts/mac-migration-journey-report.mjs';
+import { nativeReport } from './helpers/native-report.js';
 
 function fixture() {
   const manifest = { releaseReady: false, source: { dirty: false, commit: 'a'.repeat(40) },
@@ -16,8 +17,7 @@ function fixture() {
           nativeVersion: manifest.package.version, releaseReady: false, syntheticCaskAdmissionAndSettlement: true,
           realHostGlobalInstallationTouched: false, compiledClientFetchAttempts: 0, callerPreserved: true } }
       }))));
-  return { manifest, report: { success: true, numFailedTests: 0, numFailedTestSuites: 0,
-    testResults: [{ name: '/fixture/tests/mac-migration-journey.test.ts', assertionResults: cases }] } };
+  return { manifest, report: nativeReport([{ name: '/fixture/tests/mac-migration-journey.test.ts', assertionResults: cases }]) };
 }
 
 describe('historical/native migration journey report admission', () => {
@@ -26,9 +26,20 @@ describe('historical/native migration journey report admission', () => {
     expect(historicalMigrationClient).toEqual({
       version: '0.3.4', sha256: '05793480c44632b3fc01ac98a4f76a73313d8b273afcb30bde5c22de989d69c0'
     });
+
     expect(assertMacMigrationJourneyReport(report, manifest, 'c'.repeat(64))).toEqual({
       cases: 16, passed: 16, historicalVersion: '0.3.4', nativeSourceCommit: manifest.source.commit
     });
+  });
+
+  it('rejects ancillary file failure despite passing journey cases and coherent green counts', () => {
+    const { report, manifest } = fixture(), ancillary = structuredClone(report.testResults[0]);
+    ancillary.name = '/fixture/tests/ancillary.test.ts';
+    ancillary.status = 'failed';
+    report.testResults.push(ancillary);
+    report.numTotalTests += 16;
+    report.numPassedTests += 16;
+    expect(() => assertMacMigrationJourneyReport(report, manifest, 'c'.repeat(64))).toThrow('test file');
   });
 
   it.each([

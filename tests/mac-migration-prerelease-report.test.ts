@@ -4,6 +4,7 @@ import {
   historicalMigrationClient, macMigrationJourneyLane
 } from '../scripts/mac-migration-journey-report.mjs';
 import { isStableSemver } from '../src/stable-release.js';
+import { nativeReport } from './helpers/native-report.js';
 
 function fixture() {
   const manifest = { releaseReady: false, source: { dirty: false, commit: 'a'.repeat(40) },
@@ -24,8 +25,7 @@ function fixture() {
           journalCreated: false, oldOwnerPreserved: true
         } }
       }))));
-  return { manifest, report: { success: true, numFailedTests: 0, numFailedTestSuites: 0,
-    testResults: [{ name: '/fixture/tests/mac-migration-prerelease.test.ts', assertionResults: cases }] } };
+  return { manifest, report: nativeReport([{ name: '/fixture/tests/mac-migration-prerelease.test.ts', assertionResults: cases }]) };
 }
 
 describe('migration journey version selection and prerelease report contract', () => {
@@ -50,6 +50,15 @@ describe('migration journey version selection and prerelease report contract', (
       nativeVersion: '0.13.0-dev.0', outcome: 'prerelease-refusal', positiveMigrationQualified: false
     });
     expect(() => assertMacMigrationJourneyReport(report, manifest, 'c'.repeat(64))).toThrow();
+  });
+  it('rejects ancillary file failure despite passing refusal cases and coherent green counts', () => {
+    const { report, manifest } = fixture(), ancillary = structuredClone(report.testResults[0]);
+    ancillary.name = '/fixture/tests/ancillary.test.ts';
+    ancillary.status = 'failed';
+    report.testResults.push(ancillary);
+    report.numTotalTests += 16;
+    report.numPassedTests += 16;
+    expect(() => assertMacMigrationPrereleaseRefusalReport(report, manifest, 'c'.repeat(64))).toThrow('test file');
   });
   it('does not relabel a stable manifest as genuine prerelease refusal', () => {
     const { report, manifest } = fixture();

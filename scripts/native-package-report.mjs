@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { verifyNativeBundle } from './native-bundle.mjs';
+import { assertNativeTestReport } from './native-bundle-contract.mjs';
 
 export const nativeLinuxUserspaceImages = Object.freeze({
   x64: 'docker.io/rockylinux/rockylinux@sha256:f5529992e67440c1a4ae7788244d4381c6909159a88eacd95b7523ae47ced82e',
@@ -31,9 +32,7 @@ export const nativePackagePlatformCases = {
 };
 export function assertNativePackageReport(report, platform = process.platform) {
   assert.ok(nativePackagePlatformCases[platform], 'Unsupported native report host.');
-  assert.equal(report.success, true, 'Native package qualification failed.');
-  assert.equal(report.numFailedTests, 0);
-  assert.equal(report.numFailedTestSuites, 0);
+  assertNativeTestReport(report);
   const suites = report.testResults.filter(suite => suite.name.replaceAll('\\', '/').endsWith('/native-package-installed.test.ts'));
   assert.equal(suites.length, 1, 'Exactly one complete installed native package suite is required.');
   const cases = suites[0].assertionResults;

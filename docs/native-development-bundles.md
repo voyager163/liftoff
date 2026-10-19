@@ -157,6 +157,11 @@ node scripts/native-package-report.mjs qualification/native-bundle.json \
 
 The original report gate requires all eleven Apple Silicon installed cases to pass;
 the cross-platform report gate additionally requires every common/applicable case.
+Native and standalone migration report gates also inspect every reported file and
+assertion, reject duplicate file records, and recompute aggregate test counts.
+A green summary cannot conceal an ancillary failed file or assertion. Named
+foreign-host skips remain unrun; Vitest's nested suite totals are not normalized
+into file counts.
 Its packaged cask-stage worker case uses the bundle's pinned runtime and exact
 installed helper with no global tools. POSIX hosts must reproduce every inert
 transport byte and creation-held physical identity; Windows must refuse before

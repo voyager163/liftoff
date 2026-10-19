@@ -16,6 +16,7 @@ import { installOwnedBundle, inspectOwnedInstallation, recoverOwnedInstallation 
 import inputs from '../distribution/native/inputs.json' with { type: 'json' };
 import policy from '../distribution/native/release-policy.json' with { type: 'json' };
 import { assertNativePackageReport, nativePackageCommonCases, nativePackagePlatformCases } from '../scripts/native-package-report.mjs';
+import { nativeReport } from './helpers/native-report.js';
 
 const roots: string[] = [];
 const hash = (bytes: string | Buffer) => createHash('sha256').update(bytes).digest('hex');
@@ -436,15 +437,25 @@ describe('native exact-artifact and signing gates (synthetic contract data, not 
 describe('installed native report admission (synthetic report shapes)', () => {
   function report(platform: keyof typeof nativePackagePlatformCases) {
     const applicable = [...nativePackageCommonCases, ...nativePackagePlatformCases[platform]];
-    return { success: true, numFailedTests: 0, numFailedTestSuites: 0, testResults: [{
+    return nativeReport([{
       name: '/fixture/tests/native-package-installed.test.ts',
       assertionResults: [...nativePackageCommonCases, ...Object.values(nativePackagePlatformCases).flat()]
         .map(title => ({ title, status: applicable.includes(title) ? 'passed' : 'skipped' }))
-    }] };
+    }]);
   }
   it.each(['linux', 'darwin', 'win32'] as const)('requires every applicable actual installed case on %s', platform => {
     expect(assertNativePackageReport(report(platform), platform).passed).toBe(
       nativePackageCommonCases.length + nativePackagePlatformCases[platform].length);
+  });
+  it('rejects an ancillary failed file despite a green summary and passing required cases', () => {
+    const selected = report('darwin'), ancillary = structuredClone(selected.testResults[0]);
+    ancillary.name = '/fixture/tests/ancillary.test.ts';
+    ancillary.status = 'failed';
+    selected.numTotalTests += ancillary.assertionResults.length;
+    selected.numPassedTests += nativePackageCommonCases.length + nativePackagePlatformCases.darwin.length;
+    selected.numPendingTests += ancillary.assertionResults.filter(test => test.status === 'skipped').length;
+    selected.testResults.push(ancillary);
+    expect(() => assertNativePackageReport(selected, 'darwin')).toThrow('test file');
   });
   it.each(['failed', 'missing', 'duplicate', 'unrun-applicable', 'wrong-host-skip', 'missing-suite', 'duplicate-suite'])(
     'refuses incomplete native package evidence: %s', fault => {

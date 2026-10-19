@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { assertNativeTestReport } from './native-bundle-contract.mjs';
 
 export const historicalMigrationClient = {
   version: '0.3.4',
@@ -46,9 +47,7 @@ function assertJourneyBinding(evidence, manifest, manifestSha256) {
 export function assertMacMigrationJourneyReport(report, manifest, manifestSha256) {
   assert.equal(macMigrationJourneyLane(manifest.package.version), 'stable-handover',
     'Prerelease refusal is not positive handover qualification.');
-  assert.equal(report.success, true, 'Historical/native migration journeys must succeed.');
-  assert.equal(report.numFailedTests, 0);
-  assert.equal(report.numFailedTestSuites, 0);
+  assertNativeTestReport(report);
   assertJourneyManifest(manifest, manifestSha256);
   const suites = report.testResults.filter(suite =>
     suite.name.replaceAll('\\', '/').endsWith('/tests/mac-migration-journey.test.ts'));
@@ -74,9 +73,7 @@ export function assertMacMigrationJourneyReport(report, manifest, manifestSha256
 export function assertMacMigrationPrereleaseRefusalReport(report, manifest, manifestSha256) {
   assert.equal(macMigrationJourneyLane(manifest.package.version), 'prerelease-refusal');
   assertJourneyManifest(manifest, manifestSha256);
-  assert.equal(report.success, true, 'Every genuine prerelease-refusal case must succeed.');
-  assert.equal(report.numFailedTests, 0);
-  assert.equal(report.numFailedTestSuites, 0);
+  assertNativeTestReport(report);
   const suites = report.testResults.filter(suite =>
     suite.name.replaceAll('\\', '/').endsWith('/tests/mac-migration-prerelease.test.ts'));
   assert.equal(suites.length, 1, 'Exactly one genuine prerelease-refusal suite is required.');

@@ -31,6 +31,7 @@ export type NativeBundleHost =
 
 export const nativeBundleLimits: Readonly<NativeBundleLimits>;
 export const nativeBundleCases: readonly string[];
+export function assertNativeTestReport(report: unknown): void;
 export function assertNativeBundleReport(report: unknown): { cases: number; passed: number };
 export function nativeBundleHost(platform?: string, architecture?: string): NativeBundleHost;
 export function nativeRuntimeInput<

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { assertNativeTestReport } from './native-bundle-contract.mjs';
 
 export const macMigrationPackageCases = [
   'requires exact local inputs and never an installation or publishing command',
@@ -13,9 +14,7 @@ export const macMigrationPackageCases = [
 ];
 
 export function assertMacMigrationPackageReport(report) {
-  assert.equal(report.success, true, 'Standalone migration package qualification must succeed.');
-  assert.equal(report.numFailedTests, 0);
-  assert.equal(report.numFailedTestSuites, 0);
+  assertNativeTestReport(report);
   const suites = report.testResults.filter(suite =>
     suite.name.replaceAll('\\', '/').endsWith('/tests/mac-migration-package.test.ts'));
   assert.equal(suites.length, 1, 'Exactly one complete standalone migration package suite is required.');
