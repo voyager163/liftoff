@@ -121,6 +121,11 @@ Restored workflow authority similarly retains only digests and operation
 multiplicities computed from its privately captured immutable plan and approval.
 Every assertion still hashes the caller's current values, rereads installed scope,
 ownership and sealed issuance, and checks the original lease and current time.
+Preview-storage directory readback drains fixed-four metadata batches before
+checking identities and private permissions in the original ancestor order.
+An earlier semantic refusal wins over a later physical failure after settlement;
+no later batch or file open follows a failed guard. Directory discovery,
+per-file brackets and every fresh observation remain unchanged.
 Whole-matrix retained-component checks also drain fixed-four member batches,
 then validate in the original member order. Each member retains its own physical
 stage checks; an earlier semantic refusal still wins over a later physical
