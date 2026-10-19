@@ -42,6 +42,22 @@ gate is advanced by adding this observer.
 npx vitest run tests/github-job-identity.test.ts tests/github-job-identity-qualification.test.ts tests/repository-policy.test.ts
 ```
 
+## Windows controller readiness
+
+The packaged Windows PowerShell controller has a shared 15-second startup
+budget, including private interop preparation and authenticated admission.
+The target's runtime budget starts only after its valid admission acknowledgement;
+the existing five-second settlement grace is separate. A startup timeout is
+not evidence that the target ran or that its process tree settled.
+
+The C# launch helper owns `PROCESS_INFORMATION`; PowerShell does not construct
+an unused second instance before readiness. Fixed readiness diagnostics distinguish
+JSON serialization, encoding, pipe writes and flushing from mere pipe connection.
+Only exact whole-line stage names enter timeout errors, never raw controller
+stderr. Portable tests cover the protocol and sanitized failure boundaries;
+the two real-controller cases in `tests/windows-job-runner.test.ts` require
+native Windows and must not be replaced with mocked qualification.
+
 ## Project reporting consent boundary
 
 `application/telemetry/project-reporting.ts` owns explicit status/enroll/disable/

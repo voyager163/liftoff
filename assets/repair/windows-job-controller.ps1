@@ -414,7 +414,13 @@ function Write-AckAdmissionDiagnostic($frame, [bool]$completed) {
 
 function Send-ControlFrame($stream, $obj) {
     Write-AckAdmissionDiagnostic $obj $false
+    if ($obj.kind -eq 'ready') {
+        [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: ready-serialize")
+    }
     $json = $obj | & $toJsonCmdlet -Compress -Depth 10
+    if ($obj.kind -eq 'ready') {
+        [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: ready-encode")
+    }
     $payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($json)
     $len = $payloadBytes.Length
     $header = & $newObjectCmdlet byte[] 4
@@ -422,9 +428,18 @@ function Send-ControlFrame($stream, $obj) {
     $header[1] = [byte](($len -shr 16) -band 0xFF)
     $header[2] = [byte](($len -shr 8) -band 0xFF)
     $header[3] = [byte]($len -band 0xFF)
+    if ($obj.kind -eq 'ready') {
+        [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: ready-write")
+    }
     $stream.Write($header, 0, 4)
     $stream.Write($payloadBytes, 0, $len)
+    if ($obj.kind -eq 'ready') {
+        [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: ready-flush")
+    }
     $stream.Flush()
+    if ($obj.kind -eq 'ready') {
+        [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: ready-written")
+    }
     Write-AckAdmissionDiagnostic $obj $true
 }
 
@@ -456,7 +471,6 @@ function Read-ControlFrame($stream) {
 
 $hJob = [IntPtr]::Zero
 $hProcess = [IntPtr]::Zero
-$pi = & $newObjectCmdlet Win32JobNative+PROCESS_INFORMATION
 $attributeList = [IntPtr]::Zero
 $pJobHandle = [IntPtr]::Zero
 $pExtendedInfo = [IntPtr]::Zero
@@ -981,8 +995,6 @@ try {
         [Win32JobNative]::DeleteProcThreadAttributeList($attributeList) | Out-Null
         [System.Runtime.InteropServices.Marshal]::FreeHGlobal($attributeList)
     }
-    if ($pi.hThread -ne [IntPtr]::Zero) { [Win32JobNative]::CloseHandle($pi.hThread) | Out-Null }
-    if ($pi.hProcess -ne [IntPtr]::Zero) { [Win32JobNative]::CloseHandle($pi.hProcess) | Out-Null }
     if ($hProcess -ne [IntPtr]::Zero) { [Win32JobNative]::CloseHandle($hProcess) | Out-Null }
     if ($hJob -ne [IntPtr]::Zero) { [Win32JobNative]::CloseHandle($hJob) | Out-Null }
     if ($null -ne $pipe) { $pipe.Dispose() }

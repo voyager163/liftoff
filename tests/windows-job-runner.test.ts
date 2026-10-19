@@ -101,6 +101,7 @@ function removeSourceRange(source: string, start: string, end: string): string {
 }
 
 function restorePreInteropReuseController(controller: string): string {
+  controller = restorePreReadyController(controller);
   const parameter = [
     '    [Parameter(Mandatory = $true)]',
     '    [string]$InvocationId,',
@@ -125,9 +126,30 @@ function restorePreInteropReuseController(controller: string): string {
 }
 
 function restorePreInteropByteReadbackRunner(runner: string): string {
+  runner = restorePreReadyRunner(runner);
   return removeSourceRange(runner,
     '    // Windows can retain unchanged timestamps while an open file is modified in place.\n',
     '    throwIfAborted();\n    const overflow = Buffer.alloc(1);');
+}
+
+function restorePreReadyController(controller: string): string {
+  return controller
+    .replace(/    if \(\$obj\.kind -eq 'ready'\) \{\n        \[Console\]::Error\.WriteLine\("LIFTOFF_CONTROLLER_STAGE: ready-[a-z]+"\)\n    \}\n/gu, '')
+    .replace('$hProcess = [IntPtr]::Zero\n', '$hProcess = [IntPtr]::Zero\n$pi = & $newObjectCmdlet Win32JobNative+PROCESS_INFORMATION\n')
+    .replace('    if ($hProcess -ne [IntPtr]::Zero) { [Win32JobNative]::CloseHandle($hProcess) | Out-Null }', [
+      '    if ($pi.hThread -ne [IntPtr]::Zero) { [Win32JobNative]::CloseHandle($pi.hThread) | Out-Null }',
+      '    if ($pi.hProcess -ne [IntPtr]::Zero) { [Win32JobNative]::CloseHandle($pi.hProcess) | Out-Null }',
+      '    if ($hProcess -ne [IntPtr]::Zero) { [Win32JobNative]::CloseHandle($hProcess) | Out-Null }'
+    ].join('\n'));
+}
+
+function restorePreReadyRunner(runner: string): string {
+  return runner
+    .replace(windowsJobControllerAssetDigest, '77d63fa0c72a1f860008358fe7ed6e80a08e4040d6c700ea58ab64dae6b6e9e5')
+    .replace(
+      '/^LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|loading-interop|connecting|connected|ready-serialize|ready-encode|ready-write|ready-flush|ready-written)\\r?$/gmu',
+      '/LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|loading-interop|connecting|connected)/gu'
+    );
 }
 
 function restorePreCleanupDeadlineRunner(runner: string): string {
@@ -316,7 +338,7 @@ function restorePreInteropReuseRunner(runner: string): string {
       "import { mkdtemp, open, readFile, rm, unlink, writeFile } from 'node:fs/promises';",
       "import { open, readFile, unlink } from 'node:fs/promises';"
     )
-    .replace(windowsJobControllerAssetDigest, 'f12e941b5a1d053dd20bfefefdab40af7b0ccd9a380c4032310c51c5fbe53434')
+    .replace('77d63fa0c72a1f860008358fe7ed6e80a08e4040d6c700ea58ab64dae6b6e9e5', 'f12e941b5a1d053dd20bfefefdab40af7b0ccd9a380c4032310c51c5fbe53434')
     .replace('const controllerInteropAssemblyMaximumBytes = 1024 * 1024;\n', '');
   restored = removeSourceRange(
     restored,
@@ -943,6 +965,26 @@ describe('Windows Job Object controller asset integrity and host environment', (
     }
   });
 
+  it('keeps native process-information ownership inside the launch helper and restores the exact pre-readiness controller', async () => {
+    const controller = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+    expect(controller).not.toMatch(/\$pi\b/u);
+    expect(controller).toContain('PROCESS_INFORMATION pi = new PROCESS_INFORMATION();');
+    expect(controller).toContain('out pi);');
+    expect(controller).toContain('CloseHandle(pi.hThread);');
+    expect(controller).toContain('hProcess = pi.hProcess;');
+    expect(createHash('sha256').update(restorePreReadyController(controller)).digest('hex'))
+      .toBe('77d63fa0c72a1f860008358fe7ed6e80a08e4040d6c700ea58ab64dae6b6e9e5');
+    const send = controller.slice(controller.indexOf('function Send-ControlFrame'), controller.indexOf('function Read-ControlFrame'));
+    const stages = ['ready-serialize', 'ready-encode', 'ready-write', 'ready-flush', 'ready-written'];
+    expect([...send.matchAll(/LIFTOFF_CONTROLLER_STAGE: (ready-[a-z]+)"/gu)].map(match => match[1])).toEqual(stages);
+    for (const [index, operation] of [
+      '$json = $obj | & $toJsonCmdlet', '$payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($json)',
+      '$stream.Write($header, 0, 4)', '$stream.Flush()', 'Write-AckAdmissionDiagnostic $obj $true'
+    ].entries()) {
+      expect(send.indexOf(`LIFTOFF_CONTROLLER_STAGE: ${stages[index]}"`)).toBeLessThan(send.indexOf(operation));
+    }
+  });
+
   it('restores exact pre-diagnostic C#, control, containment and supervisor bytes by removing only approved diagnostics', async () => {
     const controller = restorePreInteropReuseController(
       await readFile(await verifyWindowsJobControllerAsset(), 'utf8')
@@ -1109,6 +1151,10 @@ describe('Windows Job Runner protocol execution and policy admission blockers', 
   it.each([
     { mode: 'no-ready', diagnostic: 'absent', stderr: '', admissionStage: 'not-reported', controllerStage: 'not-reported' },
     { mode: 'no-ack', diagnostic: 'last closed enum', stderr: 'LIFTOFF_CONTROLLER_STAGE: loading-interop\r\nLIFTOFF_CONTROLLER_ADMISSION: frame-header-read\r\nLIFTOFF_CONTROLLER_ADMISSION: frame-json\r\n', admissionStage: 'frame-json', controllerStage: 'loading-interop' },
+    { mode: 'no-ack', diagnostic: 'ready serialization', stderr: 'LIFTOFF_CONTROLLER_STAGE: connected\r\nLIFTOFF_CONTROLLER_STAGE: ready-serialize\r\n', admissionStage: 'not-reported', controllerStage: 'ready-serialize' },
+    { mode: 'no-ack', diagnostic: 'ready flush', stderr: 'LIFTOFF_CONTROLLER_STAGE: ready-flush\n', admissionStage: 'not-reported', controllerStage: 'ready-flush' },
+    { mode: 'no-ack', diagnostic: 'forged startup suffix', stderr: 'LIFTOFF_CONTROLLER_STAGE: ready-written PRIVATE_ENV_VALUE_PATH_ARG\n', admissionStage: 'not-reported', controllerStage: 'not-reported' },
+    { mode: 'no-ack', diagnostic: 'forged startup prefix', stderr: 'PRIVATE_ENV_VALUE_PATH_ARG LIFTOFF_CONTROLLER_STAGE: ready-written\n', admissionStage: 'not-reported', controllerStage: 'not-reported' },
     { mode: 'no-ack', diagnostic: 'unknown enum', stderr: 'LIFTOFF_CONTROLLER_ADMISSION: PRIVATE_ENV_VALUE_PATH_ARG\n', admissionStage: 'not-reported', controllerStage: 'not-reported' },
     { mode: 'no-ack', diagnostic: 'forged suffix after a valid enum', stderr: 'LIFTOFF_CONTROLLER_ADMISSION: frame-json\nLIFTOFF_CONTROLLER_ADMISSION: ack-written PRIVATE_ENV_VALUE_PATH_ARG\n', admissionStage: 'not-reported', controllerStage: 'not-reported' },
     { mode: 'no-ack', diagnostic: 'forged prefix', stderr: 'PRIVATE_ENV_VALUE_PATH_ARG LIFTOFF_CONTROLLER_ADMISSION: ack-written\n', admissionStage: 'not-reported', controllerStage: 'not-reported' }
