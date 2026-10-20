@@ -114,6 +114,11 @@ Depends on 2-5. References: design D3; liftoff-native-distribution, liftoff-npm-
 - [ ] 9.3 Produce signed/notarized macOS packaging and a cask definition under a verified approved namespace; verify signature/notarization, exact artifact checksum, install/uninstall ownership and no forced launcher overwrite in isolation.
 - [ ] 9.4 Produce a signed Windows x64 installer and WinGet manifests under a verified approved ID; verify stock policy behavior, executable locking, native paths and packaged controller assets in Windows CI.
 - [ ] 9.5 Produce verified Linux x64/arm64 archives and a user-local installer with declared glibc/runtime floors; verify signatures/checksums, atomic owned installation and refusal of unqualified musl/platform combinations.
+  A contributor-only kernel guest runner now binds original development archives
+  to explicit kernel digests and pinned glibc 2.28 userspace, retaining complete
+  planning/install/recovery observations. Its fixed QEMU TCG execution remains
+  explicitly emulated and cannot qualify native minimum hosts, kernel source or
+  build authenticity, archive signing, bootstrap compatibility or publication.
 - [ ] 9.6 Extend immutable release manifests, exact-artifact handoff, SBOM/notices and provenance for every native asset; verify changed digests/source/version or absent signing evidence block publication without changing existing npm account settings.
 - [x] 9.7 Add native package smoke tests and missing-asset/foreign-cwd fixtures on each advertised platform; verify tests never alter the developer's real global installation.
   Qualified runtime-inclusive development packages at `b20d8f9edb788d0450956fcfdbdaee1a69aa502d`, integration run `39188831733`, attempt 1: original installed-package reports pass all applicable cases on macOS ARM64, Linux x64/ARM64 and Windows x64. Fixtures use private profiles/prefixes, foreign working directories and empty tool paths; missing assets and exact archive extraction/mode readback are checked. This does not qualify minimum hosts, signing, public managers, stable releases or the other native-distribution tasks.

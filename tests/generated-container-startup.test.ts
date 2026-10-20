@@ -72,6 +72,7 @@ describe('generated container port publication', () => {
       const { directory, file } = await fixture();
       await writeFile(file, id, { flag: 'wx', mode: 0o600 });
       const original = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+      const before = await original.lstat(file, { bigint: true });
       vi.mocked(open).mockImplementationOnce(async (...args) => {
         const handle = await original.open(...args);
         if (mutation === 'inode') {
@@ -79,10 +80,18 @@ describe('generated container port publication', () => {
           await writeFile(file, id, { flag: 'wx', mode: 0o600 });
         } else {
           await writeFile(file, mutation === 'size' ? 'b'.repeat(1024 * 1024) : 'b'.repeat(64));
+          if (mutation === 'bytes') {
+            // A same-size write need not advance the observed Windows timestamps.
+            await original.utimes(file, before.atime, new Date(Number(before.mtimeMs) + 2_000));
+          }
         }
         return handle;
       });
       await expect(readCreatedContainerId(file)).rejects.toThrow(/changed while/u);
+      if (mutation === 'bytes') {
+        expect((await original.lstat(file, { bigint: true })).mtimeNs).toBeGreaterThan(before.mtimeNs);
+        expect(await readFile(file, 'utf8')).toBe('b'.repeat(64));
+      }
     });
 
     it('addresses inspection and cleanup by the created ID, never by a requested container name', async () => {
