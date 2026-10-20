@@ -80,6 +80,7 @@ export function assertLinuxKernelGuestTranscript(stdout, expected) {
   assert.equal(compressed.toString('base64'), encoded, 'Guest serial encoding is not canonical.');
   const report = JSON.parse(gunzipSync(compressed, { maxOutputLength: 1024 * 1024 }).toString('utf8'));
   assert.equal(report.kind, 'liftoff-linux-kernel-guest-probe');
+  assert.equal(report.schemaVersion, 2, 'Current guest diagnostics require actual policy3 HCL execution.');
   assert.deepEqual(report.observed, {
     platform: 'linux', architecture: expected.architecture, runtimeVersion: '24.21.0',
     osVersion: kernelVersion, nativeArchitecture: expected.architecture === 'arm64' ? 'aarch64' : 'x86_64',
@@ -96,8 +97,11 @@ export function assertLinuxKernelGuestTranscript(stdout, expected) {
   }
   assert.equal(report.emulated, accelerator === 'tcg', 'Guest execution mode differs.');
   for (const field of ['bundleReadOnly', 'kernelExecution', 'developmentInstallRecovered',
-    'controllerResolved', 'hclQualifiedRuntimeRefused', 'publicInstallationRefused']) assert.equal(report[field], true);
-  for (const field of ['hclExecuted', 'minimumHostQualified', 'publicDistributionQualified']) assert.equal(report[field], false);
+    'controllerResolved', 'hclExecuted', 'publicInstallationRefused']) assert.equal(report[field], true);
+  for (const field of ['hclQualifiedRuntimeRefused', 'minimumHostQualified', 'publicDistributionQualified']) assert.equal(report[field], false);
+  assert.deepEqual(report.hcl, { policyVersion: 3, protocolVersion: 2,
+    parsed: [{ locals: [{ enabled: true }] }, { locals: [{ policy: '${file("./policy.json")}' }] }],
+    expressionCounts: [1, 1], fileExpressionType: 'template' });
   assert.deepEqual(report.plans.map(plan => plan.id), installedPlanCases.map(plan => plan.id));
   for (const plan of installedPlanCases) {
     assert.deepEqual(planContractIssues(report.plans.find(item => item.id === plan.id).stdout, plan), []);

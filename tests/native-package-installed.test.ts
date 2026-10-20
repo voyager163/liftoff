@@ -183,6 +183,34 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
       inertTransportOnlyNotCaskInstallationOrPublication: true } });
     expect(await bundleInventory(outside)).toEqual(before);
   });
+  it('observes installed HCL parsing or explicit runtime refusal without global tools', () => {
+    const result = installed(`
+      import assert from 'node:assert/strict';
+      import { hclComputationPolicy, parseIsolatedHcl } from ${JSON.stringify(moduleUrl('adapters/hcl/isolated-parser.js'))};
+      assert.equal(hclComputationPolicy.version, 3);
+      if (process.platform === 'win32') {
+        await assert.rejects(parseIsolatedHcl(['locals { enabled = true }\\n']), /not one of the qualified/);
+      } else {
+        const results = await parseIsolatedHcl([
+          'locals { enabled = true }\\n', 'locals { policy = file("./policy.json") }\\n'
+        ]);
+        assert.deepEqual(results.map(result => result.parsed),
+          [{ locals: [{ enabled: true }] }, { locals: [{ policy: '\${file("./policy.json")}' }] }]);
+        assert.deepEqual(results.map(result => result.expressions.size), [1, 1]);
+        assert.equal(results[0].expressions, results[1].expressions);
+        assert.equal(results[1].expressions.get('\${file("./policy.json")}')?.type, 'template');
+      }
+      console.log(JSON.stringify({ platform: process.platform, architecture: process.arch,
+        node: process.versions.node, policyVersion: hclComputationPolicy.version,
+        hclExecuted: process.platform !== 'win32', runtimeRefused: process.platform === 'win32' }));
+    `);
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(JSON.parse(result.stdout)).toEqual({
+      platform: process.platform, architecture: process.arch, node: '24.21.0', policyVersion: 3,
+      hclExecuted: !windows, runtimeRefused: windows
+    });
+  });
   it('refuses missing template, controller, HCL and host-policy material without checkout fallback', async () => {
     const damaged = await copy('missing asset package');
     for (const relative of ['application/assets/plugins/go-huma/go-backend/go.mod',
@@ -367,7 +395,7 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
       import { assertNativeHost, observeNativeHost } from '/liftoff/installation/host.mjs';
       import { bundleFile, bundleInventory } from '/liftoff/installation/native-bundle-contract.mjs';
       import { installOwnedBundle, inspectOwnedInstallation, recoverOwnedInstallation } from '/liftoff/installation/native-install.mjs';
-      import { parseIsolatedHcl } from '/liftoff/application/dist/adapters/hcl/isolated-parser.js';
+      import { hclComputationPolicy, parseIsolatedHcl } from '/liftoff/application/dist/adapters/hcl/isolated-parser.js';
       import { verifyWindowsJobControllerAsset } from '/liftoff/application/dist/adapters/process/windows-job-runner.js';
       const digest = bytes => createHash('sha256').update(bytes).digest('hex');
       const original = await readFile('/liftoff/bundle.json');
@@ -408,8 +436,17 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
       const plans = ${JSON.stringify(installedPlanCases)}.map(plan => ({
         id: plan.id, stdout: invoke('/liftoff/bin/liftoff', ['plan', ...plan.args])
       }));
-      await assert.rejects(parseIsolatedHcl(['locals { enabled = true }\\n']),
-        /Isolated HCL computation is unavailable: this runtime is not the qualified darwin/);
+      const parsedHcl = await parseIsolatedHcl([
+        'locals { enabled = true }\\n', 'locals { policy = file("./policy.json") }\\n'
+      ]);
+      const hcl = {
+        policyVersion: hclComputationPolicy.version, protocolVersion: hclComputationPolicy.protocolVersion,
+        parsed: parsedHcl.map(result => result.parsed), expressionCounts: parsedHcl.map(result => result.expressions.size),
+        fileExpressionType: parsedHcl[1]?.expressions.get('\${file("./policy.json")}')?.type
+      };
+      assert.deepEqual(hcl, { policyVersion: 3, protocolVersion: 2,
+        parsed: [{ locals: [{ enabled: true }] }, { locals: [{ policy: '\${file("./policy.json")}' }] }],
+        expressionCounts: [1, 1], fileExpressionType: 'template' });
       assert.equal(await verifyWindowsJobControllerAsset(),
         '/liftoff/application/assets/repair/windows-job-controller.ps1');
       const prefix = '/tmp/private-prefix';
@@ -425,7 +462,7 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
       assert.deepEqual(await bundleInventory('/liftoff'), manifest.inventory);
       assert.equal(digest(await readFile('/liftoff/bundle.json')), ${JSON.stringify(manifestSha256)});
       console.log(JSON.stringify({ observed, version, libraries, plans, tmpfsMountOptions, controllerResolved: true,
-        hclExecuted: false, hclQualifiedRuntimeRefused: true,
+        hcl, hclExecuted: true, hclQualifiedRuntimeRefused: false,
         developmentInstallRecovered: true, actualKernel: os.release(), minimumKernelQualified: false,
         minimumHostQualified: false, publicDistributionQualified: false }));
     `;
@@ -447,7 +484,10 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
     expect(proof).toMatchObject({
       observed: { platform: 'linux', architecture, runtimeVersion: '24.21.0', glibcVersion: '2.28' },
       version: `Liftoff ${manifest.package.version}`, controllerResolved: true,
-      hclExecuted: false, hclQualifiedRuntimeRefused: true,
+      hclExecuted: true, hclQualifiedRuntimeRefused: false,
+      hcl: { policyVersion: 3, protocolVersion: 2,
+        parsed: [{ locals: [{ enabled: true }] }, { locals: [{ policy: '${file("./policy.json")}' }] }],
+        expressionCounts: [1, 1], fileExpressionType: 'template' },
       developmentInstallRecovered: true, minimumKernelQualified: false, minimumHostQualified: false,
       publicDistributionQualified: false
     });

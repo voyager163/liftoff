@@ -6,7 +6,7 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseIsolatedHcl, scheduleIsolatedHcl, isolatedHclRemaining } from '../src/adapters/hcl/isolated-parser.js';
 import {
-  hclComputationPolicy, hclPolicyDigest, hclRawDigest, makeHclRequest, validateHclReply, validateHclTransport,
+  hclComputationPolicy, hclPolicyDigest, hclRawDigest, makeHclRequest, qualifiedHclRuntime, validateHclReply, validateHclTransport,
   ownHclRecord, type HclExpression, type HclExpressionNode
 } from '../src/adapters/hcl/parser-child.js';
 import { buildArtifacts } from '../src/templates.js';
@@ -16,14 +16,15 @@ import { buildProjectPlan } from '../src/application/project/planning.js';
 function resolveHclTestLane(value: string | undefined, runtime: { platform: string; arch: string; node: string }) {
   const mode = value ?? 'auto';
   if (!['auto', 'portable', 'native'].includes(mode)) throw new Error('Invalid LIFTOFF_HCL_TEST_LANE; expected auto, portable or native.');
-  const qualified = runtime.platform === 'darwin' && runtime.arch === 'arm64' && runtime.node === '24.21.0';
-  if (mode === 'native' && !qualified) throw new Error('Native HCL qualification requires actual darwin/arm64/Node24.21.0; no cases were qualified.');
+  const qualified = Boolean(qualifiedHclRuntime(runtime.platform, runtime.arch, runtime.node));
+  if (mode === 'native' && !qualified) throw new Error('Native HCL qualification requires actual darwin/arm64, linux/x64 or linux/arm64 Node24.21.0; no cases were qualified.');
   return { mode, qualified, native: mode !== 'portable' && qualified };
 }
 const testLane = resolveHclTestLane(process.env.LIFTOFF_HCL_TEST_LANE, {
   platform: process.platform, arch: process.arch, node: process.versions.node
 });
 const nativeIt = it.skipIf(!testLane.native);
+const workspaceParent = qualifiedHclRuntime(process.platform, process.arch, process.versions.node)?.workspaceParent;
 const nativeCaseTemplates = [
   "freshly reproduces every actual recorded validator specimen without injecting parser results",
   "parses actual cold/repeated configurations and expressions from neutral cwd",
@@ -52,7 +53,7 @@ afterAll(() => {
     actualRuntime: { platform: process.platform, arch: process.arch, node: process.versions.node },
     nativeSelected: testLane.native, nativeUnrunTemplates: testLane.native ? [] : nativeCaseTemplates,
     executedCaseNames, claim: testLane.mode === 'portable' && testLane.qualified
-      ? 'Forced-portable routing and synthetic runtime rejection only; not Linux/Windows/Node24.20 qualification.'
+      ? 'Forced-portable routing and synthetic runtime rejection only; not native runtime qualification.'
       : 'Current-host test evidence only.'
   }));
 });
@@ -63,12 +64,12 @@ vi.mock('node:child_process', async importOriginal => {
 });
 const real = await vi.importActual<typeof import('node:child_process')>('node:child_process');
 async function recordedValidatorInput(text: string) {
-  const raw: unknown = JSON.parse(await readFile(new URL('./fixtures/hcl/isolated-parser-v2.json', import.meta.url), 'utf8'));
+  const raw: unknown = JSON.parse(await readFile(new URL('./fixtures/hcl/isolated-parser-v3.json', import.meta.url), 'utf8'));
   const fixture = ownHclRecord(raw, ['kind', 'schemaVersion', 'provenance', 'use', 'specimens']);
   expect(fixture.kind).toBe('liftoff-isolated-hcl-recorded-validator-specimens');
   const provenance = ownHclRecord(fixture.provenance, ['runtime', 'parserPackage', 'parserPackageVersion', 'protocolVersion', 'policyDigest', 'helperSha256']);
   expect(provenance.policyDigest).toBe(hclPolicyDigest);
-  expect(provenance.runtime).toEqual(hclComputationPolicy.qualifiedRuntime);
+  expect(provenance.runtime).toEqual({ platform: 'darwin', arch: 'arm64', node: '24.21.0' });
   expect(provenance.parserPackageVersion).toBe(hclComputationPolicy.parserPackageVersion);
   expect(provenance.protocolVersion).toBe(2);
   expect(Array.isArray(fixture.specimens)).toBe(true);
@@ -129,7 +130,9 @@ async function fault(mode: string): Promise<void> {
     expect(args.slice(0, 3)).toEqual(['--wasm-max-mem-pages=2048', '--max-old-space-size=128', '--max-semi-space-size=8']);
     expect(args[3]).toMatch(/\/src\/adapters\/hcl\/parser-child\.ts$/);
     expect(options.shell).toBe(false);
-    expect(String(options.cwd)).toMatch(/^\/private\/tmp\/liftoff-hcl-[^/]+\/cwd$/);
+    expect(path.dirname(path.dirname(String(options.cwd)))).toBe(workspaceParent);
+    expect(path.basename(path.dirname(String(options.cwd)))).toMatch(/^liftoff-hcl-[^/]+$/);
+    expect(path.basename(String(options.cwd))).toBe('cwd');
     profiles.push(path.dirname(String(options.cwd)));
     const child = real.spawn(mode === 'startup' ? path.join(directory, 'absent') : executable,
       [...args.slice(0, 3), target, mode], options);
@@ -158,23 +161,48 @@ describe('fixed isolated HCL computation', () => {
     expect(second).toEqual(first);
     expect(first[0].parsed).toEqual({ locals: [{ enabled: true }] });
     expect(first[1].expressions.size).toBe(1);
+    expect(first[0].expressions).toBe(first[1].expressions);
     for (const call of vi.mocked(spawn).mock.calls) {
       const args = call[1] as readonly string[], options = call[2] as SpawnOptionsWithoutStdio;
       expect(args).toHaveLength(4); expect(args[3]).toMatch(/parser-child\.ts$/);
-      expect(String(options.cwd)).toMatch(/^\/private\/tmp\/liftoff-hcl-/);
+      expect(path.dirname(path.dirname(String(options.cwd)))).toBe(workspaceParent);
+      expect(path.basename(path.dirname(String(options.cwd)))).toMatch(/^liftoff-hcl-/);
       expect(options.env?.NODE_OPTIONS).toBeUndefined(); expect(options.env?.PATH).toBeUndefined();
       expect(options.env?.LIFTOFF_HCL_TEST_LANE).toBeUndefined();
       profiles.push(path.dirname(String(options.cwd)));
     }
   });
-  it('has inert policy exports, an immutable runtime tuple and no loader flags', async () => {
+  it('has inert policy exports, immutable runtime profiles and no loader flags', async () => {
     const count = vi.mocked(spawn).mock.calls.length;
     const module = await import('../src/adapters/hcl/parser-child.js');
     expect(module.hclComputationPolicy).toBe(hclComputationPolicy);
     expect(vi.mocked(spawn)).toHaveBeenCalledTimes(count);
-    expect(Object.isFrozen(hclComputationPolicy.qualifiedRuntime)).toBe(true);
-    expect(hclComputationPolicy.qualifiedRuntime).toEqual({ platform: 'darwin', arch: 'arm64', node: '24.21.0' });
+    expect(Object.isFrozen(hclComputationPolicy.qualifiedRuntimes)).toBe(true);
+    expect(hclComputationPolicy.qualifiedRuntimes).toEqual([
+      { platform: 'darwin', arch: 'arm64', node: '24.21.0', workspaceParent: '/private/tmp' },
+      { platform: 'linux', arch: 'x64', node: '24.21.0', workspaceParent: '/tmp' },
+      { platform: 'linux', arch: 'arm64', node: '24.21.0', workspaceParent: '/tmp' }
+    ]);
+    for (const runtime of hclComputationPolicy.qualifiedRuntimes) {
+      expect(Object.isFrozen(runtime)).toBe(true);
+      expect(qualifiedHclRuntime(runtime.platform, runtime.arch, runtime.node)).toBe(runtime);
+    }
     expect(hclPolicyDigest).toMatch(/^[a-f0-9]{64}$/);
+  });
+  it.each([
+    ['darwin', 'x64', '24.21.0'], ['linux', 'ia32', '24.21.0'], ['win32', 'x64', '24.21.0'],
+    ['linux', 'arm64', '24.20.0'], ['linux', 'x64', '24.21.1'], ['darwin', 'arm64', '24.20.0']
+  ])('refuses the unreviewed %s/%s/Node%s runtime profile', (platform, arch, node) => {
+    expect(qualifiedHclRuntime(platform, arch, node)).toBeUndefined();
+    expect(() => resolveHclTestLane('native', { platform, arch, node })).toThrow(/requires actual/);
+  });
+  it('retains historical Mac policy2 specimens without accepting them as current replies', async () => {
+    const historical = JSON.parse(await readFile(new URL('./fixtures/hcl/isolated-parser-v2.json', import.meta.url), 'utf8'));
+    expect(historical.provenance.runtime).toEqual({ platform: 'darwin', arch: 'arm64', node: '24.21.0' });
+    expect(historical.provenance.policyDigest).not.toBe(hclPolicyDigest);
+    for (const specimen of historical.specimens) {
+      expect(() => validateHclReply(specimen.reply, specimen.request)).toThrow();
+    }
   });
   nativeIt('copies nested source intake and rejects concurrent admission without a queue', async () => {
     const sources = ['locals { original = true }'], pending = parseIsolatedHcl(sources);
@@ -266,9 +294,9 @@ describe('fixed isolated HCL computation', () => {
   it('rejects an unsupported runtime before spawn without rejecting parser-free input', async () => {
     const descriptor = Object.getOwnPropertyDescriptor(process, 'arch')!;
     const count = vi.mocked(spawn).mock.calls.length;
-    Object.defineProperty(process, 'arch', { ...descriptor, value: 'x64' });
+    Object.defineProperty(process, 'arch', { ...descriptor, value: 'unqualified-test-architecture' });
     try {
-      await expect(parseIsolatedHcl(['locals {}'])).rejects.toThrow(/not the qualified/);
+      await expect(parseIsolatedHcl(['locals {}'])).rejects.toThrow(/not one of the qualified/);
       expect(await parseIsolatedHcl([])).toEqual([]);
       expect(vi.mocked(spawn)).toHaveBeenCalledTimes(count);
     } finally { Object.defineProperty(process, 'arch', descriptor); }

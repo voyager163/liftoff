@@ -4,9 +4,13 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 export const hclComputationPolicy = Object.freeze({
-  kind: 'liftoff-hcl-computation-policy', version: 2, protocolVersion: 2,
+  kind: 'liftoff-hcl-computation-policy', version: 3, protocolVersion: 2,
   parserPackage: '@cdktf/hcl2json', parserPackageVersion: '0.21.0',
-  qualifiedRuntime: Object.freeze({ platform: 'darwin', arch: 'arm64', node: '24.21.0' }),
+  qualifiedRuntimes: Object.freeze([
+    Object.freeze({ platform: 'darwin', arch: 'arm64', node: '24.21.0', workspaceParent: '/private/tmp' }),
+    Object.freeze({ platform: 'linux', arch: 'x64', node: '24.21.0', workspaceParent: '/tmp' }),
+    Object.freeze({ platform: 'linux', arch: 'arm64', node: '24.21.0', workspaceParent: '/tmp' })
+  ]),
   wasmPages: 2048, v8OldSpaceMiB: 128, v8SemiSpaceMiB: 8, childDeadlineMs: 10000,
   terminationGraceMs: 1000, derivationDeadlineMs: 60000, sourceFileBytes: 1048576,
   derivationSourceBytes: 8388608, derivationDocuments: 512, batchDocuments: 32,
@@ -23,6 +27,11 @@ export const hclComputationPolicy = Object.freeze({
   objectSyntax: 'whitespace-comma-or-newline-separated-static-keys-no-comments-computed-parenthesized-or-interpolated-keys',
   errors: Object.freeze(['invalid-request', 'computation-unavailable', 'transport-limit', 'expression-limit'])
 });
+
+export function qualifiedHclRuntime(platform: string, arch: string, node: string) {
+  return hclComputationPolicy.qualifiedRuntimes.find(runtime =>
+    runtime.platform === platform && runtime.arch === arch && runtime.node === node);
+}
 
 export class IsolatedHclError extends Error {}
 export function hclFailure(message: string): never { throw new IsolatedHclError(message); }
@@ -421,8 +430,7 @@ async function childMain(): Promise<void> {
     const flags = [`--wasm-max-mem-pages=${hclComputationPolicy.wasmPages}`,
       `--max-old-space-size=${hclComputationPolicy.v8OldSpaceMiB}`, `--max-semi-space-size=${hclComputationPolicy.v8SemiSpaceMiB}`];
     if (process.argv.length !== 2 || process.execArgv.join('\0') !== flags.join('\0') ||
-        process.platform !== hclComputationPolicy.qualifiedRuntime.platform || process.arch !== hclComputationPolicy.qualifiedRuntime.arch ||
-        process.versions.node !== hclComputationPolicy.qualifiedRuntime.node) hclFailure('computation-unavailable');
+        !qualifiedHclRuntime(process.platform, process.arch, process.versions.node)) hclFailure('computation-unavailable');
     const chunks: Buffer[] = []; let size = 0;
     for await (const chunk of process.stdin) {
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);

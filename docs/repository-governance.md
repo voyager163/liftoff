@@ -149,14 +149,15 @@ Consumption rechecks both the program files and the selected plugin, including
 the appearance of a new higher-priority candidate. No user Docker configuration,
 caller plugin directory or host installation is admitted.
 
-The private component formatter retains the isolated HCL parser's exact qualified
-runtime tuple. Its five real execution/source-drift/program-drift controls must
-run on qualified darwin/arm64 Node24.21.0; elsewhere they are explicitly named
-unrun cases, not successful formatting. An always-run capability control observes
-the actual refusal and verifies that no formatter command or phase proof was
-substituted. Linux Docker configuration does not qualify Linux HCL interpretation.
-The Terraform module-closure refusal control also requires that unchanged qualified
-tuple: its original body must execute there and is explicitly unrun elsewhere.
+The private component formatter uses the isolated HCL parser's exact reviewed
+runtime profiles: darwin/arm64, linux/x64 and linux/arm64 with Node24.21.0.
+Its five real execution/source-drift/program-drift controls run on those profiles;
+elsewhere they are explicitly named unrun cases, not successful formatting.
+An always-run capability control observes the actual refusal and verifies that no
+formatter command or phase proof was substituted. Linux Docker configuration
+alone does not qualify Linux HCL interpretation; actual parser reports are separate.
+The Terraform module-closure refusal control also requires a reviewed parser
+profile: its original body executes there and is explicitly unrun elsewhere.
 A separate always-run control observes the actual input-capability refusal before
 Checkov, with no scanner invocation, workload command or phase proof. It does not
 claim that Checkov inspected or rejected a module on an unsupported runtime.

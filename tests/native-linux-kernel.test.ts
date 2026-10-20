@@ -33,7 +33,7 @@ function fixture(architecture: 'arm64' | 'x64' = 'arm64') {
   const expected = { architecture, commit: 'a'.repeat(40), manifestSha256: 'b'.repeat(64),
     inventorySha256: 'c'.repeat(64), version: '0.13.0-dev.0' };
   const report = {
-    kind: 'liftoff-linux-kernel-guest-probe',
+    kind: 'liftoff-linux-kernel-guest-probe', schemaVersion: 2,
     observed: { platform: 'linux', architecture, runtimeVersion: '24.21.0', osVersion: '4.18.20',
       nativeArchitecture: architecture === 'arm64' ? 'aarch64' : 'x86_64', glibcVersion: '2.28' },
     commit: expected.commit, manifestSha256: expected.manifestSha256, inventorySha256: expected.inventorySha256,
@@ -41,8 +41,11 @@ function fixture(architecture: 'arm64' | 'x64' = 'arm64') {
     libraries: [`glibc:2.28-251.${architecture === 'arm64' ? 'aarch64' : 'x86_64'}`,
       `libstdc++:8.5.0-22.${architecture === 'arm64' ? 'aarch64' : 'x86_64'}`],
     uid: 1000, gid: 1000, bundleReadOnly: true, kernelExecution: true, emulated: true,
-    developmentInstallRecovered: true, controllerResolved: true, hclExecuted: false,
-    hclQualifiedRuntimeRefused: true, publicInstallationRefused: true,
+    developmentInstallRecovered: true, controllerResolved: true, hclExecuted: true,
+    hclQualifiedRuntimeRefused: false, publicInstallationRefused: true,
+    hcl: { policyVersion: 3, protocolVersion: 2,
+      parsed: [{ locals: [{ enabled: true }] }, { locals: [{ policy: '${file("./policy.json")}' }] }],
+      expressionCounts: [1, 1], fileExpressionType: 'template' },
     minimumHostQualified: false, publicDistributionQualified: false
   };
   const transcript = () => [
@@ -127,7 +130,7 @@ describe('emulated Linux kernel observation contract', () => {
       expect(() => assertLinuxKernelGuestTranscript(value.transcript().replace(line, ''), value.expected)).toThrow();
       expect(() => assertLinuxKernelGuestTranscript(value.transcript() + line + '\n', value.expected)).toThrow();
     });
-  it.each(['commit', 'manifestSha256', 'inventorySha256', 'version', 'uid', 'gid',
+  it.each(['schemaVersion', 'commit', 'manifestSha256', 'inventorySha256', 'version', 'uid', 'gid',
     'bundleReadOnly', 'kernelExecution', 'emulated', 'developmentInstallRecovered', 'controllerResolved',
     'hclExecuted', 'hclQualifiedRuntimeRefused', 'publicInstallationRefused', 'minimumHostQualified',
     'publicDistributionQualified'] as const)('rejects changed or absent %s', field => {
@@ -136,6 +139,23 @@ describe('emulated Linux kernel observation contract', () => {
       expect(() => assertLinuxKernelGuestTranscript(value.transcript(), value.expected)).toThrow();
       Reflect.deleteProperty(value.report, field);
       expect(() => assertLinuxKernelGuestTranscript(value.transcript(), value.expected)).toThrow();
+    });
+    it('rejects historical refusal, missing HCL and forged current summaries without rewriting them', () => {
+      for (const change of [
+        (report: ReturnType<typeof fixture>['report']) => { report.schemaVersion = 1; },
+        (report: ReturnType<typeof fixture>['report']) => { report.hclExecuted = false; report.hclQualifiedRuntimeRefused = true; },
+        (report: ReturnType<typeof fixture>['report']) => { Reflect.deleteProperty(report, 'hcl'); },
+        (report: ReturnType<typeof fixture>['report']) => { report.hcl.policyVersion = 2; },
+        (report: ReturnType<typeof fixture>['report']) => { report.hcl.expressionCounts = [0, 0]; },
+        (report: ReturnType<typeof fixture>['report']) => { report.hcl.fileExpressionType = 'success'; },
+        (report: ReturnType<typeof fixture>['report']) => { report.hcl.parsed.reverse(); }
+      ]) {
+        const value = fixture();
+        change(value.report);
+        const before = structuredClone(value.report);
+        expect(() => assertLinuxKernelGuestTranscript(value.transcript(), value.expected)).toThrow();
+        expect(value.report).toEqual(before);
+      }
     });
   it.each(['platform', 'architecture', 'runtimeVersion', 'osVersion', 'nativeArchitecture', 'glibcVersion'] as const)(
     'refuses a different observed %s', field => {

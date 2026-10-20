@@ -38,7 +38,8 @@ Every mode is a contributor diagnostic, not a complete native-host qualification
 signature verifier, installer bootstrap test or public release gate. It does not
 change either qualification flag. Linux 4.18.20 is not evidence for 4.18.0, macOS
 13.5 or Windows build 14393. TCG is not native-CPU evidence; HVF alone does not
-qualify the complete native installation matrix or Linux HCL execution.
+qualify the complete native installation matrix. Actual guest HCL execution
+is a separate required observation, not a consequence of selecting HVF.
 The old kernel is used only inside the network-disabled disposable guest.
 
 Prerequisites are an unprivileged macOS/Linux account with an existing Docker
@@ -164,8 +165,12 @@ the guest's execution-mode field alone does not prove hardware acceleration.
 The guest reopens its serial console after mounting devtmpfs, makes the bundle
 read-only, and runs as UID/GID 1000 with no global tools. It verifies real kernel,
 architecture, Node and glibc observations, the complete bundle inventory, all six
-installed planning contracts, packaged controller resolution, explicit Linux HCL
-refusal, and interrupted private development installation/recovery. Public
+installed planning contracts, packaged controller resolution, actual bounded HCL
+parsing (including a source-bound file-expression AST), and interrupted private
+development installation/recovery. Current guest report schema 2 requires a
+bundle with parser policy3 Linux support; earlier refusal-only archives/reports
+must use their original runner and cannot qualify this new contract. No fallback,
+timeout increase or historical-report rewrite substitutes for parser execution. Public
 installation must still refuse. A zero QEMU/container exit alone is insufficient:
 the host reader requires one complete report, exact input identities, every plan,
 successful guest status, entropy initialization and shutdown.

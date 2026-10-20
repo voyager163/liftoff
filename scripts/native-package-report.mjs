@@ -16,6 +16,7 @@ export const nativePackageCommonCases = [
   'runs every installed plan and preserves literal arguments without ambient startup code',
   'resolves packaged templates and the exact controller from the installed boundary',
   'admits packaged private cask staging only on POSIX hosts without ambient tools',
+  'observes installed HCL parsing or explicit runtime refusal without global tools',
   'refuses missing template, controller, HCL and host-policy material without checkout fallback',
   'rejects changed runtime and installer bytes even with a recomputed local inventory',
   'binds archived bytes, SBOM, notices and provenance to the exact clean source',

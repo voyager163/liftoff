@@ -105,6 +105,9 @@ describe('coverage gate contributor guidance', () => {
       const job = workflow.jobs['qualify-isolated-hcl'];
       expect(gates).toContain(`\`${job.name}\``);
       expect(gates).toContain(`\`${job['runs-on']}\``);
+      for (const target of job.strategy.matrix.include) {
+        expect(gates).toContain(`\`${target.runner}\``);
+      }
       expect(job.env.LIFTOFF_HCL_TEST_LANE).toBe('native');
       if (file === 'release.yml') {
         expect(workflow.jobs.qualify.needs).toBe('qualify-isolated-hcl');
@@ -114,7 +117,7 @@ describe('coverage gate contributor guidance', () => {
     expect(gates).toContain('LIFTOFF_HCL_TEST_LANE=portable npm run coverage:cli');
     for (const phrase of [
       '`native` fails on a runtime mismatch', 'synthetic rejection/routing',
-      'not Linux, Windows or Node24.20 qualification', 'never inject successful\nASTs into a planner',
+      'not native Linux, Windows or Node24.20 qualification', 'never inject successful\nASTs into a planner',
       'native coverage cannot mask a failing portable gate', 'each coverage invocation replaces `coverage/cli/`'
     ]) expect(gates).toContain(phrase);
   });

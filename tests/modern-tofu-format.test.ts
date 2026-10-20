@@ -16,6 +16,7 @@ import { createApplicationEnvironment } from '../src/application/repair/applicat
 import { observeModernLocalTools } from '../src/adapters/process/modern-local-tools.js';
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { runSettledFixtureCommand } from './fixtures/settled-command.js';
+import { qualifiedHclRuntime } from '../src/adapters/hcl/isolated-parser.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
@@ -25,7 +26,7 @@ function file(parts: string[], content = 'locals {\n  enabled = true\n}\n'): Mod
 }
 const lane = process.env.LIFTOFF_HCL_TEST_LANE ?? 'auto';
 if (!['auto', 'portable', 'native'].includes(lane)) throw new Error('Unknown native formatting qualification lane.');
-const qualified = process.platform === 'darwin' && process.arch === 'arm64' && process.versions.node === '24.21.0';
+const qualified = Boolean(qualifiedHclRuntime(process.platform, process.arch, process.versions.node));
 if (lane === 'native' && !qualified) throw new Error('Native formatting qualification requires the qualified runtime.');
 const nativeIt = it.skipIf(lane === 'portable' || !qualified);
 

@@ -5,11 +5,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { types } from 'node:util';
 import {
-  hclComputationPolicy as policy, hclFailure, hclRawDigest, makeHclRequest, validateHclReply, validateHclTransport,
+  hclComputationPolicy as policy, hclFailure, hclRawDigest, makeHclRequest, qualifiedHclRuntime, validateHclReply, validateHclTransport,
   type HclExpression, type HclRequest
 } from './parser-child.js';
 
-export { hclComputationPolicy, IsolatedHclError } from './parser-child.js';
+export { hclComputationPolicy, IsolatedHclError, qualifiedHclRuntime } from './parser-child.js';
 export type { HclExpression } from './parser-child.js';
 export interface IsolatedHclResult {
   readonly parsed: Record<string, unknown>;
@@ -57,20 +57,21 @@ export function isolatedHclRemaining(elapsed: number, replies: number, expressio
     expressions: policy.expressionRequests - expressions
   };
 }
-function runtimeAvailable(): void {
-  if (process.platform !== policy.qualifiedRuntime.platform || process.arch !== policy.qualifiedRuntime.arch ||
-      process.versions.node !== policy.qualifiedRuntime.node) {
-    hclFailure('Isolated HCL computation is unavailable: this runtime is not the qualified darwin/arm64 Node24.21.0 tuple.');
+function runtimeAvailable() {
+  const runtime = qualifiedHclRuntime(process.platform, process.arch, process.versions.node);
+  if (!runtime) {
+    hclFailure('Isolated HCL computation is unavailable: this runtime is not one of the qualified darwin/arm64, linux/x64 or linux/arm64 Node24.21.0 tuples.');
   }
+  return runtime;
 }
 interface Workspace {
   readonly root: string;
   readonly identities: ReadonlyMap<string, { dev: number; ino: number; uid: number; mode: number }>;
 }
 const directoryNames = ['home', 'tmp', 'config', 'cache', 'data', 'state', 'appdata', 'localappdata', 'cwd'] as const;
-function workspace(): Workspace {
-  const system = realpathSync('/private/tmp'), parent = lstatSync(system);
-  if (system !== '/private/tmp' || !parent.isDirectory() || parent.isSymbolicLink() || parent.uid !== 0 ||
+function workspace(workspaceParent: string): Workspace {
+  const system = realpathSync(workspaceParent), parent = lstatSync(system);
+  if (system !== workspaceParent || !parent.isDirectory() || parent.isSymbolicLink() || parent.uid !== 0 ||
       (parent.mode & 0o1000) === 0) hclFailure('The qualified system parser workspace is unavailable.');
   const root = mkdtempSync(path.join(system, 'liftoff-hcl-'));
   const identities = new Map<string, { dev: number; ino: number; uid: number; mode: number }>();
@@ -175,7 +176,7 @@ async function runChild(request: HclRequest, owned: Workspace, deadline: number)
 export async function parseIsolatedHcl(input: readonly string[]): Promise<readonly IsolatedHclResult[]> {
   const batches = scheduleIsolatedHcl(input);
   if (!batches.length) return [];
-  runtimeAvailable();
+  const runtime = runtimeAvailable();
   if (unavailable) hclFailure('Isolated HCL shutdown is unconfirmed; this CLI process cannot admit more parser work.');
   if (occupied) hclFailure('Isolated HCL computation is busy; concurrent derivations are not queued.');
   occupied = true;
@@ -188,7 +189,7 @@ export async function parseIsolatedHcl(input: readonly string[]): Promise<readon
       const request = makeHclRequest(batch.map((text, index) => ({ id: String(index), text, sourceSha256: hclRawDigest(text) })),
         remaining.expressions, remaining.reply);
       let owned: Workspace;
-      try { owned = workspace(); } catch { unavailable = true; hclFailure('Cannot establish a verified neutral parser workspace; further computation is unavailable.'); }
+      try { owned = workspace(runtime.workspaceParent); } catch { unavailable = true; hclFailure('Cannot establish a verified neutral parser workspace; further computation is unavailable.'); }
       let outcome: ChildOutcome;
       try { outcome = await runChild(request, owned, isolatedHclRemaining(performance.now() - start, replyBytes, expressionCalls).deadline); }
       catch {

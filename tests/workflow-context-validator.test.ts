@@ -18,13 +18,11 @@ import { inspectModernLocalRuntime, planModernLocalRuntime } from '../src/applic
 import { NodeCommandRunner } from '../src/process-runner.js';
 import { encodeWindowsEnvironmentBlock } from '../src/adapters/process/windows-job-protocol.js';
 import { resolveTargetExecutableCommand } from '../src/adapters/process/windows-job-runner.js';
-import { hclComputationPolicy } from '../src/adapters/hcl/isolated-parser.js';
+import { qualifiedHclRuntime } from '../src/adapters/hcl/isolated-parser.js';
 import { extractVersion } from '../src/domain/workstation/versions.js';
 import { matrixValidatorEnvironment } from './fixtures/workflow-source5-validator-environment.js';
 
-const qualifiedHcl = process.platform === hclComputationPolicy.qualifiedRuntime.platform &&
-  process.arch === hclComputationPolicy.qualifiedRuntime.arch &&
-  process.versions.node === hclComputationPolicy.qualifiedRuntime.node;
+const qualifiedHcl = Boolean(qualifiedHclRuntime(process.platform, process.arch, process.versions.node));
 const nativeHclIt = it.skipIf(!qualifiedHcl);
 
 type ComposeDiagnosticContext = 'configuration' | 'closed-inputs' | 'plugin-drift' | 'owned-syntax-control';
@@ -280,7 +278,7 @@ describe('release-owned real context validator bodies, not phase qualification',
     try {
       if (!qualifiedHcl) {
         expect(check.reasons).toEqual([
-          'Isolated HCL computation is unavailable: this runtime is not the qualified darwin/arm64 Node24.21.0 tuple.'
+          'Isolated HCL computation is unavailable: this runtime is not one of the qualified darwin/arm64, linux/x64 or linux/arm64 Node24.21.0 tuples.'
         ]);
         expect(await executeWorkflowCheckovComponentValidator(value.root, value.sourceSha, component))
           .toMatchObject({ status: 'blocked', code: 'validator-inputs', command: null, workloadExecution: false,
@@ -1031,7 +1029,7 @@ describe('release-owned real context validator bodies, not phase qualification',
             id.startsWith('opentofu-') && check.id === `tofu-format:${id}`);
           if (!component) throw new Error('The actual formatter check has no selected component.');
           expect(check.reasons).toEqual([
-            'Isolated HCL computation is unavailable: this runtime is not the qualified darwin/arm64 Node24.21.0 tuple.'
+            'Isolated HCL computation is unavailable: this runtime is not one of the qualified darwin/arm64, linux/x64 or linux/arm64 Node24.21.0 tuples.'
           ]);
           expect(await executeWorkflowTofuComponentFormatValidator(value.root, value.sourceSha, component))
             .toMatchObject({ status: 'blocked', code: 'validator-inputs', command: null, workloadExecution: false,
