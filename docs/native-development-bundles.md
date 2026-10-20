@@ -27,6 +27,98 @@ system-library resolution and ELF version requirements; macOS rejects non-system
 dylibs. A hosted modern-OS run cannot establish these minimum-host requirements.
 `minimumHostQualified` and `publicDistributionQualified` remain false.
 
+### Optional Linux kernel guest probe
+
+`scripts/native-linux-kernel.mjs` runs a development archive in an isolated
+**emulated** Linux 4.18.20 guest, rather than substituting the Docker daemon's
+newer kernel. It is a contributor diagnostic, not a native-host qualification,
+signature verifier, installer bootstrap test or public release gate. It does not
+change either qualification flag. Linux 4.18.20 is not evidence for 4.18.0, macOS
+13.5, Windows build 14393, physical/native-CPU execution or Linux HCL execution.
+The old kernel is used only inside the network-disabled disposable guest.
+
+Prerequisites are an unprivileged macOS/Linux account with an existing Docker
+daemon, an independently verified original Linux development archive and its
+sidecars, and an independently authenticated Linux 4.18.20 kernel image for that
+archive's architecture. The input directory must contain exactly the archive,
+`native-release.json`, `sbom.cdx.json`, `provenance.json` and `NOTICE`. Obtain its
+manifest checksum and clean source revision from the original qualification;
+recomputing an unsigned manifest does not authenticate a release.
+
+The runner binds the supplied kernel to an explicit SHA-256, but **does not
+authenticate its upstream signature or build**. Authenticate and build the kernel
+separately before passing it to the runner. The original source is
+`https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.18.20.tar.xz`,
+SHA-256 `68ac319e0fb7edd6b6051541d9cf112cd4f77a29e16a69ae1e133ff51117f653`.
+Its adjacent `linux-4.18.20.tar.sign` verifies the **uncompressed tar**, not the
+xz file. Verify that signature with the independently checked Greg Kroah-Hartman
+primary fingerprint `647F28654894E3BD457199BE38DBBDC86092693E`, as documented
+by [kernel.org](https://www.kernel.org/signature.html). Do not extract or compile
+before verification; retain the signature status, source digest, compiler/package
+identities, configuration, command output and resulting kernel digest.
+
+The bounded development probe used GCC 8.5 in the architecture-matched pinned
+Rocky 8 image from `nativeLinuxUserspaceImages` in
+`scripts/native-package-report.mjs`. In a disposable compiler container, install
+`gcc make bison flex elfutils-libelf-devel bc openssl-devel perl-core cpio gzip
+tar xz curl gnupg2 diffutils findutils`. Compile the unmodified verified source
+with `make ARCH=arm64 defconfig` (or `ARCH=x86` for x64), then:
+
+```sh
+scripts/config --disable MODULES --disable DEBUG_INFO --disable LOCALVERSION_AUTO \
+  --enable HW_RANDOM_VIRTIO
+make ARCH=arm64 olddefconfig
+timeout 1200 make ARCH=arm64 -j4 Image
+```
+
+For x64, use `ARCH=x86` and the `bzImage` target. Retain the resulting `.config`;
+the images are `arch/arm64/boot/Image` and `arch/x86/boot/bzImage`. The virtio
+entropy driver and the runner's entropy device are required: an entropy-starved
+boot is not a product timeout or a passing observation. GCC 8 avoids relying on
+source patches for incompatibilities between this historical kernel and modern
+compiler defaults. This recipe is not a compiler-closure or reproducible-binary
+attestation.
+
+Pull the exact architecture-matched Rocky image named by
+`nativeLinuxUserspaceImages`, then run:
+
+```sh
+node scripts/native-linux-kernel.mjs \
+  /absolute/qualified-native-archive-directory \
+  <original-release-manifest-sha256> <original-clean-commit> \
+  /absolute/authenticated-kernel-image <independently-established-kernel-sha256> \
+  /absolute/outside-checkout/new-guest-evidence
+```
+
+The output must not exist. The runner builds its separate QEMU/CPIO toolbox from
+the pinned official Ubuntu base in
+`distribution/linux/qualification/Dockerfile`; this needs package-download
+network access. It records the actual image and installed package identities.
+It exports only the pinned Rocky image and assembles the rootfs in bounded
+temporary container memory, not the contributor's filesystem. Preparation has
+only the extra DAC-override capability required to populate original read-only
+image directories; the actual QEMU container drops **all** capabilities, runs
+as the invoking unprivileged UID, has no network or writable host mounts, and
+is limited to two CPUs, 3 GiB and a 14-minute guest deadline.
+
+The guest reopens its serial console after mounting devtmpfs, makes the bundle
+read-only, and runs as UID/GID 1000 with no global tools. It verifies real kernel,
+architecture, Node and glibc observations, the complete bundle inventory, all six
+installed planning contracts, packaged controller resolution, explicit Linux HCL
+refusal, and interrupted private development installation/recovery. Public
+installation must still refuse. A zero QEMU/container exit alone is insufficient:
+the host reader requires one complete report, exact input identities, every plan,
+successful guest status, entropy initialization and shutdown.
+
+`report.json` retains the full observations with `emulated: true`,
+`kernelAuthenticatedByRunner: false`, `qualifiedNativeHost: false` and
+`releaseReady: false`. Commands, original stdout/stderr, kernel/rootfs/initramfs
+digests and actual tool identities remain alongside it. Failures retain their
+evidence and cannot produce the successful report. Only invocation-owned
+containers are removed; the uniquely tagged toolbox image and private files
+remain for diagnosis. No existing container, global installation, project,
+manager configuration, signing identity or release setting is changed.
+
 The Linux archive bootstrap additionally requires **OpenSSL 3.0 or newer with
 Ed25519 support** for its `pkeyutl -rawin` signature verification. Older OpenSSL,
 LibreSSL, missing tools and unrecognized version responses are refused before

@@ -1,0 +1,22 @@
+#!/bin/bash
+set -eu
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+exec </dev/console >/dev/console 2>&1
+printf 'LIFTOFF_GUEST_INIT=started\n'
+mkdir -p /dev/pts /tmp
+mount -t devpts devpts /dev/pts
+mount -t tmpfs -o rw,nosuid,nodev,mode=1777,size=768m tmpfs /tmp
+mount --bind /liftoff /liftoff
+mount -o remount,bind,ro /liftoff
+export HOME=/tmp/home XDG_CONFIG_HOME=/tmp/home TMPDIR=/tmp
+export CI=true LIFTOFF_TELEMETRY=0 DO_NOT_TRACK=1 NO_COLOR=1
+export PATH=/empty
+set +e
+/usr/bin/setpriv --reuid=1000 --regid=1000 --clear-groups /liftoff/runtime/node /guest-probe.mjs
+status=$?
+printf '\nLIFTOFF_GUEST_EXIT=%d\n' "$status"
+/usr/bin/sync
+exec /usr/sbin/poweroff --force --force
