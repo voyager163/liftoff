@@ -34,6 +34,7 @@ Linux guest, rather than substituting the Docker daemon's newer kernel.
 The default remains **TCG-emulated Linux 4.18.20**. Explicit options also select
 the exact Linux 4.18.0 floor and, on native Apple Silicon macOS only, a
 hardware-accelerated ARM64 guest using Apple Hypervisor Framework (HVF).
+Native Linux x64 contributors can explicitly select a direct KVM guest instead.
 Every mode is a contributor diagnostic, not a complete native-host qualification,
 signature verifier, installer bootstrap test or public release gate. It does not
 change either qualification flag. Linux 4.18.20 is not evidence for 4.18.0, macOS
@@ -162,6 +163,50 @@ container sandbox: its process can read the supplied host kernel/initramfs
 paths. Evidence records the actual command and QEMU executable identity;
 the guest's execution-mode field alone does not prove hardware acceleration.
 
+For a direct x64 hardware observation, use an existing native Linux x64 host
+and **QEMU 8.2.2** (the upstream banner or Ubuntu's Debian-package banner):
+
+```sh
+node scripts/native-linux-kernel.mjs \
+  /absolute/qualified-native-x64-archive-directory \
+  <original-release-manifest-sha256> <original-clean-commit> \
+  /absolute/authenticated-4.18.0-bzImage <independently-established-kernel-sha256> \
+  /absolute/outside-checkout/new-kvm-evidence \
+  --kernel-version 4.18.0 --kvm-qemu /absolute/qemu-system-x86_64
+```
+
+KVM refuses non-Linux or non-x64 hosts, ARM64 guests, mixed acceleration flags
+and unavailable acceleration. It requires existing read/write access to the
+root-owned, single-link, non-world-writable `/dev/kvm` character device
+(major 10, minor 232). It opens that fixed path without following links or
+blocking, compares the handle and physical path, propagates close failures,
+and rechecks its identity before and after guest execution. It does not grant
+device permissions, change groups, install QEMU or fall back to TCG.
+Docker still prepares only the rootfs/toolbox; a remote Docker daemon cannot
+provide this host's KVM device. Direct KVM uses `-accel kvm`, `-cpu host` and
+the same two-CPU, 2-GiB, two-minute, network/disk/display-free bounds as HVF.
+Portable contract fixtures are not evidence of actual KVM availability or
+hardware execution.
+
+CI's separate `Linux x64 kernel floor (KVM diagnostic)` job exercises this route
+on an ephemeral Ubuntu 24.04 runner, without publishing or signing an archive.
+It first checks the actual QEMU banner, acceleration list and physical device,
+then explicitly grants only that runner UID read/write device access with an ACL;
+the contributor runner itself never grants permissions. Missing devices, an
+unexpected version or unavailable KVM fail rather than selecting TCG.
+The job verifies the pinned compressed source/signature digests and Torvalds
+primary fingerprint before extraction, retains raw GPG status/warnings, and
+compares complete source path/type/mode/byte inventories before and after an
+out-of-tree GCC 8.5 build on a case-sensitive container filesystem.
+The compiler runs without network or capabilities, with four CPUs, 6 GiB and
+a 20-minute compile deadline. Its source archive, license, configuration,
+inventories, tool records, resulting kernel and guest fixture/digest records/output are
+retained together with this job's development archive. This is not a
+compiler-closure, reproducible-build, complete minimum-host, bootstrap or
+public-release attestation. The large exported Rocky rootfs and prepared initramfs
+remain on the ephemeral runner rather than being redistributed in the artifact;
+their observed digests remain in the guest receipt.
+
 The guest reopens its serial console after mounting devtmpfs, makes the bundle
 read-only, and runs as UID/GID 1000 with no global tools. It verifies real kernel,
 architecture, Node and glibc observations, the complete bundle inventory, all six
@@ -181,12 +226,15 @@ or suppressing kernel diagnostics. Broken, oversized or interleaved frames fail;
 the original console bytes are retained, not repaired or normalized.
 
 `report.json` retains the full observations with `emulated: true` for TCG or
-`emulated: false` for the explicitly selected HVF path,
+`emulated: false` for the explicitly selected HVF or KVM path,
 `kernelAuthenticatedByRunner: false`, `qualifiedNativeHost: false` and
 `releaseReady: false`. HVF reports use the distinct
 `liftoff-hvf-linux-kernel-observation` kind and record no fallback; existing TCG
-reports retain their original kind. Commands, original stdout/stderr, kernel/rootfs/initramfs
-digests and actual tool identities remain alongside it. Failures retain their
+reports retain their original kind.
+KVM reports instead use `liftoff-kvm-linux-kernel-observation` and include
+the fixed device's physical identity; neither hardware mode grants release authority.
+Commands, original stdout/stderr, kernel/rootfs/initramfs digests and actual tool
+identities remain alongside it. Failures retain their
 evidence and cannot produce the successful report. Only invocation-owned
 containers are removed; the uniquely tagged toolbox image and private files
 remain for diagnosis. No existing container, global installation, project,

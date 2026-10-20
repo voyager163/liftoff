@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { copyFile, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { copyFile, lstat, mkdir, open, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -17,7 +18,7 @@ const digestPattern = /^[a-f0-9]{64}$/;
 
 export function parseLinuxKernelGuestOptions(args) {
   assert.ok(args.length >= 6 && (args.length - 6) % 2 === 0,
-    'Usage: native-linux-kernel.mjs <native-archive-directory> <release-manifest-sha256> <commit> <kernel-image> <kernel-sha256> <new-output> [--kernel-version 4.18.0|4.18.20] [--hvf-qemu /absolute/qemu-system-aarch64]');
+    'Usage: native-linux-kernel.mjs <native-archive-directory> <release-manifest-sha256> <commit> <kernel-image> <kernel-sha256> <new-output> [--kernel-version 4.18.0|4.18.20] [--hvf-qemu /absolute/qemu-system-aarch64 | --kvm-qemu /absolute/qemu-system-x86_64]');
   const options = { kernelVersion: '4.18.20', accelerator: 'tcg', qemu: null };
   const seen = new Set();
   for (let index = 6; index < args.length; index += 2) {
@@ -27,9 +28,10 @@ export function parseLinuxKernelGuestOptions(args) {
     if (flag === '--kernel-version') {
       assert.ok(['4.18.0', '4.18.20'].includes(value), 'Unsupported guest kernel version.');
       options.kernelVersion = value;
-    } else if (flag === '--hvf-qemu') {
-      assert.ok(path.isAbsolute(value), 'An absolute HVF QEMU executable is required.');
-      options.accelerator = 'hvf';
+    } else if (flag === '--hvf-qemu' || flag === '--kvm-qemu') {
+      assert.equal(options.accelerator, 'tcg', 'Hardware accelerators are mutually exclusive.');
+      assert.ok(path.isAbsolute(value), `An absolute ${flag === '--hvf-qemu' ? 'HVF' : 'KVM'} QEMU executable is required.`);
+      options.accelerator = flag === '--hvf-qemu' ? 'hvf' : 'kvm';
       options.qemu = value;
     } else {
       assert.fail('Unknown guest option.');
@@ -48,6 +50,41 @@ export function assertLinuxKernelHvfEmulator(version, accelerators) {
   assert.ok(accelerators.split(/\r?\n/).includes('hvf'), 'This QEMU does not advertise HVF.');
 }
 
+export function assertLinuxKernelKvmHost(platform, architecture, guestArchitecture) {
+  assert.ok(platform === 'linux' && architecture === 'x64' && guestArchitecture === 'x64',
+    'KVM requires native x64 Linux and an x64 guest; no emulation fallback is permitted.');
+}
+
+export function assertLinuxKernelKvmEmulator(version, accelerators) {
+  assert.match(version.split(/\r?\n/)[0],
+    /^QEMU emulator version 8\.2\.2(?: \(Debian 1:8\.2\.2\+ds-0ubuntu[0-9.]+\))?$/,
+    'KVM requires QEMU 8.2.2.');
+  assert.ok(accelerators.split(/\r?\n/).includes('kvm'), 'This QEMU does not advertise KVM.');
+}
+
+export function linuxKernelKvmDeviceIdentity(info) {
+  assert.ok(info.isCharacterDevice() && info.uid === 0n && info.nlink === 1n
+    && info.rdev === 2792n && (info.mode & 0o6002n) === 0n,
+  'KVM requires the root-owned, single-link, non-world-writable /dev/kvm character device (10:232).');
+  return Object.fromEntries(['dev', 'ino', 'mode', 'uid', 'gid', 'rdev', 'nlink', 'mtimeNs', 'ctimeNs']
+    .map(field => [field, info[field].toString()]));
+}
+
+export async function captureLinuxKernelKvmDevice() {
+  assertLinuxKernelKvmHost(process.platform, process.arch, 'x64');
+  const before = linuxKernelKvmDeviceIdentity(await lstat('/dev/kvm', { bigint: true }));
+  const handle = await open('/dev/kvm', constants.O_RDWR | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    assert.deepEqual(linuxKernelKvmDeviceIdentity(await handle.stat({ bigint: true })), before,
+      'KVM device changed while opening.');
+    assert.deepEqual(linuxKernelKvmDeviceIdentity(await lstat('/dev/kvm', { bigint: true })), before,
+      'KVM device path changed while opening.');
+    return before;
+  } finally {
+    await handle.close();
+  }
+}
+
 export function assertLinuxKernelImage(bytes, architecture) {
   assert.ok(['x64', 'arm64'].includes(architecture), 'Unsupported guest architecture.');
   if (architecture === 'arm64') {
@@ -62,8 +99,9 @@ export function assertLinuxKernelImage(bytes, architecture) {
 export function assertLinuxKernelGuestTranscript(stdout, expected) {
   const kernelVersion = expected.kernelVersion ?? '4.18.20', accelerator = expected.accelerator ?? 'tcg';
   assert.ok(['4.18.0', '4.18.20'].includes(kernelVersion), 'Unsupported guest kernel version.');
-  assert.ok(['tcg', 'hvf'].includes(accelerator), 'Unsupported guest accelerator.');
+  assert.ok(['tcg', 'hvf', 'kvm'].includes(accelerator), 'Unsupported guest accelerator.');
   assert.ok(accelerator !== 'hvf' || expected.architecture === 'arm64', 'HVF requires an ARM64 guest.');
+  assert.ok(accelerator !== 'kvm' || expected.architecture === 'x64', 'KVM requires an x64 guest.');
   assert.match(expected.commit ?? '', /^[a-f0-9]{40}$/);
   for (const field of ['manifestSha256', 'inventorySha256']) assert.match(expected[field] ?? '', digestPattern);
   assert.ok(['x64', 'arm64'].includes(expected.architecture));
@@ -114,15 +152,16 @@ export function assertLinuxKernelGuestTranscript(stdout, expected) {
 export function linuxKernelGuestArguments(architecture, { accelerator = 'tcg', kernel = '/work/kernel',
   initrd = '/work/guest.cpio.gz' } = {}) {
   assert.ok(['arm64', 'x64'].includes(architecture), 'Unsupported guest architecture.');
-  assert.ok(['tcg', 'hvf'].includes(accelerator), 'Unsupported guest accelerator.');
+  assert.ok(['tcg', 'hvf', 'kvm'].includes(accelerator), 'Unsupported guest accelerator.');
   assert.ok(accelerator !== 'hvf' || architecture === 'arm64', 'HVF requires an ARM64 guest.');
+  assert.ok(accelerator !== 'kvm' || architecture === 'x64', 'KVM requires an x64 guest.');
   assert.ok(path.isAbsolute(kernel) && path.isAbsolute(initrd), 'Absolute guest input paths are required.');
   const hvf = accelerator === 'hvf';
   return [
     architecture === 'arm64' ? 'qemu-system-aarch64' : 'qemu-system-x86_64',
     '-machine', hvf ? 'virt-11.1,gic-version=3,highmem=off' : architecture === 'arm64' ? 'virt-8.2,gic-version=2' : 'pc-i440fx-8.2',
-    '-cpu', hvf ? 'host' : architecture === 'arm64' ? 'cortex-a72' : 'Nehalem',
-    '-accel', hvf ? 'hvf' : 'tcg,thread=multi', '-smp', '2', '-m', '2048',
+    '-cpu', accelerator !== 'tcg' ? 'host' : architecture === 'arm64' ? 'cortex-a72' : 'Nehalem',
+    '-accel', accelerator === 'tcg' ? 'tcg,thread=multi' : accelerator, '-smp', '2', '-m', '2048',
     '-display', 'none', '-monitor', 'none', '-serial', 'stdio', '-nic', 'none', '-no-reboot',
     '-object', 'rng-random,filename=/dev/urandom,id=rng0',
     '-device', architecture === 'arm64' ? 'virtio-rng-device,rng=rng0' : 'virtio-rng-pci,rng=rng0',
@@ -141,6 +180,7 @@ export function assertLinuxKernelGuestContainerIdentity(container, name, nonce, 
 
 export async function runLinuxKernelGuest(args) {
   const options = parseLinuxKernelGuestOptions(args);
+  if (options.accelerator === 'kvm') assertLinuxKernelKvmHost(process.platform, process.arch, 'x64');
   assert.ok(['linux', 'darwin'].includes(process.platform) && process.getuid() > 0 && process.geteuid() > 0,
     'Use an unprivileged macOS or Linux contributor account.');
   const [archiveInput, releaseSha256, commit, kernelInput, kernelSha256, outputInput] = args;
@@ -149,12 +189,14 @@ export async function runLinuxKernelGuest(args) {
   const record = await verifyNativeArchiveSubjects(archive, releaseSha256, commit);
   assert.ok(['linux-arm64', 'linux-x64'].includes(record.target), 'A Linux development archive is required.');
   const architecture = record.target.slice('linux-'.length);
-  let qemu, qemuIdentity;
-  if (options.accelerator === 'hvf') {
-    assertLinuxKernelHvfHost(process.platform, process.arch, architecture);
+  let qemu, qemuIdentity, kvmDevice;
+  if (options.accelerator !== 'tcg') {
+    if (options.accelerator === 'hvf') assertLinuxKernelHvfHost(process.platform, process.arch, architecture);
+    else assertLinuxKernelKvmHost(process.platform, process.arch, architecture);
     qemu = await realpath(options.qemu);
     qemuIdentity = await bundleFile(qemu, 128 * 1024 * 1024);
     assert.ok((qemuIdentity.mode & 0o111) !== 0, 'QEMU is not executable.');
+    if (options.accelerator === 'kvm') kvmDevice = await captureLinuxKernelKvmDevice();
   }
   const capturedKernel = await readBundleFile(kernel, 128 * 1024 * 1024);
   assert.equal(capturedKernel.identity.sha256, kernelSha256, 'Kernel digest differs.');
@@ -195,9 +237,10 @@ export async function runLinuxKernelGuest(args) {
   let completed, failure;
   try {
     if (qemu) {
-      const version = await checked('hvf-version', ['--version'], 10_000, qemu);
-      const accelerators = await checked('hvf-accelerators', ['-accel', 'help'], 10_000, qemu);
-      assertLinuxKernelHvfEmulator(version, accelerators);
+      const version = await checked(`${options.accelerator}-version`, ['--version'], 10_000, qemu);
+      const accelerators = await checked(`${options.accelerator}-accelerators`, ['-accel', 'help'], 10_000, qemu);
+      if (options.accelerator === 'hvf') assertLinuxKernelHvfEmulator(version, accelerators);
+      else assertLinuxKernelKvmEmulator(version, accelerators);
       assert.deepEqual(await bundleFile(qemu, 128 * 1024 * 1024), qemuIdentity, 'QEMU changed.');
     }
     const image = nativeLinuxUserspaceImages[architecture];
@@ -258,10 +301,12 @@ export async function runLinuxKernelGuest(args) {
     let stdout;
     if (qemu) {
       assert.deepEqual(await bundleFile(qemu, 128 * 1024 * 1024), qemuIdentity, 'QEMU changed before execution.');
+      if (kvmDevice) assert.deepEqual(await captureLinuxKernelKvmDevice(), kvmDevice, 'KVM device changed before execution.');
       stdout = await checked('guest', linuxKernelGuestArguments(architecture, {
-        accelerator: 'hvf', kernel: path.join(output, 'kernel'), initrd: path.join(output, 'guest.cpio.gz')
+        accelerator: options.accelerator, kernel: path.join(output, 'kernel'), initrd: path.join(output, 'guest.cpio.gz')
       }).slice(1), 120_000, qemu);
       assert.deepEqual(await bundleFile(qemu, 128 * 1024 * 1024), qemuIdentity, 'QEMU changed during execution.');
+      if (kvmDevice) assert.deepEqual(await captureLinuxKernelKvmDevice(), kvmDevice, 'KVM device changed during execution.');
     } else {
       owned.set(guestContainer, toolbox.Id);
       stdout = await checked('guest', ['run', '--name', guestContainer, '--label', label, '--network=none', '--read-only',
@@ -282,9 +327,11 @@ export async function runLinuxKernelGuest(args) {
     }
     await verifyNativeArchiveSubjects(archive, releaseSha256, commit);
     completed = { receipt: {
-      schemaVersion: 1, kind: qemu ? 'liftoff-hvf-linux-kernel-observation' : 'liftoff-emulated-linux-kernel-observation', report,
+      schemaVersion: 1, kind: qemu ? `liftoff-${options.accelerator}-linux-kernel-observation` : 'liftoff-emulated-linux-kernel-observation', report,
       subjects: before, fixtureIdentities, image, imageId: imageIdentity.Id, toolboxImageId: toolbox.Id,
-      ...(qemu ? { hvf: { executable: qemu, identity: qemuIdentity, accelerator: 'hvf', cpu: 'host', tcgFallback: false } } : {}),
+      ...(qemu ? { [options.accelerator]: { executable: qemu, identity: qemuIdentity,
+        accelerator: options.accelerator, cpu: 'host', tcgFallback: false,
+        ...(kvmDevice ? { device: { path: '/dev/kvm', identity: kvmDevice } } : {}) } } : {}),
       releaseManifestSha256: releaseSha256, kernelAuthenticatedByRunner: false,
       qualifiedNativeHost: false, releaseReady: false
     }, result: { output, target: record.target, observed: report.observed, releaseReady: false, qualifiedNativeHost: false } };

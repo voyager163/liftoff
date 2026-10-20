@@ -11,7 +11,7 @@ import {
   isolatedHclQualificationJob, isolatedHclTestCommand, checkPluginPathReport, pluginPathTestCommand,
   checkWorkflowProgramContentReport, workflowProgramContentCases,
   nativeBundleQualificationJob, nativePlatformQualificationJob,
-  checkNativeCustodyQualificationJob, nativeCustodyWorkflowFile
+  checkNativeCustodyQualificationJob, nativeCustodyWorkflowFile, checkLinuxKernelKvmQualificationJob
 } from '../scripts/check-repository-policy.mjs';
 import { assertCiToolArchitecture, readPinnedCiTool } from '../scripts/prepare-ci-local-tools.mjs';
 
@@ -323,6 +323,29 @@ describe('source repository setup policy', () => {
     expect(workflow.jobs['qualify-native-platform-packages']).toEqual(nativePlatformQualificationJob());
     expect((await readWorkflow('release.yml')).jobs['qualify-native-platform-packages']).toBeUndefined();
   });
+  it('bounds the separate exact-source KVM diagnostic without granting publication permissions', async () => {
+    const workflow = await readWorkflow('ci.yml');
+    expect(() => checkLinuxKernelKvmQualificationJob(workflow.jobs['qualify-linux-kvm-kernel'])).not.toThrow();
+    expect((await readWorkflow('release.yml')).jobs['qualify-linux-kvm-kernel']).toBeUndefined();
+  });
+  it.each(['missing', 'runner', 'timeout', 'permissions', 'conditional', 'source', 'runtime', 'skip', 'evidence', 'license', 'kernel-source'])(
+    'refuses a weakened KVM diagnostic boundary: %s', async fault => {
+      const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-linux-kvm-kernel'];
+      if (fault === 'missing') delete workflow.jobs['qualify-linux-kvm-kernel'];
+      if (fault === 'runner') job['runs-on'] = 'ubuntu-latest';
+      if (fault === 'timeout') job['timeout-minutes'] = 60;
+      if (fault === 'permissions') job.permissions['id-token'] = 'write';
+      if (fault === 'conditional') job.if = 'false';
+      if (fault === 'source') job.steps[0].with.ref = '${{ github.sha }}';
+      if (fault === 'runtime') job.steps[1].with['node-version'] = '24';
+      if (fault === 'skip') job.steps[4].if = 'false';
+      if (fault === 'evidence') job.steps.at(-1).if = '${{ success() }}';
+      if (fault === 'license') job.steps.at(-1).with.path = job.steps.at(-1).with.path.replace(
+        '${{ runner.temp }}/liftoff-kvm-kernel/kernel-COPYING', '');
+      if (fault === 'kernel-source') job.steps.at(-1).with.path = job.steps.at(-1).with.path.replace(
+        '${{ runner.temp }}/liftoff-kvm-kernel/linux-4.18.tar.xz', '');
+      expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
+    });
   it.each(['qualify-native-bundle', 'qualify-native-platform-packages'])(
     'requires complete release-set failure/recovery contracts in %s', async id => {
       const workflow = await readWorkflow('ci.yml');
@@ -331,7 +354,7 @@ describe('source repository setup policy', () => {
       step.run = step.run.replace('tests/native-release-set.test.ts ', '');
       expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
     });
-  it.each(['qualify-native-bundle', 'qualify-native-platform-packages', 'coverage-cli', 'coverage-gateway'])(
+  it.each(['qualify-native-bundle', 'qualify-native-platform-packages', 'qualify-linux-kvm-kernel', 'coverage-cli', 'coverage-gateway'])(
     'rejects synthetic-merge or unbound source checkout in %s qualification', async id => {
       const workflow = await readWorkflow('ci.yml');
       delete workflow.jobs[id].steps[0].with.ref;
@@ -536,7 +559,7 @@ describe('source repository setup policy', () => {
   it('rejects native-required mismatch and non-native test modes without claiming another host run', () => {
     const qualified = { platform: 'darwin', arch: 'arm64', versions: { node: '24.21.0' } } as const;
     expect(() => checkIsolatedHclRuntime(qualified, 'native')).not.toThrow();
-    for (const arch of ['x64', 'arm64']) {
+    for (const arch of ['x64', 'arm64'] as const) {
       expect(() => checkIsolatedHclRuntime({ ...qualified, platform: 'linux', arch }, 'native')).not.toThrow();
     }
     for (const runtime of [
