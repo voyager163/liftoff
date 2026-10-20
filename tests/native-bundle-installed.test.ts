@@ -10,6 +10,7 @@ import { sourceInventory, configurationInventory, coveragePackage } from '../scr
 import { bundleInventory, nativeBundleHost } from '../scripts/native-bundle-contract.mjs';
 import { verifyNativeBundle } from '../scripts/native-bundle.mjs';
 import { installedPlanCases, planContractIssues } from '../scripts/package-smoke-contract.mjs';
+import type { ProjectAssessmentReport } from '../src/domain/assessment/report.js';
 
 const suppliedBundle = process.env.LIFTOFF_NATIVE_BUNDLE_ROOT;
 const suppliedGo = process.env.LIFTOFF_NATIVE_GO_EXECUTABLE;
@@ -196,14 +197,14 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
   it('assesses explicit local and unbound live projects without global tools or project/user-state changes', async () => {
     const before = await bundleInventory(outside);
     const homeBefore = await bundleInventory(environment.HOME!);
-    for (const profile of ['none', 'single-maintainer-gitflow']) {
+    for (const profile of ['none', 'single-maintainer-gitflow', 'team-gitflow']) {
       for (const live of [false, true]) {
         const result = execute(cli, [
           'assess', '--project', outside, '--governance', profile, '--json', ...(live ? ['--live'] : [])
         ]);
         expect(result.status, result.stdout + result.stderr).toBe(2);
         expect(result.stderr).toBe('');
-        const report = JSON.parse(result.stdout);
+        const report: ProjectAssessmentReport = JSON.parse(result.stdout);
         expect(report).toMatchObject({
           schemaVersion: 1, readOnly: true, mode: live ? 'live' : 'local', outcome: 'partial',
           snapshot: { inputsStable: !live || profile === 'none' },
@@ -211,11 +212,24 @@ describe.skipIf(!suppliedBundle)('actual runtime-inclusive installed bundle', ()
         });
         expect(report.coverage.notObserved).toBeGreaterThan(0);
         if (live) {
-          const findings = report.findings.filter((finding: { id: string }) => finding.id.startsWith('live.'));
-          expect(findings.length).toBeGreaterThan(0);
-          expect(findings.every((finding: { supported: boolean; classification: string; observed: { availability: string; source: unknown } }) =>
+          const raw = report.findings.filter(finding =>
+            finding.id.startsWith('live.') && !finding.id.startsWith('live.profile.'));
+          const findings = report.findings.filter(finding => finding.id.startsWith('live.profile.'));
+          const expectedIds = profile === 'none' ? [] : [
+            'live.profile.gitflow.default-branch', 'live.profile.gitflow.protected-refs',
+            `live.profile.governance.${profile === 'team-gitflow' ? 'team-review' : 'single-maintainer'}`,
+            'live.profile.release.tag-controls', 'live.profile.security.push-protection',
+            'live.profile.environments.configuration'
+          ].sort();
+          expect(raw.length).toBeGreaterThan(0);
+          expect(raw.every(finding =>
             !finding.supported && finding.classification === 'not-observed' &&
             finding.observed.availability === 'not-observed' && finding.observed.source === null)).toBe(true);
+          expect(findings.map(finding => finding.id).sort()).toEqual(expectedIds);
+          expect(findings.every(finding =>
+            finding.supported && finding.classification === 'not-observed' &&
+            finding.observed.availability === 'not-observed' && finding.observed.value === null &&
+            finding.observed.source === null)).toBe(true);
         }
       }
     }

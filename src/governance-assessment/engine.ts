@@ -26,12 +26,15 @@ import { parseAssessmentWorkflow, type ParsedWorkflow } from './yaml.js';
 import { collectLiveAssessment } from './live.js';
 import { classifyFinding, assembleAssessmentReport } from '../domain/governance/assessment/report.js';
 import {
-  actionReferences, effectiveProtectedRefs, effectiveRequiredContextBindings, failOpenFlags, pinnedActions,
+  actionReferences, effectiveRequiredContextBindings, failOpenFlags, pinnedActions,
   protectedRefs, requiredCheckContexts, requiredContextBindings,
   runnerAlignment, securityPipeline, singleMaintainer, teamReview, tagControls, workflowPermissions,
   observedRequiredContexts,
   type PredicateResult
 } from '../domain/governance/assessment/predicates.js';
+import {
+  livePredicate, observeLiveGovernanceControl, predicateObservation
+} from '../domain/governance/assessment/live-observations.js';
 import { isRecord, jsonValue, notObserved, observed, sanitizeAssessmentText, source } from '../domain/governance/assessment/sanitize.js';
 import type {
   AssessmentDiagnostic, AssessmentFinding, AssessmentProjectIdentity, AssessmentReport, AssessmentTarget,
@@ -391,25 +394,8 @@ export function resolveAssessmentLiveScope(project: AssessmentProject, git: Asse
   return scope;
 }
 
-function predicateObservation(check: PredicateResult, from: Observation['source']): Observation {
-  if (check.value === null || from === null) return notObserved(check.reason, from);
-  if (check.absent) return absent(sanitizeAssessmentText(check.reason), from);
-  const observation = observed(check.value, from);
-  if (observation.availability === 'observed') observation.reason = sanitizeAssessmentText(check.reason);
-  return observation;
-}
 function absent(reason: string, from: Observation['source']): Observation {
   return from ? { availability: 'missing', value: null, source: from, reason } : notObserved(reason);
-}
-function livePredicate(
-  live: LiveAssessmentResult, key: string, evaluate: (value: JsonValue) => PredicateResult
-): Observation {
-  const observation = live.observations[key];
-  if (!observation || observation.availability !== 'observed') return observation ?? notObserved(`Live ${key} was not collected.`);
-  const converted = predicateObservation(evaluate(observation.value), observation.source);
-  if (converted.availability === 'not-observed') converted.value = observation.value;
-  else converted.facts = observation.value;
-  return converted;
 }
 function partialLivePredicate(
   live: LiveAssessmentResult,
@@ -652,55 +638,23 @@ function evaluateControl(
       break;
     }
     case 'default-branch': {
-      const remote = live.observations['github.repository'];
-      observations.live = remote?.availability === 'observed' && isRecord(remote.value) && typeof remote.value.defaultBranch === 'string' && remote.source
-        ? observed(remote.value.defaultBranch, remote.source) : remote ?? notObserved('Live repository default branch was not observed.');
+      observations.live = observeLiveGovernanceControl(control.evaluator, target.profile, live, liveScope.environments);
       if (project.state) observations.recorded = observed(project.state.repository.defaultBranch, source('file', 'governance/activation-state.json', capturedAt, project.state.repository.defaultBranch));
       break;
     }
     case 'protected-refs': {
-      const repository = live.observations['github.repository'];
-      const branch = repository?.availability === 'observed' && isRecord(repository.value) && typeof repository.value.defaultBranch === 'string'
-        ? repository.value.defaultBranch : null;
       observations.declared = declaredRules((value) => protectedRefs(value, project.state?.repository.defaultBranch ?? null));
-      const rules = live.observations['github.rulesets'];
-      const branches = live.observations['github.branches'];
-      const families = live.observations['github.ref-families'];
-      if (
-        rules?.availability === 'observed' &&
-        branches?.availability === 'observed' &&
-        families?.availability === 'observed'
-      ) {
-        observations.live = predicateObservation(
-          effectiveProtectedRefs(rules.value, branches.value, families.value, branch, target.profile),
-          rules.source
-        );
-        observations.live.facts = jsonValue({
-          rulesets: rules.value,
-          branches: branches.value,
-          refFamilies: families.value
-        });
-      } else {
-        observations.live = notObserved(
-          'Complete repository/inherited rulesets, classic/effective branch protection, and bounded release/hotfix enumeration are required.'
-        );
-      }
+      observations.live = observeLiveGovernanceControl(control.evaluator, target.profile, live, liveScope.environments);
       break;
     }
     case 'single-maintainer': {
-      const repository = live.observations['github.repository'];
-      const branch = repository?.availability === 'observed' && isRecord(repository.value) && typeof repository.value.defaultBranch === 'string'
-        ? repository.value.defaultBranch : null;
       observations.declared = declaredRules(value => singleMaintainer(value, project.state?.repository.defaultBranch ?? null));
-      observations.live = livePredicate(live, 'github.rulesets', value => singleMaintainer(value, branch));
+      observations.live = observeLiveGovernanceControl(control.evaluator, target.profile, live, liveScope.environments);
       break;
     }
     case 'team-review': {
-      const repository = live.observations['github.repository'];
-      const branch = repository?.availability === 'observed' && isRecord(repository.value) && typeof repository.value.defaultBranch === 'string'
-        ? repository.value.defaultBranch : null;
       observations.declared = declaredRules(value => teamReview(value, project.state?.repository.defaultBranch ?? null));
-      observations.live = livePredicate(live, 'github.rulesets', value => teamReview(value, branch));
+      observations.live = observeLiveGovernanceControl(control.evaluator, target.profile, live, liveScope.environments);
       break;
     }
     case 'tag-controls': {
@@ -709,13 +663,12 @@ function evaluateControl(
           app.value.id > 0 && app.value.slug === 'github-actions') {
         const appId = app.value.id;
         observations.declared = declaredRules((value) => tagControls(value, appId));
-        observations.live = livePredicate(live, 'github.rulesets', (value) => tagControls(value, appId));
       } else {
         observations.declared = facts.rulesets.length
           ? notObserved('The declared tag actor cannot be verified without the GitHub Actions application identity.', facts.ruleSource)
           : absent('No declared tag rulesets were found.', facts.ruleSource);
-        observations.live = notObserved('The GitHub Actions bypass application identity was not observed.');
       }
+      observations.live = observeLiveGovernanceControl(control.evaluator, target.profile, live, liveScope.environments);
       break;
     }
     case 'no-codeowners':
@@ -782,13 +735,7 @@ function evaluateControl(
       break;
     }
     case 'push-protection':
-      observations.live = livePredicate(live, 'github.security', (value) => {
-        if (!isRecord(value)) return bool(null, 'Security feature metadata is unavailable.');
-        const scanning = isRecord(value.secret_scanning) ? value.secret_scanning.status : value.secretScanning;
-        const protection = isRecord(value.secret_scanning_push_protection) ? value.secret_scanning_push_protection.status : value.pushProtection;
-        return bool(typeof scanning === 'string' && typeof protection === 'string' ? scanning === 'enabled' && protection === 'enabled' : null,
-          'Secret scanning and push protection must both be enabled; omitted fields are not evidence of absence.');
-      });
+      observations.live = observeLiveGovernanceControl(control.evaluator, target.profile, live, liveScope.environments);
       break;
     case 'workflow-permissions':
       observations.declared = facts.workflows.length ? predicateObservation(workflowPermissions(facts.workflows), facts.workflowSource)
@@ -815,16 +762,7 @@ function evaluateControl(
     }
     case 'environments':
       expected = true;
-      observations.live = livePredicate(live, 'github.environments', (value) => {
-        const environments = rows(value);
-        if (!environments) return bool(null, 'Environment inventory is unavailable.');
-        const selected = liveScope.environments.map((name) => environments.find((entry) => entry.name === name));
-        if (selected.some((entry) => !entry)) return {
-          ...bool(false, 'A declared deployment environment is absent from the complete live inventory.'), absent: true
-        };
-        return bool(selected.every((entry) => typeof entry?.reviewers === 'number') ? selected.every((entry) => entry?.reviewers === 0) : null,
-          'Declared deployment environments must not require human reviewers.');
-      });
+      observations.live = observeLiveGovernanceControl(control.evaluator, target.profile, live, liveScope.environments);
       break;
     case 'runner': {
       observations.recorded = liveScope.runner ? observed(true, source('evidence', 'runner-ready repository binding', capturedAt, jsonValue(liveScope.runner))) : notObserved('No current, exact runner/group/network binding is available.');

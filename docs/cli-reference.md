@@ -808,9 +808,21 @@ credentials, install tools, execute project code or write receipts.
 
 Provider observation `source` retains `kind`, `location`, `capturedAt`, optional
 raw 64-hex `digest`, `revision` and `line`, alongside original availability,
-values and facts. Observed provider metadata is distinct from supported
-current-profile evaluation: `supported: false` and `classification: "not-observed"`
-remain explicit, and overall coverage stays partial. Two complete local
+values and facts. Raw provider findings remain `supported: false` and
+`classification: "not-observed"`; metadata presence alone is not conformance.
+For an enabled governance profile, separate `live.profile.*` findings evaluate
+the default branch, effective GitFlow protection, profile-specific PR review
+settings, release-tag controls, secret push protection and declared environment
+reviewers against the validated installed policy/catalog. They use the same
+predicates as `governance assess`, without extra provider requests. Team PR
+approval does not introduce deployment reviewers. Missing environment selection,
+incomplete ref enumeration and masked metadata stay unknown or unobserved.
+These findings cover only the live metadata layer, not declared configuration,
+green/red execution, artifact, Azure, custody or activation proof. Unsupported
+mandatory scope remains visible and overall coverage stays partial.
+Changed Git/ref bindings withhold live-layer verdicts while retaining original
+provider facts and provenance.
+`--governance none` adds no profile verdicts. Two complete local
 assessments, exact manifest revalidation and final Git reobservation detect
 observed drift; they are not an atomic filesystem/provider snapshot. A failure
 after a provider dispatch explicitly reports attempted access rather than

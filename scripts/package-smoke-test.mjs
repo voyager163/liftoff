@@ -1078,10 +1078,23 @@ try {
         report.coverage?.notObserved < 1) {
       throw new Error(`Installed whole-project assessment lost its bounded partial-report contract: ${assessment.stdout}`);
     }
-    if (flags.length && !report.findings.filter(finding => finding.id.startsWith('live.')).every(finding =>
-      finding.supported === false && finding.classification === 'not-observed' &&
-      finding.observed.availability === 'not-observed' && finding.observed.source === null)) {
-      throw new Error('Installed unbound live assessment fabricated provider observations or conformance.');
+    if (flags.length) {
+      const raw = report.findings.filter(finding => finding.id.startsWith('live.') && !finding.id.startsWith('live.profile.'));
+      const profile = report.findings.filter(finding => finding.id.startsWith('live.profile.'));
+      const profileIds = [
+        'live.profile.gitflow.default-branch', 'live.profile.gitflow.protected-refs',
+        'live.profile.governance.single-maintainer', 'live.profile.release.tag-controls',
+        'live.profile.security.push-protection', 'live.profile.environments.configuration'
+      ].sort();
+      if (!raw.length || !raw.every(finding => finding.supported === false &&
+          finding.classification === 'not-observed' && finding.observed.availability === 'not-observed' &&
+          finding.observed.source === null) ||
+          JSON.stringify(profile.map(finding => finding.id).sort()) !== JSON.stringify(profileIds) ||
+          !profile.every(finding => finding.supported === true && finding.classification === 'not-observed' &&
+            finding.observed.availability === 'not-observed' && finding.observed.value === null &&
+            finding.observed.source === null)) {
+        throw new Error('Installed unbound live assessment fabricated provider observations or conformance.');
+      }
     }
   }
   if (await treeDigest(assessmentProject) !== assessmentBefore ||

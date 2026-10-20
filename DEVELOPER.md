@@ -581,8 +581,8 @@ target or proof scope. Findings retain observed absence, actual differences,
 unknown applicability and unsupported proof. Two bounded inventory passes and
 exact metadata/file revalidation fence observed drift. Unread payload changes
 remain unobserved. Current production reports remain partial because runtime
-constraints, reference compatibility, agent behavior, effective governance and
-deployment proof are not evaluated. Local matches are not full compliance.
+constraints, reference compatibility, agent behavior and complete execution
+and deployment proof are not evaluated. Local matches are not full compliance.
 `application/assessment/live-report.ts` composes explicit live reports without
 duplicating the existing domain assembler. The bounded effect adapter is
 `adapters/assessment/live.ts`, reusing the existing scoped collector and Git
@@ -592,9 +592,15 @@ Only the exact repository's GitHub metadata, applicable ref families, declared
 current environments and fixed GitHub Actions app metadata are requested.
 There is no account/runner/Azure discovery or credential enrollment.
 Provider availability, values, facts and first-class source location/time/digest
-remain independent from unsupported current-profile evaluation. Local JSON,
-classification and digest assembly stay unchanged. An observed provider value
-does not become conformance or activation proof.
+remain independent from profile evaluation. The shared pure
+`domain/governance/assessment/live-observations.ts` owns the finite live
+predicates used by both assessment paths; do not duplicate review or effective
+protection rules in the whole-project coordinator. It emits separate
+`live.profile.*` metadata-layer findings only after verifying the installed
+profile/catalog binding. Unknown environment scope stays unknown; changed Git
+or ref bindings withhold verdicts while retaining original facts. Local JSON,
+classification and digest assembly stay unchanged. Live-layer alignment never
+substitutes for declared configuration, execution, deployment or custody proof.
 Two complete local reports, manifest revalidation and final Git reads detect
 observed drift, not atomic confinement. Failures retain actual provider-dispatch
 attribution; they cannot claim no access after collection. Git overflow, abort,
@@ -608,6 +614,7 @@ work have no executable recommendation.
 
 ```bash
 npx vitest run tests/project-assessment-report.test.ts tests/project-assessment-engine.test.ts tests/project-assessment-command.test.ts tests/project-assessment-live.test.ts --maxWorkers=1
+npx vitest run tests/governance-live-observations.test.ts tests/governance-assessment-engine.test.ts tests/governance-review-count-boundary.test.ts --maxWorkers=1
 ```
 
 ## Release integrity requirements
