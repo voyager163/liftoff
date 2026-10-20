@@ -328,7 +328,8 @@ describe('source repository setup policy', () => {
     expect(() => checkLinuxKernelKvmQualificationJob(workflow.jobs['qualify-linux-kvm-kernel'])).not.toThrow();
     expect((await readWorkflow('release.yml')).jobs['qualify-linux-kvm-kernel']).toBeUndefined();
   });
-  it.each(['missing', 'runner', 'timeout', 'permissions', 'conditional', 'source', 'runtime', 'skip', 'evidence', 'license', 'kernel-source', 'source-modes'])(
+  it.each(['missing', 'runner', 'timeout', 'permissions', 'conditional', 'source', 'runtime', 'skip', 'evidence', 'license', 'kernel-source', 'source-modes',
+    'group-capture', 'group-execution', 'root-user', 'group-input', 'group-name', 'capture-argument', 'capture-directory', 'acl-grant', 'device-diagnostics'])(
     'refuses a weakened KVM diagnostic boundary: %s', async fault => {
       const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-linux-kvm-kernel'];
       if (fault === 'missing') delete workflow.jobs['qualify-linux-kvm-kernel'];
@@ -345,6 +346,15 @@ describe('source repository setup policy', () => {
       if (fault === 'kernel-source') job.steps.at(-1).with.path = job.steps.at(-1).with.path.replace(
         '${{ runner.temp }}/liftoff-kvm-kernel/linux-4.18.tar.xz', '');
       if (fault === 'source-modes') job.steps[6].run = job.steps[6].run.replace('--same-permissions ', '');
+      if (fault === 'group-capture') job.steps[4].run = job.steps[4].run.replace('--group="#$kvm_gid" ', '');
+      if (fault === 'group-execution') job.steps[7].run = job.steps[7].run.replace('--group="#$kvm_gid" ', '');
+      if (fault === 'root-user') job.steps[7].run = job.steps[7].run.replace('--user="#$(id -u)"', '--user=root');
+      if (fault === 'group-input') job.steps[7].run = job.steps[7].run.replace('[[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]', '');
+      if (fault === 'group-name') job.steps[7].run = job.steps[7].run.replace('test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"', '');
+      if (fault === 'capture-argument') job.steps[4].run = job.steps[4].run.replace('const directory = process.argv[2];', 'const directory = process.argv[1];');
+      if (fault === 'capture-directory') job.steps[4].run = job.steps[4].run.replace('--input-type=module - "$RUNNER_TEMP/liftoff-kvm-kernel"', '--input-type=module');
+      if (fault === 'acl-grant') job.steps[4].run += '\nsudo setfacl -m "u:$(id -u):rw" /dev/kvm';
+      if (fault === 'device-diagnostics') job.steps.at(-2).run = job.steps.at(-2).run.replace('device-after-execution-acl.stdout', 'other.stdout');
       expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
     });
   it.each(['qualify-native-bundle', 'qualify-native-platform-packages'])(

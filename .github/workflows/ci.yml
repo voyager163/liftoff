@@ -242,12 +242,23 @@ jobs:
           linuxKernelKvmDeviceIdentity(info);
           NODE
           getfacl --absolute-names /dev/kvm > "$RUNNER_TEMP/liftoff-kvm-kernel/device-before-access.stdout"
-          sudo setfacl -m "u:$(id -u):rw" /dev/kvm
-          node --input-type=module <<'NODE'
-          import { writeFile } from 'node:fs/promises';
+          kvm_gid="$(stat --format=%g /dev/kvm)"
+          [[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]
+          test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"
+          sudo --user="#$(id -u)" --group="#$kvm_gid" --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY -- "$(command -v node)" --input-type=module - "$RUNNER_TEMP/liftoff-kvm-kernel" <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFile, writeFile } from 'node:fs/promises';
           import { captureLinuxKernelKvmDevice } from './scripts/native-linux-kernel.mjs';
-          await writeFile(process.env.RUNNER_TEMP + '/liftoff-kvm-kernel/device-after-access.json',
-            JSON.stringify(await captureLinuxKernelKvmDevice(), null, 2) + '\n', { flag: 'wx' });
+          const directory = process.argv[2];
+          const before = JSON.parse(await readFile(directory + '/device-before-access.json', 'utf8'));
+          assert.equal(process.getuid(), before.host.uid, 'KVM preparation must retain the invoking user.');
+          const device = await captureLinuxKernelKvmDevice();
+          assert.equal(String(process.getgid()), device.gid, 'KVM preparation requires the existing device group.');
+          await writeFile(directory + '/device-after-access.json',
+            JSON.stringify(device, null, 2) + '\n', { flag: 'wx' });
+          await writeFile(directory + '/execution-identity.json', JSON.stringify({
+            uid: process.getuid(), gid: process.getgid(), groups: process.getgroups()
+          }, null, 2) + '\n', { flag: 'wx' });
           NODE
       - name: Authenticate the original Linux 4.18 source before extraction
         shell: bash
@@ -341,7 +352,10 @@ jobs:
           node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-kvm-bundle" "$RUNNER_TEMP/liftoff-kvm-archive"
           manifest_sha="$(sha256sum "$RUNNER_TEMP/liftoff-kvm-archive/native-release.json" | cut -d ' ' -f 1)"
           kernel_sha="$(sha256sum "$RUNNER_TEMP/liftoff-kvm-kernel/output/kernel" | cut -d ' ' -f 1)"
-          node scripts/native-linux-kernel.mjs "$RUNNER_TEMP/liftoff-kvm-archive" "$manifest_sha" "$(git rev-parse HEAD)" \
+          kvm_gid="$(node --input-type=module -e 'import { readFileSync } from "node:fs"; console.log(JSON.parse(readFileSync(process.env.RUNNER_TEMP + "/liftoff-kvm-kernel/device-after-access.json")).gid)')"
+          [[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]
+          test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"
+          sudo --user="#$(id -u)" --group="#$kvm_gid" --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY -- "$(command -v node)" scripts/native-linux-kernel.mjs "$RUNNER_TEMP/liftoff-kvm-archive" "$manifest_sha" "$(git rev-parse HEAD)" \
             "$RUNNER_TEMP/liftoff-kvm-kernel/output/kernel" "$kernel_sha" "$RUNNER_TEMP/liftoff-kvm-observation" \
             --kernel-version 4.18.0 --kvm-qemu "$(command -v qemu-system-x86_64)"
       - name: Settle only the invocation-owned compiler container
@@ -370,6 +384,15 @@ jobs:
               docker rm --force "$id"
             fi
           fi
+          id > "$directory/device-after-execution.stdout"
+          getfacl --absolute-names /dev/kvm > "$directory/device-after-execution-acl.stdout"
+          node --input-type=module - "$directory" <<'NODE'
+          import { lstat, writeFile } from 'node:fs/promises';
+          const info = await lstat('/dev/kvm', { bigint: true });
+          await writeFile(process.argv[2] + '/device-after-execution.json', JSON.stringify({
+            characterDevice: info.isCharacterDevice(), device: info
+          }, (key, value) => typeof value === 'bigint' ? value.toString() : value, 2) + '\n', { flag: 'wx' });
+          NODE
       - name: Retain actual kernel, source, archive and execution evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

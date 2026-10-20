@@ -607,6 +607,23 @@ export function checkLinuxKernelKvmQualificationJob(job) {
   assert.ok(job.steps[6].run.includes(
     'tar --no-same-owner --same-permissions -xf /inputs/linux-4.18.tar -C /build/source'),
   'Unprivileged kernel extraction must preserve every authenticated source mode.');
+  for (const step of [job.steps[4], job.steps[7]]) {
+    assert.ok(step.run.includes('sudo --user="#$(id -u)" --group="#$kvm_gid" --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY -- "$(command -v node)"'),
+      'KVM access must retain the invoking user with the existing device group.');
+    assert.ok(step.run.includes('[[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]'), 'KVM device group must be numeric and non-root.');
+    assert.ok(step.run.includes('test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"'),
+      'KVM execution requires the existing kvm group, not another device group.');
+    assert.doesNotMatch(step.run, /\b(?:setfacl|chmod|chown|usermod|groupadd)\b/,
+      'KVM execution must not mutate device permissions or persistent group membership.');
+  }
+  assert.ok(job.steps[4].run.includes('kvm_gid="$(stat --format=%g /dev/kvm)"'));
+  assert.ok(job.steps[4].run.includes('--input-type=module - "$RUNNER_TEMP/liftoff-kvm-kernel"'));
+  assert.ok(job.steps[4].run.includes('const directory = process.argv[2];'));
+  assert.ok(job.steps[4].run.includes('process.getuid(), before.host.uid'));
+  assert.ok(job.steps[4].run.includes('String(process.getgid()), device.gid'));
+  assert.ok(job.steps[7].run.includes('/liftoff-kvm-kernel/device-after-access.json'));
+  assert.ok(job.steps.at(-2).run.includes('device-after-execution-acl.stdout'));
+  assert.ok(job.steps.at(-2).run.includes('device-after-execution.json'));
   const evidence = job.steps.at(-1).with.path.split(/\r?\n/);
   for (const name of ['linux-4.18.tar.xz', 'linux-4.18.tar.sign', 'kernel-COPYING',
     'check-linux-kernel-source.py', 'Kernel.Dockerfile', 'ci-workflow.yml']) {

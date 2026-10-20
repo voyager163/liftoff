@@ -191,8 +191,13 @@ hardware execution.
 CI's separate `Linux x64 kernel floor (KVM diagnostic)` job exercises this route
 on an ephemeral Ubuntu 24.04 runner, without publishing or signing an archive.
 It first checks the actual QEMU banner, acceleration list and physical device,
-then explicitly grants only that runner UID read/write device access with an ACL;
-the contributor runner itself never grants permissions. Missing devices, an
+then invokes only device capture and the guest runner under the same unprivileged
+runner UID with the device's existing non-root `kvm` group. This explicit CI-only group selection
+does not modify device permissions, add persistent group membership or rely on a
+per-user ACL that device lifecycle processing can remove. The absolute selected
+Node executable is retained across that invocation; device/group observations and
+post-execution ACL/metadata diagnostics accompany the evidence. The contributor
+runner itself never grants permissions or changes groups. Missing devices, an
 unexpected version or unavailable KVM fail rather than selecting TCG.
 The job verifies the pinned compressed source/signature digests and Torvalds
 primary fingerprint before extraction, retains raw GPG status/warnings, and
