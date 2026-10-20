@@ -30,11 +30,15 @@ dylibs. A hosted modern-OS run cannot establish these minimum-host requirements.
 ### Optional Linux kernel guest probe
 
 `scripts/native-linux-kernel.mjs` runs a development archive in an isolated
-**emulated** Linux 4.18.20 guest, rather than substituting the Docker daemon's
-newer kernel. It is a contributor diagnostic, not a native-host qualification,
+Linux guest, rather than substituting the Docker daemon's newer kernel.
+The default remains **TCG-emulated Linux 4.18.20**. Explicit options also select
+the exact Linux 4.18.0 floor and, on native Apple Silicon macOS only, a
+hardware-accelerated ARM64 guest using Apple Hypervisor Framework (HVF).
+Every mode is a contributor diagnostic, not a complete native-host qualification,
 signature verifier, installer bootstrap test or public release gate. It does not
 change either qualification flag. Linux 4.18.20 is not evidence for 4.18.0, macOS
-13.5, Windows build 14393, physical/native-CPU execution or Linux HCL execution.
+13.5 or Windows build 14393. TCG is not native-CPU evidence; HVF alone does not
+qualify the complete native installation matrix or Linux HCL execution.
 The old kernel is used only inside the network-disabled disposable guest.
 
 Prerequisites are an unprivileged macOS/Linux account with an existing Docker
@@ -56,6 +60,27 @@ primary fingerprint `647F28654894E3BD457199BE38DBBDC86092693E`, as documented
 by [kernel.org](https://www.kernel.org/signature.html). Do not extract or compile
 before verification; retain the signature status, source digest, compiler/package
 identities, configuration, command output and resulting kernel digest.
+
+For the exact floor, use `linux-4.18.tar.xz` and its adjacent
+`linux-4.18.tar.sign` from the same official directory. The compressed source's
+SHA-256 is `19d8bcf49ef530cd4e364a45b4a22fa70714b70349c8100e7308488e26f1eaf1`;
+the signature SHA-256 is
+`82c1cf7265d4b873f152216c199f33e7accc728e226837be69c0d62a5b1a798f`.
+Its signer is **Linus Torvalds**, not the stable-series signer:
+`ABAF11C65A2970B130ABE3C479BE3E4300411886`. Independently check that fingerprint
+against kernel.org, obtain the key through its TLS-protected WKD, and verify the
+uncompressed tar before extraction. Do not substitute a checksum for the
+developer signature. Retain the actual trust-status warning rather than
+changing key ownertrust to suppress it. Despite the archive's `4.18` basename,
+the actual kernel reports `4.18.0`; use that exact observed version.
+
+Extract and build upstream kernels on a case-sensitive Linux filesystem, not
+a macOS bind-mounted source tree. Distinct upstream paths such as
+`net/netfilter/xt_TCPMSS.c` and `net/netfilter/xt_tcpmss.c` cannot survive a
+case-insensitive extraction unchanged. Signature verification authenticates the
+tar, not a lossy extraction. Compare the complete extracted paths, types, modes
+and file bytes with that authenticated tar before and after an out-of-tree build;
+retain those inventories separately from the resulting kernel observation.
 
 The bounded development probe used GCC 8.5 in the architecture-matched pinned
 Rocky 8 image from `nativeLinuxUserspaceImages` in
@@ -106,6 +131,36 @@ image directories; the actual QEMU container drops **all** capabilities, runs
 as the invoking unprivileged UID, has no network or writable host mounts, and
 is limited to two CPUs, 3 GiB and a 14-minute guest deadline.
 
+To run the exact floor with hardware acceleration, prepare an independently
+authenticated ARM64 4.18.0 image using the same config-only recipe and select an
+existing **QEMU 11.1.2** executable:
+
+```sh
+node scripts/native-linux-kernel.mjs \
+  /absolute/qualified-native-arm64-archive-directory \
+  <original-release-manifest-sha256> <original-clean-commit> \
+  /absolute/authenticated-4.18.0-Image <independently-established-kernel-sha256> \
+  /absolute/outside-checkout/new-hvf-evidence \
+  --kernel-version 4.18.0 --hvf-qemu /absolute/qemu-system-aarch64
+```
+
+Both options are explicit; `--kernel-version 4.18.0` can also be used with TCG.
+The reader compares the actual guest kernel version with the selected version,
+so an old 4.18.20 report cannot qualify the exact floor. HVF refuses Linux,
+Windows, Intel/translated macOS processes and x64 guests. It resolves and hashes
+the selected executable, verifies its exact version and advertised HVF support,
+and rechecks its identity before and after execution. It does not install,
+re-sign or grant entitlements to QEMU. Missing permissions or acceleration fail;
+there is **no TCG fallback**.
+
+HVF still uses Docker only for the recorded rootfs/toolbox preparation. QEMU
+itself runs directly as the unprivileged macOS user, with a private environment,
+`-accel hvf`, `-cpu host`, two CPUs, 2 GiB and a two-minute deadline. It has no
+guest network, host filesystem device, disk, display or monitor. It is not a
+container sandbox: its process can read the supplied host kernel/initramfs
+paths. Evidence records the actual command and QEMU executable identity;
+the guest's execution-mode field alone does not prove hardware acceleration.
+
 The guest reopens its serial console after mounting devtmpfs, makes the bundle
 read-only, and runs as UID/GID 1000 with no global tools. It verifies real kernel,
 architecture, Node and glibc observations, the complete bundle inventory, all six
@@ -120,9 +175,12 @@ the observed x64 serial interrupt workload boundary without dropping observation
 or suppressing kernel diagnostics. Broken, oversized or interleaved frames fail;
 the original console bytes are retained, not repaired or normalized.
 
-`report.json` retains the full observations with `emulated: true`,
+`report.json` retains the full observations with `emulated: true` for TCG or
+`emulated: false` for the explicitly selected HVF path,
 `kernelAuthenticatedByRunner: false`, `qualifiedNativeHost: false` and
-`releaseReady: false`. Commands, original stdout/stderr, kernel/rootfs/initramfs
+`releaseReady: false`. HVF reports use the distinct
+`liftoff-hvf-linux-kernel-observation` kind and record no fallback; existing TCG
+reports retain their original kind. Commands, original stdout/stderr, kernel/rootfs/initramfs
 digests and actual tool identities remain alongside it. Failures retain their
 evidence and cannot produce the successful report. Only invocation-owned
 containers are removed; the uniquely tagged toolbox image and private files
@@ -171,6 +229,15 @@ The verifier checks the committed runtime/launcher pins, executable modes, packe
 source correspondence, current builder inputs and the complete dependency/notice inventory.
 Rebuild development bundles after changing the builder or its pinned policy. It does not
 execute the bundle or authenticate the recorded Git revision.
+
+Each inventory freshly reads every regular file in batches of at most four.
+Directory and symlink boundaries drain the preceding files before traversal continues.
+The original sorted depth-first entries, digest, limits and physical-file checks remain
+unchanged. A failed batch settles every started read and reports the first refusal in
+inventory order before another batch can start; earlier queued files also settle before
+a later traversal refusal is reported. No previous inventory is reused as current evidence.
+Injected scheduling controls use a distinct test-harness filename, so V8 does not merge
+their substituted dependencies or source ranges into the canonical packaged module's coverage.
 
 Windows uses the same builder, official pinned `win-x64.zip` and private
 `runtime/node.exe`. Compile `distribution/windows/launcher.c` in a native x64
@@ -319,6 +386,14 @@ CI writes this receipt under the runner's temporary directory, outside the
 checkout, so it cannot dirty the source before native archive handoff.
 This reproducibility check does not qualify Windows execution, minimum hosts,
 signing or public distribution.
+The separate inline/private-file compiler-reference controls run stock Windows
+PowerShell in a verified Job Object with a private working and temporary directory.
+They use a closed target environment with the actual host's canonical `SystemRoot`
+and inherited execution-policy preference, not the controller host's aliased
+Node spawn environment. The target protocol still rejects duplicate aliases.
+Their target execution budget remains fifteen seconds. The existing controller
+startup and settlement budgets are separate and unchanged. The controls require
+proven descendant settlement rather than killing only the parent PowerShell process.
 Linux cases exercise the actual bundle's isolated owned installation/recovery and
 test-only Ed25519 bootstrap authentication using OpenSSL 3.0 or newer with Ed25519
 support on the invoking host. Linux qualification additionally requires

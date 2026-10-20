@@ -22,6 +22,8 @@ import {
   type WindowsJobRunnerOptions
 } from '../src/adapters/process/windows-job-runner.js';
 import {
+  decodeWindowsEnvironmentBlock,
+  encodeWindowsEnvironmentBlock,
   frameControlMessage,
   unframeControlMessages,
   WindowsJobExecutionSession,
@@ -30,6 +32,15 @@ import {
 } from '../src/adapters/process/windows-job-protocol.js';
 
 const tempDirs: string[] = [];
+function compilerTargetEnvironment(directory: string, ambient: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return {
+    ...matrixValidatorEnvironment(directory, 'win32', ambient),
+    PSExecutionPolicyPreference: environmentValue(ambient, 'PSExecutionPolicyPreference', 'win32'),
+    TEMP: directory,
+    TMP: directory
+  };
+}
+
 async function mockControllerLauncher(directory: string, script: string): Promise<WindowsJobRunnerOptions> {
   if (process.platform === 'win32') {
     const launcher = path.join(directory, 'mock-launcher.ps1');
@@ -2095,6 +2106,34 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
     expect(JSON.parse(result.stdout)).toEqual(common);
   });
 
+  it('gives contained compiler targets a private alias-free environment without relaxing inherited policy', () => {
+    const directory = path.resolve('compiler-fixture');
+    const ambient = {
+      SystemRoot: 'S:\\Windows', SYSTEMROOT: 'S:\\Windows',
+      WINDIR: 'S:\\Windows', windir: 'S:\\Windows', PATH: 'ambient-path', Path: 'ambient-path',
+      PSExecutionPolicyPreference: 'Restricted', NODE_OPTIONS: '--import=untrusted.mjs',
+      HOME: 'ambient-home', USERPROFILE: 'ambient-profile', TEMP: 'ambient-temp', TMP: 'ambient-tmp'
+    };
+    const original = { ...ambient };
+    expect(() => encodeWindowsEnvironmentBlock({ ...ambient, TEMP: directory, TMP: directory }))
+      .toThrow('Duplicate case-insensitive environment key detected: SYSTEMROOT');
+    const environment = compilerTargetEnvironment(directory, ambient);
+    const expected = {
+      HOME: directory, NODE_OPTIONS: '', SystemRoot: 'S:\\Windows',
+      PSExecutionPolicyPreference: 'Restricted', TEMP: directory, TMP: directory
+    };
+    expect(environment).toEqual(expected);
+    expect(decodeWindowsEnvironmentBlock(encodeWindowsEnvironmentBlock(environment))).toEqual(expected);
+    expect(ambient).toEqual(original);
+    for (const invalid of [{}, { SystemRoot: '' }, { SystemRoot: 'S:\\Windows', SYSTEMROOT: 'T:\\Windows' }]) {
+      expect(() => compilerTargetEnvironment(directory, invalid))
+        .toThrow(/actual host SystemRoot|Conflicting case-insensitive environment aliases/);
+    }
+    expect(() => compilerTargetEnvironment(directory, {
+      ...ambient, PSEXECUTIONPOLICYPREFERENCE: 'Bypass'
+    })).toThrow(/Conflicting case-insensitive environment aliases/);
+  });
+
   it.runIf(process.platform === 'win32').each(['inline', 'private-file'] as const)(
     'compiles the unchanged native definitions with only the loaded core library in %s mode',
     async mode => {
@@ -2127,13 +2166,22 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
         ]),
         "[Console]::Out.Write('core-library-only')"
       ].join('\n');
-      const host = buildWindowsControllerHostEnvironment();
-      if (!host.SystemRoot) throw new Error('Windows controller host requires SystemRoot.');
-      const powershell = path.join(host.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-      const result = spawnSync(powershell, [
-        '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')
-      ], { env: host, encoding: 'utf8', timeout: 15_000, maxBuffer: 16 * 1024 });
-      expect(result.error, result.stderr).toBeUndefined();
+      const targetEnvironment = compilerTargetEnvironment(directory);
+      if (!targetEnvironment.SystemRoot) throw new Error('Windows compiler target requires SystemRoot.');
+      const powershell = path.join(targetEnvironment.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+      const result = await runWindowsJobCommand({
+        executable: powershell,
+        args: ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')]
+      }, {
+        cwd: directory, env: targetEnvironment,
+        timeoutMs: 15_000, maxOutputBytes: 16 * 1024
+      });
+      expect(result, JSON.stringify(result)).toMatchObject({
+        status: 0, processSpawned: true, processTreeSettled: true, timedOut: false
+      });
+      expect(result.errorCode, result.stderr).toBeUndefined();
+      expect(result.aborted).not.toBe(true);
+      expect(result.outputLimitExceeded).not.toBe(true);
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toBe('core-library-only');
       if (assembly) {

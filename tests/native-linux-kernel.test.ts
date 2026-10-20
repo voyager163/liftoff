@@ -5,7 +5,8 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import {
   assertLinuxKernelGuestContainerIdentity, assertLinuxKernelGuestTranscript,
-  assertLinuxKernelImage, linuxKernelGuestArguments, runLinuxKernelGuest
+  assertLinuxKernelHvfEmulator, assertLinuxKernelHvfHost,
+  assertLinuxKernelImage, linuxKernelGuestArguments, parseLinuxKernelGuestOptions, runLinuxKernelGuest
 } from '../scripts/native-linux-kernel.mjs';
 import { installedPlanCases } from '../scripts/package-smoke-contract.mjs';
 import { parseArgs } from '../src/args.js';
@@ -86,6 +87,35 @@ describe('emulated Linux kernel observation contract', () => {
     const value = fixture(architecture), before = structuredClone(value.report);
     expect(assertLinuxKernelGuestTranscript(value.transcript(), value.expected)).toEqual(before);
     expect(value.report).toEqual(before);
+  });
+  it.each(['4.18.0', '4.18.20'])('binds an explicit %s HVF observation without native-host or release qualification', kernelVersion => {
+    const value = fixture();
+    value.report.observed.osVersion = kernelVersion;
+    value.report.emulated = false;
+    const expected = { ...value.expected, kernelVersion, accelerator: 'hvf' };
+    const before = structuredClone(value.report);
+    expect(assertLinuxKernelGuestTranscript(value.transcript(), expected)).toEqual(before);
+    expect(value.report).toEqual(before);
+    expect(value.report.minimumHostQualified).toBe(false);
+    expect(value.report.publicDistributionQualified).toBe(false);
+    expect(() => assertLinuxKernelGuestTranscript(value.transcript(), { ...expected, accelerator: 'tcg' })).toThrow();
+    expect(() => assertLinuxKernelGuestTranscript(value.transcript(), {
+      ...expected, kernelVersion: kernelVersion === '4.18.0' ? '4.18.20' : '4.18.0'
+    })).toThrow();
+    value.report.emulated = true;
+    expect(() => assertLinuxKernelGuestTranscript(value.transcript(), expected)).toThrow();
+  });
+  it('does not reinterpret an original 4.18.20 TCG report as the exact floor or a hardware observation', () => {
+    const value = fixture();
+    expect(() => assertLinuxKernelGuestTranscript(value.transcript(), { ...value.expected, kernelVersion: '4.18.0' })).toThrow();
+    expect(() => assertLinuxKernelGuestTranscript(value.transcript(), { ...value.expected, accelerator: 'hvf' })).toThrow();
+    for (const expected of [
+      { ...value.expected, kernelVersion: '4.18' },
+      { ...value.expected, kernelVersion: 'latest' },
+      { ...value.expected, accelerator: 'auto' },
+      { ...value.expected, accelerator: 'kvm' },
+      { ...value.expected, accelerator: 'hvf', architecture: 'x64' }
+    ]) expect(() => assertLinuxKernelGuestTranscript(value.transcript(), expected)).toThrow();
   });
   it.each(['', 'LIFTOFF_GUEST_EXIT=0\n', 'LIFTOFF_GUEST_REPORT_GZIP={}\n'])(
     'refuses absent or summary-only observations %j', transcript => {
@@ -176,6 +206,55 @@ describe('emulated Linux kernel observation contract', () => {
     expect(args.slice(args.indexOf('-nic'), args.indexOf('-nic') + 2)).toEqual(['-nic', 'none']);
     expect(args).toContain(architecture === 'arm64' ? 'virtio-rng-device,rng=rng0' : 'virtio-rng-pci,rng=rng0');
     expect(() => linuxKernelGuestArguments('riscv64')).toThrow('Unsupported guest architecture');
+  });
+  it('selects only HVF with the native CPU and literal physical inputs, without a fallback or host mount', () => {
+    const kernel = path.resolve(cwd, 'kernel with spaces'), initrd = path.resolve(cwd, 'guest with spaces.cpio.gz');
+    const args = linuxKernelGuestArguments('arm64', { accelerator: 'hvf', kernel, initrd });
+    for (const [flag, value] of [
+      ['-machine', 'virt-11.1,gic-version=3,highmem=off'], ['-cpu', 'host'], ['-accel', 'hvf'],
+      ['-smp', '2'], ['-m', '2048'], ['-nic', 'none'], ['-display', 'none'], ['-monitor', 'none'],
+      ['-kernel', kernel], ['-initrd', initrd]
+    ]) expect(args.slice(args.indexOf(flag), args.indexOf(flag) + 2)).toEqual([flag, value]);
+    expect(args.filter(value => value === '-accel')).toHaveLength(1);
+    expect(args.filter(value => value.startsWith('-'))).toEqual([
+      '-machine', '-cpu', '-accel', '-smp', '-m', '-display', '-monitor', '-serial', '-nic', '-no-reboot',
+      '-object', '-device', '-kernel', '-initrd', '-append'
+    ]);
+    expect(() => linuxKernelGuestArguments('x64', { accelerator: 'hvf' })).toThrow('ARM64');
+    expect(() => linuxKernelGuestArguments('arm64', { accelerator: 'auto' })).toThrow('accelerator');
+    expect(() => linuxKernelGuestArguments('arm64', { kernel: 'relative' })).toThrow('Absolute');
+    expect(() => linuxKernelGuestArguments('arm64', { initrd: 'relative' })).toThrow('Absolute');
+  });
+  it.each([
+    ['darwin', 'x64', 'arm64'], ['darwin', 'arm64', 'x64'], ['linux', 'arm64', 'arm64'],
+    ['linux', 'x64', 'arm64'], ['win32', 'arm64', 'arm64']
+  ])('refuses HVF host/guest %s/%s/%s rather than substituting emulation', (platform, host, guest) => {
+    expect(() => assertLinuxKernelHvfHost(platform, host, guest)).toThrow('no emulation fallback');
+  });
+  it('admits only the pinned HVF emulator metadata, including its actual newline-delimited version', () => {
+    expect(() => assertLinuxKernelHvfHost('darwin', 'arm64', 'arm64')).not.toThrow();
+    expect(() => assertLinuxKernelHvfEmulator('QEMU emulator version 11.1.2\nCopyright\n',
+      'Accelerators supported in QEMU binary:\nhvf\ntcg\n')).not.toThrow();
+    expect(() => assertLinuxKernelHvfEmulator('QEMU emulator version 11.1.2\r\n', 'hvf\r\n')).not.toThrow();
+    for (const [version, accelerators] of [
+      ['', 'hvf\n'], ['QEMU emulator version 8.2.2\n', 'hvf\n'],
+      ['QEMU emulator version 11.1.2-extra\n', 'hvf\n'],
+      ['QEMU emulator version 11.1.2\n', 'tcg\n'], ['QEMU emulator version 11.1.2\n', 'hvf-disabled\n']
+    ]) expect(() => assertLinuxKernelHvfEmulator(version, accelerators)).toThrow();
+  });
+  it('preserves the original six-argument defaults and requires explicit bounded kernel/HVF options', () => {
+    const positional = Array.from({ length: 6 }, (_, index) => `input-${index}`);
+    expect(parseLinuxKernelGuestOptions(positional)).toEqual({ kernelVersion: '4.18.20', accelerator: 'tcg', qemu: null });
+    const qemu = path.resolve(cwd, 'QEMU with spaces');
+    for (const flags of [
+      ['--kernel-version', '4.18.0', '--hvf-qemu', qemu],
+      ['--hvf-qemu', qemu, '--kernel-version', '4.18.0']
+    ]) expect(parseLinuxKernelGuestOptions([...positional, ...flags])).toEqual({ kernelVersion: '4.18.0', accelerator: 'hvf', qemu });
+    for (const flags of [
+      ['--kernel-version'], ['--kernel-version', '4.18'], ['--kernel-version', 'latest'],
+      ['--kernel-version', '4.18.0', '--kernel-version', '4.18.20'], ['--hvf-qemu', 'relative'],
+      ['--hvf-qemu', qemu, '--hvf-qemu', qemu], ['--accel', 'tcg'], ['--unknown', 'value']
+    ]) expect(() => parseLinuxKernelGuestOptions([...positional, ...flags])).toThrow();
   });
   it('refuses incomplete CLI input before invoking Docker or writing output', async () => {
     await expect(runLinuxKernelGuest([])).rejects.toThrow('Usage:');
