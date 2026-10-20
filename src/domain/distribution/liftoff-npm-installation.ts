@@ -96,11 +96,12 @@ export function readOnlyEnvironment(
   dependencies: { environment: NodeJS.ProcessEnv },
   neutralDirectory: string
 ): NodeJS.ProcessEnv {
-  const isolatedKeys = new Set(['npm_config_cache', 'npm_config_update_notifier', 'do_not_track',
+  const isolatedKeys = new Set(['npm_config_cache', 'npm_config_logs_dir', 'npm_config_update_notifier', 'do_not_track',
     'liftoff_telemetry', 'ci', 'node_options', 'node_path']);
   return {
-    ...Object.fromEntries(Object.entries(dependencies.environment).filter(([key]) => !isolatedKeys.has(key.toLowerCase()))),
+    ...Object.fromEntries(Object.entries(dependencies.environment).filter(([key]) => !isolatedKeys.has(key.toLowerCase().replaceAll('-', '_')))),
     npm_config_cache: path.join(neutralDirectory, 'npm-cache'),
+    npm_config_logs_dir: path.join(neutralDirectory, 'npm-cache', '_logs'),
     npm_config_update_notifier: 'false',
     DO_NOT_TRACK: '1',
     LIFTOFF_TELEMETRY: '0',

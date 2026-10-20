@@ -127,6 +127,7 @@ export function upgradeWorld(options: {
   };
 
   const cacheValue = path.join(neutralDirectory, 'npm-cache');
+  const logsValue = path.join(cacheValue, '_logs');
   const label = (value: unknown): string | null => {
     if (value === undefined) return null;
     if (value === request.stdout) return 'request.stdout';
@@ -139,7 +140,8 @@ export function upgradeWorld(options: {
     args: [...command.args],
     cwd: label(runOptions?.cwd),
     env: Object.entries(runOptions?.env ?? {}).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
-      .map(([key, value]) => [key, value === undefined ? null : value === cacheValue ? '<neutral>/npm-cache' : value]),
+      .map(([key, value]) => [key, value === undefined ? null : value === cacheValue ? '<neutral>/npm-cache'
+        : value === logsValue ? '<neutral>/npm-cache/_logs' : value]),
     timeoutMs: runOptions?.timeoutMs ?? null,
     stream: runOptions?.stream ?? null,
     stdout: label(runOptions?.stdout),

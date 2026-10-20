@@ -125,7 +125,8 @@ Depends on 9. References: design D4; liftoff-cli-self-upgrade, liftoff-project-d
 
 - [ ] 10.1 Implement authoritative owner detection for npm, cask, WinGet and Liftoff-native receipts; verify local/npx/link/ambiguous/escaping origins fail and Homebrew Node's npm prefix is not mistaken for cask ownership.
 - [ ] 10.2 Implement verified native stable metadata and independent selected-channel availability; verify lag, timeout, invalid metadata, prerelease/downgrade and changed-channel cases do not report false current/installable status.
-- [ ] 10.3 Preserve scoped npm mirror precedence, neutral directories and verified prefix handling in its compatibility adapter; verify no persistent configuration/cache changes or mirror bypass.
+- [x] 10.3 Preserve scoped npm mirror precedence, neutral directories and verified prefix handling in its compatibility adapter; verify no persistent configuration/cache changes or mirror bypass.
+  Qualified the npm compatibility source with scoped-mirror/verified-prefix controls and actual npm subprocesses against disposable account, cache and log directories. Configured debug-log destinations, including case/hyphen environment variants, remain inside neutral scratch; historical schema-1 traces are unchanged. This does not qualify native channels, a published npm bridge or npm-to-cask migration.
 - [ ] 10.4 Implement bounded same-owner check/apply or supported manual handoff, exact target binding and post-install verification; verify no broad package upgrades, automatic elevation or direct overwrite of manager-owned files.
 - [ ] 10.5 Add Windows lock/restart/handoff and Linux owned-version replacement cases; verify actual effects and unresolved executable selection are visible instead of upgraded success.
 - [ ] 10.6 Publish schema-2 upgrade output and share owner/freshness semantics with doctor; verify legacy JSON remains documented and verification subprocesses produce no telemetry/disclosure.
