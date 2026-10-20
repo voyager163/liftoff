@@ -379,6 +379,9 @@ This reproducibility check does not qualify Windows execution, minimum hosts,
 signing or public distribution.
 The separate inline/private-file compiler-reference controls run stock Windows
 PowerShell in a verified Job Object with a private working and temporary directory.
+They use a closed target environment with the actual host's canonical `SystemRoot`
+and inherited execution-policy preference, not the controller host's aliased
+Node spawn environment. The target protocol still rejects duplicate aliases.
 Their target execution budget remains fifteen seconds. The existing controller
 startup and settlement budgets are separate and unchanged. The controls require
 proven descendant settlement rather than killing only the parent PowerShell process.
