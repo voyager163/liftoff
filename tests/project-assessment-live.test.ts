@@ -72,6 +72,8 @@ class FixtureRunner implements CommandRunner {
   afterOrigin: string | null = null;
   denied: { path: string; status: number } | null = null;
   failGit = false;
+  defaultBranch = 'develop';
+  environmentReviewers = 0;
   incompleteGit: 'output-limit' | 'aborted' | 'signal' | 'unsettled' | null = null;
   pages = false;
   changeRefs = false;
@@ -115,7 +117,7 @@ class FixtureRunner implements CommandRunner {
       `HTTP/2.0 ${this.denied.status} Fixture\r\n\r\n{"message":"not observed"}`, 1);
     const ok = (value: unknown) => result(`HTTP/2.0 200 Fixture\r\n\r\n${JSON.stringify(value)}`);
     if (endpoint === base) return ok({
-      id: 42, node_id: 'R_fixture', full_name: repository, default_branch: 'develop',
+      id: 42, node_id: 'R_fixture', full_name: repository, default_branch: this.defaultBranch,
       security_and_analysis: { secret_scanning: { status: 'enabled' } }
     });
     if (endpoint === 'https://api.github.com/apps/github-actions') return ok({ id: 7, slug: 'github-actions' });
@@ -142,7 +144,10 @@ class FixtureRunner implements CommandRunner {
     if (url.pathname.endsWith('/check-runs')) return ok({ total_count: 0, check_runs: [] });
     if (url.pathname.endsWith('/environments')) return ok({
       total_count: 3, environments: ['dev', 'staging', 'prod'].map((name, index) => ({
-        id: index + 1, name, protection_rules: [],
+        id: index + 1, name, protection_rules: this.environmentReviewers ? [{
+          type: 'required_reviewers', reviewers: Array.from({ length: this.environmentReviewers }, (_, index) =>
+            ({ type: 'User', reviewer: { id: index + 1 } }))
+        }] : [],
         deployment_branch_policy: { protected_branches: true, custom_branch_policies: false }
       }))
     });
@@ -465,6 +470,71 @@ describe('private scoped live metadata prototype', () => {
     expect(result.coverage.notObserved).toBeGreaterThan(before.coverage.notObserved);
   });
 
+  it.each(['single-maintainer-gitflow', 'team-gitflow'] as const)(
+    'evaluates the installed %s live metadata layer without manufacturing complete governance', async profile => {
+      const root = await fixture(), runner = new FixtureRunner(root);
+      const original = await readFile(path.join(root, 'untouched.txt'));
+      const result = await inspectScopedLiveProject({
+        inspectLocal: () => assessProject({ start: root, explicitRoot: true, governance: profile }), runner, now
+      });
+      const evaluated = result.findings.filter(finding => finding.id.startsWith('live.profile.'));
+      expect(evaluated).toHaveLength(6);
+      expect(result.target?.profile).toBe(profile);
+      expect(evaluated.find(finding => finding.id === 'live.profile.gitflow.default-branch')).toMatchObject({
+        supported: true, classification: 'aligned', expected: 'develop',
+        observed: { availability: 'observed', value: 'develop', source: { kind: 'github', location: base } }
+      });
+      expect(evaluated.find(finding => finding.id === `live.profile.governance.${profile === 'team-gitflow' ? 'team-review' : 'single-maintainer'}`))
+        .toMatchObject({ supported: true, classification: 'missing' });
+      expect(evaluated.find(finding => finding.id === 'live.profile.environments.configuration')).toMatchObject({
+        applicability: 'unknown', classification: 'not-observed', observed: { availability: 'not-observed' }
+      });
+      expect(result.findings.find(finding => finding.id === 'live.github.repository')).toMatchObject({
+        supported: false, classification: 'not-observed'
+      });
+      expect(result).toMatchObject({ readOnly: true, outcome: 'partial', exitCode: 2 });
+      expect(result.coverage.unsupported).toBeGreaterThan(0);
+      expect(runner.providers.filter(endpoint => endpoint === base)).toHaveLength(1);
+      expect(await readFile(path.join(root, 'untouched.txt'))).toEqual(original);
+    }
+  );
+
+  it('reports a genuinely different observed default branch without changing the selected profile', async () => {
+    const root = await fixture(), runner = new FixtureRunner(root);
+    runner.defaultBranch = 'main';
+    const result = await invokePrivateCli(['assess', root, '--live', '--json'], root, runner);
+    const report = JSON.parse(result.stdout);
+    expect(result.code).toBe(2);
+    expect(report.findings.find((finding: { id: string }) => finding.id === 'live.profile.gitflow.default-branch'))
+      .toMatchObject({ classification: 'conflicting', expected: 'develop', observed: { value: 'main' } });
+    expect(report.target.profile).toBe('single-maintainer-gitflow');
+  });
+
+  it('keeps governance-none live observations unevaluated instead of selecting an implicit profile', async () => {
+    const root = await fixture(), runner = new FixtureRunner(root);
+    const result = await inspectScopedLiveProject({
+      inspectLocal: () => assessProject({ start: root, explicitRoot: true, governance: 'none' }), runner, now
+    });
+    expect(result.target?.profile).toBe('none');
+    expect(result.findings.some(finding => finding.id.startsWith('live.profile.'))).toBe(false);
+  });
+
+  it('rejects a changed installed policy binding before any provider request', async () => {
+    const root = await fixture(), runner = new FixtureRunner(root);
+    const result = inspectScopedLiveProject({
+      inspectLocal: async () => {
+        const report = await assessProject({ start: root, explicitRoot: true });
+        if (!report.target?.policy) throw new Error('Expected actual comparison policy.');
+        report.target.policy.digest = `sha256:${'0'.repeat(64)}`;
+        return report;
+      },
+      runner, now
+    });
+    await expect(result).rejects.toMatchObject({ providerAccessAttempted: false });
+    await expect(result).rejects.toThrow('catalog differs');
+    expect(runner.calls).toEqual([]);
+  });
+
   it('uses only actual declared current Manual environments and preserves original manifest bytes', async () => {
     const root = await fixture(), runner = new FixtureRunner(root);
     const plan = buildCurrentProjectPlan({
@@ -490,6 +560,36 @@ describe('private scoped live metadata prototype', () => {
     });
     expect(await readFile(path.join(root, 'liftoff.manifest.json'))).toEqual(original);
   });
+
+  it.each(['single-maintainer-gitflow', 'team-gitflow'] as const)(
+    'evaluates declared %s environments without requiring deployment reviewers', async profile => {
+      const root = await fixture(), runner = new FixtureRunner(root);
+      const plan = buildCurrentProjectPlan({
+        projectName: 'Declared live environment', projectType: 'standard', apiStack: 'node',
+        specWorkflow: 'manual', agents: [], governanceProfile: profile, environments: ['dev']
+      }, { requireProjectName: true });
+      for (const artifact of buildCurrentArtifacts(plan)) {
+        const file = path.join(root, ...artifact.pathParts);
+        await mkdir(path.dirname(file), { recursive: true });
+        await writeFile(file, artifact.content);
+      }
+      const original = await readFile(path.join(root, 'liftoff.manifest.json'));
+      const input = { inspectLocal: () => assessProject({ start: root, explicitRoot: true }), runner, now };
+      const first = await inspectScopedLiveProject(input);
+      expect(first.findings.find(finding => finding.id === 'live.profile.environments.configuration')).toMatchObject({
+        applicability: 'applicable', classification: 'aligned', expected: true,
+        observed: { availability: 'observed', value: true, source: { kind: 'github' } }
+      });
+      runner.environmentReviewers = 1;
+      const second = await inspectScopedLiveProject(input);
+      expect(second.findings.find(finding => finding.id === 'live.profile.environments.configuration')).toMatchObject({
+        applicability: 'applicable', classification: 'conflicting',
+        observed: { availability: 'observed', value: false, source: { kind: 'github' } }
+      });
+      expect(second).toMatchObject({ outcome: 'partial', exitCode: 2 });
+      expect(await readFile(path.join(root, 'liftoff.manifest.json'))).toEqual(original);
+    }
+  );
 
   it('rejects observed application declaration drift after collection without reverting the concurrent change', async () => {
     const root = await fixture(), runner = new FixtureRunner(root);
@@ -520,6 +620,25 @@ describe('private scoped live metadata prototype', () => {
     }));
     expect(runner.providers.filter(endpoint => endpoint === base)).toHaveLength(1);
     expect(localCalls).toBe(2);
+    expect(result.findings.find(finding => finding.id === 'live.profile.gitflow.default-branch')).toMatchObject({
+      classification: 'not-observed',
+      observed: { availability: 'not-observed', facts: { availability: 'observed', value: 'develop' } }
+    });
+  });
+
+  it('withholds current profile verdicts when provider refs drift while preserving original metadata', async () => {
+    const root = await fixture(), runner = new FixtureRunner(root);
+    runner.changeRefs = true;
+    const result = await inspectScopedLiveProject({
+      inspectLocal: () => assessProject({ start: root, explicitRoot: true }), runner, now
+    });
+    expect(result.snapshot.inputsStable).toBe(false);
+    expect(result.findings.filter(finding => finding.id.startsWith('live.profile.')).every(finding =>
+      finding.classification === 'not-observed' && finding.observed.availability === 'not-observed'
+    )).toBe(true);
+    expect(result.findings.find(finding => finding.id === 'live.profile.gitflow.default-branch')).toMatchObject({
+      observed: { source: { kind: 'github', location: base }, facts: { availability: 'observed', value: 'develop' } }
+    });
   });
 
   it('retains denied provider availability without converting masked metadata into absence', async () => {
@@ -565,7 +684,9 @@ describe('private scoped live metadata prototype', () => {
     });
     expect(provider?.supported).toBe(false);
     expect(provider?.classification).toBe('not-observed');
-    expect(first.coverage.fullyObserved).toBe((await inspectLocal()).coverage.fullyObserved);
+    expect(first.coverage.fullyObserved).toBe((await inspectLocal()).coverage.fullyObserved +
+      first.findings.filter(finding => finding.id.startsWith('live.profile.') &&
+        finding.applicability === 'applicable' && finding.classification !== 'not-observed').length);
   });
 
   it('does not falsely claim no provider access after post-collection inspection failure', async () => {
@@ -751,9 +872,14 @@ describe('actual native Git reads with separately injected provider responses', 
       expect(fetch).not.toHaveBeenCalled();
       const report = JSON.parse(result.stdout);
       expect(report.outcome).toBe('partial');
-      expect(report.findings.filter((finding: { id: string }) => finding.id.startsWith('live.')).every(
+      expect(report.findings.filter((finding: { id: string }) =>
+        finding.id.startsWith('live.') && !finding.id.startsWith('live.profile.')).every(
         (finding: { supported: boolean; classification: string; observed: { availability: string } }) =>
           !finding.supported && finding.classification === 'not-observed' && finding.observed.availability === 'not-observed'
+      )).toBe(true);
+      expect(report.findings.filter((finding: { id: string }) => finding.id.startsWith('live.profile.')).every(
+        (finding: { supported: boolean; classification: string; observed: { availability: string } }) =>
+          finding.supported && finding.classification === 'not-observed' && finding.observed.availability === 'not-observed'
       )).toBe(true);
     } finally {
       vi.unstubAllGlobals();

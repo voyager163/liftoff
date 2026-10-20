@@ -181,6 +181,13 @@ Depends on 12-13. References: design D10-D11; liftoff-governance-activation-engi
 - [ ] 14.8 Qualify an explicitly approved disposable new-environment journey for both profiles and representative supported workloads; verify actual artifact/deployment/health/check/ruleset proof and no false brownfield completion.
 - [ ] 14.9 Refresh Azure, governance, troubleshooting and generated governance/infrastructure READMEs for the qualified journey; verify every next action is registered and independently permissioned.
 
+Task 14.7 has an additional source implementation: whole-project live assessment
+uses the installed profile/catalog and the narrower governance assessment's
+shared predicates for six bounded metadata findings. Raw provider observations
+remain separate, and no profile is inferred for governance-none. This does not
+qualify declared configuration, green/red execution, artifact/deployment,
+current Azure peers, whole-job custody or lifecycle proof; task 14.7 remains open.
+
 ## 15. Version telemetry outcomes and ingestion contracts
 
 Depends on 1 and 3. References: design D12; liftoff-cli-telemetry.

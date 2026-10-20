@@ -967,9 +967,14 @@ profile, declared environment inventory and clock across asynchronous reads, and
 the coordinator snapshots its initial local report before collecting metadata.
 Later caller mutations do not redirect reads or relabel the resulting report;
 they are not reverted. Existing local, manifest and Git reobservations still
-detect observed drift, not atomic confinement. This source-level input binding
-does not add current-profile evaluators, activation proof, provider permissions
-or mutation authority; unsupported mandatory observations remain partial.
+detect observed drift, not atomic confinement. Separate `live.profile.*`
+findings now reuse the narrower assessment's shared live predicates for default
+branch, effective protected refs, profile-specific PR reviews, release tags,
+secret push protection and declared environment reviewers. The installed
+policy/catalog binding is verified before provider collection. These are only
+live-layer verdicts: declared configuration and execution, deployment, custody
+and activation proof remain independent. No provider permissions or mutation
+authority are added, and unsupported mandatory observations remain partial.
 
 The same CLI command works in an ordinary Git repository without initialization,
 a manifest, or generated slash commands. An explicit path is authoritative;
