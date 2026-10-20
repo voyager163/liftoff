@@ -513,16 +513,20 @@ disposable Azure qualification.
 
 #### Isolated HCL qualification
 
-The private modern local verifier currently admits parser computation only on
-darwin/arm64/Node24.21.0. This does not change the public Node engine floor or
+The private modern local verifier admits parser computation on
+darwin/arm64/Node24.21.0, linux/x64/Node24.21.0 and linux/arm64/Node24.21.0.
+This does not change the public Node engine floor, qualify a minimum host or
 advertise modern migration support. Both workflows have a separate
-`Isolated HCL parser (macOS ARM64)` job, `qualify-isolated-hcl`, on `macos-15`
-with Node `24.21.0` and `architecture: arm64`. The existing Node24.20.0 matrix
-and Ubuntu coverage gates are unchanged. Release `qualify` waits for
+`Isolated HCL parser (${{ matrix.target }})` job, `qualify-isolated-hcl`, using
+`${{ matrix.runner }}`: `macos-15`, `ubuntu-24.04` and `ubuntu-24.04-arm`.
+Each row selects its native architecture and exact Node `24.21.0`, checks out
+the original source SHA and uploads a distinct target-bound artifact. A failed
+row does not cancel its peers. The existing platform shards and independent
+coverage gates remain separate. Release `qualify` waits for every row of
 `qualify-isolated-hcl`; `publish` still waits for `qualify`.
 
 Only tests read `LIFTOFF_HCL_TEST_LANE`: absent/`auto` runs native parser cases on the
-qualified tuple, `portable` explicitly leaves parser-dependent cases unrun,
+qualified runtime profiles, `portable` explicitly leaves parser-dependent cases unrun,
 and `native` fails on a runtime mismatch instead of skipping everything.
 Independent observation, TypeScript, Compose, framework and value checks still
 run; unavailable HCL cannot stand in for their assertions. The required native
@@ -539,7 +543,7 @@ LIFTOFF_HCL_TEST_LANE=portable npm run coverage:cli
 
 On an already qualified host, forced-portable tests use a scoped, rejection-only
 runtime value and assert no parser spawn. This is synthetic rejection/routing
-evidence, not Linux, Windows or Node24.20 qualification. Actual unsupported
+evidence, not native Linux, Windows or Node24.20 qualification. Actual unsupported
 hosts retain their real runtime. Recorded helper specimens are pure validator
 unit data only; native cases freshly reproduce them, never inject successful
 ASTs into a planner. Keep native and portable reports and their command

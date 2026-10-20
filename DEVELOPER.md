@@ -1013,6 +1013,10 @@ the record parser but does not require a hypothetical remaining forward budget,
 so supported bounded older journals remain recoverable. This is not whole-migration
 pre-approval admission: callers still need real target, provenance and context
 bytes, complete observations and exact authorization.
+Path collisions and cleanup-directory membership use indexed proper parents,
+not repeated scans of every mutation for every directory. These are in-memory
+validation indexes, never cached filesystem observations; spelling, ordering,
+byte limits and recovery authorization remain unchanged.
 Ordinary updates now call `inspectReviewedUpdateCandidate` before issuing an
 eligible receipt or asking for approval. Normal and force candidates are admitted
 independently using their actual mutations, supplied conditions, complete journal
@@ -1928,8 +1932,12 @@ without requiring unrelated database/Redis configuration.
 
 `adapters/hcl/isolated-parser.ts` launches only its packaged sibling
 `parser-child`: `.ts` with native Node type stripping in source, `.js` in a
-compiled installation. Policy2/protocol2 admits only darwin/arm64/Node24.21.0;
-other runtimes reject before spawning, while empty parser input needs no child.
+compiled installation. Policy3/protocol2 admits darwin/arm64/Node24.21.0,
+linux/x64/Node24.21.0 and linux/arm64/Node24.21.0. Its immutable runtime profiles
+also bind the neutral workspace parent: `/private/tmp` on macOS and `/tmp` on
+Linux. The parent must be physical, root-owned and sticky; private children keep
+the original ownership, mode, identity and empty-cleanup checks. Other runtimes
+reject before spawning, while empty parser input needs no child.
 The fixed limits are 128 MiB per WASM memory, 128 MiB V8 old space, 8 MiB semi
 space, 10 seconds per child and 60 seconds per derivation. One child runs at a
 time with no queue, bounded transport and a clean environment. Success requires
@@ -1938,7 +1946,13 @@ observation allowance latches computation unavailable and retains its workspace.
 These are not a total-RSS cap, an OS sandbox or arbitrary process-tree control.
 
 The complete computation and required-input-closure policies bind recipe
-identity. Caller-supplied ASTs, callbacks, booleans or digests cannot replace
+identity. The policy3 runtime/workspace matrix changes that identity; old policy2
+requests and local plans cannot be reused as current approval. Historical Mac
+policy2 specimens remain unchanged; policy3 specimens are separately captured
+Mac validator data, not Linux execution evidence. Native cases reproduce them
+with the actual current-host parser. The broader provider, framework and release
+qualification profiles are not expanded by parser availability.
+Caller-supplied ASTs, callbacks, booleans or digests cannot replace
 raw-input reconstruction. Original legacy predicates are shared without changing
 released behavior. This read-only layer does not execute or finalize; the
 private execution prerequisite below still does not publish activation records.

@@ -22,7 +22,7 @@ import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activat
 import {
   modernLocalBounds, modernLocalRequiredInputClosurePolicy, rawLocalDigest
 } from '../src/domain/governance/activation/modern-local-inputs.js';
-import { hclComputationPolicy } from '../src/adapters/hcl/parser-child.js';
+import { hclComputationPolicy, qualifiedHclRuntime } from '../src/adapters/hcl/parser-child.js';
 import { parseIsolatedHcl, type HclExpression } from '../src/adapters/hcl/isolated-parser.js';
 import { toSafeProjectName } from '../src/domain/project/planning.js';
 import type { ManifestActiveLayout, ManifestLayoutComponentId } from '../src/domain/project/contracts.js';
@@ -40,8 +40,8 @@ vi.mock('node:child_process', async importOriginal => {
 function resolveHclTestLane(value: string | undefined, runtime: { platform: string; arch: string; node: string }) {
   const mode = value ?? 'auto';
   if (!['auto', 'portable', 'native'].includes(mode)) throw new Error('Invalid LIFTOFF_HCL_TEST_LANE; expected auto, portable or native.');
-  const qualified = runtime.platform === 'darwin' && runtime.arch === 'arm64' && runtime.node === '24.21.0';
-  if (mode === 'native' && !qualified) throw new Error('Native HCL qualification requires actual darwin/arm64/Node24.21.0; no cases were qualified.');
+  const qualified = Boolean(qualifiedHclRuntime(runtime.platform, runtime.arch, runtime.node));
+  if (mode === 'native' && !qualified) throw new Error('Native HCL qualification requires actual darwin/arm64, linux/x64 or linux/arm64 Node24.21.0; no cases were qualified.');
   return { mode, qualified, native: mode !== 'portable' && qualified };
 }
 const testLane = resolveHclTestLane(process.env.LIFTOFF_HCL_TEST_LANE, {
@@ -77,7 +77,7 @@ afterAll(() => {
     actualRuntime: { platform: process.platform, arch: process.arch, node: process.versions.node },
     nativeSelected: testLane.native, nativeUnrunTemplates: testLane.native ? [] : nativeCaseTemplates,
     executedCaseNames, claim: testLane.mode === 'portable' && testLane.qualified
-      ? 'Forced-portable routing and synthetic runtime rejection only; not Linux/Windows/Node24.20 qualification.'
+      ? 'Forced-portable routing and synthetic runtime rejection only; not native runtime qualification.'
       : 'Current-host test evidence only.'
   }));
 });
@@ -126,7 +126,7 @@ function expectCompleteLocalPlan(plan: Awaited<ReturnType<typeof planModernLocal
     const formats = plan.checks.filter(check => check.id.startsWith('tofu-format:'));
     expect(formats.length).toBeGreaterThan(0);
     for (const check of formats) expect(check.reasons).toEqual([
-      'Isolated HCL computation is unavailable: this runtime is not the qualified darwin/arm64 Node24.21.0 tuple.'
+      'Isolated HCL computation is unavailable: this runtime is not one of the qualified darwin/arm64, linux/x64 or linux/arm64 Node24.21.0 tuples.'
     ]);
   }
 }

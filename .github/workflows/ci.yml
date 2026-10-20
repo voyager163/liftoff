@@ -191,9 +191,22 @@ jobs:
           retention-days: 14
 
   qualify-isolated-hcl:
-    name: Isolated HCL parser (macOS ARM64)
-    runs-on: macos-15
+    name: Isolated HCL parser (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-15
+            architecture: arm64
+          - target: linux-x64
+            runner: ubuntu-24.04
+            architecture: x64
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            architecture: arm64
     permissions:
       contents: read
     env:
@@ -201,11 +214,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "24.21.0"
-          architecture: arm64
+          architecture: ${{ matrix.architecture }}
           cache: npm
       - name: Select supported npm
         run: npm install --global "npm@12.0.2"
@@ -223,7 +237,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: liftoff-isolated-hcl-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          name: liftoff-isolated-hcl-ci-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: qualification/isolated-hcl.json
           if-no-files-found: error
           retention-days: 14

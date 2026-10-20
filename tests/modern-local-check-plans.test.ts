@@ -16,8 +16,14 @@ describe('bounded synchronous own-data intake', () => {
       const changed = { ...hclComputationPolicy, [field]: hclComputationPolicy[field] + 1 };
       expect(assembleModernLocalPlan(inspection, null, [], [], null, changed).recipeSet.digest).not.toBe(actual.recipeSet.digest);
     }
-    const changedRuntime = { ...hclComputationPolicy, qualifiedRuntime: { ...hclComputationPolicy.qualifiedRuntime, arch: 'x64' } };
-    expect(assembleModernLocalPlan(inspection, null, [], [], null, changedRuntime).recipeSet.digest).not.toBe(actual.recipeSet.digest);
+    for (const index of hclComputationPolicy.qualifiedRuntimes.keys()) {
+      for (const field of ['platform', 'arch', 'node', 'workspaceParent'] as const) {
+        const changedRuntime = { ...hclComputationPolicy, qualifiedRuntimes: hclComputationPolicy.qualifiedRuntimes.map(
+          (runtime, position) => position === index ? { ...runtime, [field]: 'unreviewed' } : runtime
+        ) };
+        expect(assembleModernLocalPlan(inspection, null, [], [], null, changedRuntime).recipeSet.digest).not.toBe(actual.recipeSet.digest);
+      }
+    }
     expect(actual.execution).toBe('not-authorized');
   });
   it('never evaluates initial getters or proxy traps', () => {

@@ -154,8 +154,10 @@ describe('developer activation-completeness guidance', () => {
       'not a total-RSS cap, an OS sandbox or arbitrary process-tree control',
       'Manual skips external-framework checks; governance `none` alone does not'
     ]) expect(local).toContain(phrase);
-    const runtime = hclComputationPolicy.qualifiedRuntime;
-    expect(local).toContain(`${runtime.platform}/${runtime.arch}/Node${runtime.node}`);
+    for (const runtime of hclComputationPolicy.qualifiedRuntimes) {
+      expect(local).toContain(`${runtime.platform}/${runtime.arch}/Node${runtime.node}`);
+      expect(local).toContain(`\`${runtime.workspaceParent}\``);
+    }
     expect(local).toContain(`${hclComputationPolicy.childDeadlineMs / 1000} seconds per child`);
     expect(local).toContain(`${hclComputationPolicy.derivationDeadlineMs / 1000} seconds per derivation`);
   });

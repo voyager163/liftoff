@@ -498,7 +498,8 @@ describe('source repository setup policy', () => {
   it.each(['ci.yml', 'release.yml'].flatMap(filename => [
     'missing', 'conditional', 'runner', 'node', 'architecture', 'mode', 'no-mode', 'case-command',
     'filtered-cases', 'suppressed-job', 'suppressed-step', 'missing-report', 'conditional-report',
-    'upload-success-only', 'ignore-missing-evidence', 'changed-install', 'checkout-credentials'
+    'upload-success-only', 'ignore-missing-evidence', 'changed-install', 'checkout-credentials',
+    'missing-target', 'foreign-target', 'fail-fast', 'wrong-source'
   ].map(fault => ({ filename, fault }))))('rejects $fault in $filename parser qualification', async ({ filename, fault }) => {
     const workflow = await readWorkflow(filename), job = workflow.jobs['qualify-isolated-hcl'];
     if (fault === 'missing') delete workflow.jobs['qualify-isolated-hcl'];
@@ -518,6 +519,10 @@ describe('source repository setup policy', () => {
     if (fault === 'ignore-missing-evidence') job.steps[7].with['if-no-files-found'] = 'ignore';
     if (fault === 'changed-install') job.steps[3].run = 'npm install';
     if (fault === 'checkout-credentials') job.steps[0].with['persist-credentials'] = true;
+    if (fault === 'missing-target') job.strategy.matrix.include.pop();
+    if (fault === 'foreign-target') job.strategy.matrix.include[1].architecture = 'arm64';
+    if (fault === 'fail-fast') job.strategy['fail-fast'] = true;
+    if (fault === 'wrong-source') delete job.steps[0].with.ref;
     expect(() => checkWorkflow(filename, workflow)).toThrow();
   });
   it.each(['remove-edge', 'wrong-edge', 'extra-job', 'runner-elsewhere'])('rejects release parser bypass %s', async fault => {
@@ -531,8 +536,11 @@ describe('source repository setup policy', () => {
   it('rejects native-required mismatch and non-native test modes without claiming another host run', () => {
     const qualified = { platform: 'darwin', arch: 'arm64', versions: { node: '24.21.0' } } as const;
     expect(() => checkIsolatedHclRuntime(qualified, 'native')).not.toThrow();
+    for (const arch of ['x64', 'arm64']) {
+      expect(() => checkIsolatedHclRuntime({ ...qualified, platform: 'linux', arch }, 'native')).not.toThrow();
+    }
     for (const runtime of [
-      { ...qualified, platform: 'linux' }, { ...qualified, platform: 'win32' },
+      { ...qualified, platform: 'linux', arch: 'ia32' }, { ...qualified, platform: 'win32' },
       { ...qualified, arch: 'x64' }, { ...qualified, versions: { node: '24.20.0' } }
     ] as const) expect(() => checkIsolatedHclRuntime(runtime, 'native')).toThrow();
     for (const lane of ['portable', 'auto', 'invalid']) expect(() => checkIsolatedHclRuntime(qualified, lane)).toThrow();

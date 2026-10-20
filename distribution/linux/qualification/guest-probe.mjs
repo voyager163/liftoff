@@ -7,7 +7,7 @@ import { gzipSync } from 'node:zlib';
 import { assertNativeHost, observeNativeHost } from '/liftoff/installation/host.mjs';
 import { bundleFile, bundleInventory } from '/liftoff/installation/native-bundle-contract.mjs';
 import { installOwnedBundle, inspectOwnedInstallation, recoverOwnedInstallation } from '/liftoff/installation/native-install.mjs';
-import { parseIsolatedHcl } from '/liftoff/application/dist/adapters/hcl/isolated-parser.js';
+import { hclComputationPolicy, parseIsolatedHcl } from '/liftoff/application/dist/adapters/hcl/isolated-parser.js';
 import { verifyWindowsJobControllerAsset } from '/liftoff/application/dist/adapters/process/windows-job-runner.js';
 
 const expected = JSON.parse(await readFile('/guest-input.json', 'utf8'));
@@ -65,8 +65,17 @@ assert.ok(libraries.some(value => value.startsWith('libstdc++:8.5.0-')));
 const plans = expected.plans.map(plan => ({
   id: plan.id, stdout: invoke('/liftoff/bin/liftoff', ['plan', ...plan.args])
 }));
-await assert.rejects(parseIsolatedHcl(['locals { enabled = true }\n']),
-  /Isolated HCL computation is unavailable: this runtime is not the qualified darwin/);
+const parsedHcl = await parseIsolatedHcl([
+  'locals { enabled = true }\n', 'locals { policy = file("./policy.json") }\n'
+]);
+const hcl = {
+  policyVersion: hclComputationPolicy.version, protocolVersion: hclComputationPolicy.protocolVersion,
+  parsed: parsedHcl.map(result => result.parsed), expressionCounts: parsedHcl.map(result => result.expressions.size),
+  fileExpressionType: parsedHcl[1]?.expressions.get('${file("./policy.json")}')?.type
+};
+assert.deepEqual(hcl, { policyVersion: 3, protocolVersion: 2,
+  parsed: [{ locals: [{ enabled: true }] }, { locals: [{ policy: '${file("./policy.json")}' }] }],
+  expressionCounts: [1, 1], fileExpressionType: 'template' });
 assert.equal(await verifyWindowsJobControllerAsset(),
   '/liftoff/application/assets/repair/windows-job-controller.ps1');
 const prefix = '/tmp/private-prefix';
@@ -85,11 +94,11 @@ assert.equal(await inspectOwnedInstallation(prefix), null);
 assert.deepEqual(await bundleInventory('/liftoff'), manifest.inventory);
 assert.equal(digest(await readFile('/liftoff/bundle.json')), expected.manifestSha256);
 const report = {
-  kind: 'liftoff-linux-kernel-guest-probe', observed, version, libraries, plans,
+  kind: 'liftoff-linux-kernel-guest-probe', schemaVersion: 2, observed, version, libraries, plans, hcl,
   manifestSha256: expected.manifestSha256, commit: expected.commit,
   inventorySha256: manifest.inventory.sha256, uid: process.getuid(), gid: process.getgid(),
   bundleReadOnly: true, kernelExecution: true, emulated: accelerator === 'tcg', developmentInstallRecovered: true,
-  controllerResolved: true, hclExecuted: false, hclQualifiedRuntimeRefused: true,
+  controllerResolved: true, hclExecuted: true, hclQualifiedRuntimeRefused: false,
   publicInstallationRefused: true, minimumHostQualified: false, publicDistributionQualified: false
 };
 const encoded = gzipSync(JSON.stringify(report), { level: 9 }).toString('base64');

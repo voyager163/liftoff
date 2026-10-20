@@ -14,14 +14,13 @@ import {assertExecutableLocalExecutionPreview,validateLocalExecutionPreview,vali
 import {openSpecExecutionChecks,validateOpenSpecCommandOutput,validateOpenSpecExecutionInputs,type OpenSpecExecutionInputs} from '../src/domain/governance/activation/modern-openspec-execution.js';
 import {observeModernLocalTools,assertModernLocalToolsCurrent} from '../src/adapters/process/modern-local-tools.js';
 import {createApplicationEnvironment} from '../src/application/repair/application-environment.js';
-import {hclComputationPolicy} from '../src/adapters/hcl/isolated-parser.js';
+import {qualifiedHclRuntime} from '../src/adapters/hcl/isolated-parser.js';
 import {createOpenSpecExecutionFixture,selected,capability,spec,originalFiles} from './modern-openspec-fixtures.js';
 
 const native=process.env.LIFTOFF_OPENSPEC_B_TESTS==='1'&&process.env.LIFTOFF_HCL_TEST_LANE!=='portable';
 if(native&&(process.platform!=='darwin'||process.arch!=='arm64'||process.versions.node!=='24.21.0'))throw new Error('OpenSpec B native qualification requires the recorded runtime.');
-const parserRuntime=hclComputationPolicy.qualifiedRuntime;
-const parserAvailable=process.env.LIFTOFF_HCL_TEST_LANE!=='portable'&&process.platform===parserRuntime.platform&&
-  process.arch===parserRuntime.arch&&process.versions.node===parserRuntime.node;
+const parserAvailable=process.env.LIFTOFF_HCL_TEST_LANE!=='portable'&&
+  Boolean(qualifiedHclRuntime(process.platform,process.arch,process.versions.node));
 const nativeIt=it.skipIf(!native),roots:{path:string;ino:number;dev:number}[]=[];
 afterEach(async()=>{
   vi.restoreAllMocks();

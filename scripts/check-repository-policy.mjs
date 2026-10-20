@@ -178,12 +178,18 @@ export const isolatedHclTestCommand = 'npx vitest run ' + isolatedHclTestFiles.j
   ' --maxWorkers=1 --no-file-parallelism --reporter=default --reporter=json --outputFile.json=qualification/isolated-hcl.json';
 export function isolatedHclQualificationJob(filename) {
   return {
-    name: 'Isolated HCL parser (macOS ARM64)', 'runs-on': 'macos-15', 'timeout-minutes': 15,
+    name: 'Isolated HCL parser (${{ matrix.target }})', 'runs-on': '${{ matrix.runner }}', 'timeout-minutes': 15,
+    strategy: { 'fail-fast': false, matrix: { include: [
+      { target: 'darwin-arm64', runner: 'macos-15', architecture: 'arm64' },
+      { target: 'linux-x64', runner: 'ubuntu-24.04', architecture: 'x64' },
+      { target: 'linux-arm64', runner: 'ubuntu-24.04-arm', architecture: 'arm64' }
+    ] } },
     permissions: { contents: 'read' }, env: { LIFTOFF_HCL_TEST_LANE: 'native' },
     steps: [
-      { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1', with: { 'persist-credentials': false } },
+      { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+        with: { ref: qualificationSourceRef, 'persist-credentials': false } },
       { uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
-        with: { 'node-version': '24.21.0', architecture: 'arm64', cache: 'npm' } },
+        with: { 'node-version': '24.21.0', architecture: '${{ matrix.architecture }}', cache: 'npm' } },
       { name: 'Select supported npm', run: 'npm install --global "npm@12.0.2"' },
       { name: 'Install dependencies', run: 'npm ci' },
       { name: 'Require qualified parser runtime', run: 'node scripts/check-repository-policy.mjs --hcl-runtime' },
@@ -191,7 +197,7 @@ export function isolatedHclQualificationJob(filename) {
       { name: 'Verify nonempty complete parser qualification', run: 'node scripts/check-repository-policy.mjs --hcl-report qualification/isolated-hcl.json' },
       { name: 'Store parser qualification evidence', if: independentStepCondition,
         uses: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
-        with: { name: `liftoff-isolated-hcl-${filename === 'ci.yml' ? 'ci' : 'release'}-${'${{ github.run_id }}'}-${'${{ github.run_attempt }}'}`,
+        with: { name: `liftoff-isolated-hcl-${filename === 'ci.yml' ? 'ci' : 'release'}-${'${{ matrix.target }}'}-${'${{ github.run_id }}'}-${'${{ github.run_attempt }}'}`,
           path: 'qualification/isolated-hcl.json', 'if-no-files-found': 'error', 'retention-days': 14 } }
     ]
   };
@@ -325,8 +331,9 @@ export function checkIsolatedHclRuntime(runtime = {
   platform: process.platform, arch: process.arch, versions: { node: process.versions.node }
 }, lane = process.env.LIFTOFF_HCL_TEST_LANE) {
   assert.equal(lane, 'native', 'Parser qualification requires the test-only native lane.');
-  assert.equal(runtime.platform, 'darwin', 'Parser qualification requires actual macOS.');
-  assert.equal(runtime.arch, 'arm64', 'Parser qualification requires actual ARM64.');
+  assert.ok(runtime.platform === 'darwin' && runtime.arch === 'arm64' ||
+    runtime.platform === 'linux' && ['x64', 'arm64'].includes(runtime.arch),
+  'Parser qualification requires actual macOS ARM64 or Linux x64/ARM64.');
   assert.equal(runtime.versions.node, '24.21.0', 'Parser qualification requires exact Node24.21.0.');
 }
 
@@ -517,18 +524,26 @@ export function checkIsolatedHclReport(report) {
   assert.equal(report.numPendingTests, 0, 'Native parser qualification must not skip cases.');
   assert.ok(Array.isArray(report.testResults) && report.testResults.length === 3, 'All three parser qualification suites are required.');
   const expected = new Map([
-    ['modern-local-inputs.test.ts', { minimum: 162, required: [
+    ['modern-local-inputs.test.ts', { minimum: 193, required: [
       'reparses real local HCL module and file references within selected scopes',
       'plans supported jsonencode over a literal populated object',
       'contains original500000-visit construction plus 0 and recovers',
       'contains original500000-visit construction plus 1 and recovers'
     ] }],
-    ['modern-local-check-plans.test.ts', { minimum: 33, required: [] }],
-    ['isolated-hcl-parser.test.ts', { minimum: 50, required: [
+    ['modern-local-check-plans.test.ts', { minimum: 33, required: [
+      'binds actual complete resource policy values, not only a recipe version label'
+    ] }],
+    ['isolated-hcl-parser.test.ts', { minimum: 57, required: [
       'parses actual cold/repeated configurations and expressions from neutral cwd',
       'kills and settles an actual hanging child at the fixed deadline',
       'demonstrates actual WASM cap in a test-owned canary, never authored source',
-      'freshly reproduces every actual recorded validator specimen without injecting parser results'
+      'freshly reproduces every actual recorded validator specimen without injecting parser results',
+      'has inert policy exports, immutable runtime profiles and no loader flags',
+      'retains historical Mac policy2 specimens without accepting them as current replies',
+      ...[
+        ['darwin', 'x64', '24.21.0'], ['linux', 'ia32', '24.21.0'], ['win32', 'x64', '24.21.0'],
+        ['linux', 'arm64', '24.20.0'], ['linux', 'x64', '24.21.1'], ['darwin', 'arm64', '24.20.0']
+      ].map(([platform, arch, node]) => `refuses the unreviewed ${platform}/${arch}/Node${node} runtime profile`)
     ] }]
   ]);
   let total = 0;
@@ -576,7 +591,8 @@ export function checkWorkflow(filename, workflow) {
     const bundleQualification = filename === 'ci.yml' && id === 'qualify-native-bundle';
     const nativeCustodyQualification = nativeCustodyWorkflow && id === 'qualify-native-custody';
     assert.ok(['ubuntu-latest', 'macos-latest', 'windows-latest', '${{ matrix.os }}'].includes(job['runs-on']) ||
-      (parserQualification || bundleQualification || nativeCustodyQualification) && job['runs-on'] === 'macos-15',
+      parserQualification && job['runs-on'] === '${{ matrix.runner }}' ||
+      (bundleQualification || nativeCustodyQualification) && job['runs-on'] === 'macos-15',
     `${filename}/${id}: use reviewed hosted runners.`);
     const timeout = job['timeout-minutes'];
     assert.ok(
