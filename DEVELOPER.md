@@ -1013,6 +1013,10 @@ the record parser but does not require a hypothetical remaining forward budget,
 so supported bounded older journals remain recoverable. This is not whole-migration
 pre-approval admission: callers still need real target, provenance and context
 bytes, complete observations and exact authorization.
+Path collisions and cleanup-directory membership use indexed proper parents,
+not repeated scans of every mutation for every directory. These are in-memory
+validation indexes, never cached filesystem observations; spelling, ordering,
+byte limits and recovery authorization remain unchanged.
 Ordinary updates now call `inspectReviewedUpdateCandidate` before issuing an
 eligible receipt or asking for approval. Normal and force candidates are admitted
 independently using their actual mutations, supplied conditions, complete journal

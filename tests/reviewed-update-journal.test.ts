@@ -8,7 +8,7 @@ import { FileSystemError } from '../src/domain/project/errors.js';
 import type { ProjectFileMutation, ProjectFileSnapshot } from '../src/adapters/filesystem/project-transaction.js';
 import {
   reviewedJournalLimits, captureJournalMutations, captureJournalPreconditions, storeJournalSnapshot,
-  measureReviewedJournal, encodeReviewedJournalHeader, encodeReviewedJournalFrame, parseReviewedJournalHeader,
+  measureReviewedJournal, encodeReviewedJournalHeader, encodeReviewedJournalFrame, parseReviewedJournalHeader, validateJournalPaths,
   type JournalPayload, type JournalBody, type StoredSnapshot, type StoredMutation
 } from '../src/adapters/filesystem/reviewed-update-journal.js';
 import { projectMutationLockPath } from '../src/adapters/filesystem/project-lock.js';
@@ -395,6 +395,78 @@ describe('exact finite byte and entry admission', () => {
 });
 
 describe('shared input and protocol guards', () => {
+  it('matches the serial non-reserved path collision oracle for both orders and Unicode aliases', () => {
+    const candidates = [
+      ['a'], ['A'], ['a', 'b'], ['a', 'B'], ['a-b'], ['a', 'b', 'c'],
+      ['cafe\u0301', 'file'], ['caf\u00e9', 'file']
+    ];
+    const priorFailure = (paths: string[][]): string | null => {
+      const files = new Set<string>(), spelling = new Map<string, string>();
+      for (const parts of paths) {
+        for (let count = 1; count <= parts.length; count++) {
+          const prefix = parts.slice(0, count).join('/'), identity = prefix.normalize('NFC').toLowerCase();
+          const prior = spelling.get(identity);
+          if (prior !== undefined && prior !== prefix) return `case-colliding inventory path: ${prefix}.`;
+          if (count < parts.length && files.has(identity)) return `file/directory inventory collision: ${prefix}.`;
+          spelling.set(identity, prefix);
+        }
+        const identity = parts.join('/').normalize('NFC').toLowerCase();
+        if (files.has(identity) || [...spelling.keys()].some(name => name.startsWith(`${identity}/`))) {
+          return `duplicate or overlapping mutation: ${parts.join('/')}.`;
+        }
+        files.add(identity);
+      }
+      return null;
+    };
+    for (const first of candidates) for (const second of candidates) {
+      const paths = [first, second];
+      const expected = priorFailure(paths);
+      let actual: string | null = null;
+      try { validateJournalPaths(paths); } catch (error) {
+        if (!(error instanceof FileSystemError)) throw error;
+        actual = error.message;
+      }
+      expect(actual, JSON.stringify(paths)).toBe(expected === null ? null : `Reviewed update transaction: ${expected}`);
+    }
+  });
+
+  it('matches serial cleanup-parent admission without treating files, siblings or aliases as proper parents', () => {
+    const mutations: StoredMutation[] = [
+      { type: 'write', pathParts: ['a', 'new', 'file'], original: { kind: 'missing' }, target: stored('new') },
+      { type: 'write', pathParts: ['a', 'existing'], original: stored('old'), target: stored('new') },
+      { type: 'delete', pathParts: ['z', 'old'], original: stored('old'), target: { kind: 'missing' } }
+    ];
+    const candidates = [
+      ['.liftoff'], ['a'], ['a', 'new'], ['a', 'new', 'file'], ['a', 'new', 'files'],
+      ['a-new'], ['A', 'new'], ['z'], ['z', 'old'], ['unrelated']
+    ];
+    for (const first of candidates) for (const second of candidates) {
+      const directories = [first, second], seen = new Set<string>();
+      let expected: string | null = null;
+      for (const parts of directories) {
+        const name = parts.join('/'), identity = name.normalize('NFC').toLowerCase();
+        if (seen.has(identity) || name !== '.liftoff' && !mutations.some(entry =>
+          entry.type === 'write' && entry.pathParts.join('/').startsWith(`${name}/`))) {
+          expected = 'invalid or duplicate directory cleanup inventory.';
+          break;
+        }
+        if (mutations.some(entry => entry.original.kind === 'file' && entry.pathParts.join('/').startsWith(`${name}/`))) {
+          expected = 'an original file cannot have an originally missing parent.';
+          break;
+        }
+        seen.add(identity);
+      }
+      const input = { ...payload(mutations), missingDirectories: directories };
+      const header = JSON.parse(oracleHeader(bodyFor(input)).toString('utf8'));
+      let actual: string | null = null;
+      try { parseReviewedJournalHeader(header, '/project', 'update', 'darwin'); } catch (error) {
+        if (!(error instanceof FileSystemError)) throw error;
+        actual = error.message;
+      }
+      expect(actual, JSON.stringify(directories)).toBe(expected === null ? null : `Reviewed update transaction: ${expected}`);
+    }
+  });
+
   it('captures real Buffer bytes without executing valueOf, iterator or constructor hooks', () => {
     const bytes = Buffer.from('actual');
     const hook = vi.fn(() => Buffer.from('replacement'));

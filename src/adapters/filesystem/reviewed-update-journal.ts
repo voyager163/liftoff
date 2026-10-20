@@ -229,6 +229,7 @@ export function captureJournalRepairIdentity(value: unknown): RepairExecutionIde
 
 export function validateJournalPaths(paths: readonly string[][]): void {
   const files = new Set<string>();
+  const directories = new Set<string>();
   const spelling = new Map<string, string>();
   for (const parts of [
     ...paths,
@@ -242,11 +243,14 @@ export function validateJournalPaths(paths: readonly string[][]): void {
       const identity = folded(prefix);
       const prior = spelling.get(identity);
       if (prior !== undefined && prior !== prefix) fail(`case-colliding inventory path: ${prefix}.`);
-      if (count < parts.length && files.has(identity)) fail(`file/directory inventory collision: ${prefix}.`);
+      if (count < parts.length) {
+        if (files.has(identity)) fail(`file/directory inventory collision: ${prefix}.`);
+        directories.add(identity);
+      }
       spelling.set(identity, prefix);
     }
     const identity = folded(key(parts));
-    if (files.has(identity) || [...spelling.keys()].some((name) => name.startsWith(`${identity}/`))) {
+    if (files.has(identity) || directories.has(identity)) {
       fail(`duplicate or overlapping mutation: ${key(parts)}.`);
     }
     files.add(identity);
@@ -311,12 +315,20 @@ function parsePayload(value: unknown, platform: NodeJS.Platform): JournalPayload
   validateJournalInventory(mutations);
   const missingDirectories = array(value.missingDirectories, reviewedJournalLimits.missingDirectories,
     'unsupported, wrong-project, or oversized recovery journal.').map(journalPathParts);
+  const writeParents = new Set<string>(), originalParents = new Set<string>();
+  for (const mutation of mutations) {
+    let parent = '';
+    for (const part of mutation.pathParts.slice(0, -1)) {
+      parent = parent ? `${parent}/${part}` : part;
+      if (mutation.type === 'write') writeParents.add(parent);
+      if (mutation.original.kind === 'file') originalParents.add(parent);
+    }
+  }
   const seen = new Set<string>();
   for (const parts of missingDirectories) {
     const name = key(parts);
-    if (seen.has(folded(name)) || name !== '.liftoff' && !mutations.some((entry) =>
-      entry.type === 'write' && key(entry.pathParts).startsWith(`${name}/`))) fail('invalid or duplicate directory cleanup inventory.');
-    if (mutations.some((entry) => entry.original.kind === 'file' && key(entry.pathParts).startsWith(`${name}/`))) {
+    if (seen.has(folded(name)) || name !== '.liftoff' && !writeParents.has(name)) fail('invalid or duplicate directory cleanup inventory.');
+    if (originalParents.has(name)) {
       fail('an original file cannot have an originally missing parent.');
     }
     seen.add(folded(name));

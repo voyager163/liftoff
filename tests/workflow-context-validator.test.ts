@@ -207,9 +207,16 @@ describe('release-owned real context validator bodies, not phase qualification',
 
   it.each(['case-sensitive worker', 'case-insensitive host'] as const)(
     'preserves a defined Path-only %s in actual workload options without claiming native Windows execution', async model => {
-    const value = await fixture('', false, 'manual', 'go-huma');
-    const ambient = process.env, actualPath = ambient.PATH ?? ambient.Path;
-    if (!actualPath) throw new Error('The Path-only workload regression requires an actual tool search path.');
+    const value = await fixture('', false, 'manual', 'node-fastify');
+    const planned = await planModernLocalRuntime(await inspectModernLocalRuntime(value.root));
+    const check = planned.localPlan?.checks.find(candidate => candidate.id === 'backend-tests');
+    if (!check) throw new Error('The Path-only workload regression requires its actual backend check.');
+    const npm = (await observeModernLocalTools(value.root, [check], [])).find(tool => tool.id === 'npm');
+    if (!npm?.prefixArgs[0]) throw new Error('The Path-only workload regression requires an actual inspected npm entry point.');
+    const ambient = process.env, ambientPath = ambient.PATH ?? ambient.Path;
+    if (!ambientPath) throw new Error('The Path-only workload regression requires an actual tool search path.');
+    // The cross-platform inspector needs the real CLI directory, not just a POSIX npm shim.
+    const actualPath = [ambientPath, path.dirname(npm.prefixArgs[0])].join(path.delimiter);
     const workerEnvironment: NodeJS.ProcessEnv = { ...ambient, Path: actualPath };
     delete workerEnvironment.PATH;
     const observations: { pathPreserved: boolean; targetVisible: boolean }[] = [];
