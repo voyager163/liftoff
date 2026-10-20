@@ -604,6 +604,9 @@ export function checkLinuxKernelKvmQualificationJob(job) {
   assert.equal(job.steps.at(-1).if, independentStepCondition);
   assert.equal(job.steps.at(-1).with['if-no-files-found'], 'error');
   assert.equal(job.steps.at(-1).with['retention-days'], 14);
+  assert.ok(job.steps[6].run.includes(
+    'tar --no-same-owner --same-permissions -xf /inputs/linux-4.18.tar -C /build/source'),
+  'Unprivileged kernel extraction must preserve every authenticated source mode.');
   const evidence = job.steps.at(-1).with.path.split(/\r?\n/);
   for (const name of ['linux-4.18.tar.xz', 'linux-4.18.tar.sign', 'kernel-COPYING',
     'check-linux-kernel-source.py', 'Kernel.Dockerfile', 'ci-workflow.yml']) {

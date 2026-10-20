@@ -72,6 +72,25 @@ class LinuxKernelSourceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "inventory differs"):
             self.observe()
 
+    def test_authenticated_group_write_modes_are_not_normalized(self):
+        members = []
+        with tarfile.open(str(self.archive), "r:") as archive:
+            for member in archive:
+                content = archive.extractfile(member).read() if member.isfile() else b""
+                if member.isdir() or member.isfile():
+                    member.mode |= 0o020
+                members.append((member, content))
+        with tarfile.open(str(self.archive), "w") as archive:
+            for member, content in members:
+                archive.addfile(member, io.BytesIO(content))
+        self.digest = hashlib.sha256(self.archive.read_bytes()).hexdigest()
+        self.source.chmod(0o775)
+        (self.source / "source.c").chmod(0o664)
+        (self.source / "build.sh").chmod(0o775)
+        result = self.observe()
+        self.assertEqual(result["inventory"][0]["mode"], 0o775)
+        self.assertEqual(next(row for row in result["inventory"] if row["path"] == "source.c")["mode"], 0o664)
+
     def test_missing_file(self):
         (self.source / "source.c").unlink()
         with self.assertRaisesRegex(ValueError, "inventory differs"):

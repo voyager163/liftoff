@@ -311,7 +311,7 @@ jobs:
             --mount "type=bind,source=$directory,target=/inputs,readonly" \
             --mount "type=bind,source=$directory/output,target=/output" "$image" /bin/bash -euxo pipefail -c '
               mkdir /build/source /build/output /build/tmp
-              tar --no-same-owner -xf /inputs/linux-4.18.tar -C /build/source
+              tar --no-same-owner --same-permissions -xf /inputs/linux-4.18.tar -C /build/source
               source_sha="$(cut -d " " -f 1 /inputs/authenticated-source.sha256)"
               python3 /inputs/check-linux-kernel-source.py /inputs/linux-4.18.tar /build/source/linux-4.18 "$source_sha" /output/source-before.json
               make -C /build/source/linux-4.18 O=/build/output ARCH=x86 defconfig

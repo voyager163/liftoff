@@ -328,7 +328,7 @@ describe('source repository setup policy', () => {
     expect(() => checkLinuxKernelKvmQualificationJob(workflow.jobs['qualify-linux-kvm-kernel'])).not.toThrow();
     expect((await readWorkflow('release.yml')).jobs['qualify-linux-kvm-kernel']).toBeUndefined();
   });
-  it.each(['missing', 'runner', 'timeout', 'permissions', 'conditional', 'source', 'runtime', 'skip', 'evidence', 'license', 'kernel-source'])(
+  it.each(['missing', 'runner', 'timeout', 'permissions', 'conditional', 'source', 'runtime', 'skip', 'evidence', 'license', 'kernel-source', 'source-modes'])(
     'refuses a weakened KVM diagnostic boundary: %s', async fault => {
       const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-linux-kvm-kernel'];
       if (fault === 'missing') delete workflow.jobs['qualify-linux-kvm-kernel'];
@@ -344,6 +344,7 @@ describe('source repository setup policy', () => {
         '${{ runner.temp }}/liftoff-kvm-kernel/kernel-COPYING', '');
       if (fault === 'kernel-source') job.steps.at(-1).with.path = job.steps.at(-1).with.path.replace(
         '${{ runner.temp }}/liftoff-kvm-kernel/linux-4.18.tar.xz', '');
+      if (fault === 'source-modes') job.steps[6].run = job.steps[6].run.replace('--same-permissions ', '');
       expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
     });
   it.each(['qualify-native-bundle', 'qualify-native-platform-packages'])(
