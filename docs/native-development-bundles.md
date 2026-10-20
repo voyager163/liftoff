@@ -74,6 +74,14 @@ developer signature. Retain the actual trust-status warning rather than
 changing key ownertrust to suppress it. Despite the archive's `4.18` basename,
 the actual kernel reports `4.18.0`; use that exact observed version.
 
+Extract and build upstream kernels on a case-sensitive Linux filesystem, not
+a macOS bind-mounted source tree. Distinct upstream paths such as
+`net/netfilter/xt_TCPMSS.c` and `net/netfilter/xt_tcpmss.c` cannot survive a
+case-insensitive extraction unchanged. Signature verification authenticates the
+tar, not a lossy extraction. Compare the complete extracted paths, types, modes
+and file bytes with that authenticated tar before and after an out-of-tree build;
+retain those inventories separately from the resulting kernel observation.
+
 The bounded development probe used GCC 8.5 in the architecture-matched pinned
 Rocky 8 image from `nativeLinuxUserspaceImages` in
 `scripts/native-package-report.mjs`. In a disposable compiler container, install
@@ -369,6 +377,11 @@ CI writes this receipt under the runner's temporary directory, outside the
 checkout, so it cannot dirty the source before native archive handoff.
 This reproducibility check does not qualify Windows execution, minimum hosts,
 signing or public distribution.
+The separate inline/private-file compiler-reference controls run stock Windows
+PowerShell in a verified Job Object with a private working and temporary directory.
+Their target execution budget remains fifteen seconds. The existing controller
+startup and settlement budgets are separate and unchanged. The controls require
+proven descendant settlement rather than killing only the parent PowerShell process.
 Linux cases exercise the actual bundle's isolated owned installation/recovery and
 test-only Ed25519 bootstrap authentication using OpenSSL 3.0 or newer with Ed25519
 support on the invoking host. Linux qualification additionally requires
