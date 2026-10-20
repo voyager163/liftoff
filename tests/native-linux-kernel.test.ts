@@ -88,7 +88,7 @@ describe('emulated Linux kernel observation contract', () => {
     expect(assertLinuxKernelGuestTranscript(value.transcript(), value.expected)).toEqual(before);
     expect(value.report).toEqual(before);
   });
-  it.each(['4.18', '4.18.20'])('binds an explicit %s HVF observation without native-host or release qualification', kernelVersion => {
+  it.each(['4.18.0', '4.18.20'])('binds an explicit %s HVF observation without native-host or release qualification', kernelVersion => {
     const value = fixture();
     value.report.observed.osVersion = kernelVersion;
     value.report.emulated = false;
@@ -100,17 +100,17 @@ describe('emulated Linux kernel observation contract', () => {
     expect(value.report.publicDistributionQualified).toBe(false);
     expect(() => assertLinuxKernelGuestTranscript(value.transcript(), { ...expected, accelerator: 'tcg' })).toThrow();
     expect(() => assertLinuxKernelGuestTranscript(value.transcript(), {
-      ...expected, kernelVersion: kernelVersion === '4.18' ? '4.18.20' : '4.18'
+      ...expected, kernelVersion: kernelVersion === '4.18.0' ? '4.18.20' : '4.18.0'
     })).toThrow();
     value.report.emulated = true;
     expect(() => assertLinuxKernelGuestTranscript(value.transcript(), expected)).toThrow();
   });
   it('does not reinterpret an original 4.18.20 TCG report as the exact floor or a hardware observation', () => {
     const value = fixture();
-    expect(() => assertLinuxKernelGuestTranscript(value.transcript(), { ...value.expected, kernelVersion: '4.18' })).toThrow();
+    expect(() => assertLinuxKernelGuestTranscript(value.transcript(), { ...value.expected, kernelVersion: '4.18.0' })).toThrow();
     expect(() => assertLinuxKernelGuestTranscript(value.transcript(), { ...value.expected, accelerator: 'hvf' })).toThrow();
     for (const expected of [
-      { ...value.expected, kernelVersion: '4.18.0' },
+      { ...value.expected, kernelVersion: '4.18' },
       { ...value.expected, kernelVersion: 'latest' },
       { ...value.expected, accelerator: 'auto' },
       { ...value.expected, accelerator: 'kvm' },
@@ -247,12 +247,12 @@ describe('emulated Linux kernel observation contract', () => {
     expect(parseLinuxKernelGuestOptions(positional)).toEqual({ kernelVersion: '4.18.20', accelerator: 'tcg', qemu: null });
     const qemu = path.resolve(cwd, 'QEMU with spaces');
     for (const flags of [
-      ['--kernel-version', '4.18', '--hvf-qemu', qemu],
-      ['--hvf-qemu', qemu, '--kernel-version', '4.18']
-    ]) expect(parseLinuxKernelGuestOptions([...positional, ...flags])).toEqual({ kernelVersion: '4.18', accelerator: 'hvf', qemu });
+      ['--kernel-version', '4.18.0', '--hvf-qemu', qemu],
+      ['--hvf-qemu', qemu, '--kernel-version', '4.18.0']
+    ]) expect(parseLinuxKernelGuestOptions([...positional, ...flags])).toEqual({ kernelVersion: '4.18.0', accelerator: 'hvf', qemu });
     for (const flags of [
-      ['--kernel-version'], ['--kernel-version', '4.18.0'], ['--kernel-version', 'latest'],
-      ['--kernel-version', '4.18', '--kernel-version', '4.18.20'], ['--hvf-qemu', 'relative'],
+      ['--kernel-version'], ['--kernel-version', '4.18'], ['--kernel-version', 'latest'],
+      ['--kernel-version', '4.18.0', '--kernel-version', '4.18.20'], ['--hvf-qemu', 'relative'],
       ['--hvf-qemu', qemu, '--hvf-qemu', qemu], ['--accel', 'tcg'], ['--unknown', 'value']
     ]) expect(() => parseLinuxKernelGuestOptions([...positional, ...flags])).toThrow();
   });

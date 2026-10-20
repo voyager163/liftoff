@@ -12,7 +12,7 @@ import { verifyWindowsJobControllerAsset } from '/liftoff/application/dist/adapt
 
 const expected = JSON.parse(await readFile('/guest-input.json', 'utf8'));
 const kernelVersion = expected.kernelVersion ?? '4.18.20', accelerator = expected.accelerator ?? 'tcg';
-assert.ok(['4.18', '4.18.20'].includes(kernelVersion));
+assert.ok(['4.18.0', '4.18.20'].includes(kernelVersion));
 assert.ok(['tcg', 'hvf'].includes(accelerator));
 assert.ok(accelerator !== 'hvf' || expected.architecture === 'arm64');
 assert.equal(process.getuid(), 1000);

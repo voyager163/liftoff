@@ -118,7 +118,7 @@ Depends on 2-5. References: design D3; liftoff-native-distribution, liftoff-npm-
   to explicit kernel digests and pinned glibc 2.28 userspace, retaining complete
   planning/install/recovery observations. Its default QEMU TCG execution remains
   explicitly emulated. An explicit Apple Silicon ARM64 HVF-only mode has no TCG
-  fallback, and either mode can select the exact 4.18 kernel instead of 4.18.20.
+  fallback, and either mode can select the exact 4.18.0 kernel instead of 4.18.20.
   These bounded observations do not qualify the complete native minimum-host
   matrix, kernel source/build authenticity, archive signing, bootstrap
   compatibility or publication; task 9.5 remains incomplete.

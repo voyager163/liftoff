@@ -32,7 +32,7 @@ dylibs. A hosted modern-OS run cannot establish these minimum-host requirements.
 `scripts/native-linux-kernel.mjs` runs a development archive in an isolated
 Linux guest, rather than substituting the Docker daemon's newer kernel.
 The default remains **TCG-emulated Linux 4.18.20**. Explicit options also select
-the exact Linux 4.18 floor and, on native Apple Silicon macOS only, a
+the exact Linux 4.18.0 floor and, on native Apple Silicon macOS only, a
 hardware-accelerated ARM64 guest using Apple Hypervisor Framework (HVF).
 Every mode is a contributor diagnostic, not a complete native-host qualification,
 signature verifier, installer bootstrap test or public release gate. It does not
@@ -71,8 +71,8 @@ Its signer is **Linus Torvalds**, not the stable-series signer:
 against kernel.org, obtain the key through its TLS-protected WKD, and verify the
 uncompressed tar before extraction. Do not substitute a checksum for the
 developer signature. Retain the actual trust-status warning rather than
-changing key ownertrust to suppress it. The kernel reports its version as
-`4.18`, not `4.18.0`.
+changing key ownertrust to suppress it. Despite the archive's `4.18` basename,
+the actual kernel reports `4.18.0`; use that exact observed version.
 
 The bounded development probe used GCC 8.5 in the architecture-matched pinned
 Rocky 8 image from `nativeLinuxUserspaceImages` in
@@ -124,19 +124,19 @@ as the invoking unprivileged UID, has no network or writable host mounts, and
 is limited to two CPUs, 3 GiB and a 14-minute guest deadline.
 
 To run the exact floor with hardware acceleration, prepare an independently
-authenticated ARM64 4.18 image using the same config-only recipe and select an
+authenticated ARM64 4.18.0 image using the same config-only recipe and select an
 existing **QEMU 11.1.2** executable:
 
 ```sh
 node scripts/native-linux-kernel.mjs \
   /absolute/qualified-native-arm64-archive-directory \
   <original-release-manifest-sha256> <original-clean-commit> \
-  /absolute/authenticated-4.18-Image <independently-established-kernel-sha256> \
+  /absolute/authenticated-4.18.0-Image <independently-established-kernel-sha256> \
   /absolute/outside-checkout/new-hvf-evidence \
-  --kernel-version 4.18 --hvf-qemu /absolute/qemu-system-aarch64
+  --kernel-version 4.18.0 --hvf-qemu /absolute/qemu-system-aarch64
 ```
 
-Both options are explicit; `--kernel-version 4.18` can also be used with TCG.
+Both options are explicit; `--kernel-version 4.18.0` can also be used with TCG.
 The reader compares the actual guest kernel version with the selected version,
 so an old 4.18.20 report cannot qualify the exact floor. HVF refuses Linux,
 Windows, Intel/translated macOS processes and x64 guests. It resolves and hashes

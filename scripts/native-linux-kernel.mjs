@@ -17,7 +17,7 @@ const digestPattern = /^[a-f0-9]{64}$/;
 
 export function parseLinuxKernelGuestOptions(args) {
   assert.ok(args.length >= 6 && (args.length - 6) % 2 === 0,
-    'Usage: native-linux-kernel.mjs <native-archive-directory> <release-manifest-sha256> <commit> <kernel-image> <kernel-sha256> <new-output> [--kernel-version 4.18|4.18.20] [--hvf-qemu /absolute/qemu-system-aarch64]');
+    'Usage: native-linux-kernel.mjs <native-archive-directory> <release-manifest-sha256> <commit> <kernel-image> <kernel-sha256> <new-output> [--kernel-version 4.18.0|4.18.20] [--hvf-qemu /absolute/qemu-system-aarch64]');
   const options = { kernelVersion: '4.18.20', accelerator: 'tcg', qemu: null };
   const seen = new Set();
   for (let index = 6; index < args.length; index += 2) {
@@ -25,7 +25,7 @@ export function parseLinuxKernelGuestOptions(args) {
     assert.ok(!seen.has(flag), 'Duplicate guest option.');
     seen.add(flag);
     if (flag === '--kernel-version') {
-      assert.ok(['4.18', '4.18.20'].includes(value), 'Unsupported guest kernel version.');
+      assert.ok(['4.18.0', '4.18.20'].includes(value), 'Unsupported guest kernel version.');
       options.kernelVersion = value;
     } else if (flag === '--hvf-qemu') {
       assert.ok(path.isAbsolute(value), 'An absolute HVF QEMU executable is required.');
@@ -61,7 +61,7 @@ export function assertLinuxKernelImage(bytes, architecture) {
 
 export function assertLinuxKernelGuestTranscript(stdout, expected) {
   const kernelVersion = expected.kernelVersion ?? '4.18.20', accelerator = expected.accelerator ?? 'tcg';
-  assert.ok(['4.18', '4.18.20'].includes(kernelVersion), 'Unsupported guest kernel version.');
+  assert.ok(['4.18.0', '4.18.20'].includes(kernelVersion), 'Unsupported guest kernel version.');
   assert.ok(['tcg', 'hvf'].includes(accelerator), 'Unsupported guest accelerator.');
   assert.ok(accelerator !== 'hvf' || expected.architecture === 'arm64', 'HVF requires an ARM64 guest.');
   assert.match(expected.commit ?? '', /^[a-f0-9]{40}$/);
