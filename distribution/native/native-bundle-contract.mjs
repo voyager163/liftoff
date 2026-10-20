@@ -184,20 +184,41 @@ export async function bundleInventory(directory, limits = nativeBundleLimits) {
   async function visit(parts) {
     assert.ok(parts.length <= limits.depth, 'Bundle exceeds its depth limit.');
     const names = (await readdir(path.join(root, ...parts))).sort();
+    let files = [];
+    async function flushFiles() {
+      const batch = files;
+      files = [];
+      const captured = await Promise.allSettled(batch.map(entry => bundleFile(entry.file, limits.fileBytes)));
+      for (const [index, result] of captured.entries()) {
+        if (result.status === 'rejected') throw result.reason;
+        totalBytes += result.value.bytes;
+        assert.ok(totalBytes <= limits.totalBytes, 'Bundle exceeds its total byte limit.');
+        entries.push({ path: batch[index].relative, kind: 'file', ...result.value });
+      }
+    }
     for (const name of names) {
       if (parts.length === 0 && name === 'bundle.json') continue;
-      const relative = bundlePath([...parts, name].join('/'));
-      const alias = relative.normalize('NFC').toLowerCase();
-      assert.ok(!aliases.has(alias), `Case or Unicode alias in bundle: ${relative}`);
-      aliases.add(alias);
-      assert.ok(aliases.size <= limits.entries, 'Bundle exceeds its entry limit.');
-      const file = path.join(root, ...parts, name);
-      const stat = await lstat(file);
+      let relative, file, stat;
+      try {
+        relative = bundlePath([...parts, name].join('/'));
+        const alias = relative.normalize('NFC').toLowerCase();
+        assert.ok(!aliases.has(alias), `Case or Unicode alias in bundle: ${relative}`);
+        aliases.add(alias);
+        assert.ok(aliases.size <= limits.entries, 'Bundle exceeds its entry limit.');
+        file = path.join(root, ...parts, name);
+        stat = await lstat(file);
+      } catch (error) {
+        // An earlier file refusal still precedes a later traversal refusal.
+        await flushFiles();
+        throw error;
+      }
       if (stat.isDirectory()) {
+        await flushFiles();
         assert.equal(stat.mode & 0o7000, 0, 'Native directory cannot have special permission bits.');
         entries.push({ path: relative, kind: 'directory', mode: stat.mode & 0o777 });
         await visit([...parts, name]);
       } else if (stat.isSymbolicLink()) {
+        await flushFiles();
         const target = await readlink(file);
         assert.ok(!path.isAbsolute(target) && !target.includes('\\') && !/[\u0000-\u001f]/.test(target),
           `Bundle link must have a relative portable target: ${relative}`);
@@ -205,12 +226,11 @@ export async function bundleInventory(directory, limits = nativeBundleLimits) {
         contained(root, await realpath(file));
         entries.push({ path: relative, kind: 'symlink', target });
       } else {
-        const identity = await bundleFile(file, limits.fileBytes);
-        totalBytes += identity.bytes;
-        assert.ok(totalBytes <= limits.totalBytes, 'Bundle exceeds its total byte limit.');
-        entries.push({ path: relative, kind: 'file', ...identity });
+        files.push({ relative, file });
+        if (files.length === 4) await flushFiles();
       }
     }
+    await flushFiles();
   }
   await visit([]);
   return {

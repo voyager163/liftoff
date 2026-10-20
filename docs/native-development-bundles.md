@@ -230,6 +230,13 @@ source correspondence, current builder inputs and the complete dependency/notice
 Rebuild development bundles after changing the builder or its pinned policy. It does not
 execute the bundle or authenticate the recorded Git revision.
 
+Each inventory freshly reads every regular file in batches of at most four.
+Directory and symlink boundaries drain the preceding files before traversal continues.
+The original sorted depth-first entries, digest, limits and physical-file checks remain
+unchanged. A failed batch settles every started read and reports the first refusal in
+inventory order before another batch can start; earlier queued files also settle before
+a later traversal refusal is reported. No previous inventory is reused as current evidence.
+
 Windows uses the same builder, official pinned `win-x64.zip` and private
 `runtime/node.exe`. Compile `distribution/windows/launcher.c` in a native x64
 MSVC developer shell with `/W4 /WX /O2 /MT`, placing object/executable outputs

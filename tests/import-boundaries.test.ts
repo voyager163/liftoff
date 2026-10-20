@@ -1448,7 +1448,7 @@ const nativeContractFiles = [
   'distribution/native/native-bundle-contract.d.mts'
 ];
 const nativeCaskSourceSha256 = '56f1224c5d48ea92b27c15eb690ed2b371127fe1dc327ad3d44d964afc2b33e5';
-const nativeContractSourceSha256 = 'de05632e792cb7fa0b1c22449730f06a8a08131e180454d14c674336d4599df0';
+const nativeContractSourceSha256 = '5660626a6fc2757013becd9b4a8e299a9a6f3d20731370500d1053261d0715b3';
 
 function exactStaticHelperBindings(
   context: ModuleLoadingContext, file: string, specifier: string, names: readonly string[]
