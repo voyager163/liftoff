@@ -114,6 +114,11 @@ refusal, and interrupted private development installation/recovery. Public
 installation must still refuse. A zero QEMU/container exit alone is insufficient:
 the host reader requires one complete report, exact input identities, every plan,
 successful guest status, entropy initialization and shutdown.
+The complete JSON report is losslessly gzip/base64 encoded in a frame of at most
+7 KiB, with a 1 MiB decompression limit. This keeps repeated planning output below
+the observed x64 serial interrupt workload boundary without dropping observations
+or suppressing kernel diagnostics. Broken, oversized or interleaved frames fail;
+the original console bytes are retained, not repaired or normalized.
 
 `report.json` retains the full observations with `emulated: true`,
 `kernelAuthenticatedByRunner: false`, `qualifiedNativeHost: false` and

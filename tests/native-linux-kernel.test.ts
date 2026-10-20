@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 import {
   assertLinuxKernelGuestContainerIdentity, assertLinuxKernelGuestTranscript,
   assertLinuxKernelImage, linuxKernelGuestArguments, runLinuxKernelGuest
@@ -45,7 +46,8 @@ function fixture(architecture: 'arm64' | 'x64' = 'arm64') {
   };
   const transcript = () => [
     '[4.0] random: crng init done', 'LIFTOFF_GUEST_INIT=started',
-    `LIFTOFF_GUEST_REPORT=${JSON.stringify(report)}`, 'LIFTOFF_GUEST_EXIT=0', '[100.0] reboot: Power down', ''
+    `LIFTOFF_GUEST_REPORT_GZIP=${gzipSync(JSON.stringify(report), { level: 9 }).toString('base64')}`,
+    'LIFTOFF_GUEST_EXIT=0', '[100.0] reboot: Power down', ''
   ].join('\r\n');
   return { expected, report, transcript };
 }
@@ -85,11 +87,11 @@ describe('emulated Linux kernel observation contract', () => {
     expect(assertLinuxKernelGuestTranscript(value.transcript(), value.expected)).toEqual(before);
     expect(value.report).toEqual(before);
   });
-  it.each(['', 'LIFTOFF_GUEST_EXIT=0\n', 'LIFTOFF_GUEST_REPORT={}\n'])(
+  it.each(['', 'LIFTOFF_GUEST_EXIT=0\n', 'LIFTOFF_GUEST_REPORT_GZIP={}\n'])(
     'refuses absent or summary-only observations %j', transcript => {
       expect(() => assertLinuxKernelGuestTranscript(transcript, fixture().expected)).toThrow();
     });
-  it.each(['LIFTOFF_GUEST_REPORT=', 'LIFTOFF_GUEST_INIT=', 'LIFTOFF_GUEST_EXIT='])(
+  it.each(['LIFTOFF_GUEST_REPORT_GZIP=', 'LIFTOFF_GUEST_INIT=', 'LIFTOFF_GUEST_EXIT='])(
     'rejects missing and duplicate %s markers', prefix => {
       const value = fixture(), line = value.transcript().split('\r\n').find(entry => entry.startsWith(prefix))!;
       expect(() => assertLinuxKernelGuestTranscript(value.transcript().replace(line, ''), value.expected)).toThrow();
@@ -125,11 +127,32 @@ describe('emulated Linux kernel observation contract', () => {
     for (const [from, to] of [
       ['LIFTOFF_GUEST_EXIT=0', 'LIFTOFF_GUEST_EXIT=1'],
       ['random: crng init done', 'random: uninitialized'],
-      ['reboot: Power down', 'reboot: failed'], ['glibc:2.28-', 'glibc:2.29-'],
-      ['libstdc++:8.5.0-', 'libstdc++:9.0.0-']
+      ['reboot: Power down', 'reboot: failed']
     ]) {
       const value = fixture();
       expect(() => assertLinuxKernelGuestTranscript(value.transcript().replace(from, to), value.expected)).toThrow();
+    }
+    for (const libraries of [
+      ['glibc:2.29-251.aarch64', 'libstdc++:8.5.0-22.aarch64'],
+      ['glibc:2.28-251.aarch64', 'libstdc++:9.0.0-22.aarch64']
+    ]) {
+      const value = fixture();
+      value.report.libraries = libraries;
+      expect(() => assertLinuxKernelGuestTranscript(value.transcript(), value.expected)).toThrow();
+    }
+  });
+  it('bounds the actual encoded report and refuses broken, noncanonical and oversized compressed frames', () => {
+    const value = fixture();
+    const prefix = 'LIFTOFF_GUEST_REPORT_GZIP=';
+    const frame = value.transcript().split('\r\n').find(line => line.startsWith(prefix))!;
+    const encoded = frame.slice(prefix.length);
+    expect(encoded.length).toBeLessThanOrEqual(7168);
+    for (const replacement of [
+      '', 'a'.repeat(7169), encoded + ' ', 'not-gzip',
+      gzipSync('not json').toString('base64'),
+      gzipSync('"'+ 'x'.repeat(1024 * 1024) + '"').toString('base64')
+    ]) {
+      expect(() => assertLinuxKernelGuestTranscript(value.transcript().replace(frame, prefix + replacement), value.expected)).toThrow();
     }
   });
   it.each(['arm64', 'x64'] as const)('fixes bounded, network-free %s emulation without KVM/native claims', architecture => {

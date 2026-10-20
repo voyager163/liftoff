@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
+import { gzipSync } from 'node:zlib';
 import { assertNativeHost, observeNativeHost } from '/liftoff/installation/host.mjs';
 import { bundleFile, bundleInventory } from '/liftoff/installation/native-bundle-contract.mjs';
 import { installOwnedBundle, inspectOwnedInstallation, recoverOwnedInstallation } from '/liftoff/installation/native-install.mjs';
@@ -79,11 +80,14 @@ await recoverOwnedInstallation({
 assert.equal(await inspectOwnedInstallation(prefix), null);
 assert.deepEqual(await bundleInventory('/liftoff'), manifest.inventory);
 assert.equal(digest(await readFile('/liftoff/bundle.json')), expected.manifestSha256);
-console.log('LIFTOFF_GUEST_REPORT=' + JSON.stringify({
+const report = {
   kind: 'liftoff-linux-kernel-guest-probe', observed, version, libraries, plans,
   manifestSha256: expected.manifestSha256, commit: expected.commit,
   inventorySha256: manifest.inventory.sha256, uid: process.getuid(), gid: process.getgid(),
   bundleReadOnly: true, kernelExecution: true, emulated: true, developmentInstallRecovered: true,
   controllerResolved: true, hclExecuted: false, hclQualifiedRuntimeRefused: true,
   publicInstallationRefused: true, minimumHostQualified: false, publicDistributionQualified: false
-}));
+};
+const encoded = gzipSync(JSON.stringify(report), { level: 9 }).toString('base64');
+assert.ok(encoded.length <= 7168, 'Guest report exceeds the bounded serial frame.');
+console.log('LIFTOFF_GUEST_REPORT_GZIP=' + encoded);

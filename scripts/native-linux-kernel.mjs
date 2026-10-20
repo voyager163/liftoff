@@ -5,6 +5,7 @@ import { copyFile, mkdir, readFile, realpath, writeFile } from 'node:fs/promises
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 import { bundleFile, readBundleFile } from './native-bundle-contract.mjs';
 import { verifyNativeArchiveSubjects } from './native-release.mjs';
 import { nativeLinuxUserspaceImages } from './native-package-report.mjs';
@@ -31,11 +32,16 @@ export function assertLinuxKernelGuestTranscript(stdout, expected) {
   assert.ok(['x64', 'arm64'].includes(expected.architecture));
   assert.match(expected.version ?? '', /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/);
   const lines = stdout.split(/\r?\n/);
-  const reportLines = lines.filter(line => line.startsWith('LIFTOFF_GUEST_REPORT='));
+  const prefix = 'LIFTOFF_GUEST_REPORT_GZIP=';
+  const reportLines = lines.filter(line => line.startsWith(prefix));
   assert.equal(reportLines.length, 1, 'Exactly one complete guest report is required.');
   assert.deepEqual(lines.filter(line => line.startsWith('LIFTOFF_GUEST_INIT=')), ['LIFTOFF_GUEST_INIT=started']);
   assert.deepEqual(lines.filter(line => line.startsWith('LIFTOFF_GUEST_EXIT=')), ['LIFTOFF_GUEST_EXIT=0']);
-  const report = JSON.parse(reportLines[0].slice('LIFTOFF_GUEST_REPORT='.length));
+  const encoded = reportLines[0].slice(prefix.length);
+  assert.ok(encoded.length > 0 && encoded.length <= 7168, 'Guest serial frame exceeds its bound.');
+  const compressed = Buffer.from(encoded, 'base64');
+  assert.equal(compressed.toString('base64'), encoded, 'Guest serial encoding is not canonical.');
+  const report = JSON.parse(gunzipSync(compressed, { maxOutputLength: 1024 * 1024 }).toString('utf8'));
   assert.equal(report.kind, 'liftoff-linux-kernel-guest-probe');
   assert.deepEqual(report.observed, {
     platform: 'linux', architecture: expected.architecture, runtimeVersion: '24.21.0',
