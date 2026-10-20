@@ -236,6 +236,8 @@ The original sorted depth-first entries, digest, limits and physical-file checks
 unchanged. A failed batch settles every started read and reports the first refusal in
 inventory order before another batch can start; earlier queued files also settle before
 a later traversal refusal is reported. No previous inventory is reused as current evidence.
+Injected scheduling controls use a distinct test-harness filename, so V8 does not merge
+their substituted dependencies or source ranges into the canonical packaged module's coverage.
 
 Windows uses the same builder, official pinned `win-x64.zip` and private
 `runtime/node.exe`. Compile `distribution/windows/launcher.c` in a native x64

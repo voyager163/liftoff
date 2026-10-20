@@ -43,7 +43,8 @@ async function inventoryWith(overrides: Partial<Dependencies> = {}) {
   const factory = compileFunction(`${source.slice(containedStart, containedEnd)}\n${
     source.slice(start, end).replace('\nexport async function', '\nasync function')
   }\nreturn bundleInventory;`, ['assert', 'path', 'createHash', 'lstat', 'realpath', 'readdir', 'readlink',
-    'bundleFile', 'bundlePath', 'nativeBundleLimits'], { filename: fileURLToPath(file) });
+    'bundleFile', 'bundlePath', 'nativeBundleLimits'],
+    { filename: `${fileURLToPath(import.meta.url)}.inventory-harness.mjs` });
   const dependencies: Dependencies = { lstat, realpath, readdir, readlink, bundleFile, ...overrides };
   const inventory: typeof bundleInventory = factory(assert, path, createHash, dependencies.lstat,
     dependencies.realpath, dependencies.readdir, dependencies.readlink, dependencies.bundleFile, bundlePath, nativeBundleLimits);
@@ -51,6 +52,16 @@ async function inventoryWith(overrides: Partial<Dependencies> = {}) {
 }
 
 describe('complete native bundle inventory file batches', () => {
+  it('keeps injected copies off the canonical packaged module coverage URL', async () => {
+    const { root } = await fixture(1);
+    const inventory = await inventoryWith();
+    const error: unknown = await inventory(root, { ...nativeBundleLimits, entries: 0 }).then(() => undefined, reason => reason);
+    expect(error).toBeInstanceOf(assert.AssertionError);
+    if (!(error instanceof Error)) throw new Error('The actual entry bound must refuse the fixture.');
+    expect(error.stack).toContain(`${fileURLToPath(import.meta.url)}.inventory-harness.mjs`);
+    expect(error.stack).not.toContain(fileURLToPath(new URL('../distribution/native/native-bundle-contract.mjs', import.meta.url)));
+  });
+
   it('retains every original depth-first entry, mode, byte identity and digest without inventorying the root manifest', async () => {
     const { root, files } = await fixture(5);
     await writeFile(path.join(root, 'bundle.json'), 'independently parsed manifest\n');
