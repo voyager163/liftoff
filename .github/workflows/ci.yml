@@ -226,7 +226,7 @@ jobs:
           qemu-system-x86_64 --version > "$RUNNER_TEMP/liftoff-kvm-kernel/host-qemu-version.stdout"
           qemu-system-x86_64 -accel help > "$RUNNER_TEMP/liftoff-kvm-kernel/host-qemu-accelerators.stdout"
           node --input-type=module <<'NODE'
-          import { lstat, readFile, writeFile } from 'node:fs/promises';
+          import { lstat, readFile, readlink, writeFile } from 'node:fs/promises';
           import os from 'node:os';
           import { assertLinuxKernelKvmHost, assertLinuxKernelKvmEmulator, linuxKernelKvmDeviceIdentity } from './scripts/native-linux-kernel.mjs';
           assertLinuxKernelKvmHost(process.platform, process.arch, 'x64');
@@ -234,7 +234,8 @@ jobs:
           const info = await lstat('/dev/kvm', { bigint: true });
           await writeFile(directory + 'device-before-access.json', JSON.stringify({
             host: { platform: process.platform, architecture: process.arch, nativeArchitecture: os.machine(),
-              kernel: os.release(), uid: process.getuid(), gid: process.getgid() },
+              kernel: os.release(), uid: process.getuid(), gid: process.getgid(),
+              mountNamespace: await readlink('/proc/self/ns/mnt') },
             characterDevice: info.isCharacterDevice(), device: info
           }, (key, value) => typeof value === 'bigint' ? value.toString() : value, 2) + '\n', { flag: 'wx' });
           assertLinuxKernelKvmEmulator(await readFile(directory + 'host-qemu-version.stdout', 'utf8'),
@@ -242,23 +243,27 @@ jobs:
           linuxKernelKvmDeviceIdentity(info);
           NODE
           getfacl --absolute-names /dev/kvm > "$RUNNER_TEMP/liftoff-kvm-kernel/device-before-access.stdout"
+          udevadm info --query=property --name=/dev/kvm > "$RUNNER_TEMP/liftoff-kvm-kernel/device-before-access-udev.stdout"
           kvm_gid="$(stat --format=%g /dev/kvm)"
           [[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]
           test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"
-          sudo --non-interactive --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY,HOME -- /usr/bin/setpriv --reuid="$(id -u)" --regid="$kvm_gid" --init-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- "$(command -v node)" --input-type=module - "$RUNNER_TEMP/liftoff-kvm-kernel" <<'NODE'
+          sudo --non-interactive --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY,HOME -- /bin/bash scripts/native-linux-kvm-namespace.sh "$(id -u)" "$kvm_gid" "$(command -v node)" --input-type=module - "$RUNNER_TEMP/liftoff-kvm-kernel" <<'NODE'
           import assert from 'node:assert/strict';
-          import { readFile, writeFile } from 'node:fs/promises';
+          import { readFile, readlink, writeFile } from 'node:fs/promises';
           import { captureLinuxKernelKvmDevice } from './scripts/native-linux-kernel.mjs';
           const directory = process.argv[2];
           const before = JSON.parse(await readFile(directory + '/device-before-access.json', 'utf8'));
           assert.notEqual(process.getuid(), 0, 'KVM device capture must not execute as root.');
           assert.equal(process.getuid(), before.host.uid, 'KVM preparation must retain the invoking user.');
+          const mountNamespace = await readlink('/proc/self/ns/mnt');
+          assert.notEqual(mountNamespace, before.host.mountNamespace, 'KVM capture requires a private mount namespace.');
           const device = await captureLinuxKernelKvmDevice();
           assert.equal(String(process.getgid()), device.gid, 'KVM preparation requires the existing device group.');
           await writeFile(directory + '/device-after-access.json',
             JSON.stringify(device, null, 2) + '\n', { flag: 'wx' });
           await writeFile(directory + '/execution-identity.json', JSON.stringify({
-            uid: process.getuid(), gid: process.getgid(), groups: process.getgroups()
+            uid: process.getuid(), gid: process.getgid(), groups: process.getgroups(),
+            mountNamespace, deviceScope: 'private-mount-namespace'
           }, null, 2) + '\n', { flag: 'wx' });
           NODE
       - name: Authenticate the original Linux 4.18 source before extraction
@@ -294,9 +299,10 @@ jobs:
           sha256sum "$directory/linux-4.18.tar" > "$directory/authenticated-source.sha256"
           tar -xOf "$directory/linux-4.18.tar" linux-4.18/COPYING > "$directory/kernel-COPYING"
           cp scripts/check-linux-kernel-source.py "$directory/check-linux-kernel-source.py"
+          cp scripts/native-linux-kvm-namespace.sh "$directory/native-linux-kvm-namespace.sh"
           cp distribution/linux/qualification/Kernel.Dockerfile "$directory/Kernel.Dockerfile"
           cp .github/workflows/ci.yml "$directory/ci-workflow.yml"
-          sha256sum scripts/check-linux-kernel-source.py distribution/linux/qualification/Kernel.Dockerfile \
+          sha256sum scripts/check-linux-kernel-source.py scripts/native-linux-kvm-namespace.sh distribution/linux/qualification/Kernel.Dockerfile \
             > "$directory/builder-source.sha256"
       - name: Build the exact floor in a bounded case-sensitive compiler container
         shell: bash
@@ -356,7 +362,7 @@ jobs:
           kvm_gid="$(node --input-type=module -e 'import { readFileSync } from "node:fs"; console.log(JSON.parse(readFileSync(process.env.RUNNER_TEMP + "/liftoff-kvm-kernel/device-after-access.json")).gid)')"
           [[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]
           test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"
-          sudo --non-interactive --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY,HOME -- /usr/bin/setpriv --reuid="$(id -u)" --regid="$kvm_gid" --init-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- "$(command -v node)" scripts/native-linux-kernel.mjs "$RUNNER_TEMP/liftoff-kvm-archive" "$manifest_sha" "$(git rev-parse HEAD)" \
+          sudo --non-interactive --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY,HOME -- /bin/bash scripts/native-linux-kvm-namespace.sh "$(id -u)" "$kvm_gid" "$(command -v node)" scripts/native-linux-kernel.mjs "$RUNNER_TEMP/liftoff-kvm-archive" "$manifest_sha" "$(git rev-parse HEAD)" \
             "$RUNNER_TEMP/liftoff-kvm-kernel/output/kernel" "$kernel_sha" "$RUNNER_TEMP/liftoff-kvm-observation" \
             --kernel-version 4.18.0 --kvm-qemu "$(command -v qemu-system-x86_64)"
       - name: Settle only the invocation-owned compiler container
@@ -387,6 +393,7 @@ jobs:
           fi
           id > "$directory/device-after-execution.stdout"
           getfacl --absolute-names /dev/kvm > "$directory/device-after-execution-acl.stdout"
+          udevadm info --query=property --name=/dev/kvm > "$directory/device-after-execution-udev.stdout"
           node --input-type=module - "$directory" <<'NODE'
           import { lstat, writeFile } from 'node:fs/promises';
           const info = await lstat('/dev/kvm', { bigint: true });
@@ -408,6 +415,7 @@ jobs:
             ${{ runner.temp }}/liftoff-kvm-kernel/linux-4.18.tar.xz
             ${{ runner.temp }}/liftoff-kvm-kernel/kernel-COPYING
             ${{ runner.temp }}/liftoff-kvm-kernel/check-linux-kernel-source.py
+            ${{ runner.temp }}/liftoff-kvm-kernel/native-linux-kvm-namespace.sh
             ${{ runner.temp }}/liftoff-kvm-kernel/Kernel.Dockerfile
             ${{ runner.temp }}/liftoff-kvm-kernel/ci-workflow.yml
             ${{ runner.temp }}/liftoff-kvm-kernel/output/

@@ -571,6 +571,31 @@ export function checkPromotion(event) {
   }
 }
 
+export const linuxKvmNamespaceScript = 'scripts/native-linux-kvm-namespace.sh';
+
+export function checkLinuxKvmNamespaceScript(source) {
+  for (const fragment of [
+    'set -euo pipefail', 'export LC_ALL=C',
+    '"$(uname -s)" != Linux || "$(uname -m)" != x86_64 || "$EUID" != 0',
+    '[[ "$uid" =~ ^[1-9][0-9]*$ && "$gid" =~ ^[1-9][0-9]*$ ]]',
+    'test "$uid" = "${SUDO_UID:?An explicit invoking sudo user is required.}"',
+    'test "$gid" = "$(getent group kvm | cut -d: -f3)"',
+    'character special file|a|e8|0|$gid|660|1',
+    '[[ "$1" == /* && -f "$1" && -x "$1" ]]',
+    'exec /usr/bin/unshare --mount --propagation private -- /bin/bash -eu -o pipefail -c',
+    'test "$current" != "$namespace"',
+    '/usr/bin/mount -t tmpfs -o rw,nosuid,noexec,dev,size=268435456,mode=1777 tmpfs /tmp',
+    '/usr/bin/mknod --mode=0660 /tmp/liftoff-kvm c 10 232',
+    '/usr/bin/chown -- "0:$gid" /tmp/liftoff-kvm',
+    '/usr/bin/mount --bind -- /tmp/liftoff-kvm /dev/kvm',
+    'exec /usr/bin/setpriv --reuid="$uid" --regid="$gid" --init-groups',
+    '--inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- "$@"'
+  ]) assert.ok(source.includes(fragment), 'KVM namespace setup must isolate its node and drop all privileges before execution.');
+  assert.doesNotMatch(source, /\b(?:setfacl|usermod|groupadd|systemctl|udevadm)\b/);
+  assert.doesNotMatch(source, /^\s*(?:\/usr\/bin\/)?(?:mknod|chown|chmod)\b[^\n]*\/dev\/kvm/m,
+    'KVM setup must not mutate the original host device.');
+}
+
 export function checkLinuxKernelKvmQualificationJob(job) {
   assert.ok(job, 'The nonpublishing Linux KVM diagnostic job is required.');
   assert.equal(job.name, 'Linux x64 kernel floor (KVM diagnostic)');
@@ -608,8 +633,8 @@ export function checkLinuxKernelKvmQualificationJob(job) {
     'tar --no-same-owner --same-permissions -xf /inputs/linux-4.18.tar -C /build/source'),
   'Unprivileged kernel extraction must preserve every authenticated source mode.');
   for (const step of [job.steps[4], job.steps[7]]) {
-    assert.ok(step.run.includes('sudo --non-interactive --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY,HOME -- /usr/bin/setpriv --reuid="$(id -u)" --regid="$kvm_gid" --init-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- "$(command -v node)"'),
-      'KVM access must retain the invoking user with the existing device group.');
+    assert.ok(step.run.includes(`sudo --non-interactive --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY,HOME -- /bin/bash ${linuxKvmNamespaceScript} "$(id -u)" "$kvm_gid" "$(command -v node)"`),
+      'KVM access must use private namespace setup with the invoking user and existing device group.');
     assert.ok(step.run.includes('[[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]'), 'KVM device group must be numeric and non-root.');
     assert.ok(step.run.includes('test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"'),
       'KVM execution requires the existing kvm group, not another device group.');
@@ -622,12 +647,15 @@ export function checkLinuxKernelKvmQualificationJob(job) {
   assert.ok(job.steps[4].run.includes('assert.notEqual(process.getuid(), 0,'));
   assert.ok(job.steps[4].run.includes('process.getuid(), before.host.uid'));
   assert.ok(job.steps[4].run.includes('String(process.getgid()), device.gid'));
+  assert.ok(job.steps[4].run.includes('assert.notEqual(mountNamespace, before.host.mountNamespace,'));
+  assert.ok(job.steps[4].run.includes("deviceScope: 'private-mount-namespace'"));
   assert.ok(job.steps[7].run.includes('/liftoff-kvm-kernel/device-after-access.json'));
   assert.ok(job.steps.at(-2).run.includes('device-after-execution-acl.stdout'));
   assert.ok(job.steps.at(-2).run.includes('device-after-execution.json'));
+  assert.ok(job.steps.at(-2).run.includes('device-after-execution-udev.stdout'));
   const evidence = job.steps.at(-1).with.path.split(/\r?\n/);
   for (const name of ['linux-4.18.tar.xz', 'linux-4.18.tar.sign', 'kernel-COPYING',
-    'check-linux-kernel-source.py', 'Kernel.Dockerfile', 'ci-workflow.yml']) {
+    'check-linux-kernel-source.py', 'native-linux-kvm-namespace.sh', 'Kernel.Dockerfile', 'ci-workflow.yml']) {
     assert.ok(evidence.includes(`\${{ runner.temp }}/liftoff-kvm-kernel/${name}`),
       'KVM kernel diagnostics must retain their matching complete source, license and build recipe.');
   }
@@ -864,6 +892,7 @@ export async function checkRepositoryPolicy(root = process.cwd()) {
   for (const file of workflowFiles) {
     checkWorkflow(file, parse(await text('.github', 'workflows', file)));
   }
+  checkLinuxKvmNamespaceScript(await text(linuxKvmNamespaceScript));
   const images = ['liftoff-hero.svg', 'liftoff-terminal.svg'];
   let total = 0;
   for (const file of images) {

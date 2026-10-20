@@ -180,7 +180,10 @@ and unavailable acceleration. It requires existing read/write access to the
 root-owned, single-link, non-world-writable `/dev/kvm` character device
 (major 10, minor 232). It opens that fixed path without following links or
 blocking, compares the handle and physical path, propagates close failures,
-and rechecks its identity before and after guest execution. It does not grant
+and rechecks every identity field, including nanosecond modification/change
+times, before and after guest execution. A host device manager may update these
+timestamps on KVM VM create/destroy events even without changing permissions;
+the direct contributor invocation still refuses that change. It does not grant
 device permissions, change groups, install QEMU or fall back to TCG.
 Docker still prepares only the rootfs/toolbox; a remote Docker daemon cannot
 provide this host's KVM device. Direct KVM uses `-accel kvm`, `-cpu host` and
@@ -191,18 +194,30 @@ hardware execution.
 CI's separate `Linux x64 kernel floor (KVM diagnostic)` job exercises this route
 on an ephemeral Ubuntu 24.04 runner, without publishing or signing an archive.
 It first checks the actual QEMU banner, acceleration list and physical device,
-then invokes only device capture and the guest runner under the same unprivileged
-runner UID with the device's existing non-root `kvm` group. Noninteractive sudo
-invokes only `/usr/bin/setpriv`, which drops to that UID/group, initializes the
+then invokes device capture and the guest runner in separate private mount
+namespaces under the same unprivileged runner UID and existing non-root `kvm`
+group. Noninteractive sudo invokes the CI-only
+`scripts/native-linux-kvm-namespace.sh` helper. It requires the original physical
+root-owned mode-0660 10:232 device, single link and matching group, then uses
+`unshare --mount --propagation private`. Only inside that namespace, a bounded
+256-MiB tmpfs shadows `/tmp`; a fresh root-owned mode-0660 10:232 node is bound
+at `/dev/kvm`. This is another inode for the same kernel KVM interface, not a
+mock or another accelerator. The host's device, mount table, permissions,
+udev service and rules remain untouched. Kernel namespace teardown discards
+the private mounts and node when the invocation ends.
+
+Before executing the selected absolute Node, `/usr/bin/setpriv` drops to that UID/group, initializes the
 runner's existing supplementary groups, clears inheritable/ambient/bounding
 capabilities and disables new privileges before starting Node. No Node process
 is started as root. Only the three telemetry opt-outs and the invoking user's
 `HOME` are preserved; Docker does not inherit root's configuration directory.
-This explicit CI-only group selection
-does not modify device permissions, add persistent group membership or rely on a
-per-user ACL that device lifecycle processing can remove. The absolute selected
-Node executable is retained across that invocation; device/group observations and
-post-execution ACL/metadata diagnostics accompany the evidence. The contributor
+This explicit CI-only setup does not add persistent group membership or rely on
+a per-user ACL. Preparation and execution have distinct private inodes; neither
+is relabeled as the original host inode. Every strict path/handle/currentness
+check remains unchanged and applies to the actual execution namespace's node.
+The absolute selected Node executable is retained across that invocation;
+namespace/device/group observations and separate host ACL/metadata/udev
+diagnostics accompany the evidence. The contributor
 runner itself never grants permissions or changes groups. Missing devices, an
 unexpected version or unavailable KVM fail rather than selecting TCG.
 The job verifies the pinned compressed source/signature digests and Torvalds

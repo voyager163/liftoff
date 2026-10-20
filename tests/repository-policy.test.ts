@@ -11,7 +11,8 @@ import {
   isolatedHclQualificationJob, isolatedHclTestCommand, checkPluginPathReport, pluginPathTestCommand,
   checkWorkflowProgramContentReport, workflowProgramContentCases,
   nativeBundleQualificationJob, nativePlatformQualificationJob,
-  checkNativeCustodyQualificationJob, nativeCustodyWorkflowFile, checkLinuxKernelKvmQualificationJob
+  checkNativeCustodyQualificationJob, nativeCustodyWorkflowFile, checkLinuxKernelKvmQualificationJob,
+  checkLinuxKvmNamespaceScript, linuxKvmNamespaceScript
 } from '../scripts/check-repository-policy.mjs';
 import { assertCiToolArchitecture, readPinnedCiTool } from '../scripts/prepare-ci-local-tools.mjs';
 
@@ -330,7 +331,7 @@ describe('source repository setup policy', () => {
   });
   it.each(['missing', 'runner', 'timeout', 'permissions', 'conditional', 'source', 'runtime', 'skip', 'evidence', 'license', 'kernel-source', 'source-modes',
     'group-capture', 'group-execution', 'root-user', 'root-capture', 'group-input', 'group-name', 'capture-argument', 'capture-directory',
-    'new-privileges', 'ambient-capabilities', 'bounding-capabilities', 'inheritable-capabilities', 'interactive-sudo', 'user-home', 'acl-grant', 'device-diagnostics'])(
+    'private-namespace', 'namespace-observation', 'interactive-sudo', 'user-home', 'acl-grant', 'device-diagnostics', 'udev-diagnostics'])(
     'refuses a weakened KVM diagnostic boundary: %s', async fault => {
       const workflow = await readWorkflow('ci.yml'), job = workflow.jobs['qualify-linux-kvm-kernel'];
       if (fault === 'missing') delete workflow.jobs['qualify-linux-kvm-kernel'];
@@ -347,24 +348,54 @@ describe('source repository setup policy', () => {
       if (fault === 'kernel-source') job.steps.at(-1).with.path = job.steps.at(-1).with.path.replace(
         '${{ runner.temp }}/liftoff-kvm-kernel/linux-4.18.tar.xz', '');
       if (fault === 'source-modes') job.steps[6].run = job.steps[6].run.replace('--same-permissions ', '');
-      if (fault === 'group-capture') job.steps[4].run = job.steps[4].run.replace('--regid="$kvm_gid" ', '');
-      if (fault === 'group-execution') job.steps[7].run = job.steps[7].run.replace('--regid="$kvm_gid" ', '');
-      if (fault === 'root-user') job.steps[7].run = job.steps[7].run.replace('--reuid="$(id -u)"', '--reuid=0');
+      if (fault === 'group-capture') job.steps[4].run = job.steps[4].run.replace(' "$(id -u)" "$kvm_gid"', ' "$(id -u)"');
+      if (fault === 'group-execution') job.steps[7].run = job.steps[7].run.replace(' "$(id -u)" "$kvm_gid"', ' "$(id -u)"');
+      if (fault === 'root-user') job.steps[7].run = job.steps[7].run.replace('"$(id -u)" "$kvm_gid"', '0 "$kvm_gid"');
       if (fault === 'root-capture') job.steps[4].run = job.steps[4].run.replace('assert.notEqual(process.getuid(), 0,', 'assert.notEqual(process.getuid(), 1,');
       if (fault === 'group-input') job.steps[7].run = job.steps[7].run.replace('[[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]', '');
       if (fault === 'group-name') job.steps[7].run = job.steps[7].run.replace('test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"', '');
       if (fault === 'capture-argument') job.steps[4].run = job.steps[4].run.replace('const directory = process.argv[2];', 'const directory = process.argv[1];');
       if (fault === 'capture-directory') job.steps[4].run = job.steps[4].run.replace('--input-type=module - "$RUNNER_TEMP/liftoff-kvm-kernel"', '--input-type=module');
-      for (const [name, flag] of [
-        ['new-privileges', '--no-new-privs'], ['ambient-capabilities', '--ambient-caps=-all'],
-        ['bounding-capabilities', '--bounding-set=-all'], ['inheritable-capabilities', '--inh-caps=-all'],
-        ['interactive-sudo', '--non-interactive'], ['user-home', ',HOME']
-      ] as const) {
+      for (const [name, flag] of [['interactive-sudo', '--non-interactive'], ['user-home', ',HOME']] as const) {
         if (fault === name) job.steps[7].run = job.steps[7].run.replace(flag, '');
       }
+      if (fault === 'private-namespace') job.steps[7].run = job.steps[7].run.replace(linuxKvmNamespaceScript, 'other.sh');
+      if (fault === 'namespace-observation') job.steps[4].run = job.steps[4].run.replace('assert.notEqual(mountNamespace, before.host.mountNamespace,', 'assert.notEqual(mountNamespace, undefined,');
       if (fault === 'acl-grant') job.steps[4].run += '\nsudo setfacl -m "u:$(id -u):rw" /dev/kvm';
       if (fault === 'device-diagnostics') job.steps.at(-2).run = job.steps.at(-2).run.replace('device-after-execution-acl.stdout', 'other.stdout');
+      if (fault === 'udev-diagnostics') job.steps.at(-2).run = job.steps.at(-2).run.replace('device-after-execution-udev.stdout', 'other.stdout');
       expect(() => checkWorkflow('ci.yml', workflow)).toThrow();
+    });
+  it('pins private KVM node creation without changing the host device or running Node as root', async () => {
+    const source = await readFile(path.join(root, linuxKvmNamespaceScript), 'utf8');
+    expect(() => checkLinuxKvmNamespaceScript(source)).not.toThrow();
+  });
+  it.each([
+    'set -euo pipefail', 'export LC_ALL=C', '"$EUID" != 0', 'SUDO_UID:?',
+    'getent group kvm', 'character special file|a|e8|0|$gid|660|1',
+    '--mount --propagation private', 'test "$current" != "$namespace"',
+    'rw,nosuid,noexec,dev,size=268435456,mode=1777', 'c 10 232',
+    '/usr/bin/chown -- "0:$gid" /tmp/liftoff-kvm', '--bind -- /tmp/liftoff-kvm /dev/kvm',
+    '--reuid="$uid"', '--regid="$gid"', '--init-groups', '--inh-caps=-all',
+    '--ambient-caps=-all', '--bounding-set=-all', '--no-new-privs'
+  ])('refuses a weakened KVM namespace helper: %s', async fragment => {
+    const source = await readFile(path.join(root, linuxKvmNamespaceScript), 'utf8');
+    expect(source).toContain(fragment);
+    expect(() => checkLinuxKvmNamespaceScript(source.replace(fragment, 'omitted'))).toThrow();
+  });
+  it.each(['setfacl -m u:1001:rw /dev/kvm', '/usr/bin/chown 1001 /dev/kvm', 'systemctl stop systemd-udevd'])(
+    'refuses host device or device-manager mutation: %s', async command => {
+      const source = await readFile(path.join(root, linuxKvmNamespaceScript), 'utf8');
+      expect(() => checkLinuxKvmNamespaceScript(source + '\n' + command)).toThrow();
+    });
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'refuses namespace setup before effects on an unsupported or unprivileged host', () => {
+      const result = spawnSync('/bin/bash', [path.join(root, linuxKvmNamespaceScript), '1001', '993', process.execPath],
+        { encoding: 'utf8', timeout: 5000 });
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toContain('Native Linux x64 CI root setup is required.');
     });
   it.each(['qualify-native-bundle', 'qualify-native-platform-packages'])(
     'requires complete release-set failure/recovery contracts in %s', async id => {
@@ -654,7 +685,7 @@ describe('source repository setup policy', () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff repository setup '));
     fixtures.push(directory);
     const files = [
-      'package.json', 'README.md', ...communityFiles,
+      'package.json', 'README.md', ...communityFiles, linuxKvmNamespaceScript,
       path.join('.github', 'CODEOWNERS'), path.join('.github', 'PULL_REQUEST_TEMPLATE.md'),
       ...['bug_report.yml', 'feature_request.yml', 'config.yml'].map(file => path.join('.github', 'ISSUE_TEMPLATE', file)),
       ...workflowFiles.map((file: string) => path.join('.github', 'workflows', file)),
