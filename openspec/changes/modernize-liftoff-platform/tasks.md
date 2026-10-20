@@ -122,6 +122,11 @@ Depends on 2-5. References: design D3; liftoff-native-distribution, liftoff-npm-
   These bounded observations do not qualify the complete native minimum-host
   matrix, kernel source/build authenticity, archive signing, bootstrap
   compatibility or publication; task 9.5 remains incomplete.
+  An additional explicit Linux x64 KVM route and non-publishing CI producer are
+  implemented with fixed-device currentness checks, no TCG fallback and
+  authenticated-source before/after inventories. Portable contract fixtures do
+  not establish actual KVM availability or guest execution; the new CI producer
+  must be observed independently before claiming that bounded hardware result.
 - [ ] 9.6 Extend immutable release manifests, exact-artifact handoff, SBOM/notices and provenance for every native asset; verify changed digests/source/version or absent signing evidence block publication without changing existing npm account settings.
 - [x] 9.7 Add native package smoke tests and missing-asset/foreign-cwd fixtures on each advertised platform; verify tests never alter the developer's real global installation.
   Qualified runtime-inclusive development packages at `b20d8f9edb788d0450956fcfdbdaee1a69aa502d`, integration run `39188831733`, attempt 1: original installed-package reports pass all applicable cases on macOS ARM64, Linux x64/ARM64 and Windows x64. Fixtures use private profiles/prefixes, foreign working directories and empty tool paths; missing assets and exact archive extraction/mode readback are checked. This does not qualify minimum hosts, signing, public managers, stable releases or the other native-distribution tasks.

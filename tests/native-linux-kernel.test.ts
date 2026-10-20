@@ -1,14 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import {
   assertLinuxKernelGuestContainerIdentity, assertLinuxKernelGuestTranscript,
   assertLinuxKernelHvfEmulator, assertLinuxKernelHvfHost,
+  assertLinuxKernelKvmEmulator, assertLinuxKernelKvmHost, linuxKernelKvmDeviceIdentity,
   assertLinuxKernelImage, linuxKernelGuestArguments, parseLinuxKernelGuestOptions, runLinuxKernelGuest
 } from '../scripts/native-linux-kernel.mjs';
 import { installedPlanCases } from '../scripts/package-smoke-contract.mjs';
+import { nativeLinuxUserspaceImages } from '../scripts/native-package-report.mjs';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
@@ -57,6 +59,10 @@ function fixture(architecture: 'arm64' | 'x64' = 'arm64') {
 }
 
 describe('emulated Linux kernel observation contract', () => {
+  it('pins the x64 kernel compiler to the independently declared qualification userspace', async () => {
+    const dockerfile = await readFile(path.join(process.cwd(), 'distribution/linux/qualification/Kernel.Dockerfile'), 'utf8');
+    expect(dockerfile.split(/\r?\n/)[0]).toBe(`FROM ${nativeLinuxUserspaceImages.x64}`);
+  });
   it('requires exact name, image and invocation label before container cleanup', () => {
     const container = { Id: 'a'.repeat(64), Name: '/own', Image: 'sha256:one',
       Config: { Labels: { 'liftoff.kernel-guest.invocation': 'nonce' } } };
@@ -102,6 +108,24 @@ describe('emulated Linux kernel observation contract', () => {
     expect(value.report.minimumHostQualified).toBe(false);
     expect(value.report.publicDistributionQualified).toBe(false);
     expect(() => assertLinuxKernelGuestTranscript(value.transcript(), { ...expected, accelerator: 'tcg' })).toThrow();
+    expect(() => assertLinuxKernelGuestTranscript(value.transcript(), {
+      ...expected, kernelVersion: kernelVersion === '4.18.0' ? '4.18.20' : '4.18.0'
+    })).toThrow();
+    value.report.emulated = true;
+    expect(() => assertLinuxKernelGuestTranscript(value.transcript(), expected)).toThrow();
+  });
+  it.each(['4.18.0', '4.18.20'])('binds a %s KVM contract fixture without granting native-host or release qualification', kernelVersion => {
+    const value = fixture('x64');
+    value.report.observed.osVersion = kernelVersion;
+    value.report.emulated = false;
+    const expected = { ...value.expected, kernelVersion, accelerator: 'kvm' };
+    const before = structuredClone(value.report);
+    expect(assertLinuxKernelGuestTranscript(value.transcript(), expected)).toEqual(before);
+    expect(value.report).toEqual(before);
+    expect(value.report.minimumHostQualified).toBe(false);
+    expect(value.report.publicDistributionQualified).toBe(false);
+    expect(() => assertLinuxKernelGuestTranscript(value.transcript(), { ...expected, accelerator: 'tcg' })).toThrow();
+    expect(() => assertLinuxKernelGuestTranscript(value.transcript(), { ...expected, accelerator: 'hvf' })).toThrow();
     expect(() => assertLinuxKernelGuestTranscript(value.transcript(), {
       ...expected, kernelVersion: kernelVersion === '4.18.0' ? '4.18.20' : '4.18.0'
     })).toThrow();
@@ -245,6 +269,22 @@ describe('emulated Linux kernel observation contract', () => {
     expect(() => linuxKernelGuestArguments('arm64', { kernel: 'relative' })).toThrow('Absolute');
     expect(() => linuxKernelGuestArguments('arm64', { initrd: 'relative' })).toThrow('Absolute');
   });
+  it('selects only x64 KVM with the native CPU and unchanged direct-guest resource and network bounds', () => {
+    const kernel = path.resolve(cwd, 'kernel with spaces'), initrd = path.resolve(cwd, 'guest with spaces.cpio.gz');
+    const args = linuxKernelGuestArguments('x64', { accelerator: 'kvm', kernel, initrd });
+    for (const [flag, value] of [
+      ['-machine', 'pc-i440fx-8.2'], ['-cpu', 'host'], ['-accel', 'kvm'],
+      ['-smp', '2'], ['-m', '2048'], ['-nic', 'none'], ['-display', 'none'], ['-monitor', 'none'],
+      ['-kernel', kernel], ['-initrd', initrd]
+    ]) expect(args.slice(args.indexOf(flag), args.indexOf(flag) + 2)).toEqual([flag, value]);
+    expect(args.filter(value => value === '-accel')).toHaveLength(1);
+    expect(args.filter(value => value.startsWith('-'))).toEqual([
+      '-machine', '-cpu', '-accel', '-smp', '-m', '-display', '-monitor', '-serial', '-nic', '-no-reboot',
+      '-object', '-device', '-kernel', '-initrd', '-append'
+    ]);
+    expect(args).not.toContain('tcg');
+    expect(() => linuxKernelGuestArguments('arm64', { accelerator: 'kvm' })).toThrow('x64');
+  });
   it.each([
     ['darwin', 'x64', 'arm64'], ['darwin', 'arm64', 'x64'], ['linux', 'arm64', 'arm64'],
     ['linux', 'x64', 'arm64'], ['win32', 'arm64', 'arm64']
@@ -262,7 +302,42 @@ describe('emulated Linux kernel observation contract', () => {
       ['QEMU emulator version 11.1.2\n', 'tcg\n'], ['QEMU emulator version 11.1.2\n', 'hvf-disabled\n']
     ]) expect(() => assertLinuxKernelHvfEmulator(version, accelerators)).toThrow();
   });
-  it('preserves the original six-argument defaults and requires explicit bounded kernel/HVF options', () => {
+  it.each([
+    ['darwin', 'x64', 'x64'], ['darwin', 'arm64', 'x64'], ['linux', 'arm64', 'x64'],
+    ['linux', 'x64', 'arm64'], ['win32', 'x64', 'x64']
+  ])('refuses KVM host/guest %s/%s/%s rather than substituting emulation', (platform, host, guest) => {
+    expect(() => assertLinuxKernelKvmHost(platform, host, guest)).toThrow('no emulation fallback');
+  });
+  it('admits only the exact KVM emulator version and explicitly advertised acceleration', () => {
+    expect(() => assertLinuxKernelKvmHost('linux', 'x64', 'x64')).not.toThrow();
+    for (const version of [
+      'QEMU emulator version 8.2.2\nCopyright\n',
+      'QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)\r\nCopyright\r\n'
+    ]) expect(() => assertLinuxKernelKvmEmulator(version, 'Accelerators supported in QEMU binary:\nkvm\ntcg\n')).not.toThrow();
+    for (const [version, accelerators] of [
+      ['', 'kvm\n'], ['QEMU emulator version 11.1.2\n', 'kvm\n'],
+      ['QEMU emulator version 8.2.20\n', 'kvm\n'], ['QEMU emulator version 8.2.2-extra\n', 'kvm\n'],
+      ['QEMU emulator version 8.2.2 (foreign)\n', 'kvm\n'],
+      ['QEMU emulator version 8.2.2\n', 'tcg\n'], ['QEMU emulator version 8.2.2\n', 'kvm-disabled\n']
+    ]) expect(() => assertLinuxKernelKvmEmulator(version, accelerators)).toThrow();
+  });
+  it('bounds KVM device metadata and retains every physical identity field without claiming actual device execution', () => {
+    const info = { isCharacterDevice: () => true, dev: 1n, ino: 2n, mode: 0o20660n, uid: 0n, gid: 108n,
+      rdev: 2792n, nlink: 1n, mtimeNs: 3n, ctimeNs: 4n };
+    const identity = linuxKernelKvmDeviceIdentity(info);
+    expect(identity).toEqual({ dev: '1', ino: '2', mode: String(0o20660), uid: '0', gid: '108',
+      rdev: '2792', nlink: '1', mtimeNs: '3', ctimeNs: '4' });
+    for (const changed of [
+      { ...info, isCharacterDevice: () => false }, { ...info, uid: 1000n }, { ...info, nlink: 2n },
+      { ...info, rdev: 1n }, { ...info, mode: 0o20662n }, { ...info, mode: 0o24660n }, { ...info, mode: 0o22660n }
+    ]) expect(() => linuxKernelKvmDeviceIdentity(changed)).toThrow('character device');
+    for (const field of ['dev', 'ino', 'gid', 'mtimeNs', 'ctimeNs'] as const) {
+      const changed = { ...info, [field]: info[field] + 1n };
+      expect(linuxKernelKvmDeviceIdentity(changed)).not.toEqual(identity);
+    }
+    expect(linuxKernelKvmDeviceIdentity(info)).toEqual(identity);
+  });
+  it('preserves six-argument defaults and requires explicit, mutually exclusive hardware options', () => {
     const positional = Array.from({ length: 6 }, (_, index) => `input-${index}`);
     expect(parseLinuxKernelGuestOptions(positional)).toEqual({ kernelVersion: '4.18.20', accelerator: 'tcg', qemu: null });
     const qemu = path.resolve(cwd, 'QEMU with spaces');
@@ -274,6 +349,12 @@ describe('emulated Linux kernel observation contract', () => {
       ['--kernel-version'], ['--kernel-version', '4.18'], ['--kernel-version', 'latest'],
       ['--kernel-version', '4.18.0', '--kernel-version', '4.18.20'], ['--hvf-qemu', 'relative'],
       ['--hvf-qemu', qemu, '--hvf-qemu', qemu], ['--accel', 'tcg'], ['--unknown', 'value']
+    ]) expect(() => parseLinuxKernelGuestOptions([...positional, ...flags])).toThrow();
+    expect(parseLinuxKernelGuestOptions([...positional, '--kvm-qemu', qemu, '--kernel-version', '4.18.0']))
+      .toEqual({ kernelVersion: '4.18.0', accelerator: 'kvm', qemu });
+    for (const flags of [
+      ['--kvm-qemu', 'relative'], ['--kvm-qemu', qemu, '--kvm-qemu', qemu],
+      ['--kvm-qemu', qemu, '--hvf-qemu', qemu], ['--hvf-qemu', qemu, '--kvm-qemu', qemu]
     ]) expect(() => parseLinuxKernelGuestOptions([...positional, ...flags])).toThrow();
   });
   it('refuses incomplete CLI input before invoking Docker or writing output', async () => {

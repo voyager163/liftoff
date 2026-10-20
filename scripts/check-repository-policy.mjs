@@ -571,6 +571,96 @@ export function checkPromotion(event) {
   }
 }
 
+export const linuxKvmNamespaceScript = 'scripts/native-linux-kvm-namespace.sh';
+
+export function checkLinuxKvmNamespaceScript(source) {
+  for (const fragment of [
+    'set -euo pipefail', 'export LC_ALL=C',
+    '"$(uname -s)" != Linux || "$(uname -m)" != x86_64 || "$EUID" != 0',
+    '[[ "$uid" =~ ^[1-9][0-9]*$ && "$gid" =~ ^[1-9][0-9]*$ ]]',
+    'test "$uid" = "${SUDO_UID:?An explicit invoking sudo user is required.}"',
+    'test "$gid" = "$(getent group kvm | cut -d: -f3)"',
+    'character special file|a|e8|0|$gid|660|1',
+    '[[ "$1" == /* && -f "$1" && -x "$1" ]]',
+    'exec /usr/bin/unshare --mount --propagation private -- /bin/bash -eu -o pipefail -c',
+    'test "$current" != "$namespace"',
+    '/usr/bin/mount -t tmpfs -o rw,nosuid,noexec,dev,size=268435456,mode=1777 tmpfs /tmp',
+    '/usr/bin/mknod --mode=0660 /tmp/liftoff-kvm c 10 232',
+    '/usr/bin/chown -- "0:$gid" /tmp/liftoff-kvm',
+    '/usr/bin/mount --bind -- /tmp/liftoff-kvm /dev/kvm',
+    'exec /usr/bin/setpriv --reuid="$uid" --regid="$gid" --init-groups',
+    '--inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- "$@"'
+  ]) assert.ok(source.includes(fragment), 'KVM namespace setup must isolate its node and drop all privileges before execution.');
+  assert.doesNotMatch(source, /\b(?:setfacl|usermod|groupadd|systemctl|udevadm)\b/);
+  assert.doesNotMatch(source, /^\s*(?:\/usr\/bin\/)?(?:mknod|chown|chmod)\b[^\n]*\/dev\/kvm/m,
+    'KVM setup must not mutate the original host device.');
+}
+
+export function checkLinuxKernelKvmQualificationJob(job) {
+  assert.ok(job, 'The nonpublishing Linux KVM diagnostic job is required.');
+  assert.equal(job.name, 'Linux x64 kernel floor (KVM diagnostic)');
+  assert.equal(job['runs-on'], 'ubuntu-24.04');
+  assert.equal(job['timeout-minutes'], 35);
+  assert.deepEqual(job.permissions, { contents: 'read' });
+  for (const field of ['if', 'strategy', 'environment', 'continue-on-error']) assert.equal(job[field], undefined);
+  assert.deepEqual(job.env, {
+    DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0', OPENSPEC_TELEMETRY: '0', PYTHONDONTWRITEBYTECODE: '1'
+  });
+  assert.deepEqual(job.steps[0], {
+    uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+    with: { ref: qualificationSourceRef, 'persist-credentials': false }
+  });
+  assert.deepEqual(job.steps[1], {
+    uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+    with: { 'node-version': '24.21.0', cache: 'npm' }
+  });
+  assert.deepEqual(job.steps.slice(2).map(step => step.name), [
+    'Select supported npm and install dependencies',
+    'Verify source-inventory refusal controls',
+    'Prepare explicit ephemeral-runner KVM access',
+    'Authenticate the original Linux 4.18 source before extraction',
+    'Build the exact floor in a bounded case-sensitive compiler container',
+    'Assemble this exact source and execute its archive on actual KVM',
+    'Settle only the invocation-owned compiler container',
+    'Retain actual kernel, source, archive and execution evidence'
+  ]);
+  for (const step of job.steps.slice(0, -2)) assert.equal(step.if, undefined, 'KVM diagnostic stages cannot be skipped.');
+  assert.equal(job.steps.at(-2).if, '${{ always() }}');
+  assert.equal(job.steps.at(-1).if, independentStepCondition);
+  assert.equal(job.steps.at(-1).with['if-no-files-found'], 'error');
+  assert.equal(job.steps.at(-1).with['retention-days'], 14);
+  assert.ok(job.steps[6].run.includes(
+    'tar --no-same-owner --same-permissions -xf /inputs/linux-4.18.tar -C /build/source'),
+  'Unprivileged kernel extraction must preserve every authenticated source mode.');
+  for (const step of [job.steps[4], job.steps[7]]) {
+    assert.ok(step.run.includes(`sudo --non-interactive --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY,HOME -- /bin/bash ${linuxKvmNamespaceScript} "$(id -u)" "$kvm_gid" "$(command -v node)"`),
+      'KVM access must use private namespace setup with the invoking user and existing device group.');
+    assert.ok(step.run.includes('[[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]'), 'KVM device group must be numeric and non-root.');
+    assert.ok(step.run.includes('test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"'),
+      'KVM execution requires the existing kvm group, not another device group.');
+    assert.doesNotMatch(step.run, /\b(?:setfacl|chmod|chown|usermod|groupadd)\b/,
+      'KVM execution must not mutate device permissions or persistent group membership.');
+  }
+  assert.ok(job.steps[4].run.includes('kvm_gid="$(stat --format=%g /dev/kvm)"'));
+  assert.ok(job.steps[4].run.includes('--input-type=module - "$RUNNER_TEMP/liftoff-kvm-kernel"'));
+  assert.ok(job.steps[4].run.includes('const directory = process.argv[2];'));
+  assert.ok(job.steps[4].run.includes('assert.notEqual(process.getuid(), 0,'));
+  assert.ok(job.steps[4].run.includes('process.getuid(), before.host.uid'));
+  assert.ok(job.steps[4].run.includes('String(process.getgid()), device.gid'));
+  assert.ok(job.steps[4].run.includes('assert.notEqual(mountNamespace, before.host.mountNamespace,'));
+  assert.ok(job.steps[4].run.includes("deviceScope: 'private-mount-namespace'"));
+  assert.ok(job.steps[7].run.includes('/liftoff-kvm-kernel/device-after-access.json'));
+  assert.ok(job.steps.at(-2).run.includes('device-after-execution-acl.stdout'));
+  assert.ok(job.steps.at(-2).run.includes('device-after-execution.json'));
+  assert.ok(job.steps.at(-2).run.includes('device-after-execution-udev.stdout'));
+  const evidence = job.steps.at(-1).with.path.split(/\r?\n/);
+  for (const name of ['linux-4.18.tar.xz', 'linux-4.18.tar.sign', 'kernel-COPYING',
+    'check-linux-kernel-source.py', 'native-linux-kvm-namespace.sh', 'Kernel.Dockerfile', 'ci-workflow.yml']) {
+    assert.ok(evidence.includes(`\${{ runner.temp }}/liftoff-kvm-kernel/${name}`),
+      'KVM kernel diagnostics must retain their matching complete source, license and build recipe.');
+  }
+}
+
 export function checkWorkflow(filename, workflow) {
   const release = filename === 'release.yml';
   const identityQualification = filename === 'github-job-identity.yml';
@@ -589,10 +679,12 @@ export function checkWorkflow(filename, workflow) {
   for (const [id, job] of Object.entries(workflow.jobs)) {
     const parserQualification = ['ci.yml', 'release.yml'].includes(filename) && id === 'qualify-isolated-hcl';
     const bundleQualification = filename === 'ci.yml' && id === 'qualify-native-bundle';
+    const kernelKvmQualification = filename === 'ci.yml' && id === 'qualify-linux-kvm-kernel';
     const nativeCustodyQualification = nativeCustodyWorkflow && id === 'qualify-native-custody';
     assert.ok(['ubuntu-latest', 'macos-latest', 'windows-latest', '${{ matrix.os }}'].includes(job['runs-on']) ||
       parserQualification && job['runs-on'] === '${{ matrix.runner }}' ||
-      (bundleQualification || nativeCustodyQualification) && job['runs-on'] === 'macos-15',
+      (bundleQualification || nativeCustodyQualification) && job['runs-on'] === 'macos-15' ||
+      kernelKvmQualification && job['runs-on'] === 'ubuntu-24.04',
     `${filename}/${id}: use reviewed hosted runners.`);
     const timeout = job['timeout-minutes'];
     assert.ok(
@@ -655,6 +747,7 @@ export function checkWorkflow(filename, workflow) {
       'Native bundle qualification must retain its exact reviewed host, inputs, complete cases and report gate.');
     assert.deepEqual(workflow.jobs['qualify-native-platform-packages'], nativePlatformQualificationJob(),
       'Native platform qualification must retain every reviewed target, native compiler, complete cases and exact artifact handoff.');
+    checkLinuxKernelKvmQualificationJob(workflow.jobs['qualify-linux-kvm-kernel']);
     const platforms = ['ubuntu-latest', 'macos-latest', 'windows-latest'];
     const required = workflow.jobs.test;
     assert.deepEqual(required, {
@@ -799,6 +892,7 @@ export async function checkRepositoryPolicy(root = process.cwd()) {
   for (const file of workflowFiles) {
     checkWorkflow(file, parse(await text('.github', 'workflows', file)));
   }
+  checkLinuxKvmNamespaceScript(await text(linuxKvmNamespaceScript));
   const images = ['liftoff-hero.svg', 'liftoff-terminal.svg'];
   let total = 0;
   for (const file of images) {

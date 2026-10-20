@@ -621,7 +621,8 @@ describe.skipIf(!supplied)('actual cross-platform native package', () => {
       console.log(JSON.stringify(result));
     `);
     expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout)).toMatchObject({
+    const controllerResult: unknown = JSON.parse(result.stdout);
+    expect(controllerResult, JSON.stringify(controllerResult)).toMatchObject({
       status: 0, processSpawned: true, processTreeSettled: true, timedOut: false, stdout: 'installed controller ready'
     });
   }, 60_000);

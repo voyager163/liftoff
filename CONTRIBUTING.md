@@ -94,6 +94,10 @@ to avoid file-level contention between cold controller compilations. It retains
 the existing 15-second startup budget and uploads its own
 `qualification/windows-process-tests.json` report on success or failure; this is
 not a main-shard result. Serialization alone is not Windows host qualification.
+The installed Windows native-package assertion retains its complete fixture-only
+controller result on failure, including the timeout phase and admission/connection
+state when available. JSON reporting must not hide these diagnostics behind an
+abbreviated object comparison; settlement assertions and deadlines stay unchanged.
 All jobs retain the 45-minute limit except Windows shard 2,
 which has a 75-minute limit because it must complete both the named boundary
 suite and its source-complete package shard without dropping or filtering either

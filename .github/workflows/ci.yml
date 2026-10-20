@@ -190,6 +190,245 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  qualify-linux-kvm-kernel:
+    name: Linux x64 kernel floor (KVM diagnostic)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      DO_NOT_TRACK: "1"
+      LIFTOFF_TELEMETRY: "0"
+      OPENSPEC_TELEMETRY: "0"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.21.0"
+          cache: npm
+      - name: Select supported npm and install dependencies
+        run: |
+          npm install --global "npm@12.0.2"
+          npm ci
+      - name: Verify source-inventory refusal controls
+        run: python3 -m unittest discover -s tests -p linux_kernel_source_test.py -v
+      - name: Prepare explicit ephemeral-runner KVM access
+        shell: bash
+        run: |
+          mkdir -m 700 "$RUNNER_TEMP/liftoff-kvm-kernel"
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y qemu-system-x86 acl
+          dpkg-query -W qemu-system-x86 acl > "$RUNNER_TEMP/liftoff-kvm-kernel/host-packages.stdout"
+          qemu-system-x86_64 --version > "$RUNNER_TEMP/liftoff-kvm-kernel/host-qemu-version.stdout"
+          qemu-system-x86_64 -accel help > "$RUNNER_TEMP/liftoff-kvm-kernel/host-qemu-accelerators.stdout"
+          node --input-type=module <<'NODE'
+          import { lstat, readFile, readlink, writeFile } from 'node:fs/promises';
+          import os from 'node:os';
+          import { assertLinuxKernelKvmHost, assertLinuxKernelKvmEmulator, linuxKernelKvmDeviceIdentity } from './scripts/native-linux-kernel.mjs';
+          assertLinuxKernelKvmHost(process.platform, process.arch, 'x64');
+          const directory = process.env.RUNNER_TEMP + '/liftoff-kvm-kernel/';
+          const info = await lstat('/dev/kvm', { bigint: true });
+          await writeFile(directory + 'device-before-access.json', JSON.stringify({
+            host: { platform: process.platform, architecture: process.arch, nativeArchitecture: os.machine(),
+              kernel: os.release(), uid: process.getuid(), gid: process.getgid(),
+              mountNamespace: await readlink('/proc/self/ns/mnt') },
+            characterDevice: info.isCharacterDevice(), device: info
+          }, (key, value) => typeof value === 'bigint' ? value.toString() : value, 2) + '\n', { flag: 'wx' });
+          assertLinuxKernelKvmEmulator(await readFile(directory + 'host-qemu-version.stdout', 'utf8'),
+            await readFile(directory + 'host-qemu-accelerators.stdout', 'utf8'));
+          linuxKernelKvmDeviceIdentity(info);
+          NODE
+          getfacl --absolute-names /dev/kvm > "$RUNNER_TEMP/liftoff-kvm-kernel/device-before-access.stdout"
+          udevadm info --query=property --name=/dev/kvm > "$RUNNER_TEMP/liftoff-kvm-kernel/device-before-access-udev.stdout"
+          kvm_gid="$(stat --format=%g /dev/kvm)"
+          [[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]
+          test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"
+          sudo --non-interactive --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY,HOME -- /bin/bash scripts/native-linux-kvm-namespace.sh "$(id -u)" "$kvm_gid" "$(command -v node)" --input-type=module - "$RUNNER_TEMP/liftoff-kvm-kernel" <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFile, readlink, writeFile } from 'node:fs/promises';
+          import { captureLinuxKernelKvmDevice } from './scripts/native-linux-kernel.mjs';
+          const directory = process.argv[2];
+          const before = JSON.parse(await readFile(directory + '/device-before-access.json', 'utf8'));
+          assert.notEqual(process.getuid(), 0, 'KVM device capture must not execute as root.');
+          assert.equal(process.getuid(), before.host.uid, 'KVM preparation must retain the invoking user.');
+          const mountNamespace = await readlink('/proc/self/ns/mnt');
+          assert.notEqual(mountNamespace, before.host.mountNamespace, 'KVM capture requires a private mount namespace.');
+          const device = await captureLinuxKernelKvmDevice();
+          assert.equal(String(process.getgid()), device.gid, 'KVM preparation requires the existing device group.');
+          await writeFile(directory + '/device-after-access.json',
+            JSON.stringify(device, null, 2) + '\n', { flag: 'wx' });
+          await writeFile(directory + '/execution-identity.json', JSON.stringify({
+            uid: process.getuid(), gid: process.getgid(), groups: process.getgroups(),
+            mountNamespace, deviceScope: 'private-mount-namespace'
+          }, null, 2) + '\n', { flag: 'wx' });
+          NODE
+      - name: Authenticate the original Linux 4.18 source before extraction
+        shell: bash
+        run: |
+          directory="$RUNNER_TEMP/liftoff-kvm-kernel"
+          curl --fail --location --proto '=https' --proto-redir '=https' --max-time 180 \
+            https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.18.tar.xz --output "$directory/linux-4.18.tar.xz"
+          curl --fail --location --proto '=https' --proto-redir '=https' --max-time 60 \
+            https://cdn.kernel.org/pub/linux/kernel/v4.x/linux-4.18.tar.sign --output "$directory/linux-4.18.tar.sign"
+          printf '%s  %s\n' 19d8bcf49ef530cd4e364a45b4a22fa70714b70349c8100e7308488e26f1eaf1 "$directory/linux-4.18.tar.xz" \
+            82c1cf7265d4b873f152216c199f33e7accc728e226837be69c0d62a5b1a798f "$directory/linux-4.18.tar.sign" \
+            | sha256sum --check > "$directory/download-checks.stdout"
+          mkdir -m 700 "$RUNNER_TEMP/liftoff-kvm-gnupg"
+          timeout --signal=TERM --kill-after=5s 60s gpg --batch --homedir "$RUNNER_TEMP/liftoff-kvm-gnupg" \
+            --auto-key-locate clear,wkd --locate-keys torvalds@kernel.org \
+            > "$directory/key-discovery.stdout" 2> "$directory/key-discovery.stderr"
+          gpg --batch --homedir "$RUNNER_TEMP/liftoff-kvm-gnupg" --with-colons \
+            --fingerprint ABAF11C65A2970B130ABE3C479BE3E4300411886 > "$directory/key-fingerprint.stdout"
+          timeout 60s xz --decompress --keep "$directory/linux-4.18.tar.xz"
+          gpg --batch --homedir "$RUNNER_TEMP/liftoff-kvm-gnupg" --status-fd 1 \
+            --verify "$directory/linux-4.18.tar.sign" "$directory/linux-4.18.tar" \
+            > "$directory/signature-status.stdout" 2> "$directory/signature-status.stderr"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFile } from 'node:fs/promises';
+          const status = await readFile(process.env.RUNNER_TEMP + '/liftoff-kvm-kernel/signature-status.stdout', 'utf8');
+          assert.doesNotMatch(status, /\[GNUPG:\] (?:BADSIG|ERRSIG|REVKEYSIG|EXPSIG|EXPKEYSIG|NO_PUBKEY|NODATA|FAILURE)\b/);
+          const signatures = status.split(/\r?\n/).filter(line => line.startsWith('[GNUPG:] VALIDSIG '));
+          assert.equal(signatures.length, 1);
+          assert.equal(signatures[0].split(' ').at(-1), 'ABAF11C65A2970B130ABE3C479BE3E4300411886');
+          NODE
+          sha256sum "$directory/linux-4.18.tar" > "$directory/authenticated-source.sha256"
+          tar -xOf "$directory/linux-4.18.tar" linux-4.18/COPYING > "$directory/kernel-COPYING"
+          cp scripts/check-linux-kernel-source.py "$directory/check-linux-kernel-source.py"
+          cp scripts/native-linux-kvm-namespace.sh "$directory/native-linux-kvm-namespace.sh"
+          cp distribution/linux/qualification/Kernel.Dockerfile "$directory/Kernel.Dockerfile"
+          cp .github/workflows/ci.yml "$directory/ci-workflow.yml"
+          sha256sum scripts/check-linux-kernel-source.py scripts/native-linux-kvm-namespace.sh distribution/linux/qualification/Kernel.Dockerfile \
+            > "$directory/builder-source.sha256"
+      - name: Build the exact floor in a bounded case-sensitive compiler container
+        shell: bash
+        run: |
+          directory="$RUNNER_TEMP/liftoff-kvm-kernel"
+          image="liftoff-kvm-kernel:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          timeout --signal=TERM --kill-after=10s 600s docker build --tag "$image" \
+            --file distribution/linux/qualification/Kernel.Dockerfile distribution/linux/qualification \
+            > "$directory/compiler-build.stdout" 2> "$directory/compiler-build.stderr"
+          docker image inspect "$image" > "$directory/compiler-image.json"
+          docker run --rm --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges \
+            "$image" rpm -qa > "$directory/compiler-packages.stdout"
+          docker run --rm --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges \
+            "$image" gcc --version > "$directory/compiler-version.stdout"
+          grep -E '^gcc \(GCC\) 8\.5\.0([[:space:]]|$)' "$directory/compiler-version.stdout"
+          mkdir -m 700 "$directory/output"
+          nonce="$(node --input-type=module -e 'import { randomUUID } from "node:crypto"; console.log(randomUUID())')"
+          printf '%s\n' "$nonce" > "$directory/compiler-nonce.stdout"
+          timeout --signal=TERM --kill-after=10s 1500s docker run --rm --cidfile "$directory/compiler.cid" \
+            --label "liftoff.kernel-build.invocation=$nonce" --network=none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges --pids-limit=256 --cpus=4 --memory=6g \
+            --user "$(id -u):$(id -g)" --env HOME=/build --env TMPDIR=/build/tmp --env LANG=C --env LC_ALL=C \
+            --tmpfs /build:rw,nosuid,nodev,exec,size=4294967296,mode=1777 \
+            --mount "type=bind,source=$directory,target=/inputs,readonly" \
+            --mount "type=bind,source=$directory/output,target=/output" "$image" /bin/bash -euxo pipefail -c '
+              mkdir /build/source /build/output /build/tmp
+              tar --no-same-owner --same-permissions -xf /inputs/linux-4.18.tar -C /build/source
+              source_sha="$(cut -d " " -f 1 /inputs/authenticated-source.sha256)"
+              python3 /inputs/check-linux-kernel-source.py /inputs/linux-4.18.tar /build/source/linux-4.18 "$source_sha" /output/source-before.json
+              make -C /build/source/linux-4.18 O=/build/output ARCH=x86 defconfig
+              /build/source/linux-4.18/scripts/config --file /build/output/.config \
+                --disable MODULES --disable DEBUG_INFO --disable LOCALVERSION_AUTO \
+                --enable VIRTIO_PCI --enable HW_RANDOM_VIRTIO
+              make -C /build/source/linux-4.18 O=/build/output ARCH=x86 olddefconfig
+              grep -Fx CONFIG_HW_RANDOM_VIRTIO=y /build/output/.config
+              grep -Fx CONFIG_VIRTIO_PCI=y /build/output/.config
+              timeout --signal=TERM --kill-after=10s 1200s make -C /build/source/linux-4.18 O=/build/output ARCH=x86 -j4 bzImage
+              python3 /inputs/check-linux-kernel-source.py /inputs/linux-4.18.tar /build/source/linux-4.18 "$source_sha" /output/source-after.json
+              cmp /output/source-before.json /output/source-after.json
+              cp /build/output/.config /output/kernel.config
+              cp /build/output/arch/x86/boot/bzImage /output/kernel
+              sha256sum /output/kernel /output/kernel.config > /output/kernel-subjects.sha256
+            ' > "$directory/compiler.stdout" 2> "$directory/compiler.stderr"
+      - name: Assemble this exact source and execute its archive on actual KVM
+        shell: bash
+        run: |
+          image="$(node --input-type=module -e 'import { nativeLinuxUserspaceImages } from "./scripts/native-package-report.mjs"; console.log(nativeLinuxUserspaceImages.x64)')"
+          docker pull "$image"
+          url="$(node --input-type=module -e 'import inputs from "./distribution/native/inputs.json" with { type: "json" }; import { nativeRuntimeInput } from "./scripts/native-bundle-contract.mjs"; console.log(nativeRuntimeInput(inputs, {platform:"linux",architecture:"x64"}).url)')"
+          curl --fail --location --proto '=https' --proto-redir '=https' --max-time 180 \
+            "$url" --output "$RUNNER_TEMP/liftoff-kvm-runtime"
+          npm run build:native -- build --runtime-archive "$RUNNER_TEMP/liftoff-kvm-runtime" \
+            --output "$RUNNER_TEMP/liftoff-kvm-bundle"
+          node scripts/native-release.mjs archive "$RUNNER_TEMP/liftoff-kvm-bundle" "$RUNNER_TEMP/liftoff-kvm-archive"
+          manifest_sha="$(sha256sum "$RUNNER_TEMP/liftoff-kvm-archive/native-release.json" | cut -d ' ' -f 1)"
+          kernel_sha="$(sha256sum "$RUNNER_TEMP/liftoff-kvm-kernel/output/kernel" | cut -d ' ' -f 1)"
+          kvm_gid="$(node --input-type=module -e 'import { readFileSync } from "node:fs"; console.log(JSON.parse(readFileSync(process.env.RUNNER_TEMP + "/liftoff-kvm-kernel/device-after-access.json")).gid)')"
+          [[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]
+          test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"
+          sudo --non-interactive --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY,HOME -- /bin/bash scripts/native-linux-kvm-namespace.sh "$(id -u)" "$kvm_gid" "$(command -v node)" scripts/native-linux-kernel.mjs "$RUNNER_TEMP/liftoff-kvm-archive" "$manifest_sha" "$(git rev-parse HEAD)" \
+            "$RUNNER_TEMP/liftoff-kvm-kernel/output/kernel" "$kernel_sha" "$RUNNER_TEMP/liftoff-kvm-observation" \
+            --kernel-version 4.18.0 --kvm-qemu "$(command -v qemu-system-x86_64)"
+      - name: Settle only the invocation-owned compiler container
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          directory="$RUNNER_TEMP/liftoff-kvm-kernel"
+          if [ -f "$directory/compiler.cid" ]; then
+            id="$(cat "$directory/compiler.cid")"
+            [[ "$id" =~ ^[a-f0-9]{64}$ ]]
+            listed="$(docker container ls --all --no-trunc --filter "id=$id" --format '{{.ID}}')"
+            if [ -n "$listed" ]; then
+              test "$listed" = "$id"
+              docker container inspect "$id" > "$directory/compiler-cleanup.json"
+              node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFile } from 'node:fs/promises';
+          const directory = process.env.RUNNER_TEMP + '/liftoff-kvm-kernel/';
+          const [container] = JSON.parse(await readFile(directory + 'compiler-cleanup.json', 'utf8'));
+          const [image] = JSON.parse(await readFile(directory + 'compiler-image.json', 'utf8'));
+          assert.equal(container.Id, (await readFile(directory + 'compiler.cid', 'utf8')).trim());
+          assert.equal(container.Image, image.Id);
+          assert.equal(container.Config.Labels['liftoff.kernel-build.invocation'],
+            (await readFile(directory + 'compiler-nonce.stdout', 'utf8')).trim());
+          NODE
+              docker rm --force "$id"
+            fi
+          fi
+          id > "$directory/device-after-execution.stdout"
+          getfacl --absolute-names /dev/kvm > "$directory/device-after-execution-acl.stdout"
+          udevadm info --query=property --name=/dev/kvm > "$directory/device-after-execution-udev.stdout"
+          node --input-type=module - "$directory" <<'NODE'
+          import { lstat, writeFile } from 'node:fs/promises';
+          const info = await lstat('/dev/kvm', { bigint: true });
+          await writeFile(process.argv[2] + '/device-after-execution.json', JSON.stringify({
+            characterDevice: info.isCharacterDevice(), device: info
+          }, (key, value) => typeof value === 'bigint' ? value.toString() : value, 2) + '\n', { flag: 'wx' });
+          NODE
+      - name: Retain actual kernel, source, archive and execution evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: liftoff-linux-kvm-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/liftoff-kvm-kernel/*.stdout
+            ${{ runner.temp }}/liftoff-kvm-kernel/*.stderr
+            ${{ runner.temp }}/liftoff-kvm-kernel/*.json
+            ${{ runner.temp }}/liftoff-kvm-kernel/*.sha256
+            ${{ runner.temp }}/liftoff-kvm-kernel/linux-4.18.tar.sign
+            ${{ runner.temp }}/liftoff-kvm-kernel/linux-4.18.tar.xz
+            ${{ runner.temp }}/liftoff-kvm-kernel/kernel-COPYING
+            ${{ runner.temp }}/liftoff-kvm-kernel/check-linux-kernel-source.py
+            ${{ runner.temp }}/liftoff-kvm-kernel/native-linux-kvm-namespace.sh
+            ${{ runner.temp }}/liftoff-kvm-kernel/Kernel.Dockerfile
+            ${{ runner.temp }}/liftoff-kvm-kernel/ci-workflow.yml
+            ${{ runner.temp }}/liftoff-kvm-kernel/output/
+            ${{ runner.temp }}/liftoff-kvm-archive/
+            ${{ runner.temp }}/liftoff-kvm-observation/*.json
+            ${{ runner.temp }}/liftoff-kvm-observation/*.stdout
+            ${{ runner.temp }}/liftoff-kvm-observation/*.stderr
+            ${{ runner.temp }}/liftoff-kvm-observation/init
+            ${{ runner.temp }}/liftoff-kvm-observation/guest-probe.mjs
+            ${{ runner.temp }}/liftoff-kvm-observation/Dockerfile
+          if-no-files-found: error
+          retention-days: 14
+
   qualify-isolated-hcl:
     name: Isolated HCL parser (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
