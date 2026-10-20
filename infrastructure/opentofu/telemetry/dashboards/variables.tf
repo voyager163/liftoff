@@ -52,9 +52,23 @@ variable "expected_heartbeats" {
 }
 
 variable "alerts_enabled" {
-  description = "Unpause only after actual queries, expectations and private notification routing are qualified. Does not create contacts or subscriptions."
+  description = "Unpause only after actual queries, expectations and the explicitly selected private contact point are qualified. Does not create contacts or subscriptions."
   type        = bool
   default     = false
+  validation {
+    condition     = !var.alerts_enabled || var.alert_contact_point_name != null
+    error_message = "Unpausing requires alert_contact_point_name for an existing independently approved and verified contact point; ambient notification policy is not a destination."
+  }
+}
+
+variable "alert_contact_point_name" {
+  description = "Exact existing operator-approved Grafana contact point name, not a recipient address or credential. Direct routing affects only Liftoff rules; verify existence, destination and simplified-routing support separately before enabling alerts."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.alert_contact_point_name == null ? true : can(regex("^[A-Za-z0-9_.-][A-Za-z0-9_. -]{0,99}$", var.alert_contact_point_name)) && trimspace(var.alert_contact_point_name) == var.alert_contact_point_name
+    error_message = "Use a literal existing contact point name of 1-100 ASCII letters, digits, spaces, dots, underscores or hyphens, without leading/trailing whitespace; do not supply an address, URL or secret."
+  }
 }
 
 variable "ingestion_fault_alerts_enabled" {

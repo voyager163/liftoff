@@ -16,6 +16,16 @@ resource "grafana_rule_group" "ingestion_faults" {
       runbook_url = "https://github.com/voyager163/liftoff/blob/develop/infrastructure/opentofu/telemetry/README.md"
     }
     labels = { component = "liftoff-telemetry", scope = "dcr-transform-errors-only" }
+    dynamic "notification_settings" {
+      for_each = var.alert_contact_point_name == null ? [] : [var.alert_contact_point_name]
+      content {
+        contact_point   = notification_settings.value
+        group_by        = ["grafana_folder", "alertname"]
+        group_wait      = "30s"
+        group_interval  = "5m"
+        repeat_interval = "4h"
+      }
+    }
     data {
       ref_id         = "A"
       query_type     = "Azure Monitor"

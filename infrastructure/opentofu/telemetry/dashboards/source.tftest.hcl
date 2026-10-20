@@ -47,13 +47,18 @@ run "offline_render" {
     condition     = alltrue([for rule in grafana_rule_group.ingestion_faults.rule : rule.is_paused && rule.no_data_state == "NoData" && rule.exec_err_state == "Error"])
     error_message = "The independent transform metric alert also defaults paused without hiding errors or missing metrics."
   }
+  assert {
+    condition     = alltrue([for rule in concat(grafana_rule_group.telemetry.rule, grafana_rule_group.ingestion_faults.rule) : length(rule.notification_settings) == 0])
+    error_message = "Default paused rules must not infer a contact point or change notification policy."
+  }
 }
 
 run "explicit_reporting_enabled" {
   command = plan
   variables {
-    reporting_configuration = "enabled"
-    alerts_enabled          = true
+    reporting_configuration  = "enabled"
+    alerts_enabled           = true
+    alert_contact_point_name = "synthetic-approved-ops"
   }
   assert {
     condition     = alltrue([for rule in grafana_rule_group.telemetry.rule : !rule.is_paused && rule.for == "15m" && rule.no_data_state == "NoData" && rule.exec_err_state == "Error"])
@@ -68,8 +73,9 @@ run "explicit_reporting_enabled" {
 run "synthetic_expectation_excluded" {
   command = plan
   variables {
-    reporting_configuration = "enabled"
-    alerts_enabled          = true
+    reporting_configuration  = "enabled"
+    alerts_enabled           = true
+    alert_contact_point_name = "synthetic-approved-ops"
     expected_heartbeats = [{
       project_id     = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
       expected_since = "2026-08-01T00:00:00Z"
@@ -85,9 +91,10 @@ run "synthetic_expectation_excluded" {
 run "empty_expectations_explicit_unknown" {
   command = plan
   variables {
-    reporting_configuration = "unknown"
-    alerts_enabled          = true
-    expected_heartbeats     = []
+    reporting_configuration  = "unknown"
+    alerts_enabled           = true
+    alert_contact_point_name = "synthetic-approved-ops"
+    expected_heartbeats      = []
   }
   assert {
     condition = local.heartbeat_rows == "" && alltrue(flatten([
@@ -164,7 +171,8 @@ run "invalid_timestamp_injection" {
 run "ingestion_fault_requires_separate_enablement" {
   command = plan
   variables {
-    alerts_enabled = true
+    alerts_enabled           = true
+    alert_contact_point_name = "synthetic-approved-ops"
   }
   assert {
     condition     = alltrue([for rule in grafana_rule_group.ingestion_faults.rule : rule.is_paused])
@@ -188,6 +196,7 @@ run "ingestion_fault_explicit_source_enabled" {
   variables {
     alerts_enabled                 = true
     ingestion_fault_alerts_enabled = true
+    alert_contact_point_name       = "synthetic-approved-ops"
   }
   assert {
     condition     = grafana_rule_group.ingestion_faults.interval_seconds == 60 && alltrue([for rule in grafana_rule_group.ingestion_faults.rule : !rule.is_paused && rule.for == "5m" && rule.no_data_state == "NoData" && rule.exec_err_state == "Error"])
@@ -218,5 +227,125 @@ run "ingestion_fault_explicit_source_enabled" {
       jsondecode(rule.data[1].model).conditions[0].reducer.type == "sum"
     ])
     error_message = "Alert on positive transform errors across the window, not low requests, command volume or a last zero sample."
+  }
+  assert {
+    condition = alltrue([for rule in concat(grafana_rule_group.telemetry.rule, grafana_rule_group.ingestion_faults.rule) :
+      length(rule.notification_settings) == 1 &&
+      rule.notification_settings[0].contact_point == "synthetic-approved-ops" &&
+      rule.notification_settings[0].group_by == tolist(["grafana_folder", "alertname"]) &&
+      rule.notification_settings[0].group_wait == "30s" &&
+      rule.notification_settings[0].group_interval == "5m" &&
+      rule.notification_settings[0].repeat_interval == "4h"
+    ])
+    error_message = "Every Liftoff rule must route directly to the exact selected contact point with bounded grouping and repeat intervals."
+  }
+}
+
+run "unpause_without_contact_refused" {
+  command = plan
+  variables {
+    alerts_enabled = true
+  }
+  expect_failures = [var.alerts_enabled]
+}
+
+run "ingestion_unpause_without_contact_refused" {
+  command = plan
+  variables {
+    alerts_enabled                 = true
+    ingestion_fault_alerts_enabled = true
+  }
+  expect_failures = [var.alerts_enabled]
+}
+
+run "selected_contact_preserves_global_pause" {
+  command = plan
+  variables {
+    alert_contact_point_name       = "synthetic-approved-ops"
+    ingestion_fault_alerts_enabled = true
+  }
+  assert {
+    condition = alltrue([for rule in concat(grafana_rule_group.telemetry.rule, grafana_rule_group.ingestion_faults.rule) :
+      rule.is_paused && rule.notification_settings[0].contact_point == "synthetic-approved-ops"
+    ])
+    error_message = "Selecting a contact point or the DCR switch must not unpause any rule without the global switch."
+  }
+}
+
+run "empty_contact_refused" {
+  command = plan
+  variables {
+    alert_contact_point_name = ""
+  }
+  expect_failures = [var.alert_contact_point_name]
+}
+
+run "contact_whitespace_refused" {
+  command = plan
+  variables {
+    alert_contact_point_name = " synthetic-approved-ops "
+  }
+  expect_failures = [var.alert_contact_point_name]
+}
+
+run "contact_address_refused" {
+  command = plan
+  variables {
+    alert_contact_point_name = "synthetic@example.invalid"
+  }
+  expect_failures = [var.alert_contact_point_name]
+}
+
+run "contact_url_refused" {
+  command = plan
+  variables {
+    alert_contact_point_name = "https://synthetic.invalid/hook"
+  }
+  expect_failures = [var.alert_contact_point_name]
+}
+
+run "contact_control_character_refused" {
+  command = plan
+  variables {
+    alert_contact_point_name = "synthetic-approved-ops\nother"
+  }
+  expect_failures = [var.alert_contact_point_name]
+}
+
+run "contact_length_refused" {
+  command = plan
+  variables {
+    alert_contact_point_name = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+  expect_failures = [var.alert_contact_point_name]
+}
+
+run "maximum_contact_name_preserved" {
+  command = plan
+  variables {
+    alerts_enabled           = true
+    alert_contact_point_name = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+  assert {
+    condition = length(var.alert_contact_point_name) == 100 && alltrue([
+      for rule in concat(grafana_rule_group.telemetry.rule, grafana_rule_group.ingestion_faults.rule) :
+      rule.notification_settings[0].contact_point == var.alert_contact_point_name
+    ])
+    error_message = "The exact 100-character alias must be preserved without truncation or normalization."
+  }
+}
+
+run "literal_contact_alias_preserved" {
+  command = plan
+  variables {
+    alerts_enabled           = true
+    alert_contact_point_name = "_Synthetic Ops.1-2"
+  }
+  assert {
+    condition = alltrue([
+      for rule in concat(grafana_rule_group.telemetry.rule, grafana_rule_group.ingestion_faults.rule) :
+      rule.notification_settings[0].contact_point == "_Synthetic Ops.1-2"
+    ])
+    error_message = "Allowed punctuation, internal spaces and case are literal contact-name bytes, not normalized aliases."
   }
 }

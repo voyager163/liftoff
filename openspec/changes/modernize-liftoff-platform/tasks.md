@@ -272,6 +272,11 @@ binds 796 artifacts and reverified all 147 original rollout subjects.
 Task 17.5 retains its bounded source layer, but actual fault-alert firing/routing
 remains incomplete. All three alerts remain paused; no installed-client or
 genuine heartbeat qualification is claimed. Task-9/16 publication gates remain.
+The source now requires an explicit existing contact point name before
+unpausing and binds only these three rules directly, with fixed grouping and
+repeat intervals. It does not create/change a receiver or the global policy,
+and offline plans cannot establish contact existence, simplified-routing
+support, actual fault evaluation or delivery. Task 17.5 remains unchecked.
 
 The explicitly authorized 2026-10-18 rollout registered Microsoft.Dashboard,
 extended the original protected telemetry state without replacement or region

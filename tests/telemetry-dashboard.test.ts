@@ -383,6 +383,33 @@ describe('operator, privacy and non-destructive boundaries', () => {
     expect(source).toContain('does not verify gateway/auth/network health or project activity');
   });
 
+  it('binds only Liftoff rules to an explicit existing contact without owning receivers or global notification policy', async () => {
+    const directory = path.join(root, 'dashboards');
+    const names = (await readdir(directory)).filter(name => name.endsWith('.tf')).sort();
+    const files = new Map(await Promise.all(names.map(async name =>
+      [name, await readFile(path.join(directory, name), 'utf8')] as const)));
+    const variables = files.get('variables.tf')!;
+    expect(variables).toContain('!var.alerts_enabled || var.alert_contact_point_name != null');
+    expect(variables).toMatch(/variable "alert_contact_point_name"[\s\S]*?default\s*=\s*null/);
+    for (const name of ['main.tf', 'ingestion-faults.tf']) {
+      const source = files.get(name)!;
+      expect(source.match(/dynamic "notification_settings"/g)).toHaveLength(1);
+      expect(source).toContain('var.alert_contact_point_name == null ? [] : [var.alert_contact_point_name]');
+      expect(source).toMatch(/contact_point\s*=\s*notification_settings\.value/);
+      expect(source).toMatch(/group_by\s*=\s*\["grafana_folder", "alertname"\]/);
+      expect(source).toMatch(/group_wait\s*=\s*"30s"/);
+      expect(source).toMatch(/group_interval\s*=\s*"5m"/);
+      expect(source).toMatch(/repeat_interval\s*=\s*"4h"/);
+    }
+    expect([...files.values()].join('\n')).not.toMatch(
+      /(?:resource|data) "grafana_(?:contact_point|notification_policy|message_template|mute_timing)"|local-exec|remote-exec/
+    );
+    const guide = (await readFile(path.join(root, 'README.md'), 'utf8')).replace(/\s+/g, ' ');
+    for (const phrase of ['alert_contact_point_name', 'alertingSimplifiedRouting',
+      'Selecting a name is not proof of existence', 'global notification-policy tree',
+      'These source checks do not verify the receiver']) expect(guide).toContain(phrase);
+  });
+
   it('documents the actual bounded rollout, remaining qualification, retention, cost and safe rollback', async () => {
     const [operator, bootstrap, privacy, tasks] = await Promise.all([
       readFile(path.join(root, 'README.md'), 'utf8'),
