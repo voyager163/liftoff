@@ -66,15 +66,20 @@ with `make ARCH=arm64 defconfig` (or `ARCH=x86` for x64), then:
 
 ```sh
 scripts/config --disable MODULES --disable DEBUG_INFO --disable LOCALVERSION_AUTO \
-  --enable HW_RANDOM_VIRTIO
+  --enable VIRTIO_PCI --enable HW_RANDOM_VIRTIO
 make ARCH=arm64 olddefconfig
 timeout 1200 make ARCH=arm64 -j4 Image
 ```
 
 For x64, use `ARCH=x86` and the `bzImage` target. Retain the resulting `.config`;
-the images are `arch/arm64/boot/Image` and `arch/x86/boot/bzImage`. The virtio
-entropy driver and the runner's entropy device are required: an entropy-starved
-boot is not a product timeout or a passing observation. GCC 8 avoids relying on
+the images are `arch/arm64/boot/Image` and `arch/x86/boot/bzImage`. Check the
+resulting configuration, not just the `scripts/config` command: it must contain
+`CONFIG_HW_RANDOM_VIRTIO=y` and the architecture's built-in transport
+(`CONFIG_VIRTIO_MMIO=y` for ARM64 or `CONFIG_VIRTIO_PCI=y` for x64).
+The x64 defconfig does not enable the PCI transport by default; without it,
+`olddefconfig` drops the dependent entropy driver. The virtio entropy driver
+and the runner's entropy device are required: an entropy-starved boot is not
+a product timeout or a passing observation. GCC 8 avoids relying on
 source patches for incompatibilities between this historical kernel and modern
 compiler defaults. This recipe is not a compiler-closure or reproducible-binary
 attestation.
