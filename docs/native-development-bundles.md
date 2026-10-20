@@ -192,7 +192,13 @@ CI's separate `Linux x64 kernel floor (KVM diagnostic)` job exercises this route
 on an ephemeral Ubuntu 24.04 runner, without publishing or signing an archive.
 It first checks the actual QEMU banner, acceleration list and physical device,
 then invokes only device capture and the guest runner under the same unprivileged
-runner UID with the device's existing non-root `kvm` group. This explicit CI-only group selection
+runner UID with the device's existing non-root `kvm` group. Noninteractive sudo
+invokes only `/usr/bin/setpriv`, which drops to that UID/group, initializes the
+runner's existing supplementary groups, clears inheritable/ambient/bounding
+capabilities and disables new privileges before starting Node. No Node process
+is started as root. Only the three telemetry opt-outs and the invoking user's
+`HOME` are preserved; Docker does not inherit root's configuration directory.
+This explicit CI-only group selection
 does not modify device permissions, add persistent group membership or rely on a
 per-user ACL that device lifecycle processing can remove. The absolute selected
 Node executable is retained across that invocation; device/group observations and

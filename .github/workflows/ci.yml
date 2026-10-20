@@ -245,12 +245,13 @@ jobs:
           kvm_gid="$(stat --format=%g /dev/kvm)"
           [[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]
           test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"
-          sudo --user="#$(id -u)" --group="#$kvm_gid" --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY -- "$(command -v node)" --input-type=module - "$RUNNER_TEMP/liftoff-kvm-kernel" <<'NODE'
+          sudo --non-interactive --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY,HOME -- /usr/bin/setpriv --reuid="$(id -u)" --regid="$kvm_gid" --init-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- "$(command -v node)" --input-type=module - "$RUNNER_TEMP/liftoff-kvm-kernel" <<'NODE'
           import assert from 'node:assert/strict';
           import { readFile, writeFile } from 'node:fs/promises';
           import { captureLinuxKernelKvmDevice } from './scripts/native-linux-kernel.mjs';
           const directory = process.argv[2];
           const before = JSON.parse(await readFile(directory + '/device-before-access.json', 'utf8'));
+          assert.notEqual(process.getuid(), 0, 'KVM device capture must not execute as root.');
           assert.equal(process.getuid(), before.host.uid, 'KVM preparation must retain the invoking user.');
           const device = await captureLinuxKernelKvmDevice();
           assert.equal(String(process.getgid()), device.gid, 'KVM preparation requires the existing device group.');
@@ -355,7 +356,7 @@ jobs:
           kvm_gid="$(node --input-type=module -e 'import { readFileSync } from "node:fs"; console.log(JSON.parse(readFileSync(process.env.RUNNER_TEMP + "/liftoff-kvm-kernel/device-after-access.json")).gid)')"
           [[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]
           test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"
-          sudo --user="#$(id -u)" --group="#$kvm_gid" --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY -- "$(command -v node)" scripts/native-linux-kernel.mjs "$RUNNER_TEMP/liftoff-kvm-archive" "$manifest_sha" "$(git rev-parse HEAD)" \
+          sudo --non-interactive --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY,HOME -- /usr/bin/setpriv --reuid="$(id -u)" --regid="$kvm_gid" --init-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- "$(command -v node)" scripts/native-linux-kernel.mjs "$RUNNER_TEMP/liftoff-kvm-archive" "$manifest_sha" "$(git rev-parse HEAD)" \
             "$RUNNER_TEMP/liftoff-kvm-kernel/output/kernel" "$kernel_sha" "$RUNNER_TEMP/liftoff-kvm-observation" \
             --kernel-version 4.18.0 --kvm-qemu "$(command -v qemu-system-x86_64)"
       - name: Settle only the invocation-owned compiler container

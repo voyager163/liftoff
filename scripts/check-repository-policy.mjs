@@ -608,7 +608,7 @@ export function checkLinuxKernelKvmQualificationJob(job) {
     'tar --no-same-owner --same-permissions -xf /inputs/linux-4.18.tar -C /build/source'),
   'Unprivileged kernel extraction must preserve every authenticated source mode.');
   for (const step of [job.steps[4], job.steps[7]]) {
-    assert.ok(step.run.includes('sudo --user="#$(id -u)" --group="#$kvm_gid" --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY -- "$(command -v node)"'),
+    assert.ok(step.run.includes('sudo --non-interactive --preserve-env=DO_NOT_TRACK,LIFTOFF_TELEMETRY,OPENSPEC_TELEMETRY,HOME -- /usr/bin/setpriv --reuid="$(id -u)" --regid="$kvm_gid" --init-groups --inh-caps=-all --ambient-caps=-all --bounding-set=-all --no-new-privs -- "$(command -v node)"'),
       'KVM access must retain the invoking user with the existing device group.');
     assert.ok(step.run.includes('[[ "$kvm_gid" =~ ^[1-9][0-9]*$ ]]'), 'KVM device group must be numeric and non-root.');
     assert.ok(step.run.includes('test "$kvm_gid" = "$(getent group kvm | cut -d: -f3)"'),
@@ -619,6 +619,7 @@ export function checkLinuxKernelKvmQualificationJob(job) {
   assert.ok(job.steps[4].run.includes('kvm_gid="$(stat --format=%g /dev/kvm)"'));
   assert.ok(job.steps[4].run.includes('--input-type=module - "$RUNNER_TEMP/liftoff-kvm-kernel"'));
   assert.ok(job.steps[4].run.includes('const directory = process.argv[2];'));
+  assert.ok(job.steps[4].run.includes('assert.notEqual(process.getuid(), 0,'));
   assert.ok(job.steps[4].run.includes('process.getuid(), before.host.uid'));
   assert.ok(job.steps[4].run.includes('String(process.getgid()), device.gid'));
   assert.ok(job.steps[7].run.includes('/liftoff-kvm-kernel/device-after-access.json'));
