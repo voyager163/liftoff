@@ -150,10 +150,24 @@ describe('emulated Linux kernel observation contract', () => {
     for (const replacement of [
       '', 'a'.repeat(7169), encoded + ' ', 'not-gzip',
       gzipSync('not json').toString('base64'),
-      gzipSync('"'+ 'x'.repeat(1024 * 1024) + '"').toString('base64')
+      gzipSync('"' + 'x'.repeat(1024 * 1024) + '"').toString('base64')
     ]) {
       expect(() => assertLinuxKernelGuestTranscript(value.transcript().replace(frame, prefix + replacement), value.expected)).toThrow();
     }
+  });
+  it('retains surrounding kernel diagnostics but never repairs an interleaved serial frame', () => {
+    const value = fixture();
+    const transcript = value.transcript();
+    const prefix = 'LIFTOFF_GUEST_REPORT_GZIP=';
+    const frame = transcript.split('\r\n').find(line => line.startsWith(prefix))!;
+    const warning = '[  150.278445] serial8250: too much work for irq4\r\n';
+    expect(assertLinuxKernelGuestTranscript(warning + transcript, value.expected)).toEqual(value.report);
+    const interrupted = frame.slice(0, 4096) + warning + frame.slice(4096);
+    expect(() => assertLinuxKernelGuestTranscript(transcript.replace(frame, interrupted), value.expected)).toThrow();
+    const legacy = 'LIFTOFF_GUEST_REPORT=' + JSON.stringify(value.report);
+    expect(legacy.length).toBeGreaterThan(8192);
+    const originalFailure = legacy.slice(0, 8192) + warning + legacy.slice(8192);
+    expect(() => assertLinuxKernelGuestTranscript(transcript.replace(frame, originalFailure), value.expected)).toThrow();
   });
   it.each(['arm64', 'x64'] as const)('fixes bounded, network-free %s emulation without KVM/native claims', architecture => {
     const args = linuxKernelGuestArguments(architecture);
