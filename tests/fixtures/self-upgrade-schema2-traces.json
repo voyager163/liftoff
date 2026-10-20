@@ -58,6 +58,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -182,6 +186,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -237,6 +245,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -296,6 +308,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -395,6 +411,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -519,6 +539,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -574,6 +598,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -633,6 +661,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -733,6 +765,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -857,6 +893,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -914,6 +954,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -1014,6 +1058,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -1138,6 +1186,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -1193,6 +1245,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -1254,6 +1310,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -1311,6 +1371,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -1410,6 +1474,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -1534,6 +1602,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -1589,6 +1661,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -1648,6 +1724,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -1747,6 +1827,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -1871,6 +1955,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -1926,6 +2014,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -1985,6 +2077,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -2084,6 +2180,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -2208,6 +2308,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -2263,6 +2367,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -2322,6 +2430,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -2421,6 +2533,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -2545,6 +2661,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -2600,6 +2720,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -2698,6 +2822,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -2820,6 +2948,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -2918,6 +3050,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -3042,6 +3178,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -3097,6 +3237,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -3195,6 +3339,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -3319,6 +3467,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -3374,6 +3526,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -3433,6 +3589,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -3532,6 +3692,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -3656,6 +3820,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -3711,6 +3879,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -3772,6 +3944,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -3830,6 +4006,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -3948,6 +4128,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -4003,6 +4187,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -4064,6 +4252,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -4122,6 +4314,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -4257,6 +4453,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -4315,6 +4515,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -4395,6 +4599,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -4495,6 +4703,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -4619,6 +4831,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -4674,6 +4890,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -4735,6 +4955,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -4793,6 +5017,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -4911,6 +5139,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -4966,6 +5198,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -5027,6 +5263,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -5085,6 +5325,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -5220,6 +5464,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -5278,6 +5526,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -5358,6 +5610,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -5458,6 +5714,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -5582,6 +5842,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -5637,6 +5901,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -5698,6 +5966,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -5756,6 +6028,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -5874,6 +6150,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -5929,6 +6209,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -5990,6 +6274,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -6048,6 +6336,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -6181,6 +6473,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -6281,6 +6577,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -6405,6 +6705,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -6460,6 +6764,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -6521,6 +6829,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -6579,6 +6891,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -6697,6 +7013,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -6752,6 +7072,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -6813,6 +7137,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -6871,6 +7199,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -7004,6 +7336,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -7104,6 +7440,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -7228,6 +7568,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -7283,6 +7627,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -7344,6 +7692,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -7402,6 +7754,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -7520,6 +7876,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -7575,6 +7935,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -7636,6 +8000,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -7694,6 +8062,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -7829,6 +8201,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -7887,6 +8263,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -7967,6 +8347,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -8067,6 +8451,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -8191,6 +8579,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -8246,6 +8638,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -8307,6 +8703,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -8365,6 +8765,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -8483,6 +8887,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -8538,6 +8946,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -8599,6 +9011,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -8657,6 +9073,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -8792,6 +9212,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -8850,6 +9274,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -8966,6 +9394,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -9090,6 +9522,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -9145,6 +9581,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -9206,6 +9646,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -9264,6 +9708,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -9382,6 +9830,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -9437,6 +9889,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -9498,6 +9954,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -9556,6 +10016,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -9691,6 +10155,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -9749,6 +10217,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -9853,6 +10325,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -9945,6 +10421,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -10041,6 +10521,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -10135,6 +10619,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -10227,6 +10715,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -10325,6 +10817,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -10429,6 +10925,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -10529,6 +11029,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -10641,6 +11145,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -10749,6 +11257,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -10910,6 +11422,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -11065,6 +11581,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -11224,6 +11744,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -11379,6 +11903,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -11538,6 +12066,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -11693,6 +12225,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -11852,6 +12388,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -12009,6 +12549,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -12133,6 +12677,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -12188,6 +12736,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -12247,6 +12799,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -12343,6 +12899,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -12469,6 +13029,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -12524,6 +13088,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -12583,6 +13151,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -12681,6 +13253,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -12807,6 +13383,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -12862,6 +13442,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -12923,6 +13507,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -12981,6 +13569,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -13099,6 +13691,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -13154,6 +13750,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -13215,6 +13815,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -13273,6 +13877,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -13408,6 +14016,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -13466,6 +14078,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -13546,6 +14162,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -13644,6 +14264,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -13792,6 +14416,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -13904,6 +14532,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -13959,6 +14591,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -14021,6 +14657,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -14079,6 +14719,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -14141,6 +14785,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -14242,6 +14890,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -14386,6 +15038,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -14500,6 +15156,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -14555,6 +15215,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -14617,6 +15281,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -14675,6 +15343,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -14739,6 +15411,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -14797,6 +15473,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -14943,6 +15623,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -15049,6 +15733,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -15104,6 +15792,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -15166,6 +15858,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -15224,6 +15920,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -15288,6 +15988,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -15346,6 +16050,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -15494,6 +16202,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -15594,6 +16306,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -15745,6 +16461,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -15805,6 +16525,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -15951,6 +16675,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -16050,6 +16778,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -16196,6 +16928,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -16308,6 +17044,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -16363,6 +17103,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -16425,6 +17169,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -16483,6 +17231,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -16582,6 +17334,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -16728,6 +17484,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -16840,6 +17600,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -16895,6 +17659,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -16957,6 +17725,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -17015,6 +17787,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -17079,6 +17855,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -17137,6 +17917,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -17318,6 +18102,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -17417,6 +18205,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -17472,6 +18264,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -17531,6 +18327,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -17605,6 +18405,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -17662,6 +18466,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -17736,6 +18544,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -17791,6 +18603,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -17852,6 +18668,10 @@
               "<neutral>/npm-cache"
             ],
             [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
+            ],
+            [
               "npm_config_update_notifier",
               "false"
             ]
@@ -17909,6 +18729,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",
@@ -17980,6 +18804,10 @@
             [
               "npm_config_cache",
               "<neutral>/npm-cache"
+            ],
+            [
+              "npm_config_logs_dir",
+              "<neutral>/npm-cache/_logs"
             ],
             [
               "npm_config_update_notifier",

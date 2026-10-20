@@ -1117,8 +1117,10 @@ directory so project `.npmrc` files cannot change upgrade delivery. Canonical
 verification isolates both registry settings without changing persistent
 configuration; actual delivery still honors the configured mirror.
 All npm observation, installation and replacement-verification subprocesses use
-only the caller-supplied environment plus the upgrade's temporary cache and
-telemetry/startup guards. Omitted parent npm settings are not merged back in;
+only the caller-supplied environment plus the upgrade's temporary cache, debug-log
+directory and telemetry/startup guards. Debug logs remain inside that cache even
+when account configuration or case/hyphen variants of npm environment settings
+select another log directory. Omitted parent npm settings are not merged back in;
 explicit prefix, mirror and account settings remain preserved.
 
 `--check` performs the same origin, target, and parity checks without invoking

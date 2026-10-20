@@ -250,10 +250,11 @@ describe('npm-lane rules', () => {
     }
   });
 
-  it('isolates only the npm cache inside the neutral directory', () => {
+  it('isolates the npm cache and debug logs inside the neutral directory', () => {
     const environment = { PATH: '/fixture/bin', npm_config_cache: '/fixture/ambient', NPM_CONFIG_PREFIX: '/fixture/prefix' };
     expect(readOnlyEnvironment({ environment }, path.join('/', 'neutral'))).toEqual({
       ...environment, npm_config_cache: path.join('/', 'neutral', 'npm-cache'), npm_config_update_notifier: 'false',
+      npm_config_logs_dir: path.join('/', 'neutral', 'npm-cache', '_logs'),
       DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0', CI: 'true', NODE_OPTIONS: '', NODE_PATH: ''
     });
     expect(environment.npm_config_cache).toBe('/fixture/ambient');
@@ -274,16 +275,20 @@ describe('npm-lane rules', () => {
 
   it('removes case-variant startup/reporting/cache overrides while preserving account, prefix and mirror settings', () => {
     const environment = {
-      NPM_CONFIG_CACHE: '/foreign-cache', node_options: '--require=foreign', Node_Path: '/foreign-modules',
+      NPM_CONFIG_CACHE: '/foreign-cache', NPM_CONFIG_LOGS_DIR: '/foreign-logs',
+      'npm_config_logs-dir': '/foreign-hyphenated-logs', 'NPM_CONFIG_UPDATE-NOTIFIER': 'true',
+      node_options: '--require=foreign', Node_Path: '/foreign-modules',
       do_not_track: '0', liftoff_telemetry: '1', ci: 'false', npm_config_registry: 'https://fixture-mirror.test',
       NPM_CONFIG_PREFIX: '/fixture-prefix', NPM_CONFIG_USERCONFIG: '/fixture-account', PATH: '/fixture-bin'
     };
     const isolated = readOnlyEnvironment({ environment }, '/private-neutral');
     expect(isolated).toMatchObject({ npm_config_cache: path.join('/private-neutral', 'npm-cache'),
+      npm_config_logs_dir: path.join('/private-neutral', 'npm-cache', '_logs'),
       NODE_OPTIONS: '', NODE_PATH: '', CI: 'true', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0',
       npm_config_registry: environment.npm_config_registry, NPM_CONFIG_PREFIX: environment.NPM_CONFIG_PREFIX,
       NPM_CONFIG_USERCONFIG: environment.NPM_CONFIG_USERCONFIG, PATH: environment.PATH });
-    for (const key of ['NPM_CONFIG_CACHE', 'node_options', 'Node_Path', 'do_not_track', 'liftoff_telemetry', 'ci']) {
+    for (const key of ['NPM_CONFIG_CACHE', 'NPM_CONFIG_LOGS_DIR', 'npm_config_logs-dir', 'NPM_CONFIG_UPDATE-NOTIFIER',
+      'node_options', 'Node_Path', 'do_not_track', 'liftoff_telemetry', 'ci']) {
       expect(isolated).not.toHaveProperty(key);
     }
     expect(environment.NPM_CONFIG_CACHE).toBe('/foreign-cache');
@@ -434,6 +439,7 @@ describe('npm compatibility adapter on private filesystem fixtures', () => {
       await runExactGlobalInstall(command, '/neutral', host(runner, { environment: { PATH: '/fixture/bin' } }), { json, stdout, stderr });
       expect(runner.calls).toEqual([{ command, options: {
         cwd: '/neutral', env: { PATH: '/fixture/bin', npm_config_cache: path.join('/neutral', 'npm-cache'),
+          npm_config_logs_dir: path.join('/neutral', 'npm-cache', '_logs'),
           npm_config_update_notifier: 'false', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0', CI: 'true', NODE_OPTIONS: '', NODE_PATH: '' },
         inheritEnvironment: false, timeoutMs: 600_000, maxOutputBytes: 8 * 1024 * 1024, ensureProcessTreeSettled: true,
         stream: true, stdout: json ? stderr : stdout, stderr
