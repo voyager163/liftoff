@@ -15,6 +15,39 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const fixtures = path.join(root, 'distribution/linux/qualification');
 const digestPattern = /^[a-f0-9]{64}$/;
 
+export function parseLinuxKernelGuestOptions(args) {
+  assert.ok(args.length >= 6 && (args.length - 6) % 2 === 0,
+    'Usage: native-linux-kernel.mjs <native-archive-directory> <release-manifest-sha256> <commit> <kernel-image> <kernel-sha256> <new-output> [--kernel-version 4.18|4.18.20] [--hvf-qemu /absolute/qemu-system-aarch64]');
+  const options = { kernelVersion: '4.18.20', accelerator: 'tcg', qemu: null };
+  const seen = new Set();
+  for (let index = 6; index < args.length; index += 2) {
+    const [flag, value] = args.slice(index, index + 2);
+    assert.ok(!seen.has(flag), 'Duplicate guest option.');
+    seen.add(flag);
+    if (flag === '--kernel-version') {
+      assert.ok(['4.18', '4.18.20'].includes(value), 'Unsupported guest kernel version.');
+      options.kernelVersion = value;
+    } else if (flag === '--hvf-qemu') {
+      assert.ok(path.isAbsolute(value), 'An absolute HVF QEMU executable is required.');
+      options.accelerator = 'hvf';
+      options.qemu = value;
+    } else {
+      assert.fail('Unknown guest option.');
+    }
+  }
+  return options;
+}
+
+export function assertLinuxKernelHvfHost(platform, architecture, guestArchitecture) {
+  assert.ok(platform === 'darwin' && architecture === 'arm64' && guestArchitecture === 'arm64',
+    'HVF requires native Apple Silicon macOS and an ARM64 guest; no emulation fallback is permitted.');
+}
+
+export function assertLinuxKernelHvfEmulator(version, accelerators) {
+  assert.equal(version.split(/\r?\n/)[0], 'QEMU emulator version 11.1.2', 'HVF requires QEMU 11.1.2.');
+  assert.ok(accelerators.split(/\r?\n/).includes('hvf'), 'This QEMU does not advertise HVF.');
+}
+
 export function assertLinuxKernelImage(bytes, architecture) {
   assert.ok(['x64', 'arm64'].includes(architecture), 'Unsupported guest architecture.');
   if (architecture === 'arm64') {
@@ -27,6 +60,10 @@ export function assertLinuxKernelImage(bytes, architecture) {
 }
 
 export function assertLinuxKernelGuestTranscript(stdout, expected) {
+  const kernelVersion = expected.kernelVersion ?? '4.18.20', accelerator = expected.accelerator ?? 'tcg';
+  assert.ok(['4.18', '4.18.20'].includes(kernelVersion), 'Unsupported guest kernel version.');
+  assert.ok(['tcg', 'hvf'].includes(accelerator), 'Unsupported guest accelerator.');
+  assert.ok(accelerator !== 'hvf' || expected.architecture === 'arm64', 'HVF requires an ARM64 guest.');
   assert.match(expected.commit ?? '', /^[a-f0-9]{40}$/);
   for (const field of ['manifestSha256', 'inventorySha256']) assert.match(expected[field] ?? '', digestPattern);
   assert.ok(['x64', 'arm64'].includes(expected.architecture));
@@ -45,7 +82,7 @@ export function assertLinuxKernelGuestTranscript(stdout, expected) {
   assert.equal(report.kind, 'liftoff-linux-kernel-guest-probe');
   assert.deepEqual(report.observed, {
     platform: 'linux', architecture: expected.architecture, runtimeVersion: '24.21.0',
-    osVersion: '4.18.20', nativeArchitecture: expected.architecture === 'arm64' ? 'aarch64' : 'x86_64',
+    osVersion: kernelVersion, nativeArchitecture: expected.architecture === 'arm64' ? 'aarch64' : 'x86_64',
     glibcVersion: '2.28'
   });
   for (const field of ['commit', 'manifestSha256', 'inventorySha256']) assert.equal(report[field], expected[field]);
@@ -57,7 +94,8 @@ export function assertLinuxKernelGuestTranscript(stdout, expected) {
   for (const prefix of ['glibc:2.28-', 'libstdc++:8.5.0-']) {
     assert.equal(report.libraries.filter(value => value.startsWith(prefix) && value.endsWith(suffix)).length, 1);
   }
-  for (const field of ['bundleReadOnly', 'kernelExecution', 'emulated', 'developmentInstallRecovered',
+  assert.equal(report.emulated, accelerator === 'tcg', 'Guest execution mode differs.');
+  for (const field of ['bundleReadOnly', 'kernelExecution', 'developmentInstallRecovered',
     'controllerResolved', 'hclQualifiedRuntimeRefused', 'publicInstallationRefused']) assert.equal(report[field], true);
   for (const field of ['hclExecuted', 'minimumHostQualified', 'publicDistributionQualified']) assert.equal(report[field], false);
   assert.deepEqual(report.plans.map(plan => plan.id), installedPlanCases.map(plan => plan.id));
@@ -69,17 +107,22 @@ export function assertLinuxKernelGuestTranscript(stdout, expected) {
   return report;
 }
 
-export function linuxKernelGuestArguments(architecture) {
+export function linuxKernelGuestArguments(architecture, { accelerator = 'tcg', kernel = '/work/kernel',
+  initrd = '/work/guest.cpio.gz' } = {}) {
   assert.ok(['arm64', 'x64'].includes(architecture), 'Unsupported guest architecture.');
+  assert.ok(['tcg', 'hvf'].includes(accelerator), 'Unsupported guest accelerator.');
+  assert.ok(accelerator !== 'hvf' || architecture === 'arm64', 'HVF requires an ARM64 guest.');
+  assert.ok(path.isAbsolute(kernel) && path.isAbsolute(initrd), 'Absolute guest input paths are required.');
+  const hvf = accelerator === 'hvf';
   return [
     architecture === 'arm64' ? 'qemu-system-aarch64' : 'qemu-system-x86_64',
-    '-machine', architecture === 'arm64' ? 'virt-8.2,gic-version=2' : 'pc-i440fx-8.2',
-    '-cpu', architecture === 'arm64' ? 'cortex-a72' : 'Nehalem',
-    '-accel', 'tcg,thread=multi', '-smp', '2', '-m', '2048',
+    '-machine', hvf ? 'virt-11.1,gic-version=3,highmem=off' : architecture === 'arm64' ? 'virt-8.2,gic-version=2' : 'pc-i440fx-8.2',
+    '-cpu', hvf ? 'host' : architecture === 'arm64' ? 'cortex-a72' : 'Nehalem',
+    '-accel', hvf ? 'hvf' : 'tcg,thread=multi', '-smp', '2', '-m', '2048',
     '-display', 'none', '-monitor', 'none', '-serial', 'stdio', '-nic', 'none', '-no-reboot',
     '-object', 'rng-random,filename=/dev/urandom,id=rng0',
     '-device', architecture === 'arm64' ? 'virtio-rng-device,rng=rng0' : 'virtio-rng-pci,rng=rng0',
-    '-kernel', '/work/kernel', '-initrd', '/work/guest.cpio.gz',
+    '-kernel', kernel, '-initrd', initrd,
     '-append', `console=${architecture === 'arm64' ? 'ttyAMA0' : 'ttyS0'} rdinit=/init panic=-1`
   ];
 }
@@ -93,8 +136,7 @@ export function assertLinuxKernelGuestContainerIdentity(container, name, nonce, 
 }
 
 export async function runLinuxKernelGuest(args) {
-  assert.equal(args.length, 6,
-    'Usage: native-linux-kernel.mjs <native-archive-directory> <release-manifest-sha256> <commit> <kernel-image> <kernel-sha256> <new-output>');
+  const options = parseLinuxKernelGuestOptions(args);
   assert.ok(['linux', 'darwin'].includes(process.platform) && process.getuid() > 0 && process.geteuid() > 0,
     'Use an unprivileged macOS or Linux contributor account.');
   const [archiveInput, releaseSha256, commit, kernelInput, kernelSha256, outputInput] = args;
@@ -103,6 +145,13 @@ export async function runLinuxKernelGuest(args) {
   const record = await verifyNativeArchiveSubjects(archive, releaseSha256, commit);
   assert.ok(['linux-arm64', 'linux-x64'].includes(record.target), 'A Linux development archive is required.');
   const architecture = record.target.slice('linux-'.length);
+  let qemu, qemuIdentity;
+  if (options.accelerator === 'hvf') {
+    assertLinuxKernelHvfHost(process.platform, process.arch, architecture);
+    qemu = await realpath(options.qemu);
+    qemuIdentity = await bundleFile(qemu, 128 * 1024 * 1024);
+    assert.ok((qemuIdentity.mode & 0o111) !== 0, 'QEMU is not executable.');
+  }
   const capturedKernel = await readBundleFile(kernel, 128 * 1024 * 1024);
   assert.equal(capturedKernel.identity.sha256, kernelSha256, 'Kernel digest differs.');
   assertLinuxKernelImage(capturedKernel.content, architecture);
@@ -120,13 +169,16 @@ export async function runLinuxKernelGuest(args) {
   const guestContainer = `liftoff-linux-guest-${nonce}`;
   const label = `liftoff.kernel-guest.invocation=${nonce}`;
   const commands = [];
-  function execute(name, commandArgs, timeout = 180_000) {
-    const result = spawnSync('docker', commandArgs, { shell: false, timeout, maxBuffer: 32 * 1024 * 1024 });
-    commands.push({ name, args: commandArgs, status: result.status, signal: result.signal, error: result.error?.message ?? null });
+  function execute(name, commandArgs, timeout = 180_000, executable = 'docker') {
+    const result = spawnSync(executable, commandArgs, { shell: false, timeout, maxBuffer: 32 * 1024 * 1024,
+      ...(executable === qemu ? { cwd: output, env: {
+        PATH: '/usr/bin:/bin', HOME: output, TMPDIR: output, LANG: 'C', LC_ALL: 'C'
+      }, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] } : {}) });
+    commands.push({ name, executable, args: commandArgs, status: result.status, signal: result.signal, error: result.error?.message ?? null });
     return { result, stdout: result.stdout ?? Buffer.alloc(0), stderr: result.stderr ?? Buffer.alloc(0) };
   }
-  async function checked(name, commandArgs, timeout) {
-    const captured = execute(name, commandArgs, timeout);
+  async function checked(name, commandArgs, timeout, executable) {
+    const captured = execute(name, commandArgs, timeout, executable);
     await writeFile(path.join(output, `${name}.stdout`), captured.stdout, { flag: 'wx' });
     await writeFile(path.join(output, `${name}.stderr`), captured.stderr, { flag: 'wx' });
     assert.equal(captured.result.error, undefined, `${name}: ${captured.result.error?.message}`);
@@ -138,6 +190,12 @@ export async function runLinuxKernelGuest(args) {
   const cleanupErrors = [];
   let completed, failure;
   try {
+    if (qemu) {
+      const version = await checked('hvf-version', ['--version'], 10_000, qemu);
+      const accelerators = await checked('hvf-accelerators', ['-accel', 'help'], 10_000, qemu);
+      assertLinuxKernelHvfEmulator(version, accelerators);
+      assert.deepEqual(await bundleFile(qemu, 128 * 1024 * 1024), qemuIdentity, 'QEMU changed.');
+    }
     const image = nativeLinuxUserspaceImages[architecture];
     const imageIdentity = JSON.parse(await checked('userspace-image', ['image', 'inspect', image, '--format', '{{json .}}']));
     assert.equal(imageIdentity.Os, 'linux');
@@ -155,7 +213,8 @@ export async function runLinuxKernelGuest(args) {
       fixtureIdentities[name] = captured.identity;
       await writeFile(path.join(output, name), captured.content, { flag: 'wx' });
     }
-    const expected = { architecture, commit, manifestSha256: record.manifestSha256,
+    const expected = { architecture, commit, kernelVersion: options.kernelVersion, accelerator: options.accelerator,
+      manifestSha256: record.manifestSha256,
       inventorySha256: record.inventorySha256, version: record.version, plans: installedPlanCases };
     await writeFile(path.join(output, 'guest-input.json'), JSON.stringify(expected) + '\n', { flag: 'wx' });
     await checked('toolbox-build', ['build', '--tag', tag, '--file', path.join(output, 'Dockerfile'), output], 600_000);
@@ -192,13 +251,22 @@ export async function runLinuxKernelGuest(args) {
     for (const name of ['kernel', 'rootfs.tar', 'guest.cpio.gz', 'init', 'guest-probe.mjs', 'guest-input.json']) {
       before[name] = await bundleFile(path.join(output, name), 512 * 1024 * 1024);
     }
-    owned.set(guestContainer, toolbox.Id);
-    const stdout = await checked('guest', ['run', '--name', guestContainer, '--label', label, '--network=none', '--read-only',
-      '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=128', '--memory=3g', '--cpus=2',
-      '--user', `${process.getuid()}:${process.getgid()}`,
-      '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=4194304', '--mount', `type=bind,source=${output},target=/work,readonly`,
-      toolbox.Id, 'timeout', '--signal=TERM', '--kill-after=10s', '840s',
-      ...linuxKernelGuestArguments(architecture)], 880_000);
+    let stdout;
+    if (qemu) {
+      assert.deepEqual(await bundleFile(qemu, 128 * 1024 * 1024), qemuIdentity, 'QEMU changed before execution.');
+      stdout = await checked('guest', linuxKernelGuestArguments(architecture, {
+        accelerator: 'hvf', kernel: path.join(output, 'kernel'), initrd: path.join(output, 'guest.cpio.gz')
+      }).slice(1), 120_000, qemu);
+      assert.deepEqual(await bundleFile(qemu, 128 * 1024 * 1024), qemuIdentity, 'QEMU changed during execution.');
+    } else {
+      owned.set(guestContainer, toolbox.Id);
+      stdout = await checked('guest', ['run', '--name', guestContainer, '--label', label, '--network=none', '--read-only',
+        '--cap-drop=ALL', '--security-opt=no-new-privileges', '--pids-limit=128', '--memory=3g', '--cpus=2',
+        '--user', `${process.getuid()}:${process.getgid()}`,
+        '--tmpfs', '/tmp:rw,nosuid,nodev,noexec,size=4194304', '--mount', `type=bind,source=${output},target=/work,readonly`,
+        toolbox.Id, 'timeout', '--signal=TERM', '--kill-after=10s', '840s',
+        ...linuxKernelGuestArguments(architecture)], 880_000);
+    }
     assert.equal(await readFile(path.join(output, 'guest.stderr'), 'utf8'), '', 'Unexpected QEMU diagnostic.');
     const report = assertLinuxKernelGuestTranscript(stdout, expected);
     for (const [name, identity] of Object.entries(before)) {
@@ -210,8 +278,9 @@ export async function runLinuxKernelGuest(args) {
     }
     await verifyNativeArchiveSubjects(archive, releaseSha256, commit);
     completed = { receipt: {
-      schemaVersion: 1, kind: 'liftoff-emulated-linux-kernel-observation', report,
+      schemaVersion: 1, kind: qemu ? 'liftoff-hvf-linux-kernel-observation' : 'liftoff-emulated-linux-kernel-observation', report,
       subjects: before, fixtureIdentities, image, imageId: imageIdentity.Id, toolboxImageId: toolbox.Id,
+      ...(qemu ? { hvf: { executable: qemu, identity: qemuIdentity, accelerator: 'hvf', cpu: 'host', tcgFallback: false } } : {}),
       releaseManifestSha256: releaseSha256, kernelAuthenticatedByRunner: false,
       qualifiedNativeHost: false, releaseReady: false
     }, result: { output, target: record.target, observed: report.observed, releaseReady: false, qualifiedNativeHost: false } };

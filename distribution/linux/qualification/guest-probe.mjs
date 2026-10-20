@@ -11,6 +11,10 @@ import { parseIsolatedHcl } from '/liftoff/application/dist/adapters/hcl/isolate
 import { verifyWindowsJobControllerAsset } from '/liftoff/application/dist/adapters/process/windows-job-runner.js';
 
 const expected = JSON.parse(await readFile('/guest-input.json', 'utf8'));
+const kernelVersion = expected.kernelVersion ?? '4.18.20', accelerator = expected.accelerator ?? 'tcg';
+assert.ok(['4.18', '4.18.20'].includes(kernelVersion));
+assert.ok(['tcg', 'hvf'].includes(accelerator));
+assert.ok(accelerator !== 'hvf' || expected.architecture === 'arm64');
 assert.equal(process.getuid(), 1000);
 assert.equal(process.getgid(), 1000);
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -24,7 +28,7 @@ assert.equal(manifest.inventory.sha256, expected.inventorySha256);
 const observed = observeNativeHost();
 assert.equal(observed.platform, 'linux');
 assert.equal(observed.architecture, expected.architecture);
-assert.equal(observed.osVersion, '4.18.20');
+assert.equal(observed.osVersion, kernelVersion);
 assert.equal(observed.glibcVersion, '2.28');
 assert.equal(observed.runtimeVersion, '24.21.0');
 assert.equal(os.release(), observed.osVersion);
@@ -84,7 +88,7 @@ const report = {
   kind: 'liftoff-linux-kernel-guest-probe', observed, version, libraries, plans,
   manifestSha256: expected.manifestSha256, commit: expected.commit,
   inventorySha256: manifest.inventory.sha256, uid: process.getuid(), gid: process.getgid(),
-  bundleReadOnly: true, kernelExecution: true, emulated: true, developmentInstallRecovered: true,
+  bundleReadOnly: true, kernelExecution: true, emulated: accelerator === 'tcg', developmentInstallRecovered: true,
   controllerResolved: true, hclExecuted: false, hclQualifiedRuntimeRefused: true,
   publicInstallationRefused: true, minimumHostQualified: false, publicDistributionQualified: false
 };
