@@ -4,6 +4,7 @@ import type { InstalledLocalClassification } from '../../domain/governance/activ
 import type { LocalPublicationOutcome } from './modern-local-publication.js';
 import type { SuccessorRevalidationOutcome } from '../update/modern-revalidation-publication.js';
 import { modernManifestMatchesObservation } from '../project/manifest.js';
+import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
 
 export const modernGovernanceReportSchemaVersion = 3;
 export type ModernGovernanceInspectionCommand = 'status' | 'resume' | 'verify';
@@ -105,6 +106,21 @@ export async function inspectModernGovernance(input: {
   }
   report.consistent = true;
   if (input.scope === undefined && input.command === 'resume' && report.localComplete) report.scope = 'activation';
+  if (report.scope === 'lifecycle' && installed.retention.length) {
+    const observedAt = installed.snapshot.observedAt;
+    const observedTime = Date.parse(observedAt);
+    for (const obligation of installed.retention) {
+      const deadline = Date.parse(obligation.disposeAfter);
+      if (!Number.isFinite(observedTime) || !Number.isFinite(deadline) ||
+        !Number.isFinite(Date.parse(obligation.retainedAt))) {
+        throw new Error('Recorded bootstrap retention has an invalid observation or deadline; no lifecycle status was established.');
+      }
+      const scope = canonicalSha256(obligation);
+      report.blockers.push(obligation.status === 'disposed'
+        ? `Bootstrap retention ${scope} (${obligation.origin}) records disposal; physical disposal is not verified as of ${observedAt}; original deadline ${obligation.disposeAfter}, retained since ${obligation.retainedAt}. Do not recreate its material or keys.`
+        : `Bootstrap retention ${scope} (${obligation.origin}) is ${observedTime >= deadline ? 'due' : 'not due'} as of ${observedAt}; original deadline ${obligation.disposeAfter}, retained since ${obligation.retainedAt}. This preservation-only record establishes no current custody or disposal authority.`);
+    }
+  }
   report.complete = report.scope === 'local' ? report.localComplete : report.activationDisabled;
   if (report.scope !== 'local' && !report.activationDisabled) {
     report.blockers.push(`Current ${report.scope} completion is not established by local proof or stored phase records.`);
