@@ -4,6 +4,7 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
+import { jobIdentityProgramBootstrap } from './qualify-github-job-identity.mjs';
 import {
   nativeContainerToolProfile,
   nativeCustodyQualificationCommands,
@@ -31,12 +32,13 @@ export function githubJobIdentityQualificationWorkflow() {
       'prepare-job-identity': {
         name: 'Prepare dependency-free job identity program', if: condition,
         'runs-on': 'ubuntu-latest', 'timeout-minutes': 5, permissions: { contents: 'read' },
+        outputs: { 'program-inventory-sha256': '${{ steps.prepare-program.outputs.inventory-sha256 }}' },
         steps: [
           { uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
             with: { ref: '${{ github.sha }}', 'persist-credentials': false } },
           structuredClone(node),
-          { name: 'Transform only the explicit identity program with Node built-ins',
-            run: 'node scripts/qualify-github-job-identity.mjs prepare' },
+          { name: 'Transform only the explicit identity program with Node built-ins', id: 'prepare-program',
+            run: 'inventory="$(node scripts/qualify-github-job-identity.mjs prepare)"\nprintf \'inventory-sha256=%s\\n\' "$inventory" >> "$GITHUB_OUTPUT"' },
           artifact('program', 'qualification/job-identity-program')
         ]
       },
@@ -50,8 +52,9 @@ export function githubJobIdentityQualificationWorkflow() {
             with: { name: 'liftoff-job-identity-program-${{ github.run_id }}-${{ github.run_attempt }}',
               path: 'qualification/job-identity-program' } },
           { name: 'Verify signed original job facts without publishing or cloud access',
-            env: { GH_TOKEN: '${{ github.token }}' },
-            run: 'node qualification/job-identity-program/qualify.mjs observe' },
+            env: { GH_TOKEN: '${{ github.token }}',
+              LIFTOFF_JOB_IDENTITY_PROGRAM_SHA256: '${{ needs.prepare-job-identity.outputs.program-inventory-sha256 }}' },
+            run: jobIdentityProgramBootstrap },
           artifact('report', 'qualification/job-identity-program/job-identity-report.json')
         ]
       }

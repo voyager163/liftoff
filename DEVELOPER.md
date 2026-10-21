@@ -48,12 +48,25 @@ program using **Node 24.21.0's experimental built-in TypeScript transformer**.
 It runs no npm/dependency/lifecycle code. Only the separate observation job gets
 nonpublishing OIDC plus read-only job metadata. The repository policy validates
 the entire closed workflow, including trigger, permissions, steps and pinned
-actions. Portable tests use real local RSA signatures and mocked network
+actions. The preparation step returns the exact inventory digest through its
+same-run GitHub job output, independently of the downloaded artifact. Trusted
+workflow-inline Node code checks that digest, the closed five-file namespace,
+the exact module-package bytes and bounded single-link regular-file identities
+before importing any downloaded helper. The inventory is limited to 4 KiB and
+each member to 256 KiB, checked before opening or allocating its payload.
+Every opened file is checked before and after capture and all file/directory
+identities are rechecked before import.
+Changing the helper and its own inventory together cannot change the original
+producer's job output. The observer also retains that expected inventory digest
+in its diagnostic report. No checkout, dependencies, publishing grant or new
+OIDC audience is added to the observation job.
+Portable tests use real local RSA signatures and mocked network
 responses; they are not genuine GitHub execution evidence.
 
 This primitive establishes signed job facts **only**. Ordinary Actions artifact
-transport and its diagnostic inventory do not establish Source5 authenticated
-program delivery, protected whole-job host custody, selected build-tool closure,
+transport, even with this closed helper's producer-bound handoff, does not
+establish Source5 authenticated program delivery, protected whole-job host
+custody, selected build-tool closure,
 effect approval, artifact publication or workflow authority. No activation
 identity, phase, receipt family, public CLI capability or OpenSpec completion
 gate is advanced by adding this observer.

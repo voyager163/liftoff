@@ -93,8 +93,13 @@ nonpublishing exception. A read-only job prepares two explicit first-party
 modules with Node built-ins, without npm or lifecycle scripts. Only its dependent
 identity-observation job receives `actions: read` and `id-token: write`; it has
 no checkout, dependency installation, cloud commands or publishing step. It
-requests only a fresh Liftoff-purpose audience and verifies GitHub's signature
-against exact original job/run/source selectors. The permission itself is not
+uses trusted workflow-inline code to verify the downloaded helper against the
+original preparation job's independent inventory-digest output before import,
+including its closed namespace and bounded physical-file observations. This
+does not provide protected custody across the job or qualify the full native
+program's delivery. It requests only a fresh Liftoff-purpose audience and
+verifies GitHub's signature against exact original job/run/source selectors.
+The permission itself is not
 audience-restricted: the closed reviewed program, not a GitHub permission
 mechanism, limits its use. Ordinary contribution jobs remain read-only.
 Its sanitized report is not program-delivery, host-custody, deployment or

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { link, mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { createHash, generateKeyPairSync } from 'node:crypto';
 import os from 'node:os';
@@ -7,12 +7,50 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parse } from 'yaml';
 import {
-  prepareGitHubJobIdentityProgram, selectGitHubJobIdentityBinding, jobIdentityQualificationName
+  prepareGitHubJobIdentityProgram, selectGitHubJobIdentityBinding, jobIdentityQualificationName, jobIdentityProgramBootstrap
 } from '../scripts/qualify-github-job-identity.mjs';
 import { checkWorkflow, githubJobIdentityQualificationWorkflow } from '../scripts/check-repository-policy.mjs';
 
 const root = process.cwd();
 const directories: string[] = [];
+const bootstrapSource = jobIdentityProgramBootstrap.slice("node --input-type=module <<'NODE'\n".length, -'\nNODE'.length);
+const hash = (bytes: string | Buffer) => createHash('sha256').update(bytes).digest('hex');
+async function handoffFixture() {
+  const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff original helper # ')));
+  directories.push(directory);
+  const program = path.join(directory, 'qualification/job-identity-program');
+  await mkdir(program, { recursive: true });
+  const content = new Map([
+    ['job-identity.js', 'export {};\n'], ['activation-rest.js', 'export {};\n'],
+    ['qualify.mjs', `import { writeFile } from 'node:fs/promises';
+await writeFile(new URL('entry-imported.txt', import.meta.url), 'imported');
+export async function runGitHubJobIdentityObservation() {
+  await writeFile(new URL('observation.txt', import.meta.url), 'synthetic helper only');
+}
+`],
+    ['package.json', '{"type":"module"}\n']
+  ]);
+  for (const [name, bytes] of content) await writeFile(path.join(program, name), bytes);
+  const inventory = { schemaVersion: 1, files: [...content].map(([name, bytes]) => ({ name, sha256: hash(bytes) })) };
+  const saveInventory = async () => {
+    const bytes = `${JSON.stringify(inventory, null, 2)}\n`;
+    await writeFile(path.join(program, 'inventory.json'), bytes);
+    return hash(bytes);
+  };
+  const expected = await saveInventory();
+  return { directory, program, inventory, expected, saveInventory };
+}
+function bootstrap(directory: string, expected: string, preloader?: string) {
+  return spawnSync(process.execPath, [...(preloader ? ['--import', pathToFileURL(preloader).href] : []),
+    '--input-type=module', '-e', bootstrapSource], {
+    cwd: directory, encoding: 'utf8', timeout: 30_000,
+    env: { ...process.env, LIFTOFF_JOB_IDENTITY_PROGRAM_SHA256: expected, GH_TOKEN: 'private-handoff-canary' }
+  });
+}
+async function expectNoImport(program: string) {
+  expect(await readdir(program)).not.toContain('entry-imported.txt');
+  expect(await readdir(program)).not.toContain('observation.txt');
+}
 const env = {
   GITHUB_REPOSITORY: 'voyager163/liftoff', GITHUB_EVENT_NAME: 'workflow_dispatch',
   GITHUB_RUN_ATTEMPT: '1', GITHUB_JOB: 'observe-job-identity', GITHUB_RUN_ID: '100',
@@ -81,7 +119,8 @@ describe('closed manual job identity qualification without dependency execution'
     'observer-checkout', 'observer-dependency-install', 'observer-extra-step', 'observer-environment',
     'observer-reusable-workflow', 'observer-unpinned-action', 'observer-wrong-runtime', 'observer-custom-audience',
     'observer-cloud-permission', 'observer-secret', 'rerun', 'foreign-repository', 'self-hosted',
-    'suppressed-failure', 'missing-needs', 'missing-report', 'ignore-missing-report', 'new-checkout-source'])(
+    'suppressed-failure', 'missing-needs', 'missing-report', 'ignore-missing-report', 'new-checkout-source',
+    'missing-producer-output', 'artifact-provided-digest', 'missing-bootstrap', 'changed-bootstrap'])(
     'rejects any extension of the privileged closed qualification: %s', async fault => {
       const workflow = parse(await readFile(path.join(root, '.github/workflows/github-job-identity.yml'), 'utf8'));
       const prepare = workflow.jobs['prepare-job-identity'], observe = workflow.jobs['observe-job-identity'];
@@ -109,6 +148,10 @@ describe('closed manual job identity qualification without dependency execution'
       if (fault === 'missing-report') observe.steps.pop();
       if (fault === 'ignore-missing-report') observe.steps[3].with['if-no-files-found'] = 'ignore';
       if (fault === 'new-checkout-source') prepare.steps[0].with.ref = 'main';
+      if (fault === 'missing-producer-output') delete prepare.outputs;
+      if (fault === 'artifact-provided-digest') observe.steps[2].env.LIFTOFF_JOB_IDENTITY_PROGRAM_SHA256 = '${{ env.ARTIFACT_DIGEST }}';
+      if (fault === 'missing-bootstrap') observe.steps[2].run = 'node qualification/job-identity-program/qualify.mjs observe';
+      if (fault === 'changed-bootstrap') observe.steps[2].run = observe.steps[2].run.replace('before.nlink === 1n', 'true');
       expect(() => checkWorkflow('github-job-identity.yml', workflow)).toThrow(/exact closed/);
     }
   );
@@ -128,6 +171,9 @@ describe('closed manual job identity qualification without dependency execution'
     const output = await prepareGitHubJobIdentityProgram(directory);
     expect((await readdir(output)).sort()).toEqual(['activation-rest.js', 'inventory.json', 'job-identity.js', 'package.json', 'qualify.mjs']);
     const inventory = JSON.parse(await readFile(path.join(output, 'inventory.json'), 'utf8'));
+    expect(inventory.files.map((file: { name: string }) => file.name)).toEqual([
+      'job-identity.js', 'activation-rest.js', 'qualify.mjs', 'package.json'
+    ]);
     for (const file of inventory.files) {
       expect(createHash('sha256').update(await readFile(path.join(output, file.name))).digest('hex')).toBe(file.sha256);
     }
@@ -187,12 +233,14 @@ describe('closed manual job identity qualification without dependency execution'
     `);
     const childEnv: NodeJS.ProcessEnv = {
       ...process.env, ...env, GH_TOKEN: 'private-unlogged-credential',
+      LIFTOFF_JOB_IDENTITY_PROGRAM_SHA256: hash(await readFile(path.join(output, 'inventory.json'))),
       ACTIONS_ID_TOKEN_REQUEST_URL: 'https://pipelines.actions.githubusercontent.com/jobs/job/idtoken?api-version=2.0',
       ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'test-only-request-token'
     };
     const execute = () => spawnSync(process.execPath, ['--import', pathToFileURL(preloader).href,
       path.join(output, 'qualify.mjs'), 'observe'], { encoding: 'utf8', cwd: os.tmpdir(), env: childEnv });
-    const mocked = execute();
+    const mocked = spawnSync(process.execPath, ['--import', pathToFileURL(preloader).href,
+      '--input-type=module', '-e', bootstrapSource], { encoding: 'utf8', cwd: directory, env: childEnv });
     expect(mocked.status, mocked.stderr).toBe(0);
     expect(mocked.stdout).toContain('job facts only');
     expect(await readFile(marker, 'utf8')).toBe('api\nrequest\njwks\n');
@@ -200,6 +248,7 @@ describe('closed manual job identity qualification without dependency execution'
     const report = JSON.parse(reportBytes.toString('utf8'));
     expect(report).toMatchObject({
       scope: 'signed-github-job-facts-only',
+      programInventorySha256: childEnv.LIFTOFF_JOB_IDENTITY_PROGRAM_SHA256,
       observation: { checkRunId: 500, runId: 100, hostCustody: 'not-established', workflowAuthority: 'not-issued' }
     });
     expect(reportBytes.toString('utf8')).not.toMatch(/private-unlogged-credential|test-only-request-token|PRIVATE KEY/);
@@ -217,5 +266,194 @@ describe('closed manual job identity qualification without dependency execution'
     await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await readFile(path.join(output, 'job-identity-report.json'))).toEqual(reportBytes);
     await expect(prepareGitHubJobIdentityProgram(directory)).rejects.toThrow(/EEXIST/);
+  });
+});
+
+describe.runIf(process.version === 'v24.21.0')('original producer-bound helper handoff before import', () => {
+  it('emits exactly the independently handed-off inventory digest from the actual preparation CLI', async () => {
+    const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff original preparation # ')));
+    directories.push(directory);
+    await mkdir(path.join(directory, 'src/adapters/github'), { recursive: true });
+    for (const file of ['job-identity.ts', 'activation-rest.ts']) {
+      await writeFile(path.join(directory, 'src/adapters/github', file),
+        await readFile(path.join(root, 'src/adapters/github', file)));
+    }
+    const result = spawnSync(process.execPath, [path.join(root, 'scripts/qualify-github-job-identity.mjs'), 'prepare'], {
+      cwd: directory, encoding: 'utf8', env: { ...process.env, GH_TOKEN: 'private-handoff-canary' }
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/^[a-f0-9]{64}\n$/);
+    expect(result.stdout.trim()).toBe(hash(await readFile(path.join(directory, 'qualification/job-identity-program/inventory.json'))));
+    expect(result.stdout + result.stderr).not.toContain('private-handoff-canary');
+  });
+  it('executes the exact five-file helper only after independent digest and physical validation', async () => {
+    const fixture = await handoffFixture();
+    const result = bootstrap(fixture.directory, fixture.expected);
+    expect(result.status, result.stderr).toBe(0);
+    expect(await readFile(path.join(fixture.program, 'entry-imported.txt'), 'utf8')).toBe('imported');
+    expect(await readFile(path.join(fixture.program, 'observation.txt'), 'utf8')).toBe('synthetic helper only');
+    expect(result.stdout + result.stderr).not.toContain('private-handoff-canary');
+  });
+  it.each(['missing', 'malformed', 'different', 'substituted-inventory', 'changed-entry', 'changed-module',
+    'missing-file', 'empty-file', 'oversized-file', 'extra-file', 'extra-directory', 'hardlink',
+    'wrong-package', 'extra-inventory-key', 'extra-file-key', 'traversal', 'duplicate', 'reordered', 'wrong-schema'])(
+    'refuses %s before any downloaded entry is imported', async fault => {
+      const fixture = await handoffFixture();
+      let expected = fixture.expected;
+      if (fault === 'missing') expected = '';
+      if (fault === 'malformed') expected = 'SHA256:' + expected;
+      if (fault === 'different') expected = '0'.repeat(64);
+      if (fault === 'substituted-inventory') {
+        const bytes = await readFile(path.join(fixture.program, 'qualify.mjs'), 'utf8') + '// substituted helper\n';
+        await writeFile(path.join(fixture.program, 'qualify.mjs'), bytes);
+        fixture.inventory.files[2]!.sha256 = hash(bytes);
+        await fixture.saveInventory();
+      }
+      if (fault === 'changed-entry') await writeFile(path.join(fixture.program, 'qualify.mjs'), '// changed\n', { flag: 'a' });
+      if (fault === 'changed-module') await writeFile(path.join(fixture.program, 'job-identity.js'), '// changed\n', { flag: 'a' });
+      if (fault === 'missing-file') await rm(path.join(fixture.program, 'activation-rest.js'));
+      if (fault === 'empty-file') await writeFile(path.join(fixture.program, 'activation-rest.js'), '');
+      if (fault === 'oversized-file') await writeFile(path.join(fixture.program, 'qualify.mjs'), Buffer.alloc(256 * 1024 + 1));
+      if (fault === 'extra-file') await writeFile(path.join(fixture.program, 'job-identity-report.json'), '{}');
+      if (fault === 'extra-directory') await mkdir(path.join(fixture.program, 'node_modules'));
+      if (fault === 'hardlink') await link(path.join(fixture.program, 'qualify.mjs'), path.join(fixture.directory, 'shared.mjs'));
+      if (fault === 'wrong-package') {
+        const bytes = '{"type":"commonjs"}\n';
+        await writeFile(path.join(fixture.program, 'package.json'), bytes);
+        fixture.inventory.files[3]!.sha256 = hash(bytes);
+        expected = await fixture.saveInventory();
+      }
+      if (fault === 'extra-inventory-key') {
+        Object.assign(fixture.inventory, { verified: true });
+        expected = await fixture.saveInventory();
+      }
+      if (fault === 'extra-file-key') {
+        Object.assign(fixture.inventory.files[0]!, { path: '../outside.js' });
+        expected = await fixture.saveInventory();
+      }
+      if (fault === 'traversal') {
+        fixture.inventory.files[0]!.name = '../outside.js';
+        expected = await fixture.saveInventory();
+      }
+      if (fault === 'duplicate') {
+        fixture.inventory.files[1] = { ...fixture.inventory.files[0]! };
+        expected = await fixture.saveInventory();
+      }
+      if (fault === 'reordered') {
+        fixture.inventory.files.reverse();
+        expected = await fixture.saveInventory();
+      }
+      if (fault === 'wrong-schema') {
+        fixture.inventory.schemaVersion = 2;
+        expected = await fixture.saveInventory();
+      }
+      const result = bootstrap(fixture.directory, expected);
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain('program handoff failed');
+      expect(result.stdout + result.stderr).not.toContain('private-handoff-canary');
+      await expectNoImport(fixture.program);
+    }
+  );
+  it.skipIf(process.platform === 'win32').each(['file', 'directory'])(
+    'refuses a real %s symlink before import', async kind => {
+      const fixture = await handoffFixture();
+      if (kind === 'file') {
+        const file = path.join(fixture.program, 'job-identity.js');
+        await rename(file, path.join(fixture.directory, 'outside.js'));
+        await symlink(path.join(fixture.directory, 'outside.js'), file);
+      } else {
+        const outside = path.join(fixture.directory, 'outside');
+        await rename(fixture.program, outside);
+        await symlink(outside, fixture.program);
+      }
+      const result = bootstrap(fixture.directory, fixture.expected);
+      expect(result.status, result.stderr).toBe(1);
+      await expectNoImport(fixture.program);
+    }
+  );
+  it.each(['mutation', 'same-byte-replacement', 'close-rejection', 'late-extra-file'])(
+    'drains capture and refuses actual %s before import', async fault => {
+      const fixture = await handoffFixture(), preloader = path.join(fixture.directory, 'capture-probe.mjs');
+      await mkdir(path.join(fixture.directory, 'probe'));
+      const marker = path.join(fixture.directory, 'probe/capture-probe.txt');
+      await writeFile(preloader, `
+import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
+const originalOpen = fs.open;
+fs.open = async (...args) => {
+  const handle = await originalOpen(...args);
+  const filename = String(args[0]);
+  if (filename.endsWith(${JSON.stringify(fault === 'mutation' || fault === 'close-rejection' ? 'qualify.mjs' : 'package.json')})) {
+    const originalClose = handle.close.bind(handle);
+    handle.close = async () => {
+      await originalClose();
+      await fs.writeFile(${JSON.stringify(marker)}, 'actual close settled');
+      const target = ${JSON.stringify(path.join(fixture.program, 'qualify.mjs'))};
+      if (${JSON.stringify(fault)} === 'mutation') {
+        const bytes = await fs.readFile(target);
+        bytes[0] ^= 1;
+        await fs.writeFile(target, bytes);
+      }
+      if (${JSON.stringify(fault)} === 'same-byte-replacement') {
+        const temporary = target + '.replacement';
+        await fs.writeFile(temporary, await fs.readFile(target));
+        await fs.rename(temporary, target);
+      }
+      if (${JSON.stringify(fault)} === 'late-extra-file') {
+        await fs.writeFile(${JSON.stringify(path.join(fixture.program, 'extra.txt'))}, 'late file');
+      }
+      if (${JSON.stringify(fault)} === 'close-rejection') throw new Error('private-close-canary');
+    };
+  }
+  return handle;
+};
+syncBuiltinESMExports();
+`);
+      const result = bootstrap(fixture.directory, fixture.expected, preloader);
+      expect(await readFile(marker, 'utf8')).toBe('actual close settled');
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stdout + result.stderr).not.toMatch(/private-close-canary|private-handoff-canary/);
+      await expectNoImport(fixture.program);
+    }
+  );
+  it.each([
+    ['inventory.json', 4096, true], ['inventory.json', 4097, false],
+    ['qualify.mjs', 256 * 1024, true], ['qualify.mjs', 256 * 1024 + 1, false]
+  ] as const)('enforces the actual %s byte boundary at %i before open (accepted=%s)', async (name, size, accepted) => {
+    const fixture = await handoffFixture();
+    let expected: string;
+    if (name === 'inventory.json') {
+      const original = await readFile(path.join(fixture.program, name));
+      const bytes = Buffer.concat([original, Buffer.alloc(size - original.length, 32)]);
+      await writeFile(path.join(fixture.program, name), bytes);
+      expected = hash(bytes);
+    } else {
+      const original = await readFile(path.join(fixture.program, name), 'utf8');
+      const bytes = original + '//' + ' '.repeat(size - Buffer.byteLength(original) - 2);
+      await writeFile(path.join(fixture.program, name), bytes);
+      fixture.inventory.files[2]!.sha256 = hash(bytes);
+      expected = await fixture.saveInventory();
+    }
+    await mkdir(path.join(fixture.directory, 'probe'));
+    const marker = path.join(fixture.directory, 'probe/opened.txt'), preloader = path.join(fixture.directory, 'open-probe.mjs');
+    await writeFile(preloader, `
+import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
+const original = fs.open;
+fs.open = async (...args) => {
+  if (String(args[0]).endsWith(${JSON.stringify(name)})) await fs.writeFile(${JSON.stringify(marker)}, 'opened');
+  return original(...args);
+};
+syncBuiltinESMExports();
+`);
+    const result = bootstrap(fixture.directory, expected, preloader);
+    expect(result.status, result.stderr).toBe(accepted ? 0 : 1);
+    if (accepted) {
+      expect(await readFile(marker, 'utf8')).toBe('opened');
+      expect(await readFile(path.join(fixture.program, 'observation.txt'), 'utf8')).toBe('synthetic helper only');
+    } else {
+      await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expectNoImport(fixture.program);
+    }
   });
 });
