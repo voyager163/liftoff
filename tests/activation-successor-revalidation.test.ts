@@ -26,8 +26,8 @@ let governance: typeof import('../src/governance-activation/commands.js');
 
 beforeAll(async () => {
   loader = await createActivationSuccessorRuntime(cacheRoot);
-  revalidation = await loader.ssrLoadModule('/src/application/update/revalidation.ts');
-  governance = await loader.ssrLoadModule('/src/governance-activation/commands.ts');
+  revalidation = await loader.ssrLoadModule('/src/application/update/revalidation.ts') as typeof revalidation;
+  governance = await loader.ssrLoadModule('/src/governance-activation/commands.ts') as typeof governance;
 });
 
 afterEach(async () => {
