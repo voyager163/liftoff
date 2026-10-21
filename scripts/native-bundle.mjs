@@ -165,8 +165,11 @@ async function readCapturedProgramAssembly(original) {
     'Original assembly tool or runtime-archive reference changed.');
   assert.deepEqual(await assemblyFiles(original.source.entries.map(entry => entry.path)), original.source,
     'Original assembly source bytes, membership, modes or physical references changed.');
-  assert.deepEqual(await verifyNativeBundle(original.bundle), original.manifest, 'Original installed assembly changed.');
-  assert.deepEqual(await assemblyOutput(original.bundle), original.output, 'Original installed assembly readset changed.');
+  const installed = await Promise.allSettled([verifyNativeBundle(original.bundle), assemblyOutput(original.bundle)]);
+  if (installed[0].status === 'rejected') throw installed[0].reason;
+  assert.deepEqual(installed[0].value, original.manifest, 'Original installed assembly changed.');
+  if (installed[1].status === 'rejected') throw installed[1].reason;
+  assert.deepEqual(installed[1].value, original.output, 'Original installed assembly readset changed.');
   assert.deepEqual(await assemblyFiles(original.source.entries.map(entry => entry.path)), original.source,
     'Original assembly source changed during installed verification.');
   assert.deepEqual(await assemblyFiles(original.tools.entries.map(entry => entry.path)), original.tools,
