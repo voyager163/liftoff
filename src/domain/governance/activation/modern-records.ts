@@ -215,7 +215,9 @@ function createRecordContract(
       projection(entry.operations);
     }
     if (identity.activationContractVersion === 6 && plan.rollbackPlan.operations.some(operation =>
-      operation.mutationClass === 'github-attestation-write' || operation.actionId === applicationPublicationActionId)) {
+      operation.mutationClass === 'github-attestation-write' || operation.actionId === applicationPublicationActionId ||
+      plan.phaseId === 'application-artifact-ready' &&
+        ['registry-publish', 'github-workflow-dispatch'].includes(operation.mutationClass))) {
       throw new Error('Publication source6 cannot repeat or reverse digest publication through rollback operations.');
     }
     const mutations = { local: [...new Set(plan.operations.flatMap(operation => [operation, ...(operation.effects ?? [])]).filter(effect => !effect.remote).map(effect => effect.mutationClass))],

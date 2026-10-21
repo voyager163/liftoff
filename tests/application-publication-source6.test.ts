@@ -261,6 +261,23 @@ describe('source6 plan permission and original-record boundaries', () => {
     Object.assign(copy.approval.evaluation, { envelopeHash: hash });
     expect(() => api.readPlan(copy, { approvals: [changed] })).toThrow(/scope|permission/);
   });
+  it.each(['registry-publish', 'github-workflow-dispatch', 'github-attestation-write'] as const)(
+    'rejects rollback %s even when it uses a different action ID', mutationClass => {
+      const { api } = contract(), input = structuredClone(planInput(api));
+      const { effects: _effects, ...original } = input.operations[0];
+      Reflect.set(input.rollbackPlan, 'operations', [{
+        ...original, actionId: 'publication.rollback-alternate-action', mutationClass
+      }]);
+      expect(() => api.createPlan(input)).toThrow(/cannot repeat or reverse/);
+    });
+  it('permits observation of an original publication during recovery without another write', () => {
+    const { api } = contract(), input = structuredClone(planInput(api));
+    const { effects: _effects, ...original } = input.operations[0];
+    Reflect.set(input.rollbackPlan, 'operations', [{
+      ...original, actionId: 'github.artifact.observe', mutationClass: 'github-read'
+    }]);
+    expect(api.createPlan(input).rollbackPlan.operations[0].mutationClass).toBe('github-read');
+  });
   it('cannot allocate the new effect to another phase or parse it through the original source5 operation decoder', () => {
     const { api, previous } = contract(), input = planInput(api, 'application-foundation');
     expect(() => api.createPlan({ ...input, operations: planInput(api).operations.map(operation =>
