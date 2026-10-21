@@ -56,6 +56,13 @@ before importing any downloaded helper. The inventory is limited to 4 KiB and
 each member to 256 KiB, checked before opening or allocating its payload.
 Every opened file is checked before and after capture and all file/directory
 identities are rechecked before import.
+Node's synchronous module hooks then load only the three captured, verified
+UTF-8 module snapshots and Node built-ins, without filesystem module or package
+resolution. Both static and awaited dynamic imports retain the original file URLs;
+unlisted files, data URLs and query/fragment aliases are refused. Hooks remain
+active through observation settlement and are deregistered afterward. This
+closes replacement between the final filesystem observation and module loading;
+it does not protect a compromised host, prior module cache or built-in runtime.
 Changing the helper and its own inventory together cannot change the original
 producer's job output. The observer also retains that expected inventory digest
 in its diagnostic report. No checkout, dependencies, publishing grant or new
@@ -102,7 +109,13 @@ string values are escaped by UTF-16 code unit, preserving control characters,
 quotes, backslashes and surrogate pairs without loading a serialization module.
 Other frames and incoming requests retain their existing JSON cmdlets.
 Only exact whole-line stage names enter timeout errors, never raw controller
-stderr. Portable tests cover the protocol and sanitized failure boundaries;
+stderr. Startup timeout diagnostics also retain bounded numeric preparation,
+stage-receipt, authenticated-ready and request-dispatch observations on Node's
+monotonic clock. They distinguish late startup from time remaining after a
+reported stage; they are receipt observations, not controller execution
+timestamps, target-launch proof or a root-cause/repair claim. The startup,
+execution and settlement budgets are unchanged. Portable tests cover the
+protocol and sanitized failure boundaries;
 the two real-controller cases and direct encoder qualification in
 `tests/windows-job-runner.test.ts` require
 native Windows and must not be replaced with mocked qualification.
@@ -356,6 +369,14 @@ changes in another.
   component provenance; do not infer compatibility from a SemVer range.
 - Never fabricate history: prose, filenames, timestamps, or checked tasks are
   not evidence.
+
+Historical migration's public-input inventory uses fixed-four complete file
+batches within each directory. Sensitive, reserved and dependency paths are
+excluded before child observation. Directory traversal remains serial, each
+invocation captures fresh inputs, and all started siblings settle before the
+first original-order error is returned; no later batch starts after failure.
+At most three additional already-started sibling observations may finish after
+a refusal. This does not cache authority or establish a hosted timeout repair.
 
 Released-v3 record readers share structural validation with the current validators
 through `domain/governance/activation/record-validation.ts`, selecting the exact

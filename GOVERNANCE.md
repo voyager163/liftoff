@@ -96,7 +96,10 @@ no checkout, dependency installation, cloud commands or publishing step. It
 uses trusted workflow-inline code to verify the downloaded helper against the
 original preparation job's independent inventory-digest output before import,
 including its closed namespace and bounded physical-file observations. This
-does not provide protected custody across the job or qualify the full native
+verified byte snapshot, not a later filesystem reopen, supplies all three
+modules through a closed Node loader until observation settles. It refuses
+unlisted module URLs and does not establish runtime or prior-cache integrity.
+This does not provide protected custody across the job or qualify the full native
 program's delivery. It requests only a fresh Liftoff-purpose audience and
 verifies GitHub's signature against exact original job/run/source selectors.
 The permission itself is not

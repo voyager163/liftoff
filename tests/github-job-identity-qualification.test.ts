@@ -417,6 +417,101 @@ syncBuiltinESMExports();
     }
   );
   it.each([
+    ['qualify.mjs', 'write'], ['qualify.mjs', 'replace'],
+    ['job-identity.js', 'write'], ['job-identity.js', 'replace'],
+    ['activation-rest.js', 'write'], ['activation-rest.js', 'replace'],
+    ['package.json', 'write'], ['package.json', 'replace']
+  ] as const)('loads captured bytes despite a final-observation %s %s', async (name, operation) => {
+    const fixture = await handoffFixture();
+    const sources = new Map([
+      ['job-identity.js', "export const value = 'identity';\n"],
+      ['activation-rest.js', "export const value = 'rest';\n"],
+      ['qualify.mjs', `import { writeFile } from 'node:fs/promises';
+import { value as identity } from './job-identity.js';
+export async function runGitHubJobIdentityObservation() {
+  const { value: rest } = await import('./activation-rest.js');
+  await writeFile(new URL('observation.txt', import.meta.url), identity + ':' + rest);
+}
+`]
+    ]);
+    for (const [file, bytes] of sources) {
+      await writeFile(path.join(fixture.program, file), bytes);
+      fixture.inventory.files.find(member => member.name === file)!.sha256 = hash(bytes);
+    }
+    const expected = await fixture.saveInventory();
+    await mkdir(path.join(fixture.directory, 'probe'));
+    const marker = path.join(fixture.directory, 'probe/replaced.txt');
+    const reopened = path.join(fixture.directory, 'probe/default-loader.txt');
+    const unverified = path.join(fixture.program, 'unverified-imported.txt');
+    const payload = name === 'package.json' ? '{"type":"commonjs"}\n' : `
+import { writeFile } from 'node:fs/promises';
+await writeFile(${JSON.stringify(unverified)}, 'unverified code executed');
+export const value = 'unverified';
+export async function runGitHubJobIdentityObservation() {}
+`;
+    const preloader = path.join(fixture.directory, 'late-load-probe.mjs');
+    await writeFile(preloader, `
+import fs from 'node:fs/promises';
+import { appendFileSync } from 'node:fs';
+import { registerHooks, syncBuiltinESMExports } from 'node:module';
+const modules = ${JSON.stringify([...sources.keys()].map(file => pathToFileURL(path.join(fixture.program, file)).href))};
+registerHooks({ load(url, context, nextLoad) {
+  if (modules.includes(url)) appendFileSync(${JSON.stringify(reopened)}, url + '\\n');
+  return nextLoad(url, context);
+} });
+const original = fs.lstat;
+let packageObservations = 0;
+fs.lstat = async (...args) => {
+  const value = await original(...args);
+  if (String(args[0]) === ${JSON.stringify(path.join(fixture.program, 'package.json'))}
+    && ++packageObservations === 3) {
+    const target = ${JSON.stringify(path.join(fixture.program, name))};
+    if (${JSON.stringify(operation)} === 'replace') {
+      await fs.writeFile(target + '.replacement', ${JSON.stringify(payload)});
+      await fs.rename(target + '.replacement', target);
+    } else await fs.writeFile(target, ${JSON.stringify(payload)});
+    await fs.writeFile(${JSON.stringify(marker)}, 'actual final-observation replacement');
+  }
+  return value;
+};
+syncBuiltinESMExports();
+`);
+    const result = bootstrap(fixture.directory, expected, preloader);
+    expect(await readFile(marker, 'utf8')).toBe('actual final-observation replacement');
+    await expect(readFile(unverified)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(reopened)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(result.status, result.stderr).toBe(0);
+    expect(await readFile(path.join(fixture.program, 'observation.txt'), 'utf8')).toBe('identity:rest');
+    expect(result.stdout + result.stderr).not.toContain('private-handoff-canary');
+  });
+  it.each(['relative', 'absolute', 'data', 'query', 'fragment'])(
+    'refuses an unlisted %s module before executing its bytes', async kind => {
+      const fixture = await handoffFixture();
+      const marker = path.join(fixture.directory, 'unlisted-imported.txt');
+      const payload = `import { writeFile } from 'node:fs/promises';
+await writeFile(${JSON.stringify(marker)}, 'unlisted module executed');
+`;
+      const outside = path.join(fixture.directory, 'outside.mjs');
+      await writeFile(outside, payload);
+      await writeFile(path.join(fixture.program, 'activation-rest.js'), payload);
+      fixture.inventory.files[1]!.sha256 = hash(payload);
+      const specifier = kind === 'relative' ? '../../outside.mjs'
+        : kind === 'absolute' ? pathToFileURL(outside).href
+          : kind === 'data' ? `data:text/javascript;base64,${Buffer.from(payload).toString('base64')}`
+            : kind === 'query' ? './activation-rest.js?unlisted' : './activation-rest.js#unlisted';
+      const entry = `import ${JSON.stringify(specifier)};
+export async function runGitHubJobIdentityObservation() {}
+`;
+      await writeFile(path.join(fixture.program, 'qualify.mjs'), entry);
+      fixture.inventory.files[2]!.sha256 = hash(entry);
+      const result = bootstrap(fixture.directory, await fixture.saveInventory());
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain('program handoff failed');
+      await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expectNoImport(fixture.program);
+    }
+  );
+  it.each([
     ['inventory.json', 4096, true], ['inventory.json', 4097, false],
     ['qualify.mjs', 256 * 1024, true], ['qualify.mjs', 256 * 1024 + 1, false]
   ] as const)('enforces the actual %s byte boundary at %i before open (accepted=%s)', async (name, size, accepted) => {
