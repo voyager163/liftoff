@@ -2,6 +2,7 @@ import { appendFile, chmod, lstat, mkdir, readdir, realpath, rm, symlink, unlink
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { inspectApplicationPatch, verifyApplicationPatch } from '../src/application/repair/application-patch.js';
+import { resolveApplicationToolsForLocalChecks } from '../src/application/repair/application-toolchain.js';
 import { applicationVerificationFixtureContext, putApplicationFixtureFile } from './fixtures/repair-application.js';
 import { createPreparationFixture, type PreparationFixture } from './fixtures/repair-preparation.js';
 import {
@@ -163,6 +164,36 @@ describe('probe outcomes are metadata, never installation or authority', () => {
     expect(candidate.blockers.join(' ')).toContain(
       `[tool-probe-cleanup] Tool probe termination is uncertain; probe workspace was retained at ${path.join(f.directory, retained!)}`);
     expect((await lstat(path.join(f.directory, retained!))).isDirectory()).toBe(true);
+  });
+
+  it.each([
+    ['supervisor startup timeout', { errorCode: 'SUPERVISOR_TIMEOUT', timedOut: true }, 'timed-out',
+      'does not establish that the declared check started'],
+    ['unsettled descendants', { errorCode: 'DESCENDANT_PROCESSES_ACTIVE' }, 'termination-unconfirmed',
+      'could not confirm that all verifier processes stopped'],
+    ['target execution timeout', { timedOut: true }, 'timed-out', 'declared timeout (15000 ms)'],
+    ['unknown private failure', { errorCode: 'CANARY_PRIVATE_CODE', errorMessage: 'CANARY_PRIVATE_MESSAGE' },
+      'execution-failed', 'Private diagnostics are withheld']
+  ])('retains the fixed %s diagnosis when settlement requires retaining the probe', async (_name, outcome, kind, message) => {
+    const f = await fixture();
+    const runner = new ScriptedRunner(call => commandResult(call.command, {
+      status: null, processSpawned: true, processTreeSettled: false,
+      stdout: 'CANARY_PRIVATE_STDOUT', stderr: 'CANARY_PRIVATE_STDERR', ...outcome
+    }));
+    let failure: unknown;
+    try {
+      await resolveApplicationToolsForLocalChecks(f.root, f.stage, ['node'], { runner }, true);
+    } catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(Error);
+    expect(String(failure)).toContain('[tool-probe-cleanup] Tool probe termination is uncertain;');
+    expect(String(failure)).toContain(`[tool-probe-${kind}]`);
+    expect(String(failure)).toContain(message);
+    expect(String(failure)).not.toContain('CANARY_');
+    const [retained] = await probeRoots(f);
+    expect(retained).toBeDefined();
+    expect((await lstat(path.join(f.directory, retained!))).isDirectory()).toBe(true);
+    expect(runner.calls).toHaveLength(1);
+    expect(runner.effects()).toEqual([]);
   });
 
   it('reports an unexpected runner exception generically without preparation', async () => {

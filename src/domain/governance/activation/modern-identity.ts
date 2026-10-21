@@ -1,4 +1,4 @@
-import { modernActivationSourceIdentityTables } from '../policy/identity.js';
+import { applicationPublicationSourceIdentityTable, modernActivationSourceIdentityTables } from '../policy/identity.js';
 import { canonicalSha256 } from './canonical-json.js';
 import { exactRecord } from '../../project/manifest/fields.js';
 import { createManifestV8ProjectReader } from '../../project/manifest/v8-project.js';
@@ -22,8 +22,22 @@ function digest(value: unknown, label: string): ModernDigest {
 
 /** Trusted catalog values select the actual M6 reader, never an arbitrary caller parser or current default. */
 export function createModernActivationIdentityReader(catalog: ManifestContractContext['catalog']) {
+  return createIdentityReader(catalog, modernActivationSourceIdentityTables());
+}
+
+export function createApplicationPublicationIdentityReader(catalog: ManifestContractContext['catalog']) {
+  const sources = applicationPublicationSourceIdentityTable();
+  return createIdentityReader(catalog, { current: sources, readable: sources });
+}
+
+function createIdentityReader(
+  catalog: ManifestContractContext['catalog'],
+  { current: currentSources, readable: readableSources }: {
+    readonly current: readonly StaticModernActivationIdentity[];
+    readonly readable: readonly StaticModernActivationIdentity[];
+  }
+) {
   const projectReader = createManifestV8ProjectReader(catalog);
-  const { current: currentSources, readable: readableSources } = modernActivationSourceIdentityTables();
   const contextFields = ['profile', 'policyVersion', 'selection', 'pluginResolutionDigest', 'activeLayoutDigest'] as const;
   const identityFields = [...Object.keys(currentSources[0]), 'sourceSelectionDigest', 'pluginResolutionDigest', 'activeLayoutDigest'];
 

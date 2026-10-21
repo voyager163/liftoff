@@ -1,11 +1,14 @@
 import type { ManifestContractContext } from '../../project/manifest/context.js';
 import type * as R from './record-contracts.js';
 import type * as M from './modern-record-contracts.js';
-import { modernActivationRecordValidators } from './record-validation.js';
-import { createModernActivationIdentityReader } from './modern-identity.js';
-import { readableModernActivationSourceContract } from '../policy/identity.js';
+import { applicationPublicationRecordValidators, modernActivationRecordValidators } from './record-validation.js';
+import { createApplicationPublicationIdentityReader, createModernActivationIdentityReader } from './modern-identity.js';
+import { applicationPublicationSourceContract, readableModernActivationSourceContract } from '../policy/identity.js';
 import { freezeModernValue, modernPhaseContractDigests } from './modern-graph.js';
 import { canonicalJson, canonicalSha256, isRecord, sha256Hex } from './canonical-json.js';
+import {
+  applicationPublicationActionId, assertDigestApplicationPublicationOperation, readDigestApplicationPublicationReceipt
+} from './application-publication-values.js';
 import {
   assertModernRecordData, assertSafeControlRecord, normalizeApprovalScopeValues, canonicalApprovalEnvelopeValues,
   transitionAuthorityValues, semanticPlanDigest, approvalBundleDigest, authorityOperationValues, approvalOperationDigests,
@@ -51,11 +54,25 @@ export interface ModernOutcomeInput {
 export function createModernActivationRecordContract(
   catalog: ManifestContractContext['catalog'], context: M.ModernActivationSourceInput
 ) {
-  const identity = createModernActivationIdentityReader(catalog).validateReadableModernActivationIdentity(context);
-  const selected = readableModernActivationSourceContract(identity.phaseGraphHash)!;
+  return createRecordContract(catalog, context, 'source5');
+}
+
+/** Source6 record construction is independent of source5 and grants no provider or execution authority. */
+export function createApplicationPublicationRecordContract(
+  catalog: ManifestContractContext['catalog'], context: M.ModernActivationSourceInput
+) {
+  return createRecordContract(catalog, context, 'publication6');
+}
+
+function createRecordContract(
+  catalog: ManifestContractContext['catalog'], context: M.ModernActivationSourceInput, family: 'source5' | 'publication6'
+) {
+  const reader = family === 'source5' ? createModernActivationIdentityReader(catalog) : createApplicationPublicationIdentityReader(catalog);
+  const identity = reader.validateReadableModernActivationIdentity(context);
+  const selected = (family === 'source5' ? readableModernActivationSourceContract : applicationPublicationSourceContract)(identity.phaseGraphHash)!;
   const graph = selected.graph, phases = graph.phases.map(phase => phase.id);
   const digests = modernPhaseContractDigests(graph);
-  const engine = modernActivationRecordValidators(catalog, context), decoder = engine.records;
+  const engine = (family === 'source5' ? modernActivationRecordValidators : applicationPublicationRecordValidators)(catalog, context), decoder = engine.records;
   const clone = <T>(value: T): T => freezeModernValue(structuredClone(value));
   const same = (left: unknown, right: unknown) => canonicalSha256(left) === canonicalSha256(right);
   const phase = (id: M.ModernPhaseId) => {
@@ -173,7 +190,42 @@ export function createModernActivationRecordContract(
           throw new Error(`Modern plan mutation ${effect.mutationClass} is outside phase ${entry.phaseId}.`);
         }
       }
+      if (identity.activationContractVersion === 6 && entry.phaseId === 'application-artifact-ready') {
+        const dispatch = entry.operations[0];
+        if (entry.operations.length !== 1 || !dispatch || dispatch.adapter !== 'github' ||
+          dispatch.actionId !== applicationPublicationActionId || dispatch.mutationClass !== 'github-workflow-dispatch' ||
+          !dispatch.remote || dispatch.destructive || dispatch.destination.type !== 'repository' ||
+          dispatch.destination.identity !== dispatch.inputs.repository ||
+          dispatch.destination.repository !== dispatch.inputs.repository ||
+          typeof dispatch.inputs.sourceSha !== 'string' || !/^[a-f0-9]{40}$/u.test(dispatch.inputs.sourceSha) ||
+          dispatch.inputs.executionRef !== `liftoff-execution-${dispatch.inputs.sourceSha}` ||
+          dispatch.destination.ref !== dispatch.inputs.executionRef ||
+          dispatch.effects?.filter(effect => effect.mutationClass === 'registry-publish').length !== 1 ||
+          dispatch.effects?.filter(effect => effect.mutationClass === 'github-attestation-write').length !== 1 ||
+          dispatch.effects.some(effect => {
+            if (!effect.remote || effect.destructive ||
+              !['registry-publish', 'github-attestation-write', 'github-read', 'azure-read'].includes(effect.mutationClass)) return true;
+            return effect.mutationClass === 'github-attestation-write' || effect.mutationClass === 'github-read'
+              ? !same(effect.destination, dispatch.destination)
+              : effect.destination.type !== 'subscription' || effect.destination.identity !== dispatch.inputs.registryId;
+          })) {
+          throw new Error('Publication source6 requires one explicit digest dispatch with exact registry publication and same-repository attestation effects; legacy actions cannot inherit the new write.');
+        }
+      }
       projection(entry.operations);
+    }
+    if (identity.activationContractVersion === 6 && plan.phaseId === 'application-artifact-ready') {
+      for (const operation of plan.rollbackPlan.operations) {
+        if (!(operation.remote ? node.allowedMutations.remote : node.allowedMutations.local).includes(operation.mutationClass)) {
+          throw new Error(`Publication source6 rollback mutation ${operation.mutationClass} is outside phase ${plan.phaseId}.`);
+        }
+      }
+    }
+    if (identity.activationContractVersion === 6 && plan.rollbackPlan.operations.some(operation =>
+      operation.mutationClass === 'github-attestation-write' || operation.actionId === applicationPublicationActionId ||
+      plan.phaseId === 'application-artifact-ready' &&
+        ['registry-publish', 'github-workflow-dispatch'].includes(operation.mutationClass))) {
+      throw new Error('Publication source6 cannot repeat or reverse digest publication through rollback operations.');
     }
     const mutations = { local: [...new Set(plan.operations.flatMap(operation => [operation, ...(operation.effects ?? [])]).filter(effect => !effect.remote).map(effect => effect.mutationClass))],
       remote: [...new Set(plan.operations.flatMap(operation => [operation, ...(operation.effects ?? [])]).filter(effect => effect.remote).map(effect => effect.mutationClass))] };
@@ -288,6 +340,30 @@ export function createModernActivationRecordContract(
     }
     if (matched.approval.required && !['failed', 'inapplicable'].includes(header.result) &&
       matched.approval.evaluation.status !== 'reused') throw new Error('Successful modern evidence cannot claim a gated outcome from a pending or invalid approval.');
+    if (identity.activationContractVersion === 6 && header.result === 'verified' &&
+      ['application-artifact-ready', 'application-foundation'].includes(header.phaseId)) {
+      const publication = readDigestApplicationPublicationReceipt(payload.publication);
+      if (header.phaseId === 'application-artifact-ready') {
+        const dispatch = matched.operations.find(operation => operation.actionId === applicationPublicationActionId);
+        const fields = {
+          repository: publication.repository, sourceSha: publication.sourceSha, sourceTreeSha: publication.sourceTreeSha,
+          workflowDigest: publication.workflowDigest, contextDigest: publication.contextDigest, programDigest: publication.programDigest,
+          executionRef: publication.executionRef,
+          environment: publication.environment, registryId: publication.registryResourceId,
+          loginServer: publication.loginServer, imageRepository: publication.imageRepository
+        };
+        if (publication.planDigest !== matched.planDigest || publication.savedPlanDigest !== canonicalSha256(matched) ||
+          !dispatch || dispatch.inputs.bindingDigest !== publication.artifactBindingDigest ||
+          Object.entries(fields).some(([key, value]) => dispatch.inputs[key] !== value)) {
+          throw new Error('Publication source6 receipt must bind its original digest-dispatch plan, saved bytes and reviewed artifact binding.');
+        }
+      } else if (!evidence.some(original => original.header.phaseId === 'application-artifact-ready' &&
+        original.header.result === 'verified' && original.header.repositoryId === header.repositoryId &&
+        isRecord(original.payload) && original.payload.kind === 'application-artifact-ready.v2' &&
+        same(original.payload.publication, publication))) {
+        throw new Error('Publication source6 foundation must retain its exact original v2 artifact evidence; v1 QuickBuild cannot substitute.');
+      }
+    }
     if (header.phaseId === 'local-complete' && header.result === 'verified' && isRecord(payload) &&
       !evidence.some(record => record.evidenceId === payload.baselineEvidenceId && record.header.phaseId === 'local-baseline-verified' &&
         record.header.result === 'verified' && record.header.repositoryId === header.repositoryId &&
@@ -338,6 +414,14 @@ export function createModernActivationRecordContract(
         if (!bound) throw new Error(`Modern terminal state ${id} lacks an outcome bound to its selected execution plan.`);
       }
       const outputs = state.phaseOutputs?.[id];
+      if (identity.activationContractVersion === 6 && id === 'application-artifact-ready' && entry.state === 'verified') {
+        const proof = refs.evidence.find(proof => proof.header.phaseId === id && proof.header.result === 'verified' &&
+          isRecord(proof.payload) && proof.payload.planDigest === entry.executionPlanDigest &&
+          entry.evidence.some(reference => reference.evidenceId === proof.evidenceId && reference.result === 'verified') &&
+          (!outputs || outputBindingsMatch(proof, id, entry.evidence, outputs)));
+        if (!proof || !isRecord(proof.payload)) throw new Error('Publication source6 state lacks its original publication receipt.');
+        assertDigestApplicationPublicationOperation(readDigestApplicationPublicationReceipt(proof.payload.publication), entry.operation);
+      }
       if (outputs && !outputResourcesMatch(outputs, refs.evidence.find(proof => outputBindingsMatch(proof, id, entry.evidence, outputs)))) {
         throw new Error(`Modern phase ${id} outputs lack their referenced original resource receipt.`);
       }

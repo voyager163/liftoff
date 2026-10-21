@@ -194,6 +194,16 @@ Depends on 12-13. References: design D10-D11; liftoff-governance-activation-engi
 - [ ] 14.8 Qualify an explicitly approved disposable new-environment journey for both profiles and representative supported workloads; verify actual artifact/deployment/health/check/ruleset proof and no false brownfield completion.
 - [ ] 14.9 Refresh Azure, governance, troubleshooting and generated governance/infrastructure READMEs for the qualified journey; verify every next action is registered and independently permissioned.
 
+Tasks 14.1/14.3 have a preserving, explicitly selected compiled Source6 allocation:
+activation6/compatibility6, six computed graphs, artifact-only attestation-write
+permission, distinct digest dispatch and v2 publication/foundation record intake.
+The read-only v2 consumer checks original completed handles and exact
+source/plan/evidence/output/resource relationships without inventing an ACR run.
+Source4/Source5 tables, defaults, graphs and authority remain unchanged.
+This is not an installed manifest/plugin family, execution bridge, genuine
+delivery/custody/tool producer, accepted-progress/recovery qualification or public
+publication/deployment support. Both task checkboxes remain unchecked.
+
 Task 14.7 has an additional source implementation: whole-project live assessment
 uses the installed profile/catalog and the narrower governance assessment's
 shared predicates for six bounded metadata findings. Raw provider observations

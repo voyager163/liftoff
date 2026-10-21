@@ -34,6 +34,7 @@ import * as repairWorkspaces from '../src/application/repair/workspaces.js';
 import type {
   CommandResult, CommandRunner, RunCommandOptions
 } from '../src/process-runner.js';
+import { NodeCommandRunner } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/domain/project/contracts.js';
 import { adoptionFixture } from './fixtures/adoption.js';
 
@@ -304,6 +305,30 @@ function commandResult(
   };
 }
 
+async function withNativeRunnerDiagnostics<T>(work: () => Promise<T>): Promise<T> {
+  const original = NodeCommandRunner.prototype.run;
+  const observations: object[] = [];
+  const observer = vi.spyOn(NodeCommandRunner.prototype, 'run').mockImplementation(
+    async function (this: NodeCommandRunner, command, options) {
+      const result = await original.call(this, command, options);
+      observations.push({
+        metadataProbe: command.args.includes('--version'),
+        status: result.status, signal: result.signal, timedOut: result.timedOut,
+        aborted: result.aborted ?? null, outputLimitExceeded: result.outputLimitExceeded ?? null,
+        processSpawned: result.processSpawned ?? null, processTreeSettled: result.processTreeSettled ?? null,
+        errorCode: result.errorCode ?? null, errorMessage: result.errorMessage?.slice(0, 4096) ?? null
+      });
+      return result;
+    }
+  );
+  try { return await work(); }
+  catch (error) {
+    throw new Error(`Original native adoption fixture failed. Owned runner diagnostics: ${JSON.stringify({
+      runtime: { node: process.version, platform: process.platform, arch: process.arch }, observations
+    })}`, { cause: error });
+  } finally { observer.mockRestore(); }
+}
+
 afterEach(async () => {
   vi.restoreAllMocks();
   await Promise.all(
@@ -312,7 +337,21 @@ afterEach(async () => {
 });
 
 describe('authenticated adoption verification execution', () => {
-  it('runs exact checks in a disposable copy and persists a signed current receipt', async () => {
+  it('retains the original native fixture failure and restores the observed runner', async () => {
+    const original = NodeCommandRunner.prototype.run;
+    const cause = new Error('CANARY_ORIGINAL_FIXTURE_FAILURE');
+    let failure: unknown;
+    try { await withNativeRunnerDiagnostics(async () => { throw cause; }); }
+    catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).toMatchObject({ cause });
+    expect(String(failure)).toContain('Owned runner diagnostics:');
+    expect(String(failure)).toContain('"observations":[]');
+    expect(String(failure)).not.toContain('CANARY_');
+    expect(NodeCommandRunner.prototype.run).toBe(original);
+  });
+
+  it('runs exact checks in a disposable copy and persists a signed current receipt', async () => withNativeRunnerDiagnostics(async () => {
     const input = await prepared();
     await grant(input);
     const original = await readFile(
@@ -346,7 +385,7 @@ describe('authenticated adoption verification execution', () => {
     expect(await inspectRepairVerificationWorkspaces(
       input.root, input.storage
     )).toMatchObject({ status: 'absent', workspaces: [] });
-  });
+  }));
 
   it('admits only one execution attempt for the exact plan under concurrent callers', async () => {
     const input = await prepared();

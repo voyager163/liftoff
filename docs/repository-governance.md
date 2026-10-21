@@ -1769,6 +1769,44 @@ Legacy selection, v1 receipts and original-handle checks are unchanged; old
 receipts cannot qualify the newly selected recipe. There is no new receipt
 issuer, live dispatch or task-completion credit.
 
+#### Unpublished digest-publication successor
+
+The explicit Source6 allocation is separate from the current Source5 route.
+`applicationPublicationSourceContracts` computes its six real graph hashes.
+Only `application-artifact-ready` permits the new `github-attestation-write`
+mutation. Its plan must name one `github.artifact.digest-dispatch`, the exact
+immutable execution ref, one registry-publication effect and one same-repository
+attestation effect. It cannot hide another dispatch in delegated effects or
+repeat publication through rollback, even under another action ID. Artifact
+rollback may observe the original publication, but cannot dispatch again, publish
+registry content or write attestations. Its remaining operations must also stay
+within the artifact phase's exact local/remote allocation: local reads and
+evidence/state persistence, or remote GitHub/Azure reads. Another action ID,
+mutation class or local/remote flag cannot introduce unrelated writes.
+New permissions participate in the original plan/approval commitments; an old
+approval cannot acquire the additional write.
+
+Artifact and foundation evidence use v2 publication receipts, never retagged
+QuickBuild v1 records or an invented ACR run. Required commitments separately bind
+reviewed source/tree/workflow/context/program, the original completed operation,
+the original attempt/run/job, immutable image and attestation, authenticated
+delivery, whole-job custody and build-tool qualification. Record intake also
+requires matching run, job and image resource observations. Foundation evidence
+retains the exact original v2 publication rather than accepting a replacement.
+`readVerifiedDigestApplicationArtifact` is a read-only record consumer: it verifies
+the original completed handle, evidence, output bindings and referenced resources.
+It cannot issue any of these producer claims or make a new provider observation.
+
+This compiled source contract is not an installed source family or executable
+provider bridge. Current Source5 selectors, packaged table/graphs, workflow
+authority and v1 receipt shape remain unchanged. The current recipe route still
+reports its four blockers; allocating the successor's write does not grant that
+write to the old route. Genuine authenticated delivery, whole-job custody and
+tool qualification, original accepted-progress/recovery producers, approved
+external targets/budget and disposable native/cloud qualification remain
+necessary before enabling publication. No task14.1/task14.3 completion follows
+from record-format tests.
+
 The artifact route dispatches only the existing protected lightweight
 `liftoff-execution-<full-source-SHA>` tag bound to its own reviewed complete
 source/tree/recipe. A shared read-only observer rechecks effective no-bypass

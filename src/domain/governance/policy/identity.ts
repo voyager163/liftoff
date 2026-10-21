@@ -1,6 +1,6 @@
 import type { ActivationIdentity } from '../activation/types.js';
 import type { ActivationIdentityFieldsV1 } from '../activation/record-contracts.js';
-import { buildModernPhaseGraph, freezeModernValue } from '../activation/modern-graph.js';
+import { buildApplicationPublicationPhaseGraph, buildModernPhaseGraph, freezeModernValue } from '../activation/modern-graph.js';
 import { canonicalSha256 } from '../activation/canonical-json.js';
 import type { ModernActivationSourceContract, ModernStaticVersions, ModernWorkflow } from '../activation/modern-record-contracts.js';
 
@@ -221,6 +221,10 @@ const modernSourceVersions: ModernStaticVersions = Object.freeze({
   credentialPolicySchemaVersion: 2
 } as const);
 
+const applicationPublicationSourceVersions: ModernStaticVersions & { readonly activationContractVersion: 6 } = Object.freeze({
+  ...modernSourceVersions, activationContractVersion: 6
+} as const);
+
 const modernPolicySources = [
   {
     identity: {
@@ -245,6 +249,7 @@ const modernWorkflows: readonly ModernWorkflow[] = ['openspec', 'spec-kit', 'man
 let modernSources: readonly ModernActivationSourceContract[] | undefined;
 let preCustodyModernSources: readonly ModernActivationSourceContract[] | undefined;
 let preWorkflowModernSources: readonly ModernActivationSourceContract[] | undefined;
+let applicationPublicationSources: readonly ModernActivationSourceContract[] | undefined;
 const preWorkflowSourceVersions: ModernStaticVersions = Object.freeze({
   ...modernSourceVersions, activationContractVersion: 4
 });
@@ -336,4 +341,30 @@ export function modernActivationSourceContractForFamily(
   const selected = sources.find(source =>
     source.identity.profile === profile && source.identity.workflow === workflow);
   return selected ? freezeModernValue(structuredClone(selected)) : undefined;
+}
+
+function publicationSources(): readonly ModernActivationSourceContract[] {
+  return applicationPublicationSources ??= modernPolicySources.flatMap(policy =>
+    modernWorkflows.map(workflow => {
+      const graph = buildApplicationPublicationPhaseGraph(applicationPublicationSourceVersions, policy.identity, workflow);
+      return freezeModernValue<ModernActivationSourceContract>({
+        identity: { ...applicationPublicationSourceVersions, ...policy.identity, workflow, phaseGraphHash: canonicalSha256(graph) },
+        savedPlanSchemaVersion: 3, compatibilityMetadataSchemaVersion: 6,
+        policyPathParts: [...policy.pathParts], graph
+      });
+    }));
+}
+
+/** Explicit unpublished successor, never an addition to the frozen source5 readable/default tables. */
+export function applicationPublicationSourceContracts(): readonly ModernActivationSourceContract[] {
+  return freezeModernValue(structuredClone(publicationSources()));
+}
+
+export function applicationPublicationSourceIdentityTable(): readonly ModernActivationSourceContract['identity'][] {
+  return Object.freeze(publicationSources().map(source => Object.freeze({ ...source.identity })));
+}
+
+export function applicationPublicationSourceContract(phaseGraphHash: string): ModernActivationSourceContract | undefined {
+  const source = publicationSources().find(source => source.identity.phaseGraphHash === phaseGraphHash);
+  return source ? freezeModernValue(structuredClone(source)) : undefined;
 }

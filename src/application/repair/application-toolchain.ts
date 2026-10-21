@@ -135,6 +135,7 @@ async function resolveApplicationToolValues(
   const created = workspaceFileIdentity(await lstat(probeRoot, { bigint: true }));
   const tools: ApplicationToolIdentity[] = [];
   let unsafeCleanup = false;
+  let unsafeCleanupDiagnostic = '';
   try {
     const env = await createApplicationEnvironment(options.env ?? process.env, projectRoot, stagingRoot, probeRoot);
     const runner = options.runner ?? new NodeCommandRunner();
@@ -193,17 +194,20 @@ async function resolveApplicationToolValues(
         maxOutputBytes: applicationPreparationBounds.probeOutputBytes, stream: false,
         ...(requireSettlement ? { ensureProcessTreeSettled: true } : {})
       });
-      if (requireSettlement && (actual.processTreeSettled === true || actual.processSpawned === false)) unsafeCleanup = false;
-      if (requireSettlement && actual.processTreeSettled !== true) {
-        unsafeCleanup = actual.processSpawned !== false;
-        throw new ApplicationInspectionError('[tool-probe-cleanup] Local execution requires actual metadata process-tree settlement.');
-      }
       const diagnostic = applicationCommandFailure({
         executable: id, args: probe.args, cwdPathParts: [], network: false,
         timeoutMs: applicationPreparationBounds.probeTimeoutMs, maxOutputBytes: applicationPreparationBounds.probeOutputBytes
       }, actual);
+      const diagnosticMessage = diagnostic ? ` [tool-probe-${diagnostic.kind}] ${diagnostic.message}` : '';
+      if (requireSettlement && (actual.processTreeSettled === true || actual.processSpawned === false)) unsafeCleanup = false;
+      if (requireSettlement && actual.processTreeSettled !== true) {
+        unsafeCleanup = actual.processSpawned !== false;
+        unsafeCleanupDiagnostic = diagnosticMessage;
+        throw new ApplicationInspectionError(`[tool-probe-cleanup] Local execution requires actual metadata process-tree settlement.${diagnosticMessage}`);
+      }
       if (diagnostic) {
         unsafeCleanup ||= diagnostic.cleanupUnsafe;
+        if (unsafeCleanup) unsafeCleanupDiagnostic = diagnosticMessage;
         throw new ApplicationInspectionError(`[tool-probe-${diagnostic.kind}] Installed ${id} metadata could not be confirmed. ${diagnostic.message}`);
       }
       const version = extractVersion(`${actual.stdout}\n${actual.stderr}`, id);
@@ -231,7 +235,7 @@ async function resolveApplicationToolValues(
     throw new ApplicationInspectionError('[tool-inspection] Installed tool files could not be safely inspected or probed; no preparation was performed.');
   } finally {
     if (unsafeCleanup) {
-      throw new ApplicationInspectionError(`[tool-probe-cleanup] Tool probe termination is uncertain; probe workspace was retained at ${probeRoot}. No preparation or project checks were authorized.`);
+      throw new ApplicationInspectionError(`[tool-probe-cleanup] Tool probe termination is uncertain; probe workspace was retained at ${probeRoot}. No preparation or project checks were authorized.${unsafeCleanupDiagnostic}`);
     }
     const current = await lstat(probeRoot, { bigint: true });
     if (!current.isDirectory() || current.isSymbolicLink() || !sameWorkspaceFileIdentity(created, workspaceFileIdentity(current))) {

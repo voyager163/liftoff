@@ -1,7 +1,7 @@
 import type { RecordOperation, RecordRollback, RecordPlan, RecordGraph, ModernActivationSourceInput, ModernMutationClass } from './modern-record-contracts.js';
 import type { ManifestContractContext } from '../../project/manifest/context.js';
-import { createModernActivationIdentityReader } from './modern-identity.js';
-import { readableModernActivationSourceContract } from '../policy/identity.js';
+import { createApplicationPublicationIdentityReader, createModernActivationIdentityReader } from './modern-identity.js';
+import { applicationPublicationSourceContract, readableModernActivationSourceContract } from '../policy/identity.js';
 import { releasedV3Values } from './record-contracts.js';
 import {
   activationCompatibility,
@@ -87,6 +87,15 @@ export function modernActivationRecordValidators(catalog: ManifestContractContex
   const source = readableModernActivationSourceContract(identity.phaseGraphHash)!;
   const mutations: readonly ModernMutationClass[] = [...releasedV3Values.mutationClasses,
     'write-spec-kit-seed', 'write-spec-kit-governance', 'write-operational-plan'];
+  return createRecordValidators(identity, source.graph, true, { planVersion: source.savedPlanSchemaVersion,
+    mutationClasses: mutations, modernWorkflow: identity.workflow });
+}
+
+export function applicationPublicationRecordValidators(catalog: ManifestContractContext['catalog'], input: ModernActivationSourceInput) {
+  const identity = createApplicationPublicationIdentityReader(catalog).validateReadableModernActivationIdentity(input);
+  const source = applicationPublicationSourceContract(identity.phaseGraphHash)!;
+  const mutations: readonly ModernMutationClass[] = [...releasedV3Values.mutationClasses,
+    'write-spec-kit-seed', 'write-spec-kit-governance', 'write-operational-plan', 'github-attestation-write'];
   return createRecordValidators(identity, source.graph, true, { planVersion: source.savedPlanSchemaVersion,
     mutationClasses: mutations, modernWorkflow: identity.workflow });
 }

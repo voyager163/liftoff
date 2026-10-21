@@ -313,6 +313,13 @@ OCI attestations and referrers-tag fallback fail validation. Existing dispatch
 input names remain unchanged; the reserved legacy `image_tag` input is not
 consumed by this recipe.
 
+An explicit, unpublished Source6 contract now allocates the additional GitHub
+attestation effect and a separate v2 publication record/read-only consumer. It
+does **not** promote Source5, rewrite QuickBuild v1 evidence, create an ACR run or
+enable this route. Source6 record-format validation does not qualify the
+authenticated delivery, whole-job custody or build-tool producer commitments.
+See [the successor boundary](repository-governance.md#unpublished-digest-publication-successor).
+
 **This is Stage A source preparation, not an executable reviewed plan.**
 `PhasePlanBuild.blockers` prevents a saved executable plan or approval before
 source transmission, intent or dispatch. Four independent gaps remain:

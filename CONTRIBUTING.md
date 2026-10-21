@@ -98,6 +98,11 @@ The installed Windows native-package assertion retains its complete fixture-only
 controller result on failure, including the timeout phase and admission/connection
 state when available. JSON reporting must not hide these diagnostics behind an
 abbreviated object comparison; settlement assertions and deadlines stay unchanged.
+The original native adoption execution case likewise delegates every observed call
+to the unchanged real runner and retains bounded result/controller diagnostics on
+failure, without logging command output, arguments or environment. Tool-probe
+workspace retention preserves the fixed failure classification instead of masking
+it with cleanup uncertainty; neither diagnostic path supplies settlement evidence.
 All jobs retain the 45-minute limit except Windows shard 2,
 which has a 75-minute limit because it must complete both the named boundary
 suite and its source-complete package shard without dropping or filtering either
@@ -147,6 +152,15 @@ all started siblings settle; no later batch follows a refusal.
 Installed packed-source byte/length verification likewise uses fixed-four
 batches in the original manifest order, preserving earlier semantic refusals
 over later physical failures and retaining every source member check.
+Original assembly consumption overlaps native manifest/content verification
+with only the initial output observations. The output's final complete inventory,
+physical capture and parent check wait for native verification to settle, even
+on native refusal; an earlier output snapshot cannot hide a later same-byte
+replacement. Each readset retains its fixed-four file-capture limit (at most
+eight captures across both), complete inventories and physical/byte checks.
+Both settle before original native-first error/comparison order or any final
+source/tool bracket. All before/after source inventories and tool captures
+remain fresh; a failed read starts no final source/tool bracket and issues no content.
 Installed OpenSpec distribution scans overlap at most four admitted regular-file
 reads. File/count/byte reservations happen before opening, and every started
 handle closes before ordered metadata, entry and parent checks or refusal.
