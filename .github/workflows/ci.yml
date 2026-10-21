@@ -93,7 +93,7 @@ jobs:
           node scripts/check-repository-policy.mjs --workflow-program-report qualification/workflow-program-content.json
       - name: Store development qualification evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: liftoff-native-bundle-ci-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -179,7 +179,7 @@ jobs:
           node scripts/native-package-report.mjs qualification/native-platform-package.json "$RUNNER_TEMP/liftoff-native-bundle"
       - name: Store exact-source native development artifacts
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: liftoff-native-package-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -403,7 +403,7 @@ jobs:
           NODE
       - name: Retain actual kernel, source, archive and execution evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: liftoff-linux-kvm-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -474,7 +474,7 @@ jobs:
         run: node scripts/check-repository-policy.mjs --hcl-report qualification/isolated-hcl.json
       - name: Store parser qualification evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: liftoff-isolated-hcl-ci-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: qualification/isolated-hcl.json
@@ -584,7 +584,7 @@ jobs:
 
       - name: Store native plugin path evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: liftoff-plugin-paths-${{ runner.os }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: qualification/plugin-paths.json
@@ -624,7 +624,7 @@ jobs:
 
       - name: Store Windows process settlement evidence
         if: ${{ !cancelled() && (steps.windows-process.outcome == 'success' || steps.windows-process.outcome == 'failure') }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: liftoff-windows-process-tests-${{ github.run_id }}-${{ github.run_attempt }}
           path: qualification/windows-process-tests.json
@@ -663,7 +663,7 @@ jobs:
 
       - name: Store Windows boundary test evidence
         if: ${{ !cancelled() && (steps.windows-boundary.outcome == 'success' || steps.windows-boundary.outcome == 'failure') }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: liftoff-windows-boundary-tests-${{ github.run_id }}-${{ github.run_attempt }}
           path: qualification/windows-boundary-tests.json
@@ -697,7 +697,7 @@ jobs:
 
       - name: Store platform test evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: liftoff-platform-tests-${{ runner.os }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: qualification/platform-tests.json
@@ -773,7 +773,7 @@ jobs:
 
       - name: Store CLI coverage evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: liftoff-coverage-cli-${{ github.run_id }}-${{ github.run_attempt }}
           path: coverage/cli/
@@ -807,7 +807,7 @@ jobs:
 
       - name: Store telemetry gateway coverage evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: liftoff-coverage-gateway-${{ github.run_id }}-${{ github.run_attempt }}
           path: coverage/gateway/
@@ -956,7 +956,7 @@ jobs:
 
       - name: Store actual generated-project qualification
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: liftoff-node-templates-${{ matrix.os }}-npm${{ matrix.npm-version }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/standard-node-templates.json
