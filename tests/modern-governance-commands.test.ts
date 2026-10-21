@@ -11,11 +11,16 @@ import * as plans from '../src/governance-activation/public-plans.js';
 import * as installed from '../src/application/governance/modern-installed-preflight.js';
 import * as publication from '../src/application/governance/modern-local-publication.js';
 import * as revalidation from '../src/application/update/modern-revalidation-publication.js';
-import { canonicalJson } from '../src/domain/governance/activation/canonical-json.js';
+import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { writeModernInstalledProject, writeModernSuccessor } from './fixtures/modern-installed-project.js';
 import { originalFiles } from './modern-openspec-fixtures.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import { workflowByteDigest } from '../src/governance-activation/workflow-binding.js';
+import type { InstalledRetentionObligation } from '../src/domain/governance/activation/modern-local-runtime.js';
+
+vi.mock('node:fs/promises', async importOriginal => ({
+  ...await importOriginal<typeof import('node:fs/promises')>()
+}));
 
 const roots: { path: string; dev: number; ino: number }[] = [];
 afterEach(async () => {
@@ -177,6 +182,95 @@ describe('modern public governance inspection', () => {
     expect(result.report.recordedPhases.every((phase: { state: string }) => phase.state === 'pending')).toBe(true);
     expect(result.report.localComplete).toBe(false);
     expect(await originalFiles(f.root)).toEqual(before);
+  });
+
+  it('reports the exact original retained scope and due date without opening protected payloads or granting disposal', async () => {
+    const f = await writeModernSuccessor(await directory(), 2, true);
+    await fs.mkdir(path.join(f.root, 'protected'));
+    await fs.writeFile(path.join(f.root, 'protected', 'state.enc'), 'synthetic retained payload');
+    await fs.writeFile(path.join(f.root, 'protected', 'key'), 'synthetic retained key');
+    const before = await originalFiles(f.root);
+    const observed = await installed.inspectModernInstalledActivation(f.root);
+    if (observed.status !== 'observed') throw new Error(observed.blockers.join(' '));
+    const retained = observed.retention.find(item => item.status === 'retained')!;
+    const scope = canonicalSha256(retained);
+    const open = fs.open;
+    const guard = vi.spyOn(fs, 'open').mockImplementation((file, ...args) => {
+      if (String(file).startsWith(path.join(f.root, 'protected') + path.sep)) {
+        throw new Error('Protected payload must not be opened by lifecycle inspection.');
+      }
+      return open(file, ...args);
+    });
+    for (const command of ['status', 'resume', 'verify']) {
+      const result = await invoke(f.root, [command, '--scope', 'lifecycle']);
+      expect(result.code, result.stderr).toBe(command === 'verify' ? 2 : 0);
+      expect(result.report).toMatchObject({
+        schemaVersion: 3, consistent: true, complete: false, lifecycleComplete: false,
+        retainedStateObligations: 1, readOnly: true, projectWrites: false,
+        providerWrites: false, workloadExecution: false
+      });
+      const message = result.report.blockers.find((value: string) => value.includes(scope));
+      expect(message).toContain(`(${retained.origin}) is due as of ${result.report.source.observedAt}`);
+      expect(message).toContain(`original deadline ${retained.disposeAfter}, retained since ${retained.retainedAt}`);
+      expect(message).toContain('no current custody or disposal authority');
+      expect(JSON.stringify(result.report)).not.toMatch(/synthetic retained|protected\/(?:key|state)/);
+    }
+    expect(guard.mock.calls.some(([file]) => String(file).startsWith(path.join(f.root, 'protected') + path.sep))).toBe(false);
+    guard.mockRestore();
+    const local = await invoke(f.root, ['status', '--scope', 'local']);
+    const activation = await invoke(f.root, ['status', '--scope', 'activation']);
+    expect([...local.report.blockers, ...activation.report.blockers].some((value: string) => value.includes(scope))).toBe(false);
+    const human = await invoke(f.root, ['verify', '--scope', 'lifecycle'], false);
+    expect(human.code).toBe(2);
+    expect(human.stdout).toContain(scope);
+    expect(human.stdout).toContain(retained.disposeAfter);
+    expect(human.stdout).not.toContain('apply-next --execute');
+    expect(await originalFiles(f.root)).toEqual(before);
+  });
+
+  it('uses the captured observation time at the exact deadline, not a new retention clock or claimed current authority', async () => {
+    const f = await writeModernSuccessor(await directory(), 2, true);
+    const original = installed.inspectModernInstalledActivation;
+    let asOf = '';
+    let projection: Partial<Pick<InstalledRetentionObligation, 'status' | 'disposeAfter' | 'retainedAt'>> = {};
+    vi.spyOn(installed, 'inspectModernInstalledActivation').mockImplementation(async root => {
+      const result = await original(root);
+      return result.status === 'observed' ? {
+        ...result, snapshot: { ...result.snapshot, observedAt: asOf },
+        retention: result.retention.map(item => ({ ...item, ...projection }))
+      } : result;
+    });
+    for (const [time, state] of [
+      ['2026-08-30T23:59:59.999Z', 'not due'],
+      ['2026-08-31T00:00:00.000Z', 'due'],
+      ['2026-08-31T00:00:00.001Z', 'due']
+    ] as const) {
+      asOf = time;
+      const result = await invoke(f.root, ['verify', '--scope', 'lifecycle']);
+      expect(result.code, result.stderr).toBe(2);
+      expect(result.report.blockers.join(' ')).toContain(`is ${state} as of ${time}`);
+      expect(result.report).toMatchObject({ lifecycleComplete: false, recordedProgressIsCurrentProof: false });
+    }
+    projection = { status: 'disposed' };
+    const disposed = await invoke(f.root, ['verify', '--scope', 'lifecycle']);
+    expect(disposed.code).toBe(2);
+    expect(disposed.report).toMatchObject({ lifecycleComplete: false, retainedStateObligations: 0 });
+    expect(disposed.report.blockers.join(' ')).toContain('records disposal; physical disposal is not verified');
+    expect(disposed.report.blockers.join(' ')).toContain('Do not recreate its material or keys');
+    projection = {};
+    asOf = 'invalid-observation-time';
+    const invalid = await invoke(f.root, ['verify', '--scope', 'lifecycle']);
+    expect(invalid.code).toBe(1);
+    expect(invalid.report).toMatchObject({ consistent: false, complete: null, outcome: 'invalid' });
+    expect(invalid.report.diagnostics.join(' ')).toContain('invalid observation or deadline');
+    asOf = '2026-08-31T00:00:00.001Z';
+    for (const field of ['disposeAfter', 'retainedAt'] as const) {
+      projection = { [field]: 'invalid-recorded-time' };
+      const malformed = await invoke(f.root, ['verify', '--scope', 'lifecycle']);
+      expect(malformed.code).toBe(1);
+      expect(malformed.report).toMatchObject({ consistent: false, complete: null, outcome: 'invalid' });
+      expect(malformed.report.diagnostics.join(' ')).toContain('invalid observation or deadline');
+    }
   });
 
   it.each([

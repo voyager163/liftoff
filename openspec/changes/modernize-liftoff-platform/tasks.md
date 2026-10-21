@@ -201,6 +201,15 @@ remain separate, and no profile is inferred for governance-none. This does not
 qualify declared configuration, green/red execution, artifact/deployment,
 current Azure peers, whole-job custody or lifecycle proof; task 14.7 remains open.
 
+Task 14.6 has a bounded read-only source layer: modern lifecycle inspection
+reports original retention timestamps, exact preservation-scope digests and
+due/not-due at the captured observation time through existing schema-3 blockers.
+It does not open protected payloads/keys, change retention, issue disposal
+authority or establish current custody/physical disposal. Existing status and
+resume observation exits and consistent-incomplete verify exit 2 are preserved.
+No qualified due-disposal producer or full lifecycle completion is claimed;
+task 14.6 remains unchecked.
+
 ## 15. Version telemetry outcomes and ingestion contracts
 
 Depends on 1 and 3. References: design D12; liftoff-cli-telemetry.

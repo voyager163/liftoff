@@ -329,6 +329,19 @@ separately advertises the admitted Manual/Spec Kit finalization, publication and
 attributed recovery interface. Modern governance assessment uses its exact
 profile/workflow catalog, while historical plans still cannot execute v8 work.
 
+With `--scope lifecycle`, the existing schema-3 `blockers` also disclose each
+recorded bootstrap-retention obligation's original timestamps, source origin
+and exact scope digest. Due/not-due is evaluated at `source.observedAt`, with
+the deadline itself due; inspection never restarts retention. The digest
+identifies the preservation record, not an approved plan or disposal token.
+Protected payload/key paths and contents are not included or opened. A recorded
+disposal is not independently verified physical disposal and cannot authorize
+recreating material or keys. These diagnostics grant no current custody,
+provider access or disposal authority; lifecycle completion remains unproved.
+They are not added to local or activation scope as a new completion condition.
+Agents must retain these blockers and the existing independent-approval
+boundaries, rather than invent a lifecycle executor.
+
 ### Modern local verification
 
 For an existing admitted v8 project, select `--scope local --local-operation verify`
