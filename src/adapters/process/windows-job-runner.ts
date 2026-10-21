@@ -41,6 +41,68 @@ const controllerAdmissionStages = [
   'ack-write', 'ack-written'
 ] as const;
 
+type WindowsJobObservedStartupStage = { stage: string; index: number; elapsedMs: number | null };
+
+export class WindowsJobStartupObservations {
+  private readonly origin: number;
+  private readonly preparationElapsedMs: number;
+  private readonly now: () => number;
+  private readonly controller: WindowsJobObservedStartupStage = { stage: 'not-reported', index: -1, elapsedMs: null };
+  private readonly admission: WindowsJobObservedStartupStage = { stage: 'not-reported', index: -1, elapsedMs: null };
+  private readyElapsedMs: number | null = null;
+  private requestElapsedMs: number | null = null;
+
+  constructor(preparationElapsedMs: number, now: () => number = () => performance.now()) {
+    if (!Number.isFinite(preparationElapsedMs) || preparationElapsedMs < 0) {
+      throw new Error('Windows Job startup preparation duration must be finite and nonnegative.');
+    }
+    this.preparationElapsedMs = Math.round(preparationElapsedMs);
+    this.now = now;
+    this.origin = now() - preparationElapsedMs;
+  }
+
+  private elapsed(): number {
+    return Math.round(this.now() - this.origin);
+  }
+
+  observeReady(): void {
+    this.readyElapsedMs ??= this.elapsed();
+  }
+
+  observeRequest(): void {
+    this.requestElapsedMs ??= this.elapsed();
+  }
+
+  observeStderr(stderr: string): void {
+    const elapsedMs = this.elapsed();
+    const controller = [...stderr.matchAll(/^LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|loading-interop|connecting|connected|ready-serialize|ready-encode|ready-write|ready-flush|ready-written)\r?$/gmu)].at(-1);
+    const admission = [...stderr.matchAll(/^LIFTOFF_CONTROLLER_ADMISSION: ([^\r\n]*)\r?$/gmu)].at(-1);
+    this.observeStage(this.controller, controller?.index ?? -1, controller?.[1] ?? 'not-reported', elapsedMs);
+    this.observeStage(this.admission, admission?.index ?? -1,
+      controllerAdmissionStages.find(stage => stage === admission?.[1]) ?? 'not-reported', elapsedMs);
+  }
+
+  private observeStage(observation: WindowsJobObservedStartupStage, index: number, stage: string, elapsedMs: number): void {
+    if (observation.index === index && observation.stage === stage) return;
+    observation.index = index;
+    observation.stage = stage;
+    observation.elapsedMs = stage === 'not-reported' ? null : elapsedMs;
+  }
+
+  snapshot() {
+    return {
+      elapsedMs: this.elapsed(),
+      preparationElapsedMs: this.preparationElapsedMs,
+      controllerStage: this.controller.stage,
+      controllerObservedMs: this.controller.elapsedMs,
+      admissionStage: this.admission.stage,
+      admissionObservedMs: this.admission.elapsedMs,
+      readyObservedMs: this.readyElapsedMs,
+      requestObservedMs: this.requestElapsedMs
+    };
+  }
+}
+
 export interface WindowsJobInteropAssemblyIdentity {
   controllerAssetDigest: string;
   powershellPath: string;
@@ -834,6 +896,7 @@ export async function runWindowsJobCommand(
   }
 
   return new Promise<CommandResult>((resolve) => {
+    const startupObservations = new WindowsJobStartupObservations(controllerStartupTimeoutMs - controllerStartupBudgetMs);
     let clientSocket: net.Socket | null = null;
     let psProcess: ChildProcess | null = null;
     let psStderr = '';
@@ -961,16 +1024,16 @@ export async function runWindowsJobCommand(
       if (settled || !(timeoutMs > 0 && Number.isFinite(timeoutMs))) return;
       if (supervisorTimer) clearTimeout(supervisorTimer);
       supervisorTimer = setTimeout(() => {
-        const controllerStage = [...psStderr.matchAll(/^LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|loading-interop|connecting|connected|ready-serialize|ready-encode|ready-write|ready-flush|ready-written)\r?$/gmu)].at(-1)?.[1] ?? 'not-reported';
-        const controllerAdmissionCandidate = [...psStderr.matchAll(/^LIFTOFF_CONTROLLER_ADMISSION: ([^\r\n]*)\r?$/gmu)].at(-1)?.[1];
-        const controllerAdmissionStage = controllerAdmissionStages.find(stage => stage === controllerAdmissionCandidate) ?? 'not-reported';
+        const startup = startupObservations.snapshot();
+        const controllerStage = startup.controllerStage;
+        const controllerAdmissionStage = startup.admissionStage;
         const reportedBudgetMs = phase === 'startup' ? controllerStartupTimeoutMs : budgetMs;
         void finish({
           timedOut: true,
           processTreeSettled: false,
           processSpawned: spawnRequestDispatched,
           errorCode: 'SUPERVISOR_TIMEOUT',
-          errorMessage: `Supervisor timeout: Windows Job Object controller exceeded ${reportedBudgetMs}ms during ${phase} without reporting settlement (controller=${controllerStage}, admission=${controllerAdmissionStage}, connected=${connected}, authenticated=${authenticated}, state=${session.getState()}).`
+          errorMessage: `Supervisor timeout: Windows Job Object controller exceeded ${reportedBudgetMs}ms during ${phase} without reporting settlement (controller=${controllerStage}, admission=${controllerAdmissionStage}, connected=${connected}, authenticated=${authenticated}, state=${session.getState()}).${phase === 'startup' ? ` Startup observations (Node receipt ms): ${JSON.stringify(startup)}` : ''}`
         });
       }, budgetMs);
     }
@@ -1047,6 +1110,7 @@ export async function runWindowsJobCommand(
         try {
           session.authenticateControllerReady(r);
           authenticated = true;
+          startupObservations.observeReady();
         } catch (err) {
           void finish({
             processTreeSettled: false,
@@ -1089,6 +1153,7 @@ export async function runWindowsJobCommand(
           const framed = frameControlMessage(spawnReq);
           clientSocket?.write(framed);
           spawnRequestDispatched = true;
+          startupObservations.observeRequest();
         } catch (err) {
           void finish({
             processTreeSettled: false,
@@ -1190,6 +1255,7 @@ export async function runWindowsJobCommand(
 
       psProcess.stderr?.on('data', (d) => {
         psStderr += d.toString('utf8');
+        startupObservations.observeStderr(psStderr);
       });
 
       psProcess.on('error', (err) => {

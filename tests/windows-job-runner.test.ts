@@ -16,6 +16,7 @@ import {
   runWindowsJobCommand,
   verifyWindowsJobControllerAsset,
   WindowsJobInteropAssemblyCache,
+  WindowsJobStartupObservations,
   windowsJobControllerAssetDigest,
   type WindowsJobInteropCaptureOperations,
   type WindowsJobInteropPreparationOperations,
@@ -111,6 +112,27 @@ function removeSourceRange(source: string, start: string, end: string): string {
   return source.slice(0, startIndex) + source.slice(endIndex);
 }
 
+function restorePreStartupObservationsRunner(runner: string): string {
+  runner = removeSourceRange(runner,
+    'type WindowsJobObservedStartupStage = ',
+    'export interface WindowsJobInteropAssemblyIdentity {');
+  return runner
+    .replace('    const startupObservations = new WindowsJobStartupObservations(controllerStartupTimeoutMs - controllerStartupBudgetMs);\n', '')
+    .replace([
+      '        const startup = startupObservations.snapshot();',
+      '        const controllerStage = startup.controllerStage;',
+      '        const controllerAdmissionStage = startup.admissionStage;'
+    ].join('\n'), [
+      "        const controllerStage = [...psStderr.matchAll(/^LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|loading-interop|connecting|connected|ready-serialize|ready-encode|ready-write|ready-flush|ready-written)\\r?$/gmu)].at(-1)?.[1] ?? 'not-reported';",
+      '        const controllerAdmissionCandidate = [...psStderr.matchAll(/^LIFTOFF_CONTROLLER_ADMISSION: ([^\\r\\n]*)\\r?$/gmu)].at(-1)?.[1];',
+      "        const controllerAdmissionStage = controllerAdmissionStages.find(stage => stage === controllerAdmissionCandidate) ?? 'not-reported';"
+    ].join('\n'))
+    .replace("}).${phase === 'startup' ? ` Startup observations (Node receipt ms): ${JSON.stringify(startup)}` : ''}`", "}).`")
+    .replace('          startupObservations.observeReady();\n', '')
+    .replace('          startupObservations.observeRequest();\n', '')
+    .replace('        startupObservations.observeStderr(psStderr);\n', '');
+}
+
 function restorePrePackagedInteropController(controller: string): string {
   return controller
     .replace([
@@ -131,6 +153,7 @@ function restorePrePackagedInteropController(controller: string): string {
 }
 
 function restorePrePackagedInteropRunner(runner: string): string {
+  runner = restorePreStartupObservationsRunner(runner);
   runner = removeSourceRange(runner,
     'export const windowsJobInteropAssemblyAssetPathParts = ',
     'const controllerStartupTimeoutMs = ');
@@ -1276,6 +1299,103 @@ describe('Windows Job Object controller asset integrity and host environment', (
 
 });
 
+describe('Windows Job startup receipt observations', () => {
+  it.each([-1, Number.NaN, Number.POSITIVE_INFINITY])('rejects invalid preparation duration %s', preparation => {
+    expect(() => new WindowsJobStartupObservations(preparation)).toThrow(/finite and nonnegative/u);
+  });
+
+  it('separates preparation, controller receipt, authentication and request observations', () => {
+    let now = 100;
+    const observations = new WindowsJobStartupObservations(25, () => now);
+    now = 150;
+    observations.observeStderr('LIFTOFF_CONTROLLER_STAGE: ready-written\r\n');
+    now = 160;
+    observations.observeReady();
+    now = 180;
+    observations.observeRequest();
+    now = 190;
+    observations.observeStderr('LIFTOFF_CONTROLLER_STAGE: ready-written\r\nLIFTOFF_CONTROLLER_ADMISSION: frame-json\r\n');
+    now = 250;
+    expect(observations.snapshot()).toEqual({
+      elapsedMs: 175, preparationElapsedMs: 25, controllerStage: 'ready-written',
+      controllerObservedMs: 75, admissionStage: 'frame-json', admissionObservedMs: 115,
+      readyObservedMs: 85, requestObservedMs: 105
+    });
+  });
+
+  it('keeps absent stages unknown and records first authenticated/request observations', () => {
+    let now = 0;
+    const observations = new WindowsJobStartupObservations(0, () => now);
+    expect(observations.snapshot()).toEqual({
+      elapsedMs: 0, preparationElapsedMs: 0, controllerStage: 'not-reported',
+      controllerObservedMs: null, admissionStage: 'not-reported', admissionObservedMs: null,
+      readyObservedMs: null, requestObservedMs: null
+    });
+    observations.observeStderr('');
+    now = 5;
+    observations.observeReady();
+    observations.observeRequest();
+    now = 20;
+    observations.observeReady();
+    observations.observeRequest();
+    expect(observations.snapshot()).toMatchObject({ readyObservedMs: 5, requestObservedMs: 5 });
+  });
+
+  it('updates repeated stage occurrences without retiming old cumulative output', () => {
+    let now = 0;
+    const observations = new WindowsJobStartupObservations(0, () => now);
+    const line = 'LIFTOFF_CONTROLLER_ADMISSION: frame-json\n';
+    now = 10;
+    observations.observeStderr(line);
+    now = 20;
+    observations.observeStderr(line);
+    expect(observations.snapshot().admissionObservedMs).toBe(10);
+    observations.observeStderr(line + line);
+    expect(observations.snapshot().admissionObservedMs).toBe(20);
+  });
+
+  it('withdraws an incomplete valid prefix when its actual suffix is not a closed stage', () => {
+    let now = 0;
+    const observations = new WindowsJobStartupObservations(0, () => now);
+    const startup = 'LIFTOFF_CONTROLLER_STAGE: ready-written';
+    const admission = 'LIFTOFF_CONTROLLER_ADMISSION: frame-json';
+    observations.observeStderr(startup);
+    now = 5;
+    observations.observeStderr(startup + ' PRIVATE_CANARY\n' + admission);
+    expect(observations.snapshot()).toMatchObject({
+      controllerStage: 'not-reported', controllerObservedMs: null,
+      admissionStage: 'frame-json', admissionObservedMs: 5
+    });
+    observations.observeStderr(startup + ' PRIVATE_CANARY\n' + admission + ' PRIVATE_CANARY\n');
+    expect(observations.snapshot()).toMatchObject({ admissionStage: 'not-reported', admissionObservedMs: null });
+    expect(JSON.stringify(observations.snapshot())).not.toContain('PRIVATE_CANARY');
+  });
+
+  it('retains the original last-valid-controller and last-candidate-admission rules', () => {
+    let now = 0;
+    const observations = new WindowsJobStartupObservations(0, () => now);
+    const initial = 'LIFTOFF_CONTROLLER_STAGE: ready-written\nLIFTOFF_CONTROLLER_ADMISSION: frame-json\n';
+    observations.observeStderr(initial);
+    now = 10;
+    observations.observeStderr(initial +
+      'PRIVATE_CANARY LIFTOFF_CONTROLLER_STAGE: connected\n' +
+      'LIFTOFF_CONTROLLER_ADMISSION: ack-written PRIVATE_CANARY\n');
+    expect(observations.snapshot()).toMatchObject({
+      controllerStage: 'ready-written', controllerObservedMs: 0,
+      admissionStage: 'not-reported', admissionObservedMs: null
+    });
+    expect(JSON.stringify(observations.snapshot())).not.toContain('PRIVATE_CANARY');
+  });
+
+  it('restores the exact original 363cd548 runner without changing any earlier witness', async () => {
+    const restored = restorePreStartupObservationsRunner(
+      await readFile(path.join(process.cwd(), 'src/adapters/process/windows-job-runner.ts'), 'utf8')
+    );
+    expect(createHash('sha256').update(restored).digest('hex'))
+      .toBe('cd3f4f7c5fff98f803f358b11015fe1914f31e87d930bf598e0e711dfc5be9c5');
+  });
+});
+
 describe('Windows Job Runner protocol execution and policy admission blockers', () => {
   it('keeps a short target deadline separate from slow authenticated controller startup', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-controller-clock-'));
@@ -1306,6 +1426,14 @@ describe('Windows Job Runner protocol execution and policy admission blockers', 
     expect(result.errorMessage).toContain('exceeded 15000ms during startup');
     expect(result.errorMessage).toContain(`controller=${controllerStage},`);
     expect(result.errorMessage).toContain(`admission=${admissionStage},`);
+    if (!result.errorMessage) throw new Error('Missing startup timeout diagnostic.');
+    const timing = JSON.parse(result.errorMessage.split(' Startup observations (Node receipt ms): ')[1]);
+    expect(timing).toMatchObject({ controllerStage, admissionStage, preparationElapsedMs: 0 });
+    expect(timing.elapsedMs).toBeGreaterThanOrEqual(14_900);
+    expect(timing.readyObservedMs === null).toBe(mode === 'no-ready');
+    expect(timing.requestObservedMs === null).toBe(mode === 'no-ready');
+    expect(timing.controllerObservedMs === null).toBe(controllerStage === 'not-reported');
+    expect(timing.admissionObservedMs === null).toBe(admissionStage === 'not-reported');
     expect(result.errorMessage).not.toContain('PRIVATE_ENV_VALUE_PATH_ARG');
     expect(result.stdout).toBe('');
     expect(result.stderr).toBe('');
@@ -1319,6 +1447,7 @@ describe('Windows Job Runner protocol execution and policy admission blockers', 
     expect(result).toMatchObject({ status: null, timedOut: true, processSpawned: true,
       processTreeSettled: false, errorCode: 'SUPERVISOR_TIMEOUT' });
     expect(result.errorMessage).toContain('exceeded 5050ms during execution');
+    expect(result.errorMessage).not.toContain('Startup observations');
   });
 
   it.each(['bad-ack', 'duplicate-ack'] as const)('rejects %s instead of extending the execution deadline or accepting later success', async mode => {

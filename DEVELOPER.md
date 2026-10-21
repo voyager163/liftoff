@@ -109,7 +109,13 @@ string values are escaped by UTF-16 code unit, preserving control characters,
 quotes, backslashes and surrogate pairs without loading a serialization module.
 Other frames and incoming requests retain their existing JSON cmdlets.
 Only exact whole-line stage names enter timeout errors, never raw controller
-stderr. Portable tests cover the protocol and sanitized failure boundaries;
+stderr. Startup timeout diagnostics also retain bounded numeric preparation,
+stage-receipt, authenticated-ready and request-dispatch observations on Node's
+monotonic clock. They distinguish late startup from time remaining after a
+reported stage; they are receipt observations, not controller execution
+timestamps, target-launch proof or a root-cause/repair claim. The startup,
+execution and settlement budgets are unchanged. Portable tests cover the
+protocol and sanitized failure boundaries;
 the two real-controller cases and direct encoder qualification in
 `tests/windows-job-runner.test.ts` require
 native Windows and must not be replaced with mocked qualification.
