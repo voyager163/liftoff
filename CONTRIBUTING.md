@@ -98,6 +98,11 @@ The installed Windows native-package assertion retains its complete fixture-only
 controller result on failure, including the timeout phase and admission/connection
 state when available. JSON reporting must not hide these diagnostics behind an
 abbreviated object comparison; settlement assertions and deadlines stay unchanged.
+The original native adoption execution case likewise delegates every observed call
+to the unchanged real runner and retains bounded result/controller diagnostics on
+failure, without logging command output, arguments or environment. Tool-probe
+workspace retention preserves the fixed failure classification instead of masking
+it with cleanup uncertainty; neither diagnostic path supplies settlement evidence.
 All jobs retain the 45-minute limit except Windows shard 2,
 which has a 75-minute limit because it must complete both the named boundary
 suite and its source-complete package shard without dropping or filtering either
