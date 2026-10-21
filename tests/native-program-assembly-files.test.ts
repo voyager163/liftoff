@@ -83,7 +83,7 @@ async function outputWith(overrides: Partial<OutputDependencies> = {}) {
     ['assert', 'path', 'realpath', 'lstat', 'bundleFile', 'bundleInventory', 'readBundleFile'],
     { filename: fileURLToPath(file) });
   const dependencies = { realpath, lstat, bundleFile, bundleInventory, readBundleFile, ...overrides };
-  const capture: (directory: string) => Promise<OutputCapture> = factory(assert, path,
+  const capture: (directory: string, beforeFinalPass?: Promise<unknown>) => Promise<OutputCapture> = factory(assert, path,
     dependencies.realpath, dependencies.lstat, dependencies.bundleFile,
     dependencies.bundleInventory, dependencies.readBundleFile);
   return capture;
@@ -197,6 +197,39 @@ describe('private original assembly closed-set file capture', () => {
   });
 
   describe('private original assembly complete output capture', () => {
+    it('defers final complete inventory and physical observations until native settlement, then refuses actual same-byte replacement', async () => {
+      const value = await outputFixture(), manifestRead = deferred(), nativeSettled = deferred();
+      let inventories = 0;
+      const capture = await outputWith({
+        async bundleInventory(directory, limits) {
+          inventories++; return bundleInventory(directory, limits);
+        },
+        async readBundleFile(file, maximum) {
+          const captured = await readBundleFile(file, maximum);
+          manifestRead.resolve(); return captured;
+        }
+      });
+      const observation = capture(value.directory, nativeSettled.promise).then(
+        result => ({ status: 'fulfilled' as const, result }),
+        reason => ({ status: 'rejected' as const, reason })
+      );
+      try {
+        await manifestRead.promise;
+        await new Promise<void>(resolve => setImmediate(resolve));
+        expect(inventories).toBe(1);
+        const file = value.files[0]!, before = await lstat(file, { bigint: true });
+        const replacement = path.join(value.root, 'replacement.json');
+        await writeFile(replacement, await readFile(file), { flag: 'wx', mode: Number(before.mode & 0o777n) });
+        await rename(replacement, file);
+        expect((await lstat(file, { bigint: true })).ino).not.toBe(before.ino);
+      } finally { nativeSettled.resolve(); await observation; }
+      const result = await observation;
+      expect(result.status).toBe('rejected');
+      if (result.status !== 'rejected') throw new Error('The final physical readset must reject same-byte replacement.');
+      expect(String(result.reason)).toContain('Original assembly output physical references changed.');
+      expect(inventories).toBe(2);
+    });
+
     it('retains the complete inventory, manifest and original physical entry order', async () => {
       const { directory, names } = await outputFixture(), result = await (await outputWith())(directory);
       expect(result.inventory).toEqual(await bundleInventory(directory));

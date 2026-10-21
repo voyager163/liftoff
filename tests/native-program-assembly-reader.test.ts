@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compileFunction } from 'node:vm';
 import { afterEach, describe, expect, it } from 'vitest';
+import { bundleFile } from '../scripts/native-bundle-contract.mjs';
 
 type Files = { entries: Array<{ path: string }>; kind: string };
 const original = {
@@ -23,7 +24,7 @@ type Dependencies = {
   collectInputs: () => typeof original.inputs;
   assemblyFiles: (files: string[]) => Promise<Files>;
   verifyNativeBundle: (bundle: string) => Promise<typeof original.manifest>;
-  assemblyOutput: (bundle: string) => Promise<typeof original.output>;
+  assemblyOutput: (bundle: string, nativeSettled?: Promise<unknown>) => Promise<typeof original.output>;
 };
 const roots: string[] = [];
 afterEach(async () => {
@@ -46,7 +47,7 @@ async function missingErrors() {
     throw new Error('The missing-file control unexpectedly exists.');
   }));
 }
-async function readerWith(overrides: Partial<Dependencies> = {}) {
+async function readerWith(overrides: Partial<Dependencies> = {}, captured = original) {
   const file = new URL('../scripts/native-bundle.mjs', import.meta.url), source = await readFile(file, 'utf8');
   const startMarker = '\nasync function readCapturedProgramAssembly(', endMarker = '\nasync function sourceFiles(';
   const start = source.indexOf(startMarker), end = source.indexOf(endMarker);
@@ -59,10 +60,10 @@ async function readerWith(overrides: Partial<Dependencies> = {}) {
     ['assert', 'path', 'collectInputs', 'coveragePackage', 'assemblyFiles', 'verifyNativeBundle', 'assemblyOutput'],
     { filename: fileURLToPath(file) });
   const calls: string[] = [], methods: Dependencies = {
-    collectInputs: () => structuredClone(original.inputs),
-    assemblyFiles: async files => structuredClone(files[0] === 'tool' ? original.tools : original.source),
-    verifyNativeBundle: async () => structuredClone(original.manifest),
-    assemblyOutput: async () => structuredClone(original.output),
+    collectInputs: () => structuredClone(captured.inputs),
+    assemblyFiles: async files => structuredClone(files[0] === 'tool' ? captured.tools : captured.source),
+    verifyNativeBundle: async () => structuredClone(captured.manifest),
+    assemblyOutput: async () => structuredClone(captured.output),
     ...overrides
   };
   const read: (value: typeof original) => Promise<Readback> = factory(assert, path,
@@ -70,12 +71,14 @@ async function readerWith(overrides: Partial<Dependencies> = {}) {
     (name: string) => { expect(name).toBe('cli'); return name; },
     (files: string[]) => {
       calls.push(files[0]!);
-      expect(files).toEqual((files[0] === 'tool' ? original.tools : original.source).entries.map(entry => entry.path));
+      expect(files).toEqual((files[0] === 'tool' ? captured.tools : captured.source).entries.map(entry => entry.path));
       return methods.assemblyFiles(files);
     },
     (bundle: string) => { calls.push('native'); return methods.verifyNativeBundle(bundle); },
-    (bundle: string) => { calls.push('output'); return methods.assemblyOutput(bundle); });
-  return { read: () => read(original), calls };
+    (bundle: string, nativeSettled?: Promise<unknown>) => {
+      calls.push('output'); return methods.assemblyOutput(bundle, nativeSettled);
+    });
+  return { read: () => read(captured), calls };
 }
 
 describe('private original assembly installed-readset scheduling', () => {
@@ -119,6 +122,83 @@ describe('private original assembly installed-readset scheduling', () => {
     }
     expect(active).toBe(0);
     expect(calls).toEqual(['inputs', 'tool', 'source', 'native', 'output', 'source', 'tool', 'inputs']);
+  });
+
+  it.each(['success', 'refusal'] as const)('holds final installed observations until the complete native verifier settles with %s', async outcome => {
+    const firstPass = deferred(), nativeGate = deferred(), error = new Error('Original native refusal');
+    let nativeDone = false, finalStarted = false;
+    const { read } = await readerWith({
+      async verifyNativeBundle() {
+        await nativeGate.promise; nativeDone = true;
+        if (outcome === 'refusal') throw error;
+        return structuredClone(original.manifest);
+      },
+      async assemblyOutput(_bundle, nativeSettled) {
+        firstPass.resolve();
+        await nativeSettled;
+        finalStarted = true;
+        expect(nativeDone).toBe(true);
+        return structuredClone(original.output);
+      }
+    });
+    const observation = read().then(
+      value => ({ status: 'fulfilled' as const, value }),
+      reason => ({ status: 'rejected' as const, reason })
+    );
+    try {
+      await firstPass.promise;
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(finalStarted).toBe(false);
+    } finally { nativeGate.resolve(); await observation; }
+    expect(finalStarted).toBe(true);
+    const result = await observation;
+    if (outcome === 'refusal') {
+      expect(result.status).toBe('rejected');
+      if (result.status !== 'rejected') throw new Error('The original native refusal must propagate.');
+      expect(result.reason).toBe(error);
+    } else expect(result.status).toBe('fulfilled');
+  });
+
+  it('refuses actual same-byte replacement after an early output observation while native verification remains pending', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-assembly-late-native-'));
+    roots.push(root);
+    const file = path.join(root, 'content.json'), replacement = path.join(root, 'replacement.json');
+    const bytes = Buffer.from('original installed content\n');
+    await writeFile(file, bytes, { mode: 0o600, flag: 'wx' });
+    const identity = await bundleFile(file), initial = await lstat(file, { bigint: true });
+    const firstPass = deferred(), nativeGate = deferred();
+    const { read, calls } = await readerWith({
+      async verifyNativeBundle() {
+        await nativeGate.promise;
+        expect(await bundleFile(file)).toEqual(identity);
+        return structuredClone(original.manifest);
+      },
+      async assemblyOutput(_bundle, nativeSettled) {
+        const before = await lstat(file, { bigint: true });
+        firstPass.resolve();
+        if (nativeSettled) {
+          await nativeSettled;
+          return { kind: String((await lstat(file, { bigint: true })).ino) };
+        }
+        return { kind: String(before.ino) };
+      }
+    }, { ...original, output: { kind: String(initial.ino) } });
+    const observation = read().then(
+      value => ({ status: 'fulfilled' as const, value }),
+      reason => ({ status: 'rejected' as const, reason })
+    );
+    try {
+      await firstPass.promise;
+      await new Promise<void>(resolve => setImmediate(resolve));
+      await writeFile(replacement, bytes, { mode: 0o600, flag: 'wx' });
+      await rename(replacement, file);
+      expect((await lstat(file, { bigint: true })).ino).not.toBe(initial.ino);
+    } finally { nativeGate.resolve(); await observation; }
+    const result = await observation;
+    expect(result.status).toBe('rejected');
+    if (result.status !== 'rejected') throw new Error('Same-byte replacement must not issue original content.');
+    expect(String(result.reason)).toContain('Original installed assembly readset changed.');
+    expect(calls).toEqual(['inputs', 'tool', 'source', 'native', 'output']);
   });
 
   it.each(['native', 'output'] as const)('drains both actual filesystem failures with %s finishing first and preserves the original native error', async first => {

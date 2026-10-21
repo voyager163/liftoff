@@ -96,7 +96,7 @@ async function assemblyFiles(files) {
   return { parents, entries };
 }
 
-async function assemblyOutput(directory) {
+async function assemblyOutput(directory, beforeFinalPass = Promise.resolve()) {
   const parents = await assemblyDirectories([path.join(directory, 'bundle.json')]);
   const before = await bundleInventory(directory);
   const names = ['', 'bundle.json', ...before.entries.map(entry => entry.path)];
@@ -115,6 +115,7 @@ async function assemblyOutput(directory) {
     return entries;
   };
   const physical = await capture(), manifest = await readBundleFile(path.join(directory, 'bundle.json'));
+  await beforeFinalPass;
   assert.deepEqual(await bundleInventory(directory), before, 'Original assembly output membership or bytes changed.');
   assert.deepEqual(await capture(), physical, 'Original assembly output physical references changed.');
   assert.deepEqual(await assemblyDirectories([path.join(directory, 'bundle.json')]), parents,
@@ -165,7 +166,9 @@ async function readCapturedProgramAssembly(original) {
     'Original assembly tool or runtime-archive reference changed.');
   assert.deepEqual(await assemblyFiles(original.source.entries.map(entry => entry.path)), original.source,
     'Original assembly source bytes, membership, modes or physical references changed.');
-  const installed = await Promise.allSettled([verifyNativeBundle(original.bundle), assemblyOutput(original.bundle)]);
+  const native = verifyNativeBundle(original.bundle);
+  const installed = await Promise.allSettled([native,
+    assemblyOutput(original.bundle, Promise.allSettled([native]))]);
   if (installed[0].status === 'rejected') throw installed[0].reason;
   assert.deepEqual(installed[0].value, original.manifest, 'Original installed assembly changed.');
   if (installed[1].status === 'rejected') throw installed[1].reason;

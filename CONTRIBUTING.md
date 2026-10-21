@@ -147,13 +147,15 @@ all started siblings settle; no later batch follows a refusal.
 Installed packed-source byte/length verification likewise uses fixed-four
 batches in the original manifest order, preserving earlier semantic refusals
 over later physical failures and retaining every source member check.
-Original assembly consumption overlaps only the two independent complete
-installed verifications: the native manifest/content check and the output
-readset check. Each retains its fixed-four file-capture limit (at most eight
-captures across both), complete inventories and physical/byte checks. Both
-settle before the original native-first error/comparison order or any final
+Original assembly consumption overlaps native manifest/content verification
+with only the initial output observations. The output's final complete inventory,
+physical capture and parent check wait for native verification to settle, even
+on native refusal; an earlier output snapshot cannot hide a later same-byte
+replacement. Each readset retains its fixed-four file-capture limit (at most
+eight captures across both), complete inventories and physical/byte checks.
+Both settle before original native-first error/comparison order or any final
 source/tool bracket. All before/after source inventories and tool captures
-remain fresh; a failed read starts no final bracket and issues no content.
+remain fresh; a failed read starts no final source/tool bracket and issues no content.
 Installed OpenSpec distribution scans overlap at most four admitted regular-file
 reads. File/count/byte reservations happen before opening, and every started
 handle closes before ordered metadata, entry and parent checks or refusal.
