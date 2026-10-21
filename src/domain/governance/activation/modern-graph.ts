@@ -81,6 +81,9 @@ export function buildModernPhaseGraph(
   workflow: ModernWorkflow,
   disposalContract: 'protected-custody' | 'local-bootstrap' = 'protected-custody'
 ): ModernPhaseGraph {
+  if (versions.activationContractVersion === 6) {
+    throw new Error('Publication source6 requires its separate graph constructor; source5 cannot allocate attestation writes.');
+  }
   const contract = workflowContract(workflow);
   const phases = buildPhaseDefinitions(versions, 'released-v3', disposalContract).map((original): ModernPhaseGraphNode => {
     const id = phaseId(original.id);
@@ -167,4 +170,26 @@ export function modernPhaseContractDigests(graph: ModernPhaseGraph): Readonly<Pa
   return Object.freeze(Object.fromEntries(graph.phases.map(({ label: _label, ...behavior }) => [
     behavior.id, canonicalSha256({ profileContract: graph.profileContract, workflowContract: graph.workflowContract, phase: behavior })
   ])));
+}
+
+export function buildApplicationPublicationPhaseGraph(
+  versions: ModernStaticVersions & { readonly activationContractVersion: 6 },
+  profile: ModernProfileContract,
+  workflow: ModernWorkflow
+): ModernPhaseGraph {
+  const previous = buildModernPhaseGraph({ ...versions, activationContractVersion: 5 }, profile, workflow);
+  return freezeModernValue({
+    ...previous,
+    versions: { ...previous.versions, activationContractVersion: versions.activationContractVersion },
+    phases: previous.phases.map(phase => phase.id === 'application-artifact-ready' ? {
+      ...phase,
+      allowedMutations: {
+        local: [...phase.allowedMutations.local],
+        remote: [...phase.allowedMutations.remote, 'github-attestation-write' as const]
+      },
+      evidence: { ...phase.evidence, schema: 'application-artifact-ready.v2' }
+    } : phase.id === 'application-foundation' ? {
+      ...phase, evidence: { ...phase.evidence, schema: 'application-foundation.v2' }
+    } : phase)
+  });
 }

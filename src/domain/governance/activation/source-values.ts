@@ -6,6 +6,7 @@ import { cleanString, sortedUnique, resourceKey, destinationKey, normalizeApprov
   normalizeApprovalDestructiveScope } from './approval-values.js';
 import type * as R from './record-contracts.js';
 import type { RecordOperation, RecordGraph } from './modern-record-contracts.js';
+import { readDigestApplicationPublicationReceipt } from './application-publication-values.js';
 
 type Scope<I extends R.ActivationIdentityFieldsV1, P extends string> = Omit<R.ApprovalEnvelopeFieldsV3<I, P>,
   'id' | 'schemaVersion' | 'expiresAt' | 'approvedAt' | 'approver'>;
@@ -401,12 +402,38 @@ export function validatePhasePayloadValues<I extends R.ActivationIdentityFieldsV
   }
 
   const value = payload as Record<string, unknown>;
-  const workflowSource5 = record.header.identity.activationContractVersion === 5 &&
+  const publicationSource6 = record.header.identity.activationContractVersion === 6 &&
+    ['application-artifact-ready', 'application-foundation'].includes(record.header.phaseId);
+  const workflowSource5 = [5, 6].includes(record.header.identity.activationContractVersion) &&
     ['bootstrap-workflow-source-ready', 'workflow-source-ready', 'dev-proof',
       'staging-qualified', 'production-rehearsed', 'green-red-proof'].includes(record.header.phaseId);
   const expected = record.header.phaseId === 'phase-0-complete' ? 'phase-0-discovery.v1' :
-    `${record.header.phaseId}.${workflowSource5 ? 'v2' : 'v1'}`;
+    `${record.header.phaseId}.${workflowSource5 || publicationSource6 ? 'v2' : 'v1'}`;
   const issues = value.kind === expected ? [] : [`${record.header.phaseId} payload kind must be ${expected}.`];
+  if (publicationSource6) {
+    try {
+      const receipt = readDigestApplicationPublicationReceipt(value.publication);
+      const run = `/repos/${receipt.repository}/actions/runs/${receipt.workflowRunId}`;
+      const job = `/repos/${receipt.repository}/actions/jobs/${receipt.workflowJobId}`;
+      const image = `${receipt.registryResourceId}/repositories/${receipt.imageRepository}@${receipt.artifactDigest}`;
+      const required = [
+        { provider: 'github', resourceType: 'workflow-run', resourceId: run },
+        { provider: 'github', resourceType: 'workflow-job', resourceId: job },
+        { provider: 'azure', resourceType: 'container-image', resourceId: image }
+      ];
+      if (required.some(resource => !record.liveReadback?.some(proof => proof.matches &&
+        proof.provider === resource.provider && proof.resourceType === resource.resourceType && proof.resourceId === resource.resourceId))) {
+        issues.push('Publication source6 requires matching independent readback of its original run, original job and immutable registry image.');
+      }
+    }
+    catch (error) {
+      if (!(error instanceof Error)) throw error;
+      issues.push(error.message);
+    }
+    if (record.header.phaseId === 'application-artifact-ready' && value.deploymentPerformed !== false) {
+      issues.push('Publication source6 artifact production must explicitly record that no application deployment was performed.');
+    }
+  }
   if (workflowSource5) {
     const hex = (digest: unknown) => typeof digest === 'string' && /^[a-f0-9]{64}$/u.test(digest);
     const admission = (receipt: unknown) => isRecord(receipt) &&

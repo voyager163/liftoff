@@ -323,6 +323,27 @@ Shared source metadata retains the current, pre-workflow and pre-custody
 distinctions, including each family's capability guidance. Reading a retained
 family does not relabel it as the current project-telemetry bundle.
 
+The separately selected, **unpublished publication Source6** contract is compiled
+in `identity.ts`; it does not replace that packaged Source5 table, its default
+selector, its readable families or any installed project. Its six profile/workflow
+graphs allocate activation contract **6** and compatibility metadata **6**.
+Unchanged record representations retain graph/saved-plan **3**, state/evidence/
+approval **4** and credential/supersession **2**. Only artifact publication gains
+the distinct `github-attestation-write` mutation and v2 evidence; its downstream
+foundation phase also requires v2 evidence. Existing workflow-publication/proof
+v2 contracts remain unchanged.
+
+`createApplicationPublicationIdentityReader` and
+`createApplicationPublicationRecordContract` select only exact Source6 tuples.
+Source4/Source5 readers, approvals and the private Source5 effect bridge cannot
+be used as Source6 authority. The v2 publication receipt has no fabricated
+`acrRunId`: it retains the original digest-dispatch operation, run/job, source,
+context/program, immutable registry image and distinct attestation/delivery/
+whole-job-custody/tool commitments. Its read-only consumer verifies original
+record and output relationships; a well-formed commitment is not a qualified
+producer or permission to publish or deploy. No Source6 manifest/plugin writer,
+automatic migration, receipt issuer or public activation route is enabled.
+
 `createManifestV8Reader` validates the complete source contract independently of
 the public historical-reader dispatch. Plugin API/content identity, finite
 active-layout bindings, workflow/framework state, selected agents, profile and

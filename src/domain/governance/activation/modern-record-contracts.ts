@@ -9,12 +9,12 @@ export const modernLocalRevalidationPhases = Object.freeze(['local-inputs-valid'
 export type ModernPhaseId = Exclude<Released.ReleasedV3PhaseId, 'seed-valid' | 'seed-verified' | 'seed-archived'> |
   typeof modernLocalRevalidationPhases[number];
 export type ModernMutationClass = Released.ReleasedMutationClassV3 |
-  'write-spec-kit-seed' | 'write-spec-kit-governance' | 'write-operational-plan';
+  'write-spec-kit-seed' | 'write-spec-kit-governance' | 'write-operational-plan' | 'github-attestation-write';
 
 export interface ModernStaticVersions {
   readonly liftoffVersion: '0.13.0-dev.0';
   readonly manifestArtifactVersion: 8;
-  readonly activationContractVersion: 4 | 5;
+  readonly activationContractVersion: 4 | 5 | 6;
   readonly phaseGraphSchemaVersion: 3;
   readonly activationStateSchemaVersion: 4;
   readonly evidenceHeaderSchemaVersion: 4;
@@ -42,7 +42,7 @@ export type ReadableModernActivationIdentity = StaticModernActivationIdentity & 
 export interface ModernActivationSourceContract {
   readonly identity: StaticModernActivationIdentity;
   readonly savedPlanSchemaVersion: 3;
-  readonly compatibilityMetadataSchemaVersion: 5;
+  readonly compatibilityMetadataSchemaVersion: 5 | 6;
   readonly policyPathParts: readonly string[];
   readonly graph: ModernPhaseGraph;
 }
