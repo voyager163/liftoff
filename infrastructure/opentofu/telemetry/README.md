@@ -456,6 +456,11 @@ After separate operator approval (not performed by this source layer):
    configuration, not silence. Populate `expected_heartbeats` only for genuinely
    enabled, qualified reporting, with its UTC monitoring-start timestamp.
    Qualify private notification routing before unpausing `alerts_enabled`.
+   Set `alert_contact_point_name` to the exact existing, separately approved
+   contact point name in private inputs; unpausing without one fails validation.
+   Independently verify its current destination and Grafana's
+   `alertingSimplifiedRouting` support. Selecting a name is not proof of
+   existence, successful delivery or permission to create/change a receiver.
    Independently qualify the exact Grafana managed identity's DCR metric
    access, native query/error/empty displays and positive bounded fault
    evaluation before also enabling `ingestion_fault_alerts_enabled`. Neither
@@ -511,7 +516,20 @@ metric query returned an **empty timeseries**, not proof of zero faults.
 This signal covers DCR transformation errors only: it is **not end-to-end
 ingestion health**, gateway rejection/auth/network/queue health, a delivery
 success rate, or a project activity/deployment signal. It creates no request,
-body, IP or console logging and no contact/notification destination.
+body, IP or console logging, contact point or notification destination.
+When an existing `alert_contact_point_name` is explicitly selected, all three
+Liftoff rules use direct `notification_settings`, without taking ownership of
+the global notification-policy tree, contact points or subscriptions. Names
+are bounded literal aliases, not email addresses, webhook URLs or credentials.
+Notifications group by folder and alert name, wait 30 seconds, group subsequent
+changes for five minutes and repeat ongoing alerts every four hours. Direct
+routing requires Grafana's `alertingSimplifiedRouting` support; inspect that
+capability and the exact receiver before a separately approved apply. A missing
+or unsupported receiver is a blocking qualification failure, not permission to
+fall back to ambient routing.
+Leaving the name unset preserves the existing paused rules with no routing
+block. Selecting a name does not unpause them. These source checks do not
+verify the receiver, evaluate a live fault or send a test notification.
 **Verified ingestion-fault alerting remains a live qualification gate** until
 the actual Grafana identity/query, missing/error states, positive fault
 evaluation and approved private routing are exercised. Source/mock success
