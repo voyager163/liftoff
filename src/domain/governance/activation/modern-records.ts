@@ -214,6 +214,13 @@ function createRecordContract(
       }
       projection(entry.operations);
     }
+    if (identity.activationContractVersion === 6 && plan.phaseId === 'application-artifact-ready') {
+      for (const operation of plan.rollbackPlan.operations) {
+        if (!(operation.remote ? node.allowedMutations.remote : node.allowedMutations.local).includes(operation.mutationClass)) {
+          throw new Error(`Publication source6 rollback mutation ${operation.mutationClass} is outside phase ${plan.phaseId}.`);
+        }
+      }
+    }
     if (identity.activationContractVersion === 6 && plan.rollbackPlan.operations.some(operation =>
       operation.mutationClass === 'github-attestation-write' || operation.actionId === applicationPublicationActionId ||
       plan.phaseId === 'application-artifact-ready' &&

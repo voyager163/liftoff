@@ -1779,9 +1779,12 @@ immutable execution ref, one registry-publication effect and one same-repository
 attestation effect. It cannot hide another dispatch in delegated effects or
 repeat publication through rollback, even under another action ID. Artifact
 rollback may observe the original publication, but cannot dispatch again, publish
-registry content or write attestations. New permissions participate in the
-original plan/approval commitments; an old approval cannot acquire the additional
-write.
+registry content or write attestations. Its remaining operations must also stay
+within the artifact phase's exact local/remote allocation: local reads and
+evidence/state persistence, or remote GitHub/Azure reads. Another action ID,
+mutation class or local/remote flag cannot introduce unrelated writes.
+New permissions participate in the original plan/approval commitments; an old
+approval cannot acquire the additional write.
 
 Artifact and foundation evidence use v2 publication receipts, never retagged
 QuickBuild v1 records or an invented ACR run. Required commitments separately bind

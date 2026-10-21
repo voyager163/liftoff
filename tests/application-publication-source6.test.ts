@@ -28,6 +28,7 @@ import { readVerifiedDigestApplicationArtifact } from '../src/governance-activat
 import { assertSource5WorkflowContext, createSource5WorkflowContext } from '../src/governance-activation/workflow-source5-context.js';
 import { applicationArtifactDigestBlockers } from '../src/governance-activation/application-artifact-digest-recipe.js';
 import { selectedSourceCases } from './fixtures/modern-selected-source-contract.js';
+import { releasedV3Values } from '../src/domain/governance/activation/record-contracts.js';
 
 const originalCases = selectedSourceCases(), sources = applicationPublicationSourceContracts();
 const at = '2026-09-01T00:00:00.000Z', expiry = '2026-09-02T00:00:00.000Z';
@@ -270,14 +271,38 @@ describe('source6 plan permission and original-record boundaries', () => {
       }]);
       expect(() => api.createPlan(input)).toThrow(/cannot repeat or reverse/);
     });
-  it('permits observation of an original publication during recovery without another write', () => {
-    const { api } = contract(), input = structuredClone(planInput(api));
-    const { effects: _effects, ...original } = input.operations[0];
-    Reflect.set(input.rollbackPlan, 'operations', [{
-      ...original, actionId: 'github.artifact.observe', mutationClass: 'github-read'
-    }]);
-    expect(api.createPlan(input).rollbackPlan.operations[0].mutationClass).toBe('github-read');
-  });
+  const retainedRollbackModes = [
+    ['read-worktree', false], ['write-evidence', false], ['write-activation-state', false],
+    ['github-read', true], ['azure-read', true]
+  ] as const;
+  const retainedRollbackKeys = new Set(retainedRollbackModes.map(([mutationClass, remote]) => `${mutationClass}:${remote}`));
+  const refusedRollbackModes = [...releasedV3Values.mutationClasses,
+    'write-spec-kit-seed', 'write-spec-kit-governance', 'write-operational-plan', 'github-attestation-write'
+  ].flatMap(mutationClass => [false, true].map(remote => ({ mutationClass, remote })))
+    .filter(({ mutationClass, remote }) => !retainedRollbackKeys.has(`${mutationClass}:${remote}`));
+  it.each(refusedRollbackModes)('rejects artifact rollback $mutationClass remote=$remote outside its retained scope',
+    ({ mutationClass, remote }) => {
+      const { api } = contract(), input = structuredClone(planInput(api));
+      const { effects: _effects, ...original } = input.operations[0];
+      Reflect.set(input.rollbackPlan, 'operations', [{
+        ...original, actionId: 'publication.rollback-alternate-action', mutationClass, remote
+      }]);
+      expect(() => api.createPlan(input)).toThrow();
+      const saved = structuredClone(api.createPlan(planInput(api)));
+      Reflect.set(saved.rollbackPlan, 'operations', input.rollbackPlan.operations);
+      expect(() => api.readPlan(saved)).toThrow();
+    });
+  it.each(retainedRollbackModes)('preserves artifact recovery %s remote=%s without another publication',
+    (mutationClass, remote) => {
+      const { api } = contract(), input = structuredClone(planInput(api));
+      const { effects: _effects, ...original } = input.operations[0];
+      Reflect.set(input.rollbackPlan, 'operations', [{
+        ...original, actionId: 'publication.recovery-retained-operation', mutationClass, remote
+      }]);
+      const plan = api.createPlan(input);
+      const retained = api.readPlan(JSON.parse(JSON.stringify(plan))).rollbackPlan.operations[0];
+      expect([retained.mutationClass, retained.remote]).toEqual([mutationClass, remote]);
+    });
   it('cannot allocate the new effect to another phase or parse it through the original source5 operation decoder', () => {
     const { api, previous } = contract(), input = planInput(api, 'application-foundation');
     expect(() => api.createPlan({ ...input, operations: planInput(api).operations.map(operation =>
