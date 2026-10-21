@@ -9,6 +9,83 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const repository = 'voyager163/liftoff';
 export const jobIdentityQualificationName = 'Observe signed GitHub job identity';
 
+export const jobIdentityProgramBootstrap = String.raw`node --input-type=module <<'NODE'
+import assert from 'node:assert/strict';
+import { constants } from 'node:fs';
+import { lstat, open, readdir, realpath } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+try {
+  assert.equal(process.version, 'v24.21.0');
+  const expected = process.env.LIFTOFF_JOB_IDENTITY_PROGRAM_SHA256;
+  assert.match(expected ?? '', /^[a-f0-9]{64}$/u);
+  const root = await realpath(process.cwd());
+  const directory = path.join(root, 'qualification', 'job-identity-program');
+  const snapshots = new Map();
+  const identity = value => [value.dev, value.ino, value.mode, value.nlink,
+    value.size, value.mtimeNs, value.ctimeNs].map(String).join(':');
+  const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+  for (const name of [root, path.dirname(directory), directory]) {
+    const value = await lstat(name, { bigint: true });
+    assert.ok(value.isDirectory() && !value.isSymbolicLink());
+    assert.equal(await realpath(name), name);
+    snapshots.set(name, identity(value));
+  }
+  const names = ['job-identity.js', 'activation-rest.js', 'qualify.mjs', 'package.json'];
+  assert.deepEqual((await readdir(directory)).sort(), [...names, 'inventory.json'].sort());
+  async function capture(name, maximum) {
+    const file = path.join(directory, name);
+    const before = await lstat(file, { bigint: true });
+    assert.ok(before.isFile() && before.nlink === 1n && before.size > 0n && before.size <= BigInt(maximum));
+    // Windows has no POSIX FIFO/no-follow flags; opened identity is checked on every host.
+    const flags = process.platform === 'win32' ? constants.O_RDONLY
+      : constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+    const handle = await open(file, flags);
+    let bytes;
+    try {
+      assert.equal(identity(await handle.stat({ bigint: true })), identity(before));
+      bytes = Buffer.alloc(Number(before.size));
+      let offset = 0;
+      while (offset < bytes.length) {
+        const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, offset);
+        assert.ok(bytesRead > 0);
+        offset += bytesRead;
+      }
+      assert.equal((await handle.read(Buffer.alloc(1), 0, 1, bytes.length)).bytesRead, 0);
+      assert.equal(identity(await handle.stat({ bigint: true })), identity(before));
+    } finally { await handle.close(); }
+    assert.equal(identity(await lstat(file, { bigint: true })), identity(before));
+    snapshots.set(file, identity(before));
+    return bytes;
+  }
+  const inventoryBytes = await capture('inventory.json', 4096);
+  assert.equal(hash(inventoryBytes), expected);
+  const inventory = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(inventoryBytes));
+  assert.deepEqual(Object.keys(inventory).sort(), ['files', 'schemaVersion']);
+  assert.equal(inventory.schemaVersion, 1);
+  assert.ok(Array.isArray(inventory.files));
+  assert.deepEqual(inventory.files.map(file => file.name), names);
+  for (const file of inventory.files) {
+    assert.deepEqual(Object.keys(file).sort(), ['name', 'sha256']);
+    assert.match(file.sha256 ?? '', /^[a-f0-9]{64}$/u);
+    const bytes = await capture(file.name, 256 * 1024);
+    assert.equal(hash(bytes), file.sha256);
+    if (file.name === 'package.json') assert.equal(bytes.toString('utf8'), '{"type":"module"}\n');
+  }
+  assert.deepEqual((await readdir(directory)).sort(), [...names, 'inventory.json'].sort());
+  for (const [name, before] of snapshots) {
+    assert.equal(identity(await lstat(name, { bigint: true })), before);
+  }
+  const program = await import(pathToFileURL(path.join(directory, 'qualify.mjs')).href);
+  await program.runGitHubJobIdentityObservation();
+} catch {
+  console.error('GitHub job identity program handoff failed; helper verification or execution was refused and diagnostics were withheld.');
+  process.exitCode = 1;
+}
+NODE`;
+
 function id(value) {
   assert.match(value ?? '', /^[1-9][0-9]*$/u, 'A literal original provider ID is required.');
   const number = Number(value);
@@ -65,7 +142,9 @@ export async function prepareGitHubJobIdentityProgram(root = process.cwd()) {
   const entry = await readFile(fileURLToPath(import.meta.url));
   await writeFile(path.join(output, 'qualify.mjs'), entry, { flag: 'wx' });
   files.push({ name: 'qualify.mjs', sha256: createHash('sha256').update(entry).digest('hex') });
-  await writeFile(path.join(output, 'package.json'), '{"type":"module"}\n', { flag: 'wx' });
+  const packageBytes = '{"type":"module"}\n';
+  await writeFile(path.join(output, 'package.json'), packageBytes, { flag: 'wx' });
+  files.push({ name: 'package.json', sha256: createHash('sha256').update(packageBytes).digest('hex') });
   await writeFile(path.join(output, 'inventory.json'), `${JSON.stringify({ schemaVersion: 1, files }, null, 2)}\n`, { flag: 'wx' });
   return output;
 }
@@ -104,9 +183,13 @@ async function observe() {
   assert.equal(process.env.GITHUB_RUN_ATTEMPT, '1');
   assert.equal(process.env.GITHUB_REPOSITORY, repository);
   const directory = path.dirname(fileURLToPath(import.meta.url));
-  const inventory = JSON.parse(await readFile(path.join(directory, 'inventory.json'), 'utf8'));
+  const inventoryBytes = await readFile(path.join(directory, 'inventory.json'));
+  const inventorySha256 = createHash('sha256').update(inventoryBytes).digest('hex');
+  assert.match(process.env.LIFTOFF_JOB_IDENTITY_PROGRAM_SHA256 ?? '', /^[a-f0-9]{64}$/u);
+  assert.equal(inventorySha256, process.env.LIFTOFF_JOB_IDENTITY_PROGRAM_SHA256);
+  const inventory = JSON.parse(inventoryBytes.toString('utf8'));
   assert.equal(inventory.schemaVersion, 1);
-  assert.deepEqual(inventory.files.map(file => file.name), ['job-identity.js', 'activation-rest.js', 'qualify.mjs']);
+  assert.deepEqual(inventory.files.map(file => file.name), ['job-identity.js', 'activation-rest.js', 'qualify.mjs', 'package.json']);
   for (const file of inventory.files) {
     assert.equal(createHash('sha256').update(await readFile(path.join(directory, file.name))).digest('hex'), file.sha256,
       'The exact prepared qualification program must be unchanged.');
@@ -117,26 +200,34 @@ async function observe() {
   assertCurrentGitHubJobIdentity(observation, expected);
   await writeFile(path.join(directory, 'job-identity-report.json'), `${JSON.stringify({
     schemaVersion: 1, scope: 'signed-github-job-facts-only', nodeVersion: process.version,
-    observation, programInventory: inventory,
+    observation, programInventory: inventory, programInventorySha256: inventorySha256,
     limits: ['ordinary Actions artifact transport is not Source5 authenticated program delivery',
       'no whole-job host custody, cloud access, build, publication, effect approval or workflow authority']
   }, null, 2)}\n`, { flag: 'wx' });
   console.log('Verified original signed GitHub job facts only; delivery, host custody and workflow authority remain unestablished.');
 }
 
+function qualificationFailure(error) {
+  const code = /^github-job-identity-[a-z-]+$/u.test(error?.code ?? '') ? error.code : 'qualification-input-or-preparation';
+  const stage = code === 'github-job-identity-claims' && [
+    'time-type', 'lifetime', 'issuer-audience', 'repository', 'actor', 'run', 'job',
+    'source-workflow', 'event-host', 'ref', 'subject', 'unsupported-claims'
+  ].includes(error?.claimStage) ? `; claim-stage=${error.claimStage}` : '';
+  console.error(`GitHub job identity qualification failed (${code}${stage}); credentials and provider diagnostics were withheld.`);
+  process.exitCode = 1;
+}
+
+export async function runGitHubJobIdentityObservation() {
+  try { await observe(); } catch (error) { qualificationFailure(error); }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(await realpath(process.argv[1])).href) {
   try {
     assert.equal(process.argv.length, 3);
     assert.ok(['prepare', 'observe'].includes(process.argv[2]));
-    if (process.argv[2] === 'prepare') await prepareGitHubJobIdentityProgram();
-    else await observe();
-  } catch (error) {
-    const code = /^github-job-identity-[a-z-]+$/u.test(error?.code ?? '') ? error.code : 'qualification-input-or-preparation';
-    const stage = code === 'github-job-identity-claims' && [
-      'time-type', 'lifetime', 'issuer-audience', 'repository', 'actor', 'run', 'job',
-      'source-workflow', 'event-host', 'ref', 'subject', 'unsupported-claims'
-    ].includes(error?.claimStage) ? `; claim-stage=${error.claimStage}` : '';
-    console.error(`GitHub job identity qualification failed (${code}${stage}); credentials and provider diagnostics were withheld.`);
-    process.exitCode = 1;
-  }
+    if (process.argv[2] === 'prepare') {
+      const output = await prepareGitHubJobIdentityProgram();
+      console.log(createHash('sha256').update(await readFile(path.join(output, 'inventory.json'))).digest('hex'));
+    } else await runGitHubJobIdentityObservation();
+  } catch (error) { qualificationFailure(error); }
 }

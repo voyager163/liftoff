@@ -14,6 +14,8 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+    outputs:
+      program-inventory-sha256: ${{ steps.prepare-program.outputs.inventory-sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -23,7 +25,10 @@ jobs:
         with:
           node-version: "24.21.0"
       - name: Transform only the explicit identity program with Node built-ins
-        run: node scripts/qualify-github-job-identity.mjs prepare
+        id: prepare-program
+        run: |-
+          inventory="$(node scripts/qualify-github-job-identity.mjs prepare)"
+          printf 'inventory-sha256=%s\n' "$inventory" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: liftoff-job-identity-program-${{ github.run_id }}-${{ github.run_attempt }}
@@ -51,7 +56,84 @@ jobs:
       - name: Verify signed original job facts without publishing or cloud access
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node qualification/job-identity-program/qualify.mjs observe
+          LIFTOFF_JOB_IDENTITY_PROGRAM_SHA256: ${{ needs.prepare-job-identity.outputs.program-inventory-sha256 }}
+        run: |-
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { constants } from 'node:fs';
+          import { lstat, open, readdir, realpath } from 'node:fs/promises';
+          import { createHash } from 'node:crypto';
+          import path from 'node:path';
+          import { pathToFileURL } from 'node:url';
+
+          try {
+            assert.equal(process.version, 'v24.21.0');
+            const expected = process.env.LIFTOFF_JOB_IDENTITY_PROGRAM_SHA256;
+            assert.match(expected ?? '', /^[a-f0-9]{64}$/u);
+            const root = await realpath(process.cwd());
+            const directory = path.join(root, 'qualification', 'job-identity-program');
+            const snapshots = new Map();
+            const identity = value => [value.dev, value.ino, value.mode, value.nlink,
+              value.size, value.mtimeNs, value.ctimeNs].map(String).join(':');
+            const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+            for (const name of [root, path.dirname(directory), directory]) {
+              const value = await lstat(name, { bigint: true });
+              assert.ok(value.isDirectory() && !value.isSymbolicLink());
+              assert.equal(await realpath(name), name);
+              snapshots.set(name, identity(value));
+            }
+            const names = ['job-identity.js', 'activation-rest.js', 'qualify.mjs', 'package.json'];
+            assert.deepEqual((await readdir(directory)).sort(), [...names, 'inventory.json'].sort());
+            async function capture(name, maximum) {
+              const file = path.join(directory, name);
+              const before = await lstat(file, { bigint: true });
+              assert.ok(before.isFile() && before.nlink === 1n && before.size > 0n && before.size <= BigInt(maximum));
+              // Windows has no POSIX FIFO/no-follow flags; opened identity is checked on every host.
+              const flags = process.platform === 'win32' ? constants.O_RDONLY
+                : constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+              const handle = await open(file, flags);
+              let bytes;
+              try {
+                assert.equal(identity(await handle.stat({ bigint: true })), identity(before));
+                bytes = Buffer.alloc(Number(before.size));
+                let offset = 0;
+                while (offset < bytes.length) {
+                  const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, offset);
+                  assert.ok(bytesRead > 0);
+                  offset += bytesRead;
+                }
+                assert.equal((await handle.read(Buffer.alloc(1), 0, 1, bytes.length)).bytesRead, 0);
+                assert.equal(identity(await handle.stat({ bigint: true })), identity(before));
+              } finally { await handle.close(); }
+              assert.equal(identity(await lstat(file, { bigint: true })), identity(before));
+              snapshots.set(file, identity(before));
+              return bytes;
+            }
+            const inventoryBytes = await capture('inventory.json', 4096);
+            assert.equal(hash(inventoryBytes), expected);
+            const inventory = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(inventoryBytes));
+            assert.deepEqual(Object.keys(inventory).sort(), ['files', 'schemaVersion']);
+            assert.equal(inventory.schemaVersion, 1);
+            assert.ok(Array.isArray(inventory.files));
+            assert.deepEqual(inventory.files.map(file => file.name), names);
+            for (const file of inventory.files) {
+              assert.deepEqual(Object.keys(file).sort(), ['name', 'sha256']);
+              assert.match(file.sha256 ?? '', /^[a-f0-9]{64}$/u);
+              const bytes = await capture(file.name, 256 * 1024);
+              assert.equal(hash(bytes), file.sha256);
+              if (file.name === 'package.json') assert.equal(bytes.toString('utf8'), '{"type":"module"}\n');
+            }
+            assert.deepEqual((await readdir(directory)).sort(), [...names, 'inventory.json'].sort());
+            for (const [name, before] of snapshots) {
+              assert.equal(identity(await lstat(name, { bigint: true })), before);
+            }
+            const program = await import(pathToFileURL(path.join(directory, 'qualify.mjs')).href);
+            await program.runGitHubJobIdentityObservation();
+          } catch {
+            console.error('GitHub job identity program handoff failed; helper verification or execution was refused and diagnostics were withheld.');
+            process.exitCode = 1;
+          }
+          NODE
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: liftoff-job-identity-report-${{ github.run_id }}-${{ github.run_attempt }}
