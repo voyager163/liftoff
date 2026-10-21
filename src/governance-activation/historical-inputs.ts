@@ -47,17 +47,36 @@ export async function captureMigrationRetainedProjectInputs(
   const result: RetainedProjectInput[] = [];
   async function visit(parts: string[]): Promise<void> {
     const directory = parts.length ? await resolveProjectPath(projectRoot, parts) : projectRoot;
-    for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
+    const entries = (await readdir(directory, { withFileTypes: true }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'en'))
+      .filter(entry => isMigrationPublicInputPath([...parts, entry.name], exclusions));
+    async function capture(entry: typeof entries[number]): Promise<RetainedProjectInput | undefined> {
       const child = [...parts, entry.name];
-      if (!isMigrationPublicInputPath(child, exclusions)) continue;
       historyPathParts(child, 'migration public input path');
       const absolute = await resolveProjectPath(projectRoot, child);
       const details = await lstat(absolute);
       if (entry.isDirectory() && details.isDirectory()) await visit(child);
       else if (entry.isFile() && details.isFile() && !details.isSymbolicLink() && details.nlink === 1) {
-        result.push({ pathParts: child, digest: createHash('sha256').update(await readFile(absolute)).digest('hex'), mode: details.mode & 0o7777 });
+        return { pathParts: child, digest: createHash('sha256').update(await readFile(absolute)).digest('hex'), mode: details.mode & 0o7777 };
       } else {
         throw new Error(`Protected update source ${child.join('/')} must not be a link or special file.`);
+      }
+    }
+    for (let start = 0; start < entries.length;) {
+      const entry = entries[start]!;
+      if (entry.isDirectory()) {
+        await capture(entry);
+        start++;
+        continue;
+      }
+      const batch: typeof entries = [];
+      while (start < entries.length && batch.length < 4 && !entries[start]!.isDirectory()) {
+        batch.push(entries[start++]!);
+      }
+      const observations = await Promise.allSettled(batch.map(capture));
+      for (const observation of observations) {
+        if (observation.status === 'rejected') throw observation.reason;
+        if (observation.value) result.push(observation.value);
       }
     }
   }

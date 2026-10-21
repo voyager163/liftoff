@@ -370,6 +370,14 @@ changes in another.
 - Never fabricate history: prose, filenames, timestamps, or checked tasks are
   not evidence.
 
+Historical migration's public-input inventory uses fixed-four complete file
+batches within each directory. Sensitive, reserved and dependency paths are
+excluded before child observation. Directory traversal remains serial, each
+invocation captures fresh inputs, and all started siblings settle before the
+first original-order error is returned; no later batch starts after failure.
+At most three additional already-started sibling observations may finish after
+a refusal. This does not cache authority or establish a hosted timeout repair.
+
 Released-v3 record readers share structural validation with the current validators
 through `domain/governance/activation/record-validation.ts`, selecting the exact
 frozen identity, graph and released values. The read-only
