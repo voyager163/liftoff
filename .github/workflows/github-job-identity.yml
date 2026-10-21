@@ -63,6 +63,7 @@ jobs:
           import { constants } from 'node:fs';
           import { lstat, open, readdir, realpath } from 'node:fs/promises';
           import { createHash } from 'node:crypto';
+          import { isBuiltin, registerHooks } from 'node:module';
           import path from 'node:path';
           import { pathToFileURL } from 'node:url';
 
@@ -73,6 +74,7 @@ jobs:
             const root = await realpath(process.cwd());
             const directory = path.join(root, 'qualification', 'job-identity-program');
             const snapshots = new Map();
+            const modules = new Map();
             const identity = value => [value.dev, value.ino, value.mode, value.nlink,
               value.size, value.mtimeNs, value.ctimeNs].map(String).join(':');
             const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -122,13 +124,30 @@ jobs:
               const bytes = await capture(file.name, 256 * 1024);
               assert.equal(hash(bytes), file.sha256);
               if (file.name === 'package.json') assert.equal(bytes.toString('utf8'), '{"type":"module"}\n');
+              else modules.set(pathToFileURL(path.join(directory, file.name)).href,
+                new TextDecoder('utf-8', { fatal: true }).decode(bytes));
             }
             assert.deepEqual((await readdir(directory)).sort(), [...names, 'inventory.json'].sort());
             for (const [name, before] of snapshots) {
               assert.equal(identity(await lstat(name, { bigint: true })), before);
             }
-            const program = await import(pathToFileURL(path.join(directory, 'qualify.mjs')).href);
-            await program.runGitHubJobIdentityObservation();
+            const hooks = registerHooks({
+              resolve(specifier, context, nextResolve) {
+                if (specifier.startsWith('node:') && isBuiltin(specifier)) return nextResolve(specifier, context);
+                const url = new URL(specifier, context.parentURL).href;
+                assert.ok(modules.has(url));
+                return { url, shortCircuit: true };
+              },
+              load(url, context, nextLoad) {
+                if (url.startsWith('node:') && isBuiltin(url)) return nextLoad(url, context);
+                assert.ok(modules.has(url));
+                return { format: 'module', source: modules.get(url), shortCircuit: true };
+              }
+            });
+            try {
+              const program = await import(pathToFileURL(path.join(directory, 'qualify.mjs')).href);
+              await program.runGitHubJobIdentityObservation();
+            } finally { hooks.deregister(); }
           } catch {
             console.error('GitHub job identity program handoff failed; helper verification or execution was refused and diagnostics were withheld.');
             process.exitCode = 1;

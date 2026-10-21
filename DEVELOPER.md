@@ -56,6 +56,13 @@ before importing any downloaded helper. The inventory is limited to 4 KiB and
 each member to 256 KiB, checked before opening or allocating its payload.
 Every opened file is checked before and after capture and all file/directory
 identities are rechecked before import.
+Node's synchronous module hooks then load only the three captured, verified
+UTF-8 module snapshots and Node built-ins, without filesystem module or package
+resolution. Both static and awaited dynamic imports retain the original file URLs;
+unlisted files, data URLs and query/fragment aliases are refused. Hooks remain
+active through observation settlement and are deregistered afterward. This
+closes replacement between the final filesystem observation and module loading;
+it does not protect a compromised host, prior module cache or built-in runtime.
 Changing the helper and its own inventory together cannot change the original
 producer's job output. The observer also retains that expected inventory digest
 in its diagnostic report. No checkout, dependencies, publishing grant or new
