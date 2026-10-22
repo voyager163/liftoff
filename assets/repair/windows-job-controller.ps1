@@ -329,6 +329,56 @@ public static class Win32JobNative {
 }
 "@
 
+$script:controlJsonSerializer = $null
+function Get-ControlJsonSerializer {
+    if ($null -eq $script:controlJsonSerializer) {
+        $assemblyName = 'System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'
+        $assembly = [System.Reflection.Assembly]::Load($assemblyName)
+        if ($assembly.FullName -cne $assemblyName) {
+            throw 'Built-in control JSON assembly identity does not match.'
+        }
+        $serializerType = $assembly.GetType('System.Web.Script.Serialization.JavaScriptSerializer', $true)
+        $serializer = [System.Activator]::CreateInstance($serializerType)
+        $serializer.MaxJsonLength = 262144
+        $serializer.RecursionLimit = 16
+        $script:controlJsonSerializer = $serializer
+    }
+    return $script:controlJsonSerializer
+}
+
+function ConvertFrom-ControlFrameJson([string]$json) {
+    if ([System.Text.Encoding]::UTF8.GetByteCount($json) -gt 262144) {
+        throw 'Invalid spawn control frame.'
+    }
+    $frame = (Get-ControlJsonSerializer).DeserializeObject($json)
+    if ($frame -isnot [System.Collections.Generic.Dictionary[string,object]]) {
+        throw 'Invalid spawn control frame.'
+    }
+    $required = @('schemaVersion', 'kind', 'controllerId', 'workspaceId', 'invocationId', 'nonce',
+        'sequence', 'executable', 'commandLine', 'cwd', 'envDigest', 'timeoutMs', 'maxOutputBytes')
+    $optional = @('envBlockBase64', 'stdoutFile', 'stderrFile')
+    $numeric = @('schemaVersion', 'sequence', 'timeoutMs', 'maxOutputBytes')
+    foreach ($name in $required) {
+        if (-not $frame.ContainsKey($name)) {
+            throw 'Invalid spawn control frame.'
+        }
+    }
+    foreach ($name in $frame.get_Keys()) {
+        if (($required + $optional) -cnotcontains $name) {
+            throw 'Invalid spawn control frame.'
+        }
+        $value = $frame[$name]
+        if ($numeric -ccontains $name) {
+            if (($value -isnot [int] -and $value -isnot [long]) -or $value -le 0 -or $value -gt 9007199254740991) {
+                throw 'Invalid spawn control frame.'
+            }
+        } elseif ($value -isnot [string]) {
+            throw 'Invalid spawn control frame.'
+        }
+    }
+    return ,$frame
+}
+
 $bootstrapStage = 'not-reported'
 try {
     [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: loading-compiler")
@@ -348,14 +398,6 @@ try {
     $newObjectType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.NewObjectCommand', $true)
     $bootstrapStage = 'new-object-cmdlet'
     $newObjectCmdlet = [System.Management.Automation.CmdletInfo]::new('New-Object', $newObjectType)
-    $bootstrapStage = 'to-json-type'
-    $toJsonType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.ConvertToJsonCommand', $true)
-    $bootstrapStage = 'to-json-cmdlet'
-    $toJsonCmdlet = [System.Management.Automation.CmdletInfo]::new('ConvertTo-Json', $toJsonType)
-    $bootstrapStage = 'from-json-type'
-    $fromJsonType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.ConvertFromJsonCommand', $true)
-    $bootstrapStage = 'from-json-cmdlet'
-    $fromJsonCmdlet = [System.Management.Automation.CmdletInfo]::new('ConvertFrom-Json', $fromJsonType)
     $bootstrapStage = 'sleep-type'
     $sleepType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.StartSleepCommand', $true)
     $bootstrapStage = 'sleep-cmdlet'
@@ -464,7 +506,7 @@ function Send-ControlFrame($stream, $obj) {
     if ($obj.kind -eq 'ready') {
         $json = ConvertTo-ReadyFrameJson $obj
     } else {
-        $json = $obj | & $toJsonCmdlet -Compress -Depth 10
+        $json = (Get-ControlJsonSerializer).Serialize($obj)
     }
     if ($obj.kind -eq 'ready') {
         [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: ready-encode")
@@ -514,7 +556,7 @@ function Read-ControlFrame($stream) {
     }
     $json = [System.Text.Encoding]::UTF8.GetString($payload)
     [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_ADMISSION: frame-json")
-    return $json | & $fromJsonCmdlet
+    return ConvertFrom-ControlFrameJson $json
 }
 
 $hJob = [IntPtr]::Zero

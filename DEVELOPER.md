@@ -107,7 +107,17 @@ The fixed six-field ready frame uses a closed encoder instead of invoking the
 general-purpose PowerShell JSON serializer before authentication. Its three
 string values are escaped by UTF-16 code unit, preserving control characters,
 quotes, backslashes and surrogate pairs without loading a serialization module.
-Other frames and incoming requests retain their existing JSON cmdlets.
+Incoming spawn requests and other frames use the stock .NET Framework
+`JavaScriptSerializer`, loaded lazily from its exact strong-named system
+assembly after the ready frame. The codec retains the 256-KiB UTF-8 frame limit,
+bounds recursion, and accepts only the declared flat spawn fields and scalar
+types; it does not invoke PowerShell's general-purpose JSON cmdlets. No extra
+runtime package, compiler or execution-policy exception is introduced. Native
+probes compare edge-string decoding with the public stock PowerShell 5.1
+`JsonObject.ConvertFromJson` helper; they do not assume different JSON-library
+semantics or claim that incoming lone surrogates survive legacy decoding. Native
+codec and controller qualification are required before treating this candidate
+as a startup repair; a portable source check cannot establish Windows timing.
 Only exact whole-line stage names enter timeout errors, never raw controller
 stderr. Startup timeout diagnostics also retain bounded numeric preparation,
 stage-receipt, authenticated-ready and request-dispatch observations on Node's

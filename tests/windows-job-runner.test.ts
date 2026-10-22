@@ -112,7 +112,26 @@ function removeSourceRange(source: string, start: string, end: string): string {
   return source.slice(0, startIndex) + source.slice(endIndex);
 }
 
+function restorePreControlJsonController(controller: string): string {
+  if (!controller.includes('$script:controlJsonSerializer = $null\n')) return controller;
+  return removeSourceRange(controller, '$script:controlJsonSerializer = $null\n', "$bootstrapStage = 'not-reported'")
+    .replace("    $bootstrapStage = 'sleep-type'", [
+      "    $bootstrapStage = 'to-json-type'",
+      "    $toJsonType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.ConvertToJsonCommand', $true)",
+      "    $bootstrapStage = 'to-json-cmdlet'",
+      "    $toJsonCmdlet = [System.Management.Automation.CmdletInfo]::new('ConvertTo-Json', $toJsonType)",
+      "    $bootstrapStage = 'from-json-type'",
+      "    $fromJsonType = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.ConvertFromJsonCommand', $true)",
+      "    $bootstrapStage = 'from-json-cmdlet'",
+      "    $fromJsonCmdlet = [System.Management.Automation.CmdletInfo]::new('ConvertFrom-Json', $fromJsonType)",
+      "    $bootstrapStage = 'sleep-type'"
+    ].join('\n'))
+    .replace('$json = (Get-ControlJsonSerializer).Serialize($obj)', '$json = $obj | & $toJsonCmdlet -Compress -Depth 10')
+    .replace('return ConvertFrom-ControlFrameJson $json', 'return $json | & $fromJsonCmdlet');
+}
+
 function restorePreStartupObservationsRunner(runner: string): string {
+  runner = runner.replace(windowsJobControllerAssetDigest, '2b05fac3e801247dc841ba9c9cadd4bf91b151c6552df2cfaecce9032dc1c697');
   runner = removeSourceRange(runner,
     'type WindowsJobObservedStartupStage = ',
     'export interface WindowsJobInteropAssemblyIdentity {');
@@ -134,7 +153,7 @@ function restorePreStartupObservationsRunner(runner: string): string {
 }
 
 function restorePrePackagedInteropController(controller: string): string {
-  return controller
+  return restorePreControlJsonController(controller)
     .replace([
       '    [string]$InteropAssemblyPath,', '',
       '    [Parameter(Mandatory = $false)]',
@@ -259,7 +278,7 @@ function restorePreReadyController(controller: string): string {
 
 function restorePreReadyRunner(runner: string): string {
   return restorePrePackagedInteropRunner(runner)
-    .replace(windowsJobControllerAssetDigest, '77d63fa0c72a1f860008358fe7ed6e80a08e4040d6c700ea58ab64dae6b6e9e5')
+    .replace('2b05fac3e801247dc841ba9c9cadd4bf91b151c6552df2cfaecce9032dc1c697', '77d63fa0c72a1f860008358fe7ed6e80a08e4040d6c700ea58ab64dae6b6e9e5')
     .replace(
       '/^LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|loading-interop|connecting|connected|ready-serialize|ready-encode|ready-write|ready-flush|ready-written)\\r?$/gmu',
       '/LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|loading-interop|connecting|connected)/gu'
@@ -984,7 +1003,7 @@ describe('Windows Job Object controller asset integrity and host environment', (
       .toBe('03789de4dc1fbacb37ea310a63508d778b748d663d9d8dc7e6d0dfd3781ef83e');
     const runner = await readFile(path.join(process.cwd(), 'src/adapters/process/windows-job-runner.ts'), 'utf8');
     const restored = restorePrePackagedInteropRunner(runner)
-      .replace(windowsJobControllerAssetDigest, '03789de4dc1fbacb37ea310a63508d778b748d663d9d8dc7e6d0dfd3781ef83e');
+      .replace('2b05fac3e801247dc841ba9c9cadd4bf91b151c6552df2cfaecce9032dc1c697', '03789de4dc1fbacb37ea310a63508d778b748d663d9d8dc7e6d0dfd3781ef83e');
     expect(createHash('sha256').update(restored).digest('hex'))
       .toBe('4a4afc27fcb4d9e8732a8e55793ed59a69b3152a4e0176ceaa066ec7e1080833');
   });
@@ -1005,7 +1024,6 @@ describe('Windows Job Object controller asset integrity and host environment', (
     expect(controller).not.toMatch(/LoadFrom|LoadWithPartialName|System\.IO\.Path.*Utility/u);
     for (const [command, type, variable] of [
       ['Add-Type', 'AddTypeCommand', 'compilerType'], ['New-Object', 'NewObjectCommand', 'newObjectType'],
-      ['ConvertTo-Json', 'ConvertToJsonCommand', 'toJsonType'], ['ConvertFrom-Json', 'ConvertFromJsonCommand', 'fromJsonType'],
       ['Start-Sleep', 'StartSleepCommand', 'sleepType'], ['Write-Error', 'WriteErrorCommand', 'writeErrorType']
     ]) {
       expect(controller).toContain(`$${variable} = $utilityAssembly.GetType('Microsoft.PowerShell.Commands.${type}', $true)`);
@@ -1027,12 +1045,45 @@ describe('Windows Job Object controller asset integrity and host environment', (
       controller.indexOf('# Connect to the private control pipe'));
     expect([...bootstrap.matchAll(/\$bootstrapStage = '([^']+)'/gu)].map(match => match[1])).toEqual([
       'not-reported', 'assembly-load', 'assembly-identity', 'compiler-type', 'compiler-cmdlet',
-      'new-object-type', 'new-object-cmdlet', 'to-json-type', 'to-json-cmdlet',
-      'from-json-type', 'from-json-cmdlet', 'sleep-type', 'sleep-cmdlet',
+      'new-object-type', 'new-object-cmdlet', 'sleep-type', 'sleep-cmdlet',
       'write-error-type', 'write-error-cmdlet', 'compiler-parameters', 'compile', 'interop-path',
       'compile', 'interop-load', 'interop-identity'
     ]);
     expect(bootstrap).not.toMatch(/\$_|\.Exception|\.Message/u);
+  });
+
+  it('keeps the flat control JSON codec lazy, framework-bound and bounded without changing the ready encoder', async () => {
+    const controller = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+    expect(controller).toContain("$assemblyName = 'System.Web.Extensions, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'");
+    expect(controller).toContain('if ($assembly.FullName -cne $assemblyName)');
+    expect(controller).toContain("$assembly.GetType('System.Web.Script.Serialization.JavaScriptSerializer', $true)");
+    expect(controller).toContain('$serializer.MaxJsonLength = 262144');
+    expect(controller).toContain('$serializer.RecursionLimit = 16');
+    expect(controller).toContain('[System.Text.Encoding]::UTF8.GetByteCount($json) -gt 262144');
+    expect(controller).toContain('$frame -isnot [System.Collections.Generic.Dictionary[string,object]]');
+    expect(controller).toContain('($required + $optional) -cnotcontains $name');
+    expect(controller).toContain('$frame.ContainsKey($name)');
+    expect(controller).toContain('$value -isnot [int] -and $value -isnot [long]');
+    expect(controller).toContain('$value -gt 9007199254740991');
+    expect(controller).not.toMatch(/ConvertToJsonCommand|ConvertFromJsonCommand|\$(?:toJson|fromJson)Cmdlet/u);
+    const bootstrap = controller.slice(controller.indexOf("$bootstrapStage = 'not-reported'"),
+      controller.indexOf('# Connect to the private control pipe'));
+    expect(bootstrap).not.toContain('Get-ControlJsonSerializer');
+    const send = controller.slice(controller.indexOf('function Send-ControlFrame('),
+      controller.indexOf('function Read-ControlFrame('));
+    expect(send).toContain('$json = ConvertTo-ReadyFrameJson $obj');
+    expect(send.indexOf('$json = ConvertTo-ReadyFrameJson $obj'))
+      .toBeLessThan(send.indexOf('$json = (Get-ControlJsonSerializer).Serialize($obj)'));
+  });
+
+  it('restores the exact pre-codec controller and digest-only runner while preserving all older byte witnesses', async () => {
+    const controller = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+    const runner = await readFile(path.join(process.cwd(), 'src/adapters/process/windows-job-runner.ts'), 'utf8');
+    expect(createHash('sha256').update(restorePreControlJsonController(controller)).digest('hex'))
+      .toBe('2b05fac3e801247dc841ba9c9cadd4bf91b151c6552df2cfaecce9032dc1c697');
+    expect(createHash('sha256').update(runner.replace(windowsJobControllerAssetDigest,
+      '2b05fac3e801247dc841ba9c9cadd4bf91b151c6552df2cfaecce9032dc1c697')).digest('hex'))
+      .toBe('c022dc153d005258b19b718ace72a3e06a4f0d247ad1536f9a3a3039d03e1ead');
   });
 
   it('restricts both unchanged Win32 compilations to the loaded core library and restores the exact default-reference parent', async () => {
@@ -1141,7 +1192,7 @@ describe('Windows Job Object controller asset integrity and host environment', (
       "    if ($obj.kind -eq 'ready') {",
       '        $json = ConvertTo-ReadyFrameJson $obj',
       '    } else {',
-      '        $json = $obj | & $toJsonCmdlet -Compress -Depth 10',
+      '        $json = (Get-ControlJsonSerializer).Serialize($obj)',
       '    }'
     ].join('\n'));
   });
@@ -1230,7 +1281,7 @@ describe('Windows Job Object controller asset integrity and host environment', (
     const frameReader = controller.slice(controller.indexOf('function Read-ControlFrame'), controller.indexOf('$hJob = [IntPtr]::Zero'));
     for (const [stage, operation] of [
       ['frame-header-read', '$stream.Read($header'], ['frame-payload-read', '$stream.Read($payload'],
-      ['frame-json', 'return $json | & $fromJsonCmdlet']
+      ['frame-json', 'return ConvertFrom-ControlFrameJson $json']
     ]) {
       expect(frameReader.indexOf(`LIFTOFF_CONTROLLER_ADMISSION: ${stage}"`)).toBeLessThan(frameReader.indexOf(operation));
     }
@@ -1252,7 +1303,7 @@ describe('Windows Job Object controller asset integrity and host environment', (
       expect(controller.indexOf(`LIFTOFF_CONTROLLER_ADMISSION: ${stage}"`)).toBeLessThan(controller.indexOf(operation));
     }
     const send = controller.slice(controller.indexOf('function Send-ControlFrame'), controller.indexOf('function Read-ControlFrame'));
-    expect(send.indexOf('Write-AckAdmissionDiagnostic $obj $false')).toBeLessThan(send.indexOf('$obj | & $toJsonCmdlet'));
+    expect(send.indexOf('Write-AckAdmissionDiagnostic $obj $false')).toBeLessThan(send.indexOf('(Get-ControlJsonSerializer).Serialize($obj)'));
     expect(send.indexOf('Write-AckAdmissionDiagnostic $obj $true')).toBeGreaterThan(send.indexOf('$stream.Flush()'));
     expect(controller.indexOf("throw 'ConstrainedLanguage mode does not permit Win32 Job API compilation.'"))
       .toBeLessThan(controller.indexOf('LIFTOFF_CONTROLLER_ADMISSION:'));
@@ -2233,6 +2284,151 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).not.toMatch(/[^\x20-\x7e]/u);
     expect(JSON.parse(result.stdout)).toEqual(common);
+  });
+
+  it.runIf(process.platform === 'win32')('decodes exact flat requests and refuses malformed shapes with the stock framework codec', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-control-json-'));
+    tempDirs.push(directory);
+    const asset = await verifyWindowsJobControllerAsset();
+    const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
+    const request = {
+      schemaVersion: 1, kind: 'spawn', controllerId: 'liftoff-windows-job-controller-v1',
+      workspaceId: 'workspace', invocationId: 'invocation', nonce: '0123456789abcdef', sequence: 1,
+      executable: 'C:\\private\\node.exe', commandLine: '"C:\\private\\node.exe" --check "file.js"',
+      cwd: 'C:\\private', envDigest: 'a'.repeat(64), timeoutMs: 15_000, maxOutputBytes: 4096
+    };
+    const unicode = `quotes"\\\r\n\t${String.fromCharCode(...Array.from({ length: 32 }, (_, index) => index), 127)}-\u2028\u2029-\ud83d\ude80`;
+    const valid = [
+      JSON.stringify(request),
+      JSON.stringify({ ...request, commandLine: unicode, envBlockBase64: 'QQA9AEIAAABcAAAA',
+        stdoutFile: 'C:\\private\\stdout', stderrFile: 'C:\\private\\stderr' }),
+      `{"sequence":0,${JSON.stringify({ ...request, timeoutMs: 9_007_199_254_740_991 }).slice(1)}`
+    ];
+    const invalid = [
+      '', '{', 'null', '[]', '[{}]', '"spawn"', '1',
+      JSON.stringify({ ...request, extra: 'not-in-schema' }),
+      JSON.stringify({ ...request, SchemaVersion: 1 }),
+      JSON.stringify({ ...request, Count: 13 }),
+      JSON.stringify({ ...request, Keys: [] }),
+      JSON.stringify({ ...request, Values: [] }),
+      JSON.stringify({ ...request, ContainsKey: 'not-a-method' }),
+      JSON.stringify({ ...request, __type: 'System.Object' }),
+      JSON.stringify({ ...request, cwd: '\u00e9'.repeat(131_073) }),
+      JSON.stringify({ ...request, cwd: { nested: true } }),
+      ...Object.keys(request).map(name => JSON.stringify(Object.fromEntries(
+        Object.entries(request).filter(([key]) => key !== name)))),
+      ...['schemaVersion', 'sequence', 'timeoutMs', 'maxOutputBytes'].flatMap(name =>
+        [null, true, '1', 0, -1, 1.5, 9_007_199_254_740_992].map(value => JSON.stringify({ ...request, [name]: value }))),
+      ...['kind', 'controllerId', 'workspaceId', 'invocationId', 'nonce', 'executable', 'commandLine',
+        'cwd', 'envDigest', 'envBlockBase64', 'stdoutFile', 'stderrFile']
+        .flatMap(name => [null, 1, true, [], {}].map(value => JSON.stringify({ ...request, [name]: value })))
+    ];
+    const input = path.join(directory, 'requests.base64');
+    const rejected = path.join(directory, 'invalid.base64');
+    const boundary = path.join(directory, 'boundary.json');
+    const overflow = path.join(directory, 'overflow.json');
+    const legacy = path.join(directory, 'legacy-strings.base64');
+    const emptyCommand = JSON.stringify({ ...request, commandLine: '' });
+    const atLimit = JSON.stringify({ ...request,
+      commandLine: 'x'.repeat(262_144 - Buffer.byteLength(emptyCommand)) });
+    expect(Buffer.byteLength(atLimit)).toBe(262_144);
+    await writeFile(input, valid.map(json => Buffer.from(json).toString('base64')).join('\n'));
+    await writeFile(rejected, invalid.map(json => Buffer.from(json).toString('base64')).join('\n'));
+    await writeFile(boundary, atLimit);
+    await writeFile(overflow, JSON.stringify({ ...request,
+      commandLine: 'x'.repeat(262_145 - Buffer.byteLength(emptyCommand)) }));
+    await writeFile(legacy, ['\ud800x\udc00', '\ufffd', '/Date(0)/'].map(commandLine =>
+      Buffer.from(JSON.stringify({ ...request, commandLine })).toString('base64')).join('\n'));
+    const script = [
+      "$ErrorActionPreference = 'Stop'",
+      `$source = [System.IO.File]::ReadAllText(${literal(asset)})`,
+      '$tokens = $null; $errors = $null',
+      '$ast = [System.Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors)',
+      "if ($errors.Count -ne 0) { throw 'Controller syntax error.' }",
+      '$script:controlJsonSerializer = $null',
+      "foreach ($name in @('Get-ControlJsonSerializer', 'ConvertFrom-ControlFrameJson')) {",
+      '    $definition = $ast.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -ceq $name }, $true)',
+      "    if ($null -eq $definition) { throw 'Missing control codec.' }",
+      '    . ([scriptblock]::Create($definition.Extent.Text))',
+      '}',
+      `foreach ($line in [System.IO.File]::ReadAllLines(${literal(input)})) {`,
+      '    $json = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($line))',
+      '    $frame = ConvertFrom-ControlFrameJson $json',
+      '    $units = @{}',
+      '    foreach ($name in $frame.get_Keys()) {',
+      '        if ($frame[$name] -is [string]) {',
+      '            $units[$name] = [int[]]@($frame[$name].ToCharArray() | ForEach-Object { [int]$_ })',
+      '        } else { $units[$name] = $frame[$name] }',
+      '    }',
+      '    $encoded = (Get-ControlJsonSerializer).Serialize($units)',
+      '    [Console]::Out.WriteLine([System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($encoded)))',
+      '}',
+      `foreach ($line in [System.IO.File]::ReadAllLines(${literal(rejected)})) {`,
+      '    $json = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($line))',
+      '    $refused = $false',
+      '    try { $null = ConvertFrom-ControlFrameJson $json } catch { $refused = $true }',
+      "    if (-not $refused) { throw 'Malformed control request was not refused.' }",
+      '}',
+      `$atLimit = [System.IO.File]::ReadAllText(${literal(boundary)})`,
+      "if ([System.Text.Encoding]::UTF8.GetByteCount($atLimit) -ne 262144) { throw 'Incorrect boundary fixture.' }",
+      '$null = ConvertFrom-ControlFrameJson $atLimit',
+      `$overLimit = [System.IO.File]::ReadAllText(${literal(overflow)})`,
+      "if ([System.Text.Encoding]::UTF8.GetByteCount($overLimit) -ne 262145) { throw 'Incorrect overflow fixture.' }",
+      '$refused = $false',
+      'try { $null = ConvertFrom-ControlFrameJson $overLimit } catch { $refused = $true }',
+      "if (-not $refused) { throw 'One-byte frame overflow was not refused.' }",
+      "$legacyAssemblyName = 'Microsoft.PowerShell.Commands.Utility, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35'",
+      '$legacyAssembly = [System.Reflection.Assembly]::Load($legacyAssemblyName)',
+      "if ($legacyAssembly.FullName -cne $legacyAssemblyName) { throw 'Legacy codec identity changed.' }",
+      `foreach ($line in [System.IO.File]::ReadAllLines(${literal(legacy)})) {`,
+      '    $json = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($line))',
+      '    $current = ConvertFrom-ControlFrameJson $json',
+      '    $legacyError = $null',
+      '    $previous = [Microsoft.PowerShell.Commands.JsonObject]::ConvertFromJson($json, [ref]$legacyError)',
+      "    if ($null -ne $legacyError) { throw 'Legacy decoding failed.' }",
+      '    foreach ($name in $current.get_Keys()) {',
+      "        if ($current[$name] -cne $previous.$name) { throw 'Legacy scalar decoding changed.' }",
+      '    }',
+      '}',
+      '$frames = @(',
+      "    @{ schemaVersion = 1; kind = 'ack'; controllerId = 'liftoff-windows-job-controller-v1';",
+      "       workspaceId = 'workspace'; invocationId = 'invocation'; nonce = '0123456789abcdef'; sequence = 1; admitted = $true },",
+      "    @{ schemaVersion = 1; kind = 'response'; controllerId = 'liftoff-windows-job-controller-v1';",
+      "       workspaceId = 'workspace'; invocationId = 'invocation'; nonce = '0123456789abcdef'; sequence = 1;",
+      "       phase = 'completed'; status = 0; signal = $null; activeProcesses = 0; jobTerminated = $false; settled = $true }",
+      ')',
+      'foreach ($frame in $frames) {',
+      '    $encoded = (Get-ControlJsonSerializer).Serialize($frame)',
+      '    [Console]::Out.WriteLine([System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($encoded)))',
+      '}',
+      "[Console]::Out.WriteLine('all-malformed-requests-refused')"
+    ].join('\n');
+    const host = buildWindowsControllerHostEnvironment();
+    if (!host.SystemRoot) throw new Error('Windows controller host requires SystemRoot.');
+    const powershell = path.join(host.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const result = spawnSync(powershell, [
+      '-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')
+    ], { env: host, encoding: 'utf8', timeout: 15_000, maxBuffer: 128 * 1024 });
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(0);
+    const lines = result.stdout.trim().split(/\r?\n/u);
+    expect(lines.pop()).toBe('all-malformed-requests-refused');
+    expect(lines).toHaveLength(valid.length + 2);
+    const decoded = lines.map(line => JSON.parse(Buffer.from(line, 'base64').toString('utf8')));
+    expect(decoded.slice(0, valid.length)).toEqual(
+      valid.map(json => Object.fromEntries(Object.entries(JSON.parse(json)).map(([key, value]) => [
+        key, typeof value === 'string' ? value.split('').map(character => character.charCodeAt(0)) : value
+      ])))
+    );
+    const common = {
+      schemaVersion: 1, controllerId: request.controllerId, workspaceId: request.workspaceId,
+      invocationId: request.invocationId, nonce: request.nonce, sequence: request.sequence
+    };
+    expect(decoded.slice(valid.length)).toEqual([
+      { ...common, kind: 'ack', admitted: true },
+      { ...common, kind: 'response', phase: 'completed', status: 0, signal: null,
+        activeProcesses: 0, jobTerminated: false, settled: true }
+    ]);
   });
 
   it('gives contained compiler targets a private alias-free environment without relaxing inherited policy', () => {

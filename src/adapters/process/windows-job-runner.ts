@@ -25,7 +25,7 @@ import {
 } from './windows-job-protocol.js';
 
 export const windowsJobControllerAssetPathParts = ['assets', 'repair', 'windows-job-controller.ps1'] as const;
-export const windowsJobControllerAssetDigest = '2b05fac3e801247dc841ba9c9cadd4bf91b151c6552df2cfaecce9032dc1c697';
+export const windowsJobControllerAssetDigest = 'a8daabe19f9f6031dc76961b3fa3f2a73c3801c2f92efdc29cf756d67fe8fdb3';
 export const windowsJobInteropAssemblyAssetPathParts = ['assets', 'repair', 'Liftoff.WindowsJob.Interop.dll'] as const;
 export const windowsJobInteropAssemblyAssetDigest = '9639b54c1e91d77184d36d8d4e3498a3deb69a9c9e863fa4ff756264329d9a25';
 const controllerStartupTimeoutMs = 15_000;
