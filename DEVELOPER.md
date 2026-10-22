@@ -2644,8 +2644,18 @@ The existing eleven dispatch input names are preserved; the digest recipe
 never consumes the reserved legacy image-tag input.
 
 The closed workflow now embeds `applicationArtifactBuildToolObservationProgram`
-from `application-artifact-build-tools.ts` before source readback, Azure/registry
-commands or build dispatch. This bounded Linux preflight reads and reobserves
+from `application-artifact-build-tools.ts` in the first
+`liftoff-build-tool-preflight` step, before checkout, context projection, source
+readback, Azure/registry commands or build dispatch. It runs from runner temporary
+storage, not the source workspace, with a one-minute workflow-step ceiling.
+Before Node startup, the step clears shell startup and Node loader/instrumentation
+variables; `/usr/bin/env -i` supplies only a closed observation environment.
+The observer child receives the same allowlist, never a spread of ambient
+credentials, `NODE_OPTIONS`, `NODE_PATH`, coverage, compile-cache or warning hooks.
+Docker endpoint/config overrides remain visible so the observer can refuse them.
+This isolates these startup hooks; it does not qualify the shell, Node binary,
+native libraries or whole execution host.
+This bounded Linux preflight reads and reobserves
 physical Node/Git/Azure-launcher/Docker-client files, conventional Buildx
 candidate files and only the selected local Buildx declaration. It executes no
 candidate tool or plugin and never reads Docker's credential `config.json`.
@@ -2659,7 +2669,8 @@ BuildKit versions are not established. File hashes and local builder declaration
 are not authenticated tool origins, executable permission, daemon/container
 readback or a complete runtime/library/configuration closure. Whole-job physical
 currentness and protected custody remain unavailable. The workflow therefore
-fails closed even after a successful partial observation and cannot issue
+fails closed in that first step even after a successful partial observation;
+checkout, projection and all later actions remain unreachable. It cannot issue
 `toolQualificationDigest`, publication evidence or a positive execution bridge.
 The controller's earlier pre-transmission blockers remain in place; this defense
 does not make the proposed workflow safe to dispatch manually.

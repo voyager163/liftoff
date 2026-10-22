@@ -325,7 +325,10 @@ export async function observeApplicationSource(input: PhaseAdapterExecutionInput
     return applicationError('application-workflow-scope',
       'Artifact workflow must have one exact protected publish job, immutable actions, bounded timeout, exact declared inputs, and a pre-effect source/rerun guard. Workflow publication/runner admission remain separate prerequisites.');
   }
-  if (binding.contextPaths) {
+  if ('artifactRecipe' in binding) {
+    if (!binding.contextPaths) return applicationError('application-artifact-recipe-context', 'The exact projected digest context is absent.');
+    assertApplicationArtifactDigestWorkflow(parsed, binding.contextPaths, binding.artifactRecipe, binding);
+  } else if (binding.contextPaths) {
     const projection = job.steps.filter(step => isRecord(step) && step.id === 'liftoff-context');
     const expected = applicationArtifactContextStep(binding.contextPaths);
     const projectionIndex = job.steps.indexOf(projection[0]);
@@ -336,10 +339,6 @@ export async function observeApplicationSource(input: PhaseAdapterExecutionInput
       return applicationError('application-context-recipe',
         'Root publication must prepare the exact reviewed immutable-file projection, then run build/upload only from its output directory; a broad repository-root upload is forbidden.');
     }
-  }
-  if ('artifactRecipe' in binding) {
-    if (!binding.contextPaths) return applicationError('application-artifact-recipe-context', 'The exact projected digest context is absent.');
-    assertApplicationArtifactDigestWorkflow(parsed, binding.contextPaths, binding.artifactRecipe, binding);
   }
   const client = clientFor(input);
   const remote = await client.get(`/repos/${binding.repository}/contents/${binding.workflowPath}?ref=${binding.sourceSha}`);

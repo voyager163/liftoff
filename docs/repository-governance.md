@@ -1807,14 +1807,23 @@ external targets/budget and disposable native/cloud qualification remain
 necessary before enabling publication. No task14.1/task14.3 completion follows
 from record-format tests.
 
-The selected recipe now embeds a bounded physical-file/local-builder-declaration
-observer before source readback, registry operations and build. It executes no
+The selected recipe's first `liftoff-build-tool-preflight` step embeds a bounded
+physical-file/local-builder-declaration observer before checkout, context
+projection, source readback, registry operations and build. Its runner-temporary
+working directory, one-minute step ceiling, 30-second child limit, startup
+overrides and closed parent/child environment are part of the exact validated
+workflow. Shell startup, Node preloads and coverage/cache/warning hooks cannot be
+inherited into this observer path. The owning source consumer validates this
+complete digest-only sequence; the legacy projection rules remain unchanged.
+It executes no
 candidate or plugin, reads no Docker credential configuration and contacts no
 daemon/registry. Its static hashes are explicitly `qualification: "not-issued"`,
 not the Source6 `toolQualificationDigest`. Local declarations do not establish
 plugin selection, runtime/library/configuration closure or the actual running
 Docker/BuildKit host/container. A successful partial observation therefore still
-refuses execution. Genuine remote delivery, whole-job Linux custody and a
+refuses before checkout or any downstream action; there is no ignore-error or
+always-run source step. Startup isolation does not establish runtime or library
+closure. Genuine remote delivery, whole-job Linux custody and a
 separate Source6 issued-authority/original-progress bridge are not supplied by
 this observer; no v1 record or original accepted handle changes.
 
