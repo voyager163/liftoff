@@ -43,14 +43,20 @@ interface CliReview {
   priorCurrentSha256?: string;
   priorChange?: CliReview;
   pythonTemplateRefresh?: string;
+  nodeTemplateRefresh?: string;
 }
 
-const pythonCliChanges: {
+interface TemplateCliChanges {
   cli: Record<string, {
     beforeStdoutSha256: string;
     fields: Array<{ segments: string[]; before: string; after: string }>;
   }>;
-} = JSON.parse(readFileSync(new URL('./fixtures/python-template-rendering-changes.json', import.meta.url), 'utf8'));
+}
+
+const pythonCliChanges: TemplateCliChanges = JSON.parse(readFileSync(
+  new URL('./fixtures/python-template-rendering-changes.json', import.meta.url), 'utf8'));
+const nodeCliChanges: TemplateCliChanges = JSON.parse(readFileSync(
+  new URL('./fixtures/node-template-rendering-changes.json', import.meta.url), 'utf8'));
 
 const cliReviews: CliReview[] = JSON.parse(readFileSync(
   new URL('./fixtures/contract-baseline-changes.json', import.meta.url), 'utf8'
@@ -121,17 +127,20 @@ function setLeaf(value: unknown, segments: string[], replacement: unknown): void
   Reflect.set(parent, segments.at(-1)!, replacement);
 }
 
-function assertBoundedPythonCliChanges(key: string, result: CliResult, text: string, baseline: unknown) {
-  const review = cliReviews.find(entry => entry.key === key)!;
-  if (!Object.hasOwn(pythonCliChanges.cli, key)) return { result, text, review };
-  const change = pythonCliChanges.cli[key]!;
-  expect(review.pythonTemplateRefresh).toBe('2026.10.19');
+function assertBoundedTemplateCliChanges(
+  key: string, result: CliResult, text: string, baseline: unknown, review: CliReview, template: 'node' | 'python'
+) {
+  const changes = template === 'node' ? nodeCliChanges : pythonCliChanges;
+  if (!Object.hasOwn(changes.cli, key)) return { result, text, review };
+  const change = changes.cli[key]!;
+  expect(template === 'node' ? review.nodeTemplateRefresh : review.pythonTemplateRefresh)
+    .toBe(template === 'node' ? '5.0.5' : '2026.10.19');
   const payload: unknown = JSON.parse(text);
   expect(`${JSON.stringify(payload, null, 2)}\n`).toBe(text);
   for (const { segments, before, after } of change.fields) {
     const actual = segments.reduce<unknown>((value, segment) =>
       value !== null && typeof value === 'object' ? Reflect.get(value, segment) : undefined, payload);
-    expect(actual, `${key} Python refresh ${segments.join('/')}`).toBe(after);
+    expect(actual, `${key} ${template} refresh ${segments.join('/')}`).toBe(after);
     setLeaf(payload, segments, before);
   }
   const recovered = `${JSON.stringify(payload, null, 2)}\n`;
@@ -348,7 +357,10 @@ describe('governance responsibility extraction parity', () => {
     for (const { key } of cliReviews) {
       const result = currentResults[key] as CliResult;
       const text = stdout[key]!;
-      const python = assertBoundedPythonCliChanges(key, result, text, recordedResults[key]);
+      const node = assertBoundedTemplateCliChanges(
+        key, result, text, recordedResults[key], cliReviews.find(entry => entry.key === key)!, 'node');
+      const python = assertBoundedTemplateCliChanges(
+        key, node.result, node.text, recordedResults[key], node.review, 'python');
       const dependency = assertBoundedDependencyCliChanges(key, python.result, python.text, recordedResults[key], python.review);
       const prior = assertBoundedInfrastructureCliChanges(
         key, dependency.result, dependency.text, recordedResults[key], dependency.review);

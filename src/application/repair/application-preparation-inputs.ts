@@ -369,6 +369,7 @@ export function resolveCapturedApplicationPreparationInputs(
       { id: `npm-dependencies-${key}`, kind: 'dependency', pathParts: ['project', ...request.cwdPathParts, 'node_modules'], protectedAfterPreparation: true },
       { id: `npm-cache-${key}`, kind: 'cache', pathParts: ['cache', 'npm', key], protectedAfterPreparation: false },
       { id: `node-test-cache-${key}`, kind: 'cache', pathParts: ['project', ...request.cwdPathParts, 'node_modules', '.vite'], protectedAfterPreparation: false },
+      { id: `node-vitest-cache-${key}`, kind: 'cache', pathParts: ['project', ...request.cwdPathParts, 'node_modules', '.vitest-cache'], protectedAfterPreparation: false },
       { id: `node-build-cache-${key}`, kind: 'cache', pathParts: ['project', ...request.cwdPathParts, 'node_modules', '.vite-temp'], protectedAfterPreparation: false },
       { id: `node-build-${key}`, kind: 'build-output', pathParts: ['project', ...request.cwdPathParts, 'dist'], protectedAfterPreparation: false }
     ] : request.provider === 'uv-locked-sync' ? [

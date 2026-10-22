@@ -1,0 +1,962 @@
+{
+  "schemaVersion": 1,
+  "sourceRevision": "420d43968ccaab508eec221d34e000d8458a7435",
+  "selections": [
+    {
+      "project": {
+        "name": "Before Node template Vitest refresh",
+        "workload": {
+          "kind": "standard",
+          "apiStack": "node-fastify",
+          "cloud": "azure",
+          "region": "eastus",
+          "frontend": false,
+          "environments": [
+            "dev"
+          ]
+        },
+        "specWorkflow": "manual",
+        "agents": []
+      },
+      "framework": {
+        "state": "not-required"
+      },
+      "profile": "single-maintainer-gitflow"
+    },
+    {
+      "project": {
+        "name": "Before Node template Vitest refresh",
+        "workload": {
+          "kind": "standard",
+          "apiStack": "node-fastify",
+          "cloud": "azure",
+          "region": "eastus",
+          "frontend": true,
+          "environments": [
+            "dev"
+          ]
+        },
+        "specWorkflow": "manual",
+        "agents": []
+      },
+      "framework": {
+        "state": "not-required"
+      },
+      "profile": "single-maintainer-gitflow"
+    },
+    {
+      "project": {
+        "name": "Before Node template Vitest refresh",
+        "workload": {
+          "kind": "standard",
+          "apiStack": "node-fastify",
+          "cloud": "azure",
+          "region": "eastus",
+          "frontend": false,
+          "environments": [
+            "dev"
+          ]
+        },
+        "specWorkflow": "openspec",
+        "agents": [
+          "github-copilot"
+        ]
+      },
+      "framework": {
+        "state": "initialized",
+        "adapter": "openspec",
+        "contractVersion": "1.11.0"
+      },
+      "profile": "single-maintainer-gitflow"
+    },
+    {
+      "project": {
+        "name": "Before Node template Vitest refresh",
+        "workload": {
+          "kind": "standard",
+          "apiStack": "node-fastify",
+          "cloud": "azure",
+          "region": "eastus",
+          "frontend": true,
+          "environments": [
+            "dev"
+          ]
+        },
+        "specWorkflow": "openspec",
+        "agents": [
+          "github-copilot"
+        ]
+      },
+      "framework": {
+        "state": "initialized",
+        "adapter": "openspec",
+        "contractVersion": "1.11.0"
+      },
+      "profile": "single-maintainer-gitflow"
+    },
+    {
+      "project": {
+        "name": "Before Node template Vitest refresh",
+        "workload": {
+          "kind": "standard",
+          "apiStack": "node-fastify",
+          "cloud": "azure",
+          "region": "eastus",
+          "frontend": false,
+          "environments": [
+            "dev"
+          ]
+        },
+        "specWorkflow": "spec-kit",
+        "agents": [
+          "github-copilot"
+        ],
+        "defaultAgent": "github-copilot"
+      },
+      "framework": {
+        "state": "initialized",
+        "adapter": "spec-kit",
+        "contractVersion": "1.0.1"
+      },
+      "profile": "single-maintainer-gitflow"
+    },
+    {
+      "project": {
+        "name": "Before Node template Vitest refresh",
+        "workload": {
+          "kind": "standard",
+          "apiStack": "node-fastify",
+          "cloud": "azure",
+          "region": "eastus",
+          "frontend": true,
+          "environments": [
+            "dev"
+          ]
+        },
+        "specWorkflow": "spec-kit",
+        "agents": [
+          "github-copilot"
+        ],
+        "defaultAgent": "github-copilot"
+      },
+      "framework": {
+        "state": "initialized",
+        "adapter": "spec-kit",
+        "contractVersion": "1.0.1"
+      },
+      "profile": "single-maintainer-gitflow"
+    },
+    {
+      "project": {
+        "name": "Before Node template Vitest refresh",
+        "workload": {
+          "kind": "standard",
+          "apiStack": "node-fastify",
+          "cloud": "azure",
+          "region": "eastus",
+          "frontend": false,
+          "environments": [
+            "dev"
+          ]
+        },
+        "specWorkflow": "manual",
+        "agents": []
+      },
+      "framework": {
+        "state": "not-required"
+      },
+      "profile": "team-gitflow"
+    },
+    {
+      "project": {
+        "name": "Before Node template Vitest refresh",
+        "workload": {
+          "kind": "standard",
+          "apiStack": "node-fastify",
+          "cloud": "azure",
+          "region": "eastus",
+          "frontend": true,
+          "environments": [
+            "dev"
+          ]
+        },
+        "specWorkflow": "manual",
+        "agents": []
+      },
+      "framework": {
+        "state": "not-required"
+      },
+      "profile": "team-gitflow"
+    },
+    {
+      "project": {
+        "name": "Before Node template Vitest refresh",
+        "workload": {
+          "kind": "standard",
+          "apiStack": "node-fastify",
+          "cloud": "azure",
+          "region": "eastus",
+          "frontend": false,
+          "environments": [
+            "dev"
+          ]
+        },
+        "specWorkflow": "openspec",
+        "agents": [
+          "github-copilot"
+        ]
+      },
+      "framework": {
+        "state": "initialized",
+        "adapter": "openspec",
+        "contractVersion": "1.11.0"
+      },
+      "profile": "team-gitflow"
+    },
+    {
+      "project": {
+        "name": "Before Node template Vitest refresh",
+        "workload": {
+          "kind": "standard",
+          "apiStack": "node-fastify",
+          "cloud": "azure",
+          "region": "eastus",
+          "frontend": true,
+          "environments": [
+            "dev"
+          ]
+        },
+        "specWorkflow": "openspec",
+        "agents": [
+          "github-copilot"
+        ]
+      },
+      "framework": {
+        "state": "initialized",
+        "adapter": "openspec",
+        "contractVersion": "1.11.0"
+      },
+      "profile": "team-gitflow"
+    },
+    {
+      "project": {
+        "name": "Before Node template Vitest refresh",
+        "workload": {
+          "kind": "standard",
+          "apiStack": "node-fastify",
+          "cloud": "azure",
+          "region": "eastus",
+          "frontend": false,
+          "environments": [
+            "dev"
+          ]
+        },
+        "specWorkflow": "spec-kit",
+        "agents": [
+          "github-copilot"
+        ],
+        "defaultAgent": "github-copilot"
+      },
+      "framework": {
+        "state": "initialized",
+        "adapter": "spec-kit",
+        "contractVersion": "1.0.1"
+      },
+      "profile": "team-gitflow"
+    },
+    {
+      "project": {
+        "name": "Before Node template Vitest refresh",
+        "workload": {
+          "kind": "standard",
+          "apiStack": "node-fastify",
+          "cloud": "azure",
+          "region": "eastus",
+          "frontend": true,
+          "environments": [
+            "dev"
+          ]
+        },
+        "specWorkflow": "spec-kit",
+        "agents": [
+          "github-copilot"
+        ],
+        "defaultAgent": "github-copilot"
+      },
+      "framework": {
+        "state": "initialized",
+        "adapter": "spec-kit",
+        "contractVersion": "1.0.1"
+      },
+      "profile": "team-gitflow"
+    }
+  ],
+  "pluginSelections": [
+    [
+      {
+        "category": "stack",
+        "id": "node-fastify",
+        "apiVersion": 1,
+        "contentVersion": 4,
+        "contentDigest": "sha256:741c6dc7221d9178db1ea88dee47c98e3bdb1ba382ba432dc76f277c705feb92"
+      },
+      {
+        "category": "cloud",
+        "id": "azure",
+        "apiVersion": 1,
+        "contentVersion": 1,
+        "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+      },
+      {
+        "category": "workflow",
+        "id": "manual",
+        "apiVersion": 1,
+        "contentVersion": 1,
+        "contentDigest": "sha256:0a97939a6f22ff7a388d41136fc513ddd1f043e2ef2f9a3f3694a3557ca0b3e9"
+      }
+    ],
+    [
+      {
+        "category": "stack",
+        "id": "node-fastify",
+        "apiVersion": 1,
+        "contentVersion": 4,
+        "contentDigest": "sha256:741c6dc7221d9178db1ea88dee47c98e3bdb1ba382ba432dc76f277c705feb92"
+      },
+      {
+        "category": "cloud",
+        "id": "azure",
+        "apiVersion": 1,
+        "contentVersion": 1,
+        "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+      },
+      {
+        "category": "workflow",
+        "id": "openspec",
+        "apiVersion": 1,
+        "contentVersion": 1,
+        "contentDigest": "sha256:8675a3187f44932c7bee9f9a8e5d3f307bcb36d66ced0f20593663221c509d5e"
+      },
+      {
+        "category": "agent",
+        "id": "github-copilot",
+        "apiVersion": 1,
+        "contentVersion": 2,
+        "contentDigest": "sha256:e27664b5c85487cdf40fbf7da40691b3fb26d71d0026686152842d167bc46ce8"
+      }
+    ],
+    [
+      {
+        "category": "stack",
+        "id": "node-fastify",
+        "apiVersion": 1,
+        "contentVersion": 4,
+        "contentDigest": "sha256:741c6dc7221d9178db1ea88dee47c98e3bdb1ba382ba432dc76f277c705feb92"
+      },
+      {
+        "category": "cloud",
+        "id": "azure",
+        "apiVersion": 1,
+        "contentVersion": 1,
+        "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+      },
+      {
+        "category": "workflow",
+        "id": "spec-kit",
+        "apiVersion": 1,
+        "contentVersion": 1,
+        "contentDigest": "sha256:420fd4584bf02e8efc65bf9893848a4748ce676c030095de9ef1fba20ca7a137"
+      },
+      {
+        "category": "agent",
+        "id": "github-copilot",
+        "apiVersion": 1,
+        "contentVersion": 2,
+        "contentDigest": "sha256:e27664b5c85487cdf40fbf7da40691b3fb26d71d0026686152842d167bc46ce8"
+      }
+    ],
+    [
+      {
+        "category": "stack",
+        "id": "node-fastify",
+        "apiVersion": 1,
+        "contentVersion": 4,
+        "contentDigest": "sha256:741c6dc7221d9178db1ea88dee47c98e3bdb1ba382ba432dc76f277c705feb92"
+      },
+      {
+        "category": "cloud",
+        "id": "azure",
+        "apiVersion": 1,
+        "contentVersion": 1,
+        "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+      },
+      {
+        "category": "workflow",
+        "id": "openspec",
+        "apiVersion": 1,
+        "contentVersion": 1,
+        "contentDigest": "sha256:8675a3187f44932c7bee9f9a8e5d3f307bcb36d66ced0f20593663221c509d5e"
+      },
+      {
+        "category": "agent",
+        "id": "github-copilot",
+        "apiVersion": 1,
+        "contentVersion": 3,
+        "contentDigest": "sha256:e60e0ec46c170b90888c87bc498a7e6bd4febd4118952f828082fba71f6d90a2"
+      }
+    ],
+    [
+      {
+        "category": "stack",
+        "id": "node-fastify",
+        "apiVersion": 1,
+        "contentVersion": 4,
+        "contentDigest": "sha256:741c6dc7221d9178db1ea88dee47c98e3bdb1ba382ba432dc76f277c705feb92"
+      },
+      {
+        "category": "cloud",
+        "id": "azure",
+        "apiVersion": 1,
+        "contentVersion": 1,
+        "contentDigest": "sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7"
+      },
+      {
+        "category": "workflow",
+        "id": "spec-kit",
+        "apiVersion": 1,
+        "contentVersion": 1,
+        "contentDigest": "sha256:420fd4584bf02e8efc65bf9893848a4748ce676c030095de9ef1fba20ca7a137"
+      },
+      {
+        "category": "agent",
+        "id": "github-copilot",
+        "apiVersion": 1,
+        "contentVersion": 3,
+        "contentDigest": "sha256:e60e0ec46c170b90888c87bc498a7e6bd4febd4118952f828082fba71f6d90a2"
+      }
+    ]
+  ],
+  "sourceIdentities": [
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 4,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "single-maintainer-gitflow",
+      "policyVersion": "7",
+      "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+      "workflow": "manual",
+      "phaseGraphHash": "663df3f635d18db558ccf5d93906258f108696101ee42b7a69df52b23c41c4eb"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 4,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "single-maintainer-gitflow",
+      "policyVersion": "7",
+      "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+      "workflow": "openspec",
+      "phaseGraphHash": "fc8aa9ae247a6be2c95c98f03e651f79fc9df5737d74673617f4a243ee46cfa2"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 4,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "single-maintainer-gitflow",
+      "policyVersion": "7",
+      "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+      "workflow": "spec-kit",
+      "phaseGraphHash": "67e1c7304ff284dc3966d03b589bc05c4260b4e7a4e91a0a939645803df2dea6"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 4,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "team-gitflow",
+      "policyVersion": "1",
+      "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+      "workflow": "manual",
+      "phaseGraphHash": "2260c52141255ed2146c306d6f71883d314aa951f6d2a1477f1b4159032dc0c2"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 4,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "team-gitflow",
+      "policyVersion": "1",
+      "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+      "workflow": "openspec",
+      "phaseGraphHash": "54140eedf0287c39d0db98bceed99fbd818620315f4cbc53aa289c2452f8124c"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 4,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "team-gitflow",
+      "policyVersion": "1",
+      "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+      "workflow": "spec-kit",
+      "phaseGraphHash": "ef5059902d9f7afc4f33712206e0105f2766e2b4a5317a72d25175b17d60bb1d"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 4,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "single-maintainer-gitflow",
+      "policyVersion": "7",
+      "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+      "workflow": "manual",
+      "phaseGraphHash": "fdca569a2d3cb99ab7de02d1b62088f2bcc28284852ec7eac6bb802970a9f497"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 4,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "single-maintainer-gitflow",
+      "policyVersion": "7",
+      "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+      "workflow": "openspec",
+      "phaseGraphHash": "0ef03f910c0ea7f7894f88544b78d4cc5bf3434e9225ee45be9990def17f344f"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 4,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "single-maintainer-gitflow",
+      "policyVersion": "7",
+      "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+      "workflow": "spec-kit",
+      "phaseGraphHash": "8b480c017168fe4cb48da4f73a1cadfed2ee2e1cd5329f1eca363ffcddd778e8"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 4,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "team-gitflow",
+      "policyVersion": "1",
+      "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+      "workflow": "manual",
+      "phaseGraphHash": "995be894df80e81ad7e9ee78643fd0db836479d131df1e379d08c4cd47128286"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 4,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "team-gitflow",
+      "policyVersion": "1",
+      "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+      "workflow": "openspec",
+      "phaseGraphHash": "7b5cd8b6c9c8e2358e2f56a848e9e9cbcba04b97607e148e6e73eec82183f23e"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 4,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "team-gitflow",
+      "policyVersion": "1",
+      "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+      "workflow": "spec-kit",
+      "phaseGraphHash": "9a78984aebdbc05ebe6d74f96f318fced136aa21e47845c60f464c158d6c1a9e"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 5,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "single-maintainer-gitflow",
+      "policyVersion": "7",
+      "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+      "workflow": "manual",
+      "phaseGraphHash": "6d1e3865a6e73006d4eef6f7f64ef72263b4acd0c8e04dd3c56c166de428ed8f"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 5,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "single-maintainer-gitflow",
+      "policyVersion": "7",
+      "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+      "workflow": "openspec",
+      "phaseGraphHash": "fa8484851576e0e8ed3835606d4cd2de6b334cdef43a1105b0c54445cf3092bd"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 5,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "single-maintainer-gitflow",
+      "policyVersion": "7",
+      "policyDigest": "sha256:d39036cf736fa95480b3289c63a34cac9ecee7f4cd4cdd1d779f94aed98b4706",
+      "workflow": "spec-kit",
+      "phaseGraphHash": "a07a13b97eecd3c43399bfc51d4b4c04df5f5e4d59e1b9ba78bbb9eeff1b6b40"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 5,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "team-gitflow",
+      "policyVersion": "1",
+      "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+      "workflow": "manual",
+      "phaseGraphHash": "98bb3f570752b36ca5e9781f14537d4768cef9d4b04dd20f435bbb0a183fe625"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 5,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "team-gitflow",
+      "policyVersion": "1",
+      "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+      "workflow": "openspec",
+      "phaseGraphHash": "7676466cab50d7d95645750f5b010d3034a3ebc7b410cd66aa343e16be4fb61f"
+    },
+    {
+      "liftoffVersion": "0.13.0-dev.0",
+      "manifestArtifactVersion": 8,
+      "activationContractVersion": 5,
+      "phaseGraphSchemaVersion": 3,
+      "activationStateSchemaVersion": 4,
+      "evidenceHeaderSchemaVersion": 4,
+      "approvalEnvelopeSchemaVersion": 4,
+      "supersessionSchemaVersion": 2,
+      "credentialPolicySchemaVersion": 2,
+      "profile": "team-gitflow",
+      "policyVersion": "1",
+      "policyDigest": "sha256:707bd85e1fee60ccf023eebcb4f33a0458a0014ee0f92fe9e398d2e7fe4b7646",
+      "workflow": "spec-kit",
+      "phaseGraphHash": "e286ef79dacdcdd323109dc0e9f8e35350bcdbea23b7285b84681d9def421e67"
+    }
+  ],
+  "families": [
+    {
+      "family": "pre-assessment",
+      "cases": [
+        {
+          "selection": 0,
+          "plugins": 0,
+          "resolutionDigest": "sha256:b2fdc34f0492b01976882ef98cb653233b24c9474799a2fd0ff7c0ce8a9f719e",
+          "sourceIdentity": 0
+        },
+        {
+          "selection": 1,
+          "plugins": 0,
+          "resolutionDigest": "sha256:6df024d0cee6eb031ac998b149ba48a258f7457b2fc471bbaa5830f57cf43e29",
+          "sourceIdentity": 0
+        },
+        {
+          "selection": 2,
+          "plugins": 1,
+          "resolutionDigest": "sha256:b302833843e98c7167dd88a6b42f70e8bf68e887c464a9e26f9d5a1898ea2b5c",
+          "sourceIdentity": 1
+        },
+        {
+          "selection": 3,
+          "plugins": 1,
+          "resolutionDigest": "sha256:cf8c0c6f828a60970896d1f389f1015a9bbbc3b7e2de0a5aff947be32d0fbfb0",
+          "sourceIdentity": 1
+        },
+        {
+          "selection": 4,
+          "plugins": 2,
+          "resolutionDigest": "sha256:6ebe28bd05c9ddce189eef75703ecf06fc650b1e426aefb0324da119753aadc8",
+          "sourceIdentity": 2
+        },
+        {
+          "selection": 5,
+          "plugins": 2,
+          "resolutionDigest": "sha256:265d633b9debaecde156d9d0c745a043695c166226282e0cda3b02040d3bcb2f",
+          "sourceIdentity": 2
+        },
+        {
+          "selection": 6,
+          "plugins": 0,
+          "resolutionDigest": "sha256:093893265a4d1cb17b6677a65f75b856f9b2b7d8bb8c87b5e469114fe66b93cd",
+          "sourceIdentity": 3
+        },
+        {
+          "selection": 7,
+          "plugins": 0,
+          "resolutionDigest": "sha256:85529d94bab81403942226a3ed52b405092200de152513a4c757c2e628d8b15a",
+          "sourceIdentity": 3
+        },
+        {
+          "selection": 8,
+          "plugins": 1,
+          "resolutionDigest": "sha256:acb0caf0b50568d8286e696821cf3bc0df1ea3072ce8ccfeb5566c869813efc1",
+          "sourceIdentity": 4
+        },
+        {
+          "selection": 9,
+          "plugins": 1,
+          "resolutionDigest": "sha256:f9d7c377b12574df028fd355d897167d8c6414e078d7433900d8fb22b8db5c77",
+          "sourceIdentity": 4
+        },
+        {
+          "selection": 10,
+          "plugins": 2,
+          "resolutionDigest": "sha256:7f63612dab08db900207acb1d5a8149e1edc2d9becc25625619fc5f3388c3375",
+          "sourceIdentity": 5
+        },
+        {
+          "selection": 11,
+          "plugins": 2,
+          "resolutionDigest": "sha256:f5496e5faf470d2820f9ddbdc5935de97b2df890717d6b1acaeeeb3b9e12fcaf",
+          "sourceIdentity": 5
+        }
+      ]
+    },
+    {
+      "family": "pre-workflow",
+      "cases": [
+        {
+          "selection": 0,
+          "plugins": 0,
+          "resolutionDigest": "sha256:0c19a5fccaf86d637ef759cce5d3a022ffb1cbb275b2408e19788bfebe237a5a",
+          "sourceIdentity": 6
+        },
+        {
+          "selection": 1,
+          "plugins": 0,
+          "resolutionDigest": "sha256:ce295965d9b0cd405224e6e928889aa350f973769823bc4a55896aadcbb266bf",
+          "sourceIdentity": 6
+        },
+        {
+          "selection": 2,
+          "plugins": 3,
+          "resolutionDigest": "sha256:622f18fcd0f3ce14ce726696f1415f056bc03161f5b8c557cdfe8771f27a0d8d",
+          "sourceIdentity": 7
+        },
+        {
+          "selection": 3,
+          "plugins": 3,
+          "resolutionDigest": "sha256:4a439e3e11f9cc6c71a20a7a0b2a48d7d7ca65ea3ddf5027a34a7dbf2697488d",
+          "sourceIdentity": 7
+        },
+        {
+          "selection": 4,
+          "plugins": 4,
+          "resolutionDigest": "sha256:ae161b2331e55c53241f4069569e34e6f3752e52d97d1e2b9e8e392e0d5eeaef",
+          "sourceIdentity": 8
+        },
+        {
+          "selection": 5,
+          "plugins": 4,
+          "resolutionDigest": "sha256:19acb43b44ea6ef860e8877fad4514501af2b95647c89913adf62fe1c3d2b843",
+          "sourceIdentity": 8
+        },
+        {
+          "selection": 6,
+          "plugins": 0,
+          "resolutionDigest": "sha256:710b4bf670d51afcae054564eea5109bb493834909bfd47db3c1e09ac66ecb70",
+          "sourceIdentity": 9
+        },
+        {
+          "selection": 7,
+          "plugins": 0,
+          "resolutionDigest": "sha256:c51a96d1d306d754dd1c84c4a312b8df83a53dde52d56d00d66d44973cfad515",
+          "sourceIdentity": 9
+        },
+        {
+          "selection": 8,
+          "plugins": 3,
+          "resolutionDigest": "sha256:39dccdac73917e5ad84646465bf86dd784d4b3063b81615fbf3bac2ac6a37f08",
+          "sourceIdentity": 10
+        },
+        {
+          "selection": 9,
+          "plugins": 3,
+          "resolutionDigest": "sha256:cbec6db2b785fc9f830eb058f5164d8e7fbf6cb4dbde7b7e4c3ed65b266f57b2",
+          "sourceIdentity": 10
+        },
+        {
+          "selection": 10,
+          "plugins": 4,
+          "resolutionDigest": "sha256:23b71f19f5f07545b528ff47e2928c2ffb45d8ae44cc6d418a73584331240a6e",
+          "sourceIdentity": 11
+        },
+        {
+          "selection": 11,
+          "plugins": 4,
+          "resolutionDigest": "sha256:830efa7e9d708eaff421bbe0fa0a3291343ba5b88654d25633b710cc6eac4b1e",
+          "sourceIdentity": 11
+        }
+      ]
+    },
+    {
+      "family": "current",
+      "cases": [
+        {
+          "selection": 0,
+          "plugins": 0,
+          "resolutionDigest": "sha256:5285254042d302247af5b3048188ced5eea4a5acb6d7080eefe7b6e14b871df8",
+          "sourceIdentity": 12
+        },
+        {
+          "selection": 1,
+          "plugins": 0,
+          "resolutionDigest": "sha256:b71e3e57429331f549397edd4f4af10bde6fd30655a8a10a0834646deb8ec66b",
+          "sourceIdentity": 12
+        },
+        {
+          "selection": 2,
+          "plugins": 3,
+          "resolutionDigest": "sha256:3d5ee76f471b16093796466396944c70d620aa924f47395d2c6538cc5df5cb86",
+          "sourceIdentity": 13
+        },
+        {
+          "selection": 3,
+          "plugins": 3,
+          "resolutionDigest": "sha256:840a9ef9508ab8a9ab8387dd28be08d31a8feeeae1240e6e5125d9b2229a4196",
+          "sourceIdentity": 13
+        },
+        {
+          "selection": 4,
+          "plugins": 4,
+          "resolutionDigest": "sha256:d644acb306858daec375fcffc2aacc3b40ed39144e67ed438df733b7edb2411b",
+          "sourceIdentity": 14
+        },
+        {
+          "selection": 5,
+          "plugins": 4,
+          "resolutionDigest": "sha256:dd03d96e4bacd6a23dbe77958b603f1555606f709685fca9e07f9292e4fda492",
+          "sourceIdentity": 14
+        },
+        {
+          "selection": 6,
+          "plugins": 0,
+          "resolutionDigest": "sha256:a1b85d6b7daaef1659d44a38072471d2528087e2996f7a992462969f9bb74584",
+          "sourceIdentity": 15
+        },
+        {
+          "selection": 7,
+          "plugins": 0,
+          "resolutionDigest": "sha256:e7f04c216f3c539227c1bc4762551b72584f1d704cc500441723c02523ec9d62",
+          "sourceIdentity": 15
+        },
+        {
+          "selection": 8,
+          "plugins": 3,
+          "resolutionDigest": "sha256:0d1f8872e3d67ea95efaba37a18f9dcb5b0bc2485b969eef743730400a322edf",
+          "sourceIdentity": 16
+        },
+        {
+          "selection": 9,
+          "plugins": 3,
+          "resolutionDigest": "sha256:2779ab53f7c5e1f192aa4daee95de743dc0f64d65a94bbf6e0f757a2e382c4bd",
+          "sourceIdentity": 16
+        },
+        {
+          "selection": 10,
+          "plugins": 4,
+          "resolutionDigest": "sha256:c1060db5f339321b2eb13dc3439616071dd54165076854414958d766c12ee5f7",
+          "sourceIdentity": 17
+        },
+        {
+          "selection": 11,
+          "plugins": 4,
+          "resolutionDigest": "sha256:db942faf1d4a6475060df6e27556e28dcff76b97ceb568b082fc7078965e2fac",
+          "sourceIdentity": 17
+        }
+      ]
+    }
+  ]
+}

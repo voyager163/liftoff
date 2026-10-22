@@ -371,6 +371,10 @@ Registered preparation providers are:
   `package-lock.json` (lockfile version 3); compatible installed Node and npm;
   exact `npm ci` with lifecycle scripts disabled and audit/fund/config side
   effects suppressed; frozen dependency tree and a fresh private cache.
+  Checks may write only the registered private build output and tool caches,
+  including Vite's `.vite`/`.vite-temp` and Vitest's `.vitest-cache` under
+  `node_modules`. Other dependency paths, including similarly named siblings,
+  remain frozen.
 - `uv-locked-sync` version 1: Python `pyproject.toml` plus `uv.lock` (version 1);
   compatible installed Python and uv; derives an explicit Python venv creation
   command followed by locked sync into the private environment with `UV_LINK_MODE=copy`;

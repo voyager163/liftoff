@@ -105,7 +105,7 @@ describe('modern source declarations', () => {
       it('preserves custody4 declarations with current template bytes rather than retagging its source as5', () => {
         const retained = modernPreWorkflowRegistry();
         expect(retained.coreContributionDigest).toBe('sha256:f664e8594159a9b5de8b2631d191f757def7ca85d9fb7be2927f1a8193c15ee0');
-        expect(retained.registryDigest).toBe('sha256:a3fa97367a21edd007559e627ca56b82526517c658dc2a3d0e5ffb1decd879c9');
+        expect(retained.registryDigest).toBe('sha256:3a06aef9b54aa61ed46871172ffb380a3f0667e993a24bdccf2b78198c7d1c7b');
         expect(rawDigest(modernPreWorkflowGovernanceSourceContracts)).toBe('sha256:74023432198c9eed026a3600a9f37cc1bb39dcda373a16929dd72b1f1b49731f');
         const current = fixture();
         const composition = composeModernManifestPlugins(current.selection,
@@ -120,9 +120,9 @@ describe('modern source declarations', () => {
       });
       it('matches independently derived literal registry identities and keeps the default registry unchanged', () => {
         const modern = createModernSourceRegistry();
-        expect(modern.pluginSetDigest).toBe('sha256:8fd009f0e058a046a59413cd30ab11e643a2edb2fb24ee2efb0114142d334d13');
+        expect(modern.pluginSetDigest).toBe('sha256:a97fdc68805a48f5a4fd89a94409f997fc1ac40cb1b0a7c7640905b20da9d6ce');
         expect(modern.coreContributionDigest).toBe('sha256:f0e6d0f4161c3bc3c845f42422d432fc34df721ee348a8be96c48b67f7187f41');
-        expect(modern.registryDigest).toBe('sha256:42a88c45428b41443e2363a60c5c3343af9ef0031e3cf43907b4f59c727d6ec1');
+        expect(modern.registryDigest).toBe('sha256:957b85403aaff7b10fb2d4adde19601c74d3753eb52585982c18064b53a45ab4');
         const original = builtinPluginRegistry();
         expect(original).not.toBe(modernSourceRegistry());
         expect(modernSourceRegistry()).toBe(modernSourceRegistry());

@@ -68,6 +68,12 @@ Unpublished older activation-5 metadata is not reclassified as activation 4.
 This refresh does not itself qualify public native packages or a comprehensive
 Python advisory audit.
 
+The generated Node backend pins Vitest 5.0.5 in its manifest, npm lock, and
+supported-stack catalog. CLI and telemetry gateway test tools remain separately
+pinned and qualified; this template update does not replace existing projects'
+dependencies. Exact retained activation-4 Node metadata stays readable without
+retagging it; unpublished older current-5 metadata is not admitted as activation 4.
+
 ## Existing generated projects
 
 Upgrade the globally installed Liftoff CLI, then inspect Liftoff core
