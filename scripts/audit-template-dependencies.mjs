@@ -28,6 +28,10 @@ function runNpmAudit(entry) {
       'audit',
       '--package-lock-only',
       '--ignore-scripts',
+      '--include=prod',
+      '--include=dev',
+      '--include=optional',
+      '--include=peer',
       '--json',
       `--registry=${auditRegistry}`
     ], {
