@@ -1807,6 +1807,17 @@ external targets/budget and disposable native/cloud qualification remain
 necessary before enabling publication. No task14.1/task14.3 completion follows
 from record-format tests.
 
+The selected recipe now embeds a bounded physical-file/local-builder-declaration
+observer before source readback, registry operations and build. It executes no
+candidate or plugin, reads no Docker credential configuration and contacts no
+daemon/registry. Its static hashes are explicitly `qualification: "not-issued"`,
+not the Source6 `toolQualificationDigest`. Local declarations do not establish
+plugin selection, runtime/library/configuration closure or the actual running
+Docker/BuildKit host/container. A successful partial observation therefore still
+refuses execution. Genuine remote delivery, whole-job Linux custody and a
+separate Source6 issued-authority/original-progress bridge are not supplied by
+this observer; no v1 record or original accepted handle changes.
+
 The artifact route dispatches only the existing protected lightweight
 `liftoff-execution-<full-source-SHA>` tag bound to its own reviewed complete
 source/tree/recipe. A shared read-only observer rechecks effective no-bypass

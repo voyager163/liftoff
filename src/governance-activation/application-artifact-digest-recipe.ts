@@ -4,6 +4,7 @@ import { canonicalSha256, isRecord } from '../domain/governance/activation/canon
 import {
   applicationArtifactContextStep, applicationContextDirectory, applicationContextPaths
 } from './application-artifact-context-recipe.js';
+import { applicationArtifactBuildToolObservationProgram } from './application-artifact-build-tools.js';
 
 export const applicationArtifactDigestRecipeVersion = 'oci-digest-v1';
 export const applicationArtifactDispatchInputNames = Object.freeze([
@@ -64,11 +65,11 @@ function object(text, label) {
   assert(value && typeof value === 'object', label + ' returned no object.');
   return value;
 }
-function capture(executable, args, label, build = false) {
+function capture(executable, args, label, build = false, input) {
   const remaining = deadline - Date.now();
   assert(remaining > 0, 'Application build exceeded its deadline; never rerun publication.');
   const result = spawnSync(executable, args, {
-    timeout: Math.min(build ? 10 * 60_000 : 30_000, remaining), maxBuffer: 1024 * 1024,
+    timeout: Math.min(build ? 10 * 60_000 : 30_000, remaining), maxBuffer: 1024 * 1024, input,
     env: { ...process.env, DOCKER_CLI_HINTS: 'false', GH_DEBUG: '', AZURE_CORE_ONLY_SHOW_ERRORS: 'true',
       GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1', GIT_NO_REPLACE_OBJECTS: '1' }
   });
@@ -106,6 +107,14 @@ assert(contained(temporary, process.cwd()) && contained(temporary, dockerConfig)
   (fs.lstatSync(azureConfig).mode & 0o077) === 0 &&
   contained(temporary, output) && fs.realpathSync(output) === output &&
   fs.lstatSync(output).isFile(), 'Build, credential or output paths escaped the qualified temporary scope.');
+const tools = object(capture(process.execPath, ['--input-type=module'],
+  'Read-only physical build-tool observation', false, ${JSON.stringify(applicationArtifactBuildToolObservationProgram)})
+  .toString('utf8'), 'Read-only build-tool observation');
+assert.equal(tools.qualification, 'not-issued', 'A tool observation cannot issue build authority.');
+if (tools.status !== 'observed' || tools.code !== 'complete-closure-unavailable') {
+  throw new Error('Read-only build-tool observation was refused; complete tool closure remains unavailable. No source readback, registry operation or build was dispatched.');
+}
+throw new Error('Complete build-tool closure and whole-job protected custody are unavailable; no source readback, registry operation or build was dispatched.');
 const git = args => capture('git', ['-C', workspace, ...args], 'Immutable source readback');
 assert.equal(git(['rev-parse', '--verify', 'HEAD']).toString('utf8').trim(), sha, 'Checkout source changed.');
 const entries = git(['--literal-pathspecs', 'ls-tree', '-l', '-z', sha, '--', ...paths])

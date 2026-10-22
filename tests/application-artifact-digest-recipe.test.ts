@@ -1,6 +1,8 @@
 import { Script } from 'node:vm';
+import assert from 'node:assert/strict';
 import { parse, stringify } from 'yaml';
-import { describe, expect, it } from 'vitest';
+import path from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
 import { isRecord } from '../src/domain/governance/activation/canonical-json.js';
 import {
   applicationArtifactDigestBlockers, applicationArtifactDigestRecipe, applicationArtifactDigestSteps,
@@ -125,5 +127,41 @@ describe('closed digest-only source recipe', () => {
     change(workflow, job, steps);
     expect(() => assertApplicationArtifactDigestWorkflow(parse(stringify(workflow)), paths, recipe, runner))
       .toThrow(/complete exact workflow/);
+  });
+  it.each(['not-issued', 'qualified'])('never promotes a %s tool observation into build authority', qualification => {
+    const build = applicationArtifactDigestSteps(paths, recipe)[2]!;
+    if (!('run' in build) || typeof build.run !== 'string') throw new Error('Missing actual recipe program.');
+    const prefix = "node --input-type=module <<'LIFTOFF_APPLICATION_DIGEST'\n";
+    const program = build.run.slice(prefix.length, -'\nLIFTOFF_APPLICATION_DIGEST'.length);
+    const spawnSync = vi.fn((_executable: string, _args: readonly string[], _options: Record<string, unknown>) => ({
+      status: 0, signal: null, stdout: Buffer.from(JSON.stringify({
+        status: 'observed', code: 'complete-closure-unavailable', qualification
+      }))
+    }));
+    const context = {
+      assert,
+      path, Buffer, createHash: vi.fn(),
+      fs: {
+        realpathSync: (value: string) => value,
+        lstatSync: () => ({ isDirectory: () => true, isFile: () => true, mode: 0o700 })
+      },
+      spawnSync,
+      process: {
+        platform: 'linux', execPath: '/qualified/node', cwd: () => '/job/temporary/context',
+        env: {
+          LIFTOFF_DIGEST_RECIPE: JSON.stringify(recipe), LIFTOFF_CONTEXT_PATHS: JSON.stringify(paths),
+          LIFTOFF_SOURCE_SHA: 'a'.repeat(40), LIFTOFF_CONTEXT_PATH: '.',
+          GITHUB_WORKSPACE: '/job/workspace', RUNNER_TEMP: '/job/temporary',
+          GITHUB_OUTPUT: '/job/temporary/output', DOCKER_CONFIG: '/job/temporary/docker',
+          AZURE_CONFIG_DIR: '/job/temporary/azure'
+        }
+      }
+    };
+    expect(() => new Script(program.replace(/^import .+;\n/gmu, '')).runInNewContext(context))
+      .toThrow(/tool.*(?:closure|authority)/iu);
+    expect(spawnSync.mock.calls).toHaveLength(1);
+    expect(spawnSync.mock.calls[0]?.[0]).toBe('/qualified/node');
+    expect(spawnSync.mock.calls[0]?.[1]).toEqual(['--input-type=module']);
+    expect(spawnSync.mock.calls[0]?.[2]).toMatchObject({ input: expect.stringContaining('not-issued') });
   });
 });

@@ -2643,6 +2643,27 @@ reviewed declarations, not independently qualified builder capabilities.
 The existing eleven dispatch input names are preserved; the digest recipe
 never consumes the reserved legacy image-tag input.
 
+The closed workflow now embeds `applicationArtifactBuildToolObservationProgram`
+from `application-artifact-build-tools.ts` before source readback, Azure/registry
+commands or build dispatch. This bounded Linux preflight reads and reobserves
+physical Node/Git/Azure-launcher/Docker-client files, conventional Buildx
+candidate files and only the selected local Buildx declaration. It executes no
+candidate tool or plugin and never reads Docker's credential `config.json`.
+Even plugin metadata discovery can execute candidates; `docker info` is not a
+safe substitute for this static readset. The observation has a 15-second internal
+deadline, a 30-second parent-process ceiling, 128-MiB executable/64-KiB declaration
+limits and a 512-MiB cumulative read ceiling.
+
+Every result says `qualification: "not-issued"`; plugin selection and running
+BuildKit versions are not established. File hashes and local builder declarations
+are not authenticated tool origins, executable permission, daemon/container
+readback or a complete runtime/library/configuration closure. Whole-job physical
+currentness and protected custody remain unavailable. The workflow therefore
+fails closed even after a successful partial observation and cannot issue
+`toolQualificationDigest`, publication evidence or a positive execution bridge.
+The controller's earlier pre-transmission blockers remain in place; this defense
+does not make the proposed workflow safe to dispatch manually.
+
 `PhasePlanBuild.blockers` prevents a saved executable plan or approval. Distinct
 delivery, whole-job custody and build-tool blockers remain Root/TASK14.3-held.
 GitHub attestation delivery is explicitly planned, but its `github-write`
