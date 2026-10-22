@@ -648,10 +648,10 @@ describe('template dependency security', () => {
 
     expect(backendPackage.dependencies['drizzle-orm']).toBe('^0.45.2');
     expect(backendLock.packages['node_modules/drizzle-orm']?.version).toBe('0.45.2');
-    expect(frontendPackage.dependencies.vite).toBe('^8.2.2');
+    expect(frontendPackage.dependencies.vite).toBe('^8.2.4');
     expect(frontendPackage.dependencies['@vitejs/plugin-vue']).toBe('^6.0.8');
     expect(frontendPackage.dependencies.tailwindcss).toBe('^4.3.3');
-    expect(frontendLock.packages['node_modules/vite']?.version).toBe('8.2.2');
+    expect(frontendLock.packages['node_modules/vite']?.version).toBe('8.2.4');
     expect(frontendLock.packages['node_modules/@vitejs/plugin-vue']?.version).toBe('6.0.8');
     expect(frontendLock.packages['node_modules/tailwindcss']?.version).toBe('4.3.3');
   });

@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { defaultExclude } from 'vitest/config';
 import config, { createRootConfig, createRootTestConfig } from '../vitest.config.js';
+import { testInventory, coveragePackage } from '../scripts/coverage-gate.mjs';
 
 describe('root test runner configuration', () => {
   it('bounds Windows workers without serializing files or changing other platforms', () => {
@@ -133,16 +134,20 @@ describe('root test runner configuration', () => {
       maxWorkers: undefined,
       testTimeout: 30_000
     });
+    const darwinFiles = platform === 'darwin' ? [
+      { name: 'modern-revalidation-records', include: ['tests/modern-revalidation-records.test.ts'] },
+      { name: 'repair-workspaces-recovery', include: ['tests/repair-workspaces-recovery.test.ts'] }
+    ] : [];
     expect(projects.map(project => ({
       name: project.test.name, include: project.test.include, groupOrder: project.test.sequence.groupOrder
     }))).toEqual([
-      { name: 'root-tests', include: ['tests/**/*.test.ts'], groupOrder: 0 },
-      { name: 'workflow-source5-matrix', include: ['tests/governance-workflow-source5-matrix.test.ts'], groupOrder: 1 },
-      { name: 'workflow-source5-finalization', include: ['tests/governance-workflow-source5-finalization.test.ts'], groupOrder: 2 },
-      { name: 'activation-successor-update', include: ['tests/activation-successor-update.test.ts'], groupOrder: 3 }
-    ]);
+      { name: 'root-tests', include: ['tests/**/*.test.ts'] }, ...darwinFiles,
+      { name: 'workflow-source5-matrix', include: ['tests/governance-workflow-source5-matrix.test.ts'] },
+      { name: 'workflow-source5-finalization', include: ['tests/governance-workflow-source5-finalization.test.ts'] },
+      { name: 'activation-successor-update', include: ['tests/activation-successor-update.test.ts'] }
+    ].map((project, groupOrder) => ({ ...project, groupOrder })));
     expect(projects[0]!.test).toHaveProperty('exclude', [
-      ...defaultExclude, 'tests/governance-workflow-source5-matrix.test.ts',
+      ...defaultExclude, ...darwinFiles.flatMap(project => project.include), 'tests/governance-workflow-source5-matrix.test.ts',
       'tests/governance-workflow-source5-finalization.test.ts', 'tests/activation-successor-update.test.ts'
     ]);
     for (const project of projects) {
@@ -159,6 +164,25 @@ describe('root test runner configuration', () => {
         ? ['--no-sparkplug']
         : undefined
     );
+  });
+
+  it.each(['darwin', 'linux', 'win32'] as const)('discovers every original file exactly once on %s without deadline or skip changes', platform => {
+    const { projects } = createRootTestConfig(platform).test;
+    const files = testInventory(coveragePackage('cli')).testFiles;
+    const ordered = projects.slice(1).flatMap(project => project.test.include);
+    expect(new Set(ordered).size).toBe(ordered.length);
+    for (const file of files) {
+      const owners = projects.filter((project, index) => index === 0
+        ? !ordered.includes(file) : project.test.include.includes(file));
+      expect(owners, file).toHaveLength(1);
+    }
+    for (const project of projects) {
+      expect(project.test.testTimeout).toBe(30_000);
+      expect(project.test).not.toHaveProperty('hookTimeout');
+      expect(project.test).not.toHaveProperty('testNamePattern');
+      expect(project.test).not.toHaveProperty('fileParallelism', false);
+      expect(project.test).not.toHaveProperty('isolate', false);
+    }
   });
 
   it.each([

@@ -2,32 +2,28 @@ import { randomUUID } from 'node:crypto';
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Writable } from 'node:stream';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { ViteDevServer } from 'vite';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
 import type { CommandRunner } from '../src/process-runner.js';
 import { inspectActivationMigrationHistory } from '../src/governance-activation/migration-history.js';
 import { writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 import { writeHistoricalV2Fixture } from './fixtures/activation-v2/fixture.js';
-import { createActivationSuccessorRuntime } from './fixtures/activation-successor-runtime.js';
+
+vi.mock('../src/governance-activation/phase-azure.js', async () =>
+  (await import('./fixtures/activation-successor-runtime.js')).activationSuccessorAzureBoundary());
+vi.mock('../src/governance-activation/phase-github.js', async () =>
+  (await import('./fixtures/activation-successor-runtime.js')).activationSuccessorGitHubBoundary());
 
 const roots = new Set<string>();
-const cacheRoot = path.resolve('tests', `.activation-successor-update-loader-${process.pid}-${randomUUID()}`);
-let loader: ViteDevServer;
 let legacyUpdate: typeof import('./reviewed-update-helpers.js');
 let args: typeof import('../src/args.js');
 beforeAll(async () => {
-  loader = await createActivationSuccessorRuntime(cacheRoot);
-  legacyUpdate = await loader.ssrLoadModule('/tests/reviewed-update-helpers.ts') as typeof legacyUpdate;
-  args = await loader.ssrLoadModule('/src/args.ts') as typeof args;
+  legacyUpdate = await import('./reviewed-update-helpers.js');
+  args = await import('../src/args.js');
 });
 afterEach(async () => {
   for (const root of roots) await rm(root, { recursive: true, force: true });
   roots.clear();
-});
-afterAll(async () => {
-  await loader?.close();
-  await rm(cacheRoot, { recursive: true, force: true });
 });
 
 class Capture extends Writable {
@@ -79,6 +75,18 @@ async function fixture(family = 2, workflow: 'openspec' | 'spec-kit' = 'openspec
 }
 
 describe('retained schema-3 activation successor integration', { timeout: 60_000 }, () => {
+  it('keeps all four provider entrypoints fail-closed in the shared module runner', async () => {
+    const azure = await import('../src/governance-activation/phase-azure.js');
+    const github = await import('../src/governance-activation/phase-github.js');
+    for (const [name, entrypoint] of [
+      ['planAzurePhase', azure.planAzurePhase], ['executeAzurePhase', azure.executeAzurePhase],
+      ['planGitHubPhase', github.planGitHubPhase], ['executeGitHubPhase', github.executeGitHubPhase]
+    ] as const) {
+      expect(() => Reflect.apply(entrypoint, undefined, []))
+        .toThrow(`Identity migration attempted a forbidden provider entrypoint: ${name}`);
+    }
+  });
+
   it.each(['openspec', 'spec-kit'] as const)('preserves frozen v2 %s while deferring desired Codex/default additions', async (workflow) => {
     const f = await fixture(2, workflow);
     const configPath = path.join(f.projectRoot, 'liftoff.config.json');

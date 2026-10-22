@@ -1,4 +1,24 @@
-import { createServer, type Plugin } from 'vite';
+import type { Plugin } from 'vite';
+
+function forbiddenProviderEntrypoint(name: string) {
+  return () => {
+    throw new Error(`Identity migration attempted a forbidden provider entrypoint: ${name}`);
+  };
+}
+
+export function activationSuccessorAzureBoundary() {
+  return {
+    planAzurePhase: forbiddenProviderEntrypoint('planAzurePhase'),
+    executeAzurePhase: forbiddenProviderEntrypoint('executeAzurePhase')
+  };
+}
+
+export function activationSuccessorGitHubBoundary() {
+  return {
+    planGitHubPhase: forbiddenProviderEntrypoint('planGitHubPhase'),
+    executeGitHubPhase: forbiddenProviderEntrypoint('executeGitHubPhase')
+  };
+}
 
 export function activationSuccessorProviderBoundary(): Plugin {
   return {
@@ -16,12 +36,4 @@ export function activationSuccessorProviderBoundary(): Plugin {
       ).join('\n');
     }
   };
-}
-
-/** Real local/update execution with provider entrypoints that fail if migration ever reaches them. */
-export function createActivationSuccessorRuntime(cacheDir: string) {
-  return createServer({
-    configFile: false, cacheDir, server: { middlewareMode: true, watch: null, hmr: false, ws: false },
-    plugins: [activationSuccessorProviderBoundary()]
-  });
 }

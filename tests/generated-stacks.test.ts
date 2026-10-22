@@ -65,7 +65,7 @@ async function verifyNativeServer(command: string, args: string[], cwd: string):
   if (!address || typeof address === 'string') throw new Error('Missing local test port.');
   const port = address.port;
   await new Promise<void>((resolve) => probe.close(() => resolve()));
-  const env = { ...process.env, PORT: String(port) };
+  const env: NodeJS.ProcessEnv = { ...process.env, PORT: String(port) };
   delete env.DATABASE_URL;
   delete env.REDIS_URL;
   delete env.LIFTOFF_ENV_FILE;
@@ -247,6 +247,11 @@ describe('generated standard stack smoke checks', () => {
         readFile(path.join(standardRoot, 'backend', 'uv.lock'))
       ])).toEqual(standardMetadata);
 
+      checkedSpawn(uvCommand, [
+        'run', '--no-sync', '--frozen', '--project', path.join(standardRoot, 'backend'),
+        'python', fileURLToPath(new URL('./fixtures/certifi-trust-regression.py', import.meta.url))
+      ], path.join(standardRoot, 'backend'));
+
       const genAiMetadata = await Promise.all([
         readFile(path.join(ragRoot, 'backend', 'pyproject.toml')),
         readFile(path.join(ragRoot, 'backend', 'uv.lock'))
@@ -265,6 +270,11 @@ describe('generated standard stack smoke checks', () => {
         readFile(path.join(ragRoot, 'backend', 'pyproject.toml')),
         readFile(path.join(ragRoot, 'backend', 'uv.lock'))
       ])).toEqual(genAiMetadata);
+
+      checkedSpawn(uvCommand, [
+        'run', '--no-sync', '--frozen', '--project', path.join(ragRoot, 'backend'),
+        'python', fileURLToPath(new URL('./fixtures/certifi-trust-regression.py', import.meta.url))
+      ], path.join(ragRoot, 'backend'));
 
       checkedSpawn(uvCommand, [
         'run', '--no-sync', '--frozen', '--project', path.join(ragRoot, 'backend'),

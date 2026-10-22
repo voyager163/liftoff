@@ -1,0 +1,274 @@
+{
+  "refresh": "vite-8.2.4-certifi-2026.10.19",
+  "sourceBefore": "9a0b4606c6023644911e36abe570f4ec691537c2",
+  "sourceAfter": "e3aa1d31572e4e3e16112537c09ae98bfb31f4d6",
+  "priorLedgerSha256": "59f671b828db8add56e9bcadda56b398a0a7b14a6f6b18ba339195d79363e77c",
+  "newRows": [
+    [
+      "generator-extraction",
+      "1/frontend-package"
+    ]
+  ],
+  "assets": [
+    {
+      "file": "assets/plugins/node-fastify/node-backend/package.json",
+      "logicalName": "node-backend-package",
+      "beforeSha256": "4923c3d4fb40f108d796eb9d3507f046b4ca8e8749be326362128744ccb8e702",
+      "afterSha256": "6603ff3d9bff9b3daa1f0c06739c6cf8797f1ca54edf26a24743b4420194543d",
+      "hunks": [
+        {
+          "before": "    \"drizzle-kit\": \"^0.31.0\",\n    \"tsx\": \"^4.23.13\",\n    \"typescript\": \"^7.0.2\",\n    \"vite\": \"8.2.2\",\n    \"vitest\": \"5.0.5\"\n  },\n  \"overrides\": {\n",
+          "after": "    \"drizzle-kit\": \"^0.31.0\",\n    \"tsx\": \"^4.23.13\",\n    \"typescript\": \"^7.0.2\",\n    \"vite\": \"8.2.4\",\n    \"vitest\": \"5.0.5\"\n  },\n  \"overrides\": {\n"
+        }
+      ]
+    },
+    {
+      "file": "assets/plugins/node-fastify/node-backend/package-lock.json",
+      "logicalName": "node-backend-lock",
+      "beforeSha256": "7f407cca3c59370005f87fe3c56323b8f3d0cd7578ae6941882af6129f7a4df4",
+      "afterSha256": "20f2a99fe43c56cc0b236575104ca06b794e5a47dc71cfc87f0205fba007c26d",
+      "hunks": [
+        {
+          "before": "        \"drizzle-kit\": \"^0.31.0\",\n        \"tsx\": \"^4.23.13\",\n        \"typescript\": \"^7.0.2\",\n        \"vite\": \"8.2.2\",\n        \"vitest\": \"5.0.5\"\n      },\n      \"engines\": {\n",
+          "after": "        \"drizzle-kit\": \"^0.31.0\",\n        \"tsx\": \"^4.23.13\",\n        \"typescript\": \"^7.0.2\",\n        \"vite\": \"8.2.4\",\n        \"vitest\": \"5.0.5\"\n      },\n      \"engines\": {\n"
+        },
+        {
+          "before": "      \"license\": \"MIT\"\n    },\n    \"node_modules/vite\": {\n      \"version\": \"8.2.2\",\n      \"integrity\": \"sha1-OZrvrTZWFFFFvhENE3oH6lu1UBQ=\",\n      \"dev\": true,\n      \"license\": \"MIT\",\n      \"dependencies\": {\n",
+          "after": "      \"license\": \"MIT\"\n    },\n    \"node_modules/vite\": {\n      \"version\": \"8.2.4\",\n      \"resolved\": \"https://registry.npmjs.org/vite/-/vite-8.2.4.tgz\",\n      \"integrity\": \"sha512-lfauXnrf2x0p+UoA+wXh0dgFWnUjCyG6Js95KBkgaCwUU9k0DAHI4W6Q0WCx+h+5g+Alce1y4Zi2QjjK0UvGBw==\",\n      \"dev\": true,\n      \"license\": \"MIT\",\n      \"dependencies\": {\n"
+        }
+      ]
+    },
+    {
+      "file": "assets/templates/common/frontend/package.json",
+      "logicalName": "frontend-package",
+      "beforeSha256": "8217179388207e3d8e8599544e7741b29beb6dded81f01bcf5d4356785a68561",
+      "afterSha256": "6488d6d73a04f3cf5fc6ccc27f4d16786a26c63c6e2d781a74c173f7dd633d81",
+      "hunks": [
+        {
+          "before": "    \"@tailwindcss/vite\": \"^4.3.3\",\n    \"@vitejs/plugin-vue\": \"^6.0.8\",\n    \"tailwindcss\": \"^4.3.3\",\n    \"vite\": \"^8.2.2\",\n    \"vue\": \"^3.5.42\"\n  }\n}\n",
+          "after": "    \"@tailwindcss/vite\": \"^4.3.3\",\n    \"@vitejs/plugin-vue\": \"^6.0.8\",\n    \"tailwindcss\": \"^4.3.3\",\n    \"vite\": \"^8.2.4\",\n    \"vue\": \"^3.5.42\"\n  }\n}\n"
+        }
+      ]
+    },
+    {
+      "file": "assets/templates/common/frontend/package-lock.json",
+      "logicalName": "frontend-lock",
+      "beforeSha256": "494f2312ba163062c10164df363c49b0987109b529f320381ec5795bbf0ea689",
+      "afterSha256": "84ef79225c8ce6e952782629a310fd67c50b4b6c7b5aee787a70ed57d104d9bc",
+      "hunks": [
+        {
+          "before": "        \"@tailwindcss/vite\": \"^4.3.3\",\n        \"@vitejs/plugin-vue\": \"^6.0.8\",\n        \"tailwindcss\": \"^4.3.3\",\n        \"vite\": \"^8.2.2\",\n        \"vue\": \"^3.5.42\"\n      }\n    },\n",
+          "after": "        \"@tailwindcss/vite\": \"^4.3.3\",\n        \"@vitejs/plugin-vue\": \"^6.0.8\",\n        \"tailwindcss\": \"^4.3.3\",\n        \"vite\": \"^8.2.4\",\n        \"vue\": \"^3.5.42\"\n      }\n    },\n"
+        },
+        {
+          "before": "      }\n    },\n    \"node_modules/vite\": {\n      \"version\": \"8.2.2\",\n      \"integrity\": \"sha1-OZrvrTZWFFFFvhENE3oH6lu1UBQ=\",\n      \"license\": \"MIT\",\n      \"dependencies\": {\n        \"lightningcss\": \"^1.33.0\",\n",
+          "after": "      }\n    },\n    \"node_modules/vite\": {\n      \"version\": \"8.2.4\",\n      \"resolved\": \"https://registry.npmjs.org/vite/-/vite-8.2.4.tgz\",\n      \"integrity\": \"sha512-lfauXnrf2x0p+UoA+wXh0dgFWnUjCyG6Js95KBkgaCwUU9k0DAHI4W6Q0WCx+h+5g+Alce1y4Zi2QjjK0UvGBw==\",\n      \"license\": \"MIT\",\n      \"dependencies\": {\n        \"lightningcss\": \"^1.33.0\",\n"
+        }
+      ]
+    },
+    {
+      "file": "assets/plugins/python-fastapi/python-standard/uv.lock",
+      "logicalName": "backend-uv-lock",
+      "beforeSha256": "042440545f33b7c82e0a676602c29092ec06104da543372110602225c637ec3a",
+      "afterSha256": "d1632c7468d42020c8eb6f3e762a0d08551585a34ecd9f21b4b73848b7a8224a",
+      "hunks": [
+        {
+          "before": "\n[[package]]\nname = \"certifi\"\nversion = \"2026.7.22\"\nsource = { registry = \"https://pypi.org/simple\" }\nsdist = { url = \"https://files.pythonhosted.org/packages/a3/c2/24167ea9858356b47a87a50d39908bfdb72ceeefe0041586e704e5376b3a/certifi-2026.7.22.tar.gz\", hash = \"sha256:741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55\" }\nwheels = [\n    { url = \"https://files.pythonhosted.org/packages/0b/a7/71ac2cff56fec219ed242bb11b8efb69fcc4bec75db06fb7bfe35de520e6/certifi-2026.7.22-py3-none-any.whl\", hash = \"sha256:62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775\" },\n]\n\n[[package]]\n",
+          "after": "\n[[package]]\nname = \"certifi\"\nversion = \"2026.10.19\"\nsource = { registry = \"https://pypi.org/simple\" }\nsdist = { url = \"https://files.pythonhosted.org/packages/a6/bd/1436c50cc46699de0230fbaacc1d1de7bfec413176099949e9d5112e88f2/certifi-2026.10.19.tar.gz\", hash = \"sha256:035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae\" }\nwheels = [\n    { url = \"https://files.pythonhosted.org/packages/c4/51/29046e48f693c54e5b7412216d447a1d8362c9653148d98c02cdf65fa733/certifi-2026.10.19-py3-none-any.whl\", hash = \"sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b\" },\n]\n\n[[package]]\n"
+        }
+      ]
+    },
+    {
+      "file": "assets/plugins/python-fastapi/python-genai/uv.lock",
+      "logicalName": "backend-uv-lock",
+      "beforeSha256": "6734357fa5dc42b1aac41c80b4a8ee91a5aede97c1efc4d2b2a2213943d73112",
+      "afterSha256": "cab3d2f59ded43a8ee35d4b46ea330535d351dded52d93c6fd9e07f96d315479",
+      "hunks": [
+        {
+          "before": "\n[[package]]\nname = \"certifi\"\nversion = \"2026.7.22\"\nsource = { registry = \"https://pypi.org/simple\" }\nsdist = { url = \"https://files.pythonhosted.org/packages/a3/c2/24167ea9858356b47a87a50d39908bfdb72ceeefe0041586e704e5376b3a/certifi-2026.7.22.tar.gz\", hash = \"sha256:741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55\" }\nwheels = [\n    { url = \"https://files.pythonhosted.org/packages/0b/a7/71ac2cff56fec219ed242bb11b8efb69fcc4bec75db06fb7bfe35de520e6/certifi-2026.7.22-py3-none-any.whl\", hash = \"sha256:62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775\" },\n]\n\n[[package]]\n",
+          "after": "\n[[package]]\nname = \"certifi\"\nversion = \"2026.10.19\"\nsource = { registry = \"https://pypi.org/simple\" }\nsdist = { url = \"https://files.pythonhosted.org/packages/a6/bd/1436c50cc46699de0230fbaacc1d1de7bfec413176099949e9d5112e88f2/certifi-2026.10.19.tar.gz\", hash = \"sha256:035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae\" }\nwheels = [\n    { url = \"https://files.pythonhosted.org/packages/c4/51/29046e48f693c54e5b7412216d447a1d8362c9653148d98c02cdf65fa733/certifi-2026.10.19-py3-none-any.whl\", hash = \"sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b\" },\n]\n\n[[package]]\n"
+        }
+      ]
+    },
+    {
+      "file": "assets/plugins/python-fastapi/python-genai/function-requirements.txt",
+      "logicalName": "function-worker-requirements",
+      "beforeSha256": "67886959248dfbc782dc408bb87f54679eaecb97fcb82c47340a3b979838c3c6",
+      "afterSha256": "07cc43d1de118ea1fc59fff3ab360817c6c119cf6b1d7709d13037bce1b5b773",
+      "hunks": [
+        {
+          "before": "backoff==2.2.1 \\\n    --hash=sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba \\\n    --hash=sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8\ncertifi==2026.7.22 \\\n    --hash=sha256:62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775 \\\n    --hash=sha256:741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55\ncffi==2.1.1 ; platform_python_implementation != 'PyPy' \\\n    --hash=sha256:046bfc24911b37851ee1b51aab8bffe713d89c68c6a057b09484ce9fd5f69b4e \\\n    --hash=sha256:06c72bb76605a4b0cd0aad6930b69d4baf7dd5d806cfc409b824191099700e66 \\\n",
+          "after": "backoff==2.2.1 \\\n    --hash=sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba \\\n    --hash=sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8\ncertifi==2026.10.19 \\\n    --hash=sha256:035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae \\\n    --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b\ncffi==2.1.1 ; platform_python_implementation != 'PyPy' \\\n    --hash=sha256:046bfc24911b37851ee1b51aab8bffe713d89c68c6a057b09484ce9fd5f69b4e \\\n    --hash=sha256:06c72bb76605a4b0cd0aad6930b69d4baf7dd5d806cfc409b824191099700e66 \\\n"
+        }
+      ]
+    }
+  ],
+  "update": {
+    "beforeSha256": "39831714f237f27794e29f72a2d6b34bfbda36aa9bb8f61a244adc10f0b1ecb0",
+    "fields": [
+      {
+        "segments": [
+          "json",
+          "plans",
+          "0",
+          "operations",
+          "6",
+          "contentDigest"
+        ],
+        "before": "ca66307a25bd33e434f1eec954f8890d466d9916dce09c102be4163abc2f62d0",
+        "after": "d7c7af60ce8c0d20ac8ebed55938235727f77e32ac728b260dead0f0ec9819ad"
+      },
+      {
+        "segments": [
+          "json",
+          "plans",
+          "0",
+          "operations",
+          "7",
+          "contentDigest"
+        ],
+        "before": "8da1fed70f07993ac0398feab211d6f254a57d26a245c1af30e6be4f106e8d99",
+        "after": "22365ec9136dda74aec917a5cf5c8d8237182bb16e2826ef3467d6a5811db18d"
+      },
+      {
+        "segments": [
+          "json",
+          "plans",
+          "0",
+          "operations",
+          "8",
+          "contentDigest"
+        ],
+        "before": "c2cb29ec3be16b40774fdea441d375824061e7ed49cab6ed45bc3544a1c1184b",
+        "after": "337c456ab0d57d8930417bea05d276461d882e3907366553a3c07d64545c17ee"
+      },
+      {
+        "segments": [
+          "json",
+          "plans",
+          "0",
+          "operations",
+          "12",
+          "contentDigest"
+        ],
+        "before": "448cc7203a38c1f53d1d6bdd4b876844ca2349057b4bd67f7e6aa48caf8a2ecf",
+        "after": "5d56793536a1a7041c4c8fe915352cffb059924988ab12ea305ec8a0bfbbe001"
+      },
+      {
+        "segments": [
+          "json",
+          "plans",
+          "1",
+          "operations",
+          "6",
+          "contentDigest"
+        ],
+        "before": "ca66307a25bd33e434f1eec954f8890d466d9916dce09c102be4163abc2f62d0",
+        "after": "d7c7af60ce8c0d20ac8ebed55938235727f77e32ac728b260dead0f0ec9819ad"
+      },
+      {
+        "segments": [
+          "json",
+          "plans",
+          "1",
+          "operations",
+          "7",
+          "contentDigest"
+        ],
+        "before": "8da1fed70f07993ac0398feab211d6f254a57d26a245c1af30e6be4f106e8d99",
+        "after": "22365ec9136dda74aec917a5cf5c8d8237182bb16e2826ef3467d6a5811db18d"
+      },
+      {
+        "segments": [
+          "json",
+          "plans",
+          "1",
+          "operations",
+          "8",
+          "contentDigest"
+        ],
+        "before": "c2cb29ec3be16b40774fdea441d375824061e7ed49cab6ed45bc3544a1c1184b",
+        "after": "337c456ab0d57d8930417bea05d276461d882e3907366553a3c07d64545c17ee"
+      },
+      {
+        "segments": [
+          "json",
+          "plans",
+          "1",
+          "operations",
+          "12",
+          "contentDigest"
+        ],
+        "before": "448cc7203a38c1f53d1d6bdd4b876844ca2349057b4bd67f7e6aa48caf8a2ecf",
+        "after": "5d56793536a1a7041c4c8fe915352cffb059924988ab12ea305ec8a0bfbbe001"
+      }
+    ]
+  },
+  "cli": {
+    "status-json": {
+      "beforeStdoutSha256": "ff6b86ac366bdd5444ace26b0bfa4f1ae6ce4cc4ea2dcbf59171b467c43ddeca",
+      "fields": [
+        {
+          "segments": [
+            "blockerFingerprint"
+          ],
+          "before": "d71120b6d3a0cde12a008331961235fa62fa4f24e4bbdc468fc1da7c76f8f6c4",
+          "after": "de695f351037360fc677b901782327bafdbe45b5a108946efb7d47084fc132cc"
+        }
+      ]
+    },
+    "status-local-json": {
+      "beforeStdoutSha256": "f5d9d5ad717ee2c807fefba76ddce84afa9acc00c18bfa988971865c7c40ef5d",
+      "fields": [
+        {
+          "segments": [
+            "blockerFingerprint"
+          ],
+          "before": "e553165de79ed66a473f697e594488919d57407e9d368e417a9602cb1e71b326",
+          "after": "4037ee607c191f1f548d85d0f96fa1e2bc85a8aa74598be9222007df8f1b94d5"
+        }
+      ]
+    },
+    "resume-json": {
+      "beforeStdoutSha256": "bdb37679aca8bfc851cd25687a999162b7ef891aa8b8de58c20846d42f4a46c1",
+      "fields": [
+        {
+          "segments": [
+            "blockerFingerprint"
+          ],
+          "before": "e553165de79ed66a473f697e594488919d57407e9d368e417a9602cb1e71b326",
+          "after": "4037ee607c191f1f548d85d0f96fa1e2bc85a8aa74598be9222007df8f1b94d5"
+        }
+      ]
+    },
+    "plan-json": {
+      "beforeStdoutSha256": "bf950f81aaf2ecd20c1adf83ced292a7a8283709e7d91939b51174b3c7794a1f",
+      "fields": [
+        {
+          "segments": [
+            "plan",
+            "baselineDigest"
+          ],
+          "before": "a6b3bde9f129edfdc2e29ead8bb0baafb295d60805a41f56e3ade581f8724110",
+          "after": "c2e4490f1387dfb1a5875121bb54d99149d8ef66d36e09a69264d514ce1c2704"
+        },
+        {
+          "segments": [
+            "plan",
+            "inputDigest"
+          ],
+          "before": "48e71d3f621c038bee3610a9345b8d845adc33a1cc1b59e3f7a580368c74b20a",
+          "after": "0d1c7fd18a855da615e7da125b9c911e8d916a1cbbb922c3e4fd82a41ef95f35"
+        },
+        {
+          "segments": [
+            "plan",
+            "transitionDigest"
+          ],
+          "before": "e5a94fa5b76b62e8093dd705a649b79ddab45fd45df7e8162daf5419679abf77",
+          "after": "c653da7b4fca92d8dd2fb74ea331f97b947a36d9cd963bac35c0b7493cbdfe64"
+        }
+      ]
+    }
+  }
+}

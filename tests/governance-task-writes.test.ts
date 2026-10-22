@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { ViteDevServer } from 'vite';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { buildProjectPlan } from '../src/application/project/planning.js';
 import { parseManifest } from '../src/application/project/manifest.js';
 import { buildArtifacts } from '../src/templates.js';
@@ -20,26 +19,26 @@ import { evidenceWriteOperation, stateWriteOperation } from '../src/governance-a
 import { governanceTaskLayoutHash } from '../src/governance-activation/task-projection.js';
 import type { CommandRunner } from '../src/process-runner.js';
 import { writeHistoricalV2Fixture } from './fixtures/activation-v2/fixture.js';
-import { createActivationSuccessorRuntime } from './fixtures/activation-successor-runtime.js';
 import { frameworkIntegrationPaths } from '../src/framework-validation.js';
 import { planGovernanceTaskProjection } from '../src/governance-activation/task-writes.js';
 
+vi.mock('../src/governance-activation/phase-azure.js', async () =>
+  (await import('./fixtures/activation-successor-runtime.js')).activationSuccessorAzureBoundary());
+vi.mock('../src/governance-activation/phase-github.js', async () =>
+  (await import('./fixtures/activation-successor-runtime.js')).activationSuccessorGitHubBoundary());
+
 const roots = new Set<string>();
-const cacheRoot = path.resolve('tests', `.task-writes-loader-${process.pid}-${randomUUID()}`);
-let loader: ViteDevServer;
 let commands: typeof import('../src/governance-activation/commands.js');
 let transitions: typeof import('../src/governance-activation/transitions.js');
 beforeAll(async () => {
-  loader = await createActivationSuccessorRuntime(cacheRoot);
-  commands = await loader.ssrLoadModule('/src/governance-activation/commands.ts');
-  transitions = await loader.ssrLoadModule('/src/governance-activation/transitions.ts');
+  commands = await import('../src/governance-activation/commands.js');
+  transitions = await import('../src/governance-activation/transitions.js');
 });
 afterEach(async () => {
   vi.unstubAllEnvs();
   for (const root of roots) await rm(root, { recursive: true, force: true });
   roots.clear();
 });
-afterAll(async () => { await loader?.close(); await rm(cacheRoot, { recursive: true, force: true }); });
 
 async function put(root: string, parts: readonly string[], value: string | Buffer | object) {
   const file = path.join(root, ...parts);

@@ -435,7 +435,7 @@ describe('semantic update fingerprints', () => {
   });
 
   it.each([undefined, NaN, Infinity, 1n, Symbol('key'), () => 1, new Date(), new Map(), [, 1]])(
-    'rejects semantics canonical JSON cannot represent faithfully (%s)', (source) => {
+    'rejects semantics canonical JSON cannot represent faithfully (case %#)', (source) => {
       expect(() => createUpdatePreviewDescriptor({ ...input(), source })).toThrow(/semantics/u);
     }
   );
