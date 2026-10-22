@@ -1663,9 +1663,19 @@ their paths or release hashes. The audit preflight checks every member's
 presence, regular-file type and exact package declaration before any npm
 request. Only the npm graphs receive advisory scans; Python, Go and OpenTofu
 sets are explicitly reported as not audited, not as clean.
+The npm runner explicitly includes production, development, optional and peer
+dependencies, even when `NODE_ENV=production` or caller npm omission settings
+would otherwise narrow the audit.
 `tests/dependency-set-inventory.test.ts` checks the baseline/content relations,
 including shared Python views, the Function export, Go tool pin and provider
 subset.
+
+Valid peer cycles are accepted only when every vulnerability reaches an actual
+direct dependency. Missing references, unrooted cycles and unresolved advisories
+remain failures. Findings retain every finite simple direct-to-affected dependency
+chain; repeated package names do not create infinite chains, and exceptions
+must still match the complete chain set. Registry failures and malformed responses
+are infrastructure failures, never clean audit results.
 
 The reviewed security refresh pins urllib3 2.8.0 in both Python locks and PyJWT
 2.15.1 in GenAI and its reproduced Functions export. Node uses Fastify 5.12.5,

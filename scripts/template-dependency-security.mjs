@@ -1059,32 +1059,38 @@ export function normalizeNpmAuditReport(entry, auditReport) {
     }
   }
 
+  const dependenciesByParent = new Map(
+    Object.keys(auditReport.vulnerabilities).map((name) => [name, []])
+  );
+  const pending = [];
   const validatedDependencyPaths = new Set();
-  function assertDirectDependencyPaths(name, stack = new Set()) {
-    if (validatedDependencyPaths.has(name)) {
-      return;
-    }
-    if (stack.has(name)) {
-      throw new TemplateDependencyAuditError(
-        `${entry.label} npm audit dependency graph contains a cycle through ${name}.`
-      );
-    }
-    const vulnerability = auditReport.vulnerabilities[name];
-    if (vulnerability.isDirect !== true && vulnerability.effects.length === 0) {
+  for (const [name, vulnerability] of Object.entries(auditReport.vulnerabilities)) {
+    if (vulnerability.isDirect) {
+      validatedDependencyPaths.add(name);
+      pending.push(name);
+    } else if (vulnerability.effects.length === 0) {
       throw new TemplateDependencyAuditError(
         `${entry.label} npm audit vulnerability ${name} does not reach a direct dependency.`
       );
     }
-    const nextStack = new Set(stack);
-    nextStack.add(name);
     for (const parent of vulnerability.effects) {
-      assertDirectDependencyPaths(parent, nextStack);
+      dependenciesByParent.get(parent).push(name);
     }
-    validatedDependencyPaths.add(name);
   }
-
+  for (let index = 0; index < pending.length; index++) {
+    for (const name of dependenciesByParent.get(pending[index])) {
+      if (!validatedDependencyPaths.has(name)) {
+        validatedDependencyPaths.add(name);
+        pending.push(name);
+      }
+    }
+  }
   for (const name of Object.keys(auditReport.vulnerabilities)) {
-    assertDirectDependencyPaths(name);
+    if (!validatedDependencyPaths.has(name)) {
+      throw new TemplateDependencyAuditError(
+        `${entry.label} npm audit dependency graph contains a cycle without a path to a direct dependency from ${name}.`
+      );
+    }
   }
 
   function hasAdvisoryPath(name, stack = new Set()) {
