@@ -154,11 +154,13 @@ describe('frozen 0.12.3 contract baseline provenance', () => {
   });
 
   it('preserves the complete ledger and exact parent chains preceding the Node template patch', () => {
+    expect(lfSha256(path.join(process.cwd(), 'tests', 'fixtures', 'node-template-rendering-changes.json')))
+      .toBe('c6614213d73aca0faeb8a6303f253f6ef30a9f11dc85fea99c7cc5363390ebec');
     const refreshed = (review.changes as Change[]).filter(change => change.nodeTemplateRefresh !== undefined);
-    expect(refreshed).toHaveLength(16);
-    expect(Object.fromEntries(['plugin-generation', 'generator-extraction', 'rendered-artifacts']
+    expect(refreshed).toHaveLength(20);
+    expect(Object.fromEntries(['plugin-generation', 'generator-extraction', 'rendered-artifacts', 'governance-extraction-cli']
       .map(surface => [surface, refreshed.filter(change => change.surface === surface).length])))
-      .toEqual({ 'plugin-generation': 12, 'generator-extraction': 2, 'rendered-artifacts': 2 });
+      .toEqual({ 'plugin-generation': 12, 'generator-extraction': 2, 'rendered-artifacts': 2, 'governance-extraction-cli': 4 });
     for (const change of refreshed) {
       expect(change.nodeTemplateRefresh).toBe('5.0.5');
       expect(change.priorChange).toBeDefined();
@@ -167,6 +169,14 @@ describe('frozen 0.12.3 contract baseline provenance', () => {
     }
     expect(sha256(`${JSON.stringify(beforeNodeTemplateRefresh, null, 2)}\n`))
       .toBe('f2fca2ca65f8cf0f98bfef259c2af96ac405b119f4895c24610661814e4625be');
+    const beforeCliRefresh = {
+      ...review,
+      changes: (review.changes as Change[]).map(change =>
+        change.nodeTemplateRefresh === '5.0.5' && change.surface === 'governance-extraction-cli'
+          ? change.priorChange! : change)
+    };
+    expect(sha256(`${JSON.stringify(beforeCliRefresh, null, 2)}\n`))
+      .toBe('1ef33b8099de5ceac5e20ec2dc59bb239eedf3a6c0699cd1aaef5e0b1c0f5f3d');
   });
 
   it('preserves the complete ledger and exact parent chains preceding the Python template refresh', () => {

@@ -201,6 +201,8 @@ describe('frozen npm preparation effects stay inside their registered private ro
 
   it.each([
     ['declared build and test-cache outputs', [['dist', 'server.js'], ['node_modules', '.vite', 'results.json']], null],
+    ['declared Vitest transform-cache output', [['node_modules', '.vitest-cache', '_metadata.json']], null],
+    ['an undeclared Vitest cache-prefix sibling', [['node_modules', '.vitest-cache-foreign', '_metadata.json']], 'changed-prepared-dependencies'],
     ['an undeclared coverage directory', [['coverage', 'lcov.info']], 'undeclared-private-output']
   ] as const)('evaluates checks writing %s', async (_name, outputs, code) => {
     const state = await prepared();
@@ -213,6 +215,7 @@ describe('frozen npm preparation effects stay inside their registered private ro
     if (code) {
       expect(result.status).toBe('failed');
       expect(result.blockers.join(' ')).toContain(`[${code}]`);
+      expect(result.commands).toEqual([expect.objectContaining({ index: 0, passed: true })]);
     } else {
       expect(result.status, result.blockers.join('; ')).toBe('passed');
       expect(result.commands.map((command) => command.passed)).toEqual([true, true]);
