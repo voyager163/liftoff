@@ -58,11 +58,18 @@ type Change = {
   priorCurrentSha256?: string;
   priorChange?: Change;
   pythonTemplateRefresh?: string;
+  nodeTemplateRefresh?: string;
+};
+
+const beforeNodeTemplateRefresh: { changes: Change[] } = {
+  ...review,
+  changes: (review.changes as Change[]).flatMap(change =>
+    change.nodeTemplateRefresh === '5.0.5' ? change.priorChange ? [change.priorChange] : [] : [change])
 };
 
 const beforePythonTemplateRefresh = {
-  ...review,
-  changes: (review.changes as Change[]).flatMap(change =>
+  ...beforeNodeTemplateRefresh,
+  changes: beforeNodeTemplateRefresh.changes.flatMap(change =>
     change.pythonTemplateRefresh === '2026.10.19' ? change.priorChange ? [change.priorChange] : [] : [change])
 };
 
@@ -146,8 +153,24 @@ describe('frozen 0.12.3 contract baseline provenance', () => {
     expect(change.baselineSha256).toBe(change.mergedPriorChange.baselineSha256);
   });
 
+  it('preserves the complete ledger and exact parent chains preceding the Node template patch', () => {
+    const refreshed = (review.changes as Change[]).filter(change => change.nodeTemplateRefresh !== undefined);
+    expect(refreshed).toHaveLength(16);
+    expect(Object.fromEntries(['plugin-generation', 'generator-extraction', 'rendered-artifacts']
+      .map(surface => [surface, refreshed.filter(change => change.surface === surface).length])))
+      .toEqual({ 'plugin-generation': 12, 'generator-extraction': 2, 'rendered-artifacts': 2 });
+    for (const change of refreshed) {
+      expect(change.nodeTemplateRefresh).toBe('5.0.5');
+      expect(change.priorChange).toBeDefined();
+      expect(change.priorCurrentSha256).toBe(change.priorChange?.currentSha256);
+      expect(change.baselineSha256).toBe(change.priorChange?.baselineSha256);
+    }
+    expect(sha256(`${JSON.stringify(beforeNodeTemplateRefresh, null, 2)}\n`))
+      .toBe('f2fca2ca65f8cf0f98bfef259c2af96ac405b119f4895c24610661814e4625be');
+  });
+
   it('preserves the complete ledger and exact parent chains preceding the Python template refresh', () => {
-    const refreshed = (review.changes as Change[]).filter(change => change.pythonTemplateRefresh !== undefined);
+    const refreshed = beforeNodeTemplateRefresh.changes.filter(change => change.pythonTemplateRefresh !== undefined);
     expect(refreshed).toHaveLength(206);
     expect(Object.fromEntries([
       'plugin-generation', 'generator-extraction', 'cli-json', 'rendered-artifacts',
