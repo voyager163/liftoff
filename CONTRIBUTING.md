@@ -340,7 +340,7 @@ coverage gate. Statements, branches, functions, and lines must each be strictly
 greater than 80% (configured floor 80.01%) for each package separately. The
 packages are never aggregated, files are never excluded to raise a result, and
 thresholds are not lowered to pass. Both packages pin the Vitest-compatible V8
-provider, `@vitest/coverage-v8` `5.0.0`, to the exact Vitest version.
+provider, `@vitest/coverage-v8` `5.0.5`, to the exact Vitest version.
 
 ```bash
 npm ci

@@ -48,8 +48,8 @@ describe('coverage gate contributor guidance', () => {
   it('states the exact floor, provider, inventories and run environment', () => {
     expect(coverageFloorPercent).toBe(80.01);
     expect(gates).toContain('strictly\ngreater than 80% (configured floor 80.01%)');
-    expect(gates).toContain('`@vitest/coverage-v8` `5.0.0`');
-    expect(packageJson.devDependencies['@vitest/coverage-v8']).toBe('5.0.0');
+    expect(gates).toContain('`@vitest/coverage-v8` `5.0.5`');
+    expect(packageJson.devDependencies['@vitest/coverage-v8']).toBe('5.0.5');
     const runtimeSources = publishedRuntimeSources(coveragePackage('cli'));
     expect(cliCoverage.include).toEqual(['src/**/*.ts', ...runtimeSources]);
     expect(gates).toContain('`src/**/*.ts`');

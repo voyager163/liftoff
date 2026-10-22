@@ -84,7 +84,7 @@ async function fixturePackage(options: {
   await mkdir(cache, { recursive: true });
   const root = await mkdtemp(path.join(cache, 'coverage gate fixture '));
   fixtures.push(root);
-  const versions = { vitest: '5.0.0', '@vitest/coverage-v8': '5.0.0', vite: '8.2.2' };
+  const versions = { vitest: '5.0.5', '@vitest/coverage-v8': '5.0.5', vite: '8.2.4' };
   const coverage = options.coverage ?? {
     provider: 'v8',
     include: ['src/**/*.ts'],
@@ -144,16 +144,16 @@ describe('pinned source-complete coverage configuration', () => {
     for (const manifestPath of ['package.json', path.join('services', 'telemetry-ingest', 'package.json')]) {
       const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
       const lock = JSON.parse(await readFile(manifestPath.replace('package.json', 'package-lock.json'), 'utf8'));
-      expect(manifest.devDependencies['@vitest/coverage-v8']).toBe('5.0.0');
+      expect(manifest.devDependencies['@vitest/coverage-v8']).toBe('5.0.5');
       expect(manifest.devDependencies['@vitest/coverage-v8']).toBe(manifest.devDependencies.vitest);
-      expect(lock.packages['node_modules/@vitest/coverage-v8'].version).toBe('5.0.0');
-      expect(lock.packages['']?.devDependencies?.['@vitest/coverage-v8']).toBe('5.0.0');
+      expect(lock.packages['node_modules/@vitest/coverage-v8'].version).toBe('5.0.5');
+      expect(lock.packages['']?.devDependencies?.['@vitest/coverage-v8']).toBe('5.0.5');
     }
     for (const id of ['cli', 'gateway']) {
       const { failures, tools } = toolVersions(coveragePackage(id));
       expect(failures).toEqual([]);
       expect(Object.entries(tools.packages)).toContainEqual([
-        '@vitest/coverage-v8', { declared: '5.0.0', locked: '5.0.0', installed: '5.0.0' }
+        '@vitest/coverage-v8', { declared: '5.0.5', locked: '5.0.5', installed: '5.0.5' }
       ]);
     }
   });
@@ -827,7 +827,7 @@ describe('real pinned-provider gate runs', () => {
     expect(evidence.result).toBe('passed');
     expect(evidence.revision.commit).toBe('a'.repeat(40));
     expect(evidence.sourceInventory.files.map((entry: { path: string }) => entry.path)).toEqual(['src/covered.ts', 'src/entry.ts']);
-    expect(evidence.tools.packages.vitest).toEqual({ declared: '5.0.0', locked: '5.0.0', installed: '5.0.0' });
+    expect(evidence.tools.packages.vitest).toEqual({ declared: '5.0.5', locked: '5.0.5', installed: '5.0.5' });
     expect(evidence.tools.node).toBe(process.version);
     expect(evidence.invocation.command).toContain('--coverage.enabled');
     expect(evidence.invocation.environmentOverrides).toEqual(coverageTestEnvironment);
@@ -1436,7 +1436,7 @@ describe('real pinned-provider gate runs', () => {
     const verdict = await verifyCoverageEvidence(fixtureDefinition(), { root, revision: fixedRevision });
     expect(verdict.result).toBe('failed');
     expect(verdict.failures).toEqual(expect.arrayContaining([
-      expect.stringContaining('@vitest/coverage-v8 installed version "0.0.0" differs from the declared pin "5.0.0"')
+      expect.stringContaining('@vitest/coverage-v8 installed version "0.0.0" differs from the declared pin "5.0.5"')
     ]));
   }, 60_000);
 
