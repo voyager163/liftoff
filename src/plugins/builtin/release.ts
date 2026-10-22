@@ -15,8 +15,8 @@ import { deepFrozen } from './core.js';
  */
 
 const assetSha256: Readonly<Record<string, Sha256Digest>> = {
-  'node-backend-package-manifest': 'sha256:ce24c806c0ebc3f54b79647422b44afafb4cbe9ec4b2b062e934aa8fc78c4481',
-  'node-backend-package-lock': 'sha256:e4a88cada73456bf1b0a3923d5e814313358c91b0b9b2a13d5fbf41632231369',
+  'node-backend-package-manifest': 'sha256:4923c3d4fb40f108d796eb9d3507f046b4ca8e8749be326362128744ccb8e702',
+  'node-backend-package-lock': 'sha256:7f407cca3c59370005f87fe3c56323b8f3d0cd7578ae6941882af6129f7a4df4',
   'go-backend-module': 'sha256:b4a00ccd7a9881c7e518dcbba83bd8ead0a852b29cb2509402f3c8c9af5bafac',
   'go-backend-checksums': 'sha256:c4c5f94664176df8c09e6fbf02a48391e606d135caec6b75932271333bbb4fb5',
   'python-standard-project': 'sha256:dc551853962b84bec527bb3463801b74ab9681b41d362653892243836a6e6935',
@@ -40,7 +40,7 @@ interface PluginRecord {
 
 const pluginRecords: readonly PluginRecord[] = [
   { category: 'stack', id: 'python-fastapi', apiVersion: 1, contentVersion: 3, contentDigest: 'sha256:007ef8be99fea8d880c5f4411e1a77f2f58bb0f5945f5c6728a599905cca7c5c' },
-  { category: 'stack', id: 'node-fastify', apiVersion: 1, contentVersion: 4, contentDigest: 'sha256:741c6dc7221d9178db1ea88dee47c98e3bdb1ba382ba432dc76f277c705feb92' },
+  { category: 'stack', id: 'node-fastify', apiVersion: 1, contentVersion: 4, contentDigest: 'sha256:ff7367554c22d874d133e96f39e147b0a34946da008abea75c80afc7426a7023' },
   { category: 'stack', id: 'go-huma', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:89f2689d613fcd5708bf9a94b5138cc0d39fb3c0c18374c75a190e7ee8ba1432' },
   { category: 'cloud', id: 'azure', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:f7b67895895c43bff579a5108d0dffd5171dbd6cbdf56fd99e725e41a672f6d7' },
   { category: 'workflow', id: 'openspec', apiVersion: 1, contentVersion: 1, contentDigest: 'sha256:8675a3187f44932c7bee9f9a8e5d3f307bcb36d66ced0f20593663221c509d5e' },
@@ -52,9 +52,9 @@ const pluginRecords: readonly PluginRecord[] = [
 
 /** Expected registry identities of the built-ins. Tests assert them; runtime never consults them. */
 export const builtinReleaseDigests = deepFrozen({
-  pluginSetDigest: 'sha256:9e44b24e3703878cabd683f45dfab2d0d8fd1e34e117c5b086f986ca263b5f8e' as Sha256Digest,
+  pluginSetDigest: 'sha256:d12a584c3dabb5c92c0c37c5bb57a94a4f1454ec90ed3fd592ca00601237ee4a' as Sha256Digest,
   coreContributionDigest: 'sha256:f8189ff22d635da4f8c5598e92159d3c4364684016a00e0df9af034a7503ae22' as Sha256Digest,
-  registryDigest: 'sha256:1b41b3e9c1cc55d5463a743beb8041cd8459ab95dea86b24d44f314296df7cb8' as Sha256Digest
+  registryDigest: 'sha256:ac0fff3940663fc4cde56afe163942224f2572336d80d20271724248f3899875' as Sha256Digest
 });
 
 // A missing literal is reported by registry intake as a release mismatch at first use, never here.
