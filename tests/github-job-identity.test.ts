@@ -238,7 +238,7 @@ describe('original signed GitHub job identity, not delivery or custody authority
     { alg: 'none' }, { alg: 'HS256' }, { typ: 'other' }, { kid: undefined },
     { jku: 'https://outside.example/keys' }, { jwk: publicKey }, { crit: ['b64'], b64: false },
     { x5t: ['not-scalar'] }
-  ])('refuses algorithm/key selection from the token header: %j', async change => {
+  ])('refuses algorithm/key selection from the token header (case %#)', async change => {
     token = signed(claims(), { alg: 'RS256', typ: 'JWT', kid: 'original-key', ...change });
     await expect(identity.observeGitHubJobIdentity(expected)).rejects.toMatchObject({ code: 'github-job-identity-token' });
     expect(fetchGitHub).toHaveBeenCalledTimes(1);
@@ -256,7 +256,7 @@ describe('original signed GitHub job identity, not delivery or custody authority
     { keys: [{ ...publicKey, alg: 'HS256' }] }, { keys: [{ ...publicKey, use: 'enc' }] },
     { keys: [{ ...publicKey, kty: 'EC' }] }, { keys: [{ ...publicKey, n: 'bad=' }] },
     { keys: [{ ...publicKey, n: 'a'.repeat(1367) }] }, { keys: [{ ...publicKey, e: 'a'.repeat(12) }] }
-  ])('refuses missing, ambiguous or unsupported issuer keys: %j', async value => {
+  ])('refuses missing, ambiguous or unsupported issuer keys (case %#)', async value => {
     jwks = value;
     await expect(identity.observeGitHubJobIdentity(expected)).rejects.toThrow();
     expect(fetchGitHub).toHaveBeenCalledTimes(2);

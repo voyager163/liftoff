@@ -9,6 +9,7 @@ import * as fileSystem from '../src/file-system.js';
 import * as identity from '../src/domain/governance/policy/identity.js';
 import * as graph from '../src/domain/governance/activation/graph.js';
 import * as compatibility from '../src/governance-activation/compatibility.js';
+import { restoreTemplateAuditUpdate, templateAuditRenderingChanges } from './fixtures/template-audit-rendering.js';
 import {
   ContractBaselineError,
   assertCaptureDestination,
@@ -59,11 +60,19 @@ type Change = {
   priorChange?: Change;
   pythonTemplateRefresh?: string;
   nodeTemplateRefresh?: string;
+  templateAuditRefresh?: string;
+  previous?: { artifacts: string; contents: string; manifest: string };
+};
+
+const beforeTemplateAuditRefresh: { changes: Change[] } = {
+  ...review,
+  changes: (review.changes as Change[]).flatMap(change =>
+    change.templateAuditRefresh === templateAuditRenderingChanges.refresh ? change.priorChange ? [change.priorChange] : [] : [change])
 };
 
 const beforeNodeTemplateRefresh: { changes: Change[] } = {
-  ...review,
-  changes: (review.changes as Change[]).flatMap(change =>
+  ...beforeTemplateAuditRefresh,
+  changes: beforeTemplateAuditRefresh.changes.flatMap(change =>
     change.nodeTemplateRefresh === '5.0.5' ? change.priorChange ? [change.priorChange] : [] : [change])
 };
 
@@ -153,10 +162,34 @@ describe('frozen 0.12.3 contract baseline provenance', () => {
     expect(change.baselineSha256).toBe(change.mergedPriorChange.baselineSha256);
   });
 
+  it('reconstructs the complete e3aa ledger and every prior chain before template audit maintenance', () => {
+    expect(lfSha256(path.join(process.cwd(), 'tests', 'fixtures', 'template-audit-rendering-changes.json')))
+      .toBe('69f873796bc230b78a5805b8e10c1ed4832a0d4addbfb55db220c7855fea5b21');
+    const refreshed = (review.changes as Change[]).filter(change => change.templateAuditRefresh !== undefined);
+    expect(refreshed).toHaveLength(189);
+    expect(Object.fromEntries(['plugin-generation', 'generator-extraction', 'cli-json', 'rendered-artifacts', 'governance-extraction-cli']
+      .map(surface => [surface, refreshed.filter(change => change.surface === surface).length]))).toEqual({
+      'plugin-generation': 152, 'generator-extraction': 18, 'cli-json': 1, 'rendered-artifacts': 14, 'governance-extraction-cli': 4
+    });
+    for (const change of refreshed) {
+      expect(change.templateAuditRefresh).toBe('vite-8.2.4-certifi-2026.10.19');
+      expect(change.priorCurrentSha256).toBe(change.priorChange?.currentSha256 ?? change.baselineSha256);
+      expect(change.baselineSha256).toBe(change.priorChange?.baselineSha256 ?? change.baselineSha256);
+      if (change.surface === 'plugin-generation') expect(change.previous).toEqual(change.priorChange?.previous);
+    }
+    expect(refreshed.filter(change => !change.priorChange).map(change => [change.surface, change.key]))
+      .toEqual([['generator-extraction', '1/frontend-package']]);
+    expect(sha256(`${JSON.stringify(beforeTemplateAuditRefresh, null, 2)}\n`))
+      .toBe('59f671b828db8add56e9bcadda56b398a0a7b14a6f6b18ba339195d79363e77c');
+    for (const asset of templateAuditRenderingChanges.assets) {
+      expect(lfSha256(path.join(process.cwd(), asset.file)), asset.file).toBe(asset.afterSha256);
+    }
+  });
+
   it('preserves the complete ledger and exact parent chains preceding the Node template patch', () => {
     expect(lfSha256(path.join(process.cwd(), 'tests', 'fixtures', 'node-template-rendering-changes.json')))
       .toBe('c6614213d73aca0faeb8a6303f253f6ef30a9f11dc85fea99c7cc5363390ebec');
-    const refreshed = (review.changes as Change[]).filter(change => change.nodeTemplateRefresh !== undefined);
+    const refreshed = beforeTemplateAuditRefresh.changes.filter(change => change.nodeTemplateRefresh !== undefined);
     expect(refreshed).toHaveLength(20);
     expect(Object.fromEntries(['plugin-generation', 'generator-extraction', 'rendered-artifacts', 'governance-extraction-cli']
       .map(surface => [surface, refreshed.filter(change => change.surface === surface).length])))
@@ -170,8 +203,8 @@ describe('frozen 0.12.3 contract baseline provenance', () => {
     expect(sha256(`${JSON.stringify(beforeNodeTemplateRefresh, null, 2)}\n`))
       .toBe('f2fca2ca65f8cf0f98bfef259c2af96ac405b119f4895c24610661814e4625be');
     const beforeCliRefresh = {
-      ...review,
-      changes: (review.changes as Change[]).map(change =>
+      ...beforeTemplateAuditRefresh,
+      changes: beforeTemplateAuditRefresh.changes.map(change =>
         change.nodeTemplateRefresh === '5.0.5' && change.surface === 'governance-extraction-cli'
           ? change.priorChange! : change)
     };
@@ -251,6 +284,13 @@ describe('frozen public CLI surfaces', () => {
       }
       expect(newlyVolatile, `${key} gained unreviewed nondeterministic values`).toEqual(change?.addedVolatilePointers ?? []);
       expectFrozen('cli-json', key, current[key], value);
+      if (key === 'update --check --json') {
+        restoreTemplateAuditUpdate(current[key]);
+        expect(() => restoreTemplateAuditUpdate({
+          ...current[key], json: { ...current[key].json, schemaVersion: 0 }
+        })).toThrow();
+        expect(() => restoreTemplateAuditUpdate({ ...current[key], unreviewed: true })).toThrow();
+      }
     }
   }, 60_000);
 

@@ -1699,6 +1699,28 @@ The npm audit does not cover PyPI. The generated Python integration case runs
 `tests/fixtures/pyjwt-options-regression.py` against the installed frozen GenAI
 environment: unsigned decoding must not mutate reused options or disable
 subsequent verified expiration checks in either decode API.
+The targeted Certifi patch advances both Python locks and the reproduced
+Functions export from 2026.7.22 to 2026.10.19 for critical
+`GHSA-6q48-6c7w-9gw2`, using the declared uv 0.12.7 and verified official PyPI
+wheel/sdist hashes. Other package records and lock schema metadata stay unchanged.
+`tests/fixtures/certifi-trust-regression.py` checks the actual installed standard
+and GenAI bundles offline: the compromised emSign ECC Root CA - G3 must be absent,
+while three unaffected emSign roots and ISRG Root X1 remain trusted.
+This specific advisory regression is not an all-PyPI or all-ecosystem clearance.
+The Node backend pins development Vite 8.2.4; the frontend retains production
+`^8.2.4` without adding development dependencies. Only the root and Vite records
+change in each npm lock. Keep the baseline ID/date and tool pins unchanged for
+this targeted patch rather than claiming a wholesale supported-stack refresh.
+
+The separate `tests/fixtures/template-audit-rendering-changes.json` review layer
+records exact physical-asset reverse patches and induced update/governance CLI
+digests. Every case of the fixed 165-case matrix reconstructs its complete
+preceding rendering; counts, identities, rows and original snapshots stay fixed.
+Unwrapping the layer reconstructs the entire preceding review ledger, including
+all prior chains and original generation hashes. The older 20-record Node and
+206-record Python restoration checks still apply to their own preceding layers.
+Advance current telemetry's independently computed registry expectation without
+changing historical registry identities, privacy or consent behavior.
 
 `plugins/builtin/modern-historical-release.ts` preserves the exact metadata-only
 pre-refresh v8 family from revision `289e7033`; `modern-previous-release.ts`
@@ -1720,6 +1742,14 @@ Fresh generation records current identities. Project telemetry refuses to label
 a readable historical selection with changed stack identity as the currently
 installed template bundle. Historical snapshots and generated captures remain
 immutable; exact additive reviewed rendering records account for current bytes.
+`modern-template-audit-previous-release.ts` adds the exact metadata captured at
+`4103bb42` before the Vite/Certifi patch. Its full 432-request fixture retains 144
+requests per source family across three standard stacks, nine GenAI patterns,
+both enabled profiles, all workflows and frontend choices. Retained activation-4
+identities stay unchanged; all 144 unpublished old current-5 requests are refused,
+not retagged. Compatibility rendering uses actual patched Node/Python/frontend
+bytes with Node content version 5 and Python content version 4. Original captures,
+previous predecessor modules and activation identities are not rewritten.
 
 Legacy activation-to-v8 publication captures the exact new assessment destination
 for each already-recorded agent before planning, including physical absence.

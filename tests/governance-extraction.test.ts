@@ -44,6 +44,7 @@ interface CliReview {
   priorChange?: CliReview;
   pythonTemplateRefresh?: string;
   nodeTemplateRefresh?: string;
+  templateAuditRefresh?: string;
 }
 
 interface TemplateCliChanges {
@@ -57,6 +58,8 @@ const pythonCliChanges: TemplateCliChanges = JSON.parse(readFileSync(
   new URL('./fixtures/python-template-rendering-changes.json', import.meta.url), 'utf8'));
 const nodeCliChanges: TemplateCliChanges = JSON.parse(readFileSync(
   new URL('./fixtures/node-template-rendering-changes.json', import.meta.url), 'utf8'));
+const auditCliChanges: TemplateCliChanges = JSON.parse(readFileSync(
+  new URL('./fixtures/template-audit-rendering-changes.json', import.meta.url), 'utf8'));
 
 const cliReviews: CliReview[] = JSON.parse(readFileSync(
   new URL('./fixtures/contract-baseline-changes.json', import.meta.url), 'utf8'
@@ -128,13 +131,14 @@ function setLeaf(value: unknown, segments: string[], replacement: unknown): void
 }
 
 function assertBoundedTemplateCliChanges(
-  key: string, result: CliResult, text: string, baseline: unknown, review: CliReview, template: 'node' | 'python'
+  key: string, result: CliResult, text: string, baseline: unknown, review: CliReview, template: 'audit' | 'node' | 'python'
 ) {
-  const changes = template === 'node' ? nodeCliChanges : pythonCliChanges;
+  const changes = { audit: auditCliChanges, node: nodeCliChanges, python: pythonCliChanges }[template];
   if (!Object.hasOwn(changes.cli, key)) return { result, text, review };
   const change = changes.cli[key]!;
-  expect(template === 'node' ? review.nodeTemplateRefresh : review.pythonTemplateRefresh)
-    .toBe(template === 'node' ? '5.0.5' : '2026.10.19');
+  const actualRefresh = { audit: review.templateAuditRefresh, node: review.nodeTemplateRefresh, python: review.pythonTemplateRefresh }[template];
+  const expectedRefresh = { audit: 'vite-8.2.4-certifi-2026.10.19', node: '5.0.5', python: '2026.10.19' }[template];
+  expect(actualRefresh).toBe(expectedRefresh);
   const payload: unknown = JSON.parse(text);
   expect(`${JSON.stringify(payload, null, 2)}\n`).toBe(text);
   for (const { segments, before, after } of change.fields) {
@@ -357,8 +361,10 @@ describe('governance responsibility extraction parity', () => {
     for (const { key } of cliReviews) {
       const result = currentResults[key] as CliResult;
       const text = stdout[key]!;
+      const audit = assertBoundedTemplateCliChanges(
+        key, result, text, recordedResults[key], cliReviews.find(entry => entry.key === key)!, 'audit');
       const node = assertBoundedTemplateCliChanges(
-        key, result, text, recordedResults[key], cliReviews.find(entry => entry.key === key)!, 'node');
+        key, audit.result, audit.text, recordedResults[key], audit.review, 'node');
       const python = assertBoundedTemplateCliChanges(
         key, node.result, node.text, recordedResults[key], node.review, 'python');
       const dependency = assertBoundedDependencyCliChanges(key, python.result, python.text, recordedResults[key], python.review);

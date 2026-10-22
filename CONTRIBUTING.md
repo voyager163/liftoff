@@ -66,9 +66,16 @@ suites or native builds. The full distribution-limit fixtures retain their
 Cancellation and exact receipt reuse retain their original 30-second test deadline
 without concurrent native stack builds competing for the same filesystem.
 On macOS and Linux, the same final three files run in ordered groups after the
-other root files. The retained successor's actual SSR-loader preparation remains
-in its original 10-second hook, and Source5 cases retain their 30-second limits;
-neither fixtures nor assertions are moved out of their original timed bodies.
+other root files. On macOS, intact successor native-revalidation and private
+workspace-recovery files also run in separate ordered groups, avoiding competing
+filesystem work inside their unchanged 120-second and 30-second cases.
+Successor and task-write tests use Vitest's existing source module runner rather
+than constructing a second Vite SSR graph. All four Azure/GitHub provider
+entrypoints still fail closed, and module loading stays inside the original
+10-second hooks. Source5 cases retain their 30-second limits; neither fixtures
+nor assertions are moved out of their original timed bodies. Parameterized Date
+and fresh-RSA rejection cases use deterministic row labels without changing
+their values, key generation, mutations, assertions or case counts.
 Interpreter-copy preparation retains its original test timeout and reports
 phase timings; its actual fixture creation and verification are not moved into hooks.
 Each file belongs to exactly one group; targeted file selectors still run the

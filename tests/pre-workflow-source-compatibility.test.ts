@@ -94,7 +94,7 @@ describe('original custody4 metadata survives the reviewed dependency refresh', 
       expect(resolved.contract.plugins.selections.find(plugin => plugin.id === 'node-fastify')).toMatchObject({
         contentVersion: 3, contentDigest: 'sha256:2140749905f08e15db0e18c0b0b97ffd72a9f7fb30ae5469c7678822e1dcee7c'
       });
-      expect(retained.plugins.find(plugin => plugin.id === 'node-fastify')?.contentVersion).toBe(4);
+      expect(retained.plugins.find(plugin => plugin.id === 'node-fastify')?.contentVersion).toBe(5);
       const contexts = createModernGovernanceContextContract({
         catalog: projectCatalog, resolveSourceContract: value => resolveModernManifestV8Source(value).contract
       });
