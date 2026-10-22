@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { ViteDevServer } from 'vite';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { buildProjectPlan } from '../src/application/project/planning.js';
 import { loadManifest } from '../src/application/project/manifest.js';
 import { writeArtifacts, writeProjectFile } from '../src/adapters/filesystem/project-files.js';
@@ -16,27 +15,24 @@ import { captureMigrationRetainedProjectInputs } from '../src/governance-activat
 import type { CommandResult, CommandRunner, RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/domain/project/contracts.js';
 import type { LocalRevalidationPreview, LocalRevalidationProgress } from '../src/application/update/revalidation.js';
-import { createActivationSuccessorRuntime } from './fixtures/activation-successor-runtime.js';
+
+vi.mock('../src/governance-activation/phase-azure.js', async () =>
+  (await import('./fixtures/activation-successor-runtime.js')).activationSuccessorAzureBoundary());
+vi.mock('../src/governance-activation/phase-github.js', async () =>
+  (await import('./fixtures/activation-successor-runtime.js')).activationSuccessorGitHubBoundary());
 
 const roots = new Set<string>();
-const cacheRoot = path.resolve('tests', `.activation-successor-loader-${process.pid}-${randomUUID()}`);
-let loader: ViteDevServer;
 let revalidation: typeof import('../src/application/update/revalidation.js');
 let governance: typeof import('../src/governance-activation/commands.js');
 
 beforeAll(async () => {
-  loader = await createActivationSuccessorRuntime(cacheRoot);
-  revalidation = await loader.ssrLoadModule('/src/application/update/revalidation.ts') as typeof revalidation;
-  governance = await loader.ssrLoadModule('/src/governance-activation/commands.ts') as typeof governance;
+  revalidation = await import('../src/application/update/revalidation.js');
+  governance = await import('../src/governance-activation/commands.js');
 });
 
 afterEach(async () => {
   for (const root of roots) await rm(root, { recursive: true, force: true });
   roots.clear();
-});
-afterAll(async () => {
-  await loader?.close();
-  await rm(cacheRoot, { recursive: true, force: true });
 });
 
 class LocalRunner implements CommandRunner {
