@@ -43,7 +43,7 @@ describe('physical Python refresh and exact retained source metadata', () => {
   it.each(captured.families)('preserves all 120 original $family requests and their activation-4 identities', family => {
     expect(family.cases).toHaveLength(120);
     const registry = family.family === 'pre-workflow' ? modernPreWorkflowRegistry() : modernPreAssessmentRegistry();
-    expect(registry.inventory.find(plugin => plugin.id === 'python-fastapi')?.contentVersion).toBe(3);
+    expect(registry.inventory.find(plugin => plugin.id === 'python-fastapi')?.contentVersion).toBe(4);
     for (const entry of family.cases) {
       const before = original(entry);
       const unchanged = structuredClone(before);

@@ -7,6 +7,7 @@ import { modernRelease } from '../../plugins/builtin/modern-release.js';
 import { modernHistoricalRelease } from '../../plugins/builtin/modern-historical-release.js';
 import { modernPreviousRelease } from '../../plugins/builtin/modern-previous-release.js';
 import { modernPythonPreviousReleases } from '../../plugins/builtin/modern-python-previous-release.js';
+import { modernTemplateAuditPreviousReleases } from '../../plugins/builtin/modern-template-audit-previous-release.js';
 import {
   modernPreWorkflowDeclarationsDigest, modernPreWorkflowGovernanceSourceContracts, modernPreWorkflowSource
 } from '../../plugins/builtin/modern-pre-workflow.js';
@@ -228,13 +229,16 @@ function matchesRetainedModernPlugins(
 /** Recognizes exact original custody4 metadata, never the current5 family or execution permission. */
 export function matchesPreWorkflowModernPlugins(recorded: ManifestPluginMetadata, resolution: PluginResolution): boolean {
   return matchesRetainedModernPlugins(recorded, resolution, modernPreWorkflowSource, modernPreWorkflowRegistry(),
-    modernPreWorkflowDeclarationsDigest, [modernPythonPreviousReleases.preWorkflow]);
+    modernPreWorkflowDeclarationsDigest, [
+      modernPythonPreviousReleases.preWorkflow, modernTemplateAuditPreviousReleases.preWorkflow
+    ]);
 }
 
 /** Recognizes exact pinned source families, never old template bytes or execution permission. */
 export function matchesHistoricalModernPlugins(recorded: ManifestPluginMetadata, resolution: PluginResolution): boolean {
   return matchesRetainedModernPlugins(recorded, resolution, modernPreAssessmentSource, modernPreAssessmentRegistry(),
     modernPreAssessmentDeclarationsDigest, [
-      modernHistoricalRelease, modernPreviousRelease, modernPythonPreviousReleases.preAssessment
+      modernHistoricalRelease, modernPreviousRelease, modernPythonPreviousReleases.preAssessment,
+      modernTemplateAuditPreviousReleases.preAssessment
     ]);
 }

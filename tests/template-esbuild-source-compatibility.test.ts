@@ -192,12 +192,13 @@ describe('content-only esbuild refresh preserves complete historical source fami
   it('binds the actual installed Node contribution to the reviewed dependency refresh', () => {
     const registry = modernSourceRegistry();
     expect(registry.inventory.find(plugin => plugin.id === 'node-fastify')).toMatchObject({
-      contentVersion: 4, contentDigest: 'sha256:ff7367554c22d874d133e96f39e147b0a34946da008abea75c80afc7426a7023'
+      contentVersion: 5, contentDigest: 'sha256:9983d4c99c7bf47bc7306f11cdab2a2e3b370fcfaa235041ceb4db8f92b19d42'
     });
     const assets = registry.assetsFor({ kind: 'plugin', category: 'stack', id: 'node-fastify' });
     expect(JSON.parse(assets.own['node-backend-package-manifest']).overrides)
       .toEqual({ '@esbuild-kit/core-utils': { esbuild: '0.25.12' } });
     expect(JSON.parse(assets.own['node-backend-package-manifest']).devDependencies.vitest).toBe('5.0.5');
+    expect(JSON.parse(assets.own['node-backend-package-manifest']).devDependencies.vite).toBe('8.2.4');
     const lock = JSON.parse(assets.own['node-backend-package-lock']);
     for (const dependency of ['vitest', '@vitest/mocker', '@vitest/spy']) {
       expect(lock.packages[`node_modules/${dependency}`].version).toBe('5.0.5');
