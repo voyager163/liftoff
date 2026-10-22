@@ -11,6 +11,8 @@ const cancellationFile = 'tests/repair-cancellation.test.ts';
 const workflowMatrixFile = 'tests/governance-workflow-source5-matrix.test.ts';
 const workflowFinalizationFile = 'tests/governance-workflow-source5-finalization.test.ts';
 const successorUpdateFile = 'tests/activation-successor-update.test.ts';
+const successorRevalidationFile = 'tests/modern-revalidation-records.test.ts';
+const workspaceRecoveryFile = 'tests/repair-workspaces-recovery.test.ts';
 
 // Every root Vitest invocation (npm test, targeted runs and the coverage gate)
 // uses a temporary HOME/XDG/profile root. The main process isolates while this
@@ -62,6 +64,10 @@ export function createRootTestConfig(
       : {})
   };
   const ordered = [
+    ...(platform === 'darwin' ? [
+      { name: 'modern-revalidation-records', file: successorRevalidationFile },
+      { name: 'repair-workspaces-recovery', file: workspaceRecoveryFile }
+    ] : []),
     ...(platform === 'win32' ? [
       { name: 'repair-cancellation', file: cancellationFile },
       { name: 'repair-preparation-execution', file: preparationExecutionFile },

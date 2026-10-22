@@ -30,6 +30,14 @@ export const templateDependencyInventory = Object.freeze([
 ]);
 
 export const resolvedTemplateAdvisories = Object.freeze([
+  ...['node-backend', 'standard-frontend'].flatMap(manifestId => [
+    'GHSA-587H-7WMJ-H5PM',
+    'GHSA-698V-4R3X-3VCV',
+    'GHSA-9JRQ-W75R-8GCW',
+    'GHSA-R825-W8MM-5PXW',
+    'GHSA-RQ7H-C2JC-7F22',
+    'GHSA-VFPM-58RQ-9QCG'
+  ].map(advisoryId => Object.freeze({ manifestId, advisoryId, package: 'vite' }))),
   Object.freeze({
     manifestId: 'node-backend',
     advisoryId: 'GHSA-67mh-4wv8-2f99',
