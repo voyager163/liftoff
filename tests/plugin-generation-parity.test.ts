@@ -4,6 +4,7 @@ import type { GeneratedArtifact } from '../src/domain/project/contracts.js';
 import { buildArtifacts } from '../src/templates.js';
 import { matrixPlan, pluginGenerationMatrix, type MatrixCase } from './fixtures/plugin-generation-matrix.js';
 import { expectReviewedRendering, previousGenerationHashes } from './fixtures/reviewed-rendering.js';
+import { expectBeforeTemplateAuditGeneration, restoreTemplateAuditArtifacts } from './fixtures/template-audit-rendering.js';
 
 /*
  * Rendered-output oracle for built-in plugin composition. It was captured once from unchanged
@@ -32,10 +33,7 @@ const identityRow = (artifact: GeneratedArtifact): string => [
 /** Every workload-variant under both workflows, with governance enabled and the frontend included. */
 const withRows = (entry: MatrixCase): boolean => /^m1\/[^/]+\/[^/]+\/governed\/frontend$/.test(entry.id);
 
-function record(entry: MatrixCase) {
-  const plan = matrixPlan(entry);
-  const artifacts = buildArtifacts(plan);
-  expect(buildArtifacts(matrixPlan(entry)), 'generation is deterministic').toEqual(artifacts);
+function artifactRecord(entry: MatrixCase, artifacts: GeneratedArtifact[]) {
   const manifest = artifacts.filter((artifact) => artifact.logicalName === 'manifest');
   expect(manifest).toHaveLength(1);
   return {
@@ -46,6 +44,13 @@ function record(entry: MatrixCase) {
     manifest: digest(manifest[0].content),
     ...(withRows(entry) ? { rows: artifacts.map(identityRow) } : {})
   };
+}
+
+function record(entry: MatrixCase) {
+  const artifacts = buildArtifacts(matrixPlan(entry));
+  expect(buildArtifacts(matrixPlan(entry)), 'generation is deterministic').toEqual(artifacts);
+  expectBeforeTemplateAuditGeneration(entry.id, artifactRecord(entry, restoreTemplateAuditArtifacts(artifacts)));
+  return artifactRecord(entry, artifacts);
 }
 
 describe('built-in plugin generation parity matrix', () => {
@@ -64,5 +69,31 @@ describe('built-in plugin generation parity matrix', () => {
     const baseline = { ...current, ...previousGenerationHashes(entry.id) };
     expectReviewedRendering('plugin-generation', entry.id, current, baseline);
     expect(baseline).toMatchSnapshot();
+  });
+
+  it('rejects unreviewed content, identity and non-hash manifest changes during audit rollback', () => {
+    const entry = pluginGenerationMatrix.find(value => value.id === 'm1/node-fastify/openspec/governed/frontend')!;
+    expect(entry).toBeDefined();
+    const artifacts = buildArtifacts(matrixPlan(entry));
+    const mutations: Array<(values: GeneratedArtifact[]) => void> = [
+      values => { values.find(value => value.logicalName === 'node-backend-package')!.content += '\nunreviewed\n'; },
+      values => { values.find(value => value.logicalName === 'root-readme')!.content += '\nunreviewed\n'; },
+      values => { values[0]!.pathParts.push('unreviewed'); },
+      values => {
+        const manifest = values.find(value => value.logicalName === 'manifest')!;
+        manifest.content = JSON.stringify({ ...JSON.parse(manifest.content), unreviewed: true }, null, 2) + '\n';
+      },
+      values => {
+        const manifest = values.find(value => value.logicalName === 'manifest')!;
+        manifest.content = manifest.content.replace(/"generationHash": "sha256:[a-f0-9]{64}"/u,
+          `"generationHash": "sha256:${'0'.repeat(64)}"`);
+      }
+    ];
+    for (const mutate of mutations) {
+      const altered = structuredClone(artifacts);
+      mutate(altered);
+      expect(() => expectBeforeTemplateAuditGeneration(entry.id, artifactRecord(entry, restoreTemplateAuditArtifacts(altered))))
+        .toThrow();
+    }
   });
 });

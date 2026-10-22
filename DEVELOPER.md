@@ -1712,6 +1712,16 @@ The Node backend pins development Vite 8.2.4; the frontend retains production
 change in each npm lock. Keep the baseline ID/date and tool pins unchanged for
 this targeted patch rather than claiming a wholesale supported-stack refresh.
 
+The separate `tests/fixtures/template-audit-rendering-changes.json` review layer
+records exact physical-asset reverse patches and induced update/governance CLI
+digests. Every case of the fixed 165-case matrix reconstructs its complete
+preceding rendering; counts, identities, rows and original snapshots stay fixed.
+Unwrapping the layer reconstructs the entire preceding review ledger, including
+all prior chains and original generation hashes. The older 20-record Node and
+206-record Python restoration checks still apply to their own preceding layers.
+Advance current telemetry's independently computed registry expectation without
+changing historical registry identities, privacy or consent behavior.
+
 `plugins/builtin/modern-historical-release.ts` preserves the exact metadata-only
 pre-refresh v8 family from revision `289e7033`; `modern-previous-release.ts`
 additively records the accepted post-security-refresh family from `77762b75`.
