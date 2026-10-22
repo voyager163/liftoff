@@ -164,7 +164,10 @@ describe('exact published source readers and successor declarations', () => {
       expect(resolveActivationCompatibility(identity, buildActivationCompatibilityMap([identity]))).toMatchObject({ compatible: false });
     }
     const modified = structuredClone(metadata);
-    modified.activation.successorMigrations[0] = { ...modified.activation.successorMigrations[0], toIdentity: historicalV2ActivationIdentity };
+    modified.activation.successorMigrations = [
+      { ...modified.activation.successorMigrations[0], toIdentity: historicalV2ActivationIdentity },
+      ...modified.activation.successorMigrations.slice(1)
+    ];
     expect(() => validateGovernanceCompatibilityMetadata(modified)).toThrow(/successorMigrations/);
     expect(() => validateHistoricalV2Compatibility(metadata)).toThrow();
   });
@@ -522,9 +525,12 @@ describe('sanitized preservation blockers and portable boundaries', () => {
     expect((await captureHistoryFile(project.root, ['governance', 'migration-state.json'])).content).toBeUndefined();
   });
 
-  it.each([
+  it.for([
     ['..', 'outside'], ['drive:C'], ['C:\\outside'], ['\\\\server\\share'], ['nested/name'], ['CON'], ['trailing.']
-  ])('rejects nonportable parts %j', (parts) => expect(() => historyPathParts(parts, 'history path')).toThrow());
+  ])('rejects nonportable parts %j', (parts) => {
+    expect(Array.isArray(parts)).toBe(true);
+    expect(() => historyPathParts(parts, 'history path')).toThrow();
+  });
 
   it('does not follow a historical state symlink', async () => {
     const project = await fixture();
