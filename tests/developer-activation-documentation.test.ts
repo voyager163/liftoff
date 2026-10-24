@@ -114,6 +114,16 @@ describe('developer activation-completeness guidance', () => {
       'reviewed declarations, not independently qualified builder capabilities',
       'no earlier approval is reinterpreted'
     ]) expect(completeness).toContain(phrase);
+    for (const phrase of [
+      '`applicationArtifactBuildToolObservationProgram`', 'candidate tool or plugin',
+      'qualification: "not-issued"', 'complete runtime/library/configuration closure',
+      'cannot issue\n`toolQualificationDigest`', 'earlier pre-transmission blockers',
+      'not make the proposed workflow safe to dispatch manually',
+      '`liftoff-build-tool-preflight` step, before checkout, context projection',
+      '`/usr/bin/env -i` supplies only a closed observation environment',
+      'one-minute workflow-step ceiling', 'never a spread of ambient',
+      'checkout, projection and all later actions remain unreachable'
+    ]) expect(completeness).toContain(phrase);
     expect(phaseCapabilities['application-prerequisites-ready'].executor).toBe('injected-only');
     expect(phaseCapabilities['application-artifact-ready'].executor).toBe('injected-only');
   });

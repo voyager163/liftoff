@@ -313,6 +313,32 @@ OCI attestations and referrers-tag fallback fail validation. Existing dispatch
 input names remain unchanged; the reserved legacy `image_tag` input is not
 consumed by this recipe.
 
+The proposed workflow's first `liftoff-build-tool-preflight` step performs a
+bounded **static tool-file observation** before checkout, context projection,
+source readback, Azure/registry commands or any build. It runs from runner
+temporary storage, with a one-minute step limit and a 30-second observer-child
+limit. Shell startup and Node loader/instrumentation overrides are cleared
+before startup; `/usr/bin/env -i` and an explicit child allowlist exclude inherited
+preloads, coverage/cache/warning write hooks and unrelated credentials.
+This is startup isolation, not authentication of the runtime or native libraries.
+It reads and
+reobserves physical client/Buildx-candidate files and the exact local builder
+declaration without executing a candidate, selecting/starting a builder,
+contacting Docker/ACR or opening Docker's credential configuration. Docker CLI
+[plugin metadata discovery](https://github.com/docker/cli/blob/v28.4.0/cli-plugins/manager/plugin.go)
+can execute the candidate; do not use `docker info` or unverified Buildx probes
+as an inventory shortcut. This preflight neither installs nor authenticates tools.
+
+All outcomes retain `qualification: "not-issued"`. A local builder declaration
+does not establish the current daemon/container, selected plugin or running
+version. Complete runtime/library/configuration closure, separately approved
+tool execution and whole-job protected custody remain missing. Even a successful
+partial observation refuses in the first step: checkout, source projection,
+registry operations and build do not run;
+it produces no `toolQualificationDigest` or publication receipt. Existing
+controller blockers still stop before source transmission: this is defense in
+depth for a proposed workflow, not permission to dispatch it manually.
+
 An explicit, unpublished Source6 contract now allocates the additional GitHub
 attestation effect and a separate v2 publication record/read-only consumer. It
 does **not** promote Source5, rewrite QuickBuild v1 evidence, create an ACR run or

@@ -4,6 +4,7 @@ import { canonicalSha256, isRecord } from '../domain/governance/activation/canon
 import {
   applicationArtifactContextStep, applicationContextDirectory, applicationContextPaths
 } from './application-artifact-context-recipe.js';
+import { applicationArtifactBuildToolObservationProgram } from './application-artifact-build-tools.js';
 
 export const applicationArtifactDigestRecipeVersion = 'oci-digest-v1';
 export const applicationArtifactDispatchInputNames = Object.freeze([
@@ -46,6 +47,44 @@ export const applicationArtifactDigestBlockers = Object.freeze([
   'application-artifact-build-tool-unqualified: The selected existing Docker-container builder and complete build-tool closure have no independent whole-job qualification.',
   'application-artifact-attestation-effect-unallocated: GitHub attestation delivery requires an explicitly authorized GitHub write; the frozen artifact action/phase permits no such delegated effect.'
 ]);
+
+const buildToolPreflightEnvironment = Object.freeze([
+  'PATH', 'DOCKER_CONFIG', 'DOCKER_HOST', 'BUILDKIT_HOST', 'BUILDX_CONFIG', 'DOCKER_CONTEXT',
+  'DOCKER_CERT_PATH', 'DOCKER_TLS_VERIFY', 'DOCKER_API_VERSION', 'LIFTOFF_DIGEST_RECIPE'
+]);
+const buildToolPreflight = String.raw`/usr/bin/env -i \
+  ${buildToolPreflightEnvironment.map(name => name + '="${' + name + '-}"').join(' \\\n  ')} \
+  node --input-type=module <<'LIFTOFF_APPLICATION_TOOL_PREFLIGHT'
+import { spawnSync } from 'node:child_process';
+function observeWithoutAuthority() {
+  const environment = {};
+  for (const name of ${JSON.stringify(buildToolPreflightEnvironment)}) {
+    if (typeof process.env[name] === 'string') environment[name] = process.env[name];
+  }
+  const result = spawnSync(process.execPath, ['--input-type=module'], {
+    input: ${JSON.stringify(applicationArtifactBuildToolObservationProgram)}, env: environment,
+    encoding: 'utf8', timeout: 30_000, maxBuffer: 64 * 1024
+  });
+  if (result.error || result.status !== 0 || result.signal !== null) {
+    return 'Read-only build-tool observation failed or exceeded its bound; output withheld. No downstream source/provider/build step was dispatched.';
+  }
+  let tools;
+  try { tools = JSON.parse(result.stdout); }
+  catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    return 'Read-only build-tool observation returned invalid JSON; output withheld. No downstream source/provider/build step was dispatched.';
+  }
+  if (!tools || typeof tools !== 'object' || tools.qualification !== 'not-issued') {
+    return 'A tool observation cannot issue build authority; output withheld. No downstream source/provider/build step was dispatched.';
+  }
+  if (tools.status !== 'observed' || tools.code !== 'complete-closure-unavailable') {
+    return 'Read-only build-tool observation was refused; complete tool closure remains unavailable. No downstream source/provider/build step was dispatched.';
+  }
+  return 'Complete build-tool closure and whole-job protected custody are unavailable; no downstream source/provider/build step was dispatched.';
+}
+console.error(observeWithoutAuthority());
+process.exitCode = 1;
+LIFTOFF_APPLICATION_TOOL_PREFLIGHT`;
 
 const buildProgram = String.raw`node --input-type=module <<'LIFTOFF_APPLICATION_DIGEST'
 import assert from 'node:assert/strict';
@@ -106,6 +145,7 @@ assert(contained(temporary, process.cwd()) && contained(temporary, dockerConfig)
   (fs.lstatSync(azureConfig).mode & 0o077) === 0 &&
   contained(temporary, output) && fs.realpathSync(output) === output &&
   fs.lstatSync(output).isFile(), 'Build, credential or output paths escaped the qualified temporary scope.');
+throw new Error('Complete build-tool closure and whole-job protected custody are unavailable; no source readback, registry operation or build was dispatched.');
 const git = args => capture('git', ['-C', workspace, ...args], 'Immutable source readback');
 assert.equal(git(['rev-parse', '--verify', 'HEAD']).toString('utf8').trim(), sha, 'Checkout source changed.');
 const entries = git(['--literal-pathspecs', 'ls-tree', '-l', '-z', sha, '--', ...paths])
@@ -181,6 +221,19 @@ export function applicationArtifactDigestSteps(paths: readonly string[], value: 
   paths = applicationContextPaths(paths);
   const recipe = applicationArtifactDigestRecipe(value);
   return [
+    {
+      id: 'liftoff-build-tool-preflight',
+      name: 'Observe tool files and refuse unqualified execution',
+      shell: 'bash',
+      'working-directory': '${{ runner.temp }}',
+      'timeout-minutes': 1,
+      env: {
+        BASH_ENV: '', ENV: '', NODE_OPTIONS: '', NODE_PATH: '', NODE_V8_COVERAGE: '',
+        NODE_COMPILE_CACHE: '', NODE_REDIRECT_WARNINGS: '',
+        LIFTOFF_DIGEST_RECIPE: JSON.stringify(recipe).replaceAll('$', '\\u0024')
+      },
+      run: buildToolPreflight
+    },
     {
       uses: 'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683',
       with: { ref: '${{ inputs.source_sha }}', 'fetch-depth': 1, 'persist-credentials': false }

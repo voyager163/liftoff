@@ -107,7 +107,17 @@ The fixed six-field ready frame uses a closed encoder instead of invoking the
 general-purpose PowerShell JSON serializer before authentication. Its three
 string values are escaped by UTF-16 code unit, preserving control characters,
 quotes, backslashes and surrogate pairs without loading a serialization module.
-Other frames and incoming requests retain their existing JSON cmdlets.
+Incoming spawn requests and other frames use the stock .NET Framework
+`JavaScriptSerializer`, loaded lazily from its exact strong-named system
+assembly after the ready frame. The codec retains the 256-KiB UTF-8 frame limit,
+bounds recursion, and accepts only the declared flat spawn fields and scalar
+types; it does not invoke PowerShell's general-purpose JSON cmdlets. No extra
+runtime package, compiler or execution-policy exception is introduced. Native
+probes compare edge-string decoding with the public stock PowerShell 5.1
+`JsonObject.ConvertFromJson` helper; they do not assume different JSON-library
+semantics or claim that incoming lone surrogates survive legacy decoding. Native
+codec and controller qualification are required before treating this candidate
+as a startup repair; a portable source check cannot establish Windows timing.
 Only exact whole-line stage names enter timeout errors, never raw controller
 stderr. Startup timeout diagnostics also retain bounded numeric preparation,
 stage-receipt, authenticated-ready and request-dispatch observations on Node's
@@ -2672,6 +2682,38 @@ or working directory, and ambient workflow overrides. Tool names/versions are
 reviewed declarations, not independently qualified builder capabilities.
 The existing eleven dispatch input names are preserved; the digest recipe
 never consumes the reserved legacy image-tag input.
+
+The closed workflow now embeds `applicationArtifactBuildToolObservationProgram`
+from `application-artifact-build-tools.ts` in the first
+`liftoff-build-tool-preflight` step, before checkout, context projection, source
+readback, Azure/registry commands or build dispatch. It runs from runner temporary
+storage, not the source workspace, with a one-minute workflow-step ceiling.
+Before Node startup, the step clears shell startup and Node loader/instrumentation
+variables; `/usr/bin/env -i` supplies only a closed observation environment.
+The observer child receives the same allowlist, never a spread of ambient
+credentials, `NODE_OPTIONS`, `NODE_PATH`, coverage, compile-cache or warning hooks.
+Docker endpoint/config overrides remain visible so the observer can refuse them.
+This isolates these startup hooks; it does not qualify the shell, Node binary,
+native libraries or whole execution host.
+This bounded Linux preflight reads and reobserves
+physical Node/Git/Azure-launcher/Docker-client files, conventional Buildx
+candidate files and only the selected local Buildx declaration. It executes no
+candidate tool or plugin and never reads Docker's credential `config.json`.
+Even plugin metadata discovery can execute candidates; `docker info` is not a
+safe substitute for this static readset. The observation has a 15-second internal
+deadline, a 30-second parent-process ceiling, 128-MiB executable/64-KiB declaration
+limits and a 512-MiB cumulative read ceiling.
+
+Every result says `qualification: "not-issued"`; plugin selection and running
+BuildKit versions are not established. File hashes and local builder declarations
+are not authenticated tool origins, executable permission, daemon/container
+readback or a complete runtime/library/configuration closure. Whole-job physical
+currentness and protected custody remain unavailable. The workflow therefore
+fails closed in that first step even after a successful partial observation;
+checkout, projection and all later actions remain unreachable. It cannot issue
+`toolQualificationDigest`, publication evidence or a positive execution bridge.
+The controller's earlier pre-transmission blockers remain in place; this defense
+does not make the proposed workflow safe to dispatch manually.
 
 `PhasePlanBuild.blockers` prevents a saved executable plan or approval. Distinct
 delivery, whole-job custody and build-tool blockers remain Root/TASK14.3-held.

@@ -551,23 +551,33 @@ describe('explicit digest-only artifact source stage', () => {
     expect(f.transport.calls.filter(call => call.method !== 'GET')).toEqual([]);
     expect(f.runner.writes).toEqual([]);
   });
-  it.each(['cache-tag', 'attestation-push', 'referrers-fallback', 'working-directory', 'changed-projection', 'extra-setup'] as const)(
+  it.each([
+    'cache-tag', 'attestation-push', 'referrers-fallback', 'working-directory', 'changed-projection', 'extra-setup',
+    'late-preflight', 'missing-preflight', 'ignored-refusal', 'inherited-startup', 'source-after-refusal'
+  ] as const)(
     'rejects a newly committed and hashed %s attempt in the actual source consumer', async kind => {
       const f = await fixture(true, true);
       await selectDigestSource(f, (_workflow, job) => {
         if (!Array.isArray(job.steps) || !job.steps.every(isRecord)) throw new Error('Expected exact digest source steps.');
         const steps = job.steps;
-        if (kind === 'cache-tag') steps[2]!.run += '\ndocker buildx build --cache-to type=registry,ref=example.azurecr.io/cache:latest .\n';
-        if (kind === 'attestation-push') steps[3]!.with = { 'push-to-registry': true };
-        if (kind === 'referrers-fallback') steps[3]!.env = { OCI_FORCE_REFERRERS_TAG: 'true' };
-        if (kind === 'working-directory') steps[2]!['working-directory'] = '${{ github.workspace }}';
-        if (kind === 'changed-projection') steps[1]!.run += '\nprintf altered-projection\n';
+        const build = steps.find(step => step.id === 'liftoff-digest');
+        const projection = steps.find(step => step.id === 'liftoff-context');
+        const attestation = steps.find(step => step.name === 'Attest the original digest through GitHub');
+        if (!build || !projection || !attestation) throw new Error('Expected actual digest recipe identities.');
+        if (kind === 'cache-tag') build.run += '\ndocker buildx build --cache-to type=registry,ref=example.azurecr.io/cache:latest .\n';
+        if (kind === 'attestation-push') attestation.with = { 'push-to-registry': true };
+        if (kind === 'referrers-fallback') attestation.env = { OCI_FORCE_REFERRERS_TAG: 'true' };
+        if (kind === 'working-directory') build['working-directory'] = '${{ github.workspace }}';
+        if (kind === 'changed-projection') projection.run += '\nprintf altered-projection\n';
         if (kind === 'extra-setup') steps.unshift({ uses: 'unreviewed/setup@' + 'f'.repeat(40) });
+        if (kind === 'late-preflight') steps.unshift(steps.splice(1, 1)[0]!);
+        if (kind === 'missing-preflight') steps.shift();
+        if (kind === 'ignored-refusal') steps[0]!['continue-on-error'] = true;
+        if (kind === 'inherited-startup') steps[0]!.env = { NODE_OPTIONS: '--import=unreviewed' };
+        if (kind === 'source-after-refusal') projection.if = '${{ always() }}';
       });
       f.transport.binding = applicationArtifactBinding(f.input);
-      await expect(observeApplicationSource(f.input)).rejects.toThrow(
-        ['working-directory', 'changed-projection'].includes(kind) ? /Root publication must prepare/ : /complete exact workflow/
-      );
+      await expect(observeApplicationSource(f.input)).rejects.toThrow(/complete exact workflow/);
       expect(f.transport.calls).toEqual([]);
       expect(f.runner.writes).toEqual([]);
     }
