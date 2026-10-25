@@ -17,11 +17,9 @@ export async function withGovernanceLock<T>(
   body: () => Promise<T>,
 ): Promise<T> {
   const lock = path.join(directory, ...GOVERNANCE_LOCK_FILE.split("/"));
-  try {
-    await fs.writeFile(lock, `${now()}\n`, false);
-  } catch (error) {
-    if ((await fs.state(lock)) === "missing") throw error;
-    const since = (await fs.readText(lock))?.trim() ?? "an unknown time";
+  // Any other failure, such as a full disk, is thrown as it is.
+  if (!(await fs.createExclusive(lock, `${now()}\n`))) {
+    const since = (await fs.readText(lock))?.trim() || "an unknown time";
     throw new GovernanceError(
       `another liftoff governance command has been running since ${since}; if none is, delete ${GOVERNANCE_LOCK_FILE}`,
     );

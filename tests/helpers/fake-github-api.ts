@@ -32,6 +32,8 @@ export interface FakeRepository {
   >;
   rulesets: FakeRuleset[];
   driftRuns: { conclusion: string | null; html_url: string }[];
+  /** GitHub's record of changes to each branch, oldest first, as its activity API keeps it. */
+  activity?: { ref: string; before: string; after: string; activity_type: string }[];
   /** False to act like a repository whose rules GitHub does not enforce on pushes. */
   enforce: boolean;
 }
@@ -266,6 +268,10 @@ export class FakeGitHubApi implements GitHubApiPort {
       });
       return undefined;
     }
+    if (method === "GET" && rest === "/activity") {
+      const ref = new URLSearchParams(query).get("ref");
+      return page([...(repo.activity ?? [])].reverse().filter((entry) => entry.ref === ref));
+    }
     const refBranch = on("GET", /^\/git\/ref\/heads\/(.+)$/);
     if (refBranch !== undefined) {
       const sha = repo.branches[refBranch];
@@ -306,6 +312,13 @@ export class FakeGitHubApi implements GitHubApiPort {
         if (has("deletion", branch))
           throw new FakeGitHubError(422, "Repository rule violations: deletion");
         delete repo.branches[branch];
+        repo.activity = repo.activity ?? [];
+        repo.activity.push({
+          ref: `refs/heads/${branch}`,
+          before: head,
+          after: "0".repeat(40),
+          activity_type: "branch_deletion",
+        });
         return undefined;
       }
       const sha = String(input.sha);

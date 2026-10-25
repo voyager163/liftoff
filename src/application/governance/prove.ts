@@ -72,11 +72,22 @@ export async function plannedRepair(
     };
   }
   if (current === undefined) {
-    return probe.proof === "deletion"
+    if (probe.proof !== "deletion") {
+      return { found: `${probe.branch} does not exist; nothing was changed` };
+    }
+    // GitHub's own record of the branch: its latest change must be a
+    // deletion from the recorded head, or the record is not believed.
+    const [latest] =
+      (await api.find<{ activity_type: string; before: string }[]>(
+        `${route}/activity?ref=${encodeURIComponent(`refs/heads/${probe.branch}`)}&direction=desc&per_page=1`,
+      )) ?? [];
+    return latest?.activity_type === "branch_deletion" && latest.before === probe.head
       ? {
           change: `create ${probe.branch} again at ${short(probe.head)}, where the proof deleted it`,
         }
-      : { found: `${probe.branch} does not exist; nothing was changed` };
+      : {
+          found: `GitHub does not show ${probe.branch} deleted at ${short(probe.head)}, so it was not created again; restore it by hand if the proof deleted it`,
+        };
   }
   const made =
     current === probe.sha ? await api.find<Commit>(`${route}/git/commits/${current}`) : undefined;

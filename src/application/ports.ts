@@ -50,6 +50,11 @@ export interface ProjectFsPort {
   writeFile(path: string, content: string, executable: boolean): Promise<void>;
   /** Writes a file, replacing it if it exists, so a reader sees the old or the new text. */
   replaceFile(path: string, content: string): Promise<void>;
+  /**
+   * Creates a file only if there is none: false when one exists. If writing
+   * it fails once created, it is removed again and the error thrown.
+   */
+  createExclusive(path: string, content: string): Promise<boolean>;
   /** Moves the staged directory to `target`, which must be missing or empty. */
   publish(staging: string, target: string): Promise<void>;
   remove(path: string): Promise<void>;

@@ -169,7 +169,12 @@ describe("GOV-001 every page of a commit's checks is read", () => {
       ...(repo.statuses[head] ?? []),
     ];
     expect((await next(new FakeGitHubApi(repo)))?.id).toBe("rulesets");
-    repo.checkRuns[head] = runs(1000);
+    // Exactly ten full pages are all of them; the required status still counts.
+    const ciGate = repo.checkRuns[head]?.find((run) => run.name === "ci-gate");
+    if (!ciGate) throw new Error("no ci-gate run");
+    repo.checkRuns[head] = [...runs(999), ciGate];
+    expect((await next(new FakeGitHubApi(repo)))?.id).toBe("rulesets");
+    repo.checkRuns[head] = runs(1100);
     await expect(next(new FakeGitHubApi(repo))).rejects.toThrow(/more than 1000 check runs/);
   });
 });
@@ -668,6 +673,23 @@ describe("GOV-004 the proof tries what the rules forbid", () => {
     expect(github.writes()).toHaveLength(before);
     expect(repo.branches).toEqual({ main: head, develop: head });
 
+    // A deletion GitHub does not show: develop is gone, but not by the proof.
+    delete repo.branches.develop;
+    probe({ branch: "develop", proof: "deletion", head: older });
+    expect(await resume({ fs, github }, project, REPOSITORY, yes)).toMatchObject({
+      detail: expect.stringContaining("GitHub does not show develop deleted at 000000000000"),
+    });
+    expect(github.writes()).toHaveLength(before);
+    expect(repo.branches.develop).toBeUndefined();
+    // One it does show is created again at the head it had.
+    repo.branches.develop = head;
+    await github.send("DELETE", "/repos/octo/demo/git/refs/heads/develop");
+    probe({ branch: "develop", proof: "deletion", head });
+    expect(await resume({ fs, github }, project, REPOSITORY, yes)).toMatchObject({
+      detail: `develop was created again at ${head.slice(0, 12)}`,
+    });
+    expect(repo.branches.develop).toBe(head);
+
     // A commit the proof did make: put back only once the person agrees.
     const made = "a".repeat(40);
     repo.commits[made] = { tree: "t".repeat(40), parents: [head], message: PROOF_MESSAGE };
@@ -687,6 +709,27 @@ describe("GOV-004 the proof tries what the rules forbid", () => {
       detail: `develop was put back at ${head.slice(0, 12)}`,
     });
     expect(repo.branches.develop).toBe(head);
+  });
+
+  it("reports a failure to take its lock as it is, and leaves no lock behind", async () => {
+    const { github } = await enforced();
+    class FullDisk extends LocalProjectFs {
+      override async createExclusive(): Promise<boolean> {
+        throw new Error("ENOSPC: no space left on device");
+      }
+    }
+    await expect(
+      applyNext({ fs: new FullDisk(), github }, project, REPOSITORY, yes),
+    ).rejects.toThrow("ENOSPC: no space left on device");
+    // The file system creates the lock only if there is none, and removes
+    // one it could not finish writing.
+    const lock = path.join(work, "lock");
+    expect(await fs.createExclusive(lock, "first\n")).toBe(true);
+    expect(await fs.createExclusive(lock, "second\n")).toBe(false);
+    expect(readFileSync(lock, "utf8")).toBe("first\n");
+    const unwritable = path.join(work, "unwritable");
+    await expect(fs.createExclusive(unwritable, undefined as unknown as string)).rejects.toThrow();
+    expect(existsSync(unwritable)).toBe(false);
   });
 
   it("runs one governance command at a time", async () => {

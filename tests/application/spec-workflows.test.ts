@@ -327,6 +327,7 @@ describe("INIT-005 what an initializer writes is checked before anything is publ
       publish: (s, t) => fs.publish(s, t),
       remove: (p) => fs.remove(p),
       replaceFile: (p, c) => fs.replaceFile(p, c),
+      createExclusive: (p, c) => fs.createExclusive(p, c),
       listTree: async () => [{ path: "openspec/link", kind: "other" }],
     };
     await expect(create(writes({}), config(), linking)).rejects.toThrow(

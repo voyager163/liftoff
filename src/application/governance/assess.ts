@@ -115,6 +115,8 @@ export async function observe(
       const items = await read(page);
       if (items.length < 100 || !wanted()) return;
     }
+    // MAX_PAGES full pages are all there is only if the next one is empty.
+    if ((await read(MAX_PAGES + 1)).length === 0 || !wanted()) return;
     throw new GovernanceError(
       `${sha} has more than ${MAX_PAGES * 100} ${what}; let a required check run on a newer pull request`,
     );

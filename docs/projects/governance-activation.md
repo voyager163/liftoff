@@ -89,7 +89,8 @@ stops and the record stays: `liftoff governance resume` puts it back once
 GitHub allows, and apply-next and verify wait until then. `status` shows
 it. Because the record is a file anyone can edit, resume checks it on
 GitHub first: it only puts back a branch the rulesets protect, from a
-commit the proof made from the recorded head, and asks before it does.
+commit the proof made from the recorded head, or one GitHub's activity
+record shows deleted from that head, and asks before it does.
 
 A new proof replaces the last one as soon as it starts: if it stops part
 way, the proof counts as failed rather than keeping an earlier pass.

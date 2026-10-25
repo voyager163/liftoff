@@ -107,6 +107,7 @@ describe("INIT-002 projects are created in one step or not at all", () => {
       publish: (s, t) => fs.publish(s, t),
       remove: (p) => fs.remove(p),
       replaceFile: (p, c) => fs.replaceFile(p, c),
+      createExclusive: (p, c) => fs.createExclusive(p, c),
       listTree: (d) => fs.listTree(d),
       writeFile: async (p, c, x) => {
         if (++writes === 5) throw new Error("disk full");
@@ -154,6 +155,7 @@ describe("INIT-002 the working directory and cancellation", () => {
       publish: (s, t) => fs.publish(s, t),
       remove: (p) => fs.remove(p),
       replaceFile: (p, c) => fs.replaceFile(p, c),
+      createExclusive: (p, c) => fs.createExclusive(p, c),
       listTree: (d) => fs.listTree(d),
       writeFile: async (p, c, x) => {
         if (++writes === 3) controller.abort();

@@ -142,8 +142,8 @@ way, blocks apply-next, even when every checkpoint looks done, until
 GitHub shows its checkpoint done, otherwise failed, for apply-next to offer
 again after asking. For an interrupted proof, the record is not trusted:
 resume puts a branch back only if the rulesets protect it and it is at a
-commit that proof made, or was deleted by it, and only after the person
-agrees. `liftoff governance status` shows what is recorded, including an
+commit that proof made, or GitHub's activity record shows it was deleted
+from the recorded head, and only after the person agrees. `liftoff governance status` shows what is recorded, including an
 interrupted proof, without contacting GitHub. A record for another
 repository is refused.
 
