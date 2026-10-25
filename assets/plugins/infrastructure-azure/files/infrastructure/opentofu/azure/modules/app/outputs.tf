@@ -11,3 +11,13 @@ output "migrate_job" {
 output "resource_group" {
   value = local.resource_group
 }
+
+output "api_app" {
+  description = "The API's container app, which deployments update by image digest."
+  value       = azurerm_container_app.api.name
+}
+
+output "web_app" {
+  description = "The frontend's container app, if there is one."
+  value       = local.frontend ? azurerm_container_app.web[0].name : null
+}

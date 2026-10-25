@@ -83,5 +83,6 @@ Applying is separate from generating. Apply `bootstrap/` first with
 identities AcrPull, so it needs Owner or User Access Administrator on the
 subscription. Then apply each environment with a `backend.hcl` and
 `terraform.tfvars` made from theirs. Before deploying a new API image, start
-the environment's migrations job. Deploying from CI with a managed identity
-and OIDC comes with the generated delivery workflows.
+the environment's migrations job. The generated workflows then deploy by
+digest once Azure is set up for them; see
+[the release flow](release-flow.md#deploying).

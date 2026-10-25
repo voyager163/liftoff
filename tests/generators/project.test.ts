@@ -1338,16 +1338,19 @@ describe("FLOW-004 CI the release workflows start checks the pull request like G
   });
 
   it("asks the release app's token to read the workflow runs it checks", async () => {
-    const generated = await byPath({});
-    const release = parse(generated.get(".github/workflows/20-release.yml")?.content ?? "") as {
-      jobs: { release: { steps: Step[] } };
-    };
-    const app = release.jobs.release.steps.find((step) => step.id === "app");
-    expect(app?.with).toMatchObject({
-      "permission-contents": "write",
-      "permission-pull-requests": "write",
-      "permission-actions": "read",
-    });
+    // Without staging, and with it, where the release is qualified first.
+    for (const options of [{}, { infrastructure: "azure", environments: ["staging"] }]) {
+      const generated = await byPath(options);
+      const release = parse(generated.get(".github/workflows/20-release.yml")?.content ?? "") as {
+        jobs: { release: { steps: Step[] } };
+      };
+      const app = release.jobs.release.steps.find((step) => step.id === "app");
+      expect(app?.with).toMatchObject({
+        "permission-contents": "write",
+        "permission-pull-requests": "write",
+        "permission-actions": "read",
+      });
+    }
   });
 });
 
@@ -1504,5 +1507,65 @@ describe("FLOW-003 GitFlow projects build once and release through main", () => 
       expect(none.has(`.github/workflows/${file}`)).toBe(false);
     }
     expect(none.has(".github/liftoff/release.mjs")).toBe(false);
+  });
+});
+
+describe("FLOW-007 projects with infrastructure deploy by digest, and fail closed until set up", () => {
+  type Job = {
+    if?: string;
+    uses?: string;
+    needs?: string[] | string;
+    with?: Record<string, string>;
+    steps?: { name?: string; uses?: string; run?: string }[];
+  };
+  const workflow = (files: Map<string, { content: string }>, name: string) =>
+    parse(files.get(`.github/workflows/${name}`)?.content ?? "") as { jobs: Record<string, Job> };
+
+  it("deploys dev from develop, qualifies staging before a release, and production on request", async () => {
+    const files = await byPath({
+      frontend: "vue",
+      infrastructure: "azure",
+      environments: ["dev", "staging", "prod"],
+    });
+    const build = workflow(files, "10-build.yml");
+    expect(build.jobs["deploy-dev"]).toMatchObject({
+      if: "github.ref == 'refs/heads/develop' && vars.AZURE_DEPLOYMENTS == 'on'",
+      uses: "./.github/workflows/reusable-deploy.yml",
+      with: { environment: "dev", candidate: "${{ github.sha }}" },
+    });
+    const release = workflow(files, "20-release.yml");
+    expect(Object.keys(release.jobs)).toEqual(["candidate", "staging", "qualify", "release"]);
+    expect(release.jobs.staging).toMatchObject({ if: "vars.AZURE_DEPLOYMENTS == 'on'" });
+    const qualify = (release.jobs.qualify?.steps ?? [])
+      .map((step) => step.run ?? step.uses ?? "")
+      .join("\n");
+    expect(qualify).toContain("npm run test:e2e");
+    expect(qualify).toContain("zaproxy/action-baseline@");
+    expect(release.jobs.release?.if).toContain("needs.qualify.result == 'success'");
+    const production = workflow(files, "50-production.yml");
+    expect(production.jobs.deploy).toMatchObject({
+      uses: "./.github/workflows/reusable-deploy.yml",
+      with: { environment: "prod" },
+    });
+    const deploy = files.get(".github/workflows/reusable-deploy.yml")?.content ?? "";
+    expect(deploy).toContain("Deploy target not configured for ${ENVIRONMENT}");
+    expect(deploy).toContain("APP_URL AZURE_WEB_APP; do");
+    expect(deploy).toContain('"${APP_URL}/api/health/ready"');
+    expect(files.get(".github/liftoff/resolve-images.sh")?.ownership).toBe("managed");
+  });
+
+  it("deploys only to the environments the infrastructure has", async () => {
+    const prodOnly = await byPath({ infrastructure: "azure", environments: ["prod"] });
+    expect(Object.keys(workflow(prodOnly, "10-build.yml").jobs)).toEqual(["image"]);
+    expect(Object.keys(workflow(prodOnly, "20-release.yml").jobs)).toEqual(["release"]);
+    expect(prodOnly.has(".github/workflows/50-production.yml")).toBe(true);
+    expect(prodOnly.get(".github/workflows/reusable-deploy.yml")?.content).toContain(
+      '"${APP_URL}/health/ready"',
+    );
+    const none = await byPath({});
+    for (const file of ["reusable-deploy.yml", "50-production.yml"]) {
+      expect(none.has(`.github/workflows/${file}`)).toBe(false);
+    }
+    expect(Object.keys(workflow(none, "10-build.yml").jobs)).toEqual(["image"]);
   });
 });

@@ -160,3 +160,4 @@ jobs:
           subject-digest: ${{ steps.publish.outputs.digest || steps.existing.outputs.digest }}
           sbom-path: ${{ runner.temp }}/sbom.cdx.json
           push-to-registry: true
+{{liftoff.deployDev}}

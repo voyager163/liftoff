@@ -1,0 +1,68 @@
+# Managed by Liftoff. Change it through Liftoff rather than by hand.
+#
+# Deploys a published release to production, from main only and by digest.
+# It checks the release's tag is on main with exactly the tree of the
+# candidate CI qualified, verifies the release manifest attested for each
+# image, and deploys those exact images. Protect the prod environment with
+# required reviewers so a person approves each deployment.
+name: Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The released version to deploy, such as 1.2.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Check the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
+    outputs:
+      candidate: ${{ steps.release.outputs.candidate }}
+      expected: ${{ steps.release.outputs.expected }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/liftoff
+      - name: Find the release, and check it is on main with the qualified tree
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: node .github/liftoff/release.mjs production
+      - name: Verify the release manifest attested for each image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED: ${{ steps.release.outputs.expected }}
+          PREDICATE: {{liftoff.manifestPredicate}}
+        run: |
+          while read -r name digest; do
+            gh attestation verify "oci://ghcr.io/${GITHUB_REPOSITORY,,}/${name}@${digest}" \
+              --repo "$GITHUB_REPOSITORY" --predicate-type "$PREDICATE" \
+              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/30-after-release.yml"
+          done <<< "$EXPECTED"
+
+  deploy:
+    name: Deploy to production
+    needs: release
+    uses: ./.github/workflows/reusable-deploy.yml
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+      attestations: read
+    with:
+      environment: prod
+      candidate: ${{ needs.release.outputs.candidate }}
+      expected: ${{ needs.release.outputs.expected }}

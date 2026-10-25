@@ -1,8 +1,13 @@
 // The release steps of a generated GitFlow project, bundled into
 // .github/liftoff/release.mjs and run by its release workflows:
 //
-// - open-release: cuts release/X.Y.Z at a develop commit whose CI and build
-//   passed, and opens its pull request into main.
+// - candidate: checks a develop commit may be released: CI and the build
+//   passed, and the version is new. Staging is deployed and qualified with it
+//   before open-release when the project has a staging environment.
+// - open-release: cuts release/X.Y.Z at that commit and opens its pull
+//   request into main.
+// - production: finds a published release on main for a production deploy,
+//   and checks its lineage again.
 // - identify: on a push to main, finds the release or hotfix pull request it
 //   merged, and checks main now has exactly that candidate's tree.
 // - manifest: writes the release manifest: the commit, its tree, the
@@ -39,7 +44,15 @@ import {
   workflowPassed,
 } from "./gitflow-github.ts";
 
-export const COMMANDS = ["open-release", "identify", "manifest", "publish", "sync"] as const;
+export const COMMANDS = [
+  "candidate",
+  "open-release",
+  "identify",
+  "manifest",
+  "publish",
+  "sync",
+  "production",
+] as const;
 export type Command = (typeof COMMANDS)[number];
 
 export interface ReleaseEnvironment {
@@ -79,11 +92,24 @@ export async function main(command: Command, io: ReleaseEnvironment): Promise<nu
       io,
       summary,
       output: (name, value) => {
-        if (env.GITHUB_OUTPUT) io.appendFile(env.GITHUB_OUTPUT, `${name}=${value}\n`);
+        if (!env.GITHUB_OUTPUT) return;
+        // A value over several lines needs a delimiter it cannot contain.
+        io.appendFile(
+          env.GITHUB_OUTPUT,
+          value.includes("\n")
+            ? `${name}<<LIFTOFF_EOF\n${value}\nLIFTOFF_EOF\n`
+            : `${name}=${value}\n`,
+        );
       },
     };
     const steps: Record<Command, (context: Context) => Promise<void>> = {
+      candidate: async (c) => {
+        const { version, commit } = await checkCandidate(c);
+        c.output("commit", commit);
+        c.summary(`## Release ${version}\n\n${commit} may be released.\n`);
+      },
       "open-release": openRelease,
+      production,
       identify,
       manifest: writeManifest,
       publish,
@@ -97,8 +123,10 @@ export async function main(command: Command, io: ReleaseEnvironment): Promise<nu
   }
 }
 
-/** Cuts release/X.Y.Z at a develop commit that passed CI and the build, and opens its pull request. */
-async function openRelease(context: Context): Promise<void> {
+/** Checks a develop commit may be released as the version, and returns them. */
+async function checkCandidate(
+  context: Context,
+): Promise<{ version: string; branch: string; commit: string; cut: string | undefined }> {
   const { client, repository, env } = context;
   if (env.GITHUB_REF !== "refs/heads/develop") {
     throw new Error("run the release workflow from develop");
@@ -131,6 +159,13 @@ async function openRelease(context: Context): Promise<void> {
       throw new Error(`${what} has not passed on develop for ${commit}`);
     }
   }
+  return { version, branch, commit, cut };
+}
+
+/** Cuts release/X.Y.Z at a develop commit that passed CI and the build, and opens its pull request. */
+async function openRelease(context: Context): Promise<void> {
+  const { client, repository } = context;
+  const { version, branch, commit, cut } = await checkCandidate(context);
   if (cut === undefined) {
     await client.post(`/repos/${repository}/git/refs`, {
       ref: `refs/heads/${branch}`,
@@ -143,6 +178,14 @@ async function openRelease(context: Context): Promise<void> {
     base: "main",
     body: [
       `Releases ${commit}, a develop commit whose CI and build passed.`,
+      ...(context.env.QUALIFIED === undefined
+        ? []
+        : [
+            "",
+            context.env.QUALIFIED === "true"
+              ? "Staging qualified it."
+              : "It was not qualified on staging: Azure deployments are off.",
+          ]),
       "",
       "Merge it with a merge commit once its checks pass. The release workflow then tags it, publishes its manifest and opens the pull request that brings main back into develop.",
     ].join("\n"),
@@ -329,6 +372,57 @@ async function openPullRequest(
     `/repos/${repository}/pulls?head=${encodeURIComponent(`${owner}:${request.head}`)}&base=${encodeURIComponent(request.base)}&state=open`,
   );
   return open ?? client.post(`/repos/${repository}/pulls`, request);
+}
+
+/**
+ * Finds the release to deploy to production: its tag must be on main, and
+ * main's history at the tag must have exactly the tree of the candidate CI
+ * qualified, as its manifest records. Outputs the candidate and its images.
+ */
+async function production(context: Context): Promise<void> {
+  const { client, repository, env } = context;
+  if (env.GITHUB_REF !== "refs/heads/main") {
+    throw new Error("deploy to production from main only");
+  }
+  const version = required(env, "VERSION").trim();
+  if (!isVersion(version)) throw new Error(`${version} is not a version such as 1.2.0`);
+  const release = await client.get<{ body: string | null }>(
+    `/repos/${repository}/releases/tags/v${version}`,
+  );
+  const json = /```json\n([\s\S]*?)\n```/.exec(release.body ?? "")?.[1];
+  if (json === undefined) throw new Error(`the v${version} release has no manifest`);
+  const manifest = JSON.parse(json) as ReleaseManifest;
+  if (manifest.version !== version || manifest.repository !== repository) {
+    throw new Error(`the v${version} release's manifest is for another release`);
+  }
+  const tag = (
+    await client.get<{ object: { sha: string } }>(`/repos/${repository}/git/ref/tags/v${version}`)
+  ).object.sha;
+  if (tag !== manifest.source.commit) {
+    throw new Error(
+      `v${version} points at ${tag}, not ${manifest.source.commit} as its manifest says`,
+    );
+  }
+  if ((await compare(client, repository, "main", tag)).ahead_by > 0) {
+    throw new Error(`v${version} is not on main`);
+  }
+  const trees = [
+    await treeOf(client, repository, tag),
+    await treeOf(client, repository, manifest.source.candidate),
+  ];
+  if (trees.some((tree) => tree !== manifest.source.tree)) {
+    throw new Error(
+      `v${version} does not have exactly the tree of ${manifest.source.candidate}, the candidate CI qualified`,
+    );
+  }
+  context.output("candidate", manifest.source.candidate);
+  context.output(
+    "expected",
+    manifest.images.map((image) => `${image.name} ${image.digest}`).join("\n"),
+  );
+  context.summary(
+    `## Production ${version}\n\nDeploying ${manifest.source.candidate}'s images by digest.\n`,
+  );
 }
 
 /**

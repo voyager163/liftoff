@@ -1,3 +1,4 @@
+import { RELEASE_MANIFEST_PREDICATE } from "../../domain/governance/release.ts";
 import { renderTemplate } from "../../generators/template.ts";
 import type { Artifact, ProjectPlugin } from "../contracts/project-plugin.ts";
 
@@ -17,7 +18,10 @@ export const TRIVY = {
  * commits, scanned, published by digest and attested; releases cut from a
  * develop commit whose CI and build passed; and, after a release merges into
  * main, its manifest attested, the tag and GitHub release published, and main
- * brought back into develop.
+ * brought back into develop. With infrastructure it also deploys by digest:
+ * each develop build to dev, each release candidate to staging to qualify it
+ * first, and a published release to production on request. Deployments fail
+ * closed until Azure is set up.
  */
 export const releasePlugin: ProjectPlugin = {
   id: "release/gitflow",
@@ -29,28 +33,76 @@ export const releasePlugin: ProjectPlugin = {
     const images = context.components.flatMap(({ image }) => (image ? [image] : []));
     if (images.length === 0) return [];
     const bundle = context.ciBundles["release.mjs"];
-    if (bundle === undefined)
+    if (bundle === undefined) {
       throw new Error("this release does not ship the release.mjs CI bundle");
-    const workflow = (name: string, values: Record<string, string> = {}): Artifact => ({
-      path: `.github/workflows/${name}`,
+    }
+    const read = (name: string, values: Record<string, string> = {}) =>
+      renderTemplate(context.templates.read(`${ROOT}/${name}`), values, `${ROOT}/${name}`);
+    const workflow = (path: string, text: string): Artifact => ({
+      path: `.github/workflows/${path}`,
       ownership: "managed",
-      content: renderTemplate(context.templates.read(`${ROOT}/${name}`), values, `${ROOT}/${name}`),
+      content: text,
     });
+    const imageNames = images.map(({ name }) => name).join(" ");
+    const deploys = context.infrastructure !== undefined;
+    const has = (environment: string) =>
+      deploys && (context.environments as readonly string[]).includes(environment);
+    const frontend = context.frontend !== undefined;
+
     return [
       { path: ".github/liftoff/release.mjs", ownership: "managed", content: bundle },
-      workflow("10-build.yml", {
-        images: images
-          .map(
-            ({ name, context: directory }) =>
-              `          - name: ${name}\n            context: ${directory}`,
-          )
-          .join("\n"),
-        trivyVersion: TRIVY.version,
-        trivySha256: TRIVY.sha256,
-      }),
-      workflow("11-after-build.yml"),
-      workflow("20-release.yml"),
-      workflow("30-after-release.yml", { imageNames: images.map(({ name }) => name).join(" ") }),
+      {
+        path: ".github/liftoff/resolve-images.sh",
+        ownership: "managed",
+        content: read("resolve-images.sh"),
+      },
+      workflow(
+        "10-build.yml",
+        read("10-build.yml", {
+          images: images
+            .map(
+              ({ name, context: directory }) =>
+                `          - name: ${name}\n            context: ${directory}`,
+            )
+            .join("\n"),
+          trivyVersion: TRIVY.version,
+          trivySha256: TRIVY.sha256,
+          deployDev: has("dev") ? read("deploy-dev-job.yml") : "",
+        }),
+      ),
+      workflow("11-after-build.yml", read("11-after-build.yml")),
+      workflow(
+        "20-release.yml",
+        has("staging")
+          ? read("20-release-qualified.yml", {
+              qualification: frontend
+                ? "its browser tests and the ZAP baseline scan"
+                : "the ZAP baseline scan",
+              browserTests: frontend ? read("browser-tests.yml").trimEnd() : "",
+            })
+          : read("20-release.yml"),
+      ),
+      workflow("30-after-release.yml", read("30-after-release.yml", { imageNames })),
+      ...(has("prod")
+        ? [
+            workflow(
+              "50-production.yml",
+              read("50-production.yml", { manifestPredicate: RELEASE_MANIFEST_PREDICATE }),
+            ),
+          ]
+        : []),
+      ...(deploys
+        ? [
+            workflow(
+              "reusable-deploy.yml",
+              read("reusable-deploy.yml", {
+                imageNames,
+                webVariable: frontend ? " AZURE_WEB_APP" : "",
+                readyPath: frontend ? "/api/health/ready" : "/health/ready",
+              }),
+            ),
+          ]
+        : []),
     ];
   },
 };

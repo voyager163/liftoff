@@ -1,7 +1,7 @@
 # The release flow
 
-Projects with a GitFlow governance profile get four workflows that build,
-release and publish their container images. Each image is built once, and
+Projects with a GitFlow governance profile get workflows that build,
+release, publish and deploy their container images. Each image is built once, and
 a release is exactly what CI qualified on `develop`. The scripts they run are
 bundled into `.github/liftoff/release.mjs`, so CI needs no Liftoff
 installation.
@@ -127,10 +127,42 @@ Verify an image's manifest with:
 gh attestation verify oci://ghcr.io/owner/repo/api@sha256:DIGEST --repo OWNER/REPO --predicate-type https://github.com/voyager163/liftoff/blob/develop/docs/projects/release-flow.md#release-manifest
 ```
 
+## Deploying
+
+With `--infrastructure azure`, the workflows also deploy, always by digest
+and never by rebuilding, through `.github/workflows/reusable-deploy.yml`:
+
+| Environment | When | How |
+| --- | --- | --- |
+| `dev` | every build of `develop` | a job of the Build workflow |
+| `staging` | when you run the Release workflow | the candidate is deployed and qualified before `release/X.Y.Z` is cut: the frontend's browser tests (with a frontend) and the ZAP baseline scan run against it |
+| `prod` | when you run the Production workflow (`50-production.yml`) from `main` with a released version | its tag must be on `main` with exactly the candidate's tree, the release manifest attested for each image is verified, and exactly those images are deployed |
+
+Each deployment verifies each image's build provenance, copies it into the
+environment's container registry, runs the database migrations with the new
+API image, updates the container apps and waits until the application is
+ready.
+
+Deployments start once Azure is set up: set the `AZURE_DEPLOYMENTS`
+repository variable to `on`, and these variables on each GitHub environment
+(`dev`, `staging`, `prod`):
+
+| Variable | Value |
+| --- | --- |
+| `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` | the identity GitHub signs in as with OpenID Connect, which needs no secret |
+| `AZURE_RESOURCE_GROUP`, `AZURE_API_APP`, `AZURE_WEB_APP`, `AZURE_MIGRATE_JOB`, `APP_URL` | the environment root's outputs |
+| `AZURE_CONTAINER_REGISTRY` | bootstrap's `container_registry` output |
+
+Until then the dev deployment and staging qualification are skipped, and a
+release's pull request says it was not qualified on staging. A deployment
+that does run without them fails, naming what is missing: it never reports a
+deployment that did not happen. Protect the `prod` environment with
+required reviewers so that a person approves each production deployment.
+
 ## Limits
 
-- Deploying to the Azure environments, and promoting a release to production
-  by digest, come with infrastructure activation in a later release.
+- Setting up Azure for deployments, its identity and the role assignments it
+  needs, comes with infrastructure activation in a later release.
 - Liftoff has checked these workflows with actionlint and its tests, but has
-  not yet run them in a GitHub repository. Until it has, they are
-  unqualified.
+  not yet run them in a GitHub repository or against Azure. Until it has,
+  they are unqualified.

@@ -177,3 +177,30 @@ rules, and the readback matches. Read-only, `liftoff governance assess`
 reports on Liftoff's own repository.
 
 Verification: live
+
+## FLOW-007 Projects with infrastructure deploy by digest, failing closed
+
+A GitFlow project with Azure infrastructure gets a reusable deploy workflow
+that, for one environment and candidate commit, checks every variable the
+environment needs and fails naming those missing, verifies each image's
+build provenance (and, when given, that the images are exactly the expected
+digests), copies them into the environment's registry, runs the migrations
+with the new API image, updates the container apps and waits for readiness.
+Develop builds deploy to dev, and the Release workflow deploys the candidate
+to staging and qualifies it with the browser tests (with a frontend) and the
+ZAP baseline before cutting the release, only once the AZURE_DEPLOYMENTS
+variable is on; until then the release says it was not qualified on staging.
+The Production workflow, from main only, checks the release's tag is on main
+with the candidate's tree and its attested manifest, and deploys exactly
+those images. Each workflow exists only for the environments the
+infrastructure has.
+
+Verification: test
+
+## FLOW-008 Deployments work on Azure
+
+Once Azure is set up, a develop build deploys to dev, a release is qualified
+on staging, and a release deploys to production by digest, each ending with
+the application ready.
+
+Verification: live
