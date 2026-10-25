@@ -9,6 +9,9 @@ import { type Database, MIGRATIONS } from "../src/db/database.ts";
 import * as schema from "../src/db/schema.ts";
 import type { DatabaseProbe } from "../src/health.ts";
 
+/** node-postgres accepts both URL schemes. */
+export const isPostgresUrl = (url: string): boolean => /^postgres(ql)?:\/\//.test(url);
+
 export const testConfig = (overrides: Partial<Config> = {}): Config => ({
   ...loadConfig({}),
   logLevel: "fatal",

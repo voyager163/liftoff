@@ -6,7 +6,10 @@ import { connect } from "./db/database.ts";
 import { databaseProbe } from "./health.ts";
 
 export async function start(config: Config): Promise<FastifyInstance> {
-  const { db, close } = connect(config.databaseUrl, config.databaseTimeoutSeconds);
+  // Pool connections open only for requests, so app exists before any can fail.
+  const { db, close } = connect(config.databaseUrl, config.databaseTimeoutSeconds, (error) =>
+    app.log.warn({ err: error }, "an idle database connection failed; it will be replaced"),
+  );
   const app = await buildApp({
     config,
     db,

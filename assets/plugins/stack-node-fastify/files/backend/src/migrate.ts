@@ -4,7 +4,9 @@ import { type Config, loadConfig } from "./config.ts";
 import { connect, MIGRATIONS } from "./db/database.ts";
 
 export async function runMigrations(config: Config): Promise<void> {
-  const { db, close } = connect(config.databaseUrl, config.databaseTimeoutSeconds);
+  const { db, close } = connect(config.databaseUrl, config.databaseTimeoutSeconds, (error) =>
+    console.error(`an idle database connection failed: ${error.message}`),
+  );
   try {
     await migrate(db, { migrationsFolder: MIGRATIONS });
   } finally {

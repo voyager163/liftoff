@@ -16,11 +16,21 @@ export interface Connection {
   close(): Promise<void>;
 }
 
-/** A connection pool for the API. Connections are opened on first use. */
-export function connect(url: string, timeoutSeconds: number): Connection {
+/**
+ * A connection pool for the API. Connections are opened on first use. When
+ * an idle connection fails, for example because the database restarted, the
+ * pool drops it and opens a new one when next needed; the error goes to
+ * `onIdleError`, because an unhandled pool error would stop the process.
+ */
+export function connect(
+  url: string,
+  timeoutSeconds: number,
+  onIdleError: (error: Error) => void,
+): Connection {
   const pool = new pg.Pool({
     connectionString: url,
     connectionTimeoutMillis: timeoutSeconds * 1000,
   });
+  pool.on("error", onIdleError);
   return { db: drizzle(pool, { schema }), close: () => pool.end() };
 }
