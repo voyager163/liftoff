@@ -262,7 +262,10 @@ jobs:
           user=$(docker inspect --format '{{.Config.User}}' "$(docker compose ps -q api)")
           case "$user" in 10001|10001:*) ;; *) echo "the API runs as '$user', not 10001"; exit 1 ;; esac
           api=http://127.0.0.1:8000
-          status() { curl --silent --output /dev/null --write-out '%{http_code}' --max-time "$2" "$api$1"; }
+          # Prints the HTTP status, or 000 when nothing answered in time. It
+          # never fails, so a probe that times out counts as one more attempt
+          # instead of ending the step.
+          status() { curl --silent --output /dev/null --write-out '%{http_code}' --max-time "$2" "$api$1" || return 0; }
           test "$(status /health/live 5)" = 200
           test "$(status /health/ready 5)" = 200
           created=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 \
@@ -317,16 +320,20 @@ jobs:
           echo "API address: $before before, $after after"
           test "$before" != "$after"
           test "$(docker compose ps -q web)" = "$web"
+          api=http://127.0.0.1:8080/api
+          # Prints the HTTP status, or 000 when nothing answered in time; see
+          # the Compose step.
+          status() { curl --silent --output /dev/null --write-out '%{http_code}' --max-time "$2" "$api$1" || return 0; }
           ready=000
           for _ in $(seq 1 30); do
-            ready=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 http://127.0.0.1:8080/api/health/ready)
+            ready=$(status /health/ready 5)
             [ "$ready" = 200 ] && break
             sleep 1
           done
           echo "readiness through the frontend: $ready"
           test "$ready" = 200
           # The browser test saved an item, which the moved API still lists.
-          curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/api/items | grep -q '"name"'
+          curl --fail --silent --show-error --max-time 5 "$api/items" | grep -q '"name"'
       - name: Show the Compose logs
         if: failure()
         working-directory: ${{ runner.temp }}/demo

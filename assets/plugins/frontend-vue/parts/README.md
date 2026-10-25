@@ -13,7 +13,8 @@ npm test
 ```
 
 The browser calls the API at `/api` on the page's own origin, so the API
-needs no CORS settings. `npm run dev` serves the frontend on
+needs no CORS settings. A request that gets no answer within 10 seconds is
+given up, and the page offers to try again. `npm run dev` serves the frontend on
 `http://127.0.0.1:5173` and forwards `/api` to the API on
 `http://127.0.0.1:8000`; set `API_URL` to use another one. `docker compose up`
 also builds the frontend's container, where nginx serves it on

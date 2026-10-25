@@ -1,4 +1,4 @@
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App.vue";
 import { createItem, isReady, listItems, type Item } from "../api";
@@ -14,6 +14,9 @@ const item = (id: number, name: string) => ({
   name,
   created_at: "2026-01-01T00:00:00Z",
 });
+
+const retry = (app: VueWrapper) =>
+  app.findAll("button").find((button) => button.text() === "Try again");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -122,6 +125,38 @@ describe("App", () => {
       "first",
       "second",
     ]);
+  });
+
+  it("lets a list that failed to load be loaded again", async () => {
+    vi.mocked(listItems)
+      .mockRejectedValueOnce(
+        new Error("GET /items did not answer within 10 seconds"),
+      )
+      .mockResolvedValueOnce([item(1, "first")]);
+    const app = mount(App);
+    await flushPromises();
+    expect(app.get("[role=alert]").text()).toBe(
+      "Could not load the items: GET /items did not answer within 10 seconds",
+    );
+    expect(app.get("input").attributes("disabled")).toBeUndefined();
+
+    await retry(app)?.trigger("click");
+    await flushPromises();
+    expect(app.find("[role=alert]").exists()).toBe(false);
+    expect(app.findAll("li").map((li) => li.text())).toEqual(["first"]);
+    expect(retry(app)).toBeUndefined();
+  });
+
+  it("checks an unavailable API again", async () => {
+    vi.mocked(isReady).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const app = mount(App);
+    await flushPromises();
+    expect(app.text()).toContain("API unavailable");
+
+    await retry(app)?.trigger("click");
+    await flushPromises();
+    expect(app.text()).toContain("API ready");
+    expect(listItems).toHaveBeenCalledTimes(1);
   });
 
   it("ignores a blank name", async () => {

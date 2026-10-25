@@ -9,11 +9,19 @@ const name = ref("");
 const error = ref("");
 const saving = ref(false);
 const loading = ref(true);
-// Adding waits for the first list, which would otherwise replace the new item
-// if it arrived later, and for the previous add, so nothing is sent twice.
+const loadFailed = ref(false);
+// Adding waits for the list, which would otherwise replace the new item if it
+// arrived later, and for the previous add, so nothing is sent twice. Requests
+// give up after a while, so neither can keep the form disabled for good.
 const busy = computed(() => !ready.value || loading.value || saving.value);
+const canRetry = computed(
+  () => !loading.value && (ready.value === false || loadFailed.value),
+);
 
 async function load(): Promise<void> {
+  loading.value = true;
+  loadFailed.value = false;
+  ready.value = undefined;
   ready.value = await isReady();
   if (ready.value) {
     try {
@@ -21,6 +29,7 @@ async function load(): Promise<void> {
       error.value = "";
     } catch (cause) {
       error.value = `Could not load the items: ${(cause as Error).message}`;
+      loadFailed.value = true;
     }
   }
   loading.value = false;
@@ -82,6 +91,14 @@ onMounted(load);
     </form>
 
     <p v-if="error" role="alert" class="text-sm text-red-700">{{ error }}</p>
+    <button
+      v-if="canRetry"
+      type="button"
+      class="text-sm text-slate-700 underline"
+      @click="load"
+    >
+      Try again
+    </button>
 
     <ul class="divide-y divide-slate-200 rounded border border-slate-200">
       <li v-for="item in items" :key="item.id" class="px-3 py-2">

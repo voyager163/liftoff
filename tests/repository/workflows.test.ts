@@ -12,6 +12,7 @@ const files = readdirSync(directory)
   .sort();
 
 interface Step {
+  name?: string;
   uses?: string;
   run?: string;
   with?: Record<string, unknown>;
@@ -245,6 +246,92 @@ describe("PROJ-006 and PROJ-011 every API stack is checked in CI", () => {
     expect(runs("services")).toContain("--frontend vue");
     expect(runs("services")).toContain("npm run test:e2e");
     expect(runs("services")).toContain("docker compose rm --stop --force api");
+  });
+});
+
+describe("PROJ-011 probes retry until their deadline", () => {
+  const services = workflows.find((w) => w.name === "ci.yml")?.data.jobs.services;
+  const moved =
+    services?.steps?.find(
+      (step) => step.name === "Check the frontend finds the API at a new address without a restart",
+    )?.run ?? "";
+
+  // Runs the step's own script with docker, curl and sleep replaced by
+  // functions. The first `failures` probes time out, as curl does with exit 28.
+  const moveApi = (failures: number) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "liftoff-move-"));
+    try {
+      const file = path.join(dir, "step.sh");
+      writeFileSync(
+        file,
+        [
+          'moved="$STATE/moved"; probes="$STATE/probes"; echo 0 > "$probes"',
+          "docker() {",
+          '  case "$1 $2" in',
+          '    "inspect --format") case "$3" in *IPAddress*) if [ -f "$moved" ]; then echo 10.0.0.3; else echo 10.0.0.2; fi ;; *) echo demo_default ;; esac ;;',
+          '    "compose ps") echo "$4-container" ;;',
+          '    "compose up") touch "$moved" ;;',
+          '    "run --detach") echo holder ;;',
+          "  esac",
+          "}",
+          "curl() {",
+          `  case "$*" in *"/items"*) echo '[{"name":"saved"}]'; return 0 ;; esac`,
+          '  n=$(( $(cat "$probes") + 1 )); echo "$n" > "$probes"',
+          '  if [ "$n" -le "$FAILURES" ]; then printf 000; return 28; fi',
+          "  printf 200",
+          "}",
+          "sleep() { :; }",
+          moved,
+        ].join("\n"),
+      );
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", file], {
+        encoding: "utf8",
+        env: { ...process.env, STATE: dir, FAILURES: String(failures) },
+      });
+      return {
+        status: result.status,
+        stdout: result.stdout,
+        probes: Number(readFileSync(path.join(dir, "probes"), "utf8")),
+      };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("keeps trying after a probe times out", () => {
+    const result = moveApi(2);
+    expect(result.stdout).toContain("API address: 10.0.0.2 before, 10.0.0.3 after");
+    expect(result.stdout).toContain("readiness through the frontend: 200");
+    expect(result.status).toBe(0);
+    expect(result.probes).toBe(3);
+  });
+
+  it("fails once 30 probes have gone unanswered", () => {
+    const result = moveApi(1000);
+    expect(result.stdout).toContain("readiness through the frontend: 000");
+    expect(result.status).not.toBe(0);
+    expect(result.probes).toBe(30);
+  });
+
+  it("never lets a probe that times out end a step", () => {
+    const helpers = (services?.steps ?? []).flatMap((step) =>
+      (step.run ?? "").split("\n").filter((line) => line.trim().startsWith("status() {")),
+    );
+    expect(helpers).toHaveLength(2);
+    for (const helper of helpers) {
+      const result = spawnSync(
+        "bash",
+        [
+          "-eo",
+          "pipefail",
+          "-c",
+          `curl() { printf 000; return 28; }\n${helper}\ncode=$(status /x 1)\necho "got $code"`,
+        ],
+        { encoding: "utf8" },
+      );
+      expect(result.stdout).toBe("got 000\n");
+      expect(result.status).toBe(0);
+    }
   });
 });
 

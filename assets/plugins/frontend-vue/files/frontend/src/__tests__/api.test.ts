@@ -1,10 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, createItem, isReady, listItems } from "../api";
+import { ApiError, createItem, isReady, listItems, TIMEOUT_MS } from "../api";
 
 const respond = (status: number, body: unknown = null) =>
   vi.fn(async () => new Response(JSON.stringify(body), { status }));
 
+/** A fetch that never answers, until its request is aborted. */
+const stalled = () =>
+  vi.fn(
+    (_url: string, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+      }),
+  );
+
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -13,7 +25,9 @@ describe("isReady", () => {
     const fetch = respond(200, { status: "ready" });
     vi.stubGlobal("fetch", fetch);
     expect(await isReady()).toBe(true);
-    expect(fetch).toHaveBeenCalledWith("/api/health/ready");
+    expect(fetch).toHaveBeenCalledWith("/api/health/ready", {
+      signal: expect.any(AbortSignal),
+    });
   });
 
   it("is false when the API is not ready", async () => {
@@ -41,6 +55,7 @@ describe("items", () => {
     vi.stubGlobal("fetch", fetch);
     expect(await listItems()).toEqual(items);
     expect(fetch).toHaveBeenCalledWith("/api/items", {
+      signal: expect.any(AbortSignal),
       headers: { accept: "application/json" },
     });
   });
@@ -53,6 +68,7 @@ describe("items", () => {
     expect(fetch).toHaveBeenCalledWith("/api/items", {
       method: "POST",
       body: JSON.stringify({ name: "second" }),
+      signal: expect.any(AbortSignal),
       headers: {
         accept: "application/json",
         "content-type": "application/json",
@@ -68,5 +84,25 @@ describe("items", () => {
       status: 422,
       message: "POST /items answered 422",
     });
+  });
+});
+
+describe("deadlines", () => {
+  it("gives up on a request that does not answer in time", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", stalled());
+    const result = expect(listItems()).rejects.toThrow(
+      "GET /items did not answer within 10 seconds",
+    );
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
+    await result;
+  });
+
+  it("treats a readiness check that does not answer in time as not ready", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", stalled());
+    const ready = isReady();
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
+    expect(await ready).toBe(false);
   });
 });
