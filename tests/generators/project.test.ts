@@ -1552,6 +1552,11 @@ describe("FLOW-007 projects with infrastructure deploy by digest, and fail close
       .join("\n");
     expect(qualify).toContain("npm run test:e2e");
     expect(qualify).toContain("zaproxy/action-baseline@");
+    const zap = release.jobs.qualify?.steps?.find((step) =>
+      step.uses?.startsWith("zaproxy/action-baseline@"),
+    ) as Step | undefined;
+    // The action passes a failing scan unless told to fail.
+    expect(zap?.with).toMatchObject({ cmd_options: "-I", fail_action: true });
     expect(release.jobs.release?.if).toContain("needs.qualify.result == 'success'");
     const production = workflow(files, "50-production.yml");
     expect(production.jobs.deploy).toMatchObject({
@@ -1733,6 +1738,11 @@ describe("FLOW-007 projects with infrastructure deploy by digest, and fail close
 
   it("deploys to production only images whose attestation carries the release's manifest", async () => {
     const production = workflow(await azure(), "50-production.yml");
+    // Verifying reads the images from the registry, so it signs in first.
+    const steps = (production.jobs.release?.steps ?? []) as Step[];
+    const login = steps.findIndex((step) => step.uses?.startsWith("docker/login-action@"));
+    expect(login).toBeGreaterThan(-1);
+    expect(login).toBeLessThan(steps.findIndex((step) => step.name?.startsWith("Verify each")));
     // Lowercasing with ,, needs bash 4, which macOS lacks; the repository
     // here is lowercase already.
     const script = stepNamed(
