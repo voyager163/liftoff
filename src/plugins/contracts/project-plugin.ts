@@ -59,7 +59,8 @@ export type PluginKind =
   | "workflow"
   | "agents"
   | "review"
-  | "governance";
+  | "governance"
+  | "release";
 
 export interface ProjectPlugin {
   readonly id: string;
@@ -117,6 +118,8 @@ export interface ComponentPlugin extends ProjectPlugin {
   readonly layout: readonly { readonly path: string; readonly purpose: string }[];
   /** Asset directory holding the component's parts of the shared files. */
   readonly parts: string;
+  /** The container image it is shipped as: its name, and the directory its Dockerfile is in. */
+  readonly image?: { readonly name: string; readonly context: string };
   /** The language CodeQL analyzes for it, if CodeQL supports one. */
   readonly codeql?: CodeqlLanguage;
   /** Values for its parts beyond the project name, such as text built from metadata. */

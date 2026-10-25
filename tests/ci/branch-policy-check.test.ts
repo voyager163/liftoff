@@ -12,12 +12,14 @@ interface Repo {
   trees?: Record<string, string>;
   /** Answer every request with a server error. */
   down?: boolean;
+  /** Served for GET /pulls/:number, for dispatched runs. */
+  pull?: Record<string, unknown>;
   /** The pull request as GitHub has it now, when it differs from the event. */
   current?: { body?: string | null; base?: { ref: string } };
 }
 
 /** Answers the GitHub REST routes the checks read, from `repo`. */
-function fakeFetch(repo: Repo, requests: string[], pull: Record<string, unknown>) {
+function fakeFetch(repo: Repo, requests: string[], event?: Record<string, unknown>) {
   return async (input: string): Promise<Response> => {
     const url = new URL(input);
     requests.push(`${url.pathname}${url.search}`);
@@ -29,7 +31,6 @@ function fakeFetch(repo: Repo, requests: string[], pull: Record<string, unknown>
     if (repo.down) return json({ message: "unavailable" }, 503);
     const compare = /\/compare\/([^.]+)\.\.\.(\w+)$/.exec(url.pathname);
     if (compare) return json(repo.compare?.[compare[1] ?? ""] ?? { ahead_by: 0, behind_by: 0 });
-    if (url.pathname.endsWith("/pulls/7")) return json({ ...pull, ...repo.current });
     const workflow = /\/actions\/workflows\/([^/]+)\/runs$/.exec(url.pathname)?.[1];
     if (workflow !== undefined) {
       // Only successful runs are asked for.
@@ -41,6 +42,9 @@ function fakeFetch(repo: Repo, requests: string[], pull: Record<string, unknown>
     }
     const tag = /\/git\/ref\/tags\/v(.+)$/.exec(url.pathname);
     if (tag) return (repo.tags ?? []).includes(tag[1] ?? "") ? json({}) : json({}, 404);
+    if (/\/pulls\/\d+$/.test(url.pathname) && (repo.pull || event)) {
+      return json(repo.pull ?? { ...event, ...repo.current });
+    }
     const commit = /\/git\/commits\/(\w+)$/.exec(url.pathname);
     if (commit) return json({ tree: { sha: repo.trees?.[commit[1] ?? ""] ?? "tree" } });
     return json({ message: "not found" }, 404);
@@ -83,7 +87,12 @@ const run = async (
   return { code, log: logs.join(""), requests: first === "/repos/o/r/pulls/7" ? rest : requests };
 };
 
-const CI_PASSED = { runs: [{ path: ".github/workflows/01-pr-ci.yml", conclusion: "success" }] };
+const CI_PASSED = {
+  runs: [
+    { path: ".github/workflows/01-pr-ci.yml", conclusion: "success" },
+    { path: ".github/workflows/10-build.yml", conclusion: "success" },
+  ],
+};
 
 describe("FLOW-001 the branch-policy check", () => {
   it("passes work and tool branches into develop without asking GitHub", async () => {
@@ -101,7 +110,7 @@ describe("FLOW-001 the branch-policy check", () => {
     expect(log).toContain("feat/x cannot merge into develop");
   });
 
-  it("passes a release at a develop commit whose CI passed", async () => {
+  it("passes a release at a develop commit whose CI and build passed", async () => {
     const { code, requests } = await run(
       "branch",
       { head: "release/1.2.0", base: "main" },
@@ -114,6 +123,7 @@ describe("FLOW-001 the branch-policy check", () => {
     expect(requests).toEqual([
       `/repos/o/r/compare/develop...${HEAD}`,
       `/repos/o/r/actions/workflows/01-pr-ci.yml/runs?head_sha=${HEAD}&branch=develop&event=push&status=success&per_page=1`,
+      `/repos/o/r/actions/workflows/10-build.yml/runs?head_sha=${HEAD}&branch=develop&event=push&status=success&per_page=1`,
       "/repos/o/r/git/ref/tags/v1.2.0",
     ]);
   });
@@ -125,6 +135,11 @@ describe("FLOW-001 the branch-policy check", () => {
       "has 2 commit(s) that are not on develop",
     ],
     ["has no passing CI on develop", { runs: [] }, "CI has not passed on develop"],
+    [
+      "was not built",
+      { runs: [{ path: ".github/workflows/01-pr-ci.yml", conclusion: "success" }] },
+      "The build has not passed on develop",
+    ],
     [
       "had CI fail on develop",
       { runs: [{ path: ".github/workflows/01-pr-ci.yml", conclusion: "failure" }] },
@@ -144,13 +159,16 @@ describe("FLOW-001 the branch-policy check", () => {
 
   it("reads the description and base as they are now, not as the event recorded them", async () => {
     const hotfix = { head: "hotfix/1.2.1", base: "main", body: "Incident: INC-7" };
-    const removed = await run("branch", hotfix, { current: { body: "No incident any more" } });
+    const removed = await run("branch", hotfix, {
+      ...CI_PASSED,
+      current: { body: "No incident any more" },
+    });
     expect(removed.code).toBe(1);
     expect(removed.log).toContain('needs an "Incident: <reference>" line');
     const added = await run(
       "branch",
       { ...hotfix, body: "" },
-      { current: { body: "Incident: INC-7" } },
+      { ...CI_PASSED, current: { body: "Incident: INC-7" } },
     );
     expect(added.code).toBe(0);
     const retargeted = await run(
@@ -165,12 +183,19 @@ describe("FLOW-001 the branch-policy check", () => {
 
   it("checks that a hotfix starts from the current main and names its incident", async () => {
     const hotfix = { head: "hotfix/1.2.1", base: "main", body: "Incident: INC-7" };
-    expect((await run("branch", hotfix)).code).toBe(0);
+    const passed = await run("branch", hotfix, CI_PASSED);
+    expect(passed.code).toBe(0);
+    expect(passed.requests).toContain(
+      `/repos/o/r/actions/workflows/10-build.yml/runs?head_sha=${HEAD}&branch=hotfix%2F1.2.1&event=push&status=success&per_page=1`,
+    );
     const behind = await run("branch", hotfix, {
+      ...CI_PASSED,
       compare: { main: { ahead_by: 1, behind_by: 2 } },
     });
     expect(behind.code).toBe(1);
     expect(behind.log).toContain("does not start from the current main");
+    const unbuilt = await run("branch", hotfix);
+    expect(unbuilt.log).toContain("the build has not passed for");
     const unnamed = await run("branch", { ...hotfix, body: "" });
     expect(unnamed.log).toContain('needs an "Incident: <reference>" line');
   });
@@ -237,7 +262,62 @@ describe("FLOW-002 the release-lineage check", () => {
       { GITHUB_EVENT_NAME: "push" },
     );
     expect(push.code).toBe(0);
-    expect(push.log).toContain("a push has nothing to check");
+    expect(push.log).toContain("this push names none, so there is nothing to check");
+  });
+});
+
+describe("FLOW-001 checks started for a pull request by dispatch", () => {
+  const dispatched = async (mode: Mode, input: string | undefined, repo: Repo = {}) => {
+    const logs: string[] = [];
+    const requests: string[] = [];
+    const code = await main(mode, {
+      env: {
+        GITHUB_EVENT_NAME: "workflow_dispatch",
+        GITHUB_EVENT_PATH: "event.json",
+        GITHUB_REPOSITORY: "o/r",
+        GITHUB_TOKEN: "t",
+      },
+      readFile: () =>
+        JSON.stringify({ inputs: input === undefined ? {} : { pull_request: input } }),
+      appendFile: () => undefined,
+      log: (text) => logs.push(text),
+      fetch: fakeFetch(repo, requests),
+    });
+    return { code, log: logs.join(""), requests };
+  };
+  const release = {
+    number: 9,
+    state: "open",
+    body: null,
+    merge_commit_sha: MERGE,
+    head: { ref: "release/1.2.0", sha: HEAD },
+    base: { ref: "main" },
+  };
+
+  it("checks the pull request it names, against GitHub's test merge", async () => {
+    const branch = await dispatched("branch", "9", { pull: release, ...CI_PASSED });
+    expect(branch.code).toBe(0);
+    expect(branch.requests[0]).toBe("/repos/o/r/pulls/9");
+    const lineage = await dispatched("lineage", "9", {
+      pull: release,
+      trees: { [HEAD]: "t1", [MERGE]: "t2" },
+    });
+    expect(lineage.code).toBe(1);
+    expect(lineage.log).toContain("would not leave exactly the tree");
+  });
+
+  it("has nothing to check when it names no pull request", async () => {
+    const { code, requests } = await dispatched("branch", undefined);
+    expect(code).toBe(0);
+    expect(requests).toEqual([]);
+  });
+
+  it("refuses a closed pull request or a number that is not one", async () => {
+    const closed = await dispatched("branch", "9", { pull: { ...release, state: "closed" } });
+    expect(closed.code).toBe(1);
+    expect(closed.log).toContain("pull request #9 is not open");
+    const wrong = await dispatched("branch", "9; rm -rf /");
+    expect(wrong.log).toContain("must be a pull request number");
   });
 });
 

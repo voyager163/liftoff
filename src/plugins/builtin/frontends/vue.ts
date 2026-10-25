@@ -11,6 +11,7 @@ export const vueFrontend: FrontendPlugin = {
   summary: "Vue frontend with Vite, Tailwind CSS and TypeScript",
   templateRoots: [`${ROOT}/files`, `${ROOT}/parts`],
   parts: `${ROOT}/parts`,
+  image: { name: "web", context: "frontend" },
   codeql: {
     language: "javascript-typescript",
     buildMode: "none",

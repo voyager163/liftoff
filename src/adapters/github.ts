@@ -38,11 +38,13 @@ export class GitHubClient {
     return (await response.json()) as T;
   }
 
+  /** Sends a JSON body; resolves to undefined for a 204 No Content answer. */
   async post<T>(route: string, body: unknown): Promise<T> {
     const response = await this.request(`${this.apiUrl}${route}`, {
       method: "POST",
       body: JSON.stringify(body),
     });
+    if (response.status === 204) return undefined as T;
     return (await response.json()) as T;
   }
 

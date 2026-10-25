@@ -17,6 +17,7 @@ export const pythonPydanticaiStack: StackPlugin = {
   summary: "Python GenAI API with FastAPI, PydanticAI and uv",
   templateRoots: [`${ROOT}/files`, `${ROOT}/parts`],
   parts: `${ROOT}/parts`,
+  image: { name: "api", context: "backend" },
   codeql: { language: "python", buildMode: "none", subject: "the Python code" },
   checks: [
     { name: "Lint", command: "uv run ruff check .", directory: "backend" },

@@ -110,7 +110,39 @@ function ruleset(
   };
 }
 
-function governanceMarkdown({ config, hosts }: GenerationContext, profile: ProfileId): string {
+/** How releases are built and published, when the project ships container images. */
+const RELEASES = `
+## Releases
+
+The Build workflow builds each image once, from every commit on \`develop\` and
+on hotfix branches. It scans the image with Trivy, which fails on fixable high
+and critical vulnerabilities, and with Grype for information. It publishes the
+image to GitHub Container Registry, tagged with its commit, and attests how it
+was built and its SBOM. Nothing is rebuilt for a release.
+
+1. Run the Release workflow from \`develop\` with the version. It cuts
+   \`release/X.Y.Z\` at a \`develop\` commit whose CI and build passed, and
+   opens its pull request into \`main\`.
+2. Merge it with a merge commit once its checks pass.
+3. The After release workflow checks \`main\` has exactly the release's tree,
+   attests the release manifest (the commit, its tree and each image by
+   digest) for every image, tags \`vX.Y.Z\`, publishes the GitHub release and
+   opens the \`sync/…\` pull request that brings \`main\` back into
+   \`develop\`.
+
+A hotfix works the same way, from \`hotfix/X.Y.Z\` branched from \`main\`.
+
+GitHub starts no workflows for pull requests opened with the workflow token.
+With a GitHub App for releases (the \`RELEASE_APP_CLIENT_ID\` variable and the
+\`RELEASE_APP_PRIVATE_KEY\` secret), release and sync pull requests start their
+checks like any other. Without one, the workflows start CI and the review
+policy for them directly.
+`;
+
+function governanceMarkdown(
+  { config, hosts, components }: GenerationContext,
+  profile: ProfileId,
+): string {
   const p = PROFILES[profile];
   const aiLines: string[] = [];
   if (hosts.includes("copilot")) {
@@ -162,7 +194,7 @@ history being synchronized.
    high ${p.approvals.high}.
 ${aiStep}${resolveStep}. Every review thread is resolved before merging: fixed, or answered with a
    reason.
-${approvalsSection(config.owners, profile)}
+${approvalsSection(config.owners, profile)}${components.some(({ image }) => image) ? RELEASES : ""}
 ## Branch rules
 
 The intended rules are in [.github/rulesets/](.github/rulesets/). They are

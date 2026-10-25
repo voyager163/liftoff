@@ -18,6 +18,7 @@ const ENTRY_POINTS = [
   "src/ci/ai-review-entry.ts",
   "src/ci/review-metrics-entry.ts",
   "src/ci/branch-policy-entry.ts",
+  "src/ci/release-entry.ts",
   "scripts/render-own-files.ts",
   "scripts/render-cli-reference.ts",
 ];

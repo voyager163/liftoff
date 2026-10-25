@@ -1,0 +1,46 @@
+# Managed by Liftoff. Change it through Liftoff rather than by hand.
+#
+# Checks pull requests into main again once the Build workflow passes. The
+# branch check needs a passed build of a release or hotfix commit, and CI may
+# have run before it finished. This runs only once Build has completed, from
+# the default branch, and runs no pull request code: it dispatches CI for
+# each open pull request into main whose head is the built commit.
+name: After build
+
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  recheck:
+    name: Check pull requests into main again
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Start CI again for pull requests into main at the built commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # Assigned first, so a failed lookup fails this step instead of
+          # looking like no pull request.
+          pulls=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls?state=open&base=main&per_page=100" \
+            --jq '.[] | select(.head.sha == env.HEAD_SHA and .head.repo.full_name == env.GITHUB_REPOSITORY)
+              | [.number, .head.ref] | @tsv')
+          if [ -z "$pulls" ]; then
+            echo "No open pull request into main is at ${HEAD_SHA}."
+            exit 0
+          fi
+          while IFS=$'\t' read -r number branch; do
+            gh workflow run 01-pr-ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch" -f "pull_request=$number"
+            echo "Started CI for #${number} on ${branch}."
+          done <<< "$pulls"

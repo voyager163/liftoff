@@ -1,0 +1,63 @@
+# Managed by Liftoff. Change it through Liftoff rather than by hand.
+#
+# Cuts a release: release/X.Y.Z at a develop commit whose CI and build
+# passed, and its pull request into main. Run it from develop.
+#
+# With a release app (the RELEASE_APP_CLIENT_ID variable and
+# RELEASE_APP_PRIVATE_KEY secret), the pull request starts its checks like
+# any other. Without one it is opened with the workflow token, which starts
+# no workflows, so this starts CI, CodeQL and the review policy for it at its
+# exact head commit.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The version to release, such as 1.2.0
+        required: true
+        type: string
+      commit:
+        description: The develop commit to release; the latest when empty
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Cut the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/liftoff
+      - name: Use the release app, if there is one
+        id: app
+        if: vars.RELEASE_APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          # To check that CI and the build passed.
+          permission-actions: read
+      - name: Cut the release and open its pull request
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          DISPATCH: ${{ steps.app.outputs.token == '' }}
+          VERSION: ${{ inputs.version }}
+          COMMIT: ${{ inputs.commit }}
+        run: node .github/liftoff/release.mjs open-release

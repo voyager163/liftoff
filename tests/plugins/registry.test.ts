@@ -46,6 +46,7 @@ describe("PROJ-003 selections are checked first", () => {
       "agents/integration",
       "review/layered",
       "governance/single-maintainer-gitflow",
+      "release/gitflow",
     ]);
     expect(selection.frontend).toBeUndefined();
     expect(selection.components).toEqual([selection.stack]);

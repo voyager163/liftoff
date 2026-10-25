@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -1135,10 +1135,11 @@ describe("FLOW-001 GitFlow projects check branches and release lineage in CI", (
     expect(jobs["ci-gate"]?.needs).toEqual(
       expect.arrayContaining(["branch-policy", "release-lineage"]),
     );
-    const branch = jobs["branch-policy"]?.steps?.find((step) => step.run);
+    const check = (step: { run?: string }) => step.run?.includes("branch-policy.mjs");
+    const branch = jobs["branch-policy"]?.steps?.find(check);
     expect(branch?.run).toContain("node .github/liftoff/branch-policy.mjs branch\n");
     expect(branch?.env?.AUTOMATION_BRANCHES).toBe("dependabot,copilot,codex");
-    expect(jobs["release-lineage"]?.steps?.find((step) => step.run)?.run).toContain(
+    expect(jobs["release-lineage"]?.steps?.find(check)?.run).toContain(
       "node .github/liftoff/branch-policy.mjs lineage\n",
     );
     // Both read the pull request through the API.
@@ -1152,7 +1153,9 @@ describe("FLOW-001 GitFlow projects check branches and release lineage in CI", (
     // Both run the base branch's check, and run again when the description changes.
     const text = generated.get(".github/workflows/01-pr-ci.yml")?.content ?? "";
     expect(
-      text.match(/ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.sha \}\}/g),
+      text.match(
+        /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| steps\.pr\.outputs\.base \|\| github\.sha \}\}/g,
+      ),
     ).toHaveLength(2);
     expect(text).toContain("types: [opened, synchronize, reopened, edited]");
   });
@@ -1183,7 +1186,8 @@ describe("FLOW-001 GitFlow projects check branches and release lineage in CI", (
       ["branch-policy", "branch"],
       ["release-lineage", "lineage"],
     ] as const) {
-      const script = jobs[job]?.steps?.find((step) => step.run)?.run ?? "";
+      const script =
+        jobs[job]?.steps?.find((step) => step.run?.includes("branch-policy.mjs"))?.run ?? "";
       const bundle = ".github/liftoff/branch-policy.mjs";
       const workflow = ".github/workflows/01-pr-ci.yml";
       const ran = onBase(script, { [bundle]: "", [workflow]: `run: node ${bundle}` });
@@ -1206,5 +1210,299 @@ describe("FLOW-001 GitFlow projects check branches and release lineage in CI", (
     expect(Object.keys(jobs)).not.toContain("branch-policy");
     expect(jobs["ci-gate"]?.needs).not.toContain("release-lineage");
     expect(generated.has(".github/liftoff/branch-policy.mjs")).toBe(false);
+  });
+});
+
+interface Step {
+  id?: string;
+  name?: string;
+  if?: string;
+  uses?: string;
+  run?: string;
+  env?: Record<string, string>;
+  with?: Record<string, string>;
+}
+
+// Runs a workflow step's script with bash, after `shims`: shell functions
+// standing in for gh, docker and the like, which record calls in $CALLS.
+const runScript = (script: string, shims: string, env: Record<string, string> = {}) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "liftoff-step-"));
+  try {
+    const calls = path.join(dir, "calls.txt");
+    const output = path.join(dir, "output.txt");
+    writeFileSync(path.join(dir, "step.sh"), `${shims}\n${script}`);
+    const result = spawnSync("bash", ["--noprofile", "--norc", "-e", "step.sh"], {
+      cwd: dir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CALLS: calls,
+        GITHUB_OUTPUT: output,
+        GITHUB_REPOSITORY: "acme/app",
+        ...env,
+      },
+    });
+    const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
+    return {
+      status: result.status,
+      stdout: result.stdout,
+      calls: read(calls),
+      output: read(output),
+    };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+describe("FLOW-004 CI the release workflows start checks the pull request like GitHub's own", () => {
+  // Runs a step that looks up the pull request, with gh printing `answer` as
+  // `gh api --jq` would.
+  const runStep = (step: Step | undefined, pullRequest: string, answer: string) =>
+    runScript(step?.run ?? "", `gh() { printf '%s\\n' "$*" >> "$CALLS"; printf '${answer}'; }`, {
+      PULL_REQUEST: pullRequest,
+    });
+
+  it("runs the branch checks from the dispatched pull request's base", async () => {
+    const generated = await byPath({});
+    const jobs = (
+      parse(generated.get(".github/workflows/01-pr-ci.yml")?.content ?? "") as {
+        jobs: Record<string, { steps: Step[] }>;
+      }
+    ).jobs;
+    for (const job of ["branch-policy", "release-lineage"]) {
+      const steps = jobs[job]?.steps ?? [];
+      const find = steps.find((step) => step.id === "pr");
+      expect(find?.if).toBe(
+        "github.event_name == 'workflow_dispatch' && inputs.pull_request != ''",
+      );
+      expect(steps.find((step) => step.uses?.startsWith("actions/checkout@"))?.with?.ref).toBe(
+        `\${{ github.event.pull_request.base.sha || steps.pr.outputs.base || github.sha }}`,
+      );
+      const found = runStep(find, "7", "base=b1\\n");
+      expect(found).toMatchObject({ status: 0, output: "base=b1\n" });
+      expect(found.calls).toBe('api repos/acme/app/pulls/7 --jq "base=\\(.base.sha)"\n');
+      for (const bad of ["07", "7; true", "x"]) {
+        const refused = runStep(find, bad, "");
+        expect(refused.status).toBe(1);
+        expect(refused.stdout).toContain("pull_request must be a pull request number");
+        expect(refused.calls).toBe("");
+      }
+    }
+  });
+
+  it("reviews the dispatched pull request's dependencies between its base and head", async () => {
+    const generated = await byPath({});
+    const job = (
+      parse(generated.get(".github/workflows/01-pr-ci.yml")?.content ?? "") as {
+        jobs: { dependencies: { permissions: Record<string, string>; steps: Step[] } };
+      }
+    ).jobs.dependencies;
+    expect(job.permissions).toEqual({ contents: "read", "pull-requests": "read" });
+    const found = runStep(
+      job.steps.find((step) => step.id === "pr"),
+      "7",
+      "base=b1\\nhead=h1\\n",
+    );
+    expect(found.output).toBe("base=b1\nhead=h1\n");
+    const review = job.steps.find((step) =>
+      step.uses?.startsWith("actions/dependency-review-action@"),
+    );
+    expect(review?.if).toBe("github.event_name == 'pull_request' || steps.pr.outputs.head != ''");
+    expect(review?.with).toMatchObject({
+      "base-ref": `\${{ steps.pr.outputs.base }}`,
+      "head-ref": `\${{ steps.pr.outputs.head }}`,
+    });
+  });
+
+  it("runs CodeQL for the dispatched pull request and reports on it", async () => {
+    const generated = await byPath({});
+    const codeql = parse(generated.get(".github/workflows/02-codeql.yml")?.content ?? "") as {
+      on: { workflow_dispatch: { inputs: Record<string, unknown> } };
+      jobs: { analyze: { permissions: Record<string, string>; steps: Step[] } };
+    };
+    expect(Object.keys(codeql.on.workflow_dispatch.inputs)).toEqual(["pull_request"]);
+    const { permissions, steps } = codeql.jobs.analyze;
+    expect(permissions).toMatchObject({ "pull-requests": "read", "security-events": "write" });
+    const found = runStep(
+      steps.find((step) => step.id === "pr"),
+      "7",
+      "head=h1\\n",
+    );
+    expect(found.output).toBe("head=h1\nref=refs/pull/7/head\n");
+    expect(steps.find((step) => step.uses?.startsWith("actions/checkout@"))?.with?.ref).toBe(
+      `\${{ steps.pr.outputs.head }}`,
+    );
+    expect(
+      steps.find((step) => step.uses?.startsWith("github/codeql-action/analyze@"))?.with,
+    ).toMatchObject({ ref: `\${{ steps.pr.outputs.ref }}`, sha: `\${{ steps.pr.outputs.head }}` });
+  });
+
+  it("asks the release app's token to read the workflow runs it checks", async () => {
+    const generated = await byPath({});
+    const release = parse(generated.get(".github/workflows/20-release.yml")?.content ?? "") as {
+      jobs: { release: { steps: Step[] } };
+    };
+    const app = release.jobs.release.steps.find((step) => step.id === "app");
+    expect(app?.with).toMatchObject({
+      "permission-contents": "write",
+      "permission-pull-requests": "write",
+      "permission-actions": "read",
+    });
+  });
+});
+
+describe("FLOW-003 GitFlow projects build once and release through main", () => {
+  it("builds each image once, scans it with a checksum-verified Trivy and attests it", async () => {
+    const generated = await byPath({ frontend: "vue" });
+    const build = parse(generated.get(".github/workflows/10-build.yml")?.content ?? "") as {
+      on: { push: { branches: string[] } };
+      jobs: {
+        image: {
+          strategy: { matrix: { image: unknown[] } };
+          env: Record<string, string>;
+          steps: { uses?: string; run?: string }[];
+        };
+      };
+    };
+    expect(build.on.push.branches).toEqual(["develop", "hotfix/**"]);
+    expect(build.jobs.image.strategy.matrix.image).toEqual([
+      { name: "api", context: "backend" },
+      { name: "web", context: "frontend" },
+    ]);
+    expect(build.jobs.image.env.TRIVY_SHA256).toMatch(/^[0-9a-f]{64}$/);
+    const steps = build.jobs.image.steps;
+    expect(steps.map((step) => step.uses ?? "").join("\n")).not.toContain("aquasecurity/");
+    expect(steps.some((step) => step.run?.includes("sha256sum --check --strict"))).toBe(true);
+    expect(steps.some((step) => step.run?.includes("--exit-code 1 --severity HIGH,CRITICAL"))).toBe(
+      true,
+    );
+    for (const action of [
+      "anchore/scan-action@",
+      "actions/attest-build-provenance@",
+      "actions/attest@",
+    ]) {
+      expect(steps.some((step) => step.uses?.startsWith(action))).toBe(true);
+    }
+    for (const file of ["11-after-build.yml", "20-release.yml", "30-after-release.yml"]) {
+      expect(generated.get(`.github/workflows/${file}`)?.ownership).toBe("managed");
+    }
+    expect(generated.get(".github/liftoff/release.mjs")?.ownership).toBe("managed");
+    const after = generated.get(".github/workflows/30-after-release.yml")?.content ?? "";
+    expect(after).toContain("IMAGES: api web");
+    const identify = (parse(after) as { jobs: { identify: { permissions: unknown } } }).jobs
+      .identify;
+    expect(identify.permissions).toEqual({ contents: "read", "pull-requests": "read" });
+    expect(generated.get("GOVERNANCE.md")?.content).toContain("## Releases");
+  });
+
+  const workflowOf = async (file: string) =>
+    parse((await byPath({})).get(`.github/workflows/${file}`)?.content ?? "") as {
+      on: Record<string, unknown>;
+      jobs: Record<string, { if?: string; needs?: string; permissions?: unknown; steps: Step[] }>;
+    };
+
+  it("keeps an image already built for the commit, finishing its attestations", async () => {
+    const steps = (await workflowOf("10-build.yml")).jobs.image?.steps ?? [];
+    const at = steps.findIndex((step) => step.id === "existing");
+    expect(at).toBeGreaterThan(0);
+    // Steps that make the image run only without one; the SBOM's, also
+    // when an earlier run did not attest it.
+    const sbom = ["Install Trivy", "Write the CycloneDX SBOM", "Attest what the image contains"];
+    for (const step of steps.slice(at + 1)) {
+      expect(step.if, step.name).toBe(
+        sbom.includes(step.name ?? "")
+          ? "steps.existing.outputs.sbom != 'true'"
+          : "steps.existing.outputs.built != 'true'",
+      );
+    }
+    expect(steps.at(-1)?.with?.["subject-digest"]).toBe(
+      `\${{ steps.publish.outputs.digest || steps.existing.outputs.digest }}`,
+    );
+
+    const sha = "c".repeat(40);
+    // docker answers the lookup with `inspect`; gh verifies the provenance
+    // and, with --predicate-type, the SBOM.
+    const look = (inspect: string, provenance: boolean, sbomAttested: boolean) =>
+      runScript(
+        steps[at]?.run ?? "",
+        [
+          `docker() { ${inspect}; }`,
+          "gh() {",
+          `  printf '%s\\n' "$*" >> "$CALLS"`,
+          `  case "$*" in *--predicate-type*) ${sbomAttested} ;; *) ${provenance} ;; esac`,
+          "}",
+        ].join("\n"),
+        { IMAGE: "ghcr.io/acme/app/api", GITHUB_SHA: sha },
+      );
+    const found = `printf '"sha256:abc"\\n'`;
+
+    const missing = look(
+      "echo 'ERROR: ghcr.io/acme/app/api:x: not found' >&2; return 1",
+      true,
+      true,
+    );
+    expect(missing).toMatchObject({ status: 0, output: "", calls: "" });
+
+    const unreachable = look("echo 'ERROR: i/o timeout' >&2; return 1", true, true);
+    expect(unreachable.status).toBe(1);
+    expect(unreachable.stdout).toContain("Could not look up ghcr.io/acme/app/api");
+
+    const kept = look(found, true, true);
+    expect(kept).toMatchObject({
+      status: 0,
+      output: "digest=sha256:abc\nbuilt=true\nsbom=true\n",
+    });
+    expect(kept.calls.split("\n")[0]).toBe(
+      `attestation verify oci://ghcr.io/acme/app/api@sha256:abc --repo acme/app --signer-workflow acme/app/.github/workflows/10-build.yml --source-digest ${sha}`,
+    );
+    expect(kept.calls).toContain("--predicate-type https://cyclonedx.org/bom");
+
+    const noSbom = look(found, true, false);
+    expect(noSbom).toMatchObject({ status: 0, output: "digest=sha256:abc\nbuilt=true\n" });
+    expect(noSbom.stdout).toContain("attesting the SBOM an earlier run did not");
+
+    const unverified = look(found, false, true);
+    expect(unverified).toMatchObject({ status: 1, output: "" });
+    expect(unverified.stdout).toContain("It is kept, not replaced");
+  });
+
+  it("starts CI again for pull requests into main once Build passes", async () => {
+    const after = await workflowOf("11-after-build.yml");
+    expect(after.on).toEqual({ workflow_run: { workflows: ["Build"], types: ["completed"] } });
+    const recheck = after.jobs.recheck;
+    expect(recheck?.if).toBe("github.event.workflow_run.conclusion == 'success'");
+    expect(recheck?.permissions).toEqual({ actions: "write", "pull-requests": "read" });
+    const script = recheck?.steps[0]?.run ?? "";
+    const shims = `gh() { printf '%s\\n' "$*" >> "$CALLS"; [ "$1" != api ] || printf '%b' "$PULLS"; }`;
+    const env = { HEAD_SHA: "c".repeat(40) };
+    const started = runScript(script, shims, {
+      ...env,
+      PULLS: "21\\trelease/1.2.0\\n22\\thotfix/1.2.1\\n",
+    });
+    expect(started.status).toBe(0);
+    expect(started.calls).toContain("api --paginate repos/acme/app/pulls?state=open&base=main");
+    expect(started.calls.split("\n").filter((call) => call.startsWith("workflow"))).toEqual([
+      "workflow run 01-pr-ci.yml --repo acme/app --ref release/1.2.0 -f pull_request=21",
+      "workflow run 01-pr-ci.yml --repo acme/app --ref hotfix/1.2.1 -f pull_request=22",
+    ]);
+    const none = runScript(script, shims, { ...env, PULLS: "" });
+    expect(none.status).toBe(0);
+    expect(none.stdout).toContain("No open pull request into main");
+    expect(runScript(script, "gh() { return 1; }", env).status).not.toBe(0);
+  });
+
+  it("builds only the API without a frontend, and nothing without a GitFlow profile", async () => {
+    const api = await byPath({ workload: "genai", stack: "python-pydanticai", pattern: "generic" });
+    expect(api.get(".github/workflows/30-after-release.yml")?.content).toContain("IMAGES: api\n");
+    const none = await byPath({ governance: "none" });
+    for (const file of [
+      "10-build.yml",
+      "11-after-build.yml",
+      "20-release.yml",
+      "30-after-release.yml",
+    ]) {
+      expect(none.has(`.github/workflows/${file}`)).toBe(false);
+    }
+    expect(none.has(".github/liftoff/release.mjs")).toBe(false);
   });
 });
