@@ -42,3 +42,12 @@ state for you, since the state accepts only Microsoft Entra ID. Then apply
 each environment with a `backend.hcl` made from `backend.hcl.example` and a
 `terraform.tfvars` made from `terraform.tfvars.example`. Before each
 deployment of a new API image, start the environment's migrations job.
+
+The workflows deploy by digest once Azure is set up for them: set the
+`AZURE_DEPLOYMENTS` repository variable to `on`, and on each GitHub
+environment the `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` and
+`AZURE_SUBSCRIPTION_ID` of the identity GitHub signs in as, the
+`AZURE_CONTAINER_REGISTRY` from bootstrap's outputs, and the
+`AZURE_RESOURCE_GROUP`, `AZURE_API_APP`, `AZURE_WEB_APP`,
+`AZURE_MIGRATE_JOB` and `APP_URL` from the environment's outputs. Until
+then, a deployment fails and says what is missing.

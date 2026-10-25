@@ -469,3 +469,132 @@ describe("FLOW-005 after a release merges into main", () => {
     expect(log).toContain("GITHUB_TOKEN is not set");
   });
 });
+
+describe("FLOW-007 checking a candidate, and a release for production", () => {
+  it("checks a candidate without cutting anything", async () => {
+    const { code, calls, outputs } = await run("candidate", { ...OPEN, COMMIT }, { passed: BUILT });
+    expect(code).toBe(0);
+    expect(outputs).toEqual([`commit=${COMMIT}`]);
+    expect(writes(calls)).toEqual([]);
+    const unbuilt = await run("candidate", { ...OPEN, COMMIT }, { passed: [] });
+    expect(unbuilt.code).toBe(1);
+  });
+
+  it("says in the release whether staging qualified it", async () => {
+    for (const [qualified, text] of [
+      ["true", "Staging qualified it."],
+      ["false", "It was not qualified on staging: Azure deployments are off."],
+    ]) {
+      const { calls } = await run(
+        "open-release",
+        { ...OPEN, COMMIT, QUALIFIED: qualified ?? "" },
+        {
+          passed: BUILT,
+        },
+      );
+      const pr = writes(calls).find((call) => call.path.endsWith("/pulls"));
+      expect(String(pr?.body?.body)).toContain(text);
+    }
+  });
+
+  const manifest = {
+    schema: "liftoff.release-manifest/v1",
+    repository: "o/r",
+    version: "1.2.0",
+    kind: "release",
+    pullRequest: 21,
+    source: { commit: MAIN, tree: TREE, candidate: COMMIT },
+    images: [
+      { name: "api", reference: "ghcr.io/o/r/api", digest: DIGEST },
+      { name: "web", reference: "ghcr.io/o/r/web", digest: DIGEST },
+    ],
+  };
+  const published = (body = manifest): Repo => ({
+    releases: { "v1.2.0": `Notes\n\n\`\`\`json\n${JSON.stringify(body, null, 2)}\n\`\`\`` },
+    refs: { "tags/v1.2.0": MAIN },
+  });
+  const PRODUCTION = {
+    GITHUB_REF: "refs/heads/main",
+    VERSION: "1.2.0",
+    IMAGES: "api web",
+    MANIFEST_FILE: "m.json",
+  };
+
+  it("finds a release on main with its qualified tree, and its images", async () => {
+    const { code, outputs, written } = await run("production", PRODUCTION, published());
+    expect(code).toBe(0);
+    expect(outputs.slice(0, 2)).toEqual([`commit=${MAIN}`, `candidate=${COMMIT}`]);
+    // A delimiter nobody can know beforehand.
+    const [, delimiter] = /^expected<<(LIFTOFF_[0-9a-f-]{36})\n/.exec(outputs[2] ?? "") ?? [];
+    expect(outputs[2]).toBe(`expected<<${delimiter}\napi ${DIGEST}\nweb ${DIGEST}\n${delimiter}`);
+    // The manifest as read, for the attestations to be compared with.
+    expect(JSON.parse(written["m.json"] ?? "")).toEqual(manifest);
+  });
+
+  it("refuses a manifest anyone could have edited into something else", async () => {
+    const injected = {
+      ...manifest,
+      images: [
+        {
+          name: `api\nLIFTOFF_EOF\ncandidate=${"e".repeat(40)}\nexpected<<LIFTOFF_EOF\napi`,
+          reference: "ghcr.io/o/r/api",
+          digest: DIGEST,
+        },
+      ],
+    };
+    for (const [body, message] of [
+      [injected, "the release manifest is invalid: images.0.name"],
+      [{ ...manifest, source: { ...manifest.source, candidate: "main" } }, "source.candidate"],
+      [{ ...manifest, images: [...manifest.images, manifest.images[0]] }, "lists an image twice"],
+      [{ ...manifest, extra: true }, "the release manifest is invalid"],
+      [
+        { ...manifest, images: manifest.images.slice(0, 1) },
+        "does not list exactly the images api, web",
+      ],
+    ] as const) {
+      const { code, log, outputs, written } = await run(
+        "production",
+        PRODUCTION,
+        published(body as typeof manifest),
+      );
+      expect(code).toBe(1);
+      expect(log).toContain(message);
+      expect(outputs).toEqual([]);
+      expect(written["m.json"]).toBeUndefined();
+    }
+  });
+
+  it.each<[string, Record<string, string>, Repo, string]>([
+    ["off main", { GITHUB_REF: "refs/heads/develop" }, published(), "from main only"],
+    ["of a release that does not exist", { VERSION: "9.9.9" }, published(), "HTTP 404"],
+    [
+      "of a release without a manifest",
+      {},
+      { ...published(), releases: { "v1.2.0": "Notes" } },
+      "has no manifest",
+    ],
+    [
+      "whose manifest is for another release",
+      {},
+      published({ ...manifest, version: "1.1.0" }),
+      "manifest is for another release",
+    ],
+    ["whose tag moved", {}, { ...published(), refs: { "tags/v1.2.0": COMMIT } }, "points at"],
+    [
+      "not on main",
+      {},
+      { ...published(), compare: { main: { ahead_by: 1, behind_by: 0 } } },
+      "is not on main",
+    ],
+    [
+      "whose tree differs from the candidate's",
+      {},
+      { ...published(), trees: { [COMMIT]: "1".repeat(40) } },
+      "does not have exactly the tree",
+    ],
+  ])("refuses a production deploy %s", async (_case, env, repo, message) => {
+    const { code, log } = await run("production", { ...PRODUCTION, ...env }, repo);
+    expect(code).toBe(1);
+    expect(log).toContain(message);
+  });
+});

@@ -177,3 +177,37 @@ rules, and the readback matches. Read-only, `liftoff governance assess`
 reports on Liftoff's own repository.
 
 Verification: live
+
+## FLOW-007 Projects with infrastructure deploy by digest, failing closed
+
+A GitFlow project with Azure infrastructure gets a reusable deploy workflow
+that, for one environment and candidate commit, checks every variable the
+environment needs and fails naming those missing, verifies each image's
+build provenance (and, when given, that the images are exactly the expected
+digests), copies them into the environment's registry, runs the migrations
+with the new API image, updates the container apps and waits until each new
+revision is healthy with all traffic and the application is ready. A
+migration still running from an earlier deployment is waited for, and one a
+deployment gives up on is stopped, so two never run at once. Develop builds
+deploy to dev, but only while their commit is still develop's head, so an
+older build never replaces a newer one. The Release workflow deploys the
+candidate to staging and qualifies it with the browser tests (with a
+frontend) and the ZAP baseline before cutting the release, holding
+staging's deployment lock and first checking staging runs exactly that
+candidate's images; all only once the AZURE_DEPLOYMENTS variable is on, and
+until then the release says it was not qualified on staging. The Production
+workflow, from main only, reads the release's manifest strictly, checks the
+release's tag is on main with the candidate's tree, requires each image's
+attestation, made on main from the release's commit, to carry exactly that
+manifest, and deploys exactly those images. Each workflow exists only for
+the environments the infrastructure has.
+
+Verification: test
+
+## FLOW-008 Deployments work on Azure
+
+Once Azure is set up, a develop build deploys to dev, a release is qualified
+on staging, and a release deploys to production by digest, each ending with
+the application ready.
+
+Verification: live

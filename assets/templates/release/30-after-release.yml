@@ -75,16 +75,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           IMAGES: {{liftoff.imageNames}}
         run: |
-          : > "$RUNNER_TEMP/images.txt"
-          for name in $IMAGES; do
-            reference="ghcr.io/${GITHUB_REPOSITORY,,}/${name}"
-            digest=$(docker buildx imagetools inspect "${reference}:${CANDIDATE}" \
-              --format '{{json .Manifest.Digest}}' | tr -d '"')
-            gh attestation verify "oci://${reference}@${digest}" --repo "$GITHUB_REPOSITORY" \
-              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/10-build.yml" \
-              --source-digest "$CANDIDATE"
-            echo "${name} ${reference} ${digest}" >> "$RUNNER_TEMP/images.txt"
-          done
+          read -ra images <<< "$IMAGES"
+          bash .github/liftoff/resolve-images.sh "$CANDIDATE" "${images[@]}" > "$RUNNER_TEMP/images.txt"
       - name: Write the release manifest
         id: manifest
         env:

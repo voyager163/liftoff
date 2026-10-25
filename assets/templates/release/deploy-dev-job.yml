@@ -1,0 +1,18 @@
+
+  deploy-dev:
+    name: Deploy to dev
+    # Each develop build deploys to dev once Azure is set up and the
+    # AZURE_DEPLOYMENTS variable is "on".
+    needs: image
+    if: github.ref == 'refs/heads/develop' && vars.AZURE_DEPLOYMENTS == 'on'
+    uses: ./.github/workflows/reusable-deploy.yml
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+      attestations: read
+    with:
+      environment: dev
+      candidate: ${{ github.sha }}
+      # A slower build of an older commit never replaces a newer one.
+      only-if-head: develop
