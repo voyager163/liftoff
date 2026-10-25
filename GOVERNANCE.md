@@ -64,6 +64,58 @@ assuming protection from documentation.
 Don't remove or weaken a required check just to unblock a merge. Add a
 replacement check and confirm it runs before retiring the old one.
 
+## Review
+
+Liftoff follows the layered model in
+[How the Claude Code team does code review](https://claude.dev/blog/solving-code-review-at-anthropic/):
+machines do most of the reading, and human attention goes where a change's
+risk calls for it. Each layer catches different problems.
+
+1. **Before the pull request**, the author's coding agent runs the project
+   checks and shows their output (`liftoff-verify`), reviews the diff in a
+   fresh context (`liftoff-code-review`) and drafts the description with
+   Testing, Risk and How to revert (`liftoff-pr`). These skills live in
+   `assets/skills/` and are rendered into `.claude/skills/`.
+2. **Required CI**: `ci-gate` passes only when lint, types, architecture
+   boundaries, requirement traceability, generated-file drift and the tests
+   with coverage on macOS and Windows all pass. The repository checks
+   (Markdown, spelling, links, workflows) and dependency review are also
+   required.
+3. **AI review on every pull request**: GitHub Copilot code review, guided by
+   [REVIEW.md](REVIEW.md) and [AGENTS.md](AGENTS.md). Medium- and high-risk
+   pull requests also get the verified review: two or three independent
+   finder passes, three separate verifier runs that vote on every candidate,
+   and only confirmed findings posted, tagged Important, Nit or Pre-existing,
+   with a summary that starts with the count. Findings are never repeated,
+   and after three rounds the review stops and asks for a rethink. It needs
+   the `COPILOT_GITHUB_TOKEN` secret and reports "not run" without it.
+4. **Security review**: CodeQL for TypeScript and workflows, with merging
+   blocked while high or critical alerts are open; dependency review; and
+   secret scanning with push protection.
+5. **Risk-scaled human attention**: the `review-policy` check classifies each
+   pull request from what it touches, using
+   [.github/review-policy.yml](.github/review-policy.yml) as it is on the base
+   branch, and reports the tier. With one maintainer no approval is required,
+   so the tier sets how deep the automated review goes; workflows, rulesets,
+   review instructions, installers, release and telemetry code are always
+   high. `liftoff review classify` shows the same result locally.
+6. **Every review thread is resolved** before merging: fixed, or answered with
+   a reason.
+7. **Feedback loop**: the Review evals workflow scores the verified review
+   nightly against [seeded and clean cases](evals/review/), and Review metrics
+   reports human approvals, time to merge, review rounds and reverts weekly.
+   Missed bugs and reverts become new cases.
+
+### Branch rules
+
+The intended rules for `develop` and `main` are committed in
+[.github/rulesets/](.github/rulesets/). They are applied with
+`node scripts/governance/apply-rulesets.ts --apply` by the maintainer, and only
+after every check they require has run successfully on a real pull request,
+so a new rule never waits on a check that does not exist. The Governance
+drift workflow reads back the rules GitHub enforces each week and fails if
+they differ from the committed ones.
+
 ## Releases
 
 Liftoff is being rebuilt and nothing has been released from this source yet.

@@ -1,0 +1,6 @@
+{
+  "kind": "clean",
+  "patch": "change.patch",
+  "description": "Reword a comment about exit-code outcomes.",
+  "summary": "A comment-only change. Any Important finding is a false positive."
+}

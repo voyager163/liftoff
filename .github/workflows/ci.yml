@@ -1,0 +1,101 @@
+# Build and test Liftoff on its supported developer platforms, then report one
+# aggregate status (`ci-gate`) that branch rules require. The gate fails
+# unless every job it depends on succeeded: skipped, cancelled or missing
+# jobs are failures, never passes.
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # Cancel superseded pull request runs only; never a branch or queue run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  static:
+    name: Static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run boundaries
+      - run: npm run check:trace
+      - run: npm run check:generated
+
+  test:
+    name: Test (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            os: macos-15
+          - name: Windows x64
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Show platform
+        shell: bash
+        run: |
+          node -p "'node ' + process.version + ' on ' + process.platform + '-' + process.arch"
+          git --version
+      - run: npm ci
+      - run: npm run coverage
+      - name: Keep the coverage report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-${{ matrix.os }}
+          path: coverage/
+          retention-days: 14
+          if-no-files-found: error
+
+  ci-gate:
+    name: ci-gate
+    if: always()
+    needs: [static, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every job to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          node -e '
+            const needs = JSON.parse(process.env.RESULTS);
+            const names = Object.keys(needs);
+            if (names.length === 0) { console.error("no jobs reported"); process.exit(1); }
+            let failed = false;
+            for (const name of names) {
+              const result = needs[name].result;
+              console.log(name + ": " + result);
+              if (result !== "success") failed = true;
+            }
+            process.exit(failed ? 1 : 0);
+          '

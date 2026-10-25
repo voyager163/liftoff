@@ -1,0 +1,12 @@
+diff --git a/src/domain/risk-policy/approvals.ts b/src/domain/risk-policy/approvals.ts
+index f343d76..5625fc6 100644
+--- a/src/domain/risk-policy/approvals.ts
++++ b/src/domain/risk-policy/approvals.ts
+@@ -54,7 +54,6 @@ export function evaluateApprovals(input: ApprovalInput): ApprovalResult {
+ }
+ 
+ function disqualify(review: Review, input: ApprovalInput): string | undefined {
+-  if (review.isBot) return "bot approvals never count as human approvals";
+   if (review.reviewer.toLowerCase() === input.author.toLowerCase())
+     return "the author cannot approve";
+   if (!review.hasWriteAccess) return "reviewer has no write access";

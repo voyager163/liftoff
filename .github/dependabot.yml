@@ -1,5 +1,5 @@
 # https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
-# Add an entry for each package ecosystem (for example npm) as it is introduced.
+# Add an entry for each package ecosystem as it is introduced.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -14,3 +14,16 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    versioning-strategy: increase
+    groups:
+      development:
+        dependency-type: development
+      production:
+        dependency-type: production

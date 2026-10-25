@@ -1,0 +1,30 @@
+# Reads back the branch rules GitHub actually enforces and compares them with
+# the committed desired rulesets in .github/rulesets/. A committed ruleset is
+# not proof of protection; this readback is. Fails on any difference.
+name: Governance drift
+
+on:
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Governance drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/rulesets
+            .github/liftoff
+          sparse-checkout-cone-mode: false
+      - name: Compare live branch rules with the committed rulesets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/liftoff/governance-drift.mjs
