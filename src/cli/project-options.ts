@@ -5,12 +5,15 @@ import {
   type ProjectConfig,
   validateConfig,
 } from "../domain/project/config.ts";
+import { ENVIRONMENTS } from "../plugins/contracts/project-plugin.ts";
 import {
   DEFAULT_GOVERNANCE,
   DEFAULT_WORKFLOW,
   FRONTENDS,
   GOVERNANCE,
+  INFRASTRUCTURE,
   NO_FRONTEND,
+  NO_INFRASTRUCTURE,
   STACKS,
 } from "../plugins/registry.ts";
 import type { OptionSpec, ParsedArgs } from "./command.ts";
@@ -21,7 +24,7 @@ export const PROJECT_OPTIONS: Readonly<Record<string, OptionSpec>> = {
   name: {
     type: "string",
     valueName: "name",
-    description: "Project name: lowercase letters, digits and hyphens.",
+    description: "Project name: 2 to 50 lowercase letters, digits and single hyphens.",
   },
   dir: {
     type: "string",
@@ -47,6 +50,19 @@ export const PROJECT_OPTIONS: Readonly<Record<string, OptionSpec>> = {
     default: NO_FRONTEND,
     choices: [NO_FRONTEND, ...Object.keys(FRONTENDS)],
     description: "Web frontend, or none.",
+  },
+  infrastructure: {
+    type: "string",
+    valueName: "provider",
+    default: NO_INFRASTRUCTURE,
+    choices: [NO_INFRASTRUCTURE, ...Object.keys(INFRASTRUCTURE)],
+    description: "Infrastructure as code, or none. azure generates OpenTofu for Azure.",
+  },
+  environments: {
+    type: "string",
+    valueName: "list",
+    description:
+      "Environments to generate infrastructure for, comma-separated: dev, staging, prod. Defaults to all three with --infrastructure.",
   },
   workflow: {
     type: "string",
@@ -106,6 +122,7 @@ export function projectFromOptions(
   const name = option("name");
   if (name === undefined) throw new UsageError("--name is required");
   const agents = splitList(option("agents"));
+  const infrastructure = option("infrastructure") ?? NO_INFRASTRUCTURE;
   const aiMode = option("ai-review") ?? "auto";
   const engine = option("review-engine");
   try {
@@ -116,6 +133,11 @@ export function projectFromOptions(
         workload: option("workload"),
         stack: option("stack"),
         frontend: option("frontend"),
+        infrastructure,
+        environments:
+          option("environments") === undefined && infrastructure !== NO_INFRASTRUCTURE
+            ? [...ENVIRONMENTS]
+            : splitList(option("environments")),
         workflow: option("workflow"),
         agents,
         governance: option("governance"),

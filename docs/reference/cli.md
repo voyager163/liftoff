@@ -43,11 +43,13 @@ JSON report: `liftoff.plan-report/v1`.
 
 | Option | Description |
 | --- | --- |
-| `--name <name>` | Project name: lowercase letters, digits and hyphens. |
+| `--name <name>` | Project name: 2 to 50 lowercase letters, digits and single hyphens. |
 | `--dir <path>` | Directory to create. Defaults to ./<name>. |
 | `--workload <workload>` | Kind of project. (one of `api`; default `api`) |
 | `--stack <stack>` | Technology stack: python-fastapi, node-fastify, go-huma. (default `python-fastapi`) |
 | `--frontend <frontend>` | Web frontend, or none. (one of `none`, `vue`; default `none`) |
+| `--infrastructure <provider>` | Infrastructure as code, or none. azure generates OpenTofu for Azure. (one of `none`, `azure`; default `none`) |
+| `--environments <list>` | Environments to generate infrastructure for, comma-separated: dev, staging, prod. Defaults to all three with --infrastructure. |
 | `--workflow <workflow>` | Development workflow: openspec, spec-kit or manual. (default `openspec`) |
 | `--agents <list>` | Coding-agent hosts, comma-separated: copilot, codex, claude. Defaults to none. |
 | `--governance <profile>` | Governance profile: single-maintainer-gitflow, team-gitflow, risk-tiered-gitflow, none. (default `single-maintainer-gitflow`) |
@@ -73,11 +75,13 @@ JSON report: `liftoff.init-report/v1`.
 
 | Option | Description |
 | --- | --- |
-| `--name <name>` | Project name: lowercase letters, digits and hyphens. |
+| `--name <name>` | Project name: 2 to 50 lowercase letters, digits and single hyphens. |
 | `--dir <path>` | Directory to create. Defaults to ./<name>. |
 | `--workload <workload>` | Kind of project. (one of `api`; default `api`) |
 | `--stack <stack>` | Technology stack: python-fastapi, node-fastify, go-huma. (default `python-fastapi`) |
 | `--frontend <frontend>` | Web frontend, or none. (one of `none`, `vue`; default `none`) |
+| `--infrastructure <provider>` | Infrastructure as code, or none. azure generates OpenTofu for Azure. (one of `none`, `azure`; default `none`) |
+| `--environments <list>` | Environments to generate infrastructure for, comma-separated: dev, staging, prod. Defaults to all three with --infrastructure. |
 | `--workflow <workflow>` | Development workflow: openspec, spec-kit or manual. (default `openspec`) |
 | `--agents <list>` | Coding-agent hosts, comma-separated: copilot, codex, claude. Defaults to none. |
 | `--governance <profile>` | Governance profile: single-maintainer-gitflow, team-gitflow, risk-tiered-gitflow, none. (default `single-maintainer-gitflow`) |

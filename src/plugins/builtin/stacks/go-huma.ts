@@ -70,6 +70,8 @@ export const goHumaStack: StackPlugin = {
     DOCUMENTATION_RULE,
   ],
   quickStart: { directory: "backend", command: "go test ./..." },
+  migrateCommand: ["migrate"],
+  databaseUrlScheme: "postgresql",
   layout: [
     { path: "backend/cmd/api/", purpose: "the API binary: serve, migrate and healthcheck" },
     { path: "backend/internal/", purpose: "configuration, database, health and the items API" },

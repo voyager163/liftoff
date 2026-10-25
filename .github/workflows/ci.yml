@@ -339,6 +339,61 @@ jobs:
         working-directory: ${{ runner.temp }}/demo
         run: docker compose logs --no-color
 
+  infrastructure:
+    name: Generated infrastructure (${{ matrix.case.name }})
+    # Generated OpenTofu code is formatted, validated against its committed
+    # provider locks and scanned, as the project's own CI does. Nothing is
+    # planned or applied.
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - name: every environment, with the frontend
+            options: --stack python-fastapi --frontend vue --infrastructure azure
+          - name: production only, without a frontend
+            options: --stack node-fastify --infrastructure azure --environments prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: 1.13.2
+          tofu_wrapper: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.13.1"
+      - run: npm ci
+      - name: Check resource names against Azure's rules
+        run: npm run check:azure-names
+      - name: Create the project
+        env:
+          OPTIONS: ${{ matrix.case.options }}
+        run: |
+          read -ra options <<< "$OPTIONS"
+          node src/cli/main.ts init --name demo "${options[@]}" --workflow manual \
+            --dir "$RUNNER_TEMP/demo" --yes
+      - name: Format, validate and scan the infrastructure
+        working-directory: ${{ runner.temp }}/demo/infrastructure/opentofu/azure
+        run: |
+          tofu fmt -check -recursive
+          for root in bootstrap environments/*; do
+            echo "::group::$root"
+            tofu -chdir="$root" init -backend=false -input=false -lockfile=readonly
+            tofu -chdir="$root" validate
+            echo "::endgroup::"
+          done
+          uvx --from checkov==3.3.29 checkov --directory . --framework terraform \
+            --compact --quiet --skip-path .terraform
+      - name: Validate the generated project
+        run: node src/cli/main.ts validate --dir "$RUNNER_TEMP/demo"
+
   package:
     name: Native bundle (${{ matrix.name }})
     strategy:
@@ -403,7 +458,7 @@ jobs:
   ci-gate:
     name: ci-gate
     if: always()
-    needs: [static, test, generated, services, package]
+    needs: [static, test, generated, services, infrastructure, package]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

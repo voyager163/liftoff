@@ -13,7 +13,7 @@ Without the option, a project has no frontend.
 | Example | shows whether the API is ready, lists the items and adds new ones |
 | Reaching the API | calls `/api` on the page's own origin, so the API needs no CORS settings; a request that gets no answer within 10 seconds is given up, and the page offers to try again |
 | Development | `npm run dev` on `http://127.0.0.1:5173`, forwarding `/api` to the API on `http://127.0.0.1:8000` (`API_URL` overrides it) |
-| Container | built with Node.js, served by nginx as an unprivileged user on port 8080; nginx forwards `/api/` to `API_UPSTREAM` (`http://api:8000` in Compose) and looks its address up again every 10 seconds, so a recreated API is found |
+| Container | built with Node.js, served by nginx as an unprivileged user on port 8080; nginx forwards `/api/` to `API_UPSTREAM` (`http://api:8000` in Compose, the API's internal HTTPS address in Azure) with the API's own host name, and looks its address up again every 10 seconds, so a recreated API is found |
 | Security headers | a Content-Security-Policy that only allows the page's own origin, `nosniff` and no referrer |
 | Checks | ESLint and Prettier, a strict TypeScript and Vue template check, Vitest with at least 80% on every coverage metric, the production build |
 | Browser tests | Playwright, against the whole application running in Docker Compose |

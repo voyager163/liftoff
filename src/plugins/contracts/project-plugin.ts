@@ -34,7 +34,11 @@ export interface GenerationContext {
   readonly stack: StackPlugin;
   /** The selected frontend, if any. */
   readonly frontend: FrontendPlugin | undefined;
-  /** The stack, then the frontend if one is selected. */
+  /** The selected infrastructure, if any. */
+  readonly infrastructure: InfrastructurePlugin | undefined;
+  /** Environments the infrastructure is generated for, in dev, staging, prod order. */
+  readonly environments: readonly EnvironmentId[];
+  /** The stack, then the frontend and the infrastructure if selected. */
   readonly components: readonly ComponentPlugin[];
   readonly templates: TemplateSet;
   readonly skills: readonly SkillSource[];
@@ -47,6 +51,7 @@ export type PluginKind =
   | "common"
   | "stack"
   | "frontend"
+  | "infrastructure"
   | "workflow"
   | "agents"
   | "review"
@@ -84,10 +89,10 @@ export interface CodeqlLanguage {
 }
 
 /**
- * A part of the application with its own directory, checks and container:
- * the API stack or a frontend. Files every part contributes to, such as
+ * A part of the project with its own directory and checks: the API stack, a
+ * frontend or the infrastructure. Files every part contributes to, such as
  * compose.yaml and the CI workflow, are assembled from each component's
- * parts directory:
+ * parts directory, where each of these files is optional:
  *
  * - `compose.yaml`: Compose services, a YAML mapping;
  * - `ci-jobs.yml`: CI jobs, a YAML mapping of job ids to jobs;
@@ -95,7 +100,7 @@ export interface CodeqlLanguage {
  * - `README.md`: the component's README sections.
  */
 export interface ComponentPlugin extends ProjectPlugin {
-  readonly kind: "stack" | "frontend";
+  readonly kind: "stack" | "frontend" | "infrastructure";
   readonly checks: readonly ProjectCheck[];
   readonly tools: readonly ProjectTool[];
   /** Review policy rules for the component's files, added after the built-in ones. */
@@ -106,15 +111,31 @@ export interface ComponentPlugin extends ProjectPlugin {
   readonly layout: readonly { readonly path: string; readonly purpose: string }[];
   /** Asset directory holding the component's parts of the shared files. */
   readonly parts: string;
-  readonly codeql: CodeqlLanguage;
+  /** The language CodeQL analyzes for it, if CodeQL supports one. */
+  readonly codeql?: CodeqlLanguage;
 }
 
 export interface StackPlugin extends ComponentPlugin {
   readonly kind: "stack";
   readonly workload: string;
+  readonly codeql: CodeqlLanguage;
+  /** The command, run in the API's image, that applies the database migrations. */
+  readonly migrateCommand: readonly string[];
+  /** The scheme of APP_DATABASE_URL, such as "postgresql". */
+  readonly databaseUrlScheme: string;
 }
 
 /** A web frontend. It reaches the API through the `api` service every stack runs. */
 export interface FrontendPlugin extends ComponentPlugin {
   readonly kind: "frontend";
+  readonly codeql: CodeqlLanguage;
+}
+
+/** The deployment environments infrastructure can be generated for, in promotion order. */
+export const ENVIRONMENTS = ["dev", "staging", "prod"] as const;
+export type EnvironmentId = (typeof ENVIRONMENTS)[number];
+
+/** Infrastructure as code for the API, the frontend if any, and the database. */
+export interface InfrastructurePlugin extends ComponentPlugin {
+  readonly kind: "infrastructure";
 }

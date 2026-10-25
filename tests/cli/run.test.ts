@@ -199,6 +199,13 @@ describe("CLI-003 capabilities", () => {
     expect(report.governanceProfiles.map((p: { id: string }) => p.id)).toContain(
       "risk-tiered-gitflow",
     );
+    expect(report.infrastructure).toEqual([
+      {
+        id: "azure",
+        summary: "Azure infrastructure as OpenTofu code, with a root per environment",
+      },
+    ]);
+    expect(report.environments).toEqual(["dev", "staging", "prod"]);
     expect(report.frontends).toEqual([
       { id: "vue", summary: "Vue frontend with Vite, Tailwind CSS and TypeScript" },
     ]);
