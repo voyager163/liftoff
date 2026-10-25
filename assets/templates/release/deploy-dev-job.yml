@@ -14,3 +14,5 @@
     with:
       environment: dev
       candidate: ${{ github.sha }}
+      # A slower build of an older commit never replaces a newer one.
+      only-if-head: develop

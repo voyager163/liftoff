@@ -134,14 +134,17 @@ and never by rebuilding, through `.github/workflows/reusable-deploy.yml`:
 
 | Environment | When | How |
 | --- | --- | --- |
-| `dev` | every build of `develop` | a job of the Build workflow |
-| `staging` | when you run the Release workflow | the candidate is deployed and qualified before `release/X.Y.Z` is cut: the frontend's browser tests (with a frontend) and the ZAP baseline scan run against it |
-| `prod` | when you run the Production workflow (`50-production.yml`) from `main` with a released version | its tag must be on `main` with exactly the candidate's tree, the release manifest attested for each image is verified, and exactly those images are deployed |
+| `dev` | every build of `develop` | a job of the Build workflow, only while its commit is still `develop`'s head, so a slower build of an older commit never replaces a newer one |
+| `staging` | when you run the Release workflow | the candidate is deployed and qualified before `release/X.Y.Z` is cut: holding staging's deployment lock, and once staging is checked to run exactly its images, the frontend's browser tests (with a frontend) and the ZAP baseline scan run against it |
+| `prod` | when you run the Production workflow (`50-production.yml`) from `main` with a released version | the release's manifest is read strictly; its tag must be on `main` with exactly the candidate's tree; each image's attestation, made on `main` from the release's commit, must carry exactly that manifest; and exactly those images are deployed |
 
 Each deployment verifies each image's build provenance, copies it into the
 environment's container registry, runs the database migrations with the new
-API image, updates the container apps and waits until the application is
-ready.
+API image, updates the container apps, waits until each new revision is
+healthy and takes all traffic (the previous one keeps answering until then),
+and waits until the application is ready. A migration still running from an
+earlier deployment is waited for first, and one a deployment gives up on is
+stopped, so two never run at once.
 
 Deployments start once Azure is set up: set the `AZURE_DEPLOYMENTS`
 repository variable to `on`, and these variables on each GitHub environment

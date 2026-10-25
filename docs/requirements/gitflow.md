@@ -185,15 +185,22 @@ that, for one environment and candidate commit, checks every variable the
 environment needs and fails naming those missing, verifies each image's
 build provenance (and, when given, that the images are exactly the expected
 digests), copies them into the environment's registry, runs the migrations
-with the new API image, updates the container apps and waits for readiness.
-Develop builds deploy to dev, and the Release workflow deploys the candidate
-to staging and qualifies it with the browser tests (with a frontend) and the
-ZAP baseline before cutting the release, only once the AZURE_DEPLOYMENTS
-variable is on; until then the release says it was not qualified on staging.
-The Production workflow, from main only, checks the release's tag is on main
-with the candidate's tree and its attested manifest, and deploys exactly
-those images. Each workflow exists only for the environments the
-infrastructure has.
+with the new API image, updates the container apps and waits until each new
+revision is healthy with all traffic and the application is ready. A
+migration still running from an earlier deployment is waited for, and one a
+deployment gives up on is stopped, so two never run at once. Develop builds
+deploy to dev, but only while their commit is still develop's head, so an
+older build never replaces a newer one. The Release workflow deploys the
+candidate to staging and qualifies it with the browser tests (with a
+frontend) and the ZAP baseline before cutting the release, holding
+staging's deployment lock and first checking staging runs exactly that
+candidate's images; all only once the AZURE_DEPLOYMENTS variable is on, and
+until then the release says it was not qualified on staging. The Production
+workflow, from main only, reads the release's manifest strictly, checks the
+release's tag is on main with the candidate's tree, requires each image's
+attestation, made on main from the release's commit, to carry exactly that
+manifest, and deploys exactly those images. Each workflow exists only for
+the environments the infrastructure has.
 
 Verification: test
 

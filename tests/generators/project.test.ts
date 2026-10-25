@@ -1225,13 +1225,24 @@ interface Step {
 
 // Runs a workflow step's script with bash, after `shims`: shell functions
 // standing in for gh, docker and the like, which record calls in $CALLS.
-const runScript = (script: string, shims: string, env: Record<string, string> = {}) => {
+// It runs as GitHub runs a step, with -e and pipefail, in a directory
+// holding `files`.
+const runScript = (
+  script: string,
+  shims: string,
+  env: Record<string, string> = {},
+  files: Record<string, string> = {},
+) => {
   const dir = mkdtempSync(path.join(tmpdir(), "liftoff-step-"));
   try {
     const calls = path.join(dir, "calls.txt");
     const output = path.join(dir, "output.txt");
+    for (const [file, content] of Object.entries(files)) {
+      mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+      writeFileSync(path.join(dir, file), content);
+    }
     writeFileSync(path.join(dir, "step.sh"), `${shims}\n${script}`);
-    const result = spawnSync("bash", ["--noprofile", "--norc", "-e", "step.sh"], {
+    const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "step.sh"], {
       cwd: dir,
       encoding: "utf8",
       env: {
@@ -1552,6 +1563,212 @@ describe("FLOW-007 projects with infrastructure deploy by digest, and fail close
     expect(deploy).toContain("APP_URL AZURE_WEB_APP; do");
     expect(deploy).toContain('"${APP_URL}/api/health/ready"');
     expect(files.get(".github/liftoff/resolve-images.sh")?.ownership).toBe("managed");
+  });
+
+  const azure = () =>
+    byPath({ frontend: "vue", infrastructure: "azure", environments: ["dev", "staging", "prod"] });
+  const deploySteps = async () =>
+    (workflow(await azure(), "reusable-deploy.yml").jobs.deploy?.steps ?? []) as Step[];
+  const stepNamed = (steps: Step[], name: string) => {
+    const step = steps.find((candidate) => candidate.name === name);
+    if (!step?.run) throw new Error(`no step "${name}"`);
+    return step.run;
+  };
+  const API = `api ghcr.io/acme/app/api sha256:${"a".repeat(64)}\n`;
+  // A file of answers, one per call, the last repeated once they run out.
+  const answers = `answer() { line=$(head -n 1 "$1"); if [ "$(wc -l < "$1")" -gt 1 ]; then tail -n +2 "$1" > "$1.next" && mv "$1.next" "$1"; fi; printf '%s' "$line"; }\nsleep() { :; }`;
+
+  it("deploys dev only while its commit is still develop's head", async () => {
+    const files = await azure();
+    expect(workflow(files, "10-build.yml").jobs["deploy-dev"]?.with).toMatchObject({
+      "only-if-head": "develop",
+    });
+    const steps = await deploySteps();
+    const check = steps.findIndex((step) => step.id === "current");
+    for (const step of steps.slice(check + 1)) {
+      expect(step.if, step.name ?? step.uses).toBe("steps.current.outputs.superseded != 'true'");
+    }
+    const script = steps[check]?.run ?? "";
+    const head = (sha: string) =>
+      runScript(script, `gh() { printf '%s\\n' "$*" >> "$CALLS"; echo "${sha}"; }`, {
+        CANDIDATE: "c".repeat(40),
+        BRANCH: "develop",
+      });
+    expect(head("c".repeat(40))).toMatchObject({ status: 0, output: "" });
+    const newer = head("d".repeat(40));
+    expect(newer).toMatchObject({ status: 0, output: "superseded=true\n" });
+    expect(newer.calls).toBe("api repos/acme/app/branches/develop --jq .commit.sha\n");
+  });
+
+  it("never runs two migrations at once, and stops one it gives up on", async () => {
+    const script = stepNamed(
+      await deploySteps(),
+      "Run the database migrations with the new API image",
+    );
+    const shims = [
+      answers,
+      "az() {",
+      `  printf '%s\\n' "$*" >> "$CALLS"; local args="$*"`,
+      '  case "$args" in',
+      '    "containerapp job execution list"*) printf "%s" "$RUNNING" ;;',
+      '    "containerapp job execution show"*)',
+      "      local name=${args##*--job-execution-name }; name=${name%% *}",
+      '      local status; status=$(answer "statuses/$name")',
+      '      if [ "$status" = ERROR ]; then return 1; fi; echo "$status" ;;',
+      '    "containerapp job start"*) echo new ;;',
+      "  esac",
+      "}",
+    ].join("\n");
+    const migrate = (running: string, statuses: Record<string, string>) => {
+      const result = runScript(
+        script,
+        shims,
+        {
+          RUNNING: running,
+          RUNNER_TEMP: ".",
+          AZURE_MIGRATE_JOB: "migrate",
+          AZURE_RESOURCE_GROUP: "rg",
+          AZURE_CONTAINER_REGISTRY: "acr.example",
+        },
+        {
+          "images.txt": API,
+          ...Object.fromEntries(
+            Object.entries(statuses).map(([name, lines]) => [`statuses/${name}`, lines]),
+          ),
+        },
+      );
+      const verbs = result.calls
+        .split("\n")
+        .filter(Boolean)
+        .map((call) => call.split(" --")[0]?.replace("containerapp job ", ""));
+      return { ...result, verbs };
+    };
+    // One still running from an earlier deployment ends first.
+    const waited = migrate("old", { old: "Running\nFailed\n", new: "Running\nSucceeded\n" });
+    expect(waited.status).toBe(0);
+    expect(waited.verbs).toEqual([
+      "execution list",
+      "execution show",
+      "execution show",
+      "update",
+      "start",
+      "execution show",
+      "execution show",
+    ]);
+    // A status read that fails once is tried again.
+    expect(migrate("", { new: "ERROR\nRunning\nSucceeded\n" }).status).toBe(0);
+    // One whose status cannot be read is stopped, and the deployment fails.
+    const lost = migrate("", { new: "ERROR\n" });
+    expect(lost.status).toBe(2);
+    expect(lost.verbs.at(-1)).toBe("stop");
+    // An earlier one that may still run stops this deployment before it starts another.
+    const busy = migrate("old", { old: "ERROR\n" });
+    expect(busy.status).toBe(1);
+    expect(busy.verbs).not.toContain("start");
+    expect(migrate("", { new: "Failed\n" }).status).toBe(1);
+  });
+
+  it("waits for the new revision itself, not an old one still answering", async () => {
+    const script = stepNamed(
+      await deploySteps(),
+      "Deploy the new images, and wait for their revisions",
+    );
+    const image = `acr.example/api@sha256:${"a".repeat(64)}`;
+    const shims = [
+      answers,
+      "az() {",
+      `  printf '%s\\n' "$*" >> "$CALLS"`,
+      '  case "$*" in',
+      '    "containerapp update"*) echo api--new ;;',
+      '    "containerapp revision show"*) answer states ;;',
+      "  esac",
+      "}",
+    ].join("\n");
+    const deploy = (states: string) =>
+      runScript(
+        script,
+        shims,
+        {
+          RUNNER_TEMP: ".",
+          AZURE_RESOURCE_GROUP: "rg",
+          AZURE_CONTAINER_REGISTRY: "acr.example",
+          AZURE_API_APP: "api-app",
+        },
+        { "images.txt": API, states },
+      );
+    expect(deploy(`Provisioning None 0 ${image}\nProvisioned Healthy 100 ${image}\n`).status).toBe(
+      0,
+    );
+    // The old revision may answer the public URL, but the new one never gets ready.
+    const unready = deploy(`Provisioned Unhealthy 0 ${image}\n`);
+    expect(unready.status).toBe(1);
+    expect(unready.stdout).toContain("Revision api--new of api-app did not become healthy");
+    expect(deploy(`Failed None 0 ${image}\n`).stdout).toContain("failed to provision");
+    // Healthy and serving, but another image.
+    expect(deploy("Provisioned Healthy 100 acr.example/api@sha256:other\n").status).toBe(1);
+  });
+
+  it("qualifies staging only while it runs this candidate's images, holding its lock", async () => {
+    const release = workflow(await azure(), "20-release.yml");
+    const qualify = release.jobs.qualify as Job & { concurrency?: unknown };
+    expect(qualify.concurrency).toEqual({ group: "deploy-staging", "cancel-in-progress": false });
+    const script = stepNamed(
+      (qualify.steps ?? []) as Step[],
+      "Check staging runs exactly this candidate's images",
+    );
+    const digest = `sha256:${"a".repeat(64)}`;
+    const check = (deployed: string, serving: string) =>
+      runScript(script, `az() { printf '%s\\n' "$*" >> "$CALLS"; echo "${serving}"; }`, {
+        DEPLOYED: deployed,
+        AZURE_RESOURCE_GROUP: "rg",
+        AZURE_CONTAINER_REGISTRY: "acr.example",
+        AZURE_API_APP: "api-app",
+      });
+    expect(check(`api ${digest}`, `acr.example/api@${digest}`).status).toBe(0);
+    const other = check(`api ${digest}`, "acr.example/api@sha256:other");
+    expect(other.status).toBe(1);
+    expect(other.stdout).toContain("run the release again");
+    expect(check("", "").status).toBe(1);
+  });
+
+  it("deploys to production only images whose attestation carries the release's manifest", async () => {
+    const production = workflow(await azure(), "50-production.yml");
+    // Lowercasing with ,, needs bash 4, which macOS lacks; the repository
+    // here is lowercase already.
+    const script = stepNamed(
+      (production.jobs.release?.steps ?? []) as Step[],
+      "Verify each image's attestation carries exactly this manifest",
+    ).replace(/\$\{GITHUB_REPOSITORY,,\}/g, "$GITHUB_REPOSITORY");
+    const manifest = { schema: "liftoff.release-manifest/v1", version: "1.2.0", pullRequest: 21 };
+    const verify = (predicate: unknown) =>
+      runScript(
+        script,
+        `gh() { printf '%s\\n' "$*" >> "$CALLS"; cat answer.json; }`,
+        {
+          RUNNER_TEMP: ".",
+          VERSION: "1.2.0",
+          EXPECTED: `api sha256:${"a".repeat(64)}`,
+          COMMIT: "d".repeat(40),
+          MANIFEST_FILE: "manifest.json",
+          PREDICATE: "https://example/manifest",
+        },
+        {
+          "manifest.json": JSON.stringify(manifest, null, 2),
+          "answer.json": JSON.stringify([{ verificationResult: { statement: { predicate } } }]),
+        },
+      );
+    const passed = verify({
+      pullRequest: 21,
+      version: "1.2.0",
+      schema: "liftoff.release-manifest/v1",
+    });
+    expect(passed.status).toBe(0);
+    expect(passed.calls).toContain(
+      "--source-ref refs/heads/main --source-digest dddddddddddddddddddddddddddddddddddddddd --format json",
+    );
+    const edited = verify({ ...manifest, pullRequest: 22 });
+    expect(edited.status).toBe(1);
+    expect(edited.stdout).toContain("carries the v1.2.0 release's manifest");
   });
 
   it("deploys only to the environments the infrastructure has", async () => {

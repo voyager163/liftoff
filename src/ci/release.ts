@@ -23,10 +23,12 @@
 // token. With DISPATCH=true, open-release and sync start CI, CodeQL and the
 // review policy for the new pull request themselves, at its exact head
 // commit; they never report a check as passed.
+import { randomUUID } from "node:crypto";
 import { GitHubClient, GitHubError } from "../adapters/github.ts";
 import {
   isVersion,
   parseImages,
+  parseReleaseManifest,
   RELEASE_MANIFEST_PREDICATE,
   type ReleaseManifest,
   releaseManifest,
@@ -93,11 +95,14 @@ export async function main(command: Command, io: ReleaseEnvironment): Promise<nu
       summary,
       output: (name, value) => {
         if (!env.GITHUB_OUTPUT) return;
-        // A value over several lines needs a delimiter it cannot contain.
+        // A value over several lines needs a delimiter it cannot contain,
+        // one nobody can guess and write into the value beforehand.
+        const delimiter = `LIFTOFF_${randomUUID()}`;
+        if (value.includes(delimiter)) throw new Error(`the ${name} output cannot be written`);
         io.appendFile(
           env.GITHUB_OUTPUT,
           value.includes("\n")
-            ? `${name}<<LIFTOFF_EOF\n${value}\nLIFTOFF_EOF\n`
+            ? `${name}<<${delimiter}\n${value}\n${delimiter}\n`
             : `${name}=${value}\n`,
         );
       },
@@ -391,9 +396,21 @@ async function production(context: Context): Promise<void> {
   );
   const json = /```json\n([\s\S]*?)\n```/.exec(release.body ?? "")?.[1];
   if (json === undefined) throw new Error(`the v${version} release has no manifest`);
-  const manifest = JSON.parse(json) as ReleaseManifest;
+  // Anyone who can edit the release can edit this, so it is checked in full.
+  const manifest = parseReleaseManifest(json);
   if (manifest.version !== version || manifest.repository !== repository) {
     throw new Error(`the v${version} release's manifest is for another release`);
+  }
+  const names = required(env, "IMAGES").split(/\s+/).filter(Boolean).sort();
+  if (
+    manifest.images
+      .map((image) => image.name)
+      .sort()
+      .join() !== names.join()
+  ) {
+    throw new Error(
+      `the v${version} release's manifest does not list exactly the images ${names.join(", ")}`,
+    );
   }
   const tag = (
     await client.get<{ object: { sha: string } }>(`/repos/${repository}/git/ref/tags/v${version}`)
@@ -415,6 +432,9 @@ async function production(context: Context): Promise<void> {
       `v${version} does not have exactly the tree of ${manifest.source.candidate}, the candidate CI qualified`,
     );
   }
+  // The manifest as read, for the attestations to be compared with.
+  context.io.writeFile(required(env, "MANIFEST_FILE"), `${JSON.stringify(manifest, null, 2)}\n`);
+  context.output("commit", manifest.source.commit);
   context.output("candidate", manifest.source.candidate);
   context.output(
     "expected",

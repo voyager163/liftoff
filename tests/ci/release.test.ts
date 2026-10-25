@@ -513,15 +513,55 @@ describe("FLOW-007 checking a candidate, and a release for production", () => {
     releases: { "v1.2.0": `Notes\n\n\`\`\`json\n${JSON.stringify(body, null, 2)}\n\`\`\`` },
     refs: { "tags/v1.2.0": MAIN },
   });
-  const PRODUCTION = { GITHUB_REF: "refs/heads/main", VERSION: "1.2.0" };
+  const PRODUCTION = {
+    GITHUB_REF: "refs/heads/main",
+    VERSION: "1.2.0",
+    IMAGES: "api web",
+    MANIFEST_FILE: "m.json",
+  };
 
   it("finds a release on main with its qualified tree, and its images", async () => {
-    const { code, outputs } = await run("production", PRODUCTION, published());
+    const { code, outputs, written } = await run("production", PRODUCTION, published());
     expect(code).toBe(0);
-    expect(outputs).toEqual([
-      `candidate=${COMMIT}`,
-      `expected<<LIFTOFF_EOF\napi ${DIGEST}\nweb ${DIGEST}\nLIFTOFF_EOF`,
-    ]);
+    expect(outputs.slice(0, 2)).toEqual([`commit=${MAIN}`, `candidate=${COMMIT}`]);
+    // A delimiter nobody can know beforehand.
+    const [, delimiter] = /^expected<<(LIFTOFF_[0-9a-f-]{36})\n/.exec(outputs[2] ?? "") ?? [];
+    expect(outputs[2]).toBe(`expected<<${delimiter}\napi ${DIGEST}\nweb ${DIGEST}\n${delimiter}`);
+    // The manifest as read, for the attestations to be compared with.
+    expect(JSON.parse(written["m.json"] ?? "")).toEqual(manifest);
+  });
+
+  it("refuses a manifest anyone could have edited into something else", async () => {
+    const injected = {
+      ...manifest,
+      images: [
+        {
+          name: `api\nLIFTOFF_EOF\ncandidate=${"e".repeat(40)}\nexpected<<LIFTOFF_EOF\napi`,
+          reference: "ghcr.io/o/r/api",
+          digest: DIGEST,
+        },
+      ],
+    };
+    for (const [body, message] of [
+      [injected, "the release manifest is invalid: images.0.name"],
+      [{ ...manifest, source: { ...manifest.source, candidate: "main" } }, "source.candidate"],
+      [{ ...manifest, images: [...manifest.images, manifest.images[0]] }, "lists an image twice"],
+      [{ ...manifest, extra: true }, "the release manifest is invalid"],
+      [
+        { ...manifest, images: manifest.images.slice(0, 1) },
+        "does not list exactly the images api, web",
+      ],
+    ] as const) {
+      const { code, log, outputs, written } = await run(
+        "production",
+        PRODUCTION,
+        published(body as typeof manifest),
+      );
+      expect(code).toBe(1);
+      expect(log).toContain(message);
+      expect(outputs).toEqual([]);
+      expect(written["m.json"]).toBeUndefined();
+    }
   });
 
   it.each<[string, Record<string, string>, Repo, string]>([

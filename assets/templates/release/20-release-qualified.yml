@@ -81,9 +81,47 @@ jobs:
     environment:
       name: staging
       url: ${{ vars.APP_URL }}
+    # Staging's deployment lock, held while qualifying, so no other
+    # deployment changes what is being tested.
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
     permissions:
       contents: read
+      id-token: write
     steps:
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # A retried qualification may come after another release deployed
+      # staging; it qualifies only this candidate's images.
+      - name: Check staging runs exactly this candidate's images
+        env:
+          DEPLOYED: ${{ needs.staging.outputs.images }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_CONTAINER_REGISTRY: ${{ vars.AZURE_CONTAINER_REGISTRY }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_WEB_APP: ${{ vars.AZURE_WEB_APP }}
+        run: |
+          if [ -z "$DEPLOYED" ]; then
+            echo "::error::The staging deployment reported no images."
+            exit 1
+          fi
+          while read -r name digest; do
+            case "$name" in
+              api) app="$AZURE_API_APP" ;;
+              web) app="$AZURE_WEB_APP" ;;
+              *) continue ;;
+            esac
+            image=$(az containerapp show --name "$app" --resource-group "$AZURE_RESOURCE_GROUP" \
+              --query "properties.template.containers[0].image" --output tsv)
+            if [ "$image" != "${AZURE_CONTAINER_REGISTRY}/${name}@${digest}" ]; then
+              echo "::error::Staging's ${name} is ${image}, not this candidate's; run the release again to deploy and qualify it."
+              exit 1
+            fi
+          done <<< "$DEPLOYED"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

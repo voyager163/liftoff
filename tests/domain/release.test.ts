@@ -25,7 +25,13 @@ describe("FLOW-005 the release manifest", () => {
       { name: "api", reference: "ghcr.io/o/r/api", digest: DIGEST },
       { name: "web", reference: "ghcr.io/o/r/web", digest: DIGEST },
     ]);
-    for (const line of ["api ghcr.io/o/r/api", "api ghcr.io/o/r/api latest", `a b ${DIGEST} c`]) {
+    for (const line of [
+      "api ghcr.io/o/r/api",
+      "api ghcr.io/o/r/api latest",
+      `a b ${DIGEST} c`,
+      `API ghcr.io/o/r/api ${DIGEST}`,
+      `api docker.io/o/r/api ${DIGEST}`,
+    ]) {
       expect(() => parseImages(line)).toThrow(ReleaseError);
     }
   });

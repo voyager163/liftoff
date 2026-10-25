@@ -2,9 +2,10 @@
 #
 # Deploys a published release to production, from main only and by digest.
 # It checks the release's tag is on main with exactly the tree of the
-# candidate CI qualified, verifies the release manifest attested for each
-# image, and deploys those exact images. Protect the prod environment with
-# required reviewers so a person approves each deployment.
+# candidate CI qualified, verifies that each image's attestation, made on
+# main from the release's commit, carries exactly the release's manifest, and
+# deploys those exact images. Protect the prod environment with required
+# reviewers so a person approves each deployment.
 name: Production
 
 on:
@@ -40,17 +41,33 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
+          IMAGES: {{liftoff.imageNames}}
+          MANIFEST_FILE: ${{ runner.temp }}/release-manifest.json
         run: node .github/liftoff/release.mjs production
-      - name: Verify the release manifest attested for each image
+      - name: Verify each image's attestation carries exactly this manifest
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
           EXPECTED: ${{ steps.release.outputs.expected }}
+          COMMIT: ${{ steps.release.outputs.commit }}
+          MANIFEST_FILE: ${{ runner.temp }}/release-manifest.json
           PREDICATE: {{liftoff.manifestPredicate}}
         run: |
+          # Made by the After release workflow on main, from the release's own
+          # commit, and with the very manifest the release shows: an edited
+          # release matches no attestation.
           while read -r name digest; do
             gh attestation verify "oci://ghcr.io/${GITHUB_REPOSITORY,,}/${name}@${digest}" \
               --repo "$GITHUB_REPOSITORY" --predicate-type "$PREDICATE" \
-              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/30-after-release.yml"
+              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/30-after-release.yml" \
+              --source-ref refs/heads/main --source-digest "$COMMIT" \
+              --format json > "$RUNNER_TEMP/attestations.json"
+            if ! jq -e --slurpfile manifest "$MANIFEST_FILE" \
+              'any(.[]; .verificationResult.statement.predicate == $manifest[0])' \
+              "$RUNNER_TEMP/attestations.json" > /dev/null; then
+              echo "::error::No attestation of ${name}@${digest} carries the v${VERSION} release's manifest."
+              exit 1
+            fi
           done <<< "$EXPECTED"
 
   deploy:

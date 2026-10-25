@@ -87,7 +87,10 @@ export const releasePlugin: ProjectPlugin = {
         ? [
             workflow(
               "50-production.yml",
-              read("50-production.yml", { manifestPredicate: RELEASE_MANIFEST_PREDICATE }),
+              read("50-production.yml", {
+                manifestPredicate: RELEASE_MANIFEST_PREDICATE,
+                imageNames,
+              }),
             ),
           ]
         : []),
