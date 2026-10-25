@@ -38,4 +38,5 @@ Verification: test
 | [project.md](project.md) | Creating, validating and checking projects |
 | [review.md](review.md) | Risk policy, review tiers and approvals |
 | [skills.md](skills.md) | Coding-agent review skills and their rendering |
+| [gitflow.md](gitflow.md) | Branches, releases and their lineage in generated projects |
 | [repository.md](repository.md) | Liftoff's own CI, checks, governance and packaging |

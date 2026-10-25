@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
 {{liftoff.jobs}}
-
+{{liftoff.governanceJobs}}
   dependencies:
     name: Dependency review
     runs-on: ubuntu-latest

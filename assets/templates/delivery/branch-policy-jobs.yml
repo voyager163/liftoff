@@ -1,0 +1,38 @@
+branch-policy:
+  name: Branch policy
+  # Which branches may merge into develop and main (see GOVERNANCE.md), and
+  # that a release is a develop commit whose CI passed.
+  runs-on: ubuntu-latest
+  timeout-minutes: 5
+  permissions:
+    contents: read
+    actions: read
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+        sparse-checkout: .github/liftoff
+    - name: Check the branch
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        # Branches that tools open into develop.
+        AUTOMATION_BRANCHES: {{liftoff.automation}}
+      run: node .github/liftoff/branch-policy.mjs branch
+
+release-lineage:
+  name: Release lineage
+  # A pull request into main must contain the current main, so merging it
+  # leaves exactly the tree CI qualified.
+  runs-on: ubuntu-latest
+  timeout-minutes: 5
+  permissions:
+    contents: read
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+        sparse-checkout: .github/liftoff
+    - name: Check the release lineage
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: node .github/liftoff/branch-policy.mjs lineage

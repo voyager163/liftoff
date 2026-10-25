@@ -646,6 +646,8 @@ describe("PROJ-013 the Vue frontend", () => {
       "frontend-lint",
       "frontend-test",
       "frontend-browser",
+      "branch-policy",
+      "release-lineage",
       "dependencies",
       "ci-gate",
     ]);
@@ -794,6 +796,8 @@ describe("PROJ-014 shared files are assembled from each component's parts", () =
     expect(parse(files.get(".github/workflows/01-pr-ci.yml") ?? "").jobs["ci-gate"].needs).toEqual([
       "lint",
       "web-lint",
+      "branch-policy",
+      "release-lineage",
       "dependencies",
     ]);
     expect(files.get("README.md")).toMatch(/^# a\n\n## b\n\n## How changes are made\n/);
@@ -1048,7 +1052,15 @@ describe("PROJ-017 the GenAI project", () => {
   it("checks lint, format and offline tests in CI, and keeps the database out of Compose", async () => {
     const project = await byPath(genai());
     const ci = parse(project.get(".github/workflows/01-pr-ci.yml")?.content ?? "");
-    expect(Object.keys(ci.jobs)).toEqual(["lint", "test", "image", "dependencies", "ci-gate"]);
+    expect(Object.keys(ci.jobs)).toEqual([
+      "lint",
+      "test",
+      "image",
+      "branch-policy",
+      "release-lineage",
+      "dependencies",
+      "ci-gate",
+    ]);
     expect(project.get("compose.yaml")?.content).toContain("# Local development: the application.");
     expect(project.get("README.md")?.content).toContain("## The model");
   });
@@ -1098,5 +1110,39 @@ describe("PROJ-018 GenAI patterns and their maturity", () => {
       "streaming",
       "workflow",
     ]);
+  });
+});
+
+describe("FLOW-001 GitFlow projects check branches and release lineage in CI", () => {
+  const ci = async (overrides: Record<string, unknown>) => {
+    const generated = await byPath(overrides);
+    const workflow = parse(generated.get(".github/workflows/01-pr-ci.yml")?.content ?? "") as {
+      jobs: Record<
+        string,
+        { needs?: string[]; steps?: { env?: Record<string, string>; run?: string }[] }
+      >;
+    };
+    return { generated, jobs: workflow.jobs };
+  };
+
+  it("adds both checks to CI and ci-gate, with the selected agents' branches", async () => {
+    const { generated, jobs } = await ci({ agents: ["copilot", "codex"], review: { ai: true } });
+    expect(jobs["ci-gate"]?.needs).toEqual(
+      expect.arrayContaining(["branch-policy", "release-lineage"]),
+    );
+    const branch = jobs["branch-policy"]?.steps?.find((step) => step.run);
+    expect(branch?.run).toBe("node .github/liftoff/branch-policy.mjs branch");
+    expect(branch?.env?.AUTOMATION_BRANCHES).toBe("dependabot,copilot,codex");
+    expect(jobs["release-lineage"]?.steps?.find((step) => step.run)?.run).toBe(
+      "node .github/liftoff/branch-policy.mjs lineage",
+    );
+    expect(generated.get(".github/liftoff/branch-policy.mjs")?.ownership).toBe("managed");
+  });
+
+  it("adds neither without a GitFlow profile", async () => {
+    const { generated, jobs } = await ci({ governance: "none" });
+    expect(Object.keys(jobs)).not.toContain("branch-policy");
+    expect(jobs["ci-gate"]?.needs).not.toContain("release-lineage");
+    expect(generated.has(".github/liftoff/branch-policy.mjs")).toBe(false);
   });
 });

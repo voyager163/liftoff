@@ -137,7 +137,14 @@ this as a starting point under the \`${profile}\` profile: ${p.summary}
 | Feature, fix, chore, docs, CI | \`feature/…\`, \`fix/…\`, \`chore/…\`, \`docs/…\`, \`ci/…\` | \`develop\` | Squash |
 | Release | \`release/X.Y.Z\` from a healthy \`develop\` commit | \`main\` | Merge commit |
 | Hotfix | \`hotfix/X.Y.Z\` from \`main\`, with an incident reference | \`main\` | Merge commit |
-| Back-merge after a release | a branch from \`develop\` with \`main\` merged in | \`develop\` | Merge commit |
+| Back-merge after a release | \`sync/…\` from \`develop\` with \`main\` merged in | \`develop\` | Merge commit |
+
+Dependabot's branches, and those of the coding agents this project uses, may
+also open pull requests into \`develop\`. A release branch is an exact
+\`develop\` commit whose CI passed, so what merges into \`main\` is what was
+tested. CI's \`branch-policy\` job checks all of this, and its
+\`release-lineage\` job checks that a pull request into \`main\` contains the
+current \`main\`, so merging leaves exactly the tree CI qualified.
 
 Never push directly to \`develop\` or \`main\`, force-push them or squash away
 history being synchronized.
@@ -146,8 +153,9 @@ history being synchronized.
 
 1. Before opening a pull request, run the checks in [AGENTS.md](AGENTS.md)
    and show their output.
-2. CI must pass: \`ci-gate\` covers lint, tests with coverage and dependency
-   review; CodeQL blocks merging on high or critical alerts.
+2. CI must pass: \`ci-gate\` covers lint, tests with coverage, dependency
+   review and the branch checks; CodeQL blocks merging on high or critical
+   alerts.
 3. \`review-policy\` sets the tier from what the change touches
    ([.github/review-policy.yml](.github/review-policy.yml)) and checks the
    required approvals: low ${p.approvals.low}, medium ${p.approvals.medium},
@@ -218,9 +226,11 @@ export function gitflowGovernance(profile: ProfileId): ProjectPlugin {
     summary: PROFILES[profile].summary,
     templateRoots: [],
     artifacts(context) {
-      const bundle = context.ciBundles["governance-drift.mjs"];
-      if (bundle === undefined)
-        throw new Error("this release does not ship the governance-drift.mjs CI bundle");
+      const bundle = (name: string) => {
+        const text = context.ciBundles[name];
+        if (text === undefined) throw new Error(`this release does not ship the ${name} CI bundle`);
+        return text;
+      };
       const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
       const files: Artifact[] = [
         {
@@ -240,7 +250,16 @@ export function gitflowGovernance(profile: ProfileId): ProjectPlugin {
           ownership: "seeded",
           content: json(ruleset("Protect main", "main", ["merge"], context, profile)),
         },
-        { path: ".github/liftoff/governance-drift.mjs", ownership: "managed", content: bundle },
+        {
+          path: ".github/liftoff/governance-drift.mjs",
+          ownership: "managed",
+          content: bundle("governance-drift.mjs"),
+        },
+        {
+          path: ".github/liftoff/branch-policy.mjs",
+          ownership: "managed",
+          content: bundle("branch-policy.mjs"),
+        },
         {
           path: ".github/workflows/90-governance-drift.yml",
           ownership: "managed",
