@@ -153,8 +153,7 @@ describe("PROJ-003 selections are checked first", () => {
       true,
     ],
     [{ workflow: "waterfall" }, /unknown workflow "waterfall"/, false],
-    [{ workflow: "openspec" }, /OpenSpec workflow is not available in this release yet/, true],
-    [{ workflow: "spec-kit" }, /Spec Kit workflow is not available/, true],
+    [{ workflow: "spec-kit" }, /Spec Kit needs at least one coding agent/, false],
     [{ agents: ["cursor"] }, /unknown agent "cursor"/, false],
     [{ governance: "anarchy" }, /unknown governance profile/, false],
     [

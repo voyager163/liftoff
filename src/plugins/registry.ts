@@ -13,7 +13,7 @@ import { goHumaStack } from "./builtin/stacks/go-huma.ts";
 import { nodeFastifyStack } from "./builtin/stacks/node-fastify.ts";
 import { pythonFastapiStack } from "./builtin/stacks/python-fastapi.ts";
 import { pythonPydanticaiStack } from "./builtin/stacks/python-pydanticai.ts";
-import { manualWorkflow } from "./builtin/workflows.ts";
+import { manualWorkflow, openspecWorkflow, specKitWorkflow } from "./builtin/workflows.ts";
 import type { AgentHostId } from "./contracts/agent-host.ts";
 import {
   type ComponentPlugin,
@@ -24,6 +24,7 @@ import {
   type PatternPlugin,
   type ProjectPlugin,
   type StackPlugin,
+  type WorkflowPlugin,
 } from "./contracts/project-plugin.ts";
 
 /**
@@ -56,11 +57,10 @@ export const INFRASTRUCTURE: Readonly<Record<string, InfrastructurePlugin>> = {
   azure: azureInfrastructure,
 };
 export const NO_INFRASTRUCTURE = "none";
-export const WORKFLOWS: Readonly<Record<string, ProjectPlugin>> = { manual: manualWorkflow };
-/** Workflows the product supports but this release cannot generate yet. */
-export const PLANNED_WORKFLOWS: Readonly<Record<string, string>> = {
-  openspec: "OpenSpec",
-  "spec-kit": "Spec Kit",
+export const WORKFLOWS: Readonly<Record<string, WorkflowPlugin>> = {
+  openspec: openspecWorkflow,
+  "spec-kit": specKitWorkflow,
+  manual: manualWorkflow,
 };
 export const GOVERNANCE: Readonly<Record<ProfileId, ProjectPlugin>> = {
   "single-maintainer-gitflow": gitflowGovernance("single-maintainer-gitflow"),
@@ -93,6 +93,7 @@ export interface Selection {
   readonly components: readonly ComponentPlugin[];
   readonly hosts: readonly AgentHostId[];
   readonly profile: ProfileId;
+  readonly workflow: WorkflowPlugin;
   /** In generation order. */
   readonly plugins: readonly ProjectPlugin[];
 }
@@ -194,13 +195,6 @@ export function resolveSelection(config: ProjectConfig): Selection {
 
   const workflow = entry(WORKFLOWS, config.workflow);
   if (!workflow) {
-    const planned = entry(PLANNED_WORKFLOWS, config.workflow);
-    if (planned) {
-      throw new SelectionError(
-        `the ${planned} workflow is not available in this release yet; use --workflow manual`,
-        true,
-      );
-    }
     throw new SelectionError(
       `unknown workflow "${config.workflow}"; available: ${list(Object.keys(WORKFLOWS))}`,
     );
@@ -215,6 +209,9 @@ export function resolveSelection(config: ProjectConfig): Selection {
     }
     hosts.push(agent as AgentHostId);
   }
+
+  const unsupportedHosts = workflow.unsupportedHosts?.(hosts);
+  if (unsupportedHosts) throw new SelectionError(unsupportedHosts);
 
   if (!(PROFILE_IDS as readonly string[]).includes(config.governance)) {
     throw new SelectionError(
@@ -248,6 +245,7 @@ export function resolveSelection(config: ProjectConfig): Selection {
     components,
     hosts,
     profile,
+    workflow,
     plugins: [
       commonPlugin,
       ...components,

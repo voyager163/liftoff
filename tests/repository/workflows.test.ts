@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { PATTERNS, STACKS } from "../../src/plugins/registry.ts";
+import { PATTERNS, STACKS, WORKFLOWS } from "../../src/plugins/registry.ts";
 
 const directory = path.resolve(import.meta.dirname, "../../.github/workflows");
 const files = readdirSync(directory)
@@ -253,6 +253,25 @@ describe("PROJ-006 and PROJ-011 every API stack is checked in CI", () => {
     expect(runs).toContain("uv run pytest");
     expect(runs).toContain("docker compose up --build --wait");
     expect(ci?.jobs["ci-gate"]?.needs).toContain("genai");
+  });
+
+  it("PROJ-021 runs every framework's initializer on each platform, and ci-gate needs it", () => {
+    const job = ci?.jobs["spec-workflows"] as Job & {
+      strategy?: { matrix?: { workflow?: string[]; platform?: { os: string }[] } };
+    };
+    const withInitializer = Object.entries(WORKFLOWS)
+      .filter(([, workflow]) => workflow.initializer)
+      .map(([id]) => id);
+    expect([...(job?.strategy?.matrix?.workflow ?? [])].sort()).toEqual(withInitializer.sort());
+    expect((job?.strategy?.matrix?.platform ?? []).map((platform) => platform.os)).toEqual([
+      "ubuntu-latest",
+      "macos-15",
+      "windows-latest",
+    ]);
+    const runs = (job?.steps ?? []).map((step) => step.run ?? "").join("\n");
+    expect(runs).toContain('--workflow "$WORKFLOW"');
+    expect(runs).toContain("validate");
+    expect(ci?.jobs["ci-gate"]?.needs).toContain("spec-workflows");
   });
 
   it("PROJ-016 checks generated infrastructure, and ci-gate needs it", () => {

@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { applyInit, InitTargetError, planInit } from "../../application/init/init-project.ts";
-import { type Plan, PlanError, parsePlan } from "../../domain/plan/plan.ts";
+import { applyInit, planInit } from "../../application/init/init-project.ts";
+import { type Plan, parsePlan } from "../../domain/plan/plan.ts";
 import { validateConfig } from "../../domain/project/config.ts";
 import { resolveSelection, SelectionError } from "../../plugins/registry.ts";
 import type { CommandResult, CommandSpec } from "../command.ts";
@@ -34,7 +34,14 @@ function summarize(plan: Plan): string[] {
     `  agents ${config.agents.length === 0 ? "none" : config.agents.join(", ")}`,
     `${plan.files.length} files: ${seeded} for the project to own, ${managed} kept current by Liftoff`,
     `  ${top.join("  ")}`,
-    `Effects: ${plan.effects.join(", ")} (nothing is installed, run or sent anywhere)`,
+    ...(plan.initializer
+      ? [
+          `Effects: ${plan.effects.join(", ")}`,
+          `  runs ${plan.initializer.name} ${plan.initializer.version}'s own initializer, which downloads it and writes its files:`,
+          ...plan.initializer.steps.map((step) => `    ${[step.command, ...step.args].join(" ")}`),
+          "  nothing else is installed, run or sent anywhere",
+        ]
+      : [`Effects: ${plan.effects.join(", ")} (nothing is installed, run or sent anywhere)`]),
     `Plan ${plan.hash.slice(0, 12)}`,
   ];
 }
@@ -94,7 +101,7 @@ export function makeInitCommand(
     path: ["init"],
     summary: "Create a new project.",
     description:
-      "Creates a new project in a new or empty directory, from a saved plan (--plan) or from the same options as `liftoff plan`. It shows what it will create and asks before writing anything; the default answer is no. In scripts, pass --yes. Nothing is installed, run or sent anywhere: the project is written in one step, or not at all.",
+      "Creates a new project in a new or empty directory, from a saved plan (--plan) or from the same options as `liftoff plan`. It shows what it will create and asks before writing anything; the default answer is no. In scripts, pass --yes. The project is written in one step, or not at all. With the OpenSpec or Spec Kit workflow, init also runs that framework's own initializer at a pinned version, which downloads it; nothing else is installed, run or sent anywhere.",
     readOnly: false,
     reportSchema: "liftoff.init-report/v1",
     options: {
@@ -138,7 +145,8 @@ export function makeInitCommand(
             "init writes files; pass --yes to confirm when no one can answer a prompt",
           );
         }
-        if (!(await io.confirm(`Create ${plan.files.length} files in ${plan.target}?`))) {
+        const running = plan.initializer ? ` and run ${plan.initializer.name}'s initializer` : "";
+        if (!(await io.confirm(`Create ${plan.files.length} files${running} in ${plan.target}?`))) {
           return {
             outcome: "cancelled",
             report: { created: false, plan: plan.hash },
@@ -149,6 +157,10 @@ export function makeInitCommand(
 
       try {
         const result = await applyInit(ports, plan, version, { cwd: io.cwd, signal: io.signal });
+        const created =
+          result.frameworkFiles === 0
+            ? `Created ${result.files} files in ${result.target}.`
+            : `Created ${result.files + result.frameworkFiles} files in ${result.target}, ${result.frameworkFiles} of them by ${plan.initializer?.name}'s initializer.`;
         const relative = path.relative(io.cwd, result.target) || ".";
         // Each component starts in its own directory; after the first, the
         // shell is still in the previous one.
@@ -163,9 +175,15 @@ export function makeInitCommand(
         );
         return {
           outcome: "success",
-          report: { created: true, target: result.target, files: result.files, plan: plan.hash },
+          report: {
+            created: true,
+            target: result.target,
+            files: result.files,
+            frameworkFiles: result.frameworkFiles,
+            plan: plan.hash,
+          },
           text: [
-            `Created ${result.files} files in ${result.target}.`,
+            created,
             "",
             "Next:",
             `  cd ${relative}`,
@@ -177,7 +195,6 @@ export function makeInitCommand(
         };
       } catch (error) {
         if (error instanceof SelectionError) selectionToCli(error);
-        if (error instanceof PlanError || error instanceof InitTargetError) throw error;
         throw error;
       }
     },

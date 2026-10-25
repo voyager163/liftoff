@@ -23,6 +23,9 @@ and the Liftoff version. Ownership is declared, never inferred:
 - **managed**: Liftoff keeps it current; a hand edit is reported as drift.
 - **seeded**: written once, then owned by the project; Liftoff never
   overwrites it.
+- **framework**: written by a specification framework's own initializer,
+  such as OpenSpec's, and owned by that framework; Liftoff never changes it
+  or reports changes to it.
 
 Paths are repository-relative POSIX paths. No absolute or private paths are
 written into a project.
@@ -35,9 +38,10 @@ The workload, stack, GenAI pattern, frontend, infrastructure and its
 environments, workflow, agents, governance profile and review engine are
 checked against the plugins this release ships. An unknown value is a
 usage error (exit 2). A value the product supports but this release cannot
-generate yet, such as the OpenSpec workflow, is reported as unsupported
-(exit 6), never silently replaced. The review engine must be a
-selected agent, and verified AI review needs at least one agent.
+generate yet, such as a frontend for a GenAI project, is reported as
+unsupported (exit 6), never silently replaced. The review engine must be a
+selected agent, verified AI review needs at least one agent, and so does the
+Spec Kit workflow.
 
 Verification: test
 
@@ -308,12 +312,47 @@ the `generic` project's checks on macOS arm64 and Windows x64.
 
 Verification: live
 
+## PROJ-020 OpenSpec and Spec Kit come from their own pinned initializers
+
+`--workflow openspec` (the default) and `--workflow spec-kit` set the
+framework up with its own official initializer, never with copies kept by
+Liftoff: OpenSpec 1.14.3 through `npx`, and Spec Kit 1.2.1 through `uvx` at
+the commit its tag points to, with Python scripts so they run on macOS and
+Windows alike. `--workflow manual` runs nothing.
+
+- The plan lists the `run-initializer` effect and the exact commands, with
+  each selected coding agent passed to the framework.
+- Init runs them first, alone in the empty staging directory, with telemetry
+  off and a temporary home, configuration, data and Codex directory, so
+  nothing on the user's machine outside the project changes. They still read
+  the user's npm and Git settings and use their package caches.
+- Every file they write is recorded in the manifest as framework-owned, and
+  `liftoff validate` never reports changes to those files.
+- README and AGENTS.md say how to work with the framework, and
+  `liftoff doctor` checks the tools its files need: the OpenSpec CLI, or
+  Python 3.11 or later for Spec Kit.
+- Spec Kit needs at least one coding agent (exit 2).
+
+Verification: test
+
+## PROJ-021 The real initializers run on every platform
+
+Liftoff's CI creates a project with each framework's real initializer, with
+every coding agent, on macOS arm64, Windows x64 and Linux. It checks that the
+framework's files are there and recorded as its own, and that
+`liftoff validate` passes.
+
+Verification: live
+
 ## INIT-001 Plans are read-only and tamper-evident
 
 `liftoff plan` changes nothing except the plan file named with `--out`. A
 plan lists the target, configuration, every file with its ownership, hash and
-size, and the only permitted effect (writing files). Its hash covers every
-field, so an edited plan is refused.
+size, and the permitted effects: writing files and, for a workflow with its
+own initializer, running exactly the commands it lists. Because the manifest
+then also records the files the initializer writes, its final hash differs
+from the planned one. The plan's hash covers every field, so an edited plan
+is refused.
 
 Verification: test
 
@@ -339,7 +378,21 @@ Verification: test
 ## INIT-004 Stale plans are refused
 
 A plan made by a different Liftoff version, or one this release would now
-generate differently, is refused with a request to make a new plan.
+generate differently or run a different initializer for, is refused with a
+request to make a new plan.
+
+Verification: test
+
+## INIT-005 What an initializer writes is checked before anything is published
+
+If a framework's initializer cannot start, fails, takes more than ten
+minutes for all its steps together or is cancelled, nothing is created, and the error says why and what
+it needs. The same happens if it creates a Git repository (a `.git` at any
+depth, in any case) or anything other than regular files, writes a file
+where Liftoff writes one of its own (ignoring case), or writes a path from
+this machine, such as the home or staging directory, into a file, whether
+as written, with forward slashes or escaped as in JSON. A failure's message
+keeps the end of the initializer's output, where the cause is.
 
 Verification: test
 
@@ -365,9 +418,11 @@ Verification: test
 
 ## DOCTOR-001 Doctor checks only the tools the project needs
 
-`liftoff doctor` runs the version command of each tool the project's stack
-needs (or, outside a project, the tools every project needs) and reports each
-as ok, missing, too old or of unknown version, with how to install it. It
-installs nothing and exits 3 when a required tool is not ready.
+`liftoff doctor` runs the version command of each tool the project's
+components and workflow need (or, outside a project, the tools every project
+needs), trying a tool's other commands, such as `python` for `python3`, when
+the first cannot run. It reports each tool as ok, missing, too old or of
+unknown version, with how to install it. It installs nothing and exits 3
+when a required tool is not ready.
 
 Verification: test

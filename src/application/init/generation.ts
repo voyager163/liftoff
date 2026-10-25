@@ -44,6 +44,7 @@ export async function generate(
     liftoffVersion,
     hosts: selection.hosts,
     profile: selection.profile,
+    workflow: selection.workflow,
     stack: selection.stack,
     pattern: selection.pattern,
     frontend: selection.frontend,

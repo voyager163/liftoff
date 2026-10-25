@@ -68,7 +68,7 @@ liftoff plan --name demo --workflow manual --agents copilot,claude --out demo.pl
 
 ## liftoff init
 
-Creates a new project in a new or empty directory, from a saved plan (--plan) or from the same options as `liftoff plan`. It shows what it will create and asks before writing anything; the default answer is no. In scripts, pass --yes. Nothing is installed, run or sent anywhere: the project is written in one step, or not at all.
+Creates a new project in a new or empty directory, from a saved plan (--plan) or from the same options as `liftoff plan`. It shows what it will create and asks before writing anything; the default answer is no. In scripts, pass --yes. The project is written in one step, or not at all. With the OpenSpec or Spec Kit workflow, init also runs that framework's own initializer at a pinned version, which downloads it; nothing else is installed, run or sent anywhere.
 
 Changes files; asks first unless `--yes` is given.
 

@@ -202,8 +202,10 @@ function readme(context: GenerationContext): string {
       path,
     ),
   );
+  const { guide } = context.workflow;
   return [
     ...sections.map((section) => `${section.trimEnd()}\n`),
+    ...(guide.length === 0 ? [] : [`## Specifications\n\n${guide.join("\n\n")}\n`]),
     `## How changes are made\n\n${changeProcess(context.profile)}\n`,
   ].join("\n");
 }

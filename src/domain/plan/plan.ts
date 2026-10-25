@@ -7,8 +7,11 @@ z.config(en());
 
 export const PLAN_SCHEMA = "liftoff.plan/v1";
 
-/** Effects a plan may have. Init only writes files into a new directory. */
-export const EFFECTS = ["write-files"] as const;
+/**
+ * Effects a plan may have. Init writes files into a new directory and, for a
+ * workflow with its own initializer, runs that initializer there.
+ */
+export const EFFECTS = ["write-files", "run-initializer"] as const;
 
 const planSchema = z.strictObject({
   schema: z.literal(PLAN_SCHEMA),
@@ -18,6 +21,14 @@ const planSchema = z.strictObject({
   target: z.string().check(z.minLength(1)),
   config: z.record(z.string(), z.unknown()),
   effects: z.array(z.enum(EFFECTS)),
+  /** The pinned initializer init runs in the new project, when the workflow has one. */
+  initializer: z.optional(
+    z.strictObject({
+      name: z.string(),
+      version: z.string(),
+      steps: z.array(z.strictObject({ command: z.string(), args: z.array(z.string()) })),
+    }),
+  ),
   files: z.array(
     z.strictObject({
       path: z.string(),

@@ -11,7 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
-import type { PathState, ProjectFsPort } from "../application/ports.ts";
+import type { PathState, ProjectFsPort, TreeEntry } from "../application/ports.ts";
 
 /** Local file system access for creating projects. */
 export class LocalProjectFs implements ProjectFsPort {
@@ -62,5 +62,21 @@ export class LocalProjectFs implements ProjectFsPort {
 
   async remove(target: string): Promise<void> {
     await rm(target, { recursive: true, force: true });
+  }
+
+  async listTree(directory: string): Promise<TreeEntry[]> {
+    // A recursive listing reports links as links and does not follow them.
+    const entries = await readdir(directory, { recursive: true, withFileTypes: true });
+    return entries
+      .map(
+        (entry): TreeEntry => ({
+          path: path
+            .relative(directory, path.join(entry.parentPath, entry.name))
+            .split(path.sep)
+            .join("/"),
+          kind: entry.isFile() ? "file" : entry.isDirectory() ? "directory" : "other",
+        }),
+      )
+      .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   }
 }

@@ -18,6 +18,7 @@ import { parseVersion, runDoctor } from "../../src/application/project/doctor.ts
 import { validateProject } from "../../src/application/project/validate-project.ts";
 import { PlanError, sealPlan } from "../../src/domain/plan/plan.ts";
 import { validateConfig } from "../../src/domain/project/config.ts";
+import { FakeInitializer } from "../helpers/initializer.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 const assets = new PackageAssets(
@@ -25,6 +26,7 @@ const assets = new PackageAssets(
   path.join(repoRoot, ".github/liftoff"),
 );
 const fs = new LocalProjectFs();
+const initializer = new FakeInitializer();
 const config = validateConfig({
   schema: "liftoff.config/v1",
   name: "demo",
@@ -44,7 +46,7 @@ afterEach(() => rmSync(work, { recursive: true, force: true }));
 
 const create = async (target = path.join(work, "demo"), project = config) => {
   const plan = await planInit({ assets, fs }, { config: project, target, liftoffVersion: "1.0.0" });
-  await applyInit({ assets, fs }, plan, "1.0.0");
+  await applyInit({ assets, fs, initializer }, plan, "1.0.0");
   return target;
 };
 
@@ -54,7 +56,7 @@ describe("INIT-002 projects are created in one step or not at all", () => {
       { assets, fs },
       { config, target: path.join(work, "demo"), liftoffVersion: "1.0.0" },
     );
-    const result = await applyInit({ assets, fs }, plan, "1.0.0");
+    const result = await applyInit({ assets, fs, initializer }, plan, "1.0.0");
     expect(result.files).toBe(plan.files.length);
     expect(readdirSync(work)).toEqual(["demo"]);
     expect(readFileSync(path.join(work, "demo/liftoff.yaml"), "utf8")).toContain("name: demo");
@@ -86,7 +88,9 @@ describe("INIT-002 projects are created in one step or not at all", () => {
     const plan = await planInit({ assets, fs }, { config, target, liftoffVersion: "1.0.0" });
     mkdirSync(target);
     writeFileSync(path.join(target, "surprise.txt"), "");
-    await expect(applyInit({ assets, fs }, plan, "1.0.0")).rejects.toThrow(/already has files/);
+    await expect(applyInit({ assets, fs, initializer }, plan, "1.0.0")).rejects.toThrow(
+      /already has files/,
+    );
   });
 
   it("removes the staging directory when a write fails", async () => {
@@ -102,12 +106,15 @@ describe("INIT-002 projects are created in one step or not at all", () => {
       createStaging: (p) => fs.createStaging(p),
       publish: (s, t) => fs.publish(s, t),
       remove: (p) => fs.remove(p),
+      listTree: (d) => fs.listTree(d),
       writeFile: async (p, c, x) => {
         if (++writes === 5) throw new Error("disk full");
         return fs.writeFile(p, c, x);
       },
     };
-    await expect(applyInit({ assets, fs: failing }, plan, "1.0.0")).rejects.toThrow("disk full");
+    await expect(applyInit({ assets, fs: failing, initializer }, plan, "1.0.0")).rejects.toThrow(
+      "disk full",
+    );
     expect(readdirSync(work)).toEqual([]);
   });
 });
@@ -124,7 +131,9 @@ describe("INIT-002 the working directory and cancellation", () => {
       { config, target: path.join(work, "demo"), liftoffVersion: "1.0.0" },
     );
     await expect(
-      applyInit({ assets, fs }, plan, "1.0.0", { cwd: path.join(work, "demo", "sub") }),
+      applyInit({ assets, fs, initializer }, plan, "1.0.0", {
+        cwd: path.join(work, "demo", "sub"),
+      }),
     ).rejects.toThrow(InitTargetError);
     expect(readdirSync(work)).toEqual(["here"]);
   });
@@ -143,13 +152,16 @@ describe("INIT-002 the working directory and cancellation", () => {
       createStaging: (p) => fs.createStaging(p),
       publish: (s, t) => fs.publish(s, t),
       remove: (p) => fs.remove(p),
+      listTree: (d) => fs.listTree(d),
       writeFile: async (p, c, x) => {
         if (++writes === 3) controller.abort();
         return fs.writeFile(p, c, x);
       },
     };
     await expect(
-      applyInit({ assets, fs: interrupted }, plan, "1.0.0", { signal: controller.signal }),
+      applyInit({ assets, fs: interrupted, initializer }, plan, "1.0.0", {
+        signal: controller.signal,
+      }),
     ).rejects.toThrow(expect.objectContaining({ name: "AbortError" }));
     expect(writes).toBe(3);
     expect(readdirSync(work)).toEqual([]);
@@ -162,7 +174,7 @@ describe("INIT-004 stale plans are refused", () => {
       { assets, fs },
       { config, target: path.join(work, "demo"), liftoffVersion: "1.0.0" },
     );
-    await expect(applyInit({ assets, fs }, plan, "1.0.1")).rejects.toThrow(
+    await expect(applyInit({ assets, fs, initializer }, plan, "1.0.1")).rejects.toThrow(
       /made by Liftoff 1.0.0, but this is 1.0.1/,
     );
   });
@@ -174,7 +186,9 @@ describe("INIT-004 stale plans are refused", () => {
     );
     const { hash: _hash, ...rest } = plan;
     const resealed = sealPlan({ ...rest, files: rest.files.slice(1) });
-    await expect(applyInit({ assets, fs }, resealed, "1.0.0")).rejects.toThrow(PlanError);
+    await expect(applyInit({ assets, fs, initializer }, resealed, "1.0.0")).rejects.toThrow(
+      PlanError,
+    );
     expect(readdirSync(work)).toEqual([]);
   });
 });

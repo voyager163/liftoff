@@ -1,7 +1,7 @@
 import { renderAgentIntegration } from "../../generators/skills.ts";
 import type { Artifact, GenerationContext, ProjectPlugin } from "../contracts/project-plugin.ts";
 
-function agentsMarkdown({ config, components }: GenerationContext): string {
+function agentsMarkdown({ config, components, workflow }: GenerationContext): string {
   const checks = components
     .flatMap((component) => component.checks)
     .map((check) => `| \`${check.directory}\` | \`${check.command}\` | ${check.name} |`);
@@ -25,6 +25,9 @@ function agentsMarkdown({ config, components }: GenerationContext): string {
     "",
     ...layout,
     "",
+    ...(workflow.guide.length === 0
+      ? []
+      : ["## Specifications", "", ...workflow.guide.flatMap((paragraph) => [paragraph, ""])]),
     "## Conventions",
     "",
     "- Pull requests target `develop`. Name branches `feature/…`, `fix/…`, `chore/…`, `docs/…` or `ci/…`.",
