@@ -32,5 +32,10 @@
     "drizzle-kit": "0.31.11",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
+  },
+  "overrides": {
+    "@scalar/json-magic@0.16.0": {
+      "undici": "7.30.1"
+    }
   }
 }

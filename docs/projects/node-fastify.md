@@ -24,6 +24,14 @@ settings stops the API with an error rather than falling back to defaults.
 Drizzle migrations only go forward: undo a change with a new migration.
 Ordinary API projects have no GenAI dependencies.
 
+## Dependencies
+
+Every dependency is pinned exactly. Liftoff's `npm run lock:node` resolves the
+template's lockfile to versions published at least 7 days earlier, then moves
+any package with a known advisory to a fixed version its dependents accept.
+Where a fix needs a version a dependent does not accept, `package.json` holds
+a narrow override, explained in the project's README.
+
 ## Layout
 
 ```text

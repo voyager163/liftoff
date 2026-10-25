@@ -77,6 +77,13 @@ migrations only go forward; undo a change with a new migration.
 CI runs all of them on every pull request, builds the container image and
 reviews new dependencies.
 
+## Dependencies
+
+Dependabot proposes updates weekly. `backend/package.json` has one override:
+`@scalar/json-magic@0.16.0` gets `undici` 7.30.1, which fixes a
+denial-of-service advisory (GHSA-xjj6-f33q-929c). The override stops applying
+once the Scalar packages move past that version; remove it then.
+
 ## How changes are made
 
 {{liftoff.changeProcess}}
