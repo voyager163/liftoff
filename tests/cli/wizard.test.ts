@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { run } from "../../src/adapters/process.ts";
 import type { CommandSpec } from "../../src/cli/command.ts";
 import { makeInitCommand, makePlanCommand } from "../../src/cli/commands/plan-init.ts";
 import { defaultProjectPorts } from "../../src/cli/commands/project-ports.ts";
@@ -32,6 +33,13 @@ const exec = async (argv: string[], answers: Answers, confirm = true) => {
   return { code, io, out: io.out.join(""), err: io.err.join("") };
 };
 const flags = (io: { asked: { flag: string }[] }) => io.asked.map((question) => question.flag);
+/** The printed command's arguments, as either shell reads them (single quotes, '' or '\\''). */
+const words = (command: string) =>
+  [...command.matchAll(/'(?:[^']|'')*'|\S+/g)].map(([word]) =>
+    word.startsWith("'") ? word.slice(1, -1).replaceAll("''", "'") : word,
+  );
+/** What the equivalent command prints on this machine. */
+const owners = process.platform === "win32" ? "--owners 'alice,bob'" : "--owners alice,bob";
 
 describe("INIT-006 init asks for each option in a terminal", () => {
   it("asks one question per option, says the equivalent command, then creates the project", async () => {
@@ -109,9 +117,9 @@ describe("INIT-006 init asks for each option in a terminal", () => {
     const wizard = await exec(["init", "--json"], answers, false);
     expect(wizard.code).toBe(4);
     const command = /\n {2}liftoff init (.*)\n/.exec(wizard.err)?.[1] ?? "";
-    expect(command).toContain("--owners alice,bob");
+    expect(command).toContain(owners);
     expect(command).not.toContain("--workflow");
-    const planned = await exec(["plan", ...command.split(" "), "--json"], {});
+    const planned = await exec(["plan", ...words(command), "--json"], {});
     expect(JSON.parse(planned.out).plan.hash).toBe(JSON.parse(wizard.out).plan);
   });
 
@@ -167,6 +175,25 @@ describe("INIT-006 init asks for each option in a terminal", () => {
     );
   });
 
+  it("prints values the macOS shells pass on unchanged", async () => {
+    const tricky = ["=ls", "~home", "it's", "my demo", "--demo", "a,b", "$HOME", "*", "x#y"];
+    for (const dir of tricky) {
+      expect(equivalentCommand({ name: "demo", dir })).not.toMatch(/--dir[ =][=~$*]/);
+    }
+    if (process.platform === "win32") return;
+    for (const shell of ["sh", "zsh"]) {
+      for (const dir of tricky) {
+        const printed = equivalentCommand({ name: "demo", dir }).replace(/^liftoff init /, "");
+        const { stdout } = await run(shell, ["-c", `printf '%s\\n' ${printed}`], { cwd: work });
+        const args = stdout.trimEnd().split("\n");
+        const value = args.includes("--dir")
+          ? args[args.indexOf("--dir") + 1]
+          : args.find((arg) => arg.startsWith("--dir="))?.slice("--dir=".length);
+        expect([shell, value]).toEqual([shell, dir]);
+      }
+    }
+  });
+
   it("quotes for PowerShell on Windows, where commas and apostrophes differ", () => {
     expect(
       equivalentCommand(
@@ -186,7 +213,7 @@ describe("INIT-006 init asks for each option in a terminal", () => {
     const wizard = await exec(["init", "--json"], { name: "demo", dir: "--demo" }, false);
     const command = /\n {2}liftoff init (.*)\n/.exec(wizard.err)?.[1] ?? "";
     expect(command).toBe("--name demo --dir=--demo --stack python-fastapi");
-    const planned = await exec(["plan", ...command.split(" "), "--json"], {});
+    const planned = await exec(["plan", ...words(command), "--json"], {});
     expect(JSON.parse(planned.out).plan.hash).toBe(JSON.parse(wizard.out).plan);
   });
 });

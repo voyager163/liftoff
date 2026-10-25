@@ -204,14 +204,16 @@ const splitList = (value: string): string[] =>
 export type Shell = "posix" | "powershell";
 
 /**
- * Quotes a value for the shell, when it needs it. PowerShell also reads
- * commas, @ and % specially, and escapes an apostrophe by doubling it.
+ * Quotes a value for the shell, when it needs it. A value is left bare only
+ * when it starts with a letter, digit, dot, slash or hyphen, since zsh
+ * expands a leading = or ~. PowerShell also reads commas, @ and % specially,
+ * and escapes an apostrophe by doubling it.
  */
 function quote(value: string, shell: Shell): string {
   if (shell === "powershell") {
-    return /^[\w./:=+-]+$/.test(value) ? value : `'${value.replaceAll("'", "''")}'`;
+    return /^[\w./-][\w./:=+-]*$/.test(value) ? value : `'${value.replaceAll("'", "''")}'`;
   }
-  return /^[\w@%+=:,./-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
+  return /^[\w./-][\w@%+=:,./-]*$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 /**
