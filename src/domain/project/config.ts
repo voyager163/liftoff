@@ -53,8 +53,11 @@ export function validateConfig(raw: unknown, source = CONFIG_FILE): ProjectConfi
   if (new Set(config.agents).size !== config.agents.length) {
     throw new ConfigError(`${source} is invalid: agents: each agent may be listed once`);
   }
-  if (new Set(config.owners).size !== config.owners.length) {
-    throw new ConfigError(`${source} is invalid: owners: each owner may be listed once`);
+  // GitHub logins ignore case, so alice and Alice are one owner.
+  if (new Set(config.owners.map((owner) => owner.toLowerCase())).size !== config.owners.length) {
+    throw new ConfigError(
+      `${source} is invalid: owners: each owner may be listed once, in any letter case`,
+    );
   }
   return config;
 }

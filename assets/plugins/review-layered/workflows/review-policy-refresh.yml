@@ -1,13 +1,19 @@
 # Managed by Liftoff. Change it through Liftoff rather than by hand.
-# Re-checks review policy when a review is submitted or dismissed, because
-# pull_request_target does not fire on reviews. It dispatches the review-policy
-# workflow from the pull request's base branch, which refuses to run from any
-# other branch, so this workflow can delay a pass but never fake one.
+# Re-checks review policy after a review is submitted or dismissed, because
+# pull_request_target does not fire on reviews. A review on a pull request
+# from a fork only gets a read-only token, so the Review submitted workflow
+# records the review and this workflow, which runs from the default branch
+# when that one completes, does the work. It runs no pull request code. It
+# finds the open pull requests whose head is the reviewed commit and
+# dispatches the review-policy workflow from each one's base branch, which
+# refuses to run from any other branch: this workflow can delay a pass but
+# never fake one.
 name: Review policy refresh
 
 on:
-  pull_request_review:
-    types: [submitted, dismissed]
+  workflow_run:
+    workflows: [Review submitted]
+    types: [completed]
 
 permissions:
   contents: read
@@ -19,11 +25,20 @@ jobs:
     timeout-minutes: 5
     permissions:
       actions: write
+      pull-requests: read
     steps:
-      - name: Dispatch the check from the base branch
+      - name: Dispatch the check for the reviewed pull request
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-          NUMBER: ${{ github.event.pull_request.number }}
-        run: gh workflow run {{liftoff.reviewPolicyWorkflow}} --repo "$REPO" --ref "$BASE_REF" -f "pull_request=$NUMBER"
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          found=0
+          while IFS=$'\t' read -r number base; do
+            gh workflow run {{liftoff.reviewPolicyWorkflow}} --repo "$REPO" --ref "$base" -f "pull_request=$number"
+            found=1
+          done < <(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
+            --jq '.[] | select(.head.sha == env.HEAD_SHA) | [.number, .base.ref] | @tsv')
+          if [ "$found" = 0 ]; then
+            echo "No open pull request has head $HEAD_SHA; nothing to re-check."
+          fi

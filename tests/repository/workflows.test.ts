@@ -144,6 +144,33 @@ describe("AIREVIEW-002 review jobs hand their files on reliably", () => {
   );
 });
 
+describe("REVIEW-012 reviews re-check the policy, forks included", () => {
+  const find = (name: string) => workflows.find((w) => w.name === name)?.data;
+
+  it("records reviews with no permissions and no code", () => {
+    const submitted = find("review-submitted.yml");
+    expect(triggers(submitted as Workflow)).toEqual(["pull_request_review"]);
+    expect(submitted?.permissions).toEqual({});
+    for (const job of Object.values(submitted?.jobs ?? {})) {
+      expect(job.permissions).toBeUndefined();
+      expect(job.steps?.some((step) => step.uses !== undefined)).toBe(false);
+    }
+  });
+
+  it("refreshes from the default branch when a review was recorded", () => {
+    const refresh = find("review-policy-refresh.yml");
+    expect(refresh?.on).toEqual({
+      workflow_run: { workflows: ["Review submitted"], types: ["completed"] },
+    });
+    const job = Object.values(refresh?.jobs ?? {})[0];
+    expect(job?.permissions).toEqual({ actions: "write", "pull-requests": "read" });
+    expect(job?.steps?.some((step) => step.uses?.startsWith("actions/checkout@"))).toBe(false);
+    expect(job?.steps?.map((step) => step.run ?? "").join("\n")).toContain(
+      "gh workflow run review-policy.yml",
+    );
+  });
+});
+
 describe("PROJ-006 and PROJ-011 every API stack is checked in CI", () => {
   const ci = workflows.find((w) => w.name === "ci.yml")?.data;
 

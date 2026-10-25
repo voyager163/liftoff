@@ -36,13 +36,24 @@ jobs:
         run: node .github/liftoff/governance-drift.mjs
 `;
 
+/**
+ * Whether the rulesets require a code owner's approval: only when the profile
+ * requires an approval for every change, and only with at least two owners,
+ * because nobody can approve their own pull request and a single owner's
+ * changes could then never be approved.
+ */
+function codeOwnerReviewRequired(profile: ProfileId, owners: readonly string[]): boolean {
+  return PROFILES[profile].approvals.low > 0 && owners.length >= 2;
+}
+
 function ruleset(
   name: string,
   branch: string,
   methods: string[],
   context: GenerationContext,
-  approvals: number,
+  profile: ProfileId,
 ) {
+  const approvals = PROFILES[profile].approvals.low;
   return {
     name,
     target: "branch",
@@ -57,9 +68,7 @@ function ruleset(
         parameters: {
           allowed_merge_methods: methods,
           dismiss_stale_reviews_on_push: true,
-          // Nobody can approve their own pull request, so with a single code
-          // owner GitHub could never approve that owner's changes.
-          require_code_owner_review: approvals > 0 && context.config.owners.length >= 2,
+          require_code_owner_review: codeOwnerReviewRequired(profile, context.config.owners),
           require_last_push_approval: approvals > 0,
           required_approving_review_count: approvals,
           required_review_thread_resolution: true,
@@ -168,12 +177,13 @@ if it differs from the committed rulesets.
 function approvalsSection(owners: readonly string[], profile: ProfileId): string {
   const p = PROFILES[profile];
   if (Math.max(p.approvals.low, p.approvals.medium, p.approvals.high) === 0) return "";
-  const ownership =
-    owners.length >= 2
-      ? "[.github/CODEOWNERS](.github/CODEOWNERS) names who reviews what. GitHub\nrequests those owners, and the branch rules require one of them to approve."
-      : owners.length === 1
-        ? "[.github/CODEOWNERS](.github/CODEOWNERS) names one owner. Nobody can approve\ntheir own pull request, so the branch rules do not require a code owner's\napproval; add a second owner, then turn on `require_code_owner_review` in the\nrulesets."
-        : "No code owners were given, so any collaborator with write access can\napprove. Add `.github/CODEOWNERS` to have GitHub request reviewers.";
+  const ownership = codeOwnerReviewRequired(profile, owners)
+    ? "[.github/CODEOWNERS](.github/CODEOWNERS) names who reviews what. GitHub\nrequests those owners, and the branch rules require one of them to approve."
+    : owners.length === 0
+      ? "No code owners were given, so any collaborator with write access can\napprove. Add `.github/CODEOWNERS` to have GitHub request reviewers."
+      : p.approvals.low === 0
+        ? "[.github/CODEOWNERS](.github/CODEOWNERS) names who reviews what, and GitHub\nrequests those owners. Low-risk changes need no approval, so the branch rules\ndo not require a code owner's: any collaborator with write access can give\nthe approvals a change needs."
+        : "[.github/CODEOWNERS](.github/CODEOWNERS) names one owner. Nobody can approve\ntheir own pull request, so the branch rules do not require a code owner's\napproval; add a second owner, then turn on `require_code_owner_review` in the\nrulesets.";
   return `
 ## Approvals
 
@@ -198,7 +208,6 @@ export function gitflowGovernance(profile: ProfileId): ProjectPlugin {
     summary: PROFILES[profile].summary,
     templateRoots: [],
     artifacts(context) {
-      const approvals = PROFILES[profile].approvals.low;
       const bundle = context.ciBundles["governance-drift.mjs"];
       if (bundle === undefined)
         throw new Error("this release does not ship the governance-drift.mjs CI bundle");
@@ -213,13 +222,13 @@ export function gitflowGovernance(profile: ProfileId): ProjectPlugin {
           path: ".github/rulesets/develop.json",
           ownership: "seeded",
           content: json(
-            ruleset("Protect develop", "develop", ["merge", "squash"], context, approvals),
+            ruleset("Protect develop", "develop", ["merge", "squash"], context, profile),
           ),
         },
         {
           path: ".github/rulesets/main.json",
           ownership: "seeded",
-          content: json(ruleset("Protect main", "main", ["merge"], context, approvals)),
+          content: json(ruleset("Protect main", "main", ["merge"], context, profile)),
         },
         { path: ".github/liftoff/governance-drift.mjs", ownership: "managed", content: bundle },
         {

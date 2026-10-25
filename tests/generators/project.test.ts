@@ -453,6 +453,9 @@ describe("PROJ-012 team and risk-tiered profiles", () => {
     const governance = tiered.get("GOVERNANCE.md")?.content ?? "";
     expect(governance).toContain("required approvals: low 0, medium 1,\n   high 2");
     expect(governance).toContain("## Approvals");
+    // The text matches the rulesets: owners are requested, not required.
+    expect(governance).toContain("do not require a code owner's");
+    expect(governance).not.toContain("require one of them to approve");
   });
 
   it("keeps the single-maintainer handoff free of approval rules", async () => {
@@ -487,6 +490,10 @@ describe("PROJ-008 governance handoff", () => {
       "Copilot code review comments on every pull request",
     );
     expect(project.has(".github/workflows/90-governance-drift.yml")).toBe(true);
+    expect(project.get(".github/workflows/03-review-policy-refresh.yml")?.content).toContain(
+      "gh workflow run 03-review-policy.yml",
+    );
+    expect(project.has(".github/workflows/03-review-submitted.yml")).toBe(true);
     expect((await byPath()).has(".github/CODEOWNERS")).toBe(false);
     expect((await byPath()).get("GOVERNANCE.md")?.content).not.toContain("Copilot");
   });

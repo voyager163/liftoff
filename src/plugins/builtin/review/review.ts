@@ -107,6 +107,8 @@ function reviewPolicy({ config, profile, stack }: GenerationContext): string {
 
 export interface ReviewWorkflowPaths {
   readonly policy: string;
+  /** Records each review, so the refresh can run with a write token, forks included. */
+  readonly submitted: string;
   readonly refresh: string;
   readonly ai: string;
 }
@@ -114,6 +116,7 @@ export interface ReviewWorkflowPaths {
 /** Generated projects number their workflows; Liftoff's own repository does not. */
 export const PROJECT_WORKFLOW_PATHS: ReviewWorkflowPaths = {
   policy: ".github/workflows/03-review-policy.yml",
+  submitted: ".github/workflows/03-review-submitted.yml",
   refresh: ".github/workflows/03-review-policy-refresh.yml",
   ai: ".github/workflows/04-ai-review.yml",
 };
@@ -132,6 +135,7 @@ export function reviewWorkflowFiles(
     renderTemplate(templates.read(`${WORKFLOWS}/${name}`), values, `${WORKFLOWS}/${name}`);
   const files: Artifact[] = [
     { path: paths.policy, ownership: "managed", content: workflow("review-policy.yml", {}) },
+    { path: paths.submitted, ownership: "managed", content: workflow("review-submitted.yml", {}) },
     {
       path: paths.refresh,
       ownership: "managed",

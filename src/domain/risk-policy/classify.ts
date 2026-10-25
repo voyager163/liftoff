@@ -100,7 +100,10 @@ export function classify(input: ClassifyInput): Classification {
     );
   }
 
-  const trustedAuthor = policy.trusted_authors.includes(author);
+  // GitHub logins ignore case.
+  const trustedAuthor = policy.trusted_authors.some(
+    (login) => login.toLowerCase() === author.toLowerCase(),
+  );
   if (!trustedAuthor) {
     tier = higher(tier, policy.untrusted_author_tier);
     addReason(policy.untrusted_author_tier, `author ${author} is not on the trusted list`);
