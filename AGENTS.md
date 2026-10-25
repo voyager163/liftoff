@@ -40,7 +40,7 @@ Run from the repository root with Node 26 (`.node-version`):
 - Requirements live in `docs/requirements/` with IDs such as `REVIEW-002`.
   A test for a requirement puts its ID in the `describe` or `it` name.
 - Generated files carry a "Managed by Liftoff" marker. Change the source in
-  `assets/` or `src/`, then run `npm run render:skills` or
+  `assets/` or `src/`, then run `npm run render:own` or
   `npm run build:ci-bundle`. Never edit generated copies by hand.
 - Pin exact dependency versions and GitHub Actions to full commit SHAs.
 - Match the surrounding code: naming, error handling and comment density.

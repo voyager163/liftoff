@@ -1,0 +1,8 @@
+# Example settings file. Copy it, edit it and point APP_CONFIG_FILE at it.
+# Environment variables (APP_*) override anything set here. Keep secrets such
+# as database passwords in the environment, not in this file.
+environment = "local"
+host = "127.0.0.1"
+port = 8000
+docs_enabled = true
+log_level = "info"

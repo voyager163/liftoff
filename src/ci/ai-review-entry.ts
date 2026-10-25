@@ -1,12 +1,5 @@
 // Entry point for the bundled AI review pipeline (.github/liftoff/ai-review.mjs).
-import {
-  appendFileSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { run } from "../adapters/process.ts";
 import { main } from "./ai-review.ts";
@@ -27,7 +20,6 @@ process.exitCode = await main(process.argv[2], {
   },
   appendFile: (file, text) => appendFileSync(file, text),
   log: (text) => process.stdout.write(text),
-  removeFile: (file) => rmSync(file, { force: true }),
   git: async (args) => {
     const result = await run("git", ["-c", "core.quotepath=off", ...args], {
       cwd: process.cwd(),

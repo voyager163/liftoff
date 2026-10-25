@@ -1,15 +1,20 @@
 // The verified AI review pipeline, run by GitHub Actions and bundled into
-// .github/liftoff/ai-review.mjs. Coding agents only read the repository and
-// print JSON; this script does everything with side effects, so the agents
-// never hold a token that can write to the pull request.
+// .github/liftoff/ai-review.mjs. Coding agents only read files and print
+// JSON; this script does everything else, including writing the diff they
+// review, so the agents need no shell and never hold a token that can write
+// to the pull request.
 //
-//   prepare               decide whether to run and how deep; write prompts
-//   restore-instructions  put review instructions back to the base branch's copy
-//   verifier-prompt       merge finder candidates; write the verifier prompt
-//   publish               vote, plan and post one review
-//   eval-prepare          write finder prompts for an evaluation case
-//   eval-score            score one case's review against its known defect
-//   eval-report           summarise every case's score
+// The reviewed files are in LIFTOFF_REVIEW_TREE (default: the working
+// directory). On pull requests that is a separate checkout of the head, so
+// the working directory, with the scripts, skills and instructions the agents
+// use, stays the base branch's.
+//
+//   prepare          decide whether to run and how deep; write the diff and prompts
+//   verifier-prompt  merge finder candidates; write the verifier prompt
+//   publish          vote, plan and post one review
+//   eval-prepare     write the diff and finder prompts for an evaluation case
+//   eval-score       score one case's review against its known defect
+//   eval-report      summarise every case's score
 import { GitHubClient } from "../adapters/github.ts";
 import { GitHubReviewGateway } from "../adapters/github-review.ts";
 import {
@@ -25,10 +30,11 @@ import { parseVerdicts, vote } from "../domain/ai-review/findings.ts";
 import {
   FINDER_PASSES,
   finderPrompt,
+  type ReviewSource,
   VERIFIER_RUNS,
   verifierPrompt,
 } from "../domain/ai-review/prompts.ts";
-import { BUILTIN_RULES, POLICY_PATH } from "../domain/risk-policy/policy.ts";
+import { POLICY_PATH } from "../domain/risk-policy/policy.ts";
 
 /** What the pipeline needs from the runner. */
 export interface PipelineEnvironment {
@@ -40,7 +46,6 @@ export interface PipelineEnvironment {
   readonly log: (text: string) => void;
   /** Runs git in the checkout; returns stdout, or undefined when git fails. */
   readonly git: (args: readonly string[]) => Promise<string | undefined>;
-  readonly removeFile: (path: string) => void;
   readonly fetch?: (input: string, init?: RequestInit) => Promise<Response>;
 }
 
@@ -51,8 +56,8 @@ const SKILL_PATHS = [".claude/skills", ".agents/skills", ".github/skills"].map(
 const VERIFIER_PATHS = [
   ".github/agents/liftoff-verifier.agent.md",
   ".claude/agents/liftoff-verifier.md",
+  ".codex/agents/liftoff-verifier.toml",
 ];
-const INSTRUCTION_RULE = BUILTIN_RULES.find((rule) => rule.paths.includes("REVIEW.md"));
 
 interface PullRequestEvent {
   pull_request?: { number: number; head: { repo?: { full_name?: string } | null } };
@@ -76,8 +81,6 @@ export async function main(
     switch (command) {
       case "prepare":
         return await prepare(context, output, summary, work);
-      case "restore-instructions":
-        return await restoreInstructions(context, summary);
       case "verifier-prompt":
         return await writeVerifierPrompt(context, output, summary, work);
       case "publish":
@@ -90,7 +93,7 @@ export async function main(
         return evalReport(context, summary);
       default:
         throw new Error(
-          `unknown command "${command ?? ""}"; use prepare, restore-instructions, verifier-prompt, publish, eval-prepare, eval-score or eval-report`,
+          `unknown command "${command ?? ""}"; use prepare, verifier-prompt, publish, eval-prepare, eval-score or eval-report`,
         );
     }
   } catch (error) {
@@ -129,6 +132,50 @@ async function fromBase(
 
 const stripFrontmatter = (text: string) => text.replace(/^---\n[\s\S]*?\n---\n/, "");
 
+/**
+ * The verifier agent's instructions from whichever host's copy the base
+ * branch has: Markdown with frontmatter, or Codex's TOML, where they are the
+ * literal string in developer_instructions.
+ */
+async function verifierInstructions(
+  context: PipelineEnvironment,
+  baseRef: string,
+): Promise<string> {
+  for (const path of VERIFIER_PATHS) {
+    const text = await context.git(["show", `origin/${baseRef}:${path}`]);
+    if (text === undefined) continue;
+    if (!path.endsWith(".toml")) return stripFrontmatter(text);
+    const instructions = /^developer_instructions = '''\n([\s\S]*?)'''$/m.exec(text)?.[1];
+    if (instructions) return instructions;
+  }
+  throw new Error(`the base branch has none of ${VERIFIER_PATHS.join(", ")}`);
+}
+
+const reviewSource = (context: PipelineEnvironment, work: string): ReviewSource => ({
+  diff: `${work}/diff.patch`,
+  tree: context.env.LIFTOFF_REVIEW_TREE ?? ".",
+});
+
+/**
+ * Writes the diff the agents review, trying each range in turn. A later
+ * round's range starts at the last reviewed commit, which a force push can
+ * remove; the whole change is the fallback.
+ */
+async function writeDiff(
+  context: PipelineEnvironment,
+  source: ReviewSource,
+  ranges: readonly string[],
+): Promise<string> {
+  for (const range of ranges) {
+    const text = await context.git(["-C", source.tree, "diff", range]);
+    if (text !== undefined) {
+      context.writeFile(source.diff, text);
+      return range;
+    }
+  }
+  throw new Error(`cannot compute the diff ${ranges.join(" or ")} in ${source.tree}`);
+}
+
 async function prepare(
   context: PipelineEnvironment,
   output: (name: string, value: string | number | boolean) => void,
@@ -146,8 +193,9 @@ async function prepare(
   };
   const event = JSON.parse(context.readFile(env.GITHUB_EVENT_PATH ?? "")) as PullRequestEvent;
   if (!event.pull_request) throw new Error("the event has no pull request");
-  if (env.COPILOT_CONFIGURED !== "true") {
-    return skip("not configured; add a COPILOT_GITHUB_TOKEN repository secret to enable it");
+  if (env.LIFTOFF_AGENT_CONFIGURED !== "true") {
+    const secret = env.LIFTOFF_AGENT_SECRET ?? "review agent";
+    return skip(`not configured; add a ${secret} repository secret to enable it`);
   }
   if (event.pull_request.head.repo?.full_name !== env.GITHUB_REPOSITORY) {
     return skip("the pull request comes from a fork, where repository secrets are unavailable");
@@ -164,7 +212,6 @@ async function prepare(
     }),
   );
   output("round", decision.round);
-  output("range", decision.range);
   output("tier", decision.classification.tier);
   if (!decision.run) {
     const stop = decision.round === MAX_ROUNDS + 1;
@@ -176,12 +223,16 @@ async function prepare(
     return 0;
   }
 
+  const source = reviewSource(context, work);
+  const range = await writeDiff(context, source, [
+    ...new Set([decision.range, `origin/${pr.baseRef}...${pr.headSha}`]),
+  ]);
   const skill = stripFrontmatter(await fromBase(context, pr.baseRef, SKILL_PATHS));
   const passes = Array.from({ length: decision.passes }, (_, pass) => pass);
   for (const pass of passes) {
     context.writeFile(
       `${work}/finder-${pass}.md`,
-      finderPrompt({ skill, pass, range: decision.range, title: pr.title, description: pr.body }),
+      finderPrompt({ ...source, skill, pass, title: pr.title, description: pr.body }),
     );
   }
   output("run", true);
@@ -190,40 +241,7 @@ async function prepare(
   output("passes", JSON.stringify(passes));
   output("verifiers", JSON.stringify(Array.from({ length: VERIFIER_RUNS }, (_, run) => run)));
   summary(
-    `AI review round ${decision.round}: ${decision.reason}, ${decision.passes} finder passes over \`${decision.range}\`.`,
-  );
-  return 0;
-}
-
-/**
- * Coding agents read instruction files from the working tree, so before an
- * agent runs, every review-instruction file the pull request touched is put
- * back to the base branch's version (or removed if the base has none).
- */
-async function restoreInstructions(
-  context: PipelineEnvironment,
-  summary: (text: string) => void,
-): Promise<number> {
-  const base = context.env.LIFTOFF_BASE_REF;
-  if (!base) throw new Error("LIFTOFF_BASE_REF must be set");
-  const changed =
-    (await context.git(["diff", "--name-only", "--no-renames", `origin/${base}...HEAD`])) ?? "";
-  const { default: picomatch } = await import("picomatch");
-  const isInstruction = picomatch([...(INSTRUCTION_RULE?.paths ?? [])], { dot: true });
-  const restored: string[] = [];
-  for (const path of changed
-    .split("\n")
-    .filter(Boolean)
-    .filter((file) => isInstruction(file))) {
-    const original = await context.git(["show", `origin/${base}:${path}`]);
-    if (original === undefined) context.removeFile(path);
-    else context.writeFile(path, original);
-    restored.push(path);
-  }
-  summary(
-    restored.length === 0
-      ? "No review instructions changed in this pull request."
-      : `Reviewing with the base branch's instructions for: ${restored.map((p) => `\`${p}\``).join(", ")}.`,
+    `AI review round ${decision.round}: ${decision.reason}, ${decision.passes} finder passes over \`${range}\`.`,
   );
   return 0;
 }
@@ -253,9 +271,11 @@ async function writeVerifierPrompt(
     );
     return 0;
   }
-  const instructions = stripFrontmatter(await fromBase(context, pr.baseRef, VERIFIER_PATHS));
-  const range = context.env.LIFTOFF_RANGE ?? `origin/${pr.baseRef}...${pr.headSha}`;
-  context.writeFile(`${work}/verifier.md`, verifierPrompt({ instructions, candidates, range }));
+  const instructions = await verifierInstructions(context, pr.baseRef);
+  context.writeFile(
+    `${work}/verifier.md`,
+    verifierPrompt({ ...reviewSource(context, work), instructions, candidates }),
+  );
   summary(`${candidates.length} candidate finding(s) to verify.`);
   return 0;
 }
@@ -307,15 +327,17 @@ async function evalPrepare(
     `${directory}/case.json`,
   );
   const baseRef = context.env.LIFTOFF_BASE_REF ?? "develop";
+  const source = reviewSource(context, work);
+  await writeDiff(context, source, [EVAL_RANGE]);
   const skill = stripFrontmatter(await fromBase(context, baseRef, SKILL_PATHS));
   const passes = Array.from({ length: FINDER_PASSES.standard }, (_, pass) => pass);
   for (const pass of passes) {
     context.writeFile(
       `${work}/finder-${pass}.md`,
       finderPrompt({
+        ...source,
         skill,
         pass,
-        range: EVAL_RANGE,
         title: "Evaluation change",
         description: evalCase.description,
       }),

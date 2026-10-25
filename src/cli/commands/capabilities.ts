@@ -1,4 +1,14 @@
 import { PROFILES } from "../../domain/risk-policy/profiles.ts";
+import { AGENT_HOSTS } from "../../plugins/builtin/agents/hosts.ts";
+import {
+  DEFAULT_GOVERNANCE,
+  DEFAULT_WORKFLOW,
+  GOVERNANCE,
+  PLANNED_WORKFLOWS,
+  STACKS,
+  WORKFLOWS,
+  WORKLOADS,
+} from "../../plugins/registry.ts";
 import { type CommandSpec, commandName } from "../command.ts";
 import { OUTCOMES } from "../outcome.ts";
 import { COMMON_OPTIONS } from "../parse.ts";
@@ -32,11 +42,25 @@ export const capabilitiesCommand: CommandSpec = {
       cliVersion: version,
       exitCodes: OUTCOMES,
       commands,
+      workloads: WORKLOADS,
+      stacks: Object.values(STACKS).map((stack) => ({
+        id: stack.id.replace(/^stack\//, ""),
+        workload: stack.workload,
+        summary: stack.summary,
+      })),
+      workflows: [
+        ...Object.keys(WORKFLOWS).map((id) => ({ id, available: true })),
+        ...Object.keys(PLANNED_WORKFLOWS).map((id) => ({ id, available: false })),
+      ],
+      defaultWorkflow: DEFAULT_WORKFLOW,
+      agents: Object.values(AGENT_HOSTS).map((host) => ({ id: host.id, name: host.displayName })),
       governanceProfiles: Object.values(PROFILES).map((profile) => ({
         id: profile.id,
+        available: GOVERNANCE[profile.id] !== undefined,
         approvals: profile.approvals,
         alwaysHumanMinimum: profile.alwaysHumanMinimum,
       })),
+      defaultGovernance: DEFAULT_GOVERNANCE,
     };
     const text = [
       `Liftoff ${version}`,

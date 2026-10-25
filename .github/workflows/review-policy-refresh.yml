@@ -1,3 +1,4 @@
+# Managed by Liftoff. Change it through Liftoff rather than by hand.
 # Re-checks review policy when a review is submitted or dismissed, because
 # pull_request_target does not fire on reviews. It dispatches the review-policy
 # workflow from the pull request's base branch, which refuses to run from any

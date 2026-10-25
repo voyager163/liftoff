@@ -9,6 +9,7 @@ import {
 } from "../../src/application/ai-review/review-pull-request.ts";
 import { main, type PipelineEnvironment } from "../../src/ci/ai-review.ts";
 import { fingerprint, JSON_END, JSON_START } from "../../src/domain/ai-review/findings.ts";
+import { codexHost } from "../../src/plugins/builtin/agents/hosts.ts";
 
 const POLICY = `
 version: 1
@@ -98,6 +99,8 @@ const highRiskFiles = [
   },
 ];
 
+const DIFF = "diff --git a/src/app.ts b/src/app.ts\n@@ -1,1 +1,3 @@\n keep\n+one\n+two\n";
+
 function pipeline(
   url: string,
   extra: Record<string, string> = {},
@@ -105,7 +108,6 @@ function pipeline(
 ) {
   const files = new Map<string, string>();
   const logs: string[] = [];
-  const removed: string[] = [];
   files.set(
     "event.json",
     JSON.stringify({ pull_request: { number: 5, head: { repo: { full_name: "acme/app" } } } }),
@@ -116,6 +118,7 @@ function pipeline(
       "---\nname: x\ndescription: y\n---\n# Method\nFind bugs.",
     "show origin/develop:.github/agents/liftoff-verifier.agent.md":
       "---\nname: v\n---\nYou verify one finding.",
+    "-C pr diff origin/develop...bbb": DIFF,
     ...gitFiles,
   };
   const context: PipelineEnvironment = {
@@ -125,8 +128,10 @@ function pipeline(
       GITHUB_TOKEN: "t",
       GITHUB_API_URL: url,
       GITHUB_OUTPUT: "out.txt",
-      COPILOT_CONFIGURED: "true",
+      LIFTOFF_AGENT_CONFIGURED: "true",
+      LIFTOFF_AGENT_SECRET: "COPILOT_GITHUB_TOKEN",
       LIFTOFF_BASE_REF: "develop",
+      LIFTOFF_REVIEW_TREE: "pr",
       ...extra,
     },
     readFile: (path) => {
@@ -142,7 +147,6 @@ function pipeline(
     appendFile: (path, text) => files.set(path, (files.get(path) ?? "") + text),
     log: (text) => logs.push(text),
     git: async (args) => git[args.join(" ")],
-    removeFile: (path) => removed.push(path),
   };
   const outputs = () =>
     Object.fromEntries(
@@ -151,7 +155,7 @@ function pipeline(
         .filter(Boolean)
         .map((line) => line.split(/=(.*)/s).slice(0, 2)),
     );
-  return { context, files, logs, removed, outputs };
+  return { context, files, logs, outputs };
 }
 
 const bot = (body: string) => ({ user: { login: "github-actions[bot]" }, body });
@@ -258,16 +262,15 @@ describe("AIREVIEW-003 rounds", () => {
 });
 
 describe("AIREVIEW-004 the pipeline protects itself", () => {
-  it.each([[{ COPILOT_CONFIGURED: "false" }, "not configured"]])(
-    "does not run without the Copilot token %#",
-    async (env, reason) => {
-      const url = await fakeGitHub({ files: highRiskFiles, reviews: [], comments: [], posted: [] });
-      const { context, outputs } = pipeline(url, env);
-      expect(await main("prepare", context)).toBe(0);
-      expect(outputs()).toMatchObject({ run: "false", stop: "false" });
-      expect(outputs().reason).toContain(reason);
-    },
-  );
+  it.each([
+    [{ LIFTOFF_AGENT_CONFIGURED: "false" }, "add a COPILOT_GITHUB_TOKEN repository secret"],
+  ])("does not run without the Copilot token %#", async (env, reason) => {
+    const url = await fakeGitHub({ files: highRiskFiles, reviews: [], comments: [], posted: [] });
+    const { context, outputs } = pipeline(url, env);
+    expect(await main("prepare", context)).toBe(0);
+    expect(outputs()).toMatchObject({ run: "false", stop: "false" });
+    expect(outputs().reason).toContain(reason);
+  });
 
   it("does not run for a fork", async () => {
     const url = await fakeGitHub({ files: highRiskFiles, reviews: [], comments: [], posted: [] });
@@ -280,34 +283,42 @@ describe("AIREVIEW-004 the pipeline protects itself", () => {
     expect(outputs().reason).toContain("fork");
   });
 
-  it("restores changed review instructions from the base branch and removes new ones", async () => {
-    const { context, files, removed, logs } = pipeline(
-      "http://unused",
-      {},
-      {
-        "diff --name-only --no-renames origin/develop...HEAD":
-          "src/app.ts\nREVIEW.md\n.claude/skills/evil/SKILL.md\n",
-        "show origin/develop:REVIEW.md": "# Base review guide\n",
-      },
-    );
-    expect(await main("restore-instructions", context)).toBe(0);
-    expect(files.get("REVIEW.md")).toBe("# Base review guide\n");
-    expect(removed).toEqual([".claude/skills/evil/SKILL.md"]);
-    expect(logs.join("")).toContain("Reviewing with the base branch's instructions");
-
-    const quiet = pipeline(
-      "http://unused",
-      {},
-      { "diff --name-only --no-renames origin/develop...HEAD": "src/app.ts\n" },
-    );
-    await main("restore-instructions", quiet.context);
-    expect(quiet.logs.join("")).toContain("No review instructions changed");
+  it("writes the diff for the agents, which only read files in the head checkout", async () => {
+    const url = await fakeGitHub({ files: highRiskFiles, reviews: [], comments: [], posted: [] });
+    const { context, files } = pipeline(url);
+    expect(await main("prepare", context)).toBe(0);
+    expect(files.get("ai-review/diff.patch")).toBe(DIFF);
+    const prompt = files.get("ai-review/finder-0.md") ?? "";
+    expect(prompt).toContain("the diff in `ai-review/diff.patch`");
+    expect(prompt).toContain("under `pr/`");
+    expect(prompt).toContain("there is no shell");
+    expect(prompt).not.toContain("git diff");
   });
 
-  it("refuses to restore without a base ref", async () => {
-    const { context, logs } = pipeline("http://unused", { LIFTOFF_BASE_REF: "" });
-    expect(await main("restore-instructions", context)).toBe(1);
-    expect(logs.join("")).toContain("LIFTOFF_BASE_REF must be set");
+  it("reviews the whole change when a force push removed the last reviewed commit", async () => {
+    const url = await fakeGitHub({
+      files: highRiskFiles,
+      reviews: [1, 2].map((round) =>
+        bot(`<!-- liftoff-ai-review round=${round} head=a${round} -->`),
+      ),
+      comments: [],
+      posted: [],
+    });
+    const { context, files, logs } = pipeline(url);
+    expect(await main("prepare", context)).toBe(0);
+    expect(files.get("ai-review/diff.patch")).toBe(DIFF);
+    expect(logs.join("")).toContain("over `origin/develop...bbb`");
+  });
+
+  it("fails when the diff cannot be computed", async () => {
+    const url = await fakeGitHub({ files: highRiskFiles, reviews: [], comments: [], posted: [] });
+    const { context, logs } = pipeline(
+      url,
+      {},
+      { "-C pr diff origin/develop...bbb": undefined as never },
+    );
+    expect(await main("prepare", context)).toBe(1);
+    expect(logs.join("")).toContain("cannot compute the diff origin/develop...bbb in pr");
   });
 });
 
@@ -330,6 +341,7 @@ describe("AIREVIEW-002 the end-to-end pipeline", () => {
     expect(outputs()["has-candidates"]).toBe("true");
     expect(files.get("ai-review/verifier.md")).toContain("You verify one finding.");
     expect(files.get("ai-review/verifier.md")).toContain("### c1: src/app.ts:2");
+    expect(files.get("ai-review/verifier.md")).toContain("`ai-review/diff.patch`");
 
     files.set(
       "ai-review/verifiers/verifier-0.txt",
@@ -351,6 +363,30 @@ describe("AIREVIEW-002 the end-to-end pipeline", () => {
       expect.objectContaining({ path: "src/app.ts", line: 2, side: "RIGHT" }),
     ]);
     expect(logs.join("")).toContain("AI review, round 1");
+  });
+
+  it("verifies with the Codex agent's instructions when Codex is the only host", async () => {
+    const url = await fakeGitHub({ files: highRiskFiles, reviews: [], comments: [], posted: [] });
+    const codexAgent = codexHost.renderAgent({
+      name: "liftoff-verifier",
+      description: "Checks one finding.",
+      capabilities: ["read"],
+      instructions: "You verify one finding, the Codex way.",
+    });
+    const { context, files } = pipeline(
+      url,
+      {},
+      {
+        "show origin/develop:.github/agents/liftoff-verifier.agent.md": undefined as never,
+        [`show origin/develop:${codexAgent.path}`]: codexAgent.content,
+      },
+    );
+    await main("prepare", context);
+    files.set("ai-review/finders/finder-0.txt", block({ candidates: [candidate] }));
+    expect(await main("verifier-prompt", context)).toBe(0);
+    const prompt = files.get("ai-review/verifier.md") ?? "";
+    expect(prompt.startsWith("You verify one finding, the Codex way.\n")).toBe(true);
+    expect(prompt).not.toContain("developer_instructions");
   });
 
   it("publishes a clean result when no finder found anything", async () => {

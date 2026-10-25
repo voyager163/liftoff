@@ -24,7 +24,7 @@
     "liftoff": "node src/cli/main.ts",
     "build": "node scripts/clean.ts dist && tsc -p tsconfig.build.json",
     "build:ci-bundle": "node scripts/build-ci-bundle.ts",
-    "render:skills": "node scripts/render-own-skills.ts",
+    "render:own": "node scripts/render-own-files.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "biome check .",
     "format": "biome check --write .",
@@ -32,8 +32,11 @@
     "test": "vitest run",
     "coverage": "vitest run --coverage",
     "check:trace": "node scripts/check-trace.ts",
-    "check:generated": "node scripts/build-ci-bundle.ts --check && node scripts/render-own-skills.ts --check",
-    "check": "npm run lint && npm run typecheck && npm run boundaries && npm run check:trace && npm run check:generated && npm run coverage"
+    "check:generated": "node scripts/build-ci-bundle.ts --check && node scripts/render-own-files.ts --check && node scripts/render-cli-reference.ts --check",
+    "check": "npm run lint && npm run typecheck && npm run boundaries && npm run check:trace && npm run check:generated && npm run coverage",
+    "render:docs": "node scripts/render-cli-reference.ts",
+    "lock:python": "node scripts/templates/lock-python.ts",
+    "bundle": "node scripts/package/build-bundle.ts"
   },
   "dependencies": {
     "@inquirer/prompts": "8.7.3",

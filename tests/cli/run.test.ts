@@ -59,6 +59,10 @@ describe("CLI-001 one registry drives every command", () => {
   it("registers the real commands", () => {
     expect(REGISTRY.map((spec) => spec.path.join(" "))).toEqual([
       "capabilities",
+      "plan",
+      "init",
+      "validate",
+      "doctor",
       "review classify",
     ]);
   });

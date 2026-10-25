@@ -37,9 +37,12 @@ Verification: test
 
 ## REPO-005 Privileged triggers never run pull request code
 
-Workflows triggered by `pull_request_target` or `workflow_run` never check out
-the pull request's head or merge ref, and never pass pull request text such as
-titles or branch names into a `run:` script.
+Workflows triggered by `pull_request_target` or `workflow_run` never run
+pull request code. The workspace is always the base branch's checkout. A job
+that needs the pull request's files, such as the AI review, checks the head
+out into a directory of its own without credentials, and no step runs
+anything from that directory. Pull request text such as titles or branch
+names is never passed into a `run:` script.
 
 Verification: test
 
@@ -50,3 +53,15 @@ are used only for platform-independent checks (lint, types, boundaries,
 traceability, generated files, CodeQL), never as a supported CLI platform.
 
 Verification: test
+
+## PKG-001 The native bundle runs without a global Node
+
+The bundle for each supported platform (`liftoff-package-aarch64-apple-darwin`
+and `liftoff-package-x86_64-pc-windows-msvc`) contains a launcher built from
+an official Node.js runtime and the same application files as the npm
+package. CI builds it on macOS arm64 and Windows x64 and runs `--version`,
+`capabilities`, `init` and `validate` from a copy with no Node on the PATH.
+The launcher resolves its real location, so it also works through a symlink
+such as Homebrew's.
+
+Verification: live

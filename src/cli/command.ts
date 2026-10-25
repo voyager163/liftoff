@@ -23,11 +23,17 @@ export interface Io {
   readonly cwd: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly signal: AbortSignal;
+  /** True when a person can answer prompts (stdin and stdout are terminals). */
+  readonly interactive: boolean;
+  /** Asks a yes/no question; the default answer is always no. */
+  confirm(question: string): Promise<boolean>;
 }
 
 export interface ParsedArgs {
   readonly options: Readonly<Record<string, string | boolean | undefined>>;
   readonly positionals: readonly string[];
+  /** Options typed on the command line, as opposed to filled in from defaults. */
+  readonly given: ReadonlySet<string>;
 }
 
 export interface CommandResult {

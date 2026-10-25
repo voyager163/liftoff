@@ -35,6 +35,7 @@ Verification: test
 | File | Area |
 | --- | --- |
 | [cli.md](cli.md) | Command surface, parsing, output and exit codes |
+| [project.md](project.md) | Creating, validating and checking projects |
 | [review.md](review.md) | Risk policy, review tiers and approvals |
 | [skills.md](skills.md) | Coding-agent review skills and their rendering |
-| [repository.md](repository.md) | Liftoff's own CI, checks and governance |
+| [repository.md](repository.md) | Liftoff's own CI, checks, governance and packaging |

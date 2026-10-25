@@ -1,0 +1,29 @@
+# Managed by Liftoff. Change it through Liftoff rather than by hand.
+# Re-checks review policy when a review is submitted or dismissed, because
+# pull_request_target does not fire on reviews. It dispatches the review-policy
+# workflow from the pull request's base branch, which refuses to run from any
+# other branch, so this workflow can delay a pass but never fake one.
+name: Review policy refresh
+
+on:
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    name: Re-check review policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch the check from the base branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: gh workflow run {{liftoff.reviewPolicyWorkflow}} --repo "$REPO" --ref "$BASE_REF" -f "pull_request=$NUMBER"

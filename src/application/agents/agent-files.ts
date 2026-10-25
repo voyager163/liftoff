@@ -12,8 +12,15 @@ export interface AgentSources {
   readonly agents: readonly AgentSource[];
 }
 
-/** Loads the canonical skills and agents shipped in assets/. */
-export async function loadAgentSources(assets: AssetPort): Promise<AgentSources> {
+/**
+ * Loads the canonical skills and agents shipped in assets/. Review skills
+ * apply everywhere; project skills (such as liftoff-setup) only to generated
+ * projects.
+ */
+export async function loadAgentSources(
+  assets: AssetPort,
+  options: { readonly projectSkills?: boolean } = {},
+): Promise<AgentSources> {
   const partials: Record<string, string> = {};
   for (const file of await assets.list("skills/_partials")) {
     if (file.endsWith(".md")) {
@@ -21,12 +28,15 @@ export async function loadAgentSources(assets: AssetPort): Promise<AgentSources>
     }
   }
   const skills: SkillSource[] = [];
-  for (const directory of await assets.list("skills")) {
-    if (directory.startsWith("_")) continue;
-    skills.push(
-      parseSkill(directory, await assets.readText(`skills/${directory}/SKILL.md`), partials),
-    );
+  const roots = options.projectSkills ? ["skills", "project-skills"] : ["skills"];
+  for (const root of roots) {
+    for (const directory of await assets.list(root)) {
+      if (directory.startsWith("_")) continue;
+      const text = await assets.readText(`${root}/${directory}/SKILL.md`);
+      skills.push(parseSkill(directory, text, partials));
+    }
   }
+  skills.sort((a, b) => a.name.localeCompare(b.name));
   const agents: AgentSource[] = [];
   for (const file of await assets.list("agents")) {
     if (file.endsWith(".md")) {

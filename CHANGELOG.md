@@ -10,6 +10,19 @@ and this project adheres to
 
 ### Added
 
+- `liftoff plan`, `init`, `validate` and `doctor`: create a Python FastAPI
+  project from flags or a saved, hash-bound plan, in one atomic step, with
+  confirmation that defaults to no; check its configuration and managed files;
+  and check the tools it needs.
+- The Python FastAPI project template: FastAPI, SQLAlchemy, Alembic and uv,
+  live and ready health checks, OpenAPI and Scalar docs, configuration
+  precedence with explicit failures, tests with a coverage gate, a non-root
+  container, Compose with PostgreSQL, and CI, CodeQL and Dependabot.
+- Generated projects get the layered review setup for the selected coding
+  agents, with one engine-neutral verified AI review workflow, and a GitFlow
+  governance handoff (rulesets that are not applied until the checks exist).
+- A native bundle with an embedded Node runtime, built and smoke-tested on
+  macOS arm64 and Windows x64 without a global Node.
 - Toolchain for the rebuild: Node 26, strict TypeScript, Biome, Vitest with
   coverage above 80% on every metric, an architecture boundary check and
   plain-Markdown requirements traced to tests.
