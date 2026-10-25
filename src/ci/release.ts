@@ -234,10 +234,16 @@ async function publish(context: Context): Promise<void> {
   if (tagged === undefined) {
     await client.post(`/repos/${repository}/git/refs`, { ref: `refs/tags/${tag}`, sha });
   }
-  const published = await find<{ html_url: string }>(
+  const recorded = JSON.stringify(manifest, null, 2);
+  const published = await find<{ html_url: string; body: string | null }>(
     client,
     `/repos/${repository}/releases/tags/${tag}`,
   );
+  if (published && !published.body?.includes(recorded)) {
+    throw new Error(
+      `the GitHub release for ${tag} exists without this manifest; check it and delete it to publish again`,
+    );
+  }
   const release =
     published ??
     (await client.post<{ html_url: string }>(`/repos/${repository}/releases`, {
@@ -254,7 +260,7 @@ async function publish(context: Context): Promise<void> {
         `\`gh attestation verify oci://IMAGE@DIGEST --repo ${repository} --predicate-type ${RELEASE_MANIFEST_PREDICATE}\`.`,
         "",
         "```json",
-        JSON.stringify(manifest, null, 2),
+        recorded,
         "```",
       ].join("\n"),
     }));

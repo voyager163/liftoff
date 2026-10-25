@@ -10,8 +10,8 @@ const DIGEST = `sha256:${"f".repeat(64)}`;
 interface Repo {
   /** Refs such as "tags/v1.2.0", and the commit each points at. */
   refs?: Record<string, string>;
-  /** Tags that have a GitHub release. */
-  releases?: string[];
+  /** GitHub releases' bodies, by tag. */
+  releases?: Record<string, string>;
   /** Open pull requests, by head branch. */
   open?: Record<string, number>;
   develop?: string;
@@ -64,9 +64,10 @@ function fakeGitHub(repo: Repo, calls: Call[]) {
     }
     const release = /\/releases\/tags\/(.+)$/.exec(path)?.[1];
     if (release !== undefined) {
-      return (repo.releases ?? []).includes(release)
-        ? json({ html_url: `https://x/releases/${release}` })
-        : json({}, 404);
+      const body = repo.releases?.[release];
+      return body === undefined
+        ? json({}, 404)
+        : json({ html_url: `https://x/releases/${release}`, body });
     }
     const compare = /\/compare\/([^.]+)\.\.\./.exec(path)?.[1];
     if (compare !== undefined)
@@ -345,15 +346,27 @@ describe("FLOW-005 after a release merges into main", () => {
     expect(tagged.code).toBe(0);
     expect(writes(tagged.calls).map((call) => call.path)).toEqual(["/repos/o/r/releases"]);
 
+    // GitHub adds its generated notes after the body it was given.
+    const body = `${String(writes(tagged.calls)[0]?.body?.body)}\n\n## What's Changed\n`;
     const done = await run(
       "publish",
       env,
-      { refs: { "tags/v1.2.0": MAIN }, releases: ["v1.2.0"] },
+      { refs: { "tags/v1.2.0": MAIN }, releases: { "v1.2.0": body } },
       { "m.json": manifest },
     );
     expect(done.code).toBe(0);
     expect(writes(done.calls)).toEqual([]);
     expect(done.log).toContain("Already published");
+
+    const other = await run(
+      "publish",
+      env,
+      { refs: { "tags/v1.2.0": MAIN }, releases: { "v1.2.0": "Written by hand." } },
+      { "m.json": manifest },
+    );
+    expect(other.code).toBe(1);
+    expect(other.log).toContain("the GitHub release for v1.2.0 exists without this manifest");
+    expect(writes(other.calls)).toEqual([]);
   });
 
   it("never publishes a version twice, or a manifest for another commit", async () => {

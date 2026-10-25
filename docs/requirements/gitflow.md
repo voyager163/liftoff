@@ -76,8 +76,9 @@ attests the release manifest for every image, tags `vX.Y.Z` (never twice),
 publishes the GitHub release, and opens the `sync/…` pull request into
 `develop`, unless `develop` already has everything on `main`. Other pushes to
 `main` have nothing to do. Re-running it after a failure finishes the
-release: a tag already on the same commit, the GitHub release and the sync
-pull request are reused, and a tag on any other commit is refused.
+release: a tag already on the same commit, a GitHub release that records the
+same manifest and the sync pull request are reused, and a tag on any other
+commit, or a release without that manifest, is refused.
 
 Verification: test
 
