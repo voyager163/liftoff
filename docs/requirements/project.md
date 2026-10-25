@@ -404,7 +404,9 @@ release can generate with the earlier answers: a frontend and infrastructure
 only for stacks with a database, environments only with infrastructure,
 Spec Kit and AI review only with a coding agent, and a review engine only
 with several. It checks names and GitHub logins as the options do, then
-prints the command that gives the same answers, which plans the same project.
+prints the command that gives the same answers, quoted for the shell (POSIX
+on macOS, PowerShell on Windows), which plans the same project. Questions go
+to stderr, so stdout holds only the result, such as the `--json` report.
 It then shows the plan and asks before writing, as with options. It never
 asks without a terminal or when any project option is given, and Ctrl+C at
 a question exits 4 (cancelled).

@@ -1,3 +1,4 @@
+import type { Readable, Writable } from "node:stream";
 import { checkbox, confirm, input, select } from "@inquirer/prompts";
 import type { Choice, Prompts } from "./command.ts";
 import { CancelledError } from "./outcome.ts";
@@ -18,12 +19,22 @@ export const inquirerChoices = <C extends Choice>(choices: readonly C[]) =>
     disabled === undefined ? choice : { ...choice, disabled },
   );
 
-/** Asks with Inquirer in the terminal; the default answer of a yes/no question is no. */
-export function terminalPrompts(signal: AbortSignal): {
+/**
+ * Asks with Inquirer in the terminal; the default answer of a yes/no question
+ * is no. Questions are written to stderr, so stdout carries only the command's
+ * result, such as its --json report.
+ */
+export function terminalPrompts(
+  signal: AbortSignal,
+  streams: { readonly input: Readable; readonly output: Writable } = {
+    input: process.stdin,
+    output: process.stderr,
+  },
+): {
   confirm(message: string): Promise<boolean>;
   prompts: Prompts;
 } {
-  const context = { signal };
+  const context = { signal, input: streams.input, output: streams.output };
   return {
     confirm: (message) => answered(confirm({ message, default: false }, context)),
     prompts: {

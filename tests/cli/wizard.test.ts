@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CommandSpec } from "../../src/cli/command.ts";
 import { makeInitCommand, makePlanCommand } from "../../src/cli/commands/plan-init.ts";
@@ -165,6 +166,29 @@ describe("INIT-006 init asks for each option in a terminal", () => {
       "liftoff init --name demo --dir 'it'\\''s'",
     );
   });
+
+  it("quotes for PowerShell on Windows, where commas and apostrophes differ", () => {
+    expect(
+      equivalentCommand(
+        { name: "demo", dir: "C:\\projects\\it's demo", agents: "copilot,claude" },
+        "powershell",
+      ),
+    ).toBe("liftoff init --name demo --dir 'C:\\projects\\it''s demo' --agents 'copilot,claude'");
+  });
+
+  it("joins a value that starts with a hyphen to its option, so it parses back", async () => {
+    expect(equivalentCommand({ name: "demo", dir: "--demo" })).toBe(
+      "liftoff init --name demo --dir=--demo",
+    );
+    expect(equivalentCommand({ name: "demo", dir: "-my demo" }, "powershell")).toBe(
+      "liftoff init --name demo '--dir=-my demo'",
+    );
+    const wizard = await exec(["init", "--json"], { name: "demo", dir: "--demo" }, false);
+    const command = /\n {2}liftoff init (.*)\n/.exec(wizard.err)?.[1] ?? "";
+    expect(command).toBe("--name demo --dir=--demo --stack python-fastapi");
+    const planned = await exec(["plan", ...command.split(" "), "--json"], {});
+    expect(JSON.parse(planned.out).plan.hash).toBe(JSON.parse(wizard.out).plan);
+  });
 });
 
 describe("INIT-006 questions in the terminal", () => {
@@ -184,6 +208,31 @@ describe("INIT-006 questions in the terminal", () => {
         { value: "b", description: "B", disabled: "needs a coding agent" },
       ]),
     ).toEqual([{ value: "a" }, { value: "b", description: "B", disabled: "needs a coding agent" }]);
+  });
+
+  it("writes questions to the given stream, never to stdout", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let written = "";
+    output.on("data", (chunk) => {
+      written += String(chunk);
+    });
+    const stdout = process.stdout.write;
+    const leaked: string[] = [];
+    process.stdout.write = ((chunk: string) => {
+      leaked.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    try {
+      const { prompts } = terminalPrompts(new AbortController().signal, { input, output });
+      const answer = prompts.text({ flag: "name", message: "Project name", default: "demo" });
+      setTimeout(() => input.write("\n"), 50);
+      expect(await answer).toBe("demo");
+    } finally {
+      process.stdout.write = stdout;
+    }
+    expect(written).toContain("Project name");
+    expect(leaked.join("")).not.toContain("Project name");
   });
 
   it("stops every question once the command is cancelled", async () => {

@@ -200,20 +200,39 @@ const splitList = (value: string): string[] =>
     .map((item) => item.trim())
     .filter(Boolean);
 
-const quote = (value: string): string =>
-  /^[\w@%+=:,./-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
+/** The shell a printed command is for: macOS's, or PowerShell on Windows. */
+export type Shell = "posix" | "powershell";
 
 /**
- * The command line that gives the same answers without questions. Answers
- * that are empty or the option's default are left out.
+ * Quotes a value for the shell, when it needs it. PowerShell also reads
+ * commas, @ and % specially, and escapes an apostrophe by doubling it.
  */
-export function equivalentCommand(answers: Readonly<Record<string, string>>): string {
+function quote(value: string, shell: Shell): string {
+  if (shell === "powershell") {
+    return /^[\w./:=+-]+$/.test(value) ? value : `'${value.replaceAll("'", "''")}'`;
+  }
+  return /^[\w@%+=:,./-]+$/.test(value) ? value : `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+/**
+ * The command line that gives the same answers without questions, for the
+ * shell. Answers that are empty or the option's default are left out, and a
+ * value that starts with a hyphen is joined to its option with "=".
+ */
+export function equivalentCommand(
+  answers: Readonly<Record<string, string>>,
+  shell: Shell = "posix",
+): string {
   const flags = Object.entries(answers).flatMap(([flag, value]) => {
     const spec = PROJECT_OPTIONS[flag];
     if (value === "" || (spec?.type === "string" && spec.default === value)) return [];
     if ((flag === "dir" && value === answers.name) || (flag === "pattern" && value === NO_PATTERN))
       return [];
-    return [`--${flag} ${quote(value)}`];
+    return [
+      value.startsWith("-")
+        ? quote(`--${flag}=${value}`, shell)
+        : `--${flag} ${quote(value, shell)}`,
+    ];
   });
   return ["liftoff init", ...flags].join(" ");
 }

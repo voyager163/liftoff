@@ -104,7 +104,8 @@ async function ask(io: Io): Promise<ParsedArgs> {
     "Answer each question, or press Enter for the suggested answer. Each one is also an option of liftoff init.\n\n",
   );
   const answers = await askProjectOptions(io.prompts);
-  io.stderr(`\nThe same project without questions:\n  ${equivalentCommand(answers)}\n\n`);
+  const shell = process.platform === "win32" ? "powershell" : "posix";
+  io.stderr(`\nThe same project without questions:\n  ${equivalentCommand(answers, shell)}\n\n`);
   const given = Object.entries(answers).filter(([, value]) => value !== "");
   return {
     options: Object.fromEntries(given),
