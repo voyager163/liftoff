@@ -13,12 +13,19 @@ on:
     branches: [develop, main]
   merge_group:
   workflow_dispatch:
+    inputs:
+      pull_request:
+        description: >-
+          The pull request to check, when the release workflows start CI for
+          one they opened (GitHub starts no workflows for those)
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || inputs.pull_request || github.ref }}
   # Cancel superseded pull request runs only; never a branch or queue run.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 

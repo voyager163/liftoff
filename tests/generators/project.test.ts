@@ -1208,3 +1208,58 @@ describe("FLOW-001 GitFlow projects check branches and release lineage in CI", (
     expect(generated.has(".github/liftoff/branch-policy.mjs")).toBe(false);
   });
 });
+
+describe("FLOW-003 GitFlow projects build once and release through main", () => {
+  it("builds each image once, scans it with a checksum-verified Trivy and attests it", async () => {
+    const generated = await byPath({ frontend: "vue" });
+    const build = parse(generated.get(".github/workflows/10-build.yml")?.content ?? "") as {
+      on: { push: { branches: string[] } };
+      jobs: {
+        image: {
+          strategy: { matrix: { image: unknown[] } };
+          env: Record<string, string>;
+          steps: { uses?: string; run?: string }[];
+        };
+      };
+    };
+    expect(build.on.push.branches).toEqual(["develop", "hotfix/**"]);
+    expect(build.jobs.image.strategy.matrix.image).toEqual([
+      { name: "api", context: "backend" },
+      { name: "web", context: "frontend" },
+    ]);
+    expect(build.jobs.image.env.TRIVY_SHA256).toMatch(/^[0-9a-f]{64}$/);
+    const steps = build.jobs.image.steps;
+    expect(steps.map((step) => step.uses ?? "").join("\n")).not.toContain("aquasecurity/");
+    expect(steps.some((step) => step.run?.includes("sha256sum --check --strict"))).toBe(true);
+    expect(steps.some((step) => step.run?.includes("--exit-code 1 --severity HIGH,CRITICAL"))).toBe(
+      true,
+    );
+    for (const action of [
+      "anchore/scan-action@",
+      "actions/attest-build-provenance@",
+      "actions/attest@",
+    ]) {
+      expect(steps.some((step) => step.uses?.startsWith(action))).toBe(true);
+    }
+    for (const file of ["20-release.yml", "30-after-release.yml"]) {
+      expect(generated.get(`.github/workflows/${file}`)?.ownership).toBe("managed");
+    }
+    expect(generated.get(".github/liftoff/release.mjs")?.ownership).toBe("managed");
+    const after = generated.get(".github/workflows/30-after-release.yml")?.content ?? "";
+    expect(after).toContain("IMAGES: api web");
+    const identify = (parse(after) as { jobs: { identify: { permissions: unknown } } }).jobs
+      .identify;
+    expect(identify.permissions).toEqual({ contents: "read", "pull-requests": "read" });
+    expect(generated.get("GOVERNANCE.md")?.content).toContain("## Releases");
+  });
+
+  it("builds only the API without a frontend, and nothing without a GitFlow profile", async () => {
+    const api = await byPath({ workload: "genai", stack: "python-pydanticai", pattern: "generic" });
+    expect(api.get(".github/workflows/30-after-release.yml")?.content).toContain("IMAGES: api\n");
+    const none = await byPath({ governance: "none" });
+    for (const file of ["10-build.yml", "20-release.yml", "30-after-release.yml"]) {
+      expect(none.has(`.github/workflows/${file}`)).toBe(false);
+    }
+    expect(none.has(".github/liftoff/release.mjs")).toBe(false);
+  });
+});

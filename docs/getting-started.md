@@ -140,3 +140,5 @@ for what `--frontend vue` adds, and
 [Azure infrastructure](projects/azure-infrastructure.md) for what
 `--infrastructure azure` adds. [Specification workflows](projects/spec-workflows.md)
 covers OpenSpec, Spec Kit and manual development.
+[The release flow](projects/release-flow.md) covers how GitFlow projects build,
+release and publish their images.

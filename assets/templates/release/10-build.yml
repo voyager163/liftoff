@@ -1,0 +1,104 @@
+# Managed by Liftoff. Change it through Liftoff rather than by hand.
+#
+# Builds each container image once, from every commit on develop and on
+# hotfix branches. It scans the image, publishes it by digest, and attests how
+# it was built and what it contains. Releases use these images by digest;
+# nothing is rebuilt later.
+name: Build
+
+on:
+  push:
+    branches: [develop, "hotfix/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: Build ${{ matrix.image.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+{{liftoff.images}}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      NAME: ${{ matrix.image.name }}
+      # Installed from its release and checked against its checksum, not
+      # through the Trivy actions, whose tags were hijacked in March 2026.
+      TRIVY_VERSION: "{{liftoff.trivyVersion}}"
+      TRIVY_SHA256: {{liftoff.trivySha256}}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Name the image
+        # Registry names are lowercase.
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}/${NAME}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build the image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.image.context }}
+          load: true
+          tags: candidate:${{ github.sha }}
+      - name: Install Trivy
+        run: |
+          archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$archive" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${archive}"
+          echo "${TRIVY_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" trivy
+      - name: Scan for fixable high and critical vulnerabilities
+        run: >-
+          "$RUNNER_TEMP/trivy" image --exit-code 1 --severity HIGH,CRITICAL
+          --ignore-unfixed --no-progress "candidate:${GITHUB_SHA}"
+      - name: Write the CycloneDX SBOM
+        run: >-
+          "$RUNNER_TEMP/trivy" image --format cyclonedx --no-progress
+          --output "$RUNNER_TEMP/sbom.cdx.json" "candidate:${GITHUB_SHA}"
+      - name: Scan again with Grype, for information
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: candidate:${{ github.sha }}
+          fail-build: false
+          severity-cutoff: high
+          output-format: table
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Publish the image, tagged with its commit
+        id: publish
+        run: |
+          docker tag "candidate:${GITHUB_SHA}" "${IMAGE}:${GITHUB_SHA}"
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          # The digest as the registry now serves it.
+          digest=$(docker buildx imagetools inspect "${IMAGE}:${GITHUB_SHA}" \
+            --format '{{json .Manifest.Digest}}' | tr -d '"')
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+      - name: Attest how the image was built
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+      - name: Attest what the image contains
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          sbom-path: ${{ runner.temp }}/sbom.cdx.json
+          push-to-registry: true

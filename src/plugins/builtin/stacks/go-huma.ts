@@ -13,6 +13,7 @@ export const goHumaStack: StackPlugin = {
   summary: "Go API with Huma, Chi, pgx and Goose",
   templateRoots: [`${ROOT}/files`, `${ROOT}/parts`],
   parts: `${ROOT}/parts`,
+  image: { name: "api", context: "backend" },
   codeql: { language: "go", buildMode: "autobuild", subject: "the Go code" },
   checks: [
     { name: "Format", command: "gofmt -l .", directory: "backend" },

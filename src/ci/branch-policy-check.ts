@@ -9,9 +9,20 @@
 // - lineage: a pull request into main contains the current main, so merging
 //   it leaves exactly the candidate's tree, the one CI qualified.
 //
-// Other events have nothing to check and pass.
-import { GitHubClient, GitHubError } from "../adapters/github.ts";
+// They run on pull requests, and on a workflow_dispatch naming one, which is
+// how CI is started for pull requests the release workflows open with the
+// workflow token (GitHub starts no workflows for those). Other events have
+// nothing to check and pass.
+import { GitHubClient } from "../adapters/github.ts";
 import { checkBranch } from "../domain/governance/branch-policy.ts";
+import {
+  compare,
+  type PullRequest,
+  refExists,
+  treeOf,
+  WORKFLOWS,
+  workflowPassed,
+} from "./gitflow-github.ts";
 
 export type Mode = "branch" | "lineage";
 
@@ -23,21 +34,6 @@ export interface CheckEnvironment {
   readonly fetch?: (input: string, init?: RequestInit) => Promise<Response>;
 }
 
-interface PullRequest {
-  number: number;
-  body: string | null;
-  head: { ref: string; sha: string };
-  base: { ref: string };
-}
-
-interface Comparison {
-  ahead_by: number;
-  behind_by: number;
-}
-
-/** The workflow that runs CI in a generated project. */
-const CI_WORKFLOW = ".github/workflows/01-pr-ci.yml";
-
 /** Runs one check and returns the process exit code: 0 pass, 1 fail. */
 export async function main(mode: Mode, context: CheckEnvironment): Promise<number> {
   const { env } = context;
@@ -47,31 +43,48 @@ export async function main(mode: Mode, context: CheckEnvironment): Promise<numbe
     context.log(text);
   };
   try {
-    if (env.GITHUB_EVENT_NAME !== "pull_request") {
+    const event = env.GITHUB_EVENT_NAME;
+    const parsed =
+      event === "pull_request" || event === "workflow_dispatch"
+        ? (JSON.parse(context.readFile(required(env, "GITHUB_EVENT_PATH"))) as {
+            pull_request?: PullRequest;
+            inputs?: { pull_request?: string };
+          })
+        : undefined;
+    const dispatched = parsed?.inputs?.pull_request?.trim();
+    if (parsed === undefined || (event === "workflow_dispatch" && !dispatched)) {
       summary(
-        `## ${title}: passed\n\nIt checks pull requests; a ${env.GITHUB_EVENT_NAME ?? "run without an event"} has nothing to check.\n`,
+        `## ${title}: passed\n\nIt checks pull requests, and this ${event ?? "run"} names none, so there is nothing to check.\n`,
       );
       return 0;
     }
-    const event = JSON.parse(context.readFile(required(env, "GITHUB_EVENT_PATH"))) as {
-      pull_request?: { number: number };
-    };
-    if (!event.pull_request) throw new Error("the event has no pull request");
+    if (event === "pull_request" && !parsed.pull_request) {
+      throw new Error("the event has no pull request");
+    }
     const client = new GitHubClient({
       token: required(env, "GITHUB_TOKEN"),
       ...(env.GITHUB_API_URL ? { apiUrl: env.GITHUB_API_URL } : {}),
       ...(context.fetch ? { fetch: context.fetch } : {}),
     });
     const repository = required(env, "GITHUB_REPOSITORY");
+    const number =
+      event === "pull_request" ? String(parsed.pull_request?.number ?? "") : (dispatched ?? "");
+    if (!/^[1-9]\d*$/.test(number)) {
+      throw new Error(`pull_request must be a pull request number, not "${number}"`);
+    }
     // The pull request as it is now, not as the event recorded it, so a
     // re-run sees an edited description or base.
-    const pr = await client.get<PullRequest>(
-      `/repos/${repository}/pulls/${event.pull_request.number}`,
-    );
+    const pr = await client.get<PullRequest>(`/repos/${repository}/pulls/${number}`);
+    if (pr.state !== undefined && pr.state !== "open") {
+      throw new Error(`pull request #${number} is not open`);
+    }
+    // A dispatched run is not on the merge result, so use GitHub's test merge.
+    const mergeSha =
+      event === "pull_request" ? required(env, "GITHUB_SHA") : (pr.merge_commit_sha ?? pr.head.sha);
     const problems =
       mode === "branch"
         ? await branchProblems(client, repository, pr, env)
-        : await lineageProblems(client, repository, pr, required(env, "GITHUB_SHA"));
+        : await lineageProblems(client, repository, pr, mergeSha);
     if (problems.length > 0) {
       summary(`## ${title}: failed\n\n${problems.map((problem) => `- ${problem}`).join("\n")}\n`);
       return 1;
@@ -107,8 +120,17 @@ async function branchProblems(
       problems.push(
         `${pr.head.ref} has ${fromDevelop.ahead_by} commit(s) that are not on develop; a release is an exact develop commit`,
       );
-    } else if (!(await ciPassedOnDevelop(client, repository, pr.head.sha))) {
-      problems.push(`CI has not passed on develop for ${pr.head.sha}, the commit being released`);
+    } else {
+      for (const [what, workflow] of [
+        ["CI", WORKFLOWS.ci],
+        ["The build", WORKFLOWS.build],
+      ] as const) {
+        if (!(await workflowPassed(client, repository, pr.head.sha, workflow, "develop"))) {
+          problems.push(
+            `${what} has not passed on develop for ${pr.head.sha}, the commit being released`,
+          );
+        }
+      }
     }
   }
   if (decision.kind === "hotfix") {
@@ -116,8 +138,14 @@ async function branchProblems(
     if (fromMain.behind_by > 0) {
       problems.push(`${pr.head.ref} does not start from the current main; rebase it onto main`);
     }
+    if (!(await workflowPassed(client, repository, pr.head.sha, WORKFLOWS.build, pr.head.ref))) {
+      problems.push(`the build has not passed for ${pr.head.sha}, so there is no image to release`);
+    }
   }
-  if (decision.version !== undefined && (await tagExists(client, repository, decision.version))) {
+  if (
+    decision.version !== undefined &&
+    (await refExists(client, repository, `tags/v${decision.version}`))
+  ) {
     problems.push(`v${decision.version} is already released; choose the next version`);
   }
   return problems;
@@ -136,46 +164,15 @@ async function lineageProblems(
       `${pr.head.ref} is missing ${fromMain.behind_by} commit(s) from main; bring main into develop with a sync/… pull request, then cut the release again`,
     ];
   }
-  if (mergeSha !== pr.head.sha) {
-    const tree = async (sha: string) =>
-      (await client.get<{ tree: { sha: string } }>(`/repos/${repository}/git/commits/${sha}`)).tree
-        .sha;
-    if ((await tree(mergeSha)) !== (await tree(pr.head.sha))) {
-      return [
-        `merging ${pr.head.ref} would not leave exactly the tree of ${pr.head.sha}, the commit CI qualified`,
-      ];
-    }
+  if (
+    mergeSha !== pr.head.sha &&
+    (await treeOf(client, repository, mergeSha)) !== (await treeOf(client, repository, pr.head.sha))
+  ) {
+    return [
+      `merging ${pr.head.ref} would not leave exactly the tree of ${pr.head.sha}, the commit CI qualified`,
+    ];
   }
   return [];
-}
-
-const compare = (client: GitHubClient, repository: string, base: string, sha: string) =>
-  client.get<Comparison>(`/repos/${repository}/compare/${base}...${sha}`);
-
-/**
- * Whether the CI workflow succeeded on a push of this commit to develop. It
- * asks for that workflow's successful runs only, so one is never lost behind
- * a page of other runs.
- */
-async function ciPassedOnDevelop(
-  client: GitHubClient,
-  repository: string,
-  sha: string,
-): Promise<boolean> {
-  const { total_count: count } = await client.get<{ total_count: number }>(
-    `/repos/${repository}/actions/workflows/${CI_WORKFLOW.split("/").at(-1)}/runs?head_sha=${sha}&branch=develop&event=push&status=success&per_page=1`,
-  );
-  return count > 0;
-}
-
-async function tagExists(client: GitHubClient, repository: string, version: string) {
-  try {
-    await client.get(`/repos/${repository}/git/ref/tags/v${version}`);
-    return true;
-  } catch (error) {
-    if (error instanceof GitHubError && error.status === 404) return false;
-    throw error;
-  }
 }
 
 function required(env: CheckEnvironment["env"], name: string): string {

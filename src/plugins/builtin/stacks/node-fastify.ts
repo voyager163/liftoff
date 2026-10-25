@@ -13,6 +13,7 @@ export const nodeFastifyStack: StackPlugin = {
   summary: "TypeScript API with Fastify, Drizzle ORM and npm",
   templateRoots: [`${ROOT}/files`, `${ROOT}/parts`],
   parts: `${ROOT}/parts`,
+  image: { name: "api", context: "backend" },
   codeql: { language: "javascript-typescript", buildMode: "none", subject: "the TypeScript code" },
   checks: [
     { name: "Lint", command: "npm run lint", directory: "backend" },

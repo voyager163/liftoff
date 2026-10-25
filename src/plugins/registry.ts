@@ -8,6 +8,7 @@ import { vueFrontend } from "./builtin/frontends/vue.ts";
 import { gitflowGovernance, noGovernance } from "./builtin/governance/gitflow.ts";
 import { azureInfrastructure } from "./builtin/infrastructure/azure.ts";
 import { PATTERN_LIST } from "./builtin/patterns.ts";
+import { releasePlugin } from "./builtin/release.ts";
 import { reviewPlugin } from "./builtin/review/review.ts";
 import { goHumaStack } from "./builtin/stacks/go-huma.ts";
 import { nodeFastifyStack } from "./builtin/stacks/node-fastify.ts";
@@ -254,6 +255,7 @@ export function resolveSelection(config: ProjectConfig): Selection {
       agentsPlugin,
       reviewPlugin,
       governance,
+      ...(profile === "none" ? [] : [releasePlugin]),
     ],
   };
 }
@@ -271,6 +273,7 @@ export function allPlugins(): ProjectPlugin[] {
     agentsPlugin,
     reviewPlugin,
     ...Object.values(GOVERNANCE),
+    releasePlugin,
   ];
   const ids = plugins.map((plugin) => plugin.id);
   const duplicate = ids.find((id, index) => ids.indexOf(id) !== index);
