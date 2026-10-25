@@ -1,17 +1,19 @@
 import type { StackPlugin } from "../../contracts/project-plugin.ts";
 import { filesFrom } from "../files.ts";
-import { changeProcess, DOCKER_TOOL, DOCUMENTATION_RULE, GIT_TOOL } from "./shared.ts";
+import { DOCKER_TOOL, DOCUMENTATION_RULE, GIT_TOOL } from "./shared.ts";
 
-const ROOT = "plugins/stack-go-huma/files";
+const ROOT = "plugins/stack-go-huma";
 
 /** Go API: Huma v2 on Chi, pgx and Goose, with go.mod and go.sum. */
 export const goHumaStack: StackPlugin = {
   id: "stack/go-huma",
   kind: "stack",
   workload: "api",
-  version: "1",
+  version: "2",
   summary: "Go API with Huma, Chi, pgx and Goose",
-  templateRoots: [ROOT],
+  templateRoots: [`${ROOT}/files`, `${ROOT}/parts`],
+  parts: `${ROOT}/parts`,
+  codeql: { language: "go", buildMode: "autobuild", subject: "the Go code" },
   checks: [
     { name: "Format", command: "gofmt -l .", directory: "backend" },
     { name: "Vet", command: "go vet ./...", directory: "backend" },
@@ -67,7 +69,7 @@ export const goHumaStack: StackPlugin = {
     },
     DOCUMENTATION_RULE,
   ],
-  quickStart: "cd backend && go test ./...",
+  quickStart: { directory: "backend", command: "go test ./..." },
   layout: [
     { path: "backend/cmd/api/", purpose: "the API binary: serve, migrate and healthcheck" },
     { path: "backend/internal/", purpose: "configuration, database, health and the items API" },
@@ -75,13 +77,8 @@ export const goHumaStack: StackPlugin = {
       path: "backend/internal/database/migrations/",
       purpose: "Goose database migrations, built into the binary",
     },
-    { path: "compose.yaml", purpose: "PostgreSQL, migrations and the API for local development" },
+    { path: "compose.yaml", purpose: "PostgreSQL and the application, for local development" },
   ],
-  artifacts: ({ templates, config, profile }) =>
-    filesFrom(
-      templates,
-      ROOT,
-      { name: config.name, changeProcess: changeProcess(profile) },
-      "seeded",
-    ),
+  artifacts: ({ templates, config }) =>
+    filesFrom(templates, `${ROOT}/files`, { name: config.name }, "seeded"),
 };

@@ -46,7 +46,7 @@ demo/
     package.json, package-lock.json, .node-version
     tsconfig.json, biome.json, vitest.config.ts
     Dockerfile, config.example.json
-  compose.yaml              PostgreSQL, migrations and the API for local work
+  compose.yaml              PostgreSQL and the application for local work
   .env.example              placeholders only; copy to .env
   README.md, REVIEW.md
   .github/

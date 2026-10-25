@@ -30,8 +30,8 @@ Verification: test
 
 ## PROJ-003 Selections are checked before anything is generated
 
-The workload, stack, workflow, agents, governance profile and review engine
-are checked against the plugins this release ships. An unknown value is a
+The workload, stack, frontend, workflow, agents, governance profile and
+review engine are checked against the plugins this release ships. An unknown value is a
 usage error (exit 2). A value the product supports but this release cannot
 generate yet, such as the OpenSpec workflow, is reported as unsupported
 (exit 6), never silently replaced. The review engine must be a
@@ -63,9 +63,10 @@ Verification: test
 
 ## PROJ-006 A generated project passes its own checks on macOS and Windows
 
-Liftoff's CI generates a project for every API stack on macOS arm64 and
-Windows x64 and runs its locked install, lint, format, type checks where the
-stack has them, and tests there.
+Liftoff's CI generates a project for every API stack, with the Vue frontend,
+on macOS arm64 and Windows x64 and runs its locked install, lint, format,
+type checks where the stack has them, and tests there, plus the frontend's
+production build.
 
 Verification: live
 
@@ -128,16 +129,21 @@ Verification: test
 
 ## PROJ-011 Generated projects work against PostgreSQL and in containers
 
-Liftoff's CI generates a project for every API stack on Linux, where service
-containers and Docker exist, and checks:
+Liftoff's CI generates a project for every API stack, with the Vue frontend,
+on Linux, where service containers and Docker exist, and checks:
 
 - its integration tests pass against a real PostgreSQL and leave the data
   and tables already in that database untouched;
-- `docker compose up` brings up PostgreSQL, the migrations and the API,
-  which runs as an unprivileged user and passes its container health check;
+- `docker compose up` brings up PostgreSQL, the migrations, the API and the
+  frontend, which run as unprivileged users and pass their container health
+  checks;
 - the API's live, ready, items, docs and OpenAPI endpoints answer;
 - with the database paused, readiness answers 503 within 10 seconds while
-  liveness stays up, and readiness recovers once the database is back.
+  liveness stays up, and readiness recovers once the database is back;
+- the frontend serves the application and forwards `/api/` to the API, and
+  its Playwright browser test passes against it;
+- when the API container is replaced and gets a new address, the frontend
+  reaches it again within 30 seconds without being restarted.
 
 This qualifies the generated containers as a deployment target; Linux is not
 a supported platform for the Liftoff CLI.
@@ -158,6 +164,49 @@ Verification: live
 - GOVERNANCE.md explains which approvals count, who can give them, and
   which counts the branch rules enforce natively, since a writer could forge
   the `review-policy` status (REVIEW-010).
+
+Verification: test
+
+## PROJ-013 The Vue frontend is optional and reaches the API through one origin
+
+`--frontend vue` adds a `frontend/` directory: a Vue application built with
+Vite, styled with Tailwind CSS and written in TypeScript, with a committed
+npm lockfile. The default, `--frontend none`, adds no frontend files, jobs or
+services.
+
+- The browser calls the API at `/api` on the page's own origin. The Vite dev
+  server and preview, and nginx in the frontend's container, forward it to
+  the API, so the API needs no CORS settings.
+- Its checks are ESLint and Prettier, a strict TypeScript and Vue template
+  check, Vitest unit tests with at least 80% on every coverage metric, the
+  production build and a Playwright browser test against the application
+  running in Docker Compose.
+- Its container builds the static files with Node.js and serves them with
+  nginx as an unprivileged user, with a health check and a
+  Content-Security-Policy that only allows the page's own origin. Base images
+  are pinned by digest.
+- `docker compose up` starts it on port 8080 once the API is healthy, and
+  CI, CodeQL, Dependabot, the README, AGENTS.md, the review policy and
+  `liftoff doctor` include it.
+
+Verification: test
+
+## PROJ-014 Shared files are assembled from each component's parts
+
+`compose.yaml`, the CI and CodeQL workflows, Dependabot and the README are
+assembled from the parts of the API stack and the frontend:
+
+- each component adds its Compose services, CI jobs, Dependabot entries,
+  README sections and the language CodeQL analyzes, each language once;
+- `ci-gate` needs every job, dependency review included;
+- every relative link in the README points at a file or directory the
+  project has;
+- generation stops with an error when two components define the same
+  service, job or Dependabot entry (ecosystem and directory), when a
+  component defines one Liftoff adds itself (the `database` service, the
+  `dependencies` and `ci-gate` jobs, the GitHub Actions updates), when a
+  service depends on one that does not exist, or when a part is not the
+  expected YAML shape.
 
 Verification: test
 

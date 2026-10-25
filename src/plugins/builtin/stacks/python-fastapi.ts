@@ -1,17 +1,19 @@
 import type { StackPlugin } from "../../contracts/project-plugin.ts";
 import { filesFrom } from "../files.ts";
-import { changeProcess, DOCKER_TOOL, DOCUMENTATION_RULE, GIT_TOOL } from "./shared.ts";
+import { DOCKER_TOOL, DOCUMENTATION_RULE, GIT_TOOL } from "./shared.ts";
 
-const ROOT = "plugins/stack-python-fastapi/files";
+const ROOT = "plugins/stack-python-fastapi";
 
 /** Python API: FastAPI, SQLAlchemy and Alembic, with a uv-locked environment. */
 export const pythonFastapiStack: StackPlugin = {
   id: "stack/python-fastapi",
   kind: "stack",
   workload: "api",
-  version: "1",
+  version: "2",
   summary: "Python API with FastAPI, SQLAlchemy, Alembic and uv",
-  templateRoots: [ROOT],
+  templateRoots: [`${ROOT}/files`, `${ROOT}/parts`],
+  parts: `${ROOT}/parts`,
+  codeql: { language: "python", buildMode: "none", subject: "the Python code" },
   checks: [
     { name: "Lint", command: "uv run ruff check .", directory: "backend" },
     { name: "Format", command: "uv run ruff format --check .", directory: "backend" },
@@ -62,18 +64,13 @@ export const pythonFastapiStack: StackPlugin = {
     },
     DOCUMENTATION_RULE,
   ],
-  quickStart: "cd backend && uv sync && uv run pytest",
+  quickStart: { directory: "backend", command: "uv sync && uv run pytest" },
   layout: [
     { path: "backend/app/", purpose: "the FastAPI application" },
     { path: "backend/migrations/", purpose: "Alembic database migrations" },
     { path: "backend/tests/", purpose: "tests; `-m integration` needs PostgreSQL" },
-    { path: "compose.yaml", purpose: "PostgreSQL, migrations and the API for local development" },
+    { path: "compose.yaml", purpose: "PostgreSQL and the application, for local development" },
   ],
-  artifacts: ({ templates, config, profile }) =>
-    filesFrom(
-      templates,
-      ROOT,
-      { name: config.name, changeProcess: changeProcess(profile) },
-      "seeded",
-    ),
+  artifacts: ({ templates, config }) =>
+    filesFrom(templates, `${ROOT}/files`, { name: config.name }, "seeded"),
 };

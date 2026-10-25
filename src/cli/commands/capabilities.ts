@@ -3,6 +3,7 @@ import { AGENT_HOSTS } from "../../plugins/builtin/agents/hosts.ts";
 import {
   DEFAULT_GOVERNANCE,
   DEFAULT_WORKFLOW,
+  FRONTENDS,
   GOVERNANCE,
   PLANNED_WORKFLOWS,
   STACKS,
@@ -47,6 +48,10 @@ export const capabilitiesCommand: CommandSpec = {
         id: stack.id.replace(/^stack\//, ""),
         workload: stack.workload,
         summary: stack.summary,
+      })),
+      frontends: Object.values(FRONTENDS).map((frontend) => ({
+        id: frontend.id.replace(/^frontend\//, ""),
+        summary: frontend.summary,
       })),
       workflows: [
         ...Object.keys(WORKFLOWS).map((id) => ({ id, available: true })),

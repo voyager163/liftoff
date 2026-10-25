@@ -1,0 +1,184 @@
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import App from "../App.vue";
+import { createItem, isReady, listItems, type Item } from "../api";
+
+vi.mock("../api", () => ({
+  isReady: vi.fn(),
+  listItems: vi.fn(),
+  createItem: vi.fn(),
+}));
+
+const item = (id: number, name: string) => ({
+  id,
+  name,
+  created_at: "2026-01-01T00:00:00Z",
+});
+
+const retry = (app: VueWrapper) =>
+  app.findAll("button").find((button) => button.text() === "Try again");
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(isReady).mockResolvedValue(true);
+  vi.mocked(listItems).mockResolvedValue([item(1, "first")]);
+});
+
+describe("App", () => {
+  it("checks the API before showing anything else", () => {
+    vi.mocked(isReady).mockReturnValue(new Promise(() => {}));
+    expect(mount(App).text()).toContain("Checking the API");
+  });
+
+  it("shows the items when the API is ready", async () => {
+    const app = mount(App);
+    await flushPromises();
+    expect(app.text()).toContain("API ready");
+    expect(app.findAll("li").map((li) => li.text())).toEqual(["first"]);
+  });
+
+  it("says when there are no items yet", async () => {
+    vi.mocked(listItems).mockResolvedValue([]);
+    const app = mount(App);
+    await flushPromises();
+    expect(app.text()).toContain("No items yet.");
+  });
+
+  it("says the API is unavailable and disables the form", async () => {
+    vi.mocked(isReady).mockResolvedValue(false);
+    const app = mount(App);
+    await flushPromises();
+    expect(app.text()).toContain("API unavailable");
+    expect(listItems).not.toHaveBeenCalled();
+    expect(app.get("button").attributes("disabled")).toBeDefined();
+  });
+
+  it("reports items that cannot be loaded", async () => {
+    vi.mocked(listItems).mockRejectedValue(
+      new Error("GET /items answered 500"),
+    );
+    const app = mount(App);
+    await flushPromises();
+    expect(app.get("[role=alert]").text()).toBe(
+      "Could not load the items: GET /items answered 500",
+    );
+  });
+
+  it("adds an item and clears the field", async () => {
+    vi.mocked(createItem).mockResolvedValue(item(2, "second"));
+    const app = mount(App);
+    await flushPromises();
+    await app.get("input").setValue("  second  ");
+    await app.get("form").trigger("submit");
+    await flushPromises();
+    expect(createItem).toHaveBeenCalledWith("second");
+    expect(app.findAll("li").map((li) => li.text())).toEqual([
+      "first",
+      "second",
+    ]);
+    expect(app.get("input").element.value).toBe("");
+  });
+
+  it("keeps the form disabled until the first list arrives", async () => {
+    let resolveList: (items: Item[]) => void = () => {};
+    vi.mocked(listItems).mockReturnValue(
+      new Promise((resolve) => {
+        resolveList = resolve;
+      }),
+    );
+    vi.mocked(createItem).mockResolvedValue(item(2, "second"));
+    const app = mount(App);
+    await flushPromises();
+    expect(app.text()).toContain("API ready");
+    expect(app.get("input").attributes("disabled")).toBeDefined();
+    expect(app.get("button").attributes("disabled")).toBeDefined();
+
+    resolveList([item(1, "first")]);
+    await flushPromises();
+    await app.get("input").setValue("second");
+    await app.get("form").trigger("submit");
+    await flushPromises();
+    expect(app.findAll("li").map((li) => li.text())).toEqual([
+      "first",
+      "second",
+    ]);
+  });
+
+  it("sends an item once while it is being saved", async () => {
+    let resolveCreate: (created: Item) => void = () => {};
+    vi.mocked(createItem).mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      }),
+    );
+    const app = mount(App);
+    await flushPromises();
+    await app.get("input").setValue("second");
+    await app.get("form").trigger("submit");
+    await app.get("form").trigger("submit");
+    expect(createItem).toHaveBeenCalledTimes(1);
+    expect(app.get("button").attributes("disabled")).toBeDefined();
+
+    resolveCreate(item(2, "second"));
+    await flushPromises();
+    expect(app.findAll("li").map((li) => li.text())).toEqual([
+      "first",
+      "second",
+    ]);
+  });
+
+  it("lets a list that failed to load be loaded again", async () => {
+    vi.mocked(listItems)
+      .mockRejectedValueOnce(
+        new Error("GET /items did not answer within 10 seconds"),
+      )
+      .mockResolvedValueOnce([item(1, "first")]);
+    const app = mount(App);
+    await flushPromises();
+    expect(app.get("[role=alert]").text()).toBe(
+      "Could not load the items: GET /items did not answer within 10 seconds",
+    );
+    expect(app.get("input").attributes("disabled")).toBeUndefined();
+
+    await retry(app)?.trigger("click");
+    await flushPromises();
+    expect(app.find("[role=alert]").exists()).toBe(false);
+    expect(app.findAll("li").map((li) => li.text())).toEqual(["first"]);
+    expect(retry(app)).toBeUndefined();
+  });
+
+  it("checks an unavailable API again", async () => {
+    vi.mocked(isReady).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const app = mount(App);
+    await flushPromises();
+    expect(app.text()).toContain("API unavailable");
+
+    await retry(app)?.trigger("click");
+    await flushPromises();
+    expect(app.text()).toContain("API ready");
+    expect(listItems).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a blank name", async () => {
+    const app = mount(App);
+    await flushPromises();
+    await app.get("input").setValue("   ");
+    await app.get("form").trigger("submit");
+    expect(createItem).not.toHaveBeenCalled();
+  });
+
+  it("reports an item that cannot be added", async () => {
+    vi.mocked(createItem).mockRejectedValue(
+      new Error("POST /items answered 422"),
+    );
+    const app = mount(App);
+    await flushPromises();
+    await app.get("input").setValue("third");
+    await app.get("form").trigger("submit");
+    await flushPromises();
+    expect(app.get("[role=alert]").text()).toBe(
+      "Could not add the item: POST /items answered 422",
+    );
+    expect(app.get("button").attributes("disabled")).toBeUndefined();
+  });
+});

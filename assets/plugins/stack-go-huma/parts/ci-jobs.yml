@@ -1,0 +1,91 @@
+# The API: formatting and vet, tests with coverage, integration tests
+# against PostgreSQL and the container image build.
+lint:
+  name: Format and vet
+  runs-on: ubuntu-latest
+  timeout-minutes: 10
+  defaults:
+    run:
+      working-directory: backend
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: backend/go.mod
+        cache-dependency-path: backend/go.sum
+    - name: Check formatting
+      run: |
+        unformatted=$(gofmt -l .)
+        if [ -n "$unformatted" ]; then echo "Run gofmt -w on:"; echo "$unformatted"; exit 1; fi
+    - run: go vet ./...
+    - run: go vet -tags integration ./...
+
+test:
+  name: Tests
+  runs-on: ubuntu-latest
+  timeout-minutes: 15
+  defaults:
+    run:
+      working-directory: backend
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: backend/go.mod
+        cache-dependency-path: backend/go.sum
+    - run: go test -coverpkg=./cmd/...,./internal/... -coverprofile=cover.out ./...
+    - name: Require 80% statement coverage
+      run: go run ./tools/coverage cover.out 80
+
+integration:
+  name: Integration tests
+  runs-on: ubuntu-latest
+  timeout-minutes: 15
+  defaults:
+    run:
+      working-directory: backend
+  services:
+    postgres:
+      image: postgres:18-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+      env:
+        POSTGRES_DB: app
+        POSTGRES_USER: app
+        # A throwaway database for this job only; not a secret.
+        POSTGRES_PASSWORD: ci-only
+      ports:
+        - 5432:5432
+      options: >-
+        --health-cmd "pg_isready -U app -d app"
+        --health-interval 5s
+        --health-timeout 3s
+        --health-retries 20
+  env:
+    APP_DATABASE_URL: postgresql://app:ci-only@localhost:5432/app
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: backend/go.mod
+        cache-dependency-path: backend/go.sum
+    # -count=1: the database is not an input Go's test cache can see.
+    - run: go test -count=1 -tags integration ./internal/integration
+
+image:
+  name: Container image
+  runs-on: ubuntu-latest
+  timeout-minutes: 15
+  defaults:
+    run:
+      working-directory: backend
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Build the image (not published)
+      run: docker build --tag api:ci .

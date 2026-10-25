@@ -21,6 +21,8 @@ const configSchema = z.strictObject({
     ),
   workload: z.string().check(z.minLength(1)),
   stack: z.string().check(z.minLength(1)),
+  /** A web frontend, or "none". */
+  frontend: z._default(z.string().check(z.minLength(1)), "none"),
   workflow: z.string().check(z.minLength(1)),
   agents: z.array(z.string().check(z.minLength(1))),
   governance: z.string().check(z.minLength(1)),
@@ -79,6 +81,7 @@ export function serializeConfig(config: ProjectConfig): string {
     name: config.name,
     workload: config.workload,
     stack: config.stack,
+    frontend: config.frontend,
     workflow: config.workflow,
     agents: config.agents,
     governance: config.governance,

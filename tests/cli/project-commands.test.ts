@@ -65,6 +65,15 @@ describe("INIT-001 plan changes nothing but the plan file", () => {
     expect(go.out).toContain("cd backend && go test ./...");
   });
 
+  it("suggests the frontend's first commands from the backend's directory", async () => {
+    const { code, out } = await exec(["init", ...PROJECT, "--frontend", "vue", "--yes"]);
+    expect(code).toBe(0);
+    expect(out).toContain(
+      "  cd backend && uv sync && uv run pytest\n  cd ../frontend && npm ci && npm test\n",
+    );
+    expect(existsSync(path.join(work, "demo/frontend/package.json"))).toBe(true);
+  });
+
   it("emits the plan as JSON", async () => {
     const { out } = await exec(["plan", ...PROJECT, "--json"]);
     const report = JSON.parse(out);
@@ -123,6 +132,11 @@ describe("PROJ-003 selection errors map to exit codes", () => {
       ["plan", "--name", "demo", "--workflow", "manual", "--stack", "cobol"],
       2,
       'unknown stack "cobol"',
+    ],
+    [
+      ["plan", "--name", "demo", "--workflow", "manual", "--frontend", "react"],
+      2,
+      '--frontend must be one of none, vue (got "react")',
     ],
     [["plan", "--workflow", "manual"], 2, "--name is required"],
     [["plan", "--name", "Bad Name", "--workflow", "manual"], 2, "invalid option: name"],

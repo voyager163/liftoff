@@ -42,8 +42,8 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(work, { recursive: true, force: true }));
 
-const create = async (target = path.join(work, "demo")) => {
-  const plan = await planInit({ assets, fs }, { config, target, liftoffVersion: "1.0.0" });
+const create = async (target = path.join(work, "demo"), project = config) => {
+  const plan = await planInit({ assets, fs }, { config: project, target, liftoffVersion: "1.0.0" });
   await applyInit({ assets, fs }, plan, "1.0.0");
   return target;
 };
@@ -236,6 +236,24 @@ describe("VALID-001 validate reports without repairing", () => {
     writeFileSync(path.join(target, "liftoff.yaml"), "schema: liftoff.config/v1\nname: x\n");
     expect((await validateProject(fs, target)).findings[0]?.code).toBe("invalid-config");
   });
+
+  it("reports an inherited property name as an unknown frontend", async () => {
+    const target = await create();
+    const configPath = path.join(target, "liftoff.yaml");
+    writeFileSync(
+      configPath,
+      readFileSync(configPath, "utf8").replace("frontend: none", "frontend: constructor"),
+    );
+    expect((await validateProject(fs, target)).findings).toEqual([
+      expect.objectContaining({
+        code: "invalid-config",
+        message: expect.stringContaining('unknown frontend "constructor"'),
+      }),
+    ]);
+    await expect(
+      runDoctor({ fs, tools: { version: async () => undefined } }, target),
+    ).rejects.toThrow('unknown frontend "constructor"');
+  });
 });
 
 describe("VALID-002 projects from before the rebuild", () => {
@@ -277,6 +295,30 @@ describe("DOCTOR-001 doctor checks the tools the project needs", () => {
       ["Docker", "missing", undefined],
     ]);
     expect(result.ready).toBe(false);
+  });
+
+  it("adds the frontend's tools, each tool once", async () => {
+    const versions = tools({
+      uv: "uv 0.13.1",
+      git: "git version 2.54.0",
+      docker: "Docker version 29.9.2",
+      node: "v26.12.1",
+    });
+    const python = await create(path.join(work, "python"), { ...config, frontend: "vue" });
+    const result = await runDoctor({ fs, tools: versions }, python);
+    expect(result.tools.map((t) => [t.name, t.status])).toEqual([
+      ["uv", "ok"],
+      ["Git", "ok"],
+      ["Docker", "ok"],
+      ["Node.js", "ok"],
+    ]);
+    const node = await create(path.join(work, "node"), {
+      ...config,
+      stack: "node-fastify",
+      frontend: "vue",
+    });
+    const names = (await runDoctor({ fs, tools: versions }, node)).tools.map((t) => t.name);
+    expect(names).toEqual(["Node.js", "Git", "Docker"]);
   });
 
   it("checks only Git outside a project, and is ready when it is present", async () => {

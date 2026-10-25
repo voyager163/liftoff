@@ -50,6 +50,9 @@ jobs:
           persist-credentials: false
       # Links to this repository's develop branch are checked against the
       # checked-out files, so a pull request can link to files it adds.
+      # README parts of generated projects link to project files relative to
+      # the project root, not to their template folder; a test checks those
+      # links in each generated README.
       - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           args: >-
@@ -58,6 +61,7 @@ jobs:
             --max-retries 3
             --accept 200..=299,429
             --remap 'https://github\.com/voyager163/liftoff/blob/develop/ file://${{ github.workspace }}/'
+            --exclude '^file://.*/assets/plugins/[^/]+/parts/'
             './**/*.md'
             './.github/**/*.md'
             './.github/ISSUE_TEMPLATE/*.yml'

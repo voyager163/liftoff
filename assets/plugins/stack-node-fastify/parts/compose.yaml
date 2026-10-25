@@ -1,0 +1,20 @@
+# The migrations, then the API on http://127.0.0.1:8000 (docs at /docs).
+migrate:
+  build: ./backend
+  command: ["node", "src/migrate.ts"]
+  environment:
+    APP_DATABASE_URL: postgresql://app:${POSTGRES_PASSWORD}@database:5432/app
+  depends_on:
+    database:
+      condition: service_healthy
+
+api:
+  build: ./backend
+  environment:
+    APP_ENVIRONMENT: local
+    APP_DATABASE_URL: postgresql://app:${POSTGRES_PASSWORD}@database:5432/app
+  ports:
+    - "127.0.0.1:8000:8000"
+  depends_on:
+    migrate:
+      condition: service_completed_successfully

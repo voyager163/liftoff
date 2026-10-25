@@ -1,0 +1,90 @@
+# The API: lint, format and types, tests with coverage, integration tests
+# against PostgreSQL and the container image build.
+lint:
+  name: Lint and types
+  runs-on: ubuntu-latest
+  timeout-minutes: 10
+  defaults:
+    run:
+      working-directory: backend
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version-file: backend/.node-version
+        cache: npm
+        cache-dependency-path: backend/package-lock.json
+    - run: npm ci --no-audit --no-fund
+    - run: npm run lint
+    - run: npm run typecheck
+
+test:
+  name: Tests
+  runs-on: ubuntu-latest
+  timeout-minutes: 15
+  defaults:
+    run:
+      working-directory: backend
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version-file: backend/.node-version
+        cache: npm
+        cache-dependency-path: backend/package-lock.json
+    - run: npm ci --no-audit --no-fund
+    - run: npm test
+
+integration:
+  name: Integration tests
+  runs-on: ubuntu-latest
+  timeout-minutes: 15
+  defaults:
+    run:
+      working-directory: backend
+  services:
+    postgres:
+      image: postgres:18-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+      env:
+        POSTGRES_DB: app
+        POSTGRES_USER: app
+        # A throwaway database for this job only; not a secret.
+        POSTGRES_PASSWORD: ci-only
+      ports:
+        - 5432:5432
+      options: >-
+        --health-cmd "pg_isready -U app -d app"
+        --health-interval 5s
+        --health-timeout 3s
+        --health-retries 20
+  env:
+    APP_DATABASE_URL: postgresql://app:ci-only@localhost:5432/app
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version-file: backend/.node-version
+        cache: npm
+        cache-dependency-path: backend/package-lock.json
+    - run: npm ci --no-audit --no-fund
+    - run: npm run test:integration
+
+image:
+  name: Container image
+  runs-on: ubuntu-latest
+  timeout-minutes: 15
+  defaults:
+    run:
+      working-directory: backend
+  steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Build the image (not published)
+      run: docker build --tag api:ci .

@@ -1,17 +1,19 @@
 import type { StackPlugin } from "../../contracts/project-plugin.ts";
 import { filesFrom } from "../files.ts";
-import { changeProcess, DOCKER_TOOL, DOCUMENTATION_RULE, GIT_TOOL } from "./shared.ts";
+import { DOCKER_TOOL, DOCUMENTATION_RULE, GIT_TOOL } from "./shared.ts";
 
-const ROOT = "plugins/stack-node-fastify/files";
+const ROOT = "plugins/stack-node-fastify";
 
 /** Node.js API: TypeScript, Fastify and Drizzle ORM, with a committed npm lockfile. */
 export const nodeFastifyStack: StackPlugin = {
   id: "stack/node-fastify",
   kind: "stack",
   workload: "api",
-  version: "1",
+  version: "2",
   summary: "TypeScript API with Fastify, Drizzle ORM and npm",
-  templateRoots: [ROOT],
+  templateRoots: [`${ROOT}/files`, `${ROOT}/parts`],
+  parts: `${ROOT}/parts`,
+  codeql: { language: "javascript-typescript", buildMode: "none", subject: "the TypeScript code" },
   checks: [
     { name: "Lint", command: "npm run lint", directory: "backend" },
     { name: "Types", command: "npm run typecheck", directory: "backend" },
@@ -67,18 +69,13 @@ export const nodeFastifyStack: StackPlugin = {
     },
     DOCUMENTATION_RULE,
   ],
-  quickStart: "cd backend && npm ci && npm test",
+  quickStart: { directory: "backend", command: "npm ci && npm test" },
   layout: [
     { path: "backend/src/", purpose: "the Fastify application" },
     { path: "backend/drizzle/", purpose: "Drizzle database migrations" },
     { path: "backend/test/", purpose: "tests; test/integration/ needs PostgreSQL" },
-    { path: "compose.yaml", purpose: "PostgreSQL, migrations and the API for local development" },
+    { path: "compose.yaml", purpose: "PostgreSQL and the application, for local development" },
   ],
-  artifacts: ({ templates, config, profile }) =>
-    filesFrom(
-      templates,
-      ROOT,
-      { name: config.name, changeProcess: changeProcess(profile) },
-      "seeded",
-    ),
+  artifacts: ({ templates, config }) =>
+    filesFrom(templates, `${ROOT}/files`, { name: config.name }, "seeded"),
 };
