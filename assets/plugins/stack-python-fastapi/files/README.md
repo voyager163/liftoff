@@ -22,8 +22,8 @@ cp .env.example .env    # then set POSTGRES_PASSWORD
 docker compose up --build
 ```
 
-The API listens on <http://127.0.0.1:8000>. The API reference is at
-<http://127.0.0.1:8000/docs> and the OpenAPI document at `/openapi.json`.
+The API then listens on `http://127.0.0.1:8000`, with the API reference at
+`/docs` and the OpenAPI document at `/openapi.json`.
 
 ## Health
 
