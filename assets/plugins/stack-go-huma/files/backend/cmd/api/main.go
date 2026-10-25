@@ -73,7 +73,21 @@ func serve(ctx context.Context, cfg config.Config, listener net.Listener) error 
 
 	handler := server.New(cfg, items.PostgresStore{Pool: pool},
 		health.DatabaseProbe(cfg.DatabaseURL, cfg.DatabaseTimeout()), logger)
-	httpServer := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	return serveHTTP(ctx, handler, listener, logger, 10*time.Second)
+}
+
+// serveHTTP serves until ctx is cancelled, then lets running requests finish
+// for up to grace. Requests still running after that are cancelled, so
+// nothing they wait for, such as a query to a database that stopped
+// answering, can keep the process or its connections open.
+func serveHTTP(ctx context.Context, handler http.Handler, listener net.Listener, logger *slog.Logger, grace time.Duration) error {
+	requests, cancelRequests := context.WithCancel(context.Background())
+	defer cancelRequests()
+	httpServer := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return requests },
+	}
 	failed := make(chan error, 1)
 	go func() { failed <- httpServer.Serve(listener) }()
 	logger.Info("listening", "address", listener.Addr().String())
@@ -82,13 +96,16 @@ func serve(ctx context.Context, cfg config.Config, listener net.Listener) error 
 	case err := <-failed:
 		return err
 	case <-ctx.Done():
-		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := httpServer.Shutdown(shutdown); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-		return nil
 	}
+	shutdown, cancel := context.WithTimeout(context.Background(), grace)
+	defer cancel()
+	err := httpServer.Shutdown(shutdown)
+	if errors.Is(err, context.DeadlineExceeded) {
+		logger.Warn("cancelled requests still running after the shutdown grace period", "grace", grace)
+		cancelRequests()
+		return httpServer.Close()
+	}
+	return err
 }
 
 func healthcheck(ctx context.Context, port int) error {

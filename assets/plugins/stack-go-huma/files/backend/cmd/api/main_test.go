@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -57,6 +59,44 @@ func TestServesUntilCancelled(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("serve did not stop")
+	}
+}
+
+func TestShutdownCancelsRequestsStillRunningAfterTheGracePeriod(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Like a query to a database that stopped answering: it only ends when
+	// its request is cancelled.
+	started, cancelled := make(chan struct{}), make(chan struct{})
+	waiting := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+		close(cancelled)
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	go func() { done <- serveHTTP(ctx, waiting, listener, logger, 100*time.Millisecond) }()
+	go func() {
+		response, err := http.Get("http://" + listener.Addr().String() + "/items")
+		if err == nil {
+			response.Body.Close()
+		}
+	}()
+	<-started
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("shutdown did not finish")
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the running request was never cancelled")
 	}
 }
 

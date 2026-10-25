@@ -1,13 +1,14 @@
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from app.config import ConfigFileError, load_settings
 
 
 @pytest.fixture(autouse=True)
 def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("APP_CONFIG_FILE", "APP_PORT", "APP_ENVIRONMENT"):
+    for name in ("APP_CONFIG_FILE", "APP_PORT", "APP_ENVIRONMENT", "APP_DATABASE_TIMEOUT_SECONDS"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -50,3 +51,18 @@ def test_unknown_settings_are_an_error(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setenv("APP_CONFIG_FILE", str(config))
     with pytest.raises(ConfigFileError, match="unknown settings: prot"):
         load_settings()
+
+
+@pytest.mark.parametrize("seconds", ["0", "1e-10", "inf", "86401"])
+def test_the_database_timeout_must_be_a_millisecond_to_a_day(
+    seconds: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("APP_DATABASE_TIMEOUT_SECONDS", seconds)
+    with pytest.raises(ValidationError, match="database_timeout_seconds"):
+        load_settings()
+
+
+def test_the_database_timeout_accepts_its_range(monkeypatch: pytest.MonkeyPatch) -> None:
+    for seconds in ("0.001", "0.25", "86400"):
+        monkeypatch.setenv("APP_DATABASE_TIMEOUT_SECONDS", seconds)
+        assert load_settings().database_timeout_seconds == float(seconds)

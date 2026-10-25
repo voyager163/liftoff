@@ -17,6 +17,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from pydantic import Field
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
@@ -35,7 +36,8 @@ class Settings(BaseSettings):
     port: int = 8000
     # No password here: provide the full URL through APP_DATABASE_URL.
     database_url: str = "postgresql+psycopg://postgres@localhost:5432/app"
-    database_timeout_seconds: float = 2.0
+    # From a millisecond to a day.
+    database_timeout_seconds: float = Field(default=2.0, ge=0.001, le=86400)
     docs_enabled: bool = True
     log_level: str = "info"
 

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func environment(values map[string]string) func(string) (string, bool) {
@@ -47,6 +48,17 @@ func TestEnvironmentOverFileOverDefaults(t *testing.T) {
 	}
 }
 
+func TestAcceptsTimeoutsInRange(t *testing.T) {
+	for value, want := range map[string]time.Duration{
+		"0.001": time.Millisecond, "0.25": 250 * time.Millisecond, "86400": 24 * time.Hour,
+	} {
+		cfg, err := Load(environment(map[string]string{"APP_DATABASE_TIMEOUT_SECONDS": value}))
+		if err != nil || cfg.DatabaseTimeout() != want {
+			t.Fatalf("%s: %v %v", value, cfg.DatabaseTimeout(), err)
+		}
+	}
+}
+
 func TestRejectsInvalidSettings(t *testing.T) {
 	cases := map[string]struct {
 		env  map[string]string
@@ -55,8 +67,13 @@ func TestRejectsInvalidSettings(t *testing.T) {
 		"missing file":     {map[string]string{FileVariable: "missing.json"}, "does not exist"},
 		"port text":        {map[string]string{"APP_PORT": "eighty"}, "port from APP_PORT"},
 		"port range":       {map[string]string{"APP_PORT": "70000"}, "from 1 to 65535"},
-		"timeout text":     {map[string]string{"APP_DATABASE_TIMEOUT_SECONDS": "soon"}, "seconds above 0"},
-		"timeout zero":     {map[string]string{"APP_DATABASE_TIMEOUT_SECONDS": "0"}, "seconds above 0"},
+		"timeout text":     {map[string]string{"APP_DATABASE_TIMEOUT_SECONDS": "soon"}, "from 0.001 to 86400"},
+		"timeout zero":     {map[string]string{"APP_DATABASE_TIMEOUT_SECONDS": "0"}, "from 0.001 to 86400"},
+		"timeout tiny":     {map[string]string{"APP_DATABASE_TIMEOUT_SECONDS": "1e-10"}, "from 0.001 to 86400"},
+		"timeout infinite": {map[string]string{"APP_DATABASE_TIMEOUT_SECONDS": "+Inf"}, "from 0.001 to 86400"},
+		"timeout NaN":      {map[string]string{"APP_DATABASE_TIMEOUT_SECONDS": "NaN"}, "from 0.001 to 86400"},
+		"timeout huge":     {map[string]string{"APP_DATABASE_TIMEOUT_SECONDS": "1e300"}, "from 0.001 to 86400"},
+		"timeout too long": {map[string]string{"APP_DATABASE_TIMEOUT_SECONDS": "86401"}, "from 0.001 to 86400"},
 		"docs flag":        {map[string]string{"APP_DOCS_ENABLED": "yes"}, "true or false"},
 		"log level":        {map[string]string{"APP_LOG_LEVEL": "loud"}, "log_level must be one of"},
 		"empty host":       {map[string]string{"APP_HOST": ""}, "host must be"},
@@ -66,6 +83,10 @@ func TestRejectsInvalidSettings(t *testing.T) {
 		"unknown settings": {map[string]string{FileVariable: settingsFile(t, `{"prot": 1}`)}, `unknown field "prot"`},
 		"wrong type":       {map[string]string{FileVariable: settingsFile(t, `{"docs_enabled": "maybe"}`)}, "not a valid settings file"},
 		"two objects":      {map[string]string{FileVariable: settingsFile(t, `{} {}`)}, "one JSON object"},
+		"array":            {map[string]string{FileVariable: settingsFile(t, `[1]`)}, "not a valid settings file"},
+		"null file":        {map[string]string{FileVariable: settingsFile(t, `null`)}, "one JSON object"},
+		"null settings": {map[string]string{FileVariable: settingsFile(t, `{"port": null, "docs_enabled": null, "database_url": null}`)},
+			"sets [database_url docs_enabled port] to null"},
 	}
 	for name, test := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -29,6 +29,14 @@ describe("configuration", () => {
     });
   });
 
+  it("accepts timeouts from a millisecond to a day", () => {
+    for (const seconds of [0.001, 0.25, 86_400]) {
+      expect(
+        loadConfig({ APP_DATABASE_TIMEOUT_SECONDS: String(seconds) }).databaseTimeoutSeconds,
+      ).toBe(seconds);
+    }
+  });
+
   it("prefers the environment over the named file over the defaults", () => {
     const config = loadConfig({
       APP_CONFIG_FILE: file(JSON.stringify({ port: 9000, environment: "staging" })),
@@ -42,7 +50,11 @@ describe("configuration", () => {
     [{ APP_CONFIG_FILE: "missing.json" }, "which does not exist"],
     [{ APP_PORT: "eighty" }, "port from APP_PORT must be a whole number"],
     [{ APP_PORT: "70000" }, "from 1 to 65535"],
-    [{ APP_DATABASE_TIMEOUT_SECONDS: "0" }, "a number of seconds above 0"],
+    [{ APP_DATABASE_TIMEOUT_SECONDS: "0" }, "a number of seconds from 0.001 to 86400"],
+    [{ APP_DATABASE_TIMEOUT_SECONDS: "1e-10" }, "from 0.001 to 86400"],
+    [{ APP_DATABASE_TIMEOUT_SECONDS: "Infinity" }, "from 0.001 to 86400"],
+    [{ APP_DATABASE_TIMEOUT_SECONDS: "3000000" }, "from 0.001 to 86400"],
+    [{ APP_DATABASE_TIMEOUT_SECONDS: "soon" }, "from 0.001 to 86400"],
     [{ APP_DOCS_ENABLED: "yes" }, "docs_enabled from APP_DOCS_ENABLED must be true or false"],
     [{ APP_LOG_LEVEL: "loud" }, "log_level from APP_LOG_LEVEL must be one of"],
     [{ APP_HOST: "" }, "host from APP_HOST must be a non-empty string"],

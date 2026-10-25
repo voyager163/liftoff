@@ -28,6 +28,12 @@ const FileVariable = "APP_CONFIG_FILE"
 // LogLevels are the accepted values of log_level.
 var LogLevels = []string{"debug", "info", "warn", "error"}
 
+// The accepted range of database_timeout_seconds.
+const (
+	MinDatabaseTimeoutSeconds = 0.001
+	MaxDatabaseTimeoutSeconds = 86400.0
+)
+
 // Config is the API's configuration. The JSON names are the setting names in
 // the configuration file; the environment uses APP_ plus the upper-case name.
 type Config struct {
@@ -78,13 +84,40 @@ func readFile(file string, cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("%s names %s, which does not exist or cannot be read", FileVariable, file)
 	}
-	decoder := json.NewDecoder(bytes.NewReader(content))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(cfg); err != nil {
+	// Decoding JSON null leaves a setting unchanged, so a null file or setting
+	// would silently keep the default; both are rejected first.
+	var settings map[string]json.RawMessage
+	if err := strictDecode(content, &settings); err != nil {
 		return fmt.Errorf("%s is not a valid settings file: %w", file, err)
 	}
-	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+	if settings == nil {
 		return fmt.Errorf("%s must hold one JSON object of settings", file)
+	}
+	var nulls []string
+	for name, value := range settings {
+		if string(bytes.TrimSpace(value)) == "null" {
+			nulls = append(nulls, name)
+		}
+	}
+	if len(nulls) > 0 {
+		slices.Sort(nulls)
+		return fmt.Errorf("%s sets %v to null; remove a setting to use its default", file, nulls)
+	}
+	if err := strictDecode(content, cfg); err != nil {
+		return fmt.Errorf("%s is not a valid settings file: %w", file, err)
+	}
+	return nil
+}
+
+// strictDecode decodes exactly one JSON value with no unknown fields.
+func strictDecode(content []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return errors.New("it must hold one JSON object of settings")
 	}
 	return nil
 }
@@ -109,7 +142,8 @@ func applyEnvironment(lookup func(string) (string, bool), cfg *Config) error {
 	if value, ok := lookup("APP_DATABASE_TIMEOUT_SECONDS"); ok {
 		seconds, err := strconv.ParseFloat(value, 64)
 		if err != nil {
-			return fmt.Errorf("database_timeout_seconds from APP_DATABASE_TIMEOUT_SECONDS must be a number of seconds above 0")
+			return fmt.Errorf("database_timeout_seconds from APP_DATABASE_TIMEOUT_SECONDS must be a number of seconds from %g to %g",
+				MinDatabaseTimeoutSeconds, MaxDatabaseTimeoutSeconds)
 		}
 		cfg.DatabaseTimeoutSeconds = seconds
 	}
@@ -134,8 +168,10 @@ func validate(cfg Config) error {
 		return errors.New("port must be a whole number from 1 to 65535")
 	case cfg.DatabaseURL == "":
 		return errors.New("database_url must be a non-empty string")
-	case !(cfg.DatabaseTimeoutSeconds > 0):
-		return errors.New("database_timeout_seconds must be a number of seconds above 0")
+	// The range also keeps the timeout a usable, representable time.Duration.
+	case !(cfg.DatabaseTimeoutSeconds >= MinDatabaseTimeoutSeconds && cfg.DatabaseTimeoutSeconds <= MaxDatabaseTimeoutSeconds):
+		return fmt.Errorf("database_timeout_seconds must be a number of seconds from %g to %g",
+			MinDatabaseTimeoutSeconds, MaxDatabaseTimeoutSeconds)
 	case !slices.Contains(LogLevels, cfg.LogLevel):
 		return fmt.Errorf("log_level must be one of %v", LogLevels)
 	}
