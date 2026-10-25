@@ -13,18 +13,20 @@ export const CONFIG_SCHEMA = "liftoff.config/v1";
  * so keep them simple: no runs of hyphens, which some of those refuse.
  */
 const NAME = /^(?=.{2,50}$)[a-z](?:-?[a-z0-9])*$/;
+const NAME_RULE =
+  "must be 2 to 50 lowercase letters, digits or single hyphens, starting with a letter and ending with a letter or digit";
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+
+/** Why a project name is not accepted, or undefined when it is. */
+export const projectNameProblem = (name: string): string | undefined =>
+  NAME.test(name) ? undefined : `A project name ${NAME_RULE}.`;
+
+/** Whether a GitHub login is well formed. */
+export const isGithubLogin = (login: string): boolean => LOGIN.test(login);
 
 const configSchema = z.strictObject({
   schema: z.literal(CONFIG_SCHEMA),
-  name: z
-    .string()
-    .check(
-      z.regex(
-        NAME,
-        "must be 2 to 50 lowercase letters, digits or single hyphens, starting with a letter and ending with a letter or digit",
-      ),
-    ),
+  name: z.string().check(z.regex(NAME, NAME_RULE)),
   workload: z.string().check(z.minLength(1)),
   stack: z.string().check(z.minLength(1)),
   /** The GenAI pattern, or "none" for other workloads. */

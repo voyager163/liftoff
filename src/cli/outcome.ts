@@ -23,6 +23,11 @@ export class UsageError extends Error {
   override readonly name = "UsageError";
 }
 
+/** The person stopped the command, for example by pressing Ctrl+C at a question. */
+export class CancelledError extends Error {
+  override readonly name = "CancelledError";
+}
+
 /** A request for something this release does not support. */
 export class UnsupportedError extends Error {
   override readonly name = "UnsupportedError";

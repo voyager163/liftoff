@@ -20,7 +20,16 @@ npm run liftoff -- capabilities
 
 ## Create your first project
 
-Preview the project first. This changes nothing:
+The simplest way is to answer Liftoff's questions. Run `init` with no
+options in a terminal, and it asks for each option in turn, then prints the
+command that gives the same answers, so you can repeat it without questions:
+
+```bash
+npm run liftoff -- init
+```
+
+Or give the options yourself. Preview the project first; this changes
+nothing:
 
 ```bash
 npm run liftoff -- plan --name demo --workflow manual --agents claude
