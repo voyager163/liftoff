@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { applyInit, InitTargetError, planInit } from "../../application/init/init-project.ts";
 import { type Plan, PlanError, parsePlan } from "../../domain/plan/plan.ts";
-import { SelectionError } from "../../plugins/registry.ts";
+import { SelectionError, STACKS } from "../../plugins/registry.ts";
 import type { CommandResult, CommandSpec } from "../command.ts";
 import { UnsupportedError, UsageError } from "../outcome.ts";
 import { hasProjectOptions, PROJECT_OPTIONS, projectFromOptions } from "../project-options.ts";
@@ -149,6 +149,7 @@ export function makeInitCommand(
       try {
         const result = await applyInit(ports, plan, version, { cwd: io.cwd, signal: io.signal });
         const relative = path.relative(io.cwd, result.target) || ".";
+        const stack = STACKS[String(plan.config.stack)];
         return {
           outcome: "success",
           report: { created: true, target: result.target, files: result.files, plan: plan.hash },
@@ -159,7 +160,7 @@ export function makeInitCommand(
             `  cd ${relative}`,
             "  git init --initial-branch=develop",
             "  liftoff doctor",
-            "  cd backend && uv sync && uv run pytest",
+            ...(stack ? [`  ${stack.quickStart}`] : []),
             "",
           ].join("\n"),
         };

@@ -36,6 +36,7 @@
     "check": "npm run lint && npm run typecheck && npm run boundaries && npm run check:trace && npm run check:generated && npm run coverage",
     "render:docs": "node scripts/render-cli-reference.ts",
     "lock:python": "node scripts/templates/lock-python.ts",
+    "lock:node": "node scripts/templates/lock-node.ts",
     "bundle": "node scripts/package/build-bundle.ts"
   },
   "dependencies": {

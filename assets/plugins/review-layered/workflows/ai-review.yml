@@ -144,15 +144,18 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: ai-review-*
-          path: ai-review-artifacts/
+          name: ai-review-plan
+          path: ai-review/
+      # merge-multiple puts every pass's file in one folder, whether one pass
+      # or several uploaded; with none it downloads nothing.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ai-review-finder-*
+          merge-multiple: true
+          path: ai-review/finders/
       - name: Gather the candidates
         id: candidates
-        run: |
-          mkdir -p ai-review/finders
-          cp -R ai-review-artifacts/ai-review-plan/. ai-review/
-          find ai-review-artifacts -path '*ai-review-finder-*' -name 'finder-*.txt' -exec cp {} ai-review/finders/ \;
-          node .github/liftoff/ai-review.mjs verifier-prompt
+        run: node .github/liftoff/ai-review.mjs verifier-prompt
       - name: Install the review agent
         if: steps.candidates.outputs.has-candidates == 'true'
         run: npm install --global "$REVIEW_AGENT_CLI"
@@ -187,15 +190,22 @@ jobs:
           sparse-checkout: .github/liftoff
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: ai-review-*
-          path: ai-review-artifacts/
+          name: ai-review-plan
+          path: ai-review/
+      # merge-multiple puts every pass's file in one folder, whether one pass
+      # or several uploaded; with none it downloads nothing.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ai-review-finder-*
+          merge-multiple: true
+          path: ai-review/finders/
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ai-review-verifier-*
+          merge-multiple: true
+          path: ai-review/verifiers/
       - name: Vote, plan and post one review
         env:
           GITHUB_TOKEN: ${{ github.token }}
           LIFTOFF_STOP: ${{ needs.prepare.outputs.stop }}
-        run: |
-          mkdir -p ai-review/finders ai-review/verifiers
-          cp -R ai-review-artifacts/ai-review-plan/. ai-review/
-          find ai-review-artifacts -name 'finder-*.txt' -exec cp {} ai-review/finders/ \;
-          find ai-review-artifacts -name 'verifier-*.txt' -exec cp {} ai-review/verifiers/ \;
-          node .github/liftoff/ai-review.mjs publish
+        run: node .github/liftoff/ai-review.mjs publish

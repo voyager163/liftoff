@@ -3,16 +3,7 @@
 .env.*
 !.env.example
 *.local.toml
-
-# Python
-.venv/
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.ruff_cache/
-.coverage
-coverage.xml
-htmlcov/
+*.local.json
 
 # Editors and operating systems
 .DS_Store

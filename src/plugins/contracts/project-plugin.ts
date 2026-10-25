@@ -71,6 +71,8 @@ export interface StackPlugin extends ProjectPlugin {
   readonly tools: readonly ProjectTool[];
   /** Stack-specific review policy rules, added after the built-in ones. */
   readonly reviewRules: readonly PolicyRule[];
+  /** The first commands to run in a new project, from its root, such as installing and testing. */
+  readonly quickStart: string;
   /** Short description of the generated layout for README and AGENTS.md. */
   readonly layout: readonly { readonly path: string; readonly purpose: string }[];
 }
