@@ -20,14 +20,18 @@ writes:
   the target, then adds Liftoff's files and publishes everything with one
   rename. If anything fails, nothing is created.
 - The initializer runs with telemetry off (`DO_NOT_TRACK=1`,
-  `OPENSPEC_TELEMETRY=0`) and with temporary configuration and data
-  directories, so your own configuration is untouched. It downloads the
-  framework the first time; nothing else is installed.
+  `OPENSPEC_TELEMETRY=0`) and with a temporary home, configuration, data and
+  Codex directory, so nothing on your machine outside the project changes:
+  not your global configuration, and not other tools' files, such as Codex's
+  global prompts that OpenSpec would otherwise clean up. It still reads your
+  npm and Git settings, so private registries, proxies and credentials work,
+  and uses your package caches. It downloads the framework the first time;
+  nothing else is installed. All its steps together have ten minutes.
 - Before publishing, Liftoff checks what the initializer wrote. It refuses a
-  Git repository, anything other than regular files, a file where Liftoff
-  writes one of its own, and any file containing a path from this machine,
-  such as your home directory, since a project's files must work on any
-  machine.
+  Git repository at any depth, anything other than regular files and
+  directories, a file or directory where Liftoff writes one of its own, and
+  any file containing a path from this machine, such as your home or
+  temporary directory, since a project's files must work on any machine.
 
 Running the OpenSpec initializer needs Node.js with npm. Running Spec Kit's
 needs [uv](https://docs.astral.sh/uv/) and Git.

@@ -89,7 +89,12 @@ export interface ApplyOptions {
   readonly cwd?: string;
   /** Stops before publishing; the staged files are removed. */
   readonly signal?: AbortSignal;
+  /** The clock the initializer's time limit is measured with, in milliseconds. */
+  readonly now?: () => number;
 }
+
+/** How long a framework's initializer may take, all its steps together. */
+export const INITIALIZER_TIME_LIMIT_MS = 10 * 60_000;
 
 /**
  * Creates the project exactly as planned. Every file is regenerated and must
@@ -171,9 +176,17 @@ async function runInitializer(
   options: ApplyOptions,
 ): Promise<void> {
   const who = `${workflow.name} ${workflow.version}'s initializer`;
+  const now = options.now ?? Date.now;
+  // One limit for every step together, not a new one for each.
+  const deadline = now() + INITIALIZER_TIME_LIMIT_MS;
   for (const step of planned.steps) {
     options.signal?.throwIfAborted();
-    const outcome = await port.run(step, directory, options.signal);
+    const timeoutMs = deadline - now();
+    if (timeoutMs <= 0) throw new InitializerError(`${who} did not finish in time`);
+    const outcome = await port.run(step, directory, {
+      timeoutMs,
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
     options.signal?.throwIfAborted();
     if (!outcome.started) {
       throw new InitializerError(
@@ -222,10 +235,18 @@ async function frameworkFiles(
         `${who} created a Git repository; Liftoff leaves creating one to you`,
       );
     }
+    const lower = entry.path.toLowerCase();
+    if (entry.kind === "directory") {
+      // Liftoff may add files inside the framework's directories, but a
+      // directory cannot stand where Liftoff writes a file.
+      if (ours.includes(lower)) {
+        throw new InitializerError(`${who} wrote ${entry.path}, where Liftoff writes its own file`);
+      }
+      continue;
+    }
     if (entry.kind !== "file") {
       throw new InitializerError(`${who} created ${entry.path}, which is not a regular file`);
     }
-    const lower = entry.path.toLowerCase();
     if (
       ours.some(
         (own) => own === lower || own.startsWith(`${lower}/`) || lower.startsWith(`${own}/`),

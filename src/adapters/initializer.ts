@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -5,18 +6,33 @@ import type { InitializerOutcome, InitializerPort } from "../application/ports.t
 import type { InitializerStep } from "../plugins/contracts/project-plugin.ts";
 import { ProcessError, run } from "./process.ts";
 
-/** Initializers download their framework first, so they get longer than other commands. */
-const TIMEOUT_MS = 10 * 60_000;
 /** How much of an initializer's output an error message keeps, from the end. */
 const OUTPUT_TAIL = 4000;
 
 /**
  * The environment an initializer runs with: the user's own, with telemetry
- * and update checks off, no prompts or colors, and configuration and data
- * directories in `scratch`, so nothing it writes there reaches the user's
- * global configuration.
+ * and update checks off and no prompts or colors. Its home, configuration,
+ * data and Codex directories are in `scratch`, so nothing it writes there,
+ * such as telemetry settings or the clean-up of another tool's global
+ * prompts, reaches the user's machine. It still reads the user's npm and Git
+ * settings, so registries, proxies and credentials work, and it keeps using
+ * their package caches.
  */
-export function initializerEnv(base: NodeJS.ProcessEnv, scratch: string): NodeJS.ProcessEnv {
+export function initializerEnv(
+  base: NodeJS.ProcessEnv,
+  scratch: string,
+  home: string,
+  platform: NodeJS.Platform = process.platform,
+  exists: (file: string) => boolean = existsSync,
+): NodeJS.ProcessEnv {
+  const scratchHome = path.join(scratch, "home");
+  const userFile = (name: string) => {
+    const file = path.join(home, name);
+    return exists(file) ? file : undefined;
+  };
+  const npmrc = userFile(".npmrc");
+  const gitconfig = userFile(".gitconfig");
+  const posix = platform !== "win32";
   return {
     ...base,
     CI: "1",
@@ -26,28 +42,44 @@ export function initializerEnv(base: NodeJS.ProcessEnv, scratch: string): NodeJS
     npm_config_update_notifier: "false",
     npm_config_fund: "false",
     npm_config_audit: "false",
+    HOME: scratchHome,
+    USERPROFILE: scratchHome,
+    CODEX_HOME: path.join(scratch, "codex"),
     XDG_CONFIG_HOME: path.join(scratch, "config"),
     XDG_DATA_HOME: path.join(scratch, "data"),
+    // Read, never changed: the user's caches and settings.
+    ...(posix ? { XDG_CACHE_HOME: base.XDG_CACHE_HOME ?? path.join(home, ".cache") } : {}),
+    ...(posix && base.npm_config_cache === undefined
+      ? { npm_config_cache: path.join(home, ".npm") }
+      : {}),
+    ...(npmrc ? { npm_config_userconfig: npmrc } : {}),
+    ...(gitconfig ? { GIT_CONFIG_GLOBAL: gitconfig } : {}),
   };
 }
 
 /** Runs initializers on this machine through the bounded process runner. */
 export class LocalInitializer implements InitializerPort {
+  private readonly home: string;
+
+  constructor(home: string = homedir()) {
+    this.home = home;
+  }
+
   async run(
     step: InitializerStep,
     directory: string,
-    signal?: AbortSignal,
+    options: { readonly timeoutMs: number; readonly signal?: AbortSignal },
   ): Promise<InitializerOutcome> {
     const scratch = await mkdtemp(path.join(tmpdir(), "liftoff-initializer-"));
     try {
       const result = await run(step.command, step.args, {
         cwd: directory,
-        env: initializerEnv(process.env, scratch),
-        timeoutMs: TIMEOUT_MS,
+        env: initializerEnv(process.env, scratch, this.home),
+        timeoutMs: options.timeoutMs,
         // The end of the output explains a failure.
         maxOutputBytes: 1024 * 1024,
         keep: "end",
-        ...(signal ? { signal } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
       });
       return {
         started: true,
@@ -63,8 +95,8 @@ export class LocalInitializer implements InitializerPort {
     }
   }
 
+  /** The home directory and the temporary directory initializers run from. */
   machinePaths(): readonly string[] {
-    const home = homedir();
-    return [...new Set([home, home.split(path.sep).join("/")])];
+    return [this.home, tmpdir()];
   }
 }

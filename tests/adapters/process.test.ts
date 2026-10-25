@@ -157,6 +157,21 @@ describe("CLI-010 batch files on Windows", () => {
     expect(windowsLaunch("npx", [], {}, files()).command).toBe("npx");
   });
 
+  it("reads PATH as the child would, and allows quoted entries", () => {
+    const npx = files("C:\\new\\npx.cmd", "C:\\old\\npx.cmd");
+    // Node sorts the names, so the child gets PATH, not Path.
+    const both = { Path: "C:\\old", PATH: "C:\\new" };
+    expect(windowsLaunch("npx", [], both, npx).args.at(-1)).toContain("C:\\new\\npx.CMD");
+    const quoted = { PATH: 'C:\\Tools; "C:\\Program Files\\nodejs" ' };
+    const launch = windowsLaunch(
+      "npx",
+      ["--yes"],
+      quoted,
+      files("C:\\Program Files\\nodejs\\npx.cmd"),
+    );
+    expect(launch.args.at(-1)).toBe('""C:\\Program Files\\nodejs\\npx.CMD" --yes"');
+  });
+
   it("refuses arguments cmd.exe would interpret", () => {
     const npx = files("C:\\Tools\\npx.cmd");
     for (const unsafe of ["two words", "a&b", "%PATH%", '"quoted"', "a|b", ""]) {

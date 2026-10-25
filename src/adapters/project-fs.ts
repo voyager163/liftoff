@@ -68,14 +68,13 @@ export class LocalProjectFs implements ProjectFsPort {
     // A recursive listing reports links as links and does not follow them.
     const entries = await readdir(directory, { recursive: true, withFileTypes: true });
     return entries
-      .filter((entry) => !entry.isDirectory())
       .map(
         (entry): TreeEntry => ({
           path: path
             .relative(directory, path.join(entry.parentPath, entry.name))
             .split(path.sep)
             .join("/"),
-          kind: entry.isFile() ? "file" : "other",
+          kind: entry.isFile() ? "file" : entry.isDirectory() ? "directory" : "other",
         }),
       )
       .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));

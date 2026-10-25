@@ -33,11 +33,11 @@ export interface AssetPort {
 
 export type PathState = "missing" | "empty-directory" | "directory" | "file";
 
-/** Something under a directory other than a directory: a regular file, or anything else such as a link. */
+/** Something under a directory: a regular file, a directory, or anything else such as a link. */
 export interface TreeEntry {
   /** Relative POSIX path. */
   readonly path: string;
-  readonly kind: "file" | "other";
+  readonly kind: "file" | "directory" | "other";
 }
 
 /** File system access for creating a project. */
@@ -51,7 +51,7 @@ export interface ProjectFsPort {
   /** Moves the staged directory to `target`, which must be missing or empty. */
   publish(staging: string, target: string): Promise<void>;
   remove(path: string): Promise<void>;
-  /** Every entry under a directory except the directories themselves, sorted; links are not followed. */
+  /** Every entry under a directory, sorted; links are not followed. */
   listTree(directory: string): Promise<TreeEntry[]>;
 }
 
@@ -67,10 +67,15 @@ export interface InitializerOutcome {
 /** Runs a development framework's own pinned initializer. */
 export interface InitializerPort {
   /**
-   * Runs one step in `directory` with telemetry off and with temporary
-   * configuration directories, so the user's own configuration is untouched.
+   * Runs one step in `directory` with telemetry off and with a temporary
+   * home and configuration directories, so the user's own configuration is
+   * untouched. It is stopped after `timeoutMs`.
    */
-  run(step: InitializerStep, directory: string, signal?: AbortSignal): Promise<InitializerOutcome>;
+  run(
+    step: InitializerStep,
+    directory: string,
+    options: { readonly timeoutMs: number; readonly signal?: AbortSignal },
+  ): Promise<InitializerOutcome>;
   /** Paths particular to this machine, such as the home directory, that a project's files must never contain. */
   machinePaths(): readonly string[];
 }

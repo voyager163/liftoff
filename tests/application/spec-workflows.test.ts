@@ -11,7 +11,7 @@ import { validateProject } from "../../src/application/project/validate-project.
 import { PlanError, sealPlan } from "../../src/domain/plan/plan.ts";
 import { type ProjectConfig, validateConfig } from "../../src/domain/project/config.ts";
 import { parseManifest } from "../../src/domain/project/manifest.ts";
-import { FakeInitializer, type FakeStep } from "../helpers/initializer.ts";
+import { type FakeClock, FakeInitializer, type FakeStep } from "../helpers/initializer.ts";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 const assets = new PackageAssets(
@@ -253,6 +253,21 @@ describe("INIT-005 what an initializer writes is checked before anything is publ
       /created a Git repository/,
     ],
     [
+      "an empty Git directory",
+      new FakeInitializer(() => ({ directories: [".git"] })),
+      /created a Git repository/,
+    ],
+    [
+      "a nested Git directory with only directories in it",
+      new FakeInitializer(() => ({ directories: ["vendor/x/.GIT/refs"] })),
+      /created a Git repository/,
+    ],
+    [
+      "a directory where Liftoff writes a file",
+      new FakeInitializer(() => ({ directories: ["README.md"] })),
+      /wrote README.md, where Liftoff writes its own file/,
+    ],
+    [
       "a nested Git repository",
       writes({ "vendor/template/.git/HEAD": "ref: x\n" }),
       /created a Git repository/,
@@ -329,6 +344,43 @@ describe("INIT-005 what an initializer writes is checked before anything is publ
       applyInit({ assets, fs, initializer }, await plan(), "1.0.0", { signal: controller.signal }),
     ).rejects.toThrow(expect.objectContaining({ name: "AbortError" }));
     expect(readdirSync(work)).toEqual([]);
+  });
+});
+
+describe("INIT-005 one time limit for the whole initializer", () => {
+  const specKit = config({ workflow: "spec-kit", agents: ["claude", "codex", "copilot"] });
+  const minutes = (count: number) => count * 60_000;
+  const apply = async (initializer: FakeInitializer, clock: FakeClock) =>
+    applyInit({ assets, fs, initializer }, await plan(specKit), "1.0.0", {
+      now: () => clock.ms,
+    });
+
+  it("gives each step only what is left of ten minutes", async () => {
+    const clock = { ms: 0 };
+    const initializer = new FakeInitializer(() => ({ takesMs: minutes(4) }), [], clock);
+    await expect(apply(initializer, clock)).rejects.toThrow(
+      /Spec Kit 1.2.1's initializer did not finish in time/,
+    );
+    expect(initializer.runs.map((run) => run.timeoutMs)).toEqual([
+      minutes(10),
+      minutes(6),
+      minutes(2),
+    ]);
+    expect(readdirSync(work)).toEqual([]);
+  });
+
+  it("starts no step once the time is up", async () => {
+    const clock = { ms: 0 };
+    const initializer = new FakeInitializer(() => ({ takesMs: minutes(10) }), [], clock);
+    await expect(apply(initializer, clock)).rejects.toThrow(/did not finish in time/);
+    expect(initializer.runs).toHaveLength(1);
+    expect(readdirSync(work)).toEqual([]);
+  });
+
+  it("finishes when all the steps fit", async () => {
+    const clock = { ms: 0 };
+    const initializer = new FakeInitializer(() => ({ takesMs: minutes(3) }), [], clock);
+    await expect(apply(initializer, clock)).resolves.toMatchObject({ frameworkFiles: 0 });
   });
 });
 

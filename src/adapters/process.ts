@@ -39,9 +39,15 @@ export interface Launch {
   readonly verbatim: boolean;
 }
 
-/** An environment variable, whatever the case of its name, as Windows treats it. */
+/**
+ * An environment variable whatever the case of its name, as a Windows child
+ * sees it: Node sorts the names and keeps the first of any that differ only
+ * in case, so PATH wins over Path.
+ */
 function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
-  const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === name);
+  const key = Object.keys(env)
+    .sort()
+    .find((candidate) => candidate.toUpperCase() === name);
   return key === undefined ? undefined : env[key];
 }
 
@@ -62,7 +68,11 @@ export function windowsLaunch(
 ): Launch {
   const direct: Launch = { command, args, verbatim: false };
   if (/[\\/]/.test(command) || path.win32.extname(command) !== "") return direct;
-  const directories = (envValue(env, "PATH") ?? "").split(";").filter(Boolean);
+  // Windows allows quotes around a PATH entry, as in "C:\Program Files\nodejs".
+  const directories = (envValue(env, "PATH") ?? "")
+    .split(";")
+    .map((entry) => entry.trim().replace(/^"(.*)"$/, "$1"))
+    .filter(Boolean);
   const extensions = (envValue(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean);
   for (const directory of directories) {
     for (const extension of extensions) {

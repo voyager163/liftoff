@@ -323,8 +323,9 @@ Windows alike. `--workflow manual` runs nothing.
 - The plan lists the `run-initializer` effect and the exact commands, with
   each selected coding agent passed to the framework.
 - Init runs them first, alone in the empty staging directory, with telemetry
-  off and temporary configuration directories, so the user's own
-  configuration is untouched.
+  off and a temporary home, configuration, data and Codex directory, so
+  nothing on the user's machine outside the project changes. They still read
+  the user's npm and Git settings and use their package caches.
 - Every file they write is recorded in the manifest as framework-owned, and
   `liftoff validate` never reports changes to those files.
 - README and AGENTS.md say how to work with the framework, and
@@ -384,8 +385,8 @@ Verification: test
 
 ## INIT-005 What an initializer writes is checked before anything is published
 
-If a framework's initializer cannot start, fails, runs for more than ten
-minutes or is cancelled, nothing is created, and the error says why and what
+If a framework's initializer cannot start, fails, takes more than ten
+minutes for all its steps together or is cancelled, nothing is created, and the error says why and what
 it needs. The same happens if it creates a Git repository (a `.git` at any
 depth, in any case) or anything other than regular files, writes a file
 where Liftoff writes one of its own (ignoring case), or writes a path from
