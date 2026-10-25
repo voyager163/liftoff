@@ -48,6 +48,22 @@ describe("PROJ-020 initializers run apart from the user's configuration", () => 
     expect(existsSync(config)).toBe(false);
   });
 
+  it("keeps the end of a long output, where a failure is explained", async () => {
+    const outcome = await new LocalInitializer().run(
+      {
+        command: process.execPath,
+        args: [
+          "-e",
+          "process.stderr.write('x'.repeat(2 * 1024 * 1024)); console.error('the real reason'); process.exitCode = 1",
+        ],
+      },
+      work,
+    );
+    expect(outcome.exitCode).toBe(1);
+    expect(outcome.output.endsWith("the real reason")).toBe(true);
+    expect(outcome.output.length).toBeLessThanOrEqual(4000);
+  });
+
   it("reports a command that cannot start instead of throwing", async () => {
     const outcome = await new LocalInitializer().run(
       { command: "liftoff-no-such-initializer", args: [] },

@@ -386,10 +386,12 @@ Verification: test
 
 If a framework's initializer cannot start, fails, runs for more than ten
 minutes or is cancelled, nothing is created, and the error says why and what
-it needs. The same happens if it creates a Git repository or anything other
-than regular files, writes a file where Liftoff writes one of its own
-(ignoring case), or writes a path from this machine, such as the home or
-staging directory, into a file.
+it needs. The same happens if it creates a Git repository (a `.git` at any
+depth, in any case) or anything other than regular files, writes a file
+where Liftoff writes one of its own (ignoring case), or writes a path from
+this machine, such as the home or staging directory, into a file, whether
+as written, with forward slashes or escaped as in JSON. A failure's message
+keeps the end of the initializer's output, where the cause is.
 
 Verification: test
 

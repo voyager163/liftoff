@@ -206,12 +206,18 @@ async function frameworkFiles(
   const who = `${workflow.name}'s initializer`;
   // macOS and Windows file systems usually ignore case, so neither does this.
   const ours = liftoff.map((file) => file.path.toLowerCase());
+  // As written, with forward slashes, and with backslashes escaped as in JSON.
   const machinePaths = [staging, ...ports.initializer.machinePaths()]
-    .flatMap((machinePath) => [machinePath, machinePath.replaceAll("\\", "/")])
-    .filter((machinePath) => machinePath.length >= SHORTEST_MACHINE_PATH);
+    .filter((machinePath) => machinePath.length >= SHORTEST_MACHINE_PATH)
+    .flatMap((machinePath) => [
+      machinePath,
+      machinePath.replaceAll("\\", "/"),
+      machinePath.replaceAll("\\", "\\\\"),
+    ]);
   const files: { path: string; sha256: string }[] = [];
   for (const entry of await ports.fs.listTree(staging)) {
-    if (entry.path === ".git" || entry.path.startsWith(".git/")) {
+    // At any depth, and in any case, since macOS and Windows ignore case.
+    if (entry.path.split("/").some((part) => part.toLowerCase() === ".git")) {
       throw new InitializerError(
         `${who} created a Git repository; Liftoff leaves creating one to you`,
       );

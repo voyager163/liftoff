@@ -248,6 +248,28 @@ describe("INIT-005 what an initializer writes is checked before anything is publ
       /created a Git repository/,
     ],
     [
+      "a Git repository in capitals",
+      writes({ ".GIT/HEAD": "ref: x\n" }),
+      /created a Git repository/,
+    ],
+    [
+      "a nested Git repository",
+      writes({ "vendor/template/.git/HEAD": "ref: x\n" }),
+      /created a Git repository/,
+    ],
+    [
+      "a Windows path escaped as in JSON",
+      new FakeInitializer(
+        () => ({
+          files: {
+            "openspec/tools.json": JSON.stringify({ python: "C:\\Users\\alice\\py.exe" }),
+          },
+        }),
+        ["C:\\Users\\alice"],
+      ),
+      /wrote a path from this machine into openspec\/tools.json/,
+    ],
+    [
       "a file where Liftoff writes its own",
       writes({ "README.md": "# Mine\n" }),
       /wrote README.md, where Liftoff writes its own file/,

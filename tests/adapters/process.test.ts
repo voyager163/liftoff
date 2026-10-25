@@ -96,6 +96,17 @@ describe("CLI-010 bounded child processes", () => {
     );
   });
 
+  it("can keep the end of a long output instead of its start", async () => {
+    const result = await run(
+      node,
+      ["-e", "process.stdout.write('a'.repeat(5000)); process.stdout.write('THE END')"],
+      { cwd, maxOutputBytes: 100, keep: "end" },
+    );
+    expect(result.truncated).toBe(true);
+    expect(result.stdout).toHaveLength(100);
+    expect(result.stdout.endsWith("THE END")).toBe(true);
+  });
+
   it("reports a missing program as a ProcessError", async () => {
     await expect(run("liftoff-no-such-program", [], { cwd })).rejects.toThrow(/could not start/);
   });

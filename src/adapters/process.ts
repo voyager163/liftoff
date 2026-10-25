@@ -9,6 +9,8 @@ export interface RunOptions {
   readonly timeoutMs?: number;
   /** Keep at most this many bytes of each stream. Default 8 MiB. */
   readonly maxOutputBytes?: number;
+  /** Which bytes to keep when a stream is longer: its start (default) or its end. */
+  readonly keep?: "start" | "end";
   readonly input?: string;
   readonly signal?: AbortSignal;
 }
@@ -135,8 +137,8 @@ export function run(
       return;
     }
 
-    const stdout = new BoundedBuffer(maxBytes);
-    const stderr = new BoundedBuffer(maxBytes);
+    const stdout = new BoundedBuffer(maxBytes, options.keep ?? "start");
+    const stderr = new BoundedBuffer(maxBytes, options.keep ?? "start");
     let timedOut = false;
     let cancelled = false;
     let settled = false;
@@ -204,16 +206,30 @@ export function killTree(child: ChildProcess): void {
 }
 
 class BoundedBuffer {
-  private readonly chunks: Buffer[] = [];
+  private chunks: Buffer[] = [];
   private readonly limit: number;
+  private readonly keep: "start" | "end";
   private size = 0;
   truncated = false;
 
-  constructor(limit: number) {
+  constructor(limit: number, keep: "start" | "end") {
     this.limit = limit;
+    this.keep = keep;
   }
 
   push(chunk: Buffer): void {
+    if (this.keep === "end") {
+      this.chunks.push(chunk);
+      this.size += chunk.length;
+      if (this.size > this.limit) {
+        // Drop the oldest bytes, keeping exactly the last `limit`.
+        const all = Buffer.concat(this.chunks);
+        this.chunks = [all.subarray(all.length - this.limit)];
+        this.size = this.limit;
+        this.truncated = true;
+      }
+      return;
+    }
     const room = this.limit - this.size;
     if (room <= 0) {
       this.truncated = true;

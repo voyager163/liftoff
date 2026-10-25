@@ -44,7 +44,9 @@ export class LocalInitializer implements InitializerPort {
         cwd: directory,
         env: initializerEnv(process.env, scratch),
         timeoutMs: TIMEOUT_MS,
+        // The end of the output explains a failure.
         maxOutputBytes: 1024 * 1024,
+        keep: "end",
         ...(signal ? { signal } : {}),
       });
       return {
