@@ -300,6 +300,31 @@ jobs:
           npm ci --no-audit --no-fund
           npx playwright install --with-deps chromium
           npm run test:e2e
+      - name: Check the frontend finds the API at a new address without a restart
+        working-directory: ${{ runner.temp }}/demo
+        run: |
+          address() { docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$(docker compose ps -q api)"; }
+          web=$(docker compose ps -q web)
+          network=$(docker inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}' "$web")
+          before=$(address)
+          docker compose rm --stop --force api
+          # Docker would give the new container the freed address; hold it.
+          holder=$(docker run --detach --rm --network "$network" --entrypoint sleep \
+            postgres:18-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6 300)
+          docker compose up --detach --no-deps --wait --wait-timeout 120 api
+          after=$(address)
+          docker stop "$holder"
+          echo "API address: $before before, $after after"
+          test "$before" != "$after"
+          test "$(docker compose ps -q web)" = "$web"
+          ready=000
+          for _ in $(seq 1 30); do
+            ready=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 http://127.0.0.1:8080/api/health/ready)
+            [ "$ready" = 200 ] && break
+            sleep 1
+          done
+          echo "readiness through the frontend: $ready"
+          test "$ready" = 200
       - name: Show the Compose logs
         if: failure()
         working-directory: ${{ runner.temp }}/demo

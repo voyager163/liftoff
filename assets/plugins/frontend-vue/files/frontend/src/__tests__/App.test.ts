@@ -1,7 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App.vue";
-import { createItem, isReady, listItems } from "../api";
+import { createItem, isReady, listItems, type Item } from "../api";
 
 vi.mock("../api", () => ({
   isReady: vi.fn(),
@@ -74,6 +74,54 @@ describe("App", () => {
       "second",
     ]);
     expect(app.get("input").element.value).toBe("");
+  });
+
+  it("keeps the form disabled until the first list arrives", async () => {
+    let resolveList: (items: Item[]) => void = () => {};
+    vi.mocked(listItems).mockReturnValue(
+      new Promise((resolve) => {
+        resolveList = resolve;
+      }),
+    );
+    vi.mocked(createItem).mockResolvedValue(item(2, "second"));
+    const app = mount(App);
+    await flushPromises();
+    expect(app.text()).toContain("API ready");
+    expect(app.get("input").attributes("disabled")).toBeDefined();
+    expect(app.get("button").attributes("disabled")).toBeDefined();
+
+    resolveList([item(1, "first")]);
+    await flushPromises();
+    await app.get("input").setValue("second");
+    await app.get("form").trigger("submit");
+    await flushPromises();
+    expect(app.findAll("li").map((li) => li.text())).toEqual([
+      "first",
+      "second",
+    ]);
+  });
+
+  it("sends an item once while it is being saved", async () => {
+    let resolveCreate: (created: Item) => void = () => {};
+    vi.mocked(createItem).mockReturnValue(
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      }),
+    );
+    const app = mount(App);
+    await flushPromises();
+    await app.get("input").setValue("second");
+    await app.get("form").trigger("submit");
+    await app.get("form").trigger("submit");
+    expect(createItem).toHaveBeenCalledTimes(1);
+    expect(app.get("button").attributes("disabled")).toBeDefined();
+
+    resolveCreate(item(2, "second"));
+    await flushPromises();
+    expect(app.findAll("li").map((li) => li.text())).toEqual([
+      "first",
+      "second",
+    ]);
   });
 
   it("ignores a blank name", async () => {

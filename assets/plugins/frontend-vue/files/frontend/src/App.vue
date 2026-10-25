@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { createItem, isReady, listItems, type Item } from "./api";
 
 const title = "{{liftoff.name}}";
@@ -8,21 +8,27 @@ const items = ref<Item[]>([]);
 const name = ref("");
 const error = ref("");
 const saving = ref(false);
+const loading = ref(true);
+// Adding waits for the first list, which would otherwise replace the new item
+// if it arrived later, and for the previous add, so nothing is sent twice.
+const busy = computed(() => !ready.value || loading.value || saving.value);
 
 async function load(): Promise<void> {
   ready.value = await isReady();
-  if (!ready.value) return;
-  try {
-    items.value = await listItems();
-    error.value = "";
-  } catch (cause) {
-    error.value = `Could not load the items: ${(cause as Error).message}`;
+  if (ready.value) {
+    try {
+      items.value = await listItems();
+      error.value = "";
+    } catch (cause) {
+      error.value = `Could not load the items: ${(cause as Error).message}`;
+    }
   }
+  loading.value = false;
 }
 
 async function add(): Promise<void> {
   const value = name.value.trim();
-  if (value === "") return;
+  if (value === "" || busy.value) return;
   saving.value = true;
   try {
     items.value.push(await createItem(value));
@@ -64,12 +70,12 @@ onMounted(load);
         class="flex-1 rounded border border-slate-300 px-3 py-2"
         maxlength="200"
         placeholder="New item"
-        :disabled="!ready"
+        :disabled="!ready || loading"
       />
       <button
         type="submit"
         class="rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
-        :disabled="!ready || saving"
+        :disabled="busy"
       >
         Add
       </button>

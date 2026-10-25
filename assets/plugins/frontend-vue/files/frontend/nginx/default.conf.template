@@ -1,13 +1,21 @@
 # Serves the built frontend and forwards /api/ to the API, so the browser talks
 # to a single origin and the API needs no CORS settings. When the container
-# starts, nginx fills in API_UPSTREAM from the environment.
+# starts, nginx fills in API_UPSTREAM and NGINX_LOCAL_RESOLVERS, the
+# container's DNS servers, from the environment.
 server {
     listen 8080;
     server_name _;
     root /usr/share/nginx/html;
 
+    # The API's address is looked up while running, not once at startup, so a
+    # recreated API container is found at its new address.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;
+
     location /api/ {
-        proxy_pass ${API_UPSTREAM}/;
+        # A variable makes nginx resolve the address with the resolver above.
+        set $api_upstream ${API_UPSTREAM};
+        rewrite ^/api/(.*)$ /$1 break;
+        proxy_pass $api_upstream;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;

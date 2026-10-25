@@ -71,6 +71,14 @@ export interface Selection {
 
 const list = (values: Iterable<string>) => [...values].join(", ");
 
+/**
+ * The registry entry for an id read from a project or plan file. Only the
+ * registry's own entries count, never inherited object properties such as
+ * "constructor".
+ */
+export const entry = <T>(registry: Readonly<Record<string, T>>, id: string): T | undefined =>
+  Object.hasOwn(registry, id) ? registry[id] : undefined;
+
 /** Checks a configuration against what this release ships, before anything is generated. */
 export function resolveSelection(config: ProjectConfig): Selection {
   if (!(WORKLOADS as readonly string[]).includes(config.workload)) {
@@ -78,7 +86,7 @@ export function resolveSelection(config: ProjectConfig): Selection {
       `unknown workload "${config.workload}"; available: ${list(WORKLOADS)}`,
     );
   }
-  const stack = STACKS[config.stack];
+  const stack = entry(STACKS, config.stack);
   if (!stack)
     throw new SelectionError(
       `unknown stack "${config.stack}"; available: ${list(Object.keys(STACKS))}`,
@@ -91,7 +99,7 @@ export function resolveSelection(config: ProjectConfig): Selection {
 
   let frontend: FrontendPlugin | undefined;
   if (config.frontend !== NO_FRONTEND) {
-    frontend = FRONTENDS[config.frontend];
+    frontend = entry(FRONTENDS, config.frontend);
     if (!frontend) {
       throw new SelectionError(
         `unknown frontend "${config.frontend}"; available: ${list([NO_FRONTEND, ...Object.keys(FRONTENDS)])}`,
@@ -99,9 +107,9 @@ export function resolveSelection(config: ProjectConfig): Selection {
     }
   }
 
-  const workflow = WORKFLOWS[config.workflow];
+  const workflow = entry(WORKFLOWS, config.workflow);
   if (!workflow) {
-    const planned = PLANNED_WORKFLOWS[config.workflow];
+    const planned = entry(PLANNED_WORKFLOWS, config.workflow);
     if (planned) {
       throw new SelectionError(
         `the ${planned} workflow is not available in this release yet; use --workflow manual`,
@@ -115,7 +123,7 @@ export function resolveSelection(config: ProjectConfig): Selection {
 
   const hosts: AgentHostId[] = [];
   for (const agent of config.agents) {
-    if (!(agent in AGENT_HOSTS)) {
+    if (!entry(AGENT_HOSTS, agent)) {
       throw new SelectionError(
         `unknown agent "${agent}"; available: ${list(Object.keys(AGENT_HOSTS))}`,
       );

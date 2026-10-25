@@ -236,6 +236,24 @@ describe("VALID-001 validate reports without repairing", () => {
     writeFileSync(path.join(target, "liftoff.yaml"), "schema: liftoff.config/v1\nname: x\n");
     expect((await validateProject(fs, target)).findings[0]?.code).toBe("invalid-config");
   });
+
+  it("reports an inherited property name as an unknown frontend", async () => {
+    const target = await create();
+    const configPath = path.join(target, "liftoff.yaml");
+    writeFileSync(
+      configPath,
+      readFileSync(configPath, "utf8").replace("frontend: none", "frontend: constructor"),
+    );
+    expect((await validateProject(fs, target)).findings).toEqual([
+      expect.objectContaining({
+        code: "invalid-config",
+        message: expect.stringContaining('unknown frontend "constructor"'),
+      }),
+    ]);
+    await expect(
+      runDoctor({ fs, tools: { version: async () => undefined } }, target),
+    ).rejects.toThrow('unknown frontend "constructor"');
+  });
 });
 
 describe("VALID-002 projects from before the rebuild", () => {

@@ -244,6 +244,7 @@ describe("PROJ-006 and PROJ-011 every API stack is checked in CI", () => {
     expect(runs("generated")).toContain("npm run build");
     expect(runs("services")).toContain("--frontend vue");
     expect(runs("services")).toContain("npm run test:e2e");
+    expect(runs("services")).toContain("docker compose rm --stop --force api");
   });
 });
 

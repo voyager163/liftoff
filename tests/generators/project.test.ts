@@ -570,13 +570,19 @@ describe("PROJ-013 the Vue frontend", () => {
       "thresholds: { statements: 80, branches: 80, functions: 80, lines: 80 }",
     );
     const nginx = text("frontend/nginx/default.conf.template");
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: an nginx template variable, kept verbatim.
-    expect(nginx).toContain("proxy_pass ${API_UPSTREAM}/;");
+    // A recreated API container gets a new address, so nginx resolves it per request.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: nginx template variables, kept verbatim.
+    expect(nginx).toContain("resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;");
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: nginx template variables, kept verbatim.
+    expect(nginx).toContain("set $api_upstream ${API_UPSTREAM};");
+    expect(nginx).toContain("rewrite ^/api/(.*)$ /$1 break;");
+    expect(nginx).toContain("proxy_pass $api_upstream;");
     expect(nginx).toContain(`Content-Security-Policy "default-src 'self';`);
     const dockerfile = text("frontend/Dockerfile");
     expect(dockerfile).toMatch(/FROM node:\S+@sha256:[0-9a-f]{64} AS build/);
     expect(dockerfile).toMatch(/FROM nginxinc\/nginx-unprivileged:\S+@sha256:[0-9a-f]{64}/);
     expect(dockerfile).toContain("HEALTHCHECK");
+    expect(dockerfile).toContain("NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1");
     expect(text("frontend/.node-version")).toBe(
       readFileSync(path.join(repoRoot, ".node-version"), "utf8"),
     );
@@ -769,7 +775,26 @@ describe("PROJ-014 shared files are assembled from each component's parts", () =
       { "b/compose.yaml": "api:\n  image: b\n" },
       'frontend/b and stack/a both define the Compose service "api"',
     ],
-    [{ "b/ci-jobs.yml": "ci-gate: {}\n" }, 'the CI job "ci-gate" is reserved'],
+    [
+      { "b/ci-jobs.yml": "ci-gate: {}\n" },
+      'frontend/b defines the CI job "ci-gate", which Liftoff adds itself',
+    ],
+    [
+      { "b/ci-jobs.yml": "dependencies: {}\n" },
+      'frontend/b defines the CI job "dependencies", which Liftoff adds itself',
+    ],
+    [
+      { "b/compose.yaml": "database:\n  image: b\n" },
+      'frontend/b defines the Compose service "database", which Liftoff adds itself',
+    ],
+    [
+      { "b/dependabot.yml": "- package-ecosystem: npm\n  directory: /a\n" },
+      'frontend/b and stack/a both define the Dependabot update "npm in /a"',
+    ],
+    [
+      { "a/dependabot.yml": "- package-ecosystem: github-actions\n  directory: /\n" },
+      'stack/a defines the Dependabot update "github-actions in /", which Liftoff adds itself',
+    ],
     [
       { "b/compose.yaml": "web:\n  depends_on:\n    cache: {}\n" },
       `frontend/b's web service depends on unknown "cache"`,

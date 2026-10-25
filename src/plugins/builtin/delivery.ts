@@ -54,11 +54,17 @@ function parts(context: GenerationContext, file: string, shape: "mapping" | "lis
   });
 }
 
-/** The keys of mapping parts, refusing a key two components both define. */
-function keysOf(mappings: readonly Part[], what: string): string[] {
+/**
+ * The keys of mapping parts, refusing a key two components both define or
+ * one the shared file already has (`builtIn`).
+ */
+function keysOf(mappings: readonly Part[], what: string, builtIn: readonly string[]): string[] {
   const owner = new Map<string, string>();
   for (const { component, data } of mappings) {
     for (const key of Object.keys(data as object)) {
+      if (builtIn.includes(key)) {
+        throw new Error(`${component.id} defines the ${what} "${key}", which Liftoff adds itself`);
+      }
       const other = owner.get(key);
       if (other) throw new Error(`${component.id} and ${other} both define the ${what} "${key}"`);
       owner.set(key, component.id);
@@ -69,7 +75,7 @@ function keysOf(mappings: readonly Part[], what: string): string[] {
 
 function compose(context: GenerationContext): string {
   const services = parts(context, "compose.yaml", "mapping");
-  const names = new Set(["database", ...keysOf(services, "Compose service")]);
+  const names = new Set(["database", ...keysOf(services, "Compose service", ["database"])]);
   for (const { component, data } of services) {
     for (const [name, service] of Object.entries(data as Record<string, { depends_on?: object }>)) {
       for (const needed of Object.keys(service.depends_on ?? {})) {
@@ -91,10 +97,7 @@ function compose(context: GenerationContext): string {
 
 function ci(context: GenerationContext): string {
   const jobs = parts(context, "ci-jobs.yml", "mapping");
-  const ids = keysOf(jobs, "CI job");
-  for (const reserved of ["dependencies", "ci-gate"]) {
-    if (ids.includes(reserved)) throw new Error(`the CI job "${reserved}" is reserved`);
-  }
+  const ids = keysOf(jobs, "CI job", ["dependencies", "ci-gate"]);
   return renderTemplate(
     context.templates.read(`${ROOT}/01-pr-ci.yml`),
     {
@@ -134,6 +137,17 @@ function codeql(context: GenerationContext): string {
 
 function dependabot(context: GenerationContext): string {
   const updates = parts(context, "dependabot.yml", "list");
+  // Dependabot allows one entry per ecosystem and directory.
+  const byTarget = updates.map((part) => ({
+    ...part,
+    data: Object.fromEntries(
+      (part.data as Record<string, unknown>[]).map((update) => [
+        `${update["package-ecosystem"]} in ${update.directory}`,
+        update,
+      ]),
+    ),
+  }));
+  keysOf(byTarget, "Dependabot update", ["github-actions in /"]);
   return renderTemplate(
     context.templates.read(`${ROOT}/dependabot.yml`),
     { updates: updates.map(({ text }) => indent(text, 2)).join("\n\n") },

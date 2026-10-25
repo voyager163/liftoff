@@ -141,7 +141,9 @@ on Linux, where service containers and Docker exist, and checks:
 - with the database paused, readiness answers 503 within 10 seconds while
   liveness stays up, and readiness recovers once the database is back;
 - the frontend serves the application and forwards `/api/` to the API, and
-  its Playwright browser test passes against it.
+  its Playwright browser test passes against it;
+- when the API container is replaced and gets a new address, the frontend
+  reaches it again within 30 seconds without being restarted.
 
 This qualifies the generated containers as a deployment target; Linux is not
 a supported platform for the Liftoff CLI.
@@ -199,9 +201,12 @@ assembled from the parts of the API stack and the frontend:
 - `ci-gate` needs every job, dependency review included;
 - every relative link in the README points at a file or directory the
   project has;
-- two components defining the same service or job, a service depending on
-  one that does not exist, or a part that is not the expected YAML shape
-  stops generation with an error.
+- generation stops with an error when two components define the same
+  service, job or Dependabot entry (ecosystem and directory), when a
+  component defines one Liftoff adds itself (the `database` service, the
+  `dependencies` and `ci-gate` jobs, the GitHub Actions updates), when a
+  service depends on one that does not exist, or when a part is not the
+  expected YAML shape.
 
 Verification: test
 

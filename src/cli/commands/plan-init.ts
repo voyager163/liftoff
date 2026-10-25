@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { applyInit, InitTargetError, planInit } from "../../application/init/init-project.ts";
 import { type Plan, PlanError, parsePlan } from "../../domain/plan/plan.ts";
-import { FRONTENDS, SelectionError, STACKS } from "../../plugins/registry.ts";
+import { entry, FRONTENDS, SelectionError, STACKS } from "../../plugins/registry.ts";
 import type { CommandResult, CommandSpec } from "../command.ts";
 import { UnsupportedError, UsageError } from "../outcome.ts";
 import { hasProjectOptions, PROJECT_OPTIONS, projectFromOptions } from "../project-options.ts";
@@ -150,8 +150,8 @@ export function makeInitCommand(
         const result = await applyInit(ports, plan, version, { cwd: io.cwd, signal: io.signal });
         const relative = path.relative(io.cwd, result.target) || ".";
         const components = [
-          STACKS[String(plan.config.stack)],
-          FRONTENDS[String(plan.config.frontend)],
+          entry(STACKS, String(plan.config.stack)),
+          entry(FRONTENDS, String(plan.config.frontend)),
         ].filter((component) => component !== undefined);
         // Each component starts in its own directory; after the first, the
         // shell is still in the previous one.

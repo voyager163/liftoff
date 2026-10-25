@@ -51,6 +51,20 @@ describe("PROJ-003 selections are checked first", () => {
     expect(selection.components).toEqual([selection.stack]);
   });
 
+  it.each(["constructor", "toString", "__proto__", "hasOwnProperty"])(
+    "refuses the inherited property name %s as a stack, frontend, workflow or agent",
+    (name) => {
+      for (const [field, value, message] of [
+        ["stack", name, `unknown stack "${name}"`],
+        ["frontend", name, `unknown frontend "${name}"`],
+        ["workflow", name, `unknown workflow "${name}"`],
+        ["agents", [name], `unknown agent "${name}"`],
+      ] as const) {
+        expect(() => resolveSelection(config({ [field]: value })), field).toThrow(message);
+      }
+    },
+  );
+
   it("has components that share a tool ask for the same minimum version", () => {
     const tools = [...Object.values(STACKS), ...Object.values(FRONTENDS)].flatMap((c) => c.tools);
     for (const tool of tools) {
