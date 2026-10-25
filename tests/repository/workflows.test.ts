@@ -274,6 +274,31 @@ describe("PROJ-006 and PROJ-011 every API stack is checked in CI", () => {
     expect(ci?.jobs["ci-gate"]?.needs).toContain("spec-workflows");
   });
 
+  it("PROJ-023 runs the full matrix nightly", () => {
+    const nightly = workflows.find((workflow) => workflow.name === "nightly-matrix.yml");
+    expect(nightly?.data.on).toHaveProperty("schedule");
+    const lint = (nightly?.data.jobs["generated-workflows"]?.steps ?? []).map(
+      (step) => step.run ?? step.uses ?? "",
+    );
+    expect(lint.join("\n")).toContain("scripts/matrix/write-distinct.ts");
+    expect(lint.join("\n")).toContain("raven-actions/actionlint@");
+    expect(lint.join("\n")).toContain("shellcheck");
+    const projects = nightly?.data.jobs.projects as Job & {
+      strategy?: { matrix?: { platform?: { os: string }[]; project?: { stack: string }[] } };
+    };
+    expect((projects?.strategy?.matrix?.platform ?? []).map((p) => p.os)).toEqual([
+      "macos-15",
+      "windows-latest",
+      "ubuntu-latest",
+    ]);
+    expect((projects?.strategy?.matrix?.project ?? []).map((p) => p.stack).sort()).toEqual(
+      Object.keys(STACKS).sort(),
+    );
+    const runs = (projects?.steps ?? []).map((step) => step.run ?? "").join("\n");
+    expect(runs).toContain("--agents copilot,codex,claude");
+    expect(runs).toContain("scripts/matrix/check-project.sh");
+  });
+
   it("PROJ-016 checks generated infrastructure, and ci-gate needs it", () => {
     const job = ci?.jobs.infrastructure;
     const runs = (job?.steps ?? []).map((step) => step.run ?? "").join("\n");

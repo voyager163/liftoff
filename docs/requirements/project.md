@@ -344,6 +344,31 @@ framework's files are there and recorded as its own, and that
 
 Verification: live
 
+## PROJ-022 Every supported combination generates a valid project
+
+The combination matrix is built from the plugin registry: each stack (and
+each GenAI pattern), with and without each frontend and infrastructure, each
+workflow, every subset of coding agents and every governance profile. Every
+combination the registry supports generates without collisions, with
+relative paths, no unrendered placeholders or local paths, YAML and JSON that
+parse, and a manifest that lists exactly the generated files. The matrix is
+snapshotted in `tests/fixtures/golden/matrix.txt`, one line per supported
+combination with its file count and inventory hash, plus how many
+combinations each reason makes unsupported. Each stack, workflow and profile
+is supported in at least one combination.
+
+Verification: test
+
+## PROJ-023 The full matrix runs nightly
+
+Each night Liftoff's CI lints every distinct GitHub Actions workflow and
+shell script that any supported combination generates, with actionlint and
+shellcheck. It also creates the widest project of each stack, with every
+coding agent and a framework's real initializer, and runs its checks on
+macOS arm64, Windows x64 and Linux.
+
+Verification: live
+
 ## INIT-001 Plans are read-only and tamper-evident
 
 `liftoff plan` changes nothing except the plan file named with `--out`. A
