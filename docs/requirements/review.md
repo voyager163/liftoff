@@ -72,6 +72,8 @@ a later comment does not.
 - Given a bot approval, then it is ignored with a reason.
 - Given an approval on an older commit, then it is ignored.
 - Given approve then request changes, then the reviewer is not an approver.
+- Given two approvals from one reviewer, in any letter case, then they count
+  once.
 
 Verification: test
 
@@ -120,16 +122,26 @@ including workflows.
 
 Verification: test
 
-## REVIEW-011 Approval rules hold with a real second reviewer
+## REVIEW-011 Approval rules hold on GitHub
 
 On a GitHub repository with a team or risk-tiered project's rulesets
-applied, a pull request that needs an approval cannot merge until a second
-person with write access approves its head commit. A new push dismisses that
-approval, and approvals from the author, a bot or an older commit do not
-satisfy `review-policy`. An approval on a pull request from a fork updates
-`review-policy` without anyone dispatching it by hand. Until this has been
-observed with a real second reviewer, the team and risk-tiered profiles are
-described as not yet qualified.
+applied:
+
+- A pull request that needs an approval cannot merge until someone other
+  than its author, with write access, approves its head commit.
+- A new push dismisses that approval, and a bot approval or one for an
+  older commit does not satisfy `review-policy`.
+- A high-tier change with one approval stays blocked.
+- A review on a pull request from a fork, even a comment-only review by its
+  author, re-runs `review-policy` without anyone dispatching it by hand.
+
+One maintainer can observe all of this: a GitHub App opens the test pull
+requests, so the maintainer is not their author and can approve them.
+GitHub never lets authors approve their own pull requests, so author
+approvals, and a high-tier change passing with two approvals, are covered by
+the tests for REVIEW-006 and REVIEW-010 instead. Until the rest has been
+observed, the team and risk-tiered profiles are described as not yet
+qualified.
 
 Verification: live
 
