@@ -26,12 +26,15 @@ export function initializerEnv(
   exists: (file: string) => boolean = existsSync,
 ): NodeJS.ProcessEnv {
   const scratchHome = path.join(scratch, "home");
-  const userFile = (name: string) => {
+  // Settings the user gave explicitly win; npm reads its variables in any case.
+  const given = (name: string) =>
+    Object.keys(base).some((key) => key.toLowerCase() === name.toLowerCase());
+  const userFile = (variable: string, name: string) => {
     const file = path.join(home, name);
-    return exists(file) ? file : undefined;
+    return given(variable) || !exists(file) ? undefined : file;
   };
-  const npmrc = userFile(".npmrc");
-  const gitconfig = userFile(".gitconfig");
+  const npmrc = userFile("npm_config_userconfig", ".npmrc");
+  const gitconfig = userFile("GIT_CONFIG_GLOBAL", ".gitconfig");
   const posix = platform !== "win32";
   return {
     ...base,
@@ -49,9 +52,7 @@ export function initializerEnv(
     XDG_DATA_HOME: path.join(scratch, "data"),
     // Read, never changed: the user's caches and settings.
     ...(posix ? { XDG_CACHE_HOME: base.XDG_CACHE_HOME ?? path.join(home, ".cache") } : {}),
-    ...(posix && base.npm_config_cache === undefined
-      ? { npm_config_cache: path.join(home, ".npm") }
-      : {}),
+    ...(posix && !given("npm_config_cache") ? { npm_config_cache: path.join(home, ".npm") } : {}),
     ...(npmrc ? { npm_config_userconfig: npmrc } : {}),
     ...(gitconfig ? { GIT_CONFIG_GLOBAL: gitconfig } : {}),
   };

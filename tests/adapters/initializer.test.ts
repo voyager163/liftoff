@@ -63,6 +63,24 @@ describe("PROJ-020 initializers run apart from the user's configuration", () => 
       npm_config_userconfig: path.join(user, ".npmrc"),
       GIT_CONFIG_GLOBAL: path.join(user, ".gitconfig"),
     });
+    // Settings given explicitly are kept, in whatever case npm reads them.
+    const explicit = initializerEnv(
+      {
+        NPM_CONFIG_USERCONFIG: "/corp/npmrc",
+        GIT_CONFIG_GLOBAL: "/corp/gitconfig",
+        npm_config_cache: "/corp/cache",
+      },
+      "/scratch",
+      user,
+      "darwin",
+      (file) => present.has(file),
+    );
+    expect(explicit).toMatchObject({
+      NPM_CONFIG_USERCONFIG: "/corp/npmrc",
+      GIT_CONFIG_GLOBAL: "/corp/gitconfig",
+      npm_config_cache: "/corp/cache",
+    });
+    expect(explicit).not.toHaveProperty("npm_config_userconfig");
     // Windows keeps its caches under LOCALAPPDATA, which is left alone.
     const windows = initializerEnv(
       { XDG_CACHE_HOME: "C:\\cache" },
