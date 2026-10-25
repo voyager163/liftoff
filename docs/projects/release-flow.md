@@ -68,7 +68,7 @@ publishes it and brings it back into `develop`.
 
 GitHub starts no workflows for pull requests opened with the workflow token.
 Create a GitHub App with read and write access to contents and pull
-requests, install it on the repository, and set the `RELEASE_APP_CLIENT_ID`
+requests and read access to actions, install it on the repository, and set the `RELEASE_APP_CLIENT_ID`
 variable and the `RELEASE_APP_PRIVATE_KEY` secret: release and sync pull
 requests are then opened with the app and start their checks like any other.
 

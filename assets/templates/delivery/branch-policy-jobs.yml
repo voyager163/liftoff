@@ -9,11 +9,26 @@ branch-policy:
     actions: read
     pull-requests: read
   steps:
+    # A run the release workflows started names its pull request instead.
+    - name: Find the pull request's base
+      id: pr
+      if: github.event_name == 'workflow_dispatch' && inputs.pull_request != ''
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PULL_REQUEST: ${{ inputs.pull_request }}
+      run: |
+        case "$PULL_REQUEST" in
+          "" | 0* | *[!0-9]*)
+            echo "::error::pull_request must be a pull request number, not \"$PULL_REQUEST\"."
+            exit 1
+            ;;
+        esac
+        gh api "repos/$GITHUB_REPOSITORY/pulls/$PULL_REQUEST" --jq '"base=\(.base.sha)"' >> "$GITHUB_OUTPUT"
     # The check from the base branch, never the pull request's own copy.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
-        ref: ${{ github.event.pull_request.base.sha || github.sha }}
+        ref: ${{ github.event.pull_request.base.sha || steps.pr.outputs.base || github.sha }}
         sparse-checkout: |
           .github/liftoff
           .github/workflows/01-pr-ci.yml
@@ -44,11 +59,26 @@ release-lineage:
     contents: read
     pull-requests: read
   steps:
+    # A run the release workflows started names its pull request instead.
+    - name: Find the pull request's base
+      id: pr
+      if: github.event_name == 'workflow_dispatch' && inputs.pull_request != ''
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PULL_REQUEST: ${{ inputs.pull_request }}
+      run: |
+        case "$PULL_REQUEST" in
+          "" | 0* | *[!0-9]*)
+            echo "::error::pull_request must be a pull request number, not \"$PULL_REQUEST\"."
+            exit 1
+            ;;
+        esac
+        gh api "repos/$GITHUB_REPOSITORY/pulls/$PULL_REQUEST" --jq '"base=\(.base.sha)"' >> "$GITHUB_OUTPUT"
     # The check from the base branch, never the pull request's own copy.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
-        ref: ${{ github.event.pull_request.base.sha || github.sha }}
+        ref: ${{ github.event.pull_request.base.sha || steps.pr.outputs.base || github.sha }}
         sparse-checkout: |
           .github/liftoff
           .github/workflows/01-pr-ci.yml

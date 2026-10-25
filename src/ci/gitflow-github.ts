@@ -46,16 +46,24 @@ export async function workflowPassed(
   return count > 0;
 }
 
-/** Whether a ref such as "tags/v1.2.0" or "heads/release/1.2.0" exists. */
-export async function refExists(client: GitHubClient, repository: string, ref: string) {
+/** Reads a route, or answers undefined when GitHub has nothing there. */
+export async function find<T>(client: GitHubClient, route: string): Promise<T | undefined> {
   try {
-    await client.get(`/repos/${repository}/git/ref/${ref}`);
-    return true;
+    return await client.get<T>(route);
   } catch (error) {
-    if (error instanceof GitHubError && error.status === 404) return false;
+    if (error instanceof GitHubError && error.status === 404) return undefined;
     throw error;
   }
 }
+
+/** The commit a ref such as "tags/v1.2.0" or "heads/release/1.2.0" points at, if it exists. */
+export const refSha = async (client: GitHubClient, repository: string, ref: string) =>
+  (await find<{ object: { sha: string } }>(client, `/repos/${repository}/git/ref/${ref}`))?.object
+    .sha;
+
+/** Whether a ref such as "tags/v1.2.0" or "heads/release/1.2.0" exists. */
+export const refExists = async (client: GitHubClient, repository: string, ref: string) =>
+  (await find(client, `/repos/${repository}/git/ref/${ref}`)) !== undefined;
 
 export const treeOf = async (client: GitHubClient, repository: string, sha: string) =>
   (await client.get<{ tree: { sha: string } }>(`/repos/${repository}/git/commits/${sha}`)).tree.sha;

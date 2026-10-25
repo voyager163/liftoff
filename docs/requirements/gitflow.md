@@ -56,10 +56,14 @@ Verification: test
 The Release workflow, run from `develop` with a version, creates
 `release/X.Y.Z` at a `develop` commit whose CI and build passed and opens
 its pull request into `main`. It refuses anything else: another branch, a
-version that is not X.Y.Z or is already tagged, an existing release branch,
-a commit not on `develop`, or one whose CI or build has not passed. Without
-a release app it starts CI and the review policy for the pull request, at its
-exact head commit; with one it does not need to.
+version that is not X.Y.Z or is already tagged, a release branch already at
+another commit, a commit not on `develop`, or one whose CI or build has not
+passed. Without a release app it starts CI and the review policy for the
+pull request, at its exact head commit; with one it does not need to. A run
+started that way checks the pull request as GitHub's own would: the branch
+checks run its base's copy, and dependency review compares its base and
+head. Re-running the workflow after a failure resumes the release it cut,
+reusing the branch and pull request rather than refusing or duplicating them.
 
 Verification: test
 
@@ -71,7 +75,9 @@ each image built from the candidate by digest and verifies its provenance,
 attests the release manifest for every image, tags `vX.Y.Z` (never twice),
 publishes the GitHub release, and opens the `sync/…` pull request into
 `develop`, unless `develop` already has everything on `main`. Other pushes to
-`main` have nothing to do.
+`main` have nothing to do. Re-running it after a failure finishes the
+release: a tag already on the same commit, the GitHub release and the sync
+pull request are reused, and a tag on any other commit is refused.
 
 Verification: test
 

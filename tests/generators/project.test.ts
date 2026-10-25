@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -1135,10 +1135,11 @@ describe("FLOW-001 GitFlow projects check branches and release lineage in CI", (
     expect(jobs["ci-gate"]?.needs).toEqual(
       expect.arrayContaining(["branch-policy", "release-lineage"]),
     );
-    const branch = jobs["branch-policy"]?.steps?.find((step) => step.run);
+    const check = (step: { run?: string }) => step.run?.includes("branch-policy.mjs");
+    const branch = jobs["branch-policy"]?.steps?.find(check);
     expect(branch?.run).toContain("node .github/liftoff/branch-policy.mjs branch\n");
     expect(branch?.env?.AUTOMATION_BRANCHES).toBe("dependabot,copilot,codex");
-    expect(jobs["release-lineage"]?.steps?.find((step) => step.run)?.run).toContain(
+    expect(jobs["release-lineage"]?.steps?.find(check)?.run).toContain(
       "node .github/liftoff/branch-policy.mjs lineage\n",
     );
     // Both read the pull request through the API.
@@ -1152,7 +1153,9 @@ describe("FLOW-001 GitFlow projects check branches and release lineage in CI", (
     // Both run the base branch's check, and run again when the description changes.
     const text = generated.get(".github/workflows/01-pr-ci.yml")?.content ?? "";
     expect(
-      text.match(/ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.sha \}\}/g),
+      text.match(
+        /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| steps\.pr\.outputs\.base \|\| github\.sha \}\}/g,
+      ),
     ).toHaveLength(2);
     expect(text).toContain("types: [opened, synchronize, reopened, edited]");
   });
@@ -1183,7 +1186,8 @@ describe("FLOW-001 GitFlow projects check branches and release lineage in CI", (
       ["branch-policy", "branch"],
       ["release-lineage", "lineage"],
     ] as const) {
-      const script = jobs[job]?.steps?.find((step) => step.run)?.run ?? "";
+      const script =
+        jobs[job]?.steps?.find((step) => step.run?.includes("branch-policy.mjs"))?.run ?? "";
       const bundle = ".github/liftoff/branch-policy.mjs";
       const workflow = ".github/workflows/01-pr-ci.yml";
       const ran = onBase(script, { [bundle]: "", [workflow]: `run: node ${bundle}` });
@@ -1206,6 +1210,116 @@ describe("FLOW-001 GitFlow projects check branches and release lineage in CI", (
     expect(Object.keys(jobs)).not.toContain("branch-policy");
     expect(jobs["ci-gate"]?.needs).not.toContain("release-lineage");
     expect(generated.has(".github/liftoff/branch-policy.mjs")).toBe(false);
+  });
+});
+
+describe("FLOW-004 CI the release workflows start checks the pull request like GitHub's own", () => {
+  interface Step {
+    id?: string;
+    if?: string;
+    uses?: string;
+    run?: string;
+    env?: Record<string, string>;
+    with?: Record<string, string>;
+  }
+
+  // Runs a step's script with gh replaced by a function that records its
+  // arguments and prints `answer`, as `gh api --jq` would.
+  const runStep = (step: Step | undefined, pullRequest: string, answer: string) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "liftoff-dispatch-"));
+    try {
+      const calls = path.join(dir, "calls.txt");
+      const output = path.join(dir, "output.txt");
+      writeFileSync(
+        path.join(dir, "step.sh"),
+        `gh() { printf '%s\\n' "$*" >> "$CALLS"; printf '${answer}'; }\n${step?.run ?? ""}`,
+      );
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-e", "step.sh"], {
+        cwd: dir,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CALLS: calls,
+          GITHUB_OUTPUT: output,
+          GITHUB_REPOSITORY: "acme/app",
+          PULL_REQUEST: pullRequest,
+        },
+      });
+      const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
+      return {
+        status: result.status,
+        stdout: result.stdout,
+        calls: read(calls),
+        output: read(output),
+      };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("runs the branch checks from the dispatched pull request's base", async () => {
+    const generated = await byPath({});
+    const jobs = (
+      parse(generated.get(".github/workflows/01-pr-ci.yml")?.content ?? "") as {
+        jobs: Record<string, { steps: Step[] }>;
+      }
+    ).jobs;
+    for (const job of ["branch-policy", "release-lineage"]) {
+      const steps = jobs[job]?.steps ?? [];
+      const find = steps.find((step) => step.id === "pr");
+      expect(find?.if).toBe(
+        "github.event_name == 'workflow_dispatch' && inputs.pull_request != ''",
+      );
+      expect(steps.find((step) => step.uses?.startsWith("actions/checkout@"))?.with?.ref).toBe(
+        `\${{ github.event.pull_request.base.sha || steps.pr.outputs.base || github.sha }}`,
+      );
+      const found = runStep(find, "7", "base=b1\\n");
+      expect(found).toMatchObject({ status: 0, output: "base=b1\n" });
+      expect(found.calls).toBe('api repos/acme/app/pulls/7 --jq "base=\\(.base.sha)"\n');
+      for (const bad of ["07", "7; true", "x"]) {
+        const refused = runStep(find, bad, "");
+        expect(refused.status).toBe(1);
+        expect(refused.stdout).toContain("pull_request must be a pull request number");
+        expect(refused.calls).toBe("");
+      }
+    }
+  });
+
+  it("reviews the dispatched pull request's dependencies between its base and head", async () => {
+    const generated = await byPath({});
+    const job = (
+      parse(generated.get(".github/workflows/01-pr-ci.yml")?.content ?? "") as {
+        jobs: { dependencies: { permissions: Record<string, string>; steps: Step[] } };
+      }
+    ).jobs.dependencies;
+    expect(job.permissions).toEqual({ contents: "read", "pull-requests": "read" });
+    const found = runStep(
+      job.steps.find((step) => step.id === "pr"),
+      "7",
+      "base=b1\\nhead=h1\\n",
+    );
+    expect(found.output).toBe("base=b1\nhead=h1\n");
+    const review = job.steps.find((step) =>
+      step.uses?.startsWith("actions/dependency-review-action@"),
+    );
+    expect(review?.if).toBe("github.event_name == 'pull_request' || steps.pr.outputs.head != ''");
+    expect(review?.with).toMatchObject({
+      "base-ref": `\${{ steps.pr.outputs.base }}`,
+      "head-ref": `\${{ steps.pr.outputs.head }}`,
+    });
+  });
+
+  it("asks the release app's token to read the workflow runs it checks", async () => {
+    const generated = await byPath({});
+    const release = parse(generated.get(".github/workflows/20-release.yml")?.content ?? "") as {
+      jobs: { release: { steps: Step[] } };
+    };
+    const app = release.jobs.release.steps.find((step) => step.id === "app");
+    expect(app?.with).toMatchObject({
+      "permission-contents": "write",
+      "permission-pull-requests": "write",
+      "permission-actions": "read",
+    });
   });
 });
 

@@ -8,7 +8,12 @@ const TREE = "e".repeat(40);
 const DIGEST = `sha256:${"f".repeat(64)}`;
 
 interface Repo {
-  refs?: string[];
+  /** Refs such as "tags/v1.2.0", and the commit each points at. */
+  refs?: Record<string, string>;
+  /** Tags that have a GitHub release. */
+  releases?: string[];
+  /** Open pull requests, by head branch. */
+  open?: Record<string, number>;
   develop?: string;
   /** compare/<base>...<sha> answers, by base. */
   compare?: Record<string, { ahead_by: number; behind_by: number }>;
@@ -48,7 +53,21 @@ function fakeGitHub(repo: Repo, calls: Call[]) {
       return json({ object: { sha: repo.develop } });
     }
     const ref = /\/git\/ref\/(.+)$/.exec(path)?.[1];
-    if (ref !== undefined) return (repo.refs ?? []).includes(ref) ? json({}) : json({}, 404);
+    if (ref !== undefined) {
+      const sha = repo.refs?.[ref];
+      return sha === undefined ? json({}, 404) : json({ object: { sha } });
+    }
+    if (method === "GET" && path === "/repos/o/r/pulls") {
+      const head = url.searchParams.get("head")?.replace(/^o:/, "") ?? "";
+      const number = repo.open?.[head];
+      return json(number === undefined ? [] : [{ number, html_url: `https://x/pull/${number}` }]);
+    }
+    const release = /\/releases\/tags\/(.+)$/.exec(path)?.[1];
+    if (release !== undefined) {
+      return (repo.releases ?? []).includes(release)
+        ? json({ html_url: `https://x/releases/${release}` })
+        : json({}, 404);
+    }
     const compare = /\/compare\/([^.]+)\.\.\./.exec(path)?.[1];
     if (compare !== undefined)
       return json(repo.compare?.[compare] ?? { ahead_by: 0, behind_by: 0 });
@@ -147,11 +166,41 @@ describe("FLOW-004 cutting a release", () => {
     ]);
   });
 
+  it("resumes a release an earlier run cut, without a second branch or pull request", async () => {
+    const branch = { refs: { "heads/release/1.2.0": COMMIT }, passed: BUILT };
+    const resumed = await run("open-release", { ...OPEN, DISPATCH: "false" }, branch);
+    expect(resumed.code).toBe(0);
+    expect(writes(resumed.calls).map((call) => call.path)).toEqual(["/repos/o/r/pulls"]);
+    expect(resumed.calls.some((call) => call.path.endsWith("/git/ref/heads/develop"))).toBe(false);
+
+    const both = await run(
+      "open-release",
+      { ...OPEN, DISPATCH: "true" },
+      { ...branch, open: { "release/1.2.0": 30 } },
+    );
+    expect(both.code).toBe(0);
+    expect(writes(both.calls).map((call) => call.path)).toEqual([
+      "/repos/o/r/actions/workflows/01-pr-ci.yml/dispatches",
+      "/repos/o/r/actions/workflows/03-review-policy.yml/dispatches",
+    ]);
+    expect(both.outputs).toContain("pull-request=30");
+  });
+
   it.each<[string, Record<string, string>, Repo, string]>([
     ["off develop", { GITHUB_REF: "refs/heads/main" }, {}, "run the release workflow from develop"],
     ["with a version that is not X.Y.Z", { VERSION: "1.2" }, {}, "1.2 is not a version"],
-    ["of a version already released", {}, { refs: ["tags/v1.2.0"] }, "v1.2.0 is already released"],
-    ["while its branch exists", {}, { refs: ["heads/release/1.2.0"] }, "already exists"],
+    [
+      "of a version already released",
+      {},
+      { refs: { "tags/v1.2.0": MAIN } },
+      "v1.2.0 is already released",
+    ],
+    [
+      "while its branch is at another commit",
+      { COMMIT },
+      { refs: { "heads/release/1.2.0": MAIN }, passed: BUILT },
+      `release/1.2.0 already exists at ${MAIN}`,
+    ],
     ["of a commit that is not a full SHA", { COMMIT: "abc" }, {}, "abc is not a full commit SHA"],
     [
       "of a commit not on develop",
@@ -285,14 +334,36 @@ describe("FLOW-005 after a release merges into main", () => {
     expect(String(release?.body?.body)).toContain(`ghcr.io/o/r/api@${DIGEST}`);
   });
 
+  it("finishes a publish an earlier run started on the same commit", async () => {
+    const env = { GITHUB_SHA: MAIN, MANIFEST_FILE: "m.json" };
+    const tagged = await run(
+      "publish",
+      env,
+      { refs: { "tags/v1.2.0": MAIN } },
+      { "m.json": manifest },
+    );
+    expect(tagged.code).toBe(0);
+    expect(writes(tagged.calls).map((call) => call.path)).toEqual(["/repos/o/r/releases"]);
+
+    const done = await run(
+      "publish",
+      env,
+      { refs: { "tags/v1.2.0": MAIN }, releases: ["v1.2.0"] },
+      { "m.json": manifest },
+    );
+    expect(done.code).toBe(0);
+    expect(writes(done.calls)).toEqual([]);
+    expect(done.log).toContain("Already published");
+  });
+
   it("never publishes a version twice, or a manifest for another commit", async () => {
     const twice = await run(
       "publish",
       { GITHUB_SHA: MAIN, MANIFEST_FILE: "m.json" },
-      { refs: ["tags/v1.2.0"] },
+      { refs: { "tags/v1.2.0": COMMIT } },
       { "m.json": manifest },
     );
-    expect(twice.log).toContain("v1.2.0 already exists");
+    expect(twice.log).toContain(`v1.2.0 already exists at ${COMMIT}`);
     const other = await run(
       "publish",
       { GITHUB_SHA: COMMIT, MANIFEST_FILE: "m.json" },
@@ -316,6 +387,20 @@ describe("FLOW-005 after a release merges into main", () => {
       ["/repos/o/r/actions/workflows/01-pr-ci.yml/dispatches", "sync/main-into-develop-1.2.0"],
       ["/repos/o/r/actions/workflows/03-review-policy.yml/dispatches", "develop"],
     ]);
+  });
+
+  it("reuses the sync branch and pull request an earlier run opened", async () => {
+    const { code, calls } = await run(
+      "sync",
+      { GITHUB_SHA: MAIN, VERSION: "1.2.0", DISPATCH: "false" },
+      {
+        compare: { develop: { ahead_by: 1, behind_by: 0 } },
+        refs: { "heads/sync/main-into-develop-1.2.0": MAIN },
+        open: { "sync/main-into-develop-1.2.0": 31 },
+      },
+    );
+    expect(code).toBe(0);
+    expect(writes(calls)).toEqual([]);
   });
 
   it("opens no sync when develop already has main", async () => {

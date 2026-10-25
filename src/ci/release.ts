@@ -10,6 +10,10 @@
 // - publish: tags vX.Y.Z on main and creates the GitHub release.
 // - sync: opens the pull request that brings main back into develop.
 //
+// Each step can be re-run after a failure: it finishes what an earlier run
+// started at the same commit (a branch, a tag, a release, a pull request)
+// rather than refusing it or doing it twice.
+//
 // GitHub starts no workflows for pull requests opened with the workflow
 // token. With DISPATCH=true, open-release and sync start CI and the review
 // policy for the new pull request themselves, at its exact head commit; they
@@ -26,8 +30,10 @@ import {
 import {
   compare,
   dispatch,
+  find,
   type PullRequest,
   refExists,
+  refSha,
   treeOf,
   WORKFLOWS,
   workflowPassed,
@@ -103,14 +109,17 @@ async function openRelease(context: Context): Promise<void> {
   if (await refExists(client, repository, `tags/v${version}`)) {
     throw new Error(`v${version} is already released; choose the next version`);
   }
-  if (await refExists(client, repository, `heads/${branch}`)) {
-    throw new Error(`${branch} already exists; finish or delete that release first`);
-  }
+  // A re-run resumes the release an earlier run cut, at the same commit.
+  const cut = await refSha(client, repository, `heads/${branch}`);
   const commit =
     env.COMMIT?.trim() ||
+    cut ||
     (await client.get<{ object: { sha: string } }>(`/repos/${repository}/git/ref/heads/develop`))
       .object.sha;
   if (!/^[0-9a-f]{40}$/.test(commit)) throw new Error(`${commit} is not a full commit SHA`);
+  if (cut !== undefined && cut !== commit) {
+    throw new Error(`${branch} already exists at ${cut}; finish or delete that release first`);
+  }
   if ((await compare(client, repository, "develop", commit)).ahead_by > 0) {
     throw new Error(`${commit} is not on develop; a release is an exact develop commit`);
   }
@@ -122,11 +131,13 @@ async function openRelease(context: Context): Promise<void> {
       throw new Error(`${what} has not passed on develop for ${commit}`);
     }
   }
-  await client.post(`/repos/${repository}/git/refs`, {
-    ref: `refs/heads/${branch}`,
-    sha: commit,
-  });
-  const pr = await client.post<{ number: number; html_url: string }>(`/repos/${repository}/pulls`, {
+  if (cut === undefined) {
+    await client.post(`/repos/${repository}/git/refs`, {
+      ref: `refs/heads/${branch}`,
+      sha: commit,
+    });
+  }
+  const pr = await openPullRequest(context, {
     title: `Release ${version}`,
     head: branch,
     base: "main",
@@ -139,7 +150,7 @@ async function openRelease(context: Context): Promise<void> {
   await startChecks(context, pr.number, branch, "main");
   context.output("pull-request", String(pr.number));
   context.summary(
-    `## Release ${version}\n\nOpened [#${pr.number}](${pr.html_url}) for ${commit}.\n`,
+    `## Release ${version}\n\nIts pull request is [#${pr.number}](${pr.html_url}), for ${commit}.\n`,
   );
 }
 
@@ -215,29 +226,41 @@ async function publish(context: Context): Promise<void> {
   if (manifest.source.commit !== sha) {
     throw new Error(`the manifest is for ${manifest.source.commit}, not ${sha}`);
   }
-  if (await refExists(client, repository, `tags/${tag}`)) {
-    throw new Error(`${tag} already exists; a version is released once`);
+  const tagged = await refSha(client, repository, `tags/${tag}`);
+  if (tagged !== undefined && tagged !== sha) {
+    throw new Error(`${tag} already exists at ${tagged}; a version is released once`);
   }
-  await client.post(`/repos/${repository}/git/refs`, { ref: `refs/tags/${tag}`, sha });
-  const release = await client.post<{ html_url: string }>(`/repos/${repository}/releases`, {
-    tag_name: tag,
-    target_commitish: sha,
-    name: tag,
-    generate_release_notes: true,
-    body: [
-      `The ${manifest.kind} of ${manifest.source.candidate}, merged by #${manifest.pullRequest}. Its images, by digest:`,
-      "",
-      ...manifest.images.map((image) => `- \`${image.reference}@${image.digest}\``),
-      "",
-      "The manifest below is also attested for each image. Verify one with",
-      `\`gh attestation verify oci://IMAGE@DIGEST --repo ${repository} --predicate-type ${RELEASE_MANIFEST_PREDICATE}\`.`,
-      "",
-      "```json",
-      JSON.stringify(manifest, null, 2),
-      "```",
-    ].join("\n"),
-  });
-  context.summary(`## Release ${manifest.version}\n\nPublished [${tag}](${release.html_url}).\n`);
+  // A re-run finishes a release an earlier run tagged on this commit.
+  if (tagged === undefined) {
+    await client.post(`/repos/${repository}/git/refs`, { ref: `refs/tags/${tag}`, sha });
+  }
+  const published = await find<{ html_url: string }>(
+    client,
+    `/repos/${repository}/releases/tags/${tag}`,
+  );
+  const release =
+    published ??
+    (await client.post<{ html_url: string }>(`/repos/${repository}/releases`, {
+      tag_name: tag,
+      target_commitish: sha,
+      name: tag,
+      generate_release_notes: true,
+      body: [
+        `The ${manifest.kind} of ${manifest.source.candidate}, merged by #${manifest.pullRequest}. Its images, by digest:`,
+        "",
+        ...manifest.images.map((image) => `- \`${image.reference}@${image.digest}\``),
+        "",
+        "The manifest below is also attested for each image. Verify one with",
+        `\`gh attestation verify oci://IMAGE@DIGEST --repo ${repository} --predicate-type ${RELEASE_MANIFEST_PREDICATE}\`.`,
+        "",
+        "```json",
+        JSON.stringify(manifest, null, 2),
+        "```",
+      ].join("\n"),
+    }));
+  context.summary(
+    `## Release ${manifest.version}\n\n${published ? "Already published" : "Published"} [${tag}](${release.html_url}).\n`,
+  );
 }
 
 /** Opens the pull request that brings main back into develop. */
@@ -253,14 +276,27 @@ async function sync(context: Context): Promise<void> {
   if (!(await refExists(client, repository, `heads/${branch}`))) {
     await client.post(`/repos/${repository}/git/refs`, { ref: `refs/heads/${branch}`, sha });
   }
-  const pr = await client.post<{ number: number; html_url: string }>(`/repos/${repository}/pulls`, {
+  const pr = await openPullRequest(context, {
     title: `Bring ${version} back into develop`,
     head: branch,
     base: "develop",
     body: `Merges main at ${sha}, after ${version}, back into develop. Merge it with a merge commit, never a squash, so develop keeps main's history.`,
   });
   await startChecks(context, pr.number, branch, "develop");
-  context.summary(`## Sync\n\nOpened [#${pr.number}](${pr.html_url}) into develop.\n`);
+  context.summary(`## Sync\n\nThe pull request into develop is [#${pr.number}](${pr.html_url}).\n`);
+}
+
+/** Opens a pull request, or finds the one an earlier run opened from the same branch. */
+async function openPullRequest(
+  context: Context,
+  request: { title: string; head: string; base: string; body: string },
+): Promise<{ number: number; html_url: string }> {
+  const { client, repository } = context;
+  const owner = repository.split("/")[0] ?? "";
+  const [open] = await client.get<{ number: number; html_url: string }[]>(
+    `/repos/${repository}/pulls?head=${encodeURIComponent(`${owner}:${request.head}`)}&base=${encodeURIComponent(request.base)}&state=open`,
+  );
+  return open ?? client.post(`/repos/${repository}/pulls`, request);
 }
 
 /**
