@@ -42,6 +42,9 @@ Run from the repository root with Node 26 (`.node-version`):
 - Generated files carry a "Managed by Liftoff" marker. Change the source in
   `assets/` or `src/`, then run `npm run render:own` or
   `npm run build:ci-bundle`. Never edit generated copies by hand.
+- Golden snapshots in `tests/fixtures/golden/`, including the combination
+  matrix, change with templates and plugins. Regenerate them with
+  `UPDATE_GOLDEN=1 npx vitest run tests/generators` and review the diff.
 - Pin exact dependency versions and GitHub Actions to full commit SHAs.
 - Match the surrounding code: naming, error handling and comment density.
 
