@@ -82,6 +82,13 @@ that owner's own changes). With `risk-tiered-gitflow`, low-risk changes need
 no approval, so the branch rules never require a code owner's; any
 collaborator with write access can give the approvals a change needs.
 
+The branch rules enforce only each profile's minimum natively: one approval
+for `team-gitflow`, none for `risk-tiered-gitflow`. The higher counts by tier
+come from the `review-policy` check, a commit status that anyone with write
+access could also publish from a workflow of their own, so they stop mistakes
+rather than a collaborator set on getting around them. GOVERNANCE.md in the
+project says how to enforce a higher count natively.
+
 These two profiles are generated and tested, but their approval rules have
 not yet been observed on GitHub with a real second reviewer, so they are not
 yet qualified.

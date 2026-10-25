@@ -155,7 +155,9 @@ Verification: live
   above 0, require the approval to come after the last push;
 - the `review-policy` check requires the rest by tier, and the always-human
   minimum for paths that always need a person;
-- GOVERNANCE.md explains which approvals count and who can give them.
+- GOVERNANCE.md explains which approvals count, who can give them, and
+  which counts the branch rules enforce natively, since a writer could forge
+  the `review-policy` status (REVIEW-010).
 
 Verification: test
 

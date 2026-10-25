@@ -420,6 +420,8 @@ describe("PROJ-012 team and risk-tiered profiles", () => {
     expect(governance).toContain("## Approvals");
     expect(governance).toContain("not the author");
     expect(governance).toContain("require one of them to approve");
+    expect(governance).toContain("enforce 1 approval on every change");
+    expect(governance).toContain("anyone with write access could also publish it");
     expect(team.get(".github/CODEOWNERS")?.content).toContain("* @alice @bob");
   });
 
@@ -456,6 +458,7 @@ describe("PROJ-012 team and risk-tiered profiles", () => {
     // The text matches the rulesets: owners are requested, not required.
     expect(governance).toContain("do not require a code owner's");
     expect(governance).not.toContain("require one of them to approve");
+    expect(governance).toContain("enforce no approval on every change");
   });
 
   it("keeps the single-maintainer handoff free of approval rules", async () => {

@@ -196,6 +196,16 @@ to a path that always needs a person, listed in
 ${p.alwaysHumanMinimum} approval whatever its tier.
 
 ${ownership}
+
+### What enforces these counts
+
+The branch rules themselves enforce ${p.approvals.low === 0 ? "no approval" : `${p.approvals.low} approval`} on every change. The
+higher counts by tier come from the \`review-policy\` check, which is a commit
+status: anyone with write access could also publish it from a workflow of
+their own. It stops mistakes, not a collaborator set on getting around it.
+Where that matters, raise \`required_approving_review_count\` in
+[.github/rulesets/](.github/rulesets/) to the count you need enforced on
+every change.
 `;
 }
 

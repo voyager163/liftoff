@@ -1,4 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -168,6 +170,60 @@ describe("REVIEW-012 reviews re-check the policy, forks included", () => {
     expect(job?.steps?.map((step) => step.run ?? "").join("\n")).toContain(
       "gh workflow run review-policy.yml",
     );
+  });
+});
+
+describe("REVIEW-012 the refresh dispatches exactly the reviewed pull requests", () => {
+  const script =
+    Object.values(workflows.find((w) => w.name === "review-policy-refresh.yml")?.data.jobs ?? {})[0]
+      ?.steps?.[0]?.run ?? "";
+
+  // Runs the workflow's own script with gh replaced by a function: the
+  // lookup runs `lookup`, and every other call is recorded.
+  const refresh = (lookup: string) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "liftoff-refresh-"));
+    try {
+      const file = path.join(dir, "refresh.sh");
+      const calls = path.join(dir, "calls.txt");
+      writeFileSync(
+        file,
+        `gh() {\n  if [ "$1" = api ]; then ${lookup}; else echo "$*" >> "$CALLS"; fi\n}\n${script}`,
+      );
+      const result = spawnSync("bash", [file], {
+        encoding: "utf8",
+        env: { ...process.env, CALLS: calls, REPO: "acme/app", HEAD_SHA: "abc123" },
+      });
+      return {
+        status: result.status,
+        stdout: result.stdout,
+        dispatched: existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n") : [],
+      };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("fails when the lookup fails, instead of reporting nothing to do", () => {
+    const result = refresh('echo "HTTP 502" >&2; return 1');
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).not.toContain("nothing to re-check");
+    expect(result.dispatched).toEqual([]);
+  });
+
+  it("succeeds without dispatching when no open pull request has the commit", () => {
+    const result = refresh("return 0");
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("nothing to re-check");
+    expect(result.dispatched).toEqual([]);
+  });
+
+  it("dispatches the check from each matching pull request's base branch", () => {
+    const result = refresh("printf '9\\tdevelop\\n12\\tmain\\n'");
+    expect(result.status).toBe(0);
+    expect(result.dispatched).toEqual([
+      "workflow run review-policy.yml --repo acme/app --ref develop -f pull_request=9",
+      "workflow run review-policy.yml --repo acme/app --ref main -f pull_request=12",
+    ]);
   });
 });
 

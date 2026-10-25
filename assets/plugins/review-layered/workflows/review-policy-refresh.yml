@@ -33,12 +33,15 @@ jobs:
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          found=0
+          set -euo pipefail
+          # Assigned first, so a failed lookup fails this step instead of
+          # looking like no pull request.
+          pulls=$(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
+            --jq '.[] | select(.head.sha == env.HEAD_SHA) | [.number, .base.ref] | @tsv')
+          if [ -z "$pulls" ]; then
+            echo "No open pull request has head $HEAD_SHA; nothing to re-check."
+            exit 0
+          fi
           while IFS=$'\t' read -r number base; do
             gh workflow run {{liftoff.reviewPolicyWorkflow}} --repo "$REPO" --ref "$base" -f "pull_request=$number"
-            found=1
-          done < <(gh api --paginate "repos/$REPO/pulls?state=open&per_page=100" \
-            --jq '.[] | select(.head.sha == env.HEAD_SHA) | [.number, .base.ref] | @tsv')
-          if [ "$found" = 0 ]; then
-            echo "No open pull request has head $HEAD_SHA; nothing to re-check."
-          fi
+          done <<< "$pulls"
