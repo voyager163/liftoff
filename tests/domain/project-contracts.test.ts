@@ -53,6 +53,10 @@ describe("PROJ-001 project configuration", () => {
     [{ ...config, schema: "liftoff.config/v2" }, "schema"],
     [{ ...config, agents: ["claude", "claude"] }, "each agent may be listed once"],
     [{ ...config, owners: ["a", "a"] }, "each owner may be listed once"],
+    [
+      { ...config, owners: ["alice", "Alice"] },
+      "each owner may be listed once, in any letter case",
+    ],
     [{ ...config, owners: ["not a login"] }, "GitHub login"],
   ])("rejects an invalid config %#", (raw, message) => {
     expect(() => validateConfig(raw)).toThrow(message);

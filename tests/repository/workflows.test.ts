@@ -1,4 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -142,6 +144,87 @@ describe("AIREVIEW-002 review jobs hand their files on reliably", () => {
       }
     },
   );
+});
+
+describe("REVIEW-012 reviews re-check the policy, forks included", () => {
+  const find = (name: string) => workflows.find((w) => w.name === name)?.data;
+
+  it("records reviews with no permissions and no code", () => {
+    const submitted = find("review-submitted.yml");
+    expect(triggers(submitted as Workflow)).toEqual(["pull_request_review"]);
+    expect(submitted?.permissions).toEqual({});
+    for (const job of Object.values(submitted?.jobs ?? {})) {
+      expect(job.permissions).toBeUndefined();
+      expect(job.steps?.some((step) => step.uses !== undefined)).toBe(false);
+    }
+  });
+
+  it("refreshes from the default branch when a review was recorded", () => {
+    const refresh = find("review-policy-refresh.yml");
+    expect(refresh?.on).toEqual({
+      workflow_run: { workflows: ["Review submitted"], types: ["completed"] },
+    });
+    const job = Object.values(refresh?.jobs ?? {})[0];
+    expect(job?.permissions).toEqual({ actions: "write", "pull-requests": "read" });
+    expect(job?.steps?.some((step) => step.uses?.startsWith("actions/checkout@"))).toBe(false);
+    expect(job?.steps?.map((step) => step.run ?? "").join("\n")).toContain(
+      "gh workflow run review-policy.yml",
+    );
+  });
+});
+
+describe("REVIEW-012 the refresh dispatches exactly the reviewed pull requests", () => {
+  const script =
+    Object.values(workflows.find((w) => w.name === "review-policy-refresh.yml")?.data.jobs ?? {})[0]
+      ?.steps?.[0]?.run ?? "";
+
+  // Runs the workflow's own script with gh replaced by a function: the
+  // lookup runs `lookup`, and every other call is recorded.
+  const refresh = (lookup: string) => {
+    const dir = mkdtempSync(path.join(tmpdir(), "liftoff-refresh-"));
+    try {
+      const file = path.join(dir, "refresh.sh");
+      const calls = path.join(dir, "calls.txt");
+      writeFileSync(
+        file,
+        `gh() {\n  if [ "$1" = api ]; then ${lookup}; else echo "$*" >> "$CALLS"; fi\n}\n${script}`,
+      );
+      const result = spawnSync("bash", [file], {
+        encoding: "utf8",
+        env: { ...process.env, CALLS: calls, REPO: "acme/app", HEAD_SHA: "abc123" },
+      });
+      return {
+        status: result.status,
+        stdout: result.stdout,
+        dispatched: existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n") : [],
+      };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it("fails when the lookup fails, instead of reporting nothing to do", () => {
+    const result = refresh('echo "HTTP 502" >&2; return 1');
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).not.toContain("nothing to re-check");
+    expect(result.dispatched).toEqual([]);
+  });
+
+  it("succeeds without dispatching when no open pull request has the commit", () => {
+    const result = refresh("return 0");
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("nothing to re-check");
+    expect(result.dispatched).toEqual([]);
+  });
+
+  it("dispatches the check from each matching pull request's base branch", () => {
+    const result = refresh("printf '9\\tdevelop\\n12\\tmain\\n'");
+    expect(result.status).toBe(0);
+    expect(result.dispatched).toEqual([
+      "workflow run review-policy.yml --repo acme/app --ref develop -f pull_request=9",
+      "workflow run review-policy.yml --repo acme/app --ref main -f pull_request=12",
+    ]);
+  });
 });
 
 describe("PROJ-006 and PROJ-011 every API stack is checked in CI", () => {

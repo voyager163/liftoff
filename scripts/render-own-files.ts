@@ -39,6 +39,7 @@ const files = [
     templates,
     {
       policy: ".github/workflows/review-policy.yml",
+      submitted: ".github/workflows/review-submitted.yml",
       refresh: ".github/workflows/review-policy-refresh.yml",
       ai: ".github/workflows/ai-review.yml",
     },

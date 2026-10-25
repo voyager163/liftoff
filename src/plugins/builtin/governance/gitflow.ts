@@ -36,13 +36,24 @@ jobs:
         run: node .github/liftoff/governance-drift.mjs
 `;
 
+/**
+ * Whether the rulesets require a code owner's approval: only when the profile
+ * requires an approval for every change, and only with at least two owners,
+ * because nobody can approve their own pull request and a single owner's
+ * changes could then never be approved.
+ */
+function codeOwnerReviewRequired(profile: ProfileId, owners: readonly string[]): boolean {
+  return PROFILES[profile].approvals.low > 0 && owners.length >= 2;
+}
+
 function ruleset(
   name: string,
   branch: string,
   methods: string[],
   context: GenerationContext,
-  approvals: number,
+  profile: ProfileId,
 ) {
+  const approvals = PROFILES[profile].approvals.low;
   return {
     name,
     target: "branch",
@@ -57,7 +68,7 @@ function ruleset(
         parameters: {
           allowed_merge_methods: methods,
           dismiss_stale_reviews_on_push: true,
-          require_code_owner_review: approvals > 0 && context.config.owners.length > 0,
+          require_code_owner_review: codeOwnerReviewRequired(profile, context.config.owners),
           require_last_push_approval: approvals > 0,
           required_approving_review_count: approvals,
           required_review_thread_resolution: true,
@@ -143,7 +154,7 @@ history being synchronized.
    high ${p.approvals.high}.
 ${aiStep}${resolveStep}. Every review thread is resolved before merging: fixed, or answered with a
    reason.
-
+${approvalsSection(config.owners, profile)}
 ## Branch rules
 
 The intended rules are in [.github/rulesets/](.github/rulesets/). They are
@@ -162,6 +173,42 @@ if it differs from the committed rulesets.
 `;
 }
 
+/** Who can approve, for profiles that require approvals. */
+function approvalsSection(owners: readonly string[], profile: ProfileId): string {
+  const p = PROFILES[profile];
+  if (Math.max(p.approvals.low, p.approvals.medium, p.approvals.high) === 0) return "";
+  const ownership = codeOwnerReviewRequired(profile, owners)
+    ? "[.github/CODEOWNERS](.github/CODEOWNERS) names who reviews what. GitHub\nrequests those owners, and the branch rules require one of them to approve."
+    : owners.length === 0
+      ? "No code owners were given, so any collaborator with write access can\napprove. Add `.github/CODEOWNERS` to have GitHub request reviewers."
+      : p.approvals.low === 0
+        ? "[.github/CODEOWNERS](.github/CODEOWNERS) names who reviews what, and GitHub\nrequests those owners. Low-risk changes need no approval, so the branch rules\ndo not require a code owner's: any collaborator with write access can give\nthe approvals a change needs."
+        : "[.github/CODEOWNERS](.github/CODEOWNERS) names one owner. Nobody can approve\ntheir own pull request, so the branch rules do not require a code owner's\napproval; add a second owner, then turn on `require_code_owner_review` in the\nrulesets.";
+  return `
+## Approvals
+
+An approval counts only when it comes from someone with write access who is
+not the author, is that person's latest decision on the pull request, and is
+for its current head commit. Approvals from bots, AI reviewers included,
+never count, and pushing a new commit dismisses earlier approvals. A change
+to a path that always needs a person, listed in
+[.github/review-policy.yml](.github/review-policy.yml), needs at least
+${p.alwaysHumanMinimum} approval whatever its tier.
+
+${ownership}
+
+### What enforces these counts
+
+The branch rules themselves enforce ${p.approvals.low === 0 ? "no approval" : `${p.approvals.low} approval`} on every change. The
+higher counts by tier come from the \`review-policy\` check, which is a commit
+status: anyone with write access could also publish it from a workflow of
+their own. It stops mistakes, not a collaborator set on getting around it.
+Where that matters, raise \`required_approving_review_count\` in
+[.github/rulesets/](.github/rulesets/) to the count you need enforced on
+every change.
+`;
+}
+
 /** GitFlow governance handoff: generated policy and rules, applied later by a person. */
 export function gitflowGovernance(profile: ProfileId): ProjectPlugin {
   return {
@@ -171,7 +218,6 @@ export function gitflowGovernance(profile: ProfileId): ProjectPlugin {
     summary: PROFILES[profile].summary,
     templateRoots: [],
     artifacts(context) {
-      const approvals = PROFILES[profile].approvals.low;
       const bundle = context.ciBundles["governance-drift.mjs"];
       if (bundle === undefined)
         throw new Error("this release does not ship the governance-drift.mjs CI bundle");
@@ -186,13 +232,13 @@ export function gitflowGovernance(profile: ProfileId): ProjectPlugin {
           path: ".github/rulesets/develop.json",
           ownership: "seeded",
           content: json(
-            ruleset("Protect develop", "develop", ["merge", "squash"], context, approvals),
+            ruleset("Protect develop", "develop", ["merge", "squash"], context, profile),
           ),
         },
         {
           path: ".github/rulesets/main.json",
           ownership: "seeded",
-          content: json(ruleset("Protect main", "main", ["merge"], context, approvals)),
+          content: json(ruleset("Protect main", "main", ["merge"], context, profile)),
         },
         { path: ".github/liftoff/governance-drift.mjs", ownership: "managed", content: bundle },
         {

@@ -1,0 +1,24 @@
+# Managed by Liftoff. Change it through Liftoff rather than by hand.
+# Records that a review was submitted or dismissed. It has no permissions and
+# runs no code. Its completion starts the Review policy refresh workflow,
+# which re-checks review policy with the permissions a review on a pull
+# request from a fork does not get here.
+name: Review submitted
+
+on:
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions: {}
+
+jobs:
+  record:
+    name: Record the review
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Hand over to Review policy refresh
+        env:
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "A review changed on pull request #$NUMBER; Review policy refresh re-checks it."

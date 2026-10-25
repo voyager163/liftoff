@@ -114,8 +114,34 @@ request already passed. Any other trigger fails closed.
 
 A repository writer can forge a commit status, so the dynamic approval
 counts this check enforces are not tamper-proof. The tamper-proof floor is
-native: rulesets require code-owner review and CODEOWNERS covers every
-always-human path, including workflows.
+native: the rulesets' approval minimum and, where it can apply (PROJ-008),
+code-owner review, with CODEOWNERS covering every always-human path,
+including workflows.
+
+Verification: test
+
+## REVIEW-011 Approval rules hold with a real second reviewer
+
+On a GitHub repository with a team or risk-tiered project's rulesets
+applied, a pull request that needs an approval cannot merge until a second
+person with write access approves its head commit. A new push dismisses that
+approval, and approvals from the author, a bot or an older commit do not
+satisfy `review-policy`. An approval on a pull request from a fork updates
+`review-policy` without anyone dispatching it by hand. Until this has been
+observed with a real second reviewer, the team and risk-tiered profiles are
+described as not yet qualified.
+
+Verification: live
+
+## REVIEW-012 A review re-checks the policy, on pull requests from forks too
+
+`pull_request_target` does not fire on reviews, and a review on a pull
+request from a fork only gets a read-only token. So a submitted or dismissed
+review starts a workflow with no permissions that runs no code; when it
+completes, a refresh workflow runs from the default branch. That workflow
+finds the open pull requests whose head is the reviewed commit and dispatches
+`review-policy` from each one's base branch. It checks out and runs no pull
+request code, so it can delay a pass but never fake one.
 
 Verification: test
 

@@ -188,6 +188,12 @@ large_change: { lines: 10, tier: high, ignore: ["gen/**"] }
     expect(result.tier).toBe("high");
   });
 
+  it("matches trusted authors in any letter case, as GitHub does", () => {
+    const result = classify({ policy, files: [file("docs/guide.md")], author: "Alice" });
+    expect(result.trustedAuthor).toBe(true);
+    expect(result.tier).toBe("low");
+  });
+
   it("never gives an untrusted author the low path", () => {
     const result = classify({ policy, files: [file("docs/guide.md")], author: "mallory" });
     expect(result.tier).toBe("medium");

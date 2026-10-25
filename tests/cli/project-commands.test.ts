@@ -120,11 +120,6 @@ describe("PROJ-003 selection errors map to exit codes", () => {
   it.each([
     [["plan", "--name", "demo"], 6, "OpenSpec workflow is not available"],
     [
-      ["plan", "--name", "demo", "--workflow", "manual", "--governance", "team-gitflow"],
-      6,
-      "not available in this release",
-    ],
-    [
       ["plan", "--name", "demo", "--workflow", "manual", "--stack", "cobol"],
       2,
       'unknown stack "cobol"',

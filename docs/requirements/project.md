@@ -33,8 +33,8 @@ Verification: test
 The workload, stack, workflow, agents, governance profile and review engine
 are checked against the plugins this release ships. An unknown value is a
 usage error (exit 2). A value the product supports but this release cannot
-generate yet, such as the OpenSpec workflow or the team profile, is reported
-as unsupported (exit 6), never silently replaced. The review engine must be a
+generate yet, such as the OpenSpec workflow, is reported as unsupported
+(exit 6), never silently replaced. The review engine must be a
 selected agent, and verified AI review needs at least one agent.
 
 Verification: test
@@ -85,8 +85,10 @@ Verification: test
 GitFlow profiles generate GOVERNANCE.md, branch rulesets under
 `.github/rulesets/` and a drift workflow, but apply nothing: the rulesets
 take effect only when a person applies them after the checks they require
-have run. CODEOWNERS is generated only when owners are given. The `none`
-profile generates no governance files.
+have run. CODEOWNERS is generated only when owners are given. The rulesets
+require a code owner's approval only when the profile requires approvals for
+every change and there are at least two owners, because nobody can approve
+their own pull request. The `none` profile generates no governance files.
 
 Verification: test
 
@@ -141,6 +143,23 @@ This qualifies the generated containers as a deployment target; Linux is not
 a supported platform for the Liftoff CLI.
 
 Verification: live
+
+## PROJ-012 Team and risk-tiered profiles require independent approvals
+
+`team-gitflow` and `risk-tiered-gitflow` generate the same handoff as
+`single-maintainer-gitflow`, with their own approval map (REVIEW-005) in
+`.github/review-policy.yml`:
+
+- the rulesets require each profile's minimum for every change (team 1,
+  risk-tiered 0), dismiss approvals on a new push and, when that minimum is
+  above 0, require the approval to come after the last push;
+- the `review-policy` check requires the rest by tier, and the always-human
+  minimum for paths that always need a person;
+- GOVERNANCE.md explains which approvals count, who can give them, and
+  which counts the branch rules enforce natively, since a writer could forge
+  the `review-policy` status (REVIEW-010).
+
+Verification: test
 
 ## INIT-001 Plans are read-only and tamper-evident
 

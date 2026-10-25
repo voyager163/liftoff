@@ -5,7 +5,7 @@ import {
   type ProjectConfig,
   validateConfig,
 } from "../domain/project/config.ts";
-import { DEFAULT_GOVERNANCE, DEFAULT_WORKFLOW, STACKS } from "../plugins/registry.ts";
+import { DEFAULT_GOVERNANCE, DEFAULT_WORKFLOW, GOVERNANCE, STACKS } from "../plugins/registry.ts";
 import type { OptionSpec, ParsedArgs } from "./command.ts";
 import { UsageError } from "./outcome.ts";
 
@@ -49,7 +49,7 @@ export const PROJECT_OPTIONS: Readonly<Record<string, OptionSpec>> = {
     type: "string",
     valueName: "profile",
     default: DEFAULT_GOVERNANCE,
-    description: "Governance profile.",
+    description: `Governance profile: ${Object.keys(GOVERNANCE).join(", ")}.`,
   },
   "ai-review": {
     type: "string",
@@ -66,7 +66,8 @@ export const PROJECT_OPTIONS: Readonly<Record<string, OptionSpec>> = {
   owners: {
     type: "string",
     valueName: "logins",
-    description: "GitHub logins that own the project, comma-separated, for CODEOWNERS.",
+    description:
+      "GitHub logins that own the project, comma-separated, for CODEOWNERS. With team-gitflow, which requires an approval for every change, at least two owners also make a code owner's approval required.",
   },
 };
 
