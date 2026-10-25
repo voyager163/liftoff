@@ -1,0 +1,67 @@
+name: Bug report
+description: Report a reproducible problem with Liftoff.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve Liftoff. Please search existing issues first.
+        This report is public: do not include credentials, personal data, private
+        source, .env contents or raw sensitive diagnostics.
+        For vulnerabilities, follow [SECURITY.md](https://github.com/voyager163/liftoff/blob/develop/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Liftoff version or commit
+      description: The released version, or the commit SHA if you built from source.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: The command and minimal steps, using synthetic, non-sensitive inputs.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include only the relevant, manually sanitized error output.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: analysis
+    attributes:
+      label: Root cause or suggested fix
+      description: Optional. Any analysis of why this happens or how it could be fixed.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Relevant runtime versions or environment constraints, without private configuration.
+  - type: checkboxes
+    id: public-report
+    attributes:
+      label: Public report
+      options:
+        - label: I have reviewed this report and its attachments for sensitive information.
+          required: true

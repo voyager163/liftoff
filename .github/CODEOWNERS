@@ -1,0 +1,12 @@
+# The maintainer reviews every change by default.
+* @voyager163
+
+# Keep governance, policy and automation changes explicitly owned.
+/.github/ @voyager163
+/docs/CLA.md @voyager163
+/CODE_OF_CONDUCT.md @voyager163
+/CONTRIBUTING.md @voyager163
+/GOVERNANCE.md @voyager163
+/LICENSE @voyager163
+/SECURITY.md @voyager163
+/SUPPORT.md @voyager163

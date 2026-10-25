@@ -1,0 +1,75 @@
+name: Repository checks
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  markdown:
+    name: Markdown lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff # v24.2.0
+        with:
+          globs: "**/*.md"
+
+  spelling:
+    name: Spelling
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: codespell-project/actions-codespell@e3258cca84ce02b0bb36a3d41f2c18f719a0cc1a # v2.4.3
+        with:
+          # An empty value stops the action passing its own --skip, so
+          # codespell uses the skip list in .codespellrc.
+          skip: ""
+
+  links:
+    name: Links
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Links to this repository's develop branch are checked against the
+      # checked-out files, so a pull request can link to files it adds.
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: >-
+            --no-progress
+            --include-fragments
+            --max-retries 3
+            --accept 200..=299,429
+            --remap 'https://github\.com/voyager163/liftoff/blob/develop/ file://${{ github.workspace }}/'
+            './**/*.md'
+            './.github/**/*.md'
+            './.github/ISSUE_TEMPLATE/*.yml'
+
+  workflows:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+        with:
+          version: 1.7.12
